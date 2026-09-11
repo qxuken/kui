@@ -109,6 +109,19 @@ pub enum Grain {
     Run,
 }
 
+impl Grain {
+    /// The grain a press arms, from the click count the driver counted:
+    /// one click (or none counted) a character, two the word under it,
+    /// three or more the whole run.
+    pub(crate) fn of_clicks(clicks: u8) -> Self {
+        match clicks {
+            0 | 1 => Grain::Char,
+            2 => Grain::Word,
+            _ => Grain::Run,
+        }
+    }
+}
+
 /// One end of a selection in a cell grid: an *absolute* line (the grid's
 /// `origin_line` plus the row) and a column. Absolute because a grid is
 /// one screenful of an app's own history, so a row number means a
@@ -172,17 +185,56 @@ impl CellSelection {
     /// block selection is the same column range on every line it covers.
     pub fn cols_on(&self, line: u64, cols: usize) -> Option<(usize, usize)> {
         let (a, b) = self.ordered();
-        if line < a.line || line > b.line {
-            return None;
-        }
         if self.block {
+            if line < a.line || line > b.line {
+                return None;
+            }
             let (lo, hi) = (a.col.min(b.col), a.col.max(b.col));
             return (lo < hi).then_some((lo.min(cols), hi.min(cols)));
         }
-        let from = if line == a.line { a.col } else { 0 };
-        let to = if line == b.line { b.col } else { cols };
-        let (from, to) = (from.min(cols), to.min(cols));
-        (from < to).then_some((from, to))
+        clip_to_unit((a.line, a.col), (b.line, b.col), line, cols)
+    }
+}
+
+/// The part of one unit — a text node of `len` bytes, a grid row of `len`
+/// columns — that a selection running from `start` to `end` covers, as a
+/// half-open range in that unit's own offsets. `None` when the unit is
+/// outside the selection. The unit is named by whatever orders the
+/// scope's units (an ordinal, an absolute line); the arithmetic is the
+/// same for both geometries ADR 0017 decision 4 keeps apart (AR3): the
+/// first unit runs from the start's offset, the last to the end's, and
+/// every unit between runs edge to edge.
+pub(crate) fn clip_to_unit<U: Ord + Copy>(
+    start: (U, usize),
+    end: (U, usize),
+    unit: U,
+    len: usize,
+) -> Option<(usize, usize)> {
+    if unit < start.0 || unit > end.0 {
+        return None;
+    }
+    let from = if unit == start.0 { start.1 } else { 0 };
+    let to = if unit == end.0 { end.1 } else { len };
+    let (from, to) = (from.min(len), to.min(len));
+    (from < to).then_some((from, to))
+}
+
+/// The edges a grained drag runs between: the anchor's unit and the live
+/// end's unit are each `(from, to)`, and which side of the anchor the
+/// live end is on decides which edge of each the selection takes —
+/// backwards, from the far edge of the anchor's unit to the near edge of
+/// the live one; forwards, the reverse. So the unit the press took stays
+/// whole however far back over itself the drag turns, in bytes or in
+/// cells alike (AR3). Answers `(anchor edge, live edge)`.
+pub(crate) fn grained_edges(
+    anchor: (usize, usize),
+    live: (usize, usize),
+    backwards: bool,
+) -> (usize, usize) {
+    if backwards {
+        (anchor.1, live.0)
+    } else {
+        (anchor.0, live.1)
     }
 }
 
@@ -269,20 +321,7 @@ impl Ends {
     /// content is `len` bytes. `None` when the node is outside the
     /// selection entirely.
     pub(crate) fn range_in(&self, ord: u32, len: usize) -> Option<(usize, usize)> {
-        if ord < self.start.0 || ord > self.end.0 {
-            return None;
-        }
-        let from = if ord == self.start.0 {
-            self.start.1.min(len)
-        } else {
-            0
-        };
-        let to = if ord == self.end.0 {
-            self.end.1.min(len)
-        } else {
-            len
-        };
-        (from < to).then_some((from, to))
+        clip_to_unit(self.start, self.end, ord, len)
     }
 }
 

@@ -10,7 +10,10 @@
 use crate::geom::{Rect, Vec2};
 use crate::key::Key;
 use crate::runtime::Core;
-use crate::select::{CellEnd, CellSelection, CopyRequest, Endpoint, Grain, RangeEnd, Selection};
+use crate::select::{
+    CellEnd, CellSelection, CopyRequest, DragAnchor, Endpoint, Grain, RangeEnd, SelectDrag,
+    Selection, grained_edges,
+};
 use crate::value::Value;
 
 impl Core {
@@ -187,28 +190,19 @@ impl Core {
             },
             _ => (0, cols),
         };
-        // Which side of the anchor the live end is on decides which edge
-        // of each unit the selection runs between. A block selection is
-        // ordered by column alone, because that is the only axis its two
-        // ends disagree on.
+        // A block selection is ordered by column alone, because that is
+        // the only axis its two ends disagree on.
         let backwards = if sel.block {
             col < a_from
         } else {
             (line, col) < (a_line, a_from)
         };
-        let next = if backwards {
-            CellSelection::new(
-                sel.node,
-                CellEnd::new(a_line, a_to),
-                CellEnd::new(line, f_from),
-            )
-        } else {
-            CellSelection::new(
-                sel.node,
-                CellEnd::new(a_line, a_from),
-                CellEnd::new(line, f_to),
-            )
-        }
+        let (a_edge, f_edge) = grained_edges((a_from, a_to), (f_from, f_to), backwards);
+        let next = CellSelection::new(
+            sel.node,
+            CellEnd::new(a_line, a_edge),
+            CellEnd::new(line, f_edge),
+        )
         .block(sel.block);
         if next == sel {
             return false;
@@ -610,8 +604,8 @@ impl Core {
                 None => return false,
             },
         };
-        // Which side of the anchor the live end is on decides which edge
-        // of each unit the selection runs between.
+        // Which side of the anchor the live end is on, in the scope's
+        // concatenation.
         let prev = self.building;
         let ga = self.text.scope_offset(sel.scope, anode, a_from, prev);
         let gf = self.text.scope_offset(sel.scope, hit.node, f_from, prev);
@@ -619,21 +613,12 @@ impl Core {
             return false;
         };
         let (arow, frow) = (self.row_of(anode), self.row_of(hit.node));
-        let next = if gf < ga {
-            // Backwards: from the far edge of the anchor's unit to the
-            // near edge of the live one.
-            Selection::new(
-                sel.scope,
-                Endpoint::new(anode, a_to).in_row(arow),
-                Endpoint::new(hit.node, f_from).in_row(frow),
-            )
-        } else {
-            Selection::new(
-                sel.scope,
-                Endpoint::new(anode, a_from).in_row(arow),
-                Endpoint::new(hit.node, f_to).in_row(frow),
-            )
-        };
+        let (a_edge, f_edge) = grained_edges((a_from, a_to), (f_from, f_to), gf < ga);
+        let next = Selection::new(
+            sel.scope,
+            Endpoint::new(anode, a_edge).in_row(arow),
+            Endpoint::new(hit.node, f_edge).in_row(frow),
+        );
         if Some(next) == self.selection {
             return false;
         }
@@ -673,6 +658,70 @@ impl Core {
             Endpoint::new(at.node, len).in_row(row),
         ));
         Some((at.node, 0, len))
+    }
+
+    /// Arms a drag-select at a press inside `scope`, with what the click
+    /// count says it moves by (`Grain::of_clicks`) and the span the press
+    /// itself took, which both ends of the drag round outwards to. A grid
+    /// selects in cells and a paragraph in bytes (ADR 0017, decision 4):
+    /// this is where the two are told apart, once, and the anchor carries
+    /// the answer for the drag. In a grid, Alt makes it the rectangular
+    /// selection every terminal has.
+    pub(crate) fn arm_select_drag(&mut self, scope: Key, point: Vec2, clicks: u8) {
+        let grain = Grain::of_clicks(clicks);
+        let armed = if self.cells_id_of_ref(scope).is_some() {
+            let block = self.interaction.modifiers().alt;
+            match grain {
+                Grain::Char => self
+                    .begin_cell_selection(scope, point, block)
+                    .then_some(None),
+                Grain::Word => self
+                    .select_word_in_cells(scope, point, block)
+                    .map(|(l, f, t)| Some(DragAnchor::Cells(l, f, t))),
+                Grain::Run => self
+                    .select_line_in_cells(scope, point, block)
+                    .map(|(l, f, t)| Some(DragAnchor::Cells(l, f, t))),
+            }
+        } else {
+            match grain {
+                Grain::Char => self.begin_selection(scope, point).then_some(None),
+                Grain::Word => self
+                    .select_word_at(scope, point)
+                    .map(|(n, f, t)| Some(DragAnchor::Bytes(n, f, t))),
+                Grain::Run => self
+                    .select_run_at(scope, point)
+                    .map(|(n, f, t)| Some(DragAnchor::Bytes(n, f, t))),
+            }
+        };
+        if let Some(anchor) = armed {
+            self.select_dragging = Some(SelectDrag {
+                scope,
+                grain,
+                anchor,
+            });
+        }
+    }
+
+    /// Moves the live end of the drag [`Self::arm_select_drag`] started,
+    /// in whichever geometry its scope has.
+    pub(crate) fn extend_select_drag(&mut self, drag: SelectDrag, point: Vec2) -> bool {
+        if self.cells_id_of_ref(drag.scope).is_some() {
+            self.extend_cell_selection_grained(drag, point)
+        } else {
+            self.extend_selection_grained(drag, point)
+        }
+    }
+
+    /// Selects the word under `point` in `scope`, whichever way the scope
+    /// addresses itself — what a double click takes, and what a force
+    /// click takes before it asks for a definition. `false` when there
+    /// was no word there.
+    pub fn select_word_under(&mut self, scope: Key, point: Vec2) -> bool {
+        if self.cells_id_of_ref(scope).is_some() {
+            self.select_word_in_cells(scope, point, false).is_some()
+        } else {
+            self.select_word_at(scope, point).is_some()
+        }
     }
 
     /// Collapses the focused editor's selection, so a window never shows

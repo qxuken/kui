@@ -7,7 +7,6 @@
 
 use super::*;
 use crate::input::Target;
-use crate::select::{DragAnchor, Grain, SelectDrag};
 
 impl Core {
     /// Feeds one input event; returns any UI events it resolved to,
@@ -446,65 +445,12 @@ impl Core {
                                 let target = self.press_focus(key, focusable);
                                 self.set_focus(target);
                                 self.settle_region(Some(key));
-                                // A grid selects in cells, not in bytes:
-                                // the scope is the grid itself, and Alt
-                                // makes it the rectangular selection every
-                                // terminal has.
-                                if self.cells_id_of_ref(scope).is_some() {
-                                    let block = self.interaction.modifiers().alt;
-                                    // The same three grains a paragraph
-                                    // gets, counted in cells: one click a
-                                    // cell, two the word under it, three
-                                    // the whole row.
-                                    let armed = match clicks {
-                                        0 | 1 => self
-                                            .begin_cell_selection(scope, p, block)
-                                            .then_some((Grain::Char, None)),
-                                        2 => self.select_word_in_cells(scope, p, block).map(
-                                            |(l, f, t)| {
-                                                (Grain::Word, Some(DragAnchor::Cells(l, f, t)))
-                                            },
-                                        ),
-                                        _ => self.select_line_in_cells(scope, p, block).map(
-                                            |(l, f, t)| {
-                                                (Grain::Run, Some(DragAnchor::Cells(l, f, t)))
-                                            },
-                                        ),
-                                    };
-                                    if let Some((grain, anchor)) = armed {
-                                        self.select_dragging = Some(SelectDrag {
-                                            scope,
-                                            grain,
-                                            anchor,
-                                        });
-                                    }
-                                    self.focus_visible = false;
-                                    self.interaction
-                                        .handle(InputEvent::MouseDown { button, clicks }, &mut out);
-                                    return out;
-                                }
                                 // The press arms the drag with what the
                                 // click count says it moves by: a second
                                 // click held and dragged selects word by
-                                // word, a third run by run.
-                                let armed = match clicks {
-                                    0 | 1 => self
-                                        .begin_selection(scope, p)
-                                        .then_some((Grain::Char, None)),
-                                    2 => self.select_word_at(scope, p).map(|(n, f, t)| {
-                                        (Grain::Word, Some(DragAnchor::Bytes(n, f, t)))
-                                    }),
-                                    _ => self.select_run_at(scope, p).map(|(n, f, t)| {
-                                        (Grain::Run, Some(DragAnchor::Bytes(n, f, t)))
-                                    }),
-                                };
-                                if let Some((grain, anchor)) = armed {
-                                    self.select_dragging = Some(SelectDrag {
-                                        scope,
-                                        grain,
-                                        anchor,
-                                    });
-                                }
+                                // word, a third run by run — in bytes or,
+                                // for a grid, in cells; the arming knows.
+                                self.arm_select_drag(scope, p, clicks);
                             }
                             // Everything else: a plain node, and a
                             // disabled editor (no caret to place).
@@ -558,11 +504,7 @@ impl Core {
                     self.edit_with_fonts(|edit, fs| edit.drag(key, local, fs));
                 }
                 if let Some(drag) = self.select_dragging {
-                    if self.cells_id_of_ref(drag.scope).is_some() {
-                        self.extend_cell_selection_grained(drag, p);
-                    } else {
-                        self.extend_selection_grained(drag, p);
-                    }
+                    self.extend_select_drag(drag, p);
                 }
                 self.interaction
                     .handle(InputEvent::CursorMoved(p), &mut out);
@@ -633,15 +575,10 @@ impl Core {
             return;
         }
         if let Some(scope) = scope {
-            // A grid's word is in cells, not in bytes — and a force click
-            // is a double click that also asks for a definition, so it
-            // takes the same word the second click would have.
-            let took = if self.cells_id_of_ref(scope).is_some() {
-                self.select_word_in_cells(scope, p, false).is_some()
-            } else {
-                self.select_word_at(scope, p).is_some()
-            };
-            if !took {
+            // A force click is a double click that also asks for a
+            // definition, so it takes the same word the second click
+            // would have.
+            if !self.select_word_under(scope, p) {
                 return;
             }
             // A force click between words is a force click on nothing:
