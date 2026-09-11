@@ -236,7 +236,13 @@ fn module_cfgs(manifest_dir: &str) -> Vec<(String, String)> {
             pending = Some(cfg.to_string());
             continue;
         }
-        if let Some(name) = line.strip_prefix("mod ").and_then(|l| l.strip_suffix(';'))
+        // `mod x;`, `pub mod x;` and `pub(crate) mod x;` alike.
+        let decl = line.split_once("mod ").filter(|(vis, _)| {
+            let vis = vis.trim_end();
+            vis.is_empty() || vis == "pub" || (vis.starts_with("pub(") && vis.ends_with(')'))
+        });
+        if let Some((_, rest)) = decl
+            && let Some(name) = rest.strip_suffix(';')
             && let Some(cfg) = pending.take()
         {
             out.push((format!("{name}.rs"), cfg));

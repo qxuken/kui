@@ -255,7 +255,7 @@ fn report(label: &str, outcome: Outcome) -> bool {
             false
         }
         Outcome::Hung => {
-            println!("  {label} HUNG");
+            println!("  {label} HUNG     (killed at the timeout)");
             false
         }
     }
@@ -425,7 +425,10 @@ fn headless(opts: &Opts) -> Result<Vec<String>, String> {
             "--",
             "--headless",
         ]);
-        if !report(&label, run(cmd, opts.timeout)?) {
+        // Under `--no-build` the first `cargo run` may be a compile; give
+        // it the room the Node step gets rather than calling it hung.
+        let room = opts.timeout.max(Duration::from_secs(300));
+        if !report(&label, run(cmd, room)?) {
             failed.push(format!("{krate}/{name}"));
         }
     }

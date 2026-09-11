@@ -911,7 +911,17 @@ fn window_commands_json(cmds: Vec<kui_core::WindowCommand>) -> Json {
 /// One row of `nodes()`: `NodeInfo` with the key as a hex string, sizing
 /// spelled the way `docs/props.md` does, and the role by its schema name.
 fn node_info_json(n: &kui_core::NodeInfo) -> Json {
-    readback(&n.to_value(HEX))
+    let mut o = readback(&n.to_value(HEX));
+    // `events` holds the app's own payloads, spelled however the app
+    // spelled them: the camel pass stops at the handler names.
+    if let Json::Object(o) = &mut o {
+        let mut events = JsonMap::new();
+        for (name, v) in &n.events {
+            events.insert((*name).into(), json_of(v));
+        }
+        o.insert("events".into(), Json::Object(events));
+    }
+    o
 }
 
 /// `{byte, line}`; see `TextHit` in index.d.ts.
@@ -3309,6 +3319,40 @@ mod readback_pins {
                 "[].fade",
                 "[].tween",
             ],
+        );
+    }
+}
+
+#[cfg(test)]
+mod readback_payloads {
+    use super::*;
+
+    /// A `nodes()` row's `events` carry the app's payloads as the app
+    /// spelled them: the camel pass that names the row's own keys stops
+    /// at the handler names.
+    #[test]
+    fn an_apps_payload_keys_are_not_camelised() {
+        let mut core = Core::new();
+        core.set_inspect(true);
+        let mut ui = core.frame(Size::new(100.0, 100.0), 1.0);
+        ui.configure_root(kui_core::NodeSpec::column().fill());
+        ui.with_keyed(
+            "b",
+            kui_core::NodeSpec::row().on_click(Value::map([("by_amount", Value::Int(2))])),
+            |_| {},
+        );
+        ui.finish();
+        let row = core
+            .nodes()
+            .iter()
+            .find(|n| n.label.as_deref() == Some("b"))
+            .unwrap();
+        let o = node_info_json(row);
+        assert_eq!(o["events"]["click"]["by_amount"], Json::from(2));
+        assert_eq!(
+            o["mainAlign"],
+            Json::from("start"),
+            "the row's own keys still camelise"
         );
     }
 }
