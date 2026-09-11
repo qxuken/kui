@@ -91,6 +91,25 @@ pub enum WindowKind {
     Popup,
 }
 
+impl WindowKind {
+    /// Every kind, in wire order: the index a binding that spells kinds
+    /// as numbers sends. Append-only.
+    pub const ALL: [WindowKind; 2] = [WindowKind::Normal, WindowKind::Popup];
+
+    /// The wire name, for the bindings and the report.
+    pub fn name(self) -> &'static str {
+        match self {
+            WindowKind::Normal => "normal",
+            WindowKind::Popup => "popup",
+        }
+    }
+
+    /// The kind a wire name spells: the inverse of [`Self::name`].
+    pub fn from_name(name: &str) -> Option<WindowKind> {
+        Self::ALL.into_iter().find(|k| k.name() == name)
+    }
+}
+
 /// What a frame says about a window it declares (`Core::declare_window`).
 /// Plain data by ADR 0004 decision 5 — no title, no callbacks — so a
 /// `WindowCommand` stays `Copy` and equality is derived, which is how the
@@ -148,10 +167,73 @@ impl WindowConfig {
     /// true afterwards for the rare surface that should steal focus.
     pub fn popup(anchor: Rect, w: f32, h: f32) -> Self {
         Self {
-            kind: WindowKind::Popup,
             size: Size::new(w, h),
-            activates: false,
             anchor,
+            ..Self::of_kind(WindowKind::Popup)
+        }
+    }
+
+    /// The defaults for a window of `kind`: the one decision the kind
+    /// makes on its own is whether opening it takes OS focus — a popup
+    /// that did would blur the field that opened it, so it does not unless
+    /// asked. Every binding's window entry starts from this.
+    pub fn of_kind(kind: WindowKind) -> Self {
+        Self {
+            kind,
+            activates: kind == WindowKind::Normal,
+            ..Self::default()
+        }
+    }
+
+    /// A declaration from plain data: a bare name (the defaults), or a map
+    /// with `name`, `kind` (`"normal"` | `"popup"`), `width` and `height`
+    /// (both, or the default size), `activates`, and the `anchor` rect
+    /// (`{x, y, w, h}`) a popup is placed against. Returns the name with
+    /// the config. An entry is plain data with a fixed shape, not a node's
+    /// loose prop bag, so a value that does nothing is refused rather than
+    /// dropped: a kind kui does not have would otherwise open a normal
+    /// window and read as the popup having worked.
+    pub fn from_value(v: &crate::value::Value) -> Result<(String, Self), String> {
+        use crate::value::Value;
+        match v {
+            Value::Str(name) => Ok((name.clone(), Self::default())),
+            Value::Map(_) => {
+                let name = v
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .ok_or("a windows entry needs a name")?
+                    .to_string();
+                let kind = match v.get("kind").and_then(Value::as_str) {
+                    None => WindowKind::Normal,
+                    Some(k) => WindowKind::from_name(k).ok_or_else(|| {
+                        format!(
+                            "windows entry `{name}` has kind {k:?}; the kinds are {}",
+                            WindowKind::ALL
+                                .iter()
+                                .map(|k| format!("{:?}", k.name()))
+                                .collect::<Vec<_>>()
+                                .join(" and ")
+                        )
+                    })?,
+                };
+                let mut cfg = Self::of_kind(kind);
+                let num = |key: &str| v.get(key).and_then(Value::as_float).map(|n| n as f32);
+                if let (Some(w), Some(h)) = (num("width"), num("height")) {
+                    cfg.size = Size::new(w, h);
+                }
+                if let Some(a) = v.get("activates").and_then(Value::as_bool) {
+                    cfg.activates = a;
+                }
+                if let Some(a) = v.get("anchor") {
+                    let f = |key: &str| a.get(key).and_then(Value::as_float).unwrap_or(0.0) as f32;
+                    cfg.anchor = Rect::new(f("x"), f("y"), f("w"), f("h"));
+                }
+                Ok((name, cfg))
+            }
+            other => Err(format!(
+                "a windows entry is a name or a table, not {}",
+                other.type_name()
+            )),
         }
     }
 }

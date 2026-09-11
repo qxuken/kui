@@ -58,6 +58,18 @@ impl Value {
         }
     }
 
+    /// What kind of value this is, for an error message.
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            Value::Null => "nil",
+            Value::Bool(_) => "boolean",
+            Value::Int(_) | Value::Float(_) => "number",
+            Value::Str(_) => "string",
+            Value::List(_) => "list",
+            Value::Map(_) => "map",
+        }
+    }
+
     pub fn as_bool(&self) -> Option<bool> {
         match self {
             Value::Bool(b) => Some(*b),

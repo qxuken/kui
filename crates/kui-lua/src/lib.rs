@@ -82,7 +82,7 @@
 use kui_core::schema::{self, Kind, Parsed, PropsOut};
 use kui_core::{
     Align, Color, Content, EditOptions, Extension, FloatConfig, Key, PadShorthand, Sizing, Slot,
-    Span, Ui, UiEvent, Value, WindowConfig, WindowKind, widgets,
+    Span, Ui, UiEvent, Value, WindowConfig, widgets,
 };
 use mlua::{Lua, Table};
 
@@ -313,43 +313,43 @@ fn key_query(ui: &mut Ui<'_>, v: mlua::Value) -> mlua::Result<Option<Key>> {
     }
 }
 
-/// `env.open_menu`'s items: a list of tables, `label` required for a
-/// custom row and everything else optional. An unknown `role` is an error
-/// rather than a quiet `custom`, so a Copy row that stopped being Copy
-/// says so instead of looking like the core ignoring it.
-fn menu_items(t: &mlua::Table) -> mlua::Result<Vec<kui_core::MenuItem>> {
-    let mut out = Vec::new();
-    for row in t.sequence_values::<mlua::Table>() {
-        let row = row?;
-        // The wire name (`selectAll`, the spelling the `menu` event
-        // reports back and every other enum value takes in Lua —
-        // `alternateReverse`, `notAllowed`), with the snake spelling a
-        // script may have learned first kept as an alias, the way
-        // `direction` is for `repeat`.
-        let role = match row.get::<Option<String>>("role")?.as_deref() {
-            None => kui_core::MenuRole::Custom,
-            Some("select_all") => kui_core::MenuRole::SelectAll,
-            Some("look_up") => kui_core::MenuRole::LookUp,
-            Some(name) => kui_core::MenuRole::from_name(name)
-                .ok_or_else(|| mlua::Error::runtime(format!("unknown menu item role {name:?}")))?,
-        };
-        let label = row.get::<Option<String>>("label")?.unwrap_or_default();
-        if label.is_empty() && role == kui_core::MenuRole::Custom {
-            return Err(mlua::Error::runtime("a custom menu item needs a label"));
-        }
-        out.push(kui_core::MenuItem {
-            label,
-            role,
-            enabled: row.get::<Option<bool>>("enabled")?.unwrap_or(true),
-            checked: row.get::<Option<bool>>("checked")?.unwrap_or(false),
-            id: match row.get::<mlua::Value>("id")? {
-                mlua::Value::Nil => None,
-                v => Some(lua_to_value(&v)?),
-            },
-            accel: row.get::<Option<String>>("accel")?,
-        });
+/// A Lua sequence as a plain-data list — `lua_to_value` reads an empty
+/// table as an empty map, and a list of rows is a list even when empty.
+fn lua_list_to_value(t: &Table) -> mlua::Result<Value> {
+    let mut items = Vec::with_capacity(t.raw_len());
+    for item in t.sequence_values::<mlua::Value>() {
+        items.push(lua_to_value(&item?)?);
     }
-    Ok(out)
+    Ok(Value::List(items))
+}
+
+/// The snake spellings a script may have learned first — `select_all`,
+/// `look_up` — kept as aliases of the wire names in a row's `role`, the
+/// way `direction` is one for `repeat` (ADR 0020, decision 10). The rest
+/// of a row is the core's call (`MenuItem::from_value`).
+fn alias_menu_role(row: &mut Value) {
+    let Value::Map(fields) = row else { return };
+    for (k, v) in fields.iter_mut() {
+        if k == "role"
+            && let Value::Str(name) = v
+        {
+            match name.as_str() {
+                "select_all" => *name = kui_core::MenuRole::SelectAll.name().to_string(),
+                "look_up" => *name = kui_core::MenuRole::LookUp.name().to_string(),
+                _ => {}
+            }
+        }
+    }
+}
+
+/// A menu's rows, from a Lua list of row tables, read by the core's one
+/// row reader.
+fn menu_items(t: &mlua::Table) -> mlua::Result<Vec<kui_core::MenuItem>> {
+    let mut rows = lua_list_to_value(t)?;
+    if let Value::List(rows) = &mut rows {
+        rows.iter_mut().for_each(alias_menu_role);
+    }
+    kui_core::MenuItem::list_from_value(&rows).map_err(mlua::Error::runtime)
 }
 
 /// Host facts handed to `view(env)`, the reading `schema::ENV_FIELDS`
@@ -1045,107 +1045,42 @@ fn element_of(ty: &str) -> &str {
     }
 }
 
-/// `menu_bar { menu = { … } }`'s list — the application menu bar
-/// (`docs/adr/0018-a-menu-bar-the-app-declares.md`): each entry
-/// `{ label=, items= { ... }, enabled= }`, whose items are the same row
-/// tables `env.open_menu` takes. Declared where the element sits, because
-/// what the menu is and where its strip goes are one decision; sticky and
-/// diffed by the core, so a script that returns the same menu every frame
-/// costs one comparison, and an empty list takes the bar away.
 fn menu_bar_of(t: &Table) -> mlua::Result<kui_core::MenuBar> {
     let Some(list) = t.get::<Option<Table>>("menu")? else {
         return Ok(kui_core::MenuBar::default());
     };
-    let mut menus = Vec::new();
-    for entry in list.sequence_values::<Table>() {
-        let entry = entry?;
-        let label: String = entry.get("label")?;
-        // A menu with no `items` is a shape error and not an empty menu:
-        // the two read the same on screen and only one of them was meant.
-        let items = match entry.get::<Option<Table>>("items")? {
-            Some(items) => menu_items(&items)?,
-            None => {
-                return Err(mlua::Error::runtime(format!(
-                    "menu entry `{label}` needs `items` (a list of rows)"
-                )));
+    let mut menus = lua_list_to_value(&list)?;
+    if let Value::List(menus) = &mut menus {
+        for menu in menus.iter_mut() {
+            let Value::Map(fields) = menu else { continue };
+            for (k, items) in fields.iter_mut() {
+                if k != "items" {
+                    continue;
+                }
+                // An empty Lua table read as a map is an empty row list.
+                if matches!(items, Value::Map(m) if m.is_empty()) {
+                    *items = Value::List(Vec::new());
+                }
+                if let Value::List(rows) = items {
+                    rows.iter_mut().for_each(alias_menu_role);
+                }
             }
-        };
-        menus.push(kui_core::BarMenu {
-            label,
-            items,
-            enabled: entry.get::<Option<bool>>("enabled")?.unwrap_or(true),
-        });
+        }
     }
-    Ok(kui_core::MenuBar::new(menus))
+    kui_core::MenuBar::from_value(&menus).map_err(mlua::Error::runtime)
 }
 
-/// The root table's `windows` list (`docs/adr/0004-multi-window.md`): each
-/// entry a name, or a table
-/// `{ name=, kind=, anchor=, width=, height=, activates= }`, and every one a
-/// `Ui::window` declaration. `kind = "popup"` is decision 9's menu surface,
-/// placed against `anchor = { x=, y=, w=, h= }` — the rect an `on_layout`
-/// event reported — and non-activating unless the entry says otherwise. The
-/// embedding host drains the `Open` / `Close` the declared set produces and
-/// opens the surfaces; this binding has no runner of its own.
 fn declare_windows(ui: &mut Ui<'_>, root: &Table) -> mlua::Result<()> {
     let Some(list) = root.get::<Option<Table>>("windows")? else {
         return Ok(());
     };
+    // Plain data with a fixed shape, read by the core (`WindowConfig::
+    // from_value`): a name, or `{name, kind?, width?, height?, activates?,
+    // anchor?}`.
     for entry in list.sequence_values::<mlua::Value>() {
-        match entry? {
-            mlua::Value::String(name) => {
-                ui.window(&name.to_str()?, WindowConfig::default());
-            }
-            mlua::Value::Table(t) => {
-                let name: String = t.get("name")?;
-                // An entry is plain data with a fixed shape, not a node's
-                // loose prop bag, so a value that does nothing is refused
-                // rather than dropped: a kind kui does not have would
-                // otherwise open a normal window and read as the popup
-                // having worked.
-                let kind = match t.get::<Option<String>>("kind")?.as_deref() {
-                    None | Some("normal") => WindowKind::Normal,
-                    Some("popup") => WindowKind::Popup,
-                    Some(other) => {
-                        return Err(mlua::Error::runtime(format!(
-                            "windows entry `{name}` has kind {other:?}; the kinds are \
-                             \"normal\" and \"popup\""
-                        )));
-                    }
-                };
-                let mut cfg = WindowConfig {
-                    kind,
-                    // A popup that takes OS focus blurs the field that
-                    // opened it, so it does not unless asked.
-                    activates: kind == WindowKind::Normal,
-                    ..WindowConfig::default()
-                };
-                if let (Some(w), Some(h)) = (
-                    t.get::<Option<f32>>("width")?,
-                    t.get::<Option<f32>>("height")?,
-                ) {
-                    cfg.size = kui_core::Size::new(w, h);
-                }
-                if let Some(a) = t.get::<Option<bool>>("activates")? {
-                    cfg.activates = a;
-                }
-                if let Some(a) = t.get::<Option<Table>>("anchor")? {
-                    cfg.anchor = kui_core::Rect::new(
-                        a.get::<Option<f32>>("x")?.unwrap_or(0.0),
-                        a.get::<Option<f32>>("y")?.unwrap_or(0.0),
-                        a.get::<Option<f32>>("w")?.unwrap_or(0.0),
-                        a.get::<Option<f32>>("h")?.unwrap_or(0.0),
-                    );
-                }
-                ui.window(&name, cfg);
-            }
-            other => {
-                return Err(mlua::Error::runtime(format!(
-                    "a windows entry is a name or a table, not {}",
-                    other.type_name()
-                )));
-            }
-        }
+        let v = lua_to_value(&entry?)?;
+        let (name, cfg) = WindowConfig::from_value(&v).map_err(mlua::Error::runtime)?;
+        ui.window(&name, cfg);
     }
     Ok(())
 }

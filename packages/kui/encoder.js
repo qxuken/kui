@@ -12,16 +12,14 @@
 // Turns a protocol name list into its name -> wire index map.
 const indexOf = (names) => Object.fromEntries(names.map((n, i) => [n, i]));
 
-// `kind` on a `windows` entry, as the integer the addon decodes. Spelled
-// here and not in the schema because a window is not a node: the list is
-// plain data with a fixed shape (see `docs/adr/0004-multi-window.md`).
-const WINDOW_KINDS = ['normal', 'popup'];
-const WINDOW_NORMAL = 0;
-
 export function createEncoder(P) {
   const OP = P.op;
   const PR = P.prop;
   const VERSION = P.version;
+  // `kind` on a `windows` entry, as the index the addon decodes: the
+  // core's list (`WindowKind::ALL`), not a copy — a window is not a node,
+  // but its kinds are still one list (see `docs/adr/0004-multi-window.md`).
+  const WINDOW_KINDS = P.windowKinds;
   // Value tables come from the addon too, so "below" cannot mean one thing
   // here and another in kui-core.
   const ALIGN = indexOf(P.align);
@@ -313,15 +311,14 @@ export function createEncoder(P) {
               if (kind < 0) {
                 throw new Error(`windows entry ${JSON.stringify(d.name)} has kind ${JSON.stringify(d.kind)}; the kinds are ${WINDOW_KINDS.map((k) => JSON.stringify(k)).join(' and ')}`);
               }
-              // A popup is non-activating unless the entry says otherwise:
-              // one that takes OS focus blurs the field that opened it.
               const a = d.anchor ?? {};
               strRef(d.name);
               f[fi++] = kind;
               f[fi++] = d.width ?? 0;
               f[fi++] = d.height ?? 0;
-              const activates = d.activates ?? kind === WINDOW_NORMAL;
-              f[fi++] = activates ? 1 : 0;
+              // Unsaid is 2: the kind's own default, decided by the core
+              // (a popup does not take OS focus unless asked).
+              f[fi++] = d.activates == null ? 2 : d.activates ? 1 : 0;
               f[fi++] = a.x ?? 0;
               f[fi++] = a.y ?? 0;
               f[fi++] = a.w ?? 0;

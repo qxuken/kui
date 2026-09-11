@@ -155,6 +155,47 @@ pub struct MenuItem {
 }
 
 impl MenuItem {
+    /// A row from plain data: a map with `label`, `role` (a wire name;
+    /// absent is `custom`), `enabled` (default true), `checked` (default
+    /// false), `id` and `accel`. A custom row needs a label, since the
+    /// label is what it posts when it has no `id`. Every binding funnels
+    /// its rows through here — `openMenu`'s list and a menu bar's alike —
+    /// so a row can never mean two things.
+    pub fn from_value(v: &Value) -> Result<Self, String> {
+        let Value::Map(_) = v else {
+            return Err("each menu item is an object".into());
+        };
+        let role = match v.get("role").and_then(Value::as_str) {
+            None => MenuRole::Custom,
+            Some(name) => MenuRole::from_name(name)
+                .ok_or_else(|| format!("unknown menu item role {name:?}"))?,
+        };
+        let label = v
+            .get("label")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        if label.is_empty() && role == MenuRole::Custom {
+            return Err("a custom menu item needs a label".into());
+        }
+        Ok(MenuItem {
+            label,
+            role,
+            enabled: v.get("enabled").and_then(Value::as_bool).unwrap_or(true),
+            checked: v.get("checked").and_then(Value::as_bool).unwrap_or(false),
+            id: v.get("id").filter(|id| **id != Value::Null).cloned(),
+            accel: v.get("accel").and_then(Value::as_str).map(str::to_string),
+        })
+    }
+
+    /// A menu's rows from plain data: a list of [`Self::from_value`] maps.
+    pub fn list_from_value(v: &Value) -> Result<Vec<Self>, String> {
+        let Value::List(rows) = v else {
+            return Err("a menu's items are an array".into());
+        };
+        rows.iter().map(Self::from_value).collect()
+    }
+
     /// An item of the app's own, by label.
     pub fn new(label: impl Into<String>) -> Self {
         Self {
@@ -357,6 +398,40 @@ pub struct MenuBar {
 impl MenuBar {
     pub fn new(menus: Vec<BarMenu>) -> Self {
         Self { menus }
+    }
+
+    /// A bar from plain data: a list of `{ label, items, enabled? }`,
+    /// whose `items` are the rows `openMenu` takes
+    /// (`docs/adr/0018-a-menu-bar-the-app-declares.md`). A menu with no
+    /// `items` is a shape error and not an empty menu: the two read the
+    /// same on screen and only one of them was meant.
+    pub fn from_value(v: &Value) -> Result<Self, String> {
+        let Value::List(menus) = v else {
+            return Err("menu is an array of menus".into());
+        };
+        let mut out = Vec::with_capacity(menus.len());
+        for entry in menus {
+            let Value::Map(_) = entry else {
+                return Err("each menu is an object { label, items }".into());
+            };
+            let label = entry
+                .get("label")
+                .and_then(Value::as_str)
+                .ok_or("each menu needs a label")?
+                .to_string();
+            let items = entry
+                .get("items")
+                .ok_or_else(|| format!("menu entry `{label}` needs `items` (a list of rows)"))?;
+            out.push(BarMenu {
+                label,
+                items: MenuItem::list_from_value(items)?,
+                enabled: entry
+                    .get("enabled")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(true),
+            });
+        }
+        Ok(Self::new(out))
     }
 
     /// Nothing declared: the bar the platform is asked to take away.

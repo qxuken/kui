@@ -281,28 +281,29 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut) -> Result<PropsOut> {
                 out.index = Some(i as u64);
             }
             P_TITLE => out.title = Some(r.req_str()?.to_string()),
-            // A count, then per window: name, kind, width, height (zero =
-            // the default size), activates, and the anchor rect a popup is
+            // A count, then per window: name, kind (an index into
+            // `WindowKind::ALL`), width, height (zero = the default size),
+            // activates (0 no, 1 yes, 2 unsaid — the kind's own default,
+            // `WindowConfig::of_kind`, so the popup rule lives in the core
+            // and not in the encoder), and the anchor rect a popup is
             // placed against (four zeros for a normal window).
             P_WINDOWS => {
                 let n = r.u()?;
                 for _ in 0..n {
                     let name = r.req_str()?.to_string();
-                    let kind = match r.u()? {
-                        0 => WindowKind::Normal,
-                        1 => WindowKind::Popup,
-                        k => return Err(err(format!("unknown window kind {k}"))),
-                    };
+                    let k = r.u()? as usize;
+                    let kind = *WindowKind::ALL
+                        .get(k)
+                        .ok_or_else(|| err(format!("unknown window kind {k}")))?;
                     let (w, h) = (r.f()? as f32, r.f()? as f32);
-                    let activates = r.u()? == 1;
+                    let activates = r.u()?;
                     let anchor =
                         Rect::new(r.f()? as f32, r.f()? as f32, r.f()? as f32, r.f()? as f32);
-                    let mut cfg = WindowConfig {
-                        kind,
-                        activates,
-                        anchor,
-                        ..WindowConfig::default()
-                    };
+                    let mut cfg = WindowConfig::of_kind(kind);
+                    cfg.anchor = anchor;
+                    if activates != 2 {
+                        cfg.activates = activates == 1;
+                    }
                     if w > 0.0 && h > 0.0 {
                         cfg.size = Size::new(w, h);
                     }

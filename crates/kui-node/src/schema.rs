@@ -213,6 +213,16 @@ pub fn protocol_tables() -> Vec<(&'static str, Json)> {
                     .collect(),
             ),
         ),
+        // A window is not a node, but its `kind` is a list the core owns.
+        (
+            "windowKinds",
+            Json::Array(
+                kui_core::WindowKind::ALL
+                    .iter()
+                    .map(|k| Json::String(k.name().into()))
+                    .collect(),
+            ),
+        ),
         (
             "mouseButtons",
             Json::Array(

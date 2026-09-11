@@ -166,39 +166,8 @@ fn menu_item_json(item: &kui_core::MenuItem) -> Json {
     );
     Json::Object(o)
 }
-
 fn menu_items(v: &Json) -> Result<Vec<kui_core::MenuItem>> {
-    let Json::Array(rows) = v else {
-        return Err(err("a menu's items are an array"));
-    };
-    rows.iter()
-        .map(|row| {
-            let Json::Object(o) = row else {
-                return Err(err("each menu item is an object"));
-            };
-            let role = match o.get("role").and_then(Json::as_str) {
-                None => kui_core::MenuRole::Custom,
-                Some(name) => kui_core::MenuRole::from_name(name)
-                    .ok_or_else(|| err(format!("unknown menu item role {name:?}")))?,
-            };
-            let item = kui_core::MenuItem {
-                label: o
-                    .get("label")
-                    .and_then(Json::as_str)
-                    .unwrap_or_default()
-                    .to_string(),
-                role,
-                enabled: o.get("enabled").and_then(Json::as_bool).unwrap_or(true),
-                checked: o.get("checked").and_then(Json::as_bool).unwrap_or(false),
-                id: o.get("id").map(value_of),
-                accel: o.get("accel").and_then(Json::as_str).map(str::to_string),
-            };
-            if item.label.is_empty() && item.role == kui_core::MenuRole::Custom {
-                return Err(err("a custom menu item needs a label"));
-            }
-            Ok(item)
-        })
-        .collect()
+    kui_core::MenuItem::list_from_value(&value_of(v)).map_err(err)
 }
 
 /// The root's `menu` prop, as the JSON the encoder writes: a list of
@@ -207,31 +176,7 @@ fn menu_items(v: &Json) -> Result<Vec<kui_core::MenuItem>> {
 /// reader for both menus, so a row can never mean two things.
 pub(crate) fn menu_bar_of(json: &str) -> Result<kui_core::MenuBar> {
     let parsed: Json = serde_json::from_str(json).map_err(|e| err(format!("menu: {e}")))?;
-    let Json::Array(menus) = parsed else {
-        return Err(err("menu is an array of menus"));
-    };
-    let mut out = Vec::with_capacity(menus.len());
-    for entry in &menus {
-        let Json::Object(o) = entry else {
-            return Err(err("each menu is an object { label, items }"));
-        };
-        let label = o
-            .get("label")
-            .and_then(Json::as_str)
-            .ok_or_else(|| err("each menu needs a label"))?
-            .to_string();
-        // A menu with no `items` is a shape error rather than an empty
-        // menu: the two look the same on screen and only one was meant.
-        let items = o
-            .get("items")
-            .ok_or_else(|| err(format!("menu {label:?} needs items")))?;
-        out.push(kui_core::BarMenu {
-            label,
-            items: menu_items(items)?,
-            enabled: o.get("enabled").and_then(Json::as_bool).unwrap_or(true),
-        });
-    }
-    Ok(kui_core::MenuBar::new(out))
+    kui_core::MenuBar::from_value(&value_of(&parsed)).map_err(err)
 }
 
 fn keycode_of(s: &str) -> Result<KeyCode> {
@@ -962,16 +907,7 @@ fn window_commands_json(cmds: Vec<kui_core::WindowCommand>) -> Json {
                     o.insert("owner".into(), Json::from(owner.0));
                     o.insert("origin".into(), Json::from(origin.0));
                     let mut c = JsonMap::new();
-                    c.insert(
-                        "kind".into(),
-                        Json::String(
-                            match config.kind {
-                                kui_core::WindowKind::Normal => "normal",
-                                kui_core::WindowKind::Popup => "popup",
-                            }
-                            .into(),
-                        ),
-                    );
+                    c.insert("kind".into(), Json::String(config.kind.name().into()));
                     c.insert("width".into(), Json::from(config.size.w as f64));
                     c.insert("height".into(), Json::from(config.size.h as f64));
                     c.insert("activates".into(), Json::Bool(config.activates));
