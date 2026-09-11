@@ -13,7 +13,7 @@
  * point of ADR 0014's contract being C in the first place.
  *
  * Run:
- *   ./examples/c/build.sh --run           # or pwsh examples/c/build.ps1 -Run
+ *   cargo run -p kui-devtools --bin cbuild -- --run   # every platform
  *   ./target/debug/host --headless        # no window: a frame, a click, asserts
  *   ./target/debug/host                   # a window
  *   ./target/debug/host --headless path/to/plugin
@@ -45,7 +45,7 @@
  * loads into this host and into panel.rs's equally.
  *
  * On Windows there are two, and the difference is the whole lesson of
- * build.ps1. A DLL must name the module each import comes from. panel.dll
+ * the cbuild tool's header (examples/devtools/src/bin/cbuild.rs). A DLL must name the module each import comes from. panel.dll
  * - this one - names `kui_ffi.dll` and so loads into any host that ships
  * it, which is the shape a plugin you hand to somebody wants.
  * panel-host.dll names `c_panel.exe` and loads into that host and nothing
@@ -60,10 +60,10 @@
 
 #if defined(_WIN32)
 #define DEFAULT_PLUGIN PLUGIN_DIR "panel.dll"
-#define BUILD_HINT "pwsh examples/c/build.ps1"
+#define BUILD_HINT "cargo run -p kui-devtools --bin cbuild"
 #else
 #define DEFAULT_PLUGIN PLUGIN_DIR "panel.so"
-#define BUILD_HINT "./examples/c/build.sh"
+#define BUILD_HINT "cargo run -p kui-devtools --bin cbuild"
 #endif
 
 typedef struct {

@@ -12,3 +12,6 @@ publish = false
 
 [dependencies]
 kui.workspace = true
+# For `cbuild` on Windows: the registry lookup that finds `cl.exe` and its
+# environment, the same one every `-sys` crate uses. Already in the tree.
+cc = "1"

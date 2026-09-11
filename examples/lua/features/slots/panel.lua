@@ -9,8 +9,8 @@
 -- panel again in C, loaded with env.add_extension and placed with `fill`,
 -- which makes this frame three languages deep -- a Rust host, a Lua
 -- extension, and a C extension the Lua one put there. See the amendment
--- to docs/adr/0014. Build the plugin with examples/c/build.ps1 (or
--- build.sh); without it this file is exactly what it was.
+-- to docs/adr/0014. Build the plugin with `cargo run -p kui-devtools --bin
+-- cbuild`; without it this file is exactly what it was.
 
 slots = { "panel" }
 
@@ -21,7 +21,7 @@ slots = { "panel" }
 -- plugin leaves its kui_* undefined and takes them from the executable that
 -- loaded it, and this example's host does not export them -- so there the
 -- message below is the expected outcome, not a fault.
--- examples/c/build.ps1's header comment is the long version.
+-- examples/devtools/src/bin/cbuild.rs's header comment is the long version.
 plugin_paths = {
   "target/debug/panel.dll", "target/debug/panel.so",
   "target/release/panel.dll", "target/release/panel.so",

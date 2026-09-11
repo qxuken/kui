@@ -117,7 +117,7 @@ cargo run -p kui --example transition     # features/: transition, easing, slide
 cargo run -p kui --example enter_exit     # features/: toasts that slide in and back out
 cargo run -p kui --example theme          # features/: every Theme role over every stock widget
 cargo run -p kui --example counter -- --headless   # the drive, no window
-./examples/c/build.sh && ./target/debug/counter    # the same app from C (Windows: pwsh examples/c/build.ps1)
+cargo run -p kui-devtools --bin cbuild && ./target/debug/counter   # the same app from C, every platform
 cargo run -p kui-ffi --example c_panel    # a Rust host + a dlopened C panel
 cargo run -p kui-lua --example lua_panel  # a Rust host + a Lua panel sharing one frame
 cargo run -p kui-devtools --bin smoke     # every windowed example, 120 frames, both bases

@@ -46,7 +46,7 @@
 //! without which its symbols are in the binary but not in the dynamic
 //! symbol table the loader reads - and this crate's `build.rs` passes it
 //! for the examples here. A host outside this crate passes its own;
-//! `examples/c/build.sh` builds the plugin side.
+//! `cargo run -p kui-devtools --bin cbuild` builds the plugin side.
 //!
 //! Windows cannot work that way: a DLL may not leave an import unresolved,
 //! so the plugin names the module each `kui_*` comes from and takes that
@@ -440,7 +440,7 @@ pub(crate) mod tests {
     /// before ADR 0006 added `kui_ext_abi` - the case the check exists to
     /// refuse - reached without a C compiler in the test. The real mutant,
     /// `examples/c/features/slots/panel.c` with its `kui_ext_abi` line deleted, is built by
-    /// `examples/c/build.sh` and driven through `c_panel --headless` in CI.
+    /// `cbuild` and driven through `c_panel --headless` in CI.
     pub(crate) fn a_library_with_no_kui_symbols() -> &'static str {
         if cfg!(target_vendor = "apple") {
             // Not a file on disk since the dyld shared cache, but dlopen by

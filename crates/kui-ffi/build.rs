@@ -18,7 +18,7 @@
 //! module each `kui_*` comes from in its own import table, and it gets that
 //! name from an import library at link time. So the host has to *export* the
 //! symbols, which makes link.exe write the `c_panel.lib` beside the exe that
-//! `examples/c/build.ps1` then links the plugin against. `/DEF:` is how they
+//! the `cbuild` tool then links the plugin against on Windows. `/DEF:` is how they
 //! are named — one `/EXPORT:` link arg each would do the same, but 135 of
 //! them do not survive rustc's quoting, and a response file is quoted too.
 //! (rustc's own spelling of this is `-Z export-executable-symbols`; it is

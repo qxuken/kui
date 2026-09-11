@@ -292,7 +292,7 @@ jobs:
           cargo run -p kui-core --features conformance --example conformance-dump -- target/conformance.txt
           echo "KUI_CONFORMANCE=$(pwd)/target/conformance.txt" >> "$GITHUB_ENV"
 
-      # build.sh first compiles the generated ABI asserts
+      # cbuild (examples/devtools/src/bin/cbuild.rs) first compiles the generated ABI asserts
       # (crates/kui-ffi/src/abi_parity.rs) against include/kui.h - the header is
       # hand-written and otherwise unchecked against the repr(C) structs -
       # and then builds the example, which is the only thing that links
@@ -300,7 +300,7 @@ jobs:
       # feature: it rebuilds the scenes through the public C API alone and
       # reads the reference as a file, so libkui_ffi here is built exactly
       # as it ships, with the corpus compiled out.
-      # `--run` rather than a list of commands here: the script owns the
+      # `--run` rather than a list of commands here: the tool owns the
       # round, prints it when it is not running it, and runs exactly what it
       # printed - so reproducing a failure locally is the line above, and
       # the two cannot drift. What it covers:
@@ -328,7 +328,7 @@ jobs:
       # the round that needs a report built by another step.
       - name: C examples (header ABI check + the header walk + the C round)
         run: |
-          ./examples/c/build.sh --run
+          cargo run -p kui-devtools --bin cbuild -- --run
           ./target/debug/conformance target/conformance.txt
 
       # npm test covers both the encoder tests and the Node adapter over

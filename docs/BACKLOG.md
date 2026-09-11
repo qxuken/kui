@@ -312,8 +312,9 @@ with an exit code — a wgpu validation panic is a failure with its stderr,
 a window that never paints runs out the timeout instead of passing quietly.
 14 examples, 120 frames each, about 1.5 s apiece; it was checked against
 the bug it was written for by putting W4 back and watching it fail. The C
-half is [`examples/c/build.ps1`](../examples/c/build.ps1), a step of its
-own in the same job.
+half was `examples/c/build.ps1` (since 2026-09-11 the `cbuild` tool in
+`examples/devtools`, one program for every platform), a step of its own in
+the same job.
 
 This is what P8 said it could not offer ("On Windows there is no equivalent
 tool and no plan for one"): it is not the tree-walking audit
@@ -1041,8 +1042,8 @@ What the round still does not cover is P8's two follow-ups, unchanged:
 `access_bridge.rs`. The next Windows session's list, in order: run the round
 under `Chrome::Custom` (the subclass is uncovered by everything above), and
 run it on the integrated adapter to see what a second GPU changes. The Linux
-equivalent is smaller and worth naming: the C round (`examples/c/build.sh`)
-runs in `check`, and the plugin half of it now has a Node host in the same
+equivalent is smaller and worth naming: the C round (then
+`examples/c/build.sh`, now `cbuild --run`) runs in `check`, and the plugin half of it now has a Node host in the same
 job — that is what caught this one.
 
 **Design, wanting an ADR.** A **painter** — the iced-shaped hatch that ADR 0015 (above) names and does not build: a Rust trait or a C extension's function pointers over the shared `Gpu` and the frame's encoder, under the `PainterId` that has been reserved in `resources.rs` since the first commit, placed by a marker quad the renderer splits around as it splits around a fragment. The first thing in a frame that would not be data, so it waits for a view a fragment cannot serve: a 3D viewport, a simulation, a backdrop a copy cannot make. Otherwise nothing new since ADR 0014 was built on 2026-09-07 and amended on 2026-09-08; of what it left open, a slot for Node (W11), extensions in `kui_run` (W9) and an extension offering slots of its own (W12) are built, and what is left — replies from `view`, name-plus-kind — waits for a view. Two instances of one extension are answered: the host namespaces them. Effects an app defines (F23) is

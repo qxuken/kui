@@ -93,7 +93,7 @@ script reads rather than a list somebody keeps:
 | Channel | Enrolled by | Run by |
 |---|---|---|
 | **windowed** | being an `[[example]]` of `kui` | `cargo run -p kui-devtools --bin smoke` ([`devtools/src/bin/smoke.rs`](devtools/src/bin/smoke.rs)), on every platform: 120 frames under `KUI_SMOKE_FRAMES`, on both bases; `--node` adds the Node windows |
-| **headless** | `[package.metadata.kui] headless = [...]` in the crate's `Cargo.toml`; `npm run smoke` for Node; the round in `c/build.sh` | `cargo run -p kui-devtools --bin smoke -- --headless`, which CI runs |
+| **headless** | `[package.metadata.kui] headless = [...]` in the crate's `Cargo.toml`; `npm run smoke` for Node; the round in `cbuild` | `cargo run -p kui-devtools --bin smoke -- --headless`, which CI runs |
 | **by hand** | the *By hand* column below | the round before a tag; results into `### Native verification` in the CHANGELOG |
 
 Two tests in the devtools crate pin the mirrors: every `[[example]]` is linked
@@ -158,9 +158,11 @@ table says so.
 ## C — [`c/`](c)
 
 Three programs over one [`common.h`](c/common.h) and the slots story,
-built by [`build.sh`](c/build.sh) (`--run` runs the round it otherwise
-prints, which is what CI does) or [`build.ps1`](c/build.ps1) on Windows.
-Everything lands in `target/<profile>/`, beside the library the hosts link.
+built by `cargo run -p kui-devtools --bin cbuild`
+([`devtools/src/bin/cbuild.rs`](devtools/src/bin/cbuild.rs); `-- --run`
+runs the round it otherwise prints, which is what CI does), the same tool
+on every platform. Everything lands in `target/<profile>/`, beside the
+library the hosts link.
 
 | Example | Shows | Headless |
 |---|---|---|
@@ -172,7 +174,7 @@ Everything lands in `target/<profile>/`, beside the library the hosts link.
 | [`tools/conformance.c`](c/tools/conformance.c) | The C adapter over the scene corpus | ✓ `conformance <report>` |
 
 ```bash
-./examples/c/build.sh --run              # ABI check, the artifacts, the round
+cargo run -p kui-devtools --bin cbuild -- --run   # ABI check, the artifacts, the round
 ./target/debug/counter                   # the counter app, C as the host
 ./target/debug/host                      # a C host with the C panel inside it
 cargo run -p kui-ffi --example c_panel   # the same panel in a Rust host
@@ -180,7 +182,7 @@ cargo run -p kui-ffi --example c_panel   # the same panel in a Rust host
 
 Windows asks for three things the unixes do not, and the plugin half is
 where they show — an MSVC-ABI compiler, `kui_ffi.dll` beside each host,
-and an import library at each link; `build.ps1`'s header comment is the
+and an import library at each link; `cbuild`'s header comment is the
 long version, and it builds both plugin shapes from one compile of
 `panel.c`. Two copies of the library in one process is fine as of ABI 10.
 
@@ -190,7 +192,7 @@ A Lua extension has no window of its own, so the panel is a Rust host with
 Lua inside it. [`panel.lua`](lua/features/slots/panel.lua) is deliberately
 the same panel as the C one: the extension contract is the contract and
 the language is a detail. A script can be a host too — `env.add_extension`
-opens a C plugin and `fill` places it — so once `c/build.sh` has run, the
+opens a C plugin and `fill` places it — so once `cbuild` has run, the
 panel is three languages deep.
 
 | Example | Run | Shows | Headless |

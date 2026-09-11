@@ -367,10 +367,10 @@ fn add_extension_answers_with_what_went_wrong() {
 /// The whole round trip with a real plugin: the script opens the C panel
 /// itself, places it, and hears what it says.
 ///
-/// Windows only, and skipped there until `examples/c/build.ps1` has run.
+/// Windows only, and skipped there until `cbuild` has run.
 /// Not a shortcut: on the unixes a plugin leaves every `kui_*` undefined
 /// and takes them from the executable that loaded it, and a `cargo test`
-/// binary does not export them — which is why `examples/c/build.sh` builds
+/// binary does not export them — which is why `cbuild` builds
 /// hosts rather than test binaries. Windows has the plugin shape that
 /// imports `kui_ffi.dll` rather than a host, `panel.dll`, and so loads
 /// into anything — this test included. That also puts *two* copies of the
@@ -381,7 +381,7 @@ fn add_extension_answers_with_what_went_wrong() {
 fn a_script_loads_a_c_plugin_and_places_it() {
     use kui_core::{InputEvent, Vec2};
 
-    // `target/<profile>/`, where build.ps1 leaves it — read off this test
+    // `target/<profile>/`, where cbuild leaves it — read off this test
     // binary, which cargo puts one level below in `deps/`, so a release
     // test looks for a release plugin rather than a stale debug one.
     let plugin = std::env::current_exe()

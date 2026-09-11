@@ -480,7 +480,7 @@ mod tests;
 // `target/kui-abi-assert.c`, a translation unit of `_Static_assert`s pinning
 // each field's offset, size and C type to what Rust actually lays out, and
 // each member of the enums the API reads as list indices to its position in
-// the list; examples/c/build.sh compiles it against the header, in CI too.
+// the list; the `cbuild` tool compiles it against the header, in CI too.
 
 /// The two halves of ADR 0004's named gap: a version a host can compare,
 /// and a size on every struct the library writes into the host's memory.

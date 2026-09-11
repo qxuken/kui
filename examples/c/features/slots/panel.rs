@@ -16,8 +16,7 @@
 //! `kui_reply`, and the host counts what comes back.
 //!
 //! Run:
-//!   ./examples/c/build.sh                    # target/debug/panel.so
-//!   pwsh examples/c/build.ps1                # or panel.dll, on Windows
+//!   cargo run -p kui-devtools --bin cbuild   # target/debug/panel.so (panel.dll on Windows)
 //!   cargo run -p kui-ffi --example c_panel   # a window
 //!   cargo run -p kui-ffi --example c_panel -- --headless
 //!
@@ -108,7 +107,8 @@ impl App for Host {
     }
 }
 
-/// Where `examples/c/build.sh` — or `build.ps1` — leaves the plugin:
+/// Where the `cbuild` tool (examples/devtools/src/bin/cbuild.rs) leaves
+/// the plugin:
 /// `target/<profile>/`, which is one directory above this example's own
 /// binary. Read off the executable rather than `CARGO_MANIFEST_DIR` so
 /// that a release build finds the release plugin, and because the manifest
@@ -116,7 +116,7 @@ impl App for Host {
 ///
 /// Overridden by argv[1], which is the more honest reading of what this
 /// example does: it loads a library chosen at runtime, not one it was built
-/// with. `.so` on both unixes, because that is what `build.sh` names it and
+/// with. `.so` on both unixes, because that is what `cbuild` names it and
 /// `dlopen` does not care; `.dll` on Windows, because `LoadLibraryW` does.
 fn default_plugin() -> String {
     let exe = std::env::current_exe().unwrap_or_default();
@@ -136,11 +136,7 @@ const PLUGIN_EXT: &str = if cfg!(target_os = "windows") {
 } else {
     "so"
 };
-const BUILD_HINT: &str = if cfg!(target_os = "windows") {
-    "pwsh examples/c/build.ps1 -Run"
-} else {
-    "./examples/c/build.sh --run"
-};
+const BUILD_HINT: &str = "cargo run -p kui-devtools --bin cbuild -- --run";
 
 /// One frame, built the way the windowed runner builds it: the host's view
 /// with the extensions as the filler, so the slot it declares is filled in

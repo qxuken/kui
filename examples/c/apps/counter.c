@@ -4,7 +4,7 @@
  * as data and moves the state; a right-click asks for a menu the next
  * frame declares as a `modal` float; nothing else happens.
  *
- *   ./build.sh                      # builds libkui_ffi + this file
+ *   cargo run -p kui-devtools --bin cbuild   # builds libkui_ffi + this file
  *   ./target/debug/counter          # opens a window (winit + wgpu)
  *   ./target/debug/counter --headless
  *       no window: builds a frame, clicks +1 by its quad, right-clicks
@@ -276,7 +276,7 @@ static int headless(void) {
  *
  * The counter above uses about a fifth of kui.h, so most of the header is
  * never compiled against a real call, and a declaration that has drifted
- * from the library would go unnoticed (the ABI asserts examples/c/build.sh
+ * from the library would go unnoticed (the ABI asserts the cbuild tool
  * compiles cover the structs, not the functions). This second headless pass
  * walks what is left - measurement, keyed nodes and animation, hover and
  * keyboard focus, editors, accessibility, images, fonts, audio, window

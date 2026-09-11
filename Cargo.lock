@@ -1533,6 +1533,7 @@ dependencies = [
 name = "kui-devtools"
 version = "0.1.0-alpha.10"
 dependencies = [
+ "cc",
  "kui",
 ]
 

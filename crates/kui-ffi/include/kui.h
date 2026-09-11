@@ -2398,7 +2398,7 @@ bool kui_run_with(KuiCtx *ctx, KuiStr title, KuiViewFn view, KuiEventFn on_event
  * Lua C module resolves lua_*. That asks one thing of the *host*, which
  * crates/kui-ffi/build.rs does for this crate's examples: link with
  * -rdynamic / --export-dynamic, so that the kui_* symbols in its binary are
- * also in the dynamic symbol table the loader reads. examples/c/build.sh
+ * also in the dynamic symbol table the loader reads. The cbuild tool
  * builds your side.
  *
  * ON WINDOWS THAT IS NOT AVAILABLE, and you pick one of two shapes instead.
@@ -2411,7 +2411,7 @@ bool kui_run_with(KuiCtx *ctx, KuiStr title, KuiViewFn view, KuiEventFn on_event
  *      plugin shape (a Python extension imports from python313.dll, not
  *      from python.exe). Prefer this one: it is the plugin you can compile
  *      once and hand to somebody. examples/c/features/slots/host.c loads a plugin built
- *      this way, and examples/c/build.ps1 builds it as target/<profile>/panel.dll.
+ *      this way, and the cbuild tool builds it as target/<profile>/panel.dll.
  *
  *   2. link against the *host's* import library - the .lib link.exe writes
  *      beside an executable that exports something. kui-ffi's build.rs makes

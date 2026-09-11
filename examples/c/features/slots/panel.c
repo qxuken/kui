@@ -16,7 +16,7 @@
  * It links against nothing: every kui_* call here is left undefined and
  * resolved from the host executable at load, the way a Lua C module
  * resolves lua_*. See ../../crates/kui-ffi/src/ext.rs for the loader and
- * ./build.sh for the two flags each side needs.
+ * examples/devtools/src/bin/cbuild.rs for the two flags each side needs.
  *
  * The same panel as examples/lua/features/slots/panel.lua, deliberately: the
  * extension contract is the contract, and the language is a detail.

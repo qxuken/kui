@@ -159,8 +159,12 @@ jobs:
       # path there has ever been (backlog W6) - so it is worth a runner.
       #
       # Needs a C compiler (VS Build Tools for `cl`, or LLVM for `clang-cl`);
-      # the script says so and fails if it finds neither.
-      # `-Run` rather than a list of commands here: the script owns the
+      # the tool says so and fails if it finds neither. The same program
+      # runs the round on a unix host (examples/devtools/src/bin/cbuild.rs);
+      # what is Windows' in it is the compiler lookup, the import libraries
+      # and the second plugin shape, and this is the first platform it has
+      # not been run on by hand.
+      # `--run` rather than a list of commands here: the tool owns the
       # round, prints it when it is not running it, and runs exactly what it
       # printed - so reproducing a CI failure locally is the line above, and
       # the two cannot drift. It covers C as the host, C on both sides
@@ -168,4 +172,4 @@ jobs:
       # kui_ext_abi-less mutant that has to be refused for the right reason.
       - name: Build and run the C examples
         shell: powershell
-        run: pwsh -NoProfile -File examples/c/build.ps1 -Run
+        run: cargo run -p kui-devtools --bin cbuild -- --run

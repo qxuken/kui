@@ -4650,7 +4650,7 @@ test('addExtension reports why a library is not a plugin, and keeps nothing', ()
 });
 
 // The whole round trip needs a real plugin, which needs a C compiler, so it
-// runs only where examples/c/build.sh (or build.ps1) has been run. The C
+// runs only where `cargo run -p kui-devtools --bin cbuild` has been run. The C
 // half of the same check is examples/c/features/slots/host.c's --headless, which CI runs.
 test('a C extension fills the slot the view declares, and its reply comes back', (t) => {
   // Where both build scripts leave it, whichever profile was built: on

@@ -1,10 +1,10 @@
 /* The header walk: every prototype in kui.h called once, and what comes
  * back checked — a self-test of the C surface, not an example, kept
  * beside the examples because it is the one program that links against
- * the real header (the ABI asserts examples/c/build.sh compiles cover the
+ * the real header (the ABI asserts the cbuild tool compiles cover the
  * structs; this covers the functions).
  *
- *   ./build.sh --run                # what CI runs; or
+ *   cargo run -p kui-devtools --bin cbuild -- --run   # what CI runs; or
  *   ./target/debug/surface          # exit 0 on a clean walk
  *
  * It walks measurement, keyed nodes and animation, hover and keyboard

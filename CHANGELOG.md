@@ -146,6 +146,15 @@ field reports).
   (`--frames`, `--only`, `--base`, `--release`, `--node`; `--headless
   --list` prints the round). Repo tooling, not API — listed because CI
   and the README named the scripts.
+- **The C examples' two build scripts are one program too.**
+  `examples/c/build.sh` and `examples/c/build.ps1` are gone; `cargo run -p
+  kui-devtools --bin cbuild` builds kui_ffi, checks `kui.h` against the
+  Rust layout, builds the four C programs and the plugin (both plugin
+  shapes on Windows, the `kui_ext_abi`-less mutant everywhere) and prints
+  the round; `-- --run` runs it, which CI does. `--release` as before. On
+  Windows the MSVC compiler is found the way every `-sys` crate finds it
+  (the `cc` crate's registry lookup), so `cl` need not be on PATH. The
+  hosts' "build it first" hints name the new command.
 - **`TextSystem`'s two maps are one.** Internal (`pub(crate)`), listed
   for anyone who copied the long-line cache: `Entry::{Run, Long}` in one
   map, and `FrameText` / `TextPlace` no longer carry a `long` flag.
@@ -313,7 +322,8 @@ field reports).
   force click take (backlog AR3); `Grain::of_clicks` beside it.
 - **`cargo run -p kui-devtools --bin smoke`**, the smoke round as one
   program on every platform (backlog AR4), and `kui_devtools::manifest`,
-  the rosters it and the pin tests read.
+  the rosters it and the pin tests read; **`--bin cbuild`** beside it, the
+  C examples' build and round the same way.
 
 ### Fixed
 

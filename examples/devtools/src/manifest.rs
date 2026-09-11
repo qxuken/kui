@@ -73,7 +73,7 @@ pub fn crate_manifest(krate: &str) -> (Vec<String>, Vec<String>) {
 
 /// The windowed round: every `[[example]]` of `kui`, sorted. All of them
 /// open a window; the other crates' examples are the C and Lua panel
-/// hosts (their rounds are `examples/c/build.sh`'s) and kui-core's corpus
+/// hosts (their rounds are `cbuild`'s) and kui-core's corpus
 /// dump, which opens none.
 pub fn windowed() -> Vec<String> {
     let (mut examples, _) = crate_manifest("kui");

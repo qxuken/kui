@@ -36,7 +36,7 @@
 //! each crate's `[package.metadata.kui] headless = [...]`, plus `npm run
 //! smoke` for Node. An example listed without a drive exits 2 with "no
 //! headless drive", so a name added before its drive goes red rather than
-//! passing quietly. The C round is `examples/c/build.sh --run`'s and stays
+//! passing quietly. The C round is `cbuild --run`'s and stays
 //! there: it builds what it runs.
 //!
 //! What neither covers: anything needing a human, and what was drawn.
