@@ -750,20 +750,33 @@ impl TextSystem {
         }
         let floor = self.budget / EVICT_TO_DENOMINATOR * EVICT_TO_NUMERATOR;
         let drawn_last_frame = self.frame_no.saturating_sub(1);
-        let mut order: Vec<(u64, u64)> = self
+        // Both maps, oldest first across the two: a long line's record is
+        // charged to `bytes` like any entry (its shaped chunks are entries
+        // of `cache` in their own right), so the budget reaches it too
+        // rather than leaving the records to the 300-frame sweep alone.
+        let mut order: Vec<(u64, u64, bool)> = self
             .cache
             .iter()
             .filter(|(_, e)| e.last_used < drawn_last_frame)
-            .map(|(k, e)| (e.last_used, *k))
+            .map(|(k, e)| (e.last_used, *k, false))
+            .chain(
+                self.long
+                    .iter()
+                    .filter(|(_, l)| l.last_used < drawn_last_frame)
+                    .map(|(k, l)| (l.last_used, *k, true)),
+            )
             .collect();
         order.sort_unstable();
-        for (_, key) in order {
+        for (_, key, long) in order {
             if self.bytes <= floor {
                 break;
             }
-            if let Some(e) = self.cache.remove(&key) {
-                self.bytes -= e.bytes;
-            }
+            let freed = if long {
+                self.long.remove(&key).map(|l| l.bytes)
+            } else {
+                self.cache.remove(&key).map(|e| e.bytes)
+            };
+            self.bytes -= freed.unwrap_or(0);
         }
         // The words those entries shaped are still in cosmic-text's
         // shape-run cache, which has no byte budget of its own and ages
