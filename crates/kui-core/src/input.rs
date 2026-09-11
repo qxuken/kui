@@ -654,6 +654,15 @@ impl UiEvent {
     }
 }
 
+/// The node whose `on_context_menu` a secondary press on a region opens:
+/// the region's own node or an ancestor's (see `HitRegion::context_menu`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct MenuOwner {
+    pub key: Key,
+    pub origin: OriginId,
+    pub tag: Value,
+}
+
 #[derive(Clone, Debug)]
 pub struct HitRegion {
     pub key: Key,
@@ -688,11 +697,18 @@ pub struct HitRegion {
     /// The sink declared `key_up`: releases reach it too. Without it a
     /// release is dropped at routing, and the sink hears presses only.
     pub key_up: bool,
-    /// Context-menu tag when the node declared `on_context_menu`: a
-    /// secondary-button press emits `{kind="contextmenu", x, y, tag}` on
-    /// it. Like a click, the topmost region under the pointer is the one
-    /// asked — a region that declared none swallows the press.
-    pub context_menu: Option<Value>,
+    /// The context menu a secondary press here opens: the node's own
+    /// `on_context_menu`, or the nearest enclosing one — a container
+    /// offering a menu for everything inside it is the common case, and
+    /// a press on a child that declared none is unclaimed in the sense
+    /// ADR 0011 gave keys, so it reaches the enclosing menu the way an
+    /// unclaimed key reaches the enclosing sink (backlog T1). Resolved at
+    /// emission, where the tree is; the walk stops at the modal boundary
+    /// and skips a disabled node's own. The press emits
+    /// `{kind="contextmenu", x, y, tag}` on the *owner*, not on this node.
+    /// None when nothing encloses this region offers one, and the press
+    /// is swallowed here.
+    pub context_menu: Option<MenuOwner>,
     /// A press on this node moves keyboard focus to it (an editor, a
     /// sink, a control, a `focusable` node — never a disabled one).
     pub focusable: bool,
@@ -949,13 +965,13 @@ impl Interaction {
     }
 
     fn context_menu_event(region: &HitRegion, p: Vec2) -> Option<UiEvent> {
-        let tag = region.context_menu.as_ref()?;
+        let owner = region.context_menu.as_ref()?;
         let payload = Value::map([
             ("kind", Value::str("contextmenu")),
             ("x", Value::Float(p.x as f64)),
             ("y", Value::Float(p.y as f64)),
         ]);
-        Some(UiEvent::on(region.origin, region.key, payload).tagged(Some(tag)))
+        Some(UiEvent::on(owner.origin, owner.key, payload).tagged(Some(&owner.tag)))
     }
 
     /// What is under `p`, by the paint order and nothing else: the topmost
@@ -1352,7 +1368,11 @@ mod tests {
         let mut it = Interaction::default();
         let k = Key::ROOT.str("panel");
         let mut r = region(k, 0, 0.0, 0.0, 100.0, 100.0, "click-me");
-        r.context_menu = Some(Value::str("panel-menu"));
+        r.context_menu = Some(MenuOwner {
+            key: k,
+            origin: OriginId::HOST,
+            tag: Value::str("panel-menu"),
+        });
         it.set_hits(vec![r]);
         let evs = drive(
             &mut it,
@@ -1438,7 +1458,11 @@ mod tests {
         let mut it = Interaction::default();
         let k = Key::ROOT.str("panel");
         let mut r = region(k, 0, 0.0, 0.0, 100.0, 100.0, "go");
-        r.context_menu = Some(Value::str("panel-menu"));
+        r.context_menu = Some(MenuOwner {
+            key: k,
+            origin: OriginId::HOST,
+            tag: Value::str("panel-menu"),
+        });
         it.set_hits(vec![r]);
         let evs = drive(
             &mut it,

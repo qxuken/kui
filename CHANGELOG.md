@@ -327,6 +327,28 @@ field reports).
 
 ### Fixed
 
+- **A secondary press on a node that offered no menu was swallowed, and
+  the app looked like it had none.** `on_context_menu` was read off the
+  topmost hit region alone, so a full-window `onKey` sink — the shell
+  pattern `apps/splitmux` uses — over a root that declared the menu ate
+  every right-click, silently (backlog T1, found building the theme
+  example). Now the press is unclaimed at a node that offers nothing and
+  reaches the nearest enclosing node that does, the rule ADR 0011 settled
+  for keys: the event carries the *owner's* key and tag with the press
+  point, a nested declaration still wins over its ancestor's, a disabled
+  node's own is skipped (a disabled row in a list gets the list's menu —
+  before, it got nothing), and the walk stops at the modal boundary. The
+  owner is resolved at emission, where the tree is — `HitRegion::context_menu`
+  is a `MenuOwner` now, not a bare tag — behind a `Tree::any_context_menu`
+  flag so a frame that offers no menu pays nothing. The corpus `controls`
+  scene gains the press on the button under the panel, so its report
+  moves (one more `contextmenu menu`) and `target/conformance.txt` wants
+  regenerating. `onForceClick` is unchanged and its doc now says so:
+  topmost node only, no walk.
+
+  **What you can delete:** the `onContextMenu` an app moved from its
+  container onto every interactive child, or onto its key sink, to be
+  heard at all.
 - **A `cells` grid's `hoverBg` never lit, and its `transition` snapped.**
   `cells_at` pushed its spec untouched where every other leaf door
   resolves the hover style and eases first (backlog AR5). The tween is

@@ -129,6 +129,10 @@ pub struct Tree {
     /// Whether any node declares `on_layout`, so the rect report can skip
     /// the walk.
     pub any_layout: bool,
+    /// Whether any node declares `on_context_menu`, so a hit region's
+    /// walk for the menu it inherits (backlog T1) is skipped wholesale on
+    /// a frame that offers none.
+    pub any_context_menu: bool,
     /// Whether any node declares a workable `exit` (one under a
     /// transition). Gates the tree swap and the key diff.
     pub any_exit: bool,
@@ -202,6 +206,7 @@ impl Tree {
         self.any_region = false;
         self.any_slide = false;
         self.any_layout = false;
+        self.any_context_menu = false;
         self.any_exit = false;
         self.any_animate = false;
         self.indexed.clear();
@@ -241,6 +246,7 @@ impl Tree {
         if let Some(events) = spec.events.as_deref() {
             self.any_modal |= events.modal.is_some();
             self.any_layout |= events.on_layout.is_some();
+            self.any_context_menu |= events.on_context_menu.is_some();
         }
         if spec.transition.is_some() {
             match spec.anim.as_deref() {

@@ -796,14 +796,14 @@ pub const PROPS: &[PropDef] = &[
         id: P_ON_CONTEXT_MENU,
         kind: Kind::Tag,
         apply: Apply::SpecMsg(|s, v| s.on_context_menu(v)),
-        doc: "Context-menu tag: a secondary-button (right) press emits {kind:\"contextmenu\", x, y, tag} on the node, at the logical viewport point to open the menu at. The press moves no focus, places no caret and produces no click, so right-clicking a selection keeps it; the topmost node under the pointer is the one asked, as for a click.",
+        doc: "Context-menu tag: a secondary-button (right) press emits {kind:\"contextmenu\", x, y, tag} on the node, at the logical viewport point to open the menu at. The press moves no focus, places no caret and produces no click, so right-clicking a selection keeps it. Asked of the topmost node under the pointer, and when that node offers no menu the press reaches the nearest enclosing node that does — a container declaring a menu for everything inside it is the common case — the way an unclaimed key reaches the enclosing sink (`docs/adr/0011`): the event carries the *owner's* key and tag, a nested declaration wins over its ancestor's, a disabled node's own is skipped, and the walk stops at the modal boundary.",
     },
     PropDef {
         name: "onForceClick",
         id: P_ON_FORCE_CLICK,
         kind: Kind::Tag,
         apply: Apply::SpecMsg(|s, v| s.on_force_click(v)),
-        doc: "Force-click tag: a press that deepens past the second stage of a Force Touch trackpad emits {kind:\"forceclick\", x, y, tag} on the node, at the logical viewport point it happened at (`docs/adr/0017-selection-as-a-scope.md`). Routed like `onContextMenu` — topmost node, no focus moved, no caret placed, no click — and the ordinary click the press is still producing arrives afterwards, as it does on macOS. Text needs none of this: a force click over an `edit` or a `selectable` scope selects the word under it and asks the host for its Look Up panel. macOS-only in practice, and there the user can switch the gesture off, so nothing may declare itself the only way to reach something.",
+        doc: "Force-click tag: a press that deepens past the second stage of a Force Touch trackpad emits {kind:\"forceclick\", x, y, tag} on the node, at the logical viewport point it happened at (`docs/adr/0017-selection-as-a-scope.md`). Routed as a secondary press is — no focus moved, no caret placed, no click — but asked of the topmost node only, with no walk to an enclosing declaration — and the ordinary click the press is still producing arrives afterwards, as it does on macOS. Text needs none of this: a force click over an `edit` or a `selectable` scope selects the word under it and asks the host for its Look Up panel. macOS-only in practice, and there the user can switch the gesture off, so nothing may declare itself the only way to reach something.",
     },
     PropDef {
         name: "window",

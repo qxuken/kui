@@ -90,6 +90,21 @@ impl Core {
             // A disabled node keeps hover (a tooltip can say why) and loses
             // every interaction: it emits nothing and takes no focus.
             let live = !spec.disabled;
+            // The menu this region opens is its own or an ancestor's; the
+            // walk is skipped on a frame where no node offers one (T1).
+            let context_menu = if self.tree.any_context_menu {
+                self.enclosing_menu(i).map(|j| crate::input::MenuOwner {
+                    key: self.tree.keys[j],
+                    origin: self.tree.origins[j],
+                    tag: self.tree.specs[j]
+                        .events()
+                        .on_context_menu
+                        .clone()
+                        .expect("enclosing_menu returns a node that offers one"),
+                })
+            } else {
+                None
+            };
             hits.push(HitRegion {
                 key: self.tree.keys[i],
                 origin: self.tree.origins[i],
@@ -100,7 +115,7 @@ impl Core {
                 parent_rect,
                 key_sink: spec.events().on_key.clone().filter(|_| live),
                 key_up: spec.events().key_up,
-                context_menu: spec.events().on_context_menu.clone().filter(|_| live),
+                context_menu,
                 focusable: crate::access::focusable(&self.tree, i),
                 edit_origin: None,
                 select_scope: self.scope_of(i).filter(|_| live),

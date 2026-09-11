@@ -880,7 +880,11 @@ pub const SCENES: &[Scene] = &[
         name: "controls",
         doc: "A clicked button, a keyed editor and a slider, inside a panel \
               that asks for a context menu: the secondary press routes to \
-              the panel and moves neither focus nor the caret. The slider \
+              the panel and moves neither focus nor the caret — from the \
+              panel's own body, and from the button over it that offers no \
+              menu of its own, since an unclaimed press reaches the \
+              enclosing menu as an unclaimed key reaches the enclosing sink \
+              (backlog T1). The slider \
               names its own reading (`valueText`), which lands in the value \
               column beside the editor's text — a node has one string slot, \
               and a slider that named its reading reads as that instead of \
@@ -901,6 +905,9 @@ pub const SCENES: &[Scene] = &[
             Step::Cursor(4, 4),
             Step::SecondaryDown,
             Step::SecondaryUp,
+            Step::Cursor(30, 24),
+            Step::SecondaryDown,
+            Step::SecondaryUp,
         ],
         expect: Expect {
             // Two buttons: the disabled one is dimmed, and a quad at half
@@ -918,7 +925,7 @@ pub const SCENES: &[Scene] = &[
                 "1 textInput Note||hello",
                 "1 slider Focus length||25 minutes",
             ],
-            events: &["go -", "contextmenu menu"],
+            events: &["go -", "contextmenu menu", "contextmenu menu"],
             announcements: &[],
             warnings: &[],
             commands: &[],

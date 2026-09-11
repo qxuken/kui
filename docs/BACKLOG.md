@@ -21,11 +21,11 @@ at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
 
-What is left here: three parked headings — C12, C13 and C14,
-each waiting for a view that wants it — the two the design-system audit left
-open on 2026-09-10 (T1, a defect that ships today; T2, the axis ADR 0019
-scoped itself out of; T3 closed the same day, when every example in the repo
-went onto the theme), B1 from the same day's ABI-and-bindings audit (a table
+What is left here: V1–V8 from the canvas question of 2026-09-11 (one ordered, five waiting for a view, two declined with a condition), three parked headings — C12, C13 and C14,
+each waiting for a view that wants it — the one the design-system audit left
+open on 2026-09-10 (T2, the axis ADR 0019 scoped itself out of; T1, the
+defect, closed on 2026-09-11 and T3 the day it was filed, when every example
+in the repo went onto the theme), B1 from the same day's ABI-and-bindings audit (a table
 declined with the condition that would build it) —
 C26, whose first two steps were built
 on 2026-09-09 and whose last two wait for a view (C25 beside it closed the day
@@ -742,7 +742,24 @@ palette itself is built, and so is every example's migration onto it (T3,
 closed the day it was filed); these are the two the audit turned up and
 did not close.
 
-### `!` T1 — `on_context_menu` does not bubble, and keys do
+### `x` T1 — `on_context_menu` does not bubble, and keys do — **done (2026-09-11)**
+
+Built as the **Do** below says, with one change of where: the walk is at
+emission rather than in `Interaction`, because the hit stack is paint
+order and not ancestry — a lower *sibling* overlapping under the pressed
+node would have won a stack walk, and "enclosing" has to mean the tree.
+`enclosing_menu` sits beside `enclosing_sink` in `runtime/focus.rs` with
+the same modal stop and the same skip of a disabled node's own;
+`HitRegion::context_menu` carries a `MenuOwner { key, origin, tag }`
+resolved there, behind `Tree::any_context_menu` so a frame offering no
+menu pays no walk. Three pins in `tests/context_menu.rs` (the T1 shape —
+a full-window sink over a menu-declaring root — a disabled row reaching
+the panel's, and the modal boundary, which fails under mutation), the
+`controls` corpus scene gains the press on the button, and the row docs in
+`schema.rs`, `spec.rs`, `props.md` and `jsx-runtime.d.ts` say the rule.
+`onForceClick` was not changed: topmost only, said so now.
+
+The original finding:
 
 Found building `examples/rust/theme.rs`. A secondary press asks
 `Interaction::hit_at` for the **topmost** hit region and reads
@@ -928,6 +945,99 @@ one entry, C28, filed and closed the same day — the ADR was built whole
 within the hour, and the entry is in
 [the archive](backlog/closed-2026-09.md#-c28--floats-are-under-scrollbars-and-the-ring-and-stack-in-tree-order--done-2026-09-10).
 
+## From the canvas question (2026-09-11)
+
+The round that produced
+[ADR 0025](adr/0025-the-image-is-the-canvas.md) — *proposed*, not built.
+The question was whether kui wants a canvas (raw GPU commands, declarative
+or callback-shaped) and, if not, which primitives make an app not need one.
+The ADR's answer is an image whose pixels the app replaces, backed by a
+texture of its own past the atlas, `sampling`/`fit` rows, `scale` on the
+`layout` payload, and a `polygon` filled by a stock fragment; what it named
+and did not build is here, each with the condition that builds it. None is
+a defect. V1 is the one with an order attached.
+
+### `.` V1 — Fragment image input
+
+ADR 0015 decision 9's first deferral, restated as ADR 0025 decision 7:
+`image={id}` on `fragment`, `FragmentIn::image` and a `sample(uv)` helper
+in the prelude, a texture-backed image bound through the same split a
+texture quad takes, an atlas-backed one through the atlas the fragment
+already has. It is what turns a replaced image into a waveform, a heatmap,
+a 50k-point line and every image effect from one quad — the "many points"
+case the drawing-ops canvas was declined for.
+
+**Order:** the round after ADR 0025's decisions 1–3 are built, so the
+resource-to-resource binding lands on a texture path that exists and the
+removal-order test ADR 0015 asked for (a removed image under a live
+fragment draws the fallback) is one corpus step.
+
+### `.` V2 — `dash` on `line`
+
+ADR 0010 deferred it with the shape written: a pattern along arc length
+that keeps its phase across the joins of a polyline — `params.w` is free
+to carry a phase per quad and the core knows the cumulative length. A
+`dash` declared today would restart at every join of a curve, which reads
+as a bug, so it is not free to get right blind. **Condition:** a view that
+draws a dashed connector or a selection marquee.
+
+### `.` V3 — `cap` on `line`: `round | butt | arrow`
+
+ADR 0010 deferred arrowheads to "a `cap` vocabulary"; a filled arrowhead
+was a fill the vocabulary did not have, and ADR 0025's `polygon` is that
+fill — so an app can draw one today from the endpoint and the direction
+it has. The row is worth building when a view wants the head to follow a
+tweening endpoint without a second node. **Condition:** that view.
+
+### `.` V4 — `backdrop` on `fragment`
+
+ADR 0015 decision 9: the box's region of the framebuffer copied to a
+texture at the flush before it, exposed to the fragment — frosted glass,
+one bounded copy per box, data. **Condition:** a view that wants glass;
+nothing has asked.
+
+### `.` V5 — `blend` on `fragment`
+
+ADR 0015 decision 9: `blend="add"` as a second pipeline variant per
+fragment. **Condition:** a glow that stacks.
+
+### `.` V6 — Streaming's two deferrals: dirty rects and mipmaps
+
+ADR 0025 uploads a replaced image whole (`write_texture` of the full
+image, 8 MB at 1080p — its first measurement) and samples without mips.
+A **dirty rect** on `update_image` is an API that grows a rect without
+changing shape; **mipmaps** are what a photo viewer minifying a
+12-megapixel texture needs and an app rendering at `w × scale` does not.
+**Condition:** a stream that changes a corner of a large frame, or a
+viewer that shows a photo smaller than it is.
+
+### `.` V7 — A core `zoom` row — declined with a condition
+
+A per-subtree scale as scroll's sibling: layout in the subtree's own
+logical space, `env.scale × zoom` composed at emit (`runtime/emit.rs:418`
+is the one seam), local-space payloads, `Core::project/unproject(key,
+point)` as its doors. What it buys is deleting `× zoom` from every row of
+a camera app; what it costs is the composed transform through hit-testing,
+`onLayout`, access bounds, caret and IME rects, popup anchors, ghosts and
+W7's whole-pixel snapping. The one camera app on kui zooms by hand and
+its reports never asked. ADR 0025 decision 5 (`scale` on `layout`) is
+written so an image loop reads the right number the day this lands.
+**Condition:** a second app that writes the mind map's camera, or a
+request for UI zoom (Cmd+/Cmd−). One fact for either design: continuous
+zoom re-shapes text per fractional size and churns the shape cache (C16),
+so a core zoom would quantise its steps as the mind map does (×1.45).
+
+### `.` V8 — A drawing-ops `canvas` element — declined with a condition
+
+One node, an op list lowered to quads, no per-op node. Measured before
+being declined: the core builds 10k nodes in ~0.8 ms (~80 ns a node),
+Node ~290 ns a node (`examples/node/tools/bench.mjs`, 89% at the
+boundary), so an op list buys 4–5× in Rust and ~25× in Node at 50k
+primitives — a scene no app on kui has — and nothing new to draw, since
+an op is a box, a segment or a glyph and a fill is the path primitive ADR
+0010 rejected. **Condition:** a view with more than ~10k primitives from
+Node, or a fill eight points cannot make. V1 is the answer for data.
+
 ## After alpha.10
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -949,8 +1059,8 @@ which the archived entry measures and leaves.
 
 **Build next.** Nothing with a written ADR and no code, and nothing filed
 that is not either parked or deliberately unbuilt: after alpha.10 the open
-list is C12, C13, C14, F36, T1, T2, B1 and C26's last two steps — T1 first, as
-the only defect among them — a measured-size query
+list is C12, C13, C14, F36, T2, B1, V1–V8 and C26's last two steps — T1, the
+only defect among them, closed on 2026-09-11 — a measured-size query
 nothing needs since `virtual_rows` measures its own rows, and core-side
 scroll anchoring, which is CSS's `overflow-anchor` and is wanted by lists
 that are not virtual at all. C27 is parked with its measurements.
@@ -1046,7 +1156,7 @@ equivalent is smaller and worth naming: the C round (then
 `examples/c/build.sh`, now `cbuild --run`) runs in `check`, and the plugin half of it now has a Node host in the same
 job — that is what caught this one.
 
-**Design, wanting an ADR.** A **painter** — the iced-shaped hatch that ADR 0015 (above) names and does not build: a Rust trait or a C extension's function pointers over the shared `Gpu` and the frame's encoder, under the `PainterId` that has been reserved in `resources.rs` since the first commit, placed by a marker quad the renderer splits around as it splits around a fragment. The first thing in a frame that would not be data, so it waits for a view a fragment cannot serve: a 3D viewport, a simulation, a backdrop a copy cannot make. Otherwise nothing new since ADR 0014 was built on 2026-09-07 and amended on 2026-09-08; of what it left open, a slot for Node (W11), extensions in `kui_run` (W9) and an extension offering slots of its own (W12) are built, and what is left — replies from `view`, name-plus-kind — waits for a view. Two instances of one extension are answered: the host namespaces them. Effects an app defines (F23) is
+**Design, with an ADR proposed.** [`docs/adr/0025-the-image-is-the-canvas.md`](adr/0025-the-image-is-the-canvas.md) (2026-09-11) answers the canvas question: `update_image` and texture-backed images past the atlas (closing the silent drop of an image over 4096 px), `sampling`/`fit` rows, `scale` on the `layout` payload, and a `polygon` filled by a stock fragment — proposed with four measurements to run before accepting, and what it named and did not build is V1–V8 above. **Design, wanting an ADR.** A **painter** — the iced-shaped hatch that ADR 0015 (above) names and does not build: a Rust trait or a C extension's function pointers over the shared `Gpu` and the frame's encoder, under the `PainterId` that has been reserved in `resources.rs` since the first commit, placed by a marker quad the renderer splits around as it splits around a fragment. The first thing in a frame that would not be data, so it waits for a view a fragment cannot serve: a 3D viewport, a simulation, a backdrop a copy cannot make. Otherwise nothing new since ADR 0014 was built on 2026-09-07 and amended on 2026-09-08; of what it left open, a slot for Node (W11), extensions in `kui_run` (W9) and an extension offering slots of its own (W12) are built, and what is left — replies from `view`, name-plus-kind — waits for a view. Two instances of one extension are answered: the host namespaces them. Effects an app defines (F23) is
 [`docs/adr/0013-effects-as-data.md`](adr/0013-effects-as-data.md),
 proposed and then accepted and built on 2026-09-07 — reviewed for alpha.8
 rather than left for a view, and its status block says what outweighed

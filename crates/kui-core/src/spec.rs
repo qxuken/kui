@@ -622,16 +622,21 @@ pub struct EventSpec {
     /// under `tag`, and does nothing else — the press moves no focus,
     /// places no caret and produces no click, so right-clicking a
     /// selection leaves it selected. `x`/`y` are the press in logical
-    /// viewport coordinates, which is where the menu goes. Routed like a
-    /// click: the topmost node under the pointer is the one asked, so an
-    /// interactive child takes the press unless it declares its own.
-    /// Null = the behaviour without a tag.
+    /// viewport coordinates, which is where the menu goes. Asked of the
+    /// topmost node under the pointer; when that node offers no menu the
+    /// press reaches the nearest enclosing node that does, the way an
+    /// unclaimed key reaches the enclosing sink (ADR 0011, backlog T1):
+    /// the event carries the owner's key and tag, a nested declaration
+    /// wins over its ancestor's, a disabled node's own is skipped, and
+    /// the walk stops at the modal boundary. Null = the behaviour without
+    /// a tag.
     pub on_context_menu: Option<Value>,
     /// Force-click events: a press that deepened past the second stage of
     /// a Force Touch trackpad over this node emits `{kind="forceclick",
-    /// x, y, tag}` with this payload under `tag`. Routed like the
-    /// context-menu press — topmost node, no focus moved, no caret, no
-    /// click — and the ordinary click the press produces still follows,
+    /// x, y, tag}` with this payload under `tag`. Routed as a secondary
+    /// press is — no focus moved, no caret, no click — but asked of the
+    /// topmost node only, with no walk to an enclosing declaration — and
+    /// the ordinary click the press produces still follows,
     /// which is what macOS does (ADR 0017, decision 6).
     ///
     /// Text does not need this: a force click over an editor or a
