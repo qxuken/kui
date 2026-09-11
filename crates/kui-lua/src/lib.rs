@@ -81,8 +81,8 @@
 
 use kui_core::schema::{self, Kind, Parsed, PropsOut};
 use kui_core::{
-    Align, Color, EditOptions, Extension, FloatConfig, Key, PadShorthand, Sizing, Slot, Span, Ui,
-    UiEvent, Value, WindowConfig, WindowKind, widgets,
+    Align, Color, Content, EditOptions, Extension, FloatConfig, Key, PadShorthand, Sizing, Slot,
+    Span, Ui, UiEvent, Value, WindowConfig, WindowKind, widgets,
 };
 use mlua::{Lua, Table};
 
@@ -1218,20 +1218,8 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
     match ty.as_str() {
         "row" | "column" => {
             let p = parse_props(t, ty == "row")?;
-            let key = match (p.index, &p.key) {
-                (Some(i), _) => ui.open_indexed(i, p.spec),
-                (None, Some(label)) => ui.open_keyed(label, p.spec),
-                (None, None) => ui.open(p.spec),
-            };
-            if p.key_focus {
-                ui.take_key_focus(key);
-            }
+            ui.core().open_from(p, Content::Box);
             build_children(ui, t)?;
-            if let Some(hint) = &p.tooltip
-                && ui.is_hovered(key)
-            {
-                widgets::tooltip(ui, hint);
-            }
             ui.close();
             Ok(())
         }
@@ -1265,20 +1253,8 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             };
             let p = parse_props(t, false)?;
             let id = kui_core::FragmentId::from_ffi(id as u64);
-            let key = match (p.index, &p.key) {
-                (Some(i), _) => ui.core().open_fragment_indexed(i, id, &params, p.spec),
-                (None, Some(label)) => ui.core().open_fragment_keyed(label, id, &params, p.spec),
-                (None, None) => ui.core().open_fragment(id, &params, p.spec),
-            };
-            if p.key_focus {
-                ui.take_key_focus(key);
-            }
+            ui.core().open_from(p, Content::Fragment(id, &params));
             build_children(ui, t)?;
-            if let Some(hint) = &p.tooltip
-                && ui.is_hovered(key)
-            {
-                widgets::tooltip(ui, hint);
-            }
             ui.close();
             Ok(())
         }
@@ -1315,11 +1291,7 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             let stroke_color = p.style.color.unwrap_or(ui.theme().fg);
             let mut stroke = kui_core::Stroke::new(width, stroke_color);
             stroke.curve = t.get::<Option<bool>>("curve")?.unwrap_or(false);
-            match (p.index, &p.key) {
-                (Some(i), _) => ui.polyline_indexed(i, &points, stroke, p.spec),
-                (None, Some(label)) => ui.polyline_keyed(label, &points, stroke, p.spec),
-                (None, None) => ui.polyline(&points, stroke, p.spec),
-            }
+            ui.core().open_from(p, Content::Line(&points, stroke));
             Ok(())
         }
         "cells" => {
@@ -1393,11 +1365,7 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
                 cursor,
                 origin_line,
             };
-            match (p.index, &p.key) {
-                (Some(i), _) => ui.cells_indexed(i, &grid, p.spec),
-                (None, Some(label)) => ui.cells_keyed(label, &grid, p.spec),
-                (None, None) => ui.cells(&grid, p.spec),
-            }
+            ui.core().open_from(p, Content::Cells(&grid));
             Ok(())
         }
         "audio" => {

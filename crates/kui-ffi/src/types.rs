@@ -46,11 +46,6 @@ pub struct KuiCtx {
     /// Announcements most recently handed out by kui_take_announcements;
     /// their strings stay valid until the next call.
     pub(crate) last_announcements: Vec<kui_core::Announcement>,
-    /// One entry per node the `kui_open*` family has open, holding its key
-    /// and `KuiSpec.tooltip` hint. `kui_close` pops it and floats the hint
-    /// as the node's last child while it is hovered — which is what the
-    /// other bindings' `tooltip` prop does at the same point.
-    pub(crate) open_tooltips: Vec<Option<(kui_core::Key, String)>>,
     /// Window commands taken from the core and not yet handed out one at a
     /// time by `kui_take_window_command`.
     pub(crate) window_commands: VecDeque<WindowCommand>,
@@ -132,7 +127,6 @@ impl KuiCtx {
             last_warnings: Vec::new(),
             last_access: Default::default(),
             last_announcements: Vec::new(),
-            open_tooltips: Vec::new(),
             window_commands: VecDeque::new(),
             menu_actions: VecDeque::new(),
             menu_text: String::new(),
@@ -174,10 +168,12 @@ impl KuiCtx {
         self.extensions.route(events, |ev| out.push(ev));
     }
 
-    /// Records a just-opened node's hover hint for `kui_close`.
+    /// Records a just-opened node's hover hint: the core floats it on
+    /// `kui_close` while the node is hovered (`Core::hint`).
     pub(crate) fn push_tooltip(&mut self, key: kui_core::Key, hint: KuiStr) {
-        self.open_tooltips
-            .push(opt_str(hint).map(|h| (key, h.into_owned())));
+        if let Some(h) = opt_str(hint) {
+            self.core().hint(key, h.into_owned());
+        }
     }
 }
 

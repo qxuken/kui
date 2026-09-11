@@ -5,6 +5,18 @@
 
 use super::*;
 
+use crate::schema::{Identity, PropsOut};
+
+/// What a node opened through [`Core::open_from`] holds: a box (left open
+/// for its children), a fragment (likewise), a `cells` grid or a stroke
+/// (leaves, closed by the door).
+pub enum Content<'a> {
+    Box,
+    Fragment(crate::resources::FragmentId, &'a [f32]),
+    Cells(&'a crate::cells::CellGrid<'a>),
+    Line(&'a [Vec2], Stroke),
+}
+
 /// A node's keyframes flattened per slot for `ease_spec`, built once per
 /// node per frame (only for nodes that declare keyframes).
 struct Tracks {
@@ -433,9 +445,113 @@ impl Core {
 
     #[inline]
     pub fn close(&mut self) {
+        // The tooltip prop's third effect, for the node being closed: its
+        // hint floats below it as its last child while it is hovered. One
+        // length check per close for a frame that declared no hints.
+        if let Some((depth, _, _)) = self.hints.last()
+            && *depth == self.stack.len()
+        {
+            let (_, key, hint) = self.hints.pop().unwrap();
+            if self.is_hovered(key) {
+                crate::widgets::tooltip(&mut Ui::wrap(self), &hint);
+            }
+        }
         if self.stack.len() > 1 {
             self.stack.pop();
             self.counters.pop();
+        }
+    }
+
+    /// Records the hover hint of the node just opened (the top of the
+    /// stack): `close` floats `widgets::tooltip` below it while it is
+    /// hovered. The one place that decides *when* a tooltip shows, so a
+    /// binding that parsed the string cannot show it some other way.
+    pub fn hint(&mut self, key: Key, text: impl Into<String>) {
+        self.hints.push((self.stack.len(), key, text.into()));
+    }
+
+    /// Opens a node the way a parsed prop list says — under the data
+    /// index, the label or the next auto key; taking keyboard focus when
+    /// `keyFocus` asked; floating its `tooltip` on `close` while hovered —
+    /// with whatever the node holds. The one door for every binding that
+    /// lowers props, so the identity match, the focus edge and the hint
+    /// are not re-derived per binding per element (they were, eight, five
+    /// and four times). A box or a fragment is left open for its children;
+    /// a `cells` grid and a `line` are leaves and take no hint, since a
+    /// stroke takes no input and a grid draws its own. Returns the key.
+    pub fn open_from(&mut self, props: PropsOut, content: Content<'_>) -> Key {
+        let PropsOut {
+            spec,
+            key: label,
+            index,
+            key_focus,
+            tooltip,
+            ..
+        } = props;
+        let identity = match (index, &label) {
+            (Some(i), _) => Identity::Index(i),
+            (None, Some(label)) => Identity::Label(label),
+            (None, None) => Identity::Auto,
+        };
+        let key = match identity {
+            Identity::Auto => self.auto_key(),
+            Identity::Label(l) => self.child_key(l),
+            Identity::Index(i) => self.child_key_index(i),
+        };
+        let at = self.tree.len() as u32;
+        let leaf = match content {
+            Content::Box => {
+                self.open_with_key(key, spec);
+                false
+            }
+            Content::Fragment(id, params) => {
+                self.fragment_with_key(key, id, params, spec);
+                false
+            }
+            Content::Cells(grid) => {
+                self.cells_at(key, grid, spec);
+                true
+            }
+            Content::Line(points, stroke) => {
+                self.line_with_key(key, points, stroke, spec);
+                true
+            }
+        };
+        // Bookkeeping for the node that was actually pushed: the label
+        // `key_of` resolves through, or the data index a selection inside
+        // a virtual row is ordered by when the row is not built (ADR 0017).
+        if self.tree.len() as u32 > at {
+            match identity {
+                Identity::Label(l) => self.key_labels.push(key, l),
+                Identity::Index(i) => self.tree.indexed.push((at, i)),
+                Identity::Auto => {}
+            }
+        }
+        if key_focus {
+            self.set_key_focus(Some(key));
+        }
+        if let Some(hint) = tooltip
+            && !leaf
+        {
+            self.hint(key, hint);
+        }
+        key
+    }
+
+    /// The root the way a parsed prop list says: its title, the windows it
+    /// declares, its spec, and keyboard focus on it when asked — what a
+    /// binding's root op does, once.
+    pub fn configure_root_from(&mut self, props: PropsOut) {
+        if let Some(title) = &props.title {
+            self.set_window_title(title);
+        }
+        for (name, cfg) in &props.windows {
+            self.declare_window(name, *cfg);
+        }
+        self.configure_root(props.spec);
+        if props.key_focus {
+            let root = self.root_key();
+            self.set_key_focus(Some(root));
         }
     }
 

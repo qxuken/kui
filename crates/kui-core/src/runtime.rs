@@ -49,6 +49,7 @@ use crate::window::{WindowConfig, WindowId};
 // `impl Core` continues in these, one concern per file (each opens with
 // what it holds). Children of this module, so the fields stay private.
 mod builder;
+pub use builder::Content;
 mod composites;
 pub mod devtools;
 mod dispatch;
@@ -233,6 +234,11 @@ pub struct Core {
     /// order the layers opened in (ADR 0023, decision 3). Bounded by the
     /// frame's own float count; nothing to evict.
     float_stack: Vec<(Key, u32)>,
+    /// The hover hints of the nodes open right now that declared a
+    /// `tooltip` (`Core::hint`), each with the stack depth it was opened
+    /// at, so `close` knows whose turn it is. Only nodes that declared one
+    /// are here: a frame without a tooltip pays one length check per close.
+    hints: Vec<(usize, Key, String)>,
     /// The context menu this window has open, the keys the stock renderer
     /// gave its rows (so their clicks can be told from the app's), and
     /// what choosing one left for the host to do. See
@@ -574,6 +580,7 @@ impl Core {
             opacity: Vec::new(),
             float_root: Vec::new(),
             float_stack: Vec::new(),
+            hints: Vec::new(),
             menu: None,
             menu_root: None,
             menu_items: Vec::new(),
@@ -1063,6 +1070,9 @@ impl Core {
         self.stack.push(0);
         self.counters.clear();
         self.counters.push(0);
+        // A frame that ended with nodes unclosed must not leak its hints
+        // into the next one.
+        self.hints.clear();
         self.origin = OriginId::HOST;
         self.frame_requested = false;
         self.devtools_begin_frame();

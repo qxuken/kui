@@ -2226,7 +2226,26 @@ pub struct PropsOut {
     pub windows: Vec<(String, WindowConfig)>,
 }
 
+/// Which key a prop list opens its node under: the next auto key, the
+/// `key` label, or — beating the label when a binding is handed both — the
+/// `index` a virtual list opens its rows by.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Identity<'a> {
+    Auto,
+    Label(&'a str),
+    Index(u64),
+}
+
 impl PropsOut {
+    /// The identity the list gave the node (see [`Identity`]).
+    pub fn identity(&self) -> Identity<'_> {
+        match (self.index, &self.key) {
+            (Some(i), _) => Identity::Index(i),
+            (None, Some(label)) => Identity::Label(label),
+            (None, None) => Identity::Auto,
+        }
+    }
+
     pub fn new() -> Self {
         PropsOut {
             spec: NodeSpec::column(),

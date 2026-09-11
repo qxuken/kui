@@ -43,9 +43,6 @@ pub extern "C" fn kui_spec_float_preset(spec: *mut KuiSpec, name: KuiStr) -> boo
 pub extern "C" fn kui_frame_begin(ptr: *mut KuiCtx, w: f32, h: f32, scale: f32) {
     guard((), || {
         if let Some(c) = unsafe { ctx(ptr) } {
-            // A frame that ended with nodes unclosed must not leak its
-            // hints into the next one.
-            c.open_tooltips.clear();
             c.core()
                 .begin_frame(Size::new(w, h), if scale > 0.0 { scale } else { 1.0 });
         }
@@ -173,8 +170,6 @@ pub extern "C" fn kui_fragment_open(
             Some(label) => c.core().open_fragment_keyed(&label, id, p, spec),
             None => c.core().open_fragment(id, p, spec),
         };
-        // `kui_close` pops one tooltip slot per open node.
-        c.open_tooltips.push(None);
     });
 }
 
@@ -327,13 +322,8 @@ pub extern "C" fn kui_open_with(
 pub extern "C" fn kui_close(ptr: *mut KuiCtx) {
     guard((), || {
         if let Some(c) = unsafe { ctx(ptr) } {
-            // The tooltip prop's third effect, at the point the Lua and
-            // Node lowerings apply it: the node's last child, while hovered.
-            if let Some((key, hint)) = c.open_tooltips.pop().flatten()
-                && c.core().is_hovered(key)
-            {
-                kui_core::widgets::tooltip(&mut kui_core::Ui::wrap(c.core()), &hint);
-            }
+            // The tooltip prop's third effect — the hint floating below the
+            // node while hovered — is the core's, on `close` (`Core::hint`).
             c.core().close();
         }
     });

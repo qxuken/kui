@@ -24,8 +24,8 @@
 //!   in the table.
 
 use kui_core::{
-    Align, EditOptions, FloatConfig, ImageId, NodeSpec, PadShorthand, Rect, Size, Span, TextStyle,
-    WindowConfig, WindowKind, widgets,
+    Align, Content, EditOptions, FloatConfig, ImageId, NodeSpec, PadShorthand, Rect, Size, Span,
+    TextStyle, WindowConfig, WindowKind, widgets,
 };
 use serde_json::{Map as JsonMap, Value as Json};
 
@@ -430,20 +430,8 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
     match op {
         OP_OPEN => {
             let p = read_props(r)?;
-            let node_key = match (p.index, &p.key) {
-                (Some(i), _) => ui.core().open_indexed(i, p.spec),
-                (None, Some(label)) => ui.core().open_keyed(label, p.spec),
-                (None, None) => ui.core().open(p.spec),
-            };
-            if p.key_focus {
-                ui.core().set_key_focus(Some(node_key));
-            }
+            ui.core().open_from(p, Content::Box);
             decode_until_close(r, ui)?;
-            if let Some(hint) = &p.tooltip
-                && ui.core().is_hovered(node_key)
-            {
-                widgets::tooltip(ui, hint);
-            }
             ui.core().close();
             Ok(())
         }
@@ -568,11 +556,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             let stroke_color = p.style.color.unwrap_or(ui.theme().fg);
             let mut stroke = kui_core::Stroke::new(width, stroke_color);
             stroke.curve = flags & 1 != 0;
-            match (p.index, &p.key) {
-                (Some(i), _) => ui.core().line_node_indexed(i, &points, stroke, p.spec),
-                (None, Some(label)) => ui.core().line_node_keyed(label, &points, stroke, p.spec),
-                (None, None) => ui.core().line_node(&points, stroke, p.spec),
-            }
+            ui.core().open_from(p, Content::Line(&points, stroke));
             Ok(())
         }
         // src (hi, lo), param count, the params, then props. An open node:
@@ -587,20 +571,8 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             }
             let p = read_props(r)?;
             let id = kui_core::FragmentId::from_ffi((hi << 32) | lo);
-            let key = match (p.index, &p.key) {
-                (Some(i), _) => ui.core().open_fragment_indexed(i, id, &params, p.spec),
-                (None, Some(label)) => ui.core().open_fragment_keyed(label, id, &params, p.spec),
-                (None, None) => ui.core().open_fragment(id, &params, p.spec),
-            };
-            if p.key_focus {
-                ui.core().set_key_focus(Some(key));
-            }
+            ui.core().open_from(p, Content::Fragment(id, &params));
             decode_until_close(r, ui)?;
-            if let Some(hint) = &p.tooltip
-                && ui.core().is_hovered(key)
-            {
-                widgets::tooltip(ui, hint);
-            }
             ui.core().close();
             Ok(())
         }
@@ -648,11 +620,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
                 cursor,
                 origin_line,
             };
-            match (p.index, &p.key) {
-                (Some(i), _) => ui.core().cells_indexed(i, &grid, p.spec),
-                (None, Some(label)) => ui.core().cells_keyed(label, &grid, p.spec),
-                (None, None) => ui.core().cells(&grid, p.spec),
-            }
+            ui.core().open_from(p, Content::Cells(&grid));
             Ok(())
         }
         OP_TITLEBAR => {
@@ -726,18 +694,7 @@ pub fn lower_binary(ui: &mut kui_core::Ui<'_>, stream: &[f64], strings: &[u8]) -
     if r.u()? != OP_ROOT {
         return Err(err("binary frame must start with the root op"));
     }
-    let p = read_props(&mut r)?;
-    if let Some(t) = &p.title {
-        ui.core().set_window_title(t);
-    }
-    for (name, cfg) in &p.windows {
-        ui.core().declare_window(name, *cfg);
-    }
-    ui.core().configure_root(p.spec);
-    if p.key_focus {
-        let root = ui.core().root_key();
-        ui.core().set_key_focus(Some(root));
-    }
+    ui.core().configure_root_from(read_props(&mut r)?);
     loop {
         match r.u()? {
             OP_END => return Ok(()),

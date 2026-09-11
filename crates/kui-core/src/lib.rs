@@ -78,7 +78,7 @@ pub use resources::{FontId, FragmentId, ImageId, Resources, SessionId, SoundId};
 pub use runtime::devtools;
 pub use runtime::devtools::Dock as DevtoolsDock;
 pub use runtime::inspect::{NodeInfo, NodeKind};
-pub use runtime::{Core, Extension};
+pub use runtime::{Content, Core, Extension};
 pub use scroll::{MAX_UNDECLARED_SCROLLS, ScrollGeometry};
 pub use select::{CellEnd, CellSelection, CopyRequest, Endpoint, Grain, RangeEnd, Selection};
 pub use session::{Session, SharedAudio, SharedResources};

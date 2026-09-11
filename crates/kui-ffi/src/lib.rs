@@ -100,7 +100,6 @@ pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
             last_warnings: Vec::new(),
             last_access: Default::default(),
             last_announcements: Vec::new(),
-            open_tooltips: Vec::new(),
             window_commands: VecDeque::new(),
             menu_actions: VecDeque::new(),
             menu_text: String::new(),
