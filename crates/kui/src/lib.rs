@@ -375,7 +375,8 @@ impl Launcher {
     /// build, which is where it is used by hand (`KUI_SMOKE_FRAMES=120
     /// cargo run --example fragment`), and in a release build that asks
     /// for it with `--features smoke` — which is what
-    /// `scripts/smoke-windows.ps1` passes when it is not smoking dev, and
+    /// the smoke round passes under `--release`
+    /// (examples/devtools/src/bin/smoke.rs), and
     /// the whole reason this is a feature rather than `debug_assertions`
     /// alone: the round is worth running against what actually ships.
     fn smoke_frames() -> Option<u32> {
@@ -828,8 +829,9 @@ struct Shell<A: App> {
     /// `KUI_SMOKE_FRAMES=n`: quit after the main window has presented `n`
     /// frames, so an example is a self-terminating check — a real window
     /// on a real GPU, driven by the real loop, that exits 0 when it drew
-    /// and non-zero when it did not. It is what `scripts/smoke-windows.ps1`
-    /// runs; the wgpu validation error that made `fragments` panic on
+    /// and non-zero when it did not. It is what the smoke round
+    /// (examples/devtools/src/bin/smoke.rs) runs; the wgpu validation
+    /// error that made `fragments` panic on
     /// first paint (an alignment the adapter and the device disagreed
     /// about) is exactly the class of bug no headless test can see.
     /// `None` — unset, or unparseable — is the ordinary endless run.

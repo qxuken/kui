@@ -92,12 +92,14 @@ script reads rather than a list somebody keeps:
 
 | Channel | Enrolled by | Run by |
 |---|---|---|
-| **windowed** | being an `[[example]]` of `kui` (`cargo metadata`) | [`scripts/smoke-examples.sh`](../scripts/smoke-examples.sh) on a unix host, [`scripts/smoke-windows.ps1`](../scripts/smoke-windows.ps1) on Windows: 120 frames under `KUI_SMOKE_FRAMES`, on both bases; `--node` adds the Node windows |
-| **headless** | `[package.metadata.kui] headless = [...]` in the crate's `Cargo.toml`; `npm run smoke` for Node; the round in `c/build.sh` | [`scripts/smoke-headless.sh --run`](../scripts/smoke-headless.sh), which CI runs |
+| **windowed** | being an `[[example]]` of `kui` | `cargo run -p kui-devtools --bin smoke` ([`devtools/src/bin/smoke.rs`](devtools/src/bin/smoke.rs)), on every platform: 120 frames under `KUI_SMOKE_FRAMES`, on both bases; `--node` adds the Node windows |
+| **headless** | `[package.metadata.kui] headless = [...]` in the crate's `Cargo.toml`; `npm run smoke` for Node; the round in `c/build.sh` | `cargo run -p kui-devtools --bin smoke -- --headless`, which CI runs |
 | **by hand** | the *By hand* column below | the round before a tag; results into `### Native verification` in the CHANGELOG |
 
 Two tests in the devtools crate pin the mirrors: every `[[example]]` is linked
-from this file, and every `headless` name is an example.
+from this file, and every `headless` name is an example — read through the
+same [`manifest`](devtools/src/manifest.rs) reader the `smoke` binary runs
+from, so the round and its pins cannot drift.
 
 ## Rust — [`rust/`](rust)
 

@@ -26,8 +26,8 @@ serde_json = "1"
 [features]
 # The windowed runner honours `KUI_SMOKE_FRAMES` in a dev build and, in a
 # release one, only when asked — this is the ask, for the addon: the Node
-# windowed examples close themselves under `scripts/smoke-examples.sh
-# --node`, which builds the addon with it. The prebuilds that ship never
+# windowed examples close themselves under the smoke round's `--node`
+# (examples/devtools/src/bin/smoke.rs), which builds the addon with it. The prebuilds that ship never
 # have it, for the reason `kui`'s own `smoke` feature gives.
 smoke = ["kui/smoke"]
 

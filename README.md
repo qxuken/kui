@@ -120,8 +120,8 @@ cargo run -p kui --example counter -- --headless   # the drive, no window
 ./examples/c/build.sh && ./target/debug/counter    # the same app from C (Windows: pwsh examples/c/build.ps1)
 cargo run -p kui-ffi --example c_panel    # a Rust host + a dlopened C panel
 cargo run -p kui-lua --example lua_panel  # a Rust host + a Lua panel sharing one frame
-scripts/smoke-examples.sh                 # every windowed example, 120 frames, both bases
-scripts/smoke-headless.sh --run           # every headless drive, what CI runs
+cargo run -p kui-devtools --bin smoke     # every windowed example, 120 frames, both bases
+cargo run -p kui-devtools --bin smoke -- --headless   # every headless drive, what CI runs
 ```
 
 The same app from Node with JSX — build the addon with
@@ -1088,11 +1088,12 @@ nothing does not fail fast in Forgejo, it queues, which in `ci.yml` would
 leave a run without a result long after `check` and `publish` had finished.
 
 `smoke-windows` does one thing more, and it is the only automated check in the
-repo that opens a window: [scripts/smoke-windows.ps1](scripts/smoke-windows.ps1)
+repo that opens a window: `cargo run -p kui-devtools --bin smoke`
+([examples/devtools/src/bin/smoke.rs](examples/devtools/src/bin/smoke.rs))
 runs every windowed example on the runner's own GPU for 120 frames apiece, on
-both theme bases, and fails on a crash or a hang;
-[scripts/smoke-examples.sh](scripts/smoke-examples.sh) is the same round on a
-unix host, and `--node` adds the Node windows. `KUI_SMOKE_FRAMES=n` is what
+both theme bases, and fails on a crash or a hang — one program for every
+platform, so the round cannot drift between a unix host and the Windows
+runner; `--node` adds the Node windows. `KUI_SMOKE_FRAMES=n` is what
 makes an example self-terminating, and any dev build honours it —
 `KUI_SMOKE_FRAMES=120 cargo run -p kui --example fragment` is the same check
 by hand. A release build ignores it unless built with `--features smoke`, so
@@ -1102,8 +1103,8 @@ found three crashes and a dead feature that the headless suite passes straight
 through (backlog W3–W6). Which example is in which round — windowed,
 headless, by hand — is enrolled from the manifests and the example itself
 rather than a list somebody keeps ([ADR 0021](docs/adr/0021-one-subject-per-example.md));
-[scripts/smoke-headless.sh](scripts/smoke-headless.sh) prints the headless
-round and `--run` runs it, which CI does.
+`smoke -- --headless` runs the headless round, which CI does, and
+`--headless --list` prints it.
 
 Pushing the tag does not check the commit twice. The push to main and the push
 of the tag that names it share a concurrency group keyed by the commit, and

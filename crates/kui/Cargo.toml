@@ -41,7 +41,8 @@ audio = ["dep:kira"]
 accesskit = ["dep:accesskit", "dep:accesskit_winit"]
 # Honour `KUI_SMOKE_FRAMES` in a build with debug assertions off. The hook
 # is always live in a dev build, which is where it is used by hand; this is
-# for `scripts/smoke-windows.ps1 -Release`, the only reason to want a
+# for the smoke round's `--release` (examples/devtools/src/bin/smoke.rs),
+# the only reason to want a
 # shipping build that closes its own window. See `Launcher::smoke_frames`.
 smoke = []
 
@@ -114,7 +115,7 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
 # file's basename, since every example binary in the workspace lands in one
 # flat target/debug/examples. Every one runs inside kui-devtools
 # (examples/devtools); `headless` below lists the ones whose `--headless`
-# is a self-check with an exit code, which scripts/smoke-headless.sh runs
+# is a self-check with an exit code, which `smoke --headless` runs
 # and a test in the devtools crate pins to this list.
 [package.metadata.kui]
 headless = [

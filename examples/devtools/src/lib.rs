@@ -25,6 +25,7 @@ use kui::{App, Appearance, Chrome, Color, Core, Extensions, Ui, UiEvent, Waker};
 
 mod drive;
 pub use drive::Drive;
+pub mod manifest;
 /// Where the panel sits: the core's own placement.
 pub use kui::DevtoolsDock as Dock;
 /// The dock's extents, for the window the harness sizes around them.
@@ -522,69 +523,14 @@ mod tests {
 /// rather than going quietly stale.
 #[cfg(test)]
 mod pins {
-    use std::path::{Path, PathBuf};
-
-    fn root() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
-    }
-
-    /// The `[[example]]` names and the `headless = [...]` list of one
-    /// manifest, read by line: a manifest is small and this needs no
-    /// parser to stay honest about.
-    fn manifest(path: &Path) -> (Vec<String>, Vec<String>) {
-        let text =
-            std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-        let mut examples = Vec::new();
-        let mut headless = Vec::new();
-        let mut in_example = false;
-        let mut in_metadata = false;
-        let mut in_headless = false;
-        for line in text.lines() {
-            let line = line.trim();
-            if line.starts_with('[') {
-                in_example = line == "[[example]]";
-                in_metadata = line == "[package.metadata.kui]";
-                continue;
-            }
-            if in_example && let Some(rest) = line.strip_prefix("name = \"") {
-                examples.push(rest.trim_end_matches('"').to_string());
-            }
-            if in_metadata && line.starts_with("headless = [") {
-                in_headless = !line.ends_with(']');
-                for name in line["headless = [".len()..]
-                    .trim_end_matches(']')
-                    .split(',')
-                {
-                    let name = name.trim().trim_matches('"');
-                    if !name.is_empty() {
-                        headless.push(name.to_string());
-                    }
-                }
-                continue;
-            }
-            if in_headless {
-                if line.starts_with(']') {
-                    in_headless = false;
-                } else {
-                    let name = line.trim_end_matches(',').trim_matches('"');
-                    if !name.is_empty() {
-                        headless.push(name.to_string());
-                    }
-                }
-            }
-        }
-        (examples, headless)
-    }
-
-    const CRATES: &[&str] = &["kui", "kui-core", "kui-ffi", "kui-lua"];
+    use crate::manifest::{CRATES, crate_manifest, node_roster, root};
 
     /// Every name in a `headless = [...]` list is an `[[example]]` of the
-    /// same crate: `scripts/smoke-headless.sh` runs what the list says.
+    /// same crate: `smoke --headless` runs what the list says.
     #[test]
     fn every_headless_name_is_an_example() {
         for krate in CRATES {
-            let (examples, headless) =
-                manifest(&root().join("crates").join(krate).join("Cargo.toml"));
+            let (examples, headless) = crate_manifest(krate);
             for name in &headless {
                 assert!(
                     examples.contains(name),
@@ -637,13 +583,16 @@ mod pins {
                     );
                 }
                 // And every example is in a smoke roster (`kui.windowed`
-                // or `kui.headless`), so a new one cannot be left out of a
-                // round by forgetting a second list; `bench.mjs` is a
-                // tool run by hand, not an example.
+                // or `kui.headless`), read the way `smoke` reads them, so
+                // a new one cannot be left out of a round by forgetting a
+                // second list; `bench.mjs` is a tool run by hand, not an
+                // example.
                 if let Some(stem) = name.strip_suffix(".tsx") {
+                    let entry = format!("{dir}/{stem}");
                     assert!(
-                        pkg.contains(&format!("\"{dir}/{stem}\"")),
-                        "examples/node/package.json's `kui` roster does not name {dir}/{stem}"
+                        node_roster("windowed").contains(&entry)
+                            || node_roster("headless").contains(&entry),
+                        "examples/node/package.json's `kui` roster does not name {entry}"
                     );
                 }
             }

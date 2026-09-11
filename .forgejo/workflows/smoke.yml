@@ -6,10 +6,11 @@
 # are executed on the machine the code was written for. What they do not buy
 # is behavioural coverage of the platform chrome or the AccessKit bridge:
 # neither windows_nc.rs nor access_bridge.rs has a test to run. The Windows
-# job goes one step further than the macOS one and runs
-# scripts/smoke-windows.ps1, which opens every windowed example on the
-# runner's own GPU for 120 frames - the layer `cargo test` never reaches,
-# and where three crashes were found in one round on 2026-09-08.
+# job goes one step further than the macOS one and runs the windowed
+# smoke round (`cargo run -p kui-devtools --bin smoke`), which opens every
+# windowed example on the runner's own GPU for 120 frames - the layer
+# `cargo test` never reaches, and where three crashes were found in one
+# round on 2026-09-08.
 # `cargo test --workspace` (not `-p kui`) because the platform crates are
 # what differ here, and the corpus and text tests are worth re-running on a
 # second set of system fonts.
@@ -135,19 +136,22 @@ jobs:
       # for 120 frames and has to exit 0; a wgpu validation panic is a
       # failure with its stderr attached. This is what found the three
       # Windows crashes on 2026-09-08 that every headless test passed
-      # through - see the script's own header.
+      # through - see the binary's own header. The same program runs the
+      # round on a unix host (backlog AR4), so the two cannot drift; this
+      # is the first platform it has not been run on by hand.
       #
       # It needs what `cargo test --workspace` does not: a session that can
       # open a window and an adapter to open it on. A headless runner fails
       # this step and passes the one above it, which is the honest split and
       # a reason the job stays `continue-on-error`.
       #
-      # `-Dev`: the profile the test step just built the examples in, so
-      # this is a fingerprint check and not a second compile of the whole
-      # GUI stack. Nothing the round looks for depends on optimisation.
+      # The dev profile (the default): the one the test step just built
+      # the examples in, so this is a fingerprint check and not a second
+      # compile of the whole GUI stack. Nothing the round looks for
+      # depends on optimisation.
       - name: Smoke the examples in a window
         shell: powershell
-        run: pwsh -NoProfile -File scripts/smoke-windows.ps1 -Dev
+        run: cargo run -p kui-devtools --bin smoke -- --windowed
 
       # The C story, both directions, on the platform where it differs most:
       # an MSVC-ABI compiler, an import library at each link, and no rpath.

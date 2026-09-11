@@ -1,6 +1,6 @@
 // The Node half of the headless smoke round: every example package.json's
 // `kui.headless` roster names, run with `--headless`, in order, stopping at
-// the first that fails. The roster is the one list — `scripts/smoke-examples.sh`
+// the first that fails. The roster is the one list — the `smoke` binary
 // reads `kui.windowed` from the same file for the windowed round, and the
 // harness's pin test checks both against the files on disk — so an example
 // added here cannot be left out of a round by forgetting a second list.

@@ -384,12 +384,13 @@ jobs:
       # assumption sit in the Node counter from 0.1.0-alpha.5 (a click
       # takes the keyboard, so `autofocus` no longer held when it typed)
       # without anything going red, which is what a drive with an exit
-      # code is for. `--run` for the reason build.sh takes it: the script
-      # prints the round when not running it, so the two cannot drift. The
-      # windowed examples are scripts/smoke-examples.sh's, on a machine
-      # with a display.
+      # code is for. One program for the round on every platform
+      # (examples/devtools/src/bin/smoke.rs, backlog AR4): it reads the
+      # rosters the pin tests read, prints the round and runs it. The
+      # windowed examples are its `--windowed` half, on a machine with a
+      # display.
       - name: The headless round
-        run: scripts/smoke-headless.sh --run
+        run: cargo run -p kui-devtools --bin smoke -- --headless
 
       # examples/node depends on packages/kui by `file:` path, so its
       # lockfile keeps a copy of that manifest version - and `npm ci` above
