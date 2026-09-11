@@ -557,10 +557,16 @@ impl Core {
         self.cells_at(key, grid, spec);
     }
 
-    fn cells_at(&mut self, key: Key, grid: &crate::cells::CellGrid<'_>, spec: NodeSpec) {
+    fn cells_at(&mut self, key: Key, grid: &crate::cells::CellGrid<'_>, mut spec: NodeSpec) {
         if self.tree.is_empty() {
             return;
         }
+        // The node's box is a box like any leaf's: its `hoverBg` lights
+        // and its `transition` tweens the bg, the opacity, the size. The
+        // cells inside it are a picture the app redraws, and nothing here
+        // touches them (AR5).
+        self.resolve_hover_style(key, &mut spec);
+        self.ease_spec(key, &mut spec);
         let cid = self.cells.add(key, grid);
         let parent = self.current();
         self.tree

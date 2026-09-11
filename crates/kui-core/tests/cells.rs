@@ -208,3 +208,71 @@ fn a_click_names_its_cell_and_the_screen_is_the_value() {
     assert_eq!(node.role, Role::Terminal);
     assert_eq!(node.value.as_deref(), Some("hello world\n  bye"));
 }
+
+/// The grid's box is a box like any leaf's (AR5): its `hover_bg` lights
+/// under the pointer and its `transition` tweens the bg. The cells inside
+/// are the app's picture and are not what a tween reaches.
+#[test]
+fn the_grids_box_hovers_and_eases_like_any_leaf() {
+    use kui_core::{Easing, InputEvent, Transition};
+    const BASE: Color = Color {
+        r: 0.0,
+        g: 0.0,
+        b: 0.0,
+        a: 1.0,
+    };
+    const HOVER: Color = Color {
+        r: 1.0,
+        g: 1.0,
+        b: 1.0,
+        a: 1.0,
+    };
+    let mut core = Core::new();
+    let cells = vec![Cell::new('a', 0xffffffff, 0); 4];
+    let draw = |core: &mut Core| {
+        let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.cells_keyed(
+            "term",
+            &CellGrid {
+                rows: 1,
+                cols: 4,
+                cells: &cells,
+                style: mono(),
+                cursor: None,
+                origin_line: 0,
+            },
+            NodeSpec::default()
+                .bg(BASE)
+                .hover_bg(HOVER)
+                .transition_with(Transition::ms(100.0).easing(Easing::Linear)),
+        );
+        ui.finish();
+    };
+    // The node's own bg is the first solid quad: it paints under the grid.
+    let bg = |core: &mut Core| {
+        let (dl, _) = core.output();
+        dl.quads
+            .iter()
+            .find(|q| q.kind == QuadKind::Solid)
+            .map(|q| q.color)
+            .expect("the grid's box has a bg")
+    };
+    core.set_time(0.0);
+    draw(&mut core);
+    assert_eq!(bg(&mut core), BASE);
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(5.0, 5.0)));
+    draw(&mut core);
+    assert_eq!(bg(&mut core), BASE, "the retarget starts where it was");
+    assert!(core.animating(), "a frame is owed");
+    core.set_time(0.05);
+    draw(&mut core);
+    let mid = bg(&mut core);
+    assert!(
+        mid.r > 0.1 && mid.r < 0.9,
+        "halfway through the tween the grid's bg is between the two: {mid:?}"
+    );
+    core.set_time(0.2);
+    draw(&mut core);
+    assert_eq!(bg(&mut core), HOVER, "a hovered grid takes its hover_bg");
+}
