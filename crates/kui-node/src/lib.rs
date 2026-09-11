@@ -13,7 +13,7 @@ use kui_ffi::CExtension;
 use kui_core::{
     Appearance, AudioCommand, AudioSpec, Color, Core, EditKey, FontId, FrameSample, FrameStats,
     ImageId, InputEvent, Key, KeyCode, KeyMods, KeyPress, Locale, Mods, MotionPref, MouseButton,
-    PlayOptions, PlaybackId, Rect, Size, SoundId, Span, SystemEnv, UiEvent, Value, Vec2,
+    PlayOptions, PlaybackId, Rect, Size, SoundId, SystemEnv, UiEvent, Value, Vec2,
     schema::color_hex_str,
 };
 use napi::bindgen_prelude::{Buffer, Float64Array, Uint8Array};
@@ -22,8 +22,6 @@ use serde_json::{Map as JsonMap, Value as Json};
 
 mod binary;
 mod schema;
-
-use schema::{color_of, parse_props_json};
 
 type Result<T> = napi::Result<T>;
 
@@ -79,9 +77,10 @@ fn json_of(v: &Value) -> Json {
 // Plain-object arguments
 //
 // Frames arrive as the binary IR stream and never as objects, but the
-// imperative calls beside them still take plain JS values: `measureText`
-// takes the same `<text>` content and style props a view would declare, and
-// `play` takes an options bag. These helpers read those.
+// imperative calls beside them still take plain JS values: `play` takes an
+// options bag, `key` and `mouse` take a modifiers object. These helpers read
+// those. `measureText` is not one of them — its text and style cross as
+// one encoded text element, read by `binary::measure_binary`.
 
 fn bool_prop(props: &JsonMap<String, Json>, key: &str) -> bool {
     props.get(key).and_then(Json::as_bool).unwrap_or(false)
@@ -90,128 +89,6 @@ fn bool_prop(props: &JsonMap<String, Json>, key: &str) -> bool {
 fn empty_props() -> &'static JsonMap<String, Json> {
     static EMPTY: std::sync::OnceLock<JsonMap<String, Json>> = std::sync::OnceLock::new();
     EMPTY.get_or_init(JsonMap::new)
-}
-
-fn parts(node: &JsonMap<String, Json>) -> (&JsonMap<String, Json>, Option<&Json>, Option<&str>) {
-    let props = node
-        .get("props")
-        .and_then(Json::as_object)
-        .unwrap_or(empty_props());
-    (
-        props,
-        node.get("children"),
-        node.get("key").and_then(Json::as_str),
-    )
-}
-
-/// Concatenated string content of a subtree (for <text>/<button> labels).
-fn collect_text(node: Option<&Json>, out: &mut String) {
-    match node {
-        None | Some(Json::Null) | Some(Json::Bool(_)) => {}
-        Some(Json::String(s)) => out.push_str(s),
-        Some(Json::Number(n)) => out.push_str(&n.to_string()),
-        Some(Json::Array(items)) => {
-            for item in items {
-                collect_text(Some(item), out);
-            }
-        }
-        Some(Json::Object(o)) => collect_text(o.get("children"), out),
-    }
-}
-
-#[derive(Clone, Copy, Default)]
-struct SpanStyle {
-    color: Option<Color>,
-    bold: bool,
-    italic: bool,
-    underline: bool,
-    strikethrough: bool,
-    bg: Option<Color>,
-}
-
-struct SpanPart {
-    text: String,
-    style: SpanStyle,
-}
-
-fn span_of(p: &SpanPart) -> Span<'_> {
-    let mut s = Span::new(&p.text);
-    if p.style.bold {
-        s = s.bold();
-    }
-    if p.style.italic {
-        s = s.italic();
-    }
-    if let Some(c) = p.style.color {
-        s = s.color(c);
-    }
-    if p.style.underline {
-        s = s.underline();
-    }
-    if p.style.strikethrough {
-        s = s.strikethrough();
-    }
-    if let Some(c) = p.style.bg {
-        s = s.bg(c);
-    }
-    s
-}
-
-fn has_span(node: Option<&Json>) -> bool {
-    match node {
-        Some(Json::Array(items)) => items.iter().any(|i| has_span(Some(i))),
-        Some(Json::Object(o)) => o.get("type").and_then(Json::as_str) == Some("span"),
-        _ => false,
-    }
-}
-
-/// Flattens `<text>` children into styled span parts; `<span>` nests and
-/// inherits (bold/italic accumulate, color overrides).
-fn collect_spans(node: Option<&Json>, inherit: SpanStyle, out: &mut Vec<SpanPart>) -> Result<()> {
-    match node {
-        None | Some(Json::Null) | Some(Json::Bool(_)) => Ok(()),
-        Some(Json::String(s)) => {
-            out.push(SpanPart {
-                text: s.clone(),
-                style: inherit,
-            });
-            Ok(())
-        }
-        Some(Json::Number(n)) => {
-            out.push(SpanPart {
-                text: n.to_string(),
-                style: inherit,
-            });
-            Ok(())
-        }
-        Some(Json::Array(items)) => {
-            for item in items {
-                collect_spans(Some(item), inherit, out)?;
-            }
-            Ok(())
-        }
-        Some(Json::Object(o)) => {
-            if o.get("type").and_then(Json::as_str) != Some("span") {
-                return Err(err("only strings and <span> may nest inside rich <text>"));
-            }
-            let (props, children, _) = parts(o);
-            let style = SpanStyle {
-                color: match props.get("color") {
-                    Some(v) => Some(color_of(v)?),
-                    None => inherit.color,
-                },
-                bold: inherit.bold || bool_prop(props, "bold"),
-                italic: inherit.italic || bool_prop(props, "italic"),
-                underline: inherit.underline || bool_prop(props, "underline"),
-                strikethrough: inherit.strikethrough || bool_prop(props, "strikethrough"),
-                bg: match props.get("bg") {
-                    Some(v) => Some(color_of(v)?),
-                    None => inherit.bg,
-                },
-            };
-            collect_spans(children, style, out)
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2112,29 +1989,27 @@ macro_rules! core_methods {
 
             // -- Queries ---------------------------------------------------
 
-            /// Measures text the way layout would, without adding a node:
-            /// `{width, height, lines}` in logical px, wrapped to `maxWidth`
-            /// when given. `content` is whatever `<text>` takes (a string, or
-            /// children with `<span>`s); `style` the `<text>` props (`size`,
-            /// `font`, `wrap`, `maxLines`, `ellipsis`, ...). Works before the
-            /// first frame; a window answers at its own scale once a frame has
-            /// run. Size a column to its widest label, or pick the tier that
-            /// fits, from these numbers instead of constants found by
-            /// screenshot. The metrics do not scale linearly: `measured ×
-            /// zoom` is not `measure(size × zoom)`, because shaping rounds
-            /// per size, so anything that zooms measures at the size it
-            /// draws.
-            #[napi(
-                ts_args_type = "content: KuiNode, style?: TextProps, maxWidth?: number",
-                ts_return_type = "TextMetrics"
-            )]
-            pub fn measure_text(
+            /// `measureText`'s door (index.js adds `measureText` itself):
+            /// one `<text>` element as `encoder.encodeText` writes it, and
+            /// the answer is what that text lays out to — `{width, height,
+            /// lines}` in logical px at the context's scale, capped to
+            /// `maxWidth` when given. The metrics do not scale linearly:
+            /// `measured × zoom` is not `measure(size × zoom)`, because
+            /// shaping rounds per size, so anything that zooms measures at
+            /// the size it draws.
+            #[napi(ts_return_type = "TextMetrics")]
+            pub fn measure_text_binary(
                 &mut self,
-                content: Json,
-                style: Option<Json>,
+                stream: Float64Array,
+                strings: Uint8Array,
                 max_width: Option<f64>,
             ) -> Result<Json> {
-                measure_text_impl(self.$core(), &content, style.as_ref(), max_width)
+                let m = binary::measure_binary(self.$core(), &stream, &strings, max_width)?;
+                let mut o = JsonMap::new();
+                o.insert("width".into(), Json::from(m.width as f64));
+                o.insert("height".into(), Json::from(m.height as f64));
+                o.insert("lines".into(), Json::from(m.lines));
+                Ok(Json::Object(o))
             }
 
             /// Drains the warnings the core raised since the last call
@@ -3063,35 +2938,6 @@ fn load_extension(
     let ext = unsafe { CExtension::open(&path) }.map_err(err)?;
     extensions.push_as(namespace, Box::new(ext)).map_err(err)
 }
-/// `measureText(content, style, maxWidth)` → `{width, height, lines}`.
-fn measure_text_impl(
-    core: &mut Core,
-    content: &Json,
-    style: Option<&Json>,
-    max_width: Option<f64>,
-) -> Result<Json> {
-    let props = style.and_then(Json::as_object).unwrap_or(empty_props());
-    let style = parse_props_json(props)?.style;
-    let max_w = max_width
-        .filter(|w| w.is_finite() && *w > 0.0)
-        .map(|w| w as f32);
-    let m = if has_span(Some(content)) {
-        let mut parts_out = Vec::new();
-        collect_spans(Some(content), SpanStyle::default(), &mut parts_out)?;
-        let spans: Vec<Span<'_>> = parts_out.iter().map(span_of).collect();
-        core.measure_rich_text(&spans, &style, max_w)
-    } else {
-        let mut text = String::new();
-        collect_text(Some(content), &mut text);
-        core.measure_text(&text, &style, max_w)
-    };
-    let mut o = JsonMap::new();
-    o.insert("width".into(), Json::from(m.width as f64));
-    o.insert("height".into(), Json::from(m.height as f64));
-    o.insert("lines".into(), Json::from(m.lines));
-    Ok(Json::Object(o))
-}
-
 /// `access(key, action, arg)`: `arg` is the new text as a string
 /// (`setValue`, `replaceSelectedText`), or `{anchor: {run, character},
 /// focus: {run, character}}` for `setTextSelection` (run keys from the

@@ -193,7 +193,7 @@ fn payload(s: &str) -> Result<kui_core::Value> {
     Ok(value_of(&json))
 }
 
-/// The binary prop parser: same structure as `schema::parse_props_json` —
+/// The binary prop parser —
 /// composites hand-written, everything else read by schema kind and applied
 /// through the shared table.
 fn read_props(r: &mut Reader<'_>) -> Result<PropsOut> {
@@ -349,6 +349,83 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut) -> Result<PropsOut> {
     Ok(out)
 }
 
+/// The span list of a rich text: a count, then per span its text and the
+/// flags the encoder's `collectSpans` packed (1 bold, 2 italic, 4 has
+/// colour, 8 underline, 16 strikethrough, 32 has bg) with the two colours.
+fn read_spans<'a>(r: &mut Reader<'a>) -> Result<Vec<Span<'a>>> {
+    let nspans = r.u()? as usize;
+    let mut spans = Vec::with_capacity(nspans);
+    for _ in 0..nspans {
+        let text = r.req_str()?;
+        let flags = r.u()?;
+        let color = r.f()?;
+        let bg = r.f()?;
+        let mut s = Span::new(text);
+        if flags & 1 != 0 {
+            s = s.bold();
+        }
+        if flags & 2 != 0 {
+            s = s.italic();
+        }
+        if flags & 4 != 0 {
+            s = s.color(color_num(color as u32));
+        }
+        if flags & 8 != 0 {
+            s = s.underline();
+        }
+        if flags & 16 != 0 {
+            s = s.strikethrough();
+        }
+        if flags & 32 != 0 {
+            s = s.bg(color_num(bg as u32));
+        }
+        spans.push(s);
+    }
+    Ok(spans)
+}
+
+/// `measureText`'s door: `stream` is one text element as the encoder's
+/// `encodeText` writes it — the version, then `OP_TEXT` or `OP_RICH_TEXT`
+/// with its content and style props — and the answer is what the same
+/// text would lay out to. One reader for the frame and the query, so a
+/// measured label and a drawn one are shaped from the same runs.
+pub fn measure_binary(
+    core: &mut kui_core::Core,
+    stream: &[f64],
+    strings: &[u8],
+    max_width: Option<f64>,
+) -> Result<kui_core::TextMetrics> {
+    let mut r = Reader {
+        s: stream,
+        i: 0,
+        strings,
+    };
+    let version = r.u()?;
+    if version != VERSION {
+        return Err(err(format!(
+            "binary text version {version} != addon version {VERSION} — encoder and addon are out of sync"
+        )));
+    }
+    let max_w = max_width
+        .filter(|w| w.is_finite() && *w > 0.0)
+        .map(|w| w as f32);
+    match r.u()? {
+        OP_TEXT => {
+            let content = r.req_str()?;
+            let p = read_props(&mut r)?;
+            Ok(core.measure_text(content, &p.style, max_w))
+        }
+        OP_RICH_TEXT => {
+            let p = read_props(&mut r)?;
+            let spans = read_spans(&mut r)?;
+            Ok(core.measure_rich_text(&spans, &p.style, max_w))
+        }
+        op => Err(err(format!(
+            "measureText expects one text element, got op {op}"
+        ))),
+    }
+}
+
 fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<()> {
     match op {
         OP_OPEN => {
@@ -378,34 +455,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
         }
         OP_RICH_TEXT => {
             let p = read_props(r)?;
-            let nspans = r.u()? as usize;
-            let mut spans = Vec::with_capacity(nspans);
-            for _ in 0..nspans {
-                let text = r.req_str()?;
-                let flags = r.u()?;
-                let color = r.f()?;
-                let bg = r.f()?;
-                let mut s = Span::new(text);
-                if flags & 1 != 0 {
-                    s = s.bold();
-                }
-                if flags & 2 != 0 {
-                    s = s.italic();
-                }
-                if flags & 4 != 0 {
-                    s = s.color(color_num(color as u32));
-                }
-                if flags & 8 != 0 {
-                    s = s.underline();
-                }
-                if flags & 16 != 0 {
-                    s = s.strikethrough();
-                }
-                if flags & 32 != 0 {
-                    s = s.bg(color_num(bg as u32));
-                }
-                spans.push(s);
-            }
+            let spans = read_spans(r)?;
             ui.core().rich_text_node(&spans, p.style);
             Ok(())
         }

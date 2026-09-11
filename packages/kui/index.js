@@ -64,6 +64,20 @@ KuiWindow.prototype.setView = function setView(tree, window) {
   reportUnknown(this, unknown);
 };
 
+// `measureText(content, style, maxWidth)`: the text crosses the way a
+// frame's does — one encoded `<text>` element — so the label a view
+// measures is flattened and styled by exactly the code that lowers the one
+// it draws. A style name the schema does not know is reported like a
+// view's would be.
+function measureText(content, style, maxWidth) {
+  const { stream, strings, unknown } = encoder.encodeText(content, style);
+  const m = this.measureTextBinary(stream, strings, maxWidth);
+  reportUnknown(this, unknown);
+  return m;
+}
+Ctx.prototype.measureText = measureText;
+KuiWindow.prototype.measureText = measureText;
+
 // ---------------------------------------------------------------------------
 // One loop, two surfaces.
 //

@@ -942,6 +942,25 @@ test('measureText answers what layout gives the text', () => {
   assert.ok(rich.width > 0 && rich.lines === 1);
 });
 
+// A measured rich text and a drawn one are flattened by the same encoder
+// and read by the same decoder, so their widths agree to the pixel — the
+// invariant a second span walker in the addon could not promise.
+test('measureText of a rich tree is the width the same tree draws at', () => {
+  const ctx = new Ctx();
+  const content = ['hello ', el('span', { bold: true }, ['big ', el('span', { italic: true }, ['world'])])];
+  const m = ctx.measureText(content, { size: 14 });
+  const plain = ctx.measureText('hello big world', { size: 14 });
+  assert.notEqual(m.width, plain.width, 'bold and italic runs shape differently from plain text');
+  ctx.frame(320, 240, 1, box({}, [box({ bg: '#ffffff' }, [el('text', { size: 14 }, content)])]));
+  const q = decodeQuads(ctx.quads()).find((q) => q.kind === 0);
+  assert.equal(q.w, m.width);
+  assert.equal(q.h, m.height);
+  // A style name the schema does not know is reported, as a view's would be.
+  ctx.setDiagnostics(true);
+  ctx.measureText('x', { size: 14, sizee: 3 });
+  assert.ok(ctx.warnings().some((w) => w.code === 'unknown-prop'), 'unknown style prop reported');
+});
+
 // A terminal's screen as one node (backlog C20): four entries a cell in a
 // Uint32Array, a click that names its cell, and the screen as the access
 // tree's value.

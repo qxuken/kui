@@ -1674,20 +1674,16 @@ export declare class Ctx {
    */
   setTheme(theme: ThemeOverrides): void
   /**
-   * Measures text the way layout would, without adding a node:
-   * `{width, height, lines}` in logical px, wrapped to `maxWidth`
-   * when given. `content` is whatever `<text>` takes (a string, or
-   * children with `<span>`s); `style` the `<text>` props (`size`,
-   * `font`, `wrap`, `maxLines`, `ellipsis`, ...). Works before the
-   * first frame; a window answers at its own scale once a frame has
-   * run. Size a column to its widest label, or pick the tier that
-   * fits, from these numbers instead of constants found by
-   * screenshot. The metrics do not scale linearly: `measured ×
-   * zoom` is not `measure(size × zoom)`, because shaping rounds
-   * per size, so anything that zooms measures at the size it
-   * draws.
+   * `measureText`'s door (index.js adds `measureText` itself):
+   * one `<text>` element as `encoder.encodeText` writes it, and
+   * the answer is what that text lays out to — `{width, height,
+   * lines}` in logical px at the context's scale, capped to
+   * `maxWidth` when given. The metrics do not scale linearly:
+   * `measured × zoom` is not `measure(size × zoom)`, because
+   * shaping rounds per size, so anything that zooms measures at
+   * the size it draws.
    */
-  measureText(content: KuiNode, style?: TextProps, maxWidth?: number): TextMetrics
+  measureTextBinary(stream: Float64Array, strings: Uint8Array, maxWidth?: number | undefined | null): TextMetrics
   /**
    * Drains the warnings the core raised since the last call
    * (see `Warning`), each distinct (code, node) pair once.
@@ -2418,20 +2414,16 @@ export declare class KuiWindow {
    */
   setTheme(theme: ThemeOverrides): void
   /**
-   * Measures text the way layout would, without adding a node:
-   * `{width, height, lines}` in logical px, wrapped to `maxWidth`
-   * when given. `content` is whatever `<text>` takes (a string, or
-   * children with `<span>`s); `style` the `<text>` props (`size`,
-   * `font`, `wrap`, `maxLines`, `ellipsis`, ...). Works before the
-   * first frame; a window answers at its own scale once a frame has
-   * run. Size a column to its widest label, or pick the tier that
-   * fits, from these numbers instead of constants found by
-   * screenshot. The metrics do not scale linearly: `measured ×
-   * zoom` is not `measure(size × zoom)`, because shaping rounds
-   * per size, so anything that zooms measures at the size it
-   * draws.
+   * `measureText`'s door (index.js adds `measureText` itself):
+   * one `<text>` element as `encoder.encodeText` writes it, and
+   * the answer is what that text lays out to — `{width, height,
+   * lines}` in logical px at the context's scale, capped to
+   * `maxWidth` when given. The metrics do not scale linearly:
+   * `measured × zoom` is not `measure(size × zoom)`, because
+   * shaping rounds per size, so anything that zooms measures at
+   * the size it draws.
    */
-  measureText(content: KuiNode, style?: TextProps, maxWidth?: number): TextMetrics
+  measureTextBinary(stream: Float64Array, strings: Uint8Array, maxWidth?: number | undefined | null): TextMetrics
   /**
    * Drains the warnings the core raised since the last call
    * (see `Warning`), each distinct (code, node) pair once.
@@ -2900,6 +2892,12 @@ export interface Ctx {
   /** Lowers a JSX tree into one frame: encodes it to the flat binary IR
    *  stream, then one zero-copy boundary crossing lowers it. */
   frame(width: number, height: number, scale: number, tree: KuiNode): void;
+  /** What `content` measures under `style` as one `<text>` would lay out —
+   *  logical px, and the line count — capped to `maxWidth` when given. The
+   *  text crosses encoded like a frame's, so measuring and drawing shape
+   *  the same runs. A headless context answers at scale 1 before its first
+   *  frame; a window at its own scale once a frame has run. */
+  measureText(content: KuiNode, style?: TextProps, maxWidth?: number): TextMetrics;
 }
 
 export interface KuiWindow {
@@ -2908,6 +2906,8 @@ export interface KuiWindow {
   /** Shows `tree` in one window: `'main'` when `window` is left out, else
    *  a name `windows()` lists. */
   setView(tree: KuiNode, window?: string): void;
+  /** See `Ctx.measureText`. */
+  measureText(content: KuiNode, style?: TextProps, maxWidth?: number): TextMetrics;
 }
 
 /** What both drivers take. `S` is the surface the loop drives, and the

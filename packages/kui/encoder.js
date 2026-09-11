@@ -749,5 +749,18 @@ export function createEncoder(P) {
       // is valid until the next encode().
       return { stream: f.subarray(0, fi), strings: u.subarray(0, ui), unknown };
     },
+    // One `<text>` element and nothing else — what `measureText` sends, so
+    // a measured label is flattened and its style read by the same code
+    // that lowers the drawn one. `content` is what a `<text>` would hold
+    // (strings, numbers, `<span>`s), `style` its props.
+    encodeText(content, style) {
+      fi = 0;
+      ui = 0;
+      unknown = [];
+      reserve(96);
+      f[fi++] = VERSION;
+      element({ type: 'text', props: style ?? {}, children: content });
+      return { stream: f.subarray(0, fi), strings: u.subarray(0, ui), unknown };
+    },
   };
 }
