@@ -228,15 +228,15 @@ impl Core {
                     events.push((name, v.clone()));
                 }
             }
-            let layer = if self.any_float && self.float_root.len() > i && self.float_root[i] != NIL
-            {
-                layer_of
-                    .get(&tree.keys[self.float_root[i] as usize])
-                    .copied()
-                    .unwrap_or(0)
-            } else {
-                0
-            };
+            let layer =
+                if self.tree.any_float && self.float_root.len() > i && self.float_root[i] != NIL {
+                    layer_of
+                        .get(&tree.keys[self.float_root[i] as usize])
+                        .copied()
+                        .unwrap_or(0)
+                } else {
+                    0
+                };
             let floor = |m: crate::spec::Min| (!m.is_fit()).then(|| m.resolved());
             let ceiling = |v: f32| v.is_finite().then_some(v);
             let l = &spec.layout;

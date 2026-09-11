@@ -70,7 +70,7 @@ impl Core {
             // A region inside the range is a ring of its own, not a part
             // of this one — the range's own root excepted, which is the
             // region being walked.
-            if self.any_region && i != start && self.tree.specs[i].interact().focus_region {
+            if self.tree.any_region && i != start && self.tree.specs[i].interact().focus_region {
                 i = self.tree.subtree_end(i);
                 continue;
             }
@@ -121,7 +121,7 @@ impl Core {
     /// The region in effect's index in the last frame, if the frame
     /// declared it as one.
     fn region_index(&self) -> Option<usize> {
-        if !self.any_region {
+        if !self.tree.any_region {
             return None;
         }
         let key = self.region?;
@@ -135,7 +135,7 @@ impl Core {
     /// The region enclosing node `i` — the nearest ancestor-or-self
     /// declaring `focus_region` — or `None` for the main ring.
     pub(crate) fn region_of(&self, i: usize) -> Option<Key> {
-        if !self.any_region {
+        if !self.tree.any_region {
             return None;
         }
         let mut n = i as u32;
@@ -184,7 +184,7 @@ impl Core {
     /// left (`docs/adr/0022`, decision 3). A press on nothing at all is a
     /// press on the main ring.
     pub(crate) fn settle_region(&mut self, key: Option<Key>) {
-        if !self.any_region {
+        if !self.tree.any_region {
             return;
         }
         self.region = key
@@ -249,7 +249,7 @@ impl Core {
     ///   which during a build it may not be yet (decision 3).
     pub(crate) fn resolve_regions(&mut self) {
         let Some(target) = self.pending_region.take() else {
-            if self.any_region || self.region.is_some() {
+            if self.tree.any_region || self.region.is_some() {
                 self.follow_region();
             }
             return;
@@ -261,7 +261,7 @@ impl Core {
                 .keys
                 .iter()
                 .position(|x| *x == k)
-                .filter(|&i| self.any_region && self.tree.specs[i].interact().focus_region)
+                .filter(|&i| self.tree.any_region && self.tree.specs[i].interact().focus_region)
                 .map(|_| Some(k)),
             RegionTarget::Label(ref label) => {
                 // The first in tree order, as `key_of` resolves a label,
@@ -273,7 +273,7 @@ impl Core {
                 }
                 hits.first()
                     .and_then(|k| self.tree.keys.iter().position(|x| x == k))
-                    .filter(|&i| self.any_region && self.tree.specs[i].interact().focus_region)
+                    .filter(|&i| self.tree.any_region && self.tree.specs[i].interact().focus_region)
                     .map(|i| Some(self.tree.keys[i]))
             }
         };
@@ -400,7 +400,7 @@ impl Core {
         // This frame's modals in tree order, each carrying the focus it
         // displaced when it first appeared.
         let mut now: Vec<(Key, Option<Key>)> = Vec::new();
-        if self.any_modal {
+        if self.tree.any_modal {
             for i in 0..self.tree.len() {
                 if self.tree.specs[i].events().modal.is_none() {
                     continue;
@@ -567,7 +567,7 @@ impl Core {
         if key != self.focus {
             self.region_held = false;
         }
-        if self.any_region
+        if self.tree.any_region
             && let Some(k) = key
             && let Some(i) = self.tree.keys.iter().position(|x| *x == k)
         {

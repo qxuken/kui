@@ -361,12 +361,12 @@ impl Core {
         // An explicit `reveal` after the caret nudge: the app asked for
         // this one, so it wins the offset if both want to move it.
         self.apply_pending_reveal();
-        if self.any_slide {
+        if self.tree.any_slide {
             self.ease_positions();
         }
         // Positions are final: report the rects views asked about, and
         // look for the misconfigurations that would otherwise fail silently.
-        if self.any_layout {
+        if self.tree.any_layout {
             self.emit_layout_events();
         }
         self.diag
@@ -389,7 +389,7 @@ impl Core {
         self.sync_windows();
         // The frame's modal scope, and the focus it moves: emission reads
         // it (everything outside is inert) and so does the Tab ring.
-        self.modal = if self.any_modal {
+        self.modal = if self.tree.any_modal {
             self.modal_scope()
         } else {
             None
@@ -524,14 +524,12 @@ impl Core {
         self.display.scale = scale;
         self.display.time = self.anim.time().unwrap_or(0.0) as f32;
 
-        // configure_root can also introduce a clipper, or a fade.
-        let root_clips = !self.tree.is_empty() && self.tree.specs[0].layout.clips();
-        let any_clip = self.any_clip || root_clips;
-        let any_rounded_clip = self.any_rounded_clip
-            || (root_clips && self.tree.specs[0].style.radius != crate::display::SQUARE);
-        let any_opacity =
-            self.any_opacity || (!self.tree.is_empty() && self.tree.specs[0].style.opacity < 1.0);
-        let any_float = self.any_float;
+        // Read once each: what the frame declared, noted by `Tree::push`
+        // (and by `configure_root`, whose spec replaces the root's).
+        let any_clip = self.tree.any_clip;
+        let any_rounded_clip = self.tree.any_rounded_clip;
+        let any_opacity = self.tree.any_opacity;
+        let any_float = self.tree.any_float;
         // Read once: every per-node selection check below is behind it.
         let any_selectable = self.tree.any_selectable;
 

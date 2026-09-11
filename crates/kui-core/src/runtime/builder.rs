@@ -76,12 +76,7 @@ impl Core {
         }
         if !self.tree.is_empty() {
             self.ease_spec(Key::ROOT, &mut spec);
-            if spec.events().on_layout.is_some() {
-                self.any_layout = true;
-            }
-            if spec.anim().exit.is_some() && spec.transition.is_some() {
-                self.any_exit = true;
-            }
+            self.tree.note(&spec, &NodeContent::Container);
             self.tree.specs[0] = spec;
         }
     }
@@ -411,9 +406,9 @@ impl Core {
     }
 
     /// `open_with_key` for a node that is a box in every way but what it
-    /// paints: the caller supplies the content and closes the node. Every
-    /// `any_*` flag below is a box's, and a `fragment` earns all of them
-    /// because it clips, floats, fades and animates like one.
+    /// paints: the caller supplies the content and closes the node. What
+    /// the node asks of the frame is noted by `Tree::push`, the same for a
+    /// box, a `fragment` and every leaf.
     fn open_content(&mut self, key: Key, mut spec: NodeSpec, content: NodeContent) {
         if self.tree.is_empty() {
             return;
@@ -430,48 +425,6 @@ impl Core {
         }
         self.resolve_hover_style(key, &mut spec);
         self.ease_spec(key, &mut spec);
-        if spec.layout.clips() {
-            self.any_clip = true;
-            self.any_rounded_clip |= spec.style.radius != crate::display::SQUARE;
-        }
-        if spec.style.opacity < 1.0 {
-            self.any_opacity = true;
-        }
-        if spec.layout.float.is_some() {
-            self.any_float = true;
-        }
-        if spec.animate {
-            // One node asking is the whole window asking; the flag is
-            // cleared when the frame is taken, like any other request.
-            self.frame_requested = true;
-        }
-        // Each boxed group is tested once, not once per flag it can set: a
-        // node declaring no events and no animation reaches `Tree::push`
-        // after two null checks.
-        if let Some(events) = spec.events.as_deref() {
-            if events.modal.is_some() {
-                self.any_modal = true;
-            }
-            if events.on_layout.is_some() {
-                self.any_layout = true;
-            }
-        }
-        if spec.interact.as_deref().is_some_and(|i| i.focus_region) {
-            self.any_region = true;
-        }
-        if spec.transition.is_some() {
-            match spec.anim.as_deref() {
-                Some(anim) => {
-                    if spec.slide || anim.enter.is_some_and(|e| e.offsets()) {
-                        self.any_slide = true;
-                    }
-                    if anim.exit.is_some() {
-                        self.any_exit = true;
-                    }
-                }
-                None => self.any_slide |= spec.slide,
-            }
-        }
         let parent = self.current();
         let idx = self.tree.push(parent, key, self.origin, spec, content);
         self.stack.push(idx);
@@ -558,12 +511,6 @@ impl Core {
         }
         let key = self.child_key(label);
         self.ease_spec(key, &mut spec);
-        if spec.events().on_layout.is_some() {
-            self.any_layout = true;
-        }
-        if spec.anim().exit.is_some() && spec.transition.is_some() {
-            self.any_exit = true;
-        }
         // The same stamp the two text funnels make: an editor that named
         // no text colour and no selection tint takes the theme's, so a
         // field and a label beside it agree on both (ADR 0019).
@@ -620,12 +567,6 @@ impl Core {
         let key = self.auto_key();
         self.resolve_hover_style(key, &mut spec);
         self.ease_spec(key, &mut spec);
-        if spec.events().on_layout.is_some() {
-            self.any_layout = true;
-        }
-        if spec.anim().exit.is_some() && spec.transition.is_some() {
-            self.any_exit = true;
-        }
         let parent = self.current();
         self.tree
             .push(parent, key, self.origin, spec, NodeContent::Image(id));
@@ -851,28 +792,6 @@ impl Core {
         spec.layout.clip = false;
         spec.layout.scroll_x = false;
         spec.layout.scroll_y = false;
-        self.any_float = true;
-        if spec.style.opacity < 1.0 {
-            self.any_opacity = true;
-        }
-        if let Some(events) = spec.events.as_deref()
-            && events.on_layout.is_some()
-        {
-            self.any_layout = true;
-        }
-        if spec.transition.is_some() {
-            match spec.anim.as_deref() {
-                Some(anim) => {
-                    if spec.slide || anim.enter.is_some_and(|e| e.offsets()) {
-                        self.any_slide = true;
-                    }
-                    if anim.exit.is_some() {
-                        self.any_exit = true;
-                    }
-                }
-                None => self.any_slide |= spec.slide,
-            }
-        }
         let parent = self.current();
         self.tree
             .push(parent, key, self.origin, spec, NodeContent::Line(id));

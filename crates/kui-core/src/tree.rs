@@ -99,6 +99,30 @@ pub struct Tree {
     pub any_wrap: bool,
     /// Whether any node is text (a `Text` or `Edit` content).
     pub any_text: bool,
+    /// Whether any node clips (`clip`, or an overflow that scrolls).
+    pub any_clip: bool,
+    /// Whether any node clips *and* has a radius, so the clip its
+    /// descendants inherit is rounded. Separate from `any_clip`: the
+    /// per-corner bookkeeping is skipped for the ordinary square clip.
+    pub any_rounded_clip: bool,
+    /// Whether any node fades (`opacity` below one).
+    pub any_opacity: bool,
+    /// Whether any node declares `modal` (ADR 0003).
+    pub any_modal: bool,
+    /// Whether any node declares `focus_region` (ADR 0022).
+    pub any_region: bool,
+    /// Whether any node eases its position (`slide`, or an `enter` with
+    /// an offset) under a transition.
+    pub any_slide: bool,
+    /// Whether any node declares `on_layout`, so the rect report can skip
+    /// the walk.
+    pub any_layout: bool,
+    /// Whether any node declares a workable `exit` (one under a
+    /// transition). Gates the tree swap and the key diff.
+    pub any_exit: bool,
+    /// Whether any node asked for the next frame (`animate`): one node
+    /// asking is the whole window asking.
+    pub any_animate: bool,
     /// The data index of every node opened with one (`open_indexed`), by
     /// node. A side list rather than a column, because it is a virtual
     /// list's rows and nothing else: a frame that builds none is one empty
@@ -152,7 +176,62 @@ impl Tree {
         self.any_wrap = false;
         self.any_text = false;
         self.any_selectable = false;
+        self.any_clip = false;
+        self.any_rounded_clip = false;
+        self.any_opacity = false;
+        self.any_modal = false;
+        self.any_region = false;
+        self.any_slide = false;
+        self.any_layout = false;
+        self.any_exit = false;
+        self.any_animate = false;
         self.indexed.clear();
+    }
+
+    /// Notes what a spec asks of the frame, so a pass whose work exists
+    /// for one feature can skip it when no node declared that feature.
+    /// Called by `push` for every node, and by the root paths that
+    /// replace a spec in place — the one door, so a leaf cannot forget a
+    /// flag a box would have set (an `image` once set two of these and
+    /// painted opaque when it was the frame's only fade).
+    ///
+    /// Each boxed group is tested once, not once per flag it can set: a
+    /// node declaring no events and no animation is done after two null
+    /// checks (C15).
+    #[inline]
+    pub fn note(&mut self, spec: &NodeSpec, content: &NodeContent) {
+        self.any_float |= spec.layout.float.is_some();
+        self.any_wrap |= spec.layout.wrap;
+        self.any_text |= matches!(
+            content,
+            NodeContent::Text(_) | NodeContent::Edit(_) | NodeContent::Cells(_)
+        );
+        // Through the box rather than through `interact()`: a node that
+        // declares no interaction group is answered by one null check
+        // instead of a read through the empty static (C15).
+        if let Some(i) = spec.interact.as_deref() {
+            self.any_selectable |= i.selectable;
+            self.any_region |= i.focus_region;
+        }
+        if spec.layout.clips() {
+            self.any_clip = true;
+            self.any_rounded_clip |= spec.style.radius != crate::display::SQUARE;
+        }
+        self.any_opacity |= spec.style.opacity < 1.0;
+        self.any_animate |= spec.animate;
+        if let Some(events) = spec.events.as_deref() {
+            self.any_modal |= events.modal.is_some();
+            self.any_layout |= events.on_layout.is_some();
+        }
+        if spec.transition.is_some() {
+            match spec.anim.as_deref() {
+                Some(anim) => {
+                    self.any_slide |= spec.slide || anim.enter.is_some_and(|e| e.offsets());
+                    self.any_exit |= anim.exit.is_some();
+                }
+                None => self.any_slide |= spec.slide,
+            }
+        }
     }
 
     #[inline]
@@ -166,16 +245,7 @@ impl Tree {
     ) -> u32 {
         let idx = self.keys.len() as u32;
         // Read before the move, while the spec is in cache anyway.
-        self.any_float |= spec.layout.float.is_some();
-        self.any_wrap |= spec.layout.wrap;
-        self.any_text |= matches!(
-            content,
-            NodeContent::Text(_) | NodeContent::Edit(_) | NodeContent::Cells(_)
-        );
-        // Through the box rather than through `interact()`: a node that
-        // declares no interaction group is answered by one null check
-        // instead of a read through the empty static (C15).
-        self.any_selectable |= spec.interact.as_deref().is_some_and(|i| i.selectable);
+        self.note(&spec, &content);
         self.keys.push(key);
         self.origins.push(origin);
         self.specs.push(spec);

@@ -892,9 +892,7 @@ impl Core {
         inner.cursor = None;
         inner.window = None;
         self.ease_spec(key, &mut inner);
-        if inner.anim().exit.is_some() && inner.transition.is_some() {
-            self.any_exit = true;
-        }
+        self.tree.note(&inner, &crate::tree::NodeContent::Container);
         self.tree.specs[app] = inner;
 
         let mut outer = self.tree.specs[0].clone();
@@ -907,14 +905,7 @@ impl Core {
         outer.disabled = spec.disabled;
         outer.cursor = spec.cursor;
         outer.window = spec.window;
-        if let Some(ev) = outer.events.as_deref() {
-            if ev.on_layout.is_some() {
-                self.any_layout = true;
-            }
-            if ev.modal.is_some() {
-                self.any_modal = true;
-            }
-        }
+        self.tree.note(&outer, &crate::tree::NodeContent::Container);
         self.tree.specs[0] = outer;
     }
 

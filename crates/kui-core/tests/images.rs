@@ -99,3 +99,56 @@ fn scale_two_doubles_physical_rect() {
     assert_eq!((quads[0].rect.w, quads[0].rect.h), (80.0, 40.0));
     assert_eq!((quads[0].uv[2], quads[0].uv[3]), (40, 20));
 }
+
+// The two below pin what every leaf door owes the frame: the flags that let
+// emission skip a pass are noted where the node is pushed, not by the door
+// that pushed it. Before they were, an `image` set two of nine, so an
+// image that was the frame's only translucent node painted opaque and one
+// that was its only float was culled under its parent's clip.
+
+#[test]
+fn a_lone_translucent_image_fades() {
+    let mut core = Core::new();
+    let id = core.resources.add_image(10, 10, rgba(10, 10));
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.image(
+        id,
+        NodeSpec::column()
+            .width(Sizing::Fixed(10.0))
+            .height(Sizing::Fixed(10.0))
+            .opacity(0.5),
+    );
+    ui.finish();
+    let quads = image_quads(&mut core);
+    assert_eq!(quads.len(), 1);
+    assert_eq!(
+        quads[0].color.a, 0.5,
+        "the image is the only fade in the frame"
+    );
+}
+
+#[test]
+fn a_lone_floating_image_escapes_its_parent_clip() {
+    use kui_core::FloatConfig;
+    let mut core = Core::new();
+    let id = core.resources.add_image(10, 10, rgba(10, 10));
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.open(
+        NodeSpec::column()
+            .width(Sizing::Fixed(20.0))
+            .height(Sizing::Fixed(20.0))
+            .clip(),
+    );
+    ui.image(
+        id,
+        NodeSpec::column()
+            .width(Sizing::Fixed(10.0))
+            .height(Sizing::Fixed(10.0))
+            .float(FloatConfig::parent().offset(100.0, 100.0)),
+    );
+    ui.close();
+    ui.finish();
+    let quads = image_quads(&mut core);
+    assert_eq!(quads.len(), 1, "a float paints outside the clip it escaped");
+    assert_eq!((quads[0].rect.x, quads[0].rect.y), (100.0, 100.0));
+}

@@ -218,18 +218,10 @@ pub struct Core {
     /// whose clip is its parent's names the entry the parent already
     /// interned instead of asking again. Parallel to `clips`.
     clip_ids: Vec<ClipId>,
-    /// Whether any node this frame clips — lets emission skip clip math
-    /// entirely for the common unclipped case.
-    any_clip: bool,
-    /// Whether any node this frame clips *and* has a radius, so the clip
-    /// its descendants inherit is rounded. Separate from `any_clip`: the
-    /// per-corner bookkeeping is skipped for the ordinary square clip.
-    any_rounded_clip: bool,
     /// Per-node inherited group opacity (the product down the ancestors),
     /// rebuilt each finish_frame and only materialized when something
     /// actually fades.
     opacity: Vec<f32>,
-    any_opacity: bool,
     /// Per node, the layer it paints in: the index of its nearest floating
     /// ancestor-or-self, `NIL` in flow (ADR 0023). Only filled on a frame
     /// that floats something.
@@ -241,7 +233,6 @@ pub struct Core {
     /// order the layers opened in (ADR 0023, decision 3). Bounded by the
     /// frame's own float count; nothing to evict.
     float_stack: Vec<(Key, u32)>,
-    any_float: bool,
     /// The context menu this window has open, the keys the stock renderer
     /// gave its rows (so their clicks can be told from the app's), and
     /// what choosing one left for the host to do. See
@@ -311,8 +302,6 @@ pub struct Core {
     /// Per-node enclosing virtualised row index, filled beside `scopes`:
     /// what places an endpoint whose own node is no longer built.
     rows: Vec<Option<u64>>,
-    /// Whether any node this frame declared `modal`.
-    any_modal: bool,
     /// The frame's modal scope: the tree range `[i, subtree_end(i))` of the
     /// last node declaring `modal`, and its key. Everything outside it is
     /// inert and out of the Tab ring (see
@@ -322,15 +311,6 @@ pub struct Core {
     /// with the focus it displaced: a modal that stops being declared gives
     /// that focus back.
     modal_focus: Vec<(Key, Option<Key>)>,
-    /// Whether any node this frame eases its position (`NodeSpec::slide`,
-    /// or an `enter` with an offset).
-    any_slide: bool,
-    /// Whether any node this frame declared `on_layout` — lets the rect
-    /// report skip the tree walk for the common case.
-    any_layout: bool,
-    /// Whether any node this frame declared a workable `exit`. Gates the
-    /// tree swap and the key diff, so a frame with no exits pays one bool.
-    any_exit: bool,
     /// Per-node inherited opacity while a departing subtree is replayed
     /// (`depart`), reused across ghosts and frames.
     ghost_opacity: Vec<f32>,
@@ -400,11 +380,6 @@ pub struct Core {
     /// modal scope is resolved, which is what scopes the ring. Last writer
     /// wins, and an applied step beats a `set_focus` from the same frame.
     pending_focus_step: Option<bool>,
-    /// Whether any node this frame declared `focus_region`
-    /// (`docs/adr/0022-focus-regions.md`). Gates the region walk the way
-    /// `any_modal` gates the modal scope, so a frame without one pays a
-    /// bool.
-    any_region: bool,
     /// The focus region in effect — the key of the node whose subtree Tab
     /// walks — or `None` for the main ring (the tree minus every region).
     /// Follows focus: `set_focus` moves it to the region enclosing the
@@ -596,10 +571,7 @@ impl Core {
             origin: OriginId::HOST,
             clips: Vec::new(),
             clip_ids: Vec::new(),
-            any_clip: false,
-            any_rounded_clip: false,
             opacity: Vec::new(),
-            any_opacity: false,
             float_root: Vec::new(),
             float_stack: Vec::new(),
             menu: None,
@@ -625,16 +597,11 @@ impl Core {
             sel_ends: None,
             scopes: Vec::new(),
             rows: Vec::new(),
-            any_float: false,
-            any_modal: false,
             modal: None,
             modal_focus: Vec::new(),
             type_ahead: String::new(),
             type_ahead_at: None,
             items_scratch: Vec::new(),
-            any_slide: false,
-            any_layout: false,
-            any_exit: false,
             ghost_opacity: Vec::new(),
             ghost_clip: Vec::new(),
             ghost_clip_ids: Vec::new(),
@@ -642,7 +609,6 @@ impl Core {
             frame_requested: false,
             pending_reveal: None,
             pending_focus_step: None,
-            any_region: false,
             region: None,
             region_held: false,
             region_focus: Vec::new(),
@@ -879,7 +845,10 @@ impl Core {
     /// asked for another frame — drivers schedule one without waiting for
     /// input.
     pub fn animating(&self) -> bool {
-        self.anim.animating() || self.depart.animating() || self.frame_requested
+        self.anim.animating()
+            || self.depart.animating()
+            || self.frame_requested
+            || self.tree.any_animate
     }
 
     /// Asks the driver for one more frame right after this one. A view
@@ -1056,7 +1025,7 @@ impl Core {
         // that already existed and no copying. Nothing else keeps it — a
         // frame with no exits empties the spare, so a stale tree can never
         // be diffed against.
-        let keep_prev = self.any_exit;
+        let keep_prev = self.tree.any_exit;
         if keep_prev {
             std::mem::swap(&mut self.tree, &mut self.prev_tree);
         } else {
@@ -1095,15 +1064,6 @@ impl Core {
         self.counters.clear();
         self.counters.push(0);
         self.origin = OriginId::HOST;
-        self.any_clip = false;
-        self.any_rounded_clip = false;
-        self.any_opacity = false;
-        self.any_float = false;
-        self.any_modal = false;
-        self.any_region = false;
-        self.any_slide = false;
-        self.any_layout = false;
-        self.any_exit = false;
         self.frame_requested = false;
         self.devtools_begin_frame();
     }
