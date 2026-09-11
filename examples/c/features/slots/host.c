@@ -223,7 +223,7 @@ static int headless(const char *plugin) {
     KuiEvent ev = KUI_EVENT_INIT;
     while (kui_poll_event(ctx, &ev)) {
         on_event(&host, &ev);
-        ev = (KuiEvent)KUI_EVENT_INIT;
+        ev = KUI_EVENT_INIT;
     }
 
     int rc = 0;

@@ -31,8 +31,16 @@ static inline int abi_ok(void) {
 }
 
 /* One assertion: says what failed and counts it, so a program runs its
- * whole list and reports every miss rather than the first. */
-static int fails __attribute__((unused));
+ * whole list and reports every miss rather than the first. The counter is
+ * marked unused for gcc and clang, whose -Wall names a static a program
+ * never reads; cl has no such warning and no such syntax, and rejected the
+ * attribute outright the first time the C round ran on Windows. */
+#if defined(__GNUC__) || defined(__clang__)
+#define KUI_EXAMPLES_UNUSED __attribute__((unused))
+#else
+#define KUI_EXAMPLES_UNUSED
+#endif
+static int fails KUI_EXAMPLES_UNUSED;
 
 static inline void check(bool ok, const char *what) {
     if (!ok) {

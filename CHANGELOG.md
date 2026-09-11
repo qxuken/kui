@@ -1920,12 +1920,58 @@ Select All ⌘A, the article's as Look Up / Copy (both dimmed with nothing
 selected) / Select All, and the footer's press opened nothing — each as
 the example's own doc says.
 
-**Not run**, and stated: Windows' own round (`smoke-windows.ps1`) — W3 and
-the mixed-DPI popup case stay as alpha.10 left them, since nothing on the
-Windows window path changed here beyond the Win32 context menu, which has
-no round on this machine; and Linux, which alpha.10 ran in docker for the
-`RTLD_GLOBAL` case and this release did not, since `native.cjs`'s dlopen
-flags did not move and the test that pins them ran.
+**Windows 11 Pro 26200 (x64), rustc 1.98.1, Node 25.2.1, MSVC 14.51**,
+run on 2026-09-12 before the tag, the same round as above minus the AX
+audit. `cargo fmt` and `clippy` clean (on 1.98.1 — the 1.96.1 this
+machine had refused `tests/conformance.rs` under a `nonminimal_bool`
+that 1.98 no longer raises; CI runs stable, so the toolchain was moved
+rather than the code). `cargo test --workspace`: **1036 tests over 89
+suites, 0 failed**, one more than macOS for a Windows-only case. The
+corpus's 31 scenes pass in all four adapters, the header at the same 344
+/ 224 / 187 matched against the MSVC layout, `npm test` at **124 tests,
+0 failed, 1 skipped** (below), `npm run typecheck` on `examples/node`
+clean, the headless round's 22 drives green, `check-version.sh` content.
+The windowed round, `smoke -- --node`: **31 examples on both bases and
+the four Node windows, 120 frames each, every one exiting 0 with nothing
+on stderr**; `counter.exe`, `host.exe`, `c_panel` and `lua_panel` by
+hand the same, and `lua_panel`'s window looked at rather than counted:
+its third pane reads "the same panel, in C", so the plugin loads three
+languages deep on Windows too, through `panel.dll`'s import of
+`kui_ffi.dll` rather than the export-dynamic the unixes needed above.
+
+**What the Windows round found — two files cl had never compiled and a
+test that had never run here.** `cbuild --run` had not met MSVC since
+alpha.10: `examples/c/common.h` (new on 2026-09-10) declared its failure
+counter `__attribute__((unused))`, which cl rejects outright — it is
+gcc and clang's `-Wall` that names a static a program never reads, and
+cl has neither the warning nor the syntax, so the attribute is behind
+`__GNUC__`/`__clang__` now. `examples/c/features/slots/host.c` reset its
+event with `(KuiEvent)KUI_EVENT_INIT`, a cast of a struct to its own
+type that gcc and clang admit as an extension and cl calls C2440; the
+macro is already a `KuiEvent` compound literal, so the cast is gone. And
+`packages/kui/test.mjs`'s `RTLD_GLOBAL` pin, added in alpha.10 *after*
+that release's Windows round, asserted a flag on a platform that has
+none: `os.constants.dlopen` is `{}` on Windows and `native.cjs` then
+calls `process.dlopen` without flags, as its own comment promises, so
+the test skips there with the reason and asserts everywhere else. The
+skip is the one in the count above. None of the three touches a shipped
+binary — two examples and a test — and the round passes on all three
+platforms it has now run on.
+
+One thing seen and not fixed: `npm run gen` on Windows rewrites
+`docs/props.md`'s `titlebar_h` default from 34 to 32, because the
+generator reads `Metrics::default()` off the platform it runs on. CI
+generates on Linux and the file agrees with Linux, so the check holds;
+the generator is not platform-independent, which is backlog **W13**
+rather than a release line.
+
+**Not run**, and stated: W3 and the mixed-DPI popup case stay as alpha.10
+left them, since nothing on the Windows window path changed here beyond
+the Win32 context menu, which has no round on this machine; the bench
+guard, whose record above is macOS's and whose README table is that
+machine's; and Linux, which alpha.10 ran in docker for the `RTLD_GLOBAL`
+case and this release did not, since `native.cjs`'s dlopen flags did
+not move and the test that pins them ran on macOS.
 
 **The bench guard, run alone and on a quiet machine.** `scripts/bench-check.sh
 v0.1.0-alpha.10` reports **all four guarded rows clean** —

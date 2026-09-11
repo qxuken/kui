@@ -4551,7 +4551,7 @@ test('a native library that is not there is reported as missing, not as broken',
   assert.doesNotMatch(r.stderr, /not loadable/);
 });
 
-test('the addon is loaded RTLD_GLOBAL, so a C extension can resolve `kui_*` against it', () => {
+test('the addon is loaded RTLD_GLOBAL, so a C extension can resolve `kui_*` against it', (t) => {
   // A plugin leaves the whole API undefined and the dynamic linker resolves
   // it against what the process has already loaded — but only what is in the
   // *global* scope. glibc's dlopen defaults to RTLD_LOCAL, so on Linux the
@@ -4562,6 +4562,16 @@ test('the addon is loaded RTLD_GLOBAL, so a C extension can resolve `kui_*` agai
   // Asserted through the flags native.cjs asks for rather than through a
   // load, because the load this governs succeeds on this platform either
   // way: a revert would go green on macOS and red only on Linux.
+  //
+  // Windows has no dlopen flags at all — `os.constants.dlopen` is `{}` —
+  // and native.cjs then calls `process.dlopen` with none, which is what its
+  // own comment promises. There is nothing to assert here on that platform,
+  // and this test first ran there after alpha.10 had already shipped it.
+  const { RTLD_GLOBAL, RTLD_LAZY } = osConstants.dlopen;
+  if (RTLD_GLOBAL === undefined || RTLD_LAZY === undefined) {
+    t.skip(`${process.platform} offers no dlopen flags; native.cjs passes none`);
+    return;
+  }
   const r = spawnSync(
     process.execPath,
     [
@@ -4575,7 +4585,6 @@ test('the addon is loaded RTLD_GLOBAL, so a C extension can resolve `kui_*` agai
   assert.equal(r.status, 0, `the resolver failed: ${r.stderr}`);
   const flags = Number(r.stdout.match(/FLAGS (\d+)/)?.[1]);
   assert.ok(Number.isFinite(flags), `no dlopen flags recorded: ${r.stdout}${r.stderr}`);
-  const { RTLD_GLOBAL, RTLD_LAZY } = osConstants.dlopen;
   assert.equal(flags & RTLD_GLOBAL, RTLD_GLOBAL, 'RTLD_GLOBAL, or a plugin resolves nothing on glibc');
   assert.equal(flags & RTLD_LAZY, RTLD_LAZY, "RTLD_LAZY, which is Node's own default");
 });

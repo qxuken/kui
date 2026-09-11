@@ -781,6 +781,42 @@ the segment row is what ADR 0023 costs, it belongs on the guarded list
 under the tolerance that fits it, since nothing else in the round would
 have caught a second +10%.
 
+The Windows half of the round ran on 2026-09-12, the day after, and found
+three things the macOS run could not: two lines in the C examples that
+`cl` had never compiled (`__attribute__((unused))` in `common.h`, a
+struct cast to its own type in `slots/host.c`) and a `test.mjs` pin on
+dlopen flags Windows does not have. All three fixed before the tag and
+recorded in the CHANGELOG's Native verification. One thing seen and left:
+
+### `.` W13 — `npm run gen` writes a different `docs/props.md` on Windows
+
+`docs/props.md`'s metrics table has a Stock and a Compact column, and
+`gen-types.mjs` fills them by asking the addon for
+`(r.get)(&Metrics::default())` and `(r.get)(&Metrics::compact())`
+(`crates/kui-node/src/schema.rs`, the `metrics` array of `protocol()`).
+One role is platform-conditional — `titlebar_h` is `cfg!(target_os =
+"windows") ? 32 : 34` in `metrics.rs`, the platform's real caption
+height, and `compact()` leaves it alone — so the file says `34 | 34`
+when generated on macOS or Linux and `32 | 32` on Windows. The committed
+file is the unix one; CI's `git diff --exit-code` after `gen` runs on
+Linux and agrees with it, so the gate holds. On Windows the same command
+produces a one-line diff that is not staleness, and either gets
+committed (and then fails CI's Linux run as stale) or has to be known
+about and reverted. The row's own doc says "32 on Windows and 34
+elsewhere"; the two columns beside it contradict it for a third of the
+readers.
+
+**Do:** make the generated output byte-identical on every platform by
+making the row say what is true. `MetricRole` (or `metric_role!`) needs
+to carry that a value is platform-conditional — a per-platform pair, or
+a flag the generator turns into "32 / 34" in both columns — since
+`protocol()` today only has the one number the running platform
+evaluated. The cheaper alternative, pinning the generator to unix
+values, leaves the Windows number in no generated document and encodes
+"as seen from Linux" in a file that claims to be the reference; prefer
+the first. Nothing shipped is affected either way: `Metrics::default()`
+is right on every platform, only the printed table is not.
+
 
 ## After alpha.11
 
