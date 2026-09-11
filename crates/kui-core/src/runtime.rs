@@ -123,6 +123,9 @@ pub struct Core {
     /// start of every frame. Read by the stock widgets, by the core's own
     /// chrome (ring, scrollbar, selection) and by any view that asks.
     theme: Theme,
+    /// The sizes the stock widgets are built from (backlog T2): the
+    /// palette's other axis, set by the app or [`Metrics::default`].
+    metrics: crate::metrics::Metrics,
     /// Window title declared this frame (immediate-mode: cleared each
     /// `begin_frame`; the driver diffs and applies). None = leave as-is.
     window_title: Option<String>,
@@ -544,6 +547,21 @@ impl Core {
         self.set_theme_source(ThemeSource::Derived);
     }
 
+    /// The sizes the stock widgets are built from — the palette's other
+    /// axis (`crate::metrics`, backlog T2). [`Metrics::default`] until
+    /// the app sets one; nothing in the OS is followed.
+    pub fn metrics(&self) -> &crate::metrics::Metrics {
+        &self.metrics
+    }
+
+    /// Makes `metrics` the frame's: every stock widget from the next node
+    /// on is built from it, and `ui.metrics()` reads it back. Logical px,
+    /// before `env.scale`; a density is the app's to choose
+    /// (`Metrics::compact`, `Metrics::scaled`).
+    pub fn set_metrics(&mut self, metrics: crate::metrics::Metrics) {
+        self.metrics = metrics;
+    }
+
     /// A core with a session of its own — one window, nothing shared.
     pub fn new() -> Self {
         Self::new_in(&Session::new())
@@ -573,6 +591,7 @@ impl Core {
             env: Env::default(),
             theme_source: ThemeSource::Derived,
             theme: Theme::default(),
+            metrics: crate::metrics::Metrics::default(),
             window_title: None,
             focus: None,
             focus_visible: false,

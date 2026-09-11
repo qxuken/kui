@@ -148,6 +148,7 @@ pub const P_SCROLLBAR: u32 = 93;
 pub const P_SCROLLBAR_WIDTH: u32 = 94;
 pub const P_SCROLLBAR_COLOR: u32 = 95;
 pub const P_SCROLLBAR_ACTIVE_COLOR: u32 = 96;
+pub const P_ANCHOR: u32 = 97;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -678,6 +679,13 @@ pub const PROPS: &[PropDef] = &[
         kind: Kind::Enum(SCROLLBARS),
         apply: Apply::SpecEnum(|s, i| s.scrollbar(crate::spec::ScrollbarMode::ALL[i])),
         doc: "When a scrolling node draws its bars: `visible` (the default — the stock overlay thumb, drawn while the content overflows), `hidden` (no thumb, no track to press; the wheel, the keyboard, `reveal` and the caret still scroll it — for a list that draws its own indicator, or a pane whose bar would sit on a border), or `auto` (shown while the scroll state is changing — the offset or the content's extent moved, the pointer is on the track, a thumb is dragged — and for a second after, then faded out over a quarter of one; a node first seen shows it the same second; what an overlay bar does on macOS). `auto` needs the driver's clock and is `visible` without one. The bars are overlays and take no layout space in any mode. From the last change until it has faded — a second and a quarter — an `auto` bar asks for frames the way a transition of that length would (nothing else could wake the core when the hold ends); while the pointer holds it, it asks for none.",
+    },
+    PropDef {
+        name: "anchor",
+        id: P_ANCHOR,
+        kind: Kind::Flag,
+        apply: Apply::SpecFlag(|s| s.anchor()),
+        doc: "Scroll anchoring on a scrolling node (backlog C26, CSS's `overflow-anchor`): the first child in view keeps its place on screen when the content before it changes size — a chat that prepends history, a log that inserts rows above the viewport, a list whose row heights are corrected as they are measured — with no `setScroll` and no arithmetic in the view. The core remembers which child was first in view and where its edge was, and moves the offset by however far that edge moved in the next layout, before the offset is clamped; a wheel notch or a `setScroll` between the frames is kept and the correction added to it. The child is found by key, so give the rows stable keys (a `key` or an `index`); a child that is gone anchors nothing that frame. On the scroll axis that is the node's main axis only — `scrollY` on a column, `scrollX` on a row — and content appended *after* the anchor moves nothing, so a log that is tailing still asks for the end itself.",
     },
     PropDef {
         name: "scrollbarWidth",
@@ -1396,7 +1404,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<button onClick label description tooltip disabled accent>`",
         lua: "`button { label=, on_click=, text=, description=, tooltip=, disabled=, accent= }`",
         c: "`kui_button`, `kui_button_with`",
-        doc: "The stock button: `widgets::button_spec()` with hover/pressed colors declared on the node, keyed by its text (`key` overrides). Its look is its spec, so the layout and paint rows are closed — declared, they are dropped with an `unknown-prop` warning naming the rows it does read — and those are the access rows: `label` when the text is not the name, `description`, `tooltip`, and `disabled` (inert, and dimmed to half). The one paint row it takes is `accent`, which is a question and not a colour: with it the three backgrounds come off `env.system.accent` and the label goes black or white by its luminance, so a yellow accent is still readable, and on a host that never said what the accent is the stock blue stands. In Lua `label` is the name and the text both unless `text` says otherwise; in C the rows ride a `KuiSpec` whose other fields `kui_button_with` ignores. A button that needs any other row is a box with `role=\"button\"` and the same rows spelled out.",
+        doc: "The stock button: `widgets::button_spec(&metrics)` with hover/pressed colors declared on the node, keyed by its text (`key` overrides). Its look is its spec, so the layout and paint rows are closed — declared, they are dropped with an `unknown-prop` warning naming the rows it does read — and those are the access rows: `label` when the text is not the name, `description`, `tooltip`, and `disabled` (inert, and dimmed to half). The one paint row it takes is `accent`, which is a question and not a colour: with it the three backgrounds come off `env.system.accent` and the label goes black or white by its luminance, so a yellow accent is still readable, and on a host that never said what the accent is the stock blue stands. In Lua `label` is the name and the text both unless `text` says otherwise; in C the rows ride a `KuiSpec` whose other fields `kui_button_with` ignores. A button that needs any other row is a box with `role=\"button\"` and the same rows spelled out.",
     },
     ElementDef {
         name: "edit",
@@ -1434,14 +1442,14 @@ pub const ELEMENTS: &[ElementDef] = &[
     },
     ElementDef {
         name: "fragment",
-        jsx_own: &["src", "params", "animate"],
-        lua_own: &["id", "params", "animate"],
+        jsx_own: &["src", "image", "params", "animate"],
+        lua_own: &["id", "image", "params", "animate"],
         jsx_rows: None,
         lua_rows: None,
-        jsx: "`<fragment src={id} params={[…]} animate>`",
-        lua: "`fragment { id=, params={…}, animate= }`",
-        c: "`kui_fragment`",
-        doc: "A box a registered WGSL function paints (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`): gradients, rings, noise, shimmer — anything the paint vocabulary has no prop for. An ordinary node otherwise — it lays out, rounds, clips, fades, takes input and holds children, which paint over it — but with **no intrinsic size**, so give it a `width`/`height` or `fill` or it is zero by zero. `src` is a handle from `add_fragment`, which validates the source and warns rather than minting one that cannot compile. `params` is up to sixteen numbers the shader reads as four `vec4<f32>`; more are dropped with a warning. `animate` asks for a frame every frame, which is what a fragment that reads `time` needs and what a still one must not declare.",
+        jsx: "`<fragment src={id} image={id} params={[…]} animate>`",
+        lua: "`fragment { id=, image=, params={…}, animate= }`",
+        c: "`kui_fragment`, `kui_fragment_with`",
+        doc: "A box a registered WGSL function paints (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`): gradients, rings, noise, shimmer — anything the paint vocabulary has no prop for. An ordinary node otherwise — it lays out, rounds, clips, fades, takes input and holds children, which paint over it — but with **no intrinsic size**, so give it a `width`/`height` or `fill` or it is zero by zero. `src` is a handle from `add_fragment`, which validates the source and warns rather than minting one that cannot compile. `params` is up to sixteen numbers the shader reads as four `vec4<f32>`; more are dropped with a warning. `image` is a registered image the function reads — `kui_sample(uv)` (bilinear) and `kui_sample_nearest(uv)` return its texels at `uv` in `[0,1]²`, and `in.image` is its texel rect, `zw` the size — which is what makes a replaced image a waveform, a heatmap, a 50k-point line or an image effect from one quad (`docs/adr/0025-the-image-is-the-canvas.md`, decision 7); the core binds the atlas or the image's own texture, whichever holds it, and a fragment whose image is not live draws nothing, as one whose `src` is not does. `animate` asks for a frame every frame, which is what a fragment that reads `time` needs and what a still one must not declare.",
     },
     ElementDef {
         name: "cells",
@@ -2153,6 +2161,88 @@ pub const THEME_ROLES: &[ThemeRole] = &[
     },
 ];
 
+/// One size the stock widgets are built from (`crate::metrics::Metrics`,
+/// backlog T2), pinned the way [`ThemeRole`] pins a colour: a binding
+/// iterates the rows to read or write a set, so a field added to
+/// `Metrics` is one row here and nothing anywhere else. The test below
+/// destructures the struct exhaustively.
+pub struct MetricRole {
+    /// The Rust field, and the name used everywhere but Node.
+    pub name: &'static str,
+    /// What Node calls it (camelCase).
+    pub node: &'static str,
+    pub doc: &'static str,
+    pub get: fn(&crate::metrics::Metrics) -> f32,
+    pub set: fn(&mut crate::metrics::Metrics, f32),
+}
+
+macro_rules! metric_role {
+    ($field:ident, $node:literal, $doc:literal) => {
+        MetricRole {
+            name: stringify!($field),
+            node: $node,
+            get: |m| m.$field,
+            set: |m, v| m.$field = v,
+            doc: $doc,
+        }
+    };
+}
+
+pub const METRIC_ROLES: &[MetricRole] = &[
+    metric_role!(
+        control_text,
+        "controlText",
+        "A stock control's label: the button's text size."
+    ),
+    metric_role!(
+        chrome_text,
+        "chromeText",
+        "The chrome's text: a menu row, a menu-bar title, the titlebar's title."
+    ),
+    metric_role!(hint_text, "hintText", "A tooltip's text."),
+    metric_role!(
+        radius,
+        "radius",
+        "The corner of every stock surface: a button, a field, a menu, a tooltip."
+    ),
+    metric_role!(
+        radius_inner,
+        "radiusInner",
+        "The corner of a row inside one: a menu row, a menu-bar title."
+    ),
+    metric_role!(
+        control_pad_x,
+        "controlPadX",
+        "A button's horizontal padding."
+    ),
+    metric_role!(control_pad_y, "controlPadY", "A button's vertical padding."),
+    metric_role!(
+        field_pad_x,
+        "fieldPadX",
+        "A text field's horizontal padding."
+    ),
+    metric_role!(field_pad_y, "fieldPadY", "A text field's vertical padding."),
+    metric_role!(hint_pad_x, "hintPadX", "A tooltip's horizontal padding."),
+    metric_role!(hint_pad_y, "hintPadY", "A tooltip's vertical padding."),
+    metric_role!(
+        menu_pad_x,
+        "menuPadX",
+        "A menu row's horizontal padding, and a menu-bar title's."
+    ),
+    metric_role!(
+        menu_pad_y,
+        "menuPadY",
+        "A menu row's vertical padding; a menu-bar title's is two px less."
+    ),
+    metric_role!(menu_width, "menuWidth", "A menu panel's width."),
+    metric_role!(menu_bar_h, "menuBarH", "The drawn menu bar's height."),
+    metric_role!(
+        titlebar_h,
+        "titlebarH",
+        "The titlebar's height: the platform's caption height, 32 on Windows and 34 elsewhere."
+    ),
+];
+
 static SNAKE_NAMES: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
     PROPS
         .iter()
@@ -2523,6 +2613,88 @@ mod tests {
                 assert_ne!(name, other_name, "duplicate prop name");
                 assert_ne!(id, other_id, "duplicate wire id for {name} / {other_name}");
             }
+        }
+    }
+
+    /// `menu_bar_h` → `menuBarH`: what a role's Node spelling is.
+    fn snake_to_camel(name: &str) -> String {
+        let mut out = String::new();
+        let mut up = false;
+        for ch in name.chars() {
+            if ch == '_' {
+                up = true;
+            } else if up {
+                out.extend(ch.to_uppercase());
+                up = false;
+            } else {
+                out.push(ch);
+            }
+        }
+        out
+    }
+
+    /// `METRIC_ROLES` restates `Metrics` the way `THEME_ROLES` restates
+    /// `Theme`, and this is the same pin: an exhaustive pattern on the
+    /// struct, then the names both ways.
+    #[test]
+    fn metric_roles_restate_the_metrics_exactly() {
+        use crate::metrics::Metrics;
+        let m = Metrics::compact();
+        let Metrics {
+            control_text,
+            chrome_text,
+            hint_text,
+            radius,
+            radius_inner,
+            control_pad_x,
+            control_pad_y,
+            field_pad_x,
+            field_pad_y,
+            hint_pad_x,
+            hint_pad_y,
+            menu_pad_x,
+            menu_pad_y,
+            menu_width,
+            menu_bar_h,
+            titlebar_h,
+        } = m;
+        let fields: &[(&str, f32)] = &[
+            ("control_text", control_text),
+            ("chrome_text", chrome_text),
+            ("hint_text", hint_text),
+            ("radius", radius),
+            ("radius_inner", radius_inner),
+            ("control_pad_x", control_pad_x),
+            ("control_pad_y", control_pad_y),
+            ("field_pad_x", field_pad_x),
+            ("field_pad_y", field_pad_y),
+            ("hint_pad_x", hint_pad_x),
+            ("hint_pad_y", hint_pad_y),
+            ("menu_pad_x", menu_pad_x),
+            ("menu_pad_y", menu_pad_y),
+            ("menu_width", menu_width),
+            ("menu_bar_h", menu_bar_h),
+            ("titlebar_h", titlebar_h),
+        ];
+        assert_eq!(METRIC_ROLES.len(), fields.len(), "a metric has no row");
+        for (name, value) in fields {
+            let row = METRIC_ROLES
+                .iter()
+                .find(|r| r.name == *name)
+                .unwrap_or_else(|| panic!("no METRIC_ROLES row for {name}"));
+            assert_eq!((row.get)(&m), *value, "{name}'s row reads another field");
+            let mut w = m;
+            (row.set)(&mut w, 1.0);
+            assert_eq!((row.get)(&w), 1.0, "{name}'s row writes another field");
+        }
+        for row in METRIC_ROLES {
+            assert!(
+                fields.iter().any(|(n, _)| *n == row.name),
+                "METRIC_ROLES names a field Metrics does not have: {}",
+                row.name
+            );
+            let camel = snake_to_camel(row.name);
+            assert_eq!(row.node, camel, "{}'s Node spelling", row.name);
         }
     }
 

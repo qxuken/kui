@@ -61,6 +61,8 @@ use crate::window::{WindowCommand, WindowConfig, WindowId};
 use crate::{Core, InputEvent, KeyCode, UiEvent};
 
 #[cfg(feature = "devtools")]
+mod icons;
+#[cfg(feature = "devtools")]
 mod panel;
 #[cfg(feature = "devtools")]
 mod stream;
@@ -293,6 +295,14 @@ pub(crate) struct State {
     reveal: Option<Key>,
     /// Collapse every row with children on the next build.
     fold_all: bool,
+    /// The row the keyboard is on (backlog D1): the tree's own cursor,
+    /// moved by the arrows on the list's sink and painted as a ring while
+    /// the list holds focus. None until a key lands on the list.
+    tree_cursor: Option<Key>,
+    /// A key the list's sink heard, for the next build to apply with the
+    /// rows in hand: `up`, `down`, `left`, `right`, `home`, `end`,
+    /// `pageup`, `pagedown`, `enter`, `space`.
+    tree_key: Option<String>,
     /// `Core::set_inspect` has been asked on the main core.
     inspecting: bool,
     // What the main window wrote for the others.
@@ -345,6 +355,8 @@ impl Default for State {
             pick_hover: None,
             reveal: None,
             fold_all: false,
+            tree_cursor: None,
+            tree_key: None,
             inspecting: false,
             facts: Facts::default(),
             nodes: Vec::new(),
@@ -551,6 +563,10 @@ impl State {
                         self.expanded.insert(seq);
                     }
                     self.stream_dirty = true;
+                } else if let Some(code) = other.strip_prefix("tree-key:") {
+                    // A key on the tree's list: the build applies it, since
+                    // moving needs the rows and folding needs the children.
+                    self.tree_key = Some(code.to_string());
                 } else {
                     return false;
                 }
@@ -1151,6 +1167,23 @@ impl Core {
                     .and_then(Value::as_str);
                 match what {
                     Some("picked") => picks += 1,
+                    Some("tree-key") => {
+                        // The tree list's sink: a press (not a release, not
+                        // a repeat of a chord) becomes an action naming
+                        // the key, for the build to move the cursor by.
+                        let s = |k: &str| ev.payload.get(k).and_then(Value::as_str);
+                        // Both modifiers ride every key payload, so each
+                        // is asked on its own: a chord bubbles to the sink
+                        // (ADR 0011) and must not move the cursor.
+                        let held = |k: &str| matches!(ev.payload.get(k), Some(Value::Bool(true)));
+                        let plain = !held("ctrl") && !held("super");
+                        if s("phase") == Some("down")
+                            && plain
+                            && let Some(code) = s("code")
+                        {
+                            actions.push(format!("tree-key:{code}"));
+                        }
+                    }
                     Some("resize") => {
                         let f = |k: &str| ev.payload.get(k).and_then(Value::as_float);
                         if let (Some(x), Some(y)) = (f("x"), f("y")) {

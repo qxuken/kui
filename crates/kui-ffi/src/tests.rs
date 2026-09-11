@@ -55,6 +55,51 @@ mod widgets_headless {
         assert!(draw.quad_count > 20, "got {} quads", draw.quad_count);
         kui_ctx_free(ctx);
     }
+
+    /// The metrics cross the boundary both ways (backlog T2): the stock
+    /// set reads back as the constants, a set the host wrote is what the
+    /// next button is built from, NULL restores the stock set, and a short
+    /// reservation is refused as every [out] struct's is.
+    #[test]
+    fn metrics_cross_the_boundary_both_ways() {
+        let ctx = kui_ctx_new();
+        let mut m = KuiMetrics {
+            radius: 0.0,
+            ..Default::default()
+        };
+        assert!(kui_metrics(ctx, &mut m));
+        assert_eq!(m.radius, 6.0);
+        assert_eq!(m.control_text, 15.0);
+        assert_eq!(m.menu_width, 200.0);
+
+        let button_h = |ctx: *mut KuiCtx| {
+            kui_frame_begin(ctx, 800.0, 600.0, 1.0);
+            let root: KuiSpec = unsafe { std::mem::zeroed() };
+            kui_root(ctx, &root);
+            kui_button(ctx, ks("OK"), std::ptr::null_mut());
+            kui_frame_finish(ctx);
+            let mut draw = KuiDrawData::default();
+            kui_draw_data(ctx, &mut draw);
+            unsafe { (*draw.quads).h }
+        };
+        let stock = button_h(ctx);
+        m.control_pad_y = 2.0;
+        m.control_text = 10.0;
+        kui_metrics_set(ctx, &m);
+        let mut back = KuiMetrics::default();
+        assert!(kui_metrics(ctx, &mut back));
+        assert_eq!(back.control_pad_y, 2.0);
+        assert!(button_h(ctx) < stock);
+        kui_metrics_set(ctx, std::ptr::null());
+        assert_eq!(button_h(ctx), stock);
+
+        let mut short = KuiMetrics {
+            size: 4,
+            ..Default::default()
+        };
+        assert!(!kui_metrics(ctx, &mut short));
+        kui_ctx_free(ctx);
+    }
 }
 
 #[cfg(test)]
@@ -946,6 +991,12 @@ mod queries_headless {
         );
         assert_eq!(payload.0.get("w").and_then(Value::as_float), Some(300.0));
         assert_eq!(payload.0.get("tag").and_then(Value::as_str), Some("panel"));
+        // The same rect as a query (backlog C26 step 2), and nothing for
+        // a key that declared no on_layout.
+        let mut rect = KuiLayoutRect::default();
+        assert!(kui_layout_of(ctx, key, &mut rect));
+        assert_eq!((rect.x, rect.y, rect.w, rect.h), (0.0, 0.0, 300.0, 20.0));
+        assert!(!kui_layout_of(ctx, key + 1, &mut rect));
 
         let mut out = [KuiWarning {
             code: KUI_EMPTY,

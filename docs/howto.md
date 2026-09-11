@@ -489,6 +489,58 @@ intrinsic size, so give it one.
 [ADR 0015](adr/0015-a-fragment-element-and-the-painter-it-is-not.md) ·
 `cargo run --example fragment`
 
+### How do I draw fifty thousand points, a spectrogram, a heatmap?
+
+Put the data in an image and read it from a fragment. `add_image` once,
+`update_image` with the new values whenever they change, and `<fragment
+src={fn} image={id}>` — `ui.fragment(fn.with_image(id), ..)`,
+`kui_fragment_with` — draws a box whose function reads the image:
+`kui_sample_nearest(uv)` is the texel under `uv` (a cell, a sample, a
+bin), `kui_sample(uv)` the bilinear blend, and `in.image.zw` how many
+texels there are. One node, one quad, however many values; the "canvas"
+is the image and the drawing is the function. The core binds the atlas or
+the image's own texture, whichever holds it, and the function never knows
+which. The same input is every image effect — read the pixels, return
+different ones. A removed image under a live fragment draws nothing.
+
+[`fragment` element](props.md#elements) ·
+[ADR 0025](adr/0025-the-image-is-the-canvas.md) ·
+`cargo run --example fragment`
+
+### My chat prepends history and the view jumps — how do I keep the row I was reading still?
+
+Declare `anchor` on the scroller: `NodeSpec::column().scroll_y().anchor()`,
+`<box scrollY anchor>`, `scroll_y = true, anchor = true`,
+`KuiSpec.anchor = 1`. The core remembers which child was first in view
+and moves the offset by however far that child's edge moved when the
+content before it changed size, before the clamp — so a page of history
+prepended above the viewport, a row above it growing as its text wraps,
+or a virtual list correcting an estimate leaves what you were reading
+where it was. Give the rows stable keys (the anchor is found by key), and
+know that content *after* the anchor moves nothing: a log that tails
+still `set_scroll`s to the end itself. It is CSS's `overflow-anchor`, and
+one frame of it is in the corpus.
+
+[`anchor`](props.md#container-props) · `crates/kui-core/tests/anchor.rs`
+
+### How do I make my own controls agree with the stock ones on size?
+
+Read `ui.metrics()` — `env.metrics` in Lua, `ctx.metrics()` in Node,
+`kui_metrics` in C — and build from it: `m.radius` is the corner every
+stock surface has, `m.control_pad_x` / `m.control_pad_y` the button's
+padding, `m.control_text` its label's size, and so on for the field, the
+tooltip and the menus. The stock widgets are built from the same struct,
+so a density change reaches both at once: `core.set_metrics(Metrics::compact())`
+for a dense tool, `Metrics::default().scaled(1.25)` for a slider,
+`ctx.setMetrics({ base: 'compact', radius: 3 })` for overrides in Node.
+Nothing scales by itself — a metric is logical px before `env.scale`,
+which is the renderer's — and nothing in the OS is followed; the stock
+set is what the widgets always drew, so an app that sets nothing changes
+nothing.
+
+[Metrics](props.md#metrics) ·
+`cargo run --example metrics`
+
 ### How do I let an extension draw inside my view?
 
 Declare the place: `ui.slot("fs/panel")` is a position among the host's own

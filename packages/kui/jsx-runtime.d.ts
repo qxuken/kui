@@ -176,6 +176,8 @@ interface Keyed {
 export interface GeneratedSpecProps {
   /** Paint this node's background in the OS accent colour — `env.system.accent` — keeping the declared `bg` on a host that cannot tell what it is. The one prop whose paint depends on the environment, which is why it is opt-in: the same tree is a different colour on two machines, and that is the point here and a surprise anywhere else. On the stock button it does the whole job — the hover and pressed shades are derived from the accent, and the label goes black or white by its luminance, so a yellow accent is still readable — which is what `<button accent>` is for. */
   accent?: boolean;
+  /** Scroll anchoring on a scrolling node (backlog C26, CSS's `overflow-anchor`): the first child in view keeps its place on screen when the content before it changes size — a chat that prepends history, a log that inserts rows above the viewport, a list whose row heights are corrected as they are measured — with no `setScroll` and no arithmetic in the view. The core remembers which child was first in view and where its edge was, and moves the offset by however far that edge moved in the next layout, before the offset is clamped; a wheel notch or a `setScroll` between the frames is kept and the correction added to it. The child is found by key, so give the rows stable keys (a `key` or an `index`); a child that is gone anchors nothing that frame. On the scroll axis that is the node's main axis only — `scrollY` on a column, `scrollX` on a row — and content appended *after* the anchor moves nothing, so a log that is tailing still asks for the end itself. */
+  anchor?: boolean;
   /** Ask for another frame after this one, every frame this node is declared. What a `fragment` that reads `time` needs, and what anything driving itself off the clock rather than off input needs. Opt-in like `exit`, and for the same reason: it takes the loop off input-driven and onto the display's cadence for as long as it is declared, so a still node must not carry it. One node asking is enough for the whole window. */
   animate?: boolean;
   /** Background fill. */
@@ -500,8 +502,13 @@ export declare namespace JSX {
      *  `src` is an id from `addFragment`; `params` is up to sixteen numbers
      *  the shader reads as four `vec4<f32>`, and more are dropped with a
      *  warning; `animate` asks for a frame every frame, which a fragment
-     *  reading `time` needs and a still one must not declare. */
-    fragment: BoxProps & { src: string; params?: number[] };
+     *  reading `time` needs and a still one must not declare. `image` is an
+     *  id from `addImage` the function reads through `kui_sample(uv)` /
+     *  `kui_sample_nearest(uv)`, its texel rect in `in.image` — a waveform,
+     *  a heatmap, an image effect from a texture the app replaces
+     *  (docs/adr/0025-the-image-is-the-canvas.md, decision 7); an image
+     *  that is not live draws nothing, as a dead `src` does. */
+    fragment: BoxProps & { src: string; image?: string; params?: number[] };
     /** A position an extension fills, in place
      *  (docs/adr/0014-slots-an-extension-fills-in-place.md): whatever was
      *  loaded under the name's namespace draws here, as a child of this

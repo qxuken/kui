@@ -332,6 +332,7 @@ test('a malformed view is rejected, with the offending name in the message', () 
     [() => el('edit', { initial: '' }), /<edit> needs a key or id prop/],
     [() => el('span', {}, ['x']), /<span> only works inside <text>/],
     [() => el('image', {}), /<image> needs a src/],
+    [() => el('fragment', { src: '0000000000000001', image: 7 }), /<fragment> image must be an id/],
     [() => el('line', {}), /<line> needs from and to, or points/],
     [() => el('line', { points: [[0, 0]] }), /<line> needs at least two points/],
     [() => el('line', { from: [0, 0], to: [1], }), /bad point \[1\] for <line>/],
@@ -350,6 +351,13 @@ test('a malformed view is rejected, with the offending name in the message', () 
     ],
   ];
   for (const [build, message] of bad) assert.throws(() => run(build), message);
+  // `null` is "none" for an optional prop, the way `sampling={null}` is
+  // on `<image>`: a fragment with `image: null` encodes as one without.
+  const src = '0000000000000001';
+  assert.ok(
+    encoded(el('fragment', { src, image: null, width: 8, height: 8 })).equals(encoded(el('fragment', { src, width: 8, height: 8 }))),
+    '<fragment image={null}> is <fragment>',
+  );
 });
 
 // A null tag declares the behaviour (here: a key sink) and leaves `tag` off
@@ -1314,6 +1322,11 @@ test('onLayout reports the rect once and again when it changes', () => {
   const again = ctx.pollEvents();
   assert.equal(again.length, 1);
   assert.equal(again[0].payload.w, 150);
+  // The query shape of the same numbers (backlog C26 step 2): the rect
+  // the last frame laid the node out at, with no event; null for a node
+  // that declared no onLayout.
+  assert.deepEqual(ctx.layoutOf('panel'), { x: 0, y: 0, w: 150, h: 240 });
+  assert.equal(ctx.layoutOf('nowhere'), null);
 });
 
 // Silent misconfigurations come back as data, once each.
@@ -2575,6 +2588,25 @@ const SCENE_TREES = {
       ]),
     ]);
   },
+  // Scroll anchoring (backlog C26 step 3): two scrollers of the same rows,
+  // one with `anchor`; phase 1 prepends a taller row to both.
+  anchor: (_fx, phase) => {
+    const list = (key, extra) =>
+      box(
+        { width: 90, height: 60, scrollY: true, bg: '#101018', ...extra },
+        [
+          ...(phase >= 1 ? [box({ width: 80, height: 30, bg: '#30344a' }, [], 'new')] : []),
+          ...ITEM_KEYS.map((k) => box({ width: 80, height: 20, bg: '#30344a' }, [], k)),
+        ],
+        key,
+      );
+    return root({}, [
+      box({ dir: 'row', pad: 10, gap: 10 }, [
+        list('anchored', { anchor: true }),
+        list('plain', {}),
+      ]),
+    ]);
+  },
   float: () =>
     root({}, [
       box({ pad: 20, gap: 4 }, [
@@ -2772,7 +2804,10 @@ const SCENE_TREES = {
   },
   // docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md: four
   // fragments — plain, keyed with a child over it, a dead handle that draws
-  // nothing, and one with eighteen params so the truncation warning fires.
+  // nothing, and one with eighteen params so the truncation warning fires
+  // — then the image input (backlog V1): the sampling fixture over the
+  // atlas-backed icon, over the texture-backed stream, and over an image
+  // live nowhere (raw 1: 0 would mean "no image"), which draws nothing.
   fragments: (fx) =>
     root({}, [
       box({ width: 200, height: 120, gap: 4, bg: '#14161e' }, [
@@ -2785,6 +2820,11 @@ const SCENE_TREES = {
         ),
         el('fragment', { src: '0000000000000000', params: FRAGMENT_PARAMS, width: 20, height: 10 }),
         el('fragment', { src: fx().fragment, params: FRAGMENT_PARAMS_LONG, width: 30, height: 12 }),
+        box({ dir: 'row', gap: 4 }, [
+          el('fragment', { src: fx().sampler, image: fx().image, params: FRAGMENT_IMAGE_PARAMS, width: 24, height: 24 }),
+          el('fragment', { src: fx().sampler, image: fx().stream, params: FRAGMENT_IMAGE_PARAMS, width: 32, height: 8 }),
+          el('fragment', { src: fx().sampler, image: '0000000000000001', params: FRAGMENT_IMAGE_PARAMS, width: 24, height: 24 }),
+        ]),
       ]),
     ]),
   // docs/adr/0025-the-image-is-the-canvas.md, decision 6: five fills — the
@@ -3102,6 +3142,16 @@ const FIXTURE_WGSL = `fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -
     return vec4<f32>(mix(base.rgb, params[3].rgb, ring), base.a);
 }`;
 const addFixtureFragment = (ctx) => ctx.addFragment(FIXTURE_WGSL);
+/** `conformance::FRAGMENT_IMAGE_WGSL`, character for character: the one
+ *  that reads its `image` (backlog V1). */
+const FIXTURE_IMAGE_WGSL = `fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32> {
+    let uv = in.local / max(in.size, vec2<f32>(1.0));
+    let c = kui_sample(uv) * params[0];
+    return vec4<f32>(c.rgb, c.a * step(1.0, in.image.z));
+}`;
+const addFixtureSampler = (ctx) => ctx.addFragment(FIXTURE_IMAGE_WGSL);
+/** `conformance::FRAGMENT_IMAGE_PARAMS`. */
+const FRAGMENT_IMAGE_PARAMS = [1.0, 0.5, 0.25, 1.0];
 const addFixtureSound = (ctx) => ctx.addSound(Buffer.from('RIFF....WAVE'));
 
 const FNV_OFFSET = 0xcbf29ce484222325n;
@@ -3166,6 +3216,7 @@ function driveScene(env, steps, build) {
       stream: addFixtureStream(ctx),
       sound: addFixtureSound(ctx),
       fragment: addFixtureFragment(ctx),
+      sampler: addFixtureSampler(ctx),
     });
   let phase = 0;
   const events = [];
@@ -3273,12 +3324,21 @@ function sceneReport(name, env, steps, { ctx, events, commands, audio }) {
   // cannot reach them; the report carries them as bits, like the core's.
   const draws = ctx.fragmentDraws();
   const f32 = new DataView(new ArrayBuffer(4));
-  for (let i = 0; i * 18 < draws.length; i++) {
-    const params = draws.slice(i * 18 + 2, i * 18 + 18).map((v) => {
+  const FD = 24;
+  for (let i = 0; i * FD < draws.length; i++) {
+    const params = draws.slice(i * FD + 2, i * FD + 18).map((v) => {
       f32.setFloat32(0, v, true);
       return f32.getUint32(0, true).toString(16).padStart(8, '0');
     });
     lines.push(`fragment ${i} ${params.join(' ')}`);
+  }
+  // Where a fragment's image is, for the draws that have one: the source
+  // word (1 atlas, 2 texture), the texture index, the texel rect.
+  for (let i = 0; i * FD < draws.length; i++) {
+    const from = draws[i * FD + 18];
+    if (from === 0) continue;
+    const index = from === 2 ? draws[i * FD + 19] : '-';
+    lines.push(`fragment-image ${i} ${from === 1 ? 'atlas' : 'texture'} ${index} ${draws.slice(i * FD + 20, i * FD + 24).join(' ')}`);
   }
   // A texture quad's texel rect rides its side list the same way.
   const textures = ctx.textureDraws();
@@ -4340,6 +4400,39 @@ test('theme() is the roles the protocol declares, derived from env.system', () =
   // Roles, not a ramp: the light `surface` is near white, the dark near black.
   assert.ok((light.surface >>> 24) > 0xe0);
   assert.ok((dark.surface >>> 24) < 0x40);
+});
+
+test('metrics() is the sizes the protocol declares, and setMetrics reaches the stock button', () => {
+  const rows = protocol().metrics;
+  assert.ok(rows.length >= 12, 'the protocol declares the metrics');
+  const ctx = new Ctx();
+  const stock = ctx.metrics();
+  for (const r of rows) {
+    assert.equal(stock[r.node], r.stock, `${r.node} is the stock value`);
+  }
+  assert.equal(stock.radius, 6);
+  assert.equal(stock.controlText, 15);
+
+  const buttonH = () => {
+    ctx.frame(320, 240, 1, root({}, [el('button', { onClick: 'ok' }, ['OK'])]));
+    const quads = Buffer.from(ctx.quads());
+    return quads.readFloatLE(3 * 4);
+  };
+  const tall = buttonH();
+  // Overrides on top of what is in effect; the button is built from them.
+  ctx.setMetrics({ controlPadY: 2, controlText: 10 });
+  assert.equal(ctx.metrics().controlPadY, 2);
+  assert.equal(ctx.metrics().radius, 6, 'the rest is kept');
+  assert.ok(buttonH() < tall, 'the button shrank');
+  // A named base, then a scale over it: a density slider.
+  ctx.setMetrics({ base: 'compact', scale: 2 });
+  assert.equal(ctx.metrics().radius, 8);
+  assert.equal(ctx.metrics().titlebarH, stock.titlebarH * 2);
+  // null is the stock set again, and an unknown key is a typo.
+  ctx.setMetrics(null);
+  assert.deepEqual(ctx.metrics(), stock);
+  assert.throws(() => ctx.setMetrics({ raduis: 3 }), /no such metric/);
+  assert.throws(() => ctx.setMetrics({ base: 'cozy' }), /comfortable/);
 });
 
 test('setAccent keeps the OS light/dark, setTheme follows nothing, null derives again', () => {

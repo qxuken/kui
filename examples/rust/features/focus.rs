@@ -97,7 +97,7 @@ impl App for Focus {
                         ui,
                         "three",
                         "three (disabled)",
-                        widgets::button_spec()
+                        widgets::button_spec(&ui.metrics())
                             .disabled(true)
                             .on_click(Value::str("three")),
                         None,

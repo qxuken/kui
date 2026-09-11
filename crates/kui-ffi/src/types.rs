@@ -548,6 +548,12 @@ pub struct KuiSpec {
     /// and `scrollbar_active`.
     pub scrollbar_color: u32,
     pub scrollbar_active_color: u32,
+    /// Non-zero: scroll anchoring on this scrolling node (backlog C26,
+    /// CSS's `overflow-anchor`) — the first child in view keeps its place
+    /// on screen when the content before it changes size. Appended after
+    /// ABI 14 the compatible way; a host that predates it passes the
+    /// shorter struct and reads as zero.
+    pub anchor: u32,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a
@@ -861,6 +867,133 @@ impl Default for KuiTheme {
 // SAFETY: `repr(C)` with `size: u32` first.
 unsafe impl OutParam for KuiTheme {
     const ABI_V1_SIZE: u32 = abi_through!(KuiTheme, scrollbar_active, u32);
+    fn size_mut(&mut self) -> &mut u32 {
+        &mut self.size
+    }
+}
+
+/// The sizes the stock widgets are built from (`kui_metrics`,
+/// `kui_metrics_set`; backlog T2): `kui_core::schema::METRIC_ROLES` field
+/// for field, in that order, and `metrics_struct_covers_every_role` pins
+/// the two together as `KuiTheme` is pinned to its roles. Logical px,
+/// before the scale factor. An append here bumps `KUI_ABI_VERSION`, by
+/// the rule `KuiTheme` states.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KuiMetrics {
+    /// [out] reservation; see `KUI_METRICS_INIT`. Ignored by
+    /// `kui_metrics_set`, which reads the struct the host filled.
+    pub size: u32,
+    pub control_text: f32,
+    pub chrome_text: f32,
+    pub hint_text: f32,
+    pub radius: f32,
+    pub radius_inner: f32,
+    pub control_pad_x: f32,
+    pub control_pad_y: f32,
+    pub field_pad_x: f32,
+    pub field_pad_y: f32,
+    pub hint_pad_x: f32,
+    pub hint_pad_y: f32,
+    pub menu_pad_x: f32,
+    pub menu_pad_y: f32,
+    pub menu_width: f32,
+    pub menu_bar_h: f32,
+    pub titlebar_h: f32,
+}
+
+impl Default for KuiMetrics {
+    fn default() -> Self {
+        Self::of(&kui_core::Metrics::default())
+    }
+}
+
+impl KuiMetrics {
+    /// A core `Metrics` as the host reads it, through the role table so
+    /// the two cannot disagree on a field.
+    pub(crate) fn of(m: &kui_core::Metrics) -> Self {
+        let mut out = Self {
+            size: std::mem::size_of::<Self>() as u32,
+            control_text: 0.0,
+            chrome_text: 0.0,
+            hint_text: 0.0,
+            radius: 0.0,
+            radius_inner: 0.0,
+            control_pad_x: 0.0,
+            control_pad_y: 0.0,
+            field_pad_x: 0.0,
+            field_pad_y: 0.0,
+            hint_pad_x: 0.0,
+            hint_pad_y: 0.0,
+            menu_pad_x: 0.0,
+            menu_pad_y: 0.0,
+            menu_width: 0.0,
+            menu_bar_h: 0.0,
+            titlebar_h: 0.0,
+        };
+        for role in kui_core::schema::METRIC_ROLES {
+            *out.field_mut(role.name) = (role.get)(m);
+        }
+        out
+    }
+
+    /// The host's struct as a core `Metrics`, through the same table.
+    pub(crate) fn to_core(self) -> kui_core::Metrics {
+        let mut m = kui_core::Metrics::default();
+        for role in kui_core::schema::METRIC_ROLES {
+            (role.set)(&mut m, *self.field(role.name));
+        }
+        m
+    }
+
+    fn field(&self, name: &str) -> &f32 {
+        match name {
+            "control_text" => &self.control_text,
+            "chrome_text" => &self.chrome_text,
+            "hint_text" => &self.hint_text,
+            "radius" => &self.radius,
+            "radius_inner" => &self.radius_inner,
+            "control_pad_x" => &self.control_pad_x,
+            "control_pad_y" => &self.control_pad_y,
+            "field_pad_x" => &self.field_pad_x,
+            "field_pad_y" => &self.field_pad_y,
+            "hint_pad_x" => &self.hint_pad_x,
+            "hint_pad_y" => &self.hint_pad_y,
+            "menu_pad_x" => &self.menu_pad_x,
+            "menu_pad_y" => &self.menu_pad_y,
+            "menu_width" => &self.menu_width,
+            "menu_bar_h" => &self.menu_bar_h,
+            "titlebar_h" => &self.titlebar_h,
+            other => panic!("METRIC_ROLES names a metric KuiMetrics lacks: {other}"),
+        }
+    }
+
+    fn field_mut(&mut self, name: &str) -> &mut f32 {
+        match name {
+            "control_text" => &mut self.control_text,
+            "chrome_text" => &mut self.chrome_text,
+            "hint_text" => &mut self.hint_text,
+            "radius" => &mut self.radius,
+            "radius_inner" => &mut self.radius_inner,
+            "control_pad_x" => &mut self.control_pad_x,
+            "control_pad_y" => &mut self.control_pad_y,
+            "field_pad_x" => &mut self.field_pad_x,
+            "field_pad_y" => &mut self.field_pad_y,
+            "hint_pad_x" => &mut self.hint_pad_x,
+            "hint_pad_y" => &mut self.hint_pad_y,
+            "menu_pad_x" => &mut self.menu_pad_x,
+            "menu_pad_y" => &mut self.menu_pad_y,
+            "menu_width" => &mut self.menu_width,
+            "menu_bar_h" => &mut self.menu_bar_h,
+            "titlebar_h" => &mut self.titlebar_h,
+            other => panic!("METRIC_ROLES names a metric KuiMetrics lacks: {other}"),
+        }
+    }
+}
+
+// SAFETY: `repr(C)` with `size: u32` first.
+unsafe impl OutParam for KuiMetrics {
+    const ABI_V1_SIZE: u32 = abi_through!(KuiMetrics, titlebar_h, f32);
     fn size_mut(&mut self) -> &mut u32 {
         &mut self.size
     }
@@ -1310,7 +1443,25 @@ pub struct KuiFragmentDraw {
     pub fragment: u64,
     /// What the node declared, zero-padded to sixteen.
     pub params: [f32; 16],
+    /// Where the draw's `image` is (backlog V1): `KUI_FRAGMENT_IMAGE_NONE`,
+    /// `_ATLAS` (bind the atlas, as for any fragment) or `_TEXTURE` (bind
+    /// the texture `image_texture` names, as for a `KUI_QUAD_TEXTURE`
+    /// quad). Added in ABI 15.
+    pub image_source: u32,
+    /// The `textures` index the draw reads, when `image_source` is
+    /// `KUI_FRAGMENT_IMAGE_TEXTURE`; 0 otherwise.
+    pub image_texture: u32,
+    /// The texel rect the shader is given as `FragmentIn::image`, in the
+    /// atlas or in that texture; zero with no image.
+    pub image_uv: [u32; 4],
 }
+
+/// `KuiFragmentDraw::image_source`: no image.
+pub const KUI_FRAGMENT_IMAGE_NONE: u32 = 0;
+/// `KuiFragmentDraw::image_source`: the image is in the atlas.
+pub const KUI_FRAGMENT_IMAGE_ATLAS: u32 = 1;
+/// `KuiFragmentDraw::image_source`: the image has a texture of its own.
+pub const KUI_FRAGMENT_IMAGE_TEXTURE: u32 = 2;
 
 /// One `KUI_QUAD_TEXTURE`'s draw, addressed by that quad's `uv[0]`
 /// (ADR 0025, decision 3).
@@ -1528,6 +1679,39 @@ impl Default for KuiTextHit {
 // SAFETY: `repr(C)` with `size: u32` first.
 unsafe impl OutParam for KuiTextHit {
     const ABI_V1_SIZE: u32 = abi_through!(KuiTextHit, byte, u64);
+    fn size_mut(&mut self) -> &mut u32 {
+        &mut self.size
+    }
+}
+
+/// [out] The rect a node was laid out at (`kui_layout_of`): logical px in
+/// viewport coordinates, the `layout` event's numbers without the event.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KuiLayoutRect {
+    /// [out] reservation; see `KUI_LAYOUT_RECT_INIT`.
+    pub size: u32,
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+}
+
+impl Default for KuiLayoutRect {
+    fn default() -> Self {
+        Self {
+            size: std::mem::size_of::<Self>() as u32,
+            x: 0.0,
+            y: 0.0,
+            w: 0.0,
+            h: 0.0,
+        }
+    }
+}
+
+// SAFETY: `repr(C)` with `size: u32` first.
+unsafe impl OutParam for KuiLayoutRect {
+    const ABI_V1_SIZE: u32 = abi_through!(KuiLayoutRect, h, f32);
     fn size_mut(&mut self) -> &mut u32 {
         &mut self.size
     }

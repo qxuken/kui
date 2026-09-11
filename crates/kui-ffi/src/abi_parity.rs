@@ -122,11 +122,13 @@ c_type! {
     KuiSpec => "KuiSpec", KuiTextStyle => "KuiTextStyle", KuiSpan => "KuiSpan",
     KuiCell => "KuiCell", KuiMenuItem => "KuiMenuItem", KuiMenu => "KuiMenu",
     KuiMenuAction => "KuiMenuAction", KuiTextHit => "KuiTextHit",
-    KuiCaretRect => "KuiCaretRect", KuiTextMetrics => "KuiTextMetrics",
+    KuiCaretRect => "KuiCaretRect", KuiLayoutRect => "KuiLayoutRect",
+    KuiTextMetrics => "KuiTextMetrics",
     KuiScrollGeometry => "KuiScrollGeometry", KuiAccessNode => "KuiAccessNode",
     KuiAccessRun => "KuiAccessRun", KuiAnnouncement => "KuiAnnouncement",
     KuiWarning => "KuiWarning", KuiPlay => "KuiPlay", KuiAudio => "KuiAudio",
     KuiAudioCommand => "KuiAudioCommand", KuiTheme => "KuiTheme",
+    KuiMetrics => "KuiMetrics",
     KuiEvent => "KuiEvent", KuiWindowConfig => "KuiWindowConfig",
     KuiWindowCommand => "KuiWindowCommand", KuiDrawData => "KuiDrawData",
     ViewFn => "KuiViewFn",
@@ -403,6 +405,9 @@ fn asserts() -> (String, Vec<&'static str>) {
             KUI_AUDIO_RESUME,
             KUI_AUDIO_MASTER_VOLUME,
             KUI_AUDIO_UNLOAD,
+            KUI_FRAGMENT_IMAGE_NONE,
+            KUI_FRAGMENT_IMAGE_ATLAS,
+            KUI_FRAGMENT_IMAGE_TEXTURE,
             KUI_WINDOW_NONE,
             KUI_FLOAT_NONE,
             KUI_FLOAT_PARENT,
@@ -510,6 +515,15 @@ fn asserts() -> (String, Vec<&'static str>) {
         h: f32 => "float",
     });
     abi_out_struct!(o, KuiCaretRect);
+
+    abi_struct!(o, KuiLayoutRect {
+        size: u32 => "uint32_t",
+        x: f32 => "float",
+        y: f32 => "float",
+        w: f32 => "float",
+        h: f32 => "float",
+    });
+    abi_out_struct!(o, KuiLayoutRect);
 
     abi_struct!(o, KuiStr {
         ptr: *const u8 => "const uint8_t *",
@@ -633,6 +647,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         scrollbar_width: f32 => "float",
         scrollbar_color: u32 => "uint32_t",
         scrollbar_active_color: u32 => "uint32_t",
+        anchor: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiAccessNode {
@@ -760,6 +775,27 @@ fn asserts() -> (String, Vec<&'static str>) {
     });
     abi_out_struct!(o, KuiTheme);
 
+    abi_struct!(o, KuiMetrics {
+        size: u32 => "uint32_t",
+        control_text: f32 => "float",
+        chrome_text: f32 => "float",
+        hint_text: f32 => "float",
+        radius: f32 => "float",
+        radius_inner: f32 => "float",
+        control_pad_x: f32 => "float",
+        control_pad_y: f32 => "float",
+        field_pad_x: f32 => "float",
+        field_pad_y: f32 => "float",
+        hint_pad_x: f32 => "float",
+        hint_pad_y: f32 => "float",
+        menu_pad_x: f32 => "float",
+        menu_pad_y: f32 => "float",
+        menu_width: f32 => "float",
+        menu_bar_h: f32 => "float",
+        titlebar_h: f32 => "float",
+    });
+    abi_out_struct!(o, KuiMetrics);
+
     abi_struct!(o, KuiTextStyle {
         size: f32 => "float",
         line_height: f32 => "float",
@@ -878,6 +914,9 @@ fn asserts() -> (String, Vec<&'static str>) {
     abi_struct!(o, KuiFragmentDraw {
         fragment: u64 => "uint64_t",
         params: [f32; 16] => "float *",
+        image_source: u32 => "uint32_t",
+        image_texture: u32 => "uint32_t",
+        image_uv: [u32; 4] => "uint32_t *",
     });
     abi_struct!(o, KuiTextureDraw {
         image: u64 => "uint64_t",

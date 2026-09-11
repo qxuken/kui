@@ -29,9 +29,49 @@
 //! `FragmentIn` and `fragment` — are not prefixed, because they are what
 //! the app writes.
 
-/// Where a node's [`FragmentDraw`] lives in the frame's [`FragmentList`].
+/// Where a node's [`Draw`] lives in the frame's [`FragmentList`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FragmentDrawId(pub u32);
+
+/// What a `fragment` node names: the function, and the image it reads
+/// through `kui_sample` if it declared one (backlog V1, ADR 0025 decision
+/// 7). Every fragment door takes `impl Into<FragmentRef>`, so a bare
+/// [`FragmentId`](crate::resources::FragmentId) is the no-image form and
+/// `id.with_image(img)` the other; nothing else about the node changes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FragmentRef {
+    pub id: crate::resources::FragmentId,
+    pub image: Option<crate::resources::ImageId>,
+}
+
+impl From<crate::resources::FragmentId> for FragmentRef {
+    fn from(id: crate::resources::FragmentId) -> Self {
+        FragmentRef { id, image: None }
+    }
+}
+
+impl crate::resources::FragmentId {
+    /// This function reading `image`: what `kui_sample(uv)` returns texels
+    /// of, and `FragmentIn::image` the texel rect of.
+    pub fn with_image(self, image: crate::resources::ImageId) -> FragmentRef {
+        FragmentRef {
+            id: self,
+            image: Some(image),
+        }
+    }
+}
+
+/// One `fragment` node's draw as the builder records it: what the node
+/// declared, before emission resolves the image to an atlas slot or a
+/// texture entry (which is per window, so it cannot happen here) and
+/// writes the wire form, [`crate::display::FragmentDraw`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Draw {
+    pub id: crate::resources::FragmentId,
+    pub image: Option<crate::resources::ImageId>,
+    /// The view's `params`, zero-padded to sixteen.
+    pub params: [f32; 16],
+}
 
 /// The frame's fragment draws, one per `fragment` node, indexed by the
 /// [`FragmentDrawId`] the node's `NodeContent` carries.
@@ -47,7 +87,7 @@ pub struct FragmentDrawId(pub u32);
 /// filled. A frame with no departure pays one `clear`.
 #[derive(Default)]
 pub struct FragmentList {
-    draws: crate::retain::Kept<crate::display::FragmentDraw>,
+    draws: crate::retain::Kept<Draw>,
 }
 
 impl FragmentList {
@@ -58,13 +98,13 @@ impl FragmentList {
     }
 
     /// Records a draw and returns where it went.
-    pub(crate) fn push(&mut self, draw: crate::display::FragmentDraw) -> FragmentDrawId {
+    pub(crate) fn push(&mut self, draw: Draw) -> FragmentDrawId {
         let id = FragmentDrawId(self.draws.len() as u32);
         self.draws.push(draw);
         id
     }
 
-    pub(crate) fn get(&self, id: FragmentDrawId) -> crate::display::FragmentDraw {
+    pub(crate) fn get(&self, id: FragmentDrawId) -> Draw {
         self.draws[id.0 as usize]
     }
 
@@ -72,7 +112,7 @@ impl FragmentList {
     /// range when the previous list was not kept, which is a departure the
     /// swap did not expect; it draws nothing rather than something else's
     /// picture.
-    pub(crate) fn prev_get(&self, id: FragmentDrawId) -> Option<crate::display::FragmentDraw> {
+    pub(crate) fn prev_get(&self, id: FragmentDrawId) -> Option<Draw> {
         self.draws.prev().get(id.0 as usize).copied()
     }
 }
@@ -105,6 +145,17 @@ struct KuiGlobals {
     _pad: vec2<f32>,
 };
 @group(0) @binding(0) var<uniform> kui_globals: KuiGlobals;
+// The atlas — or, for a fragment whose `image` has a texture of its own,
+// that texture bound in the atlas's place with `atlas_size` set to its
+// size, exactly as a texture-backed `image` node is drawn (ADR 0025).
+@group(0) @binding(1) var kui_atlas: texture_2d<f32>;
+@group(0) @binding(2) var kui_sampler: sampler;
+@group(0) @binding(3) var kui_sampler_nearest: sampler;
+
+// The texel rect of the node's `image` in `kui_atlas`, `[x, y, w, h]`;
+// zero with no image. Module-private so `kui_sample` needs no argument
+// for it; the epilogue sets it before calling `fragment`.
+var<private> kui_image_rect: vec4<f32>;
 
 // What an app's `fragment` function is given.
 struct FragmentIn {
@@ -123,7 +174,38 @@ struct FragmentIn {
     // wants a colour the view chose reads it here rather than spending
     // four params on one.
     color: vec4<f32>,
+    // The node's `image` as a texel rect, `[x, y, w, h]`, in whatever
+    // `kui_sample` reads from — the atlas or the image's own texture; the
+    // app never needs to know which. `zw` is the image's size in texels,
+    // which is what a data texture's row and column count are. Zero with
+    // no image.
+    image: vec4<f32>,
 };
+
+// The node's `image` at `uv`, `(0,0)` its top-left and `(1,1)` its
+// bottom-right, bilinear between texels and clamped half a texel in from
+// the rect's edge so the neighbour past it — a glyph, in the atlas —
+// never bleeds in. Transparent black with no image. Straight alpha, as
+// the image was registered.
+fn kui_sample(uv: vec2<f32>) -> vec4<f32> {
+    let r = kui_image_rect;
+    let lo = r.xy + vec2<f32>(0.5, 0.5);
+    let hi = r.xy + r.zw - vec2<f32>(0.5, 0.5);
+    let t = clamp(r.xy + clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0)) * r.zw, lo, max(lo, hi));
+    let c = textureSample(kui_atlas, kui_sampler, t / kui_globals.atlas_size);
+    return select(vec4<f32>(0.0), c, r.z > 0.0 && r.w > 0.0);
+}
+
+// `kui_sample` reading the nearest texel instead of blending four — a
+// heatmap cell, a pixel-art sprite, anything whose texels are values.
+fn kui_sample_nearest(uv: vec2<f32>) -> vec4<f32> {
+    let r = kui_image_rect;
+    let lo = r.xy + vec2<f32>(0.5, 0.5);
+    let hi = r.xy + r.zw - vec2<f32>(0.5, 0.5);
+    let t = clamp(r.xy + clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0)) * r.zw, lo, max(lo, hi));
+    let c = textureSample(kui_atlas, kui_sampler_nearest, t / kui_globals.atlas_size);
+    return select(vec4<f32>(0.0), c, r.z > 0.0 && r.w > 0.0);
+}
 
 // Half-width of every SDF edge ramp, in physical px. The renderer's `AA`.
 const KUI_AA: f32 = 0.75;
@@ -150,7 +232,9 @@ fn kui_sd_rounded_box(p: vec2<f32>, half: vec2<f32>, radii: vec4<f32>) -> f32 {
 /// coverage math is `shade`'s, for the solid case: one rounded-box SDF for
 /// the node and one for a rounded clip, each ramped over `KUI_AA`.
 pub const EPILOGUE: &str = r#"
-struct KuiFragmentParams { p: array<vec4<f32>, 4> };
+// The sixteen params, then the image's texel rect — one slot per draw,
+// laid out as `kui_wgpu`'s `FragmentParams`.
+struct KuiFragmentParams { p: array<vec4<f32>, 4>, image: vec4<f32> };
 @group(1) @binding(0) var<uniform> kui_fragment_params: KuiFragmentParams;
 
 @fragment
@@ -169,6 +253,8 @@ fn kui_fs_fragment(
     kui_in.time = kui_globals.time;
     kui_in.scale = kui_globals.scale;
     kui_in.color = vec4<f32>(color.rgb, 1.0);
+    kui_in.image = kui_fragment_params.image;
+    kui_image_rect = kui_fragment_params.image;
     let kui_c = fragment(kui_in, kui_fragment_params.p);
 
     // The node's own rounded box, exactly as a solid gets it.
@@ -332,6 +418,20 @@ fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32> {
         let src = "\
 fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32> {
     return vec4<f32>(in.color.rgb * params[0].x, 1.0);
+}";
+        validate(src).unwrap();
+    }
+
+    /// `kui_sample`, `kui_sample_nearest` and `in.image` are the image
+    /// input (backlog V1); a source using them validates without an image
+    /// bound, since binding is a per-frame fact.
+    #[test]
+    fn the_image_input_is_reachable_from_the_app() {
+        let src = "\
+fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32> {
+    let uv = in.local / max(in.size, vec2<f32>(1.0));
+    let cells = in.image.zw;
+    return mix(kui_sample(uv), kui_sample_nearest(uv), step(1.0, cells.x)) * params[0];
 }";
         validate(src).unwrap();
     }

@@ -146,14 +146,16 @@ impl App for Gallery {
                         ui,
                         "accented",
                         "accent",
-                        widgets::button_spec().accent().on_click(Value::str(NOOP)),
+                        widgets::button_spec(&ui.metrics())
+                            .accent()
+                            .on_click(Value::str(NOOP)),
                         Some("bg, hover and pressed all come off the accent"),
                     );
                     widgets::button_with(
                         ui,
                         "off",
                         "disabled",
-                        widgets::button_spec().disabled(true),
+                        widgets::button_spec(&ui.metrics()).disabled(true),
                         None,
                     );
                 });

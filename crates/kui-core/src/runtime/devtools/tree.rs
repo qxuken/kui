@@ -5,7 +5,7 @@
 
 use rustc_hash::FxHashMap;
 
-use super::panel::{filter_field, small_button};
+use super::panel::{filter_field, small_button, small_button_iconed};
 use super::{APP_KEY, DEVTOOLS_KEY, Dock, Place, State, action, fmt_value};
 use crate::color::Color;
 use crate::geom::{Rect, Vec2};
@@ -193,11 +193,12 @@ pub(super) fn tree_tab(
             .cross_align(Align::Center)
             .gap(6.0),
         |ui| {
-            small_button(
+            small_button_iconed(
                 ui,
                 t,
                 "pick",
-                "⊕ pick",
+                super::icons::Icon::Pick,
+                "pick",
                 "Ctrl+Shift+P · pick a node from the app; Escape leaves",
                 st.pick,
             );
@@ -209,7 +210,78 @@ pub(super) fn tree_tab(
             small_button(ui, t, "unfold-all", "+", "expand every row", false);
         },
     );
-    let rows = rows(nodes, st);
+    let mut rows = rows(nodes, st);
+    // The keyboard (backlog D1): the list is one sink with a cursor of its
+    // own, and a key it heard last frame moves that cursor over the rows
+    // this build has — Up/Down by one, Home/End to the ends, PageUp/Down
+    // by a screenful, Left folds the row (or goes to its parent), Right
+    // unfolds it (or goes to its first child), Enter and Space select it
+    // as a click would. A fold or an unfold changes the rows, so they are
+    // rebuilt after.
+    let mut keep_in_view = None;
+    if let Some(code) = st.tree_key.take() {
+        let index: FxHashMap<Key, usize> =
+            nodes.iter().enumerate().map(|(i, n)| (n.key, i)).collect();
+        let at = st
+            .tree_cursor
+            .and_then(|k| rows.iter().position(|r| nodes[r.idx].key == k));
+        let page = 12;
+        let go = |i: usize| Some(nodes[rows[i].idx].key);
+        let last = rows.len().saturating_sub(1);
+        let next = match (code.as_str(), at) {
+            (_, _) if rows.is_empty() => None,
+            ("down", None) | ("up", None) | ("home", _) => go(0),
+            ("end", _) => go(last),
+            ("down", Some(i)) => go((i + 1).min(last)),
+            ("up", Some(i)) => go(i.saturating_sub(1)),
+            ("pagedown", Some(i)) => go((i + page).min(last)),
+            ("pageup", Some(i)) => go(i.saturating_sub(page)),
+            ("pagedown", None) | ("pageup", None) => go(0),
+            ("enter", Some(i)) | ("space", Some(i)) => {
+                let k = nodes[rows[i].idx].key;
+                st.selected = if st.selected == Some(k) {
+                    None
+                } else {
+                    Some(k)
+                };
+                Some(k)
+            }
+            ("left", Some(i)) => {
+                let n = &nodes[rows[i].idx];
+                if n.children > 0 && !st.collapsed.contains(&n.key) {
+                    st.collapsed.insert(n.key);
+                    Some(n.key)
+                } else {
+                    // The parent row, skipping the app container the
+                    // rows never show.
+                    let mut p = n.parent;
+                    while let Some(k) = p {
+                        if rows.iter().any(|r| nodes[r.idx].key == k) {
+                            break;
+                        }
+                        p = index.get(&k).and_then(|&i| nodes[i].parent);
+                    }
+                    p.or(Some(n.key))
+                }
+            }
+            ("right", Some(i)) => {
+                let n = &nodes[rows[i].idx];
+                if n.children > 0 && st.collapsed.remove(&n.key) {
+                    Some(n.key)
+                } else if n.children > 0 {
+                    rows.get(i + 1).map(|r| nodes[r.idx].key)
+                } else {
+                    Some(n.key)
+                }
+            }
+            _ => st.tree_cursor,
+        };
+        if next.is_some() {
+            st.tree_cursor = next;
+            keep_in_view = next;
+        }
+        rows = self::rows(nodes, st);
+    }
     let selected = st.selected;
     let collapsed = &st.collapsed;
     let count = rows.len();
@@ -222,6 +294,9 @@ pub(super) fn tree_tab(
         ),
         TextStyle::new(11.0).color(t.muted),
     );
+    let list_key = ui.child_key("kui-devtools/nodes");
+    let list_focused = ui.is_focused(list_key);
+    let cursor = st.tree_cursor;
     let list = widgets::virtual_column(
         ui,
         "kui-devtools/nodes",
@@ -232,13 +307,21 @@ pub(super) fn tree_tab(
             .bg(t.sunken)
             .radius(6.0)
             .pad(4.0)
-            .scrollbar(crate::spec::ScrollbarMode::Auto),
+            .scrollbar(crate::spec::ScrollbarMode::Auto)
+            // The list is the keyboard's one stop and its own sink: the
+            // rows are clickable and not Tab stops, and the arrows reach
+            // this rather than a row (backlog D1, ADR 0011).
+            .on_key(action("tree-key"))
+            .role(crate::access::Role::List)
+            .label("nodes")
+            .border(1.0, if list_focused { t.focus_ring } else { t.sunken }),
         count,
         ROW_H,
         |ui, i| {
             let row = &rows[i];
             let n = &nodes[row.idx];
             let on = Some(n.key) == selected;
+            let at = list_focused && Some(n.key) == cursor;
             let folded = collapsed.contains(&n.key);
             let row_key = format!("node:{:016x}", n.key.0);
             if ui.is_hovered(ui.child_key(&row_key)) {
@@ -254,6 +337,7 @@ pub(super) fn tree_tab(
                     .radius(3.0)
                     .bg(if on { t.accent_soft } else { t.sunken })
                     .hover_bg(if on { t.accent_soft } else { t.hover })
+                    .border(1.0, if at { t.focus_ring } else { Color::TRANSPARENT })
                     .cross_align(Align::Center)
                     .gap(4.0)
                     .on_click(action(format!("node:{:016x}", n.key.0)))
@@ -321,6 +405,21 @@ pub(super) fn tree_tab(
         // is legible too.
         let above = (ui.scroll_geometry(list).map_or(200.0, |g| g.rect.h) / 3.0).max(0.0);
         ui.set_scroll(list, Vec2::new(0.0, (i as f32 * ROW_H - above).max(0.0)));
+    } else if let Some(key) = keep_in_view
+        && let Some(i) = rows.iter().position(|r| nodes[r.idx].key == key)
+        && let Some(g) = ui.scroll_geometry(list)
+    {
+        // The cursor's row stays on screen and the list moves as little
+        // as it must: a row above the top scrolls up to it, one below the
+        // bottom scrolls down to it, one in view leaves the list alone.
+        let top = i as f32 * ROW_H;
+        let bottom = top + ROW_H;
+        let view_h = (g.rect.h - 8.0).max(ROW_H);
+        if top < g.offset.y {
+            ui.set_scroll(list, Vec2::new(0.0, top));
+        } else if bottom > g.offset.y + view_h {
+            ui.set_scroll(list, Vec2::new(0.0, bottom - view_h));
+        }
     }
     if let Some(n) = selected.and_then(|k| nodes.iter().find(|n| n.key == k)) {
         inspector(ui, st, nodes, n, t, place);

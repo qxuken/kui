@@ -244,6 +244,68 @@ pub extern "C" fn kui_fragment_open(
     });
 }
 
+/// `kui_fragment` reading `image` through `kui_sample` (backlog V1,
+/// ADR 0025 decision 7): an image handle from `kui_image_add`, or 0 for
+/// none, which is `kui_fragment`. `label` keys the node (empty = a key
+/// from the tree position); a leaf.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_fragment_with(
+    ptr: *mut KuiCtx,
+    label: KuiStr,
+    id: u64,
+    image: u64,
+    params: *const f32,
+    count: usize,
+    spec: *const KuiSpec,
+) {
+    guard((), || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return;
+        };
+        let p = fragment_params(params, count);
+        let spec = fragment_spec(spec);
+        let frag = fragment_ref(id, image);
+        match opt_str(label) {
+            Some(label) => c.core().fragment_node_keyed(&label, frag, p, spec),
+            None => c.core().fragment_node(frag, p, spec),
+        };
+    });
+}
+
+/// `kui_fragment_with` as a parent: its children paint over it. Balance
+/// with `kui_close`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_fragment_open_with(
+    ptr: *mut KuiCtx,
+    label: KuiStr,
+    id: u64,
+    image: u64,
+    params: *const f32,
+    count: usize,
+    spec: *const KuiSpec,
+) {
+    guard((), || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return;
+        };
+        let p = fragment_params(params, count);
+        let spec = fragment_spec(spec);
+        let frag = fragment_ref(id, image);
+        match opt_str(label) {
+            Some(label) => c.core().open_fragment_keyed(&label, frag, p, spec),
+            None => c.core().open_fragment(frag, p, spec),
+        };
+    });
+}
+
+/// The function and its image, 0 for none.
+fn fragment_ref(id: u64, image: u64) -> kui_core::FragmentRef {
+    kui_core::FragmentRef {
+        id: kui_core::FragmentId::from_ffi(id),
+        image: (image != 0).then(|| kui_core::ImageId::from_ffi(image)),
+    }
+}
+
 /// The `params` slice behind a possibly-null pointer.
 fn fragment_params<'a>(params: *const f32, count: usize) -> &'a [f32] {
     if params.is_null() || count == 0 {
@@ -805,9 +867,21 @@ pub extern "C" fn kui_draw_data(ptr: *mut KuiCtx, out: *mut KuiDrawData) -> bool
             let (dl, _) = c.core().output();
             dl.fragments
                 .iter()
-                .map(|f| KuiFragmentDraw {
-                    fragment: f.id.to_ffi(),
-                    params: f.params,
+                .map(|f| {
+                    let (image_source, image_texture) = match f.image {
+                        kui_core::FragmentImage::None => (KUI_FRAGMENT_IMAGE_NONE, 0),
+                        kui_core::FragmentImage::Atlas(_) => (KUI_FRAGMENT_IMAGE_ATLAS, 0),
+                        kui_core::FragmentImage::Texture { index, .. } => {
+                            (KUI_FRAGMENT_IMAGE_TEXTURE, index)
+                        }
+                    };
+                    KuiFragmentDraw {
+                        fragment: f.id.to_ffi(),
+                        params: f.params,
+                        image_source,
+                        image_texture,
+                        image_uv: f.image.uv(),
+                    }
                 })
                 .collect()
         };

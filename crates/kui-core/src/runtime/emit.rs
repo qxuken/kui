@@ -1481,10 +1481,10 @@ enum Leaf<'a> {
         pad: crate::geom::Edges,
     },
     Image(crate::resources::ImageId, crate::resources::ImageOpts),
-    Fragment(crate::display::FragmentDraw),
+    Fragment(crate::fragment::Draw),
     /// A polygon's draw; the fill is the node's `bg`, put through the
     /// fragment quad's colour rather than a box under it.
-    Polygon(crate::display::FragmentDraw),
+    Polygon(crate::fragment::Draw),
     Line {
         points: &'a [Vec2],
         width: f32,
@@ -1684,9 +1684,8 @@ impl Painter<'_> {
             }
             Leaf::Fragment(draw) => {
                 push_fragment(
-                    &mut self.display.quads,
-                    &mut self.display.fragments,
-                    &mut self.display.fragment_sources,
+                    self.display,
+                    self.atlas,
                     &self.session.state().resources,
                     draw,
                     rect.scaled(scale),
@@ -1698,9 +1697,8 @@ impl Painter<'_> {
             Leaf::Polygon(draw) => {
                 if style.bg.is_visible() {
                     push_fragment(
-                        &mut self.display.quads,
-                        &mut self.display.fragments,
-                        &mut self.display.fragment_sources,
+                        self.display,
+                        self.atlas,
                         &self.session.state().resources,
                         draw,
                         rect.scaled(scale),
@@ -2039,13 +2037,21 @@ pub(crate) fn fit_image(
 /// One fragment quad and its side entry: the draw, the source a backend
 /// compiles, and the colour the function reads as `in.color` — white for
 /// a `fragment`, the fill for a `polygon` (ADR 0025).
+///
+/// A draw naming an `image` resolves it here, where the window's atlas
+/// is: an atlas-backed image goes into the atlas as an `image` node's
+/// would and the draw carries its slot; a texture-backed one takes an
+/// entry of the texture side list — the same entry an `image` node of it
+/// would — and the draw carries the index, so the backend binds that
+/// texture for this one quad as it does for a texture quad. An image
+/// handle that is not live draws nothing, the fallback every resource
+/// kind has, and the lookup is what records a foreign one.
 #[allow(clippy::too_many_arguments)]
 fn push_fragment(
-    quads: &mut Vec<Quad>,
-    fragments: &mut Vec<crate::display::FragmentDraw>,
-    sources: &mut Vec<std::sync::Arc<str>>,
+    display: &mut DisplayList,
+    atlas: &mut GlyphAtlas,
     resources: &crate::resources::Resources,
-    draw: crate::display::FragmentDraw,
+    draw: crate::fragment::Draw,
     rect: Rect,
     radius: [f32; 4],
     clip_id: ClipId,
@@ -2054,10 +2060,47 @@ fn push_fragment(
     let Some(source) = resources.fragment(draw.id) else {
         return;
     };
-    let index = fragments.len() as u32;
-    fragments.push(draw);
-    sources.push(source.clone());
-    quads.push(Quad {
+    let image = match draw.image {
+        None => crate::display::FragmentImage::None,
+        Some(id) => {
+            let Some(entry) = resources.image(id) else {
+                return;
+            };
+            let slot = match entry.backing {
+                crate::resources::ImageBacking::Atlas => {
+                    atlas.get_or_insert_image(id, entry.width, entry.height, &entry.rgba)
+                }
+                crate::resources::ImageBacking::Texture => None,
+            };
+            match slot {
+                Some(slot) => {
+                    crate::display::FragmentImage::Atlas([slot.x, slot.y, slot.w, slot.h])
+                }
+                None => {
+                    let index = display.textures.len() as u32;
+                    let uv = [0, 0, entry.width, entry.height];
+                    display
+                        .textures
+                        .push(crate::display::TextureDraw { id, uv });
+                    display.texture_pixels.push(crate::display::TexturePixels {
+                        width: entry.width,
+                        height: entry.height,
+                        rev: entry.rev,
+                        rgba: entry.rgba.clone(),
+                    });
+                    crate::display::FragmentImage::Texture { index, uv }
+                }
+            }
+        }
+    };
+    let index = display.fragments.len() as u32;
+    display.fragments.push(crate::display::FragmentDraw {
+        id: draw.id,
+        params: draw.params,
+        image,
+    });
+    display.fragment_sources.push(source.clone());
+    display.quads.push(Quad {
         rect,
         // White on a `fragment` — the function returns its own colour and
         // reads this as `in.color` if it wants one — and the fill on a

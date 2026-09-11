@@ -63,6 +63,32 @@ pub extern "C" fn kui_scroll_offset(ptr: *mut KuiCtx, key: u64, x: *mut f32, y: 
 /// spacers holding the space of the rest, and pay for a screenful. Read
 /// during a build it describes the previous frame, so a resize slices one
 /// frame late — build a row or two extra at each end.
+/// The rect the last frame laid `key` out at, for a node that declared
+/// `on_layout` — the `layout` event's numbers, read back during the next
+/// build with no event (backlog C26 step 2). False for any other key, a
+/// bad context, a NULL `out` or a short reservation.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_layout_of(ptr: *mut KuiCtx, key: u64, out: *mut KuiLayoutRect) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        let Some(r) = c.core().layout_of(Key(key)) else {
+            return false;
+        };
+        write_out(
+            out,
+            KuiLayoutRect {
+                x: r.x,
+                y: r.y,
+                w: r.w,
+                h: r.h,
+                ..Default::default()
+            },
+        )
+    })
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_scroll_geometry(
     ptr: *mut KuiCtx,

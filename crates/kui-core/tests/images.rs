@@ -168,3 +168,109 @@ fn an_update_of_the_wrong_length_is_refused() {
     let (w, h, _) = core.image_pixels(id).unwrap();
     assert_eq!((w, h), (8, 2));
 }
+
+/// The corpus fixture that samples its `image` (backlog V1).
+const SAMPLER: &str = "\
+fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32> {
+    return kui_sample(in.local / max(in.size, vec2<f32>(1.0)));
+}";
+
+fn fragment_draws(core: &mut Core) -> Vec<kui_core::FragmentDraw> {
+    core.output().0.fragments.clone()
+}
+
+/// A fragment reading an atlas-backed image carries the atlas slot; one
+/// reading a texture-backed image takes a `textures` entry — the same
+/// entry an `image` node of it would — and carries its index. The frame
+/// draws no texture *quad* for it: the fragment's own quad is the draw.
+#[test]
+fn a_fragment_reads_an_image_from_the_atlas_or_its_texture() {
+    use kui_core::FragmentImage;
+    let mut core = Core::new();
+    let icon = core.resources.add_image(4, 4, rgba(4, 4));
+    let stream = core.resources.add_image(4, 4, rgba(4, 4));
+    assert!(core.update_image(stream, 8, 2, rgba(8, 2)));
+    let f = core.add_fragment(SAMPLER).unwrap();
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    let spec = || {
+        NodeSpec::column()
+            .width(Sizing::Fixed(16.0))
+            .height(Sizing::Fixed(16.0))
+    };
+    ui.fragment(f.with_image(icon), &[], spec());
+    ui.fragment(f.with_image(stream), &[], spec());
+    ui.fragment(f, &[], spec());
+    ui.finish();
+
+    let draws = fragment_draws(&mut core);
+    assert_eq!(draws.len(), 3);
+    assert!(matches!(draws[0].image, FragmentImage::Atlas([_, _, 4, 4])));
+    assert_eq!(
+        draws[1].image,
+        FragmentImage::Texture {
+            index: 0,
+            uv: [0, 0, 8, 2]
+        }
+    );
+    assert_eq!(draws[2].image, FragmentImage::None);
+    let (dl, _) = core.output();
+    assert_eq!(dl.textures.len(), 1);
+    assert_eq!(dl.textures[0].id, stream);
+    assert_eq!(dl.texture_pixels[0].rev, 1);
+    assert_eq!(
+        dl.quads
+            .iter()
+            .filter(|q| q.kind == QuadKind::Fragment)
+            .count(),
+        3
+    );
+    assert_eq!(
+        dl.quads
+            .iter()
+            .filter(|q| q.kind == QuadKind::Texture)
+            .count(),
+        0
+    );
+}
+
+/// The removal order ADR 0015 decision 9 asked to see pinned before an
+/// image input existed: an image removed under a live fragment makes the
+/// fragment draw nothing — the fallback every resource has — from the
+/// next frame on, and putting the image back (a new handle) draws again.
+#[test]
+fn a_removed_image_under_a_live_fragment_draws_nothing() {
+    let mut core = Core::new();
+    let img = core.resources.add_image(4, 4, rgba(4, 4));
+    let f = core.add_fragment(SAMPLER).unwrap();
+    let spec = || {
+        NodeSpec::column()
+            .width(Sizing::Fixed(16.0))
+            .height(Sizing::Fixed(16.0))
+    };
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.fragment(f.with_image(img), &[], spec());
+    ui.finish();
+    assert_eq!(fragment_draws(&mut core).len(), 1);
+
+    core.remove_image(img);
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.fragment(f.with_image(img), &[], spec());
+    ui.finish();
+    assert!(fragment_draws(&mut core).is_empty(), "the image is gone");
+    assert!(
+        core.output()
+            .0
+            .quads
+            .iter()
+            .all(|q| q.kind != QuadKind::Fragment)
+    );
+
+    // The other order too: the fragment goes, the image stays.
+    let img = core.resources.add_image(4, 4, rgba(4, 4));
+    core.remove_fragment(f);
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.fragment(f.with_image(img), &[], spec());
+    ui.finish();
+    assert!(fragment_draws(&mut core).is_empty(), "the function is gone");
+    assert!(core.output().0.textures.is_empty());
+}

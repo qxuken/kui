@@ -62,6 +62,45 @@ field reports).
   binds that texture in the atlas's place and draws the quad as an
   image; on both image kinds `border_w` is now the `sampling` flag (0
   linear, 1 nearest), which was always zero before.
+- **ABI 15: `KuiFragmentDraw` appends `image_source`, `image_texture`
+  and `image_uv`** (backlog V1, [ADR 0025](docs/adr/0025-the-image-is-the-canvas.md)
+  decision 7). An array element, so the append moves the stride — the
+  `KuiSpan` / `KuiMenuItem` exception — and a host that walks
+  `KuiDrawData.fragments` itself recompiles; one that does not has
+  nothing to change. A host that renders the list binds, for a draw
+  whose `image_source` is `KUI_FRAGMENT_IMAGE_TEXTURE`, the texture
+  `textures[image_texture]` names in the atlas's place — exactly what it
+  does for a `KUI_QUAD_TEXTURE` quad — and hands the shader `image_uv`.
+- **`Content::Fragment` carries a `FragmentRef`, and `FragmentDraw` an
+  `image`.** A binding that lowers `fragment` builds
+  `FragmentRef { id, image }` where it passed a `FragmentId`; every
+  `Core`/`Ui` fragment door takes `impl Into<FragmentRef>`, so a call
+  passing a `FragmentId` compiles as before. Code that constructs a
+  `FragmentDraw` by hand adds `image: FragmentImage::None`; the frame's
+  `FragmentList` holds `fragment::Draw` (the declared form) rather than
+  the wire one.
+- **Node's binary protocol is v9, and `fragmentDraws()` returns
+  twenty-four doubles a draw.** `<fragment>` carries its `image` as two
+  slots after `src` (zero for none); a reader of `fragmentDraws()` that
+  strided by 18 strides by 24 — the six new words are where the image is
+  (0/1/2), the `textureDraws()` index, and the texel rect.
+- **`widgets::button_spec` takes `&Metrics`, and `menu_panel_spec` takes
+  it beside the theme** (backlog T2). `widgets::button_spec(&ui.metrics())`
+  is the idiom, as `menu_panel_spec(&t, &m)` is; `button_spec(&Metrics::default())`
+  is byte for byte what the no-argument form built. The public constants
+  (`BUTTON_TEXT`, `MENU_WIDTH`, `MENU_TEXT`, `MENU_BAR_H`, `TITLEBAR_H`)
+  stay, as the stock set's values — but the widgets read `ui.metrics()`
+  now, so an app that sets its own metrics and still lays out against
+  `TITLEBAR_H` is one constant behind its own titlebar; read
+  `ui.metrics().titlebar_h`. The corpus report does not move: the stock
+  set is the constants.
+- **The corpus report grows a `fragment-image` line**, written for each
+  fragment draw that names an image — `fragment-image <i> <atlas|texture>
+  <texture index|-> <x> <y> <w> <h>` — and the `fragments` scene grows
+  three such fragments (one over the atlas-backed icon, one over the
+  texture-backed stream, one over an image live nowhere), so
+  `target/conformance.txt` wants regenerating and every adapter registers
+  a second fixture source, `FRAGMENT_IMAGE_WGSL`.
 - **The corpus report's `kinds` line has nine columns, and `texture`
   lines join `fragment` lines.** Every scene's `kinds` moves by a column
   (`… <fragment> <texture>`), `media` gains three texture quads and a
@@ -302,6 +341,125 @@ field reports).
     cannot serve), a path primitive, rotation, a core `zoom` row (a
     second camera app, or UI zoom) — V7 and V8 in the backlog, and V1–V6
     for what it named and deferred (fragment image input next).
+- **A fragment reads an image** (backlog V1, ADR 0025 decision 7, the
+  deferral ADR 0015 decision 9 made). `<fragment src image params>`,
+  `fragment { id=, image= }`, `ui.fragment(id.with_image(img), ..)`,
+  `kui_fragment_with(ctx, label, id, image, ..)` and
+  `kui_fragment_open_with`: the function reads a registered image
+  through two prelude helpers — `kui_sample(uv)` bilinear,
+  `kui_sample_nearest(uv)` texel-exact, `uv` in `[0,1]²` and clamped half
+  a texel in from the edge so the atlas neighbour never bleeds — and
+  `in.image` is the texel rect, `zw` the image's size in texels. **The
+  core binds whichever holds the pixels**: an atlas-backed image goes
+  into the atlas as an `image` node's would and the draw carries the
+  slot; a texture-backed one — anything `update_image` has touched —
+  takes the frame's `textures` entry an `image` node of it would take,
+  and the renderer binds that texture at group 0 for the one quad, as
+  it does for a texture quad. The function never knows which. A fragment
+  whose image is not live draws nothing, as one whose `src` is not does
+  — the removal order ADR 0015 said needed a test before it needed a
+  feature, and `tests/images.rs` pins both orders. What it is for is the
+  "many points" case every canvas request turned out to be: a
+  spectrogram, a heatmap, a 50k-point line, an image effect — the data is
+  a texture the app replaces, the nodes are one. The `fragment` example
+  gains a heatmap (64×16 values rewritten every frame, drawn as cells
+  through `kui_sample_nearest`) and a ripple over an atlas-backed icon,
+  with a drive; `FragmentDraw.image` is a `FragmentImage` (`None`,
+  `Atlas(uv)`, `Texture { index, uv }`), `KuiFragmentDraw` its three
+  fields under ABI 15, Node's `fragmentDraws()` six more words, and the
+  corpus a `fragment-image` line per such draw. The prelude's helpers are
+  `kui_`-prefixed as `kui_sd_rounded_box` is, where the two ADRs wrote
+  `sample(uv)` — the module's rule is that only `FragmentIn` and
+  `fragment` go unprefixed. **Measured** (`scripts/bench-check.sh`,
+  interleaved against the base commit, M3 Pro): the guarded rows moved
+  +1.2–1.7% with a run-to-run spread of ±0.4–0.9% (`frame_1k_typical`
+  115 → 117 µs, `frame_10k_rects` 721 → 733 µs), inside the tolerance
+  and at the edge of the noise; `frame_1k_polygons` 96.1 → 101 µs
+  (+4.9%, ±1.1%) is the one reading — a polygon is a fragment draw, and
+  the draw grew by the image's slot on both sides of the wire. Five
+  microseconds on a thousand fills; the hoist ADR 0025's amendment
+  already names (the per-quad session lookup in `push_fragment`) is
+  where the next round would take it back.
+- **`Metrics`: the sizes the stock widgets are built from, beside the
+  palette** (backlog T2 — the axis ADR 0019 scoped itself out of). Sixteen
+  roles — `control_text`, `chrome_text`, `hint_text`, `radius`,
+  `radius_inner`, the button's, the field's, the tooltip's and a menu
+  row's padding, `menu_width`, `menu_bar_h`, `titlebar_h` — read as
+  `ui.metrics()` in Rust, `env.metrics` in Lua, `ctx.metrics()` /
+  `win.metrics()` in Node and `kui_metrics` in C, and set with
+  `Core::set_metrics`, `ctx.setMetrics({..})` (overrides on the set in
+  effect, or on `base: "compact"`, then `scale`) and `kui_metrics_set`.
+  Every stock widget is built from it — the button, the field, the
+  tooltip, the context menu, the menu bar and the titlebar — so an app's
+  own control that reads `m.radius` and `m.control_pad_x` agrees with the
+  stock button at every density without copying a number. The two
+  questions the entry said to settle first are settled in
+  `metrics.rs`'s doc: **a metric never scales by itself** — every field is
+  logical px before `env.scale`, which is the renderer's, and density is
+  the app's choice (`Metrics::compact()`, `Metrics::scaled(f)`) the way the
+  palette is; and **the default is the contract** — `Metrics::default()`
+  is byte for byte the constants the widgets had, the corpus runs with it
+  and did not move by a byte, and a set metric changes what *that app*
+  draws as `set_theme` does. `schema::METRIC_ROLES` pins the struct the
+  way `THEME_ROLES` pins the theme (exhaustive destructure, both names
+  both ways, C's `KuiMetrics` round-tripped through the table, Lua's
+  `env.metrics` keys, the `## Metrics` table in `docs/props.md`).
+  `cargo run --example metrics`: three densities by a click, the stock
+  widgets rebuilt from each, and a card of the app's own that moves with
+  them — with a drive.
+- **Scroll anchoring: `anchor` on a scrolling node** (backlog C26 step 3,
+  CSS's `overflow-anchor`) — `NodeSpec::anchor()`, `<box scrollY anchor>`,
+  `anchor = true`, `KuiSpec.anchor`. The first child in view keeps its
+  place on screen when the content before it changes size: a chat that
+  prepends history, a log that inserts rows above the viewport, a list
+  whose row heights are corrected as they are measured — with no
+  `set_scroll` and no arithmetic in the view. The core remembers, per
+  anchored container, which child was first in view and where its
+  leading edge sat in the content (`ScrollStore`), and the next layout
+  moves the retained offset by however far that edge moved, before the
+  clamp; a wheel notch or a `set_scroll` between the frames is kept and
+  the correction added to it. Children are found by key, so rows want
+  stable keys; a child that is gone anchors nothing that frame; content
+  after the anchor moves nothing, so a tailing log still asks for the end
+  itself; and it is the scroll axis that is the node's main axis only. The
+  `anchor` corpus scene pins one frame of it in four bindings — two
+  scrollers wheeled alike, a taller row prepended to both, one still and
+  one slid — and `tests/anchor.rs` the rest. This is the part of C5(b)
+  that was worth building: the core keeping a row still, not the core
+  skipping rows.
+- **`layout_of(key)`: the `layout` event's numbers as a query** (backlog
+  C26 step 2) — `Core::layout_of`, `ui.layout_of`, `ctx.layoutOf(key)`,
+  `env.layout_of(key)`, `kui_layout_of(ctx, key, KuiLayoutRect *)`. The
+  rect the last frame laid an `on_layout` node out at, read during the
+  next build with no event, no tag and no model field; `None` for a key
+  that did not declare `on_layout` last frame. Read during a build it
+  describes the previous frame, like `scroll_geometry`.
+- **The devtools tree walks by keyboard** (backlog D1). The tree tab's
+  list is one Tab stop and one key sink with a cursor of its own — the
+  composite shape ADR 0007 describes, built in the panel rather than as
+  a fifth container/item pair, since a tree's Left and Right fold and
+  unfold where a list's step: Up/Down move the cursor by a row, Home/End
+  to the ends, PageUp/Down by a screenful, Left folds the row (or goes to
+  its parent when it is a leaf or already folded), Right unfolds it (or
+  goes to its first child), Enter and Space select it as a click would,
+  and the cursor's row stays in view with the list moving as little as it
+  must. The rows are clickable and not Tab stops, as before; the ring is
+  drawn on the list while it holds focus and on the cursor's row.
+- **A `modal` example** (backlog E3): `cargo run --example modal` — a
+  dialog over a form opening on its `initial_focus` button, Tab confined
+  to it, a confirm nested inside it that makes the dialog as inert as the
+  form, Escape routed by the modal's tag and answered by the app (close
+  an untouched dialog, ask the confirm on a dirty one), and focus
+  restored to the opener when the dialog goes — with a drive that pins
+  all of it.
+- **The devtools panel's buttons are drawn, not typed** (backlog D2). The
+  placement buttons, the base / accent / menus toggles and the tree tab's
+  picker were Unicode blocks from whatever font the platform fell back to;
+  they are now `runtime/devtools/icons.rs` — a `line` per stroke, a
+  `polygon` per fill, a zero-length segment for a dot, in a 16-px box in
+  the theme's colours, the lit placement's pane filled in the accent. The
+  same on every platform, and they follow the appearance like the rest of
+  the panel.
 - **The devtools are the core's: one panel, drawn by the runtime, for
   every app** ([ADR 0024](docs/adr/0024-the-devtools-are-the-cores.md)).
   `Core::set_devtools(true)` — `kui::app(..).devtools(true)` in Rust,

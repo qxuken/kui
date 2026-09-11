@@ -13,7 +13,8 @@ use crate::slots::one;
 /// (leaves, closed by the door).
 pub enum Content<'a> {
     Box,
-    Fragment(crate::resources::FragmentId, &'a [f32]),
+    /// A fragment: the function (and its image, if any) and the params.
+    Fragment(crate::fragment::FragmentRef, &'a [f32]),
     Cells(&'a crate::cells::CellGrid<'a>),
     Line(&'a [Vec2], Stroke),
     /// A filled polygon (ADR 0025, decision 6); the fill is the spec's `bg`.
@@ -462,8 +463,8 @@ impl Core {
                 self.open_with_key(key, spec);
                 false
             }
-            Content::Fragment(id, params) => {
-                self.fragment_with_key(key, id, params, spec);
+            Content::Fragment(frag, params) => {
+                self.fragment_with_key(key, frag, params, spec);
                 false
             }
             Content::Cells(grid) => {
@@ -686,14 +687,19 @@ impl Core {
     /// `params` is up to sixteen numbers, positional, zero-padded, read by
     /// the shader as four `vec4<f32>`; more than sixteen are dropped with
     /// a `fragment-params-truncated` warning. A handle that is not live in
-    /// this session draws nothing, as every resource kind does.
+    /// this session draws nothing, as every resource kind does — and so
+    /// does one whose `image` (`FragmentId::with_image`) is not, which is
+    /// the removal order ADR 0015 decision 9 asked to be pinned before an
+    /// image input existed: the image goes, the fragment reading it draws
+    /// the fallback, and the handle it kept is a `foreign-resource` miss
+    /// like any other.
     pub fn fragment_node(
         &mut self,
-        id: crate::resources::FragmentId,
+        frag: impl Into<crate::fragment::FragmentRef>,
         params: &[f32],
         spec: NodeSpec,
     ) -> Key {
-        let key = self.open_fragment(id, params, spec);
+        let key = self.open_fragment(frag, params, spec);
         self.close();
         key
     }
@@ -703,7 +709,7 @@ impl Core {
     /// with [`Self::close`], or use `Ui::fragment_with`.
     pub fn open_fragment(
         &mut self,
-        id: crate::resources::FragmentId,
+        frag: impl Into<crate::fragment::FragmentRef>,
         params: &[f32],
         spec: NodeSpec,
     ) -> Key {
@@ -711,7 +717,7 @@ impl Core {
             return Key::ROOT;
         }
         let key = self.auto_key();
-        self.fragment_with_key(key, id, params, spec);
+        self.fragment_with_key(key, frag.into(), params, spec);
         key
     }
 
@@ -720,11 +726,11 @@ impl Core {
     pub fn fragment_node_keyed(
         &mut self,
         label: &str,
-        id: crate::resources::FragmentId,
+        frag: impl Into<crate::fragment::FragmentRef>,
         params: &[f32],
         spec: NodeSpec,
     ) -> Key {
-        let key = self.open_fragment_keyed(label, id, params, spec);
+        let key = self.open_fragment_keyed(label, frag, params, spec);
         self.close();
         key
     }
@@ -733,7 +739,7 @@ impl Core {
     pub fn open_fragment_keyed(
         &mut self,
         label: &str,
-        id: crate::resources::FragmentId,
+        frag: impl Into<crate::fragment::FragmentRef>,
         params: &[f32],
         spec: NodeSpec,
     ) -> Key {
@@ -741,7 +747,7 @@ impl Core {
             return Key::ROOT;
         }
         let key = self.child_key(label);
-        self.fragment_with_key(key, id, params, spec);
+        self.fragment_with_key(key, frag.into(), params, spec);
         self.key_labels.push(key, label);
         key
     }
@@ -750,7 +756,7 @@ impl Core {
     pub fn open_fragment_indexed(
         &mut self,
         i: u64,
-        id: crate::resources::FragmentId,
+        frag: impl Into<crate::fragment::FragmentRef>,
         params: &[f32],
         spec: NodeSpec,
     ) -> Key {
@@ -758,14 +764,14 @@ impl Core {
             return Key::ROOT;
         }
         let key = self.child_key_index(i);
-        self.fragment_with_key(key, id, params, spec);
+        self.fragment_with_key(key, frag.into(), params, spec);
         key
     }
 
     fn fragment_with_key(
         &mut self,
         key: Key,
-        id: crate::resources::FragmentId,
+        frag: crate::fragment::FragmentRef,
         params: &[f32],
         spec: NodeSpec,
     ) {
@@ -780,9 +786,11 @@ impl Core {
                 ),
             });
         }
-        let draw = self
-            .fragments
-            .push(crate::display::FragmentDraw { id, params });
+        let draw = self.fragments.push(crate::fragment::Draw {
+            id: frag.id,
+            image: frag.image,
+            params,
+        });
         self.open_content(key, spec, NodeContent::Fragment(draw));
     }
 
@@ -981,9 +989,11 @@ impl Core {
             params[i * 2] = (p.x - rect.x) / rect.w;
             params[i * 2 + 1] = (p.y - rect.y) / rect.h;
         }
-        let draw = self
-            .fragments
-            .push(crate::display::FragmentDraw { id, params });
+        let draw = self.fragments.push(crate::fragment::Draw {
+            id,
+            image: None,
+            params,
+        });
         // The fill rides in `bg`, which `transition`, `enter` and `exit`
         // already ease; nothing else of the box vocabulary applies.
         spec.style.border_w = 0.0;

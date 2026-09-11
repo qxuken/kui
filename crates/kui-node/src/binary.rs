@@ -55,7 +55,9 @@ use crate::{Result, err, value_of};
 /// v8: `image` carries its `sampling` and `fit` rows as two slots before
 /// its props, and `polygon` is a new op (ADR 0025) — the slots in the
 /// middle of an existing op are what the bump is for.
-pub const VERSION: u32 = 8;
+/// v9: `fragment` carries its `image` handle as two slots after `src`
+/// (backlog V1, ADR 0025 decision 7) — slots in the middle of an op again.
+pub const VERSION: u32 = 9;
 
 pub const OP_END: u32 = 0;
 pub const OP_ROOT: u32 = 1;
@@ -472,7 +474,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             };
             let label_key = key.unwrap_or(label);
             let mut base = PropsOut::new();
-            base.spec = widgets::button_spec();
+            base.spec = widgets::button_spec(&ui.metrics());
             let p = read_props_over(r, base)?;
             widgets::button_with(
                 ui,
@@ -596,19 +598,25 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             ui.core().open_from(p, Content::Line(&points, stroke));
             Ok(())
         }
-        // src (hi, lo), param count, the params, then props. An open node:
-        // the encoder emits OP_CLOSE for it like any other parent, so a
-        // fragment's children paint over it.
+        // src (hi, lo), image (hi, lo; both zero for none), param count,
+        // the params, then props. An open node: the encoder emits OP_CLOSE
+        // for it like any other parent, so a fragment's children paint
+        // over it.
         OP_FRAGMENT => {
             let (hi, lo) = (r.f()? as u64, r.f()? as u64);
+            let (ihi, ilo) = (r.f()? as u64, r.f()? as u64);
             let n = r.u()? as usize;
             let mut params = Vec::with_capacity(n);
             for _ in 0..n {
                 params.push(r.f()? as f32);
             }
             let p = read_props(r)?;
-            let id = kui_core::FragmentId::from_ffi((hi << 32) | lo);
-            ui.core().open_from(p, Content::Fragment(id, &params));
+            let image = (ihi << 32) | ilo;
+            let frag = kui_core::FragmentRef {
+                id: kui_core::FragmentId::from_ffi((hi << 32) | lo),
+                image: (image != 0).then(|| kui_core::ImageId::from_ffi(image)),
+            };
+            ui.core().open_from(p, Content::Fragment(frag, &params));
             decode_until_close(r, ui)?;
             ui.core().close();
             Ok(())

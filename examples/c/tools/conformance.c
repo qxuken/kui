@@ -118,6 +118,8 @@ typedef struct Fixtures {
     uint64_t stream;
     uint64_t sound;
     uint64_t fragment;
+    /* conformance::Fixtures::sampler: the one that reads its image. */
+    uint64_t sampler;
 } Fixtures;
 
 /* conformance::FRAGMENT_WGSL, character for character. */
@@ -129,6 +131,17 @@ static const char *CONF_FRAGMENT_WGSL =
     "    let ring = 1.0 - smoothstep(-KUI_AA, KUI_AA, abs(d) - params[2].y);\n"
     "    return vec4<f32>(mix(base.rgb, params[3].rgb, ring), base.a);\n"
     "}";
+
+/* conformance::FRAGMENT_IMAGE_WGSL, character for character. */
+static const char *CONF_FRAGMENT_IMAGE_WGSL =
+    "fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32> {\n"
+    "    let uv = in.local / max(in.size, vec2<f32>(1.0));\n"
+    "    let c = kui_sample(uv) * params[0];\n"
+    "    return vec4<f32>(c.rgb, c.a * step(1.0, in.image.z));\n"
+    "}";
+
+/* conformance::FRAGMENT_IMAGE_PARAMS. */
+static const float CONF_FRAGMENT_IMAGE_PARAMS[4] = {1.0f, 0.5f, 0.25f, 1.0f};
 
 /* conformance::FRAGMENT_PARAMS and FRAGMENT_PARAMS_LONG. */
 static const float CONF_FRAGMENT_PARAMS[16] = {
@@ -153,6 +166,7 @@ static Fixtures conf_fixtures(KuiCtx *ctx) {
     kui_image_update(ctx, f.stream, 8, 2, grey);
     f.sound = kui_sound_add(ctx, (const uint8_t *)"RIFF....WAVE", 12);
     f.fragment = kui_fragment_add(ctx, KUI_STR(CONF_FRAGMENT_WGSL));
+    f.sampler = kui_fragment_add(ctx, KUI_STR(CONF_FRAGMENT_IMAGE_WGSL));
     return f;
 }
 
@@ -314,6 +328,37 @@ static void conf_scrollbar(KuiCtx *ui, const Fixtures *f, int phase) {
                        .overflow = KUI_SCROLL_Y, .bg = 0x101018ff,
                        .scrollbar = KUI_SCROLLBAR_AUTO};
     conf_scrollbar_list(ui, "auto", &autobar);
+    kui_close(ui);
+}
+
+/* Scroll anchoring (backlog C26 step 3): two scrollers of the same rows,
+ * one with `anchor`; phase 1 prepends a taller row to both. */
+static void conf_anchor(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    KuiSpec outer = {.dir = KUI_ROW, .pad_l = 10, .pad_r = 10, .pad_t = 10, .pad_b = 10,
+                     .gap = 10};
+    kui_open(ui, &outer, NULL);
+    const char *keys[2] = {"anchored", "plain"};
+    for (int n = 0; n < 2; n++) {
+        KuiSpec list = {.width = {KUI_FIXED, 90}, .height = {KUI_FIXED, 60},
+                        .overflow = KUI_SCROLL_Y, .bg = 0x101018ff, .anchor = n == 0};
+        kui_open_keyed(ui, KUI_STR(keys[n]), &list, NULL);
+        if (phase >= 1) {
+            KuiSpec tall = {.width = {KUI_FIXED, 80}, .height = {KUI_FIXED, 30},
+                            .bg = 0x30344aff};
+            kui_open_keyed(ui, KUI_STR("new"), &tall, NULL);
+            kui_close(ui);
+        }
+        KuiSpec item = {.width = {KUI_FIXED, 80}, .height = {KUI_FIXED, 20},
+                        .bg = 0x30344aff};
+        for (int i = 0; i < 6; i++) {
+            char name[8];
+            snprintf(name, sizeof name, "i%d", i);
+            kui_open_keyed(ui, KUI_STR(name), &item, NULL);
+            kui_close(ui);
+        }
+        kui_close(ui);
+    }
     kui_close(ui);
 }
 
@@ -560,7 +605,10 @@ static void conf_polygon(KuiCtx *ui, const Fixtures *f, int phase) {
  * through kui_polyline's label; the other two are auto-keyed. */
 /* docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md: four
  * fragments - plain, keyed with a child painted over it, a dead handle that
- * draws nothing, and one with eighteen params so the warning fires. */
+ * draws nothing, and one with eighteen params so the warning fires - then
+ * the image input (backlog V1): the sampling fixture over the atlas-backed
+ * icon, over the texture-backed stream, and over an image that is live
+ * nowhere, which draws nothing. */
 static void conf_fragments(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)phase;
     KuiSpec canvas = {.width = {KUI_FIXED, 200}, .height = {KUI_FIXED, 120},
@@ -584,6 +632,18 @@ static void conf_fragments(KuiCtx *ui, const Fixtures *f, int phase) {
 
     KuiSpec longp = {.width = {KUI_FIXED, 30}, .height = {KUI_FIXED, 12}};
     kui_fragment(ui, f->fragment, CONF_FRAGMENT_PARAMS_LONG, 18, &longp);
+
+    KuiSpec row = {.dir = KUI_ROW, .gap = 4};
+    kui_open(ui, &row, NULL);
+    KuiSpec sq = {.width = {KUI_FIXED, 24}, .height = {KUI_FIXED, 24}};
+    kui_fragment_with(ui, KUI_STR(""), f->sampler, f->image, CONF_FRAGMENT_IMAGE_PARAMS, 4, &sq);
+    KuiSpec wide = {.width = {KUI_FIXED, 32}, .height = {KUI_FIXED, 8}};
+    kui_fragment_with(ui, KUI_STR(""), f->sampler, f->stream, CONF_FRAGMENT_IMAGE_PARAMS, 4, &wide);
+    /* An image handle live in no session: the fragment draws nothing. A
+     * zero would mean "no image" at this door, so this is the first
+     * handle the mint never made. */
+    kui_fragment_with(ui, KUI_STR(""), f->sampler, 1, CONF_FRAGMENT_IMAGE_PARAMS, 4, &sq);
+    kui_close(ui);
 
     kui_close(ui);
 }
@@ -1211,6 +1271,7 @@ static const ConfScene CONF_SCENES[] = {
     {"menubar", conf_menu_bar},
     {"virtual", conf_virtual},
     {"layers", conf_layers},
+    {"anchor", conf_anchor},
     {"scrollbar", conf_scrollbar},
 };
 
@@ -1479,6 +1540,16 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
             repf(out, " %08x", bits);
         }
         repf(out, "\n");
+    }
+    /* Where a fragment's image is, for the draws that have one. */
+    for (size_t i = 0; i < dd.fragment_count; i++) {
+        const KuiFragmentDraw *d = &dd.fragments[i];
+        if (d->image_source == KUI_FRAGMENT_IMAGE_NONE) continue;
+        repf(out, "fragment-image %zu %s ", i,
+             d->image_source == KUI_FRAGMENT_IMAGE_ATLAS ? "atlas" : "texture");
+        if (d->image_source == KUI_FRAGMENT_IMAGE_TEXTURE) repf(out, "%u", d->image_texture);
+        else repf(out, "-");
+        repf(out, " %u %u %u %u\n", d->image_uv[0], d->image_uv[1], d->image_uv[2], d->image_uv[3]);
     }
     /* A texture quad's texel rect rides the side list the same way. */
     for (size_t i = 0; i < dd.texture_count; i++) {

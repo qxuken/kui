@@ -173,6 +173,14 @@ impl<'a> Ui<'a> {
         self.core.has_accent()
     }
 
+    /// The sizes the stock widgets are built from
+    /// (`crate::metrics::Metrics`, backlog T2), by value like the theme
+    /// and for the same reason. What a view reads to make its own
+    /// controls agree with the stock ones on a radius and a padding.
+    pub fn metrics(&self) -> crate::metrics::Metrics {
+        *self.core.metrics()
+    }
+
     /// Declares this frame's window title (declare every frame you care;
     /// the driver diffs and applies changes).
     pub fn window_title(&mut self, title: &str) {
@@ -426,25 +434,29 @@ impl<'a> Ui<'a> {
     /// A box a registered WGSL function paints; see `Core::fragment_node`
     /// for what it is, and `Core::add_fragment` for where the handle comes
     /// from. It has no intrinsic size, so give it one.
+    ///
+    /// `frag` is the handle, or `handle.with_image(img)` for a function
+    /// that reads a registered image through `kui_sample(uv)` — a
+    /// waveform, a heatmap, an image effect (ADR 0025, decision 7).
     pub fn fragment(
         &mut self,
-        id: crate::resources::FragmentId,
+        frag: impl Into<crate::fragment::FragmentRef>,
         params: &[f32],
         spec: NodeSpec,
     ) -> Key {
-        self.core.fragment_node(id, params, spec)
+        self.core.fragment_node(frag, params, spec)
     }
 
     /// A fragment holding children, which paint over it: a gradient card
     /// with a title and buttons on top of it.
     pub fn fragment_with(
         &mut self,
-        id: crate::resources::FragmentId,
+        frag: impl Into<crate::fragment::FragmentRef>,
         params: &[f32],
         spec: NodeSpec,
         f: impl FnOnce(&mut Ui<'_>),
     ) -> Key {
-        let key = self.core.open_fragment(id, params, spec);
+        let key = self.core.open_fragment(frag, params, spec);
         f(self);
         self.core.close();
         key
@@ -455,23 +467,23 @@ impl<'a> Ui<'a> {
     pub fn fragment_keyed(
         &mut self,
         label: &str,
-        id: crate::resources::FragmentId,
+        frag: impl Into<crate::fragment::FragmentRef>,
         params: &[f32],
         spec: NodeSpec,
     ) -> Key {
-        self.core.fragment_node_keyed(label, id, params, spec)
+        self.core.fragment_node_keyed(label, frag, params, spec)
     }
 
     /// [`Self::fragment_with`] under a label key.
     pub fn fragment_with_keyed(
         &mut self,
         label: &str,
-        id: crate::resources::FragmentId,
+        frag: impl Into<crate::fragment::FragmentRef>,
         params: &[f32],
         spec: NodeSpec,
         f: impl FnOnce(&mut Ui<'_>),
     ) -> Key {
-        let key = self.core.open_fragment_keyed(label, id, params, spec);
+        let key = self.core.open_fragment_keyed(label, frag, params, spec);
         f(self);
         self.core.close();
         key
@@ -696,6 +708,12 @@ impl<'a> Ui<'a> {
     /// `widgets::virtual_column` for the uniform-row case.
     pub fn scroll_geometry(&self, key: Key) -> Option<crate::scroll::ScrollGeometry> {
         self.core.scroll_geometry(key)
+    }
+
+    /// The rect the last frame laid an `on_layout` node out at; see
+    /// `Core::layout_of` (backlog C26 step 2).
+    pub fn layout_of(&self, key: Key) -> Option<Rect> {
+        self.core.layout_of(key)
     }
 
     /// Declares this node focused: it takes keyboard focus when the

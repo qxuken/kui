@@ -1050,6 +1050,55 @@ fn theme_json(core: &Core) -> Json {
     Json::Object(o)
 }
 
+/// The sizes the stock widgets are built from (backlog T2): one number per
+/// row of `schema::METRIC_ROLES`, under that row's camelCase spelling.
+fn metrics_json(core: &Core) -> Json {
+    let m = *core.metrics();
+    let mut o = JsonMap::new();
+    for role in kui_core::schema::METRIC_ROLES {
+        o.insert(role.node.into(), Json::from((role.get)(&m) as f64));
+    }
+    Json::Object(o)
+}
+
+/// `setMetrics`'s object: overrides on top of the set in effect — so an
+/// app that changes the radius keeps everything else — or on top of a
+/// named set when `base` is `"comfortable"` or `"compact"`; `scale`
+/// multiplies every length after the overrides. An unknown key throws.
+fn metrics_from_json(core: &Core, v: &Json) -> Result<kui_core::Metrics> {
+    let Json::Object(o) = v else {
+        return Err(err("setMetrics(): expected an object of overrides"));
+    };
+    let mut m = match o.get("base") {
+        None | Some(Json::Null) => *core.metrics(),
+        Some(Json::String(s)) if s == "comfortable" => kui_core::Metrics::comfortable(),
+        Some(Json::String(s)) if s == "compact" => kui_core::Metrics::compact(),
+        Some(_) => return Err(err("setMetrics(): base is \"comfortable\" or \"compact\"")),
+    };
+    for (key, v) in o {
+        if matches!(key.as_str(), "base" | "scale") {
+            continue;
+        }
+        let Some(role) = kui_core::schema::METRIC_ROLES
+            .iter()
+            .find(|r| r.node == key)
+        else {
+            return Err(err(format!("setMetrics(): no such metric {key:?}")));
+        };
+        let n = v
+            .as_f64()
+            .ok_or_else(|| err(format!("setMetrics(): {key} must be a number")))?;
+        (role.set)(&mut m, n as f32);
+    }
+    if let Some(v) = o.get("scale") {
+        let f = v
+            .as_f64()
+            .ok_or_else(|| err("setMetrics(): scale must be a number"))?;
+        m = m.scaled(f as f32);
+    }
+    Ok(m)
+}
+
 /// `{quadCount, viewportW, viewportH, scale, atlasSize}` for the last frame.
 fn stats_json(core: &mut Core) -> Json {
     let (dl, atlas) = core.output();
@@ -1698,22 +1747,35 @@ macro_rules! core_methods {
             }
 
             /// This frame's fragment draws, in the order their quads index
-            /// them by `uv[0]`: seventeen doubles each, the handle as two
-            /// 32-bit halves and then the sixteen parameters. The
-            /// parameters ride a side list rather than the quad, so
-            /// `quads()` alone cannot show them and a corpus adapter
-            /// needs this to compare them
+            /// them by `uv[0]`: twenty-four doubles each — the handle as
+            /// two 32-bit halves, the sixteen parameters, then where the
+            /// draw's `image` is (0 none, 1 the atlas, 2 a texture of its
+            /// own), the `textureDraws` index when it is 2, and the texel
+            /// rect `x, y, w, h` (backlog V1). The parameters ride a side
+            /// list rather than the quad, so `quads()` alone cannot show
+            /// them and a corpus adapter needs this to compare them
             /// (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`).
             /// Empty on a frame that draws no fragment.
             #[napi]
             pub fn fragment_draws(&mut self) -> Vec<f64> {
                 let (dl, _) = self.$core().output();
-                let mut out = Vec::with_capacity(dl.fragments.len() * 18);
+                let mut out = Vec::with_capacity(dl.fragments.len() * 24);
                 for f in &dl.fragments {
                     let raw = f.id.to_ffi();
                     out.push((raw >> 32) as f64);
                     out.push((raw & 0xffff_ffff) as f64);
                     out.extend(f.params.iter().map(|v| *v as f64));
+                    // Where the image is: 0 none, 1 the atlas, 2 a texture
+                    // — then the `textureDraws` index (0 unless 2) and the
+                    // texel rect.
+                    let (from, index) = match f.image {
+                        kui_core::FragmentImage::None => (0.0, 0.0),
+                        kui_core::FragmentImage::Atlas(_) => (1.0, 0.0),
+                        kui_core::FragmentImage::Texture { index, .. } => (2.0, index as f64),
+                    };
+                    out.push(from);
+                    out.push(index);
+                    out.extend(f.image.uv().iter().map(|v| *v as f64));
                 }
                 out
             }
@@ -1803,6 +1865,31 @@ macro_rules! core_methods {
             pub fn set_theme(&mut self, theme: Json) -> Result<()> {
                 let t = theme_from_json(self.$core(), &theme)?;
                 self.$core().set_theme(t);
+                Ok(())
+            }
+
+            /// The sizes the stock widgets are built from — the palette's
+            /// other axis: one number per metric, logical px before the
+            /// scale factor. Read it so a control of your own agrees with
+            /// `<button>` on a radius and a padding: `<box radius={metrics.radius}>`.
+            #[napi(ts_return_type = "Metrics")]
+            pub fn metrics(&mut self) -> Json {
+                metrics_json(self.$core())
+            }
+
+            /// Makes these the frame's metrics: overrides on top of the
+            /// set in effect, or on top of `base: "comfortable"` (the
+            /// stock set) / `"compact"` (a dense tool's), then `scale`
+            /// multiplying every length — a density slider. `null`
+            /// restores the stock set. Density is the app's to choose;
+            /// nothing in the OS is followed.
+            #[napi(ts_args_type = "metrics: MetricsOverrides | null")]
+            pub fn set_metrics(&mut self, metrics: Json) -> Result<()> {
+                let m = match metrics {
+                    Json::Null => kui_core::Metrics::default(),
+                    v => metrics_from_json(self.$core(), &v)?,
+                };
+                self.$core().set_metrics(m);
                 Ok(())
             }
 
@@ -2220,6 +2307,20 @@ macro_rules! core_methods {
                     return Ok(None);
                 };
                 Ok(geometry_json(self.$core().scroll_geometry(key)))
+            }
+
+            /// The rect the last frame laid `key` out at, `{x, y, w, h}`
+            /// in logical viewport px, for a node that declared `onLayout`
+            /// — the `layout` event's numbers, read back during the next
+            /// build with no event and no model field (backlog C26 step
+            /// 2); `null` for any other key. Read while building, it
+            /// describes the previous frame, like `scrollGeometry`.
+            #[napi(ts_return_type = "{ x: number, y: number, w: number, h: number } | null")]
+            pub fn layout_of(&mut self, key: String) -> Result<Option<Json>> {
+                let Some(key) = resolve_query(self.$core(), &key) else {
+                    return Ok(None);
+                };
+                Ok(self.$core().layout_of(key).map(|r| readback(&r.to_value())))
             }
 
             /// Where a point lands in the text a keyed node drew: a byte

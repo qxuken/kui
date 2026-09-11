@@ -43,7 +43,7 @@ try {
 
 const native = createRequire(import.meta.url)('./native.cjs');
 const {
-  prop, elements, events, resources, warnings, env, theme,
+  prop, elements, events, resources, warnings, env, theme, metrics,
   accessRoles, accessActions, menuRoles, editKeys, mouseButtons,
 } = native.protocol();
 
@@ -286,11 +286,36 @@ ${tableOf(
   ['role', 'Node', 'dark', 'light', 'description'],
   theme.map((r) => [`\`${r.name}\``, `\`${r.node}\``, `\`${r.dark}\``, `\`${r.light}\``, r.doc]),
 )}
+
+## Metrics
+
+The sizes the stock widgets are built from, as roles beside the palette's
+(backlog T2): the argument for a theme, one axis over — a button of the
+app's own and the stock one should agree on a radius and a padding without
+either copying a number out of the other. Logical px, applied *before* the
+scale factor, which is the renderer's; a metric never scales by itself.
+Density is the app's to choose, the way the palette is: the **stock** set
+is what the widgets always drew, **compact** is a dense tool's (smaller
+text, shallower padding, sharper corners, the titlebar at the platform's
+height either way), and every length can be multiplied for a density
+slider (\`Metrics::scaled\`, \`scale\` in \`setMetrics\`).
+
+Read it as \`ui.metrics()\` in Rust, \`env.metrics\` in Lua, \`ctx.metrics()\` /
+\`win.metrics()\` in Node and \`kui_metrics\` in C; set it with
+\`Core::set_metrics\`, \`ctx.setMetrics\` and \`kui_metrics_set\` (a Lua
+script reads but does not set, as with the theme). The conformance corpus
+runs with the stock set, which is what keeps "the stock button is 15-px
+text in 14×8 padding" a sentence about kui rather than about an app.
+
+${tableOf(
+  ['metric', 'Node', 'stock', 'compact', 'description'],
+  metrics.map((r) => [`\`${r.name}\``, `\`${r.node}\``, `${r.stock}`, `${r.compact}`, r.doc]),
+)}
 `;
 
 writeFileSync(new URL('../../docs/props.md', import.meta.url), md);
 console.log(
-  `docs/props.md: ${spec.length + style.length} schema rows, ${custom.length} composites, ${elements.length} elements, ${events.length} events, ${warnings.length} warnings, ${env.length} env fields, ${theme.length} theme roles`,
+  `docs/props.md: ${spec.length + style.length} schema rows, ${custom.length} composites, ${elements.length} elements, ${events.length} events, ${warnings.length} warnings, ${env.length} env fields, ${theme.length} theme roles, ${metrics.length} metrics`,
 );
 
 // ------------------------------------------------------ the warning codes --

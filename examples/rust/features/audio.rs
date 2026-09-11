@@ -48,7 +48,9 @@ struct Sounds {
 /// that caused it. Hover and any tween would go the same way. The key is
 /// what the button *is*; the label is a view of the state it toggles.
 fn sound_button(ui: &mut Ui<'_>, name: &str, label: &str, payload: Value, sound: SoundId) {
-    let spec = widgets::button_spec().on_click(payload).click_sound(sound);
+    let spec = widgets::button_spec(&ui.metrics())
+        .on_click(payload)
+        .click_sound(sound);
     // Readable on whatever this button's background *is*, which is the
     // rule `widgets::button_with` applies to the stock one.
     let fg = widgets::readable_on(spec.style.bg);

@@ -884,6 +884,48 @@ pub(crate) fn positions(tree: &mut Tree, scroll: &mut ScrollStore, viewport: Siz
         // Scroll containers: clamp the retained offset to this frame's
         // overflow and shift children by it.
         let mut offset = Vec2::ZERO;
+        // Anchoring (backlog C26 step 3): the scroll axis is the main axis,
+        // the container is not wrapping, and a previous layout recorded
+        // which child was first in view and where its leading edge sat in
+        // the content. Where that edge sits *now* is the same walk the
+        // placement below makes, minus the offset; the difference is added
+        // to the retained offset before it is clamped, so the child stays
+        // where it was on screen whatever grew or shrank before it.
+        let anchors = spec.anchor
+            && !wrap
+            && match spec.dir {
+                Dir::Row => spec.scroll_x,
+                Dir::Column => spec.scroll_y,
+            };
+        let free_main = (main_content - total_main).max(0.0);
+        let content_start = main_pad_start + align_factor(spec.main_align) * free_main;
+        if anchors && let Some((anchor, was_at)) = scroll.anchor(tree.keys[i]) {
+            let mut at = content_start;
+            let mut c = first_in_flow(tree, i as u32);
+            while c != NIL {
+                if !is_float(tree, c) {
+                    if tree.keys[c as usize] == anchor {
+                        let delta = at - was_at;
+                        if delta != 0.0 {
+                            scroll.scroll_by(
+                                tree.keys[i],
+                                match spec.dir {
+                                    Dir::Row => Vec2::new(delta, 0.0),
+                                    Dir::Column => Vec2::new(0.0, delta),
+                                },
+                            );
+                        }
+                        break;
+                    }
+                    let c_main = match spec.dir {
+                        Dir::Row => tree.size[c as usize].w,
+                        Dir::Column => tree.size[c as usize].h,
+                    };
+                    at += c_main + spec.gap;
+                }
+                c = tree.next_sibling[c as usize];
+            }
+        }
         if spec.scroll_x || spec.scroll_y {
             let (content_w, content_h) = match spec.dir {
                 Dir::Row => (total_main + spec.padding.x(), max_cross + spec.padding.y()),
@@ -922,6 +964,29 @@ pub(crate) fn positions(tree: &mut Tree, scroll: &mut ScrollStore, viewport: Siz
             Dir::Row => (offset.x, offset.y),
             Dir::Column => (offset.y, offset.x),
         };
+        if anchors {
+            // The anchor for the next layout: the first in-flow child whose
+            // trailing edge is past the offset — the first one in view —
+            // and where its leading edge sits in the content.
+            let mut next = None;
+            let mut at = content_start;
+            let mut c = first_in_flow(tree, i as u32);
+            while c != NIL {
+                if !is_float(tree, c) {
+                    let c_main = match spec.dir {
+                        Dir::Row => tree.size[c as usize].w,
+                        Dir::Column => tree.size[c as usize].h,
+                    };
+                    if at + c_main > main_scroll {
+                        next = Some((tree.keys[c as usize], at));
+                        break;
+                    }
+                    at += c_main + spec.gap;
+                }
+                c = tree.next_sibling[c as usize];
+            }
+            scroll.set_anchor(tree.keys[i], next);
+        }
 
         // Out of flow first, so the in-flow walk is one shape whether or
         // not it goes line by line. A frame with no floats skips the walk.

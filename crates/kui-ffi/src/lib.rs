@@ -296,6 +296,39 @@ pub extern "C" fn kui_theme_set(ptr: *mut KuiCtx, theme: *const KuiTheme) {
     })
 }
 
+/// The sizes the stock widgets are built from (backlog T2): the palette's
+/// other axis. `KuiMetrics m = KUI_METRICS_INIT; kui_metrics(ctx, &m);`
+/// then `spec.radius = m.radius` makes a control of your own agree with
+/// the stock ones. Logical px, before the scale factor. False for a bad
+/// context, a NULL `out`, or a reservation smaller than the ABI-1 layout.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_metrics(ptr: *mut KuiCtx, out: *mut KuiMetrics) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        let m = KuiMetrics::of(c.core().metrics());
+        write_out(out, m)
+    })
+}
+
+/// Makes these the frame's metrics: every stock widget from the next node
+/// on is built from them. NULL restores the stock set. Read one with
+/// `kui_metrics` and change the fields you mean to change rather than
+/// zeroing a fresh struct — a zeroed metric is zero, not "leave it".
+/// Density is the host's to choose; nothing in the OS is followed.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_metrics_set(ptr: *mut KuiCtx, metrics: *const KuiMetrics) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            match unsafe { metrics.as_ref() } {
+                None => c.core().set_metrics(kui_core::Metrics::default()),
+                Some(m) => c.core().set_metrics(m.to_core()),
+            }
+        }
+    })
+}
+
 /// A `KuiTheme` the host filled, as a core [`kui_core::Theme`]. An
 /// appearance code past the end is `unknown`, the way every other code is.
 fn theme_of(t: &KuiTheme) -> kui_core::Theme {
