@@ -516,9 +516,13 @@ static void conf_controls(KuiCtx *ui, const Fixtures *f, int phase) {
                          .disabled = 1,
                          .tooltip = KUI_STR("Nothing is running")};
     kui_button_with(ui, KUI_STR("stop"), &stop_rows, stop);
+    /* A field with the wrap row declared (backlog F44): KUI_EDIT_WRAP is
+     * the declaration, the style's wrap the mode - its zero is WORD, so
+     * the style alone could not say. The seed folds onto two lines. */
     KuiTextStyle s13 = {.size = 13};
     KuiSpec note = {.width = {KUI_FIXED, 160}, .label = KUI_STR("Note")};
-    kui_text_edit(ui, KUI_STR("note"), KUI_STR("hello"), &s13, 0, &note);
+    kui_text_edit(ui, KUI_STR("note"), KUI_STR("hello, on two lines in a narrow field"), &s13,
+                  KUI_EDIT_WRAP, &note);
     /* A slider that names its own reading: value_text is what a reader says
      * instead of the percentage value_now and the range alone would give,
      * and it comes back in KuiAccessNode.value (backlog F8). */

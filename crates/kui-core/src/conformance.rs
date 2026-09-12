@@ -990,7 +990,11 @@ pub const SCENES: &[Scene] = &[
               rows the composite admits at once — a `label` past its text, \
               `disabled`, and a `tooltip` whose description reaches the \
               access row while its float never draws, since nothing hovers \
-              it — through each binding's own button, not a box.",
+              it — through each binding's own button, not a box. The editor \
+              is a single-line field with `wrap` declared and a seed wider \
+              than its box (backlog F44): it folds onto two lines where a \
+              plain field would scroll one, and the quad digest is what \
+              pins that across the bindings.",
         custom: &["key", "size", "tooltip"],
         elements: &["button", "edit", "box", "text"],
         build: build_controls,
@@ -1015,12 +1019,12 @@ pub const SCENES: &[Scene] = &[
             segments: 0,
             fragments: 0,
             textures: 0,
-            glyphs_min: 11,
+            glyphs_min: 30,
             access: &[
                 "0 window ||",
                 "1 button go|Starts the run|",
                 "1 button Stop the run|Nothing is running|",
-                "1 textInput Note||hello",
+                "1 textInput Note||hello, on two lines in a narrow field",
                 "1 slider Focus length||25 minutes",
             ],
             events: &["go -", "contextmenu menu", "contextmenu menu"],
@@ -2556,11 +2560,16 @@ fn build_controls(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 .apply_tooltip("Nothing is running"),
             Some("Nothing is running"),
         );
+        // A field with `wrap` declared: a field's keyboard on a document's
+        // layout (backlog F44). The seed is wider than the box, so the
+        // quad digest pins the second line — and a binding that dropped
+        // the row would lay the draft out on one line, scrolled.
         ui.text_edit(
             "note",
-            "hello",
+            "hello, on two lines in a narrow field",
             &EditOptions {
                 style: TextStyle::new(13.0),
+                wrap: true,
                 ..Default::default()
             },
             NodeSpec::column().width(Sizing::Fixed(160.0)).label("Note"),
