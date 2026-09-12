@@ -21,6 +21,9 @@ const EFFECTS = Symbol.for('kui.effects');
 const FAILED = Symbol('kui.failed');
 // How long the windowed driver may park in one pump — see `runWindowed`.
 const BUDGET = Symbol('kui.budget');
+// The frame a `dispatch` made outside the loop is owed, drawn before the
+// driver pumps — see `runWindowed`.
+const OWED = Symbol('kui.owed');
 
 /**
  * What `update` returns when it has effects to hand the loop besides the
@@ -232,7 +235,8 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
   // promise. `step()` draws on it, the way it draws on an event: without
   // this a "loaded" message an effect dispatched sat in the model until
   // the next OS event happened to redraw (the devtools' tree tab asked for
-  // a frame after its own and got none).
+  // a frame after its own and got none). The windowed driver draws it
+  // earlier still, before it pumps — see `OWED`.
   let dirty = false;
   // Reads what `update` (or `init`) returned: a branded `withEffects` queues
   // its effects and sets the model unless that model is `undefined`, which
@@ -542,6 +546,28 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
     [FAILED](err) {
       failWaiters(err);
     },
+    /** Draws the model a `dispatch` outside the loop changed, if there is
+     *  one, and says whether it did. The windowed driver calls this
+     *  *before* `win.pump()`, so the frame a foreign `dispatch` is owed
+     *  comes before any frame the runner paints on its own — a redraw
+     *  the `update` asked for, the caret blink, a hover — since each of
+     *  those re-lowers the tree the window already has, and what the
+     *  `update` held for the next view (a `setEditText` seed, backlog
+     *  F42) expires on that older tree. The event path already has this
+     *  order: `update`, `view` and `setView` share one turn there. Not a
+     *  synchronous draw inside `dispatch` itself, because an effect
+     *  handler dispatches from inside `flushEffects`, which runs inside
+     *  `draw()`. The waiters are `step`'s to answer, after the pump. */
+    [OWED]() {
+      if (!dirty) return false;
+      try {
+        draw();
+      } catch (e) {
+        failWaiters(e);
+        throw e;
+      }
+      return true;
+    },
     click(x, y, clicks = 1) {
       const mouse = must('mouse');
       must('cursor')(x, y);
@@ -660,7 +686,11 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
  * no async I/O can spend that way, but this one cannot assume either.
  */
 export function runWindowed(config, opts = {}) {
-  const win = new KuiWindow(opts.title ?? 'kui', windowOptions(opts));
+  // `surface` is the slot a test fills with a stand-in window — anything
+  // that answers what a surface does plus `pump`, `animating` and
+  // `nextDeadlineMs` — to run this driver, pump order and all, without a
+  // display; the mirror of `createApp`'s.
+  const win = opts.surface ?? new KuiWindow(opts.title ?? 'kui', windowOptions(opts));
   const app = createLoop(config, opts, win, opts.clock ?? Date.now);
   const busyMs = opts.pumpMs ?? 8;
   const idleMs = Math.max(opts.idlePumpMs ?? 32, busyMs);
@@ -676,17 +706,21 @@ export function runWindowed(config, opts = {}) {
       let worked;
       let animating;
       try {
+        // A model a `dispatch` outside the loop changed — from `setup`, a
+        // timer, a promise, an effect handler — is drawn first, so the
+        // runner never paints a tree older than that `dispatch` (F42).
+        worked = app[OWED]();
         alive = win.pump();
         // `step` draws if anything arrived; a transition draws without it.
         animating = win.animating();
-        worked = app.step() || animating;
+        worked = app.step() || worked || animating;
         // A real driver drains every channel every frame, the app's
         // effects included: the handler had them at the frame, and what
         // `effects()` keeps is for a headless test.
         app.effects();
       } catch (e) {
-        // `step` has already rejected what it was holding; this is for a
-        // throw out of `win.pump()` itself, which happens before it.
+        // `step` and the owed draw have already rejected what they were
+        // holding; this is for a throw out of `win.pump()` itself.
         app[FAILED](e);
         reject(e);
         return;

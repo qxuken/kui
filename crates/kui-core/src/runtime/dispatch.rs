@@ -1105,10 +1105,16 @@ impl Core {
     /// declares under this key, over its `initial`. Held for that one
     /// frame — a key nothing declares on it drops its text and raises
     /// [`crate::diag::EDIT_TEXT_WITHOUT_EDITOR`].
-    pub fn set_edit_text(&mut self, key: Key, text: &str) {
+    ///
+    /// Returns whether the text reached an editor now. `false` is the
+    /// held case: nothing on screen changed, and a driver that redraws on
+    /// it re-lowers the tree that declares no editor, which is the frame
+    /// the hold expires on (backlog F42) — so a binding asks for a redraw
+    /// only on `true`.
+    pub fn set_edit_text(&mut self, key: Key, text: &str) -> bool {
         let sess = &mut *self.session.state();
         self.edit
-            .set_text(key, text, &mut sess.fonts, &sess.resources);
+            .set_text(key, text, &mut sess.fonts, &sess.resources)
     }
 
     /// The same call by the name the view declares — an editor's `key`
@@ -1126,10 +1132,16 @@ impl Core {
     ///
     /// Held for that one frame: a label nothing declares on it drops its
     /// text and raises [`crate::diag::EDIT_TEXT_WITHOUT_EDITOR`].
-    pub fn set_edit_text_by_label(&mut self, label: &str, text: &str) {
+    ///
+    /// Returns whether the text reached an editor now, as
+    /// [`Core::set_edit_text`] does; a label held is `false`.
+    pub fn set_edit_text_by_label(&mut self, label: &str, text: &str) -> bool {
         match self.key_of(label) {
             Some(key) => self.set_edit_text(key, text),
-            None => self.edit.hold_label(label, text),
+            None => {
+                self.edit.hold_label(label, text);
+                false
+            }
         }
     }
 

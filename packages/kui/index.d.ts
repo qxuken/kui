@@ -3347,6 +3347,12 @@ export declare function runWindowed<M, A = AppMsg | CoreMsg, E = never>(
      *  frame. The same handler a headless `createApp` takes, so an effect
      *  a test asserted on is the effect the window performs. */
     effects?: EffectHandler<E, A, KuiWindow>;
+    /** The window to drive. Default: a new `KuiWindow` opened with the
+     *  options above. A test fills it with a stand-in — what a surface
+     *  answers plus `pump`, `animating` and `nextDeadlineMs` — to run
+     *  this driver, pump order and all, without a display; the mirror of
+     *  `createApp`'s `surface`. */
+    surface?: KuiWindow;
   },
 ): Promise<M>;
 
