@@ -910,5 +910,9 @@ export function createEncoder(P) {
     // How many role indices sit in front of the app's own, per kind: what
     // `index.js` adds to a declaration's position to get its wire index.
     roleCounts: { colors: COLOR_ROLES, lengths: LENGTH_ROLES },
+    // Whether a name is a role's, under Node's spelling: what the core
+    // refuses in a declaration (`reserved-token`), so `index.js` gives it
+    // no index either — an index it took would shift every name after it.
+    isRole: (name) => ROLE_TOKENS.has(name),
   };
 }

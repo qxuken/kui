@@ -464,7 +464,17 @@ node.
 7. **`unknown-token` is keyed by the name, not the node.** The name is
    what is gone by the time the frame is a tree, and the encoder that
    sees it does not know the node's key; once per name per session, the
-   message says the name, the kind wanted, and what the slot kept.
+   message says the name, the kind wanted, and what the slot kept. In
+   every binding an unresolved reference *leaves the slot out* — the
+   theme's foreground for a text's colour, a fit width, the default
+   size — never an explicit transparent or zero, so a typo hides nothing
+   (the first Lua build had that wrong). Node has a second miss: the
+   encoder's map is the surface's and the table is a core's, and
+   `setTokens` reaches the main window's core only, so a second window
+   lowers an index its own table does not hold — that too keeps the
+   default and warns, keyed by the index, rather than refusing the frame.
+   And `index.js` gives a role's name no index, as the core drops it,
+   or every token declared after it would sit one index off.
 8. **Two slots take no reference.** `cursorColor` on `cells` (a composite
    the encoder writes by hand — a `$` there is a `bad color` throw) and a
    `fragment`'s parameters (floats by design). Every schema colour, f32

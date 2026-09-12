@@ -364,7 +364,13 @@ impl<'a> TokenLookup<'a> {
     pub fn colors(&self) -> Vec<(&'a str, Color)> {
         let mut out: Vec<(&'a str, Color)> = Vec::new();
         for t in [self.host, self.own].into_iter().flatten() {
-            for (name, tok) in &t.colors {
+            for (i, (name, tok)) in t.colors.iter().enumerate() {
+                // A name later declared as a length leaves its colour
+                // entry behind; the name binds the length, so the
+                // listing does too.
+                if t.id(name) != Some(TokenRef::Color(i as u16)) {
+                    continue;
+                }
                 let c = tok.resolve(self.theme);
                 match out.iter_mut().find(|(n, _)| *n == name.as_str()) {
                     Some(slot) => slot.1 = c,
@@ -379,7 +385,10 @@ impl<'a> TokenLookup<'a> {
     pub fn lengths(&self) -> Vec<(&'a str, f32)> {
         let mut out: Vec<(&'a str, f32)> = Vec::new();
         for t in [self.host, self.own].into_iter().flatten() {
-            for (name, v) in &t.lengths {
+            for (i, (name, v)) in t.lengths.iter().enumerate() {
+                if t.id(name) != Some(TokenRef::Length(i as u16)) {
+                    continue;
+                }
                 match out.iter_mut().find(|(n, _)| *n == name.as_str()) {
                     Some(slot) => slot.1 = *v,
                     None => out.push((name.as_str(), *v)),
@@ -444,6 +453,30 @@ mod tests {
         assert_eq!(t.id("a"), Some(TokenRef::Color(0)));
         assert_eq!(t.colors()[0].1, ColorToken::same(Color::BLACK));
         assert_eq!(t.colors().len(), 2);
+    }
+
+    /// A name declared as both kinds binds the later one; the earlier
+    /// entry stays reachable by its index (the wire's contract) but is
+    /// not what the name lists as.
+    #[test]
+    fn a_name_declared_twice_lists_once() {
+        let t = Tokens::new().color("gap", Color::WHITE).length("gap", 6.0);
+        let theme = Theme::default();
+        let metrics = Metrics::default();
+        let look = TokenLookup {
+            own: Some(&t),
+            host: None,
+            theme: &theme,
+            metrics: &metrics,
+        };
+        assert_eq!(look.colors(), vec![]);
+        assert_eq!(look.lengths(), vec![("gap", 6.0)]);
+        assert_eq!(look.color_names(Color::WHITE), Vec::<&str>::new());
+        assert_eq!(
+            look.color_at(COLOR_ROLES as u32),
+            Some(Color::WHITE),
+            "by index still"
+        );
     }
 
     #[test]

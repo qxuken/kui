@@ -62,10 +62,17 @@ const TOKENS = Symbol('kui.tokens');
 function setTokens(decl) {
   const d = decl ?? {};
   const map = new Map();
+  // A role's name takes no index: the core drops it from the table with
+  // `reserved-token`, so counting it here would put every name after it
+  // one off from the core's. `$surface` still resolves — to the role.
   let i = encoder.roleCounts.colors;
-  for (const name of Object.keys(d.colors ?? {})) map.set(name, { kind: 'color', index: i++ });
+  for (const name of Object.keys(d.colors ?? {})) {
+    if (!encoder.isRole(name)) map.set(name, { kind: 'color', index: i++ });
+  }
   i = encoder.roleCounts.lengths;
-  for (const name of Object.keys(d.lengths ?? {})) map.set(name, { kind: 'length', index: i++ });
+  for (const name of Object.keys(d.lengths ?? {})) {
+    if (!encoder.isRole(name)) map.set(name, { kind: 'length', index: i++ });
+  }
   for (const k of Object.keys(d)) {
     if (k !== 'colors' && k !== 'lengths') throw new Error(`setTokens(): unknown key ${JSON.stringify(k)} (colors, lengths)`);
   }

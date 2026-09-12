@@ -1359,9 +1359,10 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
                         .and_then(|s| kui_core::CellCursor::from_name(&s))
                         .unwrap_or(kui_core::CellCursor::Block);
                     let color = match t.get::<mlua::Value>("cursor_color")? {
-                        mlua::Value::Nil => Color::rgb8(0xff, 0xff, 0xff),
+                        mlua::Value::Nil => None,
                         v => with_refs(ui, |refs| parse_color(&v, refs))?,
-                    };
+                    }
+                    .unwrap_or(Color::rgb8(0xff, 0xff, 0xff));
                     Some((cur.get::<usize>(1)?, cur.get::<usize>(2)?, shape, color))
                 }
                 None => None,
@@ -1567,11 +1568,11 @@ fn collect_spans(spans: &Table, refs: &mut Refs<'_>) -> mlua::Result<Vec<SpanPar
                     .ok_or_else(|| bad("span table needs its text at [1]"))?;
                 let color = match t.get::<mlua::Value>("color")? {
                     mlua::Value::Nil => None,
-                    v => Some(parse_color(&v, refs)?),
+                    v => parse_color(&v, refs)?,
                 };
                 let bg = match t.get::<mlua::Value>("bg")? {
                     mlua::Value::Nil => None,
-                    v => Some(parse_color(&v, refs)?),
+                    v => parse_color(&v, refs)?,
                 };
                 out.push(SpanPart {
                     text,
@@ -1649,8 +1650,11 @@ pub fn parse_tokens(t: &Table) -> mlua::Result<kui_core::Tokens> {
 /// (ADR 0027): the core's lookup for the running origin — its own table
 /// over the host's, the roles in front — and the names that did not
 /// resolve, raised as `unknown-token` once the borrow is handed back
-/// ([`with_refs`]). A slot whose name resolves to nothing keeps its
-/// default, which is what the warning says.
+/// ([`with_refs`]). A slot whose name resolves to nothing is left out, so
+/// it keeps its default — the theme's foreground for a text's `color`, a
+/// fit width, the default text size — the way Node's encoder drops the
+/// prop; not an explicit transparent or zero, which would hide the text
+/// a typo was on.
 pub struct Refs<'a> {
     look: kui_core::TokenLookup<'a>,
     errors: Vec<kui_core::TokenError>,
@@ -1664,22 +1668,22 @@ impl<'a> Refs<'a> {
         }
     }
 
-    fn color(&mut self, name: &str) -> Color {
+    fn color(&mut self, name: &str) -> Option<Color> {
         match self.look.color(name) {
-            Ok(c) => c,
+            Ok(c) => Some(c),
             Err(e) => {
                 self.errors.push(e);
-                Color::TRANSPARENT
+                None
             }
         }
     }
 
-    fn length(&mut self, name: &str) -> f32 {
+    fn length(&mut self, name: &str) -> Option<f32> {
         match self.look.length(name) {
-            Ok(v) => v,
+            Ok(v) => Some(v),
             Err(e) => {
                 self.errors.push(e);
-                0.0
+                None
             }
         }
     }
@@ -1714,11 +1718,13 @@ fn reference(v: &mlua::Value) -> mlua::Result<Option<String>> {
 }
 
 /// A number, or a `$name` length token.
-fn length_of(v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Result<f32> {
+fn length_of(v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Result<Option<f32>> {
     if let Some(name) = reference(v)? {
         return Ok(refs.length(&name));
     }
-    number(v).ok_or_else(|| bad("expected a number or a \"$token\""))
+    number(v)
+        .map(Some)
+        .ok_or_else(|| bad("expected a number or a \"$token\""))
 }
 
 /// Table → props. Constructor-order specials first (`dir` from the node
@@ -1733,15 +1739,20 @@ pub fn parse_props(t: &Table, is_row: bool, refs: &mut Refs<'_>) -> mlua::Result
     }
     match t.get::<mlua::Value>("size")? {
         mlua::Value::Nil => {}
-        v => out.style = kui_core::TextStyle::new(length_of(&v, refs)?),
+        v => {
+            if let Some(size) = length_of(&v, refs)? {
+                out.style = kui_core::TextStyle::new(size);
+            }
+        }
     }
     // `radius` sets all four corners, so it must land before any
     // `radius_tl`-style override — table iteration order is undefined.
     match t.get::<mlua::Value>("radius")? {
         mlua::Value::Nil => {}
         v => {
-            let r = length_of(&v, refs)?;
-            out.with_spec(|s| s.radius(r));
+            if let Some(r) = length_of(&v, refs)? {
+                out.with_spec(|s| s.radius(r));
+            }
         }
     }
     // Overflow bits accumulate across the walk (`clip` and `scroll` are
@@ -1763,8 +1774,9 @@ pub fn parse_props(t: &Table, is_row: bool, refs: &mut Refs<'_>) -> mlua::Result
                     mlua::Value::Table(b) => b,
                     _ => return Err(bad("border must be a table {w=, color=}")),
                 };
-                let w = length_of(&b.get::<mlua::Value>("w")?, refs)?;
-                let c = parse_color(&b.get::<mlua::Value>("color")?, refs)?;
+                let w = length_of(&b.get::<mlua::Value>("w")?, refs)?.unwrap_or(0.0);
+                let c = parse_color(&b.get::<mlua::Value>("color")?, refs)?
+                    .unwrap_or(Color::TRANSPARENT);
                 out.with_spec(|s| s.border(w, c));
             }
             "clip" => overflow |= bit(&v, kui_core::OVERFLOW_CLIP),
@@ -1833,8 +1845,14 @@ fn number(v: &mlua::Value) -> Option<f32> {
 /// One schema value from Lua, by kind. `None` = absent (a false flag).
 fn parse_value(kind: &Kind, v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Result<Option<Parsed>> {
     Ok(Some(match kind {
-        Kind::F32 => Parsed::F32(length_of(v, refs)?),
-        Kind::Color => Parsed::Color(parse_color(v, refs)?),
+        Kind::F32 => match length_of(v, refs)? {
+            Some(px) => Parsed::F32(px),
+            None => return Ok(None),
+        },
+        Kind::Color => match parse_color(v, refs)? {
+            Some(c) => Parsed::Color(c),
+            None => return Ok(None),
+        },
         Kind::Flag => {
             if truthy(v) {
                 Parsed::Flag
@@ -1848,7 +1866,10 @@ fn parse_value(kind: &Kind, v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Resul
             };
             Parsed::Enum(schema::enum_index(names, &s.to_str()?).map_err(bad)?)
         }
-        Kind::Sizing => Parsed::Sizing(parse_sizing(v, refs)?),
+        Kind::Sizing => match parse_sizing(v, refs)? {
+            Some(s) => Parsed::Sizing(s),
+            None => return Ok(None),
+        },
         Kind::Min => Parsed::Min(match v {
             mlua::Value::String(s) => schema::min_str(&s.to_str()?).map_err(bad)?,
             v => kui_core::Min::px(number(v).ok_or_else(|| bad("expected a number or \"fit\""))?),
@@ -1884,33 +1905,34 @@ fn parse_color_value(v: &mlua::Value) -> mlua::Result<Color> {
 }
 
 /// A colour prop: a value, or a `"$name"` token reference.
-fn parse_color(v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Result<Color> {
+fn parse_color(v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Result<Option<Color>> {
     if let Some(name) = reference(v)? {
         return Ok(refs.color(&name));
     }
     parse_color_value(v)
+        .map(Some)
         .map_err(|_| bad("color must be a 0xRRGGBBAA integer, a \"#hex\" string or a \"$token\""))
 }
 
-fn parse_sizing(v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Result<Sizing> {
+fn parse_sizing(v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Result<Option<Sizing>> {
     if let Some(name) = reference(v)? {
-        return Ok(Sizing::Fixed(refs.length(&name)));
+        return Ok(refs.length(&name).map(Sizing::Fixed));
     }
-    match v {
-        mlua::Value::Number(n) => Ok(Sizing::Fixed(*n as f32)),
-        mlua::Value::Integer(n) => Ok(Sizing::Fixed(*n as f32)),
-        mlua::Value::String(s) => schema::sizing_str(&s.to_str()?).map_err(bad),
+    Ok(Some(match v {
+        mlua::Value::Number(n) => Sizing::Fixed(*n as f32),
+        mlua::Value::Integer(n) => Sizing::Fixed(*n as f32),
+        mlua::Value::String(s) => schema::sizing_str(&s.to_str()?).map_err(bad)?,
         mlua::Value::Table(t) => {
             if let Some(p) = t.get::<Option<f32>>("pct")? {
-                Ok(Sizing::Percent(p / 100.0))
+                Sizing::Percent(p / 100.0)
             } else if let Some(f) = t.get::<Option<f32>>("grow")? {
-                Ok(Sizing::Grow(f))
+                Sizing::Grow(f)
             } else {
-                Err(bad("sizing table needs pct or grow"))
+                return Err(bad("sizing table needs pct or grow"));
             }
         }
-        _ => Err(bad("invalid sizing value")),
-    }
+        _ => return Err(bad("invalid sizing value")),
+    }))
 }
 
 /// The `pad` prop as declared: a number is the all-round shorthand, a table
@@ -1922,7 +1944,7 @@ fn parse_pad(v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Result<PadShorthand>
             let mut edge = |k: &str| -> mlua::Result<Option<f32>> {
                 match t.get::<mlua::Value>(k)? {
                     mlua::Value::Nil => Ok(None),
-                    v => length_of(&v, refs).map(Some),
+                    v => length_of(&v, refs),
                 }
             };
             Ok(PadShorthand {
@@ -1936,7 +1958,7 @@ fn parse_pad(v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Result<PadShorthand>
             })
         }
         v => Ok(PadShorthand {
-            all: Some(length_of(v, refs).map_err(|_| bad("invalid padding value"))?),
+            all: length_of(v, refs).map_err(|_| bad("invalid padding value"))?,
             ..PadShorthand::default()
         }),
     }
@@ -3523,6 +3545,7 @@ mod tests {
                   return column {
                     row { key = "a", width = "$gap", height = 10, bg = "$peech", pad = "$peach" },
                     row { key = "b", width = "$peach", height = 10, bg = "$gap" },
+                    text("still here", { color = "$peech", size = "$gap" }),
                   }
                 end
             "##,
@@ -3550,14 +3573,29 @@ mod tests {
                 .contains("`$gap` is a length token, and this slot takes a color")),
             "{ws:?}"
         );
-        // No solid quad was painted: both bgs fell to transparent.
+        // No solid quad was painted: both bgs were left out. The text with
+        // the mistyped colour is still there, in the theme's foreground and
+        // at the declared size — a typo hides nothing.
+        let fg = core.theme().fg;
+        let dl = core.output().0;
         assert!(
-            core.output()
-                .0
-                .quads
+            dl.quads
                 .iter()
                 .all(|q| q.kind != kui_core::QuadKind::Solid || q.color.a == 0.0)
         );
+        let glyphs: Vec<_> = dl
+            .quads
+            .iter()
+            .filter(|q| {
+                matches!(
+                    q.kind,
+                    kui_core::QuadKind::GlyphMask | kui_core::QuadKind::GlyphSubpixel
+                )
+            })
+            .collect();
+        assert!(!glyphs.is_empty(), "the text painted");
+        assert!(glyphs.iter().all(|q| q.color == fg), "in the foreground");
+        assert!(glyphs[0].rect.h > 3.0, "at the declared 6 px size, not 0");
     }
 
     #[test]

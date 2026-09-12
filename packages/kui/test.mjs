@@ -4492,7 +4492,10 @@ test('a role takes the same $ spelling, and a declared role name is refused with
   const ctx = new Ctx();
   ctx.setInspect(true);
   ctx.setEnv({ system: { appearance: 'light' } });
-  ctx.setTokens({ colors: { surface: '#ff0000', peach: '#ffcc99' }, lengths: { radius: 99 } });
+  // The role names come first on purpose: the core drops them, so the
+  // encoder must not count them either, or `peach` and `gap` land one
+  // index past where the core holds them.
+  ctx.setTokens({ colors: { surface: '#ff0000', peach: '#ffcc99' }, lengths: { radius: 99, gap: 5 } });
   assert.equal(roles.surface, '$surface');
   assert.equal(roles.radius, '$radius');
   ctx.frame(320, 240, 1, root({}, [box({ width: 20, height: 20, bg: roles.surface, radius: roles.radius }, [], 'r')]));
@@ -4502,6 +4505,11 @@ test('a role takes the same $ spelling, and a declared role name is refused with
   const codes = ctx.warnings().map((w) => w.code);
   assert.deepEqual(codes, ['reserved-token', 'reserved-token']);
   assert.deepEqual(ctx.tokens().colors, { peach: 0xffcc99ff }, 'the refused names never entered the table');
+  ctx.frame(320, 240, 1, root({}, [box({ width: 20, height: 20, bg: '$peach', padL: '$gap' }, [], 'p')]));
+  const p = ctx.nodes().find((n) => n.label === 'p');
+  assert.equal(p.bg, 0xffcc99ff, 'the token after the refused one still resolves to itself');
+  assert.equal(p.padding.l, 5);
+  assert.deepEqual(ctx.warnings().filter((w) => w.code === 'unknown-token'), []);
 });
 
 test('a $name nothing declared, or of the other kind, is dropped and warned about once', () => {
@@ -4552,6 +4560,32 @@ test('setTokens replaces the table whole and rejects what it is not', () => {
   ctx.frame(320, 240, 1, root({}, [box({ width: 20, height: 20, padL: '$gap' }, [], 'z')]));
   assert.equal(ctx.nodes().find((n) => n.label === 'z').padding.l, 8);
   assert.deepEqual(ctx.warnings(), []);
+});
+
+test('an index the core\'s table does not hold keeps the default and warns, rather than refusing the frame', () => {
+  // The encoder's map is the surface's and the table is a core's: a
+  // second window lowers against a core `setTokens` never reached. Stand
+  // in for it with a bare encoder whose map says `peach` is index
+  // COLOR_ROLES+5 and a context that declared nothing.
+  const P = protocol();
+  const enc = createEncoder(P);
+  const map = new Map([['peach', { kind: 'color', index: P.tokenRoles.colors.length + 5 }], ['w', { kind: 'length', index: P.tokenRoles.lengths.length + 2 }]]);
+  const ctx = new Ctx();
+  ctx.setInspect(true);
+  const { stream, strings, unknownTokens } = enc.encode(
+    root({}, [box({ width: '$w', height: 20, bg: '$peach', padL: '$w', borderW: 2, borderColor: '$peach' }, [], 'q')]),
+    map,
+  );
+  assert.deepEqual(unknownTokens, [], 'the encoder resolved every name against its own map');
+  ctx.frameBinary(320, 240, 1, stream, strings);
+  const q = ctx.nodes().find((n) => n.label === 'q');
+  assert.equal(q.bg, 0, 'transparent, the default');
+  assert.equal(q.padding.l, 0);
+  assert.equal(q.rect.w, 0, 'a fit width around nothing');
+  assert.equal(q.borderColor, 0);
+  const ws = ctx.warnings().filter((w) => w.code === 'unknown-token');
+  assert.equal(ws.length, 2, 'once per (kind, index)');
+  assert.match(ws[0].message, /this window's table does not hold/);
 });
 
 test('the token tag and the role indices the encoder writes are the protocol\'s', () => {
