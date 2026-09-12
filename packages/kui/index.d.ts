@@ -2368,6 +2368,14 @@ export declare class Ctx {
    * drops its text with an `edit-text-without-editor` warning,
    * so a name the view spells differently is a line rather
    * than a field that opens with the wrong text.
+   *
+   * A redraw is asked for only when the text reached an editor.
+   * A held seed changed nothing on screen, and the frame that
+   * will — the view that declares the editor — is the app's:
+   * a redraw here re-lowered the *retained* tree, which declares
+   * no editor, and that was the frame the hold expired on when
+   * the call came from a `dispatch` outside the loop (backlog
+   * F42; `runWindowed` draws that model before it pumps).
    */
   setEditText(key: string, text: string): void
 }
@@ -3192,6 +3200,14 @@ export declare class KuiWindow {
    * drops its text with an `edit-text-without-editor` warning,
    * so a name the view spells differently is a line rather
    * than a field that opens with the wrong text.
+   *
+   * A redraw is asked for only when the text reached an editor.
+   * A held seed changed nothing on screen, and the frame that
+   * will — the view that declares the editor — is the app's:
+   * a redraw here re-lowered the *retained* tree, which declares
+   * no editor, and that was the frame the hold expired on when
+   * the call came from a `dispatch` outside the loop (backlog
+   * F42; `runWindowed` draws that model before it pumps).
    */
   setEditText(key: string, text: string): void
 }
