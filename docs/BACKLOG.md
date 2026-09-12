@@ -1767,6 +1767,247 @@ the first. Nothing shipped is affected either way: `Metrics::default()`
 is right on every platform, only the printed table is not.
 
 
+## From the editor-and-mux assessment, third round (2026-09-13)
+
+The question asked of `main` at `580c99e` (alpha.11 + 50), the third
+time: is kui the view layer for an emacs-plus-helix-plus-multiplexer app
+whose document, IO, LSP and extensions are the app's own? The first
+round (2026-08-31, before alpha.1) answered no — nothing gave the app a
+keystroke — and built the key sink. The second (2026-09-07, `51ed27b`)
+answered yes to the editor and no to the mux, and its eight entries
+C16–C23 all shipped in alpha.9. This one answers **yes to both**: the
+shape the second round asked for — the app hands kui the visible lines,
+a `cells` grid per terminal pane, a `Waker` from the PTY thread — is
+built, bound four ways, and measured flat under streaming. What is left
+is at the edges of the *custom* editor, where the reference example
+stops: a mouse it does not have, a clipboard it cannot reach, a caret
+that never blinks — and one defect older than any alpha, which makes
+every monospaced glyph on this machine italic.
+
+Method, as before: the three benches in the tree, the four examples run
+headless and on screen with real OS keystrokes (`SendKeys`), the
+workspace tests (**1087 pass, 0 fail**), and a read of each door the app
+needs. AMD Ryzen 9 9950X3D, Windows 11, release, 2026-09-13:
+
+| frame | cost |
+|---|---|
+| `highlight_2x55_warm` — two panes × 55 highlighted code lines, nothing changed | 171 µs |
+| `highlight_2x55_typing` — one line retyped per frame | 182 µs |
+| `highlight_2x55_scrolling` — one line per frame scrolls in | 195 µs |
+| `highlight_2x55_cold` — every run on screen is new (a file opened) | 617 µs median; one sample of thirty at 20 ms |
+| `highlight_2x55_warm_rich` — each line one `Span` list instead of ~8 nodes | 69 µs |
+| `cells_200x50_warm` — a terminal screenful, nothing changed | 53 µs |
+| `cells_200x50_streaming` — every character new each frame | 55 µs |
+| `cells_200x50_as_text_nodes` — the same grid as one text node a cell | 2.01 ms |
+| `long_line_100k_first_frame` / `_edit` / `_scroll` | 4.4 ms / 112 µs / 112 µs |
+| `long_line_100k_wrapped_first_frame` / `_wrapped_scroll` | 8.5 ms / 126 µs |
+
+Against the second round's M3 Pro numbers the editor rows are the same
+order (the cold open is faster here, the warm rows a shade slower), and
+the two rows that round could not have — a terminal pane whose every
+cell is new costing the same as one that never changes, and a 100 k
+character line editing in a tenth of a millisecond — are what C20 and
+C19 were for. On screen: `modal_editor` took `jjj ww v lll` and selected
+"docu" with the block caret on the `u`; `splitmux` took `Alt-v`, `Alt-s`,
+`Alt-t`, `Alt-1` and showed five panes on tab 1; `cells` drew its
+terminal and passed its own drive. All of them in italic.
+
+What the app has, checked door by door and not repeated below: the
+whole keyboard as `{kind:"key"}` with `code`, `physical`, `text`,
+`repeat` and `key_up` on request, in four bindings; IME commit and
+preedit on a sink (C17); `text_hit` / `caret_rect` on the keyed line
+(C18); long lines chunked (C19); the `cells` element with cursor
+shapes, `origin_line`, cell selection and `Role::Terminal` (C20); the
+`Waker` and `pump_until` (C21); underline, strikethrough and `bg` per
+span (C22); `FontFeatures` (C23); the shaped-text cache under a byte
+budget (C16); `scroll_geometry` for a document that declares its own
+height and draws the rows the wheel reveals; tokens per origin for a
+highlighter's groups (ADR 0027); the menu bar, popups, floats,
+`always_on_top`; slots for a C or Lua panel with its own sink. Nothing
+in that list needed a workaround to check.
+
+### `!` C32 — `Mono` is whichever monospaced face has the lowest id on a machine without Noto Sans Mono
+
+Observed 2026-08-31 in the first round ("everything monospace renders
+*italic* — cosmic-text's `Family::Monospace` is resolving to an italic
+face on your system") and unchanged at `580c99e`: `modal_editor`,
+`syntax_view` and the `cells` grid all draw in `BerkeleyMonoVariable-Italic`
+here. A probe against cosmic-text 0.19 alone says why. Its `FontSystem::new`
+sets the database's monospace family to `"Noto Sans Mono"` (and sans to
+`"Open Sans"`, serif to `"DejaVu Serif"`) under a `//TODO: configurable
+default fonts`; none of the three is installed on a stock Windows or macOS
+machine. Sans survives because the platform fallback list carries Segoe
+UI. Monospace does not: with the named family absent, the fallback
+collects every face the database flags `monospaced`, ranks them by
+`(font_weight_diff, codepoint_non_matches, font_weight, id)` —
+`MonospaceFallbackInfo` in `font/fallback/mod.rs` — and pops the first.
+**Style is not in the key**, so the lowest-id monospaced face wins, and
+on this machine that is a variable font's italic instance. `Family::Name("Cascadia Mono")`
+and `Family::Name("Consolas")` both resolve upright. The M3 Pro the
+second round ran on did not show it, which means either Noto Sans Mono
+is installed there or its lowest-id monospaced face happens to be
+upright — luck, not a fix.
+
+kui never names a monospace family: `Resources::family_of` maps
+`FontFamily::Mono` to `cosmic_text::Family::Monospace`
+(`resources.rs:426`) and `TextSystem::new` takes `FontSystem::new()` as
+it comes (`text.rs:732`). So every `Mono` text, every rich-text
+paragraph in `Mono`, the stock editor in `Mono` and every `cells` grid
+inherit cosmic-text's choice — and the target app lives in mono.
+
+**Do:** after `FontSystem::new()`, set the three default families to the
+first installed of a per-platform list — monospace: Windows `Cascadia
+Mono`, `Consolas`, `Courier New`; macOS `SF Mono`, `Menlo`, `Monaco`;
+Linux `DejaVu Sans Mono`, `Noto Sans Mono`, `Liberation Mono`, `Ubuntu
+Mono` — and sans and serif likewise (`Segoe UI` / `Helvetica Neue` /
+`DejaVu Sans`; `Times New Roman` / `Times` / `DejaVu Serif`), leaving
+cosmic-text's name in place when nothing on the list is present so its
+fallback still runs. A headless test that shapes `M` in `Mono` and
+asserts the face's style is `Normal` and its family is monospaced,
+skipped with a message on a machine with no monospaced face at all. The
+devtools' facts tab shows the three resolved families, so the next
+machine this differs on says so on screen.
+
+### `~` C33 — A key sink has no clipboard
+
+The runner performs the clipboard chords itself only when an edit
+widget or a selection scope has focus (`crates/kui/src/keys.rs:221`); a
+sink hears the raw `Ctrl-c` / `Ctrl-v` and "brings its own bindings",
+which is right — and then has nowhere to bind them to. The only ways
+onto the system clipboard are `MenuAction::SetClipboard`, queued by a
+menu's Copy or Cut (`runtime/menu_api.rs:399`) or by
+`answer_selection_range` (`select_api.rs:520`, and only while a
+`selectionrange` ask is outstanding), and `MenuAction::Paste`, queued by
+a menu's Paste (`menu_api.rs:417`) and answered by the runner as
+`InputEvent::Text`. Neither is reachable from a view or an event
+handler. `modal_editor`'s `y` and `p` are an in-process `Vec<String>`
+(`modal_editor.rs:130`): the reference editor cannot yank to another app
+or paste from one. A Rust host can link `arboard` itself and reach
+around the runner; a Lua extension cannot, and a C host is writing the
+platform code the runner already has.
+
+**Do:** two `Core` doors that become the two actions the runner already
+applies. `Core::set_clipboard(text, html: Option<String>)` — `ui.set_clipboard`,
+Lua `env.set_clipboard`, Node `ctx.setClipboard`, C `kui_set_clipboard`
+— queues `MenuAction::SetClipboard`. `Core::request_paste()` queues
+`MenuAction::Paste`, and what the runner reads comes back as
+`InputEvent::Commit`, which already routes to the focused sink as
+`{kind:"text"}` (C17) and to a focused editor as typing — so the app
+that asked for the paste inserts it the way it inserts a committed IME
+string, and never sees the clipboard's contents any other way, which
+keeps the read on the driver's side where the permission lives. A host
+driving its own window drains both from `take_menu_actions` as it does
+today. `modal_editor` moves `y` and `p` onto them. Tests: the sink hears
+`{kind:"text"}` with what a stand-in driver handed back; the C parity
+check; a Lua script yanking from a slot.
+
+### `~` C34 — A custom editor has no mouse: a press carries no point, a click no count, and the reference has none
+
+`modal_editor::on_event` handles `key` and `access` and nothing else
+(`modal_editor.rs:419`): a click in the buffer moves nothing, a drag
+selects nothing, a double-click on a word is a double nothing. What the
+pieces offer, read together: a `click` payload is the `onClick` value
+as-is (the events table in `docs/props.md`) — no point, so nothing to
+hand `text_hit`; an `on_drag` `start` does carry `x`/`y`, so a press can
+be read off a drag; `text_hit(key, point)` (C18) answers from `Ui`,
+which Rust's `on_event` and Lua's `on_event(ev)` do not have, so the point
+is stashed and resolved a frame later in `view` — C18's own outcome says
+this is why the example was never moved onto it; and the click count
+the core uses for word and line select in the stock editor and in a
+`cells` grid (`dispatch.rs:443`, `:459`) reaches no payload, so a custom
+editor's double-click-word is a timer the app keeps. The `selectable`
+route does give drag-select with word and run on multi-click and the
+`selectionrange` ask — but it is the core's selection, painted by the
+core beside the editor's own, and a press in it places no caret.
+
+**Do:** the `attach_cells` precedent (`dispatch.rs:59`), which adds
+`cell: {row, col}` to any pointer payload on a grid. A press or drag
+that lands on a `Role::Line` inside a key sink gains `line` (its ordinal
+among the sink's lines — the addressing `access` events already use, and
+`modal_editor::access_pos` already reads), `byte` (from `text_hit` at
+the point), and `clicks`. Then click-to-caret, drag-select and
+double-click-word are `on_event` arithmetic in every binding, with no
+`Ui` and no frame of lag, and `modal_editor` gets all three. Whether a
+plain `click` should carry `x`/`y` in general is a separate question and
+not asked here.
+
+### `~` C35 — A custom caret cannot blink
+
+The blink clock arms only while `pane.core.edit.focused()` is `Some`
+(`crates/kui/src/lib.rs:1749`): a sink's caret — the inline node
+`modal_editor` draws as `caret_bar` or a block — is solid forever. The
+two ways around it are both wrong. Keyframes on the node's `opacity`
+cycle for ever (`Repeat` is "always infinite") and ask for a frame every
+vsync while they do, so a blink the stock editor draws at two frames a
+second costs a hundred and twenty, never stops in a window that does not
+have the keyboard — which the runner deliberately does for the stock
+caret, for the reason in the comment above the clock — and cannot be
+re-armed solid on caret motion without re-keying the node. A thread and
+the `Waker` every 500 ms works from Rust, not from Lua, and has the same
+background-window problem.
+
+**Do:** the core already knows the focused sink's caret — `focused_caret_rect`
+falls through to the `caret` line for the IME anchor (C17). Arm the same
+clock when a sink whose subtree carries a `caret` holds focus, re-arm it
+solid whenever that caret's offset changes between frames, and expose
+the phase: `ui.caret_visible()`, Lua `env.caret_visible`, Node
+`ctx.caretVisible()`, C `kui_caret_visible` — a view draws its caret
+node on the on phase and skips it on the off. The stock editor and the
+custom one then blink in step, and in the background neither does.
+
+### `.` C36 — The three app-shaped examples have no headless drive
+
+`modal_editor --headless`, `splitmux --headless` and `syntax_view
+--headless` each print "no headless drive" and exit 0; `cells` runs its
+six checks. ADR 0021 says every example runs inside the harness with
+`--headless` as a self-check with an exit code, and the smoke job runs
+these three windowed for 120 frames — which pins that they draw, not
+that `hjkl` moves the caret or `Alt-v` splits. That was checked by hand
+this round with `SendKeys`, the way it was checked by hand in the first.
+The three are the reference for the target app; they are the examples
+whose keymaps most deserve a drive.
+
+**Do:** one drive each — `modal_editor`: `jjj ww v lll` selects
+"docu", `dd` then `p` twice, `:help` fills the minibuffer; `splitmux`:
+`Alt-v`, `Alt-s`, `Alt-t`, `Alt-1` leave five panes on tab 1 with pane 1
+focused; `syntax_view`: `j`, `G`, `tab` move the view and the buffer.
+The C34 payloads get their first pin in the same drive.
+
+### `.` C37 — A cell is a scalar, and its doc says it is a grapheme
+
+`cells.rs:11` says "a grapheme cluster (an emoji, a base with its
+combining marks) is one cell's `text`, shaped once"; the field is
+`ch: char` (`cells.rs:46`), C's `KuiCell.ch` is a `uint32_t`, and Node's
+stream packs `codepoint | flags << 21`. So `e` + U+0301, a ZWJ emoji, a
+Devanagari conjunct or a flag cannot sit in a cell: the app precomposes
+what NFC can (the accent) and drops what it cannot (the ZWJ sequence,
+which has no precomposed form). The same doc says "Rust-only for now",
+which stopped being true the day the element row landed. Neither is
+urgent — a terminal's screen model is the app's, and it knows which
+cells carry marks — but the doc promises what the struct refuses.
+
+**Do:** fix the doc now. The cluster waits for a view that needs it, and
+the shape is named so it does not grow the cell: a side table of
+`(cell index, &str)` on `CellGrid` for the few cells whose content is
+more than a scalar, keyed into the same `other` glyph map by the
+cluster's string, so a 200 × 50 pane stays 160 KB a frame.
+
+### Wishes, not entries
+
+Three things an editor will ask for that have an answer today and a
+better one later, each parked until a view asks:
+
+- **An underline of its own colour and style** — a diagnostic's red
+  wave under keyword-coloured text, a terminal's SGR 58 undercurl.
+  `Span::underline` is a bool in the text's colour (C22). Today: a
+  `line` element under the run, whose rect a monospace column gives
+  for free and `caret_rect` gives otherwise.
+- **The middle button** (C2: "reaches the core and routes nowhere") —
+  a Linux terminal's paste and an editor's close-tab. Today: nothing.
+- **Window position**, declared and read (the README's Status names
+  it) — an editor restoring its last geometry. Today: the size, not
+  the place.
+
 ## After alpha.11
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -1789,7 +2030,15 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** The alpha.11 field round, filed 2026-09-12, is built
+**Build next.** The third editor-and-mux round, filed 2026-09-13 above,
+in the order its entries argue for: C32 first (every mono glyph on a
+machine without Noto Sans Mono is whatever face cosmic-text's fallback
+pops, italic here — a defect under the flagship use case and older than
+alpha.1), then C33 and C34 together (a sink's clipboard, and the press
+carrying `line`, `byte` and `clicks` the way a grid's carries `cell`),
+C35 (the blink clock armed for a sink's `caret`), and C36's drives to
+pin all four; C37's doc line goes with whichever lands first. Before
+it, the alpha.11 field round, filed 2026-09-12, is built
 whole and merged the day after — F42 (the pump order in `runWindowed`
 plus the held seed's redraw), F43 (`env_facts().viewport` is `dt_area`
 and `size()` answers for the dock), F44 (`wrap` on a single-line editor,
