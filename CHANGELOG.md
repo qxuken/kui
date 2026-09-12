@@ -17,6 +17,42 @@ for the reader deciding whether to upgrade. Earlier sections keep the shape
 they shipped with and are not retrofitted (backlog F31, from the alpha.8
 field reports).
 
+## 0.1.0-alpha.12 (unreleased)
+
+### Added
+
+- **A field folds when it says `wrap`** (backlog F44, from the mind map's
+  alpha.11 report). A single-line `<edit>` with `wrap="word"` or `"glyph"`
+  declared lays its draft out to its width the way a document does — two
+  lines in a 209 px box for a two-line label — and keeps a field's
+  keyboard: Enter submits, a newline is never admitted by any door (seed,
+  `setEditText`, paste), the caret opens at the end, and nothing scrolls
+  under it. `wrap="none"` is a mode, not a request: that field takes one
+  line and scrolls it, exactly as one that never said. In Rust it is
+  `EditOptions::wrap: bool` beside `style.wrap`; in C `KUI_EDIT_WRAP` on
+  `kui_text_edit`'s flags, since `KuiTextStyle.wrap`'s zero is `WORD` and
+  the style alone cannot say it was declared. A `multiline` editor wraps
+  between words as it always has, whatever its style says. With
+  `width="fit"` and `maxWidth` the field hugs a short draft, stops growing
+  sideways at the clamp and grows down from there — on the frame that lays
+  out the keystroke, since the core measures the draft and not the width
+  the app declared last frame. The corpus's `controls` scene seeds its
+  editor past its box with `wrap` in all four adapters, so a binding that
+  dropped the row would lay the draft on one line and fail the digest;
+  `tests/field.rs` pins the fold, the submit, the three doors, the mode,
+  the fit case, and the re-measure when a document turns field; each
+  branch was mutation-tested. Not built, and still filed under F44: a
+  `multiline` editor that submits on plain Enter (`submit="enter"`).
+
+### What you can delete
+
+The width an app declared by hand for a rename field because it could not
+use `fit` — it wanted `wrap` — and the "headroom, sideways" margin past
+the widest glyph it kept in front of the field so the echo frame's last
+word had somewhere to go: the field is `width="fit" maxWidth={…}
+wrap="word"` and the core sizes it to the wrapped draft on the keystroke
+frame (F44).
+
 ## 0.1.0-alpha.11 (2026-09-11)
 
 **What breaks.**

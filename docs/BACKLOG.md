@@ -699,7 +699,36 @@ with `set_devtools(true)` + `set_devtools_dock(Right)` and a
 `begin_frame(1040×720)` asserting `env_facts().viewport.w < 1040`, and
 `size()`'s answer pinned beside it in the Node suite.
 
-### `~` F44 — A field cannot wrap and a document cannot submit: the label editor has no spelling
+### `~` F44 — A field cannot wrap and a document cannot submit: the label editor has no spelling — **done (2026-09-12)**
+
+Done: `wrap` declared on a single-line editor folds it. `EditOptions` has
+a `wrap: bool` beside `style.wrap` — the row *declared*, which the style
+cannot say since its default is `Word` — and `EditState` a `folds` it
+computes at every declaration as `multiline || (wrap && style.wrap !=
+None)`; `wrapped`, `line_offset` and emission's clip decide by that where
+they decided by `multiline`, so a folded field wraps to its width, never
+scrolls, and keeps the node's clip, while `admitted`, `apply_key`'s Enter
+and the caret-at-end rule still read `multiline` and stay a field's. The
+buffer takes the row's mode too (`Wrap::Glyph` for `wrap="glyph"`), and a
+document ignores the row as it always did. The bindings: `PropsOut::wrap`
+set by `schema::apply` on the `wrap` row, which Node and Lua both read
+into the option; C has `KUI_EDIT_WRAP` on `kui_text_edit`'s flags, the
+three `KUI_EDIT_*` now constants the parity TU pins. `wrap` was already on
+`edit`'s allow-list in both checks (a shared row, `jsx_rows: None`), and a
+`known_prop` line plus a Node case pin that it stays there. Guards:
+`tests/field.rs` — the two-line draft at 209 px that submits on Enter with
+no newline, the three doors that admit none, `wrap="none"` as the plain
+field, glyph vs word, the document-turned-field re-measure, and
+`width="fit"` + `maxWidth` growing down on the keystroke frame with every
+glyph inside the box; each branch mutation-tested, one survivor —
+`line_offset`'s `folds` guard is equivalent within the 2 px caret margin,
+since a wrapped line never outruns its width. The corpus's `controls`
+scene seeds its editor past its box with `wrap` in all four adapters and
+the digest moves without it (`f54e…` vs `4247…`), so a dropped row fails
+there; an Enter step would be a new `Step` kind and was not added. The
+schema's `edit` and `wrap` docs name the exception. The other half —
+`submit="enter"` on a multiline editor — is not built, as the paragraph
+below says.
 
 **Symptom** (mind map, "the rename field is a field now"): F41 made a
 single-line `<edit>` take one line whatever its box, so a rename field

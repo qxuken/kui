@@ -298,6 +298,21 @@ text with an `edit-text-without-editor` warning.
 [`edit-text-without-editor`](props.md#warnings) ·
 [alpha.10](../CHANGELOG.md#010-alpha10-2026-09-09)
 
+### How do I make a rename field break where its label breaks?
+
+Declare `wrap` on the field: `<edit width="fit" maxWidth={w} wrap="word">`.
+A single-line editor is a field — one line whatever its box, scrolled under
+the caret — until it says `wrap`, when it folds to its width like a document
+and keeps a field's keyboard: Enter submits, no newline goes in, the caret
+opens at the end. With `fit` and `maxWidth` the box hugs a short draft,
+stops growing sideways at the clamp and grows down from there, on the frame
+that lays out the keystroke — so no headroom to declare past the widest
+glyph. `wrap="none"` is the plain field; a `multiline` editor wraps either
+way.
+
+[`edit` element](props.md#elements) · [`wrap`](props.md#text-props) ·
+[alpha.12](../CHANGELOG.md#010-alpha12-unreleased)
+
 ### How do I keep a panel's controls out of my app's Tab ring?
 
 Declare the panel `focusRegion`. Its subtree becomes a Tab ring of its own:
