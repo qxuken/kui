@@ -26,7 +26,9 @@ date: 2026-09-12
 > frame, read back in four bindings, and **referenced by name in any colour
 > or length prop** (`bg={T.peach}`, `width={T.sideW}`), the reference typed
 > at the declaration by `defineTokens` so a misspelt name is a type error
-> and not a warning. The reference rides the wire as a **tagged prop id**
+> and not a warning. **Every binding declares, Lua included**: a table is
+> kept per origin, so an extension's names are its own and a guest cannot
+> shadow its host. The reference rides the wire as a **tagged prop id**
 > and is resolved by the binding as it lowers the node, from the core's
 > table — so `NodeSpec` does not change, the core resolves nothing at open,
 > and the prototype's number below is an upper bound on a cost the built
@@ -230,32 +232,51 @@ node.
 
    Not inside `Theme` or `Metrics`: both are `Copy` on purpose
    (`ThemeSource::Pinned` carries a `Theme` by value, and `theme.rs` says
-   why), and a `Vec` beside them costs nothing they have. Per core, like
-   the theme, so a window is one table; hoisting to the session waits for
-   a two-window app that wants it. Declaration order is the index, so a
+   why), and a `Vec` beside them costs nothing they have. **One `Tokens`
+   per origin**, held as `HashMap<OriginId, Tokens>` on the core — the
+   host's under `OriginId::HOST`, each extension's under its own — because
+   an extension has a vocabulary as much as a host does (a Lua file panel
+   has its own greys) and a guest writing into the host's table would be
+   the one write the isolation by origin forbids. Per core, like the
+   theme, so a window is one set of tables; hoisting to the session waits
+   for a two-window app that wants it. Declaration order is the index, so a
    binding that lowered the declaration knows every index without a round
    trip. Size: the two apps would hold 12–31 colours and 6–40 lengths.
-2. **Declared whole, by a host.** Rust
-   `Core::set_tokens(Tokens::new().color("peach", c).color_themed("dim",
-   light, dark).length("sideW", 132.0))`, with `Tokens::color_id("peach")`
-   / `length_id` for an app that wants to hold the index; Node
-   `ctx.setTokens(T)` and, as sugar, `setTheme({ ..., tokens: T })`; C
-   `kui_tokens_set(ctx, const KuiColorToken *colors, size_t n, const
-   KuiLengthToken *lengths, size_t m)` — new functions and new `[in]`
-   structs, no ABI bump under ADR 0006. Lua reads and does not write, as
-   it does not write the theme. Each call replaces the table; an app with
-   tiers re-declares on `resize`, which is what the pomodoro's `layout(w,
-   h)` already computes. Tokens are orthogonal to `ThemeSource`:
-   `setAccent(null)` / `derive_theme` leave them alone.
+2. **Declared whole, by every binding, into the declarer's own table.**
+   The declaration has one shape everywhere — colours and lengths named
+   apart, since a colour and a length are both a number in Lua and can
+   both be one in Node, so the kind cannot be read off the value:
+   Rust `Core::set_tokens(Tokens::new().color("peach", c)
+   .color_themed("dim", light, dark).length("sideW", 132.0))`, with
+   `Tokens::color_id("peach")` / `length_id` for an app that holds the
+   index; Node `ctx.setTokens({ colors: {...}, lengths: {...} })` and, as
+   sugar, `setTheme({ ..., tokens })`; C `kui_tokens_set(ctx, const
+   KuiColorToken *colors, size_t n, const KuiLengthToken *lengths, size_t
+   m)` — new functions and new `[in]` structs, no ABI bump under ADR
+   0006; **Lua** a `tokens = { colors = {...}, lengths = {...} }` global
+   read at load beside `slots`, and `env.set_tokens { ... }` for a script
+   whose table moves (a tier on resize), taking effect for the nodes the
+   same `view` opens after the call. ADR 0019 made Lua read the theme
+   only because the theme is *the host's*; a token table is the
+   declarer's, and a Lua script that loads its own extensions (ADR 0014's
+   amendment) is a host one level down. A write lands in the table of the
+   origin that made it — a C or Lua plugin's `set_tokens` never touches
+   the host's — and each call replaces that table whole. Tokens are
+   orthogonal to `ThemeSource`: `setAccent(null)` / `derive_theme` leave
+   them alone.
 3. **Resolved once a frame, read back resolved.** `refresh_theme`
    fills `resolved_colors` from `theme.is_dark()` right after it resolves
    the theme — unknown appearance takes dark, ADR 0019 decision 4
    unchanged — so a themed token is frame-stable for the same reason the
-   palette is. Readers get this frame's value: Node `ctx.tokens()` as a
-   flat object (colours as `0xRRGGBBAA`, lengths as numbers), Lua
-   `env.tokens.peach`, C `bool kui_token_color(ctx, KuiStr, uint32_t*)`
-   and `kui_token_length(ctx, KuiStr, float*)`, Rust `ui.token_color(id)`
-   / `ui.token_length(id)` and the by-name forms.
+   palette is. Readers get this frame's value, and they read **their own table
+   over the host's**: an extension's `env.tokens.colors.peach` is its own
+   `peach` if it declared one and the host's otherwise, so a guest can
+   paint in the host's vocabulary without the host passing it and still
+   name a grey of its own. Node `ctx.tokens()` as `{ colors, lengths }`
+   (colours as `0xRRGGBBAA`, lengths as numbers), Lua `env.tokens.colors
+   .peach` / `env.tokens.lengths.side_w`, C `bool kui_token_color(ctx,
+   KuiStr, uint32_t*)` and `kui_token_length(ctx, KuiStr, float*)`, Rust
+   `ui.token_color(id)` / `ui.token_length(id)` and the by-name forms.
 4. **A reference by name in a prop, resolved by the binding as it
    lowers.** `'$peach'` is accepted on every colour slot (the eight
    `Kind::Color` rows, `border`'s colour, `cursorColor`, a `<span>`'s
@@ -267,18 +288,23 @@ node.
    decode**. `lower_binary` resolves it from `ui`'s table before
    `schema::apply`, so `Parsed` and `NodeSpec` never see a reference and
    the core's open path is untouched. Lua's spec reader does the same
-   where it parses a colour string today (`color_hex_str`'s caller). C
-   passes a `u32` or a `float` with no room for a tag, so **C is
-   read-only**: it reads the table and writes the value, which is what a
-   C app does with `#define`. Rust reads the value too — a Rust app holds
-   the id. A kind mismatch (`bg={T.sideW}`) is an encode-time error like
+   where it parses a colour string today (`color_hex_str`'s caller),
+   **against the table of the origin whose view is running**, then the
+   host's — the same two-step the readback takes, so `$peach` means the
+   same thing read and written. Node's index refers to the host's table,
+   Node hosting no extensions. C passes a `u32` or a `float` with no
+   room for a tag, so **a C prop carries no reference**: a C host or
+   plugin declares its table, reads the value back and writes it, which
+   is what a C app does with `#define`. Rust reads the value too — a Rust
+   app holds the id. A kind mismatch (`bg={T.sideW}`) is an encode-time error like
    `bad color`; an undeclared name raises **`unknown-token`** naming the
    token and the node, once per name per session as `unknown-prop` does,
    and paints transparent / measures 0.
 5. **The names are typed at the declaration.** Node ships
-   `defineTokens`: given `{ peach: '#FFCC99', dim: { light, dark },
-   sideW: 132 }` it returns `{ peach: '$peach', dim: '$dim', sideW:
-   '$sideW' }` typed as literal strings, branded by kind —
+   `defineTokens`: given `{ colors: { peach: '#FFCC99', dim: { light,
+   dark } }, lengths: { sideW: 132 } }` it returns `{ peach: '$peach',
+   dim: '$dim', sideW: '$sideW' }` typed as literal strings, branded by
+   kind —
    `ColorToken` / `LengthToken` — so `bg={T.peach}` type-checks,
    `bg={T.sideW}` does not, and `T.peech` does not exist. Zero runtime:
    the object *is* the references. The colour prop types widen from
@@ -297,7 +323,8 @@ node.
    ships `roles` — the twenty-three and the sixteen, typed — so `T.surface`
    and `roles.surface` are the same kind of thing.
 7. **The devtools list and name them.** The facts tab shows every token
-   with its light and dark swatch or its length; the node inspector's
+   with its light and dark swatch or its length, grouped by origin (the
+   host's, then each extension's under its namespace); the node inspector's
    paint and box groups print the name after the value by reverse
    lookup over `resolved_colors` and `lengths` — `#ffcc99 peach`, `132
    sideW`. Two tokens with one value print both names; a value no token
@@ -334,6 +361,16 @@ node.
   Declined: the table is a setting the way the theme source is, and
   re-sending forty strings a frame is what the encoder's cache exists
   to avoid.
+- **Lua reads and does not write**, as it does for the theme. The
+  first sketch's rule, borrowed from ADR 0019 without re-asking.
+  Declined: the theme is the host's and a script has no business
+  pinning it, but a token table is the declarer's, and a script already
+  writes shared state through `set_window_size`, `set_focus` and
+  `add_extension`. What the rule was protecting — the host's names —
+  is protected by origin instead.
+- **One table per core, last writer wins.** Simpler storage; declined
+  because a plugin's `set_tokens` would replace the host's palette, and
+  the `unknown-token` warning would then fire on the host's own nodes.
 - **Derived tokens** (`hover: lift(peach, 0.3)`). Not in v1; a `derive`
   field on a colour token is the shape when an app asks, and the
   pomodoro's `lift` is the arithmetic to lift.
@@ -351,12 +388,15 @@ node.
   reserved role range, the devtools rows and reverse lookup. `kui-node`:
   `setTokens` / `tokens()`, the tag in `lower_binary` at the ten colour
   and the length sites, `defineTokens` and the widened prop types in
-  `index.d.ts`. `kui-lua`: `env.tokens`, `$` in the spec reader.
+  `index.d.ts`. `kui-lua`: the `tokens` global, `env.set_tokens`, `env.tokens`, `$`
+  in the spec reader resolved by origin.
   `kui-ffi`: `kui_tokens_set`, the two readers, the header. Corpus: a
   `tokens` scene with a themed and an unthemed colour, a length on a
   sizing row and a pad, the appearance flipped mid-scene, and one
   undeclared name — Rust and C adapters write values, Lua and Node write
-  `$`.
+  `$`. The per-origin fallback is a `kui-core` test over a Lua panel
+  (`examples/lua/features/slots` is the fixture): the guest's `$peach`
+  is the host's until the guest declares its own.
 - **The two apps.** The pomodoro becomes `const T =
   defineTokens({ ...C, ...tiers.wide })` with `setTokens({ ...C,
   ...tiers[L.tier] })` on resize, and `bg={T.peach}` reads as `C.peach`
@@ -378,6 +418,9 @@ node.
   change for a binding whose apps hold constants; the readers are enough
   until one asks.
 - **Tokens in the session** rather than per core, for a two-window app.
+- **A guest reading another guest's table.** The fallback is one step,
+  own then host; a plugin that wants a sibling's names asks the host
+  to pass them (ADR 0014 params).
 - **Names for the mind map's branch palette** — whether a legend wants a
   *family* (`hue3` naming three values) is a question for the day the
   panel shows one.

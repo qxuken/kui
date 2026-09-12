@@ -911,7 +911,9 @@ a dark half (`same()` for the common case) and **length tokens** beside
 by name in any colour or length prop with the names typed at the
 declaration (`defineTokens`), the reference a tagged prop id on the wire
 resolved by the binding as it lowers, the stock roles reachable by the
-same `$` spelling, C read-only. The core-side resolve was prototyped and
+same `$` spelling, every binding declaring into a table of its own
+origin (Lua included; a C prop carries no reference). The core-side
+resolve was prototyped and
 measured inside the noise floor (+1.6% at ±4.8% unused, +0.3% used) and
 is not the shape taken. Condition unchanged: build waits for an app to
 adopt it.
