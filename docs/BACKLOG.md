@@ -23,11 +23,12 @@ item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
 
 What is left here: F42–F49 from the two alpha.11 upgrade reports, filed
-2026-09-12 (two defects — a foreign `dispatch` losing a `setEditText` seed
-to the redraw the call asked for, done the same day, and `env.viewport`
-reading the window against its own schema row — one gap with no spelling, the label editor,
-and five wishes with their shapes written, two of them carried unanswered
-from alpha.10), T5 the same day (derived tokens, what
+2026-09-12 and **all eight built the same day** (two defects — a foreign
+`dispatch` losing a `setEditText` seed to the redraw the call asked for,
+and `env.viewport` reading the window against its own schema row — the
+label editor's `wrap`, and five wishes, two of them carried unanswered
+from alpha.10); they stay here with their outcomes on top until the
+alpha.12 tag moves them. T5 the same day (derived tokens, what
 building ADR 0027 left out), C30, filed 2026-09-12 (always on top — a window level
 no binding can ask for, with the shape to build it written), C31, found
 the same day building the tokens (Node's corpus adapter disagreeing with
@@ -1458,14 +1459,18 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** The alpha.11 field round, filed 2026-09-12: F42 is done
-the same day (the pump order in `runWindowed` plus the held seed's
-redraw); F43 next, since it is a defect that ships —
-`env_facts().viewport` reading `dt_area` with `size()` answering for the
-dock — then F44 (`wrap` on a single-line
-editor), then F45, F46, F47 and F49 in any order, each a small change with
-its guard named in the entry, and F48 once the bridge's activation signal
-is confirmed to reach the shell on all three platforms. T4 is built —
+**Build next.** The alpha.11 field round, filed 2026-09-12, is built
+whole and merged the day after — F42 (the pump order in `runWindowed`
+plus the held seed's redraw), F43 (`env_facts().viewport` is `dt_area`
+and `size()` answers for the dock), F44 (`wrap` on a single-line editor,
+in four bindings and the `controls` scene), F45 and F46 (`clock` in the
+type, `tick.every` a function of the model), F47 (the launcher pin over
+`env.system`), F48 (`system.assistive`, with `kui_env_set_assistive`) and
+F49 (the `finish` arithmetic) — each with its outcome on top of its entry
+above. The merge itself settled one thing no chip could see: F47's pin
+and F48's field meet in `system_reading`, which now takes the bridge's
+reading beside the pin, and `SystemEnv::over` leaves `assistive` to the
+bridge (a pin cannot say whether anyone is listening). T4 is built —
 [ADR 0027](adr/0027-tokens-beside-the-theme.md), written and built
 2026-09-12: colour and length tokens beside the theme and the metrics,
 referenced by typed name and resolved by the binding — and T5, the
