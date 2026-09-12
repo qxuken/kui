@@ -1342,7 +1342,12 @@ as the operation, resolved on read like the rest (`ColorToken::resolve`
 gains a case); read back resolved; listed by the devtools with its
 recipe. Nothing on the wire changes — a derived token is a name like any
 other. `Theme::raise` is the arithmetic that already exists for "one step
-up from this surface", and is the one to reuse rather than invent.
+up from this surface", and is the one to reuse rather than invent — and
+since 2026-09-12 the contrast half is on `Color` too:
+`Color::contrast` is the ratio and `Color::toward_contrast` the loop
+`ring_for` and the panel's ink share, so a `readable` operation ("this,
+moved until it clears 4.5:1 on that") is a fourth verb the set can name
+without a fourth spelling of the loop.
 
 **Condition:** an app in the field declaring hover and pressed shades as
 tokens rather than computing them — the pomodoro's kit is the case in

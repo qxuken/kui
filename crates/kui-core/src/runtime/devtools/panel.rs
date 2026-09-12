@@ -8,7 +8,7 @@ use crate::env::Appearance;
 use crate::runtime::inspect::NodeInfo;
 use crate::spec::TextStyle;
 use crate::spec::{Align, Min, NodeSpec, Sizing};
-use crate::theme::{Theme, contrast};
+use crate::theme::Theme;
 use crate::tree::OriginId;
 use crate::ui::Ui;
 use crate::widgets;
@@ -74,28 +74,14 @@ pub(super) fn build(ui: &mut Ui<'_>, st: &mut State, nodes: &[NodeInfo], place: 
 /// outline, a focused field's border, the legend's keys. An OS accent
 /// that sits near the base — Windows' "automatic" accent off a dark
 /// wallpaper is a navy on a near-black — is a fine fill and an invisible
-/// stroke (the pomodoro's report, 2026-09-12). The same promise
-/// [`Theme::ring_for`] makes for the ring, held here to 3:1 on `surface`
-/// — the UI-edge grade, since the accent is strokes and short labels
-/// here, not body text — and starting from the accent itself, so one
-/// that already reads is painted verbatim. The facts row still prints
-/// the accent in force; the panel's own window is drawn from this too.
+/// stroke (the pomodoro's report, 2026-09-12). [`Theme::ink_for`] is
+/// that promise — the ring's, held to 3:1 on `surface` and started from
+/// the accent itself, so one that already reads is painted verbatim —
+/// and this is the theme rebuilt around its answer. The facts row still
+/// prints the accent in force; the panel's own window is drawn from this
+/// too.
 pub(super) fn ink(t: Theme) -> Theme {
-    let toward = if t.is_dark() {
-        Color::WHITE
-    } else {
-        Color::BLACK
-    };
-    let mut mix = 0.0f32;
-    let ink = loop {
-        let c = t.accent.mix(toward, mix);
-        // `toward` itself always clears 3:1 on its own base, so the cap
-        // is a floor and not a give-up.
-        if mix >= 1.0 || contrast(c, t.surface) >= 3.0 {
-            break c;
-        }
-        mix = (mix + 0.05).min(1.0);
-    };
+    let ink = t.ink_for(t.accent);
     if ink == t.accent {
         t
     } else {

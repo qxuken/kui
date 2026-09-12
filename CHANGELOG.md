@@ -223,6 +223,27 @@ Nothing.
 
 ### Changed
 
+- **Contrast is the colour's arithmetic, and public:
+  `Color::contrast(other)`** is WCAG's ratio (1:1 to 21:1), and
+  **`Color::toward_contrast(toward, on, ratio, from)`** is the loop
+  behind "an accent that can be seen on this base" — `self` mixed toward
+  `toward` in 0.05 steps from `from` until it clears `ratio` on `on`.
+  The ratio was `theme::contrast`, crate-private, with a doc keeping it
+  off `Color` because "a view that wants the number has
+  `Color::luminance` to build it from"; that was true with one caller,
+  and by F50 the loop on top of it had been written twice
+  (`Theme::ring_for` and the devtools panel's `ink`), the pomodoro was
+  computing hover shades by hand with no way to check them, and T5 was
+  about to be a third spelling. `Theme` keeps the *decisions*:
+  `Theme::front()` (white on a dark base, black on a light one — the one
+  fact about contrast that is the theme's), `ring_for` (3:1 on `bg`,
+  from 0.35 on dark), and the new **`Theme::ink_for(accent)`** (3:1 on
+  `surface`, from 0 — F50's promise, which the panel now calls instead
+  of carrying its own copy). `raise` mixes toward `front()`. No colour
+  moves: both loops reduce to the one on `Color` with the same steps and
+  the same floor, and the corpus and the devtools tests pin the ring and
+  the panel's ink where they were.
+
 - **`<audio finish>`'s cost, in the app's units.** The `finish` row said a
   released playback holds one of the device's 128 voices until its file
   ends and the 129th play is refused, and left the reader to work out how

@@ -28,19 +28,6 @@
 use crate::color::Color;
 use crate::env::{Appearance, SystemEnv};
 
-/// WCAG's contrast ratio between two opaque colours, 1:1 to 21:1 — the
-/// number "4.5:1" and "3:1" are ratios of. Kept here rather than on
-/// [`Color`] because it is a *palette* question: the roles are checked
-/// against each other, and a view that wants the number has
-/// [`Color::luminance`] to build it from.
-pub(crate) fn contrast(a: Color, b: Color) -> f32 {
-    let (hi, lo) = (
-        a.luminance().max(b.luminance()),
-        a.luminance().min(b.luminance()),
-    );
-    (hi + 0.05) / (lo + 0.05)
-}
-
 /// Every colour the stock widgets and the core's own chrome paint with,
 /// as roles rather than values. Plain data and [`Copy`]: a view reads it
 /// off `ui.theme()` and may keep, mutate or replace its own copy.
@@ -301,21 +288,17 @@ impl Theme {
     /// base is the case it exists for. macOS's yellow taken verbatim is
     /// 1.49:1 on `#f6f7f9`, which is not a ring, it is a rumour.
     pub fn ring_for(self, accent: Color) -> Color {
-        let toward = if self.is_dark() {
-            Color::WHITE
-        } else {
-            Color::BLACK
-        };
-        let mut t = if self.is_dark() { 0.35 } else { 0.0 };
-        loop {
-            let ring = accent.mix(toward, t);
-            // `toward` itself always clears 3:1 on its own base, so the
-            // cap is a floor and not a give-up.
-            if t >= 1.0 || contrast(ring, self.bg) >= 3.0 {
-                return ring;
-            }
-            t = (t + 0.05).min(1.0);
-        }
+        let from = if self.is_dark() { 0.35 } else { 0.0 };
+        accent.toward_contrast(self.front(), self.bg, 3.0, from)
+    }
+
+    /// `accent` as ink on `surface` — strokes, borders, short labels —
+    /// held to 3:1, the UI-edge grade, and painted verbatim when it
+    /// already reads. The devtools panel's accent (F50); the same
+    /// promise as [`ring_for`](Theme::ring_for) with a different start,
+    /// since a fill that reads has no reason to move.
+    pub fn ink_for(self, accent: Color) -> Color {
+        accent.toward_contrast(self.front(), self.surface, 3.0, 0.0)
     }
 
     /// Whether this is a dark theme — the question a view asks when it has
@@ -325,19 +308,24 @@ impl Theme {
         self.appearance != Appearance::Light
     }
 
+    /// The *front* of this theme's base: white on a dark one, black on a
+    /// light one — what [`raise`](Theme::raise) moves toward and what
+    /// clears any contrast on the base by itself. The one fact about
+    /// contrast that is the theme's rather than the colour's.
+    pub fn front(self) -> Color {
+        if self.is_dark() {
+            Color::WHITE
+        } else {
+            Color::BLACK
+        }
+    }
+
     /// `c` moved `t` of the way toward the *front* of this theme: lighter
     /// on a dark one, darker on a light one. The arithmetic behind
     /// "one step up from this surface", written once so a view does not
     /// have to branch on the appearance to get it right.
     pub fn raise(self, c: Color, t: f32) -> Color {
-        c.mix(
-            if self.is_dark() {
-                Color::WHITE
-            } else {
-                Color::BLACK
-            },
-            t,
-        )
+        c.mix(self.front(), t)
     }
 
     /// Black or white, whichever a reader can see on `bg`
@@ -415,25 +403,25 @@ mod tests {
                 ("sunken", t.sunken),
                 ("raised", t.raised),
             ] {
-                let fg = contrast(t.fg, surface);
+                let fg = t.fg.contrast(surface);
                 assert!(fg >= 4.5, "{name}: fg on {sn} is {fg:.2}:1");
-                let muted = contrast(t.muted, surface);
+                let muted = t.muted.contrast(surface);
                 assert!(muted >= 4.5, "{name}: muted on {sn} is {muted:.2}:1");
                 // Faint is the placeholder tier: large-text/UI grade.
-                let faint = contrast(t.faint, surface);
+                let faint = t.faint.contrast(surface);
                 assert!(faint >= 3.0, "{name}: faint on {sn} is {faint:.2}:1");
             }
-            let label = contrast(t.on_accent, t.accent);
+            let label = t.on_accent.contrast(t.accent);
             assert!(label >= 4.5, "{name}: the button label is {label:.2}:1");
             // A ring nobody can see is not a focus indicator (ADR 0002).
-            let ring = contrast(t.focus_ring, t.bg);
+            let ring = t.focus_ring.contrast(t.bg);
             assert!(ring >= 3.0, "{name}: the focus ring is {ring:.2}:1");
             for (sn, status) in [
                 ("success", t.success),
                 ("warning", t.warning),
                 ("danger", t.danger),
             ] {
-                let c = contrast(status, t.surface);
+                let c = status.contrast(t.surface);
                 assert!(c >= 4.5, "{name}: {sn} on a surface is {c:.2}:1");
             }
         }
@@ -493,7 +481,7 @@ mod tests {
         ] {
             for appearance in [Appearance::Light, Appearance::Dark, Appearance::Unknown] {
                 let t = Theme::derive(appearance, Some(Color::hex(hex)));
-                let c = contrast(t.focus_ring, t.bg);
+                let c = t.focus_ring.contrast(t.bg);
                 assert!(c >= 3.0, "{appearance:?} + {hex:08x}: the ring is {c:.2}:1");
             }
         }
@@ -502,7 +490,7 @@ mod tests {
         let yellow = Color::hex(0xffc409ff);
         let light = Theme::derive(Appearance::Light, Some(yellow));
         assert_ne!(light.focus_ring, yellow);
-        assert!(contrast(yellow, light.bg) < 1.6, "which is why");
+        assert!(yellow.contrast(light.bg) < 1.6, "which is why");
     }
 
     /// `raise` is the branch a view would otherwise write by hand.

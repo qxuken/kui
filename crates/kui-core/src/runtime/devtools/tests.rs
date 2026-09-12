@@ -417,15 +417,12 @@ fn the_panel_s_ink_is_a_readable_accent() {
     let navy = Color::hex(0x101a30ff);
     let dark = Theme::derive(Appearance::Dark, Some(navy));
     let ink = super::panel::ink(dark);
-    assert!(
-        crate::theme::contrast(navy, dark.surface) < 1.5,
-        "the case it exists for"
-    );
-    assert!(crate::theme::contrast(ink.accent, dark.surface) >= 3.0);
+    assert!(navy.contrast(dark.surface) < 1.5, "the case it exists for");
+    assert!(ink.accent.contrast(dark.surface) >= 3.0);
     assert_ne!(ink.accent, navy);
     assert_eq!(ink.bg, dark.bg, "an accent is not a repaint");
     assert!(
-        crate::theme::contrast(ink.focus_ring, ink.bg) >= 3.0,
+        ink.focus_ring.contrast(ink.bg) >= 3.0,
         "the family came with it"
     );
     // kui's own blue on the light base already reads.
@@ -434,9 +431,9 @@ fn the_panel_s_ink_is_a_readable_accent() {
     // And on the dark base it is a hair short, so it moves a hair.
     let dark = Theme::derive(Appearance::Dark, Some(Theme::ACCENT));
     let ink = super::panel::ink(dark);
-    assert!(crate::theme::contrast(ink.accent, dark.surface) >= 3.0);
+    assert!(ink.accent.contrast(dark.surface) >= 3.0);
     assert!(
-        crate::theme::contrast(ink.accent, dark.surface) < 3.5,
+        ink.accent.contrast(dark.surface) < 3.5,
         "moved as little as it must"
     );
     // In a frame: the facts print the core's accent, not the panel's.
