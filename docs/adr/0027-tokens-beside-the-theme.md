@@ -3,33 +3,36 @@ status: proposed
 date: 2026-09-12
 ---
 
-# Tokens beside the theme: a constant the app already has, and a name the inspector can borrow
+# Tokens beside the theme: named colours and lengths an app declares, referenced by name, resolved by the binding
 
 > **Proposed (2026-09-12), nothing built.** Backlog T4 asked whether an app
 > whose palette *is* the design — the LCARS pomodoro, the mind map — should
-> get the theme's mechanism for a vocabulary of its own: an open
-> `tokens: { name → colour }` map beside the closed `Theme`, read back in
-> four bindings, warned about when misspelt, listed by the devtools, and
-> — the contested half — a colour prop that names a token, `bg="$peach"`,
-> resolved in the core when the node opens. The entry said the ADR may
-> keep the map and decline the prop, or decline the whole thing with a
-> condition, and to decide from a count rather than an adjective.
+> get the theme's mechanism for a vocabulary of its own. This document was
+> written twice on the same day. The first draft counted the two apps and
+> declined: both already hold their colours in a typed constant, 43 of the
+> pomodoro's 69 reads are a ternary the model decides, and a `$peach` string
+> in a prop would trade a compile-time name for a runtime warning. The
+> review of that draft pushed back on the *shape* rather than the count:
+> the typo objection is answered at the declaration if the names are typed
+> there; a token should be themed or not with one spelling for the common
+> case; and the same vocabulary problem exists one axis over, in
+> **lengths** — the pomodoro carries six size constants and a
+> twenty-five-field tier table beside its twelve colours.
 >
-> The count changed the answer. The entry's picture was "the LCARS app
-> declaring its palette once and writing `bg="$peach"` on forty pills".
-> The app declares its palette once *already*, in one `const C` of twelve
-> names with not one literal outside it; `peach` is on **three** boxes and
-> six labels a frame, the colour on forty nodes is `dim`, and **43 of the
-> 69 reads** of those twelve names sit inside a ternary the model decides
-> — the view is choosing the colour, not naming it. The mind map's
-> branch palette is indexed by *data*, so a token name for it would be a
-> string built per node per frame. Neither palette follows the OS.
-> Neither app has a reader of its colours that a module constant does not
-> reach. What survives is one thing: a person at the inspector asking
-> "which peach is this", and that is a legend the devtools can hold, not
-> a mechanism the theme needs. So: **the map is declined, the prop is
-> declined, a devtools palette legend is proposed**, and the condition
-> that reopens the map is written down.
+> So this is the second draft, and the count still stands underneath it.
+> What is proposed: two small tables beside `Theme` and `Metrics` —
+> **colour tokens** with a light and a dark half (`same()` for the common
+> case) and **length tokens** in logical px — declared once, resolved once a
+> frame, read back in four bindings, and **referenced by name in any colour
+> or length prop** (`bg={T.peach}`, `width={T.sideW}`), the reference typed
+> at the declaration by `defineTokens` so a misspelt name is a type error
+> and not a warning. The reference rides the wire as a **tagged prop id**
+> and is resolved by the binding as it lowers the node, from the core's
+> table — so `NodeSpec` does not change, the core resolves nothing at open,
+> and the prototype's number below is an upper bound on a cost the built
+> shape does not pay. The theme's roles and the metrics' roles are
+> reachable by the same spelling (`$surface`, `$radius`), so an app has one
+> way to say "this named thing" whoever named it.
 
 ## Context
 
@@ -39,28 +42,34 @@ date: 2026-09-12
 `env.system`'s appearance and accent unless the app pins or accents it
 (`crates/kui-core/src/theme.rs`); `schema::THEME_ROLES` pins the four
 bindings' readings to it; the stock widgets and the core's own chrome
-paint from it. Its "considered options" reject **a registry of arbitrary
-named tokens** on three grounds, each of which this ADR has to answer by
-name:
+paint from it. `Metrics` (T2, `metrics.rs`) is the same shape for sixteen
+lengths, with `METRIC_ROLES`. Neither has a prop reference: an app reads
+`theme.surface` or `metrics.radius` and passes the value.
 
-1. *the stock widgets could not read it without agreeing on names;*
-2. *a typo is a missing colour at runtime;*
-3. *no binding could be generated from it.*
+ADR 0019's "considered options" reject **a registry of arbitrary named
+tokens** on three grounds, answered here by name:
 
-T2 (`docs/backlog/closed-2026-09.md`) is the precedent one axis over:
-`Metrics` shipped as a closed sixteen-role struct with a door per
-binding and **no prop reference** — `<box radius={metrics.radius}>` reads
-the value and passes it, the way `<box bg={theme.surface}>` does. The
-question here is whether colour, "where the duplication was", answers
-differently.
+1. *the stock widgets could not read it without agreeing on names* —
+   still true, and still not the point: the widgets read roles, an app's
+   tokens are the app's, and the pomodoro's wish for its tooltip is a role
+   override `setTheme` takes today (`raised: C.black, fg: C.peach`).
+2. *a typo is a missing colour at runtime* — true of a string registry
+   looked up by hand. Decision 5 puts the names into the type system at
+   the declaration, so `T.peech` does not compile; the runtime warning
+   exists for the bindings without a type checker and is the same
+   `unknown-prop` family.
+3. *no binding could be generated from it* — conceded: the set is the
+   app's, so nothing per token is generated. What *is* pinned is the
+   shape — one table per kind, one tag on the wire, one reader per
+   binding — and that is what the corpus scene checks.
 
 ### The two apps, counted
 
 ADR 0019 counted literals across the repo — 199, 87 distinct, `#8a8fa3`
-by hand in sixteen files — and that number was its argument. The same
-kind of count over the two apps that raised T4, from their source and
-from a headless frame of each (`nodes()` after `setInspect(true)`, glyph
-and segment quads from `decodeQuads`), on 2026-09-12:
+by hand in sixteen files. The same kind of count over the two apps that
+raised T4, from their source and from a headless frame of each
+(`nodes()` after `setInspect(true)`, glyph and segment quads from
+`decodeQuads`), on 2026-09-12:
 
 **The LCARS pomodoro** (`playground/kui/my-app`, alpha.11):
 
@@ -71,24 +80,22 @@ and segment quads from `decodeQuads`), on 2026-09-12:
 | hex literals anywhere else in `src/` | **0** |
 | reads inside a ternary or an index the model decides (`m.blink ? C.red : C.tangerine`, `MODE_COLOR[mode]`, `i < filled ? color : C.dim`) | **43** |
 | call sites deriving a colour by arithmetic (`hoverOf` / `pressOf`, a lift toward white) | 9 |
+| named lengths as module constants (`SIDE_W`, `BAR_H`, `ELBOW_H`, `GAP`, `OUTER_R`, `INNER_R`) | **6**, read 31 times |
+| lengths in the viewport tier table (`layout(w, h)` → `L`) | **25 fields × 3 tiers**, read 55 times as `L.x` |
 | nodes per frame, wide tier (1040×720), stopped | 176 |
-| of them with a `bg` | 72 (the smoke test's "72 solid") |
-| of them text | 35 |
+| of them with a `bg` / text | 72 (the smoke test's "72 solid") / 35 |
 | distinct `bg` values on screen / distinct text colours | 12 / 8 |
 | nodes painting `dim` (the pips and segments) | **40** |
 | nodes painting `peach` — the entry's example | 3 boxes + 6 labels |
-| nodes with a hover and a pressed shade the app computed | 11, so **22 derived colours** a frame that no name in `C` is |
+| nodes with a hover and a pressed shade the app computed | 11, so 22 derived colours a frame that no name in `C` is |
 | compact tier (700×480): nodes / bg / text | 114 / 43 / 25 |
 
-Its alpha.11 notes say what it wants, in its own words: "`ctx.theme()`
-roles for the panel — deliberately not adopted. The theme is for a view
-that wants to follow the OS; this one does not, and its palette is the
-design." And under *what to watch*: "the next release that gives the
-tooltip a role we would want to colour — its background to LCARS black,
-its text to the peach — is the release the pin becomes a palette." That
-is a wish for **role overrides on the stock widgets**, which `setTheme({
-appearance: 'dark', raised: C.black, fg: C.peach })` is today. It is not
-a wish for tokens.
+Its alpha.11 notes: "`ctx.theme()` roles for the panel — deliberately not
+adopted. The theme is for a view that wants to follow the OS; this one
+does not, and its palette is the design." And: "the next release that
+gives the tooltip a role we would want to colour — its background to
+LCARS black, its text to the peach — is the release the pin becomes a
+palette."
 
 **The mind map** (`playground/kui/mind-maps`):
 
@@ -96,94 +103,80 @@ a wish for tokens.
 |---|---|
 | named colours in `theme.ts` | 10 flat + a branch palette of 7 × {solid, soft, edge} = **31** |
 | hex literals inline in `view.tsx` | **13** — hover and pressed shades, shadow washes with alpha, white, one translucent overlay |
+| named lengths as module constants | **15** |
 | text runs given a colour by hand | 15 (14 `<text color>`, one `<span color>`) |
 | nodes per frame, starter doc (13 mind nodes) | 74 |
 | of them with a `bg` / a border / text / a `line` | 41 / 17 / 31 / 12 |
-| text nodes painting `ink` — which is the theme's `fg` role a shade off (`#e8ecf5` against `#e8e8ea`) | **19 of 31** |
+| text nodes painting `ink` — the theme's `fg` role a shade off (`#e8ecf5` against `#e8e8ea`) | **19 of 31** |
 | flat constants that are an ADR 0019 role under another name (`bg`, `panel`→`surface`, `panelBorder`→`border`, `ink`→`fg`, `inkDim`→`muted`, `inkFaint`→`faint`, `selectRing`→`focus_ring`) | 7 of 10 |
 | branch colours chosen by data (`theme.hue(n.hue).soft`, `n.hue` a model field) | every node, edge and dot of every branch |
 
-Its findings say "this app hardcodes a dark theme and adopts none of it",
-and "gives all fifteen text runs a colour" — nineteen of the runs on
-screen are `ink`, which a `<text>` with no `color` would paint as `fg` on
-the pinned dark base, one shade apart.
+### What the count settles, and what it does not
 
-### What the numbers say, one at a time
+- **Both apps already keep one table, and keep it well.** Zero stray
+  literals in the pomodoro; one `theme.ts` in the mind map. The feature
+  cannot be justified as "give them a table" — it has to be justified by
+  what a table *in the core* does that a module constant cannot: a light
+  half the core picks, a name the inspector can print, a value a Lua or
+  C guest can read, and one spelling for the app's names and the stock
+  roles.
+- **The view chooses between names, and that is neutral.** With
+  `bg={m.blink ? T.red : T.tangerine}` the ternary reads as it does with
+  `C.red`. A reference does not remove the branch and does not add one.
+  What it removes is the `isDark ? … : …` an app would write to give a
+  colour a light half — the mind map's seven role-alikes, today pinned
+  dark.
+- **A name has to be checked where it is written.** The first draft's
+  strongest objection, and the pushback's answer: `defineTokens` returns
+  the names as literal types, so the reference is `T.peach` and not
+  `'$peach'`. The string is what rides; the type is what the author
+  sees.
+- **Lengths have the same shape and a better reason.** The pomodoro's
+  tier table is twenty-five names re-chosen on every resize; a token
+  table re-declared on `resize` is exactly that, with the inspector
+  printing `sideW` on the sidebar's box instead of `132`. Nothing in
+  `Metrics` covers it — those are the stock widgets' sixteen.
+- **Derived shades are outside v1.** Twenty-two hover and pressed
+  colours a frame in the pomodoro are `lift(c, t)`; the mind map writes
+  the same thirteen out. A derived token (`peach.hover = lift(peach,
+  0.3)`) is a later step, not this one; the app keeps its arithmetic on
+  `hoverBg`.
+- **The inspector is a reader.** ADR 0024 decision 10's paint group
+  prints `bg` as hex and `padding` as numbers. With a table in the core,
+  a reverse lookup at display time names both.
 
-- **Both apps already have the map.** A TypeScript `const C = {...} as
-  const` is typed, tree-shaken, and a compile error when misspelt.
-  `theme().tokens.peach` would be a `number` off an index signature —
-  `peech` types the same — and a *runtime* warning when misspelt. For the two apps in evidence the map is a
-  regression in the property ADR 0019's second ground was about.
-- **The view is the resolver.** Sixty-two per cent of the pomodoro's
-  colour reads are chosen by model state. A token change in a frame where
-  the view does not run cannot happen in this core: every binding is
-  immediate mode, the view runs on every frame that is drawn, and the
-  only way an app's tokens change is the app calling a setter and
-  redrawing. "A token change repaints without the view running" is a
-  property the *theme* needs — the OS changes it under the app, hence
-  the `system` event — and no app-declared table has.
-- **A name is not the unit.** The pomodoro's forty most-painted nodes
-  paint `dim` on one arm of a ternary and a data-chosen colour on the
-  other; the mind map's branches index a palette by a model integer. A
-  prop that names a token would be `bg={i < filled ? '$gold' : '$dim'}`
-  and ``bg={`$hue${n.hue}.soft`}`` — the second a string allocated per
-  node per frame to be hashed back into the index it came from.
-- **A fifth of the paint is derived, and outside any name.** Eleven pomodoro controls carry
-  a hover and a pressed shade computed by `lift(c, 0.3)` and `lift(c,
-  0.55)`; the mind map's thirteen inline literals are the same thing
-  written out. A token set either grows a variant per shade (36 names
-  for 12 colours) or the app keeps the arithmetic, and then `$peach` on
-  `bg` sits beside `hoverBg={hoverOf(C.peach)}` — half a mechanism.
-- **Nothing follows the appearance.** Neither palette has a light half.
-  The only per-appearance token in evidence is the mind map's seven
-  flat constants that are theme roles wearing other names, and the
-  answer for those is ADR 0019's, unchanged: read the role.
-- **The one benefit left standing is a name in the inspector.** The
-  devtools' node inspector (ADR 0024, decision 10) shows `bg` as
-  `#ffcc99`. A person reading it would rather see `peach`. That needs
-  the names to exist somewhere the panel can see, and it needs nothing
-  else — no wire encoding, no per-node resolve, because a *reverse*
-  lookup from the painted value to a name at display time gives the
-  same answer for every node that painted a named colour.
-
-### What a token reference would cost on the colour path
+### What a token reference costs on the colour path
 
 The entry's first bullet: is the prop worth its wire shape? Read from
-the code, then measured on one row.
+the code, then measured on one row — for the *core-side* resolve, which
+is the costlier shape and the one the decision does not take.
 
 **Today.** Node's encoder (`packages/kui/encoder.js`, `color(v)`) takes a
-number as-is (`v >>> 0`) and a `'#rrggbb'` string through a `Map` from
-string to `u32`, filled once per distinct string for the encoder's life
-— so a hex string is already one map hit per node per frame, and a token
-name would be the same hit. Every colour rides the frame stream as one
-`f64` holding the `u32`; `binary::lower_binary`
-(`crates/kui-node/src/binary.rs`) turns it into a `Color` through
-`color_num`. Eight schema rows are `Kind::Color` (`bg`, `shadowColor`,
-`scrollbarColor`, `scrollbarActiveColor`, `hoverBg`, `pressedBg`,
-`focusBg`, `color`), and two more carry a colour inside a composite
-(`border`'s second half, `cells`' `cursorColor`), so a distinct encoding
-is **ten decode sites** in Node and one encode site, plus the `border`
-and text-style paths in Lua and C. The `u32` slot has room for the
-distinction — a negative `f64`, or a reserved alpha — so the wire grows
-by zero bytes and one sign test per colour on decode; that half of the
-entry's claim ("the common `u32` path pays nothing") holds.
+number as-is and a `'#rrggbb'` string through a `Map` from string to
+`u32`, filled once per distinct string for the encoder's life — a hex
+string is already one map hit per node per frame, and a token name is
+the same hit. Every prop rides the frame stream as its `id` then its
+value(s), a colour as one `f64` holding a `u32`, a length as one `f64`, a
+sizing as `(mode, value)`. `binary::lower_binary`
+(`crates/kui-node/src/binary.rs`) walks the ids through `schema::by_id`
+and already holds the `Ui` — it reads `ui.theme().fg` for a line's
+default stroke — so it can read a token table from the same place.
+Eight rows are `Kind::Color`, two more carry a colour in a composite
+(`border`, `cursorColor`); twenty-odd rows are `Kind::F32` or
+`Kind::Sizing`.
 
-**In the core**, the reference has to live in a `Color`-shaped slot
-until the node opens. `Color` is four `f32`s, `NodeSpec` is pinned under
-256 bytes (`node_spec_stays_small`), and a side `Option<u16>` per colour
-row is the field growth C15 spent a round avoiding. The prototype used
-the other shape: a NaN in `r` carrying the index in `g`
-(`Color::token(i)`), resolved in `open_content` beside the `accent`
-substitution — the exact door ADR 0019's decision 7 already walks
-through for one role — so nothing downstream sees the sentinel. That is
-the shape ADR 0019 decision 5 rejected for `Option<Color>`, and it is
-not the same case: there the `None` had to survive to the shaping cache
-and four bindings; here it dies at the door it was resolved at.
+**In the core**, if the reference had to survive to `open`, it would need
+a `Color`-shaped slot to hide in: the prototype used a NaN in `r`
+carrying the index in `g` (`Color::token(i)`), resolved in
+`open_content` beside the `accent` substitution — the door ADR 0019
+decision 7 already walks through for one role — so nothing downstream
+sees the sentinel. That is the shape decision 5 of ADR 0019 rejected for
+`Option<Color>`; it is not the same case, because it dies at the door.
+It is also not the shape taken here, for the reason under decision 4.
 
 **Measured** (`scripts/bench-check.sh af043d4`, HEAD the prototype commit
-on `scratch/t4-token-resolve`, one NaN test per node on `bg`, this
-machine alone):
+`41798cd` on `scratch/t4-token-resolve`, one NaN test per node on `bg`,
+this machine alone after waiting for three sibling test runs to end):
 
 | row | af043d4 | prototype | Δ |
 |---|---|---|---|
@@ -196,168 +189,195 @@ Read: the check passed on all four guarded rows (`deep_nesting_64_levels`
 question named moved by less than their own run-to-run spread — the
 unused path's one NaN test per node is not visible at 10k nodes, and the
 used path's table read costs **three microseconds per ten thousand
-nodes** at most, which is the price of one array index. Two things the
-run says that the table does not: `frame_10k_rects_all_transitioning`
-read +5.2% at ±0.8%, an unguarded row bench-check marks *touched*
-because `grid()` grew the `tokens` branch, so one run cannot tell the
-resolve from the builder's new shape — it is the class C29 is already
-bisecting, and it is why the ADR does not say "free"; and the base's
-first run of `frame_10k_rects` was 768 µs against 731 µs on its second,
-which is the spread the machine showed and the reason the rows are
-read against it rather than against each other.
+nodes** at most, the price of one array index. Two things the run says
+that the table does not: `frame_10k_rects_all_transitioning` read +5.2%
+at ±0.8%, an unguarded row bench-check marks *touched* because `grid()`
+grew the `tokens` branch, so one run cannot tell the resolve from the
+builder's new shape — C29's class, and why this does not say "free";
+and the base's first run of `frame_10k_rects` was 768 µs against 731 µs
+on its second, which is the spread the machine showed.
 
-So the cost is not the argument against the prop: on the core's side it
-is inside the noise floor on both paths, and on Node's wire it is a sign
-test. The argument is that the two apps in evidence would pay it to
-get a name they already have, in a form their type checker can no longer
-see, for a resolve their view already performs.
+Since the built shape resolves in the binding, the core's own path is
+untouched and the table above is a ceiling. Node's cost is the map hit
+it already pays per string plus one mask on the prop id per prop
+decoded.
 
-### Who else reads a host's colours
+### Who else reads a host's tokens
 
 ADR 0014 decision 3: a slot's parameters are a `Value` the host declares
-every frame. A guest that paints in the host's vocabulary reads
-`params.peach` — a map of hex strings the host builds from its own `C`
-— and the contract is the two of them, as the entry says it should be.
-The one reader a module constant cannot reach, an extension written
-against a host's palette *without* the host passing it, is a plugin
-ecosystem; there is none in the field, and the condition below names
-it.
+every frame, and a guest could read `params.peach` today. A table in the
+core is better for the case a guest paints in the host's vocabulary
+across several slots — one `env.tokens` rather than the same map on
+every `slot_with` — and a Lua guest that writes `bg = '$peach'` is
+reading the host's table through the host's own spelling. The warning
+matters more at that seam, which is why it names the token *and* the
+node.
 
 ## Decision
 
-1. **`Theme` stays closed, and nothing is added beside it.** No `tokens`
-   on `Theme`, on `ThemeOverrides` / `setTheme`, on `KuiTheme`, on Lua's
-   `env.theme`, and no `theme().tokens.x` / `kui_theme_token` /
-   `ui.theme().token("x")` readers. ADR 0019's first ground stands as
-   written — *the widgets read roles* — and it is also why the map buys
-   the app that asked nothing: what the pomodoro wants for its tooltip is
-   `raised` and `fg` overridden, which `setTheme` takes today. Its second
-   ground is answered by the count rather than by a warning: in both apps
-   the name is a typed constant and a typo is a compile error; an
-   `unknown-token` warning would be the runtime error ADR 0019 declined,
-   arriving one layer later. Its third ground is conceded: a map is one
-   shape per binding, but what could not be generated was the *type*,
-   and an index signature that types `peech` as it types `peach` is what
-   a TypeScript app would get back for a `const` it can misspell nowhere.
-2. **No colour prop names a token.** No `$name` spelling on any of the
-   ten colour slots, in any binding, no distinct wire encoding, no
-   per-node resolve, no `unknown-token`. Not for cost — the table above
-   says the core would not notice — but because the thing it would buy,
-   a repaint without the view, does not exist in an immediate-mode core
-   where the only writer of the table is the app; because 43 of 69 reads
-   are the view choosing between names, which a name-in-a-prop makes into
-   a ternary of strings; because a data-indexed palette turns into a
-   string built per node; and because the derived shades — 22 a frame in
-   the pomodoro — are outside any name.
-3. **A token that follows the appearance is a role.** No per-appearance
-   token set (`tokens: { light: {...}, dark: {...} }`). An app colour
-   that has a light and a dark value is either one of the twenty-three
-   roles under another name (seven of the mind map's ten are) and reads
-   the role, or a role the theme lacks and is proposed against
-   `examples/rust/features/theme.rs` the way ADR 0019 says the next one
-   is. `Theme::raise` and the derive are the one place the base branch
-   lives, and a second table beside it would be that branch written
-   twice.
-4. **A guest reads a host's colours through the slot's parameters.**
-   ADR 0014 decision 3 is the seam and it already carries a `Value` map;
-   a host with a vocabulary hands the guest the names it means the guest
-   to use, per slot, per frame. Nothing new.
-5. **The devtools take a palette legend.** Proposed, unbuilt, and the
-   one piece of T4 the count left standing:
-   `Core::set_devtools_palette(&[(&str, Color)])` beside
-   `set_devtools_legend`, `setDevtoolsPalette` on Node's `Ctx` and
-   `KuiWindow`, `kui_set_devtools_palette` in C (a new function, no ABI
-   bump under ADR 0006), stored in `SessionState::devtools` with the key
-   legend. The facts tab lists the names with their swatches; the node
-   inspector's paint group, when a node's `bg`, border, shadow or text
-   colour equals a legend entry, prints the name after the hex. It is a
-   reverse lookup at display time over a table of a dozen entries, so the
-   wire, the spec, the open path and the corpus are untouched, a frame
-   with the panel off pays nothing, and a colour the legend does not name
-   prints as it does today. Names are the app's, and two entries with
-   one value print both.
-6. **What reopens decision 1.** An extension in the field — not the
-   host's own code — that paints from a host's palette across more slots
-   than a per-slot `Value` map is reasonable for, and wants the table by
-   name; or a binding with no constant of its own to hold a colour in,
-   which today is none of the four. Reopening decision 2 wants a host
-   whose view does *not* run when its colours change, which would be a
-   retained-tree host this core does not have.
+1. **Two tables beside `Theme` and `Metrics`, per `Core`.**
+
+   ```rust
+   pub struct ColorToken { pub light: Color, pub dark: Color }  // same(c) sets both
+
+   pub struct Tokens {
+       colors:  Vec<(String, ColorToken)>, // index = ColorTokenId, declaration order
+       lengths: Vec<(String, f32)>,        // index = LengthTokenId, logical px
+       by_name: HashMap<String, TokenRef>, // TokenRef::Color(u16) | Length(u16)
+       resolved_colors: Vec<Color>,        // this frame's half, picked at refresh_theme
+   }
+   ```
+
+   Not inside `Theme` or `Metrics`: both are `Copy` on purpose
+   (`ThemeSource::Pinned` carries a `Theme` by value, and `theme.rs` says
+   why), and a `Vec` beside them costs nothing they have. Per core, like
+   the theme, so a window is one table; hoisting to the session waits for
+   a two-window app that wants it. Declaration order is the index, so a
+   binding that lowered the declaration knows every index without a round
+   trip. Size: the two apps would hold 12–31 colours and 6–40 lengths.
+2. **Declared whole, by a host.** Rust
+   `Core::set_tokens(Tokens::new().color("peach", c).color_themed("dim",
+   light, dark).length("sideW", 132.0))`, with `Tokens::color_id("peach")`
+   / `length_id` for an app that wants to hold the index; Node
+   `ctx.setTokens(T)` and, as sugar, `setTheme({ ..., tokens: T })`; C
+   `kui_tokens_set(ctx, const KuiColorToken *colors, size_t n, const
+   KuiLengthToken *lengths, size_t m)` — new functions and new `[in]`
+   structs, no ABI bump under ADR 0006. Lua reads and does not write, as
+   it does not write the theme. Each call replaces the table; an app with
+   tiers re-declares on `resize`, which is what the pomodoro's `layout(w,
+   h)` already computes. Tokens are orthogonal to `ThemeSource`:
+   `setAccent(null)` / `derive_theme` leave them alone.
+3. **Resolved once a frame, read back resolved.** `refresh_theme`
+   fills `resolved_colors` from `theme.is_dark()` right after it resolves
+   the theme — unknown appearance takes dark, ADR 0019 decision 4
+   unchanged — so a themed token is frame-stable for the same reason the
+   palette is. Readers get this frame's value: Node `ctx.tokens()` as a
+   flat object (colours as `0xRRGGBBAA`, lengths as numbers), Lua
+   `env.tokens.peach`, C `bool kui_token_color(ctx, KuiStr, uint32_t*)`
+   and `kui_token_length(ctx, KuiStr, float*)`, Rust `ui.token_color(id)`
+   / `ui.token_length(id)` and the by-name forms.
+4. **A reference by name in a prop, resolved by the binding as it
+   lowers.** `'$peach'` is accepted on every colour slot (the eight
+   `Kind::Color` rows, `border`'s colour, `cursorColor`, a `<span>`'s
+   `color` and `bg`) and `'$sideW'` on every length slot (every
+   `Kind::F32` row, every `Kind::Sizing` row as `Fixed(px)`, the `pad`
+   shorthand's values, `border`'s width). On Node's wire the prop's id
+   carries a tag — `id | 0x8000`, ids being small — and the value slot
+   holds the token index; **zero extra bytes, one mask per prop on
+   decode**. `lower_binary` resolves it from `ui`'s table before
+   `schema::apply`, so `Parsed` and `NodeSpec` never see a reference and
+   the core's open path is untouched. Lua's spec reader does the same
+   where it parses a colour string today (`color_hex_str`'s caller). C
+   passes a `u32` or a `float` with no room for a tag, so **C is
+   read-only**: it reads the table and writes the value, which is what a
+   C app does with `#define`. Rust reads the value too — a Rust app holds
+   the id. A kind mismatch (`bg={T.sideW}`) is an encode-time error like
+   `bad color`; an undeclared name raises **`unknown-token`** naming the
+   token and the node, once per name per session as `unknown-prop` does,
+   and paints transparent / measures 0.
+5. **The names are typed at the declaration.** Node ships
+   `defineTokens`: given `{ peach: '#FFCC99', dim: { light, dark },
+   sideW: 132 }` it returns `{ peach: '$peach', dim: '$dim', sideW:
+   '$sideW' }` typed as literal strings, branded by kind —
+   `ColorToken` / `LengthToken` — so `bg={T.peach}` type-checks,
+   `bg={T.sideW}` does not, and `T.peech` does not exist. Zero runtime:
+   the object *is* the references. The colour prop types widen from
+   `number | string` to `number | \`#${string}\` | ColorToken`, the
+   length props from `number` to `number | LengthToken`, which is a
+   `.d.ts` change and a generated one (`ButtonProps` is already
+   generated, F37).
+6. **The stock roles have the same spelling.** `$surface`, `$fg`,
+   `$accent` resolve to the theme's role and `$radius`, `$controlPadX`
+   to the metric's, through the same tag with the role's index in the
+   reserved range below the app's — so an app has one way to say "the
+   named thing", and the mind map's seven role-alikes are `$surface`,
+   `$border`, `$fg` with no `theme()` read. A declared token whose name
+   is a role raises **`reserved-token`** and is ignored: the roles are
+   the corpus's contract and an app does not shadow them. `defineTokens`
+   ships `roles` — the twenty-three and the sixteen, typed — so `T.surface`
+   and `roles.surface` are the same kind of thing.
+7. **The devtools list and name them.** The facts tab shows every token
+   with its light and dark swatch or its length; the node inspector's
+   paint and box groups print the name after the value by reverse
+   lookup over `resolved_colors` and `lengths` — `#ffcc99 peach`, `132
+   sideW`. Two tokens with one value print both names; a value no token
+   holds prints as it does today. No index is stored on the node, so a
+   frame with the panel off pays nothing.
 
 ## Considered options
 
-- **The entry's shape whole** — map, four readers, `unknown-token`, facts
-  tab, and `$name` on ten colour slots with a distinct encoding.
-  Declined by the count: each half is argued above, and the sum is a
-  mechanism whose two users in the field would have to un-type a constant
-  to adopt it.
-- **The map without the prop** — the entry's own fallback, and T2's
-  shape (a table with readers and no reference). Declined, and this is
-  where the count changed the answer: T2's table is *the stock widgets'*
-  metrics, read by the widgets, so a door to read it back is the only way
-  an app's own control can agree with `<button>` on a radius. A token map
-  is read by no widget — decision 1 of ADR 0019 is what makes the widgets
-  themed — so its readers would be the app reading back what it wrote,
-  through a door slower and less typed than the constant it wrote it
-  from.
-- **The prop without the map**, names resolved in the binding
-  (`'$peach'` looked up in the encoder's own table, the core never
-  knowing). Declined: it is what `C.peach` is, spelt as a string the type
-  checker cannot check.
-- **Tokens as an open extension of the closed struct** — `Theme` grows a
-  `custom: Vec<(String, Color)>` so `THEME_ROLES` and the corpus stay
-  pinned and the rest floats. Declined: it is the map with the struct's
-  `Copy` gone (`ThemeSource::Pinned` carries a `Theme` by value on
-  purpose, `theme.rs`'s own doc says why), for the readers decision 1
-  declines.
-- **A per-appearance token set** — declined as decision 3; the `raise`
-  branch written twice.
-- **Resolve at paint rather than at open**, a token index carried in the
-  quad so the renderer substitutes. Declined without measuring: it moves
-  the table across the display-list boundary and into `KuiQuad`'s
-  layout, which is an ABI bump (ADR 0006) for a benefit that does not
-  exist in immediate mode.
-- **Nothing at all, including the legend.** The nearest alternative to
-  what is proposed, and a fair one: the pomodoro's rounds found their
-  controls by the access tree and not by colour, and the inspector's
-  hex is what the app's own `C` says. Kept as decision 5 because it is
-  the only piece with a reader the count did not remove — "which peach
-  is this" is the question T4 itself says the panel is for, and the
-  inspector answers it in hex today — and because it costs a table in the
-  session and a lookup in a tab that is already reading `NodeInfo`.
+- **Decline the whole thing with a condition** — the first draft, and
+  the count it rests on is still in this document. It was right that the
+  apps have a table and that the view chooses between names; it was
+  wrong that the typo objection was fatal (decision 5) and it did not
+  look at lengths, where the pomodoro's tier table is the strongest case
+  for a name the inspector can print. Superseded the same day.
+- **Resolve in the core at `open`** — the prototype, measured above.
+  Declined for the built shape: it needs a reference to hide in a
+  `Color` (a sentinel) and in an `f32` (no room at all — a length can be
+  any float), and every binding that lowers already has the core in
+  hand. Resolving at the lower keeps `NodeSpec`, `Tree` and the digest
+  exactly as they are.
+- **A negative `f64` for colour references** — the first sketch's wire.
+  Declined once lengths joined: `shadowY`, a float's `x`, a scroll offset
+  can be negative, so the tag has to live on the id, and then colours
+  use the same tag.
+- **NaN-boxing the index into the value slot.** Declined: engines do
+  not promise a NaN payload survives a `Float64Array` round trip.
+- **Resolve in `defineTokens` at runtime** — the helper substitutes the
+  hex itself and the core never knows. Declined: it is the module
+  constant with extra steps, and it loses the light half, the inspector's
+  name and the Lua guest.
+- **Tokens inside `Theme` / `Metrics`** as an open tail. Declined: both
+  are `Copy` by design.
+- **A `<tokens>` element declared every frame**, immediate-mode purity.
+  Declined: the table is a setting the way the theme source is, and
+  re-sending forty strings a frame is what the encoder's cache exists
+  to avoid.
+- **Derived tokens** (`hover: lift(peach, 0.3)`). Not in v1; a `derive`
+  field on a colour token is the shape when an app asks, and the
+  pomodoro's `lift` is the arithmetic to lift.
+- **Per-density lengths** — a `scale` flag following `Metrics::scaled`.
+  Declined as T2 declined it for the metrics: a length never scales by
+  itself; re-declare on the event that changes the tier.
 
 ## Consequences
 
-- Nothing ships to an app from this ADR. `CHANGELOG.md` and
-  `docs/props.md` are untouched; no row, no warning, no reader.
-- The two apps keep their `const C` and their `theme.ts`, which is the
-  outcome the count recommends. The pomodoro's actual wish is one line
-  it can write today — `setTheme({ appearance: 'dark', raised: C.black,
-  fg: C.peach })` — and this ADR is where that is written down against
-  its report. The mind map could drop `color` from nineteen of its
-  thirty-one text nodes and paint the role.
-- When decision 5 is built: one door per binding, one row group in the
-  facts tab, one suffix in the inspector, tests that a named colour
-  prints its name and an unnamed one does not, and that the panel off
-  costs no lookup. No corpus scene — the corpus does not draw the panel.
-- The prototype on `scratch/t4-token-resolve` (one commit over
-  `af043d4`) is the measurement and is **not for merge**: it carries the
-  sentinel `Color`, `Core::set_tokens`, one resolve in `open_content`
-  and a bench row, and its number is in the table above.
-- ADR 0019's "considered options" paragraph stands. This ADR is the
-  second time a registry was asked for and the first time it was counted
-  against a real app; the answer was the same and the reasons are now
-  numbers.
+- Nothing ships to an app until it is built. `CHANGELOG.md` and
+  `docs/props.md` are untouched now; when built, `props.md` gains one
+  sentence on the colour and length rows and two warning lines.
+- **The build, by crate.** `kui-core`: `Tokens`, `Core::set_tokens` /
+  `tokens()`, the resolve in `refresh_theme`, the two warning codes, the
+  reserved role range, the devtools rows and reverse lookup. `kui-node`:
+  `setTokens` / `tokens()`, the tag in `lower_binary` at the ten colour
+  and the length sites, `defineTokens` and the widened prop types in
+  `index.d.ts`. `kui-lua`: `env.tokens`, `$` in the spec reader.
+  `kui-ffi`: `kui_tokens_set`, the two readers, the header. Corpus: a
+  `tokens` scene with a themed and an unthemed colour, a length on a
+  sizing row and a pad, the appearance flipped mid-scene, and one
+  undeclared name — Rust and C adapters write values, Lua and Node write
+  `$`.
+- **The two apps.** The pomodoro becomes `const T =
+  defineTokens({ ...C, ...tiers.wide })` with `setTokens({ ...C,
+  ...tiers[L.tier] })` on resize, and `bg={T.peach}` reads as `C.peach`
+  did; its hover arithmetic stays. The mind map's seven role-alikes become
+  `$surface` and friends and gain a light half for free; its branch
+  palette stays data-indexed and declares twenty-one tokens if it wants
+  the inspector to name them.
+- ADR 0019's "considered options" paragraph is amended by this document
+  rather than edited: the registry it declined was untyped and unowned;
+  this one is typed where it is written, owned by the app, and resolved
+  by the binding that lowered it.
+- The prototype on `scratch/t4-token-resolve` is the measurement only,
+  and is not the shape to build from.
 
 ### Not done here
 
-- **The legend itself** (decision 5): proposed, waits for the build.
-- **A `raised`/`fg` override in the pomodoro** is the app's line to
-  write, not this repo's.
-- **Names for the mind map's branch palette** would be twenty-one
-  legend entries for seven hues; whether a legend wants a *family*
-  (`hue3` naming three values) is a question for the day the panel
-  shows one.
-- **A retained-tree host** is the one thing that would make decision 2
-  wrong. None is planned; ADR 0016 is the nearest the core has come to
-  retaining a frame, and it declined.
+- **Derived tokens** and **per-density lengths**, as above.
+- **C writing a reference.** A `KuiColor` with a tag would be an ABI
+  change for a binding whose apps hold constants; the readers are enough
+  until one asks.
+- **Tokens in the session** rather than per core, for a two-window app.
+- **Names for the mind map's branch palette** — whether a legend wants a
+  *family* (`hue3` naming three values) is a question for the day the
+  panel shows one.
