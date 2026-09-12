@@ -659,7 +659,37 @@ dispatches from inside `flushEffects`, which runs inside `draw()`.
 **The pomodoro's half of the same seam is theirs**, and is under "Theirs,
 not ours" below with the mechanism.
 
-### `!` F43 — `env.viewport` is the window, not what the dock leaves, against its own schema row
+### `!` F43 — `env.viewport` is the window, not what the dock leaves, against its own schema row — **done (2026-09-12)**
+
+Done: `Core::env_facts()` fills `viewport` from `self.viewport()` — the
+frame's, as its `ENV_FIELDS` row said all along — so `env().viewport` is
+what the dock leaves in Node, Lua and C at once; and `Ui::viewport()`,
+which the entry took for `Core::viewport()`, read the same raw field and
+now delegates, so a Rust view under a dock reads the app's width too.
+`KuiWindow.size()` answers with the new `Core::host_area(window)`: what the
+dock leaves of a window that size, from the window and the dock's state
+alone (a `pub` wrapper over `devtools_area`, which was already
+frame-free), so `setup` and `init` read the right number before
+`env().viewport` is anything but 0×0. Lua and C have no `size` twin —
+Lua's `view(env)` carries `viewport_w`/`viewport_h` and C passes the
+viewport to `kui_frame_begin` itself — and ADR 0020's parity tests moved
+nothing. The `resize` event's schema doc and `size()`'s own say the same
+thing now (the dock is a resize; a dock present at launch posts none, by
+the first-frame rule, which stands), and the `viewport.w` row, the
+`Env.viewport` and `WindowSize` d.ts docs and the README's window-size
+bullet follow. `PumpRunner::window_size` stays the window's — its name
+says so — and its doc points at `host_area` for what the next frame lays
+out into. Guards:
+`the_env_reading_and_the_pre_frame_size_are_what_the_dock_leaves` in the
+core (right dock, 1040×720, `env_facts().viewport.w < 1040`, `host_area`
+before and after the frame, `Ui::viewport` mid-frame, the `ENV_FIELDS`
+row's `get`; it fails against the old getter, checked by restoring it) and
+`env().viewport is the window less the devtools dock (F43)` in the Node
+suite on a headless `Ctx` — `KUI_DEVTOOLS` is never read there but
+`setDevtools(true)` works, so the dock is put in by hand; `size()` needs a
+display, so the core pins that half. Both test comments say why the
+existing `ENV_FIELDS` readback could not see it: no corpus scene has a
+dock in its tree. CHANGELOG under alpha.12's `### Fixed`.
 
 **Symptom** (pomodoro, "with the devtools docked at launch, the app draws
 for the whole window", wish 2): under `KUI_DEVTOOLS=1` the app is squeezed

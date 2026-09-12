@@ -17,6 +17,39 @@ for the reader deciding whether to upgrade. Earlier sections keep the shape
 they shipped with and are not retrofitted (backlog F31, from the alpha.8
 field reports).
 
+## 0.1.0-alpha.12 (unreleased)
+
+### Fixed
+
+- **`env().viewport` and `win.size()` are what the dock leaves.** Under
+  `KUI_DEVTOOLS=1` with the panel docked, a Node app read its 1040 px
+  window from both — `win.size()` in `init`, `env().viewport` once a frame
+  had run — sized its tiers to that and was squeezed into the ~700 px the
+  right dock left, with everything `grow` absorbing the difference (backlog
+  F43, from the pomodoro's alpha.11 report, `docs/kui-alpha-11.md` wish 2:
+  "with the devtools docked at launch, the app draws for the whole
+  window"). Two readings, one defect each: `Core::env_facts()` filled the
+  `viewport` row from the window it was begun with while the row's own
+  `ENV_FIELDS` entry said `Core::viewport()`, the frame's — the number
+  alpha.11's "the app's viewport is what the dock leaves: `viewport()`
+  says so" was about — and `KuiWindow.size()` was the window's inner size
+  while the `resize` event's doc promised it "queries the same numbers".
+  The getter reads the frame's viewport now, which fixes Node's, Lua's and
+  C's `env` at once (and Rust's `ui.viewport()`, which read the same field
+  and was not the `Core::viewport()` the entry took it for), and `size()`
+  answers with the new `Core::host_area(window)` — what the dock leaves of
+  a window that size, computable from the window and the dock's state
+  alone, so it is right in `setup` and `init` too, before `env().viewport`
+  is anything but 0×0. A dock present at launch still posts no `resize`,
+  by the first-frame rule; it is moot now that the number an app read
+  before its first view was the dock's. The readback tests that pin
+  `ENV_FIELDS` could not see this because no corpus scene has a dock in
+  its tree; the guards are a core test with a right dock and a 1040×720
+  frame, and a headless `Ctx` in the Node suite under `setDevtools(true)`
+  (`KUI_DEVTOOLS` is never read there, the call is). The two schema docs,
+  the `WindowSize` and `Env.viewport` types and the README's window-size
+  bullet say the same thing now.
+
 ## 0.1.0-alpha.11 (2026-09-11)
 
 **What breaks.**
