@@ -135,6 +135,13 @@ pub struct Core {
     /// Window title declared this frame (immediate-mode: cleared each
     /// `begin_frame`; the driver diffs and applies). None = leave as-is.
     window_title: Option<String>,
+    /// Whether this frame asked for the window to stay above every other
+    /// app's (backlog C30). The title's shape — cleared each `begin_frame`,
+    /// the driver diffs and applies on change — but a bool with a default
+    /// rather than an option, so a frame that stops asking is what lowers
+    /// the window again: the pin button an app draws for this is a
+    /// toggle, and the fact follows it.
+    always_on_top: bool,
     /// Keyboard focus: the one node key input goes to — an editor (the
     /// edit store mirrors it), an `on_key` sink, a control Tab landed on
     /// (see `docs/adr/0002-keyboard-focus-as-data.md`). `set_focus` is
@@ -677,6 +684,7 @@ impl Core {
             tokens: Default::default(),
             metrics: crate::metrics::Metrics::default(),
             window_title: None,
+            always_on_top: false,
             focus: None,
             focus_visible: false,
             declared_focus: Vec::new(),
@@ -1145,6 +1153,7 @@ impl Core {
         self.viewport = viewport;
         self.scale = scale;
         self.window_title = None;
+        self.always_on_top = false;
         // The drawn menu bar's root is this frame's: a view that stops
         // calling `widgets::menu_bar` leaves nothing behind for the next
         // event to land on. Re-recorded while the widget builds.

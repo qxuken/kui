@@ -36,6 +36,7 @@ static void surface_view(void *user, KuiCtx *ui) {
     KuiSpec root = {.width = {KUI_GROW, 1}, .height = {KUI_GROW, 1}, .gap = 8};
     kui_root(ui, &root);
     kui_window_title(ui, KUI_STR("surface"));
+    kui_set_always_on_top(ui, true);
 
     /* Window chrome, each piece in its own keyed slot: two titlebars as
      * siblings would share a key, and per-key state (hover, transitions)
@@ -261,6 +262,10 @@ static int surface(void) {
     check(kui_animating(ui), "the keyframes keep animating");
     KuiStr title = {0};
     check(kui_window_title_get(ui, &title) && has(title, "surface"), "kui_window_title_get");
+    /* The level: the frame asked, the host says what it did, and the two
+     * are separate facts (backlog C30). */
+    check(kui_always_on_top_get(ui), "kui_always_on_top_get");
+    kui_env_set_always_on_top(ui, true);
 
     KuiDrawData dd = KUI_DRAW_DATA_INIT;
     kui_draw_data(ui, &dd);

@@ -501,12 +501,16 @@ impl Core {
         key
     }
 
-    /// The root the way a parsed prop list says: its title, the windows it
-    /// declares, its spec, and keyboard focus on it when asked — what a
-    /// binding's root op does, once.
+    /// The root the way a parsed prop list says: its title, whether it
+    /// wants the window on top, the windows it declares, its spec, and
+    /// keyboard focus on it when asked — what a binding's root op does,
+    /// once.
     pub fn configure_root_from(&mut self, props: PropsOut) {
         if let Some(title) = &props.title {
             self.set_window_title(title);
+        }
+        if props.always_on_top {
+            self.set_always_on_top(true);
         }
         for (name, cfg) in &props.windows {
             self.declare_window(name, *cfg);

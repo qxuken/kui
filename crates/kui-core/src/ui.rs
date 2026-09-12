@@ -228,6 +228,15 @@ impl<'a> Ui<'a> {
         self.core.set_window_title(title);
     }
 
+    /// Declares that this frame wants the window kept above every other
+    /// app's; see [`crate::Core::set_always_on_top`]. Declare it every
+    /// frame you want it — a frame that does not lowers the window again,
+    /// which is what makes a pin button a toggle — and read whether the
+    /// platform agreed from `env().window.always_on_top`.
+    pub fn always_on_top(&mut self, on_top: bool) {
+        self.core.set_always_on_top(on_top);
+    }
+
     /// Declares that a window named `name` exists this frame; see
     /// `Core::declare_window`. It opens on the first frame that declares
     /// it (`config` is read then and never again), stays open while any

@@ -102,6 +102,7 @@ fn check(scene: &Scene) {
     assert_eq!(commands(&out), e.commands, "{name}: window commands");
     assert_eq!(audio(&out), e.audio, "{name}: audio commands");
     assert_eq!(out.title.as_deref(), e.title, "{name}: window title");
+    assert_eq!(out.always_on_top, e.always_on_top, "{name}: always on top");
 }
 
 #[test]

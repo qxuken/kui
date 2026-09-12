@@ -1215,12 +1215,51 @@ mod env_headless {
         kui_ctx_free(ctx);
     }
 
+    /// The level is two facts with two doors (backlog C30): the frame's
+    /// ask, frame-scoped and false by default, which the host reads after
+    /// the frame; and what the host did, which it writes back and the
+    /// ask never touches — `kui_env_set_window` leaves it alone the way
+    /// `kui_env_set_system` leaves `assistive`.
+    #[test]
+    fn the_level_is_asked_per_frame_and_reported_through_its_own_door() {
+        let ctx = kui_ctx_new();
+        let window = |ctx: *mut KuiCtx| unsafe { ctx.as_mut() }.unwrap().core().env.window;
+        assert!(!kui_always_on_top_get(ctx));
+        assert!(!window(ctx).always_on_top);
+
+        kui_frame_begin(ctx, 100.0, 100.0, 1.0);
+        kui_set_always_on_top(ctx, true);
+        kui_frame_finish(ctx);
+        assert!(kui_always_on_top_get(ctx));
+        // Asking is not having: the reading is the host's to write.
+        assert!(!window(ctx).always_on_top);
+
+        kui_env_set_always_on_top(ctx, true);
+        assert!(window(ctx).always_on_top);
+        kui_env_set_window(ctx, 0, true, false, false, 0.0, 0.0);
+        assert!(window(ctx).always_on_top, "the window setter keeps it");
+        assert!(window(ctx).custom_chrome);
+
+        // A frame that stops asking is the lowering; the report stays
+        // until the host says otherwise.
+        kui_frame_begin(ctx, 100.0, 100.0, 1.0);
+        kui_frame_finish(ctx);
+        assert!(!kui_always_on_top_get(ctx));
+        assert!(window(ctx).always_on_top);
+        kui_env_set_always_on_top(ctx, false);
+        assert!(!window(ctx).always_on_top);
+        kui_ctx_free(ctx);
+    }
+
     /// A null context is a no-op, like every other entry point.
     #[test]
     fn a_null_context_is_survivable() {
         kui_env_set_system(std::ptr::null_mut(), 1, 0, 1, ks("en"));
         kui_env_set_audio(std::ptr::null_mut(), 2, 1);
         kui_env_set_assistive(std::ptr::null_mut(), 2);
+        kui_set_always_on_top(std::ptr::null_mut(), true);
+        assert!(!kui_always_on_top_get(std::ptr::null_mut()));
+        kui_env_set_always_on_top(std::ptr::null_mut(), true);
     }
 }
 

@@ -16,6 +16,33 @@ fn window_title_is_frame_scoped() {
     assert_eq!(core.window_title(), None);
 }
 
+/// The level is frame-scoped the way the title is, with one difference
+/// (backlog C30): the undeclared reading is `false`, not "leave as-is",
+/// so a frame that stops asking is what lowers the window — a pin
+/// button toggles by declaring or not, and never has to undo anything.
+#[test]
+fn always_on_top_is_frame_scoped_and_defaults_off() {
+    let mut core = Core::new();
+    assert!(!core.always_on_top());
+    let mut ui = core.frame(Size::new(100.0, 100.0), 1.0);
+    ui.always_on_top(true);
+    ui.finish();
+    assert!(core.always_on_top());
+
+    let ui = core.frame(Size::new(100.0, 100.0), 1.0);
+    ui.finish();
+    assert!(!core.always_on_top());
+
+    // What the app asked and what the driver applied are two facts: the
+    // env reading is the driver's to write, and a frame's ask leaves it
+    // alone — a headless core, which applies nothing, never reports it.
+    let mut ui = core.frame(Size::new(100.0, 100.0), 1.0);
+    ui.always_on_top(true);
+    assert!(!ui.env().window.always_on_top);
+    ui.finish();
+    assert!(!core.env.window.always_on_top);
+}
+
 #[test]
 fn env_defaults_are_headless_safe() {
     let core = Core::new();

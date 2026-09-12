@@ -149,6 +149,7 @@ pub const P_SCROLLBAR_WIDTH: u32 = 94;
 pub const P_SCROLLBAR_COLOR: u32 = 95;
 pub const P_SCROLLBAR_ACTIVE_COLOR: u32 = 96;
 pub const P_ANCHOR: u32 = 97;
+pub const P_ALWAYS_ON_TOP: u32 = 98;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -1205,6 +1206,16 @@ pub const CUSTOM: &[CustomProp] = &[
         doc: "Declares the window title for this frame; the driver diffs and applies.",
     },
     CustomProp {
+        name: "alwaysOnTop",
+        id: P_ALWAYS_ON_TOP,
+        jsx_names: &["alwaysOnTop"],
+        lua_names: &["always_on_top"],
+        jsx: "`alwaysOnTop` (root box only)",
+        lua: "`always_on_top = true` (root table)",
+        c: "`kui_set_always_on_top`",
+        doc: "Declares that this frame wants the window kept above every other app's — a floating palette, a picture-in-picture player, a timer (backlog C30). Frame state the way `title` is, applied by the driver on change and free on the frames it does not change, but with a default of false rather than \"leave as-is\": a frame that stops declaring it lowers the window again, so a pin button is a toggle on the app's own state and nothing has to remember to undo it. Whether the platform agreed is `env.window.always_on_top`, which is what the pin button should draw its state from — an OS can refuse or drop the level (a tiling manager, a fullscreen space), and Wayland has no call for it at all, so there the window never moves and the reading says so. A popup keeps its own level whatever its owner declares.",
+    },
+    CustomProp {
         name: "windows",
         id: P_WINDOWS,
         jsx_names: &["windows"],
@@ -1906,6 +1917,15 @@ pub const ENV_FIELDS: &[EnvField] = &[
         doc: "The window is fullscreen.",
     },
     EnvField {
+        name: "window.always_on_top",
+        get: |f| Value::Bool(f.env.window.always_on_top),
+        from: "`WindowEnv::always_on_top`",
+        node: &["window.alwaysOnTop"],
+        lua: &["window.always_on_top"],
+        c: "`kui_env_set_always_on_top(always_on_top)`",
+        doc: "The window is above every other app's: what the driver applied after the frame asked for it (`alwaysOnTop` / `always_on_top` / `kui_set_always_on_top`, backlog C30), not what was asked. A platform can refuse or drop the level, and on Wayland winit has no call for it, so a driver there reports false however often the app asks — which is why a pin button draws its state from this and not from the app's own flag. A C host reports it through its own setter rather than an argument on `kui_env_set_window`, the way `kui_env_set_assistive` is, so an older host that never applies a level has nothing to recompile.",
+    },
+    EnvField {
         name: "window.native_controls",
         get: |f| f.env.window.native_controls.map_or(Value::Null, rect_value),
         from: "`WindowEnv::native_controls`",
@@ -2468,6 +2488,9 @@ pub struct PropsOut {
     /// when a binding is handed both.
     pub index: Option<u64>,
     pub title: Option<String>,
+    /// `alwaysOnTop`: the root asked for the window above every other
+    /// app's this frame (`Core::set_always_on_top`, backlog C30).
+    pub always_on_top: bool,
     pub key_focus: bool,
     /// Hover hint: the element lowering floats `widgets::tooltip` below the
     /// node while it is hovered (the parser also marks the spec hoverable).
@@ -2508,6 +2531,7 @@ impl PropsOut {
             key: None,
             index: None,
             title: None,
+            always_on_top: false,
             key_focus: false,
             tooltip: None,
             windows: Vec::new(),
@@ -2910,6 +2934,7 @@ mod tests {
             custom_chrome: _,
             maximized: _,
             fullscreen: _,
+            always_on_top: _,
             native_controls: _,
         } = window;
         let stored = [
@@ -2924,6 +2949,7 @@ mod tests {
             "window.custom_chrome",
             "window.maximized",
             "window.fullscreen",
+            "window.always_on_top",
             "window.native_controls",
             "audio.device",
             "audio.live",

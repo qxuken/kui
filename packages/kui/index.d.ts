@@ -1210,6 +1210,12 @@ export interface WindowEnv {
   customChrome: boolean;
   maximized: boolean;
   fullscreen: boolean;
+  /** The window is above every other app's: what the runner applied after
+   *  the frame asked (a root `<box alwaysOnTop>`), not what was asked — a
+   *  platform can refuse or drop the level, and on Wayland winit has no
+   *  call for it, so it reads false there however often the app asks. A
+   *  pin button draws its state from this. */
+  alwaysOnTop: boolean;
   /** Area (logical px, window coordinates) covered by controls the OS still
    *  draws over our content — the macOS traffic lights under custom chrome.
    *  Keep out of it. Null means the OS draws nothing over us. */
@@ -1252,6 +1258,7 @@ export interface EnvInput {
     customChrome?: boolean;
     maximized?: boolean;
     fullscreen?: boolean;
+    alwaysOnTop?: boolean;
     /** `x` and `y` default to the window origin; a zero-sized rect and null
      *  both mean "nothing is drawn over us". */
     nativeControls?: Partial<Rect> | null;
@@ -1648,6 +1655,14 @@ export declare class Ctx {
    * window; a bare `Ctx` hands it back so a test can assert on it.
    */
   windowTitle(): string | null
+  /**
+   * Whether the last frame asked for the window above every other
+   * app's (a root `<box alwaysOnTop>`, backlog C30); false when it did
+   * not. `runWindowed` applies it to the real window on change and
+   * reports what the platform did as `env().window.alwaysOnTop`; a
+   * bare `Ctx` hands the ask back so a test can assert on it.
+   */
+  alwaysOnTop(): boolean
   /**
    * Registers a w×h RGBA image (pixels copied); returns its id for
    * `<image src={id}>`. Stable until `removeImage`.

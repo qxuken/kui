@@ -425,6 +425,12 @@ pub struct WindowEnv {
     pub custom_chrome: bool,
     pub maximized: bool,
     pub fullscreen: bool,
+    /// The window is above every other app's: what the driver actually
+    /// applied after the frame asked (`Core::set_always_on_top`, backlog
+    /// C30), not what was asked — a platform can refuse or drop the level,
+    /// and where winit has no call for it (Wayland) a driver reports false
+    /// however often the app asks. A pin button draws its state from this.
+    pub always_on_top: bool,
     /// Area (logical px, window coords) covered by controls the OS still
     /// draws over our content — macOS traffic lights under custom chrome.
     /// Views keep out of it; `None` means the OS draws nothing over us.

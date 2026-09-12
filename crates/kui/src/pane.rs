@@ -57,6 +57,10 @@ pub(crate) fn sync_env(
         custom_chrome: chrome != Chrome::Native,
         maximized: window.is_maximized(),
         fullscreen: window.fullscreen().is_some(),
+        // What was applied, not what the frame asked: winit has no getter
+        // for the level, so this is the runner's own record, and a platform
+        // without a level reports false whatever was asked of it.
+        always_on_top: pane.applied_on_top && pane.level_supported,
         native_controls: (cfg!(target_os = "macos") && chrome == Chrome::Custom)
             .then_some(MACOS_TRAFFIC_LIGHTS),
     };
@@ -107,6 +111,42 @@ pub(crate) fn theme_appearance(theme: Option<winit::window::Theme>) -> Appearanc
         Some(winit::window::Theme::Dark) => Appearance::Dark,
         None => Appearance::Unknown,
     }
+}
+
+/// What a frame's `always_on_top` ask does to the window's level: the
+/// level to set now, or `None` when the window already has it — so the
+/// call reaches the OS once per change and never per frame. `applied` is
+/// the runner's record of the level (`Pane::applied_on_top`), updated
+/// here. A popup's level is its own: it opened `AlwaysOnTop` by
+/// construction and stays there whatever its frame — or its owner's —
+/// declares, since an owner pinned above everything with a dropdown
+/// lowered under it is the visible defect a naive apply-to-every-window
+/// would ship.
+pub(crate) fn level_change(
+    kind: WindowKind,
+    want: bool,
+    applied: &mut bool,
+) -> Option<winit::window::WindowLevel> {
+    if kind == WindowKind::Popup || want == *applied {
+        return None;
+    }
+    *applied = want;
+    Some(if want {
+        winit::window::WindowLevel::AlwaysOnTop
+    } else {
+        winit::window::WindowLevel::Normal
+    })
+}
+
+/// Whether the window's platform has a level to set: every backend winit
+/// 0.30 supports here but Wayland, which the raw handle tells apart from
+/// X11 on the one target that builds both.
+pub(crate) fn level_supported(window: &Window) -> bool {
+    use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    !matches!(
+        window.window_handle().map(|h| h.as_raw()),
+        Ok(RawWindowHandle::Wayland(_))
+    )
 }
 
 pub(crate) fn cursor_icon(shape: CursorShape) -> CursorIcon {
@@ -179,6 +219,18 @@ pub(crate) struct Pane {
     /// Last title actually set on the window; views declare per frame and
     /// we only touch the window on change.
     pub(crate) applied_title: String,
+    /// Whether the window's level is `AlwaysOnTop` as far as this runner
+    /// has asked (backlog C30): the frame declares per frame, and
+    /// [`level_change`] touches the window only when this differs. A popup
+    /// opens at that level and stays there — its owner's ask never
+    /// reaches it — so it starts true.
+    pub(crate) applied_on_top: bool,
+    /// Whether the platform has a window level at all. winit documents
+    /// `set_window_level` as unsupported on Wayland and every level as "a
+    /// hint to the OS"; a runner there still asks, harmlessly, and reports
+    /// `env.window.always_on_top` false however often the app asks — which
+    /// is the case the report exists for.
+    pub(crate) level_supported: bool,
     pub(crate) modifiers: ModifiersState,
     /// Time of the last titlebar press, for double-click maximize.
     pub(crate) last_titlebar_press: Option<std::time::Instant>,
@@ -400,5 +452,36 @@ mod tests {
             system_reading(Appearance::Unknown, &mute, less_motion, Assistive::Unknown).motion,
             MotionPref::Reduced
         );
+    }
+
+    /// The level reaches the OS once per change and never per frame
+    /// (backlog C30): a frame that keeps declaring what is applied costs
+    /// nothing, a frame that stops declaring lowers the window, and a
+    /// popup's level is never touched whatever its frame says.
+    #[test]
+    fn a_level_is_applied_on_change_and_never_for_a_popup() {
+        use winit::window::WindowLevel;
+        let mut applied = false;
+        assert_eq!(
+            level_change(WindowKind::Normal, true, &mut applied),
+            Some(WindowLevel::AlwaysOnTop)
+        );
+        assert!(applied);
+        // The next frames declare the same thing: no call.
+        assert_eq!(level_change(WindowKind::Normal, true, &mut applied), None);
+        assert_eq!(level_change(WindowKind::Normal, true, &mut applied), None);
+        // A frame that stops declaring it is the lowering.
+        assert_eq!(
+            level_change(WindowKind::Normal, false, &mut applied),
+            Some(WindowLevel::Normal)
+        );
+        assert!(!applied);
+        assert_eq!(level_change(WindowKind::Normal, false, &mut applied), None);
+
+        // A popup opened on top and stays there: its record is untouched.
+        let mut popup = true;
+        assert_eq!(level_change(WindowKind::Popup, false, &mut popup), None);
+        assert_eq!(level_change(WindowKind::Popup, true, &mut popup), None);
+        assert!(popup);
     }
 }

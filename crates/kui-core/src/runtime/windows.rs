@@ -1,6 +1,7 @@
 //! The window this core draws and the windows a frame declares
 //! (`docs/adr/0004-multi-window.md`): the declared set and its diff into
-//! `Open` / `Close`, the command queue drivers drain, and the title.
+//! `Open` / `Close`, the command queue drivers drain, the title and the
+//! window level.
 
 use super::*;
 
@@ -267,5 +268,27 @@ impl Core {
     /// The title declared this frame, if any (for the frame driver).
     pub fn window_title(&self) -> Option<&str> {
         self.window_title.as_deref()
+    }
+
+    /// Declares that this frame wants the window above every other app's
+    /// (backlog C30): a floating palette, a picture-in-picture player, a
+    /// timer. Frame state like the title, and the driver applies it the
+    /// same way — `set_window_level` when it differs from what is applied,
+    /// nothing when it does not — but it defaults to `false` rather than
+    /// "leave as-is", so a frame that stops declaring it lowers the window
+    /// again and a pin button is a toggle on the app's own state. Whether
+    /// the platform agreed is `env.window.always_on_top`: the OS may
+    /// refuse or drop the level (a tiling manager, a fullscreen space,
+    /// Wayland, where winit has no call for it), and the report is what a
+    /// pin button should draw from. A popup's level is its own whatever
+    /// its owner declares.
+    pub fn set_always_on_top(&mut self, on_top: bool) {
+        self.always_on_top = on_top;
+    }
+
+    /// Whether this frame asked for the window to stay on top (for the
+    /// frame driver); false for a frame that never said.
+    pub fn always_on_top(&self) -> bool {
+        self.always_on_top
     }
 }

@@ -34,7 +34,9 @@ label editor's `wrap`, and five wishes, two of them carried unanswered
 from alpha.10); they stay here with their outcomes on top until the
 alpha.12 tag moves them. T5 the same day (derived tokens, what
 building ADR 0027 left out), C30, filed 2026-09-12 (always on top — a window level
-no binding can ask for, with the shape to build it written), C31, found
+no binding could ask for — **done the same day**, as the per-frame fact
+the entry chose, with `env.window.always_on_top` reporting what the
+platform did), C31, found
 the same day building the tokens (Node's corpus adapter disagreeing with
 the reference on one scene when run alone — **done the same evening**:
 the handle was raw 1, the first the mint hands out, and the fixtures now
@@ -202,7 +204,47 @@ best of the three.** `idlePumpMs` is a real dial — 8 ms is 34 ms a click and
 - **Nobody minding.** The most likely, and the reason this is parked rather
   than open. A Rust window idles at 0.00%; a Node one at ~3% with a knob.
 
-### `~` C30 — Always on top
+### `~` C30 — Always on top — **done (2026-09-12)**
+
+**Done (2026-09-12), as the per-frame fact.** `Core::set_always_on_top` /
+`always_on_top()` beside the title in `runtime/windows.rs`, cleared each
+`begin_frame` to `false` — the one place it departs from the title's
+`Option`, and on purpose: the undeclared reading is the lowering, so the
+pin button toggles the app's flag and undoes nothing. `Ui::always_on_top`,
+a root `alwaysOnTop` in JSX (`P_ALWAYS_ON_TOP`, a `CUSTOM` row beside
+`title`, flag-shaped on the wire like `keyFocus`), `always_on_top = true`
+on a Lua root table, `kui_set_always_on_top` in C, and
+`PropsOut::always_on_top` so `configure_root_from` applies it for every
+binding at once. The runner keeps `Pane::applied_on_top` and
+`pane::level_change` decides the call: `set_window_level` once per change,
+never per frame, and never for a popup (its record starts true and is
+left alone), which is the by-hand defect the entry named, pinned as a
+unit test instead. The readback is `WindowEnv::always_on_top` — an
+`ENV_FIELDS` row, so Node's `env()` and Lua's `env.window` grew the key
+without a line of their own, `setEnv({window: {alwaysOnTop}})` and the
+devtools' window row followed — written by `sync_env` from the runner's
+record **and** `Pane::level_supported`, which the raw handle answers
+(`RawWindowHandle::Wayland` is the one backend winit has no level for),
+so on Wayland the app asks, nothing moves, and the reading says false.
+Two readers for hosts driving their own window: `kui_always_on_top_get`
+and Node's `ctx.alwaysOnTop()`. Corpus: `build_chrome` declares it, so
+`chrome` and `chrome-inset` claim the row across all four adapters, and
+every report carries an `always-on-top 0|1` line after `title`. The
+titlebar example gained the pin, and the Windows check is in the
+changelog (`WS_EX_TOPMOST` set on pin, cleared on unpin, the fact
+following both). **Two departures from the entry.** `KUI_ABI_VERSION`
+stays 15: the three C doors are new prototypes, and `abi.rs`'s own rule
+says a new function does not bump ("a host that does not call one is
+unaffected, and one that does fails to *link*, which is loud") — the
+entry's "moves from 15 to 16" reasoned from the pin, not the rule. And
+C's report is its own additive setter, `kui_env_set_always_on_top`,
+rather than a seventh argument on `kui_env_set_window`, for the reason
+`kui_env_set_assistive` already argues in the header: an argument is the
+signature break the ABI-12 note warns about, a setter is off the version.
+No `Launcher::always_on_top()`: with the fact defaulting false, a builder
+flag would be undone by the first frame unless it were OR'd in, and a
+Rust app that never toggles writes `ui.always_on_top(true)` at the top
+of `view` instead — one line, in the one place the fact lives.
 
 Filed 2026-09-12. A window an app wants kept above every other app's
 windows — a floating palette, a picture-in-picture player, a timer, a
@@ -1747,7 +1789,9 @@ metrics table carries both platforms' `titlebar_h`. Before them
 the open list was C12, C13, C14, F36, B1 and V2–V8 — every one parked on a
 condition — and one entry with work in it: C30, always on top,
 filed 2026-09-12 as a per-frame fact in `window_title`'s shape with a
-door per binding and a readback in `env.window`. C27 is parked with its measurements. What that round settled
+door per binding and a readback in `env.window`, and **built the same
+evening** as written, less the ABI bump the entry assumed and the
+header's own rule does not ask for. C27 is parked with its measurements. What that round settled
 is on top of each entry in the archive; the two questions worth carrying
 forward are the ones it answered by building: a metric never scales by
 itself and the stock set is the corpus's contract (T2), and the core keeps
@@ -1902,8 +1946,8 @@ fourteen of this one (W3, W4–W12, F32–F35) before the alpha.10 tag, and
 the six of the round of 2026-09-11 (V1, D1, D2, T2, C26 whole, E3) the day
 they were built, and T1, E1 and E2 — closed in their rounds and left here
 — before the alpha.11 tag. This file is now three parked entries, C27
-with its measurements, C30, F36, B1, V2–V8, this section, and the
-entries built since the tag with their outcomes on top (F42–F54, C31,
+with its measurements, F36, B1, V2–V8, this section, and the
+entries built since the tag with their outcomes on top (F42–F54, C30, C31,
 C29, W13), waiting for alpha.12 to move them.
 Still open, both waiting on something outside the repo: enable `SMOKE_MACOS`
 / `SMOKE_WINDOWS` the day a runner exists (P8) — which has two jobs waiting

@@ -150,7 +150,7 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         // One source for both: the two scenes differ only in the env they
         // are driven under, which is the thing being pinned.
         "chrome" | "chrome-inset" => r#"
-            return column { window_title = "kui conformance", gap = 6,
+            return column { window_title = "kui conformance", always_on_top = true, gap = 6,
               titlebar { text("app", { size = 12 }) },
               row { width = { grow = 1 }, window_buttons() },
               column { key = "sink", width = 40, height = 16, bg = 0x22242cff,
@@ -686,6 +686,7 @@ fn every_scene_lowers_identically_from_lua() {
             seen.get::<bool>("custom_chrome").unwrap(),
             seen.get::<bool>("maximized").unwrap(),
             seen.get::<bool>("fullscreen").unwrap(),
+            seen.get::<bool>("always_on_top").unwrap(),
             seen.get::<Option<f32>>("controls_w").unwrap(),
             seen.get::<Option<f32>>("controls_h").unwrap(),
         );
@@ -694,6 +695,7 @@ fn every_scene_lowers_identically_from_lua() {
             scene.env.custom_chrome,
             scene.env.maximized,
             scene.env.fullscreen,
+            scene.env.always_on_top,
             r.map(|r| r.x + r.w),
             r.map(|r| r.y + r.h),
         );

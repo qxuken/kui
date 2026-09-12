@@ -31,8 +31,9 @@ use kui_core::{
 use serde_json::{Map as JsonMap, Value as Json};
 
 use crate::schema::{
-    self, Kind, P_BORDER, P_DIR, P_FLOAT, P_INDEX, P_KEY, P_KEY_FOCUS, P_OVERFLOW, P_PAD, P_SIZE,
-    P_TITLE, P_TOOLTIP, P_WINDOWS, Parsed, PropsOut, align_idx, color_num, min_num, sizing_num,
+    self, Kind, P_ALWAYS_ON_TOP, P_BORDER, P_DIR, P_FLOAT, P_INDEX, P_KEY, P_KEY_FOCUS, P_OVERFLOW,
+    P_PAD, P_SIZE, P_TITLE, P_TOOLTIP, P_WINDOWS, Parsed, PropsOut, align_idx, color_num, min_num,
+    sizing_num,
 };
 use crate::{Result, err, value_of};
 
@@ -450,6 +451,8 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut, refs: &mut Refs<'_>) -
                 out.index = Some(i as u64);
             }
             P_TITLE => out.title = Some(r.req_str()?.to_string()),
+            // Root only, like `title`; a flag, like `keyFocus`.
+            P_ALWAYS_ON_TOP => out.always_on_top = true,
             // A count, then per window: name, kind (an index into
             // `WindowKind::ALL`), width, height (zero = the default size),
             // activates (0 no, 1 yes, 2 unsaid — the kind's own default,
@@ -1106,6 +1109,7 @@ mod tests {
                     });
                 }
                 "keyFocus" => expected.key_focus = true,
+                "alwaysOnTop" => expected.always_on_top = true,
                 "key" => {
                     s.extend([0.0, 3.0]);
                     strings = b"abc";

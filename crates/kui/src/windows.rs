@@ -324,6 +324,9 @@ impl<A: App> Shell<A> {
             chrome,
             applied_min: None,
             anchor: config.anchor,
+            // A popup opened on top (see above); everything else opens Normal.
+            applied_on_top: config.kind == WindowKind::Popup,
+            level_supported: level_supported(&window),
             core,
             window,
             renderer,

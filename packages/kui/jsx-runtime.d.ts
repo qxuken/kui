@@ -406,6 +406,13 @@ export interface CustomSpecProps {
 export interface BoxProps extends Keyed, GeneratedSpecProps, CustomSpecProps {
   /** Root box only: declares this frame's window title. */
   title?: string;
+  /** Root box only: asks for the window above every other app's this
+   *  frame — a floating palette, a picture-in-picture player, a timer.
+   *  Declare it every frame you want it; a frame that stops is what lowers
+   *  the window again, so a pin button toggles by declaring or not. Whether
+   *  the platform agreed is `env.window.alwaysOnTop`, which is what the
+   *  button should draw from. */
+  alwaysOnTop?: boolean;
   /** Root box only: which windows exist besides the main one (see
    *  `WindowDecl` in `@qxuken/kui`). `runWindowed` / `createApp` write it
    *  from the loop config's `windows(model)`; a view driving a `Ctx` by

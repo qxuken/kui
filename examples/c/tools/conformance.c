@@ -543,6 +543,9 @@ static void conf_chrome(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
     (void)phase;
     kui_window_title(ui, KUI_STR("kui conformance"));
+    /* The other root declaration with no node: the frame asks for the
+     * window on top, and the report says it asked. */
+    kui_set_always_on_top(ui, true);
     KuiSpec outer = {.gap = 6};
     kui_open(ui, &outer, NULL);
     /* kui_titlebar_with appends its own cluster after the body; the second
@@ -1593,6 +1596,7 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
     KuiStr title;
     if (kui_window_title_get(ctx, &title)) repf(out, "title %.*s\n", (int)title.len, title.ptr);
     else repf(out, "title -\n");
+    repf(out, "always-on-top %d\n", kui_always_on_top_get(ctx) ? 1 : 0);
 
     KuiDrawData dd = KUI_DRAW_DATA_INIT;
     kui_draw_data(ctx, &dd);

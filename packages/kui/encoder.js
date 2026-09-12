@@ -222,7 +222,7 @@ export function createEncoder(P) {
   // protocol kind (no names or shapes hardcoded here); only composites (the
   // pad family, border, overflow bits, float) and the constructor-ordering
   // specials (dir, size) have hand-written stanzas, mirroring binary.rs.
-  // `key` rides along as P_KEY; `isRoot` admits `title` (and drops `key`);
+  // `key` rides along as P_KEY; `isRoot` admits `title`, `alwaysOnTop` and `windows` (and drops `key`);
   // `admit`, when given, is the only names written (a closed composite's
   // rows — the rest were already reported by checkProps).
   function props(p, key, isRoot, admit) {
@@ -327,6 +327,13 @@ export function createEncoder(P) {
           if (isRoot) {
             f[fi++] = PR.title.id;
             strRef(v);
+            n++;
+          }
+          break;
+        case 'alwaysOnTop':
+          // Root only, like `title`; a flag, like `keyFocus`.
+          if (isRoot && v) {
+            f[fi++] = PR.alwaysOnTop.id;
             n++;
           }
           break;

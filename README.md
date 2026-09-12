@@ -459,7 +459,13 @@ that are hard to reverse and would look arbitrary without their context.
   where do the macOS traffic lights sit?), so `widgets::titlebar` adapts per
   platform by itself — and so does an app that would rather write its own:
   `ui.env()` in Rust, `env.window` in Lua, `ctx.env().window` in Node
-  (`ctx.setEnv()` declares them headlessly), `kui_env_set_window` in C. Opt in with `kui::app("title").custom_titlebar().run(app)`:
+  (`ctx.setEnv()` declares them headlessly), `kui_env_set_window` in C.
+  The window's level is a per-frame fact the same way the title is:
+  `ui.always_on_top(true)` / a root `alwaysOnTop` / `always_on_top =
+  true` / `kui_set_always_on_top` asks for the window above every other
+  app's, a frame that stops asking lowers it (so a pin button is a
+  toggle), and `env.window.always_on_top` reports what the platform did —
+  which can be nothing, on Wayland. Opt in with `kui::app("title").custom_titlebar().run(app)`:
   macOS keeps native traffic lights over your content; Windows/Linux go
   undecorated with drawn buttons. On Windows the runner also subclasses the
   window and answers `WM_NCHITTEST` from the frame's chrome regions

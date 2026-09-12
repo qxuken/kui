@@ -31,7 +31,7 @@ mod popups;
 mod retarget;
 mod windows;
 
-use pane::{Pane, appearance_of, sync_env, theme_appearance};
+use pane::{Pane, appearance_of, level_change, level_supported, sync_env, theme_appearance};
 /// The OS settings winit has no call for, asked once and re-asked when the
 /// user has evidently been in a settings app.
 mod system_env;
@@ -1164,6 +1164,18 @@ impl<A: App> Shell<A> {
         {
             pane.applied_title = t.to_string();
             window.set_title(&pane.applied_title);
+        }
+
+        // The level, the same way (backlog C30): a per-frame fact, applied
+        // when it differs from what this pane has, and a popup's is never
+        // touched. What the OS made of it is `env.window.always_on_top`
+        // on the next `sync_env`, from the record `level_change` keeps.
+        if let Some(level) = level_change(
+            pane.kind,
+            pane.core.always_on_top(),
+            &mut pane.applied_on_top,
+        ) {
+            window.set_window_level(level);
         }
 
         // The floor the app declared is a floor on the *app*: while the

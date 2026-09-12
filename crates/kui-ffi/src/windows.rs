@@ -1,6 +1,6 @@
 //! The window: the facts a driver pushes (`kui_env_set_window`), the
 //! declared set and the commands a driver drains (`docs/adr/0004`), and
-//! the title.
+//! the title and the window level.
 
 use super::*;
 
@@ -240,4 +240,46 @@ pub extern "C" fn kui_window_title_get(ptr: *mut KuiCtx, out: *mut KuiStr) -> bo
         };
         true
     })
+}
+
+/// Declares that this frame wants the window above every other app's
+/// (backlog C30). Cleared each `kui_frame_begin` like the title, but with
+/// a default of false rather than "leave as-is": a frame that stops
+/// calling this is what lowers the window again. The host applies it
+/// after `kui_frame_finish` (see `kui_always_on_top_get`) and reports what
+/// the platform did through `kui_env_set_always_on_top`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_always_on_top(ptr: *mut KuiCtx, on_top: bool) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().set_always_on_top(on_top);
+        }
+    });
+}
+
+/// Whether the frame that just finished asked for the window on top —
+/// for hosts driving their own window: diff against the level applied and
+/// set it on change only. False for a frame that never asked, and on a
+/// bad context.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_always_on_top_get(ptr: *mut KuiCtx) -> bool {
+    guard(false, || {
+        unsafe { ctx(ptr) }.is_some_and(|c| c.core().always_on_top())
+    })
+}
+
+/// The window fact for views to read as `env.window.always_on_top`: what
+/// the host actually did about the ask, so a pin button draws the
+/// platform's answer and not the app's guess. Its own setter rather than
+/// an argument on `kui_env_set_window` because a setter is additive where
+/// an argument is an ABI break (the `kui_env_set_assistive` reasoning): a
+/// host that never applies a level has nothing to recompile, and reports
+/// false by never calling.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_env_set_always_on_top(ptr: *mut KuiCtx, always_on_top: bool) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().env.window.always_on_top = always_on_top;
+        }
+    });
 }

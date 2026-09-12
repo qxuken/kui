@@ -583,6 +583,7 @@ impl Ctx {
                 "customChrome" => win.custom_chrome = flag(name, v)?,
                 "maximized" => win.maximized = flag(name, v)?,
                 "fullscreen" => win.fullscreen = flag(name, v)?,
+                "alwaysOnTop" => win.always_on_top = flag(name, v)?,
                 "nativeControls" => win.native_controls = native_controls(v)?,
                 _ => return Err(err(format!("setEnv(): unknown window key {name:?}"))),
             }
@@ -923,6 +924,16 @@ impl Ctx {
     #[napi]
     pub fn window_title(&self) -> Option<String> {
         self.core.window_title().map(str::to_string)
+    }
+
+    /// Whether the last frame asked for the window above every other
+    /// app's (a root `<box alwaysOnTop>`, backlog C30); false when it did
+    /// not. `runWindowed` applies it to the real window on change and
+    /// reports what the platform did as `env().window.alwaysOnTop`; a
+    /// bare `Ctx` hands the ask back so a test can assert on it.
+    #[napi]
+    pub fn always_on_top(&self) -> bool {
+        self.core.always_on_top()
     }
 }
 

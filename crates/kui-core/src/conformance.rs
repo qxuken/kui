@@ -93,6 +93,7 @@ pub const NATIVE_CHROME: WindowEnv = WindowEnv {
     custom_chrome: false,
     maximized: false,
     fullscreen: false,
+    always_on_top: false,
     native_controls: None,
 };
 
@@ -103,6 +104,7 @@ pub const CUSTOM_CHROME: WindowEnv = WindowEnv {
     custom_chrome: true,
     maximized: false,
     fullscreen: false,
+    always_on_top: false,
     native_controls: None,
 };
 
@@ -119,6 +121,7 @@ pub const CUSTOM_CHROME_INSET: WindowEnv = WindowEnv {
     custom_chrome: true,
     maximized: false,
     fullscreen: false,
+    always_on_top: false,
     native_controls: Some(Rect {
         x: 0.0,
         y: 0.0,
@@ -521,6 +524,8 @@ pub struct Expect {
     /// scene that declares no playback — which is all of them but `media`.
     pub audio: &'static [&'static str],
     pub title: Option<&'static str>,
+    /// Whether the frame asked for the window on top (`alwaysOnTop`).
+    pub always_on_top: bool,
 }
 
 /// One scene: a builder every binding re-expresses, the input to replay,
@@ -590,6 +595,7 @@ pub const SCENES: &[Scene] = &[
             commands: &[],
             audio: &[],
             title: None,
+            always_on_top: false,
         },
     },
     Scene {
@@ -623,6 +629,7 @@ pub const SCENES: &[Scene] = &[
             commands: &[],
             audio: &[],
             title: None,
+            always_on_top: false,
         },
     },
     Scene {
@@ -651,6 +658,7 @@ pub const SCENES: &[Scene] = &[
             commands: &[],
             audio: &[],
             title: None,
+            always_on_top: false,
         },
     },
     Scene {
@@ -682,6 +690,7 @@ pub const SCENES: &[Scene] = &[
             commands: &[],
             audio: &[],
             title: None,
+            always_on_top: false,
         },
     },
     Scene {
@@ -709,6 +718,7 @@ pub const SCENES: &[Scene] = &[
             commands: &[],
             audio: &[],
             title: None,
+            always_on_top: false,
         },
     },
     Scene {
@@ -745,6 +755,7 @@ pub const SCENES: &[Scene] = &[
             commands: &[],
             audio: &[],
             title: None,
+            always_on_top: false,
         },
     },
     Scene {
@@ -785,6 +796,7 @@ pub const SCENES: &[Scene] = &[
             commands: &[],
             audio: &[],
             title: None,
+            always_on_top: false,
         },
     },
     Scene {
@@ -834,6 +846,7 @@ pub const SCENES: &[Scene] = &[
             commands: &[],
             audio: &[],
             title: None,
+            always_on_top: false,
         },
     },
     Scene {
@@ -864,6 +877,7 @@ pub const SCENES: &[Scene] = &[
             commands: &[],
             audio: &[],
             title: None,
+            always_on_top: false,
         },
     },
     Scene {
@@ -898,6 +912,7 @@ pub const SCENES: &[Scene] = &[
             commands: &[],
             audio: &[],
             title: None,
+            always_on_top: false,
         },
     },
     Scene {
@@ -945,18 +960,21 @@ pub const SCENES: &[Scene] = &[
             commands: &[],
             audio: &[],
             title: None,
+            always_on_top: false,
         },
     },
     Scene {
         name: "chrome",
         doc: "Window chrome, driven under a declared custom chrome — the \
               only scene that departs from NATIVE_CHROME, and the reason \
-              the env line exists. The frame's declared title, an adaptive \
+              the env line exists. The frame's declared title and its ask \
+              for the window above every other app's (alwaysOnTop — a \
+              declaration with no node, like the title), an adaptive \
               titlebar hosting custom content and appending its own \
               buttons, a hand-laid strip holding a second cluster through \
               the windowButtons element itself, and a focusable box that \
               claims key focus while it is declared.",
-        custom: &["title", "keyFocus", "size"],
+        custom: &["title", "alwaysOnTop", "keyFocus", "size"],
         elements: &["titlebar", "windowButtons", "box", "text"],
         build: build_chrome,
         env: CUSTOM_CHROME,
@@ -992,6 +1010,7 @@ pub const SCENES: &[Scene] = &[
             commands: &[],
             audio: &[],
             title: Some("kui conformance"),
+            always_on_top: true,
         },
     },
     Scene {
@@ -1002,7 +1021,7 @@ pub const SCENES: &[Scene] = &[
               moves the title from the bare 12pt margin out to the controls' \
               right edge. `widgets::titlebar` adapting per platform by \
               itself, pinned across four bindings instead of described.",
-        custom: &["title", "keyFocus", "size"],
+        custom: &["title", "alwaysOnTop", "keyFocus", "size"],
         // Not `windowButtons`: the element is called and builds nothing,
         // which is the behaviour under test. `chrome` is where that row is
         // claimed, and `observe` would not derive it here.
@@ -1032,6 +1051,7 @@ pub const SCENES: &[Scene] = &[
             commands: &[],
             audio: &[],
             title: Some("kui conformance"),
+            always_on_top: true,
         },
     },
     Scene {
@@ -1094,6 +1114,7 @@ pub const SCENES: &[Scene] = &[
             commands: &[],
             audio: &[],
             title: None,
+            always_on_top: false,
         },
     },
     Scene {
@@ -1156,6 +1177,7 @@ pub const SCENES: &[Scene] = &[
             commands: &[],
             audio: &[],
             title: None,
+            always_on_top: false,
         },
     },
     Scene {
@@ -1204,6 +1226,7 @@ pub const SCENES: &[Scene] = &[
             commands: &[],
             audio: &[],
             title: None,
+            always_on_top: false,
         },
     },
     Scene {
@@ -1236,6 +1259,7 @@ pub const SCENES: &[Scene] = &[
             commands: &[],
             audio: &[],
             title: None,
+            always_on_top: false,
         },
     },
     Scene {
@@ -1285,6 +1309,7 @@ pub const SCENES: &[Scene] = &[
             // still declared, so it has no departure to describe.
             audio: &["play 1 1", "play 2 0", "play 3 0", "stop 3"],
             title: None,
+            always_on_top: false,
         },
     },
     Scene {
@@ -1326,6 +1351,7 @@ pub const SCENES: &[Scene] = &[
             commands: &[],
             audio: &[],
             title: None,
+            always_on_top: false,
         },
     },
     Scene {
@@ -1369,6 +1395,7 @@ pub const SCENES: &[Scene] = &[
             commands: &[],
             audio: &[],
             title: None,
+            always_on_top: false,
         },
     },
     Scene {
@@ -1410,6 +1437,7 @@ pub const SCENES: &[Scene] = &[
             commands: &[],
             audio: &[],
             title: None,
+            always_on_top: false,
         },
     },
     Scene {
@@ -1496,6 +1524,7 @@ pub const SCENES: &[Scene] = &[
             commands: &["drag 0"],
             audio: &[],
             title: None,
+            always_on_top: false,
         },
     },
     Scene {
@@ -1582,6 +1611,7 @@ pub const SCENES: &[Scene] = &[
             commands: &[],
             audio: &[],
             title: None,
+            always_on_top: false,
         },
     },
     Scene {
@@ -1662,6 +1692,7 @@ pub const SCENES: &[Scene] = &[
             commands: &[],
             audio: &[],
             title: None,
+            always_on_top: false,
         },
     },
     Scene {
@@ -1720,6 +1751,7 @@ pub const SCENES: &[Scene] = &[
             ],
             audio: &[],
             title: None,
+            always_on_top: false,
         },
     },
     Scene {
@@ -1776,6 +1808,7 @@ pub const SCENES: &[Scene] = &[
             commands: &["open 1 0 0 1 160 320 0 12 40 160 24", "close 1"],
             audio: &[],
             title: None,
+            always_on_top: false,
         },
     },
     Scene {
@@ -1815,6 +1848,7 @@ pub const SCENES: &[Scene] = &[
             commands: &[],
             audio: &[],
             title: None,
+            always_on_top: false,
         },
     },
     Scene {
@@ -1861,6 +1895,7 @@ pub const SCENES: &[Scene] = &[
             commands: &[],
             audio: &[],
             title: None,
+            always_on_top: false,
         },
     },
     Scene {
@@ -1907,6 +1942,7 @@ pub const SCENES: &[Scene] = &[
             commands: &[],
             audio: &[],
             title: None,
+            always_on_top: false,
         },
     },
     Scene {
@@ -1953,6 +1989,7 @@ pub const SCENES: &[Scene] = &[
             commands: &[],
             audio: &[],
             title: None,
+            always_on_top: false,
         },
     },
     Scene {
@@ -1995,6 +2032,7 @@ pub const SCENES: &[Scene] = &[
             commands: &[],
             audio: &[],
             title: None,
+            always_on_top: false,
         },
     },
     Scene {
@@ -2052,6 +2090,7 @@ pub const SCENES: &[Scene] = &[
             commands: &[],
             audio: &[],
             title: None,
+            always_on_top: false,
         },
     },
 ];
@@ -2616,6 +2655,9 @@ fn build_menu_bar(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 
 fn build_chrome(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     ui.window_title("kui conformance");
+    // The other root declaration with no node (backlog C30): the frame
+    // asks for the window on top, and the report says it asked.
+    ui.always_on_top(true);
     ui.with(NodeSpec::column().gap(6.0), |ui| {
         // The adaptive form: content between the platform inset and the
         // cluster `titlebar_with` appends by itself.
@@ -3552,6 +3594,10 @@ fn observe(core: &Core, cov: &mut Coverage) {
     if core.window_title().is_some() {
         cov.custom.insert("title");
     }
+    // The level is a declaration the same way: no node, the frame's flag.
+    if core.always_on_top() {
+        cov.custom.insert("alwaysOnTop");
+    }
     // `keyFocus` leaves no mark on the tree: the focus it takes looks
     // exactly like the focus a click takes, so the frame's declaration
     // list is the only trace of one.
@@ -3728,6 +3774,9 @@ pub struct Output {
     /// thing a playback leaves behind for a binding to be diffed on.
     pub audio: Vec<AudioCommand>,
     pub title: Option<String>,
+    /// Whether the last frame asked for the window on top: like the
+    /// title, a declaration with no node, so the report carries it.
+    pub always_on_top: bool,
     /// The `CUSTOM` / `ELEMENTS` rows the frames actually exercised (see
     /// [`Coverage`]). Not part of the [`report`]: it is derived from the
     /// tree a builder produced, which is a question about the builder, not
@@ -4019,6 +4068,7 @@ pub fn drive(
     }
 
     let title = core.window_title().map(str::to_string);
+    let always_on_top = core.always_on_top();
     let announcements = core.take_announcements();
     let warnings = core.take_warnings().into_iter().map(|w| w.code).collect();
     let nodes = rows(core.access_tree());
@@ -4055,6 +4105,7 @@ pub fn drive(
         commands,
         audio,
         title,
+        always_on_top,
         coverage,
     }
 }
@@ -4162,6 +4213,7 @@ pub fn write_command(cmd: &WindowCommand, out: &mut String) {
 ///                            the window facts to drive under, omitted at their defaults
 /// step <...>                 the replayed input, so an adapter need not restate it
 /// title <text|->
+/// always-on-top <0|1>      whether the frame asked for the window above every other app's
 /// quads <count> <digest:016x>
 /// kinds <solid> <glyphMask> <glyphColor> <image> <glyphSubpixel> <shadow> <segment> <fragment> <texture>
 /// fragment <i> <16 × params as f32 bits>
@@ -4182,6 +4234,7 @@ pub fn report(name: &str, env: WindowEnv, steps: &[Step], out: &Output) -> Strin
         step.write(&mut s);
     }
     let _ = writeln!(s, "title {}", out.title.as_deref().unwrap_or("-"));
+    let _ = writeln!(s, "always-on-top {}", out.always_on_top as u8);
     let _ = writeln!(s, "quads {} {:016x}", out.quad_count, out.quad_digest);
     let _ = writeln!(
         s,

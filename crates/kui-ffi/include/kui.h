@@ -1541,6 +1541,10 @@ bool kui_poll_event(KuiCtx *ctx, KuiEvent *out);
  *   kui_env_set_assistive  assistive                (SystemEnv's fifth:
  *                       whether an accessibility client is listening,
  *                       which is not a setting and has its own door)
+ *   kui_env_set_always_on_top  always_on_top       (WindowEnv's level:
+ *                       what the host did about kui_always_on_top_get,
+ *                       its own door so an older host has nothing to
+ *                       recompile - declared beside the getter, below)
  *   kui_env_set_audio   device, live                (AudioEnv: what the
  *                       host's output device is doing)
  */
@@ -1900,6 +1904,30 @@ void kui_window_title(KuiCtx *ctx, KuiStr title);
 /* The title declared this frame, if any — diff and apply after
  * kui_frame_finish. The view is valid until the next kui_frame_begin. */
 bool kui_window_title_get(KuiCtx *ctx, KuiStr *out);
+/* Declares that this frame wants the window kept above every other app's
+ * - a floating palette, a picture-in-picture player, a timer. Cleared each
+ * kui_frame_begin like the title, but its default is false rather than
+ * "leave as-is": a frame that stops calling this is what lowers the window
+ * again, so a pin button is a toggle on the app's own state. A popup keeps
+ * its own level whatever its owner declares. */
+void kui_set_always_on_top(KuiCtx *ctx, bool on_top);
+/* Whether the frame that just finished asked for the window on top - diff
+ * against the level you applied and set it on change only:
+ *
+ *     bool want = kui_always_on_top_get(ctx);
+ *     if (want != applied) { set_window_level(hwnd, want); applied = want; }
+ *     kui_env_set_always_on_top(ctx, applied);
+ *
+ * False for a frame that never asked. */
+bool kui_always_on_top_get(KuiCtx *ctx);
+/* What you did about it, for views to read as env.window.always_on_top:
+ * the level the window actually has, so a pin button draws the platform's
+ * answer and not the app's guess (a window manager can refuse or drop it).
+ * A host that never applies a level never calls this and reports false.
+ * Its own setter rather than a seventh argument on kui_env_set_window for
+ * the reason kui_env_set_assistive has one: additive, and off
+ * KUI_ABI_VERSION. */
+void kui_env_set_always_on_top(KuiCtx *ctx, bool always_on_top);
 
 /* -- Spec helpers -------------------------------------------------------- */
 /* Fills spec->float_* from a preset name — the same four the JSX and Lua

@@ -72,6 +72,39 @@ Nothing.
 
 ### Added
 
+- **Always on top** (backlog C30). A window an app wants kept above every
+  other app's — a floating palette, a picture-in-picture player, a timer,
+  a pinned note — can now ask for it, and the ask has the title's shape:
+  a per-frame fact the driver diffs and applies on change, free on every
+  frame it does not change. `ui.always_on_top(true)` in Rust
+  (`Core::set_always_on_top`), a root `<box alwaysOnTop>` in JSX,
+  `always_on_top = true` on a Lua root table, `kui_set_always_on_top(ctx,
+  bool)` in C. Not a `WindowConfig` field: the thing every app that wants
+  this draws next is a pin button, which is a toggle, and a config is read
+  on the opening edge and never again. So the fact defaults to **false**
+  rather than "leave as-is" — a frame that stops declaring it is what
+  lowers the window, and the button toggles the app's own flag and undoes
+  nothing. The runner applies it through `set_window_level` once per
+  change (`NSWindowLevel` floating, `HWND_TOPMOST`, `_NET_WM_STATE_ABOVE`),
+  never per frame, and never to a popup: a popup opened `AlwaysOnTop` by
+  construction and keeps its level whatever its owner declares, so a pinned
+  owner's dropdown stays over it. What the platform did is a new env fact,
+  `env.window.always_on_top` (`WindowEnv::always_on_top`, Node
+  `window.alwaysOnTop`, Lua `window.always_on_top`, C's own setter
+  `kui_env_set_always_on_top`) — the runner's record of the level, and
+  false on Wayland however often the app asks, since winit has no level
+  there. That is the reading a pin button draws from, and the reason the
+  fact is reported at all. Two readers for hosts driving their own window:
+  `kui_always_on_top_get` and Node's `ctx.alwaysOnTop()`. The corpus's
+  `chrome` scenes declare it and every report carries an `always-on-top`
+  line, so the four bindings are held to one ask; the titlebar example
+  gained the pin, checked on Windows (`WS_EX_TOPMOST` set on pin, cleared
+  on unpin, the fact following both). **`KUI_ABI_VERSION` stays 15**: the
+  three C doors are new functions, and a new function is off the version
+  by the header's own rule (a host that never calls one is unaffected; one
+  that does fails to link, loudly) — the entry had it moving to 16, which
+  the rule does not ask for.
+
 - **Tokens beside the theme**
   ([ADR 0027](docs/adr/0027-tokens-beside-the-theme.md)). The app's own
   named colours and lengths, beside the theme's twenty-three roles and

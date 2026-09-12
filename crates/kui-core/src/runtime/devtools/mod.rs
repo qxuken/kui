@@ -1466,7 +1466,7 @@ impl Core {
             (
                 "window",
                 format!(
-                    "#{}{}{}{} · {}",
+                    "#{}{}{}{}{} · {}",
                     env.window.id.0,
                     if env.window.custom_chrome {
                         " custom-chrome"
@@ -1480,6 +1480,11 @@ impl Core {
                     },
                     if env.window.fullscreen {
                         " fullscreen"
+                    } else {
+                        ""
+                    },
+                    if env.window.always_on_top {
+                        " on-top"
                     } else {
                         ""
                     },

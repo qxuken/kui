@@ -106,6 +106,26 @@ test('every generic schema prop reaches the stream and lowers', () => {
   }
 });
 
+// `alwaysOnTop` is a root declaration with no node, like `title`, and a
+// per-frame one with a default: the frame that stops saying it is the
+// lowering (backlog C30). The ask is what `alwaysOnTop()` answers; what
+// the platform did is `env().window.alwaysOnTop`, which a bare `Ctx`
+// never writes.
+test('alwaysOnTop is asked per frame from the root and read back as the ask', () => {
+  const ctx = new Ctx();
+  assert.equal(ctx.alwaysOnTop(), false);
+  ctx.frame(320, 240, 1, box({ title: 'pinned', alwaysOnTop: true }, [text('a', { size: 12 })]));
+  assert.equal(ctx.alwaysOnTop(), true);
+  assert.equal(ctx.windowTitle(), 'pinned');
+  assert.equal(ctx.env().window.alwaysOnTop, false, 'asking is not having');
+  ctx.frame(320, 240, 1, box({ title: 'pinned' }, [text('a', { size: 12 })]));
+  assert.equal(ctx.alwaysOnTop(), false);
+  // `false` and a non-root box both encode nothing, like `title` off the root.
+  ctx.frame(320, 240, 1, box({ alwaysOnTop: false }, [box({ alwaysOnTop: true })]));
+  assert.equal(ctx.alwaysOnTop(), false);
+  assert.deepEqual(ctx.warnings(), []);
+});
+
 test('the hand-written composites and constructor specials lower', () => {
   const build = () =>
     box({ title: 'frame', pad: 6, gap: 3, bg: '#14161e', keyFocus: true, onKey: 'k' }, [
@@ -2909,7 +2929,7 @@ const SCENE_TREES = {
       ]),
     ]),
   chrome: () =>
-    root({ title: 'kui conformance' }, [
+    root({ title: 'kui conformance', alwaysOnTop: true }, [
       box({ gap: 6 }, [
         // `<titlebar>` appends its own cluster; the second one goes through
         // the `<windowButtons>` element, in a strip laid out by hand.
@@ -3609,6 +3629,7 @@ function sceneReport(name, env, steps, { ctx, events, commands, audio }) {
   }
   for (const step of steps) lines.push(`step ${step.join(' ')}`);
   lines.push(`title ${ctx.windowTitle() ?? '-'}`);
+  lines.push(`always-on-top ${+ctx.alwaysOnTop()}`);
   const quads = Buffer.from(ctx.quads());
   const stride = quadStride();
   const count = quads.byteLength / stride;
@@ -3696,6 +3717,9 @@ function referenceBlocks(text) {
         customChrome: !!chrome,
         maximized: !!max,
         fullscreen: !!full,
+        // Not on the line: no scene is driven under it, and a headless
+        // `Ctx` never has it applied — the ask is the `always-on-top` line.
+        alwaysOnTop: false,
         nativeControls: w > 0 && h > 0 ? { w, h } : null,
       };
     }
@@ -3925,7 +3949,7 @@ test('every corpus scene lowers the way kui-core does', (t) => {
     // `customChrome: true` and the rest the defaults. Node's rect is the
     // whole `Rect` where the line carries two extents at the origin
     // (`schema::ENV_FIELDS` names that divergence).
-    const declared = env ?? { customChrome: false, maximized: false, fullscreen: false, nativeControls: null };
+    const declared = env ?? { customChrome: false, maximized: false, fullscreen: false, alwaysOnTop: false, nativeControls: null };
     assert.deepEqual(
       out.ctx.env().window,
       { id: 0, ...declared, nativeControls: declared.nativeControls && { x: 0, y: 0, ...declared.nativeControls } },
@@ -4412,6 +4436,7 @@ test('env() reports the defaults a headless Ctx starts with', () => {
     customChrome: false,
     maximized: false,
     fullscreen: false,
+    alwaysOnTop: false,
     nativeControls: null,
   });
   // No device and nothing playing, which is the truth for a headless host.
@@ -4450,7 +4475,7 @@ test('setEnv writes the facts a window would push, and env() reads them back', (
   ctx.setEnv({
     refreshHz: 60,
     focused: false,
-    window: { customChrome: true, maximized: true, fullscreen: true, nativeControls: { x: 8, y: 4, w: 70, h: 20 } },
+    window: { customChrome: true, maximized: true, fullscreen: true, alwaysOnTop: true, nativeControls: { x: 8, y: 4, w: 70, h: 20 } },
   });
   const env = ctx.env();
   assert.equal(env.refreshHz, 60);
@@ -4461,6 +4486,7 @@ test('setEnv writes the facts a window would push, and env() reads them back', (
     customChrome: true,
     maximized: true,
     fullscreen: true,
+    alwaysOnTop: true,
     nativeControls: { x: 8, y: 4, w: 70, h: 20 },
   });
   // Only what you pass moves — a test declares the one fact it is about.
