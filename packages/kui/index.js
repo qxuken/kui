@@ -596,10 +596,7 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
  * no async I/O can spend that way, but this one cannot assume either.
  */
 export function runWindowed(config, opts = {}) {
-  const { width, height, minWidth, minHeight, maxWidth, maxHeight, chrome } = opts;
-  const win = new KuiWindow(opts.title ?? 'kui', {
-    width, height, minWidth, minHeight, maxWidth, maxHeight, chrome,
-  });
+  const win = new KuiWindow(opts.title ?? 'kui', windowOptions(opts));
   const app = createLoop(config, opts, win, opts.clock ?? Date.now);
   const busyMs = opts.pumpMs ?? 8;
   const idleMs = Math.max(opts.idlePumpMs ?? 32, busyMs);
@@ -670,6 +667,22 @@ export function runWindowed(config, opts = {}) {
     };
     pump();
   });
+}
+
+/**
+ * The `KuiWindow` constructor's options, picked out of `runWindowed`'s —
+ * which carry the loop's own (`title`, `pumpMs`, `setup`, ...) beside them.
+ * For an app that opens its window itself and wants the same set; and the
+ * one place an option can be lost between the two, which is why it is a
+ * function a test can call rather than a destructure inside `runWindowed`.
+ * `system` is the launcher's pin over `env.system` (backlog F47): the
+ * runner writes the real reading before every frame, so a window has no
+ * `setEnv`, and `{ system: { motion: 'reduced' } }` here is how a window
+ * is opened as a user who asked for less motion would see it.
+ */
+export function windowOptions(opts = {}) {
+  const { width, height, minWidth, minHeight, maxWidth, maxHeight, chrome, system } = opts;
+  return { width, height, minWidth, minHeight, maxWidth, maxHeight, chrome, system };
 }
 
 /**

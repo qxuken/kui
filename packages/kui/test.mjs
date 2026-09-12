@@ -13,7 +13,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { constants as osConstants, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Ctx, KuiWindow, clipStride, createApp, createEncoder, decodeQuads, protocol, quadStride, virtualColumn, withEffects } from './index.js';
+import { Ctx, KuiWindow, clipStride, createApp, createEncoder, decodeQuads, protocol, quadStride, virtualColumn, windowOptions, withEffects } from './index.js';
 
 const box = (props, children = [], key) => ({ type: 'box', key, props, children });
 const text = (children, props = {}) => ({ type: 'text', props, children: [].concat(children) });
@@ -4505,6 +4505,35 @@ test('env() is on both classes and setEnv is only on the headless one', () => {
   assert.equal(typeof KuiWindow.prototype.env, 'function');
   assert.equal(typeof Ctx.prototype.setEnv, 'function');
   assert.equal(KuiWindow.prototype.setEnv, undefined);
+});
+
+test("runWindowed's `system` reaches the KuiWindow constructor (F47)", () => {
+  // A window has no `setEnv` — its runner writes the real `env.system`
+  // before every frame — so the pomodoro's reduced-motion branch was
+  // assertable headless only. The pin goes in at the launcher instead:
+  // `runWindowed(config, { system: { motion: 'reduced' } })` hands it to
+  // `new KuiWindow(title, options)`, whose runner merges it over the OS's
+  // reading inside that per-frame write. A window needs a display, so what
+  // a headless run checks is the hand-over: `windowOptions` is the exact
+  // object `runWindowed` constructs the window with, and the loop's own
+  // options do not leak into it.
+  const system = { motion: 'reduced' };
+  const o = windowOptions({ title: 'x', pumpMs: 3, width: 320, chrome: 'custom', system, setup() {} });
+  assert.equal(o.system, system, 'the same partial, by reference');
+  assert.equal(o.width, 320);
+  assert.equal(o.chrome, 'custom');
+  assert.equal('title' in o, false);
+  assert.equal('pumpMs' in o, false);
+  assert.equal('setup' in o, false);
+  // Left out is left out: the constructor sees no pin, not an empty one.
+  assert.equal(windowOptions({ width: 1 }).system, undefined);
+  assert.equal(windowOptions().system, undefined);
+  // The type is `EnvInput['system']`, so a headless `Ctx` takes the same
+  // partial — the branch a test asserts headless and the window it then
+  // looks at read one spelling.
+  const ctx = new Ctx();
+  ctx.setEnv({ system });
+  assert.equal(ctx.env().system.motion, 'reduced');
 });
 
 
