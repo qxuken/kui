@@ -165,6 +165,17 @@ none of it: nothing repaints because the appearance changed and no animation
 shortens itself, because only the view knows which of its colours is the
 background.
 
+The fifth row is not a setting: `assistive` reads `"listening"` once an
+accessibility client has asked the window for its tree, `"none"` while the
+bridge is up and nobody has, and `"unknown"` where there is no bridge (a
+headless `Ctx`). It is the reading that changes what a view *says* rather
+than what it draws — `announce` the alert when it is `"listening"`, blink
+it otherwise — and it arrives through the same `system` event as the other
+four when it changes. Any client counts, and on macOS and Windows nothing
+reports a client leaving, so once risen it stays; only AT-SPI says
+`"none"` again. Headless, `ctx.setEnv({ system: { assistive: 'listening' } })`
+declares it, so a test can assert the announcement.
+
 Mostly you do not have to. The **theme** is that branch, written once: the
 appearance picks a base and the accent recolours it, and the palette comes
 back as named roles — `ctx.theme()` in Node, `ui.theme()` in Rust,

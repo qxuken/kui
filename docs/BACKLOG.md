@@ -793,7 +793,36 @@ and a real OS change still arrives for the fields not pinned. The
 environment variable: an app you ship should not change its motion
 because of one, which is the same line the smoke frames draw.
 
-### `.` F48 — Whether assistive technology is listening, as an `Env` fact
+### `.` F48 — Whether assistive technology is listening, as an `Env` fact — **done (2026-09-12)**
+
+**Done (2026-09-12):** `system.assistive` is the fifth row beside the four
+OS readings — `"unknown"` | `"none"` | `"listening"`, `Assistive` in
+`env.rs` with the same `ALL`/`name`/`code` shape as `Appearance`, so the
+schema test named every restating site and each moved together: the row,
+the `system` event's payload, the devtools facts, Node's `setEnv` and
+d.ts, the C header, `props.md`. The runner's `sync_env` reads it off the
+pane's bridge (`Bridge::assistive`: `active` was already the fact), a
+change in `active` asks for a redraw so the reading reaches a frame and
+the core reports it — an app that only redraws on input would otherwise
+have heard of the screen reader with its next click. C got its own
+additive `kui_env_set_assistive` + `KUI_ASSISTIVE_*` rather than a fifth
+argument, the shape the header already argues for (`kui_env_set_audio`),
+so `kui_env_set_system`'s prototype and `KUI_ABI_VERSION` stand; the
+settings setter keeps the field, since a host re-pushes the four on every
+OS notification. The entry's condition — that the activation signal
+reaches the shell on all three platforms — was checked against the pinned
+adapters and came back **half wrong**: `InitialTreeRequested` reaches it
+everywhere, but of `accesskit_winit` 0.34's three desktop adapters only
+`unix` ever sends `AccessibilityDeactivated` (on the AT-SPI bus's enabled
+flag flipping, a session-level fact); the macOS *and Windows* adapters
+bind `_deactivation_handler` and never call it. The row's doc says so:
+any client counts, and the reading falls to `"none"` on AT-SPI alone —
+on macOS and Windows it rises once and stays for the window's life.
+Guards: `assistive_technology_attaching_is_a_system_event` (core), the
+round-trip and wire-order tests, the schema pin, the ffi setter test
+(`kui_env_set_system` keeps it), the Node test through `setEnv` reading
+`env()` and the event back, `cbuild`'s header compile (188 prototypes),
+and the C and Node corpus adapters over a regenerated report.
 
 **Symptom** (pomodoro, alpha.10 wish 4, carried to alpha.11 wish 5 and
 never answered): `motion` reached the view; the reading that would change
@@ -1275,8 +1304,9 @@ first, since both are defects that ship — the pump order in `runWindowed`
 plus the held seed's redraw, and `env_facts().viewport` reading `dt_area`
 with `size()` answering for the dock — then F44 (`wrap` on a single-line
 editor), then F45, F46, F47 and F49 in any order, each a small change with
-its guard named in the entry, and F48 once the bridge's activation signal
-is confirmed to reach the shell on all three platforms. T4 is an ADR to
+its guard named in the entry. F48 was built 2026-09-12 once the bridge's
+activation signal was checked against the pinned adapters (it reaches the
+shell on all three; deactivation only on AT-SPI). T4 is an ADR to
 write, not code, and it waits for the condition in its entry. Before them
 the open list was C12, C13, C14, F36, B1 and V2–V8 — every one parked on a
 condition — and two entries with work in them: C29, a bisect of four
