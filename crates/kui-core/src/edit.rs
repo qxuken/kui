@@ -8,7 +8,7 @@ use std::collections::VecDeque;
 
 use cosmic_text::{
     Action, Attrs, Buffer, Cursor, Edit as _, Editor, FontSystem, Metrics, Motion, Selection,
-    Shaping,
+    Shaping, Wrap,
 };
 use rustc_hash::FxHashMap;
 
@@ -18,7 +18,7 @@ use crate::geom::{Rect, Size, Vec2};
 use crate::input::{EditKey, Mods};
 use crate::key::Key;
 use crate::resources::Resources;
-use crate::spec::TextStyle;
+use crate::spec::{TextStyle, TextWrap};
 use crate::text::TextSystem;
 use crate::tree::OriginId;
 
@@ -26,6 +26,14 @@ use crate::tree::OriginId;
 pub struct EditOptions {
     pub style: TextStyle,
     pub multiline: bool,
+    /// A single-line editor that folds to its width, by `style.wrap`, the
+    /// way a document does — instead of taking one line and scrolling it
+    /// under the caret (backlog F44). Its keyboard is still a field's:
+    /// Enter submits, a newline is never admitted, the caret opens at the
+    /// end. In the bindings this is the `wrap` row being declared on the
+    /// element; off, a field does not read `style.wrap` at all. A
+    /// `multiline` editor wraps either way and ignores this.
+    pub wrap: bool,
     /// Takes keyboard focus on the frame this declaration starts — a new
     /// editor, one back after a gap, one whose flag just turned on — and
     /// only while nothing holds focus: never from a focused control, and
@@ -43,6 +51,11 @@ pub(crate) struct EditState {
     pub(crate) style: TextStyle,
     pub(crate) accent: Color,
     pub(crate) multiline: bool,
+    /// Whether the buffer is laid out to its box's width: a document, or a
+    /// field with `wrap` declared (backlog F44). What `wrapped`,
+    /// `line_offset` and emission's clip decide by — a field that does not
+    /// fold takes one line and scrolls it.
+    folds: bool,
     pub(crate) origin: OriginId,
     scale: f32,
     /// Wrap width (physical) the buffer is laid out at; None = unwrapped.
@@ -63,7 +76,7 @@ pub(crate) struct EditState {
     /// How far a single-line field has scrolled its text left, in physical
     /// px. A field keeps the caret inside its box by moving the text under
     /// it, the way a native field does, rather than by wrapping (backlog
-    /// F41); a multiline editor wraps and this stays 0.
+    /// F41); an editor that folds (`folds`) wraps and this stays 0.
     offset_x: f32,
     /// In-progress IME composition: a marked, uncommitted range living
     /// inside the buffer (so the text around it reflows as it grows).
@@ -567,6 +580,7 @@ impl EditStore {
                 style: opts.style,
                 accent: opts.accent.unwrap_or(crate::select::TINT),
                 multiline: opts.multiline,
+                folds: false,
                 origin,
                 scale,
                 wrap: None,
@@ -588,6 +602,21 @@ impl EditStore {
         state.origin = origin;
         state.multiline = opts.multiline;
         state.accent = opts.accent.unwrap_or(crate::select::TINT);
+        // A document wraps between words whatever its style says, as it
+        // always has; a field folds only when asked, and then by the mode
+        // the `wrap` row picked — so a rename field breaks where the label
+        // it renames breaks (backlog F44). `wrap="none"` on a field is the
+        // field: one line, scrolled.
+        let folds = opts.multiline || (opts.wrap && opts.style.wrap != TextWrap::None);
+        let mode = match (opts.multiline, opts.style.wrap) {
+            (false, TextWrap::Glyph) => Wrap::Glyph,
+            _ => Wrap::WordOrGlyph,
+        };
+        if state.folds != folds || state.editor.with_buffer(|b| b.wrap()) != mode {
+            state.folds = folds;
+            state.editor.with_buffer_mut(|b| b.set_wrap(mode));
+            state.invalidate_measurements();
+        }
         // Style/scale changes re-metric the buffer (text and cursor survive).
         // The text is the same, so `version` does not move — but every
         // measurement of it is now of the wrong font, which is what
@@ -1103,6 +1132,14 @@ impl EditStore {
         self.states.get(&key).is_some_and(|s| s.multiline)
     }
 
+    /// Whether `key` lays its text out to its box's width: a document, or
+    /// a field with `wrap` declared (backlog F44). What emission asks
+    /// before narrowing a field's clip — an editor that folds never
+    /// scrolls, so it keeps the node's.
+    pub(crate) fn folds(&self, key: Key) -> bool {
+        self.states.get(&key).is_some_and(|s| s.folds)
+    }
+
     /// Caret rect in physical px, relative to the edit's content origin.
     /// None when the caret isn't laid out (e.g. no state for `key`).
     pub(crate) fn caret_rect(&mut self, key: Key, fs: &mut FontSystem) -> Option<Rect> {
@@ -1119,8 +1156,9 @@ impl EditStore {
     }
 
     /// How far a single-line field's text is scrolled left, in physical
-    /// px, for a content box `inner_w` wide (physical too). 0 for a
-    /// multiline editor, which wraps instead.
+    /// px, for a content box `inner_w` wide (physical too). 0 for an
+    /// editor that folds — a document, or a field with `wrap` — which
+    /// wraps instead.
     ///
     /// A field does not wrap ([`EditStore::wrapped`]), so a value that
     /// outgrows its box is moved under the caret rather than folded onto a
@@ -1133,7 +1171,7 @@ impl EditStore {
         let Some(s) = self.states.get_mut(&key) else {
             return 0.0;
         };
-        if s.multiline {
+        if s.folds {
             return 0.0;
         }
         // Unfocused, a field shows its value from the start: what it says
@@ -1213,16 +1251,19 @@ impl EditStore {
     /// (see [`EditStore::line_offset`]), which is what a native field does
     /// and what the `<edit>` row has always said it is. Wrapping one was
     /// how a name that outgrew its box came to be drawn two lines tall
-    /// inside a box measured for one (backlog F41).
+    /// inside a box measured for one (backlog F41). The exception is a
+    /// field that asked to fold (`EditOptions::wrap`, backlog F44): it
+    /// wraps to its width exactly as a document does, and keeps a field's
+    /// keyboard.
     pub(crate) fn wrapped(&mut self, key: Key, max_w: f32, fs: &mut FontSystem) -> Size {
         let Some(s) = self.states.get_mut(&key) else {
             return Size::ZERO;
         };
-        if !s.multiline {
-            // The buffer stays unwrapped (an editor that was multiline
-            // last frame may be carrying a width), and the box is one line
-            // tall whatever the text has in it — a `\n` that reached a
-            // field through `set_text` does not make it two.
+        if !s.folds {
+            // The buffer stays unwrapped (an editor that folded last frame
+            // may be carrying a width), and the box is one line tall
+            // whatever the text has in it — a `\n` that reached a field
+            // through `set_text` does not make it two.
             if s.wrap.is_some() {
                 s.editor.with_buffer_mut(|b| b.set_size(None, None));
                 s.wrap = None;

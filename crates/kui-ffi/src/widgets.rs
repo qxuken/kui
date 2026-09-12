@@ -151,7 +151,8 @@ pub extern "C" fn kui_button_with(
     });
 }
 
-/// Editable text node; flags: 1 = multiline, 2 = autofocus. Returns its key.
+/// Editable text node; flags: `KUI_EDIT_MULTILINE`, `KUI_EDIT_AUTOFOCUS`,
+/// `KUI_EDIT_WRAP`. Returns its key.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_text_edit(
     ptr: *mut KuiCtx,
@@ -169,8 +170,9 @@ pub extern "C" fn kui_text_edit(
             style: unsafe { style.as_ref() }
                 .map(text_style_of)
                 .unwrap_or_default(),
-            multiline: flags & 1 != 0,
-            autofocus: flags & 2 != 0,
+            multiline: flags & KUI_EDIT_MULTILINE != 0,
+            autofocus: flags & KUI_EDIT_AUTOFOCUS != 0,
+            wrap: flags & KUI_EDIT_WRAP != 0,
             ..Default::default()
         };
         let spec = spec_of(sp, NONE, NONE, NONE, NONE);
