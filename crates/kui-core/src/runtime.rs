@@ -1018,8 +1018,10 @@ impl Core {
             });
         }
         self.dt_area = area;
-        // And what the user set in the OS. A driver that learns of a
-        // change writes it into `env` and asks for a redraw — which is
+        // And what the user set in the OS — and whether assistive
+        // technology is listening, which rides in the same reading. A
+        // driver that learns of a change writes it into `env` and asks
+        // for a redraw — which is
         // enough for a host whose view is a function the runner calls
         // every frame, and nothing at all for one that retains the tree
         // it was handed (Node, C, Lua): its `view` runs when a message
@@ -1045,6 +1047,7 @@ impl Core {
                         "locale",
                         sys.locale.map_or(Value::Null, |l| Value::str(l.as_str())),
                     ),
+                    ("assistive", Value::str(sys.assistive.name())),
                 ]),
             });
         }

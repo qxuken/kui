@@ -241,6 +241,11 @@ pub const APPEARANCES: &[&str] = &["unknown", "light", "dark"];
 /// `MotionPref::ALL` order), `unknown` first for the same reason.
 pub const MOTIONS: &[&str] = &["unknown", "full", "reduced"];
 
+/// Whether assistive technology is listening (`crate::env::Assistive::name`
+/// spellings, in `Assistive::ALL` order), `unknown` first for the same
+/// reason: a host with no bridge reports that it cannot tell.
+pub const ASSISTIVE: &[&str] = &["unknown", "none", "listening"];
+
 /// The audio output device's state (`crate::env::AudioDevice::name`
 /// spellings, in `AudioDevice::ALL` order), `closed` first so a zeroed C
 /// call reports the default.
@@ -1622,8 +1627,8 @@ pub const EVENTS: &[EventDef] = &[
     },
     EventDef {
         kind: "system",
-        payload: "`{ kind: \"system\", appearance, accent, motion, locale }`",
-        doc: "An OS setting the user changed while the app was open — the light/dark appearance, the accent colour, reduced motion, or the UI language (delivered to the host on the root, one per window that noticed). The payload is `env.system` as it now reads, in the same spellings and with the same nulls, so a handler can keep the whole reading or take the one field it branches on. The first frame establishes the reading rather than reporting it, the way the viewport does; a host whose view is a function the runner calls every frame can equally re-read `env` and ignore this, but a host that retains the tree it was handed (Node, C, Lua) only re-runs its view for a message, so this is how a palette follows the OS.",
+        payload: "`{ kind: \"system\", appearance, accent, motion, locale, assistive }`",
+        doc: "An OS setting the user changed while the app was open — the light/dark appearance, the accent colour, reduced motion, or the UI language — or assistive technology starting to listen (delivered to the host on the root, one per window that noticed). The payload is `env.system` as it now reads, in the same spellings and with the same nulls, so a handler can keep the whole reading or take the one field it branches on. The first frame establishes the reading rather than reporting it, the way the viewport does; a host whose view is a function the runner calls every frame can equally re-read `env` and ignore this, but a host that retains the tree it was handed (Node, C, Lua) only re-runs its view for a message, so this is how a palette follows the OS.",
     },
     EventDef {
         kind: "modifiers",
@@ -1854,6 +1859,15 @@ pub const ENV_FIELDS: &[EnvField] = &[
         lua: &["system.locale"],
         c: "`kui_env_set_system(locale)`",
         doc: "The UI language as a BCP-47 tag (`\"en\"`, `\"en-US\"`, `\"zh-Hant-HK\"`), for whatever the view formats dates and numbers with; kui does not parse it. Carried inline (31 ASCII bytes, `Locale`) so the reading stays `Copy`, and anything that does not fit reads back as unknown: `null` in Node, an absent key in Lua, an empty `KuiStr` in C.",
+    },
+    EnvField {
+        name: "system.assistive",
+        get: |f| Value::str(f.env.system.assistive.name()),
+        from: "`SystemEnv::assistive`",
+        node: &["system.assistive"],
+        lua: &["system.assistive"],
+        c: "`kui_env_set_assistive(assistive)`",
+        doc: "Whether assistive technology is listening: `\"listening\"` once an accessibility client has asked this window for its tree, `\"none\"` while the bridge is up and nobody has, `\"unknown\"` where there is no bridge — a headless `Ctx`, a runner built without `accesskit`, a C host that never called the setter (`KUI_ASSISTIVE_*`, unknown 0). The reading that changes what a view *says* rather than what it draws: an alert that announces when something is listening and blinks when nothing is. Reported through the `system` event when it changes, like the other four. Two limits are the platform's, not kui's. *Any* client counts — a probe, an accessibility inspector, a test driving the AX API and VoiceOver alike all ask for the tree, and nothing tells them apart — so it says something is listening, not that a person is. And it falls back to `\"none\"` only where the adapter reports deactivation, which in the pinned AccessKit is AT-SPI alone (the session's accessibility bus going away); on macOS and Windows nothing reports a client leaving, so once it has risen it stays `\"listening\"` for the window's life.",
     },
     EnvField {
         name: "window.id",
@@ -2818,6 +2832,7 @@ mod tests {
             accent: _,
             motion: _,
             locale: _,
+            assistive: _,
         } = system;
         let WindowEnv {
             id: _,
@@ -2833,6 +2848,7 @@ mod tests {
             "system.accent",
             "system.motion",
             "system.locale",
+            "system.assistive",
             "window.id",
             "window.custom_chrome",
             "window.maximized",
