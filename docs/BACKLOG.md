@@ -735,7 +735,21 @@ gap from the other side, has its own users, and is one row
 (`submit="enter"`) when a view asks; not built here on the strength of a
 report that does not want it.
 
-### `.` F45 — `clock` is read by `runWindowed` and absent from its options type
+### `.` F45 — `clock` is read by `runWindowed` and absent from its options type — **done (2026-09-12)**
+
+Done: `clock?: () => number` on `runWindowed`'s options in
+`packages/kui/index.d.ts`, with a doc that says what it moves in a window
+(the ticks and `tick.msg(now)`; the frame clock behind `transition` is the
+runner's own, since a `KuiWindow` has no `setTime`) and that `startTime`
+has no counterpart there. The block is the hand-written half of the file,
+after the last `-- end generated --` marker, so `npm run gen` leaves it
+alone. The guard is the one the entry asked for: `Example.clock` on the
+examples harness (`examples/node/devtools.tsx`), handed to `runWindowed` as
+`clock: example.clock`, so `npm run typecheck` in `examples/node` exercises
+the field — removing it from the type again produces one `TS2353`, checked
+by removing it. No example sets it; the headless drive keeps the loop's own
+hands so `advance` still works there. CHANGELOG under alpha.12's
+`### Fixed`.
 
 **Symptom** (pomodoro, wish 3): the one line passing `clock` to
 `runWindowed` carries a `@ts-expect-error`, deliberately, so it fails the

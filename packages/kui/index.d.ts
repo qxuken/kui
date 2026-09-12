@@ -3157,6 +3157,15 @@ export declare function runWindowed<M, A = AppMsg | CoreMsg, E = never>(
      *  growing, in ms (default 500). Anything at all — an event, a tick, a
      *  frame, a transition — resets both the gap and this. */
     quietMs?: number;
+    /** The loop's time source, in milliseconds. A window fills it with
+     *  `Date.now`: ticks fire off it and `tick.msg(now)` reads it (the
+     *  frame clock behind `transition` is the runner's own and does not
+     *  follow it). A test hands in `() => Date.now() + ahead` to move a
+     *  real window's clock — its ticks run ahead of the wall by that much,
+     *  which is how a countdown is watched in seconds rather than minutes.
+     *  `createApp`'s `startTime` has no counterpart here: under a clock it
+     *  is dead. */
+    clock?: () => number;
     /** Runs after the window opens, before `init` and the first frame —
      *  register images, fonts and other resources here. `app` is the loop
      *  itself, so a test can hold on to it and drive a real window with the

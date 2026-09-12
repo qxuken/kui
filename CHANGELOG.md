@@ -17,6 +17,27 @@ for the reader deciding whether to upgrade. Earlier sections keep the shape
 they shipped with and are not retrofitted (backlog F31, from the alpha.8
 field reports).
 
+## 0.1.0-alpha.12 (unreleased)
+
+### Fixed
+
+- **`runWindowed`'s options type has `clock`.** The driver has read
+  `opts.clock ?? Date.now` since the windowed tick bookkeeping was written,
+  and `createApp`'s options declared it, but `runWindowed`'s did not — so
+  the one line a test writes to move a real window's clock
+  (`clock: () => Date.now() + ahead`, which is how a countdown is watched
+  in seconds) carried a `@ts-expect-error` (backlog F45, from the
+  pomodoro's alpha.11 report, wish 3). F37's class again: a `.d.ts`-only
+  gap no test in this repo can see, because CI's typecheck of
+  `examples/node` is the only guard and no example passed one. The type is
+  fixed, and the examples harness (`examples/node/devtools.tsx`) now takes
+  a `clock` on an `Example` and hands it to `runWindowed`, so the typecheck
+  exercises the field — removing it from the type fails CI, which was
+  checked by removing it. `startTime` stays absent from the windowed
+  options: under a clock it is dead. The doc says what the clock moves in a
+  window — the ticks and `tick.msg(now)`; the frame clock behind
+  `transition` is the runner's own.
+
 ## 0.1.0-alpha.11 (2026-09-11)
 
 **What breaks.**
