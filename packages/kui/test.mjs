@@ -4180,6 +4180,38 @@ test('setEnv writes the facts a window would push, and env() reads them back', (
   assert.equal(ctx.env().window.nativeControls, null, 'and a zero-sized rect is no rect');
 });
 
+// `env().viewport` is what the dock leaves, not the window (backlog F43).
+// The pomodoro under `KUI_DEVTOOLS=1` read 1040 from it and from
+// `win.size()`, sized its tiers to that and was squeezed into the ~700 px
+// the right dock left: the getter filled the row from the window while the
+// row's own `ENV_FIELDS` entry said `Core::viewport()`, the frame's. The
+// shape test above could not see it — a key-for-key walk — and no corpus
+// scene has a dock in its tree, where the two numbers are equal. A headless
+// `Ctx` never reads `KUI_DEVTOOLS` but `setDevtools(true)` works on it, so
+// the dock is put in by hand; `KuiWindow.size()` answers with the same
+// number and needs a display, so the core pins that half
+// (`the_env_reading_and_the_pre_frame_size_are_what_the_dock_leaves`).
+test('env().viewport is the window less the devtools dock (F43)', () => {
+  const ctx = new Ctx();
+  ctx.setDevtools(true);
+  ctx.setDevtoolsDock('right');
+  assert.deepEqual(ctx.env().viewport, { width: 0, height: 0, scale: 1 }, 'before any frame: nothing established');
+  ctx.frame(1040, 720, 1, box({}, []));
+  const vp = ctx.env().viewport;
+  assert.ok(vp.width < 1040, `the app's width, not the window's: ${vp.width}`);
+  assert.equal(vp.height, 720, 'a right dock takes width only');
+  assert.equal(vp.scale, 1);
+  // A bottom dock takes height instead — the reading follows the dock.
+  ctx.setDevtoolsDock('bottom');
+  ctx.frame(1040, 720, 1, box({}, []));
+  assert.equal(ctx.env().viewport.width, 1040);
+  assert.ok(ctx.env().viewport.height < 720, 'a bottom dock takes height');
+  // Off again: the window.
+  ctx.setDevtools(false);
+  ctx.frame(1040, 720, 1, box({}, []));
+  assert.deepEqual(ctx.env().viewport, { width: 1040, height: 720, scale: 1 });
+});
+
 // `accent` is the one paint row the stock button takes, and the one prop
 // whose colour the environment decides: with no accent pushed it is exactly
 // the stock button, and with one it is that colour, its shades, and a label

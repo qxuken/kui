@@ -616,10 +616,12 @@ impl<A: App> PumpRunner<A> {
         self.shell.core_mut()
     }
 
-    /// The main window's inner size (logical px) and its scale factor —
-    /// what the next frame lays out against. Unlike `core_mut().viewport()`
-    /// this is known before the first frame, so a host can size its model
-    /// at setup.
+    /// The main window's inner size (logical px) and its scale factor.
+    /// Unlike `core_mut().viewport()` this is known before the first frame,
+    /// so a host can size its model at setup — through
+    /// `core_mut().host_area(size)`, which is what the next frame lays out
+    /// against: the window less the devtools' dock while the panel is
+    /// docked (`docs/adr/0024`), and the window itself otherwise.
     pub fn window_size(&self) -> (Size, f32) {
         self.shell.window_size()
     }

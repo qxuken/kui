@@ -1368,14 +1368,20 @@ impl KuiWindow {
         })
     }
 
-    /// The window's inner size in logical px plus its scale factor:
-    /// `{width, height, scale}`. Readable before the first frame (in
-    /// `setup`), and re-reported as a `{kind:"resize", width, height,
-    /// scale}` event through `pollEvents` — a `ResizeMsg` — whenever the
-    /// window changes size or moves to a display with another DPI.
+    /// The viewport the app lays out into, in logical px, plus the scale
+    /// factor: `{width, height, scale}` — the window's inner size, less
+    /// the devtools' dock while the panel is docked (`docs/adr/0024`).
+    /// Readable before the first frame (in `setup` and `init`, where
+    /// `env().viewport` is still 0×0), and re-reported as a
+    /// `{kind:"resize", width, height, scale}` event through `pollEvents`
+    /// — a `ResizeMsg` — whenever the window changes size, moves to a
+    /// display with another DPI, or the dock comes, goes or is dragged.
+    /// Backlog F43: this was the window's inner size, so an app that seeded
+    /// its tiers from it under `KUI_DEVTOOLS=1` drew for the whole window.
     #[napi(ts_return_type = "WindowSize")]
-    pub fn size(&self) -> Json {
-        let (size, scale) = self.runner.window_size();
+    pub fn size(&mut self) -> Json {
+        let (window, scale) = self.runner.window_size();
+        let size = self.runner.core_mut().host_area(window);
         size_json(size, scale)
     }
 

@@ -258,8 +258,12 @@ pointing into the other three.
   all (`diagnostics: true` forces them on).
 - **Window size**: `win.size()` gives `{width, height, scale}` (logical px)
   — in `setup(win)` before the first frame, in `init(win)` while the first
-  model is built, and any time after. Changes
-  arrive as `{kind: 'resize', width, height, scale}` events, so a model that
+  model is built, and any time after. It is the viewport the app lays out
+  into: the window's inner size, less the devtools' dock while the panel is
+  docked (`KUI_DEVTOOLS=1`), and the same number `env().viewport` reads once
+  a frame has run. Changes
+  arrive as `{kind: 'resize', width, height, scale}` events — a dock coming,
+  going or being dragged among them — so a model that
   tracks the size updates in `update` like anything else. Bound what the
   user can resize to with `minWidth` / `minHeight` / `maxWidth` / `maxHeight`
   next to `width` / `height` at open; either half of a pair may stand alone,
