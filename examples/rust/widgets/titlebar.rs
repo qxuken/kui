@@ -159,7 +159,10 @@ impl Example for Chrome {
     const KEYS: &'static [(&'static str, &'static str)] = &[
         ("drag the strip", "move the window"),
         ("double-click it", "maximize (where the platform does)"),
-        ("pin", "keep the window above every other app's; again to let go"),
+        (
+            "pin",
+            "keep the window above every other app's; again to let go",
+        ),
     ];
 
     fn window(&self) -> kui_devtools::Window {
