@@ -72,8 +72,10 @@ The same flags everywhere: `--headless` runs the example's self-check and
 exits non-zero on a wrong answer; `--dock left|right|bottom|window|off`
 places the panel (`side` still means the right) — `window` opens it in a
 window of its own; `--light` / `--dark`
-pin the theme base and `--accent #rrggbb` the accent; `--size WxH` the
-example's area. The chords are the core's, `Ctrl+Shift+<letter>` on every
+pin the theme base and `--accent #rrggbb` the accent; `--motion
+full|reduced` pins what `env.system.motion` reads over the OS's setting,
+which is how an animation's reduced-motion branch is looked at on a
+machine whose owner did not ask for it; `--size WxH` the example's area. The chords are the core's, `Ctrl+Shift+<letter>` on every
 platform: `T` cycles the base (the app's own → light → dark), `A` the
 accent, `M` toggles native menus (the popups *and* the bar — on macOS
 that is how the drawn bar is seen), `D` moves the panel (left → right →

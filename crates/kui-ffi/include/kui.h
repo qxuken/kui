@@ -1568,7 +1568,8 @@ enum {
  *
  * Separate from kui_env_set because these change when the user opens a
  * settings app, not when a window moves: push them at startup and from the
- * OS's change notification. Adding a setter rather than arguments is also
+ * OS's change notification. On a context handed to kui_run_with it is the
+ * window's pin instead - see there. Adding a setter rather than arguments is also
  * what keeps this off KUI_ABI_VERSION - a host that never calls it is
  * unaffected, and one that does fails to link against an older library,
  * which is loud. */
@@ -2524,7 +2525,20 @@ bool kui_run(KuiStr title, KuiViewFn view, KuiEventFn on_event, void *user);
  *
  * Your view declares slots with kui_slot exactly as it would headless, and
  * what a plugin's nodes produce reaches your on_event as replies carrying
- * that plugin's origin. */
+ * that plugin's origin.
+ *
+ * The context's env.system comes along too, as the window's pin: whatever
+ * you pushed with kui_env_set_system before handing the context here is
+ * laid over the OS's reading before every frame, for the life of the
+ * window. kui_env_set_system(ctx, 0, 0, KUI_MOTION_REDUCED, empty) and then
+ * kui_run_with(ctx, ...) opens the window as a user who asked for less
+ * motion sees it, on a machine whose owner did not; the zero (unknown)
+ * fields are not pinned and keep following the OS, whose changes to them
+ * still arrive as the `system` event, carrying the pin. A context never
+ * told anything pins nothing, so this changes nothing for a host that only
+ * loads plugins into it. It is the launcher's option and not an
+ * environment variable on purpose: a shipped app's motion is its own code's
+ * decision. */
 bool kui_run_with(KuiCtx *ctx, KuiStr title, KuiViewFn view, KuiEventFn on_event,
                   void *user);
 
