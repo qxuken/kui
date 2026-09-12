@@ -900,6 +900,16 @@ audit, but the audit's ADR is what it argues with.
 
 ### `.` T4 — Tokens an app declares beside the theme, for the app whose palette is the design
 
+**[ADR 0027](adr/0027-tokens-beside-the-theme.md) written 2026-09-12,
+proposed.** The count over the two apps answered the entry: the map and
+the prop are both declined (the pomodoro's twelve names are a typed
+constant with no literal outside it, 43 of its 69 reads are a ternary the
+model decides, the mind map's palette is indexed by data, and neither
+follows the OS), the token resolve was prototyped on one row and measured
+inside the noise floor (+1.6% at ±4.8% unused, +0.3% used), and the one piece left standing — a name in the
+inspector — is proposed as a devtools palette legend, no wire change.
+The condition that reopens the map is decision 6 of the ADR.
+
 **The question**, raised 2026-09-12 over the alpha.11 reports: the theme
 is a *mechanism* — a value derived once a frame from a source (the OS,
 the OS plus a colour, a pin), readable in four bindings, painted by the
@@ -1276,8 +1286,11 @@ plus the held seed's redraw, and `env_facts().viewport` reading `dt_area`
 with `size()` answering for the dock — then F44 (`wrap` on a single-line
 editor), then F45, F46, F47 and F49 in any order, each a small change with
 its guard named in the entry, and F48 once the bridge's activation signal
-is confirmed to reach the shell on all three platforms. T4 is an ADR to
-write, not code, and it waits for the condition in its entry. Before them
+is confirmed to reach the shell on all three platforms. T4's ADR is
+written — [ADR 0027](adr/0027-tokens-beside-the-theme.md), proposed
+2026-09-12: the map and the prop declined on the count, a devtools palette
+legend proposed in their place — and what is left of it is that legend,
+which waits for the build. Before them
 the open list was C12, C13, C14, F36, B1 and V2–V8 — every one parked on a
 condition — and two entries with work in them: C29, a bisect of four
 bench rows, filed by the alpha.11 pre-tag round, and C30, always on top,
