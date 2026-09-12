@@ -1613,7 +1613,7 @@ pub const EVENTS: &[EventDef] = &[
     EventDef {
         kind: "resize",
         payload: "`{ kind: \"resize\", width, height, scale }`",
-        doc: "The viewport changed size or DPI (logical px, delivered to the host on the root); `KuiWindow.size()` queries the same numbers.",
+        doc: "The viewport changed size or DPI (logical px, delivered to the host on the root): the window less the devtools' dock while the panel is docked (`docs/adr/0024`), so a dock coming, going or being dragged is a resize too. `KuiWindow.size()` queries the same numbers, before the first frame as well (backlog F43). The first frame establishes the viewport rather than reporting it, so a dock present at launch posts none.",
     },
     EventDef {
         kind: "window",
@@ -1925,7 +1925,7 @@ pub const ENV_FIELDS: &[EnvField] = &[
         node: &["viewport.width"],
         lua: &["viewport_w"],
         c: "`kui_frame_begin(w)`",
-        doc: "The logical width the current (or last) frame was begun with — the other host fact a view wants at the same moment, so it rides in the same reading. Node's `viewport` is the `WindowSize` shape `runWindowed` already uses.",
+        doc: "The logical width of the current (or last) frame's viewport — the window less the devtools' dock while the panel is docked (`docs/adr/0024`), the same number a `resize` reports and Node's `KuiWindow.size()` answers — the other host fact a view wants at the same moment, so it rides in the same reading. Zero before the first frame, since the frame establishes it (backlog F43: this row once read the window instead, so an app under `KUI_DEVTOOLS` sized itself to a viewport it did not have). Node's `viewport` is the `WindowSize` shape `runWindowed` already uses.",
     },
     EnvField {
         name: "viewport.h",
