@@ -19,6 +19,31 @@ field reports).
 
 ## 0.1.0-alpha.12 (unreleased)
 
+### Added
+
+- **`tick.every` may be a function of the model.** `every: (m) =>
+  m.endsAt ? 16 : 1000` ticks at frame rate while a countdown runs and
+  once a second while it is stopped (backlog F46, from the pomodoro's
+  alpha.11 report, wish 1). The loop reads it after `init` and after every
+  `update`, a tick's own included; when the answer changes, the next tick
+  moves to the last tick plus the new value — keeping the beat, and not
+  letting a tick already queued a second out stand — or, when that is
+  already past, to the new value from the change, the way a fresh loop
+  counts from its start, so a cadence that shortens after a long quiet owes
+  one tick `every` from now and not a burst. `0` or less means no tick, as
+  the number does. Headless `advance(ms)` fires the same schedule (a
+  change a tick makes is rescheduled from that tick's time, not from the
+  end of the span), so it is testable; the windowed driver's budget is
+  `max(pumpMs, min(gap, untilTick))` as before, and with the next tick a
+  second out the backoff reaches `idlePumpMs` — the pomodoro's stopped
+  tier, a pump every 16 ms (7–8% of a core in its report), gets the
+  driver's own idle rate, which alpha.11 measured at ~3% for the default
+  32 ms and under 1% at 250; not re-measured here. Two guards in
+  `packages/kui/test.mjs`: the headless tick count over `advance(3000)`
+  after the model stops, and over the injected fake surface, that the
+  budget answers the idle gap once the model says 1000. Node-only, as
+  `tick` is.
+
 ### Fixed
 
 - **`runWindowed`'s options type has `clock`.** The driver has read
@@ -37,6 +62,13 @@ field reports).
   options: under a clock it is dead. The doc says what the clock moves in a
   window — the ticks and `tick.msg(now)`; the frame clock behind
   `transition` is the runner's own.
+
+### What you can delete
+
+- A `tick.every` chosen as the compromise between the cadence a running
+  countdown needs and the one a stopped one can afford, and the
+  `idlePumpMs` raised to compensate: `every` reads the model now.
+- The `@ts-expect-error` on `clock` in a `runWindowed` call.
 
 ## 0.1.0-alpha.11 (2026-09-11)
 

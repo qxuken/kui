@@ -175,6 +175,15 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
   // keeps the current one; anything else but `undefined` is the model.
   // Returns whether the model changed, which is what a tick redraws on.
   function apply(next) {
+    const changed = take(next);
+    // The cadence may depend on the model (backlog F46), so it is asked
+    // again after every `update` — whether or not the model changed, since
+    // a tick handler that mutates in place and returns undefined still
+    // moved what the function reads.
+    reschedule();
+    return changed;
+  }
+  function take(next) {
     if (next === undefined) return false;
     if (next !== null && typeof next === 'object' && next[EFFECTS] === true) {
       for (const e of next.effects) {
@@ -223,9 +232,44 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
   }
   stamp?.(at() / 1000);
   // The clock, when asked for: `tick.msg` (or `tick.msg(now)`) goes through
-  // `update` every `tick.every` ms.
-  const every = tick?.every > 0 ? tick.every : 0;
-  let nextTick = every ? at() + every : Infinity;
+  // `update` every `tick.every` ms. `every` is a number or a function of the
+  // model (backlog F46: a countdown wants 16 ms while it runs and a second
+  // while it is stopped, and one static cadence pinned the idle pump at the
+  // faster of the two). `every` here is the current reading, 0 for no tick;
+  // `lastTick` is where the cadence counts from — the loop's start, then
+  // each tick as it fires — so a reading that changes moves `nextTick` to
+  // `lastTick + every` rather than letting the tick already queued stand: a
+  // stopped app's next tick is a second after its last, not 16 ms, and one
+  // that just started ticks 16 ms on rather than a second from now.
+  const everyOf = typeof tick?.every === 'function' ? tick.every : null;
+  const everyConst = tick?.every > 0 ? tick.every : 0;
+  let every = 0;
+  let lastTick = at();
+  let nextTick = Infinity;
+  // The tick whose `update` is running, or null outside one: a change the
+  // tick itself makes counts from the tick's own time, not from the clock —
+  // which under `advance(ms)` is already at the end of the span, and a
+  // replay that read it would skip the ticks the new cadence owes inside it.
+  let inTick = null;
+  // Reads the cadence off the model and, when it changed, reschedules from
+  // the last tick — keeping the beat — unless that is already past, when it
+  // counts from the change instead, the way a fresh loop counts from its
+  // start: a cadence that shortens after a long quiet owes one tick `every`
+  // from now, not a burst back to `lastTick` and not one this instant.
+  function reschedule() {
+    if (!tick) return;
+    const read = everyOf ? everyOf(model) : everyConst;
+    const next = read > 0 ? read : 0;
+    if (next === every) return;
+    every = next;
+    if (!every) {
+      nextTick = Infinity;
+      return;
+    }
+    const now = inTick ?? at();
+    const kept = lastTick + every;
+    nextTick = kept > now ? kept : now + every;
+  }
 
   // Fires the ticks owed at `t`. `catchUp` fires every one inside the span —
   // what `advance(ms)` asked for. Without it the loop takes one and resyncs
@@ -236,11 +280,20 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
   function ticksTo(t, catchUp) {
     let redraw = false;
     while (t >= nextTick) {
+      lastTick = nextTick;
       nextTick += every;
-      if (!catchUp && nextTick <= t) nextTick = t + every;
+      if (!catchUp && nextTick <= t) {
+        lastTick = t;
+        nextTick = t + every;
+      }
       const msg = typeof tick.msg === 'function' ? tick.msg(t) : tick.msg;
-      if (apply(update(model, msg, { origin: 0, key: '', payload: msg }, surface))) {
-        redraw = true;
+      inTick = lastTick;
+      try {
+        if (apply(update(model, msg, { origin: 0, key: '', payload: msg }, surface))) {
+          redraw = true;
+        }
+      } finally {
+        inTick = null;
       }
       if (!catchUp) break;
     }
