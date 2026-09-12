@@ -731,6 +731,20 @@ impl Core {
 // The hooks.
 
 impl Core {
+    /// What the dock leaves of a window `window` big (ADR 0024): the
+    /// viewport a frame begun at that size lays out into, which
+    /// `viewport()` reports once the frame has begun and a `resize`
+    /// reports when it changes. It takes the window's size and the dock's
+    /// state and nothing of the frame, so it answers *before* the first
+    /// frame too — what a driver's window-size reading hands a host that
+    /// sizes its model at setup (Node's `KuiWindow.size()`; backlog F43,
+    /// where that reading was the window's and `env().viewport` was still
+    /// 0×0 that early, so no reading said the right number).
+    pub fn host_area(&self, window: Size) -> Size {
+        let r = self.devtools_area(window);
+        Size::new(r.w, r.h)
+    }
+
     /// The host's viewport for a frame at `viewport` (ADR 0024): the
     /// window, less the dock when the panel is docked in the main window.
     /// The pane keeps its minimum before the app keeps its own, so a

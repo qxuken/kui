@@ -141,8 +141,10 @@ impl<'a> Ui<'a> {
         self.core.origin()
     }
 
+    /// The viewport this frame lays out into: the window, less the
+    /// devtools' dock while the panel is docked (`Core::viewport`).
     pub fn viewport(&self) -> Size {
-        self.core.viewport
+        self.core.viewport()
     }
 
     /// Host facts pushed by the frame driver (refresh rate, focus).

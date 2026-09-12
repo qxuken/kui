@@ -906,7 +906,11 @@ export interface Env {
   focused: boolean;
   /** What the user set in the OS. */
   system: SystemEnv;
-  /** The viewport the current or last frame was begun with. */
+  /**
+   * The current or last frame's viewport: the window less the devtools'
+   * dock while the panel is docked — what `KuiWindow.size()` answers and a
+   * `resize` reports. 0×0 before the first frame.
+   */
   viewport: WindowSize;
   window: WindowEnv;
   /** What the driver's audio output is doing. */
@@ -2446,11 +2450,16 @@ export declare class KuiWindow {
    */
   nextDeadlineMs(): number | null
   /**
-   * The window's inner size in logical px plus its scale factor:
-   * `{width, height, scale}`. Readable before the first frame (in
-   * `setup`), and re-reported as a `{kind:"resize", width, height,
-   * scale}` event through `pollEvents` — a `ResizeMsg` — whenever the
-   * window changes size or moves to a display with another DPI.
+   * The viewport the app lays out into, in logical px, plus the scale
+   * factor: `{width, height, scale}` — the window's inner size, less
+   * the devtools' dock while the panel is docked (`docs/adr/0024`).
+   * Readable before the first frame (in `setup` and `init`, where
+   * `env().viewport` is still 0×0), and re-reported as a
+   * `{kind:"resize", width, height, scale}` event through `pollEvents`
+   * — a `ResizeMsg` — whenever the window changes size, moves to a
+   * display with another DPI, or the dock comes, goes or is dragged.
+   * Backlog F43: this was the window's inner size, so an app that seeded
+   * its tiers from it under `KUI_DEVTOOLS=1` drew for the whole window.
    */
   size(): WindowSize
   /**

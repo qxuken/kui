@@ -500,7 +500,11 @@ impl Core {
     pub fn env_facts(&self) -> crate::schema::EnvFacts {
         crate::schema::EnvFacts {
             env: self.env,
-            viewport: self.viewport,
+            // The frame's viewport, as its `ENV_FIELDS` row says: what the
+            // dock leaves, not the window it was begun with (backlog F43
+            // — this read `self.viewport`, and an app under `KUI_DEVTOOLS`
+            // sized its tiers to a window it did not have).
+            viewport: self.viewport(),
             scale: self.scale,
             focus: self.focus(),
             focus_visible: self.focus_visible(),

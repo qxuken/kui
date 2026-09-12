@@ -1009,6 +1009,79 @@ fn the_host_s_viewport_is_the_window_less_the_dock() {
     assert_eq!(open.map(|c| c.anchor.x), Some(DOCK_SIDE_W));
 }
 
+/// Every reading of the viewport is what the dock leaves, before the first
+/// frame included (backlog F43). The pomodoro under `KUI_DEVTOOLS=1` read
+/// its 1040 px window from `env().viewport` and `win.size()`, sized its
+/// tiers to it and was squeezed into the ~700 px the right dock left:
+/// `env_facts()` filled the row from the window while its own `ENV_FIELDS`
+/// entry said `Core::viewport()`, the frame's. The readback test that pins
+/// `ENV_FIELDS` against the corpus could not see it, because no corpus
+/// scene has a dock in its tree — with none, the two numbers are equal.
+#[test]
+fn the_env_reading_and_the_pre_frame_size_are_what_the_dock_leaves() {
+    const WINDOW: Size = Size {
+        w: 1040.0,
+        h: 720.0,
+    };
+    let mut core = Core::new();
+    // Before any frame the reading is 0×0 by design; the pre-frame answer
+    // is `host_area`, from the window's size and the dock's state alone.
+    assert_eq!(core.host_area(WINDOW), WINDOW, "no dock: the window");
+    core.set_devtools(true);
+    core.set_devtools_dock(Dock::Right);
+    let expected = Size::new(WINDOW.w - DOCK_SIDE_W, WINDOW.h);
+    assert_eq!(
+        core.host_area(WINDOW),
+        expected,
+        "asked before the first frame"
+    );
+    assert_eq!(core.env_facts().viewport, Size::new(0.0, 0.0));
+
+    let mut ui = core.frame(WINDOW, 1.0);
+    // The frame's own reading agrees while the view runs.
+    assert_eq!(ui.viewport(), expected, "Ui::viewport during the frame");
+    view(&mut ui, None);
+    ui.finish();
+    let facts = core.env_facts();
+    assert!(
+        facts.viewport.w < WINDOW.w,
+        "the reading is the app's, not the window's"
+    );
+    assert_eq!(facts.viewport, expected);
+    assert_eq!(facts.viewport, core.viewport());
+    assert_eq!(
+        core.host_area(WINDOW),
+        core.viewport(),
+        "the same number after the frame"
+    );
+    // A bottom dock takes height instead; a window of its own takes nothing.
+    core.set_devtools_dock(Dock::Bottom);
+    assert_eq!(
+        core.host_area(WINDOW),
+        Size::new(WINDOW.w, WINDOW.h - DOCK_BOTTOM_H)
+    );
+    core.set_devtools_dock(Dock::Window);
+    assert_eq!(core.host_area(WINDOW), WINDOW);
+    // And the row a binding reads is fed from the same facts.
+    let frame = |core: &mut Core| {
+        let mut ui = core.frame(WINDOW, 1.0);
+        view(&mut ui, None);
+        ui.finish();
+    };
+    frame(&mut core);
+    let row = crate::schema::ENV_FIELDS
+        .iter()
+        .find(|f| f.name == "viewport.w")
+        .unwrap();
+    assert_eq!((row.get)(&core.env_facts()), Value::Float(WINDOW.w as f64));
+    core.set_devtools_dock(Dock::Right);
+    frame(&mut core);
+    assert_eq!(
+        (row.get)(&core.env_facts()),
+        Value::Float(expected.w as f64)
+    );
+}
+
 /// Moving the panel out of its own window by one of that window's own
 /// buttons closes the window without hiding the panel: the close that
 /// follows is the panel's own doing, not the user's.
