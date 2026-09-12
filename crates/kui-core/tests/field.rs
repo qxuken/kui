@@ -287,10 +287,17 @@ fn a_field_with_wrap_folds_to_its_width_and_still_submits() {
     let opts = folding(16.0, TextWrap::Word);
     let spec = NodeSpec::column().pad(PAD).width(Sizing::Fixed(LABEL_W));
     let (key, rect) = frame_with(&mut core, LABEL, &opts, spec.clone());
-    assert_eq!(lines(&mut core, key), 2, "the draft folds onto two lines");
+    // How many lines the label folds onto is the sans-serif face's to
+    // say (two on Windows, three on a fontconfig CI); folded is what the
+    // test checks.
+    let folded = lines(&mut core, key);
+    assert!(
+        folded >= 2,
+        "the draft folds onto more than one line: {folded}"
+    );
     assert!(
         rect.h > one_line + 10.0,
-        "and the box is two lines tall: {} vs one line's {one_line}",
+        "and the box is more than one line tall: {} vs one line's {one_line}",
         rect.h
     );
     // Nothing scrolled: the head of the text is where it starts, and the
@@ -331,7 +338,7 @@ fn a_field_with_wrap_folds_to_its_width_and_still_submits() {
         "no newline went in"
     );
     frame_with(&mut core, "", &opts, spec);
-    assert_eq!(lines(&mut core, key), 2);
+    assert_eq!(lines(&mut core, key), folded);
 }
 
 #[test]
