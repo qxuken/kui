@@ -17,6 +17,46 @@ for the reader deciding whether to upgrade. Earlier sections keep the shape
 they shipped with and are not retrofitted (backlog F31, from the alpha.8
 field reports).
 
+## 0.1.0-alpha.12 (unreleased)
+
+**What breaks.** Nothing yet.
+
+### Added
+
+- **A pin over `env.system`, at the launcher** (backlog F47; the pomodoro's
+  `kui-alpha-11.md` wish 4, the third ask in three reports). A window's
+  `env.system` is the OS's, written by the runner before every frame — which
+  is why `setEnv` on a window was refused in alpha.10 and stays refused: a
+  reading pushed at the core is gone by the next view. The reduced-motion
+  branch of a view was therefore assertable headless and never *lookable
+  at* on a machine whose owner had not asked for less motion. Now the app
+  can say, in its own code, what part of the reading it wants pinned:
+  Rust `kui::app(..).system(SystemEnv { motion: MotionPref::Reduced,
+  ..Default::default() })`, Node `runWindowed(config, { system: { motion:
+  'reduced' } })` (the same partial `Ctx.setEnv` takes, so the headless
+  assertion and the window read one spelling; also on `new KuiWindow`'s
+  options, and `windowOptions(opts)` is the exact object `runWindowed`
+  constructs the window with), C by handing `kui_run_with` a context that
+  `kui_env_set_system` was called on. The merge is `SystemEnv::over`,
+  applied inside the runner's per-frame write: every field the pin knows
+  wins, every field left unknown or null is *not pinned* and keeps
+  following the OS — a real change to the accent still arrives, and the
+  `system` event that reports it carries the pin like any other reading.
+  Checked on a real window: the same machine reads `motion: 'full'` bare
+  and `'reduced'` pinned, accent, appearance and locale unchanged. The
+  two example harnesses take `--motion full|reduced`. An option, not an
+  environment variable, for the reason `KUI_SMOKE_FRAMES` is kept out of
+  a shipped build: an app you ship should not change its motion because
+  of a variable in the environment it was launched from.
+
+### What you can delete
+
+**Whatever stood in for the OS setting you could not flip** — the
+reduced-motion branch of a view is now reachable in a window from the
+app's own code, on any machine, so nothing outside the view needs to
+pretend the user asked for less motion, and a smoke test that skipped
+that branch for lack of a way to open it can open it.
+
 ## 0.1.0-alpha.11 (2026-09-11)
 
 **What breaks.**
