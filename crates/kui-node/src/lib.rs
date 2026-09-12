@@ -13,8 +13,8 @@ use kui_ffi::CExtension;
 use kui_core::{
     Appearance, Assistive, AudioCommand, AudioSpec, Color, Core, EditKey, FontId, FrameSample,
     FrameStats, ImageId, InputEvent, Key, KeyCode, KeyMods, KeyPress, Locale, Mods, MotionPref,
-    MouseButton, PlayOptions, PlaybackId, Rect, Size, SoundId, SystemEnv, Tokens, UiEvent, Value, Vec2,
-    schema::color_hex_str,
+    MouseButton, PlayOptions, PlaybackId, Rect, Size, SoundId, SystemEnv, Tokens, UiEvent, Value,
+    Vec2, schema::color_hex_str,
 };
 use napi::bindgen_prelude::{Buffer, Float64Array, Uint8Array};
 use napi_derive::napi;

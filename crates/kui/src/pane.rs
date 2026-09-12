@@ -365,8 +365,7 @@ mod tests {
         // Unknown, so the bridge's answer is what the view reads (F48
         // over F47).
         assert_eq!(
-            system_reading(Appearance::Light, &queried, none, Assistive::Listening)
-                .assistive,
+            system_reading(Appearance::Light, &queried, none, Assistive::Listening).assistive,
             Assistive::Listening
         );
         let less_motion = SystemEnv {
