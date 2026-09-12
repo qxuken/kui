@@ -3078,8 +3078,8 @@ const SCENE_TREES = {
   // fragments — plain, keyed with a child over it, a dead handle that draws
   // nothing, and one with eighteen params so the truncation warning fires
   // — then the image input (backlog V1): the sampling fixture over the
-  // atlas-backed icon, over the texture-backed stream, and over an image
-  // live nowhere (raw 1: 0 would mean "no image"), which draws nothing.
+  // atlas-backed icon, over the texture-backed stream, and over the removed
+  // fixture (`dead`; 0 would mean "no image"), which draws nothing.
   fragments: (fx) =>
     root({}, [
       box({ width: 200, height: 120, gap: 4, bg: '#14161e' }, [
@@ -3095,7 +3095,7 @@ const SCENE_TREES = {
         box({ dir: 'row', gap: 4 }, [
           el('fragment', { src: fx().sampler, image: fx().image, params: FRAGMENT_IMAGE_PARAMS, width: 24, height: 24 }),
           el('fragment', { src: fx().sampler, image: fx().stream, params: FRAGMENT_IMAGE_PARAMS, width: 32, height: 8 }),
-          el('fragment', { src: fx().sampler, image: '0000000000000001', params: FRAGMENT_IMAGE_PARAMS, width: 24, height: 24 }),
+          el('fragment', { src: fx().sampler, image: fx().dead, params: FRAGMENT_IMAGE_PARAMS, width: 24, height: 24 }),
         ]),
       ]),
     ]),
@@ -3431,6 +3431,17 @@ const FIXTURE_IMAGE_WGSL = `fn fragment(in: FragmentIn, params: array<vec4<f32>,
     return vec4<f32>(c.rgb, c.a * step(1.0, in.image.z));
 }`;
 const addFixtureSampler = (ctx) => ctx.addFragment(FIXTURE_IMAGE_WGSL);
+/** `conformance::Fixtures::dead`: an image registered and removed, the
+ *  handle the dead-handle rule is pinned on. Removed rather than made up:
+ *  `'0000000000000000'` is "no image" at this door, and any other number
+ *  is the first session's handle in some process — raw 1 is the first key
+ *  the mint hands out, and a Node process keeps every session the GC has
+ *  not collected, so the filtered run saw it as foreign (C31). */
+const addFixtureDead = (ctx) => {
+  const id = addFixtureImage(ctx);
+  ctx.removeImage(id);
+  return id;
+};
 /** `conformance::FRAGMENT_IMAGE_PARAMS`. */
 const FRAGMENT_IMAGE_PARAMS = [1.0, 0.5, 0.25, 1.0];
 const addFixtureSound = (ctx) => ctx.addSound(Buffer.from('RIFF....WAVE'));
@@ -3498,6 +3509,7 @@ function driveScene(env, steps, build) {
       sound: addFixtureSound(ctx),
       fragment: addFixtureFragment(ctx),
       sampler: addFixtureSampler(ctx),
+      dead: addFixtureDead(ctx),
     });
   let phase = 0;
   const events = [];

@@ -341,6 +341,25 @@ Nothing.
   window — the ticks and `tick.msg(now)`; the frame clock behind
   `transition` is the runner's own.
 
+- **The corpus's dead image handle is one the fixtures removed, not raw
+  1** (backlog C31). The `fragments` scene pins ADR 0025's dead-handle
+  rule — a fragment naming an image live in no session draws nothing and
+  warns nothing — and spelled that image as raw handle 1, with a comment
+  saying no live slot ever has it. It does: `from_ffi` reads every handle
+  at an odd generation, so raw 1 is index 1 at generation 1, the first
+  key the process's mint hands out, live until the session that minted
+  it drops. The reference, Lua and C adapters never noticed because their
+  first session is gone by the time `fragments` builds; a Node process
+  keeps every session the GC has not collected, so
+  `--test-name-pattern` on the corpus test alone saw `warn
+  foreign-resource` where the full suite (CI's run) did not. The
+  fixtures now register a sixth image and remove it (`Fixtures::dead`,
+  mirrored in `conf_fixtures` and `addFixtureDead`), which is what a dead
+  handle is, in every process; and a `resources` test pins the half that
+  *is* fixed — raw 0 is index 0, the slot the mint never fills, dead and
+  nobody's whatever was minted before, which the scene's dead `src` and
+  the doors' "no image" both rest on.
+
 ### What you can delete
 
 The `isDark ? light : dark` branch in front of every app colour that

@@ -628,6 +628,24 @@ mod tests {
         assert!(r.take_foreign().is_empty());
     }
 
+    /// Raw 0 is index 0, the slot the mint never fills, so it misses in
+    /// every session and is nobody's — the `fragments` scene's dead `src`
+    /// and the doors' "no image" both rest on it. Raw 1 is *not* that:
+    /// `from_ffi` reads every handle at an odd generation, so it is the
+    /// first key a fresh process hands out (C31).
+    #[test]
+    fn raw_zero_is_dead_whatever_was_minted() {
+        let mut a = Resources::new(SessionId::next());
+        let b = Resources::new(SessionId::next());
+        let _ = a.add_image(1, 1, vec![0; 4]);
+        let _ = a.add_fragment("");
+        for r in [&a, &b] {
+            assert!(r.image(ImageId::from_ffi(0)).is_none());
+            assert!(r.fragment(FragmentId::from_ffi(0)).is_none());
+            assert!(r.take_foreign().is_empty(), "raw 0 is nobody's");
+        }
+    }
+
     #[test]
     fn handles_round_trip_through_u64() {
         let mut r = Resources::new(SessionId::next());

@@ -265,8 +265,9 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         // docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md:
         // four fragments, one of them with a dead handle and one with too
         // many params — then the image input (backlog V1): the sampling
-        // fixture over the icon, over the stream, and over an image live
-        // nowhere (1: 0 would mean "no image"). The handles are the
+        // fixture over the icon, over the stream, and over the removed
+        // fixture (`Fixtures::dead`: 0 would mean "no image", and any
+        // other number is live in some process). The handles are the
         // fixtures', as integers.
         "fragments" => format!(
             r#"
@@ -281,7 +282,7 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
               row {{ gap = 4,
                 fragment {{ id = {sampler}, image = {image}, params = {{{ip}}}, width = 24, height = 24 }},
                 fragment {{ id = {sampler}, image = {stream}, params = {{{ip}}}, width = 32, height = 8 }},
-                fragment {{ id = {sampler}, image = 1, params = {{{ip}}}, width = 24, height = 24 }},
+                fragment {{ id = {sampler}, image = {dead}, params = {{{ip}}}, width = 24, height = 24 }},
               }},
             }}
         "#,
@@ -289,6 +290,7 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             sampler = f.sampler.to_ffi(),
             image = f.image.to_ffi(),
             stream = f.stream.to_ffi(),
+            dead = f.dead.to_ffi(),
             p = lua_numbers(&kui_core::conformance::FRAGMENT_PARAMS),
             ip = lua_numbers(&kui_core::conformance::FRAGMENT_IMAGE_PARAMS),
             pl = lua_numbers(&kui_core::conformance::FRAGMENT_PARAMS_LONG),

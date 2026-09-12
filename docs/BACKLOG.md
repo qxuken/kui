@@ -258,7 +258,37 @@ field across Lua/Node/C; a runner check that a toggled fact reaches
 `set_window_level` once per change and not per frame.
 
 
-### `!` C31 — Node's corpus adapter disagrees with the reference on `fragments`, when it runs alone
+### `!` C31 — Node's corpus adapter disagrees with the reference on `fragments`, when it runs alone — **done (2026-09-12)**
+
+**Done (2026-09-12), and the handle was raw 1, not raw 0.** The entry
+below points at the fragment's `src: 0`; that one is dead in every
+process — `from_ffi(0)` is index 0 at generation 1, and index 0 is the
+slot the mint never fills (slotmap's sentinel; `free_head` starts at 1),
+so it misses everywhere and is nobody's. The line the Node report
+carried came from the *image* three fragments later, `image:
+'0000000000000001'`, which the reference wrote as `ImageId::from_ffi(1)`
+with a comment calling it "index 1 at version 0, which no live slot ever
+has". `from_ffi` ORs the generation with 1, so raw 1 is index 1 at
+generation 1 — exactly the first key a fresh process's mint hands out.
+The reference, Lua and C never saw it because the session that minted
+it (the first scene's) is dropped before `fragments` builds; a Node
+process keeps every `Ctx` the GC has not collected, so in the filtered
+run the first scene's icon was still live in its session and the miss
+was, correctly, *foreign*. In the full suite an earlier test's session
+had minted and dropped index 1 at generation 1, and the same lookup was
+a removal. So the corpus assumed a number was dead that no number is.
+
+The fix is what a dead handle actually is: `Fixtures::dead` is a sixth
+image, registered after the sampler and removed in the same call —
+mirrored in `conf_fixtures` (`kui_image_add` + `kui_image_remove`) and
+Node's `addFixtureDead` (`addImage` + `removeImage`); Lua takes the
+struct's field. All four adapters match the reference on every scene,
+the Node corpus test passes alone and in the suite, and
+`resources::tests::raw_zero_is_dead_whatever_was_minted` pins the half
+of the original claim that holds: raw 0 misses in every session and
+records no foreign hit, whatever was minted before — which is what the
+scene's dead `src` and the doors' "no image" both rest on. Nothing on
+the wire changed; nothing an app wrote is affected.
 
 Found 2026-09-12 while adding the `tokens` scene, and confirmed to predate
 it at `af043d4` (the adapter run in a clean checkout of that commit,

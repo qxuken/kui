@@ -222,6 +222,16 @@ pub struct Fixtures {
     pub fragment: crate::resources::FragmentId,
     /// See [`FRAGMENT_IMAGE_WGSL`]: the one that samples its `image`.
     pub sampler: crate::resources::FragmentId,
+    /// An image registered and removed before any scene builds: the handle
+    /// ADR 0025's dead-handle rule is pinned on (draws nothing, warns
+    /// nothing). Removed rather than made up, because no raw number is
+    /// dead in every process — `from_ffi` reads every handle at an odd
+    /// generation, so raw 1 is index 1 at generation 1, the first key the
+    /// process's mint hands out, and it stays live — *foreign*, in a Node
+    /// process whose earlier sessions the GC has not collected — until
+    /// that session drops it (C31). Raw 0 is different: index 0 is the
+    /// slot the mint never fills, and "no image" at every door.
+    pub dead: ImageId,
 }
 
 /// Registers the corpus fixtures on a fresh core, in this order.
@@ -236,12 +246,15 @@ pub fn fixtures(core: &mut Core) -> Fixtures {
     let sampler = core
         .add_fragment(FRAGMENT_IMAGE_WGSL)
         .expect("the corpus image fragment must compile");
+    let dead = core.resources.add_image(IMAGE_W, IMAGE_H, image_pixels());
+    core.resources.remove_image(dead);
     Fixtures {
         image,
         stream,
         sound,
         fragment,
         sampler,
+        dead,
     }
 }
 
@@ -3061,11 +3074,12 @@ fn build_fragments(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
                         .width(Sizing::Fixed(32.0))
                         .height(Sizing::Fixed(8.0)),
                 );
-                // Raw 1 — index 1 at version 0, which no live slot ever
-                // has — rather than 0, because 0 is "no image" at the
-                // C, Lua and Node doors and the four have to agree.
+                // The removed fixture rather than a raw number: 0 is "no
+                // image" at the C, Lua and Node doors, and every other
+                // number is the first session's handle in some process
+                // (see `Fixtures::dead`).
                 ui.fragment(
-                    f.sampler.with_image(ImageId::from_ffi(1)),
+                    f.sampler.with_image(f.dead),
                     &FRAGMENT_IMAGE_PARAMS,
                     NodeSpec::column()
                         .width(Sizing::Fixed(24.0))

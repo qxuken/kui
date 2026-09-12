@@ -120,6 +120,11 @@ typedef struct Fixtures {
     uint64_t fragment;
     /* conformance::Fixtures::sampler: the one that reads its image. */
     uint64_t sampler;
+    /* conformance::Fixtures::dead: an image registered and removed, the
+     * handle the dead-handle rule is pinned on. Removed rather than made
+     * up: 0 is "no image" at this door, and any other number is the first
+     * session's handle in some process (C31). */
+    uint64_t dead;
 } Fixtures;
 
 /* conformance::FRAGMENT_WGSL, character for character. */
@@ -167,6 +172,8 @@ static Fixtures conf_fixtures(KuiCtx *ctx) {
     f.sound = kui_sound_add(ctx, (const uint8_t *)"RIFF....WAVE", 12);
     f.fragment = kui_fragment_add(ctx, KUI_STR(CONF_FRAGMENT_WGSL));
     f.sampler = kui_fragment_add(ctx, KUI_STR(CONF_FRAGMENT_IMAGE_WGSL));
+    f.dead = kui_image_add(ctx, 4, 4, rgba);
+    kui_image_remove(ctx, f.dead);
     return f;
 }
 
@@ -702,10 +709,8 @@ static void conf_fragments(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_fragment_with(ui, KUI_STR(""), f->sampler, f->image, CONF_FRAGMENT_IMAGE_PARAMS, 4, &sq);
     KuiSpec wide = {.width = {KUI_FIXED, 32}, .height = {KUI_FIXED, 8}};
     kui_fragment_with(ui, KUI_STR(""), f->sampler, f->stream, CONF_FRAGMENT_IMAGE_PARAMS, 4, &wide);
-    /* An image handle live in no session: the fragment draws nothing. A
-     * zero would mean "no image" at this door, so this is the first
-     * handle the mint never made. */
-    kui_fragment_with(ui, KUI_STR(""), f->sampler, 1, CONF_FRAGMENT_IMAGE_PARAMS, 4, &sq);
+    /* An image handle live in no session: the fragment draws nothing. */
+    kui_fragment_with(ui, KUI_STR(""), f->sampler, f->dead, CONF_FRAGMENT_IMAGE_PARAMS, 4, &sq);
     kui_close(ui);
 
     kui_close(ui);
