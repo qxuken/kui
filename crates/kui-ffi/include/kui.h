@@ -350,8 +350,12 @@ enum {
 };
 /* Text edit flags (kui_text_edit). AUTOFOCUS asks once: the editor takes
  * focus on the frame the flag starts being declared, and only while
- * nothing holds focus (docs/adr/0022-focus-regions.md, decision 9). */
-enum { KUI_EDIT_MULTILINE = 1u << 0, KUI_EDIT_AUTOFOCUS = 1u << 1 };
+ * nothing holds focus (docs/adr/0022-focus-regions.md, decision 9). WRAP
+ * is the wrap row declared on a single-line field: it folds to its width
+ * by KuiTextStyle.wrap the way a document does, and keeps a field's
+ * keyboard - Enter submits, no newline is admitted, the caret opens at
+ * the end. A MULTILINE editor wraps either way. */
+enum { KUI_EDIT_MULTILINE = 1u << 0, KUI_EDIT_AUTOFOCUS = 1u << 1, KUI_EDIT_WRAP = 1u << 2 };
 /* Float modes (KuiSpec.float_mode). For the named presets the other
  * bindings take ("below", "above", ...), see kui_spec_float_preset. */
 enum { KUI_FLOAT_NONE = 0, KUI_FLOAT_PARENT = 1, KUI_FLOAT_VIEWPORT = 2 };

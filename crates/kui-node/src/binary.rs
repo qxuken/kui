@@ -494,6 +494,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
                 style: p.style,
                 multiline: flags & 1 != 0,
                 autofocus: flags & 2 != 0,
+                wrap: p.wrap,
                 ..Default::default()
             };
             ui.core().text_edit(label, initial, &opts, p.spec);

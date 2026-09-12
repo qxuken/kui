@@ -2296,6 +2296,32 @@ test('a right-click leaves keyboard focus where it was', () => {
   assert.notEqual(ctx.focused(), noteKey);
 });
 
+// F44: a single-line editor with `wrap` declared folds to its width the way
+// a document does, and keeps a field's keyboard. The row is a shared text
+// row, so the allow-list admits it on `<edit>` without a word.
+test('an edit with wrap folds to its width, submits on Enter, and warns nothing', () => {
+  const ctx = new Ctx();
+  const seed = 'a considerably longer label than the box is wide';
+  const view = (initial) =>
+    box({}, [el('edit', { initial, size: 16, width: 209, wrap: 'word', label: 'Note', autofocus: true }, [], 'note')]);
+  ctx.frame(320, 240, 1, view(seed));
+  const note = () => ctx.accessTree().nodes.find((n) => n.name === 'Note');
+  assert.equal(note().runs.length, 2, 'the draft folds onto two lines');
+  assert.ok(note().rect.h > 30, `and the box is two lines tall: ${note().rect.h}`);
+  assert.deepEqual(ctx.warnings().filter((w) => w.code === 'unknown-prop'), []);
+
+  ctx.key('enter');
+  const evs = ctx.pollEvents();
+  assert.equal(evs.length, 1);
+  assert.equal(evs[0].payload.kind, 'submit', 'Enter on a folded field submits');
+  assert.equal(ctx.editText('note'), seed, 'and no newline went in');
+
+  // Without the row the same field is one line, scrolled (F41).
+  const plain = new Ctx();
+  plain.frame(320, 240, 1, box({}, [el('edit', { initial: seed, size: 16, width: 209, label: 'Note' }, [], 'note')]));
+  assert.equal(plain.accessTree().nodes.find((n) => n.name === 'Note').runs.length, 1);
+});
+
 test('a changed viewport emits one resize event', () => {
   const ctx = new Ctx();
   ctx.frame(320, 240, 1, box({}));
@@ -2651,7 +2677,7 @@ const SCENE_TREES = {
       box({ pad: 10, gap: 6, onContextMenu: { kind: 'menu' } }, [
         el('button', { onClick: { kind: 'go' }, description: 'Starts the run' }, ['go']),
         el('button', { onClick: { kind: 'stop' }, label: 'Stop the run', disabled: true, tooltip: 'Nothing is running' }, ['stop']),
-        el('edit', { initial: 'hello', size: 13, width: 160, label: 'Note' }, [], 'note'),
+        el('edit', { initial: 'hello, on two lines in a narrow field', size: 13, width: 160, wrap: 'word', label: 'Note' }, [], 'note'),
         box(
           {
             width: 120,

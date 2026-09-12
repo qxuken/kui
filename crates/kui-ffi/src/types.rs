@@ -1780,6 +1780,15 @@ pub const KUI_KMOD_CTRL: u32 = 1 << 1;
 pub const KUI_KMOD_ALT: u32 = 1 << 2;
 pub const KUI_KMOD_SUPER: u32 = 1 << 3;
 
+/// `KUI_EDIT_*`: the flags `kui_text_edit` takes. `WRAP` is the `wrap`
+/// row declared on a field (the mode is `KuiTextStyle.wrap`, whose zero
+/// is `KUI_WRAP_WORD`, so the style alone cannot say): the field folds to
+/// its width the way a document does and keeps a field's keyboard
+/// (backlog F44).
+pub const KUI_EDIT_MULTILINE: u32 = 1 << 0;
+pub const KUI_EDIT_AUTOFOCUS: u32 = 1 << 1;
+pub const KUI_EDIT_WRAP: u32 = 1 << 2;
+
 /// `KUI_MOD_*`: the editing modifiers `kui_input_key` takes — extend the
 /// selection, move by word, move by document.
 pub const KUI_MOD_SHIFT: u32 = 1 << 0;

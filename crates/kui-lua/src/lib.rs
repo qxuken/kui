@@ -1358,6 +1358,7 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
                 style: p.style,
                 multiline: t.get::<Option<bool>>("multiline")?.unwrap_or(false),
                 autofocus: t.get::<Option<bool>>("autofocus")?.unwrap_or(false),
+                wrap: p.wrap,
                 ..Default::default()
             };
             ui.text_edit(&label, &initial, &opts, p.spec);
