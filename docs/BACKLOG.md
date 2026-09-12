@@ -1589,7 +1589,24 @@ struct cast to its own type in `slots/host.c`) and a `test.mjs` pin on
 dlopen flags Windows does not have. All three fixed before the tag and
 recorded in the CHANGELOG's Native verification. One thing seen and left:
 
-### `.` W13 — `npm run gen` writes a different `docs/props.md` on Windows
+### `.` W13 — `npm run gen` writes a different `docs/props.md` on Windows — **done (2026-09-12)**
+
+**Done (2026-09-12), the first way.** `MetricRole` carries
+`platform: Option<PlatformValue { windows, elsewhere }>`, `Some` on
+`titlebar_h` and `None` on the fifteen densities; the two numbers are
+`metrics::TITLEBAR_H_WINDOWS` / `TITLEBAR_H_ELSEWHERE` and
+`Metrics::comfortable()` picks the running one from them, so the row
+and the struct cannot drift. The addon's `protocol()` writes the pair
+beside `stock` and `compact` (which stay the running platform's
+reading, as every other consumer wants), and `gen-types.mjs` prints
+`32 / 34` in both columns for a platform row, with one sentence above
+the table saying what the slash means. Both columns because
+`compact()` leaves a platform row alone, and
+`metric_roles_restate_the_metrics_exactly` now pins that — and that
+the pair's member for this platform is what `default()` and
+`compact()` read. Generated on Windows, the diff against the committed
+unix file is exactly the intended line and nothing else; CI's Linux
+run will write the same bytes. Nothing shipped changed.
 
 `docs/props.md`'s metrics table has a Stock and a Compact column, and
 `gen-types.mjs` fills them by asking the addon for

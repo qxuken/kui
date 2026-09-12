@@ -343,6 +343,25 @@ pub fn protocol_tables() -> Vec<(&'static str, Json)> {
                                     "compact",
                                     Json::from((r.get)(&kui_core::Metrics::compact()) as f64),
                                 ),
+                                // The pair for a row that is the platform's
+                                // (W13): `stock` and `compact` above are the
+                                // running platform's reading, and a generator
+                                // prints this instead so its output does not
+                                // say where it ran.
+                                (
+                                    "platform",
+                                    r.platform.map_or(Json::Null, |p| {
+                                        Json::Object(
+                                            [
+                                                ("windows", Json::from(p.windows as f64)),
+                                                ("elsewhere", Json::from(p.elsewhere as f64)),
+                                            ]
+                                            .into_iter()
+                                            .map(|(k, v)| (k.to_string(), v))
+                                            .collect(),
+                                        )
+                                    }),
+                                ),
                             ]
                             .into_iter()
                             .map(|(k, v)| (k.to_string(), v))

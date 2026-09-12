@@ -360,6 +360,26 @@ Nothing.
   nobody's whatever was minted before, which the scene's dead `src` and
   the doors' "no image" both rest on.
 
+- **`npm run gen` writes the same `docs/props.md` on every platform**
+  (backlog W13, from the alpha.11 Windows round). The metrics table's
+  stock and compact columns were the addon's reading of
+  `Metrics::default()` and `Metrics::compact()`, and `titlebar_h` is the
+  platform's caption height — `cfg!(target_os = "windows") ? 32 : 34` —
+  so the file said `34 | 34` from macOS or Linux and `32 | 32` from
+  Windows, a one-line diff that was not staleness and either got
+  committed (and failed CI's Linux `git diff --exit-code`) or had to be
+  known about and reverted. The row now says what is true:
+  `MetricRole::platform` is `Some(PlatformValue { windows, elsewhere })`
+  for a metric that is the platform's rather than a density's, the two
+  numbers live as `metrics::TITLEBAR_H_WINDOWS` / `TITLEBAR_H_ELSEWHERE`
+  and `comfortable()` picks the running one from them, the addon's
+  `protocol()` carries the pair beside `stock` and `compact`, and the
+  generator prints `32 / 34` in both columns for such a row (both,
+  because `compact()` leaves a platform row alone — the schema test pins
+  that, and that the pair is what the struct reads here). Nothing shipped
+  changes: `Metrics::default()` was right on every platform; only the
+  printed table depended on where it was printed.
+
 ### What you can delete
 
 The `isDark ? light : dark` branch in front of every app colour that

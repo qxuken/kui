@@ -364,6 +364,9 @@ script reads but does not set, as with the theme). The conformance corpus
 runs with the stock set, which is what keeps "the stock button is 15-px
 text in 14×8 padding" a sentence about kui rather than about an app.
 
+A value written `32 / 34` is the platform's own — Windows first, then
+everywhere else — and `compact` leaves it alone.
+
 | metric | Node | stock | compact | description |
 |---|---|---|---|---|
 | `control_text` | `controlText` | 15 | 13 | A stock control's label: the button's text size. |
@@ -381,4 +384,4 @@ text in 14×8 padding" a sentence about kui rather than about an app.
 | `menu_pad_y` | `menuPadY` | 5 | 3 | A menu row's vertical padding; a menu-bar title's is two px less. |
 | `menu_width` | `menuWidth` | 200 | 180 | A menu panel's width. |
 | `menu_bar_h` | `menuBarH` | 26 | 22 | The drawn menu bar's height. |
-| `titlebar_h` | `titlebarH` | 34 | 34 | The titlebar's height: the platform's caption height, 32 on Windows and 34 elsewhere. |
+| `titlebar_h` | `titlebarH` | 32 / 34 | 32 / 34 | The titlebar's height: the platform's caption height, 32 on Windows and 34 elsewhere. |

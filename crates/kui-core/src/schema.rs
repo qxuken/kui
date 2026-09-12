@@ -2188,6 +2188,31 @@ pub struct MetricRole {
     pub doc: &'static str,
     pub get: fn(&crate::metrics::Metrics) -> f32,
     pub set: fn(&mut crate::metrics::Metrics, f32),
+    /// `Some` for a row whose stock value is the platform's own rather
+    /// than a density's: the value on Windows, then everywhere else.
+    /// `get` answers for the running platform; a generator prints the
+    /// pair, so `docs/props.md` reads the same whichever machine wrote it
+    /// (backlog W13). Stock and compact share it — the test below pins
+    /// that `compact()` leaves such a row alone.
+    pub platform: Option<PlatformValue>,
+}
+
+/// A metric's value per platform (see [`MetricRole::platform`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PlatformValue {
+    pub windows: f32,
+    pub elsewhere: f32,
+}
+
+impl PlatformValue {
+    /// The member in force on the platform this was compiled for.
+    pub const fn here(self) -> f32 {
+        if cfg!(target_os = "windows") {
+            self.windows
+        } else {
+            self.elsewhere
+        }
+    }
 }
 
 macro_rules! metric_role {
@@ -2198,6 +2223,20 @@ macro_rules! metric_role {
             get: |m| m.$field,
             set: |m, v| m.$field = v,
             doc: $doc,
+            platform: None,
+        }
+    };
+    ($field:ident, $node:literal, $doc:literal, windows $w:expr, elsewhere $e:expr) => {
+        MetricRole {
+            name: stringify!($field),
+            node: $node,
+            get: |m| m.$field,
+            set: |m, v| m.$field = v,
+            doc: $doc,
+            platform: Some(PlatformValue {
+                windows: $w,
+                elsewhere: $e,
+            }),
         }
     };
 }
@@ -2253,7 +2292,9 @@ pub const METRIC_ROLES: &[MetricRole] = &[
     metric_role!(
         titlebar_h,
         "titlebarH",
-        "The titlebar's height: the platform's caption height, 32 on Windows and 34 elsewhere."
+        "The titlebar's height: the platform's caption height, 32 on Windows and 34 elsewhere.",
+        windows crate::metrics::TITLEBAR_H_WINDOWS,
+        elsewhere crate::metrics::TITLEBAR_H_ELSEWHERE
     ),
 ];
 
@@ -2718,7 +2759,28 @@ mod tests {
             );
             let camel = snake_to_camel(row.name);
             assert_eq!(row.node, camel, "{}'s Node spelling", row.name);
+            // A platform row's pair is what the struct reads on this
+            // platform, in both sets: the generator prints the pair for
+            // both columns on the strength of this (W13).
+            if let Some(p) = row.platform {
+                assert_eq!(
+                    (row.get)(&Metrics::default()),
+                    p.here(),
+                    "{}'s stock value",
+                    row.name
+                );
+                assert_eq!(
+                    (row.get)(&m),
+                    p.here(),
+                    "{}: compact leaves a platform row alone",
+                    row.name
+                );
+            }
         }
+        assert!(
+            METRIC_ROLES.iter().any(|r| r.platform.is_some()),
+            "titlebar_h is the platform's; its row says so"
+        );
     }
 
     /// `THEME_ROLES` restates `Theme`; this pins the two together the way

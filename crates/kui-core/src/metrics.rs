@@ -31,6 +31,15 @@
 //! padding*, not "spacing unit 3", and a view that wants a number between
 //! two has arithmetic.
 
+/// The titlebar's height on Windows and everywhere else: the caption
+/// height the OS draws, so the one metric that is the platform's rather
+/// than a density's. Named here so [`Metrics::comfortable`] picks the
+/// running one and the schema row (`MetricRole::platform`) carries both,
+/// which is what keeps a generated table from saying which machine wrote
+/// it (backlog W13).
+pub const TITLEBAR_H_WINDOWS: f32 = 32.0;
+pub const TITLEBAR_H_ELSEWHERE: f32 = 34.0;
+
 /// The sizes the stock widgets are built from. Plain data and [`Copy`]: a
 /// view reads it off `ui.metrics()` and may keep or change its own copy,
 /// and `Core::set_metrics` makes one the frame's.
@@ -105,9 +114,9 @@ impl Metrics {
             menu_width: 200.0,
             menu_bar_h: 26.0,
             titlebar_h: if cfg!(target_os = "windows") {
-                32.0
+                TITLEBAR_H_WINDOWS
             } else {
-                34.0
+                TITLEBAR_H_ELSEWHERE
             },
         }
     }
