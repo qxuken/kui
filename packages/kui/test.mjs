@@ -13,7 +13,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { constants as osConstants, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Ctx, KuiWindow, clipStride, createApp, createEncoder, decodeQuads, protocol, quadStride, virtualColumn, withEffects } from './index.js';
+import { Ctx, KuiWindow, clipStride, createApp, createEncoder, decodeQuads, protocol, quadStride, runWindowed, virtualColumn, withEffects } from './index.js';
 
 const box = (props, children = [], key) => ({ type: 'box', key, props, children });
 const text = (children, props = {}) => ({ type: 'text', props, children: [].concat(children) });
@@ -1686,6 +1686,98 @@ test('a loop that holds its own clock is told to use runOut instead (F30)', () =
   assert.throws(() => app.settled(), /runOut/);
   assert.throws(() => app.frame(), /runOut/);
   assert.equal(app.runOut(), 0);
+});
+
+/** A stand-in window over a real headless `Ctx`, for running `runWindowed`
+ *  itself — its pump order and all — without a display. What makes it a
+ *  window and not a `Ctx`: it keeps the last tree `setView` showed, and
+ *  its `pump()` re-lowers that tree through the same core, which is what
+ *  a real runner does between pumps for a caret blink, a pointer crossing
+ *  a hover node, a live resize, or a redraw a call asked for. A seed the
+ *  core holds for the next view expires on whichever frame comes first,
+ *  so an older tree re-lowered there drops it with the warning. Closes
+ *  after `pumps` pumps, which is when `runWindowed` resolves. */
+function retainedWindow({ pumps }) {
+  const ctx = new Ctx();
+  let last = null;
+  let left = pumps;
+  return {
+    relowered: 0,
+    setView(tree) {
+      last = tree;
+      ctx.frame(320, 240, 1, tree);
+    },
+    pump() {
+      if (last) {
+        this.relowered += 1;
+        ctx.frame(320, 240, 1, last);
+      }
+      left -= 1;
+      return left > 0;
+    },
+    animating: () => ctx.animating(),
+    nextDeadlineMs: () => null,
+    pollEvents: () => ctx.pollEvents(),
+    warnings: () => ctx.warnings(),
+    setDiagnostics: (on) => ctx.setDiagnostics(on),
+    stats: () => ctx.stats(),
+    setEditText: (key, text) => ctx.setEditText(key, text),
+    editText: (key) => ctx.editText(key),
+  };
+}
+
+test('a dispatch outside the loop is drawn before the runner pumps, so the seed it held lands (F42)', async () => {
+  // The mind map's sequence, from a promise rather than an event: the
+  // `update` that opens a rename sets the field's text by label, and the
+  // core holds it for the frame that declares the editor. On the event
+  // path `update`, `view` and `setView` share one turn, so the next frame
+  // the runner paints is the new tree and the seed lands. From a promise
+  // the `update` runs in its own turn, and the driver used to go
+  // `win.pump()` then `app.step()` — so the runner's redraw came first,
+  // re-lowered the tree the window already had, which declares no editor,
+  // and the hold expired there with `edit-text-without-editor`; `step()`
+  // then drew the editor seeded from `initial`. Now the driver draws the
+  // model that `dispatch` changed *before* it pumps.
+  const win = retainedWindow({ pumps: 3 });
+  let app;
+  let views = 0;
+  const model = await runWindowed(
+    {
+      init: { editing: false, name: 'Ideas' },
+      update: (m, msg) => {
+        if (msg !== 'beginEdit') return m;
+        win.setEditText('field', m.name);
+        return { ...m, editing: true };
+      },
+      view: (m) => {
+        views += 1;
+        return box({ pad: 4 }, [
+          m.editing
+            ? el('edit', { initial: '', label: 'Name', width: 200 }, [], 'field')
+            : box({ width: 50, height: 20 }, [], 'row'),
+        ]);
+      },
+    },
+    {
+      surface: win,
+      warnings: false,
+      setup: (_win, loop) => {
+        app = loop;
+        // A dispatch the loop did not make: after the first pump has
+        // painted, from the promise that says so.
+        app.frame().then(() => app.dispatch('beginEdit'));
+      },
+    },
+  );
+  assert.equal(model.editing, true, 'the window closed on the model the dispatch made');
+  assert.deepEqual(
+    app.warnings.filter((w) => w.code === 'edit-text-without-editor'),
+    [],
+    'no runner redraw lowered a tree older than the dispatch',
+  );
+  assert.equal(win.editText('field'), 'Ideas', 'the editor opened with the text update held');
+  assert.equal(views, 2, 'the first frame and the one the dispatch owed; a re-lower runs no view');
+  assert.ok(win.relowered >= 2, `the runner painted between pumps: ${win.relowered}`);
 });
 
 test('render and an event-driven frame share the clock advance moves (F1)', () => {
