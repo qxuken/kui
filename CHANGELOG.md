@@ -17,6 +17,36 @@ for the reader deciding whether to upgrade. Earlier sections keep the shape
 they shipped with and are not retrofitted (backlog F31, from the alpha.8
 field reports).
 
+## 0.1.0-alpha.12 (unreleased)
+
+**What breaks.** Nothing.
+
+- **A `dispatch` made outside the loop no longer loses a `setEditText`
+  seed to the redraw the call itself asked for** (backlog F42, from the
+  mind map's alpha.11 report: `sync: views=1 field=absent`, `frame +1:
+  views=2 field=absent`, `frame +2: field=present`, with
+  `edit-text-without-editor` raised between, so a reopened editor came
+  back with the abandoned draft over the model's text). Two halves. On
+  the driver's side, `runWindowed` draws the model a foreign `dispatch`
+  changed — from `setup`, a timer, a promise, an effect handler —
+  **before** `win.pump()`, so no runner redraw (a caret blink, a hover, a
+  resize, or one a call asked for) can re-lower a tree older than that
+  `dispatch`; the pump-then-step order for events stays, and `dispatch`
+  still does not draw synchronously. On the binding's side, `setEditText`
+  asks for a redraw only when the text reached an editor: a seed the core
+  held changed nothing on screen, and the frame that will is the app's.
+  `Core::set_edit_text` / `set_edit_text_by_label` (and `Ui`'s two) now
+  return whether the text landed, which is what the binding reads.
+  `runWindowed` takes a `surface` option the way `createApp` does, so a
+  test can run the driver itself — pump order and all — over a stand-in
+  window; the guard does exactly that, over a stand-in whose `pump()`
+  re-lowers its last tree through a real `Ctx`.
+
+  *What you can delete:* an `app.frame()` (or a `setTimeout`) an app
+  awaited between a foreign `dispatch` and a `setEditText` so the seed
+  would land, and a `setEditText` repeated on the frame after a rename
+  opened to paper over the draft that came back.
+
 ## 0.1.0-alpha.11 (2026-09-11)
 
 **What breaks.**

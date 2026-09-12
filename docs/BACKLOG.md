@@ -24,8 +24,8 @@ archive. Nothing was renumbered in any of those moves, and nothing ever is.
 
 What is left here: F42–F49 from the two alpha.11 upgrade reports, filed
 2026-09-12 (two defects — a foreign `dispatch` losing a `setEditText` seed
-to the redraw the call asked for, and `env.viewport` reading the window
-against its own schema row — one gap with no spelling, the label editor,
+to the redraw the call asked for, done the same day, and `env.viewport`
+reading the window against its own schema row — one gap with no spelling, the label editor,
 and five wishes with their shapes written, two of them carried unanswered
 from alpha.10), T4 the same day (tokens beside the theme — a question
 with the ADR as its deliverable), C30, filed 2026-09-12 (always on top — a window level
@@ -607,7 +607,26 @@ paints. The mind map lost a seed to that paint; the pomodoro's test lost
 a one-frame `<audio>` node to the tick that fired first. F42 is the half
 that is the driver's.
 
-### `!` F42 — A foreign `dispatch` loses the `setEditText` seed to the redraw the call itself asked for
+### `!` F42 — A foreign `dispatch` loses the `setEditText` seed to the redraw the call itself asked for — **done (2026-09-12)**
+
+**Done (2026-09-12), both halves as the entry asks.** (1) `createLoop`
+gained an `[OWED]` door beside `[BUDGET]` and `[FAILED]` — draw the
+model a `dispatch` outside the loop changed, say whether it did — and
+`runWindowed`'s pump calls it *before* `win.pump()`, so no runner redraw
+lowers a tree older than that `dispatch`; pump-then-step for events
+stays, `dispatch` still draws nothing itself, and the draw counts as
+work for the pacing. (2) `EditStore::set_text`, `Core::set_edit_text`
+and `set_edit_text_by_label` (and `Ui`'s two) return whether the text
+landed or was held, and kui-node's `set_edit_text` redraws only on the
+first; Lua and C ignore the flag, their prototypes unchanged. The guard
+runs the driver itself: `runWindowed` takes `surface` the way
+`createApp` does, and `retainedWindow` in `packages/kui/test.mjs` is a
+stand-in whose `pump()` re-lowers its last tree through a real `Ctx` —
+the report's sequence, from a `frame()` promise, pins no warning, the
+editor seeded, and two views for three pumps; with the pre-pump draw
+removed it goes red on exactly the warning. `set_text_says_whether_it_
+landed_or_was_held` in `crates/kui-core/tests/editing.rs` pins the flag
+in both spellings. CHANGELOG under alpha.12.
 
 **Symptom** (mind map, "a foreign `dispatch` draws now, and drops what
 `update` held"): dispatching `beginEdit` from outside the loop, then
@@ -1270,10 +1289,11 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** The alpha.11 field round, filed 2026-09-12: F42 and F43
-first, since both are defects that ship — the pump order in `runWindowed`
-plus the held seed's redraw, and `env_facts().viewport` reading `dt_area`
-with `size()` answering for the dock — then F44 (`wrap` on a single-line
+**Build next.** The alpha.11 field round, filed 2026-09-12: F42 is done
+the same day (the pump order in `runWindowed` plus the held seed's
+redraw); F43 next, since it is a defect that ships —
+`env_facts().viewport` reading `dt_area` with `size()` answering for the
+dock — then F44 (`wrap` on a single-line
 editor), then F45, F46, F47 and F49 in any order, each a small change with
 its guard named in the entry, and F48 once the bridge's activation signal
 is confirmed to reach the shell on all three platforms. T4 is an ADR to
