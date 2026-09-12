@@ -21,6 +21,7 @@ use super::*;
 pub(crate) fn sync_env(
     pane: &mut Pane,
     system: &system_env::Queried,
+    pinned: SystemEnv,
     chrome: Chrome,
     audio: AudioEnv,
 ) {
@@ -39,12 +40,7 @@ pub(crate) fn sync_env(
     // into another appearance the way it drifts onto another monitor —
     // and taking focus back re-asks both, which covers a change the
     // platform did not report.
-    pane.core.env.system = SystemEnv {
-        appearance: pane.appearance,
-        accent: system.accent,
-        motion: system.motion,
-        locale: system.locale,
-    };
+    pane.core.env.system = system_reading(pane.appearance, system, pinned);
     pane.core.env.window = WindowEnv {
         id: pane.id,
         custom_chrome: chrome != Chrome::Native,
@@ -57,6 +53,28 @@ pub(crate) fn sync_env(
     // because the driver opens it off-thread and closes it when idle, and
     // both of those happen between frames.
     pane.core.env.audio = audio;
+}
+
+/// What a window's views read as `env.system`: the OS's four settings —
+/// the appearance off the window, the other three from `system_env` —
+/// with what the app pinned laid over them (`Launcher::system`, backlog
+/// F47). Being applied here, in the write that happens before every frame,
+/// is what makes the pin hold: a reading pushed into `core.env` from
+/// anywhere else would be gone by the next `sync_env`, which is why a
+/// window has no `set_env`. The fields the app left unknown are still the
+/// OS's, so a real change to one of them still arrives — and the `system`
+/// event that reports it carries the pin, since the event is the reading.
+pub(crate) fn system_reading(
+    appearance: Appearance,
+    queried: &system_env::Queried,
+    pinned: SystemEnv,
+) -> SystemEnv {
+    pinned.over(SystemEnv {
+        appearance,
+        accent: queried.accent,
+        motion: queried.motion,
+        locale: queried.locale,
+    })
 }
 
 /// A window's OS light/dark setting, as `env.system.appearance`.
@@ -298,5 +316,59 @@ impl Pane {
             alt: self.modifiers.alt_key(),
             super_key: self.modifiers.super_key(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The pin is laid over the OS's answer field by field: a launcher that
+    /// pinned `motion` reads reduced motion whatever the machine says, and
+    /// the appearance, accent and locale are still the OS's — so a real
+    /// change to those still reaches the view (backlog F47).
+    #[test]
+    fn a_pinned_field_beats_the_query_and_the_rest_stay_the_oss() {
+        let queried = system_env::Queried {
+            accent: Some(Color::hex(0x0a84ffff)),
+            motion: MotionPref::Full,
+            locale: Locale::new("en-US"),
+        };
+        let none = SystemEnv::default();
+        // Nothing pinned: the reading is the query plus the window's
+        // appearance, as before the pin existed.
+        assert_eq!(
+            system_reading(Appearance::Light, &queried, none),
+            SystemEnv {
+                appearance: Appearance::Light,
+                accent: queried.accent,
+                motion: MotionPref::Full,
+                locale: queried.locale,
+            }
+        );
+        let less_motion = SystemEnv {
+            motion: MotionPref::Reduced,
+            ..Default::default()
+        };
+        let read = system_reading(Appearance::Light, &queried, less_motion);
+        assert_eq!(
+            read.motion,
+            MotionPref::Reduced,
+            "the pin wins over a real Full"
+        );
+        assert_eq!(read.appearance, Appearance::Light);
+        assert_eq!(read.accent, queried.accent);
+        assert_eq!(read.locale, queried.locale);
+        // The OS moved on an unpinned field: the reading follows it, and
+        // the pin is still there.
+        let dark = system_reading(Appearance::Dark, &queried, less_motion);
+        assert_eq!(dark.appearance, Appearance::Dark);
+        assert_eq!(dark.motion, MotionPref::Reduced);
+        // A pin on a field the platform cannot answer is the reading.
+        let mute = system_env::Queried::default();
+        assert_eq!(
+            system_reading(Appearance::Unknown, &mute, less_motion).motion,
+            MotionPref::Reduced
+        );
     }
 }
