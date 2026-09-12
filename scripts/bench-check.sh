@@ -141,6 +141,10 @@ const GUARDED = [
   "frame_1k_typical",
   "frame_10k_rects_with_text_and_hits",
   "deep_nesting_64_levels",
+  // Ten thousand leaf floats: what the float stack costs per float (ADR
+  // 0023), which the four above cannot see - C29 found +12% here while
+  // they read flat.
+  "frame_10k_segments",
 ];
 const UNIT = { ns: 1, "µs": 1e3, us: 1e3, ms: 1e6, s: 1e9 };
 

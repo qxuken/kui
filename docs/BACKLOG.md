@@ -36,10 +36,15 @@ alpha.12 tag moves them. T5 the same day (derived tokens, what
 building ADR 0027 left out), C30, filed 2026-09-12 (always on top — a window level
 no binding can ask for, with the shape to build it written), C31, found
 the same day building the tokens (Node's corpus adapter disagreeing with
-the reference on one scene when run alone, and doing so before the build), C29 from the
-alpha.11 pre-tag round (four unguarded
-bench rows reproducibly slower than alpha.10, filed with the numbers and
-a bisect to run), V2–V8 from the canvas question of 2026-09-11 (five
+the reference on one scene when run alone — **done the same evening**:
+the handle was raw 1, the first the mint hands out, and the fixtures now
+remove one instead), C29 from the alpha.11 pre-tag round (four unguarded
+bench rows reproducibly slower than alpha.10 — **swept the same
+evening**, 63 commits on four rows: one step at ADR 0023, half of it
+taken back, the row guarded), W13 from the Windows half of that round
+(`npm run gen` writing a different `props.md` on Windows — **done the
+same evening**, the row carries both platforms' values), V2–V8 from the
+canvas question of 2026-09-11 (five
 waiting for a view, two declined with a condition — V1, the one with an
 order attached, was built the round after, on 2026-09-11), three parked
 headings — C12, C13 and C14, each waiting for a view that wants it — B1
@@ -1539,7 +1544,60 @@ alpha.10 on a readable run — and four unguarded rows were not, which the
 round reports rather than judges. Filed here so the next performance
 round starts from numbers instead of from a feeling.
 
-### `.` C29 — Four unguarded rows read 4–12% slower than alpha.10, reproducibly
+### `.` C29 — Four unguarded rows read 4–12% slower than alpha.10, reproducibly — **done (2026-09-12)**
+
+**Done (2026-09-12): swept, not bisected, and one cause taken back.**
+Rather than six probes a row, every one of the 63 commits between the
+two tags that touch `crates/kui-core/src` was benched in tree order on
+the four rows, two runs each, the lower median kept (Ryzen 9 9950X3D,
+Windows 11, rustc 1.98.1, run-to-run spread under 1% — the M3 Pro's
+readings reproduce here first: seg +11.5%, drop +3.8%, sq +3.4%, rd
++5.2% at alpha.11, and HEAD reads the same as the tag). The sweep is
+one line a commit, and it reads:
+
+- **`frame_10k_segments`: one step, `f2ff4e7` (ADR 0023).** Flat at
+  ~705 µs through the 36 commits before it, 782 µs at it (+11%), 761
+  after `a3f6877` gave a third back, then a drift to ~775 and 789 at the
+  tag. The row is ten thousand one-node floats, and ADR 0023 made each a
+  layer: a stack entry, a `subtree_end`, and **a chrome call per layer**
+  — `emit_layer_chrome` with no scroll region in the layer and no ring
+  to draw, which still fetched the cursor, walked an empty slice and
+  asked `emit_focus_ring` to say no. That last one is taken back: the
+  float pass now skips the call when the layer added no scroll region
+  and `focus_visible` is off, which is every leaf float at rest. The row
+  reads **796 → 759 µs** here (−4.6%), so of ADR 0023's +78 µs half is
+  gone and half — ~3 ns a float for the stack's steady check, the order
+  vector and the per-layer loop — is what the design costs and stays,
+  written down here. `frame_1k_typical_with_100_floats` is unchanged
+  (its hundred floats are tooltips with content, ~250 ns each, and the
+  call was noise inside that), and no corpus scene moved.
+- **`frame_10k_rects_square_clip` and `rounded_clip`: `b30cc98`, plus
+  the clip shrink.** Square is flat at ~707 µs for 60 commits and reads
+  730 at `b30cc98` (+2%); rounded takes +8 µs at `8ab3607` (the clip
+  shrink, +1.1% — priced in the CHANGELOG as +2.5% on the M3), sits at
+  ~745, and reads 766 at `b30cc98` (+2.8%). `b30cc98` is the six-entry
+  round (V1, D1/D2, T2, C26, E3): 1,431 lines, and none of them per node
+  on the rects path — `NodeSpec` is 224 bytes on both sides, `Core` grew
+  the 64 bytes of `Metrics`, the anchor arithmetic in `positions` is per
+  container and behind `spec.anchor`. A +2% that no line accounts for,
+  in a change that re-lays most of the binary, is code placement; its
+  own message recorded "guarded rows +1.2–1.7% inside the spread". Kept
+  and written down; not worth a line-by-line at 2%.
+- **`drop_1k_rows_plain`: no step.** 54–55 µs for the first thirty
+  commits, 55–56 through the selection work, 57 by the tag: +1 µs at
+  `b30cc98` and the rest a drift of a few hundred ns spread over the
+  round, under this machine's own 1% at every commit.
+
+So the entry's arithmetic holds: ADR 0023 was the segment row, the clip
+shrink was a third of the rounded one, and the remaining 2–3% is one
+large merge that moved code rather than added work. **The guard:**
+`frame_10k_segments` is the fifth guarded row in `bench-check.sh`,
+under the same 10% — its spread is under 1% here and under 3% on the
+M3, and it is the only row that sees a per-float cost, which the four
+others read as flat while it read +12%. The sweep's per-commit lines are
+in `target/bench-check/c29-sweep.txt` on the machine that ran them and
+are not checked in; the table above is what to compare the next round
+against.
 
 `scripts/bench-check.sh v0.1.0-alpha.10` on 2026-09-11, run alone on the
 M3 Pro, then the four rows again alone (second run in parentheses; every
@@ -1674,13 +1732,15 @@ bridge (a pin cannot say whether anyone is listening). T4 is built —
 2026-09-12: colour and length tokens beside the theme and the metrics,
 referenced by typed name and resolved by the binding — and T5, the
 derived tokens it left out, waits for the app that computes a hover
-shade to ask. C31 is a small one to take
-before the next Node corpus debugging session: the adapter's `fragments`
-scene fails when run alone and passes in the suite, and did before the
-tokens. Before them
+shade to ask. C31, C29 and W13 went together on the evening of
+2026-09-12: the Node adapter's `fragments` scene named raw 1 as a dead
+image and raw 1 is the first handle a fresh process mints, so the
+fixtures remove one now; the four bench rows were swept commit by
+commit, the segment row's +12% was ADR 0023's chrome call per leaf
+float and half of it is back, the row guarded; and `props.md`'s
+metrics table carries both platforms' `titlebar_h`. Before them
 the open list was C12, C13, C14, F36, B1 and V2–V8 — every one parked on a
-condition — and two entries with work in them: C29, a bisect of four
-bench rows, filed by the alpha.11 pre-tag round, and C30, always on top,
+condition — and one entry with work in it: C30, always on top,
 filed 2026-09-12 as a per-frame fact in `window_title`'s shape with a
 door per binding and a readback in `env.window`. C27 is parked with its measurements. What that round settled
 is on top of each entry in the archive; the two questions worth carrying
@@ -1837,7 +1897,9 @@ fourteen of this one (W3, W4–W12, F32–F35) before the alpha.10 tag, and
 the six of the round of 2026-09-11 (V1, D1, D2, T2, C26 whole, E3) the day
 they were built, and T1, E1 and E2 — closed in their rounds and left here
 — before the alpha.11 tag. This file is now three parked entries, C27
-with its measurements, C29, C30, F36, B1, V2–V8 and this section.
+with its measurements, C30, F36, B1, V2–V8, this section, and the
+entries built since the tag with their outcomes on top (F42–F54, C31,
+C29, W13), waiting for alpha.12 to move them.
 Still open, both waiting on something outside the repo: enable `SMOKE_MACOS`
 / `SMOKE_WINDOWS` the day a runner exists (P8) — which has two jobs waiting
 for it now, F13's launch probe beside the AX audit, sharing the one

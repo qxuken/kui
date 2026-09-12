@@ -380,6 +380,32 @@ Nothing.
   changes: `Metrics::default()` was right on every platform; only the
   printed table depended on where it was printed.
 
+- **A float layer with no chrome no longer pays a chrome call** (backlog
+  C29). The alpha.11 pre-tag round found `frame_10k_segments` +12% over
+  alpha.10 with the guarded rows flat, and filed the bisect. A sweep of
+  every core commit between the tags (63 of them, two runs each) puts
+  the whole step at one commit, ADR 0023's: the row is ten thousand
+  one-node `line` floats and each became a layer, with
+  `emit_layer_chrome` called at the end of every one — fetching the
+  cursor, walking an empty scroll-region slice, and asking
+  `emit_focus_ring` to decline. The float pass now skips that call when
+  the layer added no scroll region and `focus_visible` is off, which is
+  every leaf float at rest: the row reads 796 → 759 µs on the sweep's
+  machine (Ryzen 9 9950X3D), about half of what ADR 0023 added; the
+  other half — the stack's steady check, the order vector, the
+  per-layer loop, ~3 ns a float — is what the design costs and stays.
+  `frame_1k_typical_with_100_floats` is unchanged (tooltips with content
+  are ~250 ns each; the call was noise inside that), and no corpus
+  scene moved. The other three rows the entry named were swept too:
+  the clip rows' +3–5% is the clip shrink (priced in alpha.11) plus one
+  large merge (`b30cc98`) that moved code rather than added a per-node
+  line — `NodeSpec` is 224 bytes on both sides of it — and
+  `drop_1k_rows_plain`'s +4% is a drift of a few hundred nanoseconds
+  with no step in it. Both kept, and written down in the entry.
+  `frame_10k_segments` is now the fifth guarded row in
+  `scripts/bench-check.sh`, since it is the one row that sees a
+  per-float cost.
+
 ### What you can delete
 
 The `isDark ? light : dark` branch in front of every app colour that

@@ -752,14 +752,19 @@ impl Core {
                         self.emit_ghost(g, play, scale)
                     });
                 }
-                self.emit_layer_chrome(
-                    r,
-                    &scroll_regions[chrome_from..],
-                    &mut scrollbars,
-                    hits.len(),
-                    scale,
-                );
-                chrome_from = scroll_regions.len();
+                // A layer with no scroller and no ring to draw has no
+                // chrome: the common float is a leaf, and ten thousand of
+                // them (a `line` each) pay a call apiece otherwise (C29).
+                if scroll_regions.len() > chrome_from || self.focus_visible {
+                    self.emit_layer_chrome(
+                        r,
+                        &scroll_regions[chrome_from..],
+                        &mut scrollbars,
+                        hits.len(),
+                        scale,
+                    );
+                    chrome_from = scroll_regions.len();
+                }
             }
             self.check_layers_over_modal(&order);
         } else if !self.float_stack.is_empty() {
