@@ -3551,12 +3551,15 @@ mod tests {
                     row { key = "a", width = "$gap", height = 10, bg = "$peech", pad = "$peach" },
                     row { key = "b", width = "$peach", height = 10, bg = "$gap" },
                     text("still here", { color = "$peech", size = "$gap" }),
+                    text("still here", { size = 6 }),
+                    text("still here"),
                   }
                 end
             "##,
         )
         .unwrap();
         let mut core = Core::new();
+        core.set_inspect(true);
         frame(&mut core, &mut ext);
         frame(&mut core, &mut ext);
         let ws = core.take_warnings();
@@ -3600,7 +3603,20 @@ mod tests {
             .collect();
         assert!(!glyphs.is_empty(), "the text painted");
         assert!(glyphs.iter().all(|q| q.color == fg), "in the foreground");
-        assert!(glyphs[0].rect.h > 3.0, "at the declared 6 px size, not 0");
+        // At the declared 6 px size, not 0 and not the default: the same
+        // text laid out with a literal `size = 6` is exactly as tall, and
+        // one at the default size is taller. Compared to a control rather
+        // than to a number, since a glyph's height at 6 px is the font's.
+        let heights: Vec<f32> = core
+            .nodes()
+            .iter()
+            .filter(|n| n.text.as_deref() == Some("still here"))
+            .map(|n| n.rect.h)
+            .collect();
+        assert_eq!(heights.len(), 3, "{heights:?}");
+        assert!(heights[0] > 0.0, "{heights:?}");
+        assert_eq!(heights[0], heights[1], "$gap is the literal 6: {heights:?}");
+        assert!(heights[2] > heights[0], "and not the default: {heights:?}");
     }
 
     #[test]
