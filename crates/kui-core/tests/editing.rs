@@ -284,6 +284,35 @@ fn set_text_by_a_declared_label_lands_at_once() {
     );
 }
 
+/// The call says whether the text landed or was held, in both spellings.
+/// A binding redraws on the first and not the second: a redraw on a held
+/// seed re-lowers the retained tree — the one that declares no editor —
+/// and that frame is where the hold expires, so a `dispatch` made outside
+/// the loop lost its seed to the redraw it asked for (backlog F42).
+#[test]
+fn set_text_says_whether_it_landed_or_was_held() {
+    let mut core = Core::new();
+    empty_frame(&mut core);
+    assert!(
+        !core.set_edit_text(field_key(), "held"),
+        "a key nothing declared is held, not applied"
+    );
+    assert!(
+        !core.set_edit_text_by_label("field", "held"),
+        "a label nothing declared is held, not applied"
+    );
+    let key = frame(&mut core, "initial", false);
+    assert!(
+        core.set_edit_text(key, "landed"),
+        "a declared key takes it now"
+    );
+    assert!(
+        core.set_edit_text_by_label("field", "landed"),
+        "a declared label resolves and takes it now"
+    );
+    assert_eq!(core.edit_text(key).unwrap(), "landed");
+}
+
 #[test]
 fn backspace_and_delete() {
     let mut rig = Rig::new("abc", false);

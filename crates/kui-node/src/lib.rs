@@ -2725,14 +2725,24 @@ macro_rules! core_methods {
             /// drops its text with an `edit-text-without-editor` warning,
             /// so a name the view spells differently is a line rather
             /// than a field that opens with the wrong text.
+            ///
+            /// A redraw is asked for only when the text reached an editor.
+            /// A held seed changed nothing on screen, and the frame that
+            /// will — the view that declares the editor — is the app's:
+            /// a redraw here re-lowered the *retained* tree, which declares
+            /// no editor, and that was the frame the hold expired on when
+            /// the call came from a `dispatch` outside the loop (backlog
+            /// F42; `runWindowed` draws that model before it pumps).
             #[napi]
             pub fn set_edit_text(&mut self, key: String, text: String) -> Result<()> {
                 let core = self.$core();
-                match hex_key(&key) {
+                let applied = match hex_key(&key) {
                     Some(k) => core.set_edit_text(k, &text),
                     None => core.set_edit_text_by_label(&key, &text),
+                };
+                if applied {
+                    self.$redraw();
                 }
-                self.$redraw();
                 Ok(())
             }
         }

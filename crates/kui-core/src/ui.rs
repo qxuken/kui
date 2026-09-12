@@ -654,15 +654,17 @@ impl<'a> Ui<'a> {
     }
 
     /// Replaces an editor's text, caret at the end (`Core::set_edit_text`).
-    pub fn set_edit_text(&mut self, key: Key, text: &str) {
-        self.core.set_edit_text(key, text);
+    /// Returns whether it reached an editor now, or was held for the
+    /// frame that declares the key.
+    pub fn set_edit_text(&mut self, key: Key, text: &str) -> bool {
+        self.core.set_edit_text(key, text)
     }
 
     /// The same by the label the view declares, for a caller with no key
     /// yet — an `update` opening a field the editor has not fired an
     /// event from (`Core::set_edit_text_by_label`, backlog F32).
-    pub fn set_edit_text_by_label(&mut self, label: &str, text: &str) {
-        self.core.set_edit_text_by_label(label, text);
+    pub fn set_edit_text_by_label(&mut self, label: &str, text: &str) -> bool {
+        self.core.set_edit_text_by_label(label, text)
     }
 
     /// Says something once, with no node behind it (`Core::announce`).

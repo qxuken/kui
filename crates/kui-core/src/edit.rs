@@ -629,14 +629,19 @@ impl EditStore {
         }))
     }
 
-    pub fn set_text(&mut self, key: Key, text: &str, fs: &mut FontSystem, res: &Resources) {
+    /// Returns whether the text landed in an editor: `false` says it was
+    /// held for the frame that declares the key, so nothing on screen
+    /// changed yet and the frame that will change it is the app's — a
+    /// driver that redraws on every write would re-lower the tree that
+    /// declares no editor and drop the seed to the warning (backlog F42).
+    pub fn set_text(&mut self, key: Key, text: &str, fs: &mut FontSystem, res: &Resources) -> bool {
         let Some(s) = self.states.get_mut(&key) else {
             // Nothing has declared this key yet. The call is not wrong —
             // the `update` that opens an editor runs before the view that
             // declares it — so hold the text for the frame that does
             // (backlog F25) rather than falling through silently.
             self.pending.insert(key, text.to_string());
-            return;
+            return false;
         };
         s.preedit = None;
         let a = attrs_for(&s.style, res);
@@ -653,6 +658,7 @@ impl EditStore {
         s.redo.clear();
         s.coalesce = None;
         self.touch_caret(key);
+        true
     }
 
     /// Holds `text` for the next editor declared under `label`, for a
