@@ -262,8 +262,8 @@ jobs:
             /usr/local/cargo/registry/cache
             /usr/local/cargo/git/db
             target
-          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: cargo-${{ runner.os }}-
+          key: cargo-${{ runner.os }}-v2-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-v2-
 
       - name: Format
         run: cargo fmt --all --check
@@ -421,16 +421,21 @@ jobs:
       # The prune is what keeps the entry from growing without limit. The
       # cache is restored through `restore-keys`, so the target dir a run
       # starts from was built for some older Cargo.lock, and cargo removes
-      # nothing an older build left behind. Every commit changes every
-      # workspace crate, so every commit leaves another set of kui-* rlibs,
-      # test executables, cdylibs and one 400 MB libkui_ffi.a beside the
-      # last commit's, and the next run carries both forward. That is how
-      # run 249 came to restore 9.0 GB and save 10.1 GB of a dir that holds
-      # about 3 GB of anything anyone needs. Only the workspace's own
-      # artifacts go - the dependency builds, which are the reason the
-      # cache exists, stay - and none of it is a loss even when current,
-      # because the steps above recompile the workspace from source on
-      # every run regardless.
+      # nothing an older build left behind - every release, dev-dependency
+      # and stable rustc leaves another set of the workspace's artifacts
+      # beside the last one. Only the workspace's own artifacts go - the
+      # dependency builds, which are the reason the cache exists, stay -
+      # and none of it is a loss even when current, because the steps
+      # above recompile the workspace from source on every run regardless.
+      # The script's header says what accumulated and how it is found; the
+      # short version is that its first cut went by crate name and left
+      # every test, bench and example executable behind, which is most of
+      # the dir. The `v2` in the key is what put the new cut in charge:
+      # the entry under the exact key is one the old cut wrote, and it
+      # would have been restored as is, `cache-hit` true and this step
+      # skipped, until Cargo.lock next moved. A new prefix makes the first
+      # run after it a cold build that saves a pruned entry; the old
+      # entries age out on their own.
       - name: Prune the target dir
         if: github.event_name == 'push' && steps.cargo-cache.outputs.cache-hit != 'true'
         run: scripts/prune-target.sh
