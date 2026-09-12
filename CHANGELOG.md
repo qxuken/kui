@@ -221,38 +221,24 @@ Nothing.
   budget answers the idle gap once the model says 1000. Node-only, as
   `tick` is.
 
-### What you can delete
+### Changed
 
-The `isDark ? light : dark` branch in front of every app colour that
-had a light half, and the `system`-message plumbing that re-ran it; the
-`hex → name` lookup a by-hand round kept in its head while reading the
-inspector; and, for a Lua panel inside a host with a palette, the
-`slot_with(params)` map that carried the host's colours to it
-(ADR 0027).
-
-**Whatever stood in for the OS setting you could not flip** — the
-reduced-motion branch of a view is now reachable in a window from the
-app's own code, on any machine, so nothing outside the view needs to
-pretend the user asked for less motion, and a smoke test that skipped
-that branch for lack of a way to open it can open it.
-
-The `announce` an app made unconditionally because it could not tell
-whether anyone would hear it, and the blink it ran beside it for the
-case nobody would; the `KUI_SCREEN_READER=1` (or equivalent) environment
-variable a test set to flip the app into announcing, now that
-`setEnv({ system: { assistive: 'listening' } })` declares it.
-
-The width an app declared by hand for a rename field because it could not
-use `fit` — it wanted `wrap` — and the "headroom, sideways" margin past
-the widest glyph it kept in front of the field so the echo frame's last
-word had somewhere to go: the field is `width="fit" maxWidth={…}
-wrap="word"` and the core sizes it to the wrapped draft on the keystroke
-frame (F44).
-
-- A `tick.every` chosen as the compromise between the cadence a running
-  countdown needs and the one a stopped one can afford, and the
-  `idlePumpMs` raised to compensate: `every` reads the model now.
-- The `@ts-expect-error` on `clock` in a `runWindowed` call.
+- **`<audio finish>`'s cost, in the app's units.** The `finish` row said a
+  released playback holds one of the device's 128 voices until its file
+  ends and the 129th play is refused, and left the reader to work out how
+  many releases a second that is (backlog F49, from the alpha.11 upgrade
+  reports; carried from pomodoro's alpha.10 wish 3). The row, `props.md`
+  and the howto's audio answer now carry the arithmetic: voices held =
+  sound length × release rate, so a 1.4 s chime released four times a
+  second holds 6 of the 128 at any moment, a 10 s ambience released once
+  a second holds 10, every playback still declared (a loop included)
+  counts beside them, and a `refused` `sound` event is what arriving at
+  128 sounds like. 128 was checked against the driver before it was
+  written down again: `AudioManagerSettings::default()` in kira 0.12.4
+  gives the main track a `sound_capacity` of 128, and every play lands on
+  the main track. The `audio` element's doc in `jsx-runtime.d.ts` is
+  hand-written, not generated from the row, so it took one sentence of the
+  same by hand. No code changed.
 
 ### Fixed
 
@@ -302,24 +288,38 @@ frame (F44).
   window — the ticks and `tick.msg(now)`; the frame clock behind
   `transition` is the runner's own.
 
-### Changed
+### What you can delete
 
-- **`<audio finish>`'s cost, in the app's units.** The `finish` row said a
-  released playback holds one of the device's 128 voices until its file
-  ends and the 129th play is refused, and left the reader to work out how
-  many releases a second that is (backlog F49, from the alpha.11 upgrade
-  reports; carried from pomodoro's alpha.10 wish 3). The row, `props.md`
-  and the howto's audio answer now carry the arithmetic: voices held =
-  sound length × release rate, so a 1.4 s chime released four times a
-  second holds 6 of the 128 at any moment, a 10 s ambience released once
-  a second holds 10, every playback still declared (a loop included)
-  counts beside them, and a `refused` `sound` event is what arriving at
-  128 sounds like. 128 was checked against the driver before it was
-  written down again: `AudioManagerSettings::default()` in kira 0.12.4
-  gives the main track a `sound_capacity` of 128, and every play lands on
-  the main track. The `audio` element's doc in `jsx-runtime.d.ts` is
-  hand-written, not generated from the row, so it took one sentence of the
-  same by hand. No code changed.
+The `isDark ? light : dark` branch in front of every app colour that
+had a light half, and the `system`-message plumbing that re-ran it; the
+`hex → name` lookup a by-hand round kept in its head while reading the
+inspector; and, for a Lua panel inside a host with a palette, the
+`slot_with(params)` map that carried the host's colours to it
+(ADR 0027).
+
+**Whatever stood in for the OS setting you could not flip** — the
+reduced-motion branch of a view is now reachable in a window from the
+app's own code, on any machine, so nothing outside the view needs to
+pretend the user asked for less motion, and a smoke test that skipped
+that branch for lack of a way to open it can open it.
+
+The `announce` an app made unconditionally because it could not tell
+whether anyone would hear it, and the blink it ran beside it for the
+case nobody would; the `KUI_SCREEN_READER=1` (or equivalent) environment
+variable a test set to flip the app into announcing, now that
+`setEnv({ system: { assistive: 'listening' } })` declares it.
+
+The width an app declared by hand for a rename field because it could not
+use `fit` — it wanted `wrap` — and the "headroom, sideways" margin past
+the widest glyph it kept in front of the field so the echo frame's last
+word had somewhere to go: the field is `width="fit" maxWidth={…}
+wrap="word"` and the core sizes it to the wrapped draft on the keystroke
+frame (F44).
+
+- A `tick.every` chosen as the compromise between the cadence a running
+  countdown needs and the one a stopped one can afford, and the
+  `idlePumpMs` raised to compensate: `every` reads the model now.
+- The `@ts-expect-error` on `clock` in a `runWindowed` call.
 
 
 ## 0.1.0-alpha.11 (2026-09-11)
