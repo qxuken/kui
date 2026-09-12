@@ -628,6 +628,47 @@ in this repository, which have no test around them to do the asking.)
 [`access` event](props.md#events) ·
 [alpha.8](../CHANGELOG.md#010-alpha8-2026-09-07)
 
+### How do I see what a window draws for a user who asked for less motion?
+
+Pin it at the launcher. A window's `env.system` is the OS's — the runner
+writes the real reading before every frame, which is why a window has no
+`setEnv` and never will: anything pushed at its core is gone by the next
+view. So the pin goes in where the window is opened, as the app asking in
+its own code, and the runner merges it over the OS's reading inside that
+per-frame write:
+
+```ts
+await runWindowed(app, {
+  system: { motion: 'reduced' },
+  setup: (win, loop) => (async () => {
+    for (let i = 0; i < 5; i += 1) await loop.frame();
+    assert.equal(win.env().system.motion, 'reduced');
+    win.close();
+  })(),
+});
+```
+
+Rust is `kui::app("mine").system(SystemEnv { motion: MotionPref::Reduced,
+..Default::default() })`; C calls `kui_env_set_system` on the context it
+hands `kui_run_with`. The partial is the one `Ctx.setEnv` takes, so the
+branch you assert headless and the window you then look at read one
+spelling — and every field you leave out, `'unknown'` or null is *not
+pinned*: the appearance, accent and locale stay the OS's, a change to one
+of them still arrives as the `system` message, and that message carries
+your pin with it, since it is the whole reading. The examples' harnesses
+take `--motion reduced` for the same look at any example.
+
+It is an option and not an environment variable on purpose, for the reason
+`KUI_SMOKE_FRAMES` is kept out of a shipped build: an app you ship should
+not change its motion because of a variable in the environment it was
+launched from. If the user *did* ask for less motion, the OS says so and
+nothing needs pinning; the pin is for looking, on a machine whose owner
+did not.
+
+[`system.*` rows](props.md#env) ·
+[`system` event](props.md#events) ·
+[alpha.12](../CHANGELOG.md#010-alpha12-unreleased)
+
 ### How do I see what the core thinks is misconfigured?
 
 Every silent misconfiguration comes back as data — `{ code, key, message }`,

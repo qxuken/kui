@@ -84,6 +84,38 @@ pub struct SystemEnv {
     pub locale: Option<Locale>,
 }
 
+impl SystemEnv {
+    /// `self` laid over `base`: every field `self` knows wins, every field
+    /// it left at "cannot tell" is `base`'s. The merge behind a launcher's
+    /// pinned reading (`kui::Launcher::system`, Node's `runWindowed(..,
+    /// {system})`, the context a C host hands `kui_run_with`): the app's
+    /// partial over what the OS answered, applied every frame where the
+    /// runner writes the real reading — so a pinned `motion` survives the
+    /// write, and a real change to the accent still arrives, because that
+    /// field was left unknown here and `base` is the OS's (backlog F47).
+    ///
+    /// Unknown *means* not pinned, which is why there is no separate
+    /// override type: the four "cannot tell" readings are the defaults, so
+    /// `SystemEnv { motion: MotionPref::Reduced, ..Default::default() }` is
+    /// the whole of "as if this user asked for less motion". What it
+    /// cannot say is "pin this to unknown" — a window on a platform that
+    /// answers has no test that needs it.
+    pub fn over(self, base: SystemEnv) -> SystemEnv {
+        SystemEnv {
+            appearance: match self.appearance {
+                Appearance::Unknown => base.appearance,
+                pinned => pinned,
+            },
+            accent: self.accent.or(base.accent),
+            motion: match self.motion {
+                MotionPref::Unknown => base.motion,
+                pinned => pinned,
+            },
+            locale: self.locale.or(base.locale),
+        }
+    }
+}
+
 /// The OS light/dark setting. `Unknown` is a real answer — a host with no
 /// way to ask says it, and a view that has one palette per appearance picks
 /// its own default for it rather than being handed a guess.

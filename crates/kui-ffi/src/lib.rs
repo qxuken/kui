@@ -156,7 +156,9 @@ pub extern "C" fn kui_env_set(ptr: *mut KuiCtx, refresh_hz: f32, focused: bool) 
 ///
 /// Separate from `kui_env_set` because these change when the user opens a
 /// settings app, not when a window moves: push them at startup and on the
-/// OS's change notification. Survives across frames either way.
+/// OS's change notification. Survives across frames either way. On a
+/// context handed to `kui_run_with` it is the window's pin over the OS's
+/// reading instead (backlog F47); see there.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_env_set_system(
     ptr: *mut KuiCtx,

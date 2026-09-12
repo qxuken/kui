@@ -128,6 +128,7 @@ pub fn app(title: &str) -> Launcher {
         diagnostics: None,
         setup_core: Vec::new(),
         deferred_events: false,
+        system: SystemEnv::default(),
     }
 }
 
@@ -154,6 +155,9 @@ pub struct Launcher {
     /// Whether the host answers events after the loop has handed them over
     /// (see [`Launcher::deferred_events`]).
     deferred_events: bool,
+    /// The OS settings the app pinned ([`Launcher::system`]); unknown is
+    /// not pinned.
+    system: SystemEnv,
 }
 
 impl Launcher {
@@ -222,6 +226,32 @@ impl Launcher {
     /// answer one frame late.
     pub fn deferred_events(mut self) -> Self {
         self.deferred_events = true;
+        self
+    }
+
+    /// Pins part of `env.system` for this app's windows: every field of
+    /// `pinned` that is not "cannot tell" is what the views read, over
+    /// whatever the OS says, for as long as the app runs; the fields left
+    /// at their default keep following the OS, and a change to one of
+    /// those still arrives as the `system` event, carrying the pin with it.
+    ///
+    /// ```no_run
+    /// # use kui::{SystemEnv, MotionPref};
+    /// kui::app("mine").system(SystemEnv { motion: MotionPref::Reduced, ..Default::default() });
+    /// ```
+    ///
+    /// For looking at the window a user who asked for less motion, or a
+    /// dark appearance, would get — on a machine whose owner asked for
+    /// neither. The headless core takes the same reading through
+    /// `core.env.system` and needs none of this; a window cannot, because
+    /// its runner writes the real reading before every frame, which is
+    /// why there is no `set_env` on one and this is on the launcher
+    /// instead: the app asking in its own code, the same place
+    /// `KUI_SMOKE_FRAMES` was kept out of a shipped build for — an app you
+    /// ship should not change its motion because of a variable in the
+    /// environment it was launched from (backlog F47).
+    pub fn system(mut self, pinned: SystemEnv) -> Self {
+        self.system = pinned;
         self
     }
 
@@ -341,6 +371,7 @@ impl Launcher {
             gpu: None,
             epoch: std::time::Instant::now(),
             system: system_env::query(),
+            pinned_system: self.system,
             clipboard: arboard::Clipboard::new().ok(),
             #[cfg(target_os = "macos")]
             native_menu: macos_menu::MacMenu::new(),
@@ -796,6 +827,9 @@ struct Shell<A: App> {
     /// evidently been somewhere else. The appearance is not here: it is
     /// per-window and comes off the window itself.
     system: system_env::Queried,
+    /// What the app pinned over it (`Launcher::system`); merged in
+    /// `sync_env`, so it is never lost to the per-frame write.
+    pinned_system: SystemEnv,
     clipboard: Option<arboard::Clipboard>,
     /// The platform's context menu, where the platform has one (ADR 0017
     /// step 3). `None` on every other platform and on a macOS build that
@@ -1070,13 +1104,14 @@ impl<A: App> Shell<A> {
             chrome,
             epoch,
             system,
+            pinned_system,
             audio,
             ..
         } = self;
         let pane = &mut panes[i];
         // What the driver knows and the view only reads, refreshed for
         // this frame (it was already filled in when the pane opened).
-        sync_env(pane, system, *chrome, audio.env());
+        sync_env(pane, system, *pinned_system, *chrome, audio.env());
         let window = &pane.window;
         // The core turns a changed viewport into a `resize` event, routed
         // with the rest of the pending events after this frame.

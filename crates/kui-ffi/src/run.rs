@@ -62,6 +62,18 @@ pub extern "C" fn kui_run(
 /// The host's view declares slots with `kui_slot` exactly as it would
 /// headless, and what an extension's nodes produce reaches the host as
 /// replies carrying that extension's origin.
+///
+/// The context's `env.system` comes along too, as the window's pin: what
+/// the host pushed with `kui_env_set_system` before handing the context
+/// here is laid over the OS's reading before every frame (backlog F47),
+/// so `kui_env_set_system(ctx, 0, 0, KUI_MOTION_REDUCED, empty)` and then
+/// `kui_run_with(ctx, ..)` opens the window as a user who asked for less
+/// motion sees it, and the zero fields keep following the OS. A context
+/// never told anything pins nothing — zero is unknown is not pinned — so
+/// `kui_run` is unchanged. This is the launcher door C has: the ffi's
+/// headless setter is sticky by nature (a C host is its own frame driver
+/// there), and under `kui_run` the runner is, which is why a pin has to
+/// ride in with the context rather than be pushed at a window.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_run_with(
     ptr: *mut KuiCtx,
@@ -71,8 +83,9 @@ pub extern "C" fn kui_run_with(
     user: *mut c_void,
 ) -> bool {
     guard(false, || {
-        let extensions = unsafe { ctx(ptr) }
-            .map_or_else(Default::default, |c| std::mem::take(&mut c.extensions));
+        let (extensions, pinned) = unsafe { ctx(ptr) }.map_or_else(Default::default, |c| {
+            (std::mem::take(&mut c.extensions), c.core().env.system)
+        });
         let app = CApp {
             user,
             view,
@@ -80,6 +93,7 @@ pub extern "C" fn kui_run_with(
         };
         kui::app(&kstr(title))
             .with_extensions(extensions)
+            .system(pinned)
             .run(app)
             .is_ok()
     })

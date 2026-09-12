@@ -608,7 +608,8 @@ package has and does not document, which is F33's shape again and became a
   reduced-motion branch is asserted headless, which is where a machine
   the test is not running on can be described. If a view ever needs the
   override in a window, the place for it is the launcher — an app asking
-  in its own code, the same line `KUI_SMOKE_FRAMES` draws.
+  in its own code, the same line `KUI_SMOKE_FRAMES` draws. (Asked a third
+  time and built in that shape on 2026-09-12: F47.)
 - **`preview.svg` is gitignored**, fourth report running. Theirs, and
   their notes say so.
 
@@ -802,7 +803,38 @@ pump a second. Headless `advance(ms)` fires the same schedule, so it is
 testable; a function returning `0` or less means no tick, as the number
 does. Node-only, as `tick` is.
 
-### `.` F47 — An override for `env.system` in a window, at the launcher
+### `.` F47 — An override for `env.system` in a window, at the launcher — **done (2026-09-12)**
+
+Done: the shape the alpha.10 refusal named, built as written. `SystemEnv`
+is its own override — its four "cannot tell" readings are the defaults,
+so unknown *means* not pinned and no second type crosses a binding —
+and `SystemEnv::over(base)` in the core lays it over a reading field by
+field. The runner applies it in `sync_env`, the per-frame write that made
+`setEnv` on a window a refusal (F39 made it a function; it is called from
+`Shell::redraw` and `push_pane`), which is what makes the pin survive
+every frame; the fields left unknown are still the OS's, so a real change
+to one of them arrives, and the `system` event that reports it carries
+the pin, since the event is the reading — a change to the pinned field
+itself raises nothing, because nothing the view can see moved. Doors:
+Rust `kui::app(..).system(SystemEnv { motion: MotionPref::Reduced,
+..Default::default() })`; Node `runWindowed(config, { system: { motion:
+'reduced' } })` and `new KuiWindow(title, { system })`, typed as
+`EnvInput['system']` so the headless assertion and the window read one
+partial, handed over by `windowOptions(opts)` — the one function that
+picks the constructor's options out of the loop's, exported so the
+hand-over is testable without a display; C by calling
+`kui_env_set_system` on the context handed to `kui_run_with`, which
+already carried the plugins in — no new prototype, nothing for the ABI or
+the header audit, and `kui_run` untouched. Both example harnesses take
+`--motion full|reduced`. Guards: `env.rs` pins the merge and the event
+carrying the pinned reading; `pane.rs` the merge over a `Queried`;
+kui-node the partial's parse (and that its errors name the door);
+test.mjs that `runWindowed`'s option reaches the constructor and that the
+loop's own options do not. Checked on a real window on this machine, which
+reads `motion: 'full'` bare: `'reduced'` before the first frame and after
+five, accent/appearance/locale the OS's, no `system` event. Not an
+environment variable, for the `KUI_SMOKE_FRAMES` reason. `howto.md` has
+the answer under *Test it*.
 
 **Symptom** (pomodoro wish 4, the third ask: alpha.10 wish 2, alpha.11
 wish 4): the reduced-motion half is asserted headless with `setEnv`; a

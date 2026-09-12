@@ -334,7 +334,7 @@ impl<A: App> Shell<A> {
         // first frame (backlog F39).
         let audio = self.audio.env();
         let pane = self.panes.last_mut().expect("just pushed");
-        sync_env(pane, &self.system, self.chrome, audio);
+        sync_env(pane, &self.system, self.pinned_system, self.chrome, audio);
     }
 
     /// The attributes every window of this app is created with: the

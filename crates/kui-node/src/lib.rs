@@ -267,22 +267,35 @@ fn native_controls(v: &Json) -> Result<Option<Rect>> {
     Ok((w > 0.0 && h > 0.0).then(|| Rect::new(x, y, w, h)))
 }
 
+/// `KuiWindow`'s `system` option: `setEnv`'s partial, applied to a blank
+/// reading — so every field left out, `"unknown"` or null stays at the
+/// default, which is the "not pinned" the runner's merge reads it as
+/// (`SystemEnv::over`).
+fn pinned_system(v: &Json) -> Result<SystemEnv> {
+    let o = v
+        .as_object()
+        .ok_or_else(|| err("KuiWindow: `system` must be an object"))?;
+    let mut sys = SystemEnv::default();
+    system_env("KuiWindow `system`", &mut sys, o)?;
+    Ok(sys)
+}
+
 /// `setEnv`'s `system`: the four OS settings, each with an explicit "the
 /// host cannot tell" — `"unknown"` for the two enums, `null` for the two
 /// values. Applied field by field, so a host that learns one of them says
 /// only that one.
-fn system_env(sys: &mut SystemEnv, o: &JsonMap<String, Json>) -> Result<()> {
+fn system_env(who: &str, sys: &mut SystemEnv, o: &JsonMap<String, Json>) -> Result<()> {
     let name = |key: &str, v: &Json| -> Result<String> {
         v.as_str()
             .map(str::to_string)
-            .ok_or_else(|| err(format!("setEnv(): system.{key} must be a string")))
+            .ok_or_else(|| err(format!("{who}: system.{key} must be a string")))
     };
     for (key, v) in o {
         match key.as_str() {
             "appearance" => {
                 sys.appearance = Appearance::parse(&name(key, v)?).ok_or_else(|| {
                     err(format!(
-                        "setEnv(): system.appearance is one of {:?}",
+                        "{who}: system.appearance is one of {:?}",
                         kui_core::schema::APPEARANCES
                     ))
                 })?
@@ -290,7 +303,7 @@ fn system_env(sys: &mut SystemEnv, o: &JsonMap<String, Json>) -> Result<()> {
             "motion" => {
                 sys.motion = MotionPref::parse(&name(key, v)?).ok_or_else(|| {
                     err(format!(
-                        "setEnv(): system.motion is one of {:?}",
+                        "{who}: system.motion is one of {:?}",
                         kui_core::schema::MOTIONS
                     ))
                 })?
@@ -305,15 +318,14 @@ fn system_env(sys: &mut SystemEnv, o: &JsonMap<String, Json>) -> Result<()> {
                 sys.accent = match v {
                     Json::Null => None,
                     Json::String(s) => Some(
-                        color_hex_str(s)
-                            .map_err(|e| err(format!("setEnv(): system.accent: {e}")))?,
+                        color_hex_str(s).map_err(|e| err(format!("{who}: system.accent: {e}")))?,
                     ),
                     _ => v
                         .as_u64()
                         .and_then(|n| u32::try_from(n).ok())
                         .map(Color::hex)
                         .ok_or_else(|| {
-                            err("setEnv(): system.accent must be 0xRRGGBBAA, \"#rrggbb\" or null")
+                            err("{who}: system.accent must be 0xRRGGBBAA, \"#rrggbb\" or null")
                         })
                         .map(Some)?,
                 }
@@ -329,14 +341,14 @@ fn system_env(sys: &mut SystemEnv, o: &JsonMap<String, Json>) -> Result<()> {
                         let tag = name(key, v)?;
                         Some(Locale::new(&tag).ok_or_else(|| {
                             err(format!(
-                                "setEnv(): system.locale must be an ASCII BCP-47 tag of at most {} bytes, or null",
+                                "{who}: system.locale must be an ASCII BCP-47 tag of at most {} bytes, or null",
                                 Locale::CAP
                             ))
                         })?)
                     }
                 }
             }
-            _ => return Err(err(format!("setEnv(): unknown system key {key:?}"))),
+            _ => return Err(err(format!("{who}: unknown system key {key:?}"))),
         }
     }
     Ok(())
@@ -507,7 +519,7 @@ impl Ctx {
             // what was just written: a test that sets the appearance and
             // reads `theme()` back without drawing sees the answer.
             let mut sys = self.core.env.system;
-            system_env(&mut sys, s)?;
+            system_env("setEnv()", &mut sys, s)?;
             self.core.set_system(sys);
         }
         if let Some(a) = o.get("audio") {
@@ -1296,8 +1308,12 @@ pub struct KuiWindow {
 #[napi]
 impl KuiWindow {
     /// Options: `{width, height, minWidth, minHeight, maxWidth, maxHeight,
-    /// chrome: "native" | "custom" | "borderless"}`. The min/max pairs bound
-    /// what the user can resize the window to; either half may stand alone.
+    /// chrome: "native" | "custom" | "borderless", system}`. The min/max
+    /// pairs bound what the user can resize the window to; either half may
+    /// stand alone. `system` pins part of `env.system` over what the OS
+    /// says, for the life of the window — `{motion: 'reduced'}` is what a
+    /// user who asked for less motion would get, on a machine whose owner
+    /// did not; see `WindowOptions`.
     #[napi(constructor, ts_args_type = "title: string, options?: WindowOptions")]
     pub fn new(title: String, options: Option<Json>) -> Result<Self> {
         let o = options
@@ -1361,6 +1377,14 @@ impl KuiWindow {
             Some("borderless") => launcher.borderless(),
             _ => launcher,
         };
+        // `system: {motion: 'reduced'}` — the same partial `setEnv` takes
+        // headless, read the same way, but pinned at the launcher rather
+        // than pushed into a core: the runner writes the real reading
+        // before every frame, and only a merge inside that write survives
+        // it (backlog F47). `'unknown'` and null are "not pinned".
+        if let Some(sys) = o.get("system") {
+            launcher = launcher.system(pinned_system(sys)?);
+        }
         let runner = launcher
             .open(TreeApp::default())
             .map_err(|e| err(format!("failed to open window: {e}")))?;
@@ -3168,6 +3192,55 @@ fn add_image_impl(core: &mut Core, width: u32, height: u32, rgba: &[u8]) -> Resu
     }
     let id = core.resources.add_image(width, height, rgba.to_vec());
     Ok(format!("{:016x}", id.to_ffi()))
+}
+
+/// `KuiWindow`'s `system` option is `setEnv`'s partial over a blank
+/// reading, so what is left out is unknown — "not pinned" to the runner's
+/// merge (backlog F47).
+#[cfg(test)]
+mod pinned_system_tests {
+    use super::*;
+
+    #[test]
+    fn the_partial_pins_what_it_names_and_nothing_else() {
+        let sys = pinned_system(&serde_json::json!({ "motion": "reduced" })).unwrap();
+        assert_eq!(
+            sys,
+            SystemEnv {
+                motion: MotionPref::Reduced,
+                ..Default::default()
+            }
+        );
+        // The explicit unknowns are the default too: pinned to nothing.
+        let sys = pinned_system(&serde_json::json!({
+            "motion": "unknown", "appearance": "unknown", "accent": null, "locale": null
+        }))
+        .unwrap();
+        assert_eq!(sys, SystemEnv::default());
+        // Every field, in `env()`'s spellings.
+        let sys = pinned_system(&serde_json::json!({
+            "appearance": "dark", "accent": "#d2691e", "motion": "full", "locale": "pt-BR"
+        }))
+        .unwrap();
+        assert_eq!(sys.appearance, Appearance::Dark);
+        assert_eq!(sys.accent, Some(Color::hex(0xd2691eff)));
+        assert_eq!(sys.motion, MotionPref::Full);
+        assert_eq!(
+            sys.locale.map(|l| l.as_str().to_string()),
+            Some("pt-BR".into())
+        );
+        // A misspelling says which door it came through.
+        let e = pinned_system(&serde_json::json!({ "motion": "less" })).unwrap_err();
+        assert!(
+            e.reason.starts_with("KuiWindow `system`: system.motion"),
+            "{}",
+            e.reason
+        );
+        assert!(
+            pinned_system(&serde_json::json!("reduced")).is_err(),
+            "an object, not a string"
+        );
+    }
 }
 
 #[cfg(test)]

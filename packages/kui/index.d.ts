@@ -1311,6 +1311,18 @@ export interface WindowOptions {
   maxWidth?: number;
   maxHeight?: number;
   chrome?: 'native' | 'custom' | 'borderless';
+  /** Pins part of `env.system` for the life of the window, over whatever
+   *  the OS says: `{ motion: 'reduced' }` opens the window as a user who
+   *  asked for less motion sees it, on a machine whose owner did not. The
+   *  same partial `Ctx.setEnv` takes, and the same readings — but a field
+   *  left out, `'unknown'` or null here is *not pinned* and keeps
+   *  following the OS, whose changes to it still arrive as the `system`
+   *  message, carrying the pinned fields with them. A window has no
+   *  `setEnv` because its runner writes the real reading before every
+   *  frame; this is merged inside that write, which is what makes it
+   *  hold. It is an option rather than an environment variable so that a
+   *  shipped app's motion is its own code's decision. */
+  system?: EnvInput['system'];
   /** `false` stops the loop printing the core's warnings (see `Warning`);
    *  `win.warnings()` still drains them. */
   warnings?: boolean;
@@ -1328,6 +1340,11 @@ export interface Protocol {
   op: Record<string, number>;
   prop: Record<string, number>;
 }
+
+/** The `KuiWindow` constructor's options, picked out of `runWindowed`'s
+ *  (which carry the loop's own beside them): for an app opening its window
+ *  itself with the same set. */
+export declare function windowOptions(opts?: WindowOptions & Record<string, unknown>): WindowOptions;
 
 /** A reusable frame encoder for the binary IR path (drivers make their own). */
 export declare function createEncoder(p: Protocol): {
@@ -2354,8 +2371,12 @@ export declare function clipStride(): number
 export declare class KuiWindow {
   /**
    * Options: `{width, height, minWidth, minHeight, maxWidth, maxHeight,
-   * chrome: "native" | "custom" | "borderless"}`. The min/max pairs bound
-   * what the user can resize the window to; either half may stand alone.
+   * chrome: "native" | "custom" | "borderless", system}`. The min/max
+   * pairs bound what the user can resize the window to; either half may
+   * stand alone. `system` pins part of `env.system` over what the OS
+   * says, for the life of the window — `{motion: 'reduced'}` is what a
+   * user who asked for less motion would get, on a machine whose owner
+   * did not; see `WindowOptions`.
    */
   constructor(title: string, options?: WindowOptions)
   /**

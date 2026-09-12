@@ -21,7 +21,9 @@
 //!
 //! One `main` per example: `kui_devtools::main!(Counter::default())`.
 
-use kui::{App, Appearance, Chrome, Color, Core, Extensions, Ui, UiEvent, Waker};
+use kui::{
+    App, Appearance, Chrome, Color, Core, Extensions, MotionPref, SystemEnv, Ui, UiEvent, Waker,
+};
 
 mod drive;
 pub use drive::Drive;
@@ -141,6 +143,9 @@ pub struct Cli {
     pub base: Option<Appearance>,
     pub accent: Option<Color>,
     pub size: Option<(f64, f64)>,
+    /// `--motion`: pins `env.system.motion` over the OS's (backlog F47),
+    /// to see what the example draws for a user who asked for less.
+    pub motion: Option<MotionPref>,
 }
 
 impl Cli {
@@ -182,6 +187,14 @@ impl Cli {
                         parse_color(&v).ok_or_else(|| format!("--accent: {v:?} is not #rrggbb"))?,
                     );
                 }
+                "--motion" => {
+                    let v = value("full or reduced")?;
+                    cli.motion = Some(
+                        MotionPref::parse(&v)
+                            .filter(|m| *m != MotionPref::Unknown)
+                            .ok_or_else(|| format!("--motion: {v:?} is not full or reduced"))?,
+                    );
+                }
                 "--size" => {
                     let v = value("WxH")?;
                     let (w, h) = v
@@ -204,7 +217,7 @@ impl Cli {
 
 fn usage(name: &str, flags: &[(&str, &str)]) -> String {
     let mut s = format!(
-        "usage: {name} [--headless] [--dock side|bottom|off] [--light|--dark] [--accent #rrggbb] [--size WxH]"
+        "usage: {name} [--headless] [--dock side|bottom|off] [--light|--dark] [--accent #rrggbb] [--motion full|reduced] [--size WxH]"
     );
     for (f, doc) in flags {
         s.push_str(&format!(" [{f}]"));
@@ -214,6 +227,7 @@ fn usage(name: &str, flags: &[(&str, &str)]) -> String {
     s.push_str("  --dock WHERE     where the harness dock sits (default: what the example asks)\n");
     s.push_str("  --light, --dark  pin the theme base instead of following the OS\n");
     s.push_str("  --accent COLOUR  the accent, instead of the OS's\n");
+    s.push_str("  --motion PREF    what env.system.motion reads, instead of the OS's\n");
     s.push_str("  --size WxH       the example's area, logical px (the dock is added)\n");
     if !flags.is_empty() {
         s.push('\n');
@@ -309,6 +323,12 @@ pub fn run_with<E: Example>(name: &str, mut example: E, cli: Cli) -> i32 {
     }
     if let Some((mw, mh)) = window.max_size {
         launcher = launcher.max_size(mw, mh);
+    }
+    if let Some(motion) = cli.motion {
+        launcher = launcher.system(SystemEnv {
+            motion,
+            ..Default::default()
+        });
     }
     match launcher.run(harness) {
         Ok(()) => 0,
@@ -428,6 +448,7 @@ mod tests {
                 "#ff0000",
                 "--size",
                 "300x200",
+                "--motion=reduced",
                 "--mine",
             ]
             .map(String::from),
@@ -439,6 +460,9 @@ mod tests {
         assert_eq!(cli.base, Some(Appearance::Dark));
         assert_eq!(cli.accent.map(|c| c.to_hex()), Some(0xff0000ff));
         assert_eq!(cli.size, Some((300.0, 200.0)));
+        assert_eq!(cli.motion, Some(MotionPref::Reduced));
+        // `unknown` is a reading, not a pin: the flag takes the two answers.
+        assert!(Cli::parse("x", ["--motion", "unknown"].map(String::from), &[]).is_err());
         assert_eq!(
             Cli::parse("x", ["--dock", "window"].map(String::from), &[])
                 .unwrap()

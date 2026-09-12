@@ -12,6 +12,7 @@
 //   --dock left|right|bottom|window|off  where the panel sits
 //   --light, --dark                pin the theme base
 //   --accent #rrggbb               the accent, instead of the OS's
+//   --motion full|reduced          what env.system.motion reads, instead of the OS's
 //
 // Chords (the core's): Ctrl+Shift+T cycles the base, +A the accent, +M
 // toggles native menus, +D moves the panel (the header has a button per
@@ -58,12 +59,12 @@ const DOCK_BOTTOM_H = 280;
 const DOCK_SIDE_MIN_H = 600;
 const DOCK_BOTTOM_MIN_W = 640;
 
-type Cli = { headless: boolean; dock?: Dock; base?: 'light' | 'dark'; accent?: string };
+type Cli = { headless: boolean; dock?: Dock; base?: 'light' | 'dark'; accent?: string; motion?: 'full' | 'reduced' };
 
 function usage(name: string, flags: [string, string][]): string {
   const own = flags.map(([f, d]) => `  ${f.padEnd(16)} ${d}`).join('\n');
   return (
-    `usage: ${name} [--headless] [--dock left|right|bottom|window|off] [--light|--dark] [--accent #rrggbb]` +
+    `usage: ${name} [--headless] [--dock left|right|bottom|window|off] [--light|--dark] [--accent #rrggbb] [--motion full|reduced]` +
     (flags.length ? ' ' + flags.map(([f]) => `[${f}]`).join(' ') : '') +
     '\n' +
     (own ? '\n' + own + '\n' : '')
@@ -92,6 +93,13 @@ export function parseCli(name: string, argv: string[], flags: [string, string][]
         const v = value();
         if (!v || !/^#[0-9a-fA-F]{6}$/.test(v)) throw new Error(`--accent: ${v} is not #rrggbb`);
         cli.accent = v; break;
+      }
+      case '--motion': {
+        // The pin over `env.system.motion` (F47): the two answers, since
+        // `unknown` is a reading and not a pin.
+        const v = value();
+        if (v !== 'full' && v !== 'reduced') throw new Error(`--motion: ${v} is not full or reduced`);
+        cli.motion = v; break;
       }
       case '-h': case '--help': throw new Error(usage(name, flags));
       default:
@@ -187,6 +195,7 @@ export async function run<M, A extends { kind: string }>(example: Example<M, A>)
     minWidth: example.window?.minWidth,
     minHeight: example.window?.minHeight,
     chrome: example.window?.chrome,
+    system: cli.motion ? { motion: cli.motion } : undefined,
     setup(win) {
       // The doors, before the first frame: the panel, where it sits, what
       // the command line pinned, and the example's legend.

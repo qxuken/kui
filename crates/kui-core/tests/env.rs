@@ -167,3 +167,90 @@ fn kinds(evs: &[kui_core::UiEvent]) -> Vec<&str> {
         .filter_map(|e| e.payload.get("kind").and_then(Value::as_str))
         .collect()
 }
+
+/// A launcher's pinned reading is a `SystemEnv` laid *over* the OS's, every
+/// frame: what the app pinned wins, what it left unknown is the OS's — so
+/// the pin survives the runner's per-frame write and a real change to an
+/// unpinned field still arrives (backlog F47, the pomodoro's third ask).
+#[test]
+fn a_pinned_reading_lies_over_the_queried_one_field_by_field() {
+    use kui_core::{Color, Locale};
+    let queried = SystemEnv {
+        appearance: Appearance::Light,
+        accent: Some(Color::hex(0x0a84ffff)),
+        motion: MotionPref::Full,
+        locale: Locale::new("en-US"),
+    };
+    // Unknown is "not pinned": the default pins nothing.
+    assert_eq!(SystemEnv::default().over(queried), queried);
+    // One field pinned leaves the other three the OS's.
+    let less_motion = SystemEnv {
+        motion: MotionPref::Reduced,
+        ..Default::default()
+    };
+    assert_eq!(
+        less_motion.over(queried),
+        SystemEnv {
+            motion: MotionPref::Reduced,
+            ..queried
+        }
+    );
+    // Every field can be pinned, and a pin beats an answer, not only an
+    // unknown.
+    let all = SystemEnv {
+        appearance: Appearance::Dark,
+        accent: Some(Color::hex(0xd2691eff)),
+        motion: MotionPref::Reduced,
+        locale: Locale::new("pt-BR"),
+    };
+    assert_eq!(all.over(queried), all);
+    // And over a host that answers nothing, the pin is the whole reading.
+    assert_eq!(less_motion.over(SystemEnv::default()), less_motion);
+}
+
+/// The `system` event reports the merged reading like any other: a pinned
+/// `motion` is in every event the OS's own changes raise, and a change to
+/// the pinned field itself raises nothing, because the reading did not move.
+#[test]
+fn the_system_event_carries_the_pinned_reading() {
+    let mut core = Core::new();
+    let frame = |core: &mut Core, real: SystemEnv, pinned: SystemEnv| {
+        // What the runner's `sync_env` writes: the pin over the OS.
+        core.env.system = pinned.over(real);
+        core.frame(Size::new(100.0, 100.0), 1.0).finish();
+        core.take_pending_events()
+    };
+    let pinned = SystemEnv {
+        motion: MotionPref::Reduced,
+        ..Default::default()
+    };
+    let mut real = SystemEnv {
+        appearance: Appearance::Light,
+        motion: MotionPref::Full,
+        ..Default::default()
+    };
+    assert!(
+        kinds(&frame(&mut core, real, pinned)).is_empty(),
+        "first frame establishes"
+    );
+    assert_eq!(
+        core.env.system.motion,
+        MotionPref::Reduced,
+        "pinned from the first view"
+    );
+
+    // The user flips the OS to dark: the event carries dark *and* the pin.
+    real.appearance = Appearance::Dark;
+    let evs = frame(&mut core, real, pinned);
+    assert_eq!(kinds(&evs), vec!["system"]);
+    let p = &evs[0].payload;
+    assert_eq!(p.get("appearance").and_then(Value::as_str), Some("dark"));
+    assert_eq!(p.get("motion").and_then(Value::as_str), Some("reduced"));
+
+    // The user turns reduce-motion on for real: nothing the view can see
+    // changed, so nothing is reported — and off again, likewise.
+    real.motion = MotionPref::Reduced;
+    assert!(kinds(&frame(&mut core, real, pinned)).is_empty());
+    real.motion = MotionPref::Full;
+    assert!(kinds(&frame(&mut core, real, pinned)).is_empty());
+}
