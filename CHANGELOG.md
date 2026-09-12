@@ -198,6 +198,29 @@ Nothing.
   branch was mutation-tested. Not built, and still filed under F44: a
   `multiline` editor that submits on plain Enter (`submit="enter"`).
 
+- **`tick.every` may be a function of the model.** `every: (m) =>
+  m.endsAt ? 16 : 1000` ticks at frame rate while a countdown runs and
+  once a second while it is stopped (backlog F46, from the pomodoro's
+  alpha.11 report, wish 1). The loop reads it after `init` and after every
+  `update`, a tick's own included; when the answer changes, the next tick
+  moves to the last tick plus the new value — keeping the beat, and not
+  letting a tick already queued a second out stand — or, when that is
+  already past, to the new value from the change, the way a fresh loop
+  counts from its start, so a cadence that shortens after a long quiet owes
+  one tick `every` from now and not a burst. `0` or less means no tick, as
+  the number does. Headless `advance(ms)` fires the same schedule (a
+  change a tick makes is rescheduled from that tick's time, not from the
+  end of the span), so it is testable; the windowed driver's budget is
+  `max(pumpMs, min(gap, untilTick))` as before, and with the next tick a
+  second out the backoff reaches `idlePumpMs` — the pomodoro's stopped
+  tier, a pump every 16 ms (7–8% of a core in its report), gets the
+  driver's own idle rate, which alpha.11 measured at ~3% for the default
+  32 ms and under 1% at 250; not re-measured here. Two guards in
+  `packages/kui/test.mjs`: the headless tick count over `advance(3000)`
+  after the model stops, and over the injected fake surface, that the
+  budget answers the idle gap once the model says 1000. Node-only, as
+  `tick` is.
+
 ### What you can delete
 
 The `isDark ? light : dark` branch in front of every app colour that
@@ -225,6 +248,11 @@ the widest glyph it kept in front of the field so the echo frame's last
 word had somewhere to go: the field is `width="fit" maxWidth={…}
 wrap="word"` and the core sizes it to the wrapped draft on the keystroke
 frame (F44).
+
+- A `tick.every` chosen as the compromise between the cadence a running
+  countdown needs and the one a stopped one can afford, and the
+  `idlePumpMs` raised to compensate: `every` reads the model now.
+- The `@ts-expect-error` on `clock` in a `runWindowed` call.
 
 ### Fixed
 
@@ -256,6 +284,23 @@ frame (F44).
   (`KUI_DEVTOOLS` is never read there, the call is). The two schema docs,
   the `WindowSize` and `Env.viewport` types and the README's window-size
   bullet say the same thing now.
+
+- **`runWindowed`'s options type has `clock`.** The driver has read
+  `opts.clock ?? Date.now` since the windowed tick bookkeeping was written,
+  and `createApp`'s options declared it, but `runWindowed`'s did not — so
+  the one line a test writes to move a real window's clock
+  (`clock: () => Date.now() + ahead`, which is how a countdown is watched
+  in seconds) carried a `@ts-expect-error` (backlog F45, from the
+  pomodoro's alpha.11 report, wish 3). F37's class again: a `.d.ts`-only
+  gap no test in this repo can see, because CI's typecheck of
+  `examples/node` is the only guard and no example passed one. The type is
+  fixed, and the examples harness (`examples/node/devtools.tsx`) now takes
+  a `clock` on an `Example` and hands it to `runWindowed`, so the typecheck
+  exercises the field — removing it from the type fails CI, which was
+  checked by removing it. `startTime` stays absent from the windowed
+  options: under a clock it is dead. The doc says what the clock moves in a
+  window — the ticks and `tick.msg(now)`; the frame clock behind
+  `transition` is the runner's own.
 
 
 ## 0.1.0-alpha.11 (2026-09-11)

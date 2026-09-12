@@ -3308,8 +3308,22 @@ export interface LoopConfig<M, A, S, E = never> {
    *  on the ticks that should draw.
    *
    *  A window fires these off its own timer; headless, `app.advance(ms)`
-   *  fires every tick inside the span, so a ticking app is testable. */
-  tick?: { every: number; msg: A | ((now: number) => A) };
+   *  fires every tick inside the span, so a ticking app is testable.
+   *
+   *  `every` may be a function of the model, for an app whose cadence
+   *  depends on its state: `every: (m) => m.endsAt ? 16 : 1000` ticks at
+   *  frame rate while a countdown runs and once a second while it is
+   *  stopped — and since the windowed driver's idle gap is capped by the
+   *  next tick, a stopped app then costs a pump a second rather than
+   *  sixty. It is read after `init` and after every `update` (a tick's
+   *  own included); when the answer changes the next tick moves to the
+   *  last tick plus the new value, keeping the beat, rather than letting
+   *  a tick already queued a second out stand — or, when that is already
+   *  past, to the new value from the change, as a fresh loop counts from
+   *  its start: a cadence that shortens after a long quiet owes one tick
+   *  `every` from now, not a burst. `0` or less means no tick, as the
+   *  number does. */
+  tick?: { every: number | ((model: M) => number); msg: A | ((now: number) => A) };
 }
 
 /** `runWindowed`'s config: `update` also gets the window. */
@@ -3338,6 +3352,15 @@ export declare function runWindowed<M, A = AppMsg | CoreMsg, E = never>(
      *  growing, in ms (default 500). Anything at all — an event, a tick, a
      *  frame, a transition — resets both the gap and this. */
     quietMs?: number;
+    /** The loop's time source, in milliseconds. A window fills it with
+     *  `Date.now`: ticks fire off it and `tick.msg(now)` reads it (the
+     *  frame clock behind `transition` is the runner's own and does not
+     *  follow it). A test hands in `() => Date.now() + ahead` to move a
+     *  real window's clock — its ticks run ahead of the wall by that much,
+     *  which is how a countdown is watched in seconds rather than minutes.
+     *  `createApp`'s `startTime` has no counterpart here: under a clock it
+     *  is dead. */
+    clock?: () => number;
     /** Runs after the window opens, before `init` and the first frame —
      *  register images, fonts and other resources here. `app` is the loop
      *  itself, so a test can hold on to it and drive a real window with the

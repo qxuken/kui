@@ -37,6 +37,12 @@ export type Example<M, A extends { kind: string }> = {
   view: (model: M, win: KuiWindow) => KuiNode;
   /** Runs before the first frame, with the window: register resources here. */
   setup?: (win: KuiWindow) => void;
+  /** The windowed loop's time source, handed to `runWindowed` as its
+   *  `clock` (backlog F45). Left out, the window runs on `Date.now`; an
+   *  example whose ticks should run ahead of the wall — a countdown watched
+   *  in seconds — gives `() => Date.now() + ahead`. The headless drive
+   *  keeps the loop's own hands, so `app.advance(ms)` still moves them. */
+  clock?: () => number;
   windows?: (model: M) => WindowDecl[];
   /** The key legend the panel's facts tab shows. */
   keys?: [string, string][];
@@ -196,6 +202,7 @@ export async function run<M, A extends { kind: string }>(example: Example<M, A>)
     minHeight: example.window?.minHeight,
     chrome: example.window?.chrome,
     system: cli.motion ? { motion: cli.motion } : undefined,
+    clock: example.clock,
     setup(win) {
       // The doors, before the first frame: the panel, where it sits, what
       // the command line pinned, and the example's legend.

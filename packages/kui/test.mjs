@@ -1891,6 +1891,141 @@ test("a loop on a wall clock resyncs rather than firing a burst of ticks", () =>
   assert.throws(() => app.advance(100), /wall clock/);
 });
 
+test('tick.every may read the model, and a change moves the next tick (F46)', () => {
+  // The pomodoro's shape: 16 ms while the countdown runs so a second is
+  // never drawn late, a second while it is stopped. One static cadence
+  // was the faster of the two forever.
+  let ticks = 0;
+  const app = createApp(
+    {
+      init: { running: true },
+      update: (m, msg) => {
+        if (msg === 'tick') {
+          ticks += 1;
+          return undefined;
+        }
+        return { running: msg === 'start' };
+      },
+      view: () => box({ pad: 4 }),
+      tick: { every: (m) => (m.running ? 16 : 1000), msg: 'tick' },
+    },
+    { startTime: 0 },
+  );
+  app.render();
+  // Running: 16 ms is the cadence, as the number would be.
+  app.advance(160);
+  assert.equal(ticks, 10);
+  // Stopped from outside the tick: the reading is taken after the dispatch,
+  // and the tick queued at 176 does not stand — the next is a second after
+  // the last one that fired, so three over 3000 ms and not 188.
+  app.dispatch('stop');
+  ticks = 0;
+  app.advance(3000);
+  assert.equal(ticks, 3);
+  // Started again after a long quiet: the last tick was at 3160, and
+  // 3160 + 16 is in the past, so the cadence counts from the change at
+  // 3660 — not a burst of the ones a 16 ms cadence would have fired
+  // since, and not one this instant.
+  app.advance(500);
+  app.dispatch('start');
+  ticks = 0;
+  app.advance(15);
+  assert.equal(ticks, 0, 'nothing owed at the change itself');
+  app.advance(145);
+  assert.equal(ticks, 10, 'then 3676 … 3820');
+  // The reading is also taken after a tick's own update: a handler that
+  // stops the model from inside a tick moves the cadence with it.
+  let stopFromTick = false;
+  const inner = createApp(
+    {
+      init: { running: true, n: 0 },
+      update: (m, msg) => {
+        if (msg !== 'tick') return m;
+        ticks += 1;
+        if (stopFromTick) return { running: false, n: m.n + 1 };
+        return { running: true, n: m.n + 1 };
+      },
+      view: () => box({ pad: 4 }),
+      tick: { every: (m) => (m.running ? 16 : 1000), msg: 'tick' },
+    },
+    { startTime: 0 },
+  );
+  inner.render();
+  ticks = 0;
+  stopFromTick = true;
+  inner.advance(2000);
+  // One at 16 that stops it, then 1016 — the 16 ms ticks in between are
+  // not owed.
+  assert.equal(ticks, 2);
+  assert.equal(inner.model.running, false);
+  // A function returning 0 (or less) means no tick, as the number does.
+  const none = createApp(
+    {
+      init: { on: false, n: 0 },
+      update: (m, msg) => (msg === 'tick' ? { ...m, n: m.n + 1 } : { ...m, on: msg === 'on' }),
+      view: () => box({ pad: 4 }),
+      tick: { every: (m) => (m.on ? 100 : 0), msg: 'tick' },
+    },
+    { startTime: 0 },
+  );
+  none.render();
+  none.advance(1000);
+  assert.equal(none.model.n, 0, 'off: nothing fires');
+  none.dispatch('on');
+  none.advance(1000);
+  assert.equal(none.model.n, 10, 'on: the cadence counts from the change');
+});
+
+test('a model that says 1000 lets the windowed driver idle, where 16 pinned it (F46)', () => {
+  // The other half of the same entry, over the fake surface the windowed
+  // bookkeeping is tested on: the driver asks the loop how long it may
+  // park (`[BUDGET]`, private to index.js), and a 16 ms tick capped the
+  // answer at 16 ms whatever the backoff had reached. The symbol is found
+  // by name so the loop's public shape stays what `Loop` declares.
+  const state = { animating: false, events: [] };
+  let t = 0;
+  const app = createApp(
+    {
+      init: { running: true },
+      update: (m, msg) => (msg === 'tick' ? undefined : { running: msg === 'start' }),
+      view: () => box({ pad: 4 }),
+      tick: { every: (m) => (m.running ? 16 : 1000), msg: 'tick' },
+    },
+    { surface: fakeWindow(state), clock: () => t },
+  );
+  const budget = Object.getOwnPropertySymbols(app).find((s) => s.description === 'kui.budget');
+  const ask = (busy, idle) => app[budget](busy, idle, state.animating);
+  app.render();
+  // Running: the next tick is 16 ms out, so the gap is 16 even with the
+  // backoff at 32 — the driver may not sleep through a tick.
+  assert.equal(ask(8, 32), 16);
+  t = 16;
+  app.step();
+  assert.equal(ask(8, 32), 16);
+  // Stopped: the reading moves the next tick to 1016, and the backoff's
+  // own gap is the answer — this is the pomodoro's 7% becoming ~3%.
+  app.dispatch('stop');
+  assert.equal(ask(8, 32), 32);
+  assert.equal(ask(8, 250), 250, 'and a deeper idle is not capped by the tick either');
+  assert.equal(app.step(), true, 'the dispatch itself is a frame on the next turn');
+  t = 500;
+  assert.equal(app.step(), false, 'and after it, nothing until 1016');
+  t = 1016;
+  assert.equal(app.step(), false, 'the tick fired and returned undefined, so no frame');
+  assert.equal(ask(8, 32), 32, 'the next is at 2016');
+  // Started again well after the last tick: the cadence counts from the
+  // change, 16 ms out, and the driver is back at frame rate.
+  t = 1900;
+  app.dispatch('start');
+  assert.equal(ask(8, 32), 16);
+  t = 1916;
+  app.step();
+  assert.equal(ask(8, 32), 16, 'and on from 1932');
+  // Something animating still wins over everything: the frame cadence.
+  state.animating = true;
+  assert.equal(ask(8, 32), 8);
+});
+
 test('a loop over a surface that takes no synthetic input says so', () => {
   const app = createApp(
     { init: 0, update: () => undefined, view: () => box({ pad: 4 }) },

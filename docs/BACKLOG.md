@@ -844,7 +844,21 @@ gap from the other side, has its own users, and is one row
 (`submit="enter"`) when a view asks; not built here on the strength of a
 report that does not want it.
 
-### `.` F45 — `clock` is read by `runWindowed` and absent from its options type
+### `.` F45 — `clock` is read by `runWindowed` and absent from its options type — **done (2026-09-12)**
+
+Done: `clock?: () => number` on `runWindowed`'s options in
+`packages/kui/index.d.ts`, with a doc that says what it moves in a window
+(the ticks and `tick.msg(now)`; the frame clock behind `transition` is the
+runner's own, since a `KuiWindow` has no `setTime`) and that `startTime`
+has no counterpart there. The block is the hand-written half of the file,
+after the last `-- end generated --` marker, so `npm run gen` leaves it
+alone. The guard is the one the entry asked for: `Example.clock` on the
+examples harness (`examples/node/devtools.tsx`), handed to `runWindowed` as
+`clock: example.clock`, so `npm run typecheck` in `examples/node` exercises
+the field — removing it from the type again produces one `TS2353`, checked
+by removing it. No example sets it; the headless drive keeps the loop's own
+hands so `advance` still works there. CHANGELOG under alpha.12's
+`### Fixed`.
 
 **Symptom** (pomodoro, wish 3): the one line passing `clock` to
 `runWindowed` carries a `@ts-expect-error`, deliberately, so it fails the
@@ -860,7 +874,32 @@ have one example pass a clock — the smoke channel's headless drive is the
 natural one. (`startTime` is also read and rightly absent: under a clock
 it is dead.)
 
-### `.` F46 — `tick.every` is static, so a fast tick pins the idle pump
+### `.` F46 — `tick.every` is static, so a fast tick pins the idle pump — **done (2026-09-12)**
+
+Done: `every: number | ((model: M) => number)` in `LoopConfig.tick`
+(`packages/kui/index.d.ts`, the hand-written half) and in `createLoop`
+(`packages/kui/index.js`): the reading is taken after `init` and after
+every `apply` — whether or not the model changed, since a tick handler
+that mutates in place and returns `undefined` still moved what the
+function reads — and when it changes, `nextTick` moves to
+`lastTick + every`, keeping the beat, unless that is already past, when it
+counts `every` from the change instead (the way a fresh loop counts from
+its start), so a cadence that shortens after a long quiet owes one tick
+`every` from now and not a burst back to `lastTick` and not one this
+instant. `0` or less is no tick, as the number is. The one trap building
+it: a change a *tick* makes has to be rescheduled from the tick's own time
+(`inTick`), because under `advance(ms)` the clock is already at the end of
+the span and a replay that read it skipped the ticks the new cadence owed
+inside it — the headless guard caught it. `[BUDGET]` is unchanged; with
+the next tick a second out, `min(gap, untilTick)` is the gap. Two guards in
+`test.mjs`, each checked by mutation (a reading that sticks after the first,
+and a reschedule from the clock instead of the tick): a headless loop whose
+`every` flips 16 → 1000 when the model stops counts 10 ticks over
+`advance(160)`, 3 over `advance(3000)`, 0 at the change back and 10 over the
+next 160 — plus the flip made from inside a tick, and a function returning
+0; and over the injected fake surface with a fake clock, the budget answers
+16 while the model runs and the idle gap (32, or 250) once it says 1000.
+CHANGELOG under alpha.12's `### Added` and "what you can delete".
 
 **Symptom** (pomodoro, wish 1, with the numbers): alpha.11's backoff takes
 the counter from 8.7% to ~3% of a core; the pomodoro's mid tier, with

@@ -277,7 +277,11 @@ pointing into the other three.
   mutates the model in place and returns `undefined` (the escape hatch
   the rest of `update` allows) never reaches the screen. Any
   non-`undefined` return renders, so `return model` after a mutation is
-  the whole fix.
+  the whole fix. `every` may read the model — `every: (m) => m.running
+  ? 16 : 1000` — for an app whose cadence depends on its state: the loop
+  re-reads it after every `update`, and since the windowed driver never
+  sleeps through a tick, a stopped countdown then costs a pump a second
+  instead of pinning the idle backoff at 16 ms.
 - **Keys**: `onKey` on the root plus `keyFocus`; presses arrive as
   `{ kind: 'key', phase: 'down', code, ... }` with `code` a character or a
   name (`'space'`, `'enter'`, `'f5'`), and that is all a keymap needs — no
