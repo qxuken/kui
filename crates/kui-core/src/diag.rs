@@ -321,8 +321,13 @@ warnings! {
     /// of the other kind (a length in a colour slot). The slot is left at
     /// its default: transparent, or zero. Raised by the binding that
     /// lowered the reference, through `Core::warn_unknown_token`, once per
-    /// name, since the name is gone by the time the frame is a tree. See
-    /// `docs/adr/0027-tokens-beside-the-theme.md`, decision 4.
+    /// name, since the name is gone by the time the frame is a tree. Also
+    /// raised at the declaration for a derived token whose source — the
+    /// `from`, or the colour a `mix` or `readable` names — is no colour
+    /// token declared before it and no theme role: that token is dropped,
+    /// the message names both, and the rest of the table lands. See
+    /// `docs/adr/0027-tokens-beside-the-theme.md`, decision 4, and
+    /// `docs/adr/0028-derived-tokens.md`.
     pub const UNKNOWN_TOKEN: &str = "unknown-token";
     /// A declared token took a theme or metrics role's name (`surface`,
     /// `radius`) and was dropped: the roles are the corpus's contract and

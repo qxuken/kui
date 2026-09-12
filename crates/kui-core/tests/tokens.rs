@@ -271,3 +271,91 @@ fn a_declaration_replaces_the_table() {
     assert_eq!(look.length("side_w"), Ok(78.0));
     assert!(look.color("peach").is_err());
 }
+
+// -- derived tokens (`docs/adr/0028-derived-tokens.md`) ---------------------
+
+/// The corpus table's derived tokens, through the core: a chain over a
+/// value, a `raise` off a role that turns with the base, a step off a
+/// derived token, and a `readable` that moves only where it has to.
+#[test]
+fn a_derived_token_follows_its_source_through_the_flip() {
+    use kui_core::ColorOp;
+    let table = || {
+        Tokens::new()
+            .color("peach", PEACH)
+            .color_themed("ink", INK, PAPER)
+            .derive("lit", "peach", [ColorOp::Lift(0.3)])
+            .derive("up", "surface", [ColorOp::Raise(0.25)])
+            .derive("deep", "lit", [ColorOp::Alpha(0.5)])
+            .derive("read", "peach", [ColorOp::Readable("ink".into(), 4.5)])
+    };
+    // A derived colour is rounded to eight bits a channel (what a C host
+    // reads back), so expectations are built the same way.
+    let q = |c: Color| Color::hex(c.to_hex());
+    let mut core = Core::new();
+    core.set_tokens(table());
+    let dark = *core.theme();
+    let look = core.token_lookup();
+    let lit = q(PEACH.mix(Color::WHITE, 0.3));
+    assert_eq!(look.color("lit"), Ok(lit));
+    assert_eq!(
+        look.color("up"),
+        Ok(q(dark.surface.mix(Color::WHITE, 0.25)))
+    );
+    assert_eq!(look.color("deep"), Ok(q(lit.with_alpha(0.5))));
+    let read = look.color("read").unwrap();
+    assert!(
+        read.contrast(PAPER) >= 4.5,
+        "moved toward black to read on paper"
+    );
+    assert_ne!(read, PEACH);
+    assert_eq!(
+        look.resolve("read"),
+        Some(TokenRef::Color(5)),
+        "declaration order"
+    );
+
+    core.set_system(SystemEnv {
+        appearance: Appearance::Light,
+        ..Default::default()
+    });
+    let light = *core.theme();
+    let look = core.token_lookup();
+    assert_eq!(
+        look.color("up"),
+        Ok(q(light.surface.mix(Color::BLACK, 0.25))),
+        "raise turns"
+    );
+    assert_eq!(look.color("read"), Ok(PEACH), "peach already reads on ink");
+    // The reverse lookup names a derived value like any other.
+    assert_eq!(look.color_names(lit), vec!["lit"]);
+}
+
+/// A derived token whose source is nothing is dropped at the declaration
+/// with `unknown-token` — keyed by the derived name, so a later `$bad`
+/// reference adds no second warning — and the table keeps its other
+/// entries at their indices.
+#[test]
+fn an_unresolved_source_warns_at_declaration() {
+    use kui_core::ColorOp;
+    let mut core = Core::new();
+    core.set_tokens(
+        Tokens::new()
+            .color("peach", PEACH)
+            .derive("bad", "nothing", [ColorOp::Lift(0.1)])
+            .derive("lit", "peach", [ColorOp::Lift(0.3)]),
+    );
+    assert_eq!(core.token_lookup().resolve("lit"), Some(TokenRef::Color(1)));
+    assert_eq!(
+        core.token_lookup().color("bad"),
+        Err(TokenError::Unknown("bad".into()))
+    );
+    core.warn_unknown_token(&TokenError::Unknown("bad".into()));
+    let warnings = core.take_warnings();
+    let unknown: Vec<_> = warnings
+        .iter()
+        .filter(|w| w.code == UNKNOWN_TOKEN)
+        .collect();
+    assert_eq!(unknown.len(), 1, "{warnings:?}");
+    assert!(unknown[0].message.contains("`$bad`") && unknown[0].message.contains("`$nothing`"));
+}

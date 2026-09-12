@@ -186,6 +186,156 @@ mod widgets_headless {
         assert!(!kui_token_color(ctx, ks("peach"), &mut c), "cleared");
         kui_ctx_free(ctx);
     }
+
+    /// Derived tokens (ADR 0028) through C: a chain folds over a declared
+    /// token, a role is a source, the value read back is the rounded one
+    /// every binding paints, a missing source drops that token alone with
+    /// `unknown-token`, and a malformed op refuses the whole call with
+    /// nothing added.
+    #[test]
+    fn a_derived_token_crosses_and_a_malformed_op_is_refused() {
+        let ctx = kui_ctx_new();
+        kui_set_diagnostics(ctx, true);
+        let colors = [KuiColorToken {
+            name: ks("peach"),
+            light: 0xffcc99ff,
+            dark: 0xffcc99ff,
+        }];
+        kui_tokens_set(ctx, colors.as_ptr(), 1, std::ptr::null(), 0);
+        let none = KuiStr {
+            ptr: std::ptr::null(),
+            len: 0,
+        };
+        let wash = [
+            KuiColorOp {
+                op: KUI_OP_LIFT,
+                t: 0.5,
+                other: none,
+            },
+            KuiColorOp {
+                op: KUI_OP_ALPHA,
+                t: 0.5,
+                other: none,
+            },
+        ];
+        let up = [KuiColorOp {
+            op: KUI_OP_RAISE,
+            t: 0.25,
+            other: none,
+        }];
+        let toward = [KuiColorOp {
+            op: KUI_OP_MIX,
+            t: 1.0,
+            other: ks("peach"),
+        }];
+        let derived = [
+            KuiDerivedToken {
+                name: ks("wash"),
+                from: ks("peach"),
+                ops: wash.as_ptr(),
+                op_count: 2,
+            },
+            KuiDerivedToken {
+                name: ks("up"),
+                from: ks("surface"),
+                ops: up.as_ptr(),
+                op_count: 1,
+            },
+            KuiDerivedToken {
+                name: ks("bad"),
+                from: ks("nothing"),
+                ops: std::ptr::null(),
+                op_count: 0,
+            },
+            KuiDerivedToken {
+                name: ks("all_the_way"),
+                from: ks("up"),
+                ops: toward.as_ptr(),
+                op_count: 1,
+            },
+        ];
+        assert!(kui_tokens_derive(ctx, derived.as_ptr(), derived.len()));
+        let mut c = 0u32;
+        assert!(kui_token_color(ctx, ks("wash"), &mut c));
+        assert_eq!(c, 0xffe6cc80);
+        let mut theme = KuiTheme::default();
+        assert!(kui_theme(ctx, &mut theme));
+        assert!(kui_token_color(ctx, ks("up"), &mut c));
+        let raised = kui_core::Color::hex(theme.surface).mix(kui_core::Color::WHITE, 0.25);
+        assert_eq!(
+            c,
+            raised.to_hex(),
+            "a role source, raised toward the dark base's front"
+        );
+        assert!(kui_token_color(ctx, ks("all_the_way"), &mut c));
+        assert_eq!(
+            c, 0xffcc99ff,
+            "mixed all the way to peach, from a derived source"
+        );
+        assert!(
+            !kui_token_color(ctx, ks("bad"), &mut c),
+            "dropped at declaration"
+        );
+        assert!(
+            kui_token_color(ctx, ks("peach"), &mut c),
+            "the values stayed"
+        );
+
+        // A malformed op: the call is refused and the table is as it was.
+        let glow = [KuiColorOp {
+            op: 9,
+            t: 0.5,
+            other: none,
+        }];
+        let no_other = [KuiColorOp {
+            op: KUI_OP_MIX,
+            t: 0.5,
+            other: none,
+        }];
+        let stray_other = [KuiColorOp {
+            op: KUI_OP_LIFT,
+            t: 0.5,
+            other: ks("peach"),
+        }];
+        for ops in [&glow[..], &no_other[..], &stray_other[..]] {
+            let d = [KuiDerivedToken {
+                name: ks("x"),
+                from: ks("peach"),
+                ops: ops.as_ptr(),
+                op_count: 1,
+            }];
+            assert!(!kui_tokens_derive(ctx, d.as_ptr(), 1));
+            assert!(!kui_token_color(ctx, ks("x"), &mut c));
+        }
+        assert!(
+            kui_tokens_derive(ctx, std::ptr::null(), 0),
+            "nothing to add is fine"
+        );
+
+        let mut out = [KuiWarning {
+            code: KuiStr {
+                ptr: std::ptr::null(),
+                len: 0,
+            },
+            key: 0,
+            message: KuiStr {
+                ptr: std::ptr::null(),
+                len: 0,
+            },
+        }; 8];
+        let n = kui_take_warnings(ctx, out.as_mut_ptr(), out.len());
+        let named: Vec<(String, String)> = out[..n]
+            .iter()
+            .map(|w| (kstr(w.code).into_owned(), kstr(w.message).into_owned()))
+            .collect();
+        assert!(
+            named.iter().any(|(c, m)| c == "unknown-token"
+                && m.contains("`$bad`")
+                && m.contains("`$nothing`")),
+            "{named:?}"
+        );
+        kui_ctx_free(ctx);
+    }
 }
 
 #[cfg(test)]

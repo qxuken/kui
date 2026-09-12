@@ -921,5 +921,8 @@ export function createEncoder(P) {
     // refuses in a declaration (`reserved-token`), so `index.js` gives it
     // no index either — an index it took would shift every name after it.
     isRole: (name) => ROLE_TOKENS.has(name),
+    // The kind a role is, or `undefined` for a name that is none: what a
+    // derived token's source may be besides an earlier colour (ADR 0028).
+    roleKind: (name) => ROLE_TOKENS.get(name)?.kind,
   };
 }

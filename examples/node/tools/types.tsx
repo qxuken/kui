@@ -8,26 +8,43 @@
 //
 //   node dist/tools/types.mjs --headless
 import { createApp, decodeQuads, defineTokens, roles, Ctx } from '@qxuken/kui';
-import type { App, CoreMsg, KeyMsg, Theme, UiEvent } from '@qxuken/kui';
+import type { App, ColorToken, CoreMsg, KeyMsg, Theme, UiEvent } from '@qxuken/kui';
 
 // Tokens (ADR 0027): the names typed at the declaration. `T.peach` is the
 // literal `'$peach'` branded as a colour, `T.sideW` a length; a colour
 // token in a length slot is a type error, a name that was never declared
-// is a property that does not exist.
+// is a property that does not exist. A derived token (ADR 0028) is a
+// colour like any other to the type: its recipe is a chain of `[verb, …]`
+// tuples, and the verb's arity is the tuple's.
 const TOKENS = {
-  colors: { peach: '#ffcc99', ink: { light: '#111111', dark: '#eeeeee' } },
+  colors: {
+    peach: '#ffcc99',
+    ink: { light: '#111111', dark: '#eeeeee' },
+    peachHover: { from: 'peach', ops: [['lift', 0.3]] },
+    peachWash: { from: 'peachHover', ops: [['alpha', 0.5], ['mix', 'ink', 0.1]] },
+    peachInk: { from: 'peach', ops: ['readable', 'ink', 4.5] },
+    accent2: { from: 'accent' },
+  },
   lengths: { sideW: 132, gap: 6 },
 } as const;
 const T = defineTokens(TOKENS);
 const peach: '$peach' = T.peach;
+const hover: '$peachHover' = T.peachHover;
 const sideW: '$sideW' = T.sideW;
+// A chosen colour's shade is the app's map, typed over the declared names.
+const HOVER = new Map<ColorToken, ColorToken>([[T.peach, T.peachHover]]);
+const lit = <box bg={T.peach} hoverBg={HOVER.get(T.peach)} />;
 // @ts-expect-error — nothing declared `peech`
 const typo = T.peech;
 // @ts-expect-error — a colour token is not a length
 const wrongKind = <box width={T.peach} />;
 // @ts-expect-error — a role is a colour or a length, never both
 const wrongRole = <box width={roles.surface} />;
-void peach; void sideW; void typo; void wrongKind; void wrongRole;
+// @ts-expect-error — `lift` takes one number, not a colour
+const wrongArity = defineTokens({ colors: { x: { from: 'peach', ops: [['lift', 'ink', 0.3]] } } });
+// @ts-expect-error — `glow` is no verb
+const wrongVerb = defineTokens({ colors: { x: { from: 'peach', ops: [['glow', 0.3]] } } });
+void peach; void hover; void sideW; void lit; void typo; void wrongKind; void wrongRole; void wrongArity; void wrongVerb;
 
 type Model = { count: number; note: string };
 type CounterMsg = { kind: 'add'; by: number } | { kind: 'reset' };

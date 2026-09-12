@@ -68,9 +68,27 @@ function setTokens(decl) {
   // A role's name takes no index: the core drops it from the table with
   // `reserved-token`, so counting it here would put every name after it
   // one off from the core's. `$surface` still resolves — to the role.
+  // A derived token (ADR 0028) whose source is not a role or a colour
+  // declared before it is dropped the same way, with `unknown-token`, so
+  // the same rule is applied here before an index is given out.
+  const colors = [];
+  const isColorSource = (name) =>
+    encoder.roleKind(name) === 'color' || map.get(name)?.kind === 'color';
   let i = encoder.roleCounts.colors;
-  for (const name of Object.keys(d.colors ?? {})) {
-    if (!encoder.isRole(name)) map.set(name, { kind: 'color', index: i++ });
+  for (const [name, value] of Object.entries(d.colors ?? {})) {
+    if (encoder.isRole(name)) {
+      colors.push([name, value]);
+      continue;
+    }
+    if (value !== null && typeof value === 'object' && 'from' in value) {
+      const recipe = normalizeRecipe(name, value);
+      colors.push([name, recipe]);
+      const sources = [recipe.from, ...recipe.ops.filter((op) => op.length === 3).map((op) => op[1])];
+      if (!sources.every(isColorSource)) continue;
+    } else {
+      colors.push([name, value]);
+    }
+    map.set(name, { kind: 'color', index: i++ });
   }
   i = encoder.roleCounts.lengths;
   for (const name of Object.keys(d.lengths ?? {})) {
@@ -83,11 +101,33 @@ function setTokens(decl) {
   // survive the crossing, and the order is the index — so a declaration it
   // refuses (a bad colour, a half missing) leaves the encoder's map as it
   // was.
-  this.setTokensRaw({ colors: Object.entries(d.colors ?? {}), lengths: Object.entries(d.lengths ?? {}) });
+  this.setTokensRaw({ colors, lengths: Object.entries(d.lengths ?? {}) });
   this[TOKENS] = map;
 }
 Ctx.prototype.setTokens = setTokens;
 KuiWindow.prototype.setTokens = setTokens;
+
+// A derived token's recipe as the addon takes it: `ops` always a list of
+// `[verb, …]` tuples. A bare single tuple (`ops: ['lift', 0.3]`) is wrapped
+// — the two are told apart by the first element, a verb or a tuple — and
+// a missing `ops` is the empty chain, an alias. Verbs and arities are the
+// addon's to check; what is done here is only what the index needs.
+function normalizeRecipe(name, value) {
+  const { from, ops } = value;
+  for (const k of Object.keys(value)) {
+    if (k !== 'from' && k !== 'ops') throw new Error(`setTokens(): ${name}: unknown key ${JSON.stringify(k)} (from, ops)`);
+  }
+  if (typeof from !== 'string') throw new Error(`setTokens(): ${name}.from names a colour token or role`);
+  let list;
+  if (ops == null) list = [];
+  else if (!Array.isArray(ops)) throw new Error(`setTokens(): ${name}.ops is a list of [verb, …] tuples`);
+  else if (typeof ops[0] === 'string') list = [ops];
+  else list = ops;
+  for (const op of list) {
+    if (!Array.isArray(op) || typeof op[0] !== 'string') throw new Error(`setTokens(): ${name}.ops: each op is a [verb, …] tuple`);
+  }
+  return { from, ops: list };
+}
 
 /**
  * Types a token declaration's names as the references a prop takes

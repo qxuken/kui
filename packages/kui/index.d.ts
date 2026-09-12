@@ -13,6 +13,7 @@ export type { KuiNode, KuiElement, Msg, KuiMsg, AppMsg } from './jsx-runtime.js'
 // takes one; they are re-exported here because `Ctx.openMenu` takes one
 // too, and an app should not have to know which file a type sits in.
 export type { MenuItemInput, MenuItemRole, MenuInput, MenuBarInput } from './jsx-runtime.js';
+export type { ColorToken, LengthToken } from './jsx-runtime.js';
 
 // -- the messages the core itself sends ------------------------------------
 // Payload shapes from `EVENTS` in crates/kui-core/src/schema.rs (the table
@@ -744,8 +745,12 @@ export type WarningCode =
    *  kind (a length in a colour slot). The slot is left at its default:
    *  transparent, or zero. Raised by the binding that lowered the reference,
    *  through `Core::warn_unknown_token`, once per name, since the name is gone
-   *  by the time the frame is a tree. See
-   *  `docs/adr/0027-tokens-beside-the-theme.md`, decision 4. */
+   *  by the time the frame is a tree. Also raised at the declaration for a
+   *  derived token whose source — the `from`, or the colour a `mix` or
+   *  `readable` names — is no colour token declared before it and no theme
+   *  role: that token is dropped, the message names both, and the rest of the
+   *  table lands. See `docs/adr/0027-tokens-beside-the-theme.md`, decision 4,
+   *  and `docs/adr/0028-derived-tokens.md`. */
   | 'unknown-token'
   /** A declared token took a theme or metrics role's name (`surface`, `radius`)
    *  and was dropped: the roles are the corpus's contract and `$surface` always
@@ -1384,10 +1389,41 @@ export declare function createEncoder(p: Protocol): {
 
 // -- tokens (docs/adr/0027-tokens-beside-the-theme.md) ---------------------
 
-/** A colour token's value: one colour for both bases, or a light and a
- *  dark half the core picks by the appearance in effect. Each the way a
- *  colour prop spells one — `0xRRGGBBAA` or `'#hex'`. */
-export type ColorTokenValue = number | string | { light: number | string; dark: number | string };
+/** One step of a derived colour token's recipe (ADR 0028), a tuple: the
+ *  verb, then its operands — a colour token or role by name for `mix` and
+ *  `readable`, then the number. `lift` / `darken` move toward white /
+ *  black by `t`; `raise` toward the front of whichever base is in effect;
+ *  `alpha` sets the alpha; `mix` moves toward the named colour by `t`;
+ *  `readable` moves toward black or white — whichever reads on the named
+ *  colour — until it clears the ratio on it. */
+export type ColorOp =
+  | readonly ['lift', number]
+  | readonly ['darken', number]
+  | readonly ['raise', number]
+  | readonly ['alpha', number]
+  | readonly ['mix', string, number]
+  | readonly ['readable', string, number];
+
+/** A colour token computed from another (ADR 0028): `from` names a colour
+ *  token declared *before* this one, or a theme role (`'accent'`), and
+ *  `ops` is the chain folded over it in order — a list of tuples, or one
+ *  bare tuple, or nothing for an alias. Resolved by the core on read, so a
+ *  themed source's recipe runs on the half in effect. A source that is
+ *  not there is dropped with `unknown-token` at the declaration. */
+export interface DerivedColor {
+  from: string;
+  ops?: ColorOp | readonly ColorOp[];
+}
+
+/** A colour token's value: one colour for both bases, a light and a dark
+ *  half the core picks by the appearance in effect — each the way a colour
+ *  prop spells one, `0xRRGGBBAA` or `'#hex'` — or a recipe over an earlier
+ *  token (`DerivedColor`). */
+export type ColorTokenValue =
+  | number
+  | string
+  | { light: number | string; dark: number | string }
+  | DerivedColor;
 
 /** What `setTokens` / `defineTokens` take: the app's named colours and
  *  lengths, apart by kind — a colour and a length are both a number, so
@@ -1891,7 +1927,10 @@ export declare class Ctx {
    * sideW: 132 } }`. Replaces the table whole, so an app whose
    * lengths change with a viewport tier declares again on
    * `resize`. A name a theme or metrics role owns is dropped
-   * with a `reserved-token` warning. Reference one in a prop
+   * with a `reserved-token` warning. A colour may be a
+   * recipe over an earlier one (ADR 0028): `{ from: 'peach',
+   * ops: [['lift', 0.3]] }`, dropped with `unknown-token` when
+   * its source is not there. Reference one in a prop
    * as `'$peach'` — `defineTokens` types the names. The raw
    * addon door; `index.js` wraps it to keep the encoder's map
    * in step, so call `setTokens` and not this.
@@ -2723,7 +2762,10 @@ export declare class KuiWindow {
    * sideW: 132 } }`. Replaces the table whole, so an app whose
    * lengths change with a viewport tier declares again on
    * `resize`. A name a theme or metrics role owns is dropped
-   * with a `reserved-token` warning. Reference one in a prop
+   * with a `reserved-token` warning. A colour may be a
+   * recipe over an earlier one (ADR 0028): `{ from: 'peach',
+   * ops: [['lift', 0.3]] }`, dropped with `unknown-token` when
+   * its source is not there. Reference one in a prop
    * as `'$peach'` — `defineTokens` types the names. The raw
    * addon door; `index.js` wraps it to keep the encoder's map
    * in step, so call `setTokens` and not this.

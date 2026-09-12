@@ -105,7 +105,9 @@ pub use spec::{
 pub use stats::{FrameSample, FrameStats};
 pub use text::{DEFAULT_TEXT_CACHE_BYTES, LONG_LINE_BYTES, Span, TextHit, TextMetrics};
 pub use theme::{Theme, ThemeSource};
-pub use tokens::{ColorToken, TokenError, TokenKind, TokenLookup, TokenRef, Tokens};
+pub use tokens::{
+    ColorOp, ColorToken, OpRange, TokenError, TokenKind, TokenLookup, TokenRef, Tokens, Unresolved,
+};
 pub use tree::OriginId;
 pub use ui::Ui;
 pub use value::{Handles, Value};

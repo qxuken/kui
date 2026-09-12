@@ -582,7 +582,8 @@ impl Core {
     /// fill, the filling extension's inside one. Replaces that origin's
     /// table whole, so an app whose lengths change with a viewport tier
     /// declares again on `resize`. A name a role owns is dropped with a
-    /// `reserved-token` warning, once per name.
+    /// `reserved-token` warning, once per name. A derived token whose
+    /// source did not resolve is dropped with `unknown-token`, naming both.
     pub fn set_tokens(&mut self, tokens: crate::tokens::Tokens) {
         for name in tokens.reserved() {
             let w = Warning {
@@ -591,6 +592,20 @@ impl Core {
                 message: format!(
                     "`{name}` is a theme or metrics role, so the token is dropped: `${name}` \
                      always means the role's value, and an app does not shadow one"
+                ),
+            };
+            self.diag.raise(w);
+        }
+        // A derived token whose source did not resolve (ADR 0028) is
+        // dropped the same way, and the warning names both ends: the
+        // token that is gone and the name that was not there for it.
+        for u in tokens.unresolved() {
+            let w = Warning {
+                code: crate::diag::UNKNOWN_TOKEN,
+                key: Key::ROOT.str(crate::diag::UNKNOWN_TOKEN).str(&u.token),
+                message: format!(
+                    "`${}` is dropped: it derives from `${}`, which is no colour token \n                     declared before it and no theme role",
+                    u.token, u.source
                 ),
             };
             self.diag.raise(w);

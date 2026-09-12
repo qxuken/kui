@@ -370,6 +370,58 @@ pub extern "C" fn kui_tokens_set(
     })
 }
 
+/// Add derived colour tokens (`docs/adr/0028-derived-tokens.md`) to the
+/// drawing origin's table, after `kui_tokens_set`: each a name, the
+/// colour token or theme role it derives from, and a chain of ops folded
+/// over it in order — `KUI_OP_LIFT` / `KUI_OP_DARKEN` toward white /
+/// black by `t`, `KUI_OP_RAISE` toward the front of the base in effect,
+/// `KUI_OP_ALPHA` sets the alpha, `KUI_OP_MIX` toward the token `other`
+/// names, `KUI_OP_READABLE` toward black or white until it clears the
+/// ratio `t` on `other`. A source that is no colour token declared before
+/// it and no role drops that token with `unknown-token`, as the other
+/// bindings do. False, with nothing added, for an op that is malformed —
+/// an `op` past `KUI_OP_READABLE`, or `other` given to a verb that takes
+/// none or missing from one that does — since a C call has no other way
+/// to refuse a declaration.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_tokens_derive(
+    ptr: *mut KuiCtx,
+    derived: *const KuiDerivedToken,
+    count: usize,
+) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        if derived.is_null() || count == 0 {
+            return true;
+        }
+        let mut t = c.core().tokens().cloned().unwrap_or_default();
+        for d in unsafe { std::slice::from_raw_parts(derived, count) } {
+            let ops = if d.ops.is_null() {
+                &[][..]
+            } else {
+                unsafe { std::slice::from_raw_parts(d.ops, d.op_count) }
+            };
+            let mut chain = Vec::with_capacity(ops.len());
+            for op in ops {
+                let Some(verb) = kui_core::ColorOp::VERBS.get(op.op as usize) else {
+                    return false;
+                };
+                let other = kstr(op.other);
+                let other = (!other.is_empty()).then_some(&*other);
+                let Some(step) = kui_core::ColorOp::parse(verb, other, op.t) else {
+                    return false;
+                };
+                chain.push(step);
+            }
+            t = t.derive(kstr(d.name).into_owned(), &kstr(d.from), chain);
+        }
+        c.core().set_tokens(t);
+        true
+    })
+}
+
 /// A colour token by name, resolved for this frame's appearance — the
 /// running origin's table over the host's, and a theme role's name
 /// (`surface`) answers with the role. `0xRRGGBBAA` through `out`; false

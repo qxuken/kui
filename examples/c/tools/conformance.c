@@ -356,6 +356,24 @@ static void conf_tokens(KuiCtx *ui, const Fixtures *f, int phase) {
         {KUI_STR("side_w"), 60.0f}, {KUI_STR("gap"), 8.0f}, {KUI_STR("big"), 16.0f},
     };
     kui_tokens_set(ui, colors, 3, lengths, 3);
+    /* conformance::TOKEN_DERIVED (ADR 0028): the same six, `bad` dropped by
+     * the core with `unknown-token`; `up` derives from `surface`, which the
+     * declaration above lost to the role. */
+    KuiColorOp lit_ops[] = {{KUI_OP_LIFT, 0.3f, {0}}};
+    KuiColorOp dim_ops[] = {{KUI_OP_MIX, 0.5f, KUI_STR("peach")}, {KUI_OP_DARKEN, 0.5f, {0}}};
+    KuiColorOp up_ops[] = {{KUI_OP_RAISE, 0.25f, {0}}};
+    KuiColorOp deep_ops[] = {{KUI_OP_ALPHA, 0.5f, {0}}};
+    KuiColorOp read_ops[] = {{KUI_OP_READABLE, 4.5f, KUI_STR("ink")}};
+    KuiColorOp bad_ops[] = {{KUI_OP_LIFT, 0.1f, {0}}};
+    KuiDerivedToken derived[] = {
+        {KUI_STR("lit"), KUI_STR("peach"), lit_ops, 1},
+        {KUI_STR("dim"), KUI_STR("ink"), dim_ops, 2},
+        {KUI_STR("up"), KUI_STR("surface"), up_ops, 1},
+        {KUI_STR("deep"), KUI_STR("lit"), deep_ops, 1},
+        {KUI_STR("read"), KUI_STR("peach"), read_ops, 1},
+        {KUI_STR("bad"), KUI_STR("nothing"), bad_ops, 1},
+    };
+    kui_tokens_derive(ui, derived, 6);
     uint32_t peach = 0, ink = 0, surface = 0, nothing = 0;
     float side_w = 0, gap = 0, big = 0, radius = 0;
     kui_token_color(ui, KUI_STR("peach"), &peach);
@@ -388,6 +406,15 @@ static void conf_tokens(KuiCtx *ui, const Fixtures *f, int phase) {
     cell.bg = nothing;
     kui_open_keyed(ui, KUI_STR("missing"), &cell, NULL);
     kui_close(ui);
+    static const char *const derived_keys[] = {"lit", "dim", "up", "deep", "read"};
+    for (size_t i = 0; i < 5; i++) {
+        uint32_t c = 0;
+        KuiStr key = {(const uint8_t *)derived_keys[i], strlen(derived_keys[i])};
+        kui_token_color(ui, key, &c);
+        cell.bg = c;
+        kui_open_keyed(ui, key, &cell, NULL);
+        kui_close(ui);
+    }
     KuiSpan spans[] = {
         {KUI_STR("tokens"), 0, 0, 0},
         {KUI_STR("x"), ink, 0, 0},

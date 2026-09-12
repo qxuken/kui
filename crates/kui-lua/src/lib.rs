@@ -1599,10 +1599,16 @@ fn collect_spans(spans: &Table, refs: &mut Refs<'_>) -> mlua::Result<Vec<SpanPar
     Ok(out)
 }
 
-/// `{ colors = { name = colour | { light =, dark = } }, lengths = { name =
-/// px } }` as a [`kui_core::Tokens`] (ADR 0027). Names are sorted, since a
-/// Lua table's iteration order is not one a declaration can promise and
-/// the index is only what `env.tokens` lists them in.
+/// `{ colors = { name = colour | { light =, dark = } | { from =, ops = } },
+/// lengths = { name = px } }` as a [`kui_core::Tokens`] (ADR 0027). Names
+/// are sorted, since a Lua table's iteration order is not one a
+/// declaration can promise and the index is only what `env.tokens` lists
+/// them in. A colour with `from` is a derived token (ADR 0028), its `ops`
+/// a list of `{ verb, … }` tuples; the values are declared first and the
+/// derived ones after, each once every source it names is in — position
+/// cannot carry that order here, so the name does. One whose source never
+/// arrives goes in last as written, for the core to drop with
+/// `unknown-token`; a cycle drops the same way, each naming the other.
 pub fn parse_tokens(t: &Table) -> mlua::Result<kui_core::Tokens> {
     let mut out = kui_core::Tokens::new();
     for pair in t.pairs::<String, mlua::Value>() {
@@ -1616,8 +1622,15 @@ pub fn parse_tokens(t: &Table) -> mlua::Result<kui_core::Tokens> {
             .pairs::<String, mlua::Value>()
             .collect::<mlua::Result<_>>()?;
         entries.sort_by(|a, b| a.0.cmp(&b.0));
+        // Values first; a derived token waits with its recipe parsed.
+        let mut derived: Vec<(String, String, Vec<kui_core::ColorOp>)> = Vec::new();
         for (name, v) in entries {
             out = match &v {
+                mlua::Value::Table(t) if t.contains_key("from")? => {
+                    let (from, ops) = parse_recipe(&name, t)?;
+                    derived.push((name, from, ops));
+                    out
+                }
                 mlua::Value::Table(halves) => {
                     let half = |k: &str| -> mlua::Result<Color> {
                         match halves.get::<mlua::Value>(k)? {
@@ -1635,6 +1648,22 @@ pub fn parse_tokens(t: &Table) -> mlua::Result<kui_core::Tokens> {
                 ),
             };
         }
+        // Then the derived, in name order among those whose sources are
+        // all declared, until none can be; what is left goes in as is.
+        while !derived.is_empty() {
+            let ready = derived.iter().position(|(_, from, ops)| {
+                let known = |s: &str| kui_core::tokens::is_role(s) || out.color_id(s).is_some();
+                known(from)
+                    && ops.iter().all(|op| match op {
+                        kui_core::ColorOp::Mix(c, _) | kui_core::ColorOp::Readable(c, _) => {
+                            known(c)
+                        }
+                        _ => true,
+                    })
+            });
+            let (name, from, ops) = derived.remove(ready.unwrap_or(0));
+            out = out.derive(&name, &from, ops);
+        }
     }
     if let Some(lengths) = t.get::<Option<Table>>("lengths")? {
         let mut entries: Vec<(String, mlua::Value)> = lengths
@@ -1648,6 +1677,97 @@ pub fn parse_tokens(t: &Table) -> mlua::Result<kui_core::Tokens> {
         }
     }
     Ok(out)
+}
+
+/// A derived token's `{ from = "peach", ops = { { "lift", 0.3 }, … } }`:
+/// the source name and the chain, each op a tuple in the array part — the
+/// verb at `[1]`, a colour name at `[2]` for `mix` and `readable`, the
+/// number last. `ops` may be one bare tuple, or absent for an alias.
+fn parse_recipe(name: &str, t: &Table) -> mlua::Result<(String, Vec<kui_core::ColorOp>)> {
+    for pair in t.pairs::<String, mlua::Value>() {
+        let (k, _) = pair?;
+        if k != "from" && k != "ops" {
+            return Err(bad(format!(
+                "tokens.colors.{name}: unknown key {k:?} (from, ops)"
+            )));
+        }
+    }
+    let from = match t.get::<mlua::Value>("from")? {
+        mlua::Value::String(s) => s.to_str()?.to_string(),
+        _ => {
+            return Err(bad(format!(
+                "tokens.colors.{name}.from names a colour token or role"
+            )));
+        }
+    };
+    let ops = match t.get::<mlua::Value>("ops")? {
+        mlua::Value::Nil => Vec::new(),
+        mlua::Value::Table(list) => {
+            // A bare tuple starts with its verb; a list starts with a tuple.
+            let tuples: Vec<Table> = match list.get::<mlua::Value>(1)? {
+                mlua::Value::String(_) => vec![list],
+                _ => list
+                    .sequence_values::<Table>()
+                    .collect::<mlua::Result<_>>()?,
+            };
+            tuples
+                .iter()
+                .map(|op| parse_color_op(name, op))
+                .collect::<mlua::Result<_>>()?
+        }
+        _ => {
+            return Err(bad(format!(
+                "tokens.colors.{name}.ops is a list of {{ verb, … }} tuples"
+            )));
+        }
+    };
+    Ok((from, ops))
+}
+
+fn parse_color_op(name: &str, op: &Table) -> mlua::Result<kui_core::ColorOp> {
+    let verb = match op.get::<mlua::Value>(1)? {
+        mlua::Value::String(s) => s.to_str()?.to_string(),
+        _ => {
+            return Err(bad(format!(
+                "tokens.colors.{name}.ops: an op starts with its verb"
+            )));
+        }
+    };
+    let Some(takes_color) = kui_core::ColorOp::takes_color(&verb) else {
+        return Err(bad(format!(
+            "tokens.colors.{name}.ops: unknown verb {verb:?} (lift, darken, raise, alpha, mix, readable)"
+        )));
+    };
+    let arity = if takes_color { 3 } else { 2 };
+    if op.raw_len() != arity {
+        return Err(bad(format!(
+            "tokens.colors.{name}.ops: {verb} takes {} — {{ \"{verb}\", {} }}",
+            if takes_color {
+                "a colour and a number"
+            } else {
+                "one number"
+            },
+            if takes_color { "token, t" } else { "t" }
+        )));
+    }
+    let color = if takes_color {
+        match op.get::<mlua::Value>(2)? {
+            mlua::Value::String(s) => Some(s.to_str()?.to_string()),
+            _ => {
+                return Err(bad(format!(
+                    "tokens.colors.{name}.ops: {verb}'s colour is a token or role name"
+                )));
+            }
+        }
+    } else {
+        None
+    };
+    let n = number(&op.get::<mlua::Value>(arity as i64)?).ok_or_else(|| {
+        bad(format!(
+            "tokens.colors.{name}.ops: {verb}'s number is a number"
+        ))
+    })?;
+    Ok(kui_core::ColorOp::parse(&verb, color.as_deref(), n).expect("checked above"))
 }
 
 /// What a `$name` in a prop resolves through while a table is parsed
@@ -3468,6 +3588,87 @@ mod tests {
             .find(|q| q.color == peach && q.kind == kui_core::QuadKind::Solid)
             .unwrap();
         assert_eq!(a.border_color, Color::hex(0x111111ff));
+    }
+
+    /// Derived tokens (ADR 0028): a recipe over an earlier token, its ops
+    /// tuples in the array part. Lua sorts its names, so `a_deep` (from
+    /// `z_lit`) is declared after its source by dependency and not by
+    /// position; `bad`'s missing source is the core's `unknown-token`; a
+    /// bare tuple is one op; `env.tokens` reads the derived value back.
+    #[test]
+    fn a_script_derives_a_token_from_another() {
+        let mut ext = LuaExtension::from_source(
+            "derived",
+            r##"
+                tokens = {
+                  colors = {
+                    peach = "#ffcc99",
+                    z_lit = { from = "peach", ops = { "lift", 0.5 } },
+                    a_deep = { from = "z_lit", ops = { { "alpha", 0.5 }, { "mix", "peach", 0.0 } } },
+                    up = { from = "surface", ops = { { "raise", 0.25 } } },
+                    bad = { from = "nothing" },
+                  },
+                }
+                function view(env)
+                  seen = env.tokens.colors
+                  return column {
+                    row { key = "a", width = 20, height = 20, bg = "$a_deep" },
+                    row { key = "b", width = 20, height = 20, bg = "$bad" },
+                  }
+                end
+            "##,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        let warnings = core.take_warnings();
+        let codes: Vec<&str> = warnings.iter().map(|w| w.code).collect();
+        assert_eq!(codes, ["unknown-token"], "{warnings:?}");
+        assert!(
+            warnings[0].message.contains("`$bad`") && warnings[0].message.contains("`$nothing`")
+        );
+        let seen: Table = ext.lua.globals().get("seen").unwrap();
+        assert_eq!(seen.get::<u32>("z_lit").unwrap(), 0xffe6ccff);
+        assert_eq!(seen.get::<u32>("a_deep").unwrap(), 0xffe6cc80);
+        let surface = core.theme().surface;
+        assert_eq!(
+            seen.get::<u32>("up").unwrap(),
+            surface.mix(Color::WHITE, 0.25).to_hex(),
+            "a role source, raised toward the dark base's front"
+        );
+        assert!(seen.get::<mlua::Value>("bad").unwrap().is_nil());
+        let dl = core.output().0;
+        assert!(
+            dl.quads.iter().any(|q| q.color.to_hex() == 0xffe6cc80),
+            "$a_deep painted the derived colour"
+        );
+
+        // The parser refuses what the core could not name.
+        let refused = |colors: &str| {
+            LuaExtension::from_source(
+                "bad",
+                &format!(
+                    "tokens = {{ colors = {{ {colors} }} }}\nfunction view() return column {{}} end"
+                ),
+            )
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_default()
+        };
+        assert!(
+            refused(r#"x = { from = "peach", ops = { { "glow", 1 } } }"#)
+                .contains("unknown verb \"glow\"")
+        );
+        assert!(
+            refused(r#"x = { from = "peach", ops = { { "mix", 0.5 } } }"#)
+                .contains("mix takes a colour and a number")
+        );
+        assert!(
+            refused(r#"x = { from = "peach", ops = { { "lift", "lots" } } }"#)
+                .contains("number is a number")
+        );
+        assert!(refused(r#"x = { from = 3 }"#).contains("from names a colour token or role"));
+        assert!(refused(r#"x = { from = "peach", glow = 1 }"#).contains("unknown key \"glow\""));
     }
 
     /// A script's table is its own: its `$peach` is the host's until it

@@ -603,6 +603,15 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         // prelude this arm returns beside the body.
         "tokens" => {
             let keys = conformance::TOKEN_KEYS;
+            let derived_cells = keys[4..]
+                .iter()
+                .map(|k| {
+                    format!(
+                        "              column {{ key = \"{k}\", width = \"$side_w\", height = 30, bg = \"${k}\" }},"
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
             format!(
                 r##"
             return row {{ pad = {{ l = "$gap", r = 10, t = 10, b = 10 }}, gap = "$gap",
@@ -611,6 +620,7 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                         border = {{ w = "$gap", color = "$peach" }} }},
               column {{ key = "{k2}", width = "$side_w", height = 30, bg = "$surface", radius = "$radius" }},
               column {{ key = "{k3}", width = "$side_w", height = 30, bg = "$nothing" }},
+{derived_cells}
               text({{ "tokens", {{ "x", color = "$ink" }} }}, {{ size = "$big", color = "$peach" }}),
             }}
         "##,
@@ -634,7 +644,34 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                 .map(|(n, v)| format!("{n} = {v:?}"))
                 .collect::<Vec<_>>()
                 .join(", ");
-            format!("tokens = {{ colors = {{ {colors} }}, lengths = {{ {lengths} }} }}\n")
+            // The derived tokens (ADR 0028) as tuples in the array part;
+            // `read`'s single op is written bare, the sugar the parser
+            // tells from a list by its first element.
+            let derived = conformance::TOKEN_DERIVED
+                .iter()
+                .map(|(n, from, ops)| {
+                    let tuple = |(verb, color, t): &(&str, &str, f32)| {
+                        if color.is_empty() {
+                            format!("{{ \"{verb}\", {t:?} }}")
+                        } else {
+                            format!("{{ \"{verb}\", \"{color}\", {t:?} }}")
+                        }
+                    };
+                    let ops = if *n == "read" {
+                        tuple(&ops[0])
+                    } else {
+                        format!(
+                            "{{ {} }}",
+                            ops.iter().map(tuple).collect::<Vec<_>>().join(", ")
+                        )
+                    };
+                    format!("{n} = {{ from = \"{from}\", ops = {ops} }}")
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!(
+                "tokens = {{ colors = {{ {colors}, {derived} }}, lengths = {{ {lengths} }} }}\n"
+            )
         }
         _ => String::new(),
     };

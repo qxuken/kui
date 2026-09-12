@@ -33,7 +33,8 @@ and `env.viewport` reading the window against its own schema row — the
 label editor's `wrap`, and five wishes, two of them carried unanswered
 from alpha.10); they stay here with their outcomes on top until the
 alpha.12 tag moves them. T5 the same day (derived tokens, what
-building ADR 0027 left out), C30, filed 2026-09-12 (always on top — a window level
+building ADR 0027 left out — **built 2026-09-13** under
+[ADR 0028](adr/0028-derived-tokens.md)), C30, filed 2026-09-12 (always on top — a window level
 no binding could ask for — **done the same day**, as the per-frame fact
 the entry chose, with `env.window.always_on_top` reporting what the
 platform did), C31, found
@@ -1363,9 +1364,34 @@ closed the same day. Both are in
 under this heading, and so is T4 now — filed 2026-09-12 out of the
 alpha.11 field reports and a question asked over them, answered by
 [ADR 0027](adr/0027-tokens-beside-the-theme.md) and built the same day.
-What is open under it is T5, the derived tokens that building left out.
+T5, the derived tokens that building left out, was built the day after
+under [ADR 0028](adr/0028-derived-tokens.md); it stays here with its
+outcome on top until the alpha.12 tag moves it.
 
 ### `.` T5 — Derived tokens: a colour computed from another
+
+**Done 2026-09-13** — [ADR 0028](adr/0028-derived-tokens.md), written as
+a menu of every place the arithmetic could live (the table, the
+reference, the prop, the binding's helper, the app) and built as the
+table: `ColorToken::Derived { from, ops }`, a chain of `[verb, …]` tuples
+(`lift`, `darken`, `raise`, `alpha`, `mix`, `readable` — each a `Color` or
+`Theme` method that already existed) folded by the core on read, so a
+recipe over a themed source runs on the half in effect and a role can be
+a source. One flat name per shade, the shape this entry sketched, chosen
+over a `variants` sugar that would have declared the pomodoro's kit as 12
++ 2 — the map from a chosen colour to its shade is the app's, and
+`hover` / `pressed` turned out to be role names, so the shades are
+`peachHover` / `peachPressed`. Declared in all four bindings (`{ from, ops
+}` in Node and Lua, `kui_tokens_derive` in C, `Tokens::derive` in Rust);
+nothing on the wire changed. Two things the building found: a derived
+colour is rounded to eight bits a channel so C's `uint32_t` readback
+lowers the same quad, and a source must be the same table or a role — a
+guest wanting a shade of the host's colour declares the value. The
+corpus `tokens` scene grew by six derived tokens. The condition below —
+an app declaring its shades as tokens — is the pomodoro's next alpha.
+
+The original entry:
+
 
 Filed 2026-09-12 out of building ADR 0027, as the one piece of the
 pomodoro's palette the tokens do not cover. Eleven of its controls carry
@@ -1778,8 +1804,9 @@ bridge (a pin cannot say whether anyone is listening). T4 is built —
 [ADR 0027](adr/0027-tokens-beside-the-theme.md), written and built
 2026-09-12: colour and length tokens beside the theme and the metrics,
 referenced by typed name and resolved by the binding — and T5, the
-derived tokens it left out, waits for the app that computes a hover
-shade to ask. C31, C29 and W13 went together on the evening of
+derived tokens it left out, was **built 2026-09-13** under
+[ADR 0028](adr/0028-derived-tokens.md): a colour token that is a chain
+of operations over an earlier one, resolved by the core on read. C31, C29 and W13 went together on the evening of
 2026-09-12: the Node adapter's `fragments` scene named raw 1 as a dead
 image and raw 1 is the first handle a fresh process mints, so the
 fixtures remove one now; the four bench rows were swept commit by

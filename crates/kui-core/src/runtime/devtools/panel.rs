@@ -412,6 +412,11 @@ fn tokens(ui: &mut Ui<'_>, st: &State, t: &Theme) {
                         crate::tokens::TokenKind::Length => format!("{:.0} px", tok.length),
                     };
                     ui.text(&value, TextStyle::new(11.0).color(t.muted).mono().nowrap());
+                    // A derived token (ADR 0028) prints its recipe after the
+                    // value, so the panel says where the colour came from.
+                    if let Some(recipe) = &tok.recipe {
+                        ui.text(recipe, TextStyle::new(11.0).color(t.faint).nowrap());
+                    }
                 },
             );
         }

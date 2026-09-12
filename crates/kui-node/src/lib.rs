@@ -1077,6 +1077,9 @@ fn theme_from_json(core: &Core, v: &Json) -> Result<kui_core::Theme> {
 /// not survive the crossing (`serde_json` sorts it). Names apart by kind
 /// because a colour and a length are both a number here, and the kind
 /// cannot be read off the value (ADR 0027, decision 2).
+/// A colour value that is an object with `from` is a derived token (ADR
+/// 0028), its `ops` a list of `[verb, …]` tuples `index.js` has already
+/// normalised.
 fn tokens_from_json(v: &Json) -> Result<Tokens> {
     let Json::Object(o) = v else {
         return Err(err("setTokens(): expected { colors?, lengths? }"));
@@ -1104,6 +1107,37 @@ fn tokens_from_json(v: &Json) -> Result<Tokens> {
             let name = &name;
             let v = &v;
             t = match v {
+                // A recipe (ADR 0028): `{ from, ops: [[verb, …], …] }`, each
+                // op a tuple — the verb, a colour operand for the two that
+                // take one, then the number. `index.js` has already
+                // wrapped a bare single tuple.
+                Json::Object(recipe) if recipe.contains_key("from") => {
+                    let from = recipe.get("from").and_then(Json::as_str).ok_or_else(|| {
+                        err(format!(
+                            "setTokens(): {name}.from names a colour token or role"
+                        ))
+                    })?;
+                    for k in recipe.keys() {
+                        if k != "from" && k != "ops" {
+                            return Err(err(format!(
+                                "setTokens(): {name}: unknown key {k:?} (from, ops)"
+                            )));
+                        }
+                    }
+                    let ops = match recipe.get("ops") {
+                        None | Some(Json::Null) => Vec::new(),
+                        Some(Json::Array(ops)) => ops
+                            .iter()
+                            .map(|op| color_op_from_json(op, name))
+                            .collect::<Result<Vec<_>>>()?,
+                        Some(_) => {
+                            return Err(err(format!(
+                                "setTokens(): {name}.ops is a list of [verb, …] tuples"
+                            )));
+                        }
+                    };
+                    t.derive(name, from, ops)
+                }
                 Json::Object(halves) => {
                     let half = |k: &str| -> Result<Color> {
                         let h = halves.get(k).ok_or_else(|| {
@@ -1137,6 +1171,54 @@ fn tokens_from_json(v: &Json) -> Result<Tokens> {
         }
     }
     Ok(t)
+}
+
+/// One step of a derived token's recipe as `setTokensRaw` receives it: a
+/// `[verb, number]` or `[verb, colour, number]` tuple, checked against
+/// which the verb takes (`ColorOp::takes_color`).
+fn color_op_from_json(op: &Json, token: &str) -> Result<kui_core::ColorOp> {
+    let Json::Array(parts) = op else {
+        return Err(err(format!(
+            "setTokens(): {token}.ops: each op is a [verb, …] tuple"
+        )));
+    };
+    let verb = parts.first().and_then(Json::as_str).ok_or_else(|| {
+        err(format!(
+            "setTokens(): {token}.ops: an op starts with its verb"
+        ))
+    })?;
+    let Some(takes_color) = kui_core::ColorOp::takes_color(verb) else {
+        return Err(err(format!(
+            "setTokens(): {token}.ops: unknown verb {verb:?} (lift, darken, raise, alpha, mix, readable)"
+        )));
+    };
+    let arity = if takes_color { 3 } else { 2 };
+    if parts.len() != arity {
+        return Err(err(format!(
+            "setTokens(): {token}.ops: {verb} takes {} — [{verb}, {}]",
+            if takes_color {
+                "a colour and a number"
+            } else {
+                "one number"
+            },
+            if takes_color { "token, t" } else { "t" }
+        )));
+    }
+    let color = takes_color
+        .then(|| {
+            parts[1].as_str().ok_or_else(|| {
+                err(format!(
+                    "setTokens(): {token}.ops: {verb}'s colour is a token or role name"
+                ))
+            })
+        })
+        .transpose()?;
+    let n = parts[arity - 1].as_f64().ok_or_else(|| {
+        err(format!(
+            "setTokens(): {token}.ops: {verb}'s number is a number"
+        ))
+    })?;
+    Ok(kui_core::ColorOp::parse(verb, color, n as f32).expect("checked above"))
 }
 
 /// The tokens a reader in this core sees, resolved for the frame: the
@@ -2041,7 +2123,10 @@ macro_rules! core_methods {
             /// sideW: 132 } }`. Replaces the table whole, so an app whose
             /// lengths change with a viewport tier declares again on
             /// `resize`. A name a theme or metrics role owns is dropped
-            /// with a `reserved-token` warning. Reference one in a prop
+            /// with a `reserved-token` warning. A colour may be a
+            /// recipe over an earlier one (ADR 0028): `{ from: 'peach',
+            /// ops: [['lift', 0.3]] }`, dropped with `unknown-token` when
+            /// its source is not there. Reference one in a prop
             /// as `'$peach'` — `defineTokens` types the names. The raw
             /// addon door; `index.js` wraps it to keep the encoder's map
             /// in step, so call `setTokens` and not this.

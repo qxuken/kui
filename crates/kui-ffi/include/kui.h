@@ -181,6 +181,8 @@ extern "C" {
  * no bump of its own), and, still at 15, KuiColorToken / KuiLengthToken
  * with kui_tokens_set, kui_token_color and kui_token_length (two new [in]
  * arrays and three functions - nothing the library writes moved).
+ * Still at 15: KuiColorOp / KuiDerivedToken with kui_tokens_derive (ADR
+ * 0028) - two more [in] arrays and one function.
  */
 #define KUI_ABI_VERSION 15u
 uint32_t kui_abi_version(void);
@@ -195,7 +197,7 @@ uint32_t kui_abi_version(void);
  *          bumps KUI_ABI_VERSION instead (ABI 8, ABI 13).
  *          KuiSpec, KuiSizing, KuiKeyframe, KuiEnter, KuiTextStyle, KuiSpan,
  *          KuiCell, KuiMenuItem, KuiMenu, KuiPlay, KuiAudio, KuiWindowConfig,
- *          KuiColorToken, KuiLengthToken.
+ *          KuiColorToken, KuiLengthToken, KuiColorOp, KuiDerivedToken.
  *
  * [out]    You allocate it; the library WRITES it. These lead with a
  *          `uint32_t size` you set to sizeof the struct, and the library
@@ -1789,6 +1791,57 @@ void kui_tokens_set(KuiCtx *ctx, const KuiColorToken *colors, size_t color_count
 bool kui_token_color(KuiCtx *ctx, KuiStr name, uint32_t *out);
 /* The same for a length token or a metrics role, in logical px. */
 bool kui_token_length(KuiCtx *ctx, KuiStr name, float *out);
+
+/* -- Derived tokens (docs/adr/0028-derived-tokens.md) ----------------------
+ *
+ * A colour computed from another: a name, the colour token or theme role
+ * it derives from, and a chain of ops folded over it in order, each a
+ * verb and its operands. The core resolves it on read, so a recipe over a
+ * themed source runs on the half in effect, and the devtools list it
+ * with its recipe. Added to the drawing origin's table after
+ * kui_tokens_set, and read back like any other token:
+ *
+ *   KuiColorOp lit[]  = { { KUI_OP_LIFT, 0.3f, {0} } };
+ *   KuiColorOp wash[] = { { KUI_OP_LIFT, 0.3f, {0} }, { KUI_OP_ALPHA, 0.5f, {0} } };
+ *   KuiColorOp ink[]  = { { KUI_OP_READABLE, 4.5f, KUI_STR("black") } };
+ *   KuiDerivedToken derived[] = {
+ *     { KUI_STR("peach_lit"),  KUI_STR("peach"), lit,  1 },
+ *     { KUI_STR("peach_wash"), KUI_STR("peach"), wash, 2 },
+ *     { KUI_STR("peach_ink"),  KUI_STR("peach"), ink,  1 },
+ *     { KUI_STR("accent2"),    KUI_STR("accent"), NULL, 0 },   // an alias of the role
+ *   };
+ *   kui_tokens_derive(ctx, derived, 4);
+ *   uint32_t lit; kui_token_color(ctx, KUI_STR("peach_lit"), &lit);
+ *
+ * The verbs: KUI_OP_LIFT / KUI_OP_DARKEN move toward white / black by
+ * `t`; KUI_OP_RAISE toward the front of whichever base is in effect;
+ * KUI_OP_ALPHA sets the alpha to `t`; KUI_OP_MIX moves toward the token
+ * `other` names by `t`; KUI_OP_READABLE moves toward black or white -
+ * whichever reads on `other` - until it clears the ratio `t` on it.
+ * `other` is empty for the first four and a name for the last two.
+ *
+ * A source that is no colour token declared before it and no theme role
+ * drops that token with `unknown-token` (naming both), so the rest of the
+ * call still lands. An op that is malformed - `op` past KUI_OP_READABLE,
+ * `other` given to a verb that takes none or missing from one that does -
+ * makes the call return false and add nothing. Both structs are [in]
+ * arrays: an append moves the stride and is a bump. */
+enum {
+    KUI_OP_LIFT = 0, KUI_OP_DARKEN = 1, KUI_OP_RAISE = 2,
+    KUI_OP_ALPHA = 3, KUI_OP_MIX = 4, KUI_OP_READABLE = 5
+};
+typedef struct KuiColorOp {
+    uint8_t op;    /* KUI_OP_* */
+    float t;       /* the amount, alpha, or contrast ratio */
+    KuiStr other;  /* a colour token or role name for MIX and READABLE; empty otherwise */
+} KuiColorOp;
+typedef struct KuiDerivedToken {
+    KuiStr name;
+    KuiStr from;            /* a colour token declared before this one, or a theme role */
+    const KuiColorOp *ops;  /* NULL with a zero count is an alias */
+    size_t op_count;
+} KuiDerivedToken;
+bool kui_tokens_derive(KuiCtx *ctx, const KuiDerivedToken *derived, size_t count);
 
 /* The frame clock for transitions (monotonic seconds, any origin). Set before
  * each kui_frame_begin; never setting it makes transitions snap. */

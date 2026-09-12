@@ -129,7 +129,8 @@ c_type! {
     KuiWarning => "KuiWarning", KuiPlay => "KuiPlay", KuiAudio => "KuiAudio",
     KuiAudioCommand => "KuiAudioCommand", KuiTheme => "KuiTheme",
     KuiMetrics => "KuiMetrics", KuiColorToken => "KuiColorToken",
-    KuiLengthToken => "KuiLengthToken",
+    KuiLengthToken => "KuiLengthToken", KuiColorOp => "KuiColorOp",
+    KuiDerivedToken => "KuiDerivedToken",
     KuiEvent => "KuiEvent", KuiWindowConfig => "KuiWindowConfig",
     KuiWindowCommand => "KuiWindowCommand", KuiDrawData => "KuiDrawData",
     ViewFn => "KuiViewFn",
@@ -431,6 +432,12 @@ fn asserts() -> (String, Vec<&'static str>) {
             KUI_ENTER_BG,
             KUI_ENTER_RADIUS,
             KUI_ENTER_OPACITY,
+            KUI_OP_LIFT,
+            KUI_OP_DARKEN,
+            KUI_OP_RAISE,
+            KUI_OP_ALPHA,
+            KUI_OP_MIX,
+            KUI_OP_READABLE,
             KUI_VALUE_NOW,
             KUI_VALUE_MIN,
             KUI_VALUE_MAX,
@@ -831,6 +838,17 @@ fn asserts() -> (String, Vec<&'static str>) {
     abi_struct!(o, KuiLengthToken {
         name: KuiStr => "KuiStr",
         value: f32 => "float",
+    });
+    abi_struct!(o, KuiColorOp {
+        op: u8 => "uint8_t",
+        t: f32 => "float",
+        other: KuiStr => "KuiStr",
+    });
+    abi_struct!(o, KuiDerivedToken {
+        name: KuiStr => "KuiStr",
+        from: KuiStr => "KuiStr",
+        ops: *const KuiColorOp => "const KuiColorOp *",
+        op_count: usize => "size_t",
     });
 
     abi_struct!(o, KuiEvent {

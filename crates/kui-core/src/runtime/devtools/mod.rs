@@ -243,6 +243,9 @@ pub(crate) struct TokenFact {
     pub(crate) resolved: Color,
     /// The px, for a length token.
     pub(crate) length: f32,
+    /// A derived colour token's recipe, as the panel prints it beside the
+    /// hex (ADR 0028): `peach → lift 0.3`.
+    pub(crate) recipe: Option<String>,
 }
 
 #[derive(Clone, Default)]
@@ -1562,15 +1565,17 @@ impl Core {
         let mut tokens = Vec::new();
         for origin in origins {
             let table = &self.tokens[origin];
-            for (name, tok) in table.colors() {
+            for (i, (name, _)) in table.colors().iter().enumerate() {
+                let (light, dark) = table.halves(i as u16, &self.theme);
                 tokens.push(TokenFact {
                     origin: *origin,
                     name: name.clone(),
                     kind: crate::tokens::TokenKind::Color,
-                    light: tok.light,
-                    dark: tok.dark,
-                    resolved: tok.resolve(&self.theme),
+                    light,
+                    dark,
+                    resolved: table.resolve_color(i as u16, &self.theme),
                     length: 0.0,
+                    recipe: table.recipe(i as u16),
                 });
             }
             for (name, v) in table.lengths() {
@@ -1582,6 +1587,7 @@ impl Core {
                     dark: Color::TRANSPARENT,
                     resolved: Color::TRANSPARENT,
                     length: *v,
+                    recipe: None,
                 });
             }
         }

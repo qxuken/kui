@@ -2866,7 +2866,10 @@ const SCENE_TREES = {
   // and every value a `$name`: the app's, the two roles, and `$nothing`.
   tokens: (_fx, _phase, ctx) => {
     ctx.setTokens({
-      colors: Object.fromEntries(TOKEN_COLORS.map(([n, l, d]) => [n, { light: l, dark: d }])),
+      colors: Object.fromEntries([
+        ...TOKEN_COLORS.map(([n, l, d]) => [n, { light: l, dark: d }]),
+        ...TOKEN_DERIVED.map(([n, from, ops]) => [n, { from, ops }]),
+      ]),
       lengths: Object.fromEntries(TOKEN_LENGTHS),
     });
     const cell = (key, extra) => box({ width: '$side_w', height: 30, ...extra }, [], key);
@@ -2876,6 +2879,7 @@ const SCENE_TREES = {
         cell(TOKEN_KEYS[1], { bg: '$ink', borderW: '$gap', borderColor: '$peach' }),
         cell(TOKEN_KEYS[2], { bg: '$surface', radius: '$radius' }),
         cell(TOKEN_KEYS[3], { bg: '$nothing' }),
+        ...TOKEN_KEYS.slice(4).map((k) => cell(k, { bg: "$" + k })),
         el('text', { size: '$big', color: '$peach' }, ['tokens', el('span', { color: '$ink' }, ['x'])]),
       ]),
     ]);
@@ -3407,7 +3411,20 @@ const TOKEN_COLORS = [
   ['surface', 0xff0000ff, 0xff0000ff],
 ];
 const TOKEN_LENGTHS = [['side_w', 60], ['gap', 8], ['big', 16]];
-const TOKEN_KEYS = ['peach', 'ink', 'role', 'missing'];
+/** `conformance::TOKEN_DERIVED` (ADR 0028): declared after the values,
+ *  each `[name, from, ops]` with `ops` the tuples as the app writes them
+ *  — `dim`'s two do not commute, `up` derives from the `surface` *role*
+ *  (the declared `surface` above was refused), `deep` from a derived
+ *  token, `read` is the contrast loop, and `bad` is dropped. */
+const TOKEN_DERIVED = [
+  ['lit', 'peach', [['lift', 0.3]]],
+  ['dim', 'ink', [['mix', 'peach', 0.5], ['darken', 0.5]]],
+  ['up', 'surface', [['raise', 0.25]]],
+  ['deep', 'lit', [['alpha', 0.5]]],
+  ['read', 'peach', ['readable', 'ink', 4.5]], // the bare-tuple sugar
+  ['bad', 'nothing', [['lift', 0.1]]],
+];
+const TOKEN_KEYS = ['peach', 'ink', 'role', 'missing', 'lit', 'dim', 'up', 'deep', 'read'];
 /** A root box sized like the core's implicit root: `configure_root` with
  *  the same data it already has, so only `title` actually lands. */
 const root = (props, children) => box({ width: 'grow', height: 'grow', ...props }, children);
@@ -4886,6 +4903,59 @@ test('a $name nothing declared, or of the other kind, is dropped and warned abou
   assert.deepEqual(ws.map(named).sort(), ['gap', 'nothing', 'peach', 'peech'], 'once per name across two frames');
   assert.match(ws.find((w) => named(w) === 'gap').message, /is a length token, and this slot takes a color/);
   assert.match(ws.find((w) => named(w) === 'peech').message, /names no token/);
+});
+
+test('a derived token is a recipe over an earlier one, resolved by the core and indexed like any other', () => {
+  // ADR 0028: `{ from, ops }`, the ops `[verb, …]` tuples folded in order.
+  const ctx = new Ctx();
+  ctx.setInspect(true);
+  ctx.setTokens({
+    colors: {
+      peach: '#ffcc99',
+      ink: { light: '#202020', dark: '#e0e0e0' },
+      bad: { from: 'nothing', ops: [['lift', 0.1]] }, // dropped: takes no index
+      lit: { from: 'peach', ops: ['lift', 0.5] }, // the bare-tuple sugar
+      wash: { from: 'lit', ops: [['alpha', 0.5]] },
+      up: { from: 'surface', ops: [['raise', 0.25]] },
+      same: { from: 'ink' }, // an alias
+    },
+  });
+  const t = ctx.tokens().colors;
+  assert.equal(t.lit, 0xffe6ccff, 'peach lifted halfway to white');
+  assert.equal(t.wash, 0xffe6cc80, 'then half alpha');
+  assert.equal(t.same, t.ink);
+  // `surface` is the role (nothing declared it here), raised toward white
+  // on the default dark base.
+  const s = ctx.theme().surface >>> 0;
+  const ch = (c, i) => (c >>> (24 - 8 * i)) & 0xff;
+  const raised = [0, 1, 2].map((i) => Math.round(ch(s, i) + (255 - ch(s, i)) * 0.25));
+  assert.deepEqual([0, 1, 2].map((i) => ch(t.up, i)), raised, 'a role source resolves through the theme');
+  assert.ok(!('bad' in t), 'the unresolved one never entered the table');
+  const ws = ctx.warnings().filter((w) => w.code === 'unknown-token');
+  assert.equal(ws.length, 1);
+  assert.match(ws[0].message, /`\$bad` is dropped: it derives from `\$nothing`/);
+  // The dropped token took no index, so the ones after it line up with the
+  // core's — `$lit` paints lit, not the next name over.
+  ctx.frame(320, 240, 1, root({}, [box({ width: 20, height: 20, bg: '$lit' }, [], 'l'), box({ width: 20, height: 20, bg: '$same' }, [], 's')]));
+  const l = ctx.nodes().find((n) => n.label === 'l');
+  assert.equal(l.bg, 0xffe6ccff);
+  assert.equal(ctx.nodes().find((n) => n.label === 's').bg, t.ink);
+  assert.equal(ctx.warnings().filter((w) => w.code === 'unknown-token').length, 0, 'no new warning for the reference');
+});
+
+test('a recipe with a bad verb, arity or operand is refused at the declaration', () => {
+  const ctx = new Ctx();
+  const declare = (ops) => () => ctx.setTokens({ colors: { peach: '#ffcc99', x: { from: 'peach', ops } } });
+  assert.throws(declare([['glow', 0.5]]), /unknown verb "glow"/);
+  assert.throws(declare([['lift', 'peach', 0.5]]), /lift takes one number/);
+  assert.throws(declare([['mix', 0.5]]), /mix takes a colour and a number/);
+  assert.throws(declare([['mix', 3, 0.5]]), /colour is a token or role name/);
+  assert.throws(declare([['lift', 'lots']]), /number is a number/);
+  assert.throws(declare('lift'), /list of \[verb/);
+  assert.throws(() => ctx.setTokens({ colors: { x: { from: 'peach', glow: 1 } } }), /unknown key "glow"/);
+  assert.throws(() => ctx.setTokens({ colors: { x: { from: 3 } } }), /from names a colour token or role/);
+  // A refused declaration left no table behind.
+  assert.deepEqual(ctx.tokens().colors, {});
 });
 
 test('a span colour may be a token, and measureText resolves one the same way', () => {

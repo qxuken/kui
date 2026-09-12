@@ -725,8 +725,12 @@ pub const SCENES: &[Scene] = &[
         name: "tokens",
         doc: "Tokens beside the theme (ADR 0027): a table declared every \
               frame — an unthemed peach, a themed ink, two lengths, and a \
-              name a role owns, refused with `reserved-token` — then a row \
-              referencing them by name in every slot kind: a `bg`, a `width`, \
+              name a role owns, refused with `reserved-token`, then the \
+              derived tokens of ADR 0028 (`TOKEN_DERIVED`: a lift, a \
+              two-step chain, a `raise` off the `surface` role, a step off \
+              a derived token, a `readable` against the themed ink, and one \
+              whose source is nothing, dropped with `unknown-token`) — then \
+              a row referencing them by name in every slot kind: a `bg`, a `width`, \
               a `pad` edge, a `border`'s width and colour, a text's `size` \
               and `color`, a span's `color`; `$surface` and `$radius` as the \
               roles by the same spelling; and `$nothing`, which paints \
@@ -740,7 +744,7 @@ pub const SCENES: &[Scene] = &[
         env: NATIVE_CHROME,
         steps: &[Step::Appearance(1)],
         expect: Expect {
-            solid: 3,
+            solid: 8,
             shadows: 0,
             images: 0,
             segments: 0,
@@ -751,7 +755,7 @@ pub const SCENES: &[Scene] = &[
             // The OS setting moving under the app is itself an event.
             events: &["system -"],
             announcements: &[],
-            warnings: &["reserved-token", "unknown-token"],
+            warnings: &["reserved-token", "unknown-token", "unknown-token"],
             commands: &[],
             audio: &[],
             title: None,
@@ -2418,8 +2422,33 @@ pub const TOKEN_COLORS: [(&str, u32, u32); 3] = [
 ];
 pub const TOKEN_LENGTHS: [(&str, f32); 3] = [("side_w", 60.0), ("gap", 8.0), ("big", 16.0)];
 
-/// The four keyed boxes of the `tokens` scene, in order.
-pub const TOKEN_KEYS: [&str; 4] = ["peach", "ink", "role", "missing"];
+/// The scene's derived tokens (ADR 0028), declared after the values in
+/// this order: the name, its source, and the chain as `(verb, colour
+/// operand or "", number)` tuples. `lit` is one step off a value; `dim`
+/// two steps that do not commute, so the fold's order is pinned; `up`
+/// derives from `surface`, which the declaration above lost to the role,
+/// so its source *is* the role and `raise` turns with the base; `deep`
+/// derives from a derived token; `read` is the contrast loop against
+/// the themed `ink`, which it has to move for on the dark base only; and
+/// `bad` names a source nothing declared, so it is dropped with
+/// `unknown-token` at declaration and never referenced.
+/// One step of a corpus recipe: the verb, the colour operand or `""`, and
+/// the number.
+pub type TokenOp = (&'static str, &'static str, f32);
+pub const TOKEN_DERIVED: [(&str, &str, &[TokenOp]); 6] = [
+    ("lit", "peach", &[("lift", "", 0.3)]),
+    ("dim", "ink", &[("mix", "peach", 0.5), ("darken", "", 0.5)]),
+    ("up", "surface", &[("raise", "", 0.25)]),
+    ("deep", "lit", &[("alpha", "", 0.5)]),
+    ("read", "peach", &[("readable", "ink", 4.5)]),
+    ("bad", "nothing", &[("lift", "", 0.1)]),
+];
+
+/// The keyed boxes of the `tokens` scene, in order: the four of ADR 0027
+/// and one per derived token that resolved.
+pub const TOKEN_KEYS: [&str; 9] = [
+    "peach", "ink", "role", "missing", "lit", "dim", "up", "deep", "read",
+];
 
 fn build_tokens(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     let mut t = crate::tokens::Tokens::new();
@@ -2429,6 +2458,13 @@ fn build_tokens(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     for (name, px) in TOKEN_LENGTHS {
         t = t.length(name, px);
     }
+    for (name, from, ops) in TOKEN_DERIVED {
+        let ops = ops.iter().map(|(verb, color, n)| {
+            let color = (!color.is_empty()).then_some(*color);
+            crate::tokens::ColorOp::parse(verb, color, *n).expect("a corpus verb")
+        });
+        t = t.derive(name, from, ops);
+    }
     ui.set_tokens(t);
     // Rust holds no reference: it reads each value by name and writes it,
     // which is what the other adapters' `$name` resolves to.
@@ -2436,6 +2472,10 @@ fn build_tokens(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     let ink = ui.token_color("ink");
     let surface = ui.token_color("surface");
     let nothing = ui.token_color("nothing");
+    let derived: Vec<Color> = TOKEN_KEYS[4..]
+        .iter()
+        .map(|name| ui.token_color(name))
+        .collect();
     let side_w = ui.token_length("side_w");
     let gap = ui.token_length("gap");
     let big = ui.token_length("big");
@@ -2460,6 +2500,9 @@ fn build_tokens(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             ui.with_keyed(TOKEN_KEYS[1], cell(ink).border(gap, peach), |_| {});
             ui.with_keyed(TOKEN_KEYS[2], cell(surface).radius(radius), |_| {});
             ui.with_keyed(TOKEN_KEYS[3], cell(nothing), |_| {});
+            for (key, c) in TOKEN_KEYS[4..].iter().zip(derived) {
+                ui.with_keyed(key, cell(c), |_| {});
+            }
             ui.rich_text(
                 &[Span::new("tokens"), Span::new("x").color(ink)],
                 TextStyle::new(big).color(peach),

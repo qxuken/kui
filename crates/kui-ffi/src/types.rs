@@ -1124,6 +1124,41 @@ pub struct KuiLengthToken {
     pub value: f32,
 }
 
+/// One step of a derived colour token's recipe as `kui_tokens_derive`
+/// reads it (`docs/adr/0028-derived-tokens.md`): the verb as one of the
+/// `KUI_OP_*` numbers, the number it takes, and — for `KUI_OP_MIX` and
+/// `KUI_OP_READABLE` only — the colour token or role the verb names,
+/// empty otherwise. [in], array-carried, so an append moves the stride
+/// and is an ABI bump.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KuiColorOp {
+    pub op: u8,
+    pub t: f32,
+    pub other: KuiStr,
+}
+
+/// One derived colour token: a name, the colour token or theme role it
+/// derives from, and its chain of ops in order — none for an alias.
+/// [in], array-carried like `KuiColorToken`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KuiDerivedToken {
+    pub name: KuiStr,
+    pub from: KuiStr,
+    pub ops: *const KuiColorOp,
+    pub op_count: usize,
+}
+
+/// The verbs of `KuiColorOp.op`, numbered as `kui_core::ColorOp::VERBS`
+/// lists them.
+pub const KUI_OP_LIFT: u8 = 0;
+pub const KUI_OP_DARKEN: u8 = 1;
+pub const KUI_OP_RAISE: u8 = 2;
+pub const KUI_OP_ALPHA: u8 = 3;
+pub const KUI_OP_MIX: u8 = 4;
+pub const KUI_OP_READABLE: u8 = 5;
+
 /// Where a `kui_reply` from inside `kui_ext_on_event` sends what it is
 /// given: an opaque handle the library hands the plugin on the event, and
 /// takes back when the callback returns.

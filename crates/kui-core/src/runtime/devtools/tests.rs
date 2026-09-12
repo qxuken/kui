@@ -1344,6 +1344,9 @@ fn the_facts_list_the_tokens_and_the_inspector_names_a_painted_one() {
         crate::tokens::Tokens::new()
             .color("peach", Color::hex(0xffcc99ff))
             .color_themed("ink", Color::hex(0x111111ff), Color::hex(0xeeeeeeff))
+            // A derived token (ADR 0028) lists with its recipe after the
+            // hex, and its halves are computed under each base.
+            .derive("inkSoft", "ink", [crate::tokens::ColorOp::Alpha(0.5)])
             .length("gap", 7.0),
     );
     let view = |ui: &mut Ui<'_>| {
@@ -1390,9 +1393,19 @@ fn the_facts_list_the_tokens_and_the_inspector_names_a_painted_one() {
         "a themed colour shows the half in effect first: {t:?}"
     );
     assert!(t.iter().any(|s| s == "7 px"), "{t:?}");
+    assert!(
+        t.iter().any(|s| s == "#eeeeee80 · #11111180"),
+        "a derived token's halves, each under its base: {t:?}"
+    );
+    assert!(
+        t.iter().any(|s| s == "ink → alpha 0.5"),
+        "the recipe: {t:?}"
+    );
     let facts = state(&core, |s| s.facts.tokens.clone());
-    assert_eq!(facts.len(), 3);
+    assert_eq!(facts.len(), 4);
     assert_eq!(facts[1].resolved, Color::hex(0xeeeeeeff));
+    assert_eq!(facts[2].recipe.as_deref(), Some("ink → alpha 0.5"));
+    assert_eq!(facts[0].recipe, None);
 
     // Select the swatch in the tree tab: its inspector names the colour
     // and leaves the unnamed size alone.

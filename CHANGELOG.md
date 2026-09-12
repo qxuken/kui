@@ -145,6 +145,45 @@ Nothing.
   `system` event and a themed token's light half across all four
   bindings.
 
+- **Derived tokens** ([ADR 0028](docs/adr/0028-derived-tokens.md);
+  backlog T5, what building ADR 0027 left out). A colour token may be a
+  **recipe over an earlier token or a theme role** — a source and a
+  chain of operations folded over it in order, each a `[verb, …]` tuple:
+  `['lift', t]` / `['darken', t]` toward white / black, `['raise', t]`
+  toward the front of whichever base is in effect (`Theme::raise`),
+  `['alpha', a]`, `['mix', token, t]` toward another token, and
+  `['readable', token, ratio]` — `Color::toward_contrast` toward black or
+  white, whichever reads on the named colour, until it clears the ratio.
+  Declared beside the values — Node `peachHover: { from: 'peach', ops:
+  [['lift', 0.3]] }` (a single op may be written bare, `ops: ['lift',
+  0.3]`; no `ops` is an alias), Lua `peach_hover = { from = "peach", ops =
+  { { "lift", 0.3 } } }`, C `KuiDerivedToken` arrays through
+  **`kui_tokens_derive`** after `kui_tokens_set` (`KuiColorOp { op, t,
+  other }`, `KUI_OP_*`; false with nothing added for a malformed op),
+  Rust `Tokens::derive("peach_hover", "peach", [ColorOp::Lift(0.3)])` —
+  and **resolved by the core on read**, so a recipe over a themed source
+  runs on the half in effect and a role source follows the theme; a
+  derived colour comes back **rounded to eight bits a channel**, so every
+  binding paints the value `kui_token_color` reads. A source must be
+  declared *before* the token that names it (so the chain is acyclic by
+  construction); one that is not — undeclared, a length, a later token,
+  the token itself — drops that token at the declaration with
+  **`unknown-token`** naming both, and the rest of the table lands. Lua
+  sorts its names, so its parser declares values first and derived
+  tokens by dependency; Node's `setTokens` gives a dropped token no
+  index, so the names after it stay in step with the core's. Nothing on
+  the wire changes: a derived token is an index like any other,
+  `NodeSpec` and the frame version are untouched. The devtools print a
+  derived token's recipe after its hex — `peachHover #ffdbb8ff peach →
+  lift 0.3` — and the inspector names it like any other. `ColorToken` is
+  an enum now (`Value { light, dark }` / `Derived { from, ops }`);
+  `ColorToken::resolve` is `Tokens::resolve_color(i, &theme)`. The
+  corpus `tokens` scene gains six derived tokens: a lift, a two-step
+  chain that does not commute, a `raise` off the `surface` *role*, a step
+  off a derived token, a `readable` against the themed ink that has to
+  move on one base only, and the dropped one. `KUI_ABI_VERSION` stays
+  15: two new `[in]` arrays and one function.
+
 - **A pin over `env.system`, at the launcher** (backlog F47; the pomodoro's
   `kui-alpha-11.md` wish 4, the third ask in three reports). A window's
   `env.system` is the OS's, written by the runner before every frame — which
@@ -468,6 +507,13 @@ had a light half, and the `system`-message plumbing that re-ran it; the
 inspector; and, for a Lua panel inside a host with a palette, the
 `slot_with(params)` map that carried the host's colours to it
 (ADR 0027).
+
+**The hover and pressed arithmetic beside the palette** — the
+`lift(c, t)` / `hoverOf` / `pressOf` a kit computed its lit shades with,
+and the `chan` / `hex2` helpers under it: a shade is a derived token now
+(`peachHover: { from: 'peach', ops: [['lift', 0.3]] }`), computed by the
+core on the half in effect and named by the inspector; what stays in the
+app is the map from a chosen colour to its shade (ADR 0028).
 
 **Whatever stood in for the OS setting you could not flip** — the
 reduced-motion branch of a view is now reachable in a window from the
