@@ -944,7 +944,7 @@ pub const PROPS: &[PropDef] = &[
             2 => t.wrap(TextWrap::None),
             _ => t.wrap(TextWrap::Word),
         }),
-        doc: "Line breaking at the node's width: between words (default), anywhere, or never (one line per paragraph, clipped to the node).",
+        doc: "Line breaking at the node's width: between words (default), anywhere, or never (one line per paragraph, clipped to the node). On a single-line `edit` — a field, which otherwise takes one line and scrolls it — declaring it is what makes the field fold to its width like a document, by this mode, while Enter still submits (see `edit`).",
     },
     PropDef {
         name: "maxLines",
@@ -1415,7 +1415,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<edit key initial multiline autofocus>`",
         lua: "`edit { key=, initial=, … }`, `input { label= }`",
         c: "`kui_text_edit`, `kui_text_input`",
-        doc: "Retained editor state by key; read it back with `editText(key)` after a `changed` event. `initial` seeds a new editor only — a key declared again keeps the draft the user typed, and `setEditText(name, text)` is what resets one (it leaves the caret at the end). Name it by the label its `key` prop declares — `setEditText(\'note\', text)` — or by the hex key an event carried. It reaches an editor that does not exist yet: the text is held for the frame that declares that name and seeds it there, over `initial`, so the `update` that opens a rename field can fill it in the same turn, which is what the label spelling is for — the hex key comes from an event an editor being opened has not fired. A name nothing declares on that frame drops its text with an `edit-text-without-editor` warning. A single-line editor is a field and a `multiline` one a document, which decides how each is laid out as well as how it reads: a field takes one line whatever its box, sizes to the text it holds when its width is `fit`, and scrolls that line under the caret when it is not, while a document wraps to its box. A single-line editor opens with the caret after its seeded text, as a native field does; a multiline one is a document and opens at its top — a held `setEditText` is the call, not a seed, so it opens at the end either way. State is kept while the key is declared; an undeclared one is kept until the budget needs the room (256 undeclared editors, longest-undeclared evicted first). `autofocus` asks once: the editor takes focus on the frame the flag starts being declared — a new editor, or one whose flag just turned on — and only while nothing holds focus, so a blur afterwards stands and a focused control is never robbed (`docs/adr/0022-focus-regions.md`, decision 9); `focus(key)` is the call for taking it at any other time.",
+        doc: "Retained editor state by key; read it back with `editText(key)` after a `changed` event. `initial` seeds a new editor only — a key declared again keeps the draft the user typed, and `setEditText(name, text)` is what resets one (it leaves the caret at the end). Name it by the label its `key` prop declares — `setEditText(\'note\', text)` — or by the hex key an event carried. It reaches an editor that does not exist yet: the text is held for the frame that declares that name and seeds it there, over `initial`, so the `update` that opens a rename field can fill it in the same turn, which is what the label spelling is for — the hex key comes from an event an editor being opened has not fired. A name nothing declares on that frame drops its text with an `edit-text-without-editor` warning. A single-line editor is a field and a `multiline` one a document, which decides how each is laid out as well as how it reads: a field takes one line whatever its box, sizes to the text it holds when its width is `fit`, and scrolls that line under the caret when it is not, while a document wraps to its box. The one exception is a field with `wrap` declared (`wrap=\"word\"` or `\"glyph\"`): it folds to its width the way a document does and keeps a field\'s keyboard — Enter still submits, a newline is still never admitted, the caret still opens at the end — so a rename field breaks where the label it renames breaks, and with `width=\"fit\"` plus `maxWidth` it sizes to its wrapped draft on the keystroke frame. A single-line editor opens with the caret after its seeded text, as a native field does; a multiline one is a document and opens at its top — a held `setEditText` is the call, not a seed, so it opens at the end either way. State is kept while the key is declared; an undeclared one is kept until the budget needs the room (256 undeclared editors, longest-undeclared evicted first). `autofocus` asks once: the editor takes focus on the frame the flag starts being declared — a new editor, or one whose flag just turned on — and only while nothing holds focus, so a blur afterwards stands and a focused control is never robbed (`docs/adr/0022-focus-regions.md`, decision 9); `focus(key)` is the call for taking it at any other time.",
     },
     ElementDef {
         name: "image",
@@ -2419,6 +2419,11 @@ pub struct PropsOut {
     pub tooltip: Option<String>,
     /// The windows the root declared (`Core::declare_window`, in order).
     pub windows: Vec<(String, WindowConfig)>,
+    /// Whether the `wrap` row was declared: the mode is in `style.wrap`,
+    /// whose default is `Word`, so the style alone cannot say. A
+    /// single-line editor folds to its width when it was
+    /// (`EditOptions::wrap`, backlog F44); nothing else reads it.
+    pub wrap: bool,
 }
 
 /// Which key a prop list opens its node under: the next auto key, the
@@ -2451,6 +2456,7 @@ impl PropsOut {
             key_focus: false,
             tooltip: None,
             windows: Vec::new(),
+            wrap: false,
         }
     }
 
@@ -2492,6 +2498,9 @@ impl Default for PropsOut {
 pub fn apply(def: &PropDef, value: Parsed, out: &mut PropsOut) -> Result<(), String> {
     let spec = std::mem::take(&mut out.spec);
     let style = out.style;
+    // Declared at all is a fact of its own for one element (see
+    // `PropsOut::wrap`); the mode still lands in the style below.
+    out.wrap |= def.id == P_WRAP;
     match (&def.apply, value) {
         (Apply::SpecF32(f), Parsed::F32(v)) => out.spec = f(spec, v),
         (Apply::SpecColor(f), Parsed::Color(v)) => out.spec = f(spec, v),
@@ -2998,6 +3007,9 @@ mod tests {
         // An element's own props are its own: `initial` is an editor's.
         assert!(known_prop("edit", "initial", Camel));
         assert!(!known_prop("box", "initial", Camel));
+        // A shared text row on an editor is the editor's too: `wrap` is
+        // what folds a single-line one (backlog F44), and it must not warn.
+        assert!(known_prop("edit", "wrap", Camel) && known_prop("edit", "wrap", Snake));
         assert!(known_prop("image", "src", Camel) && known_prop("image", "id", Snake));
         // And nothing claims a typo.
         assert!(!known_prop("box", "colour", Camel));

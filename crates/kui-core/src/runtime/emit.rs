@@ -1592,8 +1592,9 @@ impl Painter<'_> {
                 // ancestors own the vertical clip, and a descender or a
                 // caret is not what a field is trying to cut off.
                 // Narrowing the clip makes a new one, so it needs an entry
-                // of its own; a multiline editor keeps the node's.
-                let (edit_clip, edit_clip_id) = if self.edit.is_multiline(key) {
+                // of its own; an editor that folds to its width — a
+                // document, or a field with `wrap` (F44) — keeps the node's.
+                let (edit_clip, edit_clip_id) = if self.edit.folds(key) {
                     (clip_px, clip_id)
                 } else {
                     let narrowed = clip_px.intersect(

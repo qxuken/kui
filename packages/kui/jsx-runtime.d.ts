@@ -345,7 +345,7 @@ export interface GeneratedStyleProps {
   strikethrough?: boolean;
   /** A line under the text, where the face puts its underline and as thick as it says, in the text colour. Paint only. On a `<span>` it covers the span alone and follows it across a wrap, one rect per line. */
   underline?: boolean;
-  /** Line breaking at the node's width: between words (default), anywhere, or never (one line per paragraph, clipped to the node). */
+  /** Line breaking at the node's width: between words (default), anywhere, or never (one line per paragraph, clipped to the node). On a single-line `edit` — a field, which otherwise takes one line and scrolls it — declaring it is what makes the field fold to its width like a document, by this mode, while Enter still submits (see `edit`). */
   wrap?: 'word' | 'glyph' | 'none';
 }
 // -- end generated --
