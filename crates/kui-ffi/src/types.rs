@@ -1102,6 +1102,28 @@ pub struct KuiSpan {
     pub bg: u32,
 }
 
+/// One colour token as `kui_tokens_set` reads it
+/// (`docs/adr/0027-tokens-beside-the-theme.md`): a name and a value per
+/// base, `0xRRGGBBAA` each — the same value twice for a colour that does
+/// not follow the appearance. [in], and it travels as an array, so an
+/// append here moves the stride and is an ABI bump (the `KuiSpan` rule).
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KuiColorToken {
+    pub name: KuiStr,
+    pub light: u32,
+    pub dark: u32,
+}
+
+/// One length token: a name and logical px, before the scale factor.
+/// [in], array-carried like `KuiColorToken`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KuiLengthToken {
+    pub name: KuiStr,
+    pub value: f32,
+}
+
 /// Where a `kui_reply` from inside `kui_ext_on_event` sends what it is
 /// given: an opaque handle the library hands the plugin on the event, and
 /// takes back when the callback returns.

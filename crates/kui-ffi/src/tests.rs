@@ -100,6 +100,92 @@ mod widgets_headless {
         assert!(!kui_metrics(ctx, &mut short));
         kui_ctx_free(ctx);
     }
+
+    /// Tokens (ADR 0027) cross as two [in] arrays and read back by name:
+    /// a themed colour answers the dark half on an unknown appearance, a
+    /// role's name answers the role, an unknown or wrong-kind name is
+    /// false with `unknown-token` raised once, a role's name in a
+    /// declaration is refused with `reserved-token`, and NULL arrays with
+    /// zero counts clear the table.
+    #[test]
+    fn tokens_cross_the_boundary_both_ways() {
+        let ctx = kui_ctx_new();
+        kui_set_diagnostics(ctx, true);
+        let colors = [
+            KuiColorToken {
+                name: ks("peach"),
+                light: 0xffcc99ff,
+                dark: 0xffcc99ff,
+            },
+            KuiColorToken {
+                name: ks("ink"),
+                light: 0x111111ff,
+                dark: 0xeeeeeeff,
+            },
+            KuiColorToken {
+                name: ks("surface"),
+                light: 0xff0000ff,
+                dark: 0xff0000ff,
+            },
+        ];
+        let lengths = [KuiLengthToken {
+            name: ks("side_w"),
+            value: 132.0,
+        }];
+        kui_tokens_set(
+            ctx,
+            colors.as_ptr(),
+            colors.len(),
+            lengths.as_ptr(),
+            lengths.len(),
+        );
+        let mut c = 0u32;
+        assert!(kui_token_color(ctx, ks("peach"), &mut c));
+        assert_eq!(c, 0xffcc99ff);
+        assert!(kui_token_color(ctx, ks("ink"), &mut c));
+        assert_eq!(c, 0xeeeeeeff, "the dark half on an unknown appearance");
+        let mut theme = KuiTheme::default();
+        assert!(kui_theme(ctx, &mut theme));
+        assert!(kui_token_color(ctx, ks("surface"), &mut c));
+        assert_eq!(c, theme.surface, "the role's, not the refused red");
+        let mut v = 0.0f32;
+        assert!(kui_token_length(ctx, ks("side_w"), &mut v));
+        assert_eq!(v, 132.0);
+        assert!(kui_token_length(ctx, ks("radius"), &mut v));
+        let mut m = KuiMetrics::default();
+        assert!(kui_metrics(ctx, &mut m));
+        assert_eq!(v, m.radius);
+        assert!(!kui_token_color(ctx, ks("peech"), &mut c));
+        assert!(
+            !kui_token_color(ctx, ks("peech"), &mut c),
+            "twice, warned once"
+        );
+        assert!(
+            !kui_token_length(ctx, ks("peach"), &mut v),
+            "a colour is not a length"
+        );
+        assert!(!kui_token_color(ctx, ks("peach"), std::ptr::null_mut()));
+
+        let mut out = [KuiWarning {
+            code: KuiStr {
+                ptr: std::ptr::null(),
+                len: 0,
+            },
+            key: 0,
+            message: KuiStr {
+                ptr: std::ptr::null(),
+                len: 0,
+            },
+        }; 8];
+        let n = kui_take_warnings(ctx, out.as_mut_ptr(), out.len());
+        let mut codes: Vec<String> = out[..n].iter().map(|w| kstr(w.code).into_owned()).collect();
+        codes.sort();
+        assert_eq!(codes, ["reserved-token", "unknown-token", "unknown-token"]);
+
+        kui_tokens_set(ctx, std::ptr::null(), 0, std::ptr::null(), 0);
+        assert!(!kui_token_color(ctx, ks("peach"), &mut c), "cleared");
+        kui_ctx_free(ctx);
+    }
 }
 
 #[cfg(test)]

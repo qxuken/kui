@@ -336,6 +336,11 @@ pub enum Step {
     /// so this is the only way the event exists headlessly — and the event
     /// is the whole contract, since the core closes nothing in answer.
     WindowDismissed(u32, u32),
+    /// Not an input: the OS appearance changing under the app
+    /// (`Core::set_system`), as an index into `Appearance::ALL` — 0
+    /// unknown, 1 light, 2 dark. What flips a themed token's half and the
+    /// theme's base without the view changing (ADR 0019, ADR 0027).
+    Appearance(u32),
 }
 
 impl Step {
@@ -388,6 +393,9 @@ impl Step {
             Step::WindowDismissed(id, reason) => {
                 let _ = writeln!(out, "step windowdismissed {id} {reason}");
             }
+            Step::Appearance(n) => {
+                let _ = writeln!(out, "step appearance {n}");
+            }
         }
     }
 
@@ -396,7 +404,11 @@ impl Step {
     /// and [`Step::Time`].
     pub fn event(&self) -> Option<InputEvent> {
         Some(match *self {
-            Step::Phase(_) | Step::Time(_) | Step::WindowClosed(_) | Step::WindowDismissed(..) => {
+            Step::Phase(_)
+            | Step::Time(_)
+            | Step::WindowClosed(_)
+            | Step::WindowDismissed(..)
+            | Step::Appearance(_) => {
                 return None;
             }
             Step::Cursor(x, y) => InputEvent::CursorMoved(Vec2::new(x as f32, y as f32)),
@@ -681,6 +693,42 @@ pub const SCENES: &[Scene] = &[
             events: &[],
             announcements: &[],
             warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+        },
+    },
+    Scene {
+        name: "tokens",
+        doc: "Tokens beside the theme (ADR 0027): a table declared every \
+              frame — an unthemed peach, a themed ink, two lengths, and a \
+              name a role owns, refused with `reserved-token` — then a row \
+              referencing them by name in every slot kind: a `bg`, a `width`, \
+              a `pad` edge, a `border`'s width and colour, a text's `size` \
+              and `color`, a span's `color`; `$surface` and `$radius` as the \
+              roles by the same spelling; and `$nothing`, which paints \
+              nothing and raises `unknown-token`. The one step flips the \
+              appearance to light, so the frame the report keeps is the \
+              themed token's light half and the theme's light base, both \
+              without the view changing.",
+        custom: &["pad", "border", "key", "size"],
+        elements: &["box", "text"],
+        build: build_tokens,
+        env: NATIVE_CHROME,
+        steps: &[Step::Appearance(1)],
+        expect: Expect {
+            solid: 3,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 6,
+            access: &["0 window ||", "1 staticText tokensx||"],
+            // The OS setting moving under the app is itself an event.
+            events: &["system -"],
+            announcements: &[],
+            warnings: &["reserved-token", "unknown-token"],
             commands: &[],
             audio: &[],
             title: None,
@@ -2305,6 +2353,65 @@ fn build_scrollbar(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     });
 }
 
+/// The `tokens` scene's table, as every adapter declares it: the names
+/// and values, with `surface` in it on purpose.
+pub const TOKEN_COLORS: [(&str, u32, u32); 3] = [
+    ("peach", 0xffcc99ff, 0xffcc99ff),
+    ("ink", 0x202020ff, 0xe0e0e0ff),
+    ("surface", 0xff0000ff, 0xff0000ff),
+];
+pub const TOKEN_LENGTHS: [(&str, f32); 3] = [("side_w", 60.0), ("gap", 8.0), ("big", 16.0)];
+
+/// The four keyed boxes of the `tokens` scene, in order.
+pub const TOKEN_KEYS: [&str; 4] = ["peach", "ink", "role", "missing"];
+
+fn build_tokens(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    let mut t = crate::tokens::Tokens::new();
+    for (name, light, dark) in TOKEN_COLORS {
+        t = t.color_themed(name, Color::hex(light), Color::hex(dark));
+    }
+    for (name, px) in TOKEN_LENGTHS {
+        t = t.length(name, px);
+    }
+    ui.set_tokens(t);
+    // Rust holds no reference: it reads each value by name and writes it,
+    // which is what the other adapters' `$name` resolves to.
+    let peach = ui.token_color("peach");
+    let ink = ui.token_color("ink");
+    let surface = ui.token_color("surface");
+    let nothing = ui.token_color("nothing");
+    let side_w = ui.token_length("side_w");
+    let gap = ui.token_length("gap");
+    let big = ui.token_length("big");
+    let radius = ui.token_length("radius");
+    let cell = |bg: Color| {
+        NodeSpec::column()
+            .width(Sizing::Fixed(side_w))
+            .height(Sizing::Fixed(30.0))
+            .bg(bg)
+    };
+    ui.with(
+        NodeSpec::row()
+            .padding(Edges {
+                l: gap,
+                r: 10.0,
+                t: 10.0,
+                b: 10.0,
+            })
+            .gap(gap),
+        |ui| {
+            ui.with_keyed(TOKEN_KEYS[0], cell(peach), |_| {});
+            ui.with_keyed(TOKEN_KEYS[1], cell(ink).border(gap, peach), |_| {});
+            ui.with_keyed(TOKEN_KEYS[2], cell(surface).radius(radius), |_| {});
+            ui.with_keyed(TOKEN_KEYS[3], cell(nothing), |_| {});
+            ui.rich_text(
+                &[Span::new("tokens"), Span::new("x").color(ink)],
+                TextStyle::new(big).color(peach),
+            );
+        },
+    );
+}
+
 /// The `anchor` scene's two scrollers, by key: the anchored one and the
 /// control.
 pub const ANCHOR_KEYS: [&str; 2] = ["anchored", "plain"];
@@ -3863,6 +3970,13 @@ pub fn drive(
                         .iter()
                         .map(|e| event_row(&e.payload)),
                 );
+            }
+            Step::Appearance(n) => {
+                let appearance = crate::env::Appearance::ALL[n as usize];
+                core.set_system(crate::env::SystemEnv {
+                    appearance,
+                    ..core.env.system
+                });
             }
             _ => {
                 let evs = core.handle_input(step.event().expect("an input step"));

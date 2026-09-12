@@ -128,7 +128,8 @@ c_type! {
     KuiAccessRun => "KuiAccessRun", KuiAnnouncement => "KuiAnnouncement",
     KuiWarning => "KuiWarning", KuiPlay => "KuiPlay", KuiAudio => "KuiAudio",
     KuiAudioCommand => "KuiAudioCommand", KuiTheme => "KuiTheme",
-    KuiMetrics => "KuiMetrics",
+    KuiMetrics => "KuiMetrics", KuiColorToken => "KuiColorToken",
+    KuiLengthToken => "KuiLengthToken",
     KuiEvent => "KuiEvent", KuiWindowConfig => "KuiWindowConfig",
     KuiWindowCommand => "KuiWindowCommand", KuiDrawData => "KuiDrawData",
     ViewFn => "KuiViewFn",
@@ -814,6 +815,16 @@ fn asserts() -> (String, Vec<&'static str>) {
         color: u32 => "uint32_t",
         flags: u32 => "uint32_t",
         bg: u32 => "uint32_t",
+    });
+
+    abi_struct!(o, KuiColorToken {
+        name: KuiStr => "KuiStr",
+        light: u32 => "uint32_t",
+        dark: u32 => "uint32_t",
+    });
+    abi_struct!(o, KuiLengthToken {
+        name: KuiStr => "KuiStr",
+        value: f32 => "float",
     });
 
     abi_struct!(o, KuiEvent {

@@ -229,11 +229,30 @@ enum EntryKind {
 /// read by whichever window draws the facts tab. Strings rather than the
 /// facts themselves: the panel prints them, and a second window's core
 /// cannot ask the first's doors.
+/// One declared token as the panel shows it (ADR 0027, decision 7):
+/// which origin declared it, its halves, and what it resolved to this
+/// frame — the value the inspector matches a node's paint against.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct TokenFact {
+    pub(crate) origin: OriginId,
+    pub(crate) name: String,
+    pub(crate) kind: crate::tokens::TokenKind,
+    pub(crate) light: Color,
+    pub(crate) dark: Color,
+    /// This frame's colour, for a colour token.
+    pub(crate) resolved: Color,
+    /// The px, for a length token.
+    pub(crate) length: f32,
+}
+
 #[derive(Clone, Default)]
 pub(crate) struct Facts {
     title: String,
     /// `(name, value)` rows of the status block, in order.
     rows: Vec<(&'static str, String)>,
+    /// Every declared token, the host's first then each extension's,
+    /// each origin in its declaration order.
+    pub(crate) tokens: Vec<TokenFact>,
     /// The main core's theme source, for the panel's own window to
     /// mirror when no override is in force.
     theme_source: ThemeSource,
@@ -1435,12 +1454,41 @@ impl Core {
             ),
             ("nodes", format!("{}", self.inspected.len())),
         ];
+        let mut origins: Vec<&OriginId> = self.tokens.keys().collect();
+        origins.sort_by_key(|o| o.0);
+        let mut tokens = Vec::new();
+        for origin in origins {
+            let table = &self.tokens[origin];
+            for (name, tok) in table.colors() {
+                tokens.push(TokenFact {
+                    origin: *origin,
+                    name: name.clone(),
+                    kind: crate::tokens::TokenKind::Color,
+                    light: tok.light,
+                    dark: tok.dark,
+                    resolved: tok.resolve(&self.theme),
+                    length: 0.0,
+                });
+            }
+            for (name, v) in table.lengths() {
+                tokens.push(TokenFact {
+                    origin: *origin,
+                    name: name.clone(),
+                    kind: crate::tokens::TokenKind::Length,
+                    light: Color::TRANSPARENT,
+                    dark: Color::TRANSPARENT,
+                    resolved: Color::TRANSPARENT,
+                    length: *v,
+                });
+            }
+        }
         Facts {
             title: self
                 .window_title
                 .clone()
                 .unwrap_or_else(|| "kui".to_string()),
             rows,
+            tokens,
             theme_source: self.dt_saved_theme.unwrap_or(self.theme_source),
             viewport: vp,
             focus,

@@ -269,6 +269,11 @@ impl Core {
         self.building = false;
         self.snapshot_nodes();
         self.devtools_after_frame();
+        // Between frames the host is who talks to the core: a driver that
+        // tagged the last nodes with an extension's origin by hand (rather
+        // than through `fill`, which restores it) must not leave its
+        // `set_tokens` landing in that extension's table (ADR 0027).
+        self.origin = crate::tree::OriginId::HOST;
     }
 
     /// The frame's first half: layout, then everything that resolves

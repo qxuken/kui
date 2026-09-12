@@ -8,7 +8,7 @@ F16–F23 and F25–F31 on 2026-09-07, F32–F35 on 2026-09-08, F37–F41 on
 evidence that produced it, so a task that turns out to be wrong can be argued with rather
 than guessed at.
 
-**This file is the open list.** The hundred and nine closed entries — each with its
+**This file is the open list.** The hundred and ten closed entries — each with its
 outcome written on top of the original finding, and the tables, profiles and
 evidence it argued from — are in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md); forty-six moved there
@@ -27,9 +27,11 @@ What is left here: F42–F49 from the two alpha.11 upgrade reports, filed
 to the redraw the call asked for, and `env.viewport` reading the window
 against its own schema row — one gap with no spelling, the label editor,
 and five wishes with their shapes written, two of them carried unanswered
-from alpha.10), T4 the same day (tokens beside the theme — a question
-with the ADR as its deliverable), C30, filed 2026-09-12 (always on top — a window level
-no binding can ask for, with the shape to build it written), C29 from the
+from alpha.10), T5 the same day (derived tokens, what
+building ADR 0027 left out), C30, filed 2026-09-12 (always on top — a window level
+no binding can ask for, with the shape to build it written), C31, found
+the same day building the tokens (Node's corpus adapter disagreeing with
+the reference on one scene when run alone, and doing so before the build), C29 from the
 alpha.11 pre-tag round (four unguarded
 bench rows reproducibly slower than alpha.10, filed with the numbers and
 a bisect to run), V2–V8 from the canvas question of 2026-09-11 (five
@@ -45,7 +47,8 @@ else that has been filed has shipped: the six the round of 2026-09-11 took
 together — V1, D1, D2, T2, C26's last two steps and E3, each in the
 archive under its round with what the building settled on top; the
 design-system audit's T1 (the defect) and T2 (the axis ADR 0019 scoped
-itself out of) are both closed now, T3 the day it was filed; AR1–AR6 from
+itself out of) are both closed now, T3 the day it was filed, and T4 —
+tokens beside the theme, ADR 0027 — was written and built on 2026-09-12; AR1–AR6 from
 the architecture review of 2026-09-11 were all built the same day; F16–F23
 from the two alpha.7 field reports closed the day they were filed
 (2026-09-07), F25–F31 from the alpha.8 ones by the day after (F27 last, on
@@ -248,6 +251,33 @@ only main) — it goes on the by-hand round beside the popup drag.
 and defaults false; the `ENV_FIELDS` readback for the new `env.window`
 field across Lua/Node/C; a runner check that a toggled fact reaches
 `set_window_level` once per change and not per frame.
+
+
+### `!` C31 — Node's corpus adapter disagrees with the reference on `fragments`, when it runs alone
+
+Found 2026-09-12 while adding the `tokens` scene, and confirmed to predate
+it at `af043d4` (the adapter run in a clean checkout of that commit,
+against its own addon and dump). `packages/kui/test.mjs`'s "every corpus
+scene lowers the way kui-core does" fails on the `fragments` scene alone
+**when it is the only test that runs** (`--test-name-pattern`), the Node
+report carrying one line the reference does not — `warn foreign-resource`
+— after the `fragment-params-truncated` both sides raise; the same test
+passes inside the full suite, which is what CI runs, so nothing is red
+today. The scene's fourth fragment names a dead handle
+(`src: '0000000000000000'`, raw handle 0); the reference's dead
+`FragmentRef` draws nothing and warns nothing. That the answer depends on
+what ran before in the process points at `resources::Mint`'s
+process-unique handles: in a fresh process nothing has been minted and
+handle 0 reads as another session's, after other tests have minted it
+does not. The Lua and C adapters match the reference on every scene,
+`fragments` included.
+
+**Do:** decide what a raw handle 0 *is* under ADR 0025's rule for a dead
+handle — "no image", never "foreign" — and make the Mint say so whatever
+was minted before; then the scene's `expect.warnings` pins it and the
+filtered run passes like the full one. Not this round's: it was in the
+way before the tokens, and only in the way of a developer running one
+test.
 
 ## From two alpha.7 field reports (2026-09-07)
 
@@ -894,84 +924,36 @@ closed the day it was filed); T1, the defect it turned up, closed
 2026-09-11, and T2 — the metrics, the axis the ADR scoped itself out of —
 closed the same day. Both are in
 [the archive](backlog/closed-2026-09.md#from-the-design-system-audit-2026-09-10-the-defect-and-the-axis-it-scoped-out)
-under this heading. What is open under it is T4, filed 2026-09-12 out of
-the alpha.11 field reports and a question asked over them — not from the
-audit, but the audit's ADR is what it argues with.
+under this heading, and so is T4 now — filed 2026-09-12 out of the
+alpha.11 field reports and a question asked over them, answered by
+[ADR 0027](adr/0027-tokens-beside-the-theme.md) and built the same day.
+What is open under it is T5, the derived tokens that building left out.
 
-### `.` T4 — Tokens an app declares beside the theme, for the app whose palette is the design
+### `.` T5 — Derived tokens: a colour computed from another
 
-**The question**, raised 2026-09-12 over the alpha.11 reports: the theme
-is a *mechanism* — a value derived once a frame from a source (the OS,
-the OS plus a colour, a pin), readable in four bindings, painted by the
-stock widgets, with a `system` event when the source moves and an
-inspector that can name a role — and only the twenty-three roles ride it.
-An app that is not a conventional desktop app has a vocabulary of its own
-and gets none of the mechanism for it. The LCARS pomodoro is the case in
-hand: "its palette is the design", so it pins the base and paints
-everything else from constants of its own; the mind map gives all fifteen
-text runs a colour by hand. Both are doing what `examples/rust/*` did
-before ADR 0019 — three independent `struct Pal`s — one level up.
+Filed 2026-09-12 out of building ADR 0027, as the one piece of the
+pomodoro's palette the tokens do not cover. Eleven of its controls carry
+a hover and a pressed shade computed by `lift(c, 0.3)` and `lift(c,
+0.55)` — a mix toward white — so 22 colours a frame are arithmetic on a
+name and no name themselves; the mind map writes the same thirteen out as
+literals. A token set today either grows a variant per shade (36 names
+for 12 colours, each kept in step by hand) or the app keeps `hoverBg =
+hoverOf(C.peach)` beside `bg = T.peach`, half a mechanism.
 
-**What ADR 0019 already declined, and why this is not that.** Its
-"considered options" reject *a registry of arbitrary named tokens* on
-three grounds: the stock widgets could not read it without agreeing on
-names, a typo is a missing colour at runtime, and no binding could be
-generated from it. All three are answered by keeping `Theme` exactly as
-it is — the closed struct is what the widgets read and the corpus pins —
-and adding an **open map beside it**, not inside it:
+**The shape:** a colour token declared *from* another — `hover: { from:
+'peach', lift: 0.3 }`, or a small closed set of operations (`lift`,
+`darken`, `alpha`) the core evaluates against the source token's half in
+effect, so a derived token follows the appearance with its source. Stored
+as the operation, resolved on read like the rest (`ColorToken::resolve`
+gains a case); read back resolved; listed by the devtools with its
+recipe. Nothing on the wire changes — a derived token is a name like any
+other. `Theme::raise` is the arithmetic that already exists for "one step
+up from this surface", and is the one to reuse rather than invent.
 
-- the widgets never read a token; they read roles, and an app that pins
-  `surface` to LCARS black has already made every stock widget follow it
-  (that is what `setTheme`'s role overrides are for, and the pomodoro's
-  "the pin becomes a palette" is reachable today);
-- a name nothing declared is a warning in the family `unknown-prop`
-  already has — `unknown-token`, naming the token and the node — not a
-  silent black;
-- a map of `name → colour` is one shape in every binding (`Value`
-  already carries it across Lua, Node and C), so nothing per token is
-  generated, and the *set* is the app's contract, not the schema's.
-
-**The shape to think about.** `setTheme({ appearance, ...roles,
-tokens: { peach: '#ffcc99', tomato: '#ff5555' } })`, or the same under
-`light`/`dark` keys so a token set can follow the appearance the way the
-roles do and be resolved per frame with them; read back as
-`theme().tokens.peach` (Lua `theme.tokens.peach`, C
-`kui_theme_token(name)`, Rust `ui.theme().token("peach")`); and — the
-part that makes it a mechanism rather than a `const PAL` in the app's own
-file — a colour prop that names a token instead of a value, `bg="$peach"`
-(`color`, `border`, `hoverBg`, the fragment parameters and the rest),
-resolved in the core when the node is opened, so the inspector shows
-*peach* on the node and a token change repaints without the view running.
-On Node's wire a colour is a `u32`; a token reference is a distinct
-encoding — the encoder resolves the name to an index the core hands out
-when the set is declared — so the common path pays nothing.
-
-**What is not obvious, and is the reason to think rather than build:**
-
-- *Is the prop reference worth its wire shape?* Without it the feature is
-  a map the app could hold itself, and for a JS or Lua app it buys only
-  the inspector's name and the cross-frame resolve. With it every colour
-  row grows a second encoding in four bindings and the corpus. Metrics
-  (T2) had the same question and answered it with a closed struct and no
-  prop reference; colour may answer differently because colours are where
-  the duplication was.
-- *Who else reads a host's tokens?* An extension filling a slot (ADR
-  0014) follows the host's *roles* already; a token it wants by name is a
-  contract the two make, which is fine — but the map is then the seam
-  between a host and a guest, and its warning matters more.
-- *Does a token follow the appearance?* The pomodoro's does not and the
-  mind map's does not; a token that does is a role wearing a new name,
-  and the answer may be "add the role" (ADR 0019's `raise` branch is the
-  thing a per-appearance token set would duplicate).
-- *Does the devtools' facts tab list them?* It should if they exist —
-  the panel is where "which peach is this" gets asked.
-
-**Condition:** one view in the repo or the field that wants a token by
-name in a prop — the LCARS app declaring its palette once and writing
-`bg="$peach"` on forty pills would be it — and the answer to the first
-question above written down first. ADR-sized; the ADR is the deliverable,
-and it may decline the prop half and keep the map.
-
+**Condition:** an app in the field declaring hover and pressed shades as
+tokens rather than computing them — the pomodoro's kit is the case in
+hand, and its `hoverOf` / `pressOf` are the two operations to cover.
+Small; the ADR's "not done here" names it.
 
 ## From the ABI-and-bindings audit (2026-09-10)
 
@@ -1276,8 +1258,15 @@ plus the held seed's redraw, and `env_facts().viewport` reading `dt_area`
 with `size()` answering for the dock — then F44 (`wrap` on a single-line
 editor), then F45, F46, F47 and F49 in any order, each a small change with
 its guard named in the entry, and F48 once the bridge's activation signal
-is confirmed to reach the shell on all three platforms. T4 is an ADR to
-write, not code, and it waits for the condition in its entry. Before them
+is confirmed to reach the shell on all three platforms. T4 is built —
+[ADR 0027](adr/0027-tokens-beside-the-theme.md), written and built
+2026-09-12: colour and length tokens beside the theme and the metrics,
+referenced by typed name and resolved by the binding — and T5, the
+derived tokens it left out, waits for the app that computes a hover
+shade to ask. C31 is a small one to take
+before the next Node corpus debugging session: the adapter's `fragments`
+scene fails when run alone and passes in the suite, and did before the
+tokens. Before them
 the open list was C12, C13, C14, F36, B1 and V2–V8 — every one parked on a
 condition — and two entries with work in them: C29, a bisect of four
 bench rows, filed by the alpha.11 pre-tag round, and C30, always on top,
@@ -1466,7 +1455,7 @@ release, which no headless assertion reads:
 
 ## Closed — index
 
-A hundred and nine entries, all in
+A hundred and ten entries, all in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) and all verbatim.
 This index is here so an id resolves without opening that file: the open items
 above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.11" and
@@ -1635,8 +1624,9 @@ move.
 
 - `~` **F37** — [`<button accent>` is in the changelog, the docs and every binding, and `tsc` rejects it](backlog/closed-2026-09.md#-f37--button-accent-is-in-the-changelog-the-docs-and-every-binding-and-tsc-rejects-it--done-2026-09-09) — done (2026-09-09) — `ButtonProps` is generated from `BUTTON_ROWS_JSX` now, so F24's fix cannot come undone a third time
 
-**From the design-system audit (2026-09-10)** — T1, the defect the round turned up, closed 2026-09-11 with the walk at emission; T2 is above under the round of 2026-09-11, T3 closed the day it was filed and was never an entry
+**From the design-system audit (2026-09-10)** — T1, the defect the round turned up, closed 2026-09-11 with the walk at emission; T2 is above under the round of 2026-09-11, T3 closed the day it was filed and was never an entry; T4 filed and built 2026-09-12
 
+- `x` **T4** — [Tokens an app declares beside the theme, for the app whose palette is the design](backlog/closed-2026-09.md#x-t4--tokens-an-app-declares-beside-the-theme-for-the-app-whose-palette-is-the-design--done-2026-09-12) — done (2026-09-12) — ADR 0027: colour and length tokens per origin, `$name` in every colour and length slot, resolved by the binding
 - `x` **T1** — [`on_context_menu` does not bubble, and keys do](backlog/closed-2026-09.md#x-t1--on_context_menu-does-not-bubble-and-keys-do--done-2026-09-11) — done (2026-09-11) — `enclosing_menu` beside `enclosing_sink`, walked at emission because the hit stack is paint order and not ancestry; three pins, the `controls` scene, `onForceClick` left topmost-only
 
 **From the examples round (2026-09-10)** — E1 and E2, closed 2026-09-10 and 2026-09-11; E3 is above under the round of 2026-09-11

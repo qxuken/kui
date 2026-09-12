@@ -48,7 +48,9 @@ const {
 } = native.protocol();
 
 const TS_BY_KIND = {
-  f32: 'number',
+  // A length token resolves to a number in the core, so every f32 row
+  // takes one (ADR 0027).
+  f32: 'LengthProp',
   color: 'ColorProp',
   flag: 'boolean',
   sizing: 'SizingProp',

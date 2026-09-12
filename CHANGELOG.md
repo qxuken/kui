@@ -17,6 +17,77 @@ for the reader deciding whether to upgrade. Earlier sections keep the shape
 they shipped with and are not retrofitted (backlog F31, from the alpha.8
 field reports).
 
+## 0.1.0-alpha.12 (unreleased)
+
+**What breaks.**
+
+- The Node binary frame is **version 10**: a prop id may carry the
+  `0x8000` token tag and its value slot then holds a token index; the
+  `pad` shorthand gains a second mask and `border` a flags word when
+  tagged; a span's flags gain bits 64 and 128. The encoder and the addon
+  ship together, so nothing to do unless you own an encoder
+  (`createEncoder(p).encode(tree, tokens)` takes the surface's token map
+  as a second argument and returns `unknownTokens` beside `unknown`).
+- `Refs` is a new second argument to `kui_lua::parse_props` and its
+  siblings; a Rust host that called the Lua parser directly passes
+  `&mut Refs::new(core.token_lookup())`. Every f32 prop in
+  `jsx-runtime.d.ts` is `LengthProp` (`number | LengthToken`) and
+  `SizingProp` admits a `LengthToken`, which widens and breaks nothing.
+- `KUI_ABI_VERSION` stays **15**: `KuiColorToken` and `KuiLengthToken`
+  are new [in] arrays and `kui_tokens_set` / `kui_token_color` /
+  `kui_token_length` new functions, nothing the library writes moved.
+
+### Added
+
+- **Tokens beside the theme**
+  ([ADR 0027](docs/adr/0027-tokens-beside-the-theme.md)). The app's own
+  named colours and lengths, beside the theme's twenty-three roles and
+  the metrics' sixteen: a colour token has a light and a dark half the
+  core picks by the appearance in effect (the same value twice for one
+  that does not follow it), a length token is logical px. Declared whole
+  — `ctx.setTokens({ colors: { peach: '#ffcc99', ink: { light, dark } },
+  lengths: { sideW: 132 } })`, `Core::set_tokens(Tokens::new().color(..)
+  .length(..))`, a `tokens = { colors = …, lengths = … }` global in a Lua
+  script (or `env.set_tokens` from a view), `kui_tokens_set` in C — into
+  a **table per origin**, so an extension's names are its own and a
+  guest cannot shadow its host; a lookup reads the running origin's table
+  then the host's. **Referenced by name in any colour or length prop**:
+  `bg="$peach"`, `width="$sideW"`, a `pad` edge, a `border`'s width and
+  colour, a text's `size`, a `<span>`'s `color` — resolved by the binding
+  as it lowers the node, so the core's open path never sees a name; on
+  Node's wire the prop id carries a tag and the index rides in the value
+  slot, zero extra bytes. `defineTokens(decl)` returns the names as
+  branded literal types, so `T.peech` does not compile and a colour token
+  in a length slot is a type error (a length token in a colour slot is
+  caught at encode time instead: `ColorProp` admits any string). The
+  theme's and metrics' roles take the same spelling — `roles.surface` is
+  `'$surface'`, `'$radius'` the metric — through a reserved range, so a
+  declared token that takes a role's name is refused with
+  **`reserved-token`**; a name nothing declared, or of the other kind,
+  raises **`unknown-token`** once per name and the slot keeps its default
+  (transparent, 0). Read back resolved: `ctx.tokens()`, `env.tokens`,
+  `kui_token_color` / `kui_token_length`, `ui.token_color(name)`. C
+  declares and reads but its props carry no reference (a bare `uint32_t`
+  has no room for a tag). The devtools' facts tab lists every token with
+  its swatches, grouped by origin, and the inspector prints a token's
+  name after a value it painted — `#ffcc99ff · peach`, `7 · gap`.
+  Measured on the way in: the core-side resolve the ADR prototyped read
+  `frame_10k_rects` +1.6% at a ±4.8% floor unused and +0.3% used, and
+  the built shape resolves in the binding, so the core's own path is
+  untouched. The corpus gains the `tokens` scene and an **`appearance`
+  step** — the OS appearance moving under the app, which pins the
+  `system` event and a themed token's light half across all four
+  bindings.
+
+### What you can delete
+
+The `isDark ? light : dark` branch in front of every app colour that
+had a light half, and the `system`-message plumbing that re-ran it; the
+`hex → name` lookup a by-hand round kept in its head while reading the
+inspector; and, for a Lua panel inside a host with a palette, the
+`slot_with(params)` map that carried the host's colours to it
+(ADR 0027).
+
 ## 0.1.0-alpha.11 (2026-09-11)
 
 **What breaks.**

@@ -1299,6 +1299,27 @@ density is the app's to choose (`Metrics::compact()`, `scaled(f)`); the
 default is the constants the widgets always had, which is what the corpus
 pins.
 
+**Tokens.** The app's *own* names, beside both — for the app whose palette
+is the design and has nothing to do with `surface`
+([ADR 0027](docs/adr/0027-tokens-beside-the-theme.md)). A colour token has a
+light and a dark half the core picks by the appearance in effect (or one
+value for both), a length token is logical px; declared whole —
+`ctx.setTokens({ colors: { peach: '#ffcc99', ink: { light, dark } },
+lengths: { sideW: 132 } })`, `Core::set_tokens`, a `tokens` global in a Lua
+script, `kui_tokens_set` in C — into a table **per origin**, so an
+extension's names are its own and a guest cannot shadow its host. Then
+**referenced by name in any colour or length prop**: `bg="$peach"`,
+`width="$sideW"`, a `pad` edge, a border's width and colour, a text's `size`,
+a span's `color`. The binding that lowers the node resolves the name through
+the core's table, so the core's own path never sees one; on Node's wire the
+reference costs zero bytes (a tag on the prop id). `defineTokens` returns the
+names typed, so `T.peech` does not compile; the roles take the same spelling
+(`'$surface'`, `'$radius'`), and a declared name a role owns is refused with
+`reserved-token`; a name nothing declared raises `unknown-token` once and the
+slot keeps its default. The devtools list the tokens with their swatches and
+print a token's name after the value it painted. C declares and reads
+(`kui_token_color` / `kui_token_length`); its props carry no reference.
+
 **Layout.** Wrapping is rows only, for the pass-order reason above: a
 **column** that outgrows its height is still one line, so it shrinks its `Fit`
 children toward their `min` (or overflows) rather than moving anything into a

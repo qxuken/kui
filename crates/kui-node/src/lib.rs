@@ -13,7 +13,7 @@ use kui_ffi::CExtension;
 use kui_core::{
     Appearance, AudioCommand, AudioSpec, Color, Core, EditKey, FontId, FrameSample, FrameStats,
     ImageId, InputEvent, Key, KeyCode, KeyMods, KeyPress, Locale, Mods, MotionPref, MouseButton,
-    PlayOptions, PlaybackId, Rect, Size, SoundId, SystemEnv, UiEvent, Value, Vec2,
+    PlayOptions, PlaybackId, Rect, Size, SoundId, SystemEnv, Tokens, UiEvent, Value, Vec2,
     schema::color_hex_str,
 };
 use napi::bindgen_prelude::{Buffer, Float64Array, Uint8Array};
@@ -1036,6 +1036,96 @@ fn theme_from_json(core: &Core, v: &Json) -> Result<kui_core::Theme> {
 /// multiplier, not a colour). Numbers rather than `#hex` strings because
 /// that is what a `color` prop already takes, so `bg={theme.surface}` is
 /// the whole of using one.
+/// `setTokensRaw`'s object: `{ colors: [[name, colour | { light, dark }],
+/// …], lengths: [[name, px], …] }` — the declaration `index.js` flattened
+/// from the user's `{ colors: {…}, lengths: {…} }`, as *pairs* because
+/// declaration order is the wire index and a JSON object's key order does
+/// not survive the crossing (`serde_json` sorts it). Names apart by kind
+/// because a colour and a length are both a number here, and the kind
+/// cannot be read off the value (ADR 0027, decision 2).
+fn tokens_from_json(v: &Json) -> Result<Tokens> {
+    let Json::Object(o) = v else {
+        return Err(err("setTokens(): expected { colors?, lengths? }"));
+    };
+    let pairs = |half: &Json, what: &str| -> Result<Vec<(String, Json)>> {
+        let Json::Array(items) = half else {
+            return Err(err(format!(
+                "setTokens(): {what} must be an object of name → value"
+            )));
+        };
+        items
+            .iter()
+            .map(|item| match item {
+                Json::Array(pair) if pair.len() == 2 => match &pair[0] {
+                    Json::String(name) => Ok((name.clone(), pair[1].clone())),
+                    _ => Err(err("setTokens(): a token name is a string")),
+                },
+                _ => Err(err("setTokens(): expected [name, value] pairs")),
+            })
+            .collect()
+    };
+    let mut t = Tokens::new();
+    if let Some(colors) = o.get("colors") {
+        for (name, v) in pairs(colors, "colors")? {
+            let name = &name;
+            let v = &v;
+            t = match v {
+                Json::Object(halves) => {
+                    let half = |k: &str| -> Result<Color> {
+                        let h = halves.get(k).ok_or_else(|| {
+                            err(format!("setTokens(): {name} needs both light and dark"))
+                        })?;
+                        color_from_json(h).map_err(|e| err(format!("setTokens(): {name}.{k}: {e}")))
+                    };
+                    t.color_themed(name, half("light")?, half("dark")?)
+                }
+                v => {
+                    let c =
+                        color_from_json(v).map_err(|e| err(format!("setTokens(): {name}: {e}")))?;
+                    t.color(name, c)
+                }
+            };
+        }
+    }
+    if let Some(lengths) = o.get("lengths") {
+        for (name, v) in pairs(lengths, "lengths")? {
+            let px = v
+                .as_f64()
+                .ok_or_else(|| err(format!("setTokens(): {name}: a length is a number")))?;
+            t = t.length(name, px as f32);
+        }
+    }
+    for k in o.keys() {
+        if k != "colors" && k != "lengths" {
+            return Err(err(format!(
+                "setTokens(): unknown key {k:?} (colors, lengths)"
+            )));
+        }
+    }
+    Ok(t)
+}
+
+/// The tokens a reader in this core sees, resolved for the frame: the
+/// running origin's over the host's, colours as `0xRRGGBBAA` numbers and
+/// lengths as px, under `colors` and `lengths`.
+fn tokens_json(core: &Core) -> Json {
+    let look = core.token_lookup();
+    let colors: JsonMap<String, Json> = look
+        .colors()
+        .into_iter()
+        .map(|(n, c)| (n.to_string(), Json::from(c.to_hex())))
+        .collect();
+    let lengths: JsonMap<String, Json> = look
+        .lengths()
+        .into_iter()
+        .map(|(n, v)| (n.to_string(), Json::from(v as f64)))
+        .collect();
+    let mut o = JsonMap::new();
+    o.insert("colors".into(), Json::Object(colors));
+    o.insert("lengths".into(), Json::Object(lengths));
+    Json::Object(o)
+}
+
 fn theme_json(core: &Core) -> Json {
     let t = *core.theme();
     let mut o = JsonMap::new();
@@ -1891,6 +1981,55 @@ macro_rules! core_methods {
                 };
                 self.$core().set_metrics(m);
                 Ok(())
+            }
+
+            /// Declare the app's named colours and lengths
+            /// (`docs/adr/0027-tokens-beside-the-theme.md`): `{ colors:
+            /// { peach: '#ffcc99', ink: { light, dark } }, lengths: {
+            /// sideW: 132 } }`. Replaces the table whole, so an app whose
+            /// lengths change with a viewport tier declares again on
+            /// `resize`. A name a theme or metrics role owns is dropped
+            /// with a `reserved-token` warning. Reference one in a prop
+            /// as `'$peach'` — `defineTokens` types the names. The raw
+            /// addon door; `index.js` wraps it to keep the encoder's map
+            /// in step, so call `setTokens` and not this.
+            #[napi(ts_args_type = "tokens: { colors: [string, unknown][], lengths: [string, number][] }")]
+            pub fn set_tokens_raw(&mut self, tokens: Json) -> Result<()> {
+                let t = tokens_from_json(&tokens)?;
+                self.$core().set_tokens(t);
+                Ok(())
+            }
+
+            /// The tokens a view here sees this frame, resolved: colours as
+            /// `0xRRGGBBAA` for the appearance in effect, lengths in px,
+            /// under `colors` and `lengths`. Roles are not listed — read
+            /// them off `theme()` and `metrics()`.
+            #[napi(ts_return_type = "ResolvedTokens")]
+            pub fn tokens(&mut self) -> Json {
+                tokens_json(self.$core())
+            }
+
+            /// `frame` / `setView` report the `$name` references the
+            /// encoder could not resolve — nothing declared, or the other
+            /// kind — through here, as `unknown-token`, once per name.
+            #[napi(ts_args_type = "names: [string, string][]")]
+            pub fn warn_unknown_tokens(&mut self, names: Vec<Vec<String>>) {
+                for pair in &names {
+                    let [name, wanted] = &pair[..] else { continue };
+                    let wanted = match wanted.as_str() {
+                        "length" => kui_core::TokenKind::Length,
+                        _ => kui_core::TokenKind::Color,
+                    };
+                    let e = match self.$core().token_lookup().resolve(name) {
+                        Some(r) if r.kind() != wanted => kui_core::TokenError::Kind {
+                            name: name.clone(),
+                            is: r.kind(),
+                            wanted,
+                        },
+                        _ => kui_core::TokenError::Unknown(name.clone()),
+                    };
+                    self.$core().warn_unknown_token(&e);
+                }
             }
 
             // -- Queries ---------------------------------------------------

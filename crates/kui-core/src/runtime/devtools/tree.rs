@@ -14,6 +14,7 @@ use crate::runtime::inspect::NodeInfo;
 use crate::spec::TextStyle;
 use crate::spec::{Align, FloatConfig, Min, NodeSpec, Sizing};
 use crate::theme::Theme;
+use crate::tokens::TokenKind;
 use crate::tree::OriginId;
 use crate::ui::Ui;
 use crate::widgets;
@@ -450,14 +451,46 @@ fn inspector(
     }
     path.reverse();
     let parent = path.last().map(|&i| &nodes[i]);
+    // The names a value paints under (ADR 0027, decision 7): every token
+    // the node's origin sees — its own and the host's — whose resolved
+    // value is this one. Two names with one value are both printed; a
+    // value no token holds prints as it always did.
+    let sees = |tok: &super::TokenFact| tok.origin == n.origin || tok.origin == OriginId::HOST;
+    let named = |names: Vec<&str>| {
+        if names.is_empty() {
+            String::new()
+        } else {
+            format!(" · {}", names.join(" "))
+        }
+    };
+    let color_names = |c: Color| {
+        named(
+            st.facts
+                .tokens
+                .iter()
+                .filter(|tok| sees(tok) && tok.kind == TokenKind::Color && tok.resolved == c)
+                .map(|tok| tok.name.as_str())
+                .collect(),
+        )
+    };
+    let length_names = |v: f32| {
+        named(
+            st.facts
+                .tokens
+                .iter()
+                .filter(|tok| sees(tok) && tok.kind == TokenKind::Length && tok.length == v)
+                .map(|tok| tok.name.as_str())
+                .collect(),
+        )
+    };
     let hex = |c: Color| {
         if c.a == 0.0 {
             "none".to_string()
         } else {
-            format!("#{:08x}", c.to_hex())
+            format!("#{:08x}{}", c.to_hex(), color_names(c))
         }
     };
-    let px = |v: f32| format!("{v:.0}");
+    let px = |v: f32| format!("{v:.0}{}", length_names(v));
     let opt_px = |v: Option<f32>| v.map_or("—".to_string(), |v| format!("{v:.0}"));
     let align = |a: Align| match a {
         Align::Start => "start",

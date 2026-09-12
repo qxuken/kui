@@ -331,6 +331,65 @@ static void conf_scrollbar(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* conformance::build_tokens (ADR 0027): the table declared every build —
+ * with `surface` in it, refused as `reserved-token` — then read back by
+ * name, since a C prop carries no reference: `kui_token_color` answers a
+ * declared name and a theme role's, false for `nothing` (and raises
+ * `unknown-token`), so the value written is what the other adapters'
+ * `$name` resolves to. */
+static void conf_tokens(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiColorToken colors[] = {
+        {KUI_STR("peach"), 0xffcc99ffu, 0xffcc99ffu},
+        {KUI_STR("ink"), 0x202020ffu, 0xe0e0e0ffu},
+        {KUI_STR("surface"), 0xff0000ffu, 0xff0000ffu},
+    };
+    KuiLengthToken lengths[] = {
+        {KUI_STR("side_w"), 60.0f}, {KUI_STR("gap"), 8.0f}, {KUI_STR("big"), 16.0f},
+    };
+    kui_tokens_set(ui, colors, 3, lengths, 3);
+    uint32_t peach = 0, ink = 0, surface = 0, nothing = 0;
+    float side_w = 0, gap = 0, big = 0, radius = 0;
+    kui_token_color(ui, KUI_STR("peach"), &peach);
+    kui_token_color(ui, KUI_STR("ink"), &ink);
+    kui_token_color(ui, KUI_STR("surface"), &surface);
+    kui_token_color(ui, KUI_STR("nothing"), &nothing);
+    kui_token_length(ui, KUI_STR("side_w"), &side_w);
+    kui_token_length(ui, KUI_STR("gap"), &gap);
+    kui_token_length(ui, KUI_STR("big"), &big);
+    kui_token_length(ui, KUI_STR("radius"), &radius);
+    KuiSpec outer = {.dir = KUI_ROW, .pad_l = gap, .pad_r = 10, .pad_t = 10, .pad_b = 10,
+                     .gap = gap};
+    kui_open(ui, &outer, NULL);
+    KuiSpec cell = {.width = {KUI_FIXED, side_w}, .height = {KUI_FIXED, 30}};
+    cell.bg = peach;
+    kui_open_keyed(ui, KUI_STR("peach"), &cell, NULL);
+    kui_close(ui);
+    cell.bg = ink;
+    cell.border_w = gap;
+    cell.border_color = peach;
+    kui_open_keyed(ui, KUI_STR("ink"), &cell, NULL);
+    kui_close(ui);
+    cell.border_w = 0;
+    cell.border_color = 0;
+    cell.bg = surface;
+    cell.radius = radius;
+    kui_open_keyed(ui, KUI_STR("role"), &cell, NULL);
+    kui_close(ui);
+    cell.radius = 0;
+    cell.bg = nothing;
+    kui_open_keyed(ui, KUI_STR("missing"), &cell, NULL);
+    kui_close(ui);
+    KuiSpan spans[] = {
+        {KUI_STR("tokens"), 0, 0, 0},
+        {KUI_STR("x"), ink, 0, 0},
+    };
+    KuiTextStyle style = {.size = big, .color = peach};
+    kui_rich_text(ui, spans, 2, &style);
+    kui_close(ui);
+}
+
 /* Scroll anchoring (backlog C26 step 3): two scrollers of the same rows,
  * one with `anchor`; phase 1 prepends a taller row to both. */
 static void conf_anchor(KuiCtx *ui, const Fixtures *f, int phase) {
@@ -1273,6 +1332,7 @@ static const ConfScene CONF_SCENES[] = {
     {"layers", conf_layers},
     {"anchor", conf_anchor},
     {"scrollbar", conf_scrollbar},
+    {"tokens", conf_tokens},
 };
 
 /* -- driving one scene --------------------------------------------------- */
@@ -1488,6 +1548,12 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
                 conf_drain_audio(ctx, &audio);
             } else if (strcmp(s->kind, "windowdismissed") == 0) {
                 kui_window_dismissed(ctx, (uint32_t)s->a, (uint32_t)s->b);
+                conf_drain(ctx, &events);
+            } else if (strcmp(s->kind, "appearance") == 0) {
+                /* The OS appearance moving under the app: the index is
+                 * Appearance::ALL's, which is the code the C side takes;
+                 * accent, motion and locale stay at "cannot tell". */
+                kui_env_set_system(ctx, (uint32_t)s->a, 0, 0, (KuiStr){NULL, 0});
                 conf_drain(ctx, &events);
             } else {
                 conf_apply(ctx, s);

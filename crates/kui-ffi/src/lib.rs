@@ -296,6 +296,105 @@ pub extern "C" fn kui_theme_set(ptr: *mut KuiCtx, theme: *const KuiTheme) {
     })
 }
 
+/// Declare the named colours and lengths this origin references
+/// (`docs/adr/0027-tokens-beside-the-theme.md`): the host's outside a
+/// plugin's view, the plugin's own inside `kui_ext_view`, so a plugin's
+/// declaration never replaces the host's. Replaces that table whole; an
+/// app whose lengths follow a viewport tier declares again on a resize. A
+/// name a theme or metrics role owns is dropped with a `reserved-token`
+/// warning. Either array may be NULL with a zero count.
+///
+/// A C prop carries no reference — `KuiSpec.bg` is a bare `uint32_t` —
+/// so a C host reads a token back with `kui_token_color` /
+/// `kui_token_length` and writes the value; what the table buys it is
+/// the name in the devtools' inspector, a guest reading the host's
+/// vocabulary, and one declaration for a Lua panel it hosts to reference
+/// by `"$name"`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_tokens_set(
+    ptr: *mut KuiCtx,
+    colors: *const KuiColorToken,
+    color_count: usize,
+    lengths: *const KuiLengthToken,
+    length_count: usize,
+) {
+    guard((), || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return;
+        };
+        let mut t = kui_core::Tokens::new();
+        if !colors.is_null() {
+            for tok in unsafe { std::slice::from_raw_parts(colors, color_count) } {
+                t = t.color_themed(
+                    kstr(tok.name).into_owned(),
+                    Color::hex(tok.light),
+                    Color::hex(tok.dark),
+                );
+            }
+        }
+        if !lengths.is_null() {
+            for tok in unsafe { std::slice::from_raw_parts(lengths, length_count) } {
+                t = t.length(kstr(tok.name).into_owned(), tok.value);
+            }
+        }
+        c.core().set_tokens(t);
+    })
+}
+
+/// A colour token by name, resolved for this frame's appearance — the
+/// running origin's table over the host's, and a theme role's name
+/// (`surface`) answers with the role. `0xRRGGBBAA` through `out`; false
+/// for a name nothing declared or one that is a length, which also raises
+/// `unknown-token` once per name.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_token_color(ptr: *mut KuiCtx, name: KuiStr, out: *mut u32) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        let Some(out) = (unsafe { out.as_mut() }) else {
+            return false;
+        };
+        let name = kstr(name);
+        match c.core().token_lookup().color(&name) {
+            Ok(col) => {
+                *out = col.to_hex();
+                true
+            }
+            Err(e) => {
+                c.core().warn_unknown_token(&e);
+                false
+            }
+        }
+    })
+}
+
+/// A length token by name, in logical px; a metrics role's name
+/// (`radius`) answers with the metric. False and `unknown-token` as for
+/// `kui_token_color`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_token_length(ptr: *mut KuiCtx, name: KuiStr, out: *mut f32) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        let Some(out) = (unsafe { out.as_mut() }) else {
+            return false;
+        };
+        let name = kstr(name);
+        match c.core().token_lookup().length(&name) {
+            Ok(v) => {
+                *out = v;
+                true
+            }
+            Err(e) => {
+                c.core().warn_unknown_token(&e);
+                false
+            }
+        }
+    })
+}
+
 /// The sizes the stock widgets are built from (backlog T2): the palette's
 /// other axis. `KuiMetrics m = KUI_METRICS_INIT; kui_metrics(ctx, &m);`
 /// then `spec.radius = m.radius` makes a control of your own agree with

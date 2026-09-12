@@ -24,8 +24,9 @@
 //!   in the table.
 
 use kui_core::{
-    Align, Content, EditOptions, FloatConfig, ImageId, NodeSpec, PadShorthand, Rect, Size, Span,
-    TextStyle, WindowConfig, WindowKind, widgets,
+    Align, Color, Content, EditOptions, FloatConfig, ImageId, Key, NodeSpec, PadShorthand, Rect,
+    Size, Sizing, Span, TextStyle, TokenKind, TokenLookup, Warning, WindowConfig, WindowKind,
+    widgets,
 };
 use serde_json::{Map as JsonMap, Value as Json};
 
@@ -57,7 +58,15 @@ use crate::{Result, err, value_of};
 /// middle of an existing op are what the bump is for.
 /// v9: `fragment` carries its `image` handle as two slots after `src`
 /// (backlog V1, ADR 0025 decision 7) — slots in the middle of an op again.
-pub const VERSION: u32 = 9;
+pub const VERSION: u32 = 10;
+
+/// The bit an encoder sets on a prop id to say the value slot holds a
+/// token index rather than a value (`docs/adr/0027-tokens-beside-the-theme.md`,
+/// decision 4): `bg="$peach"` rides as `P_BG | TOKEN_TAG` then the index
+/// `TokenRef::index` gives, and `read_props` resolves it through the
+/// core's lookup before the schema applies it. Ids are small, so the bit
+/// is free; a reference costs the wire nothing and the decoder one mask.
+pub const TOKEN_TAG: u32 = 0x8000;
 
 pub const OP_END: u32 = 0;
 pub const OP_ROOT: u32 = 1;
@@ -114,6 +123,39 @@ pub fn protocol_json() -> Json {
         ),
     );
     o.insert("prop".into(), schema::protocol_props());
+    o.insert("tokenTag".into(), Json::from(TOKEN_TAG));
+    // The role names a `$name` may take in front of the app's tokens, in
+    // wire order (ADR 0027, decision 6): the encoder resolves `$surface`
+    // to index 1 of the colour space and `$radius` to its metric's, the
+    // same indices `TokenRef::index` gives the core.
+    let roles = |names: Vec<&str>| Json::Array(names.into_iter().map(Json::from).collect());
+    o.insert(
+        "tokenRoles".into(),
+        Json::Object(
+            [
+                (
+                    "colors".to_string(),
+                    roles(
+                        kui_core::schema::THEME_ROLES
+                            .iter()
+                            .map(|r| r.node)
+                            .collect(),
+                    ),
+                ),
+                (
+                    "lengths".to_string(),
+                    roles(
+                        kui_core::schema::METRIC_ROLES
+                            .iter()
+                            .map(|r| r.node)
+                            .collect(),
+                    ),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        ),
+    );
     // Value tables the encoder would otherwise restate: align indices and
     // the float preset names, both in the order the decoder reads them.
     o.insert(
@@ -207,29 +249,127 @@ fn payload(s: &str) -> Result<kui_core::Value> {
 /// The binary prop parser —
 /// composites hand-written, everything else read by schema kind and applied
 /// through the shared table.
-fn read_props(r: &mut Reader<'_>) -> Result<PropsOut> {
-    read_props_over(r, PropsOut::new())
+fn read_props(r: &mut Reader<'_>, refs: &mut Refs<'_>) -> Result<PropsOut> {
+    read_props_over(r, PropsOut::new(), refs)
+}
+
+/// What a token index resolves through while a prop list is read (ADR
+/// 0027): the core's lookup for the window being lowered, and the indices
+/// that named nothing in it. The encoder writes an index only for a name
+/// it resolved against *its* map, but the map is the surface's and the
+/// table is a core's — `setTokens` reaches the main window's core, and a
+/// second window lowers against its own — so a miss is a slot left at its
+/// default and an `unknown-token` line, never a frame refused.
+struct Refs<'a> {
+    look: TokenLookup<'a>,
+    missed: Vec<(TokenKind, u32)>,
+}
+
+impl<'a> Refs<'a> {
+    fn color(&mut self, index: f64) -> Option<Color> {
+        let c = self.look.color_at(index as u32);
+        if c.is_none() {
+            self.missed.push((TokenKind::Color, index as u32));
+        }
+        c
+    }
+
+    fn length(&mut self, index: f64) -> Option<f32> {
+        let v = self.look.length_at(index as u32);
+        if v.is_none() {
+            self.missed.push((TokenKind::Length, index as u32));
+        }
+        v
+    }
+}
+
+/// The warnings a lowering's misses become, once the borrow of the core
+/// is handed back: keyed by the index, since the name never crossed.
+fn warn_missed(core: &mut kui_core::Core, missed: Vec<(TokenKind, u32)>) {
+    for (kind, index) in missed {
+        core.warn(Warning {
+            code: kui_core::diag::UNKNOWN_TOKEN,
+            key: Key::ROOT.str(kui_core::diag::UNKNOWN_TOKEN).str(&format!(
+                "#{}{}",
+                kind.name(),
+                index
+            )),
+            message: format!(
+                "a `$name` on a {} slot resolved to index {index}, which this window's table \
+                 does not hold, so the slot keeps its default: tokens are declared per window \
+                 (`setTokens` reaches the main window's core), and a second window has none \
+                 unless it declares them",
+                kind.name()
+            ),
+        });
+    }
+}
+
+/// Reads one prop list through the core's lookup and raises what missed.
+fn lower_props(r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<PropsOut> {
+    lower_props_over(r, PropsOut::new(), ui)
+}
+
+fn lower_props_over(
+    r: &mut Reader<'_>,
+    out: PropsOut,
+    ui: &mut kui_core::Ui<'_>,
+) -> Result<PropsOut> {
+    let (p, missed) = {
+        let mut refs = Refs {
+            look: ui.core().token_lookup(),
+            missed: Vec::new(),
+        };
+        (read_props_over(r, out, &mut refs), refs.missed)
+    };
+    warn_missed(ui.core(), missed);
+    p
+}
+
+fn lower_spans<'a>(r: &mut Reader<'a>, ui: &mut kui_core::Ui<'_>) -> Result<Vec<Span<'a>>> {
+    let (spans, missed) = {
+        let mut refs = Refs {
+            look: ui.core().token_lookup(),
+            missed: Vec::new(),
+        };
+        (read_spans(r, &mut refs), refs.missed)
+    };
+    warn_missed(ui.core(), missed);
+    spans
 }
 
 /// [`read_props`] applied over `out` rather than the schema defaults: what
 /// a composite that keeps its own look reads its admitted rows into (the
 /// stock button over `widgets::button_spec`).
-fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut) -> Result<PropsOut> {
+fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut, refs: &mut Refs<'_>) -> Result<PropsOut> {
     let n = r.u()?;
     for _ in 0..n {
-        let id = r.u()?;
+        let raw = r.u()?;
+        // A tagged id's value slot holds a token index (ADR 0027): a
+        // length for a size, a `pad` edge, a border width or an f32/sizing
+        // row, a colour for a colour row or a border colour. Resolved here,
+        // before `schema::apply`, so the core never sees a reference.
+        let is_ref = raw & TOKEN_TAG != 0;
+        let id = raw & !TOKEN_TAG;
         match id {
             P_DIR => {
                 if r.u()? == 1 {
                     out.spec = NodeSpec::row();
                 }
             }
+            P_SIZE if is_ref => {
+                if let Some(px) = refs.length(r.f()?) {
+                    out.style = TextStyle::new(px);
+                }
+            }
             P_SIZE => out.style = TextStyle::new(r.f()? as f32),
             P_PAD => {
                 // The shorthand rides the wire as declared (a set mask plus
                 // the seven values), so the encoder never has to know what
-                // `padX` falls back to either.
+                // `padX` falls back to either. Tagged, a second mask says
+                // which of the seven are token indices.
                 let set = r.u()?;
+                let ref_mask = if is_ref { r.u()? } else { 0 };
                 let mut pad = PadShorthand::default();
                 for (bit, slot) in [
                     &mut pad.all,
@@ -243,16 +383,34 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut) -> Result<PropsOut> {
                 .into_iter()
                 .enumerate()
                 {
-                    let v = r.f()? as f32;
+                    let raw = r.f()?;
+                    let v = if ref_mask & (1 << bit) != 0 {
+                        refs.length(raw)
+                    } else {
+                        Some(raw as f32)
+                    };
                     if set & (1 << bit) != 0 {
-                        *slot = Some(v);
+                        *slot = v;
                     }
                 }
                 out.apply_pad(pad);
             }
             P_BORDER => {
+                // Tagged: a flags word first — 1 the width is an index, 2
+                // the colour is.
+                let flags = if is_ref { r.u()? } else { 0 };
                 let (w, c) = (r.f()?, r.f()?);
-                out.spec = std::mem::take(&mut out.spec).border(w as f32, color_num(c as u32));
+                let w = if flags & 1 != 0 {
+                    refs.length(w).unwrap_or(0.0)
+                } else {
+                    w as f32
+                };
+                let c = if flags & 2 != 0 {
+                    refs.color(c).unwrap_or(Color::TRANSPARENT)
+                } else {
+                    color_num(c as u32)
+                };
+                out.spec = std::mem::take(&mut out.spec).border(w, c);
             }
             P_OVERFLOW => {
                 let bits = r.u()?;
@@ -322,9 +480,37 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut) -> Result<PropsOut> {
                 }
             }
             P_TOOLTIP => out.apply_tooltip(r.req_str()?),
+            _ if is_ref
+                && !matches!(
+                    schema::by_id(id).map(|d| &d.kind),
+                    Some(Kind::F32 | Kind::Color | Kind::Sizing)
+                ) =>
+            {
+                return Err(err(format!(
+                    "prop id {id} carries a token reference, and only a colour, a length or a \
+                     sizing row takes one"
+                )));
+            }
             id => {
                 let def = schema::by_id(id).ok_or_else(|| err(format!("unknown prop id {id}")))?;
                 let parsed = match &def.kind {
+                    // A reference that names nothing in this window's
+                    // table leaves the row unapplied — the default the
+                    // encoder would have left it at for an unknown name.
+                    Kind::F32 if is_ref => match refs.length(r.f()?) {
+                        Some(px) => Parsed::F32(px),
+                        None => continue,
+                    },
+                    Kind::Color if is_ref => match refs.color(r.f()?) {
+                        Some(c) => Parsed::Color(c),
+                        None => continue,
+                    },
+                    // A sizing reference is one slot, and it is always a
+                    // fixed length in px.
+                    Kind::Sizing if is_ref => match refs.length(r.f()?) {
+                        Some(px) => Parsed::Sizing(Sizing::Fixed(px)),
+                        None => continue,
+                    },
                     Kind::F32 => Parsed::F32(r.f()? as f32),
                     Kind::Color => Parsed::Color(color_num(r.f()? as u32)),
                     Kind::Flag => Parsed::Flag,
@@ -363,8 +549,9 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut) -> Result<PropsOut> {
 
 /// The span list of a rich text: a count, then per span its text and the
 /// flags the encoder's `collectSpans` packed (1 bold, 2 italic, 4 has
-/// colour, 8 underline, 16 strikethrough, 32 has bg) with the two colours.
-fn read_spans<'a>(r: &mut Reader<'a>) -> Result<Vec<Span<'a>>> {
+/// colour, 8 underline, 16 strikethrough, 32 has bg, 64 the colour is a
+/// token index, 128 the bg is) with the two colours.
+fn read_spans<'a>(r: &mut Reader<'a>, refs: &mut Refs<'_>) -> Result<Vec<Span<'a>>> {
     let nspans = r.u()? as usize;
     let mut spans = Vec::with_capacity(nspans);
     for _ in 0..nspans {
@@ -380,7 +567,14 @@ fn read_spans<'a>(r: &mut Reader<'a>) -> Result<Vec<Span<'a>>> {
             s = s.italic();
         }
         if flags & 4 != 0 {
-            s = s.color(color_num(color as u32));
+            let c = if flags & 64 != 0 {
+                refs.color(color)
+            } else {
+                Some(color_num(color as u32))
+            };
+            if let Some(c) = c {
+                s = s.color(c);
+            }
         }
         if flags & 8 != 0 {
             s = s.underline();
@@ -389,7 +583,14 @@ fn read_spans<'a>(r: &mut Reader<'a>) -> Result<Vec<Span<'a>>> {
             s = s.strikethrough();
         }
         if flags & 32 != 0 {
-            s = s.bg(color_num(bg as u32));
+            let c = if flags & 128 != 0 {
+                refs.color(bg)
+            } else {
+                Some(color_num(bg as u32))
+            };
+            if let Some(c) = c {
+                s = s.bg(c);
+            }
         }
         spans.push(s);
     }
@@ -424,13 +625,28 @@ pub fn measure_binary(
     match r.u()? {
         OP_TEXT => {
             let content = r.req_str()?;
-            let p = read_props(&mut r)?;
-            Ok(core.measure_text(content, &p.style, max_w))
+            let (p, missed) = {
+                let mut refs = Refs {
+                    look: core.token_lookup(),
+                    missed: Vec::new(),
+                };
+                (read_props(&mut r, &mut refs), refs.missed)
+            };
+            warn_missed(core, missed);
+            Ok(core.measure_text(content, &p?.style, max_w))
         }
         OP_RICH_TEXT => {
-            let p = read_props(&mut r)?;
-            let spans = read_spans(&mut r)?;
-            Ok(core.measure_rich_text(&spans, &p.style, max_w))
+            let (p, spans, missed) = {
+                let mut refs = Refs {
+                    look: core.token_lookup(),
+                    missed: Vec::new(),
+                };
+                let p = read_props(&mut r, &mut refs);
+                let spans = read_spans(&mut r, &mut refs);
+                (p, spans, refs.missed)
+            };
+            warn_missed(core, missed);
+            Ok(core.measure_rich_text(&spans?, &p?.style, max_w))
         }
         op => Err(err(format!(
             "measureText expects one text element, got op {op}"
@@ -441,7 +657,7 @@ pub fn measure_binary(
 fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<()> {
     match op {
         OP_OPEN => {
-            let p = read_props(r)?;
+            let p = lower_props(r, ui)?;
             ui.core().open_from(p, Content::Box);
             decode_until_close(r, ui)?;
             ui.core().close();
@@ -449,13 +665,13 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
         }
         OP_TEXT => {
             let content = r.req_str()?;
-            let p = read_props(r)?;
+            let p = lower_props(r, ui)?;
             ui.core().text_node(content, p.style);
             Ok(())
         }
         OP_RICH_TEXT => {
-            let p = read_props(r)?;
-            let spans = read_spans(r)?;
+            let p = lower_props(r, ui)?;
+            let spans = lower_spans(r, ui)?;
             ui.core().rich_text_node(&spans, p.style);
             Ok(())
         }
@@ -475,7 +691,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             let label_key = key.unwrap_or(label);
             let mut base = PropsOut::new();
             base.spec = widgets::button_spec(&ui.metrics());
-            let p = read_props_over(r, base)?;
+            let p = lower_props_over(r, base, ui)?;
             widgets::button_with(
                 ui,
                 label_key,
@@ -489,7 +705,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             let label = r.req_str()?;
             let initial = r.str_ref()?.unwrap_or("");
             let flags = r.u()?;
-            let p = read_props(r)?;
+            let p = lower_props(r, ui)?;
             let opts = EditOptions {
                 style: p.style,
                 multiline: flags & 1 != 0,
@@ -504,7 +720,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             let (hi, lo) = (r.f()? as u64, r.f()? as u64);
             let sampling = r.u()? as usize;
             let fit = r.u()? as usize;
-            let p = read_props(r)?;
+            let p = lower_props(r, ui)?;
             let opts = kui_core::ImageOpts {
                 sampling: kui_core::Sampling::ALL
                     .get(sampling)
@@ -529,7 +745,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
                 let y = r.f()? as f32;
                 points.push(kui_core::Vec2::new(x, y));
             }
-            let p = read_props(r)?;
+            let p = lower_props(r, ui)?;
             ui.core().open_from(p, Content::Polygon(&points));
             Ok(())
         }
@@ -590,7 +806,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             }
             let width = r.f()? as f32;
             let flags = r.u()?;
-            let p = read_props(r)?;
+            let p = lower_props(r, ui)?;
             // No `color` is the theme's foreground, as for a text run.
             let stroke_color = p.style.color.unwrap_or(ui.theme().fg);
             let mut stroke = kui_core::Stroke::new(width, stroke_color);
@@ -610,7 +826,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             for _ in 0..n {
                 params.push(r.f()? as f32);
             }
-            let p = read_props(r)?;
+            let p = lower_props(r, ui)?;
             let image = (ihi << 32) | ilo;
             let frag = kui_core::FragmentRef {
                 id: kui_core::FragmentId::from_ffi((hi << 32) | lo),
@@ -648,7 +864,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
                     flags: (packed >> 21) as u8,
                 });
             }
-            let p = read_props(r)?;
+            let p = lower_props(r, ui)?;
             let cursor = has_cursor.then(|| {
                 (
                     crow,
@@ -739,7 +955,8 @@ pub fn lower_binary(ui: &mut kui_core::Ui<'_>, stream: &[f64], strings: &[u8]) -
     if r.u()? != OP_ROOT {
         return Err(err("binary frame must start with the root op"));
     }
-    ui.core().configure_root_from(read_props(&mut r)?);
+    let root = lower_props(&mut r, ui)?;
+    ui.core().configure_root_from(root);
     loop {
         match r.u()? {
             OP_END => return Ok(()),
@@ -761,7 +978,12 @@ mod tests {
             i: 0,
             strings,
         };
-        read_props(&mut r).unwrap()
+        let core = kui_core::Core::new();
+        let mut refs = Refs {
+            look: core.token_lookup(),
+            missed: Vec::new(),
+        };
+        read_props(&mut r, &mut refs).unwrap()
     }
 
     /// Every generic schema row, written by its kind the way encoder.js

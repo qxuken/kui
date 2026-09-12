@@ -46,22 +46,86 @@ const encoder = createEncoder(native.protocol());
 // A prop name the schema does not know has no wire id, so it never crosses:
 // the encoder is the only side that can see it, and it reports what it
 // dropped so the core can warn about it like any other misconfiguration.
-function reportUnknown(surface, unknown) {
+// A `$name` that resolved to no token is the same case one row over.
+function reportUnknown(surface, unknown, unknownTokens) {
   if (unknown.length) surface.warnUnknownProps(unknown);
+  if (unknownTokens.length) surface.warnUnknownTokens(unknownTokens);
 }
 
+// The encoder's side of a surface's tokens (`docs/adr/0027`): the map from
+// a declared name to its kind and wire index, kept on the surface because
+// one encoder serves every surface and each surface has its own table.
+// Insertion order is the index, after the roles — the same order the
+// addon's `setTokensRaw` reads the object in.
+const TOKENS = Symbol('kui.tokens');
+
+function setTokens(decl) {
+  const d = decl ?? {};
+  const map = new Map();
+  // A role's name takes no index: the core drops it from the table with
+  // `reserved-token`, so counting it here would put every name after it
+  // one off from the core's. `$surface` still resolves — to the role.
+  let i = encoder.roleCounts.colors;
+  for (const name of Object.keys(d.colors ?? {})) {
+    if (!encoder.isRole(name)) map.set(name, { kind: 'color', index: i++ });
+  }
+  i = encoder.roleCounts.lengths;
+  for (const name of Object.keys(d.lengths ?? {})) {
+    if (!encoder.isRole(name)) map.set(name, { kind: 'length', index: i++ });
+  }
+  for (const k of Object.keys(d)) {
+    if (k !== 'colors' && k !== 'lengths') throw new Error(`setTokens(): unknown key ${JSON.stringify(k)} (colors, lengths)`);
+  }
+  // The addon first, as ordered pairs — a JSON object's key order does not
+  // survive the crossing, and the order is the index — so a declaration it
+  // refuses (a bad colour, a half missing) leaves the encoder's map as it
+  // was.
+  this.setTokensRaw({ colors: Object.entries(d.colors ?? {}), lengths: Object.entries(d.lengths ?? {}) });
+  this[TOKENS] = map;
+}
+Ctx.prototype.setTokens = setTokens;
+KuiWindow.prototype.setTokens = setTokens;
+
+/**
+ * Types a token declaration's names as the references a prop takes
+ * (`docs/adr/0027-tokens-beside-the-theme.md`, decision 5): given
+ * `{ colors: { peach: '#ffcc99' }, lengths: { sideW: 132 } }` it returns
+ * `{ peach: '$peach', sideW: '$sideW' }`, each a literal type branded by
+ * kind — so `bg={T.peach}` type-checks, `bg={T.sideW}` does not, and
+ * `T.peech` does not exist. Zero runtime: the object *is* the references,
+ * and the declaration goes to `setTokens` as it was. A name a role owns
+ * (`surface`, `radius`) is refused by the core with a `reserved-token`
+ * warning; the roles are already references under `roles`.
+ */
+export function defineTokens(decl) {
+  const out = {};
+  for (const name of Object.keys(decl.colors ?? {})) out[name] = '$' + name;
+  for (const name of Object.keys(decl.lengths ?? {})) out[name] = '$' + name;
+  return out;
+}
+
+/** The theme's and metrics' roles as references: `roles.surface` is
+ *  `'$surface'`, the same value whoever declared what. */
+export const roles = Object.freeze(
+  Object.fromEntries(
+    [...(native.protocol().tokenRoles?.colors ?? []), ...(native.protocol().tokenRoles?.lengths ?? [])].map(
+      (name) => [name, '$' + name],
+    ),
+  ),
+);
+
 Ctx.prototype.frame = function frame(width, height, scale, tree) {
-  const { stream, strings, unknown } = encoder.encode(tree);
+  const { stream, strings, unknown, unknownTokens } = encoder.encode(tree, this[TOKENS]);
   this.frameBinary(width, height, scale, stream, strings);
-  reportUnknown(this, unknown);
+  reportUnknown(this, unknown, unknownTokens);
 };
 
 // `window` names which window the tree is for: 'main' when left out, else
 // one of the names `windows()` lists.
 KuiWindow.prototype.setView = function setView(tree, window) {
-  const { stream, strings, unknown } = encoder.encode(tree);
+  const { stream, strings, unknown, unknownTokens } = encoder.encode(tree, this[TOKENS]);
   this.setViewBinary(stream, strings, window);
-  reportUnknown(this, unknown);
+  reportUnknown(this, unknown, unknownTokens);
 };
 
 // `measureText(content, style, maxWidth)`: the text crosses the way a
@@ -70,9 +134,9 @@ KuiWindow.prototype.setView = function setView(tree, window) {
 // it draws. A style name the schema does not know is reported like a
 // view's would be.
 function measureText(content, style, maxWidth) {
-  const { stream, strings, unknown } = encoder.encodeText(content, style);
+  const { stream, strings, unknown, unknownTokens } = encoder.encodeText(content, style, this[TOKENS]);
   const m = this.measureTextBinary(stream, strings, maxWidth);
-  reportUnknown(this, unknown);
+  reportUnknown(this, unknown, unknownTokens);
   return m;
 }
 Ctx.prototype.measureText = measureText;

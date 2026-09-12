@@ -9,6 +9,7 @@ use crate::runtime::inspect::NodeInfo;
 use crate::spec::TextStyle;
 use crate::spec::{Align, Min, NodeSpec, Sizing};
 use crate::theme::Theme;
+use crate::tree::OriginId;
 use crate::ui::Ui;
 use crate::widgets;
 
@@ -122,6 +123,7 @@ fn panel(
                         fixed(ui, widgets::latency_graph);
                     }
                     facts(ui, st, t);
+                    fixed(ui, |ui| tokens(ui, st, t));
                     fixed(ui, |ui| legend(ui, st, t));
                 },
             );
@@ -310,6 +312,91 @@ fn facts(ui: &mut Ui<'_>, st: &State, t: &Theme) {
                 );
             }
         },
+    );
+}
+
+/// The declared tokens (ADR 0027, decision 7): a swatch and the hex for a
+/// colour — both halves when they differ, the one in effect first — the
+/// px for a length, grouped under the origin that declared them.
+fn tokens(ui: &mut Ui<'_>, st: &State, t: &Theme) {
+    if st.facts.tokens.is_empty() {
+        return;
+    }
+    let dark = t.is_dark();
+    ui.with(NodeSpec::column().width(Sizing::Grow(1.0)).gap(2.0), |ui| {
+        let mut last_origin = None;
+        for tok in &st.facts.tokens {
+            if last_origin != Some(tok.origin) {
+                last_origin = Some(tok.origin);
+                let who = if tok.origin == OriginId::HOST {
+                    "tokens".to_string()
+                } else {
+                    format!("tokens · origin {}", tok.origin.0)
+                };
+                ui.text(&who, TextStyle::new(11.0).color(t.muted));
+            }
+            ui.with(
+                NodeSpec::row()
+                    .width(Sizing::Grow(1.0))
+                    .gap(6.0)
+                    .cross_align(Align::Center)
+                    .padding(crate::geom::Edges {
+                        l: 8.0,
+                        r: 0.0,
+                        t: 0.0,
+                        b: 0.0,
+                    }),
+                |ui| {
+                    if tok.kind == crate::tokens::TokenKind::Color {
+                        let (first, second) = if dark {
+                            (tok.dark, tok.light)
+                        } else {
+                            (tok.light, tok.dark)
+                        };
+                        swatch(ui, first, t);
+                        if tok.light != tok.dark {
+                            swatch(ui, second, t);
+                        } else {
+                            ui.with(NodeSpec::row().width(Sizing::Fixed(12.0)), |_| {});
+                        }
+                    } else {
+                        ui.with(NodeSpec::row().width(Sizing::Fixed(30.0)), |_| {});
+                    }
+                    ui.with(NodeSpec::row().width(Sizing::Fixed(90.0)), |ui| {
+                        ui.text(&tok.name, TextStyle::new(11.0).color(t.fg).nowrap());
+                    });
+                    let value = match tok.kind {
+                        crate::tokens::TokenKind::Color => {
+                            if tok.light != tok.dark {
+                                format!(
+                                    "#{:08x} · #{:08x}",
+                                    if dark { tok.dark } else { tok.light }.to_hex(),
+                                    if dark { tok.light } else { tok.dark }.to_hex()
+                                )
+                            } else {
+                                format!("#{:08x}", tok.resolved.to_hex())
+                            }
+                        }
+                        crate::tokens::TokenKind::Length => format!("{:.0} px", tok.length),
+                    };
+                    ui.text(&value, TextStyle::new(11.0).color(t.muted).mono().nowrap());
+                },
+            );
+        }
+    });
+}
+
+/// A 12 px colour sample with a hairline, so a colour near the panel's
+/// own surface still reads as a sample.
+fn swatch(ui: &mut Ui<'_>, c: Color, t: &Theme) {
+    ui.with(
+        NodeSpec::row()
+            .width(Sizing::Fixed(12.0))
+            .height(Sizing::Fixed(12.0))
+            .radius(2.0)
+            .bg(c)
+            .border(1.0, t.border),
+        |_| {},
     );
 }
 
