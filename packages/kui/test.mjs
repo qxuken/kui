@@ -4139,6 +4139,7 @@ test('env() reports the defaults a headless Ctx starts with', () => {
     accent: null,
     motion: 'unknown',
     locale: null,
+    assistive: 'unknown',
   });
   assert.deepEqual(env.viewport, { width: 320, height: 240, scale: 2 });
   assert.deepEqual(env.window, {
@@ -4265,12 +4266,13 @@ test('<button accent> follows the OS accent, and the stock blue until there is o
 // and decides; nothing in the core acts on any of it.
 test('setEnv carries the OS settings, each with an unknown of its own', () => {
   const ctx = new Ctx();
-  ctx.setEnv({ system: { appearance: 'dark', accent: 0x3b82f6ff, motion: 'reduced', locale: 'pt-BR' } });
+  ctx.setEnv({ system: { appearance: 'dark', accent: 0x3b82f6ff, motion: 'reduced', locale: 'pt-BR', assistive: 'listening' } });
   assert.deepEqual(ctx.env().system, {
     appearance: 'dark',
     accent: 0x3b82f6ff,
     motion: 'reduced',
     locale: 'pt-BR',
+    assistive: 'listening',
   });
 
   // Only what you pass moves, here as everywhere in setEnv.
@@ -4285,17 +4287,47 @@ test('setEnv carries the OS settings, each with an unknown of its own', () => {
 
   // Every "the host cannot tell" is writable, because a host can stop
   // knowing: a window dragged to a screen whose settings it cannot read.
-  ctx.setEnv({ system: { appearance: 'unknown', accent: null, motion: 'unknown', locale: null } });
+  ctx.setEnv({ system: { appearance: 'unknown', accent: null, motion: 'unknown', locale: null, assistive: 'unknown' } });
   assert.deepEqual(ctx.env().system, {
     appearance: 'unknown',
     accent: null,
     motion: 'unknown',
     locale: null,
+    assistive: 'unknown',
   });
   ctx.setEnv({ system: { accent: 0 } });
   assert.equal(ctx.env().system.accent, null, 'a transparent accent is no accent');
   ctx.setEnv({ system: { accent: '#00000000' } });
   assert.equal(ctx.env().system.accent, null, 'however it was spelled');
+});
+
+// The fifth `system` row (backlog F48): whether assistive technology is
+// listening, declared the way reduced motion is, read back the same way,
+// and reported through the same `system` event — so an app that already
+// follows that event for its palette hears when to announce instead of
+// blink. A headless Ctx says unknown until told: it has no bridge.
+test('setEnv declares that assistive technology is listening, and the system event says so', () => {
+  const ctx = new Ctx();
+  assert.equal(ctx.env().system.assistive, 'unknown', 'no bridge, no answer');
+  ctx.frame(320, 240, 1, box({}, []));
+  ctx.pollEvents();
+
+  ctx.setEnv({ system: { assistive: 'listening' } });
+  assert.equal(ctx.env().system.assistive, 'listening');
+  assert.equal(ctx.env().system.motion, 'unknown', 'only what you pass moves');
+  ctx.frame(320, 240, 1, box({}, []));
+  const evs = ctx.pollEvents().filter((e) => e.payload.kind === 'system');
+  assert.equal(evs.length, 1, 'one system event, on the root');
+  assert.equal(evs[0].payload.assistive, 'listening');
+  assert.equal(evs[0].payload.appearance, 'unknown', 'the whole reading rides along');
+
+  // Once: a reading that stops changing stops reporting.
+  ctx.frame(320, 240, 1, box({}, []));
+  assert.equal(ctx.pollEvents().filter((e) => e.payload.kind === 'system').length, 0);
+
+  // Every reading is writable — a host on AT-SPI hears the client leave.
+  ctx.setEnv({ system: { assistive: 'none' } });
+  assert.equal(ctx.env().system.assistive, 'none');
 });
 
 // The audio row: what a driver with a device would push, by the schema's
@@ -4354,6 +4386,7 @@ test('setEnv rejects a key or a type it does not know', () => {
   assert.throws(() => ctx.setEnv({ system: { dark: true } }), /unknown system key "dark"/);
   assert.throws(() => ctx.setEnv({ system: { appearance: 'Dark' } }), /system.appearance is one of/);
   assert.throws(() => ctx.setEnv({ system: { motion: 'none' } }), /system.motion is one of/);
+  assert.throws(() => ctx.setEnv({ system: { assistive: 'yes' } }), /system.assistive is one of/);
   assert.throws(() => ctx.setEnv({ system: { accent: 'blue' } }), /bad color/);
   // A tag that does not fit is not stored truncated: a test that lost half
   // its locale would read as a host that could not tell.

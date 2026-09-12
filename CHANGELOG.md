@@ -37,6 +37,11 @@ field reports).
   are new [in] arrays and `kui_tokens_set` / `kui_token_color` /
   `kui_token_length` new functions, nothing the library writes moved.
 
+- Nothing. `KUI_ABI_VERSION` stays 15 and the Node binary frame stays 9:
+  the one addition to C is a new setter, not an argument, and the `system`
+  event's payload grew a key a handler that destructures the old four
+  still reads.
+
 ### Added
 
 - **Tokens beside the theme**
@@ -105,6 +110,43 @@ field reports).
   a shipped build: an app you ship should not change its motion because
   of a variable in the environment it was launched from.
 
+- **`env.system.assistive` — whether assistive technology is listening**
+  (backlog F48; the pomodoro's `docs/kui-alpha-10.md` wish 4, carried to
+  `docs/kui-alpha-11.md` wish 5). The fifth `system` row beside the four
+  OS readings, with the same explicit unknown: `"listening"` once an
+  accessibility client has asked this window for its tree, `"none"`
+  while the bridge is up and nobody has, `"unknown"` where there is no
+  bridge — a headless `Ctx`, a runner built without `accesskit`, a C
+  host that never called the setter. The one reading that changes what a
+  view *says* rather than what it draws: an alert that announces when
+  something is listening and blinks when nothing is. The fact was always
+  at the driver (AccessKit's `InitialTreeRequested` is what turns the
+  bridge on, and ADR 0016 measures its cache from there); this carries
+  it to `env` and reports it through the existing `system` event — whose
+  payload gains `assistive` — so a retained-tree host hears the change
+  without polling. Read it as `ui.env().system.assistive` in Rust
+  (`Assistive`, with `is_listening()`), `env().system.assistive` in Node
+  (`setEnv({ system: { assistive: 'listening' } })` declares it
+  headless), `env.system.assistive` in Lua; push it from C with the new
+  additive `kui_env_set_assistive(ctx, KUI_ASSISTIVE_*)` — its own
+  setter rather than a fifth argument on `kui_env_set_system`, which
+  keeps its prototype and leaves the field alone when a host re-pushes
+  the four settings on an OS notification. Two limits, written into the
+  row's doc: *any* client counts (a probe, an accessibility inspector, a
+  test harness on the AX API and VoiceOver alike ask for the tree, and
+  nothing tells them apart), and it falls back to `"none"` only where
+  the adapter reports deactivation — which, of the AccessKit adapters
+  pinned in `Cargo.lock`, is AT-SPI alone, on the session's accessibility
+  bus going away; the macOS *and* Windows adapters in `accesskit_winit`
+  0.34 take the deactivation handler and never call it, so there the
+  reading rises once and stays for the window's life. The runner asks
+  for a redraw when the bridge's activation changes, so the event lands
+  on the next frame rather than with the next click. Guards: the schema
+  pin (every restating site moved together), a core test that the
+  `system` event carries the field on the rise and, where a platform
+  reports it, the fall, the ffi setter test, a Node test through `setEnv`
+  and the event, and the C header compiled against the Rust layout.
+
 ### What you can delete
 
 The `isDark ? light : dark` branch in front of every app colour that
@@ -119,6 +161,12 @@ reduced-motion branch of a view is now reachable in a window from the
 app's own code, on any machine, so nothing outside the view needs to
 pretend the user asked for less motion, and a smoke test that skipped
 that branch for lack of a way to open it can open it.
+
+The `announce` an app made unconditionally because it could not tell
+whether anyone would hear it, and the blink it ran beside it for the
+case nobody would; the `KUI_SCREEN_READER=1` (or equivalent) environment
+variable a test set to flip the app into announcing, now that
+`setEnv({ system: { assistive: 'listening' } })` declares it.
 
 
 ## 0.1.0-alpha.11 (2026-09-11)

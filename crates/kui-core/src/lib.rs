@@ -73,7 +73,7 @@ pub use display::{
 };
 pub use edit::{EditOptions, MAX_UNDECLARED_EDITS};
 pub use enter::Enter;
-pub use env::{Appearance, AudioDevice, AudioEnv, Env, Locale, MotionPref, SystemEnv};
+pub use env::{Appearance, Assistive, AudioDevice, AudioEnv, Env, Locale, MotionPref, SystemEnv};
 pub use fragment::{FragmentDrawId, FragmentList, FragmentRef};
 pub use geom::{Edges, Rect, Size, Vec2};
 pub use input::ScrollAxis;

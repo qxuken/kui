@@ -169,10 +169,10 @@ export type ResizeMsg = {
 };
 
 /** An OS setting changed while the app was open — the appearance, the
- *  accent colour, reduced motion or the UI language (delivered on the
- *  root, one per window that noticed). The payload is `env().system` as it
- *  now reads, so a handler keeps the whole reading or takes the one field
- *  it branches on.
+ *  accent colour, reduced motion or the UI language — or assistive
+ *  technology started listening (delivered on the root, one per window
+ *  that noticed). The payload is `env().system` as it now reads, so a
+ *  handler keeps the whole reading or takes the one field it branches on.
  *
  *  A window's view runs when a message changes the model, so without this
  *  a palette picked from `env().system.appearance` is the one the first
@@ -187,6 +187,7 @@ export type SystemMsg = {
   motion: 'unknown' | 'full' | 'reduced';
   /** A BCP-47 tag, or null where the host cannot tell. */
   locale: string | null;
+  assistive: 'unknown' | 'none' | 'listening';
 };
 
 /** A declared window opened, or closed — because nothing declares it any
@@ -1154,13 +1155,15 @@ export interface MetricsOverrides extends Partial<Metrics> {
 }
 
 /** The OS settings on `Env` — appearance, accent, motion, locale — as the
- *  host reported them. Every one of them can be "the host cannot tell", and
- *  that is the default: a `KuiWindow` asks the OS for all four on macOS and
- *  Windows (and for the locale from `LANG` elsewhere), a headless `Ctx`
- *  knows only what `setEnv` told it. Treat an unknown as "use my own
- *  default" rather than as an answer. Nothing in kui acts on these; a view
- *  that honours them does so where it picks a colour or declares an
- *  animation. */
+ *  host reported them, and beside them whether assistive technology is
+ *  listening. Every one of them can be "the host cannot tell", and that is
+ *  the default: a `KuiWindow` asks the OS for all four on macOS and
+ *  Windows (and for the locale from `LANG` elsewhere) and hears from its
+ *  accessibility bridge for the fifth, a headless `Ctx` knows only what
+ *  `setEnv` told it. Treat an unknown as "use my own default" rather than
+ *  as an answer. Nothing in kui acts on these; a view that honours them
+ *  does so where it picks a colour, declares an animation or decides
+ *  whether an alert announces. */
 export interface SystemEnv {
   /** The OS light/dark setting. `'unknown'` where the platform has no
    *  answer (X11, Wayland without an override) or nobody pushed one. */
@@ -1175,6 +1178,17 @@ export interface SystemEnv {
   /** The UI language as a BCP-47 tag (`'en-US'`), unparsed, or null when
    *  the host cannot tell. */
   locale: string | null;
+  /** Whether assistive technology is listening: `'listening'` once an
+   *  accessibility client asked this window for its tree, `'none'` while
+   *  the bridge is up and nobody has, `'unknown'` where there is no bridge
+   *  (a headless `Ctx`). The reading that changes what a view *says*
+   *  rather than what it draws — an alert that announces when something
+   *  is listening and blinks when nothing is — so test for
+   *  `=== 'listening'`. Any client counts (a probe, an inspector, a screen
+   *  reader alike), and on macOS and Windows nothing reports a client
+   *  leaving, so once risen it stays for the window's life; only AT-SPI
+   *  reports deactivation. Arrives as a `SystemMsg` when it changes. */
+  assistive: 'unknown' | 'none' | 'listening';
 }
 
 /** The window chrome facts on `Env`. A view that draws its own titlebar
@@ -1225,6 +1239,7 @@ export interface EnvInput {
     accent?: number | string | null;
     motion?: 'unknown' | 'full' | 'reduced';
     locale?: string | null;
+    assistive?: 'unknown' | 'none' | 'listening';
   };
   window?: {
     /** Which window a headless `Ctx` is standing in for; every `UiEvent` it

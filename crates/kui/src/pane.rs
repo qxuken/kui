@@ -7,8 +7,8 @@
 use super::*;
 
 /// Everything about a pane the driver owns and the app only reads: the
-/// display's refresh rate, the four OS settings, and what kind of window
-/// this is.
+/// display's refresh rate, the four OS settings, whether assistive
+/// technology is listening, and what kind of window this is.
 ///
 /// Written here rather than only before a frame because a host that drives
 /// its own loop runs its view before the first one — Node's `runWindowed`
@@ -40,7 +40,18 @@ pub(crate) fn sync_env(
     // into another appearance the way it drifts onto another monitor —
     // and taking focus back re-asks both, which covers a change the
     // platform did not report.
-    pane.core.env.system = system_reading(pane.appearance, system, pinned);
+    pane.core.env.system = system_reading(
+        pane.appearance,
+        system,
+        pinned,
+        // Not a setting but the same shape of fact: whether an
+        // accessibility client has asked this window for its tree. The
+        // bridge is the one place that knows, and a pane without one (the
+        // `accesskit` feature off) cannot tell (backlog F48).
+        pane.access
+            .as_ref()
+            .map_or(Assistive::Unknown, |b| b.assistive()),
+    );
     pane.core.env.window = WindowEnv {
         id: pane.id,
         custom_chrome: chrome != Chrome::Native,
@@ -68,12 +79,14 @@ pub(crate) fn system_reading(
     appearance: Appearance,
     queried: &system_env::Queried,
     pinned: SystemEnv,
+    assistive: Assistive,
 ) -> SystemEnv {
     pinned.over(SystemEnv {
         appearance,
         accent: queried.accent,
         motion: queried.motion,
         locale: queried.locale,
+        assistive,
     })
 }
 
@@ -338,19 +351,29 @@ mod tests {
         // Nothing pinned: the reading is the query plus the window's
         // appearance, as before the pin existed.
         assert_eq!(
-            system_reading(Appearance::Light, &queried, none),
+            system_reading(Appearance::Light, &queried, none, Assistive::Unknown),
             SystemEnv {
                 appearance: Appearance::Light,
                 accent: queried.accent,
                 motion: MotionPref::Full,
                 locale: queried.locale,
+                assistive: Assistive::Unknown,
             }
+        );
+        // The bridge's reading rides the query, and the pin cannot say
+        // anything about it: a pin on `assistive` is meaningless and stays
+        // Unknown, so the bridge's answer is what the view reads (F48
+        // over F47).
+        assert_eq!(
+            system_reading(Appearance::Light, &queried, none, Assistive::Listening)
+                .assistive,
+            Assistive::Listening
         );
         let less_motion = SystemEnv {
             motion: MotionPref::Reduced,
             ..Default::default()
         };
-        let read = system_reading(Appearance::Light, &queried, less_motion);
+        let read = system_reading(Appearance::Light, &queried, less_motion, Assistive::Unknown);
         assert_eq!(
             read.motion,
             MotionPref::Reduced,
@@ -361,13 +384,13 @@ mod tests {
         assert_eq!(read.locale, queried.locale);
         // The OS moved on an unpinned field: the reading follows it, and
         // the pin is still there.
-        let dark = system_reading(Appearance::Dark, &queried, less_motion);
+        let dark = system_reading(Appearance::Dark, &queried, less_motion, Assistive::Unknown);
         assert_eq!(dark.appearance, Appearance::Dark);
         assert_eq!(dark.motion, MotionPref::Reduced);
         // A pin on a field the platform cannot answer is the reading.
         let mute = system_env::Queried::default();
         assert_eq!(
-            system_reading(Appearance::Unknown, &mute, less_motion).motion,
+            system_reading(Appearance::Unknown, &mute, less_motion, Assistive::Unknown).motion,
             MotionPref::Reduced
         );
     }

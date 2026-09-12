@@ -1,6 +1,6 @@
 //! Env + declared window title: frame-scoped data the driver reconciles.
 
-use kui_core::{Appearance, Core, MotionPref, Size, SystemEnv, Value};
+use kui_core::{Appearance, Assistive, Core, MotionPref, Size, SystemEnv, Value};
 
 #[test]
 fn window_title_is_frame_scoped() {
@@ -157,9 +157,56 @@ fn a_changed_system_reading_becomes_an_event() {
     // The whole reading, in `env().system`'s own spellings and nulls.
     assert!(matches!(p.get("accent"), Some(Value::Null)));
     assert!(matches!(p.get("locale"), Some(Value::Null)));
+    assert_eq!(p.get("assistive").and_then(Value::as_str), Some("unknown"));
 
     // And once only: a reading that stops changing stops reporting.
     assert!(kinds(&frame(&mut core)).is_empty());
+}
+
+/// A screen reader attaching is the same kind of change as the appearance
+/// flipping — a retained-tree host's alert cannot start announcing
+/// unless a message says something is listening (backlog F48). The bridge
+/// writes `assistive` into `env.system` and the core reports it through
+/// the one `system` event, so a host that already handles that event for
+/// its palette hears this too.
+#[test]
+fn assistive_technology_attaching_is_a_system_event() {
+    let mut core = Core::new();
+    let frame = |core: &mut Core| {
+        core.frame(Size::new(100.0, 100.0), 1.0).finish();
+        core.take_pending_events()
+    };
+    // A driver with a bridge and no client yet.
+    core.env.system.assistive = Assistive::None;
+    assert!(
+        kinds(&frame(&mut core)).is_empty(),
+        "the first frame establishes"
+    );
+
+    // A client asked for the tree.
+    core.env.system.assistive = Assistive::Listening;
+    let evs = frame(&mut core);
+    assert_eq!(kinds(&evs), vec!["system"]);
+    let p = &evs[0].payload;
+    assert_eq!(
+        p.get("assistive").and_then(Value::as_str),
+        Some("listening")
+    );
+    // The other four ride along unchanged, so a handler keeps the whole
+    // reading as it does for any other `system` event.
+    assert_eq!(p.get("appearance").and_then(Value::as_str), Some("unknown"));
+    assert_eq!(p.get("motion").and_then(Value::as_str), Some("unknown"));
+    assert!(kinds(&frame(&mut core)).is_empty(), "reported once");
+
+    // Where the adapter reports deactivation (AT-SPI), the fall is a
+    // change like the rise.
+    core.env.system.assistive = Assistive::None;
+    let evs = frame(&mut core);
+    assert_eq!(kinds(&evs), vec!["system"]);
+    assert_eq!(
+        evs[0].payload.get("assistive").and_then(Value::as_str),
+        Some("none")
+    );
 }
 
 fn kinds(evs: &[kui_core::UiEvent]) -> Vec<&str> {
@@ -180,6 +227,7 @@ fn a_pinned_reading_lies_over_the_queried_one_field_by_field() {
         accent: Some(Color::hex(0x0a84ffff)),
         motion: MotionPref::Full,
         locale: Locale::new("en-US"),
+        assistive: Assistive::Listening,
     };
     // Unknown is "not pinned": the default pins nothing.
     assert_eq!(SystemEnv::default().over(queried), queried);
@@ -202,6 +250,7 @@ fn a_pinned_reading_lies_over_the_queried_one_field_by_field() {
         accent: Some(Color::hex(0xd2691eff)),
         motion: MotionPref::Reduced,
         locale: Locale::new("pt-BR"),
+        assistive: Assistive::None,
     };
     assert_eq!(all.over(queried), all);
     // And over a host that answers nothing, the pin is the whole reading.

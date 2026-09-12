@@ -1356,6 +1356,7 @@ impl Core {
             ("appearance", env.system.appearance.name().into()),
             ("motion", env.system.motion.name().into()),
             ("locale", opt(env.system.locale.map(|l| l.to_string()))),
+            ("assistive", env.system.assistive.name().into()),
             (
                 "theme",
                 format!("{} · {source}", self.theme.appearance.name()),

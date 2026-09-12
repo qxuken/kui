@@ -162,7 +162,7 @@ one field. The payload shapes:
 | layout | `{ kind: "layout", x, y, w, h, parent: { x, y, w, h }, scale, tag }` | The rect layout gave an `onLayout` node (logical px, viewport coords, after scrolling and easing): on its first frame and whenever it changes, never on a frame that left it alone. `scale` is physical px per logical px at the node — `w × scale` by `h × scale` is how many pixels to render for it before `updateImage` (the frame's scale today; where a zoom would compose in). |
 | resize | `{ kind: "resize", width, height, scale }` | The viewport changed size or DPI (logical px, delivered to the host on the root); `KuiWindow.size()` queries the same numbers. |
 | window | `{ kind: "window", phase: "opened" \| "closed", name, id }` | A declared window opened (the diff queued its `Open`) or closed — because nothing declares it any more, or because the user closed it, in which case it stays closed while still declared: stop declaring `name`, then declare it again to reopen. `id` is what its events carry; the event itself is on the root of whichever window's frame noticed. |
-| system | `{ kind: "system", appearance, accent, motion, locale }` | An OS setting the user changed while the app was open — the light/dark appearance, the accent colour, reduced motion, or the UI language (delivered to the host on the root, one per window that noticed). The payload is `env.system` as it now reads, in the same spellings and with the same nulls, so a handler can keep the whole reading or take the one field it branches on. The first frame establishes the reading rather than reporting it, the way the viewport does; a host whose view is a function the runner calls every frame can equally re-read `env` and ignore this, but a host that retains the tree it was handed (Node, C, Lua) only re-runs its view for a message, so this is how a palette follows the OS. |
+| system | `{ kind: "system", appearance, accent, motion, locale, assistive }` | An OS setting the user changed while the app was open — the light/dark appearance, the accent colour, reduced motion, or the UI language — or assistive technology starting to listen (delivered to the host on the root, one per window that noticed). The payload is `env.system` as it now reads, in the same spellings and with the same nulls, so a handler can keep the whole reading or take the one field it branches on. The first frame establishes the reading rather than reporting it, the way the viewport does; a host whose view is a function the runner calls every frame can equally re-read `env` and ignore this, but a host that retains the tree it was handed (Node, C, Lua) only re-runs its view for a message, so this is how a palette follows the OS. |
 | modifiers | `{ kind: "modifiers", shift, ctrl, alt, super }` | The physical modifier state changed (delivered to the host on the root). |
 | changed / submit | `{ kind: "changed" }` / `{ kind: "submit" }`, with the editor's key on the event | An editor's text changed / Enter in a single-line editor. |
 | sound | `{ kind: "sound", phase: "ended" \| "refused", playback, tag }` | A tagged playback (`play(id, { tag })` or `<audio tag>`) finished on its own — never when something stopped it. `phase: "refused"` instead when the device would not take the play at all (its 128 voices are all held, or the sound did not decode): that playback never starts and so never ends, so this is what arrives in place of the `ended` a view would otherwise wait forever for. |
@@ -235,9 +235,10 @@ people. In Node the codes are the `WarningCode` union.
 
 The host facts a view reads: `ui.env()` in Rust, `view(env)` in Lua,
 `ctx.env()` / `win.env()` in Node. C is the host, so it *writes* them
-(`kui_env_set`, `kui_env_set_system`, `kui_env_set_window`) and has no
+(`kui_env_set`, `kui_env_set_system`, `kui_env_set_window`,
+`kui_env_set_audio`, `kui_env_set_assistive`) and has no
 reading; its column names the argument. A real window's runner refreshes every fact each frame;
-headless, `ctx.setEnv` in Node and the two C setters are the writers, and
+headless, `ctx.setEnv` in Node and the C setters are the writers, and
 the conformance corpus drives its two chrome scenes through them. The
 `from` column says which Rust struct holds the fact, or that it is derived
 or the frame's rather than `Env`'s. Two divergences are deliberate:
@@ -255,13 +256,16 @@ motion and locale through AppKit / Win32) and re-asks when the app takes
 focus back or the theme changes; on X11 and Wayland it answers the locale
 from `LANG` and leaves the rest unknown. Every other driver owns its own
 window, so it pushes what it knows through its env setter.
-Unknown is a reading, not a missing value: the two enums
+Unknown is a reading, not a missing value: the enums
 spell it `"unknown"` and always have a key, the two values are `null` in
 Node and an absent key in Lua, and C reads zero as it does everywhere
 else. Nothing in the core acts on any of it — a dark appearance repaints
 nothing and a reduced motion shortens nothing, because only the view knows
 which of its colours is the background and which of its animations carries
-meaning.
+meaning. The fifth row, `system.assistive`, is not a setting but a fact
+of the same shape: whether an accessibility client has asked for the tree,
+written by the runner's bridge rather than by a settings query, and the
+one reading that changes what a view *says* rather than what it draws.
 
 | field | from | Node | Lua | C | description |
 |---|---|---|---|---|---|
@@ -272,6 +276,7 @@ meaning.
 | `system.accent` | `SystemEnv::accent` | `system.accent` | `system.accent` | `kui_env_set_system(accent)` | The OS accent/highlight colour as `0xRRGGBBAA`, ready to pass straight back as a `bg` or `color`. "The host cannot tell" is `null` in Node, an absent key in Lua, and 0 in C — a fully transparent accent is not a colour anyone was given, the way a refresh rate of zero is not a rate. Node's `setEnv` also takes the `"#rrggbb"` spelling a prop takes. |
 | `system.motion` | `SystemEnv::motion` | `system.motion` | `system.motion` | `kui_env_set_system(motion)` | The OS reduce-motion setting: `"reduced"` when the user asked for less animation, `"full"` when they did not, `"unknown"` when nobody asked the OS (`KUI_MOTION_*` in C, unknown 0). Spelled as what the user wants rather than as a `reduceMotion` boolean, because the third reading has no place in a boolean. Nothing in the core shortens an animation for it — a view that honours it does so where it declares one. |
 | `system.locale` | `SystemEnv::locale` | `system.locale` | `system.locale` | `kui_env_set_system(locale)` | The UI language as a BCP-47 tag (`"en"`, `"en-US"`, `"zh-Hant-HK"`), for whatever the view formats dates and numbers with; kui does not parse it. Carried inline (31 ASCII bytes, `Locale`) so the reading stays `Copy`, and anything that does not fit reads back as unknown: `null` in Node, an absent key in Lua, an empty `KuiStr` in C. |
+| `system.assistive` | `SystemEnv::assistive` | `system.assistive` | `system.assistive` | `kui_env_set_assistive(assistive)` | Whether assistive technology is listening: `"listening"` once an accessibility client has asked this window for its tree, `"none"` while the bridge is up and nobody has, `"unknown"` where there is no bridge — a headless `Ctx`, a runner built without `accesskit`, a C host that never called the setter (`KUI_ASSISTIVE_*`, unknown 0). The reading that changes what a view *says* rather than what it draws: an alert that announces when something is listening and blinks when nothing is. Reported through the `system` event when it changes, like the other four. Two limits are the platform's, not kui's. *Any* client counts — a probe, an accessibility inspector, a test driving the AX API and VoiceOver alike all ask for the tree, and nothing tells them apart — so it says something is listening, not that a person is. And it falls back to `"none"` only where the adapter reports deactivation, which in the pinned AccessKit is AT-SPI alone (the session's accessibility bus going away); on macOS and Windows nothing reports a client leaving, so once it has risen it stays `"listening"` for the window's life. |
 | `window.id` | `WindowEnv::id` | `window.id` | `window.id` | `kui_env_set_window(window)`, read back by `kui_ctx_window` | Which window this frame draws, assigned by the driver: 0 for the window the app starts in. Every event from it carries the same number. |
 | `window.custom_chrome` | `WindowEnv::custom_chrome` | `window.customChrome` | `window.custom_chrome` | `kui_env_set_window(custom_chrome)` | The host asked the app to draw its own chrome, so there is no native titlebar to sit under. `<titlebar>` and `<windowButtons>` build nothing when this is false. |
 | `window.maximized` | `WindowEnv::maximized` | `window.maximized` | `window.maximized` | `kui_env_set_window(maximized)` | The window is maximized — what picks the restore glyph over the maximize one. |

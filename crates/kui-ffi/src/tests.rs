@@ -1189,11 +1189,38 @@ mod env_headless {
         kui_ctx_free(ctx);
     }
 
+    /// The assistive row (backlog F48): a host with no bridge never calls
+    /// it and reads unknown; one that bridges the platform's accessibility
+    /// API pushes the reading, and the settings setter — which a host
+    /// re-runs on every OS notification — leaves it alone.
+    #[test]
+    fn the_assistive_setter_is_its_own_door_and_the_system_setter_keeps_it() {
+        use kui_core::Assistive;
+        let ctx = kui_ctx_new();
+        assert_eq!(system(ctx).assistive, Assistive::Unknown);
+
+        kui_env_set_assistive(ctx, Assistive::Listening.code());
+        assert_eq!(system(ctx).assistive, Assistive::Listening);
+        // The appearance flipped and the host pushed the four settings
+        // again: the screen reader did not go away.
+        kui_env_set_system(ctx, Appearance::Dark.code(), 0, 0, ks(""));
+        assert_eq!(system(ctx).appearance, Appearance::Dark);
+        assert_eq!(system(ctx).assistive, Assistive::Listening);
+        // A platform that reports the client leaving says so.
+        kui_env_set_assistive(ctx, Assistive::None.code());
+        assert_eq!(system(ctx).assistive, Assistive::None);
+        // A code this build has no name for is unknown, not a guess.
+        kui_env_set_assistive(ctx, 99);
+        assert_eq!(system(ctx).assistive, Assistive::Unknown);
+        kui_ctx_free(ctx);
+    }
+
     /// A null context is a no-op, like every other entry point.
     #[test]
     fn a_null_context_is_survivable() {
         kui_env_set_system(std::ptr::null_mut(), 1, 0, 1, ks("en"));
         kui_env_set_audio(std::ptr::null_mut(), 2, 1);
+        kui_env_set_assistive(std::ptr::null_mut(), 2);
     }
 }
 

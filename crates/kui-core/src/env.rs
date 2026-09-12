@@ -25,7 +25,8 @@ pub struct Env {
     pub refresh_hz: Option<f32>,
     /// Whether the window has keyboard focus.
     pub focused: bool,
-    /// What the OS is set to: appearance, accent, motion, locale.
+    /// What the OS is set to: appearance, accent, motion, locale — and
+    /// whether assistive technology is listening.
     pub system: SystemEnv,
     /// Window chrome facts (custom chrome, maximized, native control rect).
     pub window: WindowEnv,
@@ -71,7 +72,10 @@ impl Env {
 /// core reports and what any driver reports for a fact its platform gives
 /// it no way to ask. The `kui` runner asks the OS for all four on macOS and
 /// Windows (the appearance through winit, the rest in its `system_env`);
-/// elsewhere it answers what it can and leaves the rest unknown.
+/// elsewhere it answers what it can and leaves the rest unknown. The fifth,
+/// [`Assistive`], is not a setting but a fact of the same shape — the
+/// user chose to run a screen reader — and comes from the accessibility
+/// bridge rather than a settings query.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct SystemEnv {
     /// Light or dark, when the host can tell.
@@ -82,6 +86,8 @@ pub struct SystemEnv {
     pub motion: MotionPref,
     /// The UI language as a BCP-47 tag, `None` when the host can't tell.
     pub locale: Option<Locale>,
+    /// Whether assistive technology has asked for the access tree.
+    pub assistive: Assistive,
 }
 
 impl SystemEnv {
@@ -112,6 +118,10 @@ impl SystemEnv {
                 pinned => pinned,
             },
             locale: self.locale.or(base.locale),
+            assistive: match self.assistive {
+                Assistive::Unknown => base.assistive,
+                pinned => pinned,
+            },
         }
     }
 }
@@ -207,6 +217,65 @@ impl MotionPref {
     /// would have had before this field existed.
     pub fn is_reduced(self) -> bool {
         self == MotionPref::Reduced
+    }
+}
+
+/// Whether assistive technology is listening: the difference between an
+/// alert that blinks and one that announces (backlog F48). `Listening` is
+/// "an accessibility client has asked this window for its tree", which is
+/// the one signal the platform adapters give and the moment the runner
+/// starts deriving trees (ADR 0016 measures its cache from there).
+/// `None` is "the bridge is up and nobody has asked"; `Unknown` is "there
+/// is no bridge" — a headless core, a driver built without the
+/// `accesskit` feature, a C host that never called the setter.
+///
+/// Two limits are the reading's, not the row's. *Any* client counts: a
+/// probe, an accessibility inspector, a test harness driving the AX API
+/// and VoiceOver alike all ask for the tree, and nothing tells them apart.
+/// And whether it ever falls back to `None` is the platform's: only the
+/// AT-SPI adapter (Unix) reports deactivation, when the session's
+/// accessibility bus goes away; on macOS and Windows the adapters never
+/// call the deactivation handler, so once a client has asked the reading
+/// stays `Listening` for the window's life.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Assistive {
+    #[default]
+    Unknown,
+    None,
+    Listening,
+}
+
+impl Assistive {
+    /// Wire order, as [`Appearance::ALL`]: `unknown` is 0.
+    pub const ALL: &'static [Assistive] =
+        &[Assistive::Unknown, Assistive::None, Assistive::Listening];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Assistive::Unknown => "unknown",
+            Assistive::None => "none",
+            Assistive::Listening => "listening",
+        }
+    }
+
+    pub fn parse(name: &str) -> Option<Self> {
+        Self::ALL.iter().copied().find(|a| a.name() == name)
+    }
+
+    /// The code a C host passes; `unknown` is 0.
+    pub fn code(self) -> u32 {
+        Self::ALL.iter().position(|a| *a == self).unwrap() as u32
+    }
+
+    pub fn from_code(code: u32) -> Option<Self> {
+        Self::ALL.get(code as usize).copied()
+    }
+
+    /// Whether something is listening. `Unknown` answers `false`, as
+    /// [`MotionPref::is_reduced`] does: a host that cannot tell gets the
+    /// blink it would have had before this field existed.
+    pub fn is_listening(self) -> bool {
+        self == Assistive::Listening
     }
 }
 
@@ -365,7 +434,9 @@ mod tests {
         assert_eq!(s.accent, None);
         assert_eq!(s.motion, MotionPref::Unknown);
         assert_eq!(s.locale, None);
+        assert_eq!(s.assistive, Assistive::Unknown);
         assert!(!s.motion.is_reduced(), "unknown is not a request to reduce");
+        assert!(!s.assistive.is_listening(), "unknown is not a listener");
         // And a headless driver holds no device: closed, nothing live.
         assert_eq!(Env::default().audio, AudioEnv::default());
         assert_eq!(AudioEnv::default().device, AudioDevice::Closed);
@@ -382,9 +453,12 @@ mod tests {
         assert_eq!(motions, crate::schema::MOTIONS);
         let devices: Vec<&str> = AudioDevice::ALL.iter().map(|d| d.name()).collect();
         assert_eq!(devices, crate::schema::AUDIO_DEVICES);
+        let assistive: Vec<&str> = Assistive::ALL.iter().map(|a| a.name()).collect();
+        assert_eq!(assistive, crate::schema::ASSISTIVE);
         assert_eq!(Appearance::default().code(), 0);
         assert_eq!(MotionPref::default().code(), 0);
         assert_eq!(AudioDevice::default().code(), 0);
+        assert_eq!(Assistive::default().code(), 0);
     }
 
     #[test]
@@ -401,9 +475,14 @@ mod tests {
             assert_eq!(AudioDevice::from_code(d.code()), Some(*d));
             assert_eq!(AudioDevice::parse(d.name()), Some(*d));
         }
+        for a in Assistive::ALL {
+            assert_eq!(Assistive::from_code(a.code()), Some(*a));
+            assert_eq!(Assistive::parse(a.name()), Some(*a));
+        }
         assert_eq!(Appearance::from_code(3), None);
         assert_eq!(MotionPref::from_code(3), None);
         assert_eq!(AudioDevice::from_code(4), None);
+        assert_eq!(Assistive::from_code(3), None);
         assert_eq!(Appearance::parse("Dark"), None, "spelling is exact");
     }
 

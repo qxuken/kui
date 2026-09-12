@@ -11,9 +11,9 @@
 use kui_ffi::CExtension;
 
 use kui_core::{
-    Appearance, AudioCommand, AudioSpec, Color, Core, EditKey, FontId, FrameSample, FrameStats,
-    ImageId, InputEvent, Key, KeyCode, KeyMods, KeyPress, Locale, Mods, MotionPref, MouseButton,
-    PlayOptions, PlaybackId, Rect, Size, SoundId, SystemEnv, Tokens, UiEvent, Value, Vec2,
+    Appearance, Assistive, AudioCommand, AudioSpec, Color, Core, EditKey, FontId, FrameSample,
+    FrameStats, ImageId, InputEvent, Key, KeyCode, KeyMods, KeyPress, Locale, Mods, MotionPref,
+    MouseButton, PlayOptions, PlaybackId, Rect, Size, SoundId, SystemEnv, Tokens, UiEvent, Value, Vec2,
     schema::color_hex_str,
 };
 use napi::bindgen_prelude::{Buffer, Float64Array, Uint8Array};
@@ -280,10 +280,10 @@ fn pinned_system(v: &Json) -> Result<SystemEnv> {
     Ok(sys)
 }
 
-/// `setEnv`'s `system`: the four OS settings, each with an explicit "the
-/// host cannot tell" — `"unknown"` for the two enums, `null` for the two
-/// values. Applied field by field, so a host that learns one of them says
-/// only that one.
+/// `setEnv`'s `system`: the four OS settings and whether assistive
+/// technology is listening, each with an explicit "the host cannot tell" —
+/// `"unknown"` for the three enums, `null` for the two values. Applied
+/// field by field, so a host that learns one of them says only that one.
 fn system_env(who: &str, sys: &mut SystemEnv, o: &JsonMap<String, Json>) -> Result<()> {
     let name = |key: &str, v: &Json| -> Result<String> {
         v.as_str()
@@ -305,6 +305,17 @@ fn system_env(who: &str, sys: &mut SystemEnv, o: &JsonMap<String, Json>) -> Resu
                     err(format!(
                         "{who}: system.motion is one of {:?}",
                         kui_core::schema::MOTIONS
+                    ))
+                })?
+            }
+            // Not a setting, but the same shape of fact and the same door:
+            // a test declares that something is listening the way it
+            // declares reduced motion (backlog F48).
+            "assistive" => {
+                sys.assistive = Assistive::parse(&name(key, v)?).ok_or_else(|| {
+                    err(format!(
+                        "setEnv(): system.assistive is one of {:?}",
+                        kui_core::schema::ASSISTIVE
                     ))
                 })?
             }

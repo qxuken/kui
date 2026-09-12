@@ -381,10 +381,10 @@ fn menu_items(t: &mlua::Table) -> mlua::Result<Vec<kui_core::MenuItem>> {
 /// documents and `the_env_table_is_the_documented_env_shape` pins to it key
 /// for key: `refresh_hz` (nil if unknown),
 /// `frame_budget_ms`, `focused` (the *window*'s keyboard focus, a bool),
-/// `system` (what the user set in the OS: `appearance` and `motion` as
-/// strings, always there because "unknown" is one of their readings, and
-/// `accent` (0xRRGGBBAA) / `locale` (a BCP-47 tag) only when the host can
-/// tell), `focus` (the focused *node*'s key), `focus_visible`, `region`
+/// `system` (what the user set in the OS: `appearance`, `motion` and
+/// `assistive` as strings, always there because "unknown" is one of their
+/// readings, and `accent` (0xRRGGBBAA) / `locale` (a BCP-47 tag) only when
+/// the host can tell), `focus` (the focused *node*'s key), `focus_visible`, `region`
 /// (the `focus_region` node in effect, nil for the main ring), `theme`
 /// (the palette derived from `system`: one 0xRRGGBBAA number per role in
 /// `schema::THEME_ROLES`, plus `appearance` and `disabled_opacity`),
