@@ -626,7 +626,11 @@ export declare namespace JSX {
      *  removal releases the playback to play itself out, so a one-shot need
      *  not stay declared for a length the view would have to guess (a loop
      *  still stops). `tag` comes back as a `SoundMsg` when it ends on its
-     *  own, a released playback included. Draws nothing and takes no space. */
+     *  own, a released playback included. A released playback holds one of
+     *  the device's 128 voices until its file ends — voices held = sound
+     *  length × release rate, so a 1.4 s chime released four times a second
+     *  holds 6 — and the 129th play is refused (`phase: "refused"` on the
+     *  `tag`). Draws nothing and takes no space. */
     audio: Keyed & { src: string; loop?: boolean; volume?: number; paused?: boolean; finish?: boolean; tag?: AppMsg };
     /** A terminal's screen as one node (backlog C20): `rows × cols` cells,
      *  four entries each in `cells` — codepoint, fg, bg (`0xRRGGBBAA`, 0 = no

@@ -423,8 +423,12 @@ is not free: it holds one of the device's 128 voices until its file ends,
 released or not, and the 129th play is refused. A refused play never starts
 and so never ends — it arrives as `{kind:"sound", phase:"refused"}` on a
 `tag`, and as a `playback-refused` warning either way, so nothing waits on
-an `ended` that cannot come. Stop what the view no longer needs instead of
-releasing it, and release short sounds.
+an `ended` that cannot come. In the app's units, voices held = sound length
+× release rate: a 1.4 s chime released four times a second holds 6 of the
+128 at any moment, a 10 s ambience released once a second holds 10, and every
+playback still declared (a loop included) counts beside them — a `refused`
+`sound` event is what arriving at 128 sounds like. Stop what the view no
+longer needs instead of releasing it, and release short sounds.
 
 [`audio` element](props.md#elements) ·
 [sound resources](props.md#resources) ·

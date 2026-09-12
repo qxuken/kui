@@ -302,6 +302,25 @@ frame (F44).
   window — the ticks and `tick.msg(now)`; the frame clock behind
   `transition` is the runner's own.
 
+### Changed
+
+- **`<audio finish>`'s cost, in the app's units.** The `finish` row said a
+  released playback holds one of the device's 128 voices until its file
+  ends and the 129th play is refused, and left the reader to work out how
+  many releases a second that is (backlog F49, from the alpha.11 upgrade
+  reports; carried from pomodoro's alpha.10 wish 3). The row, `props.md`
+  and the howto's audio answer now carry the arithmetic: voices held =
+  sound length × release rate, so a 1.4 s chime released four times a
+  second holds 6 of the 128 at any moment, a 10 s ambience released once
+  a second holds 10, every playback still declared (a loop included)
+  counts beside them, and a `refused` `sound` event is what arriving at
+  128 sounds like. 128 was checked against the driver before it was
+  written down again: `AudioManagerSettings::default()` in kira 0.12.4
+  gives the main track a `sound_capacity` of 128, and every play lands on
+  the main track. The `audio` element's doc in `jsx-runtime.d.ts` is
+  hand-written, not generated from the row, so it took one sentence of the
+  same by hand. No code changed.
+
 
 ## 0.1.0-alpha.11 (2026-09-11)
 

@@ -1023,7 +1023,35 @@ macOS nothing says when the client leaves, so the reading rises and does
 not fall for the window's life — Windows and Unix adapters do report
 deactivation, and the row says `none` again there.
 
-### `.` F49 — `<audio finish>`'s cost in the app's units
+### `.` F49 — `<audio finish>`'s cost in the app's units — **done (2026-09-12)**
+
+**Done (2026-09-12), as the entry asks — the arithmetic, in the row and the
+howto, with the 128 re-read from the driver first.** `Audio::warm` opens
+the device with `AudioManagerSettings::default()` (`kui/src/audio.rs`),
+whose `MainTrackBuilder::new()` sets `sound_capacity: 128` (kira 0.12.4,
+`track/main/builder.rs:26`), and `AudioManager::play` is
+`main_track().play` — so every play, declared or released, counts against
+one 128, and past it `m.play` fails and `apply_one` pushes the playback
+onto `refused` (F35), which the runner folds into `Core::audio_refused`
+for the `refused` `sound` event and the `playback-refused` warning. The
+sentence in the `finish` row and in howto's audio answer now reads:
+voices held = sound length × release rate — a 1.4 s chime released four
+times a second holds 6 of the 128 at any moment (5.6, rounded up to what
+is ever held at once), a 10 s ambience released once a second holds 10,
+every playback still declared (a loop included) counts beside them, and a
+`refused` `sound` event is what arriving at 128 sounds like. That agrees
+with F34/F35 as built: `finish` releases rather than stops (a loop still
+stops, a paused playback has nothing to finish), and `refused` is the
+phase a tagged play gets when it never starts, so it can never `end`. The
+`AudioSpec::finish` rustdoc already carried the same number from the
+other end (ninety releases a second of a 1.4 s file) and was left alone.
+One half of the entry's premise was wrong: the row generates into
+`props.md` only — the `audio` element's doc in `jsx-runtime.d.ts` is
+hand-written outside the generated region, and had never carried the 128
+sentence — so it took one sentence of the same by hand; a rerun of `gen`
+leaves it. `cargo test -p kui-core --test docs` green, `npm test` 122
+pass / 2 skipped, `git diff --stat` after `gen` touches `schema.rs`,
+`props.md`, `howto.md`, `jsx-runtime.d.ts` and nothing else.
 
 **Symptom** (pomodoro, alpha.10 wish 3, carried): "the 128-voice number is
 the device's … how many one-shots per second can it release before it
