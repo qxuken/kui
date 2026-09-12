@@ -1513,8 +1513,8 @@ void kui_input_modifiers(KuiCtx *ctx, uint32_t mods);
 bool kui_poll_event(KuiCtx *ctx, KuiEvent *out);
 
 /* -- Host environment ---------------------------------------------------- */
-/* These three setters are the whole of C's `env`: the fields of kui_core's
- * Env, SystemEnv and WindowEnv, one argument each, in the order
+/* These setters are the whole of C's `env`: the fields of kui_core's Env,
+ * SystemEnv, WindowEnv and AudioEnv, one argument each, in the order
  * docs/props.md's Env table lists them (schema::ENV_FIELDS, the one
  * statement of the shape every binding's reading is pinned to). A C host is
  * the frame driver, so it writes the facts and has no reading of them back
@@ -1531,6 +1531,9 @@ bool kui_poll_event(KuiCtx *ctx, KuiEvent *out);
  *                       controls_w, controls_h       (WindowEnv; the
  *                       controls rect flattened to its extent at the
  *                       window origin, the shape Lua also reads)
+ *   kui_env_set_assistive  assistive                (SystemEnv's fifth:
+ *                       whether an accessibility client is listening,
+ *                       which is not a setting and has its own door)
  *   kui_env_set_audio   device, live                (AudioEnv: what the
  *                       host's output device is doing)
  */
@@ -1574,6 +1577,30 @@ enum {
  * which is loud. */
 void kui_env_set_system(KuiCtx *ctx, uint32_t appearance, uint32_t accent,
                         uint32_t motion, KuiStr locale);
+/* Whether assistive technology is listening, as kui_env_set_assistive takes
+ * it and Node and Lua read back as "unknown"/"none"/"listening". Zero is
+ * unknown: a host with no accessibility bridge reports that it cannot
+ * tell, which is the honest default and what a headless core says. */
+enum {
+    KUI_ASSISTIVE_UNKNOWN = 0,
+    KUI_ASSISTIVE_NONE = 1,
+    KUI_ASSISTIVE_LISTENING = 2,
+};
+/* Whether an accessibility client has asked for the tree, for views to
+ * read as env.system.assistive - the reading that changes what a view
+ * *says* rather than what it draws: an alert announces when something is
+ * listening and blinks when nothing is. A host that bridges the platform's
+ * accessibility API pushes KUI_ASSISTIVE_LISTENING when a client first asks
+ * it for the tree (any client: a probe, an inspector, a screen reader) and
+ * KUI_ASSISTIVE_NONE if the platform ever says the client left - which, of
+ * the AccessKit adapters, only AT-SPI does; on macOS and Windows the
+ * reading rises once and stays. kui_env_set_system leaves it alone, so a
+ * host re-pushing the settings on an OS notification keeps it. Its own
+ * setter rather than a fifth argument on kui_env_set_system because it is
+ * not a setting and does not arrive with them, and because a setter is
+ * additive where an argument is an ABI break: off KUI_ABI_VERSION, like
+ * kui_env_set_audio. */
+void kui_env_set_assistive(KuiCtx *ctx, uint32_t assistive);
 /* The host's audio output device, as kui_env_set_audio takes it and Node
  * and Lua read back as "closed"/"opening"/"open"/"failed". Zero is closed,
  * which is what a host that never calls the setter - or has no device -

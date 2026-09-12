@@ -71,8 +71,8 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::rc::Rc;
 
 use kui_core::{
-    Align, Appearance, AudioDevice, AudioEnv, Color, Core, DismissReason, Edges, EditKey,
-    EditOptions, Enter, FloatConfig, InputEvent, Key, Keyframe, Locale, Mods, MotionPref,
+    Align, Appearance, Assistive, AudioDevice, AudioEnv, Color, Core, DismissReason, Edges,
+    EditKey, EditOptions, Enter, FloatConfig, InputEvent, Key, Keyframe, Locale, Mods, MotionPref,
     MouseButton, NodeSpec, Rect, Size, Sizing, Span, SystemEnv, TextStyle, UiEvent, Value, Vec2,
     WindowButton, WindowCommand, WindowConfig, WindowId, WindowKind,
 };
@@ -175,12 +175,39 @@ pub extern "C" fn kui_env_set_system(
                 motion: MotionPref::from_code(motion).unwrap_or_default(),
                 accent: (accent != 0).then(|| Color::hex(accent)),
                 locale: opt_str(locale).and_then(|tag| Locale::new(&tag)),
+                // Not this setter's: the four arguments are the settings,
+                // and the fifth reading has its own door below, so a host
+                // re-pushing the settings on an OS notification does not
+                // forget that a screen reader is attached.
+                assistive: c.core().env.system.assistive,
             };
             // `set_system` re-resolves the palette from what was just
             // written, so a host that pushes the appearance and reads
             // `kui_theme` back before its next frame sees the answer
             // (ADR 0019).
             c.core().set_system(sys);
+        }
+    });
+}
+
+/// Whether assistive technology is listening, for views to read
+/// (`env.system.assistive`): a `KUI_ASSISTIVE_*` (0 = unknown, so a host
+/// with no accessibility bridge reports honestly by never calling this).
+/// A host that bridges the platform's accessibility API itself pushes
+/// `LISTENING` when a client first asks it for the tree and `NONE` if its
+/// platform ever tells it the client left — which, of the AccessKit
+/// adapters, only AT-SPI does. An out-of-range code is ignored rather
+/// than folded onto a real reading, the way an unknown appearance is.
+///
+/// Its own setter rather than a fifth argument on `kui_env_set_system`
+/// because it is not a setting and does not arrive with them — and
+/// because adding an argument would be an ABI break for every host, while
+/// a setter is additive (backlog F48).
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_env_set_assistive(ptr: *mut KuiCtx, assistive: u32) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().env.system.assistive = Assistive::from_code(assistive).unwrap_or_default();
         }
     });
 }

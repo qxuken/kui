@@ -1603,7 +1603,8 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
     }
 
     /// AccessKit's side of the conversation: assistive technology attaching
-    /// (send it the tree), detaching, or asking for an action (input).
+    /// (send it the tree, and let the view know), detaching, or asking for
+    /// an action (input).
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: access_bridge::UserEvent) {
         // A wake is the app saying "what `view` shows has changed": every
         // window draws, as after any input. Coalesced by the platform's
@@ -1621,7 +1622,17 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
         let Some(bridge) = &mut self.panes[i].access else {
             return;
         };
-        if let Some(req) = bridge.on_event(event) {
+        let was_listening = bridge.active();
+        let req = bridge.on_event(event);
+        // A client attaching or leaving is a fact the view reads
+        // (`env.system.assistive`, backlog F48): `sync_env` writes it on
+        // the next frame and the core reports it as a `system` event, so
+        // the frame has to happen — an app that only redraws on input
+        // would otherwise hear it with the next click.
+        if bridge.active() != was_listening {
+            self.panes[i].window.request_redraw();
+        }
+        if let Some(req) = req {
             self.dispatch(event_loop, i, InputEvent::Access(req));
         }
         if let Some(pane) = self.panes.get_mut(i) {

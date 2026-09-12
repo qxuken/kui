@@ -7,8 +7,8 @@
 use super::*;
 
 /// Everything about a pane the driver owns and the app only reads: the
-/// display's refresh rate, the four OS settings, and what kind of window
-/// this is.
+/// display's refresh rate, the four OS settings, whether assistive
+/// technology is listening, and what kind of window this is.
 ///
 /// Written here rather than only before a frame because a host that drives
 /// its own loop runs its view before the first one — Node's `runWindowed`
@@ -44,6 +44,14 @@ pub(crate) fn sync_env(
         accent: system.accent,
         motion: system.motion,
         locale: system.locale,
+        // Not a setting but the same shape of fact: whether an
+        // accessibility client has asked this window for its tree. The
+        // bridge is the one place that knows, and a pane without one (the
+        // `accesskit` feature off) cannot tell (backlog F48).
+        assistive: pane
+            .access
+            .as_ref()
+            .map_or(Assistive::Unknown, |b| b.assistive()),
     };
     pane.core.env.window = WindowEnv {
         id: pane.id,

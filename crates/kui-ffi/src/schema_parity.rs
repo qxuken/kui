@@ -82,13 +82,13 @@ fn every_role_round_trips_through_the_c_code() {
     assert_eq!(role_of_code(kui_core::Role::ALL.len() as u32 + 1), None);
 }
 
-/// C's `env` is two setters and no reading, so the header's prototypes
-/// are the whole of what a host sees of the shape. This holds them to
-/// `schema::ENV_FIELDS`'s C column: each setter's parameter list, in
-/// order, is exactly the arguments the rows name for it, and every
-/// stored fact (a row from `Env` or `WindowEnv`) is written by one of
-/// the two. An argument added to a prototype, or a field added to the
-/// structs and not to a setter, fails here by name.
+/// C's `env` is a handful of setters and no reading, so the header's
+/// prototypes are the whole of what a host sees of the shape. This holds
+/// them to `schema::ENV_FIELDS`'s C column: each setter's parameter list,
+/// in order, is exactly the arguments the rows name for it, and every
+/// stored fact (a row from `Env`, `SystemEnv`, `WindowEnv` or `AudioEnv`)
+/// is written by one of them. An argument added to a prototype, or a
+/// field added to the structs and not to a setter, fails here by name.
 #[test]
 fn the_env_setters_take_exactly_the_documented_fields() {
     use kui_core::schema::ENV_FIELDS;
@@ -109,6 +109,7 @@ fn the_env_setters_take_exactly_the_documented_fields() {
         "kui_env_set_system",
         "kui_env_set_window",
         "kui_env_set_audio",
+        "kui_env_set_assistive",
     ] {
         let documented: Vec<String> = ENV_FIELDS
             .iter()
@@ -127,7 +128,8 @@ fn the_env_setters_take_exactly_the_documented_fields() {
             f.c.starts_with("`kui_env_set(")
                 || f.c.starts_with("`kui_env_set_system(")
                 || f.c.starts_with("`kui_env_set_window(")
-                || f.c.starts_with("`kui_env_set_audio("),
+                || f.c.starts_with("`kui_env_set_audio(")
+                || f.c.starts_with("`kui_env_set_assistive("),
             "{}: a stored env fact C cannot write",
             f.name
         );

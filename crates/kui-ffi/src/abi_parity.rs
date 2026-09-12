@@ -269,6 +269,9 @@ fn asserts() -> (String, Vec<&'static str>) {
     abi_enum!(o, kui_core::schema::MOTIONS, 0 => [
         "KUI_MOTION_UNKNOWN", "KUI_MOTION_FULL", "KUI_MOTION_REDUCED",
     ]);
+    abi_enum!(o, kui_core::schema::ASSISTIVE, 0 => [
+        "KUI_ASSISTIVE_UNKNOWN", "KUI_ASSISTIVE_NONE", "KUI_ASSISTIVE_LISTENING",
+    ]);
     abi_enum!(o, kui_core::schema::AUDIO_DEVICES, 0 => [
         "KUI_AUDIO_DEVICE_CLOSED", "KUI_AUDIO_DEVICE_OPENING",
         "KUI_AUDIO_DEVICE_OPEN", "KUI_AUDIO_DEVICE_FAILED",

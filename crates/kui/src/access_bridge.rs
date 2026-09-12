@@ -16,8 +16,8 @@ mod imp {
     };
     use accesskit_winit::{Adapter, Event, WindowEvent as AkWindowEvent};
     use kui_core::{
-        AccessAction, AccessRequest, AccessTree, Announcement, Key, Live, Orientation, Role,
-        TextPos,
+        AccessAction, AccessRequest, AccessTree, Announcement, Assistive, Key, Live, Orientation,
+        Role, TextPos,
     };
     use winit::event::WindowEvent;
     use winit::event_loop::{ActiveEventLoop, EventLoopProxy};
@@ -97,6 +97,20 @@ mod imp {
 
         pub fn active(&self) -> bool {
             self.active
+        }
+
+        /// The reading `env.system.assistive` carries (backlog F48): a
+        /// client has asked for the tree, or none has. Whether it ever
+        /// falls back is the adapter's: only `accesskit_unix` sends
+        /// `AccessibilityDeactivated`; the macOS and Windows adapters in
+        /// `accesskit_winit` take the deactivation handler and never call
+        /// it, so there the reading rises once and stays.
+        pub fn assistive(&self) -> Assistive {
+            if self.active {
+                Assistive::Listening
+            } else {
+                Assistive::None
+            }
         }
 
         /// Folds an AccessKit event in; an action request comes back as
@@ -413,7 +427,7 @@ mod imp {
 
 #[cfg(not(feature = "accesskit"))]
 mod imp {
-    use kui_core::{AccessRequest, AccessTree, Announcement};
+    use kui_core::{AccessRequest, AccessTree, Announcement, Assistive};
     use winit::event::WindowEvent;
     use winit::event_loop::{ActiveEventLoop, EventLoopProxy};
     use winit::window::Window;
@@ -447,6 +461,13 @@ mod imp {
 
         pub fn active(&self) -> bool {
             false
+        }
+
+        /// Never constructed (`new` answers `None`), so a pane built
+        /// without the feature reads `Unknown` through the `map_or` in
+        /// `sync_env` rather than through here.
+        pub fn assistive(&self) -> Assistive {
+            Assistive::Unknown
         }
 
         pub fn on_event(&mut self, ev: UserEvent) -> Option<AccessRequest> {
