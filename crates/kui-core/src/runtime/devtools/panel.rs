@@ -8,14 +8,14 @@ use crate::env::Appearance;
 use crate::runtime::inspect::NodeInfo;
 use crate::spec::TextStyle;
 use crate::spec::{Align, Min, NodeSpec, Sizing};
-use crate::theme::Theme;
+use crate::theme::{Theme, contrast};
 use crate::tree::OriginId;
 use crate::ui::Ui;
 use crate::widgets;
 
 /// The whole of what the panel declares in this window.
 pub(super) fn build(ui: &mut Ui<'_>, st: &mut State, nodes: &[NodeInfo], place: Place) {
-    let t = ui.theme();
+    let t = ink(ui.theme());
     if st.tab != Tab::Tree {
         st.hovered_row = None;
     }
@@ -61,6 +61,45 @@ pub(super) fn build(ui: &mut Ui<'_>, st: &mut State, nodes: &[NodeInfo], place: 
                 |ui| tree::overlays(ui, st, nodes, &t, place),
             );
         }
+    }
+}
+
+/// The theme the panel paints with: the app's, with the accent held to
+/// what can be *read* on the panel's surface — and everything that comes
+/// off the accent recomputed from that.
+///
+/// The stock widgets use the accent as a fill with `on_accent` on top,
+/// which is readable whatever the accent is. The panel uses it as ink:
+/// icon strokes, the lit placement, a selected row's kind, the picker's
+/// outline, a focused field's border, the legend's keys. An OS accent
+/// that sits near the base — Windows' "automatic" accent off a dark
+/// wallpaper is a navy on a near-black — is a fine fill and an invisible
+/// stroke (the pomodoro's report, 2026-09-12). The same promise
+/// [`Theme::ring_for`] makes for the ring, held here to 3:1 on `surface`
+/// — the UI-edge grade, since the accent is strokes and short labels
+/// here, not body text — and starting from the accent itself, so one
+/// that already reads is painted verbatim. The facts row still prints
+/// the accent in force; the panel's own window is drawn from this too.
+pub(super) fn ink(t: Theme) -> Theme {
+    let toward = if t.is_dark() {
+        Color::WHITE
+    } else {
+        Color::BLACK
+    };
+    let mut mix = 0.0f32;
+    let ink = loop {
+        let c = t.accent.mix(toward, mix);
+        // `toward` itself always clears 3:1 on its own base, so the cap
+        // is a floor and not a give-up.
+        if mix >= 1.0 || contrast(c, t.surface) >= 3.0 {
+            break c;
+        }
+        mix = (mix + 0.05).min(1.0);
+    };
+    if ink == t.accent {
+        t
+    } else {
+        t.with_accent(ink)
     }
 }
 
@@ -246,23 +285,30 @@ fn tabs(ui: &mut Ui<'_>, st: &State, t: &Theme) {
                 Some(Appearance::Light) => Icon::BaseLight,
                 Some(_) => Icon::BaseDark,
             };
+            // "The app's own" names the base it resolves to, since an
+            // app that pinned one is not on the OS's.
+            let own = match st.base {
+                None => format!("app ({})", st.facts.app_appearance.name()),
+                Some(_) => st.base_name().to_string(),
+            };
             icon(
                 ui,
                 t,
                 "base",
                 base,
                 t.fg,
-                &format!(
-                    "base: {} · Ctrl+Shift+T cycles the app's own → light → dark",
-                    st.base_name()
-                ),
+                &format!("base: {own} · Ctrl+Shift+T cycles the app's own → light → dark"),
             );
-            icon(
+            // The swatch is the accent in force — the core's, not the
+            // panel's readable ink — inside a hairline in the panel's
+            // muted, so it reads as a sample whatever colour it is.
+            icon_with(
                 ui,
                 t,
                 "accent",
                 Icon::Accent,
-                t.accent,
+                t.muted,
+                ui.theme().accent,
                 &format!(
                     "accent: {} · Ctrl+Shift+A cycles the app's, kui's, four the OS might report",
                     st.accent_name()
@@ -427,8 +473,22 @@ pub(super) fn fixed(ui: &mut Ui<'_>, f: impl FnOnce(&mut Ui<'_>)) {
 }
 
 /// One icon in the header's strip: what it controls is in its tooltip,
-/// and its colour says its state.
+/// and its colour says its state. Its fill is a faint wash of the strokes.
 pub(super) fn icon(ui: &mut Ui<'_>, t: &Theme, what: &str, glyph: Icon, color: Color, hint: &str) {
+    icon_with(ui, t, what, glyph, color, color.with_alpha(0.35), hint);
+}
+
+/// [`icon`] with the fill named apart from the strokes: the accent
+/// swatch, whose disc is one colour and whose hairline is another.
+fn icon_with(
+    ui: &mut Ui<'_>,
+    t: &Theme,
+    what: &str,
+    glyph: Icon,
+    color: Color,
+    fill: Color,
+    hint: &str,
+) {
     let label = format!("kui-devtools/{what}");
     let key = ui.child_key(&label);
     ui.with_keyed(
@@ -444,7 +504,7 @@ pub(super) fn icon(ui: &mut Ui<'_>, t: &Theme, what: &str, glyph: Icon, color: C
             .label(what)
             .apply_tooltip(hint),
         |ui| {
-            icons::draw(ui, glyph, color, color.with_alpha(0.35));
+            icons::draw(ui, glyph, color, fill);
             if ui.is_hovered(key) {
                 widgets::tooltip(ui, hint);
             }

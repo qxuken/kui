@@ -67,11 +67,24 @@ impl<A: App> Shell<A> {
                 }
                 // Every origin may open a window here; a host that wants
                 // to refuse an extension's checks `origin` before this.
+                // The devtools' own window is the core's, not the app's:
+                // it gets the OS's chrome whatever the launcher asked
+                // for, since nothing in it draws a titlebar — under
+                // `Chrome::Custom` it opened undecorated, and could not
+                // be moved (the pomodoro's report, 2026-09-12).
                 WindowCommand::Open {
-                    id, owner, config, ..
+                    id,
+                    owner,
+                    origin,
+                    config,
                 } => {
                     if self.pane_of(id).is_none() {
-                        self.open_pane(event_loop, id, owner, config);
+                        let chrome = if origin == OriginId::DEVTOOLS {
+                            Chrome::Native
+                        } else {
+                            self.chrome
+                        };
+                        self.open_pane(event_loop, id, owner, config, chrome);
                     }
                 }
                 // The app asking, rather than the declaration: a live
@@ -105,13 +118,15 @@ impl<A: App> Shell<A> {
         }
     }
 
-    /// Opens the window a frame declared, on the shared session and device.
+    /// Opens the window a frame declared, on the shared session and device,
+    /// with `chrome` — the launcher's for the app's windows.
     pub(super) fn open_pane(
         &mut self,
         event_loop: &ActiveEventLoop,
         id: WindowId,
         owner: WindowId,
         config: WindowConfig,
+        chrome: Chrome,
     ) {
         let size = if config.size.w > 0.0 && config.size.h > 0.0 {
             config.size
@@ -121,7 +136,7 @@ impl<A: App> Shell<A> {
         // Untitled until its first frame's `window_title` lands (ADR 0004
         // decision 5): the declaration carries no string.
         let mut attrs = self
-            .window_attrs("", (size.w as f64, size.h as f64))
+            .window_attrs("", (size.w as f64, size.h as f64), chrome)
             .with_active(config.activates);
         if config.kind == WindowKind::Popup {
             // A menu surface, not a window with the app's chrome: no
@@ -169,7 +184,9 @@ impl<A: App> Shell<A> {
         core.set_diagnostics(self.diagnostics);
         core.set_subpixel_text(self.subpixel);
         core.env.window.id = id;
-        self.push_pane(event_loop, id, config, owner, core, window, renderer);
+        self.push_pane(
+            event_loop, id, config, owner, chrome, core, window, renderer,
+        );
         // ADR 0009 decision 1: a non-activating popup that opens while the
         // primary button is down **joins that press**. Evaluated once, here,
         // with no geometry — and it is tight because of the press-outside
@@ -256,6 +273,7 @@ impl<A: App> Shell<A> {
         id: WindowId,
         config: WindowConfig,
         owner: WindowId,
+        chrome: Chrome,
         mut core: Core,
         window: Arc<Window>,
         renderer: kui_wgpu::Renderer,
@@ -284,7 +302,7 @@ impl<A: App> Shell<A> {
             .clone()
             .and_then(|proxy| access_bridge::Bridge::new(event_loop, &window, proxy));
         #[cfg(target_os = "windows")]
-        let nc = (self.chrome != Chrome::Native)
+        let nc = (chrome != Chrome::Native)
             .then(|| windows_nc::NcHitTest::install(&window, true))
             .flatten();
         #[cfg(target_os = "windows")]
@@ -303,6 +321,8 @@ impl<A: App> Shell<A> {
             kind: config.kind,
             owner,
             activates: config.activates,
+            chrome,
+            applied_min: None,
             anchor: config.anchor,
             core,
             window,
@@ -334,24 +354,25 @@ impl<A: App> Shell<A> {
         // first frame (backlog F39).
         let audio = self.audio.env();
         let pane = self.panes.last_mut().expect("just pushed");
-        sync_env(pane, &self.system, self.pinned_system, self.chrome, audio);
+        sync_env(pane, &self.system, self.pinned_system, audio);
     }
 
-    /// The attributes every window of this app is created with: the
-    /// launcher's chrome, hidden until the accessibility adapter has
-    /// hooked it (the platform adapters must see the window before it is
-    /// shown).
+    /// The attributes a window of this app is created with: `chrome` —
+    /// the launcher's for the app's own windows — and hidden until the
+    /// accessibility adapter has hooked it (the platform adapters must see
+    /// the window before it is shown).
     pub(super) fn window_attrs(
         &self,
         title: &str,
         (w, h): (f64, f64),
+        chrome: Chrome,
     ) -> winit::window::WindowAttributes {
         #[allow(unused_mut)]
         let mut attrs = Window::default_attributes()
             .with_title(title)
             .with_inner_size(LogicalSize::new(w, h))
             .with_visible(false);
-        match self.chrome {
+        match chrome {
             Chrome::Native => {}
             Chrome::Custom => {
                 // macOS: keep the native traffic lights, drawn over our

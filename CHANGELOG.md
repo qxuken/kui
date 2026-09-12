@@ -242,6 +242,59 @@ Nothing.
 
 ### Fixed
 
+- **The devtools panel lives with what the app chose: its base, its
+  chrome, its floor** — five defects from the LCARS pomodoro's devtools
+  round of 2026-09-12 (backlog F50–F54), all of the class ADR 0024's
+  consequences named: the panel is drawn into *the app's* window, and
+  three of the five were it assuming the OS's choice over the app's.
+
+  - *The accent is readable ink* (F50). The panel paints the accent as
+    strokes, borders and short labels — the stock widgets only ever fill
+    with it under `on_accent` — and an OS accent near the base (Windows'
+    "automatic" accent off a dark wallpaper is a navy on `#1a1d27`)
+    vanished: the accent dot, the lit placement, the picker's border.
+    The panel's theme is the app's with the accent moved toward the front
+    of the base until it clears 3:1 on `surface`, the promise
+    `Theme::ring_for` already made for the ring; an accent that reads is
+    painted verbatim, so the ones that were fine are unchanged. The
+    accent *swatch* shows the accent in force inside a hairline, so it
+    reads as a sample whatever it is, and the facts row prints it.
+  - *"The app's own" base is the app's* (F51). With the base toggle at
+    "app" and an accent chosen, the override went out as
+    `DerivedWithAccent`, which follows `env.system` — so an app that had
+    pinned dark on a light desktop flipped light on `Ctrl+Shift+A`. The
+    override now keeps the half it leaves alone from the app's own
+    source: a pinned palette is recoloured, a following one keeps
+    following, and a base override on a brand accent keeps the brand. A
+    theme source the app sets *under* an override is what the override
+    is lifted back to, and the base toggle's hint names the app's base
+    (`base: app (dark)`).
+  - *The panel's window has the OS's chrome* (F52). Under
+    `chrome: 'custom'` the popped-out panel opened undecorated and
+    could not be moved: every window of the app took the launcher's
+    chrome, and this is the one window the app did not declare. The
+    runner reads the `Open`'s origin — `OriginId::DEVTOOLS` opens native
+    — and chrome is per pane now (`custom_chrome`, the traffic-light
+    rect, the Windows non-client hook and the synthesized resize band
+    all follow the pane's).
+  - *`pick` from the panel's window focuses the main window* (F53),
+    the mirror of what `Ctrl+Shift+I` does the other way: the crosshair
+    is in the main window, so the keyboard for Escape and the pointer
+    go there. Docked, nothing is asked.
+  - *The window's floor counts the dock* (F54). `minWidth` / `minHeight`
+    reached the OS once, at launch, and the dock came out of the app's
+    share — a 620×500 floor with a 280 px bottom dock drew the app into
+    552 px it had said it could not fit. The new
+    `Core::devtools_inset()` is what a docked pane takes, in the axis it
+    takes it, and the runner adds it to the launcher's floor after every
+    main-window frame, on change, capped by the maximum; popped out or
+    off it is the app's floor again. Checked on Windows by asking the
+    window `WM_GETMINMAXINFO` across the four placements.
+
+  *What you can delete:* a `minWidth` padded by 340 to leave room for a
+  dock the app does not always have, and a `setTheme` repeated on
+  `system` because a devtools accent walk had flipped the base.
+
 - **`env().viewport` and `win.size()` are what the dock leaves.** Under
   `KUI_DEVTOOLS=1` with the panel docked, a Node app read its 1040 px
   window from both — `win.size()` in `init`, `env().viewport` once a frame

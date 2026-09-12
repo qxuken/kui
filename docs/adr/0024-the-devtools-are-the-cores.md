@@ -277,9 +277,17 @@ date: 2026-09-11
    in every placement; `kui-devtools/stream` only when docked.
 4. **The theme override remembers the app's own source.** Cycling the
    base back to "app" restores what the core had before the first
-   override (`dt_saved_theme`), rather than leaving the last pinned
-   palette in place; the panel's own window mirrors the main window's
-   app source through the facts when no override is in force.
+   override, rather than leaving the last pinned palette in place; the
+   panel's own window mirrors the main window's app source through the
+   facts when no override is in force. Amended 2026-09-12 (backlog F51):
+   the core keeps the app's source *beside the override it applied*
+   (`dt_theme`), so a source the app sets under the override is told
+   from it and is what the override is lifted back to; and the override
+   keeps the half it leaves alone from the *app's* source — "the app's
+   base" is the base the app chose, which for a pinned palette is not
+   the OS's. Before that an accent override went out as
+   `DerivedWithAccent`, and a pinned-dark app on a light desktop flipped
+   light on `Ctrl+Shift+A`.
 5. **A text node is not picked.** The picker's "deepest node" skips
    `NodeKind::Text`: a text node's box is its parent's business, and
    picking the label of a button selected the label.
@@ -361,6 +369,30 @@ date: 2026-09-11
     is 630 lines from 2,048; `examples/node/devtools.tsx` is 203 from
     599. The four Rust examples that returned `Dock::Off` / `Bottom`
     compile unchanged through a re-export.
+18. **The panel paints the accent as ink, and holds it to a contrast**
+    (2026-09-12, backlog F50). The stock widgets fill with the accent
+    under `on_accent`; the panel strokes, borders and labels with it,
+    and an OS accent near the base — Windows' automatic accent off a
+    dark wallpaper — was invisible. `panel::ink` moves the accent toward
+    the front of the base until it clears 3:1 on `surface`, the way
+    `Theme::ring_for` does for the ring, and leaves one that reads
+    alone; the accent swatch shows the accent in force inside a
+    hairline, and the facts row prints it.
+19. **The panel's own window has the OS's chrome** (2026-09-12, backlog
+    F52). The runner gave every window the launcher's chrome; under
+    `Chrome::Custom` the panel's opened undecorated with nothing drawing
+    a titlebar into it. `WindowCommand::Open` carries the origin, and
+    a window declared under `OriginId::DEVTOOLS` opens native; chrome is
+    a `Pane`'s, not the shell's.
+20. **`pick` from the panel's window focuses the main window**
+    (2026-09-12, backlog F53), the mirror of `inspect`'s `focus_window`.
+21. **The window's floor counts the dock** (2026-09-12, backlog F54).
+    Decision 1's "the pane squeezes the app" is right for a window the
+    user shrank past both floors and wrong for the floor the app asked
+    the OS to hold: the launcher's `min_size` reached the OS once, and
+    the dock came out of the app's share. `Core::devtools_inset()` is
+    what a docked pane takes, in its axis, and the runner adds it to the
+    floor after every main-window frame, on change.
 
 ## Action items — all done 2026-09-11
 

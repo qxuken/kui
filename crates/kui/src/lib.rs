@@ -1103,7 +1103,8 @@ impl<A: App> Shell<A> {
             app,
             extensions,
             panes,
-            chrome,
+            min_size,
+            max_size,
             epoch,
             system,
             pinned_system,
@@ -1113,7 +1114,7 @@ impl<A: App> Shell<A> {
         let pane = &mut panes[i];
         // What the driver knows and the view only reads, refreshed for
         // this frame (it was already filled in when the pane opened).
-        sync_env(pane, system, *pinned_system, *chrome, audio.env());
+        sync_env(pane, system, *pinned_system, audio.env());
         let window = &pane.window;
         // The core turns a changed viewport into a `resize` event, routed
         // with the rest of the pending events after this frame.
@@ -1163,6 +1164,23 @@ impl<A: App> Shell<A> {
         {
             pane.applied_title = t.to_string();
             window.set_title(&pane.applied_title);
+        }
+
+        // The floor the app declared is a floor on the *app*: while the
+        // devtools are docked in the main window, the pane's extent goes
+        // on top of it, so the OS stops the window where the app is at
+        // its minimum and not where the app less the dock is. After the
+        // frame, since the handle's drag and the placement buttons land
+        // in one; on change only, since it is a window-manager call.
+        if pane.id == WindowId::MAIN
+            && let Some((mw, mh)) = *min_size
+        {
+            let inset = pane.core.devtools_inset();
+            let want = clamp_size((mw + inset.w as f64, mh + inset.h as f64), None, *max_size);
+            if pane.applied_min != Some(want) {
+                pane.applied_min = Some(want);
+                window.set_min_inner_size(Some(LogicalSize::new(want.0, want.1)));
+            }
         }
 
         // Anchor the OS IME candidate window at the focused caret.
@@ -1238,7 +1256,7 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
             })
             .map(|s| clamp_size(s, self.min_size, self.max_size))
             .unwrap_or(self.size);
-        let mut attrs = self.window_attrs(&self.title.clone(), size);
+        let mut attrs = self.window_attrs(&self.title.clone(), size, self.chrome);
         if let Some((mw, mh)) = self.min_size {
             attrs = attrs.with_min_inner_size(LogicalSize::new(mw, mh));
         }
@@ -1273,11 +1291,13 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
             WindowId::MAIN,
             WindowConfig::default(),
             WindowId::MAIN,
+            self.chrome,
             core,
             window,
             renderer,
         );
         self.panes[0].applied_title = self.title.clone();
+        self.panes[0].applied_min = self.min_size;
     }
 
     fn window_event(
@@ -1320,7 +1340,7 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
                 let pane = &mut self.panes[i];
                 let scale = pane.window.scale_factor() as f32;
                 let p = Vec2::new(position.x as f32 / scale, position.y as f32 / scale);
-                if pane.synthesizes_resize(self.chrome) {
+                if pane.synthesizes_resize() {
                     pane.resize_edge = pane.resize_edge_at(p);
                 }
                 pane.cursor = p;

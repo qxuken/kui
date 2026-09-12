@@ -192,11 +192,12 @@ pub struct Core {
     /// The devtools' hold on this window's frame (`docs/adr/0024`): the
     /// tree index of the app container the host's tree is wrapped in
     /// while the panel is docked, whether this core draws the panel's own
-    /// window, and the theme source the host had before the panel
-    /// overrode it.
+    /// window, and — while the panel's theme override is in force — the
+    /// source the host had before it, beside the override applied, so a
+    /// source the host sets *under* the override is told from it.
     dt_app: Option<usize>,
     dt_window: bool,
-    dt_saved_theme: Option<ThemeSource>,
+    dt_theme: Option<(ThemeSource, ThemeSource)>,
     /// The panel was built at `begin_frame` (a left dock precedes the
     /// app's container in tree order), so `finish` must not build again.
     dt_built: bool,
@@ -687,7 +688,7 @@ impl Core {
             ns_key: Key::ROOT,
             dt_app: None,
             dt_window: false,
-            dt_saved_theme: None,
+            dt_theme: None,
             dt_built: false,
             dt_area: Rect::new(0.0, 0.0, 0.0, 0.0),
             building: false,

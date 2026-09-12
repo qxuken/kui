@@ -343,6 +343,211 @@ fn the_theme_override_comes_and_goes_around_the_app_s_own() {
     );
 }
 
+/// An override replaces one half and keeps the app's other half — the
+/// app's, not the OS's. An app that pinned dark on a light desktop stays
+/// dark under an accent override (the pomodoro's report of 2026-09-12:
+/// `Ctrl+Shift+A` flipped it light, because the override went out as
+/// `DerivedWithAccent`, which follows `env.system`); an app with a brand
+/// accent keeps it under a base override; and a source the app sets
+/// *under* an override is what the override is lifted back to.
+#[test]
+fn an_override_keeps_the_half_the_app_chose() {
+    let mut core = Core::new();
+    core.set_devtools(true);
+    core.env.system.appearance = Appearance::Light;
+    core.env.system.accent = Some(Color::hex(0x007affff));
+    let brand = Color::hex(0xd2691eff);
+    // Pinned dark, with the OS's accent — `setTheme({ appearance: "dark" })`.
+    core.set_theme(Theme::derive(Appearance::Dark, core.env.system.accent));
+    frame(&mut core);
+    assert_eq!(core.theme().appearance, Appearance::Dark);
+    // The accent override: kui's blue, still on the app's dark.
+    core.handle_input(chord('A'));
+    frame(&mut core);
+    assert_eq!(core.theme().accent, Theme::ACCENT);
+    assert_eq!(
+        core.theme().appearance,
+        Appearance::Dark,
+        "the app pinned dark; the OS's light is not its base"
+    );
+    assert_eq!(
+        state(&core, |s| s.facts.app_appearance),
+        Appearance::Dark,
+        "and the base toggle can say so"
+    );
+    // The base override on top: light, with the override's accent.
+    core.handle_input(chord('T'));
+    frame(&mut core);
+    assert_eq!(core.theme().appearance, Appearance::Light);
+    assert_eq!(core.theme().accent, Theme::ACCENT);
+    // The accent override off (five more presses walk the list round):
+    // the base override alone keeps the app's own accent, which is the
+    // OS's here, since that is what the app pinned.
+    for _ in 0..5 {
+        core.handle_input(chord('A'));
+    }
+    frame(&mut core);
+    assert_eq!(state(&core, |s| s.accent), None);
+    assert_eq!(core.theme().appearance, Appearance::Light);
+    assert_eq!(core.theme().accent, Color::hex(0x007affff));
+    // Under the override, the app sets a brand accent that follows the
+    // OS's base. Both overrides off: that is what comes back, not the
+    // source from before the override.
+    core.set_accent(brand);
+    core.handle_input(chord('T'));
+    core.handle_input(chord('T'));
+    frame(&mut core);
+    assert_eq!(state(&core, |s| s.base), None);
+    assert_eq!(core.theme_source(), ThemeSource::DerivedWithAccent(brand));
+    assert_eq!(core.theme().appearance, Appearance::Light);
+    // And a base override on a brand accent keeps the brand.
+    core.handle_input(chord('T'));
+    core.handle_input(chord('T'));
+    frame(&mut core);
+    assert_eq!(core.theme().appearance, Appearance::Dark);
+    assert_eq!(core.theme().accent, brand, "the app's accent, not the OS's");
+}
+
+/// The panel paints the accent as ink, so it holds it to what can be
+/// read on its surface: a navy on the dark base — Windows' automatic
+/// accent off a dark wallpaper — is lifted; one that already reads is
+/// painted as it is. The facts row still prints the accent in force.
+#[test]
+fn the_panel_s_ink_is_a_readable_accent() {
+    let navy = Color::hex(0x101a30ff);
+    let dark = Theme::derive(Appearance::Dark, Some(navy));
+    let ink = super::panel::ink(dark);
+    assert!(
+        crate::theme::contrast(navy, dark.surface) < 1.5,
+        "the case it exists for"
+    );
+    assert!(crate::theme::contrast(ink.accent, dark.surface) >= 3.0);
+    assert_ne!(ink.accent, navy);
+    assert_eq!(ink.bg, dark.bg, "an accent is not a repaint");
+    assert!(
+        crate::theme::contrast(ink.focus_ring, ink.bg) >= 3.0,
+        "the family came with it"
+    );
+    // kui's own blue on the light base already reads.
+    let light = Theme::derive(Appearance::Light, Some(Theme::ACCENT));
+    assert_eq!(super::panel::ink(light), light);
+    // And on the dark base it is a hair short, so it moves a hair.
+    let dark = Theme::derive(Appearance::Dark, Some(Theme::ACCENT));
+    let ink = super::panel::ink(dark);
+    assert!(crate::theme::contrast(ink.accent, dark.surface) >= 3.0);
+    assert!(
+        crate::theme::contrast(ink.accent, dark.surface) < 3.5,
+        "moved as little as it must"
+    );
+    // In a frame: the facts print the core's accent, not the panel's.
+    let mut core = Core::new();
+    core.set_devtools(true);
+    core.set_theme(Theme::derive(Appearance::Dark, Some(navy)));
+    core.handle_input(chord('N'));
+    core.handle_input(chord('N'));
+    frame(&mut core);
+    frame(&mut core);
+    let printed = state(&core, |s| {
+        s.facts
+            .rows
+            .iter()
+            .find(|(k, _)| *k == "accent")
+            .map(|(_, v)| v.clone())
+            .unwrap()
+    });
+    assert_eq!(printed, "#101a30");
+}
+
+/// The picker raised from the panel's own window asks the main window
+/// for the keyboard, since that is where the picking happens (the
+/// pomodoro's report, 2026-09-12); raised in the main window it asks
+/// nothing, and the second press, which lowers it, asks nothing either.
+#[test]
+fn a_pick_from_the_panel_s_window_focuses_the_main_window() {
+    let mut core = on();
+    core.handle_input(chord('P'));
+    assert!(
+        !core
+            .take_window_commands()
+            .contains(&WindowCommand::Focus(WindowId::MAIN)),
+        "docked: the pointer is already in the main window"
+    );
+    core.handle_input(chord('P'));
+    core.take_window_commands();
+    core.set_devtools_dock(Dock::Window);
+    frame(&mut core);
+    let id = core
+        .take_window_commands()
+        .into_iter()
+        .find_map(|c| match c {
+            WindowCommand::Open { id, .. } => Some(id),
+            _ => None,
+        })
+        .unwrap();
+    let mut panel = Core::new_in(core.session());
+    panel.env.window.id = id;
+    frame(&mut panel);
+    let pick = panel.key_of("kui-devtools/pick").unwrap();
+    assert!(access_click(&mut panel, pick).is_empty());
+    assert!(state(&core, |s| s.pick));
+    let cmds = panel.take_window_commands();
+    assert!(
+        cmds.contains(&WindowCommand::Focus(WindowId::MAIN)),
+        "{cmds:?}"
+    );
+    // Lowering it asks nothing of the windows.
+    access_click(&mut panel, pick);
+    assert!(!state(&core, |s| s.pick));
+    assert!(
+        !panel
+            .take_window_commands()
+            .contains(&WindowCommand::Focus(WindowId::MAIN))
+    );
+}
+
+/// What a docked pane adds to the window's minimum size: its extent as
+/// the handle left it, in the axis it takes; nothing popped out, off, or
+/// asked of a window that is not the main one.
+#[test]
+fn the_dock_s_inset_is_what_a_driver_adds_to_the_minimum_size() {
+    let mut core = Core::new();
+    assert_eq!(core.devtools_inset(), Size::ZERO, "off");
+    core.set_devtools(true);
+    core.set_devtools_dock(Dock::Right);
+    assert_eq!(core.devtools_inset(), Size::new(DOCK_SIDE_W, 0.0));
+    core.set_devtools_dock(Dock::Left);
+    assert_eq!(core.devtools_inset(), Size::new(DOCK_SIDE_W, 0.0));
+    core.set_devtools_dock(Dock::Bottom);
+    assert_eq!(core.devtools_inset(), Size::new(0.0, DOCK_BOTTOM_H));
+    core.set_devtools_dock(Dock::Window);
+    assert_eq!(core.devtools_inset(), Size::ZERO);
+    core.set_devtools_dock(Dock::Off);
+    assert_eq!(core.devtools_inset(), Size::ZERO);
+    // The handle's drag moves it.
+    core.set_devtools_dock(Dock::Right);
+    core.set_inspect(true);
+    frame(&mut core);
+    frame(&mut core);
+    let k = core.key_of("kui-devtools/resize").unwrap();
+    let r = node(&core, k).rect;
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(
+        r.x + r.w / 2.0,
+        r.y + r.h / 2.0,
+    )));
+    core.handle_input(InputEvent::mouse_down(1));
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(
+        VIEWPORT.w - 300.0,
+        100.0,
+    )));
+    core.handle_input(InputEvent::mouse_up());
+    assert_eq!(state(&core, |s| s.side_w), 300.0);
+    assert_eq!(core.devtools_inset(), Size::new(300.0, 0.0));
+    // A window that is not the main one adds nothing.
+    let mut other = Core::new_in(core.session());
+    other.env.window.id = WindowId(7);
+    assert_eq!(other.devtools_inset(), Size::ZERO);
+}
+
 /// The tree tab lists the app's nodes and not the panel's; a row's hover
 /// and click outline the node over the app, the click selects it and the
 /// inspector opens; the disclosure folds a subtree.

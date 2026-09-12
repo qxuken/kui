@@ -22,10 +22,10 @@ pub(crate) fn sync_env(
     pane: &mut Pane,
     system: &system_env::Queried,
     pinned: SystemEnv,
-    chrome: Chrome,
     audio: AudioEnv,
 ) {
     let window = &pane.window;
+    let chrome = pane.chrome;
     // Per-frame so it self-corrects when the window moves to another
     // monitor.
     pane.core.env.refresh_hz = window
@@ -143,6 +143,14 @@ pub(crate) struct Pane {
     /// Whether it took OS focus when it opened. False is the popup default
     /// and what makes the borrowing necessary.
     pub(crate) activates: bool,
+    /// Who draws this window's chrome: the launcher's choice for the
+    /// app's windows, [`Chrome::Native`] for the devtools' own — which
+    /// the core declares and nothing in the app draws a titlebar for.
+    pub(crate) chrome: Chrome,
+    /// The main window only: the minimum inner size last handed to the
+    /// OS — the launcher's, plus what a docked devtools pane takes
+    /// (`Core::devtools_inset`), re-applied when either changes.
+    pub(crate) applied_min: Option<(f64, f64)>,
     /// A popup's anchor as its `Open` carried it, in the **owner's** logical
     /// coordinates: the rect an `onLayout` node reported. `popup_position`
     /// turned it into a screen position once; ADR 0009 decision 4 needs it
@@ -243,12 +251,12 @@ impl Pane {
     /// them from a band inside the window edges (macOS custom chrome keeps
     /// native edge resizing, and on Windows the non-client subclass answers
     /// WM_NCHITTEST with real border codes instead, so neither synthesizes).
-    pub(crate) fn synthesizes_resize(&self, chrome: Chrome) -> bool {
+    pub(crate) fn synthesizes_resize(&self) -> bool {
         #[cfg(target_os = "windows")]
         if self.nc.is_some() {
             return false;
         }
-        chrome != Chrome::Native && !cfg!(target_os = "macos")
+        self.chrome != Chrome::Native && !cfg!(target_os = "macos")
     }
 
     pub(crate) fn resize_edge_at(&self, p: Vec2) -> Option<ResizeDirection> {

@@ -34,7 +34,7 @@ pub(super) enum Icon {
     BaseLight,
     /// A crescent.
     BaseDark,
-    /// A filled disc, in the accent itself.
+    /// A filled disc in the accent itself (`fill`), ringed by a hairline.
     Accent,
     /// Three bars.
     Menus,
@@ -131,7 +131,12 @@ pub(super) fn draw(ui: &mut Ui<'_>, icon: Icon, color: Color, fill: Color) {
                 );
             }
             Icon::Accent => {
-                ui.line(v(8.0, 8.0), v(8.0, 8.0), Stroke::new(9.0, color), spec());
+                // A swatch: the disc is the accent *as it is* (`fill`),
+                // and the hairline round it is what keeps a sample near
+                // the panel's own surface reading as one — the same
+                // hairline the tokens list gives its swatches.
+                ui.line(v(8.0, 8.0), v(8.0, 8.0), Stroke::new(9.0, fill), spec());
+                ui.polyline(&circle(8.0, 8.0, 5.5), hair, spec());
             }
             Icon::Menus => {
                 for y in [4.0, 8.0, 12.0] {

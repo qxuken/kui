@@ -33,7 +33,7 @@ use crate::env::{Appearance, SystemEnv};
 /// [`Color`] because it is a *palette* question: the roles are checked
 /// against each other, and a view that wants the number has
 /// [`Color::luminance`] to build it from.
-fn contrast(a: Color, b: Color) -> f32 {
+pub(crate) fn contrast(a: Color, b: Color) -> f32 {
     let (hi, lo) = (
         a.luminance().max(b.luminance()),
         a.luminance().min(b.luminance()),

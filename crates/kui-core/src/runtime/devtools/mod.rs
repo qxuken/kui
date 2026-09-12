@@ -48,7 +48,7 @@ use std::collections::VecDeque;
 use rustc_hash::FxHashSet;
 
 use crate::color::Color;
-use crate::env::Appearance;
+use crate::env::{Appearance, SystemEnv};
 use crate::geom::{Rect, Size, Vec2};
 use crate::key::Key;
 use crate::runtime::inspect::NodeInfo;
@@ -254,8 +254,10 @@ pub(crate) struct Facts {
     /// each origin in its declaration order.
     pub(crate) tokens: Vec<TokenFact>,
     /// The main core's theme source, for the panel's own window to
-    /// mirror when no override is in force.
+    /// mirror when no override is in force — and the base it resolves to,
+    /// so the base toggle's "the app's own" can say which that is.
     theme_source: ThemeSource,
+    app_appearance: Appearance,
     /// The viewport the main window's nodes were laid out in — what the
     /// picker's overlay covers.
     viewport: Size,
@@ -339,6 +341,10 @@ pub(crate) struct State {
     escape_owed: bool,
     /// The dock wants the keyboard in its own window: `Focus` it once.
     focus_window: bool,
+    /// The picker was raised from the panel's own window: `Focus` the
+    /// main window once, since that is where the picking happens and
+    /// the panel's window is what the pointer and the keyboard are in.
+    focus_main: bool,
     /// A build in the panel's own window changed what the main window
     /// paints (the hovered row's outline): ask it to draw once.
     redraw_main: bool,
@@ -388,6 +394,7 @@ impl Default for State {
             toggle_region: false,
             escape_owed: false,
             focus_window: false,
+            focus_main: false,
             redraw_main: false,
         }
     }
@@ -431,15 +438,40 @@ impl State {
     }
 
     /// The theme the overrides add up to, or `None` for the app's own.
-    fn theme_override(&self, os_accent: Option<Color>) -> Option<ThemeSource> {
+    /// `app` is the app's own source, which the half an override leaves
+    /// alone is read from: "the app's base" is the base *the app* chose,
+    /// not the OS's, so an app that pinned dark on a light desktop stays
+    /// dark under an accent override, and an app with a brand accent
+    /// keeps it under a base override. (The accent half used to go out
+    /// as `DerivedWithAccent`, which follows `env.system`, so a
+    /// pinned-dark app flipped light the moment `Ctrl+Shift+A` was
+    /// pressed — the pomodoro's report of 2026-09-12.)
+    fn theme_override(&self, app: ThemeSource, sys: &SystemEnv) -> Option<ThemeSource> {
         let accent = self
             .accent
             .map(|i| Color::hex(ACCENTS[i].1))
             .or(self.custom_accent);
         match (self.base, accent) {
             (None, None) => None,
-            (None, Some(c)) => Some(ThemeSource::DerivedWithAccent(c)),
-            (Some(app), c) => Some(ThemeSource::Pinned(Theme::derive(app, c.or(os_accent)))),
+            (None, Some(c)) => Some(match app {
+                // The app follows the OS's base: keep following it.
+                ThemeSource::Derived | ThemeSource::DerivedWithAccent(_) => {
+                    ThemeSource::DerivedWithAccent(c)
+                }
+                // The app pinned a palette: the same palette, recoloured.
+                ThemeSource::Pinned(t) => ThemeSource::Pinned(t.with_accent(c)),
+            }),
+            (Some(base), c) => {
+                // The app's own accent under the chosen base — the OS's
+                // where the app follows the OS, so a host that reports
+                // none still paints kui's blue byte for byte.
+                let own = match app {
+                    ThemeSource::Derived => sys.accent,
+                    ThemeSource::DerivedWithAccent(a) => Some(a),
+                    ThemeSource::Pinned(t) => Some(t.accent),
+                };
+                Some(ThemeSource::Pinned(Theme::derive(base, c.or(own))))
+            }
         }
     }
 
@@ -544,6 +576,10 @@ impl State {
                     if self.dock == Dock::Off {
                         self.dock = Dock::Right;
                     }
+                    // Picking happens in the main window; raised from
+                    // the panel's own, the keyboard (for Escape) and the
+                    // pointer are both in the wrong one.
+                    self.focus_main = self.dock == Dock::Window;
                 }
                 self.pick_hover = None;
             }
@@ -715,6 +751,18 @@ impl Core {
         self.dt_window
     }
 
+    /// The app's own theme source: the one in force while no override is,
+    /// else the one remembered when the override went on — unless the app
+    /// has set another since, which shows as the source in force not being
+    /// the override that was applied. That one is the app's now, and it
+    /// is what the override is lifted back to.
+    fn app_theme_source(&self) -> ThemeSource {
+        match self.dt_theme {
+            Some((app, applied)) if self.theme_source == applied => app,
+            _ => self.theme_source,
+        }
+    }
+
     /// The id of the panel's window while it is open.
     fn devtools_window_id(&self) -> Option<WindowId> {
         self.session
@@ -743,6 +791,33 @@ impl Core {
     pub fn host_area(&self, window: Size) -> Size {
         let r = self.devtools_area(window);
         Size::new(r.w, r.h)
+    }
+
+    /// What a docked pane takes off the main window, in the axis it
+    /// takes it: the side column's width as `(w, 0)`, the bottom strip's
+    /// height as `(0, h)`, and zero with the panel off, in a window of
+    /// its own, or asked of any window but the main one. The pane's
+    /// extent *as the handle left it*, not as the window clamps it — what
+    /// a driver adds to the app's minimum window size while the panel is
+    /// docked, so the floor the app declared is a floor on the app and
+    /// not on the app less the dock (the pomodoro's report, 2026-09-12:
+    /// a 620×500 minimum with a 340 px dock left the app 280 px, below
+    /// the tier it was drawn to fit). Read after a frame, since the
+    /// handle's drag and the placement buttons land in one.
+    pub fn devtools_inset(&self) -> Size {
+        if self.env.window.id != WindowId::MAIN {
+            return Size::ZERO;
+        }
+        let s = self.session.state();
+        let d = &s.devtools;
+        if !d.on {
+            return Size::ZERO;
+        }
+        match d.dock {
+            Dock::Left | Dock::Right => Size::new(d.side_w.max(SIDE_MIN_W), 0.0),
+            Dock::Bottom => Size::new(0.0, d.bottom_h.max(BOTTOM_MIN_H)),
+            Dock::Window | Dock::Off => Size::ZERO,
+        }
     }
 
     /// The host's viewport for a frame at `viewport` (ADR 0024): the
@@ -824,47 +899,49 @@ impl Core {
         self.dt_app = None;
         self.dt_window = false;
         self.dt_built = false;
-        let os_accent = self.env.system.accent;
-        let (on, dock, theme, menus, mirror, want_inspect) = {
-            let s = self.session.state();
-            let d = &s.devtools;
-            (
-                d.on,
-                d.dock,
-                d.theme_override(os_accent),
-                d.native_menus,
-                d.facts.theme_source,
-                d.tab == Tab::Tree && !d.inspecting,
-            )
-        };
-        if !on {
-            if let Some(saved) = self.dt_saved_theme.take() {
-                self.set_theme_source(saved);
-            }
-            return;
-        }
         let main = self.env.window.id == WindowId::MAIN;
         let this = if main {
             false
         } else {
             &*self.window_name() == DEVTOOLS_WINDOW
         };
+        let (on, dock, theme, menus, mirror, want_inspect) = {
+            let s = self.session.state();
+            let d = &s.devtools;
+            // The app's own source, for the override to keep the half it
+            // leaves alone — and the main window's in the panel's own
+            // window, which has none of its own.
+            let app = if this {
+                d.facts.theme_source
+            } else {
+                self.app_theme_source()
+            };
+            (
+                d.on,
+                d.dock,
+                d.theme_override(app, &self.env.system),
+                d.native_menus,
+                app,
+                d.tab == Tab::Tree && !d.inspecting,
+            )
+        };
+        if !on {
+            if let Some((app, _)) = self.dt_theme.take() {
+                self.set_theme_source(app);
+            }
+            return;
+        }
         // The theme: the override while there is one, and the app's own
-        // source — remembered from before the first override — when it
+        // source — remembered from when the override went on — when it
         // is taken away again. The panel's own window mirrors the main
         // one's app source, since it has none of its own.
         match theme {
             Some(src) => {
-                if self.dt_saved_theme.is_none() {
-                    self.dt_saved_theme = Some(self.theme_source);
-                }
+                self.dt_theme = Some((mirror, src));
                 self.set_theme_source(src);
             }
             None => {
-                if let Some(saved) = self.dt_saved_theme.take() {
-                    self.set_theme_source(saved);
-                }
-                if this {
+                if self.dt_theme.take().is_some() || this {
                     self.set_theme_source(mirror);
                 }
             }
@@ -1165,10 +1242,16 @@ impl Core {
     /// One action, from a chord or a control, with what it asks of the
     /// core done after the state borrow ends.
     fn devtools_act(&mut self, what: &str) {
-        let acted = {
+        let (acted, focus_main) = {
             let mut s = self.session.state();
-            s.devtools.act(what)
+            let acted = s.devtools.act(what);
+            (acted, std::mem::take(&mut s.devtools.focus_main))
         };
+        if focus_main {
+            self.interaction
+                .window_commands
+                .push(WindowCommand::Focus(WindowId::MAIN));
+        }
         if acted {
             self.devtools_redraw_others();
         }
@@ -1504,7 +1587,8 @@ impl Core {
                 .unwrap_or_else(|| "kui".to_string()),
             rows,
             tokens,
-            theme_source: self.dt_saved_theme.unwrap_or(self.theme_source),
+            theme_source: self.app_theme_source(),
+            app_appearance: self.app_theme_source().resolve(&env.system).appearance,
             viewport: vp,
             focus,
             focus_visible,

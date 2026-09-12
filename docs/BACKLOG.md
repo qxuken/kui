@@ -4,7 +4,7 @@ From the architecture review of `93169ed` (2026-09-03), after 0.1.0-alpha.5,
 the six rounds that followed it, and the field reports from two apps built on
 alpha.6 through alpha.11 outside this repo (F1–F15 on 2026-09-06,
 F16–F23 and F25–F31 on 2026-09-07, F32–F35 on 2026-09-08, F37–F41 on
-2026-09-09, F42–F49 on 2026-09-12). Every item names the
+2026-09-09, F42–F49 and F50–F54 on 2026-09-12). Every item names the
 evidence that produced it, so a task that turns out to be wrong can be argued with rather
 than guessed at.
 
@@ -22,7 +22,11 @@ at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
 
-What is left here: F42–F49 from the two alpha.11 upgrade reports, filed
+What is left here: F50–F54 from the LCARS pomodoro's devtools round, filed
+2026-09-12 and built the same evening (the panel painting the accent as
+ink, its "app" base being the OS's, its window inheriting the launcher's
+chrome, `pick` leaving the keyboard in that window, and the app's floor
+not counting the dock); F42–F49 from the two alpha.11 upgrade reports, filed
 2026-09-12 and **all eight built the same day** (two defects — a foreign
 `dispatch` losing a `setEditText` seed to the redraw the call asked for,
 and `env.viewport` reading the window against its own schema row — the
@@ -1103,6 +1107,154 @@ it into the `finish` row's doc in `schema.rs` — it is generated into
 - **The preview baselines and the windowed smoke** (mind map). Theirs,
   and their notes say so, for the sixth report.
 
+
+## From the LCARS pomodoro's devtools round (2026-09-12)
+
+The pomodoro ran alpha.11's panel against its own window — custom
+chrome, a 620×500 floor, `setTheme({ appearance: "dark" })` in `init`, a
+Windows desktop with a light appearance and an "automatic" accent off a
+dark wallpaper — and reported five things the same evening, with three
+screenshots. All five reproduce in this tree against `features/window`
+(custom chrome, a 420×320 floor) with `--dark --accent #101a30`, and all
+five were built the same day. Two are the panel's (F50, F51), two are the
+runner's (F52, F54) and one is a hand-off between them (F53). Each is the
+class ADR 0024 warned about in its consequences: the panel is drawn into
+*the app's* window, so what the app chose — its chrome, its floor, its
+base — is what the panel has to live with, and three of the five were
+the panel assuming the OS's choice instead of the app's.
+
+### `!` F50 — The panel paints the accent as ink, and an accent near the base is invisible — **done (2026-09-12)**
+
+**Done (2026-09-12).** `panel::ink(theme)`: the theme the panel paints
+with is the app's, with the accent moved toward the front of the base —
+white on dark, black on light — in steps of 0.05 until it clears 3:1 on
+`surface`, and `with_accent` recomputes the family from that; an accent
+that already reads is painted verbatim, so nothing changes for the
+accents that were fine. 3:1 is the UI-edge grade, since the panel's
+accent is strokes, borders and short labels and not body text; the same
+promise `Theme::ring_for` makes for the ring, which was already the one
+role held to it. `theme::contrast` is `pub(crate)` for it. The accent
+*swatch* in the tab row is the exception: it shows the accent in force
+(the core's, not the ink) as a disc inside a hairline in `muted`, the way
+the tokens list's swatches carry one, so a navy on a near-black still
+reads as a sample; the facts row still prints the accent in force.
+Guard: `the_panel_s_ink_is_a_readable_accent` — `#101a30` on the dark
+base is under 1.5:1 and comes out over 3:1 with the ring in step, kui's
+own blue on the light base is untouched, and on the dark base — where it
+is 2.97:1, a hair under — moves a hair.
+
+**Symptom** (screenshot 1): under the app's pinned dark, the accent dot
+in the tab row, the lit placement button and the picker's border were
+a navy on `#1a1d27`, and read as nothing. Windows 11's "automatic"
+accent is picked from the wallpaper and lands there often.
+
+**The line.** The stock widgets use the accent as a *fill* with
+`on_accent` on top, which is readable whatever the accent is, and that
+is the contract ADR 0019 checked. The panel uses it as *ink* in a dozen
+places — `icons::draw`'s strokes, `icon_lit`'s lit state, `small_button`'s
+on-border and label, the filter field's focused border, the legend's
+keys, the tree's kind column and breadcrumbs, the outlines over the app
+— and nothing held that to a contrast. The theme's `focus_ring` is the
+one role that was, and for the same reason.
+
+### `!` F51 — The base "app" keeps the OS's base, not the app's, under an accent override — **done (2026-09-12)**
+
+**Done (2026-09-12).** `State::theme_override` takes the app's own
+source and the system env and keeps the half it leaves alone from the
+*app*: with the base at "app" and an accent chosen, a `Derived` or
+`DerivedWithAccent` app goes out as `DerivedWithAccent(c)` as before and a
+`Pinned` app as `Pinned(t.with_accent(c))` — the same palette,
+recoloured; with a base chosen and the accent at "app", the accent under
+the new base is the app's — the OS's for a `Derived` app, so a host that
+reports none still paints kui's blue byte for byte, the app's own for the
+other two. The core's `dt_saved_theme` is `dt_theme: (app, applied)`, so a
+source the app sets *under* an override is told from the override by not
+being it, and is what the override is lifted back to
+(`Core::app_theme_source`). The base toggle's hint says which base "the
+app's own" is (`base: app (dark)`), from a new `Facts::app_appearance`.
+Guard: `an_override_keeps_the_half_the_app_chose` — pinned dark on a
+light desktop stays dark under `Ctrl+Shift+A`, a brand accent survives
+`Ctrl+Shift+T`, and a `set_accent` made under the override is what comes
+back when both are off.
+
+**Symptom** (screenshot 2): the facts read `appearance light · theme
+light · derived + accent · accent #007aff` in an app that had pinned
+dark, with the base toggle at "the app's own". Two presses of
+`Ctrl+Shift+A` had flipped the app light.
+
+**The line.** `(None, Some(c)) => DerivedWithAccent(c)`: the override
+for "the app's base, this accent" went out as the source that follows
+`env.system.appearance`, which is the OS's base, not the app's. Right
+for the two sources that follow the OS, wrong for the one that does not.
+
+### `!` F52 — The panel's own window inherits the launcher's chrome — **done (2026-09-12)**
+
+**Done (2026-09-12).** `WindowCommand::Open` has carried the declaring
+origin since ADR 0004, and the runner reads it now: a window declared
+under `OriginId::DEVTOOLS` opens with `Chrome::Native` whatever the
+launcher asked for, since it is the core's window and nothing in the
+app draws a titlebar into it. `Chrome` is a `Pane` field — the launcher's
+for the app's windows — and everything that read the shell's reads the
+pane's: `window_attrs`, `sync_env`'s `custom_chrome` and
+`native_controls`, the Windows non-client hook's install, and
+`synthesizes_resize`. Checked in the real runner on Windows: the panel's
+window has the OS's titlebar and buttons and moves; the app's keeps its
+custom chrome.
+
+**Symptom** (screenshot 2): under `chrome: 'custom'`, `Ctrl+Shift+D` to
+`window` opened the panel undecorated — no titlebar, no way to move it,
+the OS close button gone — over the app, which was drawing its own
+titlebar and had none to lend.
+
+**The line.** `Shell::window_attrs` applied `self.chrome` to every
+window of the app, which is right for a second window the app declares
+(it draws its own chrome there too, or asked not to) and wrong for the
+one window the app did not declare.
+
+### `!` F53 — `pick` from the panel's window leaves the keyboard there — **done (2026-09-12)**
+
+**Done (2026-09-12).** `act("pick")` sets `focus_main` when the picker
+comes up with the panel in its own window, and `devtools_act` — the one
+path every chord and control goes through — turns it into
+`WindowCommand::Focus(WindowId::MAIN)`, the mirror of what `inspect`
+does with `focus_window`. Docked, nothing is asked: the pointer is
+already in the main window. Guard:
+`a_pick_from_the_panel_s_window_focuses_the_main_window`. Checked in
+the real runner: `Ctrl+Shift+P` in the panel's window brings the app's
+window to the front.
+
+**Symptom.** Pick pressed in the popped-out panel: the crosshair is up
+in the main window, the pointer and the keyboard are in the panel's, and
+the main window is behind it.
+
+### `!` F54 — The window's floor is the app's, and the dock is taken out of it — **done (2026-09-12)**
+
+**Done (2026-09-12).** `Core::devtools_inset()`: what a docked pane takes
+off the main window in the axis it takes it — `(side_w, 0)` for a side
+column, `(0, bottom_h)` for the bottom strip, as the handle left it and
+not as the window clamps it; zero popped out, off, or asked of any other
+window. The runner adds it to the launcher's `min_size` after every
+main-window frame (the handle's drag and the placement buttons land in
+one) and re-applies `set_min_inner_size` on change, capped by `max_size`
+as `clamp_size` already did. An app that declared no floor gets none
+added: the dock's own floor is the pane's, and the app keeps 160 px
+past it as before. Checked in the real runner on Windows by asking the
+window `WM_GETMINMAXINFO` — 630×480 physical (420×320 at 1.5×) with the
+panel off, 1140×480 docked right, 630×900 docked at the bottom, 630×480
+again popped out. Guard:
+`the_dock_s_inset_is_what_a_driver_adds_to_the_minimum_size`.
+
+**Symptom** (screenshot 3): a 620×500 floor, the dock at the bottom,
+and the app drawn into 552 px of height it had said it could not fit —
+the compact tier overlapping itself. The OS enforced the floor on the
+window, and the window is the app plus the dock.
+
+**The line.** `Launcher::min_size` reaches `with_min_inner_size` once,
+at `resumed`, and nothing re-asked it; the dock's coming, moving and
+resizing all changed what the floor should be, and ADR 0024 decision 1
+had the pane "squeeze the app" when the window is small on purpose —
+which is the right answer for a window the user shrank past both floors
+and the wrong one for the floor the app had asked the OS to hold.
 
 ## From the two virtual-list examples (2026-09-09)
 
