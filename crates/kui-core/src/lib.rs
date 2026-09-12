@@ -50,6 +50,7 @@ pub mod stats;
 pub mod testing;
 pub mod text;
 pub mod theme;
+pub mod tokens;
 pub mod tree;
 pub mod ui;
 pub mod value;
@@ -104,6 +105,7 @@ pub use spec::{
 pub use stats::{FrameSample, FrameStats};
 pub use text::{DEFAULT_TEXT_CACHE_BYTES, LONG_LINE_BYTES, Span, TextHit, TextMetrics};
 pub use theme::{Theme, ThemeSource};
+pub use tokens::{ColorToken, TokenError, TokenKind, TokenLookup, TokenRef, Tokens};
 pub use tree::OriginId;
 pub use ui::Ui;
 pub use value::{Handles, Value};

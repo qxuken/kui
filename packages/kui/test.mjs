@@ -13,7 +13,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { constants as osConstants, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Ctx, KuiWindow, clipStride, createApp, createEncoder, decodeQuads, protocol, quadStride, virtualColumn, withEffects } from './index.js';
+import { Ctx, KuiWindow, clipStride, createApp, createEncoder, decodeQuads, defineTokens, protocol, quadStride, roles, virtualColumn, withEffects } from './index.js';
 
 const box = (props, children = [], key) => ({ type: 'box', key, props, children });
 const text = (children, props = {}) => ({ type: 'text', props, children: [].concat(children) });
@@ -2588,6 +2588,25 @@ const SCENE_TREES = {
       ]),
     ]);
   },
+  // `conformance::build_tokens` (ADR 0027): the table declared on the
+  // context every build — the Rust reference declares every frame too —
+  // and every value a `$name`: the app's, the two roles, and `$nothing`.
+  tokens: (_fx, _phase, ctx) => {
+    ctx.setTokens({
+      colors: Object.fromEntries(TOKEN_COLORS.map(([n, l, d]) => [n, { light: l, dark: d }])),
+      lengths: Object.fromEntries(TOKEN_LENGTHS),
+    });
+    const cell = (key, extra) => box({ width: '$side_w', height: 30, ...extra }, [], key);
+    return root({}, [
+      box({ dir: 'row', padL: '$gap', padR: 10, padT: 10, padB: 10, gap: '$gap' }, [
+        cell(TOKEN_KEYS[0], { bg: '$peach' }),
+        cell(TOKEN_KEYS[1], { bg: '$ink', borderW: '$gap', borderColor: '$peach' }),
+        cell(TOKEN_KEYS[2], { bg: '$surface', radius: '$radius' }),
+        cell(TOKEN_KEYS[3], { bg: '$nothing' }),
+        el('text', { size: '$big', color: '$peach' }, ['tokens', el('span', { color: '$ink' }, ['x'])]),
+      ]),
+    ]);
+  },
   // Scroll anchoring (backlog C26 step 3): two scrollers of the same rows,
   // one with `anchor`; phase 1 prepends a taller row to both.
   anchor: (_fx, phase) => {
@@ -3107,6 +3126,15 @@ const VIRTUAL_ROWS = [100, 101, 102];
 /** `conformance::LAYERS_ROWS`: enough rows to overflow the viewport, so the
  *  page has a bar for the popover to cover. */
 const LAYERS_ROWS = 16;
+/** `conformance::TOKEN_COLORS` / `TOKEN_LENGTHS` / `TOKEN_KEYS`: the
+ *  `tokens` scene's table, with `surface` in it on purpose. */
+const TOKEN_COLORS = [
+  ['peach', 0xffcc99ff, 0xffcc99ff],
+  ['ink', 0x202020ff, 0xe0e0e0ff],
+  ['surface', 0xff0000ff, 0xff0000ff],
+];
+const TOKEN_LENGTHS = [['side_w', 60], ['gap', 8], ['big', 16]];
+const TOKEN_KEYS = ['peach', 'ink', 'role', 'missing'];
 /** A root box sized like the core's implicit root: `configure_root` with
  *  the same data it already has, so only `title` actually lands. */
 const root = (props, children) => box({ width: 'grow', height: 'grow', ...props }, children);
@@ -3242,6 +3270,9 @@ function driveScene(env, steps, build) {
     // `conformance::DISMISS_REASONS` order: outside, escape.
     else if (step[0] === 'windowdismissed')
       ctx.windowDismissed(step[1], ['outside', 'escape'][step[2]]);
+    // The OS appearance moving under the app: `Appearance::ALL` order.
+    else if (step[0] === 'appearance')
+      ctx.setEnv({ system: { appearance: ['unknown', 'light', 'dark'][step[1]] } });
     else if (step[0] === 'cursor') ctx.cursor(step[1], step[2]);
     else if (step[0] === 'cursorleft') ctx.cursorLeft();
     else if (step[0] === 'mousedown') ctx.mouse(true, 1);
@@ -4400,6 +4431,141 @@ test('theme() is the roles the protocol declares, derived from env.system', () =
   // Roles, not a ramp: the light `surface` is near white, the dark near black.
   assert.ok((light.surface >>> 24) > 0xe0);
   assert.ok((dark.surface >>> 24) < 0x40);
+});
+
+// -- Tokens (ADR 0027) -------------------------------------------------------
+
+/** The solid quads' colours as `0xRRGGBBAA`, in paint order. */
+const solidColors = (ctx) =>
+  decodeQuads(ctx.quads())
+    .filter((q) => q.kind === 0)
+    .map((q) => q.color.map((c) => Math.round(c * 255)))
+    .map(([r, g, b, a]) => ((r << 24) | (g << 16) | (b << 8) | a) >>> 0);
+
+test('a $name in a colour or length prop paints the declared token, and a themed one follows the appearance', () => {
+  const T = defineTokens({
+    colors: { peach: '#ffcc99', ink: { light: '#111111', dark: '#eeeeee' } },
+    lengths: { sideW: 132, gap: 6 },
+  });
+  assert.deepEqual(T, { peach: '$peach', ink: '$ink', sideW: '$sideW', gap: '$gap' });
+  const ctx = new Ctx();
+  ctx.setTokens({
+    colors: { peach: '#ffcc99', ink: { light: '#111111', dark: '#eeeeee' } },
+    lengths: { sideW: 132, gap: 6 },
+  });
+  const tree = () =>
+    root({ gap: T.gap }, [
+      box({ width: T.sideW, height: 20, bg: T.peach, borderW: T.gap, borderColor: T.ink }, [], 'a'),
+      box({ width: 40, height: T.sideW, bg: T.ink, padL: T.gap, pad: 2 }, [], 'b'),
+      el('text', { size: T.gap, color: T.peach }, ['x']),
+    ]);
+  ctx.setInspect(true);
+  ctx.setEnv({ system: { appearance: 'dark' } });
+  ctx.frame(320, 240, 1, tree());
+  assert.deepEqual(ctx.warnings(), []);
+  const byLabel = (l) => ctx.nodes().find((n) => n.label === l);
+  const a = byLabel('a');
+  const b = byLabel('b');
+  assert.equal(a.rect.w, 132, 'width from a length token');
+  assert.equal(b.rect.h, 132);
+  assert.equal(a.bg, 0xffcc99ff, 'bg from a colour token');
+  assert.equal(a.borderWidth, 6, 'a border width token');
+  assert.equal(a.borderColor, 0xeeeeeeff, 'the dark half on the dark base');
+  assert.equal(b.bg, 0xeeeeeeff);
+  assert.equal(b.padding.l, 6, 'a pad edge token over the shorthand');
+  assert.equal(b.padding.r, 2);
+  assert.equal(a.parent, ctx.nodes()[0].key);
+  assert.equal(ctx.nodes()[0].gap, 6, 'a root gap token');
+  // The light half, without the view changing.
+  ctx.setEnv({ system: { appearance: 'light' } });
+  ctx.frame(320, 240, 1, tree());
+  assert.equal(byLabel('b').bg, 0x111111ff);
+  // Readback is this frame's half, roles left to theme().
+  const resolved = ctx.tokens();
+  assert.deepEqual(resolved, {
+    colors: { peach: 0xffcc99ff, ink: 0x111111ff },
+    lengths: { sideW: 132, gap: 6 },
+  });
+});
+
+test('a role takes the same $ spelling, and a declared role name is refused with reserved-token', () => {
+  const ctx = new Ctx();
+  ctx.setInspect(true);
+  ctx.setEnv({ system: { appearance: 'light' } });
+  ctx.setTokens({ colors: { surface: '#ff0000', peach: '#ffcc99' }, lengths: { radius: 99 } });
+  assert.equal(roles.surface, '$surface');
+  assert.equal(roles.radius, '$radius');
+  ctx.frame(320, 240, 1, root({}, [box({ width: 20, height: 20, bg: roles.surface, radius: roles.radius }, [], 'r')]));
+  const r = ctx.nodes().find((n) => n.label === 'r');
+  assert.equal(r.bg, ctx.theme().surface, '$surface is the theme\'s, not the app\'s red');
+  assert.equal(r.radius[0], ctx.metrics().radius, '$radius is the metric');
+  const codes = ctx.warnings().map((w) => w.code);
+  assert.deepEqual(codes, ['reserved-token', 'reserved-token']);
+  assert.deepEqual(ctx.tokens().colors, { peach: 0xffcc99ff }, 'the refused names never entered the table');
+});
+
+test('a $name nothing declared, or of the other kind, is dropped and warned about once', () => {
+  const ctx = new Ctx();
+  ctx.setInspect(true);
+  ctx.setTokens({ colors: { peach: '#ffcc99' }, lengths: { gap: 6 } });
+  const tree = root({}, [
+    box({ width: 20, height: 20, bg: '$peech', padL: '$peach', gap: '$nothing' }, [], 'x'),
+    box({ width: '$peach', height: 20, bg: '$gap' }, [], 'y'),
+  ]);
+  ctx.frame(320, 240, 1, tree);
+  ctx.frame(320, 240, 1, tree);
+  const x = ctx.nodes().find((n) => n.label === 'x');
+  assert.equal(x.bg, 0, 'the slot keeps its default');
+  assert.equal(x.padding.l, 0);
+  const ws = ctx.warnings().filter((w) => w.code === 'unknown-token');
+  const named = (w) => /`\$([a-z]+)`/.exec(w.message)[1];
+  assert.deepEqual(ws.map(named).sort(), ['gap', 'nothing', 'peach', 'peech'], 'once per name across two frames');
+  assert.match(ws.find((w) => named(w) === 'gap').message, /is a length token, and this slot takes a color/);
+  assert.match(ws.find((w) => named(w) === 'peech').message, /names no token/);
+});
+
+test('a span colour may be a token, and measureText resolves one the same way', () => {
+  const ctx = new Ctx();
+  ctx.setTokens({ colors: { peach: '#ffcc99' }, lengths: { big: 24 } });
+  ctx.frame(320, 240, 1, root({}, [el('text', { size: 12 }, ['a', el('span', { color: '$peach', bg: '$peach' }, ['b'])])]));
+  assert.deepEqual(ctx.warnings(), []);
+  const glyphs = decodeQuads(ctx.quads()).filter((q) => q.kind === 1 || q.kind === 4);
+  assert.ok(glyphs.some((q) => Math.round(q.color[0] * 255) === 0xff && Math.round(q.color[2] * 255) === 0x99), 'the span painted peach');
+  const small = ctx.measureText('hello', { size: 12 });
+  const big = ctx.measureText('hello', { size: '$big' });
+  assert.ok(big.width > small.width, 'a size token reaches the measurement');
+  assert.deepEqual(ctx.warnings(), []);
+});
+
+test('setTokens replaces the table whole and rejects what it is not', () => {
+  const ctx = new Ctx();
+  ctx.setTokens({ colors: { peach: '#ffcc99' }, lengths: { gap: 6 } });
+  ctx.setTokens({ lengths: { gap: 8 } });
+  assert.deepEqual(ctx.tokens(), { colors: {}, lengths: { gap: 8 } });
+  assert.throws(() => ctx.setTokens({ colors: { bad: 'red' } }), /bad: /);
+  assert.throws(() => ctx.setTokens({ colors: { half: { light: '#fff' } } }), /needs both light and dark/);
+  assert.throws(() => ctx.setTokens({ lengths: { w: 'wide' } }), /a length is a number/);
+  assert.throws(() => ctx.setTokens({ tokens: {} }), /unknown key/);
+  // A refused declaration leaves the encoder's map as it was: `$gap` still
+  // resolves after the throw.
+  ctx.setInspect(true);
+  ctx.frame(320, 240, 1, root({}, [box({ width: 20, height: 20, padL: '$gap' }, [], 'z')]));
+  assert.equal(ctx.nodes().find((n) => n.label === 'z').padding.l, 8);
+  assert.deepEqual(ctx.warnings(), []);
+});
+
+test('the token tag and the role indices the encoder writes are the protocol\'s', () => {
+  const P = protocol();
+  assert.equal(P.tokenTag, 0x8000);
+  assert.equal(P.tokenRoles.colors[1], 'surface');
+  assert.ok(P.tokenRoles.lengths.includes('radius'));
+  // The bare encoder, no surface: a role still resolves, an app name does not.
+  const enc = createEncoder(P);
+  const out = enc.encode(box({ bg: '$surface', width: '$peach' }));
+  assert.deepEqual(out.unknownTokens, [['peach', 'length']]);
+  const ids = Array.from(out.stream);
+  assert.ok(ids.includes(P.prop.bg.id | 0x8000), 'the bg id is tagged');
+  assert.ok(!ids.includes(P.prop.width.id | 0x8000), 'the unresolved width is left out');
 });
 
 test('metrics() is the sizes the protocol declares, and setMetrics reaches the stock button', () => {

@@ -738,6 +738,19 @@ export type WarningCode =
    *  host's view. Declare the slot, or drop the name from the extension's list.
    *  See `docs/adr/0014-slots-an-extension-fills-in-place.md`, decision 5. */
   | 'unknown-slot'
+  /** A colour or length prop named a token — `bg = "$peach"` — that nothing
+   *  declared and that is no theme or metrics role, or named one of the other
+   *  kind (a length in a colour slot). The slot is left at its default:
+   *  transparent, or zero. Raised by the binding that lowered the reference,
+   *  through `Core::warn_unknown_token`, once per name, since the name is gone
+   *  by the time the frame is a tree. See
+   *  `docs/adr/0027-tokens-beside-the-theme.md`, decision 4. */
+  | 'unknown-token'
+  /** A declared token took a theme or metrics role's name (`surface`, `radius`)
+   *  and was dropped: the roles are the corpus's contract and `$surface` always
+   *  means the theme's, so an app cannot shadow one. Rename the token. See
+   *  `docs/adr/0027-tokens-beside-the-theme.md`, decision 6. */
+  | 'reserved-token'
   /** A slot name declared twice in one frame. The second declaration was
    *  ignored: a fill is keyed by the slot's full name, so two fills of one name
    *  would share every key. Two places for one extension are two names. See ADR
@@ -1318,8 +1331,69 @@ export interface Protocol {
 
 /** A reusable frame encoder for the binary IR path (drivers make their own). */
 export declare function createEncoder(p: Protocol): {
-  encode(tree: KuiNode): { stream: Float64Array; strings: Uint8Array };
+  encode(tree: KuiNode, tokens?: Map<string, { kind: 'color' | 'length'; index: number }>): {
+    stream: Float64Array;
+    strings: Uint8Array;
+    unknown: [string, string][];
+    unknownTokens: [string, string][];
+  };
 };
+
+// -- tokens (docs/adr/0027-tokens-beside-the-theme.md) ---------------------
+
+/** A colour token's value: one colour for both bases, or a light and a
+ *  dark half the core picks by the appearance in effect. Each the way a
+ *  colour prop spells one — `0xRRGGBBAA` or `'#hex'`. */
+export type ColorTokenValue = number | string | { light: number | string; dark: number | string };
+
+/** What `setTokens` / `defineTokens` take: the app's named colours and
+ *  lengths, apart by kind — a colour and a length are both a number, so
+ *  the kind cannot be read off the value. Declaration order is the wire
+ *  index. A name a theme or metrics role owns (`surface`, `radius`) is
+ *  dropped by the core with a `reserved-token` warning: `$surface` always
+ *  means the role's. */
+export interface TokenDeclaration<
+  C extends Record<string, ColorTokenValue> = Record<string, ColorTokenValue>,
+  L extends Record<string, number> = Record<string, number>,
+> {
+  colors?: C;
+  lengths?: L;
+}
+
+/** The references a declaration's names become: `{ peach: '$peach',
+ *  sideW: '$sideW' }`, each a literal type branded by kind. */
+export type TokenRefs<D extends TokenDeclaration> = {
+  readonly [K in keyof D['colors'] & string]: `$${K}` & { readonly __kuiToken?: 'color' };
+} & {
+  readonly [K in keyof D['lengths'] & string]: `$${K}` & { readonly __kuiToken?: 'length' };
+};
+
+/**
+ * Types a token declaration's names as the references a prop takes
+ * (ADR 0027, decision 5): given `{ colors: { peach: '#ffcc99' }, lengths:
+ * { sideW: 132 } }` it returns `{ peach: '$peach', sideW: '$sideW' }`, so
+ * `bg={T.peach}` and `width={T.sideW}` type-check, `width={T.peach}` does
+ * not, and `T.peech` does not exist. Zero runtime: the object *is* the
+ * references. Hand the same declaration to `setTokens`.
+ */
+export declare function defineTokens<const D extends TokenDeclaration>(decl: D): TokenRefs<D>;
+
+/** The theme's and metrics' roles as references — `roles.surface` is
+ *  `'$surface'`, `roles.radius` is `'$radius'` — the same spelling an app
+ *  token takes, resolved to the role's value whatever the app declared. */
+export declare const roles: {
+  readonly [K in Exclude<keyof Theme, 'appearance' | 'disabledOpacity'> & string]: `$${K}` & { readonly __kuiToken?: 'color' };
+} & {
+  readonly [K in keyof Metrics & string]: `$${K}` & { readonly __kuiToken?: 'length' };
+};
+
+/** `tokens()`: the tokens a view here sees this frame, resolved — colours
+ *  as `0xRRGGBBAA` for the appearance in effect, lengths in px. Roles are
+ *  not listed; read them off `theme()` and `metrics()`. */
+export interface ResolvedTokens {
+  colors: Record<string, number>;
+  lengths: Record<string, number>;
+}
 
 // -- generated from the addon's `#[napi]` surface; edit crates/kui-node/src/lib.rs, then `npm run gen` --
 
@@ -1759,6 +1833,32 @@ export declare class Ctx {
    * nothing in the OS is followed.
    */
   setMetrics(metrics: MetricsOverrides | null): void
+  /**
+   * Declare the app's named colours and lengths
+   * (`docs/adr/0027-tokens-beside-the-theme.md`): `{ colors:
+   * { peach: '#ffcc99', ink: { light, dark } }, lengths: {
+   * sideW: 132 } }`. Replaces the table whole, so an app whose
+   * lengths change with a viewport tier declares again on
+   * `resize`. A name a theme or metrics role owns is dropped
+   * with a `reserved-token` warning. Reference one in a prop
+   * as `'$peach'` — `defineTokens` types the names. The raw
+   * addon door; `index.js` wraps it to keep the encoder's map
+   * in step, so call `setTokens` and not this.
+   */
+  setTokensRaw(tokens: { colors: [string, unknown][], lengths: [string, number][] }): void
+  /**
+   * The tokens a view here sees this frame, resolved: colours as
+   * `0xRRGGBBAA` for the appearance in effect, lengths in px,
+   * under `colors` and `lengths`. Roles are not listed — read
+   * them off `theme()` and `metrics()`.
+   */
+  tokens(): ResolvedTokens
+  /**
+   * `frame` / `setView` report the `$name` references the
+   * encoder could not resolve — nothing declared, or the other
+   * kind — through here, as `unknown-token`, once per name.
+   */
+  warnUnknownTokens(names: [string, string][]): void
   /**
    * `measureText`'s door (index.js adds `measureText` itself):
    * one `<text>` element as `encoder.encodeText` writes it, and
@@ -2549,6 +2649,32 @@ export declare class KuiWindow {
    */
   setMetrics(metrics: MetricsOverrides | null): void
   /**
+   * Declare the app's named colours and lengths
+   * (`docs/adr/0027-tokens-beside-the-theme.md`): `{ colors:
+   * { peach: '#ffcc99', ink: { light, dark } }, lengths: {
+   * sideW: 132 } }`. Replaces the table whole, so an app whose
+   * lengths change with a viewport tier declares again on
+   * `resize`. A name a theme or metrics role owns is dropped
+   * with a `reserved-token` warning. Reference one in a prop
+   * as `'$peach'` — `defineTokens` types the names. The raw
+   * addon door; `index.js` wraps it to keep the encoder's map
+   * in step, so call `setTokens` and not this.
+   */
+  setTokensRaw(tokens: { colors: [string, unknown][], lengths: [string, number][] }): void
+  /**
+   * The tokens a view here sees this frame, resolved: colours as
+   * `0xRRGGBBAA` for the appearance in effect, lengths in px,
+   * under `colors` and `lengths`. Roles are not listed — read
+   * them off `theme()` and `metrics()`.
+   */
+  tokens(): ResolvedTokens
+  /**
+   * `frame` / `setView` report the `$name` references the
+   * encoder could not resolve — nothing declared, or the other
+   * kind — through here, as `unknown-token`, once per name.
+   */
+  warnUnknownTokens(names: [string, string][]): void
+  /**
    * `measureText`'s door (index.js adds `measureText` itself):
    * one `<text>` element as `encoder.encodeText` writes it, and
    * the answer is what that text lays out to — `{width, height,
@@ -3036,6 +3162,14 @@ export interface Ctx {
   /** Lowers a JSX tree into one frame: encodes it to the flat binary IR
    *  stream, then one zero-copy boundary crossing lowers it. */
   frame(width: number, height: number, scale: number, tree: KuiNode): void;
+  /** Declare the app's named colours and lengths (ADR 0027): `{ colors:
+   *  { peach: '#ffcc99', ink: { light, dark } }, lengths: { sideW: 132 } }`
+   *  — the object `defineTokens` typed. Replaces the table whole, so an
+   *  app whose lengths change with a viewport tier declares again on
+   *  `resize`. Reference one in any colour or length prop as `T.peach`;
+   *  a name nothing declared raises `unknown-token` and the slot keeps
+   *  its default. */
+  setTokens(tokens: TokenDeclaration): void;
   /** What `content` measures under `style` as one `<text>` would lay out —
    *  logical px, and the line count — capped to `maxWidth` when given. The
    *  text crosses encoded like a frame's, so measuring and drawing shape
@@ -3052,6 +3186,8 @@ export interface KuiWindow {
   setView(tree: KuiNode, window?: string): void;
   /** See `Ctx.measureText`. */
   measureText(content: KuiNode, style?: TextProps, maxWidth?: number): TextMetrics;
+  /** See `Ctx.setTokens`. */
+  setTokens(tokens: TokenDeclaration): void;
 }
 
 /** What both drivers take. `S` is the surface the loop drives, and the

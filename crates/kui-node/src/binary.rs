@@ -24,8 +24,8 @@
 //!   in the table.
 
 use kui_core::{
-    Align, Content, EditOptions, FloatConfig, ImageId, NodeSpec, PadShorthand, Rect, Size, Span,
-    TextStyle, WindowConfig, WindowKind, widgets,
+    Align, Color, Content, EditOptions, FloatConfig, ImageId, NodeSpec, PadShorthand, Rect, Size,
+    Sizing, Span, TextStyle, TokenLookup, WindowConfig, WindowKind, widgets,
 };
 use serde_json::{Map as JsonMap, Value as Json};
 
@@ -57,7 +57,15 @@ use crate::{Result, err, value_of};
 /// middle of an existing op are what the bump is for.
 /// v9: `fragment` carries its `image` handle as two slots after `src`
 /// (backlog V1, ADR 0025 decision 7) — slots in the middle of an op again.
-pub const VERSION: u32 = 9;
+pub const VERSION: u32 = 10;
+
+/// The bit an encoder sets on a prop id to say the value slot holds a
+/// token index rather than a value (`docs/adr/0027-tokens-beside-the-theme.md`,
+/// decision 4): `bg="$peach"` rides as `P_BG | TOKEN_TAG` then the index
+/// `TokenRef::index` gives, and `read_props` resolves it through the
+/// core's lookup before the schema applies it. Ids are small, so the bit
+/// is free; a reference costs the wire nothing and the decoder one mask.
+pub const TOKEN_TAG: u32 = 0x8000;
 
 pub const OP_END: u32 = 0;
 pub const OP_ROOT: u32 = 1;
@@ -114,6 +122,39 @@ pub fn protocol_json() -> Json {
         ),
     );
     o.insert("prop".into(), schema::protocol_props());
+    o.insert("tokenTag".into(), Json::from(TOKEN_TAG));
+    // The role names a `$name` may take in front of the app's tokens, in
+    // wire order (ADR 0027, decision 6): the encoder resolves `$surface`
+    // to index 1 of the colour space and `$radius` to its metric's, the
+    // same indices `TokenRef::index` gives the core.
+    let roles = |names: Vec<&str>| Json::Array(names.into_iter().map(Json::from).collect());
+    o.insert(
+        "tokenRoles".into(),
+        Json::Object(
+            [
+                (
+                    "colors".to_string(),
+                    roles(
+                        kui_core::schema::THEME_ROLES
+                            .iter()
+                            .map(|r| r.node)
+                            .collect(),
+                    ),
+                ),
+                (
+                    "lengths".to_string(),
+                    roles(
+                        kui_core::schema::METRIC_ROLES
+                            .iter()
+                            .map(|r| r.node)
+                            .collect(),
+                    ),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        ),
+    );
     // Value tables the encoder would otherwise restate: align indices and
     // the float preset names, both in the order the decoder reads them.
     o.insert(
@@ -207,29 +248,55 @@ fn payload(s: &str) -> Result<kui_core::Value> {
 /// The binary prop parser —
 /// composites hand-written, everything else read by schema kind and applied
 /// through the shared table.
-fn read_props(r: &mut Reader<'_>) -> Result<PropsOut> {
-    read_props_over(r, PropsOut::new())
+fn read_props(r: &mut Reader<'_>, look: &TokenLookup<'_>) -> Result<PropsOut> {
+    read_props_over(r, PropsOut::new(), look)
+}
+
+/// A colour by token index, or the malformed-frame error: the encoder
+/// writes an index only for a name it resolved against the same table,
+/// so one past the end means the two disagree.
+fn token_color(look: &TokenLookup<'_>, index: f64) -> Result<Color> {
+    look.color_at(index as u32)
+        .ok_or_else(|| err(format!("token index {index} names no colour token")))
+}
+
+fn token_length(look: &TokenLookup<'_>, index: f64) -> Result<f32> {
+    look.length_at(index as u32)
+        .ok_or_else(|| err(format!("token index {index} names no length token")))
 }
 
 /// [`read_props`] applied over `out` rather than the schema defaults: what
 /// a composite that keeps its own look reads its admitted rows into (the
 /// stock button over `widgets::button_spec`).
-fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut) -> Result<PropsOut> {
+fn read_props_over(
+    r: &mut Reader<'_>,
+    mut out: PropsOut,
+    look: &TokenLookup<'_>,
+) -> Result<PropsOut> {
     let n = r.u()?;
     for _ in 0..n {
-        let id = r.u()?;
+        let raw = r.u()?;
+        // A tagged id's value slot holds a token index (ADR 0027): a
+        // length for a size, a `pad` edge, a border width or an f32/sizing
+        // row, a colour for a colour row or a border colour. Resolved here,
+        // before `schema::apply`, so the core never sees a reference.
+        let is_ref = raw & TOKEN_TAG != 0;
+        let id = raw & !TOKEN_TAG;
         match id {
             P_DIR => {
                 if r.u()? == 1 {
                     out.spec = NodeSpec::row();
                 }
             }
+            P_SIZE if is_ref => out.style = TextStyle::new(token_length(look, r.f()?)?),
             P_SIZE => out.style = TextStyle::new(r.f()? as f32),
             P_PAD => {
                 // The shorthand rides the wire as declared (a set mask plus
                 // the seven values), so the encoder never has to know what
-                // `padX` falls back to either.
+                // `padX` falls back to either. Tagged, a second mask says
+                // which of the seven are token indices.
                 let set = r.u()?;
+                let refs = if is_ref { r.u()? } else { 0 };
                 let mut pad = PadShorthand::default();
                 for (bit, slot) in [
                     &mut pad.all,
@@ -243,7 +310,12 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut) -> Result<PropsOut> {
                 .into_iter()
                 .enumerate()
                 {
-                    let v = r.f()? as f32;
+                    let raw = r.f()?;
+                    let v = if refs & (1 << bit) != 0 {
+                        token_length(look, raw)?
+                    } else {
+                        raw as f32
+                    };
                     if set & (1 << bit) != 0 {
                         *slot = Some(v);
                     }
@@ -251,8 +323,21 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut) -> Result<PropsOut> {
                 out.apply_pad(pad);
             }
             P_BORDER => {
+                // Tagged: a flags word first — 1 the width is an index, 2
+                // the colour is.
+                let flags = if is_ref { r.u()? } else { 0 };
                 let (w, c) = (r.f()?, r.f()?);
-                out.spec = std::mem::take(&mut out.spec).border(w as f32, color_num(c as u32));
+                let w = if flags & 1 != 0 {
+                    token_length(look, w)?
+                } else {
+                    w as f32
+                };
+                let c = if flags & 2 != 0 {
+                    token_color(look, c)?
+                } else {
+                    color_num(c as u32)
+                };
+                out.spec = std::mem::take(&mut out.spec).border(w, c);
             }
             P_OVERFLOW => {
                 let bits = r.u()?;
@@ -322,9 +407,27 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut) -> Result<PropsOut> {
                 }
             }
             P_TOOLTIP => out.apply_tooltip(r.req_str()?),
+            _ if is_ref
+                && !matches!(
+                    schema::by_id(id).map(|d| &d.kind),
+                    Some(Kind::F32 | Kind::Color | Kind::Sizing)
+                ) =>
+            {
+                return Err(err(format!(
+                    "prop id {id} carries a token reference, and only a colour, a length or a \
+                     sizing row takes one"
+                )));
+            }
             id => {
                 let def = schema::by_id(id).ok_or_else(|| err(format!("unknown prop id {id}")))?;
                 let parsed = match &def.kind {
+                    Kind::F32 if is_ref => Parsed::F32(token_length(look, r.f()?)?),
+                    Kind::Color if is_ref => Parsed::Color(token_color(look, r.f()?)?),
+                    // A sizing reference is one slot, and it is always a
+                    // fixed length in px.
+                    Kind::Sizing if is_ref => {
+                        Parsed::Sizing(Sizing::Fixed(token_length(look, r.f()?)?))
+                    }
                     Kind::F32 => Parsed::F32(r.f()? as f32),
                     Kind::Color => Parsed::Color(color_num(r.f()? as u32)),
                     Kind::Flag => Parsed::Flag,
@@ -363,8 +466,9 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut) -> Result<PropsOut> {
 
 /// The span list of a rich text: a count, then per span its text and the
 /// flags the encoder's `collectSpans` packed (1 bold, 2 italic, 4 has
-/// colour, 8 underline, 16 strikethrough, 32 has bg) with the two colours.
-fn read_spans<'a>(r: &mut Reader<'a>) -> Result<Vec<Span<'a>>> {
+/// colour, 8 underline, 16 strikethrough, 32 has bg, 64 the colour is a
+/// token index, 128 the bg is) with the two colours.
+fn read_spans<'a>(r: &mut Reader<'a>, look: &TokenLookup<'_>) -> Result<Vec<Span<'a>>> {
     let nspans = r.u()? as usize;
     let mut spans = Vec::with_capacity(nspans);
     for _ in 0..nspans {
@@ -380,7 +484,11 @@ fn read_spans<'a>(r: &mut Reader<'a>) -> Result<Vec<Span<'a>>> {
             s = s.italic();
         }
         if flags & 4 != 0 {
-            s = s.color(color_num(color as u32));
+            s = s.color(if flags & 64 != 0 {
+                token_color(look, color)?
+            } else {
+                color_num(color as u32)
+            });
         }
         if flags & 8 != 0 {
             s = s.underline();
@@ -389,7 +497,11 @@ fn read_spans<'a>(r: &mut Reader<'a>) -> Result<Vec<Span<'a>>> {
             s = s.strikethrough();
         }
         if flags & 32 != 0 {
-            s = s.bg(color_num(bg as u32));
+            s = s.bg(if flags & 128 != 0 {
+                token_color(look, bg)?
+            } else {
+                color_num(bg as u32)
+            });
         }
         spans.push(s);
     }
@@ -424,12 +536,14 @@ pub fn measure_binary(
     match r.u()? {
         OP_TEXT => {
             let content = r.req_str()?;
-            let p = read_props(&mut r)?;
+            let p = read_props(&mut r, &core.token_lookup())?;
             Ok(core.measure_text(content, &p.style, max_w))
         }
         OP_RICH_TEXT => {
-            let p = read_props(&mut r)?;
-            let spans = read_spans(&mut r)?;
+            let (p, spans) = {
+                let look = core.token_lookup();
+                (read_props(&mut r, &look)?, read_spans(&mut r, &look)?)
+            };
             Ok(core.measure_rich_text(&spans, &p.style, max_w))
         }
         op => Err(err(format!(
@@ -441,7 +555,7 @@ pub fn measure_binary(
 fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<()> {
     match op {
         OP_OPEN => {
-            let p = read_props(r)?;
+            let p = read_props(r, &ui.core().token_lookup())?;
             ui.core().open_from(p, Content::Box);
             decode_until_close(r, ui)?;
             ui.core().close();
@@ -449,13 +563,13 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
         }
         OP_TEXT => {
             let content = r.req_str()?;
-            let p = read_props(r)?;
+            let p = read_props(r, &ui.core().token_lookup())?;
             ui.core().text_node(content, p.style);
             Ok(())
         }
         OP_RICH_TEXT => {
-            let p = read_props(r)?;
-            let spans = read_spans(r)?;
+            let p = read_props(r, &ui.core().token_lookup())?;
+            let spans = read_spans(r, &ui.core().token_lookup())?;
             ui.core().rich_text_node(&spans, p.style);
             Ok(())
         }
@@ -475,7 +589,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             let label_key = key.unwrap_or(label);
             let mut base = PropsOut::new();
             base.spec = widgets::button_spec(&ui.metrics());
-            let p = read_props_over(r, base)?;
+            let p = read_props_over(r, base, &ui.core().token_lookup())?;
             widgets::button_with(
                 ui,
                 label_key,
@@ -489,7 +603,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             let label = r.req_str()?;
             let initial = r.str_ref()?.unwrap_or("");
             let flags = r.u()?;
-            let p = read_props(r)?;
+            let p = read_props(r, &ui.core().token_lookup())?;
             let opts = EditOptions {
                 style: p.style,
                 multiline: flags & 1 != 0,
@@ -504,7 +618,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             let (hi, lo) = (r.f()? as u64, r.f()? as u64);
             let sampling = r.u()? as usize;
             let fit = r.u()? as usize;
-            let p = read_props(r)?;
+            let p = read_props(r, &ui.core().token_lookup())?;
             let opts = kui_core::ImageOpts {
                 sampling: kui_core::Sampling::ALL
                     .get(sampling)
@@ -529,7 +643,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
                 let y = r.f()? as f32;
                 points.push(kui_core::Vec2::new(x, y));
             }
-            let p = read_props(r)?;
+            let p = read_props(r, &ui.core().token_lookup())?;
             ui.core().open_from(p, Content::Polygon(&points));
             Ok(())
         }
@@ -590,7 +704,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             }
             let width = r.f()? as f32;
             let flags = r.u()?;
-            let p = read_props(r)?;
+            let p = read_props(r, &ui.core().token_lookup())?;
             // No `color` is the theme's foreground, as for a text run.
             let stroke_color = p.style.color.unwrap_or(ui.theme().fg);
             let mut stroke = kui_core::Stroke::new(width, stroke_color);
@@ -610,7 +724,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             for _ in 0..n {
                 params.push(r.f()? as f32);
             }
-            let p = read_props(r)?;
+            let p = read_props(r, &ui.core().token_lookup())?;
             let image = (ihi << 32) | ilo;
             let frag = kui_core::FragmentRef {
                 id: kui_core::FragmentId::from_ffi((hi << 32) | lo),
@@ -648,7 +762,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
                     flags: (packed >> 21) as u8,
                 });
             }
-            let p = read_props(r)?;
+            let p = read_props(r, &ui.core().token_lookup())?;
             let cursor = has_cursor.then(|| {
                 (
                     crow,
@@ -739,7 +853,8 @@ pub fn lower_binary(ui: &mut kui_core::Ui<'_>, stream: &[f64], strings: &[u8]) -
     if r.u()? != OP_ROOT {
         return Err(err("binary frame must start with the root op"));
     }
-    ui.core().configure_root_from(read_props(&mut r)?);
+    let root = read_props(&mut r, &ui.core().token_lookup())?;
+    ui.core().configure_root_from(root);
     loop {
         match r.u()? {
             OP_END => return Ok(()),
@@ -761,7 +876,8 @@ mod tests {
             i: 0,
             strings,
         };
-        read_props(&mut r).unwrap()
+        let core = kui_core::Core::new();
+        read_props(&mut r, &core.token_lookup()).unwrap()
     }
 
     /// Every generic schema row, written by its kind the way encoder.js

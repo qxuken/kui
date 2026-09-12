@@ -53,22 +53,41 @@ export type KuiNode =
   | null
   | undefined;
 
-/** number = fixed logical px; "N%" of parent; grow soaks up leftover space. */
+/** A reference to a colour token by name — `'$peach'` — as `defineTokens`
+ *  types it (`docs/adr/0027-tokens-beside-the-theme.md`). The string is
+ *  what rides; the brand is what tells a colour's reference from a
+ *  length's at the type level. Any colour prop takes one. */
+export type ColorToken = `$${string}` & { readonly __kuiToken?: 'color' };
+/** A reference to a length token by name — `'$sideW'` — for any length
+ *  prop: a size, a pad edge, a radius, a border width, a fixed width or
+ *  height. Resolved to logical px by the core's table. A colour token in a
+ *  length slot is a type error here; a length token in a colour slot is
+ *  caught at encode time instead (`unknown-token`), since `ColorProp`
+ *  admits any string and narrowing it would refuse every helper that
+ *  returns one. */
+export type LengthToken = `$${string}` & { readonly __kuiToken?: 'length' };
+/** Logical px, or a length token. */
+export type LengthProp = number | LengthToken;
+
+/** number = fixed logical px; "N%" of parent; grow soaks up leftover space;
+ *  a length token is a fixed px the core's table resolves. */
 export type SizingProp =
   | number
   | 'fit'
   | 'grow'
   | `${number}%`
   | { grow: number }
-  | { percent: number };
+  | { percent: number }
+  | LengthToken;
 
 /** A lower clamp: logical px, or "fit" for the node's own fit size on that
  *  axis — what lets a `grow` child keep a content floor (a tab never
  *  narrower than its label). */
 export type MinProp = number | 'fit';
 
-/** 0xRRGGBBAA number, or "#rgb" / "#rrggbb" / "#rrggbbaa". */
-export type ColorProp = number | string;
+/** 0xRRGGBBAA number, "#rgb" / "#rrggbb" / "#rrggbbaa", or a colour
+ *  token's reference (`'$peach'`, a theme role's `'$surface'`). */
+export type ColorProp = number | string | ColorToken;
 
 export type AlignProp = 'start' | 'center' | 'end';
 
@@ -183,7 +202,7 @@ export interface GeneratedSpecProps {
   /** Background fill. */
   bg?: ColorProp;
   /** On a `line` of a custom editor (a `textInput` / `multilineTextInput` role drawn by the app): the caret's byte offset into that line's text. */
-  caret?: number;
+  caret?: LengthProp;
   /** Center children on both axes. */
   center?: boolean;
   /** The on state of a `checkbox` / `radio` / `switch` role. */
@@ -193,11 +212,11 @@ export interface GeneratedSpecProps {
   /** Child alignment across the main axis. */
   crossAlign?: 'start' | 'center' | 'end';
   /** Space between wrap lines, across the main axis (`gap` stays the space along it). */
-  crossGap?: number;
+  crossGap?: LengthProp;
   /** Overrides the pointer shape over this node. Unset, the core derives one from what the node does — an editor is `text`, an `onClick` or `focusable` node `pointer`, an `onDrag` node `grab` (`grabbing` while dragging), window chrome and a plain box `default` — so this is for what that cannot know: a splitter (`ewResize` / `nsResize`), a `disabled` control that says `notAllowed`. */
   cursor?: 'default' | 'text' | 'pointer' | 'grab' | 'grabbing' | 'notAllowed' | 'ewResize' | 'nsResize' | 'nwseResize' | 'neswResize';
   /** Holds the `keyframes` cycle back by this many ms (CSS `animation-delay`); siblings with different delays run out of phase. */
-  delay?: number;
+  delay?: LengthProp;
   /** The accessible description: the extra sentence a reader says after the name, for what the name cannot say on its own — what a button will do, why a control is disabled, what format a field wants. `tooltip` is the shorthand that also draws the string and hover-tracks the node; this is the description alone, for a hint that is spoken and never drawn. Both write the one slot, so a node declaring both keeps whichever its binding applied last. It reads only on a node that reaches the access tree — a role, a label, a control — since a plain box is elided and takes its description with it. */
   description?: string;
   /** Inert: no click, drag or key sink, no hover / pressed / focus background, skipped by Tab, reported disabled to assistive technology; hover tracking stays so a `tooltip` can say why. */
@@ -217,7 +236,7 @@ export interface GeneratedSpecProps {
   /** Reachable by Tab (and focused by a click) without a click payload or a control role — a row that opens on Enter. Editors, key sinks, `onClick` boxes and the control roles are focusable already. */
   focusable?: boolean;
   /** Space between children along the main axis. */
-  gap?: number;
+  gap?: LengthProp;
   /** Vertical size: px | "fit" | "grow" | "N%". */
   height?: SizingProp;
   /** Background while hovered (or while any node in its hoverGroup is); implies hover tracking, eases with `transition`. */
@@ -241,9 +260,9 @@ export interface GeneratedSpecProps {
   /** Child alignment along the main axis. */
   mainAlign?: 'start' | 'center' | 'end';
   /** Upper height clamp (logical px). */
-  maxHeight?: number;
+  maxHeight?: LengthProp;
   /** Upper width clamp; grow+maxWidth is the responsive-width pattern. */
-  maxWidth?: number;
+  maxWidth?: LengthProp;
   /** Lower height clamp: logical px, or "fit" for the node's own fit height (see `minWidth`). */
   minHeight?: MinProp;
   /** Lower width clamp: logical px, or "fit" for the node's own fit width. "fit" under `width="grow"` is a content floor — CSS's `flex: 1 0 auto` — which is what an i3-style tab bar is: tabs that split the bar evenly while they fit and sit at their label's width, scrolling, once they do not. Opt-in, because a fit width is the unwrapped one: a paragraph in a grow column would stop wrapping under it. */
@@ -265,19 +284,19 @@ export interface GeneratedSpecProps {
   /** Layout tag: the node's laid-out rect arrives as {kind:"layout", x, y, w, h, parent, tag} on its first frame and whenever it changes (needs a stable key). */
   onLayout?: AppMsg | null;
   /** Group opacity 0..1 (default 1): fades this node and its whole subtree. A per-quad alpha multiply rather than an offscreen composite, so overlapping pieces of one subtree show their seams through the fade. Layout, hit-testing and the access tree are untouched; eases with `transition`, and `enter: { opacity: 0 }` fades a panel in. */
-  opacity?: number;
+  opacity?: LengthProp;
   /** Background while pressed (or while its hoverGroup is); implies hover tracking. */
   pressedBg?: ColorProp;
   /** Corner radius for all four corners (logical px); the per-corner props override it when listed after it. On a node that also clips or scrolls it rounds the clip as well, so children stay inside the corners. */
-  radius?: number;
+  radius?: LengthProp;
   /** Bottom-left corner radius (logical px). */
-  radiusBL?: number;
+  radiusBL?: LengthProp;
   /** Bottom-right corner radius (logical px). */
-  radiusBR?: number;
+  radiusBR?: LengthProp;
   /** Top-left corner radius (logical px). */
-  radiusTL?: number;
+  radiusTL?: LengthProp;
   /** Top-right corner radius (logical px). */
-  radiusTR?: number;
+  radiusTR?: LengthProp;
   /** How `keyframes` cycle (CSS `animation-direction`, default normal). Lua: `direction`, since `repeat` is a keyword. */
   repeat?: 'normal' | 'reverse' | 'alternate' | 'alternateReverse';
   /** What the node is to assistive technology. Unset, the core derives one (an `onClick` node is a button, an editor a text input, a scrolling box a scroll view, a plain box nothing); `none` hides the node and its subtree from the access tree. */
@@ -289,33 +308,33 @@ export interface GeneratedSpecProps {
   /** The thumb at rest; the default is the theme's `scrollbar` role, a translucent wash over whatever it sits on. */
   scrollbarColor?: ColorProp;
   /** The thumb's width at rest, logical px (default 4); under the pointer or dragged it is 2 px wider. The grabbable track grows to fit a wide thumb. */
-  scrollbarWidth?: number;
+  scrollbarWidth?: LengthProp;
   /** Makes this node a selection scope: the text of every node inside it is one selectable run, in tree order, and a press-drag across them selects the lot (`docs/adr/0017-selection-as-a-scope.md`). Declared on the container and not on each label, because what a reader selects is a paragraph or a card rather than one run of it — three labels in a column under one `selectable` select as three lines of one text. The selection is the window's: starting one anywhere clears the last, an editor's included. Scopes do not nest; an outer one around an inner one is warned about (`nested-selection-scope`) and the innermost owns the text. Text scrolled out of view inside the scope is still part of it — selection and copy reach it, hit-testing does not. On a `cells` grid the scope selects in cells rather than in bytes: a drag takes lines (with a modifier, a rectangle), a double click the word under the pointer and a triple click the whole row, its ends are absolute lines so a scroll does not move them, and a copy trims each line's trailing blanks. */
   selectable?: boolean;
   /** The current one of a set: which `tab` a `tabList` shows, which `listItem` a list has picked, which `link` is the page you are on. A `tab` always carries the state — its siblings read as "not selected" — while a list row or a link carries it only where it is set, since an ordinary list or navigation bar is not a selection and a reader saying "not selected" on every row of it is noise. */
   selected?: boolean;
   /** On a `line` of a custom editor: the byte offset where the selection's other end sits (the caret is `caret`, possibly on another line). */
-  selectionAnchor?: number;
+  selectionAnchor?: LengthProp;
   /** Drop-shadow blur radius (logical px): the edge ramps over this distance and reaches this far past the shape. 0 = a hard edge. */
-  shadowBlur?: number;
+  shadowBlur?: LengthProp;
   /** Drop-shadow color; nothing else about a shadow draws without it. On its own it is a hard shadow exactly behind the node — add `shadowBlur` / `shadowY` to lift it. Outer shadows only, and the shape is not knocked out of the middle, so a translucent background shows it through. */
   shadowColor?: ColorProp;
   /** Grows (or, negative, shrinks) the drop shadow's shape before blurring (logical px). */
-  shadowSpread?: number;
+  shadowSpread?: LengthProp;
   /** Drop-shadow horizontal offset (logical px). */
-  shadowX?: number;
+  shadowX?: LengthProp;
   /** Drop-shadow vertical offset (logical px); positive casts downward. */
-  shadowY?: number;
+  shadowY?: LengthProp;
   /** With transition: also ease the node's position (reordered siblings slide). While it eases, the node is drawn between where it was and where this frame put it — not at the declared `dx`/`dy`, or its slot in the row — so anything else positioned from those numbers drifts for the transition's length: a canvas of floats eases everything or nothing. */
   slide?: boolean;
   /** Animate sizing/colors/radius changes over this many ms (needs a stable key). */
-  transition?: number;
+  transition?: LengthProp;
   /** A `slider` role's maximum. */
-  valueMax?: number;
+  valueMax?: LengthProp;
   /** A `slider` role's minimum. */
-  valueMin?: number;
+  valueMin?: LengthProp;
   /** A `slider` role's current value (the drawing stays yours; this is what assistive technology reads). */
-  valueNow?: number;
+  valueNow?: LengthProp;
   /** What a `slider` role's position reads as (ARIA's `aria-valuetext`). Without one a reader has only `valueNow` and the range and says a percentage — 25 in [5..60] is "36 percent" — so a value whose unit carries the meaning says it here: "25 minutes". It replaces the number in the reading rather than joining it, and a nudge announces the new text. Meaningful on the slider role alone, like the three numbers; putting the reading in `label` instead renames the control on every nudge, which is the wrong attribute. */
   valueText?: string;
   /** Horizontal size: px | "fit" | "grow" | "N%". */
@@ -338,9 +357,9 @@ export interface GeneratedStyleProps {
   /** A registered font handle (addFont / addSystemFont); overrides `family`. */
   font?: string;
   /** Line height (logical px); default size * 1.35. */
-  lineHeight?: number;
+  lineHeight?: LengthProp;
   /** Lay out at most this many lines (0 = unlimited); with `ellipsis`, a line clamp. */
-  maxLines?: number;
+  maxLines?: LengthProp;
   /** A line through the text, where the face puts its strikeout. Paint only; on a `<span>` the span alone, per line. */
   strikethrough?: boolean;
   /** A line under the text, where the face puts its underline and as thick as it says, in the text colour. Paint only. On a `<span>` it covers the span alone and follows it across a wrap, one rect per line. */
@@ -354,14 +373,14 @@ export interface GeneratedStyleProps {
  *  the boundary (everything else comes from the generated schema types). */
 export interface CustomSpecProps {
   dir?: 'row' | 'column';
-  pad?: number;
-  padX?: number;
-  padY?: number;
-  padL?: number;
-  padR?: number;
-  padT?: number;
-  padB?: number;
-  borderW?: number;
+  pad?: LengthProp;
+  padX?: LengthProp;
+  padY?: LengthProp;
+  padL?: LengthProp;
+  padR?: LengthProp;
+  padT?: LengthProp;
+  padB?: LengthProp;
+  borderW?: LengthProp;
   borderColor?: ColorProp;
   clip?: boolean;
   scrollX?: boolean;
@@ -396,7 +415,7 @@ export interface BoxProps extends Keyed, GeneratedSpecProps, CustomSpecProps {
 }
 
 export interface TextProps extends Keyed, GeneratedStyleProps {
-  size?: number;
+  size?: LengthProp;
   children?: KuiNode;
 }
 

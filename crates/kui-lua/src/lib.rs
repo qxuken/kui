@@ -99,6 +99,11 @@ pub struct LuaExtension {
     /// inside `view`, where the script's own interpreter holds a shared
     /// borrow of everything else here.
     loaded: std::cell::RefCell<Vec<Loaded>>,
+    /// The `tokens = { colors = …, lengths = … }` global the script
+    /// declared at load (ADR 0027), declared into the core under this
+    /// extension's origin on the first `view` that finds none there;
+    /// `env.set_tokens` replaces it from inside a view.
+    tokens: Option<kui_core::Tokens>,
 }
 
 /// One plugin a script loaded: the namespace it chose, where it came
@@ -125,11 +130,22 @@ impl LuaExtension {
                 )));
             }
         };
+        let tokens = match lua.globals().get::<mlua::Value>("tokens")? {
+            mlua::Value::Nil => None,
+            mlua::Value::Table(t) => Some(parse_tokens(&t)?),
+            other => {
+                return Err(mlua::Error::runtime(format!(
+                    "`tokens` must be a table {{ colors = …, lengths = … }}, not {}",
+                    other.type_name()
+                )));
+            }
+        };
         Ok(Self {
             lua,
             name,
             slots,
             loaded: Default::default(),
+            tokens,
         })
     }
 
@@ -182,6 +198,15 @@ impl Extension for LuaExtension {
         // host's fact, not the driver's. A script written as `view(env)`
         // never sees it.
         let slot_table = slot_table(&self.lua, slot).map_err(|e| format!("slot: {e}"))?;
+        // The table the script was loaded with, declared once per core
+        // under this origin — a script that declares from `view` through
+        // `env.set_tokens` has already, and is not overwritten.
+        let origin = ui.core().origin();
+        if let Some(t) = &self.tokens
+            && !ui.core().tokens_declared(origin)
+        {
+            ui.set_tokens(t.clone());
+        }
         // The env's query functions borrow the frame for the duration of
         // view(); the returned table outlives the scope, the borrow does
         // not. A RefCell because measurement shapes text (a mutable query)
@@ -399,6 +424,12 @@ fn env_table<'scope, 'env: 'scope>(
         (ui.env_facts(), ui.theme(), ui.metrics())
     };
     let t = lua.create_table()?;
+    // The tokens a script here sees this frame (ADR 0027): its own table
+    // over the host's, colours resolved for the appearance as
+    // `0xRRGGBBAA`, lengths in px — `env.tokens.colors.peach`. Roles are
+    // not listed; they are `env.theme` and `env.metrics`. Rebuilt by
+    // `env.set_tokens`, so a script reads back what it just declared.
+    t.set("tokens", tokens_table(lua, &ui.borrow())?)?;
     // The facts, one row of `schema::ENV_FIELDS` at a time, read by the
     // row's own getter and filed under its snake path (`system.appearance`
     // is `env.system.appearance`). Lua's rule for a fact the host cannot
@@ -845,6 +876,19 @@ fn env_table<'scope, 'env: 'scope>(
             Ok(())
         })?,
     )?;
+    // Declare this script's tokens from inside a view (ADR 0027): the
+    // same shape as the `tokens` global, replacing this origin's table
+    // whole, in effect for the nodes the same view opens after the call.
+    // A script whose lengths follow a tier declares on each change.
+    let env = t.clone();
+    t.set(
+        "set_tokens",
+        scope.create_function(move |lua, decl: Table| {
+            let tokens = parse_tokens(&decl)?;
+            ui.borrow_mut().set_tokens(tokens);
+            env.set("tokens", tokens_table(lua, &ui.borrow())?)
+        })?,
+    )?;
     t.set(
         "focus_window",
         scope.create_function(move |_, window: i64| {
@@ -937,6 +981,24 @@ fn env_table<'scope, 'env: 'scope>(
 /// linearly: `measured × zoom` is not `measure(size × zoom)`, because
 /// shaping rounds per size, so anything that zooms measures at the size it
 /// draws.
+/// `env.tokens`: the frame's resolved tokens, own over host, as two
+/// tables of name → value.
+fn tokens_table(lua: &Lua, ui: &Ui<'_>) -> mlua::Result<Table> {
+    let look = ui.tokens();
+    let tokens = lua.create_table()?;
+    let colors = lua.create_table()?;
+    for (name, c) in look.colors() {
+        colors.set(name, c.to_hex())?;
+    }
+    let lengths = lua.create_table()?;
+    for (name, v) in look.lengths() {
+        lengths.set(name, v)?;
+    }
+    tokens.set("colors", colors)?;
+    tokens.set("lengths", lengths)?;
+    Ok(tokens)
+}
+
 fn measure_from_lua(
     ui: &mut Ui<'_>,
     s: &mlua::Value,
@@ -944,11 +1006,11 @@ fn measure_from_lua(
     max_w: Option<f32>,
 ) -> mlua::Result<kui_core::TextMetrics> {
     let style = match opts {
-        Some(t) => parse_props(t, false)?.style,
+        Some(t) => with_refs(ui, |refs| parse_props(t, false, refs))?.style,
         None => kui_core::TextStyle::default(),
     };
     let measure_spans = |ui: &mut Ui<'_>, spans: &Table, style: &kui_core::TextStyle| {
-        let parts = collect_spans(spans)?;
+        let parts = with_refs(ui, |refs| collect_spans(spans, refs))?;
         let spans: Vec<Span<'_>> = parts.iter().map(span_of).collect();
         Ok(ui.measure_rich_text(&spans, style, max_w))
     };
@@ -956,7 +1018,7 @@ fn measure_from_lua(
         mlua::Value::String(s) => Ok(ui.measure_text(&s.to_str()?, &style, max_w)),
         mlua::Value::Table(t) => {
             if t.get::<Option<String>>("type")?.as_deref() == Some("text") {
-                let style = parse_props(t, false)?.style;
+                let style = with_refs(ui, |refs| parse_props(t, false, refs))?.style;
                 match t.get::<Option<Table>>("spans")? {
                     Some(spans) => measure_spans(ui, &spans, &style),
                     None => {
@@ -1122,16 +1184,16 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
     check_props(ui, t, element_of(&ty))?;
     match ty.as_str() {
         "row" | "column" => {
-            let p = parse_props(t, ty == "row")?;
+            let p = with_refs(ui, |refs| parse_props(t, ty == "row", refs))?;
             ui.core().open_from(p, Content::Box);
             build_children(ui, t)?;
             ui.close();
             Ok(())
         }
         "text" => {
-            let style = parse_props(t, false)?.style;
+            let style = with_refs(ui, |refs| parse_props(t, false, refs))?.style;
             if let Some(spans) = t.get::<Option<Table>>("spans")? {
-                let parts = collect_spans(&spans)?;
+                let parts = with_refs(ui, |refs| collect_spans(&spans, refs))?;
                 let spans: Vec<Span<'_>> = parts.iter().map(span_of).collect();
                 ui.rich_text(&spans, style);
             } else {
@@ -1145,7 +1207,7 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             // passed to scripts as a plain integer. `sampling` and `fit`
             // are the rows ADR 0025 gives the element, by name.
             let id: i64 = t.get("id")?;
-            let spec = parse_props(t, false)?.spec;
+            let spec = with_refs(ui, |refs| parse_props(t, false, refs))?.spec;
             let named = |row: &str, names: &[&str]| -> mlua::Result<usize> {
                 match t.get::<Option<String>>(row)? {
                     None => Ok(0),
@@ -1168,7 +1230,7 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
         "polygon" => {
             // `points`, each a `{x, y}` pair; the fill is the `bg` row, read
             // by parse_props like any node's (ADR 0025, decision 6).
-            let p = parse_props(t, false)?;
+            let p = with_refs(ui, |refs| parse_props(t, false, refs))?;
             let Some(list) = t.get::<Option<Table>>("points")? else {
                 return Err(bad("polygon needs points"));
             };
@@ -1195,7 +1257,7 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
                 Some(list) => list.sequence_values::<f32>().collect::<mlua::Result<_>>()?,
                 None => Vec::new(),
             };
-            let p = parse_props(t, false)?;
+            let p = with_refs(ui, |refs| parse_props(t, false, refs))?;
             let frag = kui_core::FragmentRef {
                 id: kui_core::FragmentId::from_ffi(id as u64),
                 image: image
@@ -1213,7 +1275,7 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             // line's sizing with its own box. `color` is the text-colour
             // row, read off the parsed style, so it defaults to the
             // foreground like a text node's.
-            let p = parse_props(t, false)?;
+            let p = with_refs(ui, |refs| parse_props(t, false, refs))?;
             let point = |v: mlua::Value| -> mlua::Result<kui_core::Vec2> {
                 let mlua::Value::Table(pt) = v else {
                     return Err(bad("a line point is a {x, y} table"));
@@ -1248,7 +1310,7 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             // `runs` of {row, col, len, fg, bg, flags} colour and attribute
             // spans over them (0 keeps the default). The style rows size
             // the cells; the node rows are the node's.
-            let p = parse_props(t, false)?;
+            let p = with_refs(ui, |refs| parse_props(t, false, refs))?;
             let rows: usize = t.get::<Option<usize>>("rows")?.unwrap_or(0);
             let cols: usize = t.get::<Option<usize>>("cols")?.unwrap_or(0);
             if rows == 0 || cols == 0 {
@@ -1298,7 +1360,7 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
                         .unwrap_or(kui_core::CellCursor::Block);
                     let color = match t.get::<mlua::Value>("cursor_color")? {
                         mlua::Value::Nil => Color::rgb8(0xff, 0xff, 0xff),
-                        v => parse_color(&v)?,
+                        v => with_refs(ui, |refs| parse_color(&v, refs))?,
                     };
                     Some((cur.get::<usize>(1)?, cur.get::<usize>(2)?, shape, color))
                 }
@@ -1348,7 +1410,7 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             Ok(())
         }
         "edit" => {
-            let p = parse_props(t, false)?;
+            let p = with_refs(ui, |refs| parse_props(t, false, refs))?;
             let label = match p.key.clone().or(t.get::<Option<String>>("label")?) {
                 Some(l) => l,
                 None => return Err(bad("edit needs a key (state is retained by key)")),
@@ -1430,18 +1492,21 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             if let Some(hint) = t.get::<Option<String>>("tooltip")? {
                 out.apply_tooltip(&hint);
             }
-            for name in ["description", "disabled", "accent"] {
-                let v = t.get::<mlua::Value>(name)?;
-                if v.is_nil() {
-                    continue;
+            with_refs(ui, |refs| {
+                for name in ["description", "disabled", "accent"] {
+                    let v = t.get::<mlua::Value>(name)?;
+                    if v.is_nil() {
+                        continue;
+                    }
+                    let def = schema::by_snake_name(name).expect("a button row");
+                    if let Some(parsed) =
+                        parse_value(&def.kind, &v, refs).map_err(|e| bad(format!("{name}: {e}")))?
+                    {
+                        schema::apply(def, parsed, &mut out).map_err(bad)?;
+                    }
                 }
-                let def = schema::by_snake_name(name).expect("a button row");
-                if let Some(parsed) =
-                    parse_value(&def.kind, &v).map_err(|e| bad(format!("{name}: {e}")))?
-                {
-                    schema::apply(def, parsed, &mut out).map_err(bad)?;
-                }
-            }
+                Ok(())
+            })?;
             widgets::button_with(ui, &key, &text, out.spec, out.tooltip.as_deref());
             Ok(())
         }
@@ -1483,7 +1548,7 @@ fn span_of(p: &SpanPart) -> Span<'_> {
 }
 
 /// `{ "plain", { "styled", bold = true, italic = true, color = 0x.. }, ... }`
-fn collect_spans(spans: &Table) -> mlua::Result<Vec<SpanPart>> {
+fn collect_spans(spans: &Table, refs: &mut Refs<'_>) -> mlua::Result<Vec<SpanPart>> {
     let mut out = Vec::new();
     for item in spans.sequence_values::<mlua::Value>() {
         match item? {
@@ -1502,11 +1567,11 @@ fn collect_spans(spans: &Table) -> mlua::Result<Vec<SpanPart>> {
                     .ok_or_else(|| bad("span table needs its text at [1]"))?;
                 let color = match t.get::<mlua::Value>("color")? {
                     mlua::Value::Nil => None,
-                    v => Some(parse_color(&v)?),
+                    v => Some(parse_color(&v, refs)?),
                 };
                 let bg = match t.get::<mlua::Value>("bg")? {
                     mlua::Value::Nil => None,
-                    v => Some(parse_color(&v)?),
+                    v => Some(parse_color(&v, refs)?),
                 };
                 out.push(SpanPart {
                     text,
@@ -1529,22 +1594,155 @@ fn collect_spans(spans: &Table) -> mlua::Result<Vec<SpanPart>> {
     Ok(out)
 }
 
+/// `{ colors = { name = colour | { light =, dark = } }, lengths = { name =
+/// px } }` as a [`kui_core::Tokens`] (ADR 0027). Names are sorted, since a
+/// Lua table's iteration order is not one a declaration can promise and
+/// the index is only what `env.tokens` lists them in.
+pub fn parse_tokens(t: &Table) -> mlua::Result<kui_core::Tokens> {
+    let mut out = kui_core::Tokens::new();
+    for pair in t.pairs::<String, mlua::Value>() {
+        let (k, _) = pair?;
+        if k != "colors" && k != "lengths" {
+            return Err(bad(format!("tokens: unknown key {k:?} (colors, lengths)")));
+        }
+    }
+    if let Some(colors) = t.get::<Option<Table>>("colors")? {
+        let mut entries: Vec<(String, mlua::Value)> = colors
+            .pairs::<String, mlua::Value>()
+            .collect::<mlua::Result<_>>()?;
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+        for (name, v) in entries {
+            out = match &v {
+                mlua::Value::Table(halves) => {
+                    let half = |k: &str| -> mlua::Result<Color> {
+                        match halves.get::<mlua::Value>(k)? {
+                            mlua::Value::Nil => Err(bad(format!(
+                                "tokens.colors.{name}: needs both light and dark"
+                            ))),
+                            v => parse_color_value(&v),
+                        }
+                    };
+                    out.color_themed(&name, half("light")?, half("dark")?)
+                }
+                v => out.color(
+                    &name,
+                    parse_color_value(v).map_err(|e| bad(format!("tokens.colors.{name}: {e}")))?,
+                ),
+            };
+        }
+    }
+    if let Some(lengths) = t.get::<Option<Table>>("lengths")? {
+        let mut entries: Vec<(String, mlua::Value)> = lengths
+            .pairs::<String, mlua::Value>()
+            .collect::<mlua::Result<_>>()?;
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+        for (name, v) in entries {
+            let px = number(&v)
+                .ok_or_else(|| bad(format!("tokens.lengths.{name}: a length is a number")))?;
+            out = out.length(&name, px);
+        }
+    }
+    Ok(out)
+}
+
+/// What a `$name` in a prop resolves through while a table is parsed
+/// (ADR 0027): the core's lookup for the running origin — its own table
+/// over the host's, the roles in front — and the names that did not
+/// resolve, raised as `unknown-token` once the borrow is handed back
+/// ([`with_refs`]). A slot whose name resolves to nothing keeps its
+/// default, which is what the warning says.
+pub struct Refs<'a> {
+    look: kui_core::TokenLookup<'a>,
+    errors: Vec<kui_core::TokenError>,
+}
+
+impl<'a> Refs<'a> {
+    pub fn new(look: kui_core::TokenLookup<'a>) -> Self {
+        Self {
+            look,
+            errors: Vec::new(),
+        }
+    }
+
+    fn color(&mut self, name: &str) -> Color {
+        match self.look.color(name) {
+            Ok(c) => c,
+            Err(e) => {
+                self.errors.push(e);
+                Color::TRANSPARENT
+            }
+        }
+    }
+
+    fn length(&mut self, name: &str) -> f32 {
+        match self.look.length(name) {
+            Ok(v) => v,
+            Err(e) => {
+                self.errors.push(e);
+                0.0
+            }
+        }
+    }
+}
+
+/// Runs `f` with a [`Refs`] over the frame's lookup, then raises what did
+/// not resolve. The lookup borrows the core for `f`'s duration and nothing
+/// longer, so the caller can open the node it parsed right after.
+fn with_refs<R>(
+    ui: &mut Ui<'_>,
+    f: impl FnOnce(&mut Refs<'_>) -> mlua::Result<R>,
+) -> mlua::Result<R> {
+    let (r, errors) = {
+        let mut refs = Refs::new(ui.core().token_lookup());
+        let r = f(&mut refs);
+        (r, refs.errors)
+    };
+    for e in errors {
+        ui.core().warn_unknown_token(&e);
+    }
+    r
+}
+
+/// A `$name` if `v` is one.
+fn reference(v: &mlua::Value) -> mlua::Result<Option<String>> {
+    if let mlua::Value::String(s) = v
+        && let Some(name) = kui_core::tokens::reference(&s.to_str()?)
+    {
+        return Ok(Some(name.to_string()));
+    }
+    Ok(None)
+}
+
+/// A number, or a `$name` length token.
+fn length_of(v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Result<f32> {
+    if let Some(name) = reference(v)? {
+        return Ok(refs.length(&name));
+    }
+    number(v).ok_or_else(|| bad("expected a number or a \"$token\""))
+}
+
 /// Table → props. Constructor-order specials first (`dir` from the node
 /// type, `size` before any style prop), then the Lua-shaped composites,
 /// then every schema row by its snake_case name. Unknown keys (`type`,
-/// `value`, `label`, children) fall through.
-pub fn parse_props(t: &Table, is_row: bool) -> mlua::Result<PropsOut> {
+/// `value`, `label`, children) fall through. `refs` is what a `$name`
+/// resolves through ([`with_refs`]).
+pub fn parse_props(t: &Table, is_row: bool, refs: &mut Refs<'_>) -> mlua::Result<PropsOut> {
     let mut out = PropsOut::new();
     if is_row {
         out.spec = kui_core::NodeSpec::row();
     }
-    if let Some(size) = t.get::<Option<f32>>("size")? {
-        out.style = kui_core::TextStyle::new(size);
+    match t.get::<mlua::Value>("size")? {
+        mlua::Value::Nil => {}
+        v => out.style = kui_core::TextStyle::new(length_of(&v, refs)?),
     }
     // `radius` sets all four corners, so it must land before any
     // `radius_tl`-style override — table iteration order is undefined.
-    if let Some(r) = t.get::<Option<f32>>("radius")? {
-        out.with_spec(|s| s.radius(r));
+    match t.get::<mlua::Value>("radius")? {
+        mlua::Value::Nil => {}
+        v => {
+            let r = length_of(&v, refs)?;
+            out.with_spec(|s| s.radius(r));
+        }
     }
     // Overflow bits accumulate across the walk (`clip` and `scroll` are
     // separate keys) and are applied once, so nothing here has to know that
@@ -1557,7 +1755,7 @@ pub fn parse_props(t: &Table, is_row: bool) -> mlua::Result<PropsOut> {
         match k.as_ref() {
             "size" | "radius" => {}
             "pad" => {
-                let pad = parse_pad(&v)?;
+                let pad = parse_pad(&v, refs)?;
                 out.apply_pad(pad);
             }
             "border" => {
@@ -1565,8 +1763,8 @@ pub fn parse_props(t: &Table, is_row: bool) -> mlua::Result<PropsOut> {
                     mlua::Value::Table(b) => b,
                     _ => return Err(bad("border must be a table {w=, color=}")),
                 };
-                let w: f32 = b.get("w")?;
-                let c = parse_color(&b.get::<mlua::Value>("color")?)?;
+                let w = length_of(&b.get::<mlua::Value>("w")?, refs)?;
+                let c = parse_color(&b.get::<mlua::Value>("color")?, refs)?;
                 out.with_spec(|s| s.border(w, c));
             }
             "clip" => overflow |= bit(&v, kui_core::OVERFLOW_CLIP),
@@ -1604,7 +1802,7 @@ pub fn parse_props(t: &Table, is_row: bool) -> mlua::Result<PropsOut> {
                     continue;
                 };
                 if let Some(parsed) =
-                    parse_value(&def.kind, &v).map_err(|e| bad(format!("{name}: {e}")))?
+                    parse_value(&def.kind, &v, refs).map_err(|e| bad(format!("{name}: {e}")))?
                 {
                     schema::apply(def, parsed, &mut out).map_err(bad)?;
                 }
@@ -1633,10 +1831,10 @@ fn number(v: &mlua::Value) -> Option<f32> {
 }
 
 /// One schema value from Lua, by kind. `None` = absent (a false flag).
-fn parse_value(kind: &Kind, v: &mlua::Value) -> mlua::Result<Option<Parsed>> {
+fn parse_value(kind: &Kind, v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Result<Option<Parsed>> {
     Ok(Some(match kind {
-        Kind::F32 => Parsed::F32(number(v).ok_or_else(|| bad("expected a number"))?),
-        Kind::Color => Parsed::Color(parse_color(v)?),
+        Kind::F32 => Parsed::F32(length_of(v, refs)?),
+        Kind::Color => Parsed::Color(parse_color(v, refs)?),
         Kind::Flag => {
             if truthy(v) {
                 Parsed::Flag
@@ -1650,7 +1848,7 @@ fn parse_value(kind: &Kind, v: &mlua::Value) -> mlua::Result<Option<Parsed>> {
             };
             Parsed::Enum(schema::enum_index(names, &s.to_str()?).map_err(bad)?)
         }
-        Kind::Sizing => Parsed::Sizing(parse_sizing(v)?),
+        Kind::Sizing => Parsed::Sizing(parse_sizing(v, refs)?),
         Kind::Min => Parsed::Min(match v {
             mlua::Value::String(s) => schema::min_str(&s.to_str()?).map_err(bad)?,
             v => kui_core::Min::px(number(v).ok_or_else(|| bad("expected a number or \"fit\""))?),
@@ -1674,8 +1872,9 @@ fn parse_value(kind: &Kind, v: &mlua::Value) -> mlua::Result<Option<Parsed>> {
     }))
 }
 
-/// `0xRRGGBBAA` integers or `"#hex"` strings.
-fn parse_color(v: &mlua::Value) -> mlua::Result<Color> {
+/// `0xRRGGBBAA` integers or `"#hex"` strings — a value, never a reference:
+/// what a token declaration holds.
+fn parse_color_value(v: &mlua::Value) -> mlua::Result<Color> {
     match v {
         mlua::Value::Integer(n) => Ok(schema::color_num(*n as u32)),
         mlua::Value::Number(n) => Ok(schema::color_num(*n as u32)),
@@ -1684,7 +1883,19 @@ fn parse_color(v: &mlua::Value) -> mlua::Result<Color> {
     }
 }
 
-fn parse_sizing(v: &mlua::Value) -> mlua::Result<Sizing> {
+/// A colour prop: a value, or a `"$name"` token reference.
+fn parse_color(v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Result<Color> {
+    if let Some(name) = reference(v)? {
+        return Ok(refs.color(&name));
+    }
+    parse_color_value(v)
+        .map_err(|_| bad("color must be a 0xRRGGBBAA integer, a \"#hex\" string or a \"$token\""))
+}
+
+fn parse_sizing(v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Result<Sizing> {
+    if let Some(name) = reference(v)? {
+        return Ok(Sizing::Fixed(refs.length(&name)));
+    }
     match v {
         mlua::Value::Number(n) => Ok(Sizing::Fixed(*n as f32)),
         mlua::Value::Integer(n) => Ok(Sizing::Fixed(*n as f32)),
@@ -1705,26 +1916,29 @@ fn parse_sizing(v: &mlua::Value) -> mlua::Result<Sizing> {
 /// The `pad` prop as declared: a number is the all-round shorthand, a table
 /// names any of the family (`x`, `y`, `l`, `r`, `t`, `b`). What a missing
 /// edge falls back to is [`PadShorthand::resolve`]'s call.
-fn parse_pad(v: &mlua::Value) -> mlua::Result<PadShorthand> {
+fn parse_pad(v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Result<PadShorthand> {
     match v {
-        mlua::Value::Number(n) => Ok(PadShorthand {
-            all: Some(*n as f32),
+        mlua::Value::Table(t) => {
+            let mut edge = |k: &str| -> mlua::Result<Option<f32>> {
+                match t.get::<mlua::Value>(k)? {
+                    mlua::Value::Nil => Ok(None),
+                    v => length_of(&v, refs).map(Some),
+                }
+            };
+            Ok(PadShorthand {
+                all: edge("all")?,
+                x: edge("x")?,
+                y: edge("y")?,
+                l: edge("l")?,
+                r: edge("r")?,
+                t: edge("t")?,
+                b: edge("b")?,
+            })
+        }
+        v => Ok(PadShorthand {
+            all: Some(length_of(v, refs).map_err(|_| bad("invalid padding value"))?),
             ..PadShorthand::default()
         }),
-        mlua::Value::Integer(n) => Ok(PadShorthand {
-            all: Some(*n as f32),
-            ..PadShorthand::default()
-        }),
-        mlua::Value::Table(t) => Ok(PadShorthand {
-            all: t.get("all")?,
-            x: t.get("x")?,
-            y: t.get("y")?,
-            l: t.get("l")?,
-            r: t.get("r")?,
-            t: t.get("t")?,
-            b: t.get("b")?,
-        }),
-        _ => Err(bad("invalid padding value")),
     }
 }
 
@@ -1872,6 +2086,14 @@ mod tests {
         }
     }
 
+    /// A `Refs` over a bare core: no tokens declared, the roles resolve.
+    /// Leaked on purpose — the lookup borrows the core, and a test parses
+    /// one table and asserts, so a core per call is the simplest shape.
+    fn test_refs() -> Refs<'static> {
+        let core: &'static Core = Box::leak(Box::new(Core::new()));
+        Refs::new(core.token_lookup())
+    }
+
     fn eval_table(lua: &Lua, src: &str) -> Table {
         lua.load(src).eval().unwrap()
     }
@@ -1898,7 +2120,7 @@ mod tests {
                 key = "panel", key_focus = true,
             }"##,
         );
-        let p = parse_props(&t, true).unwrap();
+        let p = parse_props(&t, true, &mut test_refs()).unwrap();
         let expected = NodeSpec::row()
             .width(Sizing::Grow(1.0))
             .height(Sizing::Percent(0.5))
@@ -1948,13 +2170,15 @@ mod tests {
     fn a_min_is_a_number_or_fit() {
         let lua = Lua::new();
         let t = eval_table(&lua, r#"{ min_width = "fit", min_height = 3 }"#);
-        let p = parse_props(&t, false).unwrap();
+        let p = parse_props(&t, false, &mut test_refs()).unwrap();
         let expected = NodeSpec::column()
             .min_width(kui_core::Min::FIT)
             .min_height(3.0);
         assert_eq!(p.spec, expected);
         let t = eval_table(&lua, r#"{ min_width = "grow" }"#);
-        let err = parse_props(&t, false).unwrap_err().to_string();
+        let err = parse_props(&t, false, &mut test_refs())
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("bad min"), "{err}");
     }
 
@@ -1969,7 +2193,7 @@ mod tests {
             r#"{ pad = { all = 4, x = 10, b = 1 },
                  float = { anchor = "below", dx = 6 } }"#,
         );
-        let p = parse_props(&t, false).unwrap();
+        let p = parse_props(&t, false, &mut test_refs()).unwrap();
         assert_eq!(
             p.spec.layout.padding,
             Edges {
@@ -1995,14 +2219,24 @@ mod tests {
         let by_self = eval_table(&lua, r#"{ float = { self = {"end", "start"} } }"#);
         let by_self_at = eval_table(&lua, r#"{ float = { self_at = {"end", "start"} } }"#);
         assert_eq!(
-            parse_props(&by_self, false).unwrap().spec.layout.float,
-            parse_props(&by_self_at, false).unwrap().spec.layout.float
+            parse_props(&by_self, false, &mut test_refs())
+                .unwrap()
+                .spec
+                .layout
+                .float,
+            parse_props(&by_self_at, false, &mut test_refs())
+                .unwrap()
+                .spec
+                .layout
+                .float
         );
 
         // An unknown preset names the ones that exist instead of silently
         // floating against the parent.
         let bad_preset = eval_table(&lua, r#"{ float = "beneath" }"#);
-        let e = parse_props(&bad_preset, false).unwrap_err().to_string();
+        let e = parse_props(&bad_preset, false, &mut test_refs())
+            .unwrap_err()
+            .to_string();
         assert!(e.contains("beneath") && e.contains("below"), "{e}");
     }
 
@@ -2013,7 +2247,7 @@ mod tests {
             &lua,
             r#"{ size = 20, line_height = 30, color = 0x73d98cff, family = "mono" }"#,
         );
-        let style = parse_props(&t, false).unwrap().style;
+        let style = parse_props(&t, false, &mut test_refs()).unwrap().style;
         assert_eq!(
             style,
             TextStyle::new(20.0)
@@ -2023,14 +2257,14 @@ mod tests {
         );
         let t = eval_table(&lua, r#"{ wrap = "none", max_lines = 2, ellipsis = true }"#);
         assert_eq!(
-            parse_props(&t, false).unwrap().style,
+            parse_props(&t, false, &mut test_refs()).unwrap().style,
             TextStyle::default().nowrap().max_lines(2).ellipsis()
         );
         // `size` is applied first regardless of table iteration order, so a
         // color set alongside it survives the TextStyle::new reset.
         let t = eval_table(&lua, r##"{ color = "#fff", size = 12 }"##);
         assert_eq!(
-            parse_props(&t, false).unwrap().style,
+            parse_props(&t, false, &mut test_refs()).unwrap().style,
             TextStyle::new(12.0).color(Color::hex(0xffffffff))
         );
     }
@@ -2039,7 +2273,9 @@ mod tests {
     fn bad_values_name_the_prop() {
         let lua = Lua::new();
         let t = eval_table(&lua, r#"{ main_align = "middle" }"#);
-        let e = parse_props(&t, false).unwrap_err().to_string();
+        let e = parse_props(&t, false, &mut test_refs())
+            .unwrap_err()
+            .to_string();
         assert!(e.contains("main_align"), "{e}");
         assert!(e.contains("middle"), "{e}");
     }
@@ -3083,11 +3319,15 @@ mod tests {
                 .iter()
                 .map(|r| format!("metrics.{}", r.name)),
         );
+        // And the tokens (ADR 0027): two tables, the app's own names
+        // under them, so the keys pinned here are the two halves.
+        documented.push("tokens.colors".into());
+        documented.push("tokens.lengths".into());
         documented.sort();
         assert_eq!(
             sorted("values"),
             documented,
-            "env's value keys and schema::ENV_FIELDS + THEME_ROLES + METRIC_ROLES disagree"
+            "env's value keys and schema::ENV_FIELDS + THEME_ROLES + METRIC_ROLES + tokens disagree"
         );
         assert_eq!(
             sorted("calls"),
@@ -3121,10 +3361,202 @@ mod tests {
                 "set_edit_text",
                 "set_focus",
                 "set_scroll",
+                "set_tokens",
                 "set_window_size",
                 "text_hit",
             ],
             "env's queries and verbs changed; update env_table's doc too"
+        );
+    }
+
+    /// Tokens (ADR 0027): the `tokens` global is declared under the
+    /// script's origin, a `$name` resolves in a colour, a length, a sizing,
+    /// a pad edge, a border and a span, a themed colour follows the
+    /// appearance, and `env.tokens` reads the frame's values back.
+    #[test]
+    fn a_script_declares_tokens_and_references_them_by_name() {
+        let mut ext = LuaExtension::from_source(
+            "tokens",
+            r##"
+                tokens = {
+                  colors = { peach = "#ffcc99", ink = { light = "#111111", dark = "#eeeeee" } },
+                  lengths = { side_w = 132, gap = 6 },
+                }
+                function view(env)
+                  seen = env.tokens
+                  return column { pad = "$gap", gap = "$gap",
+                    row { key = "a", width = "$side_w", height = 20, bg = "$peach",
+                          border = { w = "$gap", color = "$ink" }, radius = "$radius" },
+                    row { key = "b", width = 20, height = "$side_w", bg = "$surface",
+                          pad = { l = "$gap", r = 2 } },
+                    text({ "x", { "y", color = "$peach", bg = "$ink" } }, { size = "$gap", color = "$peach" }),
+                  }
+                end
+            "##,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        assert!(core.take_warnings().is_empty());
+        let peach = Color::hex(0xffcc99ff);
+        let paper = Color::hex(0xeeeeeeff);
+        let radius = core.metrics().radius;
+        let surface = core.theme().surface;
+        let dl = core.output().0;
+        let a = dl
+            .quads
+            .iter()
+            .find(|q| q.color == peach && q.kind == kui_core::QuadKind::Solid)
+            .expect("the peach box");
+        assert_eq!(a.rect.w, 132.0, "width from a length token");
+        assert_eq!(a.border_w, 6.0);
+        assert_eq!(
+            a.border_color, paper,
+            "the dark half on an unknown appearance"
+        );
+        assert_eq!(a.radius[0], radius, "$radius is the metric");
+        let b = dl
+            .quads
+            .iter()
+            .find(|q| q.color == surface && q.rect.h == 132.0)
+            .expect("the $surface box, 132 tall");
+        assert_eq!(b.rect.w, 20.0);
+        let seen: Table = ext.lua.globals().get("seen").unwrap();
+        let colors: Table = seen.get("colors").unwrap();
+        let lengths: Table = seen.get("lengths").unwrap();
+        assert_eq!(colors.get::<u32>("peach").unwrap(), 0xffcc99ff);
+        assert_eq!(colors.get::<u32>("ink").unwrap(), 0xeeeeeeff);
+        assert_eq!(lengths.get::<f32>("side_w").unwrap(), 132.0);
+        // The light half, without the script changing.
+        core.set_system(kui_core::SystemEnv {
+            appearance: kui_core::Appearance::Light,
+            ..Default::default()
+        });
+        frame(&mut core, &mut ext);
+        let a = core
+            .output()
+            .0
+            .quads
+            .iter()
+            .find(|q| q.color == peach && q.kind == kui_core::QuadKind::Solid)
+            .unwrap();
+        assert_eq!(a.border_color, Color::hex(0x111111ff));
+    }
+
+    /// A script's table is its own: its `$peach` is the host's until it
+    /// declares one, its `grey` never reaches the host, and
+    /// `env.set_tokens` from inside a view replaces the script's table for
+    /// the nodes after the call.
+    #[test]
+    fn a_scripts_tokens_sit_over_the_hosts() {
+        let mut ext = LuaExtension::from_source(
+            "guest",
+            r##"
+                tokens = { colors = { grey = "#808080" } }
+                function view(env)
+                  first = { peach = env.tokens.colors.peach, grey = env.tokens.colors.grey }
+                  if redeclare then
+                    env.set_tokens { colors = { peach = "#ffaa77" }, lengths = { w = 40 } }
+                  end
+                  second = { peach = env.tokens.colors.peach, grey = env.tokens.colors.grey }
+                  return column { row { key = "a", width = redeclare and "$w" or 10, height = 10, bg = "$peach" } }
+                end
+            "##,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        core.set_tokens(kui_core::Tokens::new().color("peach", Color::hex(0xffcc99ff)));
+        frame(&mut core, &mut ext);
+        let first: Table = ext.lua.globals().get("first").unwrap();
+        assert_eq!(
+            first.get::<u32>("peach").unwrap(),
+            0xffcc99ff,
+            "the host's peach"
+        );
+        assert_eq!(
+            first.get::<u32>("grey").unwrap(),
+            0x808080ff,
+            "its own grey"
+        );
+        assert!(
+            core.token_lookup().color("grey").is_err(),
+            "the guest's grey is not the host's"
+        );
+        assert!(core.take_warnings().is_empty());
+
+        ext.lua.globals().set("redeclare", true).unwrap();
+        frame(&mut core, &mut ext);
+        let second: Table = ext.lua.globals().get("second").unwrap();
+        assert_eq!(
+            second.get::<u32>("peach").unwrap(),
+            0xffaa77ff,
+            "its own peach now"
+        );
+        assert!(
+            second.get::<Option<u32>>("grey").unwrap().is_none(),
+            "replaced whole"
+        );
+        let a = core
+            .output()
+            .0
+            .quads
+            .iter()
+            .find(|q| q.color == Color::hex(0xffaa77ff))
+            .expect("painted the script's peach");
+        assert_eq!(a.rect.w, 40.0);
+        assert_eq!(
+            core.token_lookup().color("peach"),
+            Ok(Color::hex(0xffcc99ff)),
+            "the host's table did not move"
+        );
+    }
+
+    /// A `$name` nothing declared warns once and leaves the slot at its
+    /// default; a declared role name warns at the declaration.
+    #[test]
+    fn a_missing_token_warns_and_paints_nothing() {
+        let mut ext = LuaExtension::from_source(
+            "missing",
+            r##"
+                tokens = { colors = { surface = "#ff0000", peach = "#ffcc99" }, lengths = { gap = 6 } }
+                function view(env)
+                  return column {
+                    row { key = "a", width = "$gap", height = 10, bg = "$peech", pad = "$peach" },
+                    row { key = "b", width = "$peach", height = 10, bg = "$gap" },
+                  }
+                end
+            "##,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        frame(&mut core, &mut ext);
+        let ws = core.take_warnings();
+        let mut codes: Vec<&str> = ws.iter().map(|w| w.code).collect();
+        codes.sort();
+        assert_eq!(
+            codes,
+            [
+                kui_core::diag::RESERVED_TOKEN,
+                kui_core::diag::UNKNOWN_TOKEN,
+                kui_core::diag::UNKNOWN_TOKEN,
+                kui_core::diag::UNKNOWN_TOKEN,
+            ],
+            "surface refused once; peech, peach-as-length and gap-as-colour once each: {ws:?}"
+        );
+        assert!(
+            ws.iter().any(|w| w
+                .message
+                .contains("`$gap` is a length token, and this slot takes a color")),
+            "{ws:?}"
+        );
+        // No solid quad was painted: both bgs fell to transparent.
+        assert!(
+            core.output()
+                .0
+                .quads
+                .iter()
+                .all(|q| q.kind != kui_core::QuadKind::Solid || q.color.a == 0.0)
         );
     }
 

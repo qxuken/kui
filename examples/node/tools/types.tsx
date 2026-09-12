@@ -7,8 +7,27 @@
 // 0.1.0-alpha.5 did). A tool, not an example: nothing here is a subject.
 //
 //   node dist/tools/types.mjs --headless
-import { createApp, decodeQuads, Ctx } from '@qxuken/kui';
+import { createApp, decodeQuads, defineTokens, roles, Ctx } from '@qxuken/kui';
 import type { App, CoreMsg, KeyMsg, Theme, UiEvent } from '@qxuken/kui';
+
+// Tokens (ADR 0027): the names typed at the declaration. `T.peach` is the
+// literal `'$peach'` branded as a colour, `T.sideW` a length; a colour
+// token in a length slot is a type error, a name that was never declared
+// is a property that does not exist.
+const TOKENS = {
+  colors: { peach: '#ffcc99', ink: { light: '#111111', dark: '#eeeeee' } },
+  lengths: { sideW: 132, gap: 6 },
+} as const;
+const T = defineTokens(TOKENS);
+const peach: '$peach' = T.peach;
+const sideW: '$sideW' = T.sideW;
+// @ts-expect-error — nothing declared `peech`
+const typo = T.peech;
+// @ts-expect-error — a colour token is not a length
+const wrongKind = <box width={T.peach} />;
+// @ts-expect-error — a role is a colour or a length, never both
+const wrongRole = <box width={roles.surface} />;
+void peach; void sideW; void typo; void wrongKind; void wrongRole;
 
 type Model = { count: number; note: string };
 type CounterMsg = { kind: 'add'; by: number } | { kind: 'reset' };
@@ -55,7 +74,10 @@ function Counter({ count, t }: { count: number; t: Theme }) {
 const view = (model: Model) => {
   const t = app.ctx.theme();
   return (
-    <box pad={24} gap={16} bg={t.bg} width="grow" height="grow">
+    <box pad={24} gap={T.gap} bg={t.bg} width="grow" height="grow">
+      <box key="tokened" width={T.sideW} height={T.gap} bg={T.peach} padL={T.gap}
+           borderW={T.gap} borderColor={T.ink} radius={roles.radius} />
+      <text size={T.gap} color={roles.muted}>tokens</text>
       <text size={24} color={t.fg}><span bold color={t.accent}>kui</span> × Node × JSX</text>
       <Counter count={model.count} t={t} />
       <edit key="note" label="note" initial="" size={16} width={280} padX={10} padY={6}
@@ -66,14 +88,18 @@ const view = (model: Model) => {
 };
 
 const app: App<Model, Msg> = createApp({ init, update, view }, { width: 640, height: 480 });
+app.ctx.setTokens(TOKENS);
 
 if (!process.argv.includes('--headless')) {
   console.log('types: a typecheck fixture; run with --headless to execute it');
   process.exit(0);
 }
 
+app.ctx.setInspect(true);
 const stats = app.render();
 console.log(`frame: ${stats.quadCount} quads @ ${stats.viewportW}x${stats.viewportH}`);
+const tokened = app.ctx.nodes().find((n) => n.label === 'tokened');
+const resolved = app.ctx.tokens();
 
 // Buttons are the radius-6 solid quads, in row order: +1, -1, reset.
 const buttons = decodeQuads(app.ctx.quads())
@@ -120,6 +146,10 @@ const checks: [boolean, string][] = [
   [imageQuads === 1, 'an image is one image quad'],
   [p?.code === 'x' && p?.ctrl === true && p?.tag?.tool === 'brush', 'a key sink hears the chord with its tag'],
   [p?.phase === 'down' && up?.phase === 'up' && up?.text === null, 'both halves of the key, with keyUp'],
+  [tokened?.rect.w === 132 && tokened?.bg === 0xffcc99ff && tokened?.borderWidth === 6, 'a $name resolves in a length and a colour slot'],
+  [tokened?.borderColor === 0xeeeeeeff && resolved.colors.ink === 0xeeeeeeff, 'a themed token takes the dark half on the dark base'],
+  [tokened?.radius[0] === app.ctx.metrics().radius, '$radius is the metric'],
+  [app.ctx.warnings().every((w) => w.code !== 'unknown-token' && w.code !== 'reserved-token'), 'no token warned'],
 ];
 let ok = true;
 for (const [cond, what] of checks) {

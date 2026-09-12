@@ -594,12 +594,52 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         "#,
             rows = conformance::LAYERS_ROWS,
         ),
+        // ADR 0027: the table is the `tokens` global, declared once at
+        // load; every value below is a `$name` the parser resolves,
+        // `$surface` and `$radius` being the roles, `$nothing` the one
+        // that warns. The declaration itself sits outside `view`, in the
+        // prelude this arm returns beside the body.
+        "tokens" => {
+            let keys = conformance::TOKEN_KEYS;
+            format!(
+                r##"
+            return row {{ pad = {{ l = "$gap", r = 10, t = 10, b = 10 }}, gap = "$gap",
+              column {{ key = "{k0}", width = "$side_w", height = 30, bg = "$peach" }},
+              column {{ key = "{k1}", width = "$side_w", height = 30, bg = "$ink",
+                        border = {{ w = "$gap", color = "$peach" }} }},
+              column {{ key = "{k2}", width = "$side_w", height = 30, bg = "$surface", radius = "$radius" }},
+              column {{ key = "{k3}", width = "$side_w", height = 30, bg = "$nothing" }},
+              text({{ "tokens", {{ "x", color = "$ink" }} }}, {{ size = "$big", color = "$peach" }}),
+            }}
+        "##,
+                k0 = keys[0],
+                k1 = keys[1],
+                k2 = keys[2],
+                k3 = keys[3],
+            )
+        }
         other => panic!("no Lua scene for {other:?} — every corpus scene needs one"),
+    };
+    let prelude = match scene.name {
+        "tokens" => {
+            let colors = conformance::TOKEN_COLORS
+                .iter()
+                .map(|(n, l, d)| format!("{n} = {{ light = 0x{l:08x}, dark = 0x{d:08x} }}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let lengths = conformance::TOKEN_LENGTHS
+                .iter()
+                .map(|(n, v)| format!("{n} = {v:?}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("tokens = {{ colors = {{ {colors} }}, lengths = {{ {lengths} }} }}\n")
+        }
+        _ => String::new(),
     };
     // Every scene also records what the script saw in `env.window`, so the
     // test can assert the readback: the facts a scene is driven under are
     // the facts its view read, through the surface a script has.
-    format!("function view(env)\n  seen_window = env.window\n{body}\nend\n")
+    format!("{prelude}function view(env)\n  seen_window = env.window\n{body}\nend\n")
 }
 
 #[test]

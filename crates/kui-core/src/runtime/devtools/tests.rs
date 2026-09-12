@@ -1055,3 +1055,93 @@ fn a_placement_chosen_in_the_panel_s_window_survives_the_window_closing() {
     frame(&mut core);
     assert!(core.key_of("kui-devtools/stream").is_some());
 }
+
+/// Tokens (ADR 0027, decision 7): the facts tab lists what the app
+/// declared with the value in effect, and the inspector prints a token's
+/// name after a value it painted — `bg` by colour, `gap` by length — and
+/// nothing after a value no token holds.
+#[test]
+fn the_facts_list_the_tokens_and_the_inspector_names_a_painted_one() {
+    let mut core = Core::new();
+    core.set_devtools(true);
+    core.set_inspect(true);
+    core.set_tokens(
+        crate::tokens::Tokens::new()
+            .color("peach", Color::hex(0xffcc99ff))
+            .color_themed("ink", Color::hex(0x111111ff), Color::hex(0xeeeeeeff))
+            .length("gap", 7.0),
+    );
+    let view = |ui: &mut Ui<'_>| {
+        ui.with(
+            NodeSpec::column()
+                .width(Sizing::Grow(1.0))
+                .height(Sizing::Grow(1.0))
+                .gap(7.0),
+            |ui| {
+                ui.with_keyed(
+                    "swatch",
+                    NodeSpec::column()
+                        .width(Sizing::Fixed(20.0))
+                        .height(Sizing::Fixed(20.0))
+                        .bg(Color::hex(0xffcc99ff))
+                        .focusable(),
+                    |_| {},
+                );
+            },
+        );
+    };
+    for _ in 0..2 {
+        let mut ui = core.frame(VIEWPORT, 1.0);
+        view(&mut ui);
+        ui.finish();
+    }
+    // The panel opens on the events tab; `N` walks events → tree → facts.
+    core.handle_input(chord('N'));
+    core.handle_input(chord('N'));
+    for _ in 0..2 {
+        let mut ui = core.frame(VIEWPORT, 1.0);
+        view(&mut ui);
+        ui.finish();
+    }
+    assert_eq!(state(&core, |s| s.tab), Tab::Facts);
+    let texts = |core: &Core| -> Vec<String> {
+        core.nodes().iter().filter_map(|n| n.text.clone()).collect()
+    };
+    let t = texts(&core);
+    assert!(t.iter().any(|s| s == "peach"), "{t:?}");
+    assert!(t.iter().any(|s| s == "#ffcc99ff"), "{t:?}");
+    assert!(
+        t.iter().any(|s| s == "#eeeeeeff · #111111ff"),
+        "a themed colour shows the half in effect first: {t:?}"
+    );
+    assert!(t.iter().any(|s| s == "7 px"), "{t:?}");
+    let facts = state(&core, |s| s.facts.tokens.clone());
+    assert_eq!(facts.len(), 3);
+    assert_eq!(facts[1].resolved, Color::hex(0xeeeeeeff));
+
+    // Select the swatch in the tree tab: its inspector names the colour
+    // and leaves the unnamed size alone.
+    core.handle_input(chord('N'));
+    core.handle_input(chord('N'));
+    for _ in 0..2 {
+        let mut ui = core.frame(VIEWPORT, 1.0);
+        view(&mut ui);
+        ui.finish();
+    }
+    let swatch = core.key_of("swatch").unwrap();
+    let row = core
+        .key_of(&format!("node:{:016x}", swatch.0))
+        .expect("the swatch has a row");
+    access_click(&mut core, row);
+    for _ in 0..2 {
+        let mut ui = core.frame(VIEWPORT, 1.0);
+        view(&mut ui);
+        ui.finish();
+    }
+    let t = texts(&core);
+    assert!(t.iter().any(|s| s == "#ffcc99ff · peach"), "{t:?}");
+    assert!(
+        t.iter().any(|s| s == "0, 0 · 20×20"),
+        "the rect prints bare: {t:?}"
+    );
+}

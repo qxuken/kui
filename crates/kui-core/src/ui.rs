@@ -181,6 +181,45 @@ impl<'a> Ui<'a> {
         *self.core.metrics()
     }
 
+    /// Declare the tokens this origin references by name
+    /// (`docs/adr/0027-tokens-beside-the-theme.md`); see
+    /// [`Core::set_tokens`](crate::runtime::Core::set_tokens). Inside a
+    /// fill the table is the extension's own.
+    pub fn set_tokens(&mut self, tokens: crate::tokens::Tokens) {
+        self.core.set_tokens(tokens);
+    }
+
+    /// What a `$name` resolves to this frame — the running origin's
+    /// table over the host's, the roles in front of both — for a view
+    /// that reads a token by name rather than holding its id.
+    pub fn tokens(&self) -> crate::tokens::TokenLookup<'_> {
+        self.core.token_lookup()
+    }
+
+    /// A colour token by name, this frame's half; a name that resolves
+    /// to nothing raises `unknown-token` and answers transparent, the way
+    /// a `$name` in a prop does.
+    pub fn token_color(&mut self, name: &str) -> crate::color::Color {
+        match self.core.token_lookup().color(name) {
+            Ok(c) => c,
+            Err(e) => {
+                self.core.warn_unknown_token(&e);
+                crate::color::Color::TRANSPARENT
+            }
+        }
+    }
+
+    /// A length token by name; unknown answers 0 and warns, as above.
+    pub fn token_length(&mut self, name: &str) -> f32 {
+        match self.core.token_lookup().length(name) {
+            Ok(v) => v,
+            Err(e) => {
+                self.core.warn_unknown_token(&e);
+                0.0
+            }
+        }
+    }
+
     /// Declares this frame's window title (declare every frame you care;
     /// the driver diffs and applies changes).
     pub fn window_title(&mut self, title: &str) {

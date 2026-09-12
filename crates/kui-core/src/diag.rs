@@ -316,6 +316,20 @@ warnings! {
     /// from the extension's list. See
     /// `docs/adr/0014-slots-an-extension-fills-in-place.md`, decision 5.
     pub const UNKNOWN_SLOT: &str = "unknown-slot";
+    /// A colour or length prop named a token — `bg = "$peach"` — that
+    /// nothing declared and that is no theme or metrics role, or named one
+    /// of the other kind (a length in a colour slot). The slot is left at
+    /// its default: transparent, or zero. Raised by the binding that
+    /// lowered the reference, through `Core::warn_unknown_token`, once per
+    /// name, since the name is gone by the time the frame is a tree. See
+    /// `docs/adr/0027-tokens-beside-the-theme.md`, decision 4.
+    pub const UNKNOWN_TOKEN: &str = "unknown-token";
+    /// A declared token took a theme or metrics role's name (`surface`,
+    /// `radius`) and was dropped: the roles are the corpus's contract and
+    /// `$surface` always means the theme's, so an app cannot shadow one.
+    /// Rename the token. See `docs/adr/0027-tokens-beside-the-theme.md`,
+    /// decision 6.
+    pub const RESERVED_TOKEN: &str = "reserved-token";
     /// A slot name declared twice in one frame. The second declaration was
     /// ignored: a fill is keyed by the slot's full name, so two fills of one
     /// name would share every key. Two places for one extension are two

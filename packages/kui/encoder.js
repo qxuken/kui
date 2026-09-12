@@ -56,6 +56,36 @@ export function createEncoder(P) {
   // and the hud is the graph's other spelling.
   const ELEMENT_OF = { span: 'text', latencyHud: 'latencyGraph' };
   let unknown = [];
+  // A `$name` in a colour or length slot rides as the prop's id with this
+  // bit set and the token's index in the value slot (ADR 0027, decision
+  // 4). The roles come first in each index space — `$surface` is index 1
+  // of the colours whatever the app declared — then the app's own, in the
+  // order `setTokens` declared them; `index.js` builds that map and hands
+  // it to every encode, since one encoder serves every surface.
+  const TOKEN_TAG = P.tokenTag;
+  const ROLE_TOKENS = new Map();
+  (P.tokenRoles?.colors ?? []).forEach((name, i) => ROLE_TOKENS.set(name, { kind: 'color', index: i }));
+  (P.tokenRoles?.lengths ?? []).forEach((name, i) => ROLE_TOKENS.set(name, { kind: 'length', index: i }));
+  const COLOR_ROLES = (P.tokenRoles?.colors ?? []).length;
+  const LENGTH_ROLES = (P.tokenRoles?.lengths ?? []).length;
+  let tokens = null;
+  let unknownTokens = [];
+
+  // Whether a prop value is a reference: a string starting with `$`.
+  const isRef = (v) => typeof v === 'string' && v.length > 1 && v.charCodeAt(0) === 36;
+
+  // The wire index of `$name` in the `kind` space, or `undefined` for a
+  // name that resolved to nothing or to the other kind — reported like an
+  // unknown prop, and the slot is left out so the core keeps its default.
+  function tokenRef(v, kind) {
+    const name = v.slice(1);
+    const hit = ROLE_TOKENS.get(name) ?? tokens?.get(name);
+    if (hit === undefined || hit.kind !== kind) {
+      unknownTokens.push([name, kind]);
+      return undefined;
+    }
+    return hit.index;
+  }
 
   function checkProps(type, p) {
     const element = ELEMENT_OF[type] ?? type;
@@ -206,9 +236,18 @@ export function createEncoder(P) {
       n++;
     }
     if (p.size != null) {
-      f[fi++] = PR.size.id;
-      f[fi++] = p.size;
-      n++;
+      if (isRef(p.size)) {
+        const i = tokenRef(p.size, 'length');
+        if (i !== undefined) {
+          f[fi++] = PR.size.id | TOKEN_TAG;
+          f[fi++] = i;
+          n++;
+        }
+      } else {
+        f[fi++] = PR.size.id;
+        f[fi++] = p.size;
+        n++;
+      }
     }
     if (key != null && !isRoot) {
       f[fi++] = PR.key.id;
@@ -346,6 +385,18 @@ export function createEncoder(P) {
             }
             break;
           }
+          // A reference on a colour, length or sizing row: the tagged id
+          // and the index, or nothing at all for a name that did not
+          // resolve (reported through `unknownTokens`).
+          if (isRef(v) && (def.kind === 'f32' || def.kind === 'color' || def.kind === 'sizing')) {
+            const i = tokenRef(v, def.kind === 'color' ? 'color' : 'length');
+            if (i !== undefined) {
+              f[fi++] = def.id | TOKEN_TAG;
+              f[fi++] = i;
+              n++;
+            }
+            break;
+          }
           f[fi++] = def.id;
           switch (def.kind) {
             case 'f32':
@@ -391,17 +442,51 @@ export function createEncoder(P) {
     reserve(16);
     const padded = [pad, padX, padY, padL, padR, padT, padB];
     let padSet = 0;
-    for (let i = 0; i < padded.length; i++) if (padded[i] !== undefined) padSet |= 1 << i;
+    let padRefs = 0;
+    for (let i = 0; i < padded.length; i++) {
+      if (padded[i] === undefined) continue;
+      if (isRef(padded[i])) {
+        // An edge naming a token: its index rides in the value slot and a
+        // second mask says so; one that did not resolve is left unset.
+        const t = tokenRef(padded[i], 'length');
+        if (t === undefined) {
+          padded[i] = undefined;
+          continue;
+        }
+        padded[i] = t;
+        padRefs |= 1 << i;
+      }
+      padSet |= 1 << i;
+    }
     if (padSet) {
-      f[fi++] = PR.pad.id;
+      f[fi++] = padRefs ? PR.pad.id | TOKEN_TAG : PR.pad.id;
       f[fi++] = padSet;
+      if (padRefs) f[fi++] = padRefs;
       for (const v of padded) f[fi++] = v ?? 0;
       n++;
     }
     if (borderW !== undefined) {
-      f[fi++] = PR.border.id;
-      f[fi++] = borderW;
-      f[fi++] = borderColor != null ? color(borderColor) : 0;
+      // Tagged when either half is a reference: a flags word (1 the
+      // width, 2 the colour) then the two slots.
+      let flags = 0;
+      let w = borderW;
+      let c = borderColor != null ? borderColor : 0;
+      if (isRef(w)) {
+        const t = tokenRef(w, 'length');
+        w = t ?? 0;
+        if (t !== undefined) flags |= 1;
+      }
+      if (isRef(c)) {
+        const t = tokenRef(c, 'color');
+        c = t ?? 0;
+        if (t !== undefined) flags |= 2;
+      } else if (c !== 0) {
+        c = color(c);
+      }
+      f[fi++] = flags ? PR.border.id | TOKEN_TAG : PR.border.id;
+      if (flags) f[fi++] = flags;
+      f[fi++] = w;
+      f[fi++] = c;
       n++;
     }
     if (overflow) {
@@ -428,9 +513,22 @@ export function createEncoder(P) {
     return node != null && typeof node === 'object' && node.type === 'span';
   }
 
+  // A span colour as the wire carries it: `{ v, ref }` — the `u32`, or a
+  // token index with `ref` set; `undefined` for none (a reference that
+  // did not resolve inherits, like no colour at all).
+  function spanColor(v, inherited) {
+    if (v == null) return inherited;
+    if (isRef(v)) {
+      const i = tokenRef(v, 'color');
+      return i === undefined ? inherited : { v: i, ref: true };
+    }
+    return { v: color(v), ref: false };
+  }
+
   // Flattens <span> nesting into (text, flags, color, bg) quads, inheritance
   // matching the Rust collect_spans. Flags: 1 bold, 2 italic, 4 has color,
-  // 8 underline, 16 strikethrough, 32 has bg.
+  // 8 underline, 16 strikethrough, 32 has bg, 64 the colour is a token
+  // index, 128 the bg is.
   function collectSpans(node, st, out) {
     if (node == null || typeof node === 'boolean') return;
     if (typeof node === 'string' || typeof node === 'number') {
@@ -440,8 +538,10 @@ export function createEncoder(P) {
         (st.color !== undefined ? 4 : 0) |
         (st.underline ? 8 : 0) |
         (st.strikethrough ? 16 : 0) |
-        (st.bg !== undefined ? 32 : 0);
-      out.push([String(node), flags, st.color ?? 0, st.bg ?? 0]);
+        (st.bg !== undefined ? 32 : 0) |
+        (st.color?.ref ? 64 : 0) |
+        (st.bg?.ref ? 128 : 0);
+      out.push([String(node), flags, st.color?.v ?? 0, st.bg?.v ?? 0]);
       return;
     }
     if (Array.isArray(node)) {
@@ -455,10 +555,10 @@ export function createEncoder(P) {
       {
         bold: st.bold || !!p.bold,
         italic: st.italic || !!p.italic,
-        color: p.color != null ? color(p.color) : st.color,
+        color: spanColor(p.color, st.color),
         underline: st.underline || !!p.underline,
         strikethrough: st.strikethrough || !!p.strikethrough,
-        bg: p.bg != null ? color(p.bg) : st.bg,
+        bg: spanColor(p.bg, st.bg),
       },
       out,
     );
@@ -763,10 +863,15 @@ export function createEncoder(P) {
   }
 
   return {
-    encode(tree) {
+    // `tokenMap` is the surface's `Map<name, { kind, index }>` from its
+    // `setTokens` (`index.js`), or nothing for a surface that declared none
+    // — the roles still resolve.
+    encode(tree, tokenMap) {
       fi = 0;
       ui = 0;
       unknown = [];
+      unknownTokens = [];
+      tokens = tokenMap ?? null;
       reserve(96);
       f[fi++] = VERSION;
       f[fi++] = OP.root;
@@ -781,22 +886,29 @@ export function createEncoder(P) {
       reserve(4);
       f[fi++] = OP.end;
       // `unknown` is the names this pass had no id for — `[element, name]`
-      // pairs the caller hands to `warnUnknownProps`. Like the buffers, it
-      // is valid until the next encode().
-      return { stream: f.subarray(0, fi), strings: u.subarray(0, ui), unknown };
+      // pairs the caller hands to `warnUnknownProps` — and `unknownTokens`
+      // the `$name`s that resolved to nothing, `[name, kind]` pairs for
+      // `warnUnknownTokens`. Like the buffers, both are valid until the
+      // next encode().
+      return { stream: f.subarray(0, fi), strings: u.subarray(0, ui), unknown, unknownTokens };
     },
     // One `<text>` element and nothing else — what `measureText` sends, so
     // a measured label is flattened and its style read by the same code
     // that lowers the drawn one. `content` is what a `<text>` would hold
     // (strings, numbers, `<span>`s), `style` its props.
-    encodeText(content, style) {
+    encodeText(content, style, tokenMap) {
       fi = 0;
       ui = 0;
       unknown = [];
+      unknownTokens = [];
+      tokens = tokenMap ?? null;
       reserve(96);
       f[fi++] = VERSION;
       element({ type: 'text', props: style ?? {}, children: content });
-      return { stream: f.subarray(0, fi), strings: u.subarray(0, ui), unknown };
+      return { stream: f.subarray(0, fi), strings: u.subarray(0, ui), unknown, unknownTokens };
     },
+    // How many role indices sit in front of the app's own, per kind: what
+    // `index.js` adds to a declaration's position to get its wire index.
+    roleCounts: { colors: COLOR_ROLES, lengths: LENGTH_ROLES },
   };
 }

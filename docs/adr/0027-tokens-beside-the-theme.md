@@ -1,11 +1,13 @@
 ---
-status: proposed
+status: accepted
 date: 2026-09-12
 ---
 
 # Tokens beside the theme: named colours and lengths an app declares, referenced by name, resolved by the binding
 
-> **Proposed (2026-09-12), nothing built.** Backlog T4 asked whether an app
+> **Accepted (2026-09-12), built the same day** — what the building
+> changed is at the end, under [*What the building
+> changed*](#what-the-building-changed). Backlog T4 asked whether an app
 > whose palette *is* the design — the LCARS pomodoro, the mind map — should
 > get the theme's mechanism for a vocabulary of its own. This document was
 > written twice on the same day. The first draft counted the two apps and
@@ -424,3 +426,68 @@ node.
 - **Names for the mind map's branch palette** — whether a legend wants a
   *family* (`hue3` naming three values) is a question for the day the
   panel shows one.
+
+## What the building changed
+
+1. **The core resolves on read, not once a frame.** Decision 3's
+   `resolved_colors` vector is not there: `ColorToken::resolve(&theme)`
+   picks the half at every lookup, one compare against a frame-stable
+   theme, so nothing is rebuilt at `refresh_theme` and a table declared
+   mid-view is right for the nodes after it. `TokenLookup` is what every
+   binding resolves through (`Core::token_lookup`), and it carries the
+   theme and the metrics for the roles.
+2. **A JSON object's key order does not survive the Node boundary.**
+   `serde_json` sorts it, and the index *is* the declaration order — so
+   the raw addon door (`setTokensRaw`) takes ordered `[name, value]`
+   pairs, and `index.js`'s `setTokens` builds the encoder's map and the
+   pairs from one `Object.entries` walk. Found by the first test that
+   declared two lengths.
+3. **Lua sorts its names.** A Lua table's iteration order is not one a
+   declaration can promise, so `parse_tokens` sorts the names; only
+   `env.tokens`'s listing order depends on it, since a script resolves by
+   name and never holds an index.
+4. **`env.tokens` is rebuilt by `env.set_tokens`.** The env table is a
+   snapshot built before `view` runs; a script that declares from inside
+   a view reads back what it declared, which the first test had wrong.
+5. **The origin resets at the end of a frame too.** It reset at
+   `begin_frame` only, so a driver that tagged the last nodes by a bare
+   `set_origin` (the Lua test harness does) left the next `set_tokens`
+   landing in that extension's table. `finish_frame` puts it back to the
+   host's.
+6. **Decision 5's promise is half a type.** `defineTokens` types
+   `T.peech` out and refuses a colour token in a length slot; it cannot
+   refuse a length token in a colour slot, because `ColorProp` admits
+   `string` and narrowing it to `` `#${string}` `` would break every
+   helper that returns a plain `string` (the pomodoro's `hoverOf`). That
+   case is caught at encode time, and `jsx-runtime.d.ts` says so on
+   `LengthToken`.
+7. **`unknown-token` is keyed by the name, not the node.** The name is
+   what is gone by the time the frame is a tree, and the encoder that
+   sees it does not know the node's key; once per name per session, the
+   message says the name, the kind wanted, and what the slot kept.
+8. **Two slots take no reference.** `cursorColor` on `cells` (a composite
+   the encoder writes by hand — a `$` there is a `bad color` throw) and a
+   `fragment`'s parameters (floats by design). Every schema colour, f32
+   and sizing row, `size`, the `pad` edges, `border`'s two halves and a
+   span's two colours do.
+9. **The corpus gained a step, not just a scene.** No scene had ever
+   flipped the appearance, so ADR 0019's own light half was unpinned
+   across the bindings; `Step::Appearance(n)` (`Appearance::ALL`'s
+   index) is `set_system` in the Rust drive, `setEnv({ system })` in
+   Node, `kui_env_set_system` in C, and the Rust drive for Lua. The
+   `tokens` scene's report also pins the `system` event the flip posts.
+   The C round and the C adapter pass on all 32 scenes, and so does the
+   Node adapter in the full suite; run alone, its `fragments` scene
+   raises a `foreign-resource` the reference does not — a dead handle
+   reading as foreign in a fresh process — which predates this ADR at
+   `af043d4` and is filed as C31.
+10. **The devtools group tokens by origin number**, `tokens` for the
+    host's and `tokens · origin n` for an extension's — the panel has
+    no extension names, only origins. The inspector's reverse lookup
+    matches a node's paint against the tokens *its* origin sees (its
+    own and the host's), so a guest's `grey` does not name a host box
+    that happens to be the same grey.
+11. **`Refs` in `kui_lua` is public.** `parse_props` and its siblings
+    take one, and a host calling the parser directly makes it from
+    `core.token_lookup()`; `with_refs` is the private helper that raises
+    what did not resolve once the borrow is handed back.

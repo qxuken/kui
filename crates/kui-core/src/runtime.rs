@@ -126,6 +126,12 @@ pub struct Core {
     /// The sizes the stock widgets are built from (backlog T2): the
     /// palette's other axis, set by the app or [`Metrics::default`].
     metrics: crate::metrics::Metrics,
+    /// The named colours and lengths each origin declared (ADR 0027): the
+    /// host's under `OriginId::HOST`, an extension's under its own, so a
+    /// guest's declaration never replaces the host's palette. Read through
+    /// [`Core::token_lookup`], which puts the running origin's table over
+    /// the host's.
+    tokens: rustc_hash::FxHashMap<OriginId, crate::tokens::Tokens>,
     /// Window title declared this frame (immediate-mode: cleared each
     /// `begin_frame`; the driver diffs and applies). None = leave as-is.
     window_title: Option<String>,
@@ -559,6 +565,73 @@ impl Core {
         &self.metrics
     }
 
+    /// Declare the tokens the running origin references by name
+    /// (`docs/adr/0027-tokens-beside-the-theme.md`): the host's outside a
+    /// fill, the filling extension's inside one. Replaces that origin's
+    /// table whole, so an app whose lengths change with a viewport tier
+    /// declares again on `resize`. A name a role owns is dropped with a
+    /// `reserved-token` warning, once per name.
+    pub fn set_tokens(&mut self, tokens: crate::tokens::Tokens) {
+        for name in tokens.reserved() {
+            let w = Warning {
+                code: crate::diag::RESERVED_TOKEN,
+                key: Key::ROOT.str(crate::diag::RESERVED_TOKEN).str(name),
+                message: format!(
+                    "`{name}` is a theme or metrics role, so the token is dropped: `${name}` \
+                     always means the role's value, and an app does not shadow one"
+                ),
+            };
+            self.diag.raise(w);
+        }
+        self.tokens.insert(self.origin, tokens);
+    }
+
+    /// Whether `origin` has declared a table — what an extension asks
+    /// before declaring the one it was loaded with, so a per-frame `view`
+    /// declares once.
+    pub fn tokens_declared(&self, origin: OriginId) -> bool {
+        self.tokens.contains_key(&origin)
+    }
+
+    /// The running origin's own table, if it declared one.
+    pub fn tokens(&self) -> Option<&crate::tokens::Tokens> {
+        self.tokens.get(&self.origin)
+    }
+
+    /// What a `$name` in a prop resolves to this frame: the running
+    /// origin's table over the host's, the theme's and metrics' roles in
+    /// front of both. What every binding lowers a reference through.
+    pub fn token_lookup(&self) -> crate::tokens::TokenLookup<'_> {
+        let own = self.tokens.get(&self.origin);
+        let host = if self.origin == OriginId::HOST {
+            None
+        } else {
+            self.tokens.get(&OriginId::HOST)
+        };
+        crate::tokens::TokenLookup {
+            own,
+            host,
+            theme: &self.theme,
+            metrics: &self.metrics,
+        }
+    }
+
+    /// A binding lowered a reference that did not resolve: raise
+    /// `unknown-token`, once per name, saying which slot asked. The slot
+    /// keeps its default, which is what the message says.
+    pub fn warn_unknown_token(&mut self, err: &crate::tokens::TokenError) {
+        let name = match err {
+            crate::tokens::TokenError::Unknown(n)
+            | crate::tokens::TokenError::Kind { name: n, .. } => n,
+        };
+        let w = Warning {
+            code: crate::diag::UNKNOWN_TOKEN,
+            key: Key::ROOT.str(crate::diag::UNKNOWN_TOKEN).str(name),
+            message: err.to_string(),
+        };
+        self.diag.raise(w);
+    }
+
     /// Makes `metrics` the frame's: every stock widget from the next node
     /// on is built from it, and `ui.metrics()` reads it back. Logical px,
     /// before `env.scale`; a density is the app's to choose
@@ -596,6 +669,7 @@ impl Core {
             env: Env::default(),
             theme_source: ThemeSource::Derived,
             theme: Theme::default(),
+            tokens: Default::default(),
             metrics: crate::metrics::Metrics::default(),
             window_title: None,
             focus: None,

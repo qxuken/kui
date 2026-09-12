@@ -178,7 +178,9 @@ extern "C" {
  * reads `fragments` has nothing to change, and one that does now has a
  * texture to bind for a draw whose image_source says so. The same version
  * adds KuiMetrics with kui_metrics / kui_metrics_set (a new [out] struct,
- * no bump of its own).
+ * no bump of its own), and, still at 15, KuiColorToken / KuiLengthToken
+ * with kui_tokens_set, kui_token_color and kui_token_length (two new [in]
+ * arrays and three functions - nothing the library writes moved).
  */
 #define KUI_ABI_VERSION 15u
 uint32_t kui_abi_version(void);
@@ -192,7 +194,8 @@ uint32_t kui_abi_version(void);
  *          KuiMenuItem, KuiMenu), where an append moves the stride and
  *          bumps KUI_ABI_VERSION instead (ABI 8, ABI 13).
  *          KuiSpec, KuiSizing, KuiKeyframe, KuiEnter, KuiTextStyle, KuiSpan,
- *          KuiCell, KuiMenuItem, KuiMenu, KuiPlay, KuiAudio, KuiWindowConfig.
+ *          KuiCell, KuiMenuItem, KuiMenu, KuiPlay, KuiAudio, KuiWindowConfig,
+ *          KuiColorToken, KuiLengthToken.
  *
  * [out]    You allocate it; the library WRITES it. These lead with a
  *          `uint32_t size` you set to sizeof the struct, and the library
@@ -1705,6 +1708,51 @@ bool kui_metrics(KuiCtx *ctx, KuiMetrics *out);
  * struct - a zeroed metric is zero, not "leave it alone". Density is the
  * host's to choose; nothing in the OS is followed. */
 void kui_metrics_set(KuiCtx *ctx, const KuiMetrics *metrics);
+
+/* -- Tokens (docs/adr/0027-tokens-beside-the-theme.md) ----------------------
+ *
+ * The app's own named colours and lengths, beside the theme's roles and
+ * the metrics'. A colour token has a value per base - the same one twice
+ * for a colour that does not follow the appearance - and a length token
+ * is logical px. Declared whole with kui_tokens_set into the table of
+ * whoever is drawing: the host's outside a plugin's kui_ext_view, the
+ * plugin's own inside it, so a guest's declaration never replaces the
+ * host's palette. A plugin reads the host's names through the same two
+ * readers - its own table first, then the host's.
+ *
+ * A C prop carries no reference (KuiSpec.bg is a bare uint32_t), so read
+ * the value back and write it:
+ *
+ *   KuiColorToken colors[] = {
+ *     { KUI_STR("peach"), 0xffcc99ffu, 0xffcc99ffu },
+ *     { KUI_STR("ink"),   0x111111ffu, 0xeeeeeeffu },
+ *   };
+ *   KuiLengthToken lengths[] = { { KUI_STR("side_w"), 132.0f } };
+ *   kui_tokens_set(ctx, colors, 2, lengths, 1);
+ *   uint32_t peach; kui_token_color(ctx, KUI_STR("peach"), &peach);
+ *
+ * A name a theme or metrics role owns ("surface", "radius") is dropped
+ * with a `reserved-token` warning; asking for one answers with the role.
+ * Both structs are [in] arrays: an append moves the stride and is a bump. */
+typedef struct KuiColorToken {
+    KuiStr name;
+    uint32_t light; /* 0xRRGGBBAA on the light base */
+    uint32_t dark;  /* 0xRRGGBBAA on the dark base, and on an unknown appearance */
+} KuiColorToken;
+typedef struct KuiLengthToken {
+    KuiStr name;
+    float value; /* logical px, before the scale factor */
+} KuiLengthToken;
+/* Replace the drawing origin's table with these. Either array may be NULL
+ * with a zero count. */
+void kui_tokens_set(KuiCtx *ctx, const KuiColorToken *colors, size_t color_count,
+                    const KuiLengthToken *lengths, size_t length_count);
+/* This frame's value for a colour token or a theme role, by name. False
+ * for a name nothing declared or one that is a length (both also raise
+ * `unknown-token`, once per name), a bad context or a NULL out. */
+bool kui_token_color(KuiCtx *ctx, KuiStr name, uint32_t *out);
+/* The same for a length token or a metrics role, in logical px. */
+bool kui_token_length(KuiCtx *ctx, KuiStr name, float *out);
 
 /* The frame clock for transitions (monotonic seconds, any origin). Set before
  * each kui_frame_begin; never setting it makes transitions snap. */
