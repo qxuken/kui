@@ -3071,6 +3071,60 @@ the five doc comments reworded to the code; `NSWindow.level` /
 `WS_EX_TOPMOST` queried in `sync_env` or the two docs say "what was asked".
 
 
+## From the standard-menus round (2026-09-14)
+
+[ADR 0030](adr/0030-the-standard-menus-the-runner-keeps.md) gave every
+macOS process the Edit and Window menus a Mac app is expected to have
+when it declares none, and registered a declared `Window` menu as the
+platform's. Two things were seen while building it and left, on
+purpose.
+
+### `.` W14 — The standard Edit menu's rows never grey — **done (2026-09-14)**
+
+**Done the same day, the way the entry's last sentence feared and
+cheaper than it feared.** The re-entrance is avoided by not re-entering:
+`Shell::pump_menu_bar` reads six facts off the front window's core after
+every event batch (`edit_state`: `EditStore::history` and
+`has_selection`, both new and allocation-free; `selection()` /
+`cell_selection()`; `Core::chord_sink`, new — the sink a chord would
+reach) and stamps one byte on `BarTarget`; `validateMenuItem:` answers
+from the byte. The Edit menu autoenables, alone among kui's. Undo greys
+with no history, Cut/Copy with no selection, Paste with no editor, and
+every row stays lit while a sink would hear the chord. Read back through
+the AX API against `clipboard` in five focus states. CHANGELOG under
+alpha.12.
+
+ADR 0030, decision 3: the rows are the chords — Copy *is* ⌘C — and
+they carry no `MenuRole`, so nothing validates them. Copy with nothing
+selected, Undo with nothing to undo and Paste with no editor focused
+are all lit, and choosing one does what the key would have done, which
+is nothing. The keyboard has no greying either, so nothing is lost
+against the state before; what is lost is the Mac convention. The
+condition that would build it: a `BarTarget` that answers
+`validateMenuItem:` by asking the front pane's core (`edit.focused()`,
+`selection()`, `cell_selection()`, and an undo-depth reading the
+`EditStore` does not expose today), on every menu open, with the
+platform's own autoenable turned back on for that one menu. Not free —
+it is a read of the core from inside an AppKit callback the runner did
+not schedule, the kind of re-entrance `macos_menu` exists to avoid —
+and nothing has asked.
+
+### `~` W15 — AppKit's own Edit rows arrive unchecked
+
+Setting a bar with a menu titled `Edit` makes AppKit append Writing
+Tools ▸, AutoFill ▸, Start Dictation… and Emoji & Symbols to it — to
+the standard bar and to a declared one alike, now that both go through
+`setMainMenu:` of a fresh root. Emoji & Symbols (`orderFrontCharacterPalette:`)
+and Dictation insert through `NSTextInputClient`, which winit's view
+implements and kui reads as `InputEvent::Commit` (C17), so they most
+likely type into a focused editor and reach a key sink as text; Writing
+Tools and AutoFill want an `NSTextView`-shaped responder and most likely
+do nothing. Neither was driven: the AX audit can press the rows but not
+the palette they open. To check by hand, and to say in `howto.md` which
+of the four work — or, if the two that cannot work are worth hiding,
+to name the menu something other than `Edit` in the standard bar, which
+is the one lever the runner has (ADR 0018, *what running it showed*).
+
 ## After alpha.11
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After

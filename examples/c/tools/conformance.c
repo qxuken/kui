@@ -1270,6 +1270,8 @@ static void conf_virtual(KuiCtx *ui, const Fixtures *f, int phase) {
                     .gap = 0, .overflow = KUI_SCROLL_Y, .bg = 0x101018ff,
                     .role = KUI_ROLE_LIST, .label = KUI_STR("log")};
     kui_open_keyed(ui, KUI_STR("list"), &list, NULL);
+    /* conformance::VIRTUAL_ROW_COUNT: how many rows the list has, built or not. */
+    kui_row_count(ui, 109);
     KuiSpec lead = {.width = {KUI_GROW, 1}, .height = {KUI_FIXED, 20}};
     kui_open_keyed(ui, KUI_STR("lead"), &lead, NULL);
     kui_close(ui);

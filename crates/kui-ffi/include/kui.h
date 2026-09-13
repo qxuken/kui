@@ -2032,6 +2032,14 @@ uint64_t kui_open_keyed(KuiCtx *ctx, KuiStr label, const KuiSpec *spec, KuiValue
  * collide with row 0. Added after ABI 11 as a new symbol: no struct moved,
  * so a binary built against ABI 11 keeps working unrecompiled. */
 uint64_t kui_open_indexed(KuiCtx *ctx, uint64_t index, const KuiSpec *spec, KuiValue *on_click);
+/* How many indexed rows the open node's virtual list has, built or not
+ * (`rowCount`): what Select All inside a `selectable` virtual list spans,
+ * since the rows the frame built are all the core can see (ADR 0017, tier
+ * 3). Called inside the list's container, after its kui_open_*. The copy
+ * that follows is a selectionrange ask whose `to` byte is past the last
+ * row's length when that row was not built - cut it to the row. A new
+ * symbol, so KUI_ABI_VERSION stays 15. */
+void kui_row_count(KuiCtx *ctx, uint64_t rows);
 /* A slot: a position among the current node's children that an extension
  * fills, in place (docs/adr/0014-slots-an-extension-fills-in-place.md).
  * `name` is the full name, `namespace/slot`: the namespace the host gave

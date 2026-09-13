@@ -240,6 +240,9 @@ function virtual_column(env, opts, row)
   t.type = "column"
   t.scroll_y = true
   t.gap = 0
+  -- The whole list's size, built or not: what Select All inside a
+  -- selectable list spans.
+  t.row_count = n
 
   local at = 1
   -- Keyed, not auto-keyed: an auto key *is* the sibling index, and the rows

@@ -80,6 +80,70 @@ Nothing.
 
 ### Added
 
+- **The standard menus, on macOS** ([ADR
+  0030](docs/adr/0030-the-standard-menus-the-runner-keeps.md), raised by
+  pressing fn+ctrl+F in a kui window and getting nothing). macOS's window
+  shortcuts — Fill, Center, the tiling arrows, Return to Previous Size,
+  fn+F for full screen — are rows AppKit adds to the application's
+  *Window menu*, and fire through it; a process without one registered
+  as `NSApp.windowsMenu` has none of them, and until now no kui process
+  had one. A process that declares no bar now has the standard bar:
+  winit's application menu (kept, Services and all), an **Edit** menu
+  (Undo, Redo, Cut, Copy, Paste, Select All) and a **Window** menu
+  (Minimize ⌘M, Zoom, Enter Full Screen, Bring All to Front), the latter
+  registered so AppKit fills in Fill, Center, Move & Resize and the
+  window list. A declared bar stays exactly what the app declared, and a
+  menu it titles `Window` is registered as the platform's, the way a nib
+  is read — it gains Enter Full Screen, the one row AppKit adds only at
+  launch, and AppKit's tiling rows above the app's — and that one menu
+  is validated like the standard bar's, so Enter Full Screen reads *Exit
+  Full Screen* inside one and Remove Window from Set greys, while the
+  app's own rows keep the enable state they declared (a review of the
+  branch found the declared menu's rows never retitled). The Edit rows
+  are *chords, not roles*: choosing Copy replays ⌘C — the press to the
+  key-focused sink, the runner's clipboard half, the release — so an app
+  that binds ⌘C itself hears it from the menu too, and an editor copies
+  through the code the key takes. Popup windows stay out of the Window
+  menu's list. The `menu_bar` example declares a `Window` menu with one
+  checked row to show the rule.
+
+- **Select All in a virtual list is the data, not the built rows**
+  (`rowCount`, from running the standard bar: ⌘A in the clipboard
+  example's log selected the four lines on screen of two thousand). A
+  virtual list never told the core how big it is — the rows it built and
+  two spacers were all the frame said — so Select All had nothing to
+  span but the built rows. `rowCount` is the new row (`rowCount` /
+  `row_count` / `kui_row_count` / `Ui::row_count`, prop id 100): how
+  many `index`ed rows the list has, built or not, declared on the
+  container by `virtualColumn`, `virtual_column`, `virtual_rows` and
+  Lua's `virtual_column` without a line in the app. With it, Select All
+  inside a `selectable` virtual list spans rows `0..rowCount`: an end in
+  a built row is that row's run, one in an unbuilt row is placed by its
+  index alone (the mechanism ADR 0017 tier 3 already had for a scrolled
+  drag), the last row's end spelled `select::ROW_END` (`u32::MAX`) since
+  the core never laid that row out — and once the list scrolls that row
+  into the built window the end lands in the row's own runs, so the
+  highlight at the bottom covers every built row (the review of the
+  branch found it collapsing to nothing there) — and the copy is the `selectionrange`
+  ask the app already answers, `to.byte` past the row's length meaning
+  the whole row (both clipboard examples cut to the row already; the
+  contract now says so). The corpus's `virtual` scene declares it in all
+  four bindings, so an adapter that drops the row warns and fails.
+  `KUI_ABI_VERSION` stays 15: one new symbol.
+
+- **The standard Edit menu greys its rows** (backlog W14, filed and built
+  the same day as ADR 0030 — the ADR's "not free" was measured and was
+  wrong). The runner reads six facts off the front window's core after
+  every event batch — a focused editor's history and selection
+  (`EditStore::history` / `has_selection`, both new and allocation-free),
+  the window's selection scope or cell grid, and whether a key sink would
+  hear the chord (`Core::chord_sink`, new) — packs them into one byte on
+  the bar's target, and `validateMenuItem:` answers from that byte when
+  the menu opens or a key equivalent is matched. AppKit's callback never
+  touches the core, which was the objection; the cost is a handful of
+  `Option` reads a batch. A row stays lit while a sink would hear its
+  chord, since a sink may bind it to anything.
+
 - **A held drag follows its scroller, and Shift extends** (backlog C39,
   [ADR 0029](docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md),
   found by running the clipboard example after C38). Three gestures every
@@ -453,6 +517,14 @@ Nothing.
   `tick` is.
 
 ### Changed
+
+- **An empty menu-bar declaration, and a core that draws its own bar,
+  now leave the standard bar up on macOS** (ADR 0030) rather than no bar
+  at all — `apply(&MenuBar::default())` was `setMainMenu(None)`, which
+  took winit's Quit with it. An app that declared a bar and then declared
+  none, or the devtools' `menus` toggle in its drawn setting, kept ⌘Q
+  only by luck of never doing either.
+
 
 - **Contrast is the colour's arithmetic, and public:
   `Color::contrast(other)`** is WCAG's ratio (1:1 to 21:1), and

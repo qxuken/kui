@@ -3473,7 +3473,9 @@ SCENE_TREES.live = (_fx, phase, ctx) => {
 SCENE_TREES.virtual = () =>
   root({}, [
     box(
-      { width: 120, height: 60, gap: 0, scrollY: true, bg: '#101018', role: 'list', label: 'log' },
+      // `rowCount` is `conformance::VIRTUAL_ROW_COUNT`: how many rows the list
+      // has, built or not.
+      { width: 120, height: 60, gap: 0, scrollY: true, bg: '#101018', role: 'list', label: 'log', rowCount: 109 },
       [
         box({ width: 'grow', height: 20 }, [], 'lead'),
         ...VIRTUAL_ROWS.map((i) =>

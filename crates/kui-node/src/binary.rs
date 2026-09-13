@@ -32,8 +32,8 @@ use serde_json::{Map as JsonMap, Value as Json};
 
 use crate::schema::{
     self, Kind, P_ALWAYS_ON_TOP, P_BORDER, P_DIR, P_FLOAT, P_INDEX, P_KEY, P_KEY_FOCUS, P_OVERFLOW,
-    P_PAD, P_SIZE, P_TITLE, P_TOOLTIP, P_WINDOWS, Parsed, PropsOut, align_idx, color_num, min_num,
-    sizing_num,
+    P_PAD, P_ROW_COUNT, P_SIZE, P_TITLE, P_TOOLTIP, P_WINDOWS, Parsed, PropsOut, align_idx,
+    color_num, min_num, sizing_num,
 };
 use crate::{Result, err, value_of};
 
@@ -449,6 +449,17 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut, refs: &mut Refs<'_>) -
                     )));
                 }
                 out.index = Some(i as u64);
+            }
+            // A row count, refused on the same terms as `index`.
+            P_ROW_COUNT => {
+                let n = r.f()?;
+                if !n.is_finite() || n < 0.0 || n.fract() != 0.0 {
+                    return Err(err(format!(
+                        "rowCount must be a whole number of rows, not {n}: it is how many indexed \
+                         rows the list has, built or not"
+                    )));
+                }
+                out.row_count = Some(n as u64);
             }
             P_TITLE => out.title = Some(r.req_str()?.to_string()),
             // Root only, like `title`; a flag, like `keyFocus`.
@@ -1118,6 +1129,10 @@ mod tests {
                 "index" => {
                     s.push(7.0);
                     expected.index = Some(7);
+                }
+                "rowCount" => {
+                    s.push(2000.0);
+                    expected.row_count = Some(2000);
                 }
                 "title" => {
                     s.extend([0.0, 3.0]);

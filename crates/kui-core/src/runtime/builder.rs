@@ -370,6 +370,20 @@ impl Core {
         key
     }
 
+    /// Declares how many indexed rows the *open* node's virtual list has,
+    /// built or not (`rowCount`): what Select All inside a `selectable`
+    /// virtual list spans, since the built rows are all the core can see
+    /// (ADR 0017, tier 3). `widgets::virtual_column` and `virtual_rows`
+    /// call it on their container; a list composed by hand calls it
+    /// inside the container's `with`. Nothing, outside any node.
+    pub fn row_count(&mut self, n: u64) {
+        if self.tree.is_empty() || self.stack.is_empty() {
+            return;
+        }
+        let at = self.current();
+        self.tree.row_counts.push((at, n));
+    }
+
     #[inline]
     pub(crate) fn open_with_key(&mut self, key: Key, spec: NodeSpec) {
         self.open_content(key, spec, NodeContent::Container);
@@ -443,6 +457,7 @@ impl Core {
             spec,
             key: label,
             index,
+            row_count,
             key_focus,
             tooltip,
             ..
@@ -488,6 +503,9 @@ impl Core {
                 Identity::Label(l) => self.key_labels.push(key, l),
                 Identity::Index(i) => self.tree.indexed.push((at, i)),
                 Identity::Auto => {}
+            }
+            if let Some(n) = row_count {
+                self.tree.row_counts.push((at, n));
             }
         }
         if key_focus {

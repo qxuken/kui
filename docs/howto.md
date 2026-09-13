@@ -294,8 +294,17 @@ performed by the core — an Edit menu's Copy is the right-click Copy.
 Declare it every frame: it is diffed, so an unchanged bar costs a
 comparison, and an empty list takes it away.
 
+Declare nothing and a macOS app still has the menus a Mac app is expected
+to have: the application menu, an Edit menu whose rows are the ⌘ chords
+the runner already performs (greyed when the chord would do nothing), and a Window menu with Minimize, Zoom, Enter
+Full Screen and — added by AppKit because the menu is registered as the
+platform's — Fill, Center and the tiling submenus, so fn+ctrl+F and fn+F
+work. A declared bar is exactly what you declared; name a menu `Window`
+and it is the platform's, with those rows and shortcuts in it.
+
 [`menuBar` element](props.md#elements) ·
 [ADR 0018](adr/0018-a-menu-bar-the-app-declares.md) ·
+[ADR 0030](adr/0030-the-standard-menus-the-runner-keeps.md) ·
 [examples/rust/widgets/menu_bar.rs](../examples/rust/widgets/menu_bar.rs)
 
 ### How do I have global shortcuts and a Tab ring at once?
@@ -346,7 +355,11 @@ input. There are four ways onto it, and they end in one queue:
    built cannot be answered by the core: `requestCopy()` says `asked`, a
    `{kind:"selectionrange", from:{index, byte}, to:{index, byte}}`
    message arrives on the scope, and `answerSelectionRange(text)` — the
-   rows are yours — queues the `setClipboard`.
+   rows are yours — queues the `setClipboard`. Select All in such a list
+   spans the whole of it — rows `0..rowCount`, which `virtualColumn` and
+   its siblings declare for you (`rowCount` on a list you compose by
+   hand) — and asks the same way, `to.byte` past the last row's length
+   when that row was never built: cut it to the row.
 4. **Your own.** `setClipboard(text, html?)` and `requestPaste()` (Rust
    `ui.set_clipboard` / `ui.request_paste`, Lua `env.set_clipboard` /
    `env.request_paste`, C `kui_set_clipboard` / `kui_request_paste`)

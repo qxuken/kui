@@ -163,6 +163,13 @@ pub struct Tree {
     /// index says where it sits in the data even when nothing on screen
     /// says where it sits in the frame (ADR 0017, decisions 2 and 3).
     pub indexed: Vec<(u32, u64)>,
+    /// How many indexed rows a node's virtual list has, built or not
+    /// (`rowCount`), by node. A side list for the reason `indexed` is one.
+    /// What it is for: Select All inside a `selectable` virtual list is
+    /// the *data*, rows `0..count`, not the rows the frame happened to
+    /// build — and the count is the one thing about the data the core
+    /// cannot see (ADR 0017, tier 3).
+    pub row_counts: Vec<(u32, u64)>,
     /// Whether any node declares `selectable` (ADR 0017). False on every
     /// frame of an app that never asks for one, which is what keeps the
     /// scope walk and the off-screen places of tier 2 off those frames
@@ -226,6 +233,7 @@ impl Tree {
         self.any_exit = false;
         self.any_animate = false;
         self.indexed.clear();
+        self.row_counts.clear();
     }
 
     /// Notes what a spec asks of the frame, so a pass whose work exists

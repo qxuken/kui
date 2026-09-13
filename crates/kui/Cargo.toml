@@ -83,6 +83,9 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
     # checkmark an item's `checked` sets (`NSControlStateValue`, in NSCell).
     "NSApplication",
     "NSCell",
+    # The standard bar (ADR 0030): a popup asks its `NSWindow` to stay out
+    # of the Window menu's list.
+    "NSWindow",
     "NSResponder",
     "NSView",
     "NSEvent",

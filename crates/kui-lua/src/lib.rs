@@ -1973,6 +1973,14 @@ pub fn parse_props(t: &Table, is_row: bool, refs: &mut Refs<'_>) -> mlua::Result
                 };
                 out.index = Some(i.max(0.0) as u64);
             }
+            "row_count" => {
+                let Some(n) = v.as_number().or_else(|| v.as_integer().map(|i| i as f64)) else {
+                    return Err(bad(
+                        "row_count must be a number (how many indexed rows the list has)",
+                    ));
+                };
+                out.row_count = Some(n.max(0.0) as u64);
+            }
             "tooltip" => {
                 let mlua::Value::String(s) = &v else {
                     return Err(bad("tooltip must be a string"));

@@ -874,6 +874,23 @@ impl EditStore {
         self.states.get(&key)?.editor.copy_selection()
     }
 
+    /// Whether the editor `key` has a non-empty selection — what
+    /// `copy_selection` would answer, without building the string. A
+    /// menu asking whether Copy applies asks this every time it opens.
+    pub fn has_selection(&self, key: Key) -> bool {
+        self.states
+            .get(&key)
+            .and_then(|s| s.editor.selection_bounds())
+            .is_some_and(|(a, b)| a != b)
+    }
+
+    /// Whether the editor `key` has an edit to undo, and one to redo.
+    pub fn history(&self, key: Key) -> (bool, bool) {
+        self.states
+            .get(&key)
+            .map_or((false, false), |s| (!s.undo.is_empty(), !s.redo.is_empty()))
+    }
+
     /// Deletes the selection; returns true if anything was deleted.
     pub fn delete_selection(&mut self, key: Key, fs: &mut FontSystem) -> bool {
         let Some(s) = self.states.get_mut(&key) else {

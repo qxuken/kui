@@ -530,6 +530,7 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         "virtual" => {
             // `index` is a number where `key` is a string: the row's own
             // data index, which is what a virtual list opens its rows at.
+            let count = conformance::VIRTUAL_ROW_COUNT;
             let rows = conformance::VIRTUAL_ROWS
                 .iter()
                 .map(|i| {
@@ -543,7 +544,7 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             format!(
                 r#"
             return column {{ key = "list", width = 120, height = 60, gap = 0,
-                             scroll_y = true, bg = 0x101018ff,
+                             scroll_y = true, bg = 0x101018ff, row_count = {count},
                              role = "list", label = "log",
               column {{ key = "lead", width = "grow", height = 20 }},
                 {rows}

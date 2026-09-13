@@ -403,6 +403,13 @@ export interface CustomSpecProps {
    *  so a row keeps its hover, focus, edit buffer and tweens as the built
    *  range slides over it. Beside a `key`, the index wins. */
   index?: number;
+  /** How many `index`ed rows this node's virtual list has, built or not.
+   *  `virtualColumn` declares it on its container; a list composed by
+   *  hand says it beside `scrollY`. Select All inside a `selectable`
+   *  virtual list then selects the *data*, rows `0..rowCount`, and the
+   *  copy is a `selectionrange` ask whose `to.byte` is past the last
+   *  row's length when that row is not built — cut it to the row. */
+  rowCount?: number;
 }
 
 export interface BoxProps extends Keyed, GeneratedSpecProps, CustomSpecProps {

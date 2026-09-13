@@ -1014,6 +1014,9 @@ pub fn virtual_column(
     let range = visible_rows(offset_y, vh, pad_t, row_h, rows, OVERSCAN);
 
     ui.with_keyed(label, spec.scroll_y().gap(0.0), |ui| {
+        // The whole list's size, built or not: what Select All inside a
+        // `selectable` list spans (ADR 0017, tier 3).
+        ui.row_count(rows as u64);
         // Keyed, not auto-keyed: an auto key is a sibling index, and the
         // rows already occupy that namespace at their data indices — an
         // auto-keyed spacer next to a built row 0 would be row 0's key.
@@ -1426,6 +1429,7 @@ pub fn virtual_rows(
     let lead = heights.offset_of(range.start);
     let tail = heights.total() - heights.offset_of(range.end);
     ui.with_keyed(label, spec.scroll_y().gap(0.0), |ui| {
+        ui.row_count(heights.len() as u64);
         if lead > 0.0 {
             ui.with_keyed("lead", spacer_spec(lead), |_| {});
         }

@@ -2196,8 +2196,11 @@ pub const SCENES: &[Scene] = &[
               keys are ones auto-keying could not have produced — which is \
               how a binding that dropped the row (and auto-keyed them 1, 2, \
               3 instead) is caught, and what pins that a row's identity \
-              follows the row rather than the slot.",
-        custom: &["index", "key", "overflow"],
+              follows the row rather than the slot. The list declares its \
+              whole size with `rowCount`, the row Select All spans by; a \
+              binding that does not know the row warns, and the warning \
+              list is pinned empty.",
+        custom: &["index", "rowCount", "key", "overflow"],
         elements: &["box"],
         build: build_virtual,
         env: NATIVE_CHROME,
@@ -2295,6 +2298,8 @@ pub const SCENES: &[Scene] = &[
 /// every quad in the scene lands the same while the access tree and the hit
 /// keys do not — which is why the rows carry roles and names.
 pub const VIRTUAL_ROWS: [u64; 3] = [100, 101, 102];
+/// How many rows the `virtual` scene's list declares it has (`rowCount`).
+pub const VIRTUAL_ROW_COUNT: u64 = 109;
 
 fn build_virtual(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     ui.with_keyed(
@@ -2308,6 +2313,8 @@ fn build_virtual(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             .role(Role::List)
             .label("log"),
         |ui| {
+            // How many rows the list has, built or not.
+            ui.row_count(VIRTUAL_ROW_COUNT);
             // The height of the rows above the built range, and below it.
             ui.with_keyed("lead", virtual_spacer(20.0), |_| {});
             for i in VIRTUAL_ROWS {
@@ -4026,6 +4033,9 @@ fn observe(core: &Core, cov: &mut Coverage) {
                 cov.custom.insert("key");
             }
         }
+    }
+    if !t.row_counts.is_empty() {
+        cov.custom.insert("rowCount");
     }
 }
 

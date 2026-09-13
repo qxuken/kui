@@ -1072,6 +1072,18 @@ impl Core {
         }
     }
 
+    /// The sink a chord pressed now would reach, if any: the focused sink,
+    /// the nearest one above the focused control, or the root's with
+    /// nothing focused (ADR 0011, decision 1; ADR 0022, decision 8). What a
+    /// driver asks before greying a menu row that spells a chord — a sink
+    /// that would hear ⌘C may do anything with it, so the row stays lit.
+    pub fn chord_sink(&self) -> Option<Key> {
+        if self.edit.focused().is_some() {
+            return None;
+        }
+        self.key_target(KeyCode::Char('c'), true)
+    }
+
     /// Which node hears a raw press: the focused sink, the nearest sink
     /// above a focused control that does not claim the key, or nothing
     /// (`docs/adr/0011-keys-bubble-to-the-enclosing-sink.md`, decision 1).

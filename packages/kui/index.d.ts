@@ -141,7 +141,9 @@ export type MenuMsg<T = AppMsg> = {
  *  (`index`, the row's data index) and byte offsets into each row's text —
  *  and the app answers with `answerSelectionRange(text)`, which is what
  *  reaches the clipboard. Only while `requestCopy()` answered `asked`; a
- *  late answer changes nothing. */
+ *  late answer changes nothing. A Select All over a list that declared
+ *  `rowCount` asks for `0..rowCount - 1` with `to.byte` past the last
+ *  row's length (the row was never built) — cut it to the row. */
 export type SelectionRangeMsg = {
   kind: 'selectionrange';
   from: { index: number; byte: number };

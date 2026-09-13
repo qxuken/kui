@@ -90,6 +90,20 @@ pub extern "C" fn kui_open_keyed(
     })
 }
 
+/// Declares how many indexed rows the open node's virtual list has, built
+/// or not (`rowCount`): what Select All inside a `selectable` virtual
+/// list spans, since the rows the frame built are all the core can see
+/// (ADR 0017, tier 3). Call it inside the list's container, after its
+/// `kui_open_*`. Nothing outside any node.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_row_count(ptr: *mut KuiCtx, rows: u64) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().row_count(rows);
+        }
+    });
+}
+
 /// `kui_open` under a data index rather than a name: the key auto-keying
 /// would have given the `i`th child, given to this node wherever it sits.
 /// A virtualising list opens each row with its own row number, so a row
