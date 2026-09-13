@@ -1757,6 +1757,13 @@ export declare class Ctx {
    */
   alwaysOnTop(): boolean
   /**
+   * A headless context is one window, the main: this answers whether
+   * `window` names it (`"main"`, `0`, or left out) and addresses
+   * nothing else — the same door `KuiWindow` has, so a loop or a test
+   * can call it on either surface.
+   */
+  useWindow(window?: string | number): boolean
+  /**
    * Registers a w×h RGBA image (pixels copied); returns its id for
    * `<image src={id}>`. Stable until `removeImage`.
    */
@@ -2567,6 +2574,21 @@ export declare class KuiWindow {
    * did not; see `WindowOptions`.
    */
   constructor(title: string, options?: WindowOptions)
+  /**
+   * Which window the per-window doors — `focus`, `editText`,
+   * `setEditText`, `isHovered`, `scrollGeometry`, `openMenu`,
+   * `selectionText`, `setTheme`, `setMetrics`, `setTokens`, the
+   * devtools setters, input injection — address from here on: a name
+   * from `windows()`, or the id an event carries in `window`; left out,
+   * the main window. Returns whether that window is open now; until it
+   * is, the doors address the main window. `runWindowed` aims the
+   * surface at the window whose view it is calling and at the window
+   * an event came from before handing the surface to `update`, so an
+   * app that never calls this reads and writes the window it is being
+   * asked about (backlog AR12). Resources, `windows()`, `pump` and
+   * `pollEvents` are the session's and unaffected.
+   */
+  useWindow(window?: string | number): boolean
   /**
    * `setView` with a flat binary instruction stream (see `Ctx::frame_binary`).
    * Copied once so redraws (resize, hover) can re-lower it between pumps.

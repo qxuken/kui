@@ -647,6 +647,33 @@ impl<A: App> PumpRunner<A> {
         self.shell.core_mut()
     }
 
+    /// The core of the window `id` names, if that window is open — the
+    /// main window's for `WindowId::MAIN`. Everything that is one
+    /// window's rather than the session's — its focus, its editors' text,
+    /// its scroll offsets, its tokens — is answered by this core and no
+    /// other (backlog AR12).
+    pub fn core_mut_of(&mut self, id: WindowId) -> Option<&mut Core> {
+        if id == WindowId::MAIN {
+            return Some(self.core_mut());
+        }
+        self.shell
+            .panes
+            .iter_mut()
+            .find(|p| p.id == id)
+            .map(|p| &mut p.core)
+    }
+
+    /// The id of the open window named `name` (`"main"` for the launcher's),
+    /// or `None` while no window of that name is open — before its first
+    /// frame's diff, or after the user closed it.
+    pub fn window_id(&mut self, name: &str) -> Option<WindowId> {
+        self.core_mut()
+            .windows()
+            .into_iter()
+            .find(|(_, n)| &**n == name)
+            .map(|(id, _)| id)
+    }
+
     /// The main window's inner size (logical px) and its scale factor.
     /// Unlike `core_mut().viewport()` this is known before the first frame,
     /// so a host can size its model at setup — through

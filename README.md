@@ -478,8 +478,10 @@ that are hard to reverse and would look arbitrary without their context.
   Rust, `windows: (model) => [...]` in a Node loop, `windows = { ... }` on a
   Lua root table, `kui_window_declare` in C — a window opens on the first
   frame that declares it, closes on the first that does not, and `view`
-  runs once per open window with `ui.window_name()` saying which; the same
-  drain carries the `Open` / `Close`, and the app hears
+  runs once per open window with `ui.window_name()` saying which (Node's
+  `view(model, name, win)` gets `win` aimed at that window, so `editText`
+  and `focus` answer for its tree — `win.useWindow(name)` re-aims it);
+  the same drain carries the `Open` / `Close`, and the app hears
   `{kind="window", phase, name, id}`. What a declaration does *not* carry is
   a live window's geometry: a config is read on the frame it opens and never
   again, because the user owns a window's size once it exists, so moving one

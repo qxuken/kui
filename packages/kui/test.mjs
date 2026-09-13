@@ -5337,6 +5337,72 @@ test('quads() is on both classes, so a smoke test can read what a window drew (F
   assert.equal(typeof KuiWindow.prototype.quads, 'function');
 });
 
+test('the loop aims the surface at the window it is drawing or answering for (AR12)', () => {
+  // Every `KuiWindow` door but `setViewBinary` addressed the main window:
+  // `editText('note')` for a second window's editor was null, a
+  // `setEditText` from `update` landed on main and warned, `focus('row')`
+  // moved the wrong window's focus, and every `$token` in the second
+  // window's tree missed. The doors address whatever `useWindow` last
+  // named now, and the loop names the window whose view it is calling
+  // and the window an event came from before handing the surface to
+  // `update` — then main again, so nothing an app forgot lingers.
+  const aimed = [];
+  const state = { animating: false, events: [] };
+  const surface = {
+    ...fakeWindow(state),
+    windows: () => ['main', 'side'],
+    useWindow: (w) => {
+      aimed.push(w);
+      return true;
+    },
+  };
+  const seen = [];
+  const app = createApp(
+    {
+      init: 0,
+      update: (m, msg, ev) => {
+        seen.push(['update', msg, aimed.at(-1)]);
+        return m + 1;
+      },
+      view: (m, name) => {
+        seen.push(['view', name, aimed.at(-1)]);
+        return box({ pad: 4 });
+      },
+    },
+    { surface },
+  );
+  app.render();
+  assert.deepEqual(seen, [
+    ['view', 'main', 'main'],
+    ['view', 'side', 'side'],
+  ]);
+  assert.equal(aimed.at(-1), undefined, 'main again once every view has run');
+  // An event from the second window: `update` sees the surface aimed at
+  // its id; a message with no event behind it sees main (0).
+  seen.length = 0;
+  state.events.push({ origin: 0, window: 2, key: 'row', payload: 'pick' });
+  app.step();
+  assert.deepEqual(seen[0], ['update', 'pick', 2]);
+  app.dispatch('tick');
+  assert.deepEqual(seen.at(-1), ['update', 'tick', 0]);
+  assert.equal(aimed.at(-1), undefined);
+});
+
+test('useWindow is on both classes, and a headless Ctx is the main window alone (AR12)', () => {
+  assert.equal(typeof Ctx.prototype.useWindow, 'function');
+  assert.equal(typeof KuiWindow.prototype.useWindow, 'function');
+  const ctx = new Ctx();
+  assert.equal(ctx.useWindow(), true);
+  assert.equal(ctx.useWindow('main'), true);
+  assert.equal(ctx.useWindow(0), true);
+  assert.equal(ctx.useWindow('side'), false, 'a headless context has no second window');
+  assert.equal(ctx.useWindow(2), false);
+  // And a surface without the door — a stand-in in a test — is left alone
+  // by the loop rather than thrown at.
+  const app = createApp({ init: 0, update: (m) => m, view: () => box({ pad: 4 }) }, { surface: fakeWindow({ animating: false, events: [] }) });
+  app.render();
+});
+
 test('env() is on both classes and setEnv is only on the headless one', () => {
   // A window's runner reports the real window every frame, so a fact set on
   // one would be overwritten before the next view ran; the read is shared.

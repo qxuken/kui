@@ -41,10 +41,11 @@ platform did), AR7–AR49 from the second architecture review, filed
 2026-09-13 — forty-three entries under ten
 decisions, twenty of them defects, the audio store reconciled against
 every window's frame and the two key channels disagreeing about a
-chord at the top; **AR7–AR11 built 2026-09-14**, the session rule
+chord at the top; **AR7–AR12 built 2026-09-14**, the session rule
 written and the mounts and the removed ids moved under it, a held key
 matched by position, one chord bit for both key channels, one attach
-pass on what a press made — with the amendment on B1 whose condition that round
+pass on what a press made, Node's surface aimed at the window it is
+handed for — with the amendment on B1 whose condition that round
 met; C31, found
 the same day building the tokens (Node's corpus adapter disagreeing with
 the reference on one scene when run alone — **done the same evening**:
@@ -2497,7 +2498,28 @@ only); one attach pass with one `pointer_point(&ev)` that carries the
 clicks guard, used by both; `attach_cells` calls `cell_row_col`; the
 schema row split into two kinds.
 
-### `!` AR12 — Every `KuiWindow` door but `setViewBinary` addresses the main window
+### `!` AR12 — Every `KuiWindow` door but `setViewBinary` addresses the main window — **done (2026-09-14)**
+
+**Done (2026-09-14), the second of the entry's two shapes, with the
+loop doing the aiming.** Not a surface per window — a napi class per
+window would need shared ownership of the runner — but `KuiWindow`
+routed through the runner by window id: `PumpRunner::core_mut_of(id)`
+and `window_id(name)` are new in `kui`, `KuiWindow` keeps the id it is
+aimed at, and `useWindow(name | id)` on both classes aims it (main when
+left out; answers whether the window is open, and the doors address main
+until it is; a `Ctx` answers only for main). `runWindowed`'s loop aims
+the surface at the window whose view it is calling and at the window an
+event came from before `update` — `event.window`, main for a tick or an
+effect — and back at main after each, so an app that never calls it gets
+the window it is being asked about, and one that does gets what it asked
+for until the loop hands the surface on. `windows()`, resources, `pump`
+and `pollEvents` are the session's and unchanged. Pinned in `test.mjs`
+on a recording surface (the sequence of aims around `view` and
+`update`, both classes carrying the door, a stand-in without it left
+alone); the two-window `editText` / `focus` / `setTokens` the entry
+asks for needs a display, so it is on the by-hand list below. The doc
+lines in `runWindowed` and the README name the aim. CHANGELOG under
+alpha.12.
 
 `KuiWindow::core_mut` is `Shell::core_mut` is `panes.first_mut()`
 (`crates/kui-node/src/lib.rs:3101-3104`, `crates/kui/src/lib.rs:930-937`).
@@ -3247,7 +3269,7 @@ session rule written and the audio store and image drops moved under
 it — **both done 2026-09-14**), AR9–AR11 together — **all three done
 2026-09-14** (the held-key identity, the chord bit carried
 into the second channel, one attach pass with a producer-side mark),
-AR12 (Node's window handle), AR13–AR16 (the `<text>` rows, one token
+AR12 (Node's window handle — **done 2026-09-14**), AR13–AR16 (the `<text>` rows, one token
 miss policy, Cut's `changed`, one `prepare_spec`), AR17–AR18 (the focus
 stamp and the AT gates), AR19–AR25 as the defects they are, then B1's
 table with AR26, AR27 and AR40 beside it, AR46–AR48 for the tests, and
@@ -3479,6 +3501,13 @@ release, which no headless assertion reads:
 - **Windows: grab the title bar while something animates** (`toasts`,
   mid-spring) and watch whether it keeps moving — W3, filed 2026-09-07
   from a report and not reproduced here.
+- **Node, two windows:** an app whose `windows(model)` opens a second
+  window with an `<edit>` in it — type there, then `win.editText(label)`
+  from that window's `view` and `win.setEditText` from the `update` its
+  `changed` reaches: both the second window's, neither main's. That is
+  AR12, built 2026-09-14 with the loop's aiming pinned on a recording
+  surface and the real two-window case unpinned, since a `KuiWindow`
+  needs a display.
 - The same gesture into a popup: press in the owner, drag into the popup,
   release on an item. ADR 0009's consequences name four `CGEvent` checks and
   W2's archived entry records what each one showed when the driver half was

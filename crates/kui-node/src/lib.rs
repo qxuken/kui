@@ -16,7 +16,7 @@ use kui_core::{
     MouseButton, PlayOptions, PlaybackId, Rect, Size, SoundId, SystemEnv, Tokens, UiEvent, Value,
     Vec2, schema::color_hex_str,
 };
-use napi::bindgen_prelude::{Buffer, Float64Array, Uint8Array};
+use napi::bindgen_prelude::{Buffer, Either, Float64Array, Uint8Array};
 use napi_derive::napi;
 use serde_json::{Map as JsonMap, Value as Json};
 
@@ -1397,6 +1397,13 @@ impl kui::App for TreeApp {
 // the platforms still convert it to physical px without overflowing.
 const UNBOUNDED_SIZE: f64 = 65_535.0;
 
+/// How `useWindow` names a window: by the name `windows()` lists, or by
+/// the id an event carries.
+enum WindowRef {
+    Name(String),
+    Id(u32),
+}
+
 /// A real kui window (winit + wgpu) driven from Node. The event loop is
 /// pumped, not run: call `pump()` between libuv turns so winit and libuv share
 /// the main thread — or prefer `runWindowed`, which does that for you, unless
@@ -1407,6 +1414,10 @@ const UNBOUNDED_SIZE: f64 = 65_535.0;
 #[napi]
 pub struct KuiWindow {
     runner: kui::PumpRunner<TreeApp>,
+    /// The window every per-window door addresses (`useWindow`): the
+    /// main window until `runWindowed` aims the surface at the window
+    /// whose view or event it is handing to the app (backlog AR12).
+    addressed: kui_core::WindowId,
 }
 
 #[napi]
@@ -1492,7 +1503,30 @@ impl KuiWindow {
         let runner = launcher
             .open(TreeApp::default())
             .map_err(|e| err(format!("failed to open window: {e}")))?;
-        Ok(KuiWindow { runner })
+        Ok(KuiWindow {
+            runner,
+            addressed: kui_core::WindowId::MAIN,
+        })
+    }
+
+    /// Which window the per-window doors — `focus`, `editText`,
+    /// `setEditText`, `isHovered`, `scrollGeometry`, `openMenu`,
+    /// `selectionText`, `setTheme`, `setMetrics`, `setTokens`, the
+    /// devtools setters, input injection — address from here on: a name
+    /// from `windows()`, or the id an event carries in `window`; left out,
+    /// the main window. Returns whether that window is open now; until it
+    /// is, the doors address the main window. `runWindowed` aims the
+    /// surface at the window whose view it is calling and at the window
+    /// an event came from before handing the surface to `update`, so an
+    /// app that never calls this reads and writes the window it is being
+    /// asked about (backlog AR12). Resources, `windows()`, `pump` and
+    /// `pollEvents` are the session's and unaffected.
+    #[napi(ts_args_type = "window?: string | number")]
+    pub fn use_window(&mut self, window: Option<Either<String, f64>>) -> bool {
+        self.address(window.map(|w| match w {
+            Either::A(name) => WindowRef::Name(name),
+            Either::B(id) => WindowRef::Id(id as u32),
+        }))
     }
 
     /// `setView` with a flat binary instruction stream (see `Ctx::frame_binary`).
@@ -3092,6 +3126,22 @@ macro_rules! core_methods {
     };
 }
 
+#[napi]
+impl Ctx {
+    /// A headless context is one window, the main: this answers whether
+    /// `window` names it (`"main"`, `0`, or left out) and addresses
+    /// nothing else — the same door `KuiWindow` has, so a loop or a test
+    /// can call it on either surface.
+    #[napi(ts_args_type = "window?: string | number")]
+    pub fn use_window(&mut self, window: Option<Either<String, f64>>) -> bool {
+        match window {
+            None => true,
+            Some(Either::A(name)) => name == kui_core::session::MAIN_WINDOW_NAME,
+            Some(Either::B(id)) => id == 0.0,
+        }
+    }
+}
+
 impl Ctx {
     fn core_mut(&mut self) -> &mut Core {
         &mut self.core
@@ -3118,8 +3168,35 @@ impl Ctx {
 }
 
 impl KuiWindow {
+    /// The addressed window's core — the main window's when the
+    /// addressed one is not open (it closed, or has not opened yet),
+    /// which `useWindow` reported at the time.
     fn core_mut(&mut self) -> &mut Core {
-        self.runner.core_mut()
+        let id = if self.runner.core_mut_of(self.addressed).is_some() {
+            self.addressed
+        } else {
+            kui_core::WindowId::MAIN
+        };
+        self.runner
+            .core_mut_of(id)
+            .expect("the main window's core always exists")
+    }
+
+    /// Aims every per-window door at `window`. `None` is the main window.
+    /// Returns whether that window is open now; the doors address the
+    /// main window until it is.
+    fn address(&mut self, window: Option<WindowRef>) -> bool {
+        let id = match window {
+            None => Some(kui_core::WindowId::MAIN),
+            Some(WindowRef::Id(id)) => Some(kui_core::WindowId(id)),
+            Some(WindowRef::Name(name)) => self.runner.window_id(&name),
+        };
+        let Some(id) = id else {
+            self.addressed = kui_core::WindowId::MAIN;
+            return false;
+        };
+        self.addressed = id;
+        self.runner.core_mut_of(id).is_some()
     }
 
     fn events_mut(&mut self) -> &mut Vec<UiEvent> {

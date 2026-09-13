@@ -397,7 +397,7 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
       const msg = typeof tick.msg === 'function' ? tick.msg(t) : tick.msg;
       inTick = lastTick;
       try {
-        if (apply(update(model, msg, { origin: 0, key: '', payload: msg }, surface))) {
+        if (apply(updateFrom(msg, { origin: 0, key: '', payload: msg }))) {
           redraw = true;
         }
       } finally {
@@ -439,17 +439,35 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
   // draws is the set the core diffs. A headless `Ctx` is one window, the main.
   // The surface rides along as the third argument so a view can measure —
   // `measureText` to size a column to its widest label, `size()` to pick a
-  // tier — without the app parking it in a module-level variable.
+  // tier — without the app parking it in a module-level variable. It is
+  // aimed at the window being drawn first (`useWindow`, backlog AR12), so
+  // `editText`, `focus` and the rest answer for that window's tree and
+  // not the main one's, and aimed back at main once every view has run.
   function draw() {
     dirty = false;
     stamp?.(at() / 1000);
     const declared = windows ? windows(model) : undefined;
     for (const name of open()) {
+      surface.useWindow?.(name);
       const tree = view(model, name, surface);
       show(name === 'main' ? withWindows(tree, declared) : tree, name);
     }
+    surface.useWindow?.();
     drainWarnings();
     flushEffects();
+  }
+
+  // `update` with the surface aimed at the window the event came from —
+  // a `changed` from a second window's editor has `setEditText` seed that
+  // editor — and at main for a message with no event behind it (a tick,
+  // an effect); aimed back at main after, whatever `update` did.
+  function updateFrom(msg, event) {
+    surface.useWindow?.(event?.window ?? 0);
+    try {
+      return update(model, msg, event, surface);
+    } finally {
+      surface.useWindow?.();
+    }
   }
 
   // What `settled()` and `frame()` are waiting for (backlog F30). A driver
@@ -526,7 +544,7 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
       return model;
     },
     dispatch(msg, event) {
-      apply(update(model, msg, event, surface));
+      apply(updateFrom(msg, event));
     },
     /** What `update` (and `init`) returned besides the model since the
      *  last drain — every effect, whether or not a handler ran. Headless
@@ -733,7 +751,11 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
  * Resolves with the final model when the main window closes. One event
  * loop per process (winit event loops are not recreatable everywhere); any
  * number of windows on it — `windows: (model) => [...]` declares them, and
- * `view(model, window, win)` is called once per open window.
+ * `view(model, window, win)` is called once per open window, with `win`
+ * aimed at that window (`useWindow`): `win.editText`, `win.focus` and
+ * every other per-window door answer for the tree being drawn. `update`
+ * gets it aimed at the window the event came from, and main for a tick
+ * or an effect; `win.useWindow(name)` re-aims it from anywhere.
  *
  * **What the loop costs when nothing is happening.** A pump is not free and
  * costs the same empty as full: on macOS it runs a whole `NSApp` iteration

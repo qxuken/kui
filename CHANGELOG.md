@@ -608,6 +608,29 @@ Nothing.
   hears of neither drop — the lists were never exported — which is filed
   rather than built here.
 
+- **Node's window surface addresses the window it is handed for**
+  (backlog AR12). Every `KuiWindow` door but `setViewBinary` — `focus`,
+  `editText`, `setEditText`, `isHovered`, `scrollGeometry`, `openMenu`,
+  `selectionText`, `setTheme`, `setMetrics`, `setTokens`, the devtools
+  setters, input injection — went to the main window's core, and
+  `view(model, name, win)` handed every window the same surface: in an
+  app with a second window, `editText('note')` for that window's editor
+  was `null`, a `setEditText` from `update` landed on main and warned
+  `edit-text-without-editor`, `focus('row')` moved the wrong window's
+  focus, and every `$token` in the second window's tree missed (ADR
+  0027 admitted the token case; nothing documented the rest — C's view
+  ctx and Lua's env were already the drawing window's). `useWindow(name
+  | id)` is new on both classes: the doors address the window it last
+  named, and it answers whether that window is open now (main until it
+  is; a headless `Ctx` answers only for main). The loop aims the surface
+  itself, so an app that never calls it reads and writes the window it
+  is being asked about: at the window whose view it is calling, at the
+  window an event came from before `update` (main for a tick or an
+  effect), and back at main after each. `PumpRunner::core_mut_of(id)`
+  and `window_id(name)` are the Rust doors under it. Pinned in
+  `test.mjs` on a recording surface; the two-window `editText` itself
+  needs a display and is in the by-hand round.
+
 - **A held key survives Shift moving under it** (backlog AR9). A held
   key was matched to its release — and a repeat to its press — on
   `code`, which the runner builds from the layout's logical key with no
