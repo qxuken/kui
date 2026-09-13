@@ -396,6 +396,12 @@ struct BarIvars {
     /// AppKit consumed the key — so without this the app would sit still
     /// until the user moved the mouse.
     waker: RefCell<Option<crate::Waker>>,
+    /// Which rows of the standard Edit menu apply, as [`EditState::bits`]:
+    /// stamped by the runner after each event batch and read by
+    /// `validateMenuItem:` when the menu opens or a key equivalent is
+    /// matched — so the answer is a cell read, and AppKit's callback never
+    /// touches the core (the re-entrance this module exists to avoid).
+    edit_state: Cell<u8>,
 }
 
 define_class!(
@@ -418,6 +424,25 @@ define_class!(
                 waker.wake();
             }
         }
+
+        /// AppKit asks whether a row applies, for the one menu that
+        /// autoenables — the standard Edit menu (ADR 0030, W14). A chord
+        /// row applies when the runner's last stamp said so; a declared
+        /// bar's rows are never asked, their menus set their own state.
+        #[unsafe(method(validateMenuItem:))]
+        fn validate(&self, item: &NSMenuItem) -> objc2::runtime::Bool {
+            let tag = item.tag();
+            if tag < CHORD_TAG {
+                return objc2::runtime::Bool::YES;
+            }
+            let state = EditState::from_bits(self.ivars().edit_state.get());
+            let on = EDIT_ROWS
+                .get((tag - CHORD_TAG) as usize)
+                .copied()
+                .flatten()
+                .is_some_and(|(_, letter, shift)| state.applies(letter, shift));
+            objc2::runtime::Bool::new(on)
+        }
     }
 
     unsafe impl NSObjectProtocol for BarTarget {}
@@ -428,6 +453,7 @@ impl BarTarget {
         let this = Self::alloc(mtm).set_ivars(BarIvars {
             chosen: Cell::new(-1),
             waker: RefCell::new(None),
+            edit_state: Cell::new(0),
         });
         unsafe { msg_send![super(this), init] }
     }
@@ -483,6 +509,58 @@ const EDIT_ROWS: [Option<(&str, char, bool)>; 7] = [
     Some(("Paste", 'v', false)),
     Some(("Select All", 'a', false)),
 ];
+
+/// Which rows of the standard Edit menu apply right now (backlog W14):
+/// what the runner reads off the front window's core once per event batch
+/// and stamps on the bar, so the menu greys Copy with nothing to copy the
+/// way a Mac menu does. Each row is lit when the chord it spells would do
+/// something — or when a key sink would hear the chord, since a sink may
+/// do anything with it (ADR 0011).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct EditState {
+    pub undo: bool,
+    pub redo: bool,
+    pub cut: bool,
+    pub copy: bool,
+    pub paste: bool,
+    pub select_all: bool,
+}
+
+impl EditState {
+    /// Bit 0 undo, 1 redo, 2 cut, 3 copy, 4 paste, 5 select all.
+    fn bits(self) -> u8 {
+        (self.undo as u8)
+            | (self.redo as u8) << 1
+            | (self.cut as u8) << 2
+            | (self.copy as u8) << 3
+            | (self.paste as u8) << 4
+            | (self.select_all as u8) << 5
+    }
+
+    fn from_bits(b: u8) -> Self {
+        Self {
+            undo: b & 1 != 0,
+            redo: b & 2 != 0,
+            cut: b & 4 != 0,
+            copy: b & 8 != 0,
+            paste: b & 16 != 0,
+            select_all: b & 32 != 0,
+        }
+    }
+
+    /// Whether the row spelling `letter` (with Shift) applies.
+    fn applies(self, letter: char, shift: bool) -> bool {
+        match (letter, shift) {
+            ('z', false) => self.undo,
+            ('z', true) => self.redo,
+            ('x', _) => self.cut,
+            ('c', _) => self.copy,
+            ('v', _) => self.paste,
+            ('a', _) => self.select_all,
+            _ => true,
+        }
+    }
+}
 
 /// What the user chose from the bar, as the runner reads it back.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -628,8 +706,10 @@ impl MacMenuBar {
         // where a Mac user looks for it. The key equivalent is real, so
         // AppKit consumes ⌘C and hands it here — and the runner replays it
         // as the key it was, which is why nothing is lost by the detour.
+        // Autoenabled, alone among kui's menus: every row's target is
+        // `BarTarget`, whose `validateMenuItem:` answers from the state the
+        // runner stamped (`set_edit_state`).
         let edit = NSMenu::initWithTitle(NSMenu::alloc(mtm), ns_string!("Edit"));
-        edit.setAutoenablesItems(false);
         let target = unsafe { &*(&*self.target as *const BarTarget as *const AnyObject) };
         for (i, row) in EDIT_ROWS.iter().enumerate() {
             let Some((title, letter, shift)) = row else {
@@ -700,6 +780,12 @@ impl MacMenuBar {
     fn row(&self, mtm: MainThreadMarker, item: &MenuItem, tag: usize) -> Retained<NSMenuItem> {
         let target = unsafe { &*(&*self.target as *const BarTarget as *const AnyObject) };
         menu_row(mtm, item, target, sel!(kuiBarPick:), tag)
+    }
+
+    /// Stamps which rows of the standard Edit menu apply. Called after
+    /// every event batch; a stamp equal to the last is a byte compare.
+    pub fn set_edit_state(&self, state: EditState) {
+        self.target.ivars().edit_state.set(state.bits());
     }
 
     /// What the last pick chose, taken. `None` when nothing has been

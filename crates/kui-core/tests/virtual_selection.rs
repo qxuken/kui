@@ -19,6 +19,11 @@ fn style() -> TextStyle {
 /// A `selectable` scroller that builds rows `range`, each at its own data
 /// index, with spacers standing in for the rest — a virtual list.
 fn frame(core: &mut Core, range: std::ops::Range<u64>) -> Key {
+    frame_of(core, range, None)
+}
+
+/// [`frame`], with the list declaring how many rows it has (`rowCount`).
+fn frame_of(core: &mut Core, range: std::ops::Range<u64>, rows: Option<u64>) -> Key {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
     let scope = ui.with_keyed(
@@ -29,6 +34,9 @@ fn frame(core: &mut Core, range: std::ops::Range<u64>) -> Key {
             .scroll_y()
             .selectable(),
         |ui| {
+            if let Some(n) = rows {
+                ui.row_count(n);
+            }
             ui.with_keyed(
                 "lead",
                 NodeSpec::column()
@@ -445,4 +453,86 @@ fn an_unbuilt_end_is_placed_against_its_own_lists_rows() {
             .and_then(Value::as_int)
     };
     assert_eq!((index("from"), index("to")), (Some(2), None));
+}
+
+/// Select All in a virtual list that declared its size is the *data*,
+/// rows `0..rowCount` — not the rows the frame happened to build. The
+/// ends the frame did not build are placed by their index alone, the last
+/// row's end spelled `ROW_END`, and the copy is an ask to the app for
+/// exactly that range. Without a declared size it is what it was: the
+/// built rows, which are all the core can see.
+#[test]
+fn select_all_spans_the_declared_rows_not_the_built_ones() {
+    use kui_core::CopyRequest;
+    use kui_core::select::ROW_END;
+
+    // No count declared: the built rows, first byte to last.
+    let mut core = Core::new();
+    let scope = frame(&mut core, 10..15);
+    assert!(core.select_all_in(scope));
+    assert_eq!(
+        core.selection_text().as_deref(),
+        Some("row 10\nrow 11\nrow 12\nrow 13\nrow 14")
+    );
+    assert!(matches!(core.request_copy(), CopyRequest::Ready(_)));
+
+    // Declared: rows 0..2000, of which 10..15 are built.
+    let mut core = Core::new();
+    let scope = frame_of(&mut core, 10..15, Some(2000));
+    assert!(core.select_all_in(scope));
+    let (from, to) = core.selection_range().expect("both ends in rows");
+    assert_eq!((from.row, from.byte), (Some(0), 0));
+    assert_eq!((to.row, to.byte), (Some(1999), ROW_END));
+    assert!(
+        core.selection_text().is_none(),
+        "the core never built row 0 or row 1999, so it cannot answer"
+    );
+    assert!(matches!(core.request_copy(), CopyRequest::Asked));
+    let events = core.take_pending_events();
+    let ask = events
+        .iter()
+        .find(|e| e.payload.get("kind").and_then(|v| v.as_str()) == Some("selectionrange"))
+        .expect("the ask goes out on the scope");
+    assert_eq!(ask.key, scope);
+    let end = |name: &str| {
+        let e = ask.payload.get(name).unwrap();
+        (
+            e.get("index").and_then(|v| v.as_int()),
+            e.get("byte").and_then(|v| v.as_int()),
+        )
+    };
+    assert_eq!(end("from"), (Some(0), Some(0)));
+    assert_eq!(end("to"), (Some(1999), Some(ROW_END as i64)));
+    // Scrolled to the top, rows 0..5 are built and on screen: the anchor
+    // is row 0's own run now and the focus is still row 1999, unbuilt —
+    // and every built row paints, since all of them are inside.
+    frame_of(&mut core, 0..5, Some(2000));
+    let tint = kui_core::select::TINT;
+    let painted = core
+        .output()
+        .0
+        .quads
+        .iter()
+        .filter(|q| q.color == tint)
+        .count();
+    assert_eq!(painted, 5, "five built rows, five highlighted runs");
+    assert!(matches!(core.request_copy(), CopyRequest::Asked));
+    core.take_pending_events();
+
+    // Both ends built (the whole list fits): the ends are real runs, and
+    // the core answers on its own.
+    let mut core = Core::new();
+    let scope = frame_of(&mut core, 0..3, Some(3));
+    assert!(core.select_all_in(scope));
+    assert_eq!(
+        core.selection_text().as_deref(),
+        Some("row 0\nrow 1\nrow 2"),
+        "a built end is the row's own run, not a placeholder"
+    );
+    assert!(matches!(core.request_copy(), CopyRequest::Ready(_)));
+
+    // An empty list has nothing to select.
+    let mut core = Core::new();
+    let scope = frame_of(&mut core, 0..0, Some(0));
+    assert!(!core.select_all_in(scope));
 }

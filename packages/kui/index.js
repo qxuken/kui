@@ -1023,7 +1023,9 @@ export function virtualColumn(ctx, opts, row) {
   return {
     type: 'box',
     key,
-    props: { ...box, scrollY: true, gap: 0 },
+    // `rowCount` is the whole list's size, built or not: what Select All
+    // inside a `selectable` list spans (ADR 0017, tier 3).
+    props: { ...box, scrollY: true, gap: 0, rowCount: n },
     children,
   };
 }

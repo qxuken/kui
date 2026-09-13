@@ -458,6 +458,12 @@ impl<'a> Ui<'a> {
         key
     }
 
+    /// Declares how many indexed rows the open node's virtual list has,
+    /// built or not; see [`crate::Core::row_count`].
+    pub fn row_count(&mut self, n: u64) {
+        self.core.row_count(n);
+    }
+
     /// Scoped `open_indexed`: the `i`th child's auto-key, given to a node
     /// that is not in the `i`th slot.
     pub fn with_indexed(&mut self, i: u64, spec: NodeSpec, f: impl FnOnce(&mut Ui<'_>)) -> Key {

@@ -292,6 +292,41 @@ impl Core {
             ));
             return true;
         }
+        // A virtual list selects its *data*: rows `0..count`, whether the
+        // frame built them or not (ADR 0017, tier 3). An end in a row the
+        // frame built is that row's first or last run, as a drag would
+        // have made it; one in a row it did not build is placed by its
+        // index alone, on a node no run matches — the scope's — with the
+        // last row's end spelled `ROW_END`, since nothing here knows how
+        // long a row it never laid out is.
+        if let Some(count) = self.row_count_in(scope) {
+            if count == 0 {
+                return false;
+            }
+            let last_row = count - 1;
+            let runs = self.text.scope_runs(scope, self.building);
+            let (mut first, mut last) = (None, None);
+            for run in &runs {
+                match self.row_of(run.place.key) {
+                    Some(0) if first.is_none() => first = Some(run.place.key),
+                    Some(r) if r == last_row => {
+                        last = Some((run.place.key, run.text.content().len()));
+                    }
+                    _ => {}
+                }
+            }
+            drop(runs);
+            let anchor = first.map_or(Endpoint::new(scope, 0), |k| Endpoint::new(k, 0));
+            let focus = last.map_or(Endpoint::new(scope, crate::select::ROW_END), |(k, len)| {
+                Endpoint::new(k, len)
+            });
+            self.set_selection(Selection::new(
+                scope,
+                anchor.in_row(Some(0)),
+                focus.in_row(Some(last_row)),
+            ));
+            return true;
+        }
         let runs = self.text.scope_runs(scope, self.building);
         let (Some(first), Some(last)) = (runs.first(), runs.last()) else {
             return false;
@@ -305,6 +340,33 @@ impl Core {
         );
         self.set_selection(sel);
         true
+    }
+
+    /// The `rowCount` declared on `scope` or on a node inside it, if any:
+    /// the size of the virtual list a Select All in that scope spans. The
+    /// first in tree order where two lists share one scope, which is not
+    /// a shape Select All can serve anyway.
+    fn row_count_in(&self, scope: Key) -> Option<u64> {
+        if self.tree.row_counts.is_empty() {
+            return None;
+        }
+        let top = self.tree.index_of(scope)?;
+        self.tree
+            .row_counts
+            .iter()
+            .find(|(node, _)| {
+                let mut i = *node as usize;
+                loop {
+                    if i == top {
+                        return true;
+                    }
+                    match self.tree.parent[i] {
+                        crate::tree::NIL => return false,
+                        p => i = p as usize,
+                    }
+                }
+            })
+            .map(|(_, n)| *n)
     }
 
     /// Where `point` (logical viewport px) lands inside `scope`, as the

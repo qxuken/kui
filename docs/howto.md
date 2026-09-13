@@ -296,7 +296,7 @@ comparison, and an empty list takes it away.
 
 Declare nothing and a macOS app still has the menus a Mac app is expected
 to have: the application menu, an Edit menu whose rows are the ⌘ chords
-the runner already performs, and a Window menu with Minimize, Zoom, Enter
+the runner already performs (greyed when the chord would do nothing), and a Window menu with Minimize, Zoom, Enter
 Full Screen and — added by AppKit because the menu is registered as the
 platform's — Fill, Center and the tiling submenus, so fn+ctrl+F and fn+F
 work. A declared bar is exactly what you declared; name a menu `Window`
@@ -355,7 +355,11 @@ input. There are four ways onto it, and they end in one queue:
    built cannot be answered by the core: `requestCopy()` says `asked`, a
    `{kind:"selectionrange", from:{index, byte}, to:{index, byte}}`
    message arrives on the scope, and `answerSelectionRange(text)` — the
-   rows are yours — queues the `setClipboard`.
+   rows are yours — queues the `setClipboard`. Select All in such a list
+   spans the whole of it — rows `0..rowCount`, which `virtualColumn` and
+   its siblings declare for you (`rowCount` on a list you compose by
+   hand) — and asks the same way, `to.byte` past the last row's length
+   when that row was never built: cut it to the row.
 4. **Your own.** `setClipboard(text, html?)` and `requestPaste()` (Rust
    `ui.set_clipboard` / `ui.request_paste`, Lua `env.set_clipboard` /
    `env.request_paste`, C `kui_set_clipboard` / `kui_request_paste`)

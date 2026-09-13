@@ -30,6 +30,16 @@ pub const TINT: Color = Color {
 
 /// One end of a selection: the node whose text it lands in, and a byte
 /// offset into *that node's* content (not into the scope's).
+/// A `byte` that means "the end of the row, whatever its length": what a
+/// Select All puts on the last row of a `selectable` virtual list the
+/// frame did not build, since the core never laid that row out and cannot
+/// know where it ends (ADR 0017, tier 3). A `selectionrange` ask carries
+/// it as written, past any row's length, and the app cuts it to the row —
+/// which is what an app slicing a string does anyway. `u32::MAX` rather
+/// than `usize::MAX` so it survives the trip through a wire that spells
+/// bytes as numbers.
+pub const ROW_END: usize = u32::MAX as usize;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Endpoint {
     pub node: Key,

@@ -123,9 +123,18 @@ date: 2026-09-14
   Window menu with its own rows *between* the platform's, which the
   register-by-name rule cannot give.
 
-- **Validating the Edit rows** (Copy greyed with nothing to copy). The
+- ~~**Validating the Edit rows** (Copy greyed with nothing to copy). The
   keyboard has no such greying either; the rows are the keyboard. Filed
-  as W14 for the day a design wants it.
+  as W14 for the day a design wants it.~~ **Reversed the same day**
+  (W14 built): the "not free" was about reading the core from inside
+  AppKit's `validateMenuItem:`, and that is not what it costs. The runner
+  reads six facts after every event batch (`edit_state` in `menus.rs`:
+  editor history and selection, the window's scope or grid, whether a
+  sink would hear the chord) and stamps one byte on the bar's target;
+  the callback reads the byte. The menu opens with Copy greyed and no
+  selection, Undo greyed with no history, and everything lit while a
+  key sink has the chord — measured against `clipboard` through the AX
+  API. The standard Edit menu is the one menu of kui's that autoenables.
 
 - **Registering the standard Window menu before launch** so AppKit adds
   Enter Full Screen itself. It works (a menu registered before

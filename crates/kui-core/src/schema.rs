@@ -151,6 +151,7 @@ pub const P_SCROLLBAR_ACTIVE_COLOR: u32 = 96;
 pub const P_ANCHOR: u32 = 97;
 pub const P_ALWAYS_ON_TOP: u32 = 98;
 pub const P_ON_SCROLL: u32 = 99;
+pub const P_ROW_COUNT: u32 = 100;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -1204,6 +1205,16 @@ pub const CUSTOM: &[CustomProp] = &[
         doc: "Stable identity by *data* index rather than by name: the key auto-keying would have given this node as the `i`th child, given to it wherever it actually sits. What a virtualised list is for — a view that builds rows 900..930 of ten thousand opens each with its own row number, so the row keeps its hover, focus, edit buffer and tweens as the built range slides over it, and a list that builds every row agrees with one that builds a screenful. Wherever `key` names a node this numbers it (a box, a `line`, a `cells`, a `fragment`); declared beside `key` the index wins. Indices and names are separate namespaces, so a spacer keyed `\"lead\"` cannot collide with row 0 — but two rows on one index do, exactly as two on one name would.",
     },
     CustomProp {
+        name: "rowCount",
+        id: P_ROW_COUNT,
+        jsx_names: &["rowCount"],
+        lua_names: &["row_count"],
+        jsx: "`rowCount`",
+        lua: "`row_count`",
+        c: "`kui_row_count`",
+        doc: "How many `index`ed rows this node's virtual list has, built or not. `virtualColumn` / `virtual_column` / `widgets::virtual_column` and `virtual_rows` declare it on their container; a list composed by hand says it beside `scrollY`. What it buys: Select All (Cmd/Ctrl-A, the menu's row) inside a `selectable` virtual list selects the *data*, rows `0..rowCount`, rather than the rows the frame built, and the copy is a `selectionrange` ask whose `to.byte` is past the last row's length when that row is not built — cut it to the row. Without it Select All is the built rows, which is all the core can see.",
+    },
+    CustomProp {
         name: "title",
         id: P_TITLE,
         jsx_names: &["title"],
@@ -1626,7 +1637,7 @@ pub const EVENTS: &[EventDef] = &[
     EventDef {
         kind: "selectionrange",
         payload: "`{ kind: \"selectionrange\", from: { index, byte }, to: { index, byte } }` on the scope",
-        doc: "A copy reached rows of a `selectable` virtual list that no frame built (`docs/adr/0017-selection-as-a-scope.md`, tier 3): the core cannot read text it never laid out, so it asks the app for the range — `index` is a row's data index (its `index` prop), `byte` an offset into that row's text — and the app answers with `answerSelectionRange(text)` / `answer_selection_range` / `kui_answer_selection_range`, which is what reaches the clipboard as a `setClipboard` action. Raised only while a copy is outstanding (`requestCopy()` answered `asked`, or the runner's Cmd/Ctrl-C did); a late answer changes nothing. `examples/rust/features/clipboard.rs` and its Node twin show the round trip.",
+        doc: "A copy reached rows of a `selectable` virtual list that no frame built (`docs/adr/0017-selection-as-a-scope.md`, tier 3): the core cannot read text it never laid out, so it asks the app for the range — `index` is a row's data index (its `index` prop), `byte` an offset into that row's text, past the row's length for \"the whole row\" (a Select All over a list that declared `rowCount` ends that way, on its last row) — and the app answers with `answerSelectionRange(text)` / `answer_selection_range` / `kui_answer_selection_range`, which is what reaches the clipboard as a `setClipboard` action. Raised only while a copy is outstanding (`requestCopy()` answered `asked`, or the runner's Cmd/Ctrl-C did); a late answer changes nothing. `examples/rust/features/clipboard.rs` and its Node twin show the round trip.",
     },
     EventDef {
         kind: "contextmenu",
@@ -2519,6 +2530,9 @@ pub struct PropsOut {
     /// `index`: the data index this node is opened under, which beats `key`
     /// when a binding is handed both.
     pub index: Option<u64>,
+    /// `rowCount`: how many indexed rows the node's virtual list has
+    /// (`Core::row_count`).
+    pub row_count: Option<u64>,
     pub title: Option<String>,
     /// `alwaysOnTop`: the root asked for the window above every other
     /// app's this frame (`Core::set_always_on_top`, backlog C30).
@@ -2562,6 +2576,7 @@ impl PropsOut {
             style: TextStyle::new(16.0),
             key: None,
             index: None,
+            row_count: None,
             title: None,
             always_on_top: false,
             key_focus: false,

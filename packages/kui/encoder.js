@@ -282,6 +282,13 @@ export function createEncoder(P) {
           f[fi++] = v;
           n++;
           break;
+        // How many indexed rows the node's virtual list has, built or not:
+        // what Select All in a `selectable` list spans (ADR 0017, tier 3).
+        case 'rowCount':
+          f[fi++] = PR.rowCount.id;
+          f[fi++] = v;
+          n++;
+          break;
         case 'pad': pad = v; break;
         case 'padX': padX = v; break;
         case 'padY': padY = v; break;

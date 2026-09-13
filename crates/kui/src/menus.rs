@@ -120,6 +120,18 @@ impl<A: App> Shell<A> {
                 }
                 self.applied_menu_bar = Some(stamp);
             }
+            // Which of the standard Edit rows apply, read off the window a
+            // chord would go to (W14). A handful of `Option` reads and one
+            // byte stored, every batch, only while that bar is up.
+            if stamp == AppliedBar::Standard
+                && let Some(i) = self
+                    .panes
+                    .iter()
+                    .position(|p| p.core.env.focused)
+                    .or_else(|| (!self.panes.is_empty()).then_some(0))
+            {
+                native.set_edit_state(edit_state(&self.panes[i].core));
+            }
             match chosen {
                 None => {}
                 // Reported to the window the bar was applied from, which
@@ -203,5 +215,27 @@ impl<A: App> Shell<A> {
                 }
             }
         }
+    }
+}
+
+/// Which rows of the standard Edit menu apply for `core` right now — the
+/// state `Shell::edit_chord` would act on, read without acting: a focused
+/// editor's history and selection, the window's selection scope or cell
+/// grid, and whether a key sink would hear the chord at all (in which case
+/// every row stays lit, since the sink may bind it).
+#[cfg(target_os = "macos")]
+fn edit_state(core: &Core) -> macos_menu::EditState {
+    let editor = core.edit.focused();
+    let sink = core.chord_sink().is_some();
+    let scope = core.selection().is_some() || core.cell_selection().is_some();
+    let (undo, redo) = editor.map_or((false, false), |k| core.edit.history(k));
+    let selected = editor.is_some_and(|k| core.edit.has_selection(k));
+    macos_menu::EditState {
+        undo: undo || sink,
+        redo: redo || sink,
+        cut: selected || sink,
+        copy: selected || scope || sink,
+        paste: editor.is_some() || sink,
+        select_all: editor.is_some() || scope || sink,
     }
 }

@@ -3079,7 +3079,20 @@ when it declares none, and registered a declared `Window` menu as the
 platform's. Two things were seen while building it and left, on
 purpose.
 
-### `.` W14 — The standard Edit menu's rows never grey
+### `.` W14 — The standard Edit menu's rows never grey — **done (2026-09-14)**
+
+**Done the same day, the way the entry's last sentence feared and
+cheaper than it feared.** The re-entrance is avoided by not re-entering:
+`Shell::pump_menu_bar` reads six facts off the front window's core after
+every event batch (`edit_state`: `EditStore::history` and
+`has_selection`, both new and allocation-free; `selection()` /
+`cell_selection()`; `Core::chord_sink`, new — the sink a chord would
+reach) and stamps one byte on `BarTarget`; `validateMenuItem:` answers
+from the byte. The Edit menu autoenables, alone among kui's. Undo greys
+with no history, Cut/Copy with no selection, Paste with no editor, and
+every row stays lit while a sink would hear the chord. Read back through
+the AX API against `clipboard` in five focus states. CHANGELOG under
+alpha.12.
 
 ADR 0030, decision 3: the rows are the chords — Copy *is* ⌘C — and
 they carry no `MenuRole`, so nothing validates them. Copy with nothing

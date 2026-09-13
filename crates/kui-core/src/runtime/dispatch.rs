@@ -1080,6 +1080,18 @@ impl Core {
     /// never a control's key — it is what a shortcut layer is made of — so
     /// it bubbles whatever the focused control would have done with the
     /// bare key.
+    /// The sink a chord pressed now would reach, if any: the focused sink,
+    /// the nearest one above the focused control, or the root's with
+    /// nothing focused (ADR 0011, decision 1; ADR 0022, decision 8). What a
+    /// driver asks before greying a menu row that spells a chord — a sink
+    /// that would hear ⌘C may do anything with it, so the row stays lit.
+    pub fn chord_sink(&self) -> Option<Key> {
+        if self.edit.focused().is_some() {
+            return None;
+        }
+        self.key_target(KeyCode::Char('c'), true)
+    }
+
     fn key_target(&self, code: KeyCode, chord: bool) -> Option<Key> {
         // With nothing focused there is nothing to claim, and the sink
         // that hears every unclaimed key in the tree — one on the root —
