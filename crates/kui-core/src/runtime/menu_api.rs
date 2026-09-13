@@ -404,14 +404,18 @@ impl Core {
                 // behind a static selection, so there is nothing to take
                 // it out of. The item is simply not offered there.
                 if let Some(key) = self.menu_editor
-                    && let Some(text) = self.edit.copy_selection(key)
+                    && let Some(text) = self.cut_editor(key)
                 {
                     self.set_focus(Some(key));
-                    self.edit_with_fonts(|edit, fs| edit.delete_selection(key, fs));
                     // No `html`: an editor's text is one style, and what
                     // was cut is gone anyway.
                     self.menu_actions
                         .push(MenuAction::SetClipboard { text, html: None });
+                    // And the edit it is: every other mutation posts one
+                    // (`apply_text`, `apply_key`, a reader's `setValue`),
+                    // so an app mirroring the field hears this one too
+                    // (AR15).
+                    self.push_edit_event(key, "changed", out);
                 }
             }
             MenuRole::Paste => self.menu_actions.push(MenuAction::Paste),

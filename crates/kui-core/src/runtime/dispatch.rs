@@ -1226,7 +1226,7 @@ impl Core {
         );
     }
 
-    fn push_edit_event(&self, key: Key, kind: &str, out: &mut Vec<UiEvent>) {
+    pub(crate) fn push_edit_event(&self, key: Key, kind: &str, out: &mut Vec<UiEvent>) {
         out.push(UiEvent {
             origin: self.edit.origin_of(key).unwrap_or(OriginId::HOST),
             window: WindowId::MAIN,
@@ -1251,8 +1251,23 @@ impl Core {
     }
 
     /// Cuts the focused editor's selection, returning the removed text.
+    /// A cut is an edit like any other, so the editor's `changed` is
+    /// pending for the caller to route — like a `resize`, since the
+    /// caller is not answering an input event (AR15: the runner used to
+    /// build one by hand here, and the menu path posted none).
     pub fn cut_selection(&mut self) -> Option<String> {
         let key = self.edit.focused()?;
+        let text = self.cut_editor(key)?;
+        let mut out = Vec::new();
+        self.push_edit_event(key, "changed", &mut out);
+        self.pending.append(&mut out);
+        Some(text)
+    }
+
+    /// Deletes editor `key`'s selection, returning what was there — the
+    /// one mutation both cuts share; the `changed` is the caller's to
+    /// post where its batch goes.
+    pub(crate) fn cut_editor(&mut self, key: Key) -> Option<String> {
         let text = self.edit.copy_selection(key)?;
         self.edit_with_fonts(|edit, fs| edit.delete_selection(key, fs));
         Some(text)

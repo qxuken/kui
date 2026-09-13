@@ -2622,7 +2622,19 @@ paths; the stops walked for `$` in the binding, or `keyframes::parse`
 given a `&TokenLookup`; the `$` form in the `Kind` docs so gen-types
 prints it.
 
-### `!` AR15 — Context-menu Cut mutates an editor without a `changed`, and the runner fakes one for Cmd-X
+### `!` AR15 — Context-menu Cut mutates an editor without a `changed`, and the runner fakes one for Cmd-X — **done (2026-09-14)**
+
+**Done (2026-09-14), both halves of the fix line.** One
+`Core::cut_editor(key)` does the deletion; `perform_menu_item`'s Cut
+arm pushes the `changed` into the batch the chosen row returns (which
+every driver routes), and `Core::cut_selection` pushes it into the
+pending events for the runner to take — the way `release_held_keys`
+posts, since the caller is not answering an input. The runner's
+`after_direct_edit` drains pending and routes instead of building the
+event by hand, so it is stamped and routed like a keystroke's.
+`tests/menu.rs`'s Cut case asserts the event beside the clipboard
+action; `tests/editing.rs`'s `copy_and_cut_selection` the pending one,
+and none for a cut of nothing. CHANGELOG under alpha.12.
 
 `MenuRole::Cut` deletes the selection and pushes `SetClipboard`
 (`runtime/menu_api.rs:402-415`); only `{kind:"menu", role:"cut"}` is
@@ -3304,8 +3316,8 @@ session rule written and the audio store and image drops moved under
 it — **both done 2026-09-14**), AR9–AR11 together — **all three done
 2026-09-14** (the held-key identity, the chord bit carried
 into the second channel, one attach pass with a producer-side mark),
-AR12 (Node's window handle — **done 2026-09-14**), AR13–AR16 (AR13 and
-AR14 **done 2026-09-14**) (the `<text>` rows, one token
+AR12 (Node's window handle — **done 2026-09-14**), AR13–AR16 (AR13,
+AR14 and AR15 **done 2026-09-14**) (the `<text>` rows, one token
 miss policy, Cut's `changed`, one `prepare_spec`), AR17–AR18 (the focus
 stamp and the AT gates), AR19–AR25 as the defects they are, then B1's
 table with AR26, AR27 and AR40 beside it, AR46–AR48 for the tests, and

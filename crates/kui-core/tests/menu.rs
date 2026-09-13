@@ -213,7 +213,7 @@ fn an_editors_selection_survives_the_menu_that_is_about_it() {
     };
     view(&mut core);
     let at = row_center(&mut core, "Cut");
-    click(&mut core, at);
+    let evs = click(&mut core, at);
     assert_eq!(
         core.take_menu_actions(),
         vec![MenuAction::SetClipboard {
@@ -226,6 +226,15 @@ fn an_editors_selection_survives_the_menu_that_is_about_it() {
         Some(""),
         "and the text is gone from the field"
     );
+    // AR15: a cut is an edit, and the app mirroring the field through
+    // `changed` hears it — beside the `menu` event the chosen row posts,
+    // which is not the app's click.
+    let changed: Vec<_> = evs
+        .iter()
+        .filter(|e| e.payload.get("kind").and_then(Value::as_str) == Some("changed"))
+        .collect();
+    assert_eq!(changed.len(), 1, "{evs:?}");
+    assert_eq!(changed[0].key, edit);
 }
 
 #[test]

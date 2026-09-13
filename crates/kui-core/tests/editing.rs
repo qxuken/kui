@@ -364,8 +364,21 @@ fn copy_and_cut_selection() {
         rig.press(EditKey::Right, SHIFT);
     }
     assert_eq!(rig.core.copy_selection().as_deref(), Some("hello"));
+    assert!(rig.core.take_pending_events().is_empty());
     assert_eq!(rig.core.cut_selection().as_deref(), Some("hello"));
     assert_eq!(rig.text(), " world");
+    // AR15: the cut's `changed` is pending, for the driver to route the
+    // way it routes a `resize` — it used to build one by hand, and only
+    // for its own chord.
+    let evs = rig.core.take_pending_events();
+    assert_eq!(evs.len(), 1, "{evs:?}");
+    assert_eq!(
+        evs[0].payload.get("kind").and_then(kui_core::Value::as_str),
+        Some("changed")
+    );
+    // Nothing selected: nothing cut, nothing posted.
+    assert!(rig.core.cut_selection().is_none());
+    assert!(rig.core.take_pending_events().is_empty());
 }
 
 #[test]

@@ -620,6 +620,20 @@ Nothing.
   hears of neither drop — the lists were never exported — which is filed
   rather than built here.
 
+- **Cut from a context menu posts the editor's `changed`** (backlog
+  AR15). `MenuRole::Cut` deleted the selection and queued the clipboard
+  action, and posted only `{kind:"menu", role:"cut"}` — every other
+  mutation (`apply_text`, `apply_key`, a reader's `setValue`) posts a
+  `changed`, and the runner knew it: its Cmd-X path built one by hand
+  after `Core::cut_selection` with the comment "A cut is input too". The
+  drawn context menu and a native menu's `activateMenuItem` took the
+  core path and posted nothing, so a Node, Lua or C app mirroring a
+  field through `changed` desynced after Cut. Both paths post it from
+  the core now — `perform_menu_item` into the batch the chosen row
+  returns, `cut_selection` into the pending events, like a `resize` —
+  and the runner's copy is gone; `tests/menu.rs` asserts the event
+  beside the clipboard, `tests/editing.rs` the pending one.
+
 - **An unresolved `$token` means one thing everywhere** (backlog AR14).
   Three outcomes before: Rust's `ui.token_color` answered transparent and
   `token_length` zero; Node left the slot out and the core kept the row's

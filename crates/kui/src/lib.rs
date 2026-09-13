@@ -1103,24 +1103,17 @@ impl<A: App> Shell<A> {
         reached_app
     }
 
-    /// Direct edits (cut) mutate the document outside handle_input, so they
-    /// must notify + redraw explicitly.
+    /// Direct edits (cut) mutate the document outside `handle_input`, so
+    /// the `changed` the core queued for it is routed here, and the window
+    /// redrawn. The core posts the event (AR15: this used to build one by
+    /// hand, and the menu's Cut posted none), so it is stamped and routed
+    /// like the ones a keystroke makes.
     fn after_direct_edit(&mut self, i: usize) {
-        let pane = &mut self.panes[i];
-        if let Some(key) = pane.core.edit.focused() {
-            let origin = pane.core.edit.origin_of(key).unwrap_or(OriginId::HOST);
-            let ev = UiEvent {
-                origin,
-                // Built outside the core, so this driver stamps it itself.
-                window: pane.core.env.window.id,
-                key,
-                payload: Value::map([("kind", "changed".into())]),
-            };
-            // A cut is input too: the frame that shows the text gone
-            // should show what the app made of `changed`.
-            let reached_app = self.route_events(vec![ev]);
-            self.owe_for(reached_app);
-        }
+        let events = self.panes[i].core.take_pending_events();
+        // A cut is input too: the frame that shows the text gone should
+        // show what the app made of `changed`.
+        let reached_app = self.route_events(events);
+        self.owe_for(reached_app);
         self.panes[i].window.request_redraw();
     }
 
