@@ -332,13 +332,11 @@ pub struct Core {
     /// The frame clock's reading at the last frame, for the edge drag's
     /// rate (`follow::follow_drag`); `None` before a clock is set.
     last_frame_time: Option<f64>,
-    /// A held drag past an edge stepped its scroller this frame: another
-    /// frame is wanted with nothing in the queue (`animating`).
-    autoscrolling: bool,
-    /// The fraction of a line the wheel's last notch over an `on_scroll`
-    /// grid did not cover, with the grid it was over: the next notch on
-    /// the same grid adds to it (ADR 0029, decision 4).
-    wheel_carry: Option<(Key, f32)>,
+    /// The fraction of a line the last delta over an `on_scroll` grid —
+    /// a wheel notch or an edge step — did not cover, with the grid it
+    /// was over: the next delta on the same grid adds to it (ADR 0029,
+    /// decision 4).
+    line_carry: Option<(Key, f32)>,
     sel_ords: Vec<u32>,
     sel_ends: Option<crate::select::Ends>,
     /// Per-node innermost enclosing selection scope — the key of the
@@ -787,8 +785,7 @@ impl Core {
             select_dragging: None,
             drag_follow: None,
             last_frame_time: None,
-            autoscrolling: false,
-            wheel_carry: None,
+            line_carry: None,
             sel_ords: Vec::new(),
             sel_ends: None,
             scopes: Vec::new(),
@@ -1049,7 +1046,7 @@ impl Core {
             || self.depart.animating()
             || self.frame_requested
             || self.tree.any_animate
-            || self.autoscrolling
+            || self.autoscrolling()
     }
 
     /// Asks the driver for one more frame right after this one. A view

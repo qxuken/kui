@@ -150,7 +150,7 @@ impl Core {
         }
         // An `on_scroll` node takes the wheel the way a container does —
         // one list, one paint-order rule (ADR 0029, decision 4).
-        let handler = spec.events().on_scroll.is_some();
+        let handler = self.tree.any_scroll_handler && spec.events().on_scroll.is_some();
         if spec.layout.scroll_x || spec.layout.scroll_y || handler {
             // A container behind a modal keeps its scrollbar drawn and
             // refuses the wheel and the thumb.
@@ -409,7 +409,7 @@ impl Core {
             // nothing about where a row sits in the data. Comparing
             // against one puts an end below the list at the top of it.
             let hi = built.iter().rev().find_map(|(_, r, _)| *r)?;
-            if row > hi {
+            if crate::select::unbuilt_row_is_after(row, Some(hi)) {
                 return Some((last.0, last.2));
             }
             // Below the first row, or inside the built range without being

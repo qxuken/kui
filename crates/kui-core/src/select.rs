@@ -238,6 +238,18 @@ pub(crate) fn grained_edges(
     }
 }
 
+/// Where a selection end in a virtualised row the frame did not build
+/// sits against the rows it did: after every built run of the scope iff
+/// its row is past the last built row that carries one (`last`), before
+/// them otherwise — below the first row, or in a hole, which a contiguous
+/// virtual window does not have. The one rule the highlight paints by
+/// (`resolve_selection`) and a `selectionrange` ask orders by
+/// (`selection_range`). With no built row to compare against, nothing is
+/// after: the start is the honest boundary.
+pub(crate) fn unbuilt_row_is_after(row: u64, last: Option<u64>) -> bool {
+    last.is_some_and(|hi| row > hi)
+}
+
 /// One end of the range an app is asked to fill in
 /// (`Core::selection_range`): the data index of the row it is in, and the
 /// byte inside that row's own text. An end outside every virtualised row
@@ -246,6 +258,22 @@ pub(crate) fn grained_edges(
 pub struct RangeEnd {
     pub row: Option<u64>,
     pub byte: usize,
+}
+
+impl RangeEnd {
+    /// The end as data — `{index, byte}`, the index null outside every
+    /// virtualised row: the shape a `selectionrange` ask carries and a
+    /// binding's `selection_ends` reads back, spelled once.
+    pub fn to_value(self) -> crate::value::Value {
+        use crate::value::Value;
+        Value::map([
+            (
+                "index",
+                self.row.map_or(Value::Null, |r| Value::Int(r as i64)),
+            ),
+            ("byte", Value::Int(self.byte as i64)),
+        ])
+    }
 }
 
 /// What asking for a copy answered (`Core::request_copy`).

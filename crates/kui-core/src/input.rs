@@ -1124,11 +1124,6 @@ impl Interaction {
         self.hits.iter().rev().find(|h| self.contains(h, p))
     }
 
-    /// Topmost scroll container under the cursor, if any.
-    pub fn scroll_target(&self) -> Option<Key> {
-        self.scroll_region_at().map(|r| r.key)
-    }
-
     /// The scroll region under the cursor: the topmost container or
     /// `on_scroll` handler there, by paint order.
     pub(crate) fn scroll_region_at(&self) -> Option<&ScrollRegion> {

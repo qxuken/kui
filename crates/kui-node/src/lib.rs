@@ -2913,14 +2913,11 @@ macro_rules! core_methods {
             /// selection; a grid's is `cellSelection()`.
             #[napi(ts_return_type = "SelectionEnds | null")]
             pub fn selection_ends(&mut self) -> Result<Json> {
-                let end = |e: kui_core::RangeEnd| {
-                    Value::map([
-                        ("index", e.row.map_or(Value::Null, |r| Value::Int(r as i64))),
-                        ("byte", Value::Int(e.byte as i64)),
-                    ])
-                };
                 Ok(match self.$core().selection_ends() {
-                    Some((a, f)) => readback(&Value::map([("anchor", end(a)), ("focus", end(f))])),
+                    Some((a, f)) => readback(&Value::map([
+                        ("anchor", a.to_value()),
+                        ("focus", f.to_value()),
+                    ])),
                     None => Json::Null,
                 })
             }

@@ -46,15 +46,24 @@ pub(crate) enum Scroller {
     Handler { key: Key, seen: Option<u64> },
 }
 
+impl Scroller {
+    fn key(self) -> Key {
+        match self {
+            Scroller::Container { key, .. } | Scroller::Handler { key, .. } => key,
+        }
+    }
+}
+
 /// A held drag and what it follows: the pointer's last position, kept
 /// across a `CursorLeft` (a press dragged out of the window gets one on
-/// some platforms, and the drag is still held); the scroller; and the
-/// fraction of a line an edge step has not covered yet, for a grid.
+/// some platforms, and the drag is still held); the scroller; and
+/// whether the last frame stepped it, which is what asks for the next
+/// frame (`Core::animating`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DragFollow {
     pub point: Vec2,
     pub scroller: Option<Scroller>,
-    pub carry: f32,
+    pub stepped: bool,
 }
 
 impl Core {
@@ -65,15 +74,21 @@ impl Core {
         self.drag_follow = Some(DragFollow {
             point,
             scroller,
-            carry: 0.0,
+            stepped: false,
         });
     }
 
-    /// The pointer moved while the drag is held.
+    /// The pointer moved and the caller placed the live end there against
+    /// the finished frame: the scroller's reading is taken again, so the
+    /// next frame does not place the end a second time for a move the
+    /// frame already answered.
     pub(crate) fn follow_point(&mut self, point: Vec2) {
-        if let Some(f) = &mut self.drag_follow {
-            f.point = point;
-        }
+        let Some(mut f) = self.drag_follow else {
+            return;
+        };
+        f.point = point;
+        f.scroller = f.scroller.map(|s| self.reading_of(s.key(), s));
+        self.drag_follow = Some(f);
     }
 
     /// The drag ended: the live end is placed once more where the pointer
@@ -84,7 +99,12 @@ impl Core {
         if let Some(f) = self.drag_follow.take() {
             self.rehit(f.point);
         }
-        self.autoscrolling = false;
+    }
+
+    /// Whether a held drag stepped its scroller this frame — one more
+    /// frame is wanted with nothing in the queue.
+    pub(crate) fn autoscrolling(&self) -> bool {
+        self.drag_follow.is_some_and(|f| f.stepped)
     }
 
     /// The nearest ancestor-or-self of `node` that a held drag scrolls,
@@ -103,21 +123,37 @@ impl Core {
             let key = self.tree.keys[i];
             let spec = &self.tree.specs[i];
             if spec.events().on_scroll.is_some() {
-                return Some(Scroller::Handler {
-                    key,
-                    seen: self.grid_line(key),
-                });
+                return Some(self.reading_of(key, Scroller::Handler { key, seen: None }));
             }
             if spec.layout.scroll_x || spec.layout.scroll_y {
-                return Some(Scroller::Container {
+                return Some(self.reading_of(
                     key,
-                    seen: self.scroll.laid_offset(key).unwrap_or(Vec2::ZERO),
-                });
+                    Scroller::Container {
+                        key,
+                        seen: Vec2::ZERO,
+                    },
+                ));
             }
             match self.tree.parent[i] {
                 NIL => return None,
                 p => i = p as usize,
             }
+        }
+    }
+
+    /// The scroller `key`, of `kind`'s kind, at what the finished frame
+    /// placed it: the one reading `scroller_of` takes, the gate compares
+    /// against, and a placement refreshes.
+    fn reading_of(&self, key: Key, kind: Scroller) -> Scroller {
+        match kind {
+            Scroller::Container { .. } => Scroller::Container {
+                key,
+                seen: self.scroll.laid_offset(key).unwrap_or(Vec2::ZERO),
+            },
+            Scroller::Handler { .. } => Scroller::Handler {
+                key,
+                seen: self.grid_line(key),
+            },
         }
     }
 
@@ -178,107 +214,92 @@ impl Core {
         } as f32;
         self.last_frame_time = now;
         let Some(mut f) = self.drag_follow else {
-            self.autoscrolling = false;
             return;
         };
-        let Some(scroller) = f.scroller else {
-            self.autoscrolling = false;
-            return;
-        };
-        // 1. The frame under the pointer moved: place the end again.
-        let moved = match scroller {
-            Scroller::Container { key, seen } => {
-                self.scroll.laid_offset(key).is_some_and(|o| o != seen)
+        f.stepped = false;
+        if let Some(scroller) = f.scroller {
+            // 1. The frame under the pointer moved: place the end again.
+            let key = scroller.key();
+            let now = self.reading_of(key, scroller);
+            let moved = match scroller {
+                Scroller::Container { .. } => now != scroller,
+                Scroller::Handler { seen, .. } => seen.is_none() || now != scroller,
+            };
+            if moved {
+                self.rehit(f.point);
+                f.scroller = Some(now);
             }
-            Scroller::Handler { key, seen } => seen.is_none() || self.grid_line(key) != seen,
-        };
-        if moved {
-            self.rehit(f.point);
-            f.scroller = Some(match scroller {
-                Scroller::Container { key, .. } => Scroller::Container {
-                    key,
-                    seen: self.scroll.laid_offset(key).unwrap_or(Vec2::ZERO),
-                },
-                Scroller::Handler { key, .. } => Scroller::Handler {
-                    key,
-                    seen: self.grid_line(key),
-                },
-            });
-        }
-        // 2. The pointer is past the edge: step the scroller.
-        let stepped = match scroller {
-            Scroller::Container { key, .. } => {
-                let Some(i) = self.tree.index_of(key) else {
-                    self.drag_follow = Some(f);
-                    self.autoscrolling = false;
-                    return;
-                };
-                let spec = self.tree.specs[i].layout;
+            // 2. The pointer is past the edge: step the scroller.
+            if let Some(i) = self.tree.index_of(key) {
                 let rect = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
-                let delta = edge_step(rect, f.point, spec.scroll_x, spec.scroll_y, dt);
-                if delta != Vec2::ZERO {
-                    self.scroll.scroll_by(key, delta);
-                    true
-                } else {
-                    false
-                }
-            }
-            Scroller::Handler { key, .. } => {
-                let Some(i) = self.tree.index_of(key) else {
-                    self.drag_follow = Some(f);
-                    self.autoscrolling = false;
-                    return;
-                };
-                let rect = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
-                // A grid scrolls lines and has no columns to scroll to;
-                // any other handler hears both axes.
-                let grid = self.grid_line(key).is_some();
-                let delta = edge_step(rect, f.point, !grid, true, dt);
-                if delta != Vec2::ZERO {
-                    // The event's delta is the wheel's: positive `dy` is
-                    // earlier content, so a step toward later content —
-                    // the pointer below — is negative.
-                    let wheel = Vec2::new(-delta.x, -delta.y);
-                    let p = f.point;
-                    let mut carry = f.carry;
-                    if let Some(ev) = self.scroll_event(key, p, wheel, &mut carry) {
-                        self.pending.push(ev);
+                f.stepped = match scroller {
+                    Scroller::Container { .. } => {
+                        let spec = self.tree.specs[i].layout;
+                        let delta = edge_step(rect, f.point, spec.scroll_x, spec.scroll_y, dt);
+                        // A step the clamp would undo is no step: a
+                        // scroller at its end under a held pointer is
+                        // idle, not asking for frames until the release.
+                        let moves = self.scroll.geometry(key).is_some_and(|g| {
+                            let can =
+                                |o: f32, d: f32, m: f32| (o + d).clamp(0.0, m) != o.clamp(0.0, m);
+                            can(g.offset.x, delta.x, g.max_offset.x)
+                                || can(g.offset.y, delta.y, g.max_offset.y)
+                        });
+                        if moves {
+                            self.scroll.scroll_by(key, delta);
+                        }
+                        moves
                     }
-                    f.carry = carry;
-                    true
-                } else {
-                    false
-                }
+                    Scroller::Handler { .. } => {
+                        // A grid scrolls lines and has no columns to
+                        // scroll to; any other handler hears both axes.
+                        let grid = self.grid_line(key).is_some();
+                        let delta = edge_step(rect, f.point, !grid, true, dt);
+                        if delta != Vec2::ZERO {
+                            // The event's delta is the wheel's: positive
+                            // `dy` is earlier content, so a step toward
+                            // later content — the pointer below — is
+                            // negative.
+                            let wheel = Vec2::new(-delta.x, -delta.y);
+                            if let Some(ev) = self.scroll_event(key, f.point, wheel) {
+                                self.pending.push(ev);
+                            }
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                };
             }
-        };
-        self.autoscrolling = stepped;
+        }
         self.drag_follow = Some(f);
     }
 
     /// The `scroll` event a delta over the `on_scroll` node `key` makes —
     /// the wheel's, or an edge step's — with the whole lines it covers
-    /// on a grid, the fraction left in `carry`. `None` when the node is
-    /// not in the finished frame or declared no tag.
-    pub(crate) fn scroll_event(
-        &mut self,
-        key: Key,
-        p: Vec2,
-        delta: Vec2,
-        carry: &mut f32,
-    ) -> Option<UiEvent> {
+    /// on a grid. The fraction left over is carried to the next delta on
+    /// the same grid, whichever of the two made it (`line_carry`): a
+    /// notch's half line and an edge step's add up. `None` when the node
+    /// is not in the finished frame or declared no tag.
+    pub(crate) fn scroll_event(&mut self, key: Key, p: Vec2, delta: Vec2) -> Option<UiEvent> {
         let i = self.tree.index_of(key)?;
-        let tag = self.tree.specs[i].events().on_scroll.clone()?;
-        let origin = self.tree.origins[i];
+        self.tree.specs[i].events().on_scroll.as_ref()?;
         let lines = match self.grid_line_height(key) {
             Some(h) => {
+                let carry = match self.line_carry {
+                    Some((k, c)) if k == key => c,
+                    _ => 0.0,
+                };
                 // Later history is the wheel rolling down: negative `dy`.
-                let total = *carry - delta.y / h;
+                let total = carry - delta.y / h;
                 let whole = total.trunc();
-                *carry = total - whole;
+                self.line_carry = Some((key, total - whole));
                 Value::Int(whole as i64)
             }
             None => Value::Null,
         };
+        let origin = self.tree.origins[i];
+        let tag = self.tree.specs[i].events().on_scroll.as_ref();
         let payload = Value::map([
             ("kind", Value::str("scroll")),
             ("x", Value::Float(p.x as f64)),
@@ -287,7 +308,7 @@ impl Core {
             ("dy", Value::Float(delta.y as f64)),
             ("lines", lines),
         ]);
-        Some(UiEvent::on(origin, key, payload).tagged(Some(&tag)))
+        Some(UiEvent::on(origin, key, payload).tagged(tag))
     }
 }
 

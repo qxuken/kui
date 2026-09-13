@@ -286,14 +286,9 @@ impl Core {
                 if let Some(r) = self.interaction.scroll_region_at().copied() {
                     if r.handler {
                         let p = self.interaction.cursor().unwrap_or(Vec2::ZERO);
-                        let mut carry = match self.wheel_carry {
-                            Some((k, c)) if k == r.key => c,
-                            _ => 0.0,
-                        };
-                        if let Some(ev) = self.scroll_event(r.key, p, delta, &mut carry) {
+                        if let Some(ev) = self.scroll_event(r.key, p, delta) {
                             out.push(ev);
                         }
-                        self.wheel_carry = Some((r.key, carry));
                     } else {
                         self.scroll.scroll_by(r.key, Vec2::new(-delta.x, -delta.y));
                     }
@@ -584,13 +579,9 @@ impl Core {
                                 let extend = shift && self.edit.focused() == Some(key);
                                 self.set_focus(Some(key));
                                 let local = Vec2::new(p.x - origin.x, p.y - origin.y);
-                                if extend {
-                                    self.edit_with_fonts(|edit, fs| edit.drag(key, local, fs));
-                                } else {
-                                    self.edit_with_fonts(|edit, fs| {
-                                        edit.click(key, local, clicks, fs)
-                                    });
-                                }
+                                self.edit_with_fonts(|edit, fs| {
+                                    edit.click(key, local, clicks, extend, fs)
+                                });
                                 self.edit.dragging = Some((key, origin));
                                 self.arm_follow(key, p);
                             }
@@ -602,27 +593,14 @@ impl Core {
                                 let target = self.press_focus(key, focusable);
                                 self.set_focus(target);
                                 self.settle_region(Some(key));
-                                if extends {
-                                    // The anchor stays; the live end is
-                                    // the press, and the drag goes on
-                                    // from there by characters, whatever
-                                    // the click count.
-                                    let drag = crate::select::SelectDrag {
-                                        scope,
-                                        grain: crate::select::Grain::Char,
-                                        anchor: None,
-                                    };
-                                    self.extend_select_drag(drag, p);
-                                    self.select_dragging = Some(drag);
-                                } else {
-                                    // The press arms the drag with what the
-                                    // click count says it moves by: a second
-                                    // click held and dragged selects word by
-                                    // word, a third run by run — in bytes or,
-                                    // for a grid, in cells; the arming knows.
-                                    self.arm_select_drag(scope, p, clicks);
-                                }
-                                if self.select_dragging.is_some() {
+                                // The press arms the drag with what the
+                                // click count says it moves by: a second
+                                // click held and dragged selects word by
+                                // word, a third run by run — in bytes or,
+                                // for a grid, in cells; the arming knows.
+                                // A Shift-press keeps the anchor instead
+                                // and goes on by characters.
+                                if self.arm_select_drag(scope, p, clicks, extends) {
                                     self.arm_follow(scope, p);
                                 }
                             }
@@ -673,12 +651,7 @@ impl Core {
                     let off = bar.offset_for(p, grab);
                     self.set_scroll_axis(key, axis, off);
                 }
-                if let Some((key, _)) = self.edit.dragging {
-                    self.edit_drag_to(key, p);
-                }
-                if let Some(drag) = self.select_dragging {
-                    self.extend_select_drag(drag, p);
-                }
+                self.rehit(p);
                 self.follow_point(p);
                 self.interaction
                     .handle(InputEvent::CursorMoved(p), &mut out);
@@ -740,11 +713,10 @@ impl Core {
         self.select_dragging = None;
         self.edit.dragging = None;
         self.drag_follow = None;
-        self.autoscrolling = false;
         if let Some((key, content_origin)) = editor {
             let local = Vec2::new(p.x - content_origin.x, p.y - content_origin.y);
             self.set_focus(Some(key));
-            self.edit_with_fonts(|edit, fs| edit.click(key, local, 2, fs));
+            self.edit_with_fonts(|edit, fs| edit.click(key, local, 2, false, fs));
             self.menu_editor = Some(key);
             if let Some(action) = self.lookup_action() {
                 self.menu_actions.push(action);
@@ -1082,6 +1054,21 @@ impl Core {
         self.env.focused = focused;
         if !focused {
             self.release_held_keys();
+            // The modifiers go with the keys: a Shift released in another
+            // window never reaches this one, and a host that does not
+            // resend the state on the way back (winit does; a C loop may
+            // not) would otherwise leave every later press an extending
+            // one. The app hears it as the `modifiers` event it is.
+            let mut out = Vec::new();
+            self.interaction.handle(
+                InputEvent::Modifiers(crate::input::KeyMods::default()),
+                &mut out,
+            );
+            self.pending.append(&mut out);
+            // And a held drag's follow: the release will not come here,
+            // and a scroller stepping toward a pointer nobody holds any
+            // more is a window asking for frames until one does.
+            self.drag_follow = None;
         }
     }
 

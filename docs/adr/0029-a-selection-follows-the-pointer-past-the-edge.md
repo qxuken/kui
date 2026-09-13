@@ -470,7 +470,7 @@ and these things the draft could not know:
   editor's drawn origin — is the finished frame's, and `begin_frame`'s
   first act after the hook is to clear it. It also runs before
   `frame_requested = false` is reset, which is why the step sets its own
-  `autoscrolling` flag that `animating()` reads instead of
+  `DragFollow::stepped` flag that `animating()` reads instead of
   `request_frame`.
 - **Time set but not advanced is no time.** With a clock, a frame whose
   `set_time` equals the last one steps nothing; a headless drive that
@@ -480,10 +480,30 @@ and these things the draft could not know:
   window that sat hidden must not scroll a second's worth on return.
 - **cosmic-text's `Drag` is the whole Shift-click.** It seeds
   `Selection::Normal(cursor)` when there is none and moves the cursor
-  keeping it, so the editor arm is `edit.drag` in place of `edit.click`
-  and nothing else; `EditStore::drag` now `touch_caret`s when the cursor
-  moved, which is also what makes a single-line field scroll its text
-  toward a drag past its end (the caret reveal F41 built runs for it).
+  keeping it, so the editor arm is `click(.., extend)` choosing `Drag`
+  over `Click` and nothing else — still a click, so a live composition
+  is abandoned and the typing unit ends (the review caught the first cut
+  going to `edit.drag` directly and skipping both). `EditStore::drag`
+  now `touch_caret`s when the cursor moved, which is what makes a
+  single-line field scroll its text toward a drag past its end (the
+  caret reveal F41 built runs for it) — and the review found the same
+  mark putting a *document's* reveal under the held pointer: a caret 60
+  px past the edge revealed by 60 px a frame, on top of the step, six
+  times decision 2's rate and frame-bound. The reveal waits for the
+  release while the editor is the one being dragged; the field's own
+  text still settles at once.
+- **One carry per grid.** The wheel's leftover fraction and the edge
+  step's were two accumulators on the same grid; they are one
+  (`Core::line_carry`, owned by `scroll_event`), so a notch's half line
+  and a step's add up. And a step the clamp would undo is no step: a
+  container at its end under a held pointer does not report
+  `animating()` — the first cut did, a window at display rate until the
+  release — and `DragFollow::stepped` is that flag, gone with the
+  follow instead of reset by hand.
+- **`set_scroll` from a view asks for no frame.** The two frame spins
+  found on screen were each a view writing an offset every frame; the
+  guards at both sites stay, and the mechanism no longer lets a third
+  do it.
 - **The event row prints the lines.** `event scroll term 2` — the
   corpus's report carries a scroll's `lines` the way it carries a drag's
   deltas, in all four writers, because the carry is the contract and a

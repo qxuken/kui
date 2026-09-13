@@ -144,6 +144,9 @@ pub struct Tree {
     /// walk for the menu it inherits (backlog T1) is skipped wholesale on
     /// a frame that offers none.
     pub any_context_menu: bool,
+    /// Some node declared `on_scroll`; emission reads the row per node
+    /// only then (ADR 0029, decision 4).
+    pub any_scroll_handler: bool,
     /// Whether any node declares a workable `exit` (one under a
     /// transition). Gates the tree swap and the key diff.
     pub any_exit: bool,
@@ -219,6 +222,7 @@ impl Tree {
         self.any_slide = false;
         self.any_layout = false;
         self.any_context_menu = false;
+        self.any_scroll_handler = false;
         self.any_exit = false;
         self.any_animate = false;
         self.indexed.clear();
@@ -262,6 +266,7 @@ impl Tree {
             self.any_modal |= events.modal.is_some();
             self.any_layout |= events.on_layout.is_some();
             self.any_context_menu |= events.on_context_menu.is_some();
+            self.any_scroll_handler |= events.on_scroll.is_some();
         }
         if spec.transition.is_some() {
             match spec.anim.as_deref() {

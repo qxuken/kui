@@ -342,3 +342,107 @@ fn a_backwards_drag_asks_for_its_range_in_reading_order() {
     frame(&mut core, 10..15);
     assert_eq!(ask(&mut core), (0, 0, 2, 5));
 }
+
+/// The list `frame` builds with a header run above its rows, and beside
+/// it a second virtual list whose rows are its own data — another scope.
+fn two_lists(core: &mut Core, range: std::ops::Range<u64>, other: std::ops::Range<u64>) {
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::row().fill());
+    ui.with_keyed(
+        "list",
+        NodeSpec::column()
+            .width(Sizing::Fixed(200.0))
+            .height(Sizing::Fixed(140.0))
+            .scroll_y()
+            .selectable(),
+        |ui| {
+            ui.with_keyed(
+                "header",
+                NodeSpec::column()
+                    .width(Sizing::Grow(1.0))
+                    .height(Sizing::Fixed(20.0)),
+                |ui| ui.text("header", style()),
+            );
+            ui.with_keyed(
+                "lead",
+                NodeSpec::column()
+                    .width(Sizing::Grow(1.0))
+                    .height(Sizing::Fixed(range.start as f32 * 20.0)),
+                |_| {},
+            );
+            for i in range.clone() {
+                ui.with_indexed(
+                    i,
+                    NodeSpec::column()
+                        .width(Sizing::Grow(1.0))
+                        .height(Sizing::Fixed(20.0)),
+                    |ui| ui.text(&format!("row {i}"), style()),
+                );
+            }
+        },
+    );
+    ui.with_keyed(
+        "other",
+        NodeSpec::column()
+            .width(Sizing::Fixed(200.0))
+            .height(Sizing::Fixed(140.0))
+            .scroll_y()
+            .selectable(),
+        |ui| {
+            for i in other.clone() {
+                ui.with_indexed(
+                    i,
+                    NodeSpec::column()
+                        .width(Sizing::Grow(1.0))
+                        .height(Sizing::Fixed(20.0)),
+                    |ui| ui.text(&format!("other {i}"), style()),
+                );
+            }
+        },
+    );
+    ui.finish();
+}
+
+#[test]
+fn an_unbuilt_end_is_placed_against_its_own_lists_rows() {
+    use kui_core::{CopyRequest, Value};
+    let mut core = Core::new();
+    // Rows 0.. under the header; the other list holds rows 0.. too.
+    two_lists(&mut core, 0..6, 0..6);
+    // Press in the header, release in row 2.
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(2.0, 4.0)));
+    core.handle_input(InputEvent::MouseDown {
+        button: MouseButton::Primary,
+        clicks: 1,
+    });
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(
+        150.0,
+        20.0 + 2.0 * 20.0 + 10.0,
+    )));
+    core.handle_input(InputEvent::MouseUp {
+        button: MouseButton::Primary,
+    });
+    assert_eq!(
+        core.selection_text().as_deref(),
+        Some("header\nrow 0\nrow 1\nrow 2")
+    );
+    // The list scrolled on to rows 100..: row 2 is unbuilt and *before*
+    // every row this list built — whatever the other list, whose rows
+    // start at 0, would say of it. The ask is ordered the way the
+    // highlight is painted: the unbuilt end at the start boundary, then
+    // the header.
+    two_lists(&mut core, 100..106, 0..6);
+    assert_eq!(core.request_copy(), CopyRequest::Asked);
+    let ev = core
+        .take_pending_events()
+        .into_iter()
+        .find(|e| e.payload.get("kind").and_then(Value::as_str) == Some("selectionrange"))
+        .expect("a selectionrange ask");
+    let index = |name: &str| {
+        ev.payload
+            .get(name)
+            .and_then(|e| e.get("index"))
+            .and_then(Value::as_int)
+    };
+    assert_eq!((index("from"), index("to")), (Some(2), None));
+}

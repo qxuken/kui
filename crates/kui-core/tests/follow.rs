@@ -476,3 +476,130 @@ fn a_shift_press_in_the_grid_keeps_the_anchor() {
             .is_some_and(|t| t.starts_with("hello\nbrave"))
     );
 }
+
+/// A twenty-line document inside a scroller three lines tall.
+fn document(core: &mut Core) -> Key {
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let mut text = String::new();
+    for i in 0..20 {
+        text.push_str(&format!("line {i}\n"));
+    }
+    let opts = EditOptions {
+        multiline: true,
+        style: TextStyle::new(14.0).line_height(ROW_H),
+        ..EditOptions::default()
+    };
+    ui.with_keyed(
+        "doc-scroll",
+        NodeSpec::column()
+            .width(Sizing::Grow(1.0))
+            .height(Sizing::Fixed(VIEW_H))
+            .scroll_y(),
+        |ui| {
+            ui.text_edit(
+                "doc",
+                &text,
+                &opts,
+                NodeSpec::column().width(Sizing::Fixed(300.0)),
+            );
+        },
+    );
+    ui.finish();
+    core.key_of("doc-scroll").unwrap()
+}
+
+#[test]
+fn a_caret_drag_past_a_documents_scroller_moves_at_the_rate_not_the_pointer() {
+    let mut core = Core::new();
+    let scroller = document(&mut core);
+    press(&mut core, Vec2::new(1.0, 6.0));
+    // 60 px below: one edge step a clockless frame, 10 px — not the 60
+    // px the caret's reveal would jump the scroller by if it ran under a
+    // pointer drag (the reveal is a keyboard motion's; decision 2's rate
+    // is the drag's).
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(200.0, VIEW_H + 60.0)));
+    let step = 60.0 * AUTOSCROLL_RATE * CLOCKLESS_FRAME as f32;
+    for n in 1..=3 {
+        document(&mut core);
+        let y = core.scroll_offset(scroller).y;
+        assert!(
+            (y - n as f32 * step).abs() < 1e-3,
+            "frame {n}: offset {y}, expected {}",
+            n as f32 * step
+        );
+    }
+    assert!(core.animating());
+    release(&mut core);
+    document(&mut core);
+    assert!(!core.animating());
+}
+
+#[test]
+fn a_press_held_past_the_end_of_a_short_list_asks_for_nothing() {
+    let mut core = Core::new();
+    let scope = list(&mut core);
+    press(&mut core, Vec2::new(1.0, 6.0));
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(200.0, VIEW_H + 60.0)));
+    for _ in 0..40 {
+        list(&mut core);
+    }
+    assert_eq!(core.scroll_offset(scope).y, 10.0 * ROW_H - VIEW_H);
+    // At the clamp nothing moves, so nothing asks for another frame —
+    // even though the pointer is still held past the edge.
+    list(&mut core);
+    assert!(
+        !core.animating(),
+        "a scroller at its end under a held drag is idle"
+    );
+    release(&mut core);
+}
+
+#[test]
+fn a_shift_press_on_the_focus_itself_still_drags_on() {
+    let mut core = Core::new();
+    let _ = list(&mut core);
+    press(&mut core, Vec2::new(1.0, 6.0));
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(200.0, ROW_H + 6.0)));
+    release(&mut core);
+    assert_eq!(core.selection_text().as_deref(), Some("row 0\nrow 1"));
+    // A Shift-press where the focus already is moves nothing — and the
+    // drag from it goes on from the same anchor all the same.
+    shift(&mut core, true);
+    press(&mut core, Vec2::new(200.0, ROW_H + 6.0));
+    assert_eq!(core.selection_text().as_deref(), Some("row 0\nrow 1"));
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(200.0, 2.0 * ROW_H + 6.0)));
+    release(&mut core);
+    shift(&mut core, false);
+    assert_eq!(
+        core.selection_text().as_deref(),
+        Some("row 0\nrow 1\nrow 2")
+    );
+}
+
+#[test]
+fn a_shift_click_in_an_editor_is_a_click_for_the_undo_history() {
+    use kui_core::{EditKey, Mods};
+    let mut core = Core::new();
+    let key = editor(&mut core);
+    press(&mut core, Vec2::new(299.0, 8.0));
+    release(&mut core);
+    assert_eq!(core.focus(), Some(key));
+    for ch in "ab".chars() {
+        core.handle_input(InputEvent::Text(ch.to_string()));
+    }
+    // A Shift-click at the caret moves nothing, and still ends the typing
+    // unit the way a plain click does: what is typed next undoes alone.
+    shift(&mut core, true);
+    press(&mut core, Vec2::new(299.0, 8.0));
+    release(&mut core);
+    shift(&mut core, false);
+    core.handle_input(InputEvent::Text("c".into()));
+    assert_eq!(core.edit_text(key).as_deref(), Some("one two threeabc"));
+    core.handle_input(InputEvent::Key(EditKey::Undo, Mods::default()));
+    assert_eq!(
+        core.edit_text(key).as_deref(),
+        Some("one two threeab"),
+        "the click broke the coalesced unit"
+    );
+}
