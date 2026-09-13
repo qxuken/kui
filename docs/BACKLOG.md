@@ -41,11 +41,12 @@ platform did), AR7–AR49 from the second architecture review, filed
 2026-09-13 — forty-three entries under ten
 decisions, twenty of them defects, the audio store reconciled against
 every window's frame and the two key channels disagreeing about a
-chord at the top; **AR7–AR12 built 2026-09-14**, the session rule
+chord at the top; **AR7–AR16 built 2026-09-14**, the session rule
 written and the mounts and the removed ids moved under it, a held key
 matched by position, one chord bit for both key channels, one attach
 pass on what a press made, Node's surface aimed at the window it is
-handed for — with the amendment on B1 whose condition that round
+handed for, `<text>`'s rows closed, one token-miss policy, Cut's
+`changed`, one spec pipeline for every door — with the amendment on B1 whose condition that round
 met; C31, found
 the same day building the tokens (Node's corpus adapter disagreeing with
 the reference on one scene when run alone — **done the same evening**:
@@ -2651,7 +2652,18 @@ never the event.
 **Fix:** `cut_selection` returns the `changed` (or `perform_menu_item`
 pushes it) and the runner's copy is deleted; the test asserts the event.
 
-### `!` AR16 — The line and polygon doors skip the hover resolve, so `hover_bg` on a wedge never paints
+### `!` AR16 — The line and polygon doors skip the hover resolve, so `hover_bg` on a wedge never paints — **done (2026-09-14)**
+
+**Done (2026-09-14), all three lines of the fix.** `prepare_spec(key,
+&mut spec)` — accent, hover, ease, in that order, `#[inline]` so the
+box door's chain is what C15 left it — is called by `open_content`,
+`cells_at`, `text_edit`, `image_node_with`, `line_with_key` and
+`polygon_with_key`; the line sets `bg = stroke.color` before it, so its
+`hover_bg` is the stroke's colour under the pointer. `float_box_for`
+is the one float box. `cells_keyed` checks the tree before it records
+the label. `hover_is_by_shape` reads the fragment quad's colour: white,
+hovered and re-framed black, left and re-framed white — red on HEAD's
+builder. CHANGELOG under alpha.12.
 
 `open_content` runs accent → `resolve_hover_style` → `ease_spec`
 (`runtime/builder.rs:382-397`); `cells_at` and the image door run hover +
@@ -3316,8 +3328,8 @@ session rule written and the audio store and image drops moved under
 it — **both done 2026-09-14**), AR9–AR11 together — **all three done
 2026-09-14** (the held-key identity, the chord bit carried
 into the second channel, one attach pass with a producer-side mark),
-AR12 (Node's window handle — **done 2026-09-14**), AR13–AR16 (AR13,
-AR14 and AR15 **done 2026-09-14**) (the `<text>` rows, one token
+AR12 (Node's window handle — **done 2026-09-14**), AR13–AR16 (**all
+four done 2026-09-14**) (the `<text>` rows, one token
 miss policy, Cut's `changed`, one `prepare_spec`), AR17–AR18 (the focus
 stamp and the AT gates), AR19–AR25 as the defects they are, then B1's
 table with AR26, AR27 and AR40 beside it, AR46–AR48 for the tests, and

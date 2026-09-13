@@ -620,6 +620,20 @@ Nothing.
   hears of neither drop — the lists were never exported — which is filed
   rather than built here.
 
+- **A polygon's and a line's `hover_bg` paints, and `accent` reaches
+  every door** (backlog AR16). `open_content` ran accent → hover → ease;
+  `cells` and `image` ran hover + ease; `text_edit`, `line` and
+  `polygon` ran ease alone — so a wedge with `hover_bg` was hit-tracked
+  and `is_hovered` and painted its declared `bg` regardless (the test
+  titled for it asserted `is_hovered` only), and `accent` was honoured
+  on a box and nothing else. This is AR5's defect on the two doors AR5
+  did not touch. One `prepare_spec` (accent, hover, ease) is what every
+  door's spec goes through now, and one `float_box_for` is the float
+  box a line and a polygon used to build in twenty identical lines each;
+  `cells_keyed` records its label after the empty-tree check like every
+  other keyed door. `tests/hit.rs`'s `hover_is_by_shape` asserts the
+  wedge's fill under the pointer, red before.
+
 - **Cut from a context menu posts the editor's `changed`** (backlog
   AR15). `MenuRole::Cut` deleted the selection and queued the clipboard
   action, and posted only `{kind:"menu", role:"cut"}` — every other

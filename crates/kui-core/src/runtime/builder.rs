@@ -397,22 +397,63 @@ impl Core {
         if self.tree.is_empty() {
             return;
         }
-        // The one paint the environment decides (`accent`): the theme's
-        // accent, which is the OS's where the host reported one, the app's
-        // where it pinned one, and kui's otherwise (ADR 0019 — before it,
-        // this read `env.system.accent` and a host that reported none left
-        // the declared `bg`, which is the same answer by a shorter route).
-        // Before the hover resolution below, so a node that declares both
-        // still hovers to what it declared.
-        if spec.accent && self.has_accent() {
-            spec.style.bg = self.theme.accent;
-        }
-        self.resolve_hover_style(key, &mut spec);
-        self.ease_spec(key, &mut spec);
+        self.prepare_spec(key, &mut spec);
         let parent = self.current();
         let idx = self.tree.push(parent, key, self.origin, spec, content);
         self.stack.push(idx);
         self.counters.push(0);
+    }
+
+    /// What every node's spec goes through between the door and the tree,
+    /// in this order — one pipeline for a box, a leaf, a stroke and a
+    /// fill alike (AR16: five doors ran five subsets of it, and a wedge's
+    /// `hover_bg` never painted). The one paint the environment decides
+    /// (`accent`): the theme's accent, which is the OS's where the host
+    /// reported one, the app's where it pinned one, and kui's otherwise
+    /// (ADR 0019 — before it, this read `env.system.accent` and a host
+    /// that reported none left the declared `bg`, which is the same answer
+    /// by a shorter route); before the hover resolution, so a node that
+    /// declares both still hovers to what it declared. Then the hover /
+    /// pressed / focus background for the node's state, then the eased
+    /// values a transition, entrance or keyframes put over the declared
+    /// ones.
+    #[inline]
+    fn prepare_spec(&mut self, key: Key, spec: &mut NodeSpec) {
+        if spec.accent && self.has_accent() {
+            spec.style.bg = self.theme.accent;
+        }
+        self.resolve_hover_style(key, spec);
+        self.ease_spec(key, spec);
+    }
+
+    /// The layout of a node placed by its own geometry — a stroke, a fill
+    /// (ADR 0010 decision 5): never in layout, a float at `rect` in the
+    /// parent's box space sized exactly to it, the declared float's
+    /// *anchor* kept and every sizing, clamp and scroll row overridden,
+    /// since the box is the shape's own and not a size the view chose or
+    /// a tween may lag.
+    fn float_box_for(spec: &mut NodeSpec, rect: Rect) {
+        let anchor = spec
+            .layout
+            .float
+            .map_or(crate::spec::FloatAnchor::Parent, |f| f.anchor);
+        spec.layout.float = Some(crate::spec::FloatConfig {
+            anchor,
+            offset: crate::spec::Vec2Offset {
+                x: rect.x,
+                y: rect.y,
+            },
+            ..crate::spec::FloatConfig::default()
+        });
+        spec.layout.width = Sizing::Fixed(rect.w);
+        spec.layout.height = Sizing::Fixed(rect.h);
+        spec.layout.min_w = crate::spec::Min::px(0.0);
+        spec.layout.max_w = f32::INFINITY;
+        spec.layout.min_h = crate::spec::Min::px(0.0);
+        spec.layout.max_h = f32::INFINITY;
+        spec.layout.clip = false;
+        spec.layout.scroll_x = false;
+        spec.layout.scroll_y = false;
     }
 
     #[inline]
@@ -576,9 +617,14 @@ impl Core {
 
     /// [`Self::cells`] under a declared key.
     pub fn cells_keyed(&mut self, label: &str, grid: &crate::cells::CellGrid<'_>, spec: NodeSpec) {
+        if self.tree.is_empty() {
+            return;
+        }
         let key = self.child_key(label);
-        self.key_labels.push(key, label);
         self.cells_at(key, grid, spec);
+        // Like every other keyed door: the label after the node, so a
+        // frame with no root records no name (AR16).
+        self.key_labels.push(key, label);
     }
 
     /// [`Self::cells`] under a data index; see [`Self::open_indexed`].
@@ -595,8 +641,7 @@ impl Core {
         // and its `transition` tweens the bg, the opacity, the size. The
         // cells inside it are a picture the app redraws, and nothing here
         // touches them (AR5).
-        self.resolve_hover_style(key, &mut spec);
-        self.ease_spec(key, &mut spec);
+        self.prepare_spec(key, &mut spec);
         let cid = self.cells.add(key, grid);
         let parent = self.current();
         self.tree
@@ -617,7 +662,7 @@ impl Core {
             return Key::ROOT;
         }
         let key = self.child_key(label);
-        self.ease_spec(key, &mut spec);
+        self.prepare_spec(key, &mut spec);
         // The same stamp the two text funnels make: an editor that named
         // no text colour and no selection tint takes the theme's, so a
         // field and a label beside it agree on both (ADR 0019).
@@ -686,8 +731,7 @@ impl Core {
             return;
         }
         let key = self.auto_key();
-        self.resolve_hover_style(key, &mut spec);
-        self.ease_spec(key, &mut spec);
+        self.prepare_spec(key, &mut spec);
         let parent = self.current();
         self.tree
             .push(parent, key, self.origin, spec, NodeContent::Image(id, opts));
@@ -884,30 +928,12 @@ impl Core {
         spec.style.border_w = 0.0;
         spec.style.border_color = Color::TRANSPARENT;
         spec.style.shadow = crate::spec::Shadow::default();
-        self.ease_spec(key, &mut spec);
+        // The same pipeline as a box's, so a stroke's `hover_bg` is the
+        // colour it takes under the pointer and `accent` is honoured.
+        self.prepare_spec(key, &mut spec);
         // The box is the stroke's own, and the points are stored relative
-        // to it: it is not a size the view chose or a tween may lag.
-        let anchor = spec
-            .layout
-            .float
-            .map_or(crate::spec::FloatAnchor::Parent, |f| f.anchor);
-        spec.layout.float = Some(crate::spec::FloatConfig {
-            anchor,
-            offset: crate::spec::Vec2Offset {
-                x: rect.x,
-                y: rect.y,
-            },
-            ..crate::spec::FloatConfig::default()
-        });
-        spec.layout.width = Sizing::Fixed(rect.w);
-        spec.layout.height = Sizing::Fixed(rect.h);
-        spec.layout.min_w = crate::spec::Min::px(0.0);
-        spec.layout.max_w = f32::INFINITY;
-        spec.layout.min_h = crate::spec::Min::px(0.0);
-        spec.layout.max_h = f32::INFINITY;
-        spec.layout.clip = false;
-        spec.layout.scroll_x = false;
-        spec.layout.scroll_y = false;
+        // to it.
+        Self::float_box_for(&mut spec, rect);
         let parent = self.current();
         self.tree
             .push(parent, key, self.origin, spec, NodeContent::Line(id));
@@ -1017,32 +1043,14 @@ impl Core {
             params,
         });
         // The fill rides in `bg`, which `transition`, `enter` and `exit`
-        // already ease; nothing else of the box vocabulary applies.
+        // already ease — and which `hover_bg` and `accent` swap, through
+        // the same pipeline as a box's; nothing else of the box vocabulary
+        // applies.
         spec.style.border_w = 0.0;
         spec.style.border_color = Color::TRANSPARENT;
         spec.style.shadow = crate::spec::Shadow::default();
-        self.ease_spec(key, &mut spec);
-        let anchor = spec
-            .layout
-            .float
-            .map_or(crate::spec::FloatAnchor::Parent, |f| f.anchor);
-        spec.layout.float = Some(crate::spec::FloatConfig {
-            anchor,
-            offset: crate::spec::Vec2Offset {
-                x: rect.x,
-                y: rect.y,
-            },
-            ..crate::spec::FloatConfig::default()
-        });
-        spec.layout.width = Sizing::Fixed(rect.w);
-        spec.layout.height = Sizing::Fixed(rect.h);
-        spec.layout.min_w = crate::spec::Min::px(0.0);
-        spec.layout.max_w = f32::INFINITY;
-        spec.layout.min_h = crate::spec::Min::px(0.0);
-        spec.layout.max_h = f32::INFINITY;
-        spec.layout.clip = false;
-        spec.layout.scroll_x = false;
-        spec.layout.scroll_y = false;
+        self.prepare_spec(key, &mut spec);
+        Self::float_box_for(&mut spec, rect);
         let parent = self.current();
         self.tree
             .push(parent, key, self.origin, spec, NodeContent::Polygon(draw));

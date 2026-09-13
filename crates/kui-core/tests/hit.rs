@@ -186,13 +186,34 @@ fn hover_is_by_shape() {
     };
     frame(&mut core, build);
     let key = core.key_of("tri").unwrap();
+    // The wedge's fill is the fragment quad's colour.
+    let fill = |core: &mut Core| {
+        let (dl, _) = core.output();
+        dl.quads
+            .iter()
+            .find(|q| q.kind == kui_core::QuadKind::Fragment)
+            .map(|q| q.color)
+            .expect("the wedge drew")
+    };
+    assert_eq!(fill(&mut core), Color::WHITE);
     let evs = core.handle_input(InputEvent::CursorMoved(Vec2::new(20.0, 20.0)));
     assert_eq!(kinds(&evs), ["hover"]);
     assert!(core.is_hovered(key));
+    // AR16: hovered, the next frame paints `hover_bg` — the polygon door
+    // ran the easing and skipped the hover resolve, so the wedge was
+    // hovered and still white.
+    frame(&mut core, build);
+    assert_eq!(
+        fill(&mut core),
+        Color::BLACK,
+        "the wedge paints its hover_bg"
+    );
     // Across the hypotenuse, still in the box: left.
     let evs = core.handle_input(InputEvent::CursorMoved(Vec2::new(100.0, 100.0)));
     assert_eq!(kinds(&evs), ["hover"]);
     assert!(!core.is_hovered(key));
+    frame(&mut core, build);
+    assert_eq!(fill(&mut core), Color::WHITE);
 }
 
 /// A hairline is a 4 px target: within two px of a 1 px stroke hits, five
