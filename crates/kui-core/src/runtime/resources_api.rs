@@ -202,6 +202,14 @@ impl Core {
         names
     }
 
+    /// The installed families `FontFamily::Sans`, `Serif` and `Mono` shape
+    /// with, in that order — pinned per platform when the session's font
+    /// database was built (backlog C32), so the devtools can say which face
+    /// "mono" is on this machine.
+    pub(crate) fn default_font_families(&self) -> [String; 3] {
+        crate::text::default_families(&self.session.state().fonts).map(str::to_string)
+    }
+
     // -- Audio ----------------------------------------------------------
     // Sounds are resources, playback is commands the driver drains; see
     // `audio`. Nothing here touches a device.

@@ -1559,6 +1559,13 @@ impl Core {
                 format!("{} · {} live", env.audio.device.name(), env.audio.live),
             ),
             ("nodes", format!("{}", self.inspected.len())),
+            ("fonts", {
+                // Which installed faces the three generic families are on
+                // this machine (backlog C32), so a wrong one says so on
+                // screen.
+                let [sans, serif, mono] = self.default_font_families();
+                format!("{sans} · {serif} · {mono}")
+            }),
         ];
         let mut origins: Vec<&OriginId> = self.tokens.keys().collect();
         origins.sort_by_key(|o| o.0);

@@ -1401,6 +1401,13 @@ fn the_facts_list_the_tokens_and_the_inspector_names_a_painted_one() {
         t.iter().any(|s| s == "ink → alpha 0.5"),
         "the recipe: {t:?}"
     );
+    // The three generic families, as installed faces (backlog C32), so a
+    // mono that came out italic says which face it is.
+    let [sans, serif, mono] = core.default_font_families();
+    assert!(
+        t.iter().any(|s| *s == format!("{sans} · {serif} · {mono}")),
+        "the fonts row: {t:?}"
+    );
     let facts = state(&core, |s| s.facts.tokens.clone());
     assert_eq!(facts.len(), 4);
     assert_eq!(facts[1].resolved, Color::hex(0xeeeeeeff));

@@ -727,23 +727,79 @@ pub(crate) fn cosmic_features(f: &crate::spec::FontFeatures) -> cosmic_text::Fon
     out
 }
 
-/// The session's font database, set up the way kui shapes against it.
+/// The faces the three generic families resolve to, per platform, in
+/// order of preference. cosmic-text's own defaults are `Open Sans`,
+/// `DejaVu Serif` and `Noto Sans Mono`, none of which a stock Windows or
+/// macOS machine has; sans survives that through the platform fallback
+/// list, but a missing monospace family falls to the *lowest-id*
+/// monospaced face in the database — style is not in that ranking's key,
+/// so on a machine whose first monospaced face is an italic instance every
+/// `Mono` glyph is italic (backlog C32). The first installed name in each
+/// list wins; when none is, cosmic-text's own name stays so its fallback
+/// still runs.
+#[cfg(target_os = "macos")]
+const DEFAULT_FAMILIES: [&[&str]; 3] = [
+    &["Helvetica Neue", "Helvetica"],
+    &["Times New Roman", "Times"],
+    &["SF Mono", "Menlo", "Monaco"],
+];
+#[cfg(target_os = "windows")]
+const DEFAULT_FAMILIES: [&[&str]; 3] = [
+    &["Segoe UI", "Arial"],
+    &["Times New Roman"],
+    &["Cascadia Mono", "Consolas", "Courier New"],
+];
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+const DEFAULT_FAMILIES: [&[&str]; 3] = [
+    &["DejaVu Sans", "Noto Sans", "Liberation Sans", "Ubuntu"],
+    &["DejaVu Serif", "Noto Serif", "Liberation Serif"],
+    &[
+        "DejaVu Sans Mono",
+        "Noto Sans Mono",
+        "Liberation Mono",
+        "Ubuntu Mono",
+    ],
+];
+
+/// The first family on `list` that some installed face is a member of,
+/// matched the way `fontdb::Database::query` matches a name.
+fn first_installed<'a>(db: &cosmic_text::fontdb::Database, list: &[&'a str]) -> Option<&'a str> {
+    list.iter().copied().find(|name| {
+        db.faces()
+            .any(|face| face.families.iter().any(|(f, _)| f == name))
+    })
+}
+
+/// The session's font database, set up the way kui shapes against it: the
+/// generic sans, serif and monospace families pinned to an installed face
+/// (see [`DEFAULT_FAMILIES`]), so weight and style matching starts from a
+/// face with real variants rather than whatever the fallback pops.
 pub(crate) fn new_font_system() -> FontSystem {
     let mut font_system = FontSystem::new();
-    // Map the generic sans-serif family to a face with real bold/italic
-    // variants; otherwise weight/style matching can wander into whatever
-    // font happens to advertise the variant (monospace included).
-    let sans = if cfg!(target_os = "macos") {
-        Some("Helvetica Neue")
-    } else if cfg!(target_os = "windows") {
-        Some("Segoe UI")
-    } else {
-        None // fontconfig platforms usually map sans-serif sensibly
-    };
-    if let Some(name) = sans {
-        font_system.db_mut().set_sans_serif_family(name);
+    let db = font_system.db_mut();
+    let [sans, serif, mono] = DEFAULT_FAMILIES;
+    if let Some(name) = first_installed(db, sans) {
+        db.set_sans_serif_family(name);
+    }
+    if let Some(name) = first_installed(db, serif) {
+        db.set_serif_family(name);
+    }
+    if let Some(name) = first_installed(db, mono) {
+        db.set_monospace_family(name);
     }
     font_system
+}
+
+/// The family names `Sans`, `Serif` and `Mono` shape with, in that order —
+/// what [`new_font_system`] pinned, or cosmic-text's own name where nothing
+/// on the list was installed.
+pub(crate) fn default_families(fs: &FontSystem) -> [&str; 3] {
+    let db = fs.db();
+    [
+        db.family_name(&cosmic_text::Family::SansSerif),
+        db.family_name(&cosmic_text::Family::Serif),
+        db.family_name(&cosmic_text::Family::Monospace),
+    ]
 }
 
 impl TextSystem {
@@ -3028,5 +3084,88 @@ impl TextSystem {
             m.w = m.w.min(max_w * scale);
         }
         Size::new(m.w / scale, m.h / scale)
+    }
+}
+
+/// The generic families resolve to a face that is what its name says
+/// (backlog C32): upright, and monospaced for `Mono`.
+#[cfg(test)]
+mod default_families {
+    use super::*;
+    use cosmic_text::Family;
+    use cosmic_text::fontdb::FaceInfo;
+
+    /// The face `M` shapes with under `family`, on the database as
+    /// `new_font_system` set it up.
+    fn resolved(fs: &mut FontSystem, family: Family<'_>) -> Option<FaceInfo> {
+        let mut buffer = Buffer::new(fs, Metrics::new(14.0, 18.0));
+        buffer.set_text("M", &Attrs::new().family(family), Shaping::Advanced, None);
+        buffer.shape_until_scroll(fs, false);
+        let id = buffer.layout_runs().next()?.glyphs.first()?.font_id;
+        fs.db().face(id).cloned()
+    }
+
+    #[test]
+    fn mono_is_an_upright_monospaced_face() {
+        let mut fs = new_font_system();
+        if !fs.db().faces().any(|f| f.monospaced) {
+            eprintln!("skipped: no monospaced face installed");
+            return;
+        }
+        let face = resolved(&mut fs, Family::Monospace).expect("M shapes in Mono");
+        let mono = default_families(&fs)[2].to_string();
+        assert_eq!(
+            face.style,
+            cosmic_text::Style::Normal,
+            "Mono ({mono}) resolved to {:?}",
+            face.post_script_name
+        );
+        assert!(
+            face.monospaced,
+            "Mono ({mono}) resolved to {:?}, which is not monospaced",
+            face.post_script_name
+        );
+    }
+
+    #[test]
+    fn sans_and_serif_are_upright_and_not_monospaced() {
+        let mut fs = new_font_system();
+        if fs.db().faces().next().is_none() {
+            eprintln!("skipped: no face installed");
+            return;
+        }
+        let [sans, serif, _] = default_families(&fs).map(str::to_string);
+        for (family, name) in [(Family::SansSerif, sans), (Family::Serif, serif)] {
+            let face = resolved(&mut fs, family).expect("M shapes");
+            assert_eq!(
+                face.style,
+                cosmic_text::Style::Normal,
+                "{name} resolved to {:?}",
+                face.post_script_name
+            );
+            assert!(
+                !face.monospaced,
+                "{name} resolved to {:?}, which is monospaced",
+                face.post_script_name
+            );
+        }
+    }
+
+    /// Every name pinned is one an installed face answers to, so
+    /// `Family::Name(pinned)` and the generic family agree.
+    #[test]
+    fn pinned_names_are_installed_or_cosmic_texts_own() {
+        let fs = new_font_system();
+        let db = fs.db();
+        for (name, list) in default_families(&fs).into_iter().zip(DEFAULT_FAMILIES) {
+            let installed = db
+                .faces()
+                .any(|f| f.families.iter().any(|(fam, _)| fam == name));
+            let on_list = list.contains(&name);
+            assert!(
+                installed == on_list,
+                "{name}: installed {installed}, on the platform list {on_list}"
+            );
+        }
     }
 }

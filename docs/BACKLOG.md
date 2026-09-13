@@ -1826,7 +1826,27 @@ highlighter's groups (ADR 0027); the menu bar, popups, floats,
 `always_on_top`; slots for a C or Lua panel with its own sink. Nothing
 in that list needed a workaround to check.
 
-### `!` C32 — `Mono` is whichever monospaced face has the lowest id on a machine without Noto Sans Mono
+### `!` C32 — `Mono` is whichever monospaced face has the lowest id on a machine without Noto Sans Mono — **done (2026-09-13)**
+
+Done as written, in `text::new_font_system`: the three generic families
+are set to the first installed name of a per-platform list
+(`DEFAULT_FAMILIES` — the lists the entry gives, with a second sans and
+serif choice on each platform), matched the way `fontdb::Database::query`
+matches a name, and cosmic-text's own name is left where nothing on the
+list is present. `text::default_families` reads the three back and
+`Core::default_font_families` (crate-private, no binding door — the
+entry asked for the panel) feeds the devtools' facts tab a `fonts` row,
+`Helvetica Neue · Times New Roman · Menlo` here. Three unit tests beside
+the function: `M` shaped in `Mono` is upright and monospaced, `M` in
+`Sans` and `Serif` upright and not, and every pinned name is one an
+installed face answers to; each skips with a message on a machine with
+no such face. One correction to the entry: sans was already pinned
+(`Helvetica Neue` / `Segoe UI`, blind, since alpha.1) — serif and mono
+were not, and the pin now checks the face is installed before naming it.
+What the test cannot show on this Mac: cosmic-text's fallback lands on
+`Menlo-Regular` here by luck, as the entry guessed, so the mutation
+(plain `FontSystem::new()`) passes on this machine and fails on the one
+the round ran on. CHANGELOG under alpha.12's `### Fixed`.
 
 Observed 2026-08-31 in the first round ("everything monospace renders
 *italic* — cosmic-text's `Family::Monospace` is resolving to an italic
@@ -2034,7 +2054,9 @@ which the archived entry measures and leaves.
 in the order its entries argue for: C32 first (every mono glyph on a
 machine without Noto Sans Mono is whatever face cosmic-text's fallback
 pops, italic here — a defect under the flagship use case and older than
-alpha.1), then C33 and C34 together (a sink's clipboard, and the press
+alpha.1 — **done the same day**: the three generic families pinned to
+the first installed face of a per-platform list, a `fonts` row in the
+facts tab), then C33 and C34 together (a sink's clipboard, and the press
 carrying `line`, `byte` and `clicks` the way a grid's carries `cell`),
 C35 (the blink clock armed for a sink's `caret`), and C36's drives to
 pin all four; C37's doc line goes with whichever lands first. Before

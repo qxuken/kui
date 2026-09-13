@@ -335,6 +335,29 @@ Nothing.
 
 ### Fixed
 
+- **`Mono` is an upright monospaced face on a machine without Noto Sans
+  Mono** (backlog C32, observed in the first editor-and-mux round of
+  2026-08-31 and unchanged since: every monospaced glyph — `modal_editor`,
+  `syntax_view`, a `cells` grid, any `TextStyle::mono()` — drew in
+  `BerkeleyMonoVariable-Italic` on the Windows box). cosmic-text names
+  its own defaults, `Open Sans` / `DejaVu Serif` / `Noto Sans Mono`, none
+  of which a stock Windows or macOS machine has; sans survives through
+  the platform fallback list, but a missing monospace family falls to the
+  *lowest-id* monospaced face in the database, and style is not in that
+  ranking's key, so whichever face fontdb happened to load first won —
+  Menlo Regular on one Mac, an italic instance on another machine. The
+  session's font database now pins the three generic families to the
+  first installed of a per-platform list — macOS `SF Mono` / `Menlo` /
+  `Monaco`, Windows `Cascadia Mono` / `Consolas` / `Courier New`, Linux
+  `DejaVu Sans Mono` / `Noto Sans Mono` / `Liberation Mono` / `Ubuntu
+  Mono`, and sans and serif likewise — leaving cosmic-text's name in
+  place when nothing on the list is present so its fallback still runs.
+  The guard shapes `M` under each generic family and asserts the face is
+  upright, and monospaced or not as its family says (skipped, with a
+  message, on a machine with no face at all); the devtools' facts tab
+  gained a `fonts` row naming the three resolved families, so the next
+  machine this differs on says so on screen.
+
 - **The devtools panel lives with what the app chose: its base, its
   chrome, its floor** — five defects from the LCARS pomodoro's devtools
   round of 2026-09-12 (backlog F50–F54), all of the class ADR 0024's
