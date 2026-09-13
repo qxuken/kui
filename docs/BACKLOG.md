@@ -37,7 +37,12 @@ building ADR 0027 left out — **built 2026-09-13** under
 [ADR 0028](adr/0028-derived-tokens.md)), C30, filed 2026-09-12 (always on top — a window level
 no binding could ask for — **done the same day**, as the per-frame fact
 the entry chose, with `env.window.always_on_top` reporting what the
-platform did), C31, found
+platform did), AR7–AR49 from the second architecture review, filed
+2026-09-13 and **none built yet** — forty-three entries under ten
+decisions, twenty of them defects, the audio store reconciled against
+every window's frame and the two key channels disagreeing about a
+chord at the top — with the amendment on B1 whose condition that round
+met; C31, found
 the same day building the tokens (Node's corpus adapter disagreeing with
 the reference on one scene when run alone — **done the same evening**:
 the handle was raw 1, the first the mint hands out, and the fixtures now
@@ -1433,6 +1438,28 @@ this entry keeps.
 
 ### `.` B1 — The verb surface is documented, not pinned
 
+**The condition is met (2026-09-13).** The second architecture review
+(AR7–AR49 below) read the four door lists side by side and found thirteen
+verbs that reach some bindings and not others, none with a stated reason:
+`set_inspect`/`nodes` and the devtools readers (`set_devtools_theme`,
+`set_devtools_legend`, `devtools()`, `devtools_dock()`) with no C door;
+`Ui::cell_selection` Rust-only, though ADR 0017 §4 offers it "because a
+grid's ends mean something to the app"; `widgets::text_input` with no
+`<input>` in JSX (`schema.rs:1426` lists `<edit>` alone) and node-form
+`tooltip` a prop only there; `Ui::window_command(Minimize / ToggleMaximize
+/ StartDrag)` as `close()` alone in Node and absent in Lua; `label_of`,
+`Core::cursor()`, `is_group_hovered`/`_pressed`, `EditOptions.accent` and
+`tokens_declared` Rust-only (a C plugin re-declares every `kui_ext_view`);
+`Ui::play/stop/set_volume/pause/resume` absent from Lua, plausibly because
+its env is view-time, unstated; `Launcher::text_aa` an env var in C and
+Node. AR27 (the C runner) and AR26 (Lua's two doors) are the rows with a
+defect in them; AR40 the three small rules. **Build the table now,** as
+a test rather than a doc: one row per verb, four columns, an `n/a` cell
+carrying its reason, and the audit's own matrix as the draft. The rows
+above that are one napi/extern line — `set_inspect`/`nodes` and the
+readers in C, `cellSelection` in the three, `<input>`/`<tooltip>` as
+elements, `window` on a Lua event — close with it.
+
 The schema pins props, the corpus pins behaviour and `abi_parity` pins
 what C can say; nothing pins *which doors each binding has*. The audit
 found three that Node had and C did not (the open-menu reader, the font
@@ -2154,6 +2181,846 @@ better one later, each parked until a view asks:
   it) — an editor restoring its last geometry. Today: the size, not
   the place.
 
+## From the architecture review, second round (2026-09-13)
+
+The second reading of the whole tree for its own shape, at `6f03459`
+(alpha.11 + 69), eleven days and ~490 commits after the first
+(2026-09-11, AR1–AR6, all built that day). The first round asked what was
+written twice; this one asked what was decided twice — a rule the code
+implies in one place and breaks in another — and what was decided once
+and never written down. Method: seven readers, one per area (the
+runtime, input and text, the schema and tokens, the four bindings, the
+drivers and renderer, the tests, the documents), each reading the code
+and its tests rather than grepping, each rejecting its own first pass
+before reporting; then every defect marked `!` below re-read against
+the code by hand, and every claim that dissolved on that reading
+dropped. Nothing from AR1–AR6 or from an open entry is repeated. Forty-three
+entries, AR7–AR49, and one amendment on top of B1, whose condition this
+round met.
+
+Ten of them are one decision each, and the entries under a decision
+share a fix; they are grouped that way, defects first within each. The
+decisions, in the order they matter:
+
+- **What lives on the session is not written down** (AR7, AR8). The
+  rule the code implies: a session member is a registry keyed by a
+  process-unique handle, or a revision counter; anything reconciled
+  against a *frame* is per window. The audio store crossed it, the
+  image drop list crossed it the other way.
+- **An event's producer is read off a payload string** (AR11). Two
+  post-passes compare `kind` to the events table, whose edit entry is
+  spelled `"changed / submit"` and matches nothing.
+- **The two key channels disagree about a chord** (AR9, AR10). ADR
+  0011 decision 3 says they must not; `edit_event` folds the modifier
+  away before the second channel asks.
+- **A token miss means three things** (AR14). ADR 0027 resolves at the
+  lower, and each lower chose its own default.
+- **Focus has four doors and three precedences** at frame end (AR17,
+  AR18, AR24).
+- **Five leaf doors run five subsets of the spec pipeline** (AR16).
+  AR5 fixed two of them; the two it did not touch have AR5's defect.
+- **Node's window handle is the main window** (AR12). C and Lua are
+  per window because their view-time handle is the drawing core's.
+- **B1's condition is met** (B1, AR26, AR27, AR40): thirteen verbs
+  reach some bindings and not others, and the C runner takes no window
+  at all.
+- **Coverage is enforced for elements, not rows** (AR46, AR47, AR48).
+- **Backlog ids are reused** (AR49): B1, D1 and D2 each name two
+  entries, and code cites both senses.
+
+Rejected on the same reading, so the next round need not repeat them:
+the pending Tab step against scroll; `Interaction::pending` beside
+`Core::pending`; the `Tree::any_*` flags on the devtools, slot and root
+paths; the exit-ghost swap; the float stack's steady state; F15's
+retarget; ADR 0009's press/release pairing across a popup and its
+owner; the `autofocus` and `keyFocus` edges; F44's `folds` against
+`multiline`; `text_hit` against `attach_lines` on coordinates; the
+clipboard drain against a redraw; derived-token cycles; the C command
+drain; the `Waker` on a closed loop; the access bridge on a closed
+window; the drawn and native menu bars on one accelerator; the
+Occluded first frame; the audio thread against shutdown; two devtools
+windows; the atlas and shape cache (still per core, as ADR 0004 step 1
+left them); the driver-side verbs ADR 0020 names; the ABI since 15
+(only `[in]` shapes and new functions, no bump owed); the 34 per-file
+`fn frame` builders in the tests (scene builders, not copies); the
+`inputs_hash` of the access-tree cache (hashes every field `build`
+reads); the generated files (all three current and diffed in CI); every
+warning literal a test names; every identifier in `howto.md`.
+
+### `!` AR7 — The audio store is the session's and is reconciled against every window's frame
+
+`SessionState` has six members — fonts, resources, audio, `fonts_rev`,
+windows, devtools (`crates/kui-core/src/session.rs:88-93`). Five are
+registries or a counter. `AudioStore` is not: it holds `declared` and
+`mounted` (`audio.rs:320-321`), and `finish_frame` on **every core** ends
+with `self.session.state().audio.reconcile()` (`runtime/emit.rs:788`),
+which takes this frame's `declared` and stops every `mounted` key not in
+it (`audio.rs:594-614`). A popup, a second window, or the popped devtools
+window finishes a frame that declared no `<audio>` node, and the main
+window's looping sound is stopped and `truncated-playback` raised; the
+main window's next frame finds it unmounted and starts it from zero. A
+`finish` one-shot is released and replayed. Two readers reached this
+independently; `tests/session.rs` covers the imperative `play` across two
+cores (`:108`) and never a mount. The `ended` and `refused` events are
+stamped `WindowId::MAIN` by hand (`audio.rs:451,480`) for the same reason:
+the store does not know its window.
+
+**Fix:** write the rule above into `session.rs`'s module doc; key
+`declared`/`mounted` by `(WindowId, Key)` and reconcile the calling
+window's slice, or keep the store per core and share only the command
+queue; stamp the two events with the mounting window; and add the
+two-window declarative case to `tests/session.rs`.
+
+### `!` AR8 — A removed image reaches the GPU of the window that removed it, and a removed fragment reaches no GPU
+
+`remove_image` evicts *this* core's atlas slot and pushes onto *this*
+core's `dropped_images` (`runtime/resources_api.rs:412-418`); only a core
+that draws a frame forwards the list (`runtime.rs:1217-1219`). A
+texture-backed image removed through a window that closes before its next
+frame never reaches `dl.dropped_textures`; the other windows' atlases keep
+the blit until their own eviction. `fragment_pipelines` in kui-wgpu is
+keyed by id and never evicted (`crates/kui-wgpu/src/lib.rs:329-340`);
+`remove_fragment` frees nothing on the device. Fonts solved the same
+fan-out with `fonts_rev` + `sync_font_names`; images and fragments have no
+revision. Read, not measured: a long-running app streaming images through
+a secondary window leaks device textures.
+
+**Fix:** a removed-ids list beside `fonts_rev` on `SessionState`, drained
+by whichever core renders next, with fragments on it too.
+
+### `!` AR9 — A held key's release is matched on `code`, and Shift changes `code` mid-hold
+
+`KeyDown` pushes onto `keys_held` unless one with the same `code` is
+there, and `KeyUp` removes by `code`
+(`crates/kui-core/src/runtime/dispatch.rs:448,457`). The runner builds
+`code` from winit's `logical_key` at each event with no case folding
+(`crates/kui/src/keys.rs:155-158`): hold `w`, press Shift, and the OS
+repeat arrives as `W` — a second held key. Release `W` and `w` stays held
+until focus moves or the window blurs, when a synthetic `up w` fires at
+the wrong time. This is the WASD case ADR 0002 sells `keyUp` for. The
+test's premise (`tests/keys.rs:818-830`: "`code` is stable across the
+press") is false whenever Shift moves.
+
+**Fix:** identify a held key by `physical` when it is not `Unknown`, `code`
+otherwise, for both the repeat check and the release.
+
+### `!` AR10 — The editing channel drops the chord bit, so a chord the sink heard also presses the control; Space ignores every modifier
+
+`route_key` calls any of ctrl/alt/super a chord
+(`runtime/dispatch.rs:919`). `edit_event` then folds them to `word: alt,
+doc: primary()` (`input.rs:570-576`), so Ctrl on macOS (Super elsewhere)
+is gone by the time the `Key` arm asks `bubbles(i, c, mods.word ||
+mods.doc)` (`dispatch.rs:396`). Ctrl+Enter on a focused button inside a
+sink: the raw press bubbles to the sink as a chord, then `Key(Enter,
+Mods{doc:false})` claims and clicks — the disagreement ADR 0011 decision 3
+forbids. The test helper `window_press` builds `doc: ctrl || super_key`
+(`tests/key_bubbling.rs:113`), a mapping no driver uses, so the test
+passes on a path the runner never takes (the F6 trap). Space is
+`Text(" ")` "whatever is held" (`input.rs:556`) and the `Text` arm passes
+`chord = false` unconditionally (`dispatch.rs:307`): Ctrl+Space (an IME
+toggle, an Emacs mark) inserts a space into an editor, or clicks a control
+and reaches the sink both.
+
+**Fix:** carry one `chord` bit from the `KeyDown` into `Key`/`Text` (on
+`Mods`, or the last `KeyDown`'s `KeyMods` kept on the core) and have both
+arms ask it; return `None` from `edit_event` for a Space under
+ctrl/alt/super like every other chord; make the test helper derive `doc`
+the way `primary()` does.
+
+### `!` AR11 — `attach_lines` reads the producer off `kind` against a table entry spelled `"changed / submit"`; `attach_cells` reads no producer at all
+
+Both post-passes (`runtime/dispatch.rs:60-113`, `:127-172`) add fields to
+events after the fact. `attach_lines` decides "pointer-made" by `kind`:
+`drag` yes, `menu` no, anything in `schema::EVENTS` no, anything else yes.
+The edit entry's kind is the string `"changed / submit"`
+(`schema.rs:1655`), so `"changed"` and `"submit"` match nothing and count
+as pointer events — a stock `<edit>` under a sink that draws `role="line"`
+rows (a shell with a minibuffer, the reference shape) gets `line`, `byte`
+and `clicks` on every keystroke, resolved from wherever the mouse rests,
+after a `lines_under` walk of the whole sink and a `hit_at`. An app whose
+click payload is `{kind:"click"}` gets the opposite: excluded as the
+core's. `attach_cells`, written a day earlier, has neither the filter nor
+the `press_clicks() == 0` guard `6f03459` gave its twin: a `cells` grid
+with `onKey` gets `cell:{row,col}` on every `key`, `text`, `preedit` and
+`access` event, and on an Enter-made click, from the cursor's resting
+place (`click_node` calls `note_synthetic_click` precisely so this cannot
+happen). It also restates `cell_row_col` (`select_api.rs:74-99`) by hand
+— agreement by copy, which the copy's own comment promises.
+
+**Fix:** mark an event pointer-made where it is built (a flag on
+`UiEvent`, or attach inside `Interaction::handle` for click and drag
+only); one attach pass with one `pointer_point(&ev)` that carries the
+clicks guard, used by both; `attach_cells` calls `cell_row_col`; the
+schema row split into two kinds.
+
+### `!` AR12 — Every `KuiWindow` door but `setViewBinary` addresses the main window
+
+`KuiWindow::core_mut` is `Shell::core_mut` is `panes.first_mut()`
+(`crates/kui-node/src/lib.rs:3101-3104`, `crates/kui/src/lib.rs:930-937`).
+The `core_methods!` macro puts `focus`, `editText`, `setEditText`,
+`isHovered`, `scrollGeometry`, `openMenu`, `selectionText`, `setTheme`,
+`setMetrics`, `setTokens` and the devtools setters on that core;
+`set_view_binary(…, window)` (`:1500-1515`) is the one per-window door,
+and `view(model, name, surface)` hands every window the same surface
+(`packages/kui/index.js:443-448`). In a Node app with a second window,
+`editText('note')` for that window's editor is `null`, `setEditText` from
+`update` lands on main and warns `edit-text-without-editor`, `focus('row')`
+moves the wrong window's focus, and every `$token` in the second window's
+tree misses. ADR 0027 admits the token case (finding 7, line 473); nothing
+documents the rest. C's view ctx is the drawing window
+(`kui-ffi/src/run.rs:11-13`) and Lua's env is the drawing `Ui`
+(`kui-lua/src/lib.rs:422-431`), so this is Node's alone.
+
+**Fix:** a surface bound to a window (the way `setViewBinary` takes one),
+or `KuiWindow` methods routed through `Shell` by window id; a two-window
+case in `test.mjs` on `editText`/`focus`/`setTokens`.
+
+### `!` AR13 — `<text>` admits every container and access row, and all four doors drop them silently
+
+`text`'s `ElementDef` has `jsx_rows: None, lua_rows: None`
+(`schema.rs:1403-1413`), which `known_prop` reads as "every shared name"
+(`:2455-2463`); the encoder maps `null` to `KNOWN`
+(`packages/kui/encoder.js:51,90-98`). Every lowering then keeps
+`p.style` alone: `text_node(content, p.style)` (`kui-node/src/binary.rs:669-679`),
+`.style` in Lua (`kui-lua/src/lib.rs:1218-1229`), `kui_text(…, style)`
+(`kui-ffi/src/frame.rs:483`). So `<text live="polite">` — the `live` doc
+says "put it on the smallest node that holds the message" — `<text
+role="heading">`, `<text label>`, `<text onClick>` and `<text key>` reach
+no tree, raise no `unknown-prop`, and `live-region-without-name` can never
+fire for them.
+
+**Fix:** give `text` `jsx_rows`/`lua_rows` = the `Target::Style` rows
+(+ `key`), or let `known_prop` derive admission from `PropDef::target`
+for a style-only element; a `types.tsx` line that `<text live>` is
+refused.
+
+### `!` AR14 — An unresolved `$token` has three outcomes, and the published text matches none
+
+Rust: `Ui::token_color` answers transparent and `token_length` zero
+(`ui.rs:204-223`). Node: the slot is left out and the core keeps the row's
+default (`encoder.js:80-88,399-406`). Lua: the same, and its doc says why —
+"not an explicit transparent or zero, which would hide the text a typo
+was on" (`kui-lua/src/lib.rs:1795-1803`). `diag.rs:319-331` and
+`props.md:229` document the Rust behaviour as everyone's. `color="$typo"`
+on a text paints in the theme's fg in Node and Lua and invisibly in Rust;
+`width="$typo"` is `Fit` there and `Fixed(0)` here. Coverage differs too:
+`cursorColor` throws on `$` in Node (`encoder.js:802`) and resolves in Lua
+(`:1386`); `minWidth="$x"` (`encoder.js:399`, `lua:2019`) and `<line
+width="$x">` (`encoder.js:761`, `lua:1326`) are "bad" in both while
+`color` on the same line resolves; and a `$` in a `keyframes`/`enter`/
+`exit` stop errors the whole frame (`slots.rs:71,177`, `binary.rs:540`,
+`lua:2036`) — the one place a token is fatal, against ADR 0027's "any
+colour or length prop". `Kind`'s type text omits the `$` form
+(`schema.rs:335`, `gen-types.mjs:142`), and the sentence the ADR promised
+`props.md` never landed.
+
+**Fix:** one miss policy, in the core — `Ui::token_color/length` return
+`Option` and "left at the row's default" is the sentence in both docs;
+`min`, the stroke width and `cursorColor` through the existing ref
+paths; the stops walked for `$` in the binding, or `keyframes::parse`
+given a `&TokenLookup`; the `$` form in the `Kind` docs so gen-types
+prints it.
+
+### `!` AR15 — Context-menu Cut mutates an editor without a `changed`, and the runner fakes one for Cmd-X
+
+`MenuRole::Cut` deletes the selection and pushes `SetClipboard`
+(`runtime/menu_api.rs:402-415`); only `{kind:"menu", role:"cut"}` is
+posted. Every other mutation — `apply_text`, `apply_key`,
+`ReplaceSelectedText`, AT `SetValue` — calls `push_edit_event(key,
+"changed")`. The runner knows: `after_direct_edit` builds a `changed` by
+hand after `cut_selection` with the comment "A cut is input too"
+(`crates/kui/src/lib.rs:1081-1098`). The drawn context menu and
+`activate_menu_item` from a native menu take the core path and post
+nothing; a Node/Lua/C app mirroring a field through `changed` desyncs
+after Cut. `tests/menu.rs:176-230` asserts the clipboard and `edit_text`,
+never the event.
+
+**Fix:** `cut_selection` returns the `changed` (or `perform_menu_item`
+pushes it) and the runner's copy is deleted; the test asserts the event.
+
+### `!` AR16 — The line and polygon doors skip the hover resolve, so `hover_bg` on a wedge never paints
+
+`open_content` runs accent → `resolve_hover_style` → `ease_spec`
+(`runtime/builder.rs:382-397`); `cells_at` and the image door run hover +
+ease (`:572-588`, `:661-676`); `text_edit`, `line` and `polygon` run
+`ease_spec` alone (`:602`, `:869`, `:1006`). `hover_tracked()` is true for
+`hover_bg` (`spec.rs:1030`), so the wedge is hit-tracked and
+`is_hovered`, and `paint_box` reads the declared `bg`. The test titled for
+it (`tests/hit.rs:166-193`, "and the wedge's `hover_bg` with it") asserts
+`is_hovered` only. This is AR5's defect on the two doors AR5 did not
+touch; `accent` is honoured in `open_content` alone; `cells_keyed` pushes
+its label before the `tree.is_empty()` check (`:559-563`) unlike every
+other keyed door; and `line`/`polygon` carry ~20 identical lines building
+the float box.
+
+**Fix:** one `prepare_spec(key, &mut spec)` (accent, hover, ease) called by
+every door; one `float_box_for(rect, spec)`; `hover_is_by_shape` asserts
+the quad's colour.
+
+### `!` AR17 — `set_focus` on the modal's closing frame loses to the restore; a `keyFocus` edge and a Tab step win
+
+`resolve_modal_focus` restores what the modal displaced unless
+`declared_focus` has an edge this frame (`runtime/focus.rs:438-457`). A
+pending Tab step is applied after (`emit.rs:355`) and wins; a `keyFocus`
+edge wins by the test; an imperative `set_focus` — `Ui::focus`
+(`ui.rs:673`), Node `focus('label')` (`kui-node/src/lib.rs:2464`) — made
+in the dismissing handler or the view is overwritten. That is F4's
+scenario through the door F4 did not cover: an app that closes a dialog
+and names where focus lands gets the pre-dialog node instead. Three focus
+doors, three precedences, one frame-end pass.
+
+**Fix:** any `set_focus` that moved `focus` since the last frame is an
+edge (a `focus_moved` stamp), and the rule is one sentence in ADR 0003's
+decision 4.
+
+### `!` AR18 — Assistive-technology requests skip the modal and `disabled` gates every other channel obeys
+
+`handle_access` (`runtime/dispatch.rs:727-859`): `SetValue` sets the text
+and posts `changed` with no `interactive(idx)` and no `disabled` check
+(`:747-770`); `SetTextSelection`/`ReplaceSelectedText` the same
+(`:780-830`); `Scroll*` calls `scroll_by` where the wheel path honours
+`ScrollRegion.inert` (`:838-858`); `nudge` checks `disabled` alone
+(`runtime/composites.rs:265-283`). Only `Click` "resolves against the
+same hit list". With a dialog up, a reader — or a headless test — edits,
+nudges and scrolls the inert page, and `Focus` on an editor behind the
+modal routes typed text there until the next frame's containment. ADR 0003
+decision 5 says the modal is the one boundary.
+
+**Fix:** early-return in `handle_access` when `idx` is `Some(i)` and
+`!self.interactive(i) || specs[i].disabled`, which is what the access tree
+already refuses to advertise (`access.rs:1158,1181,1188`).
+
+### `!` AR19 — The glyph atlas grows for one oversized item and resets for an oversized set
+
+`alloc_or_make_room` (`atlas.rs:108-128`): on a full page, `reset()`, then
+`grow_to` only if the *one* item still does not fit an empty page. After a
+reset any normal glyph fits, so a 1024² page never doubles for a working
+set that overflows it — three 800×600 atlas-backed images
+(`resources.rs:446-451` puts images up to `MAX_ATLAS_SIZE` in the atlas),
+or a code view with many sizes plus CJK and emoji. Each frame then resets
+mid-emit, every text template is invalidated (`glyphs_built_for` epoch),
+and the quads emitted before the reset sample the overwritten page. The
+comment at `text.rs:1836-1839` says "rebuild next frame" and nothing asks
+for that frame: `animating()` never sees the epoch, so an input-driven app
+keeps the corrupt frame until the next event, and an animating one
+re-corrupts every frame. Read, not reproduced; the mechanism is the whole
+of the function.
+
+**Fix:** grow when a reset happens twice in one frame (or when the frame's
+blitted area exceeds the page), and set `frame_requested` whenever
+`atlas.epoch` moves during `finish_frame`; a test with a set larger than
+one page.
+
+### `!` AR20 — A device that failed to open drops `Play` without answering `refused`
+
+`apply_one` in the runner's audio: `let Some(m) = self.manager() else {
+return; }` (`crates/kui/src/audio.rs:277-279`), `self.refused` untouched;
+`Device::Failed` is a state (`:166,173`) and the module's contract says a
+refused play "goes back as `Core::audio_refused`". On a machine with no
+output device — CI, a container, a muted VM — every `play(..).tag()` and
+`<audio tag>` neither ends nor is refused; a view sequenced on `sound
+ended` hangs, and `active()` stays false so nothing polls. The
+decode-failure branch two lines above does push `refused`.
+
+**Fix:** push `playback` onto `self.refused` when `manager()` is `None`.
+
+### `!` AR21 — Popups are one level deep: a press inside a sub-popup dismisses and consumes itself, and keys never reach it
+
+A sub-popup declared by a popup's frame has `owner == popup`
+(`session.rs`, `union`). `popups_outside` lists every popup but the
+pressed pane (`crates/kui/src/popups.rs:36-44`), so a press in the child
+names its parent "outside"; the runner dismisses it and, for a
+non-activating parent, sets `consumed` before dispatch and returns
+(`crates/kui/src/lib.rs:1484-1500`). The app stops declaring the parent,
+the child closes with it, and the row the user pressed never hears the
+press. `key_target` is non-transitive (`popups.rs:19-27`) and `together`
+pairs a popup with its direct owner only (`:99-108`), so keys at the
+OS-focused owner reach the first level; the sub-popup reads
+`env.focused == false`. `windows.rs:200-206` expects "a submenu the app
+opened from a retargeted hover". Only the press-drag-release path works
+for one. Read, not run.
+
+**Fix:** walk the owner chain — exclude a pressed popup's ancestors from
+`popups_outside`, and follow `owner` transitively in `key_target` and
+`together` to the deepest non-activating popup; a corpus step for a
+second level.
+
+### `!` AR22 — A window the OS refused stays live in the registry
+
+`open_pane` on a `create_window`/`new_in` error prints and returns
+(`crates/kui/src/windows.rs:164-181`). `WindowRegistry.windows` still
+lists the id live, the app already received `phase:"opened"`, and only
+`window_closed` tells the registry otherwise
+(`runtime/windows.rs:100-113`). `Core::windows()` reports a window that
+does not exist; the app never gets `closed`; declaring the name again is
+a no-op; `dismiss`/`Focus`/`SetSize` on the id are silent forever. Read,
+not run.
+
+**Fix:** on failure call `window_closed(id)` on the declaring core and
+route its events, as `close_pane` does.
+
+### `!` AR23 — `ModifiersChanged` is mirrored to the key target only, so the owner's modifiers go stale while a popup borrows the keyboard
+
+The OS delivers the edge to the owner; the runner writes it to
+`self.panes[t].modifiers` for `t = key_target(i)` alone
+(`crates/kui/src/lib.rs:1409-1414`), and `primary()`/`kmods()` read each
+pane's own copy (`pane.rs:359-371`, `keys.rs:160`). Hold Shift, open a
+menu, release Shift while it is up, choose: the next key in the owner is
+a Shift chord (Shift+Tab walks backwards; Cmd-C checks a stale Cmd) until
+the next modifier edge. Read, not run.
+
+**Fix:** write the mirror to both `i` and `t`; the keyboard's state is
+one fact for the pair.
+
+### `!` AR24 — "One selection per window" is enforced in one direction
+
+`set_selection` collapses the editor's selection
+(`runtime/select_api.rs:31-35,265-269,763-768`), but a keyboard-started
+editor selection — `Key(SelectAll)`, Shift+arrows, AT `SetTextSelection`
+— never clears `self.selection`; only a primary press does
+(`dispatch.rs:538,706`). Drag-select a label, Tab into a field, Cmd-A:
+the runner reads `core.selection()` first (`keys.rs:229-236,275-283`) and
+select-alls the *scope*, Cmd-C copies the label, and two highlights are
+drawn. ADR 0017 decision 1; `tests/selection.rs:171` covers scope→editor
+only. Read, not run.
+
+**Fix:** clear the scope/cell selection when `set_focus` lands on an
+editor, or when `EditStore` reports a non-collapsed selection after
+`apply_key`; the reverse case in `tests/selection.rs`.
+
+### `!` AR25 — `{ percent: 50 }` in JSX is 5000%
+
+`"50%"` lowers to `parseFloat(v) / 100` (`packages/kui/encoder.js:163-165`)
+and Lua's `{pct = 50}` to `Sizing::Percent(p / 100.0)`
+(`kui-lua/src/lib.rs:2072-2074`); the object form writes `v.percent` raw
+(`encoder.js:171-173`), and the core reads `Percent(value)` as a fraction
+(`schema.rs:454-458`). `{ percent: number }` is in `SizingProp`
+(`jsx-runtime.d.ts:74-81`) and in no doc, example or test — which is why
+nothing caught it.
+
+**Fix:** divide by 100, or drop the object form from the type; a
+`test.mjs` line that `{percent: 50}` and `"50%"` encode the same bytes.
+
+### `!` AR26 — Lua's `env.edit_text` takes an integer only, and its `on_event` drops the window
+
+`edit_text` is `move |_, key: i64|` (`kui-lua/src/lib.rs:502-505`); its
+own doc says "each takes either spelling" (`:393-396`) and `set_edit_text`
+two doors below takes a label. `env.edit_text("filter")` fails with mlua's
+"integer expected, got string", and the one Lua example keeps the integer
+from a `changed` event to work around it
+(`examples/lua/features/slots/panel.lua:61,74-75`) — the shape F5 and F32
+removed everywhere else. The event table sets `node_key` and `from` and
+nothing for `ev.window` (`:234-260`), where Node sends `{origin, window,
+key, payload}` and C's `KuiEvent` carries `window`; `env.window.id`'s doc
+promises "every event from it carries the same number"
+(`schema.rs:1890-1896`), so a Lua panel drawn into two windows cannot tell
+which one clicked.
+
+**Fix:** `edit_text` takes `mlua::Value` through `key_query` like
+`is_focused` beside it; `t.set("window", ev.window.0)` beside `node_key`;
+the example reads back by label.
+
+### `~` AR27 — C's runner takes no window, and `kui_run_with` drops what the ctx registered
+
+`kui_run`/`kui_run_with` build `kui::app(title).with_extensions().system()`
+and nothing else (`kui-ffi/src/run.rs:31-60`; `kui.h:2705,2728`):
+no size, min, max, chrome or text AA, where `Launcher` has all five
+(`crates/kui/src/lib.rs:164-290`) and Node's window options have them
+(`kui-node/src/lib.rs:1432-1484`). A C app cannot open at a size (only
+`kui_set_window_size` from its first view, after the window has shown),
+cannot ask for custom or borderless chrome (so `kui_titlebar` draws
+under a native title bar), and chooses AA through `KUI_TEXT_AA` alone.
+`kui_run_with` then takes the extensions and the system pin off the ctx
+(`run.rs:86-97`) and lets `kui::app` build a fresh session: fonts, images,
+sounds, tokens, `kui_set_devtools`, `set_native_menus(false)` and the text
+cache budget registered on the ctx before the call never reach the
+window, and a C host that mirrors Node's register-then-run order gets
+`foreign-resource` warnings from its first frame. ADR 0020's "Not done
+here" names neither.
+
+**Fix:** a size-led `[in]` `KuiRunConfig {size, width, height, min_w,
+min_h, max_w, max_h, chrome, text_aa, diagnostics}` on `kui_run_with`
+(no ABI bump under the `[in]` rule), and the ctx's `Core` handed to the
+launcher as its main core via `Launcher::setup_core`; the header says what
+still cannot cross.
+
+### `~` AR28 — No keyboard path starts or extends a selection in a `selectable` scope
+
+A scope's drag is armed from a press only (`runtime/dispatch.rs:559-571`)
+and `select_all_in` is a chord (`select_api.rs:278`); the stock editor has
+Shift+arrows in `apply_key` and cells have `select_all_in`. ADR 0017 makes
+a scope "the same family as keyboard focus" and says nothing about the
+keyboard; AT gets `SetTextSelection` on editors only. A keyboard user
+cannot select a label.
+
+**Fix:** Shift+arrow/Home/End on a focused scope (or a control inside one)
+moves `Selection.focus` through `scope_offset`, mirroring the editor's
+motions; or a sentence in ADR 0017 declining it.
+
+### `~` AR29 — The sink's caret and IME anchor read the focused node's subtree; keys read the enclosing sink
+
+`sink_caret_line` walks `(focus_index() .. subtree_end)` for the first
+`role="line"` with a caret (`runtime/emit.rs:1425-1440`), while
+`sink_event` and `key_target` route to `enclosing_sink`
+(`runtime/dispatch.rs:1128-1136`, `:994`). Focus on a control inside the
+custom editor (AT `Focus`, `ui.focus`, a pane button) still delivers keys
+and commits to the sink, but `has_caret()` turns false — the blink clock
+un-arms (C35), the caret parks solid, the IME candidate window loses its
+anchor. The walk also does not skip `Role::None` subtrees or nested lines
+as `lines_under` does, and takes the *first* caret where `custom_editor`
+takes the *last* (`access.rs:1349`).
+
+**Fix:** start the walk at `enclosing_sink`-or-self and take the candidates
+from `lines_under`.
+
+### `.` AR30 — Three meanings of `line`, and a `byte` that counts text the access tree excludes
+
+`TextHit.line` is the wrapped row *within one run's buffer*
+(`text.rs:645-660`, `visual_line`) while `byte` in the same struct spans
+the node's runs; the payload's `line` is the ordinal `role="line"` node
+(`dispatch.rs:229`); the AT's `line` is the same ordinal (`access.rs:1364`).
+A Node app reading `ev.line` from a drag and `ui.textHit(key, pt).line`
+gets different numbers for the same point. `attach_lines` says `byte` is
+"what `text_hit` would answer", and `text_hit` concatenates *all* text
+under the line key (`runs_of`, `text.rs:2053-2068`) where `custom_editor`
+skips `role="none"` subtrees (`access.rs:1349-1352`): a fold marker or
+inline line number in the row shifts `byte` against the `access` events'
+`offset` by its length. A text nested more than `PLACE_ANCESTORS = 4`
+levels under its line (`text.rs:589-592`) answers `byte: 0` with no
+diagnostic.
+
+**Fix:** `TextHit.line` counts rows across the node's runs and is
+documented as "visual row"; `runs_of` gets the `Role::None` skip; a diag
+when a text under a `line` row exceeds `PLACE_ANCESTORS`.
+
+### `.` AR31 — Hover ignores the scrollbar the press and the cursor honour
+
+ADR 0023 decision 4 routes press and cursor through `target_at`
+(`input.rs:1179`, `:1395`); `refresh_hover` resolves against `hits` alone
+(`:1131-1136`). Over an overlay bar the cursor is `Default` and a press
+grabs the thumb, while the node beneath lights `hover_bg` and fires
+`onHover enter`.
+
+**Fix:** hover through `target_at`, with `Target::Bar` as "nothing hovered".
+
+### `.` AR32 — A popup surface is resizable and, under custom chrome, gets the app's non-client treatment
+
+Popup attrs come from `window_attrs("", size, chrome)` plus `undecorated`
+and no `with_resizable(false)` (`crates/kui/src/windows.rs:138-146`);
+popups take `self.chrome` (`:79-86`); `nc` is installed for any non-Native
+chrome with `resize_border: true` (`:281-285`); `synthesizes_resize` is
+true for a popup on Linux under Custom (`pane.rs:296-302`). Dragging a
+menu's edge resizes it (AppKit keeps edge resizing on a hidden-titlebar
+window; Win32 keeps `WS_THICKFRAME` undecorated), and under
+`Chrome::Custom` the outer 6 px of every popup answers resize cursors and
+`HTCAPTION` from the popup's own chrome regions. Read, not run.
+
+**Fix:** `.with_resizable(false)` on popup attrs, `Chrome::Borderless`
+semantics for `WindowKind::Popup`, and no `NcHitTest`/`synthesizes_resize`
+for one.
+
+### `.` AR33 — Retarget's common frame is physical pixels, which AppKit does not have
+
+`retarget.rs:9-12` and `Surface::origin` (`pane.rs:285-293`, from
+`inner_position()`) assume one physical screen frame — the Win32 model,
+which `mixed_dpi_maps_through_physical_pixels` pins. winit's macOS
+`inner_position` is points × *that window's* `scale_factor`
+(`window_delegate.rs:928-932` in winit 0.30.13), so two windows on
+displays of different scale have origins in two frames; `popup_position`
+converts with the owner's scale (`windows.rs:213-236`). A popup on a
+Retina/non-Retina boundary retargets moves to the wrong rows and
+classifies the release as `Outside`; on Windows the inverse hits
+`popup_position` (`with_position(LogicalPosition)` resolves against the
+creating monitor). Mechanism read; frequency low.
+
+**Fix:** `Surface` platform-aware — points as the common frame on macOS,
+`PhysicalPosition` into `with_position` on Windows.
+
+### `.` AR34 — `request_paste` has no outstanding-request guard, so both examples carry one
+
+`pub fn request_paste(&mut self) { self.menu_actions.push(MenuAction::Paste) }`
+(`runtime/select_api.rs:561-563`). The drain dispatches `Commit`, `dispatch`
+asks for a redraw, the redraw runs `view`; a view that calls
+`request_paste` while a flag is set loops paste→redraw→paste until the
+answer lands. Both Rust examples hit it and added `paste_pending` app-side
+(`6f03459`); a Lua or Node view — the only place `Ui` exists there — has
+no other place to put one. `answer_selection_range` has the
+`awaiting_selection` gate the paste lacks (`:512,521`).
+
+**Fix:** one `awaiting_paste` in the core, duplicate `Paste` dropped while
+set, cleared on `Commit`, readable so a view can ask.
+
+### `.` AR35 — `Metrics::scaled` scales `titlebar_h`, the row the schema marks the platform's and `compact()` exempts
+
+`scaled` loops every `METRIC_ROLES` row (`metrics.rs:153-159`); the row
+is `platform: Some` — "the OS's number and not a density"
+(`schema.rs:2225-2231`), which `compact()` honours (`metrics.rs:124-127`)
+and `tests/metrics.rs:124-125` pins the other way (`scaled(2.0)` doubles
+the bar). A density slider at 1.5 draws a 51 px caption strip beside 34 px
+traffic lights.
+
+**Fix:** skip `platform.is_some()` rows in `scaled` and flip the test, or
+delete the "not a density" claim.
+
+### `.` AR36 — `nodes()` rects are window px; every other readback is dock-shifted viewport px
+
+`layout_of` returns `r.x - shift.x` (`runtime/inspect.rs:63,238-242`), as
+do `selection_rect`, `scroll_geometry`, `text_hit`, `caret_rect` and
+`cursor` (`select_api.rs:367-395`, `scrolling.rs:68-95`,
+`runtime.rs:853-866`, `builder.rs:285-287`); `snapshot_nodes` stores
+`tree.pos[i]` unshifted and Node exposes it as `nodes()`
+(`kui-node/src/lib.rs:2312`). Under a left dock, `nodes()[k].rect.x` and
+`layoutOf(k).x` disagree by the dock width for the same node. The panel's
+own outlines need window px, so the snapshot cannot move in place.
+
+**Fix:** keep `inspected` in window px for the panel and translate in
+`Core::nodes()`, the way every other readback does.
+
+### `.` AR37 — `Core::finish_frame` is a public second door that skips the fills, the menu and the devtools
+
+`Core::frame`'s doc says "then `finish_frame()`" (`runtime.rs:1040-1047`);
+`Ui::finish` runs filler → `devtools_finish` → `build_menu` →
+`finish_frame` (`ui.rs:831-845`). No caller outside `Ui::finish` (one Node
+unit test aside), but a Rust host following the doc gets a frame where
+`open_menu` draws nothing and `KUI_DEVTOOLS` does nothing, with no
+warning.
+
+**Fix:** `pub(crate)`, or the three steps inside it behind an optional
+filler; the doc points at `Ui::finish`.
+
+### `.` AR38 — `devtools.inspecting` is a one-way latch
+
+`want_inspect = d.tab == Tab::Tree && !d.inspecting` →
+`set_inspect(true); inspecting = true`
+(`runtime/devtools/mod.rs:928,969-971`); nothing writes `false`, and
+`set_devtools(false)` resets `pick` alone (`:690-704`). After the tree tab
+was opened once, `snapshot_nodes` (an O(nodes) clone per frame) keeps
+running after the panel is closed; a host that calls `set_inspect(false)`
+itself leaves `inspecting == true`, so the panel never re-asks and its
+tree tab stays blank for the session. No test covers either.
+
+**Fix:** drop the latch and derive `set_inspect(d.on && d.tab == Tree ||
+host_asked)` each `devtools_begin_frame`, the host's ask kept apart.
+
+### `.` AR39 — The runner indexes a pane by position after a command may have removed it
+
+`dispatch` runs `apply_window_commands` then `self.panes.get_mut(i)`
+(`crates/kui/src/lib.rs:952-960`); `lib.rs:1520` and `:1601` re-find by
+id. A chrome close on pane *i* queues `Close(i)` → `panes.remove(i)` →
+`get_mut(i)` is the *next* pane, which gets the cursor apply, the
+`pending_input_ms` charge and the redraw. Cosmetic today; `on_key` indexes
+`self.panes[i]` after its own `dispatch` (`keys.rs:225`), one chrome-shaped
+key away from an out-of-bounds.
+
+**Fix:** `let here = self.panes[i].id` at the top and `pane_of(here)` after
+the drain.
+
+### `.` AR40 — Three small door rules broken: `index` on a button, `cells` cursor names, a lone `width`
+
+The stock `<button>` admits `key` and not `index` (`schema.rs:1372-1389`
+vs `:1196`, "declared beside `key` the index wins"); in a `virtual_column`
+a `<button index={i}>` warns `unknown-prop` and is keyed by its text,
+losing focus and tween identity as the range slides
+(`encoder.js:659-668`, `lua:1505-1507`). The `cells` cursor shape is a
+literal `['block','bar','underline']` in the encoder (`encoder.js:799`)
+where every other value table comes from `protocol()`; `CursorShape::NAMES`
+exists and is not exported (`cells.rs:93`); Lua defaults an unknown name
+to `Block` silently (`lua:1382-1385`) where Node throws. Node's window
+options honour a lone `minWidth` and ignore a lone `width` and an unknown
+`chrome` (`kui-node/src/lib.rs:1432-1436,1480-1484`), against the
+encoder's "refuse, don't drop".
+
+**Fix:** `index` in both `BUTTON_ROWS` lists and the three lowerings;
+`NAMES` through `protocol_tables`, Lua `bad(...)` on a miss; an error on a
+half-given size and an unknown chrome word.
+
+### `.` AR41 — `button_spec` hard-codes the accent trio `Theme::dark()` also hard-codes
+
+`widgets.rs:483-491` and `theme.rs:193-195` carry the same three hex
+values, cross-referenced by comment; `button_with` substitutes the theme's
+only when `spec.accent && has_accent()` (`widgets.rs:568-574`). ADR 0019's
+"`button_spec()` is unchanged" is why: a `set_theme(Theme::light()
+.with_accent(brand))` recolours the ring, selection, menu rows and
+scrollbar, and a plain `<button>` stays `#3b5bd4` — the one stock widget
+not painting from the palette.
+
+**Fix:** `button_spec(&Theme, &Metrics)` reading `accent`/`accent_hover`/
+`accent_pressed` (byte-identical for `Derived` with no accent, since the
+trio is the same) and no `has_accent` gate.
+
+### `.` AR42 — `Easing`, `Repeat`, `Live` and `FontFamily` are index→variant matches with no pin
+
+`schema.rs:299-329,930-934` map an index to a variant by hand; `anim.rs`
+has no `ALL`/`name()` (`:32-46,78-90`); `Live::from_index` is a second map
+beside `LIVE` (`access.rs:243-249`). CURSORS (`schema.rs:162`), the env
+enums (`env.rs:449-462`), ROLES (`schema.rs:3232`) and SCROLLBARS
+(`ScrollbarMode::ALL[i]`) are pinned. Appending to `Easing` or reordering
+`EASINGS` compiles and maps every C/Lua/Node index one off; `abi_enum!`
+pins the header to the *names*.
+
+**Fix:** `ALL` + `name()` on the four, the lists as `ALL.map(name)`, one
+round-trip test, as `Appearance` already has.
+
+### `.` AR43 — Node's `windows` root prop is hand-lowered on both wire sides while `WindowConfig::from_value` exists
+
+A ten-slot stanza in the encoder (`encoder.js:340-380`) and its mirror in
+`binary.rs:462-484`; `WindowConfig::from_value` (`window.rs:208-250`) is
+what Lua uses (`lua:1130-1145`), and `menuBar` already rides as one JSON
+blob for the same reason (`encoder.js:846`, `binary.rs:914`). The two
+already disagree: `{width: 0, height: 0}` is "default size" in Node
+(`w > 0.0 && h > 0.0`) and `Size(0,0)` in Lua and the core.
+
+**Fix:** `windows` as a JSON string through `from_value`, both arms
+deleted (a protocol bump, as v7 was for this stanza).
+
+### `.` AR44 — `index.d.ts`'s `Env`, `NodeInfo`, `Theme` and `Metrics` are hand-written mirrors of generated tables
+
+`index.d.ts:919,947,1034,1141` restate `ENV_FIELDS`, `THEME_ROLES` and
+`METRIC_ROLES`; `gen-types.mjs:46` already destructures `env, theme,
+metrics` from `protocol()` and uses them for `props.md` alone. In sync
+today (23/23, 16/16); a role added to `THEME_ROLES` shows in `ctx.theme()`
+and every generated list and is a type error until someone edits the
+interface, and `types.tsx` catches only the roles it uses.
+
+**Fix:** the four interfaces emitted between the `-- generated --` markers
+the access, warning and input lists already use.
+
+### `.` AR45 — Three frame counters, two label resolvers, one caret rect twice
+
+`Core::frame_no` (`runtime.rs:385`) is passed to edit and scroll;
+`AnimStore` and `DepartStore` each `frame_no += 1` in their own
+`begin_frame` (`anim.rs:311,333`, `depart.rs:272,291`), in lockstep only
+because `begin_frame` happens to call all three, and their `sweep_cutoff`
+runs on a different modulus than `layouts.retain` (240). `key_of`
+(`builder.rs:335-353`) and `resolve_regions` (`focus.rs:279-292`) do the
+same label find and spell `ambiguous_key` twice. The stock caret's viewport
+rect is computed in `emit.rs:1400-1412` (IME anchor) and
+`scrolling.rs:117-137` (scroll into view), each `(0..len).find(content ==
+Edit(key))` then `pos + pad + caret/scale`.
+
+**Fix:** `Core::frame_no` into the two stores' `begin_frame`; one
+`find_label` under both callers; one `stock_caret_viewport_rect(key)`.
+
+### `.` AR46 — `surface.c` says every prototype is called once; twenty-one are called by nothing
+
+`examples/c/tools/surface.c:1-2`: "every prototype in kui.h called once".
+Of 202 `pub extern "C" fn kui_*`, 90 are absent from it, and these are
+referenced by no test, adapter or example in the tree:
+`kui_activate_menu_item`, `kui_answer_selection_range`,
+`kui_clear_selection`, `kui_cursor_shape`, `kui_focus_region`,
+`kui_fragment_open_with`, `kui_fragment_remove`, `kui_fragment_source`,
+`kui_image_pixels`, `kui_region`, `kui_reveal`, `kui_scroll_offset`,
+`kui_select_all_in`, `kui_selection_html`, `kui_selection_text`,
+`kui_set_devtools`, `kui_set_devtools_dock`, `kui_set_native_menu_bar`,
+`kui_set_scroll`, `kui_set_text_cache_budget`, `kui_text_cache_bytes`.
+`every_entry_point_is_pinned` (`abi_parity.rs:1032`) pins signatures, not
+calls — the header audit is a test, but a different one from what the
+walk claims. A door nothing calls can decode its arguments wrong for a
+release without failing anything.
+
+**Fix:** a test in kui-ffi that every `abi_fn!` name appears in
+`surface.c`, with an exempt list and the reason per line; the walk's
+comment made true.
+
+### `.` AR47 — Coverage is pinned for elements; 31 generic rows, `animate` among them, are in no scene and no test
+
+`the_corpus_covers_every_hand_written_row` iterates `CUSTOM` and
+`ELEMENTS` (`tests/conformance.rs:136-183`). Absent from every scene in
+both spellings: accent, animate, center, clickSound, crossAlign, delay,
+easing, ellipsis, enter, expanded, features, focusBg, focusRegion,
+hoverGroup, hoverSound, initialFocus, keyframes, mainAlign, maxHeight,
+maxWidth, maxLines, onForceClick, onHover, onLayout, radiusTL/TR/BL/BR,
+slide, repeat, selectionAnchor, shadowX, strikethrough, underline. Six of
+those shipped since 09-06. `animate` — the row that takes a window off
+input-driven pacing — has no behavioural test in any binding (`grep
+'.animate(\|animate:'` over every test tree: the C struct round-trip in
+`schema_parity.rs:380` alone); a regression there is the silent idle-CPU
+class C27 measured. Node's "every generic prop reaches the stream" test
+asserts `encoded(with) != encoded(without)` and `quadCount > 0`
+(`test.mjs:88-108`) — a prop under a neighbour's id passes — and the only
+test that catches a tag or width swap is the corpus digest, which skips
+without `KUI_CONFORMANCE` (`:4016`); the Rust twin re-implements the
+encoder's slot layout by hand, so a lock-step change to both passes.
+`bench-check.sh` guards 5 of 35 `frame` rows (`:139-147`) and no other
+bench file; `frame_10k_rects_with_access_tree` (the row `18cf953`'s cache
+is justified by) and every `list_*` row are unguarded, the class C29
+found regressing.
+
+**Fix:** the coverage test over `PROPS` with an `UNDERIVED`-style exempt
+list, or one sampler scene; a `tests/anim.rs` case — one frame with
+`.animate()` → `animating()`, the next without → not; the Node test reads
+the node back through `nodes()` and asserts the value survived; the two
+bench rows guarded and `bench-check.sh` taking a bench name.
+
+### `.` AR48 — Test helpers re-derived beside `kui_core::testing`, and font tests that pass with no font
+
+`fn ks(&str) -> KuiStr` appears five times in kui-ffi's tests
+(`src/tests.rs:9,348,686,1430,1585`); devtools' `click_at` is a
+byte-identical copy of `testing::click_at` (`devtools/tests.rs:59-64`)
+though `testing` is reachable in-crate; a raw-key `press` is in
+`tests/keys.rs:38` and `tests/focus_regions.rs:111` and not in `testing`;
+four payload extractors do one "string-or-tag" read. `d0dd348` stopped
+one directory short. Separately: `tests/fonts.rs:47` and
+`tests/session.rs:91,192` return green when none of four hard-coded font
+paths exist, and `font_features.rs:59-66` prints "skipped" and returns —
+on CI (`fonts-dejavu-core` only, `ci.yml:233`) C23's ligature effect is
+pinned on nobody's machine.
+
+**Fix:** `key_down`/`payload_str` into `testing.rs`, `ks` hoisted, devtools
+tests on `crate::testing`; a tiny test-only font with a `liga` table under
+`tests/fixtures/`, or at least a stderr line when a test skips.
+
+### `!` AR49 — The documents disagree with the code and with each other in eleven places
+
+The `!` is for the first; the rest are `.`.
+
+- `CHANGELOG.md`'s alpha.12 "What breaks" says the Node frame is
+  **version 10** (`:24`), then "`KUI_ABI_VERSION` stays 15 and the Node
+  binary frame stays 9" (`:40`), then a bare "Nothing." (`:45`) — three
+  leftovers of the eight-branch merge (`47eb0ea`); `binary.rs:62` is 10.
+- Backlog ids reused: `B1` is the open verb-surface entry (`BACKLOG.md:1434`)
+  and the archived `schema::ROLES` one (`closed-2026-09.md:4895`), and the
+  index resolves it to the archive; `D1` and `D2` each name two archived
+  entries (`:4275`/`:7643`, `:4319`/`:7684`), the index lists each twice,
+  and code cites both senses with nothing to tell them apart
+  (`kui-node/src/schema.rs:8` the old pair, `devtools/icons.rs:2` and
+  `devtools/tree.rs:215` the new). `tests/docs.rs:146` builds its closed
+  set from the index, so a `backlog B1` in `howto.md` meaning the open
+  entry would be refused as stale. The archive is counted "a hundred and
+  ten" (`:11`, `:2411`) and "all hundred" (`:2416`); it has 125 headings
+  and 123 unique ids. The hygiene inventory (`:2379`) omits T5 and
+  C32–C38; the intro's F-range skips F24.
+- ADR 0017 is `status: proposed` (`adr/0017:2,8`) and built (`schema.rs:144`,
+  `select_api.rs`, seven CHANGELOG entries, `README.md:835`); its decisions
+  run 8 before 7 (`:430,460`) and the CHANGELOG cites "decision 7".
+- ADR 0006 puts the size handshake on "the four [out] structs"
+  (`adr/0006:88-94`); the header has it on ten. ADR 0021 ticks
+  `smoke-examples.sh`/`smoke-headless.sh` (`adr/0021:682-686`), which AR4
+  deleted for the `smoke` binary, unmentioned there. ADR 0028 shows
+  `ColorOp::Mix(TokenRef, f32)` (`adr/0028:344`); the enum takes names
+  (`tokens.rs:92-99`). ADR 0014:284 and ADR 0009:249 point at headings that
+  moved. `access.rs:528` sends F8 to `BACKLOG.md`; it is in the archive.
+- `ENV_FIELDS` and `SystemEnv` say the core acts on none of `system.*`
+  (`schema.rs:1841`, `env.rs:66-69`, `props.md:264`); since ADR 0019
+  `set_system` refreshes the theme (`runtime.rs:501-512`) and forty lines
+  down `props.md:303` says a button, a field and a scrollbar all follow the
+  OS.
+- `env.window.always_on_top` is documented as "what the platform did"
+  (`runtime/windows.rs:262-268`, `window.rs:389-394`, C30) and is the
+  request echoed back (`pane.rs:59-63`): winit has no level getter, and the
+  only platform input is `RawWindowHandle::Wayland`. A pin button draws
+  "pinned" on a fullscreen space.
+- `binary.rs:44-64`'s version history stops at v9 under `VERSION = 10`;
+  `KUI_WINDOW=WxH` is read by the runner (`crates/kui/src/lib.rs:1263`)
+  and documented nowhere; C34's CHANGELOG bullet predates `6f03459`'s
+  narrowing (a keyboard- or AT-made click carries none of the three).
+
+**Fix:** delete CHANGELOG lines 40–45; retire the reused ids with a suffix
+(`B1a`) and a uniqueness assertion in `tests/docs.rs`; the ADR headers and
+the five doc comments reworded to the code; `NSWindow.level` /
+`WS_EX_TOPMOST` queried in `sync_env` or the two docs say "what was asked".
+
+
 ## After alpha.11
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -2176,7 +3043,19 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** The third editor-and-mux round, filed 2026-09-13 above,
+**Build next.** The second architecture review, filed 2026-09-13 above
+as AR7–AR49, in the order its decisions argue for: AR7 and AR8 (the
+session rule written and the audio store and image drops moved under
+it), AR9–AR11 together (the held-key identity, the chord bit carried
+into the second channel, one attach pass with a producer-side mark),
+AR12 (Node's window handle), AR13–AR16 (the `<text>` rows, one token
+miss policy, Cut's `changed`, one `prepare_spec`), AR17–AR18 (the focus
+stamp and the AT gates), AR19–AR25 as the defects they are, then B1's
+table with AR26, AR27 and AR40 beside it, AR46–AR48 for the tests, and
+AR49 first of all if the alpha.12 notes go out before the rest, since
+its first line is the CHANGELOG contradicting itself on the frame
+version. The `~` and `.` entries between wait for the defects.
+Before it, the third editor-and-mux round, filed 2026-09-13 above,
 in the order its entries argue for: C32 first (every mono glyph on a
 machine without Noto Sans Mono is whatever face cosmic-text's fallback
 pops, italic here — a defect under the flagship use case and older than
