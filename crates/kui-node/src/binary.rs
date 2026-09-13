@@ -455,7 +455,8 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut, refs: &mut Refs<'_>) -
                 let n = r.f()?;
                 if !n.is_finite() || n < 0.0 || n.fract() != 0.0 {
                     return Err(err(format!(
-                        "rowCount must be a whole number of rows, not {n}: it is how many indexed                          rows the list has, built or not"
+                        "rowCount must be a whole number of rows, not {n}: it is how many indexed \
+                         rows the list has, built or not"
                     )));
                 }
                 out.row_count = Some(n as u64);

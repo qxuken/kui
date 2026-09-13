@@ -88,7 +88,12 @@ date: 2026-09-14
    declaration — an app that wants tiling names a menu `Window`, and the
    runner registers that one, which is how AppKit itself reads a nib. It
    gains the one row AppKit cannot add after launch, Enter Full Screen;
-   its other rows are the app's, and AppKit's rows land above them.
+   its other rows are the app's, and AppKit's rows land above them. That
+   menu alone among a declared bar's is validated (`autoenablesItems`),
+   because the platform's rows in it need it — validation is what
+   retitles Enter Full Screen to *Exit Full Screen* and greys Remove
+   Window from Set — and the app's rows keep the state they declared:
+   `validateMenuItem:` answers a declared row with its own enabled flag.
    Declaring `Edit`, `View` or `Help` was already this (ADR 0018, *what
    running it showed*): macOS adds rows to menus it knows by title, and
    a declared bar was never only its declaration.
@@ -182,6 +187,16 @@ date: 2026-09-14
 
 - Enter Full Screen was expected to come from AppKit and did not; the
   probe found the launch-time rule above, and the row became kui's.
+
+- Reviewing the branch: the declared `Window` menu's Enter Full Screen
+  never read *Exit Full Screen*, because ADR 0018's declared menus turn
+  autoenabling off and only validation retitles; that menu now
+  autoenables, with the bar's target answering a declared row's own
+  state. And a Select All's placeholder end — on the scope's key, placed
+  by row — was placed at the *start* of the built runs once its row was
+  built, since no run carried the scope's key: scrolled to the bottom,
+  the highlight vanished. An end whose row is built now lands in that
+  row's runs.
 
 - The probe itself: a CGEvent posted from a process that exits
   immediately never arrives — the poster has to outlive the post by a

@@ -425,15 +425,18 @@ define_class!(
             }
         }
 
-        /// AppKit asks whether a row applies, for the one menu that
-        /// autoenables — the standard Edit menu (ADR 0030, W14). A chord
-        /// row applies when the runner's last stamp said so; a declared
-        /// bar's rows are never asked, their menus set their own state.
+        /// AppKit asks whether a row applies, for the menus that
+        /// autoenable: the standard Edit menu (ADR 0030, W14), whose chord
+        /// rows apply when the runner's last stamp said so, and a declared
+        /// `Window` menu, whose own rows keep the state the declaration
+        /// set — answering it back is what lets that menu autoenable at
+        /// all, so that the rows AppKit and kui add beside them are
+        /// validated (retitled, greyed) the way the standard bar's are.
         #[unsafe(method(validateMenuItem:))]
         fn validate(&self, item: &NSMenuItem) -> objc2::runtime::Bool {
             let tag = item.tag();
             if tag < CHORD_TAG {
-                return objc2::runtime::Bool::YES;
+                return objc2::runtime::Bool::new(item.isEnabled());
             }
             let state = EditState::from_bits(self.ivars().edit_state.get());
             let on = EDIT_ROWS
@@ -643,6 +646,13 @@ impl MacMenuBar {
             }
             if menu.label == "Window" {
                 full_screen_rows(mtm, &sub);
+                // Validated, unlike the other declared menus: the rows
+                // AppKit adds once this is registered, and the full-screen
+                // row above, are the platform's, and only validation
+                // retitles Enter Full Screen to Exit Full Screen or greys
+                // Remove Window from Set. The declared rows keep their
+                // own state through `validateMenuItem:`.
+                sub.setAutoenablesItems(true);
                 windows_menu = Some(sub.clone());
             }
             head.setSubmenu(Some(&sub));

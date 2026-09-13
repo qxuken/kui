@@ -377,7 +377,16 @@ impl<A: App> Shell<A> {
             super_key: true,
             ..KeyMods::default()
         };
-        let kp = KeyPress::new(KeyCode::Char(chord.letter), mods);
+        // What the keyboard would have carried: the layout's character
+        // heeds Shift (⇧⌘Z arrives as `Z`, winit's `logical_key`), the
+        // physical key is the letter either way.
+        let code = if chord.shift {
+            chord.letter.to_ascii_uppercase()
+        } else {
+            chord.letter
+        };
+        let kp =
+            KeyPress::new(KeyCode::Char(code), mods).with_physical(KeyCode::Char(chord.letter));
         self.dispatch(event_loop, i, InputEvent::KeyDown(kp.clone()));
         self.edit_chord(event_loop, i, chord.letter, chord.shift);
         self.dispatch(event_loop, i, InputEvent::KeyUp(kp.released()));

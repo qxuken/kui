@@ -536,3 +536,32 @@ fn select_all_spans_the_declared_rows_not_the_built_ones() {
     let scope = frame_of(&mut core, 0..0, Some(0));
     assert!(!core.select_all_in(scope));
 }
+
+/// The end a Select All put on the last row *by index* — no run carried
+/// it, since the row was not built — lands in that row's own runs once
+/// the list scrolls it into the built window: the highlight at the bottom
+/// of the list covers every built row, rather than collapsing to nothing
+/// because the placeholder's key is the scope's and no run matches it.
+#[test]
+fn a_select_all_end_lands_in_its_row_once_the_row_is_built() {
+    let mut core = Core::new();
+    let scope = frame_of(&mut core, 10..15, Some(2000));
+    assert!(core.select_all_in(scope));
+    // Scrolled to the bottom: rows 1995..2000 are built, and the last
+    // row's end is the end of its own run.
+    core.set_scroll(scope, Vec2::new(0.0, 1995.0 * 20.0));
+    frame_of(&mut core, 1995..2000, Some(2000));
+    let tint = kui_core::select::TINT;
+    let painted = core
+        .output()
+        .0
+        .quads
+        .iter()
+        .filter(|q| q.color == tint)
+        .count();
+    assert_eq!(
+        painted, 5,
+        "five built rows at the bottom, five highlighted"
+    );
+    assert!(matches!(core.request_copy(), kui_core::CopyRequest::Asked));
+}

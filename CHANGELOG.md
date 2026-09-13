@@ -95,8 +95,12 @@ Nothing.
   window list. A declared bar stays exactly what the app declared, and a
   menu it titles `Window` is registered as the platform's, the way a nib
   is read — it gains Enter Full Screen, the one row AppKit adds only at
-  launch, and AppKit's tiling rows above the app's. The Edit rows are
-  *chords, not roles*: choosing Copy replays ⌘C — the press to the
+  launch, and AppKit's tiling rows above the app's — and that one menu
+  is validated like the standard bar's, so Enter Full Screen reads *Exit
+  Full Screen* inside one and Remove Window from Set greys, while the
+  app's own rows keep the enable state they declared (a review of the
+  branch found the declared menu's rows never retitled). The Edit rows
+  are *chords, not roles*: choosing Copy replays ⌘C — the press to the
   key-focused sink, the runner's clipboard half, the release — so an app
   that binds ⌘C itself hears it from the menu too, and an editor copies
   through the code the key takes. Popup windows stay out of the Window
@@ -117,7 +121,10 @@ Nothing.
   a built row is that row's run, one in an unbuilt row is placed by its
   index alone (the mechanism ADR 0017 tier 3 already had for a scrolled
   drag), the last row's end spelled `select::ROW_END` (`u32::MAX`) since
-  the core never laid that row out — and the copy is the `selectionrange`
+  the core never laid that row out — and once the list scrolls that row
+  into the built window the end lands in the row's own runs, so the
+  highlight at the bottom covers every built row (the review of the
+  branch found it collapsing to nothing there) — and the copy is the `selectionrange`
   ask the app already answers, `to.byte` past the row's length meaning
   the whole row (both clipboard examples cut to the row already; the
   contract now says so). The corpus's `virtual` scene declares it in all

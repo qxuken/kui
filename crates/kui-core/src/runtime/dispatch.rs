@@ -1072,14 +1072,6 @@ impl Core {
         }
     }
 
-    /// Which node hears a raw press: the focused sink, the nearest sink
-    /// above a focused control that does not claim the key, or nothing
-    /// (`docs/adr/0011-keys-bubble-to-the-enclosing-sink.md`, decision 1).
-    ///
-    /// `chord` is whether a modifier other than Shift is down. A chord is
-    /// never a control's key — it is what a shortcut layer is made of — so
-    /// it bubbles whatever the focused control would have done with the
-    /// bare key.
     /// The sink a chord pressed now would reach, if any: the focused sink,
     /// the nearest one above the focused control, or the root's with
     /// nothing focused (ADR 0011, decision 1; ADR 0022, decision 8). What a
@@ -1092,6 +1084,14 @@ impl Core {
         self.key_target(KeyCode::Char('c'), true)
     }
 
+    /// Which node hears a raw press: the focused sink, the nearest sink
+    /// above a focused control that does not claim the key, or nothing
+    /// (`docs/adr/0011-keys-bubble-to-the-enclosing-sink.md`, decision 1).
+    ///
+    /// `chord` is whether a modifier other than Shift is down. A chord is
+    /// never a control's key — it is what a shortcut layer is made of — so
+    /// it bubbles whatever the focused control would have done with the
+    /// bare key.
     fn key_target(&self, code: KeyCode, chord: bool) -> Option<Key> {
         // With nothing focused there is nothing to claim, and the sink
         // that hears every unclaimed key in the tree — one on the root —

@@ -403,6 +403,21 @@ impl Core {
         let place = |end: &crate::select::Endpoint| -> Option<(u32, usize)> {
             let row = end.row?;
             let (start, last) = (built.first()?, built.last()?);
+            // The row itself is built, on runs no end's key names: a Select
+            // All's placeholder end (`select_all_in` puts it on the scope
+            // with the row's index and `ROW_END`) after the list scrolled
+            // that row into the built window. It lands in that row's own
+            // runs — the end of its last one, or the byte into its first —
+            // rather than at the boundary an unbuilt row would take.
+            let mut in_row = built.iter().filter(|(_, r, _)| *r == Some(row));
+            if let Some(first_run) = in_row.next() {
+                return Some(if end.byte >= crate::select::ROW_END {
+                    let last_run = in_row.next_back().unwrap_or(first_run);
+                    (last_run.0, last_run.2)
+                } else {
+                    (first_run.0, end.byte.min(first_run.2))
+                });
+            }
             // Against the built runs that *carry* a row, not the first and
             // last of everything built: a scope can hold plain labels
             // beside virtual rows — a header, a footer — and a label says
