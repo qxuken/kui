@@ -3923,7 +3923,7 @@ fn observe(core: &Core, cov: &mut Coverage) {
     }
     // An `audio` element builds no node either — it declares a playback
     // the audio store reconciles — so it is read off the store.
-    if core.audio.any_mounted() {
+    if core.audio.any_mounted(core.env.window.id) {
         cov.elements.insert("audio");
     }
 

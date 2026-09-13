@@ -804,7 +804,11 @@ impl Core {
         self.interaction.set_hits_shaped(hits, shapes);
         // A new frame can move a hover-sound node under a still cursor.
         self.flush_sound_requests();
-        self.session.state().audio.reconcile();
+        // Against this window's mounts only (AR7): a popup or a second
+        // window finishing a frame with no `<audio>` in it says nothing
+        // about the main window's loop.
+        let window = self.env.window.id;
+        self.session.state().audio.reconcile(window);
         self.interaction.scroll_regions = scroll_regions;
         self.interaction.scrollbars = scrollbars;
         self.ime_rect = self.focused_caret_rect();

@@ -38,10 +38,11 @@ building ADR 0027 left out — **built 2026-09-13** under
 no binding could ask for — **done the same day**, as the per-frame fact
 the entry chose, with `env.window.always_on_top` reporting what the
 platform did), AR7–AR49 from the second architecture review, filed
-2026-09-13 and **none built yet** — forty-three entries under ten
+2026-09-13 — forty-three entries under ten
 decisions, twenty of them defects, the audio store reconciled against
 every window's frame and the two key channels disagreeing about a
-chord at the top — with the amendment on B1 whose condition that round
+chord at the top; **AR7 and AR8 built 2026-09-14**, the session rule
+written and the mounts and the removed ids moved under it — with the amendment on B1 whose condition that round
 met; C31, found
 the same day building the tokens (Node's corpus adapter disagreeing with
 the reference on one scene when run alone — **done the same evening**:
@@ -2297,7 +2298,30 @@ left them); the driver-side verbs ADR 0020 names; the ABI since 15
 reads); the generated files (all three current and diffed in CI); every
 warning literal a test names; every identifier in `howto.md`.
 
-### `!` AR7 — The audio store is the session's and is reconciled against every window's frame
+### `!` AR7 — The audio store is the session's and is reconciled against every window's frame — **done (2026-09-14)**
+
+**Done (2026-09-14), the first of the entry's two shapes.** The store
+stays the session's for its device, its queue and its ids; the mounts
+inside it are keyed by `(WindowId, Key)` and `reconcile(window)` takes
+the calling window's slice of `declared` and diffs it against that
+window's mounts alone, leaving every other window's alone — so the same
+key in two windows is two playbacks, and a popup's empty frame is not a
+stop. `Tagged` carries the window whose core called `play` or whose
+frame declared the node, and `ended` / `refused` are stamped with it
+instead of `MAIN` by hand. That met `Core::stamp`, which wrote the
+draining core's id over every event on its way out: it now leaves a
+window a producer wrote — the audio store is the one producer that can,
+and the runner folds every playback back through the main core, so an
+event it stamped `MAIN` is main's. The rule the entry asks for is the
+new paragraph of `session.rs`'s module doc, with AR8's half beside it.
+`Core::playback_of(key)` is new (the core's own window);
+`SharedAudio::playback_of` and `any_mounted` take the window first,
+which reached only the corpus's coverage derivation. Two tests in
+`tests/session.rs`: the two-window declarative case in both directions
+(b's empty frame leaves a's loop; b's own mount under a's key is a
+second playback; each window's removal stops its own), and a tagged
+node's `ended` and `refused` naming the declaring window when folded
+back through the other core. CHANGELOG under alpha.12.
 
 `SessionState` has six members — fonts, resources, audio, `fonts_rev`,
 windows, devtools (`crates/kui-core/src/session.rs:88-93`). Five are
@@ -2321,7 +2345,31 @@ window's slice, or keep the store per core and share only the command
 queue; stamp the two events with the mounting window; and add the
 two-window declarative case to `tests/session.rs`.
 
-### `!` AR8 — A removed image reaches the GPU of the window that removed it, and a removed fragment reaches no GPU
+### `!` AR8 — A removed image reaches the GPU of the window that removed it, and a removed fragment reaches no GPU — **done (2026-09-14)**
+
+**Done (2026-09-14), as the fix line says, with one addition.**
+`SessionState::dropped` holds the texture-backed images and the
+fragments removed and not yet carried, and `Core::sync_dropped` — at
+every `begin_frame`, where `dropped_images` used to be appended — drains
+it onto whichever core's display list comes next: the device is one
+per session, so one list carrying a drop is the drop, and a window that
+closes before its next frame loses nothing. `DisplayList::dropped_fragments`
+is new beside `dropped_textures`, and kui-wgpu's
+`Gpu::drop_fragment_pipelines` retains the cache against the id across
+every surface format. The addition is `images_rev` beside `fonts_rev`:
+the atlas slot is per window and the removing core's `evict_image`
+reached only its own, so each core re-checks its atlas against the
+registry when the revision moved (`GlyphAtlas::retain_images`), one
+retain over a small map, only on a frame after a removal. Both removal
+doors funnel through `SessionState::remove_image` /
+`remove_fragment`, so `SharedResources::remove_image` — the field door
+without a core — no longer leaves a blit behind either. Three tests in
+`tests/session.rs`: the texture drop carried by the other window's list
+and by no list twice, the fragment the same, and the atlas slot gone
+from the other window at its next frame. What is not built: the Node
+and C display-list readers export neither list, so a host rendering the
+frame itself has never heard of a drop — out of this entry's scope
+(the entry is the wgpu backend) and filed in the CHANGELOG line.
 
 `remove_image` evicts *this* core's atlas slot and pushes onto *this*
 core's `dropped_images` (`runtime/resources_api.rs:412-418`); only a core
@@ -3150,7 +3198,7 @@ which the archived entry measures and leaves.
 **Build next.** The second architecture review, filed 2026-09-13 above
 as AR7–AR49, in the order its decisions argue for: AR7 and AR8 (the
 session rule written and the audio store and image drops moved under
-it), AR9–AR11 together (the held-key identity, the chord bit carried
+it — **both done 2026-09-14**), AR9–AR11 together (the held-key identity, the chord bit carried
 into the second channel, one attach pass with a producer-side mark),
 AR12 (Node's window handle), AR13–AR16 (the `<text>` rows, one token
 miss policy, Cut's `changed`, one `prepare_spec`), AR17–AR18 (the focus

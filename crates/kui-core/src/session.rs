@@ -23,6 +23,20 @@
 //! `finish_frame` and takes the resulting `Open` / `Close` commands back
 //! into its own queue, so the driver drains what it always drained.
 //!
+//! **The rule for what lives here.** A session member is a registry keyed
+//! by a process-unique handle (fonts, resources, the window registry), a
+//! revision counter beside one (`fonts_rev`), or a queue any window's
+//! driver may drain (the audio commands). Anything that is *reconciled
+//! against a frame* is one window's, because a frame is: the audio store
+//! is the session's for its device and its queue, but the `audio` nodes'
+//! mounts inside it are keyed by window and diffed against that window's
+//! frame alone (AR7 — before that, every window's `finish_frame` diffed
+//! every mount against its own tree, and a popup with no `<audio>` in it
+//! stopped the main window's loop). A removed image or fragment is the
+//! same shape the other way (AR8): every window's GPU has to hear of it,
+//! so the list of removed ids is here, beside `fonts_rev`, and each core
+//! drains what it has not yet forwarded.
+//!
 //! **What stays per window, and why.** The shaped-text cache and the glyph
 //! atlas do not move here even though they look like caches. They are one
 //! unit with a window's texture: `CachedText` stamps its positioned glyphs
@@ -55,7 +69,7 @@ use std::sync::Arc;
 use cosmic_text::FontSystem;
 
 use crate::audio::AudioStore;
-use crate::resources::{FontId, ImageId, Resources, SessionId, SoundId};
+use crate::resources::{FontId, FragmentId, ImageId, Resources, SessionId, SoundId};
 use crate::tree::OriginId;
 use crate::window::{WindowConfig, WindowId};
 
@@ -73,6 +87,17 @@ pub(crate) struct SessionState {
     /// Bumped by every font registration and removal, so a `Core` can tell
     /// whether its name mirror is behind without walking the slotmap.
     pub(crate) fonts_rev: u64,
+    /// Bumped by every image removal, so a `Core` can tell whether its
+    /// atlas still holds a slot for an image the registry no longer has
+    /// (AR8). The atlas is per window, so every core re-checks its own.
+    pub(crate) images_rev: u64,
+    /// Handles removed and not yet handed to a display list (AR8): what
+    /// a backend frees on the device. Textures and fragment pipelines
+    /// live on the device every window of the session shares, so the
+    /// list is the session's and whichever core begins a frame next
+    /// carries it — a removal through a window that closes before its
+    /// next frame is not lost with the window.
+    pub(crate) dropped: Dropped,
     /// The declared window set and the windows it has opened.
     pub(crate) windows: WindowRegistry,
     /// The devtools panel's state (`docs/adr/0024`, decision 5): one
@@ -89,10 +114,48 @@ impl SessionState {
             resources: Resources::new(id),
             audio: AudioStore::default(),
             fonts_rev: 0,
+            images_rev: 0,
+            dropped: Dropped::default(),
             windows: WindowRegistry::new(),
             devtools: crate::runtime::devtools::State::default(),
         }
     }
+}
+
+impl SessionState {
+    /// Unregisters an image: the registry forgets it, every core's atlas
+    /// hears (through `images_rev`) and, for a texture-backed one, the
+    /// next display list any core builds tells the backend to drop the
+    /// texture. `None` for a handle the registry did not hold, which is
+    /// noted as a miss.
+    pub(crate) fn remove_image(&mut self, id: ImageId) -> Option<crate::resources::ImageEntry> {
+        let entry = self.resources.remove_image(id)?;
+        self.images_rev += 1;
+        if entry.backing == crate::resources::ImageBacking::Texture {
+            self.dropped.images.push(id);
+        }
+        Some(entry)
+    }
+
+    /// Unregisters a fragment; the next display list any core builds
+    /// tells the backend to drop its pipelines.
+    pub(crate) fn remove_fragment(&mut self, id: FragmentId) -> bool {
+        if self.resources.remove_fragment(id).is_none() {
+            return false;
+        }
+        self.dropped.fragments.push(id);
+        true
+    }
+}
+
+/// Handles the backend has yet to hear were removed; see
+/// [`SessionState::dropped`].
+#[derive(Default)]
+pub(crate) struct Dropped {
+    /// Texture-backed images (an atlas-backed one has nothing on the
+    /// device to free).
+    pub(crate) images: Vec<ImageId>,
+    pub(crate) fragments: Vec<FragmentId>,
 }
 
 /// One frame's declaration of a window, as `Core::declare_window` recorded
@@ -361,7 +424,9 @@ impl std::fmt::Debug for Session {
 /// A window's handle to the session's audio store — `Core`'s `audio`
 /// field. The process has one audio device, so the playbacks and the
 /// command queue are the session's and not this window's: whichever
-/// window's driver drains the queue applies every window's sounds.
+/// window's driver drains the queue applies every window's sounds. The
+/// `audio` nodes' mounts are per window inside it (see the module doc),
+/// which is why the readers here take one.
 #[derive(Clone)]
 pub struct SharedAudio(Session);
 
@@ -375,15 +440,20 @@ impl SharedAudio {
         self.0.state().audio.take_commands()
     }
 
-    /// The playback a keyed `audio` node is running, if it is mounted.
-    pub fn playback_of(&self, key: crate::key::Key) -> Option<crate::audio::PlaybackId> {
-        self.0.state().audio.playback_of(key)
+    /// The playback a keyed `audio` node of `window` is running, if it is
+    /// mounted. `Core::playback_of` asks for the core's own window.
+    pub fn playback_of(
+        &self,
+        window: WindowId,
+        key: crate::key::Key,
+    ) -> Option<crate::audio::PlaybackId> {
+        self.0.state().audio.playback_of(window, key)
     }
 
-    /// Whether any `audio` node is mounted.
+    /// Whether any `audio` node of `window` is mounted.
     #[cfg(feature = "conformance")]
-    pub(crate) fn any_mounted(&self) -> bool {
-        self.0.state().audio.any_mounted()
+    pub(crate) fn any_mounted(&self, window: WindowId) -> bool {
+        self.0.state().audio.any_mounted(window)
     }
 }
 
@@ -403,10 +473,11 @@ impl SharedResources {
         self.0.state().resources.add_image(width, height, rgba)
     }
 
-    /// Drops an image from the registry. The atlas keeps its blit until
-    /// the owning `Core` evicts it (`Core::remove_image` does both).
+    /// Drops an image from the registry. Every window's atlas forgets
+    /// its blit at that window's next frame, and a texture-backed one is
+    /// dropped from the device by the next frame any window draws.
     pub fn remove_image(&self, id: ImageId) -> bool {
-        self.0.state().resources.remove_image(id).is_some()
+        self.0.state().remove_image(id).is_some()
     }
 
     /// The pixel dimensions behind an image handle, if it is live.

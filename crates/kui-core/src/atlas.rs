@@ -239,6 +239,18 @@ impl GlyphAtlas {
     pub fn evict_image(&mut self, id: ImageId) {
         self.images.remove(&id);
     }
+
+    /// Keeps the slots of the images `live` says still exist and forgets
+    /// the rest — how a window learns of removals made through another
+    /// window of its session (AR8).
+    pub fn retain_images(&mut self, live: impl Fn(ImageId) -> bool) {
+        self.images.retain(|id, _| live(*id));
+    }
+
+    /// Whether the atlas holds a slot for `id`.
+    pub fn has_image(&self, id: ImageId) -> bool {
+        self.images.contains_key(&id)
+    }
 }
 
 impl Default for GlyphAtlas {

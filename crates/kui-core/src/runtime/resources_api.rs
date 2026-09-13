@@ -10,10 +10,12 @@ impl Core {
     /// into play commands. Declarative sounds carry no tag, so they never
     /// report `ended`.
     pub(crate) fn flush_sound_requests(&mut self) {
+        let window = self.env.window.id;
         let mut sess = self.session.state();
         for sound in self.interaction.take_sound_requests() {
             sess.audio.play(
                 OriginId::HOST,
+                window,
                 Key::ROOT,
                 sound,
                 crate::audio::PlayOptions::default(),
@@ -58,9 +60,11 @@ impl Core {
         Some(self.session.state().resources.add_fragment(wgsl))
     }
 
-    /// Forgets a registered fragment. Nodes still naming it draw nothing.
+    /// Forgets a registered fragment. Nodes still naming it draw nothing,
+    /// and the next frame any window draws has the backend drop the
+    /// pipelines it built for it.
     pub fn remove_fragment(&mut self, id: crate::resources::FragmentId) {
-        self.session.state().resources.remove_fragment(id);
+        self.session.state().remove_fragment(id);
         // The stock polygon's handle, if that is what went: the next
         // `polygon` node registers it again rather than drawing nothing.
         if self.stock_polygon == Some(id) {
@@ -240,11 +244,12 @@ impl Core {
         opts: crate::audio::PlayOptions,
     ) -> crate::audio::PlaybackId {
         let origin = self.origin;
+        let window = self.env.window.id;
         let sess = &mut *self.session.state();
         // The driver's backend resolves the handle when it plays; a
         // headless app has no driver, so a foreign handle is noticed here.
         let _ = sess.resources.sound(sound);
-        sess.audio.play(origin, Key::ROOT, sound, opts)
+        sess.audio.play(origin, window, Key::ROOT, sound, opts)
     }
 
     /// Stops a playback, fading over `fade_ms` (0 = at once). A stopped
@@ -279,16 +284,15 @@ impl Core {
     /// gone means stopped; `volume` / `paused` changes apply live, a
     /// changed `src` restarts. The key is auto-assigned from the tree
     /// position; see `audio_node_keyed` for a stable label. Draws nothing
-    /// and takes no layout space.
+    /// and takes no layout space. The mount is this window's: it is
+    /// reconciled against this window's frames, and another window's
+    /// frame declaring nothing leaves it playing.
     pub fn audio_node(&mut self, spec: crate::audio::AudioSpec) -> Key {
         if self.tree.is_empty() {
             return Key::ROOT;
         }
         let key = self.auto_key();
-        let origin = self.origin;
-        let sess = &mut *self.session.state();
-        let _ = sess.resources.sound(spec.src);
-        sess.audio.declare(key, origin, spec);
+        self.declare_audio(key, spec);
         key
     }
 
@@ -298,11 +302,22 @@ impl Core {
             return Key::ROOT;
         }
         let key = self.child_key(label);
+        self.declare_audio(key, spec);
+        key
+    }
+
+    fn declare_audio(&mut self, key: Key, spec: crate::audio::AudioSpec) {
         let origin = self.origin;
+        let window = self.env.window.id;
         let sess = &mut *self.session.state();
         let _ = sess.resources.sound(spec.src);
-        sess.audio.declare(key, origin, spec);
-        key
+        sess.audio.declare(window, key, origin, spec);
+    }
+
+    /// The playback an `audio` node of this window holds, if it is
+    /// mounted — after the frame that declared it has finished.
+    pub fn playback_of(&self, key: Key) -> Option<crate::audio::PlaybackId> {
+        self.audio.playback_of(self.env.window.id, key)
     }
 
     /// Drains the audio commands queued since the last drain. Frame
@@ -406,14 +421,34 @@ impl Core {
             .map(|e| (e.width, e.height, e.rgba.clone()))
     }
 
-    /// Unregisters an image and forgets its atlas slot — or, for a
-    /// texture-backed one, tells the next frame's display list so a
-    /// backend drops the texture.
+    /// Unregisters an image and forgets its atlas slot — every other
+    /// window's atlas forgets its own at that window's next frame — or,
+    /// for a texture-backed one, has the next display list any window
+    /// builds tell the backend to drop the texture.
     pub fn remove_image(&mut self, id: crate::resources::ImageId) {
-        let entry = self.session.state().resources.remove_image(id);
+        self.session.state().remove_image(id);
         self.atlas.evict_image(id);
-        if entry.is_some_and(|e| e.backing == crate::resources::ImageBacking::Texture) {
-            self.dropped_images.push(id);
+    }
+
+    /// What the session removed and no display list has carried yet
+    /// (AR8), onto this frame's — a backend frees a texture or a pipeline
+    /// once, on whichever window draws next, since both are the device's
+    /// and the device is shared. And this window's own atlas slots for
+    /// images the registry no longer holds, when a removal has moved the
+    /// revision since this core last looked: the atlas is per window, so
+    /// the removing core's eviction reached only its own.
+    pub(crate) fn sync_dropped(&mut self) {
+        let mut sess = self.session.state();
+        self.display
+            .dropped_textures
+            .append(&mut sess.dropped.images);
+        self.display
+            .dropped_fragments
+            .append(&mut sess.dropped.fragments);
+        if sess.images_rev != self.images_rev {
+            self.images_rev = sess.images_rev;
+            let live = &sess.resources.images;
+            self.atlas.retain_images(|id| live.contains_key(id));
         }
     }
 }

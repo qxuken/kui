@@ -400,8 +400,10 @@ noise of no split at all.
   per texture — with a private globals copy whose `atlas_size` is the
   texture's, rewritten each frame the image is drawn — and rebuilds it
   when the `Arc` it holds is no longer the cache's. A removal reaches the
-  renderer as `DisplayList::dropped_textures`, carried across frames by
-  the core because `remove_image` can land between them.
+  renderer as `DisplayList::dropped_textures`, carried across frames
+  because `remove_image` can land between them — by the session since
+  AR8 (2026-09-14), onto the next list any window builds, where the
+  removing core's own list lost it if that window closed first.
 - **Consecutive quads of one texture are not merged into a run.** Each
   takes a bind and a draw, as consecutive fragments of one handle take a
   pipeline set each (ADR 0015's amendment says the same); at 0.4 µs a

@@ -104,6 +104,9 @@ pub struct Core {
     /// `SessionState::fonts_rev`.
     font_names: FxHashMap<FontId, std::rc::Rc<str>>,
     fonts_rev: u64,
+    /// The session's `images_rev` this core last checked its atlas
+    /// against (`sync_dropped`).
+    images_rev: u64,
     pub interaction: Interaction,
     pub scroll: ScrollStore,
     pub edit: EditStore,
@@ -231,11 +234,6 @@ pub struct Core {
     /// which was a session lock per polygon and cost more than the six
     /// segment quads a closed stroke of the same outline emits.
     pub(crate) stock_polygon: Option<crate::resources::FragmentId>,
-    /// Texture-backed images removed since the last frame began, handed
-    /// to the next display list as `dropped_textures` so a backend frees
-    /// them; kept here because a removal can land between frames, after
-    /// the list was cleared.
-    pub(crate) dropped_images: Vec<crate::resources::ImageId>,
     /// The hit shapes the frame being emitted builds beside its regions
     /// (ADR 0026), handed to `interaction` with them at the end of
     /// emission; the previous frame's buffers, cleared, in between.
@@ -712,6 +710,7 @@ impl Core {
             audio: SharedAudio::new(session),
             font_names: FxHashMap::default(),
             fonts_rev: u64::MAX,
+            images_rev: 0,
             interaction: Interaction::default(),
             scroll: ScrollStore::default(),
             edit: EditStore::default(),
@@ -754,7 +753,6 @@ impl Core {
             lines: Default::default(),
             fragments: Default::default(),
             stock_polygon: None,
-            dropped_images: Vec::new(),
             hit_shapes: Default::default(),
             display: DisplayList::default(),
             viewport: Size::ZERO,
@@ -1238,9 +1236,11 @@ impl Core {
         }
         self.tree.clear();
         self.display.clear();
-        self.display
-            .dropped_textures
-            .append(&mut self.dropped_images);
+        // Removed handles the backend has not heard of, and this window's
+        // atlas slots for removed images (AR8); kept on the session
+        // because a removal can land between frames, after the list was
+        // cleared, and through a window that never draws again.
+        self.sync_dropped();
         // The text list goes with the tree: a kept frame's text nodes carry
         // that frame's `TextId`s, and nothing else can resolve them.
         self.text

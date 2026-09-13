@@ -351,8 +351,14 @@ pub struct DisplayList {
     pub texture_pixels: Vec<TexturePixels>,
     /// Image handles removed since the last frame whose backing was a
     /// texture: what a backend drops from its cache. Cleared with the
-    /// quads, so a host that renders one list a frame sees each once.
+    /// quads, so a host that renders one list a frame sees each once —
+    /// and a removal is carried by one window's list, whichever drew
+    /// next after it, since the device the cache lives on is shared by
+    /// every window of the session (AR8).
     pub dropped_textures: Vec<crate::resources::ImageId>,
+    /// Fragment handles removed since the last frame: what a backend
+    /// drops the pipelines it built for. Carried the same way.
+    pub dropped_fragments: Vec<crate::resources::FragmentId>,
     /// Physical pixels.
     pub viewport: Size,
     pub scale: f32,
@@ -372,6 +378,7 @@ impl DisplayList {
         self.textures.clear();
         self.texture_pixels.clear();
         self.dropped_textures.clear();
+        self.dropped_fragments.clear();
     }
 
     /// The clip a quad names. Out of range — which a well-formed frame

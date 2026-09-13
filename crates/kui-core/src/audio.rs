@@ -271,6 +271,10 @@ impl AudioCommand {
 /// A playback that asked for an `ended` event.
 struct Tagged {
     origin: OriginId,
+    /// The window whose frame declared the node (or whose core called
+    /// `play`), so the event lands there and not on whichever window's
+    /// driver drained the device.
+    window: WindowId,
     key: Key,
     tag: Value,
 }
@@ -280,6 +284,12 @@ struct Mounted {
     playback: PlaybackId,
     spec: AudioSpec,
 }
+
+/// What a mounted `audio` node is keyed by. The store is the session's
+/// (one device), but a mount is one window's: it is reconciled against
+/// *that window's* frame, so a second window's frame declaring no
+/// `<audio>` says nothing about the first's.
+type Mount = (WindowId, Key);
 
 /// Why a one-shot playback was cut off — what
 /// [`diag::TRUNCATED_PLAYBACK`](crate::diag::TRUNCATED_PLAYBACK) reports
@@ -308,17 +318,22 @@ impl Why {
 /// which they are issued in — makes room for a newer one.
 const MAX_STOPPED: usize = 256;
 
-/// Playback bookkeeping on `Core`: the command queue, the tagged playbacks
-/// awaiting their `ended` event, and the `audio` nodes' retained playbacks
-/// (reconciled against what the frame declared in `finish_frame`).
+/// Playback bookkeeping on the session: the command queue, the tagged
+/// playbacks awaiting their `ended` event, and the `audio` nodes' retained
+/// playbacks. The queue and the ids are the session's, because the
+/// process has one device; the mounts are keyed by window as well as by
+/// node, because each is reconciled against one window's frame
+/// (`finish_frame` hands in the window it finished, and only that
+/// window's slice is diffed).
 #[derive(Default)]
 pub struct AudioStore {
     next: u64,
     commands: Vec<AudioCommand>,
     tagged: FxHashMap<PlaybackId, Tagged>,
-    mounted: FxHashMap<Key, Mounted>,
-    /// `audio` nodes declared this frame, in tree order.
-    declared: Vec<(Key, OriginId, AudioSpec)>,
+    mounted: FxHashMap<Mount, Mounted>,
+    /// `audio` nodes declared this frame, in tree order, each with the
+    /// window whose frame declared it.
+    declared: Vec<(Mount, OriginId, AudioSpec)>,
     /// One-shots `reconcile` stopped, awaiting the driver's word on
     /// whether they were still playing (`Core::audio_truncated`). The
     /// core cannot know that itself: `ended` is the driver's too, an
@@ -334,10 +349,12 @@ impl AudioStore {
         PlaybackId(self.next)
     }
 
-    /// Queues a play; `origin`/`key` say where an `ended` event lands.
+    /// Queues a play; `origin`/`window`/`key` say where an `ended` event
+    /// lands.
     pub(crate) fn play(
         &mut self,
         origin: OriginId,
+        window: WindowId,
         key: Key,
         sound: SoundId,
         opts: PlayOptions,
@@ -351,7 +368,15 @@ impl AudioStore {
             fade_in_ms: opts.fade_in_ms,
         });
         if let Some(tag) = opts.tag {
-            self.tagged.insert(playback, Tagged { origin, key, tag });
+            self.tagged.insert(
+                playback,
+                Tagged {
+                    origin,
+                    window,
+                    key,
+                    tag,
+                },
+            );
         }
         playback
     }
@@ -421,22 +446,29 @@ impl AudioStore {
         &self.commands
     }
 
-    /// The playback an `audio` node holds, if it is mounted.
-    pub fn playback_of(&self, key: Key) -> Option<PlaybackId> {
-        self.mounted.get(&key).map(|m| m.playback)
+    /// The playback an `audio` node of `window` holds, if it is mounted.
+    pub fn playback_of(&self, window: WindowId, key: Key) -> Option<PlaybackId> {
+        self.mounted.get(&(window, key)).map(|m| m.playback)
     }
 
-    /// Whether any `audio` node is mounted. The scene corpus's coverage
-    /// derivation reads it: an `audio` element builds no tree node, so a
-    /// mounted playback is the only trace one leaves.
+    /// Whether any `audio` node of `window` is mounted. The scene corpus's
+    /// coverage derivation reads it: an `audio` element builds no tree
+    /// node, so a mounted playback is the only trace one leaves.
     #[cfg(feature = "conformance")]
-    pub(crate) fn any_mounted(&self) -> bool {
-        !self.mounted.is_empty()
+    pub(crate) fn any_mounted(&self, window: WindowId) -> bool {
+        self.mounted.keys().any(|(w, _)| *w == window)
     }
 
-    /// An `audio` node declared this frame; reconciled at `finish_frame`.
-    pub(crate) fn declare(&mut self, key: Key, origin: OriginId, spec: AudioSpec) {
-        self.declared.push((key, origin, spec));
+    /// An `audio` node declared this frame by `window`; reconciled when
+    /// that window's frame finishes.
+    pub(crate) fn declare(
+        &mut self,
+        window: WindowId,
+        key: Key,
+        origin: OriginId,
+        spec: AudioSpec,
+    ) {
+        self.declared.push(((window, key), origin, spec));
     }
 
     /// The driver reported a playback finished on its own. Returns the
@@ -448,7 +480,7 @@ impl AudioStore {
         let t = self.tagged.remove(&playback)?;
         Some(UiEvent {
             origin: t.origin,
-            window: WindowId::MAIN,
+            window: t.window,
             key: t.key,
             payload: Value::map([
                 ("kind", Value::str("sound")),
@@ -477,7 +509,7 @@ impl AudioStore {
         let warning = crate::diag::playback_refused(self.key_of(playback), playback);
         let event = self.tagged.remove(&playback).map(|t| UiEvent {
             origin: t.origin,
-            window: WindowId::MAIN,
+            window: t.window,
             key: t.key,
             payload: Value::map([
                 ("kind", Value::str("sound")),
@@ -500,32 +532,41 @@ impl AudioStore {
         self.mounted
             .iter()
             .find(|(_, m)| m.playback == playback)
-            .map(|(k, _)| *k)
+            .map(|((_, k), _)| *k)
             .unwrap_or(Key::ROOT)
     }
 
-    /// Diffs this frame's `audio` nodes against the retained playbacks:
-    /// new keys start, missing keys stop, a changed `src`/`looped`
+    /// Diffs `window`'s frame's `audio` nodes against the playbacks
+    /// mounted for that window — and that window only: another window's
+    /// mounts are neither started nor stopped by a frame that is not
+    /// theirs. New keys start, missing keys stop, a changed `src`/`looped`
     /// restarts, `volume`/`paused` changes apply live. A one-shot that
     /// finished stays mounted silently until its node goes away — so a
     /// view re-rendering does not replay it. A missing key that asked to
     /// [`finish`](AudioSpec::finish) is released rather than stopped.
     /// Every other stop of a one-shot is remembered (see `truncated`) in
     /// case the driver says the sound was still running.
-    pub(crate) fn reconcile(&mut self) {
-        let declared = std::mem::take(&mut self.declared);
+    pub(crate) fn reconcile(&mut self, window: WindowId) {
+        // Declarations are pushed while a frame is built and taken when it
+        // finishes, so what is here is normally one window's; another
+        // window's are left for its own finish.
+        let (declared, others): (Vec<_>, Vec<_>) = std::mem::take(&mut self.declared)
+            .into_iter()
+            .partition(|(mount, _, _)| mount.0 == window);
+        self.declared = others;
         let mut seen: Vec<Key> = Vec::with_capacity(declared.len());
-        for (key, origin, spec) in declared {
+        for (mount, origin, spec) in declared {
+            let key = mount.1;
             if seen.contains(&key) {
                 continue;
             }
             seen.push(key);
-            let restart = match self.mounted.get(&key) {
+            let restart = match self.mounted.get(&mount) {
                 None => true,
                 Some(m) => m.spec.src != spec.src || m.spec.looped != spec.looped,
             };
             if restart {
-                if let Some(old) = self.mounted.remove(&key) {
+                if let Some(old) = self.mounted.remove(&mount) {
                     self.stop(old.playback, 0.0);
                     // A replaced one-shot is cut off exactly as a removed
                     // one is; `finish` does not release it (it is not a
@@ -540,14 +581,14 @@ impl AudioStore {
                     fade_in_ms: 0.0,
                     tag: spec.tag.clone(),
                 };
-                let playback = self.play(origin, key, spec.src, opts);
+                let playback = self.play(origin, window, key, spec.src, opts);
                 if spec.paused {
                     self.pause(playback, 0.0);
                 }
-                self.mounted.insert(key, Mounted { playback, spec });
+                self.mounted.insert(mount, Mounted { playback, spec });
                 continue;
             }
-            let m = self.mounted.get_mut(&key).expect("mounted");
+            let m = self.mounted.get_mut(&mount).expect("mounted");
             let playback = m.playback;
             if m.spec.volume != spec.volume {
                 self.commands.push(AudioCommand::SetVolume {
@@ -577,6 +618,7 @@ impl AudioStore {
                             playback,
                             Tagged {
                                 origin,
+                                window,
                                 key,
                                 tag: tag.clone(),
                             },
@@ -596,11 +638,11 @@ impl AudioStore {
         let gone: Vec<(Key, PlaybackId, bool, bool)> = self
             .mounted
             .iter()
-            .filter(|(k, _)| !seen.contains(k))
-            .map(|(k, m)| (*k, m.playback, m.spec.finish, m.spec.looped))
+            .filter(|((w, k), _)| *w == window && !seen.contains(k))
+            .map(|((_, k), m)| (*k, m.playback, m.spec.finish, m.spec.looped))
             .collect();
         for (key, playback, finish, looped) in gone {
-            self.mounted.remove(&key);
+            self.mounted.remove(&(window, key));
             if finish && !looped {
                 continue;
             }
@@ -628,9 +670,16 @@ mod tests {
     fn play_allocates_ids_and_only_tagged_playbacks_report_ended() {
         let mut a = AudioStore::default();
         let s = sound();
-        let quiet = a.play(OriginId::HOST, Key::ROOT, s, PlayOptions::default());
+        let quiet = a.play(
+            OriginId::HOST,
+            WindowId::MAIN,
+            Key::ROOT,
+            s,
+            PlayOptions::default(),
+        );
         let loud = a.play(
             OriginId::HOST,
+            WindowId::MAIN,
             Key::ROOT,
             s,
             PlayOptions::default().tag(Value::str("t")),
@@ -658,6 +707,7 @@ mod tests {
         let s = sound();
         let p = a.play(
             OriginId::HOST,
+            WindowId::MAIN,
             Key::ROOT,
             s,
             PlayOptions::default().tag(Value::Null),
@@ -674,8 +724,13 @@ mod tests {
         let mut a = AudioStore::default();
         let s = sound();
         let k = Key::ROOT.str("chime");
-        a.declare(k, OriginId::HOST, AudioSpec::new(s).finish());
-        a.reconcile();
+        a.declare(
+            WindowId::MAIN,
+            k,
+            OriginId::HOST,
+            AudioSpec::new(s).finish(),
+        );
+        a.reconcile(WindowId::MAIN);
         assert!(matches!(
             a.take_commands().as_slice(),
             [AudioCommand::Play { .. }]
@@ -683,9 +738,9 @@ mod tests {
 
         // Gone: released, not stopped — and the store forgets it, so a
         // later re-declare of the same key starts a new playback.
-        a.reconcile();
+        a.reconcile(WindowId::MAIN);
         assert_eq!(a.take_commands(), vec![]);
-        assert!(a.playback_of(k).is_none());
+        assert!(a.playback_of(WindowId::MAIN, k).is_none());
     }
 
     /// Release is meaningless for a loop — there is no end to run to — so
@@ -695,12 +750,17 @@ mod tests {
         let mut a = AudioStore::default();
         let s = sound();
         let k = Key::ROOT.str("bed");
-        a.declare(k, OriginId::HOST, AudioSpec::new(s).looped().finish());
-        a.reconcile();
-        let p = a.playback_of(k).unwrap();
+        a.declare(
+            WindowId::MAIN,
+            k,
+            OriginId::HOST,
+            AudioSpec::new(s).looped().finish(),
+        );
+        a.reconcile(WindowId::MAIN);
+        let p = a.playback_of(WindowId::MAIN, k).unwrap();
         a.take_commands();
 
-        a.reconcile();
+        a.reconcile(WindowId::MAIN);
         assert_eq!(
             a.take_commands(),
             vec![AudioCommand::Stop {
@@ -723,12 +783,12 @@ mod tests {
             spec.tag = Some(Value::str("chime"));
             spec
         };
-        a.declare(k, OriginId::HOST, spec);
-        a.reconcile();
-        let p = a.playback_of(k).unwrap();
+        a.declare(WindowId::MAIN, k, OriginId::HOST, spec);
+        a.reconcile(WindowId::MAIN);
+        let p = a.playback_of(WindowId::MAIN, k).unwrap();
         a.take_commands();
 
-        a.reconcile();
+        a.reconcile(WindowId::MAIN);
         assert_eq!(a.take_commands(), vec![]);
         let ev = a.ended(p).expect("a released playback still reports ended");
         assert_eq!(ev.key, k);
@@ -746,6 +806,7 @@ mod tests {
         let k = Key::ROOT.str("chime");
         let p = a.play(
             OriginId::HOST,
+            WindowId::MAIN,
             k,
             s,
             PlayOptions::default().tag(Value::str("chime")),
@@ -781,7 +842,13 @@ mod tests {
     fn a_refused_untagged_playback_is_the_warning_alone() {
         let mut a = AudioStore::default();
         let s = sound();
-        let p = a.play(OriginId::HOST, Key::ROOT, s, PlayOptions::default());
+        let p = a.play(
+            OriginId::HOST,
+            WindowId::MAIN,
+            Key::ROOT,
+            s,
+            PlayOptions::default(),
+        );
         let (event, warning) = a.refused(p);
         assert!(event.is_none(), "nothing asked to hear about this one");
         assert_eq!(warning.code, crate::diag::PLAYBACK_REFUSED);
@@ -801,14 +868,14 @@ mod tests {
             spec.tag = Some(Value::str("chime"));
             spec
         };
-        a.declare(k, OriginId::HOST, spec);
-        a.reconcile();
-        let p = a.playback_of(k).unwrap();
+        a.declare(WindowId::MAIN, k, OriginId::HOST, spec);
+        a.reconcile(WindowId::MAIN);
+        let p = a.playback_of(WindowId::MAIN, k).unwrap();
         a.take_commands();
 
         // Gone: released, and the store forgets the mount.
-        a.reconcile();
-        assert!(a.playback_of(k).is_none());
+        a.reconcile(WindowId::MAIN);
+        assert!(a.playback_of(WindowId::MAIN, k).is_none());
 
         let (event, warning) = a.refused(p);
         let ev = event.expect("a released playback still hears the refusal");
@@ -827,9 +894,14 @@ mod tests {
         let mut a = AudioStore::default();
         let s = sound();
         let k = Key::ROOT.str("bed");
-        a.declare(k, OriginId::HOST, AudioSpec::new(s).looped());
-        a.reconcile();
-        let p = a.playback_of(k).unwrap();
+        a.declare(
+            WindowId::MAIN,
+            k,
+            OriginId::HOST,
+            AudioSpec::new(s).looped(),
+        );
+        a.reconcile(WindowId::MAIN);
+        let p = a.playback_of(WindowId::MAIN, k).unwrap();
 
         let (event, warning) = a.refused(p);
         assert!(event.is_none());
@@ -841,27 +913,38 @@ mod tests {
         let mut a = AudioStore::default();
         let s = sound();
         let k = Key::ROOT.str("music");
-        a.declare(k, OriginId::HOST, AudioSpec::new(s).looped());
-        a.reconcile();
+        a.declare(
+            WindowId::MAIN,
+            k,
+            OriginId::HOST,
+            AudioSpec::new(s).looped(),
+        );
+        a.reconcile(WindowId::MAIN);
         let cmds = a.take_commands();
         assert!(matches!(
             cmds.as_slice(),
             [AudioCommand::Play { looped: true, .. }]
         ));
-        let p = a.playback_of(k).unwrap();
+        let p = a.playback_of(WindowId::MAIN, k).unwrap();
 
         // Same declaration: nothing.
-        a.declare(k, OriginId::HOST, AudioSpec::new(s).looped());
-        a.reconcile();
+        a.declare(
+            WindowId::MAIN,
+            k,
+            OriginId::HOST,
+            AudioSpec::new(s).looped(),
+        );
+        a.reconcile(WindowId::MAIN);
         assert!(a.take_commands().is_empty());
 
         // Volume + pause apply live.
         a.declare(
+            WindowId::MAIN,
             k,
             OriginId::HOST,
             AudioSpec::new(s).looped().volume(0.5).paused(true),
         );
-        a.reconcile();
+        a.reconcile(WindowId::MAIN);
         let cmds = a.take_commands();
         assert_eq!(
             cmds,
@@ -879,7 +962,7 @@ mod tests {
         );
 
         // Gone: stopped.
-        a.reconcile();
+        a.reconcile(WindowId::MAIN);
         assert_eq!(
             a.take_commands(),
             vec![AudioCommand::Stop {
@@ -887,7 +970,7 @@ mod tests {
                 fade_ms: 0.0
             }]
         );
-        assert!(a.playback_of(k).is_none());
+        assert!(a.playback_of(WindowId::MAIN, k).is_none());
     }
 
     #[test]
@@ -896,12 +979,12 @@ mod tests {
         let mut r = Resources::new(SessionId::next());
         let (s1, s2) = (r.add_sound(vec![0; 4]), r.add_sound(vec![1; 4]));
         let k = Key::ROOT.str("fx");
-        a.declare(k, OriginId::HOST, AudioSpec::new(s1));
-        a.reconcile();
-        let p1 = a.playback_of(k).unwrap();
+        a.declare(WindowId::MAIN, k, OriginId::HOST, AudioSpec::new(s1));
+        a.reconcile(WindowId::MAIN);
+        let p1 = a.playback_of(WindowId::MAIN, k).unwrap();
         a.take_commands();
-        a.declare(k, OriginId::HOST, AudioSpec::new(s2));
-        a.reconcile();
+        a.declare(WindowId::MAIN, k, OriginId::HOST, AudioSpec::new(s2));
+        a.reconcile(WindowId::MAIN);
         let cmds = a.take_commands();
         assert!(matches!(
             cmds.as_slice(),

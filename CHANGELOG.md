@@ -566,6 +566,48 @@ Nothing.
 
 ### Fixed
 
+- **A second window's frame no longer stops the first window's `<audio>`
+  node** (backlog AR7, from the second architecture review). The audio
+  store is the session's — one device, one queue — but the `audio`
+  nodes' mounts inside it were reconciled by *every* core's
+  `finish_frame` against *its own* frame: a popup, a second window or
+  the popped devtools window drawing a frame with no `<audio>` in it
+  stopped the main window's loop (and raised `truncated-playback` for a
+  one-shot), and main's next frame, finding it unmounted, started it
+  from zero; a `finish` one-shot was released and replayed. A mount is
+  now keyed by `(window, key)` and each window's frame reconciles its
+  own slice; the same key in two windows is two playbacks. The `ended`
+  and `refused` events, stamped `MAIN` by hand because the store did not
+  know its window, now name the window whose frame declared the node,
+  whichever core the driver folded them back through — the stamp every
+  event takes on its way out leaves a window the producer wrote. The
+  rule this was breaking is written into `session.rs`'s module doc: a
+  session member is a registry keyed by a process-unique handle, a
+  revision counter, or a queue any driver may drain; anything reconciled
+  against a *frame* is one window's. `Core::playback_of(key)` is new,
+  and `SharedAudio::playback_of` takes the window first; `tests/session.rs`
+  has the two-window case in both directions.
+
+- **A texture-backed image removed through a window that closes before
+  its next frame is dropped from the device, and a removed fragment's
+  pipelines are dropped at all** (backlog AR8). `remove_image` pushed
+  onto the removing core's own list, which only that core's next frame
+  forwarded as `dropped_textures`, and the other windows' atlases kept
+  their slot for the handle until their own reset; `remove_fragment`
+  freed nothing on the device — kui-wgpu's `fragment_pipelines` was keyed
+  by handle and never evicted, so an app registering fragments over its
+  life leaked one pipeline per handle per surface format. The removed
+  ids are the session's now, beside `fonts_rev`, drained onto the next
+  display list *any* core builds (the device is shared, so one window's
+  list is enough), with `DisplayList::dropped_fragments` new beside
+  `dropped_textures` and the backend dropping the pipelines it names;
+  and an `images_rev` every core checks its own atlas against, so a
+  removal through one window evicts the slot in every window's atlas at
+  that window's next frame (`GlyphAtlas::retain_images` / `has_image`).
+  A host rendering the display list itself through Node or C still
+  hears of neither drop — the lists were never exported — which is filed
+  rather than built here.
+
 - **A window with one event in its devtools stream idled again** (found
   on screen building ADR 0029: after the first event reached the dock —
   a Cmd-C's `selectionrange` ask, a Shift key's `modifiers` — the runner

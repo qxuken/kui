@@ -252,13 +252,20 @@ impl Core {
 
     /// Says which window every event on its way out came from.
     ///
-    /// The producers cannot: hit-testing, the edit buffer and the audio
-    /// queue are all below the level at which a window exists. A `Core` is
-    /// one window, though, and the driver already told it which one
-    /// (`env.window.id`, beside `maximized` and the rest of the window
-    /// facts) — so one assignment at each of the two exits covers every
-    /// event every binding will ever see, and ADR 0004's step 3 has only to
-    /// hand each core its id.
+    /// Most producers cannot: hit-testing and the edit buffer are below
+    /// the level at which a window exists. A `Core` is one window, though,
+    /// and the driver already told it which one (`env.window.id`, beside
+    /// `maximized` and the rest of the window facts) — so one assignment
+    /// at each of the two exits covers every event every binding will
+    /// ever see, and ADR 0004's step 3 has only to hand each core its id.
+    ///
+    /// The one producer that does know is the audio store, whose mounts
+    /// are per window (AR7) and whose `ended` / `refused` events are folded
+    /// back through whichever core the driver holds — the main one, in the
+    /// runner. An event it stamped with another window keeps that stamp; a
+    /// `MAIN` one is indistinguishable from an unstamped one and takes the
+    /// draining core's, which is right wherever the draining core is the
+    /// main window, as every driver's is.
     pub(crate) fn stamp(&self, out: &mut [UiEvent]) {
         let id = self.env.window.id;
         if id == WindowId::MAIN {
@@ -267,7 +274,9 @@ impl Core {
             return;
         }
         for ev in out {
-            ev.window = id;
+            if ev.window == WindowId::MAIN {
+                ev.window = id;
+            }
         }
     }
 

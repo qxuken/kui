@@ -643,12 +643,14 @@ pub struct UiEvent {
     /// reading of `origin`, which says which frontend drew the node and
     /// answers `HOST` for a window an extension also draws into.
     ///
-    /// Producers cannot fill it in: a hit test, the edit buffer and the
-    /// audio queue know nothing about windows. They leave it
-    /// [`WindowId::MAIN`] and the core stamps its own `env.window.id` over
-    /// it as the event leaves (`Core::handle_input`,
-    /// `Core::take_pending_events`) — one core is one window, so that is the
-    /// whole answer. A driver that builds an event itself stamps it itself.
+    /// Most producers cannot fill it in: a hit test and the edit buffer
+    /// know nothing about windows. They leave it [`WindowId::MAIN`] and the
+    /// core stamps its own `env.window.id` over it as the event leaves
+    /// (`Core::handle_input`, `Core::take_pending_events`) — one core is
+    /// one window, so that is the whole answer. The audio store is the
+    /// exception: its mounts are per window, so a `sound` event carries
+    /// the window that declared the node and the stamp leaves it alone. A
+    /// driver that builds an event itself stamps it itself.
     pub window: WindowId,
     pub key: Key,
     pub payload: Value,

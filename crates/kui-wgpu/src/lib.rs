@@ -128,9 +128,11 @@ struct GpuInner {
     dual_source: bool,
     /// One pipeline per registered fragment per surface format, built the
     /// first time a frame draws it and shared by every window on this
-    /// device — the cost the ADR measured at about 0.2 ms, paid once. A
-    /// `Mutex` because `Gpu` is a shared handle and building is rare;
-    /// nothing here is touched on a frame that draws no new fragment.
+    /// device — the cost the ADR measured at about 0.2 ms, paid once —
+    /// and dropped when a frame's list says the handle is gone
+    /// (`dropped_fragments`). A `Mutex` because `Gpu` is a shared handle
+    /// and building is rare; nothing here is touched on a frame that
+    /// draws no new fragment.
     fragment_pipelines: std::sync::Mutex<
         std::collections::HashMap<(u64, wgpu::TextureFormat), wgpu::RenderPipeline>,
     >,
@@ -284,6 +286,17 @@ impl Gpu {
         };
         cache.insert(id, fresh.clone());
         Some(fresh)
+    }
+
+    /// Forgets a removed fragment's pipelines, one per surface format it
+    /// was ever drawn in; the GPU frees them once no frame in flight
+    /// holds one.
+    fn drop_fragment_pipelines(&self, id: u64) {
+        self.0
+            .fragment_pipelines
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .retain(|(fid, _), _| *fid != id);
     }
 
     /// Forgets a removed image's texture; the GPU frees it once no bind
@@ -883,6 +896,12 @@ impl Renderer {
         for id in &dl.dropped_textures {
             self.texture_binds.remove(&id.to_ffi());
             self.gpu.drop_image_texture(id.to_ffi());
+        }
+        // And the pipelines of removed fragments (AR8) — built per handle
+        // and shared by every window, so one window's list carries the
+        // removal and this is the only eviction they get.
+        for id in &dl.dropped_fragments {
+            self.gpu.drop_fragment_pipelines(id.to_ffi());
         }
         // A drop another window's frame carried: the cache no longer
         // holds the texture this bind group does. One lock per frame,

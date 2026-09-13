@@ -8,7 +8,10 @@
 //! the other session registered first.
 
 use kui_core::diag::FOREIGN_RESOURCE;
-use kui_core::{Core, NodeSpec, QuadKind, Session, Size, Sizing, TextStyle, Warning};
+use kui_core::{
+    AudioCommand, AudioSpec, Core, Key, NodeSpec, QuadKind, Session, Size, Sizing, TextStyle,
+    Value, Warning, WindowId,
+};
 
 /// The `foreign-resource` lines among a drain (the unlabeled test images
 /// draw an `image-without-label` too, which is not what is under test).
@@ -76,6 +79,79 @@ fn an_image_registered_in_one_window_draws_in_the_other() {
     assert!(codes(&b.take_warnings()).is_empty());
 }
 
+/// AR8: a texture lives on the device every window shares, so a removal
+/// has to reach *a* display list — not this core's next one, which a
+/// window that closes never builds. The list is the session's and the
+/// next frame any window builds carries it; the removing window's own
+/// next frame carries nothing twice.
+#[test]
+fn a_texture_removed_through_one_window_is_dropped_by_whichever_draws_next() {
+    let session = Session::new();
+    let mut a = Core::new_in(&session);
+    let mut b = Core::new_in(&session);
+
+    let id = a.resources.add_image(4, 4, rgba(4, 4));
+    assert!(a.update_image(id, 8, 2, rgba(8, 2)), "texture-backed now");
+    assert_eq!(image_quads(&mut a, id), 0, "a texture is not an atlas quad");
+    assert_eq!(a.output().0.textures.len(), 1);
+
+    // Removed through a, and a never draws again.
+    a.remove_image(id);
+    assert_eq!(image_quads(&mut b, id), 0);
+    assert_eq!(
+        b.output().0.dropped_textures,
+        vec![id],
+        "b's list carries the drop a's window would have"
+    );
+    // Once: the next list — either window's — is clean.
+    image_quads(&mut b, id);
+    assert!(b.output().0.dropped_textures.is_empty());
+    image_quads(&mut a, id);
+    assert!(a.output().0.dropped_textures.is_empty());
+}
+
+/// The same for a fragment, whose pipelines the backend built per handle
+/// and, before this, never freed.
+#[test]
+fn a_fragment_removed_through_one_window_is_dropped_by_whichever_draws_next() {
+    let session = Session::new();
+    let mut a = Core::new_in(&session);
+    let mut b = Core::new_in(&session);
+
+    let f = a
+        .add_fragment(
+            "fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32> { return vec4<f32>(1.0); }",
+        )
+        .expect("a valid fragment");
+    a.remove_fragment(f);
+    image_quads(&mut b, a.resources.add_image(1, 1, rgba(1, 1)));
+    assert_eq!(b.output().0.dropped_fragments, vec![f]);
+    image_quads(&mut b, a.resources.add_image(1, 1, rgba(1, 1)));
+    assert!(b.output().0.dropped_fragments.is_empty());
+}
+
+/// An atlas-backed image is packed into every window's own atlas, and
+/// the removing core evicts its own slot at once; the others learn at
+/// their next frame, from the revision, rather than keeping a slot for
+/// a handle that can never be drawn again.
+#[test]
+fn an_image_removed_through_one_window_leaves_the_other_window_s_atlas() {
+    let session = Session::new();
+    let mut a = Core::new_in(&session);
+    let mut b = Core::new_in(&session);
+
+    let id = a.resources.add_image(40, 20, rgba(40, 20));
+    assert_eq!(image_quads(&mut b, id), 1);
+    assert!(b.atlas.has_image(id), "packed into b's atlas");
+
+    a.remove_image(id);
+    assert!(!a.atlas.has_image(id), "a evicted its own at once");
+    assert!(b.atlas.has_image(id), "b has not framed since");
+    let ui = b.frame(Size::new(400.0, 300.0), 1.0);
+    ui.finish();
+    assert!(!b.atlas.has_image(id), "b's next frame forgets the slot");
+}
+
 #[test]
 fn a_font_registered_in_one_window_shapes_in_the_other() {
     let session = Session::new();
@@ -116,6 +192,128 @@ fn a_sound_registered_in_one_window_plays_from_the_other() {
     // it drains once.
     assert_eq!(a.take_audio_commands().len(), 1);
     assert!(b.take_audio_commands().is_empty());
+}
+
+/// One frame of `core` that declares an `audio` node named `music` when
+/// `audio` is given, and nothing otherwise. Returns the node's key.
+fn audio_frame(core: &mut Core, audio: Option<AudioSpec>) -> Key {
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    let mut key = Key::ROOT;
+    ui.with(NodeSpec::column(), |ui| {
+        if let Some(a) = audio {
+            key = ui.audio_keyed("music", a);
+        }
+    });
+    ui.finish();
+    key
+}
+
+/// AR7: the store is the session's because the device is, but a mount is
+/// one window's — it is reconciled against *that* window's frames. Before
+/// this, `finish_frame` on any core diffed every mount against its own
+/// frame, so a popup or a second window drawing a frame with no `<audio>`
+/// in it stopped the main window's loop, and main's next frame started it
+/// again from zero.
+#[test]
+fn a_second_window_frame_leaves_the_first_window_s_audio_node_playing() {
+    let session = Session::new();
+    let mut a = Core::new_in(&session);
+    let mut b = Core::new_in(&session);
+    b.env.window.id = WindowId(2);
+
+    let sound = a.add_sound(vec![0u8; 32]);
+    let music = audio_frame(&mut a, Some(AudioSpec::new(sound).looped()));
+    let playback = match a.take_audio_commands().as_slice() {
+        [AudioCommand::Play { playback, .. }] => *playback,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(a.playback_of(music), Some(playback));
+
+    // b's frame declares no audio: a's mount is not b's to reconcile.
+    audio_frame(&mut b, None);
+    assert!(
+        b.take_audio_commands().is_empty(),
+        "b's empty frame must not stop a's loop"
+    );
+    assert_eq!(a.playback_of(music), Some(playback), "still mounted");
+    assert_eq!(b.playback_of(music), None, "and not b's");
+
+    // a re-declaring it is silent — the mount survived, so nothing restarts.
+    audio_frame(&mut a, Some(AudioSpec::new(sound).looped()));
+    assert!(a.take_audio_commands().is_empty());
+
+    // The same key in b's frame is b's own mount: a second playback, and
+    // b dropping it stops b's, not a's.
+    audio_frame(&mut b, Some(AudioSpec::new(sound).looped()));
+    let b_playback = match a.take_audio_commands().as_slice() {
+        [AudioCommand::Play { playback, .. }] => *playback,
+        other => panic!("{other:?}"),
+    };
+    assert_ne!(b_playback, playback);
+    assert_eq!(b.playback_of(music), Some(b_playback));
+    audio_frame(&mut b, None);
+    assert_eq!(
+        a.take_audio_commands(),
+        vec![AudioCommand::Stop {
+            playback: b_playback,
+            fade_ms: 0.0
+        }]
+    );
+    assert_eq!(a.playback_of(music), Some(playback));
+
+    // And a dropping its own stops it.
+    audio_frame(&mut a, None);
+    assert_eq!(
+        a.take_audio_commands(),
+        vec![AudioCommand::Stop {
+            playback,
+            fade_ms: 0.0
+        }]
+    );
+}
+
+/// The `ended` and `refused` events used to be stamped `MAIN` by hand,
+/// because the store did not know its window; now the mount does, and the
+/// event lands on the window that declared the node whichever core the
+/// driver folded it back through (the runner uses the main one).
+#[test]
+fn a_tagged_playback_s_ended_event_names_the_window_that_declared_it() {
+    let session = Session::new();
+    let mut a = Core::new_in(&session);
+    let mut b = Core::new_in(&session);
+    b.env.window.id = WindowId(2);
+
+    let sound = a.add_sound(vec![0u8; 32]);
+    let music = audio_frame(&mut b, Some(AudioSpec::new(sound).tag(Value::str("done"))));
+    let playback = match a.take_audio_commands().as_slice() {
+        [AudioCommand::Play { playback, .. }] => *playback,
+        other => panic!("{other:?}"),
+    };
+
+    // Folded back through a (the main window's core, as the runner does).
+    a.audio_ended(playback);
+    let evs = a.take_pending_events();
+    assert_eq!(evs.len(), 1);
+    assert_eq!(evs[0].window, WindowId(2), "b's window, not the drainer's");
+    assert_eq!(evs[0].key, music);
+
+    // A refusal the same way. The finished one-shot stays mounted until
+    // its node goes, so drop it and declare it again for a fresh playback.
+    audio_frame(&mut b, None);
+    a.take_audio_commands();
+    audio_frame(&mut b, Some(AudioSpec::new(sound).tag(Value::str("again"))));
+    let playback = match a.take_audio_commands().as_slice() {
+        [AudioCommand::Play { playback, .. }] => *playback,
+        other => panic!("{other:?}"),
+    };
+    a.audio_refused(playback);
+    let evs = a.take_pending_events();
+    assert_eq!(evs.len(), 1);
+    assert_eq!(evs[0].window, WindowId(2));
+    assert_eq!(
+        evs[0].payload.get("phase").and_then(Value::as_str),
+        Some("refused")
+    );
 }
 
 #[test]
