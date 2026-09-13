@@ -295,6 +295,14 @@ impl<'a> Ui<'a> {
         self.core.modifiers()
     }
 
+    /// The caret's blink phase — `true` draws it; see
+    /// `Core::caret_visible`. A custom editor draws its caret node on the
+    /// on phase and skips it on the off, keeping the `caret` row on its
+    /// `line` either way (that row is what the clock is armed on).
+    pub fn caret_visible(&self) -> bool {
+        self.core.caret_visible()
+    }
+
     /// Asks for one more frame after this one; see `Core::request_frame`.
     pub fn request_frame(&mut self) {
         self.core.request_frame();

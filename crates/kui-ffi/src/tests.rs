@@ -938,6 +938,73 @@ mod queries_headless {
         kui_ctx_free(ctx);
     }
 
+    /// A C editor's caret blinks (backlog C35): the `caret` on a
+    /// `KUI_ROLE_LINE` under the focused sink is a caret to blink, the
+    /// stamp moves with it, and the phase a host's clock sets reads back.
+    #[test]
+    fn a_c_sinks_caret_line_arms_the_blink_and_the_phase_reads_back() {
+        let ctx = kui_ctx_new();
+        let draw = |ctx: *mut KuiCtx, caret: u32| {
+            kui_frame_begin(ctx, 400.0, 200.0, 1.0);
+            let mut spec = unsafe { std::mem::zeroed::<KuiSpec>() };
+            spec.width = KuiSizing {
+                tag: 2,
+                value: 300.0,
+            };
+            spec.height = KuiSizing {
+                tag: 2,
+                value: 60.0,
+            };
+            spec.role = 20; // KUI_ROLE_MULTILINE_TEXT_INPUT
+            spec.label = ks("buf");
+            let sink = kui_open_with(
+                ctx,
+                ks("editor"),
+                &spec,
+                NONE,
+                NONE,
+                kui_value_str(ks("ed")),
+                NONE,
+            );
+            let mut row = unsafe { std::mem::zeroed::<KuiSpec>() };
+            row.dir = 1;
+            row.height = KuiSizing {
+                tag: 2,
+                value: 20.0,
+            };
+            row.role = 22; // KUI_ROLE_LINE
+            row.caret = caret;
+            row.value_set = KUI_VALUE_CARET;
+            kui_open(ctx, &row, NONE);
+            let mut style: KuiTextStyle = unsafe { std::mem::zeroed() };
+            style.size = 14.0;
+            style.family = 2;
+            kui_text(ctx, ks("let value"), &style);
+            kui_close(ctx);
+            kui_close(ctx);
+            kui_set_key_focus(ctx, sink);
+            kui_frame_finish(ctx);
+        };
+        assert!(!kui_has_caret(ctx), "nothing drawn, nothing to blink");
+        assert!(kui_caret_visible(ctx), "solid until a clock says otherwise");
+        draw(ctx, 3);
+        assert!(kui_has_caret(ctx), "the caret row under the focused sink");
+        let stamp = kui_caret_stamp(ctx);
+        draw(ctx, 3);
+        assert_eq!(
+            kui_caret_stamp(ctx),
+            stamp,
+            "the same caret again: no restamp"
+        );
+        draw(ctx, 5);
+        assert_ne!(kui_caret_stamp(ctx), stamp, "the caret moved: restamped");
+        kui_set_caret_visible(ctx, false);
+        assert!(!kui_caret_visible(ctx));
+        kui_set_caret_visible(ctx, true);
+        assert!(kui_caret_visible(ctx));
+        kui_ctx_free(ctx);
+    }
+
     /// A C editor's clipboard and mouse (backlog C33, C34): the two
     /// clipboard doors queue what a menu's Copy and Paste would, a paste
     /// the host commits reaches the sink as `text`, and a press inside

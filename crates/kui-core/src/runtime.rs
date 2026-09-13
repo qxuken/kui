@@ -359,6 +359,16 @@ pub struct Core {
     /// The focused editor's caret rect (logical, viewport coords) as of the
     /// last finish_frame — where drivers should anchor the OS IME window.
     ime_rect: Option<Rect>,
+    /// A custom editor's caret as of the last frame: the `line` under the
+    /// focused sink that declares `caret`, and the offset it declares
+    /// (backlog C35). What the blink clock is armed on when no stock
+    /// editor is focused; `None` with nothing to blink.
+    sink_caret: Option<(Key, u32)>,
+    /// Bumped whenever `sink_caret` changes between frames — the caret
+    /// moved, or focus came to or left a custom editor — so the driver
+    /// re-arms the blink solid, the way `EditStore::caret_stamp` does for
+    /// the stock editor. The two are summed in `caret_stamp`.
+    sink_caret_stamp: u64,
     /// Events raised by the frame driver's own reports rather than by input
     /// — a changed viewport becoming a `resize`. Drained alongside the
     /// interaction's pending queue.
@@ -517,6 +527,7 @@ impl Core {
             focus: self.focus(),
             focus_visible: self.focus_visible(),
             region: self.region(),
+            caret_visible: self.caret_visible(),
         }
     }
 
@@ -779,6 +790,8 @@ impl Core {
             region_focus: Vec::new(),
             pending_region: None,
             ime_rect: None,
+            sink_caret: None,
+            sink_caret_stamp: 0,
             pending: Vec::new(),
             framed: false,
             system_seen: SystemEnv::default(),

@@ -2116,6 +2116,21 @@ export declare class Ctx {
    */
   focusVisible(): boolean
   /**
+   * The caret's blink phase — `true` draws it (backlog C35). A
+   * custom editor reads it in `view` and skips its caret node
+   * on the off phase, keeping the `caret` row on its `line`
+   * either way; the window's clock sets it while a focused
+   * `<edit>` or such a line has a caret, and parks it hidden
+   * while the window has no keyboard. Always `true` headless.
+   */
+  caretVisible(): boolean
+  /**
+   * The driver's half of the blink: sets the phase. A window
+   * runs its own clock; headless, a test drives it to see the
+   * off phase drawn.
+   */
+  setCaretVisible(visible: boolean): void
+  /**
    * Moves keyboard focus to a node now (an editor, an `onKey` sink,
    * a control, a `focusable` box); `keyFocus` on a box is the
    * declarative, edge-triggered form.
@@ -2974,6 +2989,21 @@ export declare class KuiWindow {
    * `focusBg`).
    */
   focusVisible(): boolean
+  /**
+   * The caret's blink phase — `true` draws it (backlog C35). A
+   * custom editor reads it in `view` and skips its caret node
+   * on the off phase, keeping the `caret` row on its `line`
+   * either way; the window's clock sets it while a focused
+   * `<edit>` or such a line has a caret, and parks it hidden
+   * while the window has no keyboard. Always `true` headless.
+   */
+  caretVisible(): boolean
+  /**
+   * The driver's half of the blink: sets the phase. A window
+   * runs its own clock; headless, a test drives it to see the
+   * off phase drawn.
+   */
+  setCaretVisible(visible: boolean): void
   /**
    * Moves keyboard focus to a node now (an editor, an `onKey` sink,
    * a control, a `focusable` box); `keyFocus` on a box is the

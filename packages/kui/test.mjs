@@ -1171,6 +1171,35 @@ test('a composition and its commit reach the focused sink, anchored at its caret
   assert.equal(ctx.imeRect(), null);
 });
 
+// A custom editor's caret blinks (backlog C35): the `caret` row on a line
+// under the focused sink is a caret to blink, the phase the driver sets
+// is what the view reads, and the `caret` row stays declared through the
+// off phase so the clock stays armed.
+test('a sink with a caret line reads the blink phase and draws its caret on it', () => {
+  const ctx = new Ctx();
+  const mono = { size: 14, family: 'mono', lineHeight: 20 };
+  const view = () =>
+    box({}, [
+      box({ onKey: { kind: 'ed' }, keyFocus: true, role: 'multilineTextInput', label: 'Buffer' }, [
+        box({ dir: 'row', role: 'line', caret: 3 }, [
+          text('let ', mono),
+          ...(ctx.caretVisible() ? [box({ width: 2, height: 16 }, [], 'caret')] : []),
+          text('value', mono),
+        ], 'l0'),
+      ], 'editor'),
+    ]);
+  ctx.setInspect(true);
+  ctx.frame(400, 100, 1, view());
+  assert.ok(ctx.caretVisible(), 'solid until a driver says otherwise');
+  assert.ok(ctx.nodes().some((n) => n.label === 'caret'), 'the on phase draws the caret');
+  ctx.setCaretVisible(false);
+  assert.ok(!ctx.caretVisible());
+  ctx.frame(400, 100, 1, view());
+  assert.ok(!ctx.nodes().some((n) => n.label === 'caret'), 'the off phase draws none');
+  assert.equal(ctx.imeRect() !== null, true, 'and the caret row is still declared: the IME anchor and the clock keep it');
+  ctx.setCaretVisible(true);
+});
+
 // A custom editor's mouse and clipboard (backlog C34, C33): a press or
 // drag inside an `onKey` sink carries `line`, `byte` and `clicks` the way
 // a grid's carries `cell`, and the sink's own Ctrl-c / Ctrl-v bind to

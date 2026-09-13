@@ -1749,10 +1749,12 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
                 }
                 deadline = Some(deadline.map_or(*at, |d| d.min(*at)));
             }
-            if pane.core.edit.focused().is_none() {
+            // A caret to blink: the stock editor's, or the `caret` a
+            // custom editor declares on one of its lines (backlog C35).
+            if !pane.core.has_caret() {
                 if !pane.blink_visible {
                     pane.blink_visible = true;
-                    pane.core.edit.set_blink_visible(true);
+                    pane.core.set_caret_visible(true);
                 }
                 pane.blink_deadline = None;
                 continue;
@@ -1770,24 +1772,24 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
             if !pane.core.env.focused {
                 if pane.blink_visible {
                     pane.blink_visible = false;
-                    pane.core.edit.set_blink_visible(false);
+                    pane.core.set_caret_visible(false);
                     pane.window.request_redraw();
                 }
                 pane.blink_deadline = None;
                 continue;
             }
-            let stamp = pane.core.edit.caret_stamp();
+            let stamp = pane.core.caret_stamp();
             if stamp != pane.caret_stamp_seen || pane.blink_deadline.is_none() {
                 pane.caret_stamp_seen = stamp;
                 pane.blink_deadline = Some(now + BLINK_INTERVAL);
                 if !pane.blink_visible {
                     pane.blink_visible = true;
-                    pane.core.edit.set_blink_visible(true);
+                    pane.core.set_caret_visible(true);
                     pane.window.request_redraw();
                 }
             } else if now >= pane.blink_deadline.unwrap() {
                 pane.blink_visible = !pane.blink_visible;
-                pane.core.edit.set_blink_visible(pane.blink_visible);
+                pane.core.set_caret_visible(pane.blink_visible);
                 pane.blink_deadline = Some(now + BLINK_INTERVAL);
                 pane.window.request_redraw();
             }

@@ -2002,7 +2002,26 @@ double-click-word are `on_event` arithmetic in every binding, with no
 plain `click` should carry `x`/`y` in general is a separate question and
 not asked here.
 
-### `~` C35 — A custom caret cannot blink
+### `~` C35 — A custom caret cannot blink — **done (2026-09-13)**
+
+Done as written, one step further than the entry asked: the core keeps
+the sink's caret across frames (`sink_caret`, from the same walk
+`focused_caret_rect` used for the IME anchor, now `sink_caret_line`),
+bumps `sink_caret_stamp` when it changes, and exposes `has_caret` /
+`caret_stamp` (the two stamps summed) / `caret_visible` /
+`set_caret_visible` — so the runner's clock reads the core and not
+`core.edit` directly, and a C host driving its own window can run the
+same clock (`kui_has_caret`, `kui_caret_stamp`, `kui_set_caret_visible`
+beside `kui_caret_visible`). `caret_visible` is an `ENV_FIELDS` row —
+`env.caret_visible` in Lua as the entry spelled it, `caretVisible()` on
+Node's context with `setCaretVisible` for a headless test, one line in
+`props.md`. `modal_editor` draws its caret on the phase and keeps the
+`caret` row through the off phase — the trap: an app that stopped
+declaring `caret` when hidden would un-arm the clock, which would park
+it solid, which would declare it again. Tests: `tests/sink_caret.rs`
+(three cases), the Node, Lua and C suites. Checked on screen with eight
+screenshots 200 ms apart: the block caret alternates. CHANGELOG under
+alpha.12's `### Added`.
 
 The blink clock arms only while `pane.core.edit.focused()` is `Some`
 (`crates/kui/src/lib.rs:1749`): a sink's caret — the inline node
@@ -2142,7 +2161,10 @@ the first installed face of a per-platform list, a `fonts` row in the
 facts tab), then C33 and C34 together — **both done the same day**, the
 sink's clipboard as the two menu actions with doors in four bindings
 and a paste as a commit, the press's `line` / `byte` / `clicks` as
-`attach_lines` beside `attach_cells`, `modal_editor` on all of it — (a sink's clipboard, and the press
+`attach_lines` beside `attach_cells`, `modal_editor` on all of it — and
+C35 **the same day** (the clock armed on the sink's `caret` row, the
+phase readable in four bindings), with C38 (the clipboard example and
+article) filed and built between them — (a sink's clipboard, and the press
 carrying `line`, `byte` and `clicks` the way a grid's carries `cell`),
 C35 (the blink clock armed for a sink's `caret`), and C36's drives to
 pin all four; C37's doc line goes with whichever lands first. Before

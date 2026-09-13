@@ -73,6 +73,48 @@ pub extern "C" fn kui_focus_visible(ptr: *mut KuiCtx) -> bool {
     })
 }
 
+/// The caret's blink phase — `true` draws it (backlog C35). A custom
+/// editor reads it in its view and skips its caret node on the off phase,
+/// keeping the `caret` row on its `KUI_ROLE_LINE` either way. Under
+/// `kui_run` the runner's clock sets it; a host driving its own window
+/// sets it with `kui_set_caret_visible` on a clock of its own, armed while
+/// `kui_has_caret` and re-armed solid when `kui_caret_stamp` changes.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_caret_visible(ptr: *mut KuiCtx) -> bool {
+    guard(true, || {
+        unsafe { ctx(ptr) }.is_none_or(|c| c.core().caret_visible())
+    })
+}
+
+/// Sets the blink phase; see `kui_caret_visible`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_caret_visible(ptr: *mut KuiCtx, visible: bool) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().set_caret_visible(visible);
+        }
+    });
+}
+
+/// Whether there is a caret to blink: a focused editor's, or the `caret`
+/// a line under the focused sink declares. What a host's blink clock is
+/// armed on.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_has_caret(ptr: *mut KuiCtx) -> bool {
+    guard(false, || {
+        unsafe { ctx(ptr) }.is_some_and(|c| c.core().has_caret())
+    })
+}
+
+/// Changes whenever the caret moved or focus changed — compare across
+/// frames to re-arm the blink with the caret solid.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_caret_stamp(ptr: *mut KuiCtx) -> u64 {
+    guard(0, || {
+        unsafe { ctx(ptr) }.map_or(0, |c| c.core().caret_stamp())
+    })
+}
+
 /// Enters the focus region `key` names (0: the main ring) at the end of
 /// the frame being built; see `Core::focus_region` and
 /// `docs/adr/0022-focus-regions.md`.

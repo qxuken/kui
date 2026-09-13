@@ -387,7 +387,8 @@ fn menu_items(t: &mlua::Table) -> mlua::Result<Vec<kui_core::MenuItem>> {
 /// `system` (what the user set in the OS: `appearance`, `motion` and
 /// `assistive` as strings, always there because "unknown" is one of their
 /// readings, and `accent` (0xRRGGBBAA) / `locale` (a BCP-47 tag) only when
-/// the host can tell), `focus` (the focused *node*'s key), `focus_visible`, `region`
+/// the host can tell), `focus` (the focused *node*'s key), `focus_visible`,
+/// `caret_visible` (the blink phase a custom editor draws its caret on), `region`
 /// (the `focus_region` node in effect, nil for the main ring), `theme`
 /// (the palette derived from `system`: one 0xRRGGBBAA number per role in
 /// `schema::THEME_ROLES`, plus `appearance` and `disabled_opacity`),
@@ -3145,6 +3146,43 @@ mod tests {
                 "up:w@w:nil:keys",
             ]
         );
+    }
+
+    /// A script's editor blinks (backlog C35): `env.caret_visible` is the
+    /// phase, read in `view`; the `caret` row on its line is what the
+    /// host's clock is armed on, kept through the off phase.
+    #[test]
+    fn a_lua_editor_draws_its_caret_on_the_phase_the_host_sets() {
+        let mut ext = LuaExtension::from_source(
+            "ed",
+            r#"
+                function view(env)
+                  local caret = env.caret_visible and row { key = "caret", width = 2, height = 16 } or nil
+                  return column { key = "editor", on_key = "ed", key_focus = true,
+                    role = "multilineTextInput", label = "buf",
+                    row { role = "line", caret = 3, text("let value", { family = "mono", size = 14 }), caret },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        assert!(
+            core.key_of("caret").is_some(),
+            "the on phase draws the caret"
+        );
+        assert!(core.has_caret(), "the caret row is a caret to blink");
+        core.set_caret_visible(false);
+        frame(&mut core, &mut ext);
+        assert!(core.key_of("caret").is_none(), "the off phase draws none");
+        assert!(
+            core.has_caret(),
+            "and the row stays, so the clock stays armed"
+        );
+        core.set_caret_visible(true);
+        frame(&mut core, &mut ext);
+        assert!(core.key_of("caret").is_some());
     }
 
     /// A script that owns its text has a clipboard (backlog C33) and a

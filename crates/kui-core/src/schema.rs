@@ -1783,6 +1783,7 @@ pub struct EnvFacts {
     pub focus: Option<crate::key::Key>,
     pub focus_visible: bool,
     pub region: Option<crate::key::Key>,
+    pub caret_visible: bool,
 }
 
 fn key_value(k: Option<crate::key::Key>) -> Value {
@@ -2001,6 +2002,15 @@ pub const ENV_FIELDS: &[EnvField] = &[
         lua: &["focus_visible"],
         c: "`kui_focus_visible()`",
         doc: "Whether focus shows — the keyboard or assistive technology put it where it is, or acted on it there; a click alone does not. Node: `focusVisible()` on the context.",
+    },
+    EnvField {
+        name: "caret_visible",
+        get: |f| Value::Bool(f.caret_visible),
+        from: "`Core::caret_visible()`, the frame's",
+        node: &[],
+        lua: &["caret_visible"],
+        c: "`kui_caret_visible()`",
+        doc: "The caret's blink phase — `true` draws it (backlog C35). The driver's clock sets it while there is a caret to blink: a focused `edit`'s, or the `caret` a `line` under a focused `onKey` sink declares; a custom editor draws its caret node on the on phase and skips it on the off, keeping the `caret` row on its `line` either way, so it blinks in step with the stock editor and, in a window without the keyboard, not at all. Always `true` headless. Node: `caretVisible()` on the context (`setCaretVisible` is the driver's half, for a test that drives the phase).",
     },
     EnvField {
         name: "region",

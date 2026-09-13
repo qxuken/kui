@@ -462,6 +462,11 @@ impl EditStore {
         self.blink_visible = visible;
     }
 
+    /// The phase as last set; `true` draws the caret.
+    pub fn blink_visible(&self) -> bool {
+        self.blink_visible
+    }
+
     fn touch_caret(&mut self, key: Key) {
         self.caret_moved = Some(key);
         self.caret_stamp += 1;

@@ -789,6 +789,7 @@ impl Core {
         self.interaction.scroll_regions = scroll_regions;
         self.interaction.scrollbars = scrollbars;
         self.ime_rect = self.focused_caret_rect();
+        self.note_sink_caret();
     }
 
     /// The exit diff: every key the previous frame declared an `exit` on
@@ -1414,14 +1415,79 @@ impl Core {
         // where the caret is — a byte offset into that line's runs, which
         // is the question `caret_rect` answers. This runs after the text
         // pass, so the places it reads are this frame's.
+        let (l, caret) = self.sink_caret_line()?;
+        self.text.caret_at(self.tree.keys[l], caret as usize, false)
+    }
+
+    /// The `line` under the focused node that declares `caret`, and the
+    /// offset it declares — a custom editor's caret, in the frame just
+    /// built. None with a stock editor focused, or nothing declaring one.
+    fn sink_caret_line(&self) -> Option<(usize, u32)> {
+        if !self.tree.any_line {
+            return None;
+        }
         let i = self.focus_index()?;
         let end = self.tree.subtree_end(i);
         let l = (i..end).find(|&l| {
             let a = self.tree.specs[l].access();
             a.role == Some(crate::access::Role::Line) && a.caret.is_some()
         })?;
-        let caret = self.tree.specs[l].access().caret? as usize;
-        self.text.caret_at(self.tree.keys[l], caret, false)
+        Some((l, self.tree.specs[l].access().caret?))
+    }
+
+    /// Remembers this frame's custom-editor caret and bumps the stamp when
+    /// it is not last frame's (backlog C35): the blink clock reads both.
+    fn note_sink_caret(&mut self) {
+        let now = if self.edit.focused().is_some() {
+            None
+        } else {
+            self.sink_caret_line()
+                .map(|(l, offset)| (self.tree.keys[l], offset))
+        };
+        if now != self.sink_caret {
+            self.sink_caret = now;
+            self.sink_caret_stamp += 1;
+        }
+    }
+
+    // -- The caret's blink --------------------------------------------
+    // The clock is the driver's (a frame twice a second is a decision
+    // about the window, not the tree); what the core keeps is whether
+    // there is a caret to blink, when it moved, and the phase the driver
+    // last set — for the stock editor, which paints its own caret on the
+    // phase, and for a custom one, which reads it (backlog C35).
+
+    /// Whether there is a caret to blink: a focused stock editor's, or the
+    /// `caret` a `line` under the focused custom editor declares. A
+    /// driver arms its blink clock while this is true and leaves the
+    /// caret solid otherwise.
+    pub fn has_caret(&self) -> bool {
+        self.edit.focused().is_some() || self.sink_caret.is_some()
+    }
+
+    /// Changes whenever the caret moved or focus changed — the stock
+    /// editor's caret through typing or a click, a custom editor's
+    /// through the `caret` row it declares — so a driver comparing it
+    /// across frames re-arms the blink with the caret solid, the way a
+    /// caret that just moved is never mid-blink.
+    pub fn caret_stamp(&self) -> u64 {
+        self.edit.caret_stamp().wrapping_add(self.sink_caret_stamp)
+    }
+
+    /// The blink phase, as the driver last set it: `true` draws the
+    /// caret. The stock editor reads it itself; a custom editor reads it
+    /// in `view` (`Ui::caret_visible`) and skips its caret node on the
+    /// off phase, so the two blink in step — and a window without the
+    /// keyboard, where the driver parks it hidden, shows neither.
+    /// Headless it stays `true`.
+    pub fn caret_visible(&self) -> bool {
+        self.edit.blink_visible()
+    }
+
+    /// Sets the blink phase; the driver's, on its clock. A frame is the
+    /// caller's to ask for.
+    pub fn set_caret_visible(&mut self, visible: bool) {
+        self.edit.set_blink_visible(visible);
     }
 }
 

@@ -2440,6 +2440,26 @@ macro_rules! core_methods {
                 self.$core().focus_visible()
             }
 
+            /// The caret's blink phase — `true` draws it (backlog C35). A
+            /// custom editor reads it in `view` and skips its caret node
+            /// on the off phase, keeping the `caret` row on its `line`
+            /// either way; the window's clock sets it while a focused
+            /// `<edit>` or such a line has a caret, and parks it hidden
+            /// while the window has no keyboard. Always `true` headless.
+            #[napi]
+            pub fn caret_visible(&mut self) -> bool {
+                self.$core().caret_visible()
+            }
+
+            /// The driver's half of the blink: sets the phase. A window
+            /// runs its own clock; headless, a test drives it to see the
+            /// off phase drawn.
+            #[napi]
+            pub fn set_caret_visible(&mut self, visible: bool) {
+                self.$core().set_caret_visible(visible);
+                self.$redraw();
+            }
+
             /// Moves keyboard focus to a node now (an editor, an `onKey` sink,
             /// a control, a `focusable` box); `keyFocus` on a box is the
             /// declarative, edge-triggered form.

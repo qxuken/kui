@@ -622,6 +622,12 @@ enum Caret {
 }
 
 fn render_editor(ui: &mut Ui<'_>, pal: &Pal, doc: &Doc, view: &mut View, mode: Mode, h: f32) {
+    // The blink: the runner's clock, armed on the `caret` row the line
+    // below declares (backlog C35). On the off phase the caret node is
+    // not drawn — the row stays, which is what keeps the clock armed and
+    // the IME anchored — and in a window without the keyboard the runner
+    // parks the phase off, so the caret is not drawn at all.
+    let blink_on = ui.caret_visible();
     let rows = (((h - STATUS_H - 8.0) / LH).max(1.0)) as usize;
     view.rows = rows;
     // Scroll the caret into view — the app's job, and two lines of it.
@@ -678,7 +684,7 @@ fn render_editor(ui: &mut Ui<'_>, pal: &Pal, doc: &Doc, view: &mut View, mode: M
                     .clip(),
                 |ui| {
                     for ln in view.top..last {
-                        let caret = (ln == view.cur.line).then(|| {
+                        let caret = (ln == view.cur.line && blink_on).then(|| {
                             (
                                 view.cur.col,
                                 if mode == Mode::Insert {

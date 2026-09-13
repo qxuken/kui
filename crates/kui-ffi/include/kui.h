@@ -2129,6 +2129,19 @@ void kui_focus_next(KuiCtx *ctx, bool forward);
  * there by keyboard or assistive technology, not a click). */
 uint64_t kui_focused(KuiCtx *ctx);
 bool kui_focus_visible(KuiCtx *ctx);
+/* The caret's blink (backlog C35). kui_caret_visible is the phase - true
+ * draws it - which a custom editor reads in its view to skip its caret
+ * node on the off phase, keeping the `caret` row on its KUI_ROLE_LINE
+ * either way. Under kui_run the runner's clock sets it, while a focused
+ * editor or such a line has a caret, and parks it hidden while the window
+ * has no keyboard. A host driving its own window runs the clock itself:
+ * armed while kui_has_caret, toggling kui_set_caret_visible each half
+ * period, re-armed solid whenever kui_caret_stamp changes (the caret
+ * moved, or focus did). Headless the phase stays true. */
+bool kui_caret_visible(KuiCtx *ctx);
+void kui_set_caret_visible(KuiCtx *ctx, bool visible);
+bool kui_has_caret(KuiCtx *ctx);
+uint64_t kui_caret_stamp(KuiCtx *ctx);
 /* Enters the focus region key names - a node declared with focus_region -
  * or the main ring for 0 (docs/adr/0022-focus-regions.md): focus lands on
  * what that ring last held if the node is still there, else its

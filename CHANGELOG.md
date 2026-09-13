@@ -118,6 +118,27 @@ Nothing.
   and C suites); `access::lines_under` is the one walk both the access
   tree and the payload use, so the two numberings cannot drift.
 
+- **A custom editor's caret blinks** (backlog C35, the same round). The
+  blink clock armed only while a stock editor held focus, so a sink's
+  caret — the node `modal_editor` drew as a bar or a block — was solid
+  forever, and the two ways around it were both wrong (a `keyframes`
+  loop asks for a frame every vsync and never stops; a thread on the
+  `Waker` is Rust-only and blinks in the background). The core already
+  knew the caret: the `line` under the focused sink that declares
+  `caret`, which anchors the IME. It now remembers it across frames
+  (`Core::has_caret`, `Core::caret_stamp` — bumped when the offset or
+  the line changes, summed with the stock editor's), the runner arms the
+  same clock on it and re-arms solid when it moves, and the phase is
+  readable: `ui.caret_visible()`, Node `caretVisible()` (and
+  `setCaretVisible` for a headless test), Lua `env.caret_visible`, C
+  `kui_caret_visible` / `kui_set_caret_visible` / `kui_has_caret` /
+  `kui_caret_stamp` for a host with its own window. A view draws its
+  caret node on the on phase and skips it on the off, keeping the
+  `caret` row either way — the stock editor and the custom one blink in
+  step, and in a window without the keyboard neither does.
+  `modal_editor` blinks. `caret_visible` is an `ENV_FIELDS` row, so the
+  Lua env, `props.md` and the C parity carry it.
+
 - **The clipboard has an example, and an article** (backlog C38, the
   same day). `examples/rust/features/clipboard.rs` and
   `examples/node/features/clipboard.tsx` show the four ways onto the
@@ -596,6 +617,10 @@ and the `chan` / `hex2` helpers under it: a shade is a derived token now
 (`peachHover: { from: 'peach', ops: [['lift', 0.3]] }`), computed by the
 core on the half in effect and named by the inspector; what stays in the
 app is the map from a chosen colour to its shade (ADR 0028).
+
+**The caret's `keyframes` loop, or the 500 ms thread on the `Waker`** —
+whatever stood in for a blink on the caret you draw yourself, and the
+frame-every-vsync it cost; the phase is one read now (C35).
 
 **The in-process yank register and the arboard link beside it** — a
 custom editor's `Vec<String>` that `y` and `p` went through because the

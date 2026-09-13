@@ -363,6 +363,25 @@ input and every frame; headless, `takeMenuActions()` hands them out and
 [`drag` and `text` events](props.md#events) ·
 [alpha.12](../CHANGELOG.md#010-alpha12-unreleased)
 
+### How do I make the caret I draw blink?
+
+Read `caretVisible()` (Rust `ui.caret_visible()`, Lua `env.caret_visible`,
+C `kui_caret_visible`) in `view` and draw your caret node only when it is
+true — keeping the `caret` row on the `line` either way, because that
+row is what arms the clock (and anchors the IME). The window's runner
+runs the clock while a focused `edit`, or a `caret` line under the
+focused `onKey` sink, has a caret: half a second on, half off, re-armed
+solid whenever the caret moves, and parked hidden while the window has
+no keyboard — so the stock editor and yours blink in step and neither
+blinks in the background. Headless the phase stays true;
+`setCaretVisible(false)` / `kui_set_caret_visible` is how a test sees
+the off phase drawn, and how a C host with its own window drives it
+(`kui_has_caret`, `kui_caret_stamp` are the clock's inputs). Never use
+`keyframes` for this: they ask for a frame every vsync and never stop.
+
+[`caret_visible`](props.md#env) ·
+[alpha.12](../CHANGELOG.md#010-alpha12-unreleased)
+
 ### How do I reset an editor's text?
 
 `initial` seeds a *new* editor only — a key declared again keeps the draft
