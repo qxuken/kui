@@ -740,6 +740,19 @@ impl Core {
         use crate::access::AccessAction;
         let key = req.key;
         let idx = self.tree.index_of(key);
+        // The gates every other channel obeys (AR18): a node outside the
+        // modal is inert (ADR 0003 decision 5) and a disabled one takes no
+        // action — which is what the access tree refuses to advertise, so
+        // a request naming one is a reader working from a stale tree, or
+        // a headless test. Only `Click` resolved against the hit list
+        // before; a reader edited, nudged and scrolled the page behind a
+        // dialog, and `Focus` on an editor there routed typing to it
+        // until the next frame's containment.
+        if let Some(i) = idx
+            && (!self.interactive(i) || self.tree.specs[i].disabled)
+        {
+            return;
+        }
         match req.action {
             AccessAction::Click => self.click_node(key, out),
             AccessAction::Focus => {

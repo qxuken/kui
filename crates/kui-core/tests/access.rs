@@ -614,6 +614,136 @@ fn scroll_requests_move_the_scroll_view() {
     assert!(after < view.scroll.unwrap().y);
 }
 
+/// AR18: a reader's request obeys the gates every other channel obeys.
+/// Only `Click` resolved against the hit list; `SetValue`, the
+/// selection actions, the nudges and the scrolls reached a node behind a
+/// modal — inert to a press, a key and Tab alike (ADR 0003 decision 5) —
+/// and a disabled slider took a nudge. Which is what the access tree
+/// refuses to advertise, so a request naming one is a reader working from
+/// a stale tree, or a headless test; either way it does nothing.
+#[test]
+fn requests_behind_a_modal_or_on_a_disabled_node_do_nothing() {
+    let mut core = Core::new();
+    let build = |core: &mut Core, dialog: bool| {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        let field = ui.text_edit(
+            "name",
+            "before",
+            &EditOptions::default(),
+            NodeSpec::row()
+                .width(Sizing::Fixed(100.0))
+                .height(Sizing::Fixed(20.0)),
+        );
+        let slider = ui.with_keyed(
+            "vol",
+            NodeSpec::row()
+                .width(Sizing::Fixed(100.0))
+                .height(Sizing::Fixed(20.0))
+                .role(Role::Slider)
+                .label("Volume")
+                .on_drag(Value::str("vol")),
+            |_| {},
+        );
+        let off = ui.with_keyed(
+            "off",
+            NodeSpec::row()
+                .width(Sizing::Fixed(100.0))
+                .height(Sizing::Fixed(20.0))
+                .role(Role::Slider)
+                .label("Muted")
+                .disabled(true)
+                .on_drag(Value::str("off")),
+            |_| {},
+        );
+        let list = ui.with_keyed(
+            "list",
+            NodeSpec::column()
+                .width(Sizing::Fixed(100.0))
+                .height(Sizing::Fixed(40.0))
+                .scroll_y()
+                .label("List"),
+            |ui| {
+                for i in 0..10 {
+                    ui.with_keyed(
+                        &format!("row-{i}"),
+                        NodeSpec::row()
+                            .width(Sizing::Fixed(100.0))
+                            .height(Sizing::Fixed(20.0)),
+                        |_| {},
+                    );
+                }
+            },
+        );
+        if dialog {
+            ui.with_keyed(
+                "dialog",
+                NodeSpec::column()
+                    .width(Sizing::Fixed(120.0))
+                    .height(Sizing::Fixed(80.0))
+                    .modal(Value::str("dlg"))
+                    .label("Settings"),
+                |ui| {
+                    ui.with_keyed(
+                        "ok",
+                        NodeSpec::row()
+                            .width(Sizing::Fixed(80.0))
+                            .height(Sizing::Fixed(20.0))
+                            .on_click(Value::str("ok"))
+                            .label("OK"),
+                        |_| {},
+                    );
+                },
+            );
+        }
+        ui.finish();
+        (field, slider, off, list)
+    };
+    let (field, slider, off, list) = build(&mut core, true);
+    let req = |key: Key, action: AccessAction| InputEvent::Access(AccessRequest::new(key, action));
+
+    // Behind the dialog: nothing edits, moves, nudges or scrolls.
+    let evs = core.handle_input(InputEvent::Access(
+        AccessRequest::new(field, AccessAction::SetValue).with_value("after"),
+    ));
+    assert!(evs.is_empty(), "{evs:?}");
+    assert_eq!(core.edit_text(field).as_deref(), Some("before"));
+    assert!(
+        core.handle_input(req(slider, AccessAction::Increment))
+            .is_empty()
+    );
+    core.handle_input(req(field, AccessAction::Focus));
+    assert_ne!(core.focus(), Some(field), "focus stays inside the modal");
+    core.handle_input(req(list, AccessAction::ScrollDown));
+    build(&mut core, true);
+    assert_eq!(
+        core.access_tree().get(list).unwrap().scroll.unwrap().y,
+        0.0,
+        "the list behind the dialog did not scroll"
+    );
+
+    // The dialog gone: the same requests act — except on the disabled
+    // slider, which takes no nudge from anyone.
+    build(&mut core, false);
+    let evs = core.handle_input(InputEvent::Access(
+        AccessRequest::new(field, AccessAction::SetValue).with_value("after"),
+    ));
+    assert_eq!(kinds(&evs), ["changed"]);
+    assert_eq!(core.edit_text(field).as_deref(), Some("after"));
+    assert_eq!(
+        kinds(&core.handle_input(req(slider, AccessAction::Increment))),
+        ["access"]
+    );
+    assert!(
+        core.handle_input(req(off, AccessAction::Increment))
+            .is_empty(),
+        "disabled"
+    );
+    core.handle_input(req(list, AccessAction::ScrollDown));
+    build(&mut core, false);
+    assert!(core.access_tree().get(list).unwrap().scroll.unwrap().y > 0.0);
+}
+
 #[test]
 fn missing_names_are_warnings_raised_once() {
     let mut core = Core::new();

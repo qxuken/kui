@@ -620,6 +620,20 @@ Nothing.
   hears of neither drop — the lists were never exported — which is filed
   rather than built here.
 
+- **An assistive-technology request obeys the modal and `disabled`**
+  (backlog AR18). `handle_access` resolved only `Click` against the hit
+  list: `SetValue` set an editor's text and posted `changed` with no
+  modal or `disabled` check, `SetTextSelection` / `ReplaceSelectedText`
+  the same, the scroll actions called `scroll_by` where the wheel path
+  honours an inert region, and a nudge checked `disabled` alone — so
+  with a dialog up a reader (or a headless test) edited, nudged and
+  scrolled the inert page, and `Focus` on an editor behind the modal
+  routed typed text there until the next frame's containment. One gate
+  at the top now: a request naming a node outside the modal or a
+  disabled one does nothing, which is what the access tree already
+  refuses to advertise (ADR 0003 decision 5). `tests/access.rs` drives
+  each action behind a dialog and on a disabled slider, red before.
+
 - **`set_focus` on a modal's closing frame stands over the restore**
   (backlog AR17). The focus a modal displaced comes back when it closes
   unless a `keyFocus` edge on that frame says otherwise (ADR 0003

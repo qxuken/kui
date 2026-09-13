@@ -41,12 +41,13 @@ platform did), AR7–AR49 from the second architecture review, filed
 2026-09-13 — forty-three entries under ten
 decisions, twenty of them defects, the audio store reconciled against
 every window's frame and the two key channels disagreeing about a
-chord at the top; **AR7–AR16 built 2026-09-14**, the session rule
+chord at the top; **AR7–AR18 built 2026-09-14**, the session rule
 written and the mounts and the removed ids moved under it, a held key
 matched by position, one chord bit for both key channels, one attach
 pass on what a press made, Node's surface aimed at the window it is
 handed for, `<text>`'s rows closed, one token-miss policy, Cut's
-`changed`, one spec pipeline for every door — with the amendment on B1 whose condition that round
+`changed`, one spec pipeline for every door, the focus stamp and the
+reader's gates — with the amendment on B1 whose condition that round
 met; C31, found
 the same day building the tokens (Node's corpus adapter disagreeing with
 the reference on one scene when run alone — **done the same evening**:
@@ -2711,7 +2712,15 @@ doors, three precedences, one frame-end pass.
 edge (a `focus_moved` stamp), and the rule is one sentence in ADR 0003's
 decision 4.
 
-### `!` AR18 — Assistive-technology requests skip the modal and `disabled` gates every other channel obeys
+### `!` AR18 — Assistive-technology requests skip the modal and `disabled` gates every other channel obeys — **done (2026-09-14)**
+
+**Done (2026-09-14), exactly the fix line:** one early return at the
+top of `handle_access` when the key's node is outside the modal or
+disabled. `Click` already resolved against the hit list and is
+unchanged by it; a key not in the tree falls through as before.
+`tests/access.rs`: `SetValue`, `Increment`, `Focus` and `ScrollDown`
+behind a dialog do nothing, the same act once it closes, and a disabled
+slider takes no nudge — red on HEAD. CHANGELOG under alpha.12.
 
 `handle_access` (`runtime/dispatch.rs:727-859`): `SetValue` sets the text
 and posts `changed` with no `interactive(idx)` and no `disabled` check
@@ -3344,7 +3353,7 @@ into the second channel, one attach pass with a producer-side mark),
 AR12 (Node's window handle — **done 2026-09-14**), AR13–AR16 (**all
 four done 2026-09-14**) (the `<text>` rows, one token
 miss policy, Cut's `changed`, one `prepare_spec`), AR17–AR18 (the focus
-stamp — **done 2026-09-14** — and the AT gates), AR19–AR25 as the defects they are, then B1's
+stamp and the AT gates — **both done 2026-09-14**), AR19–AR25 as the defects they are, then B1's
 table with AR26, AR27 and AR40 beside it, AR46–AR48 for the tests, and
 AR49 first of all if the alpha.12 notes go out before the rest, since
 its first line is the CHANGELOG contradicting itself on the frame
