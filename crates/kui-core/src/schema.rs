@@ -150,6 +150,7 @@ pub const P_SCROLLBAR_COLOR: u32 = 95;
 pub const P_SCROLLBAR_ACTIVE_COLOR: u32 = 96;
 pub const P_ANCHOR: u32 = 97;
 pub const P_ALWAYS_ON_TOP: u32 = 98;
+pub const P_ON_SCROLL: u32 = 99;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -820,6 +821,13 @@ pub const PROPS: &[PropDef] = &[
         doc: "Force-click tag: a press that deepens past the second stage of a Force Touch trackpad emits {kind:\"forceclick\", x, y, tag} on the node, at the logical viewport point it happened at (`docs/adr/0017-selection-as-a-scope.md`). Routed as a secondary press is — no focus moved, no caret placed, no click — but asked of the topmost node only, with no walk to an enclosing declaration — and the ordinary click the press is still producing arrives afterwards, as it does on macOS. Text needs none of this: a force click over an `edit` or a `selectable` scope selects the word under it and asks the host for its Look Up panel. macOS-only in practice, and there the user can switch the gesture off, so nothing may declare itself the only way to reach something.",
     },
     PropDef {
+        name: "onScroll",
+        id: P_ON_SCROLL,
+        kind: Kind::Tag,
+        apply: Apply::SpecMsg(|s, v| s.on_scroll(v)),
+        doc: "Scroll tag: the wheel over this node emits {kind:\"scroll\", x, y, dx, dy, lines, tag} on it instead of scrolling anything — `dx`/`dy` the delta in logical px as the driver reported it (positive `dy` is the wheel rolling up, toward earlier content), `x`/`y` the pointer, and `lines` on a `cells` grid the whole lines the delta covers (positive = later history, the sign `originLine` grows in; the fraction is carried to the next notch so a trackpad's small steps add up) and null on any other node. The node takes the wheel: it reaches no scroll container above it, and a scroller inside it still wins over it, by paint order. The core moves nothing — a grid re-declares `originLine`, a canvas zooms. A drag-select held past a `cells` grid's top or bottom edge arrives here too, once a frame with the lines that frame scrolled by (`docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md`).",
+    },
+    PropDef {
         name: "window",
         id: P_WINDOW,
         kind: Kind::Enum(WINDOW_ROLES),
@@ -1300,6 +1308,10 @@ pub const C_FIELDS: &[(&str, &str)] = &[
         "modal",
         "`modal` (a borrowed `KuiValue*`, cloned while the node opens)",
     ),
+    (
+        "onScroll",
+        "`on_scroll` (a borrowed `KuiValue*`, cloned while the node opens)",
+    ),
     ("onHover", "`on_hover` argument of `kui_open_with`"),
     (
         "onLayout",
@@ -1620,6 +1632,11 @@ pub const EVENTS: &[EventDef] = &[
         kind: "contextmenu",
         payload: "`{ kind: \"contextmenu\", x, y, tag }`",
         doc: "A secondary-button press on an `onContextMenu` node, on the press rather than the release; `x`/`y` are logical viewport coordinates — where the menu goes. The core opens nothing: the app declares the menu (a `modal` float) and stops declaring it on `dismiss`.",
+    },
+    EventDef {
+        kind: "scroll",
+        payload: "`{ kind: \"scroll\", x, y, dx, dy, lines, tag }`",
+        doc: "The wheel over an `onScroll` node, or a drag-select held past a `cells` grid's top or bottom edge: `dx`/`dy` the delta in logical px as the driver reported it (positive `dy` is the wheel rolling up, toward earlier content), `x`/`y` the pointer in logical viewport coordinates, `lines` the whole lines a `cells` grid's `dy` covers — positive is later history, the sign `originLine` grows in, the fraction carried to the next notch — and null on any other node. The core scrolls nothing for it: the app re-declares the grid's `originLine`, or zooms its canvas. From the edge drag it comes once a frame while the pointer is held past the edge, with the lines that frame's step covers, and the selection's absolute lines survive the scroll the app answers with (`docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md`).",
     },
     EventDef {
         kind: "hover",

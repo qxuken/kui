@@ -279,8 +279,24 @@ impl Core {
         match ev {
             InputEvent::Scroll(delta) => {
                 // Wheel up (positive y) reveals earlier content: offset decreases.
-                if let Some(key) = self.interaction.scroll_target() {
-                    self.scroll.scroll_by(key, Vec2::new(-delta.x, -delta.y));
+                // An `on_scroll` node under the pointer hears the notch
+                // instead — the whole lines it covers on a grid, the
+                // fraction carried to the next notch on the same node
+                // (ADR 0029, decision 4).
+                if let Some(r) = self.interaction.scroll_region_at().copied() {
+                    if r.handler {
+                        let p = self.interaction.cursor().unwrap_or(Vec2::ZERO);
+                        let mut carry = match self.wheel_carry {
+                            Some((k, c)) if k == r.key => c,
+                            _ => 0.0,
+                        };
+                        if let Some(ev) = self.scroll_event(r.key, p, delta, &mut carry) {
+                            out.push(ev);
+                        }
+                        self.wheel_carry = Some((r.key, carry));
+                    } else {
+                        self.scroll.scroll_by(r.key, Vec2::new(-delta.x, -delta.y));
+                    }
                 }
             }
             InputEvent::Text(s) => {
@@ -534,7 +550,18 @@ impl Core {
                         // the same way.
                         let origin = hit.as_ref().map(|(.., o)| *o);
                         let in_bar = origin == Some(OriginId::MENU_BAR);
-                        if origin != Some(OriginId::MENU) && !in_bar {
+                        // A Shift-press inside the scope the selection is
+                        // in keeps its anchor and moves the live end: it
+                        // extends, so it clears nothing (ADR 0029,
+                        // decision 3). Anywhere else Shift is a press.
+                        let shift = self.interaction.modifiers().shift;
+                        let extends = shift
+                            && hit.as_ref().is_some_and(|(_, _, _, scope, _)| {
+                                scope.is_some()
+                                    && (self.selection.map(|s| s.scope) == *scope
+                                        || self.cell_selection.map(|c| c.node) == *scope)
+                            });
+                        if origin != Some(OriginId::MENU) && !in_bar && !extends {
                             self.clear_selection();
                         }
                         // And the field a menu-bar menu will be about: this
@@ -549,10 +576,23 @@ impl Core {
                         }
                         match hit {
                             Some((key, Some(origin), true, _, _)) => {
+                                // A Shift-press in the focused editor
+                                // extends from its caret: cosmic-text's
+                                // `Drag` is the action that moves the
+                                // cursor and keeps (or seeds) the
+                                // selection, which is the whole gesture.
+                                let extend = shift && self.edit.focused() == Some(key);
                                 self.set_focus(Some(key));
                                 let local = Vec2::new(p.x - origin.x, p.y - origin.y);
-                                self.edit_with_fonts(|edit, fs| edit.click(key, local, clicks, fs));
+                                if extend {
+                                    self.edit_with_fonts(|edit, fs| edit.drag(key, local, fs));
+                                } else {
+                                    self.edit_with_fonts(|edit, fs| {
+                                        edit.click(key, local, clicks, fs)
+                                    });
+                                }
                                 self.edit.dragging = Some((key, origin));
+                                self.arm_follow(key, p);
                             }
                             // Inside a selection scope, with nothing else
                             // claiming the press: start a drag-select.
@@ -562,12 +602,29 @@ impl Core {
                                 let target = self.press_focus(key, focusable);
                                 self.set_focus(target);
                                 self.settle_region(Some(key));
-                                // The press arms the drag with what the
-                                // click count says it moves by: a second
-                                // click held and dragged selects word by
-                                // word, a third run by run — in bytes or,
-                                // for a grid, in cells; the arming knows.
-                                self.arm_select_drag(scope, p, clicks);
+                                if extends {
+                                    // The anchor stays; the live end is
+                                    // the press, and the drag goes on
+                                    // from there by characters, whatever
+                                    // the click count.
+                                    let drag = crate::select::SelectDrag {
+                                        scope,
+                                        grain: crate::select::Grain::Char,
+                                        anchor: None,
+                                    };
+                                    self.extend_select_drag(drag, p);
+                                    self.select_dragging = Some(drag);
+                                } else {
+                                    // The press arms the drag with what the
+                                    // click count says it moves by: a second
+                                    // click held and dragged selects word by
+                                    // word, a third run by run — in bytes or,
+                                    // for a grid, in cells; the arming knows.
+                                    self.arm_select_drag(scope, p, clicks);
+                                }
+                                if self.select_dragging.is_some() {
+                                    self.arm_follow(scope, p);
+                                }
                             }
                             // Everything else: a plain node, and a
                             // disabled editor (no caret to place).
@@ -616,18 +673,19 @@ impl Core {
                     let off = bar.offset_for(p, grab);
                     self.set_scroll_axis(key, axis, off);
                 }
-                if let Some((key, origin)) = self.edit.dragging {
-                    let local = Vec2::new(p.x - origin.x, p.y - origin.y);
-                    self.edit_with_fonts(|edit, fs| edit.drag(key, local, fs));
+                if let Some((key, _)) = self.edit.dragging {
+                    self.edit_drag_to(key, p);
                 }
                 if let Some(drag) = self.select_dragging {
                     self.extend_select_drag(drag, p);
                 }
+                self.follow_point(p);
                 self.interaction
                     .handle(InputEvent::CursorMoved(p), &mut out);
             }
             InputEvent::MouseUp { button } => {
                 if button == MouseButton::Primary {
+                    self.end_follow();
                     self.edit.dragging = None;
                     self.select_dragging = None;
                     self.interaction.scrollbar_drag = None;
@@ -681,6 +739,8 @@ impl Core {
         // press over: no caret drag, no selection drag.
         self.select_dragging = None;
         self.edit.dragging = None;
+        self.drag_follow = None;
+        self.autoscrolling = false;
         if let Some((key, content_origin)) = editor {
             let local = Vec2::new(p.x - content_origin.x, p.y - content_origin.y);
             self.set_focus(Some(key));

@@ -662,6 +662,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         scrollbar_color: u32 => "uint32_t",
         scrollbar_active_color: u32 => "uint32_t",
         anchor: u32 => "uint32_t",
+        on_scroll: *const KuiValue => "const KuiValue *",
     });
 
     abi_struct!(o, KuiAccessNode {

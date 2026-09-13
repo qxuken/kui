@@ -554,6 +554,16 @@ pub struct KuiSpec {
     /// ABI 14 the compatible way; a host that predates it passes the
     /// shorter struct and reads as zero.
     pub anchor: u32,
+    /// Scroll tag (`on_scroll`): the wheel over this node emits
+    /// `{kind:"scroll", x, y, dx, dy, lines, tag}` on it instead of
+    /// scrolling anything — `lines` the whole lines a `cells` grid's delta
+    /// covers, null elsewhere — and a drag-select held past a grid's edge
+    /// arrives the same way once a frame
+    /// (`docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md`).
+    /// Borrowed while the node opens, like every other tag. Appended after
+    /// ABI 15 the compatible way; a host that predates it passes the
+    /// shorter struct and reads as NULL.
+    pub on_scroll: *const KuiValue,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a

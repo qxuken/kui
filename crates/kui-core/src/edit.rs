@@ -1050,11 +1050,22 @@ impl EditStore {
         }
     }
 
+    /// Mouse motion with the button held, or a Shift-click: moves the
+    /// caret to the point and keeps the selection's anchor (seeding one at
+    /// the caret when there is none — cosmic-text's `Drag` does both).
+    /// The caret moved, so it is revealed like a keyboard motion's: a
+    /// field scrolls its own text toward the drag, and a scroller above a
+    /// document keeps the caret in view (ADR 0029, decision 2).
     pub(crate) fn drag(&mut self, key: Key, local: Vec2, fs: &mut FontSystem) {
         if let Some(s) = self.states.get_mut(&key) {
             let (x, y) = ((local.x * s.scale) as i32, (local.y * s.scale) as i32);
+            let before = s.editor.cursor();
             s.editor.action(fs, Action::Drag { x, y });
-            self.caret_stamp += 1;
+            if s.editor.cursor() != before {
+                self.touch_caret(key);
+            } else {
+                self.caret_stamp += 1;
+            }
         }
     }
 

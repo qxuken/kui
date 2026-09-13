@@ -22,6 +22,11 @@
 //!     as the `{kind="text"}` event an IME's commit arrives on, and the
 //!     sink appends it as a line.
 //!
+//! And two things every selection does on the way to a copy (ADR 0029):
+//! a Shift-click extends it from its anchor instead of starting over, and
+//! a drag held past the log's edge scrolls the log toward the pointer —
+//! the wheel under a held press moves the live end too.
+//!
 //! Every path but the first ends in one queue — `MenuAction::SetClipboard`
 //! and `MenuAction::Paste` — which the runner drains after every input and
 //! every frame, and a headless drive reads with `take_menu_actions`. The
@@ -312,6 +317,8 @@ impl App for Clipboard {
 impl Example for Clipboard {
     const KEYS: &'static [(&'static str, &'static str)] = &[
         ("⌘C ⌘X ⌘V", "in the field and the card"),
+        ("⇧-click", "extend a selection"),
+        ("drag past the edge", "scroll the log"),
         ("right-click", "the stock menu's Copy / Paste"),
         ("j k y p", "in the register"),
     ];
@@ -407,6 +414,84 @@ impl Example for Clipboard {
         // The log: select across rows, scroll them out of the frame, and
         // the copy is a question for the app.
         let r = d.rect_of(log).ok_or("the log has no rect")?;
+        d.input(
+            self,
+            InputEvent::CursorMoved(kui::Vec2::new(r.x + 20.0, r.y + 6.0)),
+        );
+        d.input(self, InputEvent::mouse_down(1));
+        d.input(
+            self,
+            InputEvent::CursorMoved(kui::Vec2::new(r.x + 200.0, r.y + 2.5 * ROW_H)),
+        );
+        d.input(self, InputEvent::mouse_up());
+        d.frame(self);
+        // Held past the log's bottom edge, the log scrolls toward the
+        // pointer a frame at a time and the live end follows (ADR 0029):
+        // half a second 60 px past is 600 px/s, so rows 0..2 became rows
+        // 0..~13. The wheel under the held press moves it too.
+        d.input(
+            self,
+            InputEvent::CursorMoved(kui::Vec2::new(r.x + 20.0, r.y + 6.0)),
+        );
+        d.input(self, InputEvent::mouse_down(1));
+        d.input(
+            self,
+            InputEvent::CursorMoved(kui::Vec2::new(r.x + 200.0, r.y + r.h + 60.0)),
+        );
+        for _ in 0..30 {
+            d.advance(1.0 / 60.0);
+            d.frame(self);
+        }
+        let scrolled = d.core.scroll_offset(log).y;
+        d.check(
+            scrolled > 10.0 * ROW_H,
+            "a press held past the edge scrolls the log toward the pointer",
+        )?;
+        d.check(
+            d.core.selection().is_some_and(|s| s.focus.row >= Some(10)),
+            "and the live end followed onto the rows that scrolled in",
+        )?;
+        d.input(
+            self,
+            InputEvent::CursorMoved(kui::Vec2::new(r.x + 200.0, r.y + 2.5 * ROW_H)),
+        );
+        d.wheel(self, r.x + 200.0, r.y + 2.5 * ROW_H, 0.0, -20.0 * ROW_H);
+        d.frame(self);
+        d.frame(self);
+        d.check(
+            d.core.selection().is_some_and(|s| s.focus.row >= Some(30)),
+            "the wheel under a held press moves the live end with the rows",
+        )?;
+        d.input(self, InputEvent::mouse_up());
+        d.frame(self);
+        // A Shift-click keeps the anchor: the selection still starts on
+        // row 0 and now ends where the click landed.
+        d.input(
+            self,
+            InputEvent::Modifiers(KeyMods {
+                shift: true,
+                ..KeyMods::default()
+            }),
+        );
+        d.input(
+            self,
+            InputEvent::CursorMoved(kui::Vec2::new(r.x + 100.0, r.y + 1.5 * ROW_H)),
+        );
+        d.input(self, InputEvent::mouse_down(1));
+        d.input(self, InputEvent::mouse_up());
+        d.input(self, InputEvent::Modifiers(KeyMods::default()));
+        d.frame(self);
+        let sel = d
+            .core
+            .selection()
+            .ok_or("the Shift-click lost the selection")?;
+        d.check(
+            sel.anchor.row == Some(0) && sel.focus.row.is_some_and(|f| f > 25),
+            "a Shift-click extends from the anchor instead of starting over",
+        )?;
+        // Back to the top for the copy below: a plain drag over rows 0..2.
+        d.core.set_scroll(log, kui::Vec2::ZERO);
+        d.frame(self);
         d.input(
             self,
             InputEvent::CursorMoved(kui::Vec2::new(r.x + 20.0, r.y + 6.0)),

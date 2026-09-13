@@ -148,7 +148,10 @@ impl Core {
                 cursor: spec.cursor,
             });
         }
-        if spec.layout.scroll_x || spec.layout.scroll_y {
+        // An `on_scroll` node takes the wheel the way a container does —
+        // one list, one paint-order rule (ADR 0029, decision 4).
+        let handler = spec.events().on_scroll.is_some();
+        if spec.layout.scroll_x || spec.layout.scroll_y || handler {
             // A container behind a modal keeps its scrollbar drawn and
             // refuses the wheel and the thumb.
             scroll_regions.push(ScrollRegion {
@@ -157,6 +160,7 @@ impl Core {
                 rect,
                 clip: clip.rect,
                 inert: !interactive,
+                handler,
             });
         }
         if let NodeContent::Edit(key) = self.tree.content[i]
@@ -1146,9 +1150,10 @@ impl Core {
             let i = r.node as usize;
             // The node's own bar style, if it declared one: hidden means
             // no thumb and no track, and the wheel still works because the
-            // scroll region is already pushed.
+            // scroll region is already pushed. A handler has no offset to
+            // draw a bar for.
             let style = self.tree.specs[i].interact().scrollbar;
-            if style.mode == crate::spec::ScrollbarMode::Hidden {
+            if r.handler || style.mode == crate::spec::ScrollbarMode::Hidden {
                 continue;
             }
             let rest_w = style.width.unwrap_or(SCROLLBAR_W);

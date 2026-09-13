@@ -297,6 +297,13 @@ pub enum Step {
     /// step with an argument, so the report's step lines stay one word.
     Tab,
     ShiftTab,
+    /// The Shift key going down and coming up — `InputEvent::Modifiers`
+    /// with `shift` set, then cleared — one word each like `ShiftTab`,
+    /// so a step line stays one word. What a Shift-press reads: a press
+    /// while it is down extends the selection from its anchor instead of
+    /// starting over (ADR 0029, decision 3).
+    ShiftDown,
+    ShiftUp,
     /// Escape: lets go of a focused control, or asks a modal to go away.
     Escape,
     /// An arrow key, as an index into [`ARROWS`] — inside a composite it
@@ -376,6 +383,8 @@ impl Step {
             }
             Step::Tab => out.push_str("step tab\n"),
             Step::ShiftTab => out.push_str("step shifttab\n"),
+            Step::ShiftDown => out.push_str("step shiftdown\n"),
+            Step::ShiftUp => out.push_str("step shiftup\n"),
             Step::Escape => out.push_str("step escape\n"),
             Step::Arrow(d) => {
                 let _ = writeln!(out, "step arrow {d}");
@@ -447,6 +456,11 @@ impl Step {
                     ..Default::default()
                 },
             ),
+            Step::ShiftDown => InputEvent::Modifiers(KeyMods {
+                shift: true,
+                ..KeyMods::default()
+            }),
+            Step::ShiftUp => InputEvent::Modifiers(KeyMods::default()),
             Step::Escape => InputEvent::Key(EditKey::Escape, Mods::default()),
             Step::Arrow(d) => InputEvent::Key(ARROWS[d as usize], Mods::default()),
             Step::Home => InputEvent::Key(EditKey::Home, Mods::default()),
@@ -1997,6 +2011,184 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "selection-extend",
+        doc: "The `selection` card, and a Shift-press keeping the anchor \
+              (ADR 0029, decision 3): a click in the first run places both \
+              ends together, a Shift-click in the third extends from that \
+              anchor to the press, and a Shift-press-drag back into the \
+              second goes on from the same anchor — by characters, whatever \
+              the click count — so what is left is the tail of the first \
+              run and the head of the second. An adapter that read the \
+              press without the modifier starts over at the third click and \
+              leaves one highlight quad where two are pinned.",
+        custom: &["key", "pad", "size"],
+        elements: &["box", "text"],
+        build: build_selection,
+        env: NATIVE_CHROME,
+        steps: &[
+            Step::Cursor(14, 16),
+            Step::MouseDown,
+            Step::MouseUp,
+            Step::ShiftDown,
+            Step::Cursor(30, 60),
+            Step::MouseDown,
+            Step::MouseUp,
+            Step::Cursor(30, 38),
+            Step::MouseDown,
+            Step::Cursor(14, 38),
+            Step::MouseUp,
+            Step::ShiftUp,
+        ],
+        expect: Expect {
+            solid: 3,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 11,
+            access: &[
+                "0 window ||",
+                "1 staticText one||",
+                "1 staticText two||",
+                "1 staticText three||",
+            ],
+            // The modifier going down and up is itself an event on the
+            // root — the one an app keeps in its model for a held-key
+            // overlay — so the two steps leave two rows.
+            events: &["modifiers -", "modifiers -"],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+        },
+    },
+    Scene {
+        name: "selection-scroll",
+        doc: "A `selectable` card two runs tall over six, and a press held \
+              past its bottom edge (ADR 0029, decisions 1 and 2): the \
+              pointer presses in the first run and moves 60 px below the \
+              card, so the core scrolls it toward the pointer — ten px on \
+              the clockless frames, then the clock's own share on each \
+              `time` step at ten px a second per px past the edge — until \
+              the card is at its end, re-placing the live end under the \
+              pointer as the runs move; then the pointer comes back inside \
+              and one wheel notch up under the still-held press moves the \
+              text back and the end follows a frame later; then the \
+              release. The offset at the end and the \
+              highlight quads the moved runs leave are what pins the rate, \
+              the cap, the clamp and the re-hit. Both clocks are pinned: an \
+              adapter that stepped by a fixed amount per frame agrees on \
+              the first frames and not on the timed ones.",
+        custom: &["key", "pad", "size", "overflow"],
+        elements: &["box", "text"],
+        build: build_selection_scroll,
+        env: NATIVE_CHROME,
+        steps: &[
+            Step::Cursor(14, 16),
+            Step::MouseDown,
+            Step::Cursor(30, 100),
+            Step::Time(0),
+            Step::Time(50),
+            Step::Time(100),
+            Step::Time(150),
+            Step::Time(200),
+            Step::Cursor(30, 20),
+            Step::Scroll(0, 30),
+            Step::Time(250),
+            Step::MouseUp,
+        ],
+        expect: Expect {
+            solid: 3,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 6,
+            access: &[
+                "0 window ||",
+                "1 scrollView ||",
+                "2 staticText one||",
+                "2 staticText two||",
+                "2 staticText three||",
+                "2 staticText four||",
+                "2 staticText five||",
+                "2 staticText six||",
+            ],
+            events: &[],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+        },
+    },
+    Scene {
+        name: "cells-scroll",
+        doc: "The `cells` screen three rows tall, `selectable` and hearing \
+              the wheel (`onScroll`, ADR 0029, decision 4): a notch of two \
+              and a half lines is two whole lines out and a half carried, \
+              the next half-line notch is the carried half made whole, and \
+              the view answers each by moving `originLine` (the phase is \
+              the app's answer). Then a press in the first row is held 60 \
+              px below the grid: each frame's step arrives as the lines it \
+              covers, the view answers again, and the selection's ends keep \
+              their absolute lines through it — the anchor on the line the \
+              press took, the live end on the last row of the moved screen. \
+              The event rows carry the lines, which is what pins the carry \
+              and the rate across the four transports.",
+        custom: &["key", "pad"],
+        elements: &["cells"],
+        build: build_cells_scroll,
+        env: NATIVE_CHROME,
+        steps: &[
+            Step::Cursor(38, 19),
+            Step::Scroll(0, -45),
+            Step::Phase(2),
+            Step::Scroll(0, -9),
+            Step::Phase(3),
+            Step::MouseDown,
+            Step::Cursor(38, 124),
+            Step::Time(0),
+            Step::Time(100),
+            Step::Phase(7),
+            Step::Time(200),
+            Step::Phase(10),
+            Step::MouseUp,
+        ],
+        expect: Expect {
+            solid: 3,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 18,
+            access: &["0 window ||", "1 terminal term||hello world\nbrave\nbye"],
+            // Two and a half lines, then the half made whole; then the
+            // held press: 10 px on the clockless frames (a fifth of a
+            // line and a half, carried), 60 px on each 100 ms step.
+            events: &[
+                "scroll term 2",
+                "scroll term 1",
+                "scroll term 0",
+                "scroll term 1",
+                "scroll term 3",
+                "scroll term 3",
+            ],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+        },
+    },
+    Scene {
         name: "virtual",
         doc: "A virtualised list, which is what the `index` row exists for: \
               the rows a long list can show, each opened at its *data* index \
@@ -2551,6 +2743,70 @@ fn build_anchor(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
 /// three of them so the drag has a run to cover *whole* between its two
 /// partial ends.
 pub const SELECTION_LINES: [&str; 3] = ["one", "two", "three"];
+
+/// The six runs of the `selection-scroll` scene: the three above and
+/// three more, so the card has somewhere to scroll to.
+pub const SELECTION_SCROLL_LINES: [&str; 6] = ["one", "two", "three", "four", "five", "six"];
+
+/// The `selection-scroll` card's height: two runs and a bit, so four of
+/// the six are past its edge.
+pub const SELECTION_SCROLL_HEIGHT: f32 = 40.0;
+
+/// The `selection` card, forty px tall and scrolling, over six runs.
+fn build_selection_scroll(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    ui.with_keyed(
+        "card",
+        NodeSpec::column()
+            .width(Sizing::Fixed(200.0))
+            .height(Sizing::Fixed(SELECTION_SCROLL_HEIGHT))
+            .pad(8.0)
+            .gap(4.0)
+            .bg(Color::hex(0x14161eff))
+            .scroll_y()
+            .selectable(),
+        |ui| {
+            for line in SELECTION_SCROLL_LINES {
+                ui.text(line, TextStyle::new(13.0));
+            }
+        },
+    );
+}
+
+/// The three rows of the `cells-scroll` screen, and the absolute line row
+/// 0 is at phase 0: the phase is added to it, which is how the scene's
+/// view "answers" a scroll event.
+pub const CELLS_SCROLL_ROWS: [&str; 3] = ["hello world", "brave", "bye"];
+pub const CELLS_SCROLL_ORIGIN: u64 = 100;
+
+/// The `cells` screen, three rows, `selectable` and hearing the wheel,
+/// with row 0 at `CELLS_SCROLL_ORIGIN + phase`.
+fn build_cells_scroll(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
+    use crate::cells::{Cell, CellGrid};
+    let cols = 11;
+    let mut cells = vec![Cell::new(' ', 0xd6d8e0ff, 0); 3 * cols];
+    for (r, row) in CELLS_SCROLL_ROWS.iter().enumerate() {
+        for (c, ch) in row.chars().enumerate() {
+            cells[r * cols + c] = Cell::new(ch, 0xd6d8e0ff, 0);
+        }
+    }
+    ui.with(NodeSpec::column().pad(10.0), |ui| {
+        ui.cells_keyed(
+            "term",
+            &CellGrid {
+                rows: 3,
+                cols,
+                cells: &cells,
+                style: TextStyle::new(13.0).mono().line_height(18.0),
+                cursor: None,
+                origin_line: CELLS_SCROLL_ORIGIN + phase as u64,
+            },
+            NodeSpec::default()
+                .selectable()
+                .on_scroll(Value::map([("kind", Value::str("term"))]))
+                .label("term"),
+        );
+    });
+}
 
 fn build_float(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     ui.with(NodeSpec::column().pad(20.0).gap(4.0), |ui| {
@@ -4004,6 +4260,18 @@ fn event_row(payload: &Value) -> (String, String) {
         let num = |k: &str| payload.get(k).and_then(Value::as_float).unwrap_or(0.0) as i64;
         let phase = payload.get("phase").and_then(Value::as_str).unwrap_or("-");
         let _ = write!(tag, " {phase} {} {}", num("dx"), num("dy"));
+    }
+    // A scroll's lines ride the same way (`scroll term 2`): the whole
+    // lines are the contract for a grid, and a binding that lost the
+    // carried fraction between two notches would agree on the kind and
+    // disagree here. `-` for a node that is not a grid.
+    if kind == "scroll" {
+        match payload.get("lines").and_then(Value::as_int) {
+            Some(n) => {
+                let _ = write!(tag, " {n}");
+            }
+            None => tag.push_str(" -"),
+        }
     }
     (kind, tag)
 }

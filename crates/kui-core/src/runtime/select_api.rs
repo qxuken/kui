@@ -432,6 +432,28 @@ impl Core {
         ))
     }
 
+    /// The selection's two ends as the drag made them — the anchor where
+    /// the press landed, the focus where the pointer is — each as the
+    /// data index of the virtualised row it is in (`None` outside every
+    /// virtualised row) and the byte inside that node's own text. The
+    /// directed pair, unlike [`Self::selection_range`]'s: what a test or
+    /// a model that mirrors the selection reads, and what says whether a
+    /// Shift-press kept the anchor (ADR 0029). `None` with no text
+    /// selection; a grid's is `cell_selection`.
+    pub fn selection_ends(&self) -> Option<(RangeEnd, RangeEnd)> {
+        let sel = self.selection?;
+        Some((
+            RangeEnd {
+                row: sel.anchor.row,
+                byte: sel.anchor.byte,
+            },
+            RangeEnd {
+                row: sel.focus.row,
+                byte: sel.focus.byte,
+            },
+        ))
+    }
+
     /// Whether the core can answer a copy on its own: both ends resolve
     /// against runs this frame built.
     fn selection_is_whole(&self) -> bool {

@@ -337,6 +337,13 @@ impl<'a> Ui<'a> {
         self.core.copy_selection()
     }
 
+    /// The text selection's two ends as the drag made them — anchor, then
+    /// focus — each a virtualised row's data index (or none) and a byte;
+    /// see `Core::selection_ends`.
+    pub fn selection_ends(&self) -> Option<(crate::select::RangeEnd, crate::select::RangeEnd)> {
+        self.core.selection_ends()
+    }
+
     /// The window's selection when it lives in a `cells` grid — its ends
     /// as absolute lines and columns; see `Core::cell_selection`.
     ///

@@ -786,6 +786,22 @@ typedef struct KuiSpec {
      * only. Appended after ABI 14 the compatible way; a host that predates
      * it passes the shorter struct and reads as zero. */
     uint32_t anchor;
+    /* Scroll tag: the wheel over this node emits {kind:"scroll", x, y, dx,
+     * dy, lines, tag} on it instead of scrolling anything - dx/dy the
+     * delta in logical px as the driver reported it (positive dy is the
+     * wheel rolling up), x/y the pointer, lines the whole lines a `cells`
+     * grid's delta covers (positive = later history, the sign origin_line
+     * grows in; the fraction is carried to the next notch) and null on
+     * any other node. The node takes the wheel: it reaches no scroller
+     * above it, and a scroller inside it still wins. The core moves
+     * nothing - a grid re-declares origin_line, a canvas zooms. A
+     * drag-select held past a grid's top or bottom edge arrives here too,
+     * once a frame with the lines that frame scrolled by
+     * (docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md).
+     * Borrowed while the node opens; appended after ABI 15 the compatible
+     * way, so a host that predates it passes the shorter struct and reads
+     * as NULL. */
+    const KuiValue *on_scroll;
 } KuiSpec;
 
 /* When a scrolling node's bars are drawn (KuiSpec.scrollbar): the schema
@@ -2462,6 +2478,16 @@ bool kui_selection_text(KuiCtx *ctx, KuiStr *out);
  * Never a replacement for kui_selection_text
  * (docs/adr/0017-selection-as-a-scope.md). */
 bool kui_selection_html(KuiCtx *ctx, KuiStr *out);
+/* The text selection's two ends as the drag made them - the anchor where
+ * the press landed, the focus where the pointer is - each as the data
+ * index of the virtualised row it is in (-1 outside every virtualised
+ * row) and the byte inside that row's own text. Directed, so a
+ * Shift-press that kept the anchor reads as one
+ * (docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md).
+ * False with no text selection; a grid's is kui_cell_selection. Any out
+ * pointer may be NULL. */
+bool kui_selection_ends(KuiCtx *ctx, int64_t *anchor_index, size_t *anchor_byte,
+                        int64_t *focus_index, size_t *focus_byte);
 /* Selects everything in the scope `key` declared: every run of a
  * `selectable` container, or the whole screen of a `cells` grid. */
 bool kui_select_all_in(KuiCtx *ctx, uint64_t key);

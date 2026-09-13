@@ -1823,3 +1823,152 @@ mod parity_headless {
         kui_ctx_free(ctx);
     }
 }
+
+#[cfg(test)]
+mod follow_headless {
+    use super::*;
+
+    fn ks(s: &str) -> KuiStr {
+        KuiStr {
+            ptr: s.as_ptr(),
+            len: s.len(),
+        }
+    }
+
+    fn fixed(w: f32, h: f32) -> KuiSpec {
+        let mut spec = unsafe { std::mem::zeroed::<KuiSpec>() };
+        spec.width = KuiSizing { tag: 2, value: w };
+        spec.height = KuiSizing { tag: 2, value: h };
+        spec
+    }
+
+    /// A press through the C surface with Shift held (`kui_input_modifiers`)
+    /// keeps the anchor, which `kui_selection_ends` reads back as the
+    /// directed pair (ADR 0029, backlog C39); an `on_scroll` grid hears
+    /// the wheel as `{kind="scroll", lines}` with the fraction carried,
+    /// and nothing else scrolls for it.
+    #[test]
+    fn a_shift_press_extends_and_an_on_scroll_grid_hears_the_wheel_in_lines() {
+        let ctx = kui_ctx_new();
+        kui_set_diagnostics(ctx, true);
+        let tag = kui_value_map();
+        kui_value_map_set(tag, ks("kind"), kui_value_str(ks("term")));
+        let build = |ctx: *mut KuiCtx| -> u64 {
+            kui_frame_begin(ctx, 300.0, 200.0, 1.0);
+            let mut card = fixed(200.0, 60.0);
+            card.selectable = 1;
+            let card_key = kui_open_keyed(ctx, ks("card"), &card, NONE);
+            let mut style = unsafe { std::mem::zeroed::<KuiTextStyle>() };
+            style.size = 14.0;
+            kui_text(ctx, ks("one"), &style);
+            kui_text(ctx, ks("two"), &style);
+            kui_text(ctx, ks("three"), &style);
+            kui_close(ctx);
+            let screen = [KuiCell {
+                ch: 'x' as u32,
+                fg: 0xffffffff,
+                bg: 0,
+                flags: 0,
+            }; 33];
+            let mut mono = unsafe { std::mem::zeroed::<KuiTextStyle>() };
+            mono.size = 13.0;
+            mono.family = 2; // KUI_FONT_MONO
+            mono.line_height = 18.0;
+            let mut term = fixed(200.0, 54.0);
+            term.on_scroll = tag;
+            kui_cells(
+                ctx,
+                ks("term"),
+                3,
+                11,
+                screen.as_ptr(),
+                33,
+                &mono,
+                &term,
+                NONE,
+                NONE,
+                NONE,
+                0,
+                0,
+                0,
+                0,
+                100,
+            );
+            kui_frame_finish(ctx);
+            card_key
+        };
+        build(ctx);
+        // A click in the first run, then a Shift-click in the third.
+        kui_input_cursor(ctx, 1.0, 8.0);
+        kui_input_mouse(ctx, true, 1);
+        kui_input_mouse(ctx, false, 1);
+        let (mut ai, mut ab, mut fi, mut fb) = (-2i64, 99usize, -2i64, 99usize);
+        assert!(kui_selection_ends(ctx, &mut ai, &mut ab, &mut fi, &mut fb));
+        assert_eq!(
+            (ai, ab, fi, fb),
+            (-1, 0, -1, 0),
+            "a click places both ends together"
+        );
+        kui_input_modifiers(ctx, KUI_KMOD_SHIFT);
+        kui_input_cursor(ctx, 20.0, 45.0);
+        kui_input_mouse(ctx, true, 1);
+        kui_input_mouse(ctx, false, 1);
+        kui_input_modifiers(ctx, 0);
+        assert!(kui_selection_ends(ctx, &mut ai, &mut ab, &mut fi, &mut fb));
+        assert_eq!((ai, ab), (-1, 0), "the anchor stayed");
+        assert!(fb > 0, "and the focus moved: {fb}");
+        let mut text = KuiStr {
+            ptr: std::ptr::null(),
+            len: 0,
+        };
+        assert!(kui_selection_text(ctx, &mut text));
+        assert!(kstr(text).starts_with("one\ntwo\n"), "{:?}", kstr(text));
+        assert!(
+            kui_selection_ends(
+                ctx,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            "NULL outs are fine"
+        );
+
+        // The wheel over the grid: two and a half lines is two, a half
+        // carried; the next half is the carried half made whole.
+        build(ctx);
+        kui_input_cursor(ctx, 20.0, 60.0 + 20.0);
+        kui_input_scroll(ctx, 0.0, -45.0);
+        kui_input_scroll(ctx, 0.0, -9.0);
+        let mut ev = KuiEvent::default();
+        let mut lines = Vec::new();
+        while kui_poll_event(ctx, &mut ev) {
+            let mut kind = KuiStr {
+                ptr: std::ptr::null(),
+                len: 0,
+            };
+            kui_value_as_str(kui_value_get(ev.payload, ks("kind")), &mut kind);
+            if &*kstr(kind) != "scroll" {
+                continue;
+            }
+            let mut n = 0i64;
+            assert!(kui_value_as_int(
+                kui_value_get(ev.payload, ks("lines")),
+                &mut n
+            ));
+            let mut t = KuiStr {
+                ptr: std::ptr::null(),
+                len: 0,
+            };
+            kui_value_as_str(
+                kui_value_get(kui_value_get(ev.payload, ks("tag")), ks("kind")),
+                &mut t,
+            );
+            assert_eq!(&*kstr(t), "term");
+            lines.push(n);
+        }
+        assert_eq!(lines, vec![2, 1]);
+        kui_value_free(tag);
+        kui_ctx_free(ctx);
+    }
+}

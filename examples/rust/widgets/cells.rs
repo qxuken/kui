@@ -10,12 +10,14 @@
 //! triple-click a row. What a copy takes is what a terminal copies — the
 //! lines, each one's trailing blanks trimmed — and its ends are absolute
 //! lines, so the readout says which lines of the session they are and
-//! not which rows of the screen. The buttons scroll the screen under a
-//! selection to show the ends staying put.
+//! not which rows of the screen. The screen scrolls through the app: the
+//! grid declares `on_scroll`, so the wheel over it — and a drag-select
+//! held past its top or bottom edge — arrives as a `scroll` event whose
+//! `lines` the app adds to its own `top` (ADR 0029). A selection's ends
+//! stay where they were through it, which the readout shows.
 //!
 //! Run: cargo run -p kui --example cells [-- --headless]
 
-use kui::widgets;
 use kui::{
     Align, App, Cell, CellCursor, CellGrid, Core, FontFamily, NodeSpec, Sizing, TextStyle, Theme,
     Ui, UiEvent, Value,
@@ -145,7 +147,12 @@ impl App for Cells {
                                 // A scope of one grid: the drag selects
                                 // cells, and the stock menu's Select All
                                 // takes the whole screen.
-                                .selectable(),
+                                .selectable()
+                                // The wheel, and a drag held past the
+                                // edge, ask the app to scroll: the
+                                // screen is the app's, so the core
+                                // cannot.
+                                .on_scroll(Value::str("scroll")),
                         );
                         ui.with(
                             NodeSpec::row()
@@ -153,8 +160,6 @@ impl App for Cells {
                                 .gap(8.0)
                                 .cross_align(Align::Center),
                             |ui| {
-                                widgets::button(ui, "▲ earlier", Value::str("up"));
-                                widgets::button(ui, "▼ later", Value::str("down"));
                                 ui.text(
                                     &format!(
                                         "lines {}–{} on screen",
@@ -177,19 +182,25 @@ impl App for Cells {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.payload.as_str() {
-            Some("up") => self.top = self.top.saturating_sub(1),
-            Some("down") => self.top = (self.top + 1).min(SESSION.len() - TERM_ROWS),
-            _ => {}
+        // The wheel over the grid, or a drag-select held past its edge:
+        // `lines` is how many rows later (positive) or earlier the screen
+        // should move — the whole lines the delta covered, the fraction
+        // carried by the core to the next notch.
+        if ev.payload.get("kind").and_then(Value::as_str) == Some("scroll") {
+            let lines = ev.payload.get("lines").and_then(Value::as_int).unwrap_or(0);
+            self.top =
+                (self.top as i64 + lines).clamp(0, (SESSION.len() - TERM_ROWS) as i64) as usize;
         }
     }
 }
 
 impl Example for Cells {
     const KEYS: &'static [(&'static str, &'static str)] = &[
-        ("drag", "select cells"),
+        ("drag", "select cells; past the edge scrolls"),
         ("Alt-drag", "a rectangle"),
+        ("⇧-click", "extend the selection"),
         ("double / triple click", "a word / a row"),
+        ("wheel", "scroll the session"),
         ("⌘C", "copy, trailing blanks trimmed"),
     ];
 
@@ -198,8 +209,9 @@ impl Example for Cells {
     }
 
     /// Selects a block by dragging across the grid, then scrolls the
-    /// screen under it: the ends are absolute lines and stay where they
-    /// were.
+    /// screen under it with the wheel: the ends are absolute lines and
+    /// stay where they were. Then a drag held past the bottom edge asks
+    /// the app to scroll, a frame at a time, and the live end follows.
     fn headless(&mut self, core: &mut Core) -> Result<(), String> {
         let mut d = Drive::new(core, 680.0, 300.0);
         d.frame(self);
@@ -226,10 +238,16 @@ impl Example for Cells {
             "a copy is the lines with their trailing blanks trimmed",
         )?;
 
-        // Scroll the screen under the selection: the ends stay put.
-        let down = d.key_of("▼ later").ok_or("no scroll button")?;
-        d.click_key(self, down);
+        // Scroll the screen under the selection: the wheel over the grid
+        // is a `scroll` event with the lines it covers, the app moves its
+        // `top`, and the ends stay put.
+        let top = self.top;
+        d.wheel(self, x1, y1, 0.0, -2.0 * 18.0);
         d.frame(self);
+        d.check(
+            self.top == top + 2,
+            "a two-row wheel notch is two lines the app scrolls by",
+        )?;
         let after = d
             .core
             .cell_selection()
@@ -238,6 +256,35 @@ impl Example for Cells {
         d.check(
             (a2.line, b2.line) == (a.line, b.line),
             "scrolling the screen leaves the selection on its lines",
+        )?;
+
+        // A drag held past the bottom edge: the core asks the app for
+        // lines every frame, at a rate from how far past, and the live
+        // end follows the pointer onto the moved screen (ADR 0029).
+        d.input(self, kui::InputEvent::CursorMoved(kui::Vec2::new(x0, y0)));
+        d.input(self, kui::InputEvent::mouse_down(1));
+        let below = r.y + r.h + 80.0;
+        d.input(
+            self,
+            kui::InputEvent::CursorMoved(kui::Vec2::new(x1, below)),
+        );
+        let anchor = d.core.cell_selection().ok_or("no drag")?.anchor.line;
+        let top = self.top;
+        for _ in 0..30 {
+            d.advance(1.0 / 60.0);
+            d.frame(self);
+        }
+        d.check(
+            self.top > top,
+            "half a second past the edge scrolled the screen",
+        )?;
+        d.input(self, kui::InputEvent::mouse_up());
+        d.frame(self);
+        let held = d.core.cell_selection().ok_or("the drag is gone")?;
+        d.check(held.anchor.line == anchor, "the anchor kept its line")?;
+        d.check(
+            held.focus.line == FIRST_LINE + (self.top + TERM_ROWS) as u64 - 1,
+            "and the live end is on the last row of the moved screen",
         )
     }
 }

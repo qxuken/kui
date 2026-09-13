@@ -41,6 +41,13 @@ field reports).
   the one addition to C is a new setter, not an argument, and the `system`
   event's payload grew a key a handler that destructures the old four
   still reads.
+- `KuiSpec` grew `on_scroll` at its end and `kui_selection_ends` is a new
+  function (backlog C39): `KUI_ABI_VERSION` stays **15**, since an [in]
+  struct that never travels as an array is absorbed by the size
+  handshake, and a host built against the shorter struct reads NULL.
+  The corpus's step vocabulary grew `shiftdown` / `shiftup`, and its
+  event rows print a `scroll`'s lines — an adapter you maintain outside
+  this repo needs both arms.
 
 Nothing.
 
@@ -71,6 +78,60 @@ Nothing.
   opened to paper over the draft that came back.
 
 ### Added
+
+- **A held drag follows its scroller, and Shift extends** (backlog C39,
+  [ADR 0029](docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md),
+  found by running the clipboard example after C38). Three gestures every
+  text UI has and no selection in kui had — a stock `edit`'s, a
+  `selectable` scope's or a `cells` grid's alike. *Past the edge:* a
+  press held outside its scroller scrolls the nearest scrolling ancestor
+  toward the pointer at 10 px/s per px past (capped 100 px out), a frame
+  at a time on the driver's clock (a sixtieth a frame with none, so a
+  headless drive steps by a knowable amount), and `animating()` is true
+  while it does, so the runner keeps drawing with nothing in the queue.
+  *Following:* the live end is placed again where the pointer is
+  whenever the layout under it moved — that nudge, a wheel notch under
+  the held press, a virtual list re-slicing its rows — against the
+  finished frame, at the start of the next, and once more on the release
+  so nothing lands a frame behind; the gate is the offset the last
+  layout *placed the content at*, not the store's, since a notch writes
+  the store a frame before the text moves. *Shift:* a press with Shift
+  held inside the scope, grid or focused editor the selection is in keeps
+  its anchor and moves the live end, by characters whatever the click
+  count, and clears nothing; anywhere else Shift is a press. A caret
+  drag now reveals the caret the way a keyboard motion does, so a
+  single-line field scrolls its own text toward a drag past its end.
+  The `selection-extend` and `selection-scroll` corpus scenes pin the
+  anchor, the rate on both clocks, the cap, the clamp and the re-hit in
+  four adapters; `Core::selection_ends` / `ctx.selectionEnds()` /
+  `env.selection_ends()` / `kui_selection_ends` read the directed pair
+  back — the anchor and the focus as a virtual row's index and a byte —
+  which is what says a Shift-press kept it.
+
+- **`onScroll`: the wheel as a message** (the same round, decision 4).
+  A node declaring it hears `{kind:"scroll", x, y, dx, dy, lines, tag}`
+  instead of anything scrolling — `dx`/`dy` the delta in logical px as
+  the driver reported it, `x`/`y` the pointer — and takes the notch from
+  any scroller above it, while a scroller inside it still wins, by paint
+  order like any scroll region. On a `cells` grid `lines` is the whole
+  lines the delta covers, positive toward later history (the sign
+  `originLine` grows in), the fraction carried per grid to the next notch
+  so a trackpad's small steps add up; on any other node it is null. A
+  grid is one screenful of history the core does not hold, so this is
+  also where its edge drag lands: a drag-select held past a grid's top or
+  bottom edge arrives once a frame with the lines that frame scrolled by,
+  the app re-declares `originLine`, and ADR 0017's absolute lines keep the
+  selection's ends where they were. A terminal built on `cells` gets
+  scrollback under the wheel for the first time by it — the larger gain,
+  and not what the example was opened to find. The `cells-scroll` scene
+  pins the lines and the carry; `examples/rust/widgets/cells.rs` scrolls
+  its session through the row instead of two buttons.
+
+  *What you can delete:* a `setScroll` an app called from an `onDrag`
+  `move` when the pointer left the list; the buttons or key bindings a
+  terminal pane offered because the wheel over it scrolled the column it
+  sat in or nothing; and the "click again to extend" a list grew for want
+  of Shift.
 
 - **A key sink has a clipboard** (backlog C33, from the third
   editor-and-mux round of 2026-09-13). The runner performs the clipboard

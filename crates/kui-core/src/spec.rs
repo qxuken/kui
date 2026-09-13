@@ -652,6 +652,19 @@ pub struct EventSpec {
     /// what the core cannot guess — a force click on a chart, a map, a
     /// timeline.
     pub on_force_click: Option<Value>,
+    /// Scroll events: the wheel over this node emits `{kind="scroll", x,
+    /// y, dx, dy, lines, tag}` with this payload under `tag` — the delta
+    /// in logical px as the driver reported it (positive `dy` is the wheel
+    /// rolling up, toward earlier content), the pointer's position, and
+    /// on a `cells` grid the whole lines the delta covers (`null` on any
+    /// other node), the fraction carried to the next notch. The node
+    /// *takes* the wheel: it reaches no scroll container above it, and a
+    /// container inside it still wins over it, by paint order like any
+    /// scroller. The core moves nothing — a grid's `origin_line` and a
+    /// canvas's zoom are the app's to change. A drag-select held past a
+    /// grid's top or bottom edge arrives here too, as the lines the frame
+    /// scrolled by (ADR 0029, decision 4).
+    pub on_scroll: Option<Value>,
     /// Hover events: the pointer entering or leaving this node emits
     /// `{kind="hover", phase="enter"|"leave", tag}` with this payload under
     /// `tag` — for hover-dependent *layout* (a close button that appears)
@@ -685,6 +698,7 @@ impl EventSpec {
         key_up: false,
         on_context_menu: None,
         on_force_click: None,
+        on_scroll: None,
         on_hover: None,
         on_layout: None,
         modal: None,
@@ -1567,6 +1581,13 @@ impl NodeSpec {
     /// `on_force_click` field).
     pub fn on_force_click(mut self, tag: impl Into<Value>) -> Self {
         self.events_mut().on_force_click = Some(tag.into());
+        self
+    }
+
+    /// Asks for the wheel over this node as events (see the `on_scroll`
+    /// field): `{kind="scroll", x, y, dx, dy, lines, tag}`.
+    pub fn on_scroll(mut self, tag: impl Into<Value>) -> Self {
+        self.events_mut().on_scroll = Some(tag.into());
         self
     }
 

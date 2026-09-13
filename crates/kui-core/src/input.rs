@@ -868,7 +868,9 @@ pub fn in_polygon(p: Vec2, pts: &[Vec2]) -> bool {
     inside
 }
 
-/// A scroll container's on-screen area, for wheel routing.
+/// A scroll container's on-screen area, for wheel routing — or an
+/// `on_scroll` node's, which takes the wheel the same way and turns it
+/// into an event instead of an offset (ADR 0029, decision 4).
 #[derive(Clone, Copy, Debug)]
 pub struct ScrollRegion {
     pub key: Key,
@@ -880,6 +882,12 @@ pub struct ScrollRegion {
     /// Outside the frame's modal scope: the bar still draws, the wheel
     /// and the thumb do nothing (see `docs/adr/0003-modal-surfaces.md`).
     pub inert: bool,
+    /// The node declared `on_scroll`: the wheel over it is an event on
+    /// it, no bars are drawn and no offset is kept. A region that is
+    /// both — a scroller that also declared the row — is the handler's:
+    /// the app asked to hear the wheel, and hearing it *and* having the
+    /// content move under it would be two answers to one notch.
+    pub handler: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1118,12 +1126,30 @@ impl Interaction {
 
     /// Topmost scroll container under the cursor, if any.
     pub fn scroll_target(&self) -> Option<Key> {
+        self.scroll_region_at().map(|r| r.key)
+    }
+
+    /// The scroll region under the cursor: the topmost container or
+    /// `on_scroll` handler there, by paint order.
+    pub(crate) fn scroll_region_at(&self) -> Option<&ScrollRegion> {
         let p = self.cursor?;
         self.scroll_regions
             .iter()
             .rev()
             .find(|r| !r.inert && r.rect.contains(p) && r.clip.contains(p))
-            .map(|r| r.key)
+    }
+
+    /// The content origin the editor `key` was drawn at this frame — what
+    /// a caret drag places against. Read off the frame rather than kept
+    /// from the press: a scroller nudged under a held drag moves the
+    /// origin, and a caret placed against the press's origin would land
+    /// the nudge off (ADR 0029, decision 2).
+    pub(crate) fn edit_origin_of(&self, key: Key) -> Option<Vec2> {
+        self.hits
+            .iter()
+            .rev()
+            .find(|h| h.key == key && h.edit_origin.is_some())
+            .and_then(|h| h.edit_origin)
     }
 
     /// Re-resolves the hovered region under the cursor, emitting `on_hover`

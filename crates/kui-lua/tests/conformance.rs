@@ -189,6 +189,46 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                       on_click = { kind = "hit" }, label = "term" } }
         "#
         .to_string(),
+        // The same card, forty px tall and scrolling, over six runs: what a
+        // press held past its edge scrolls (ADR 0029).
+        "selection-scroll" => {
+            let lines = conformance::SELECTION_SCROLL_LINES
+                .iter()
+                .map(|l| format!("text(\"{l}\", {{ size = 13 }}),"))
+                .collect::<Vec<_>>()
+                .join("\n                ");
+            format!(
+                r#"
+            return column {{ key = "card", width = 200, height = {h}, pad = 8, gap = 4,
+                             bg = 0x14161eff, scroll_y = true, selectable = true,
+                {lines}
+            }}
+        "#,
+                h = conformance::SELECTION_SCROLL_HEIGHT
+            )
+        }
+        // The `cells` screen three rows tall, `selectable` and hearing the
+        // wheel, row 0 at 100 plus the phase — the phase being how the
+        // scene's view answers a `scroll` event (ADR 0029).
+        "cells-scroll" => {
+            let rows = conformance::CELLS_SCROLL_ROWS
+                .iter()
+                .map(|r| format!("\"{r:<11}\""))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!(
+                r#"
+            return column {{ pad = 10,
+              cells {{ key = "term", rows = 3, cols = 11, size = 13, family = "mono",
+                      line_height = 18, lines = {{ {rows} }},
+                      runs = {{ {{ 0, 0, 11, 0xd6d8e0ff, 0, 0 }}, {{ 1, 0, 11, 0xd6d8e0ff, 0, 0 }},
+                               {{ 2, 0, 11, 0xd6d8e0ff, 0, 0 }} }},
+                      origin_line = {origin} + phase, selectable = true,
+                      on_scroll = {{ kind = "term" }}, label = "term" }} }}
+        "#,
+                origin = conformance::CELLS_SCROLL_ORIGIN
+            )
+        }
         "keys" => r#"
             local function sink(name, key_up, child)
               return row { key = name, width = 100, height = 24, bg = 0x1b1d27ff,
@@ -464,8 +504,10 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         "#
         .to_string(),
         // Same tree as `selection`: the menu is not declared by anyone,
-        // it is what the core opens over the card on a secondary press.
-        "selection" | "menu" => {
+        // it is what the core opens over the card on a secondary press —
+        // and a Shift-press keeping the anchor is the core's reading of
+        // the modifier, nothing the script declares (ADR 0029).
+        "selection" | "menu" | "selection-extend" => {
             let lines = conformance::SELECTION_LINES
                 .iter()
                 .map(|l| format!("text(\"{l}\", {{ size = 13 }}),"))

@@ -1217,6 +1217,47 @@ static void conf_selection(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* conformance::build_selection_scroll: the same card, forty px tall and
+ * scrolling, over six runs - what a press held past its edge scrolls
+ * (ADR 0029). */
+static void conf_selection_scroll(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiSpec card = {.width = {KUI_FIXED, 200}, .height = {KUI_FIXED, 40},
+                    .pad_l = 8, .pad_r = 8, .pad_t = 8, .pad_b = 8,
+                    .gap = 4, .bg = 0x14161eff, .overflow = KUI_SCROLL_Y, .selectable = 1};
+    kui_open_keyed(ui, KUI_STR("card"), &card, NULL);
+    KuiTextStyle s13 = {.size = 13};
+    const char *lines[6] = {"one", "two", "three", "four", "five", "six"};
+    for (int i = 0; i < 6; i++) kui_text(ui, KUI_STR(lines[i]), &s13);
+    kui_close(ui);
+}
+
+/* conformance::build_cells_scroll: the `cells` screen three rows tall,
+ * `selectable` and hearing the wheel, row 0 at 100 plus the phase - the
+ * phase being how the scene's view answers a `scroll` event (ADR 0029). */
+static void conf_cells_scroll(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    KuiSpec outer = {.pad_l = 10, .pad_r = 10, .pad_t = 10, .pad_b = 10};
+    kui_open(ui, &outer, NULL);
+    KuiCell screen[33] = {0};
+    const char *rows[3] = {"hello world", "brave", "bye"};
+    for (int i = 0; i < 33; i++) {
+        screen[i].ch = ' ';
+        screen[i].fg = 0xd6d8e0ff;
+    }
+    for (int r = 0; r < 3; r++)
+        for (int c = 0; rows[r][c]; c++) screen[r * 11 + c].ch = (uint32_t)rows[r][c];
+    KuiTextStyle style = {.size = 13, .family = KUI_FONT_MONO, .line_height = 18};
+    KuiValue *tag = kui_value_map();
+    kui_value_map_set(tag, KUI_STR("kind"), kui_value_str(KUI_STR("term")));
+    KuiSpec term = {.label = KUI_STR("term"), .selectable = 1, .on_scroll = tag};
+    kui_cells(ui, KUI_STR("term"), 3, 11, screen, 33, &style, &term, NULL, NULL, NULL, 0, 0,
+              0, 0, 100 + (uint64_t)phase);
+    kui_value_free(tag);
+    kui_close(ui);
+}
+
 /* A virtual list's three built rows, each opened at its *data* index rather
  * than at the position it occupies (kui_open_indexed), between the two
  * spacers that stand in for the rows nobody built. The indices are past what
@@ -1363,6 +1404,9 @@ static const ConfScene CONF_SCENES[] = {
     {"live", conf_live},
     {"drag", conf_drag},
     {"selection", conf_selection},
+    {"selection-extend", conf_selection},
+    {"selection-scroll", conf_selection_scroll},
+    {"cells-scroll", conf_cells_scroll},
     /* Same builder: `menu` is that tree under a secondary press, and what
      * it draws is the core's own menu rather than anything declared. */
     {"menu", conf_selection},
@@ -1469,6 +1513,9 @@ static void conf_apply(KuiCtx *ctx, const ConfStep *s) {
     else if (strcmp(s->kind, "scroll") == 0) kui_input_scroll(ctx, (float)s->a, (float)s->b);
     else if (strcmp(s->kind, "tab") == 0) kui_input_key(ctx, KUI_KEY_TAB, 0);
     else if (strcmp(s->kind, "shifttab") == 0) kui_input_key(ctx, KUI_KEY_TAB, KUI_MOD_SHIFT);
+    /* The Shift key itself, down and up: what a Shift-press reads (ADR 0029). */
+    else if (strcmp(s->kind, "shiftdown") == 0) kui_input_modifiers(ctx, KUI_KMOD_SHIFT);
+    else if (strcmp(s->kind, "shiftup") == 0) kui_input_modifiers(ctx, 0);
     else if (strcmp(s->kind, "escape") == 0) kui_input_key(ctx, KUI_KEY_ESCAPE, 0);
     /* conformance::ARROWS order: left, right, up, down - which is
      * KUI_KEY_LEFT..KUI_KEY_DOWN, so the index is the key. */
@@ -1545,6 +1592,15 @@ static void conf_drain(KuiCtx *ctx, Rep *events) {
             if (vx) kui_value_as_int(vx, &dx);
             if (vy) kui_value_as_int(vy, &dy);
             repf(events, " %.*s %lld %lld", (int)phase.len, phase.ptr, (long long)dx, (long long)dy);
+        }
+        /* A scroll's lines ride the same way - the whole lines a grid's
+         * notch covers, `-` off a grid - so a lost carry disagrees here
+         * (ADR 0029). */
+        if (kind.len == 6 && memcmp(kind.ptr, "scroll", 6) == 0) {
+            const KuiValue *l = kui_value_get(ev.payload, KUI_STR("lines"));
+            int64_t n = 0;
+            if (l && kui_value_as_int(l, &n)) repf(events, " %lld", (long long)n);
+            else repf(events, " -");
         }
         repf(events, "\n");
     }
