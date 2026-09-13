@@ -519,9 +519,48 @@ impl Example for Clipboard {
         let queued = d.core.take_menu_actions();
         // The press landed a few bytes into row 0, so the answer starts
         // mid-row; the drag ended on row 2.
+        let forwards = match &queued[..] {
+            [MenuAction::SetClipboard { text, html: None }]
+                if text.contains("log line 0\n") && text.contains("log line 2") =>
+            {
+                text.clone()
+            }
+            _ => String::new(),
+        };
         d.check(
-            matches!(&queued[..], [MenuAction::SetClipboard { text, html: None }] if text.contains("log line 0\n") && text.contains("log line 2")),
+            !forwards.is_empty(),
             "and the answer is what reaches the clipboard",
+        )?;
+        // The same drag made backwards — pressed on row 2, released on
+        // row 0 — is asked for as the same range: `from` precedes `to`
+        // whichever end the press was, so the app's `from..=to` answers
+        // the same rows.
+        d.core.set_scroll(log, kui::Vec2::ZERO);
+        d.frame(self);
+        d.input(
+            self,
+            InputEvent::CursorMoved(kui::Vec2::new(r.x + 200.0, r.y + 2.5 * ROW_H)),
+        );
+        d.input(self, InputEvent::mouse_down(1));
+        d.input(
+            self,
+            InputEvent::CursorMoved(kui::Vec2::new(r.x + 20.0, r.y + 6.0)),
+        );
+        d.input(self, InputEvent::mouse_up());
+        d.frame(self);
+        d.wheel(self, r.x + 100.0, r.y + 40.0, 0.0, -40.0 * ROW_H);
+        d.frame(self);
+        let asked = d.core.request_copy() == CopyRequest::Asked;
+        d.check(
+            asked,
+            "a backwards drag over unbuilt rows is asked the same way",
+        )?;
+        d.frame(self);
+        d.frame(self);
+        let queued = d.core.take_menu_actions();
+        d.check(
+            matches!(&queued[..], [MenuAction::SetClipboard { text, html: None }] if *text == forwards),
+            "and asks for the same rows in reading order, so the answer is the same text",
         )?;
 
         // The register: the sink's own bindings, through `Ui`.

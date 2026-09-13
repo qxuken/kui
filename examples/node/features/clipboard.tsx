@@ -232,6 +232,20 @@ await run<Model, AppMsg>({
     const answered = ctx.takeMenuActions();
     ok(answered.length === 1 && answered[0].kind === 'setClipboard' && answered[0].text.includes('log line 0\n') && answered[0].text.includes('log line 2'),
       'and the answer is what reaches the clipboard');
+    // The same drag made backwards — pressed on row 2, released on row 0
+    // — is asked for as the same range: `from` precedes `to` whichever
+    // end the press was, so the app's `from..=to` answers the same rows.
+    ctx.setScroll('log', 0, 0);
+    app.render();
+    ctx.cursor(log.x + 200, log.y + 2.5 * ROW_H); ctx.mouse(true); ctx.cursor(log.x + 20, log.y + 6); ctx.mouse(false);
+    app.render();
+    ctx.cursor(log.x + 100, log.y + 40); ctx.scroll(0, -40 * ROW_H);
+    app.render();
+    ok(ctx.requestCopy().asked, 'a backwards drag over unbuilt rows is asked the same way');
+    app.settle();
+    const backwards = ctx.takeMenuActions();
+    ok(backwards.length === 1 && backwards[0].kind === 'setClipboard' && backwards[0].text === answered[0].text,
+      'and asks for the same rows in reading order, so the answer is the same text');
 
     // The register: the sink's own bindings, one call each.
     ctx.focus('register');

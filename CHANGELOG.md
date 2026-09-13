@@ -490,6 +490,19 @@ Nothing.
 
 ### Fixed
 
+- **A backwards drag-select asks for its range in reading order** (found
+  building ADR 0029 / C39). `Core::selection_range` handed the anchor as
+  `from` and the focus as `to`, so a drag pressed on a later row and
+  released on an earlier one posted a `selectionrange` ask whose `from`
+  came after `to`, and an app iterating `from..=to` — both clipboard
+  examples do — answered with nothing. The two ends are now ordered before
+  the ask: by their place in the frame when both are built, by row when
+  neither is, and an unbuilt row before or after every built one
+  otherwise — the same placement the highlight uses. The directed pair is
+  `selection_ends`, new in the same round. Pinned in
+  `tests/virtual_selection.rs` and by a backwards drag in both clipboard
+  drives whose answer is the forwards one's text.
+
 - **`Mono` is an upright monospaced face on a machine without Noto Sans
   Mono** (backlog C32, observed in the first editor-and-mux round of
   2026-08-31 and unchanged since: every monospaced glyph — `modal_editor`,

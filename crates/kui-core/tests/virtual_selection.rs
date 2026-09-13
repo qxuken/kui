@@ -267,3 +267,78 @@ fn an_end_below_a_mixed_scope_is_placed_below_it() {
         "the header and both built rows, not a single run at the top"
     );
 }
+
+/// A drag made backwards — pressed on a later row, released on an earlier
+/// one — asks for the same range a forwards one does: `from` precedes `to`
+/// in the ask, whichever end the press was, whether both rows are built,
+/// neither is, or only one (backlog C39's finding).
+#[test]
+fn a_backwards_drag_asks_for_its_range_in_reading_order() {
+    use kui_core::{CopyRequest, Value};
+    let ask = |core: &mut Core| -> (i64, i64, i64, i64) {
+        assert_eq!(core.request_copy(), CopyRequest::Asked);
+        let ev = core
+            .take_pending_events()
+            .into_iter()
+            .find(|e| e.payload.get("kind").and_then(Value::as_str) == Some("selectionrange"))
+            .expect("a selectionrange ask");
+        let end = |name: &str| {
+            let e = ev.payload.get(name).unwrap();
+            (
+                e.get("index").and_then(Value::as_int).unwrap(),
+                e.get("byte").and_then(Value::as_int).unwrap(),
+            )
+        };
+        let (from, to) = (end("from"), end("to"));
+        (from.0, from.1, to.0, to.1)
+    };
+    let mut core = Core::new();
+    frame(&mut core, 0..5);
+    // Press three bytes into row 2, release at the start of row 0.
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(200.0, 45.0)));
+    core.handle_input(InputEvent::MouseDown {
+        button: MouseButton::Primary,
+        clicks: 1,
+    });
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(2.0, 4.0)));
+    core.handle_input(InputEvent::MouseUp {
+        button: MouseButton::Primary,
+    });
+    assert_eq!(
+        core.selection_text().as_deref(),
+        Some("row 0\nrow 1\nrow 2")
+    );
+    let (a, f) = core.selection_ends().unwrap();
+    assert_eq!((a.row, f.row), (Some(2), Some(0)), "the ends are directed");
+
+    // (Both rows built is never an ask: the core answers itself.) The
+    // earlier row gone, the later still built: the unbuilt end is placed
+    // before every built row.
+    frame(&mut core, 1..6);
+    let (from_i, from_b, to_i, to_b) = ask(&mut core);
+    assert_eq!((from_i, from_b), (0, 0), "from is the earlier row");
+    assert_eq!((to_i, to_b), (2, 5), "to is the later, at its byte");
+
+    // Neither row built: ordered by row index.
+    frame(&mut core, 10..15);
+    assert_eq!(ask(&mut core), (0, 0, 2, 5));
+
+    // The later row gone, the earlier still built: the unbuilt end is
+    // placed after every built row.
+    frame(&mut core, 0..2);
+    assert_eq!(ask(&mut core), (0, 0, 2, 5));
+
+    // And the mirror: a forwards drag asks for the same range.
+    frame(&mut core, 0..5);
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(2.0, 4.0)));
+    core.handle_input(InputEvent::MouseDown {
+        button: MouseButton::Primary,
+        clicks: 1,
+    });
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(200.0, 45.0)));
+    core.handle_input(InputEvent::MouseUp {
+        button: MouseButton::Primary,
+    });
+    frame(&mut core, 10..15);
+    assert_eq!(ask(&mut core), (0, 0, 2, 5));
+}

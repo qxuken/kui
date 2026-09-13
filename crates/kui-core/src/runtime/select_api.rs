@@ -414,22 +414,63 @@ impl Core {
 
     /// The selection's two ends as the app's own addresses — the data
     /// index of the virtualised row each is in, and the byte inside that
-    /// row's text. `None` when there is no selection, or when neither end
-    /// is in a virtualised row (nothing to ask about: the core has it
-    /// all).
+    /// row's text — **in reading order**: `from` precedes `to` whichever
+    /// way the drag was made, so an app answering a `selectionrange` ask
+    /// can iterate `from..=to` (the clipboard examples do). `None` when
+    /// there is no selection, or when neither end is in a virtualised row
+    /// (nothing to ask about: the core has it all). The directed pair is
+    /// [`Self::selection_ends`].
     pub fn selection_range(&self) -> Option<(RangeEnd, RangeEnd)> {
         let sel = self.selection?;
         let (a, f) = (sel.anchor, sel.focus);
-        (a.row.is_some() || f.row.is_some()).then_some((
-            RangeEnd {
-                row: a.row,
-                byte: a.byte,
-            },
-            RangeEnd {
-                row: f.row,
-                byte: f.byte,
-            },
-        ))
+        if a.row.is_none() && f.row.is_none() {
+            return None;
+        }
+        let end = |e: Endpoint| RangeEnd {
+            row: e.row,
+            byte: e.byte,
+        };
+        if self.end_precedes(sel.scope, f, a) {
+            Some((end(f), end(a)))
+        } else {
+            Some((end(a), end(f)))
+        }
+    }
+
+    /// Whether `x` comes before `y` in the scope's reading order — the
+    /// question a backwards drag makes of two ends. Both built this frame:
+    /// by their offset in the scope's concatenation, the order the drag
+    /// itself is decided by. Both in virtualised rows: by row, then byte.
+    /// One built and one in a row the frame never built: the unbuilt row
+    /// is before every built row or after every one (that is what makes
+    /// it unbuilt — `resolve_selection` places it the same way). Nothing
+    /// to compare by: the pair keeps its order.
+    fn end_precedes(&self, scope: Key, x: Endpoint, y: Endpoint) -> bool {
+        let prev = self.building;
+        let ox = self.text.scope_offset(scope, x.node, x.byte, prev);
+        let oy = self.text.scope_offset(scope, y.node, y.byte, prev);
+        match (ox, oy, x.row, y.row) {
+            (Some(ox), Some(oy), ..) => ox < oy,
+            (_, _, Some(rx), Some(ry)) => (rx, x.byte) < (ry, y.byte),
+            (Some(_), None, _, Some(ry)) => {
+                // `y` is unbuilt: before everything iff its row is under
+                // the lowest built one.
+                !self.row_is_before_built(ry)
+            }
+            (None, Some(_), Some(rx), _) => self.row_is_before_built(rx),
+            _ => true,
+        }
+    }
+
+    /// Whether the virtualised row `row` sits before every row the
+    /// finished frame built.
+    fn row_is_before_built(&self, row: u64) -> bool {
+        self.tree
+            .indexed
+            .iter()
+            .map(|(_, r)| *r)
+            .min()
+            .is_some_and(|lo| row < lo)
     }
 
     /// The selection's two ends as the drag made them — the anchor where
