@@ -1680,9 +1680,14 @@ pub const EVENTS: &[EventDef] = &[
         doc: "The physical modifier state changed (delivered to the host on the root).",
     },
     EventDef {
-        kind: "changed / submit",
-        payload: "`{ kind: \"changed\" }` / `{ kind: \"submit\" }`, with the editor's key on the event",
-        doc: "An editor's text changed / Enter in a single-line editor.",
+        kind: "changed",
+        payload: "`{ kind: \"changed\" }`, with the editor's key on the event",
+        doc: "An editor's text changed.",
+    },
+    EventDef {
+        kind: "submit",
+        payload: "`{ kind: \"submit\" }`, with the editor's key on the event",
+        doc: "Enter in a single-line editor.",
     },
     EventDef {
         kind: "sound",

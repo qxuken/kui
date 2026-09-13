@@ -41,8 +41,10 @@ platform did), AR7–AR49 from the second architecture review, filed
 2026-09-13 — forty-three entries under ten
 decisions, twenty of them defects, the audio store reconciled against
 every window's frame and the two key channels disagreeing about a
-chord at the top; **AR7 and AR8 built 2026-09-14**, the session rule
-written and the mounts and the removed ids moved under it — with the amendment on B1 whose condition that round
+chord at the top; **AR7–AR11 built 2026-09-14**, the session rule
+written and the mounts and the removed ids moved under it, a held key
+matched by position, one chord bit for both key channels, one attach
+pass on what a press made — with the amendment on B1 whose condition that round
 met; C31, found
 the same day building the tokens (Node's corpus adapter disagreeing with
 the reference on one scene when run alone — **done the same evening**:
@@ -2386,7 +2388,16 @@ a secondary window leaks device textures.
 **Fix:** a removed-ids list beside `fonts_rev` on `SessionState`, drained
 by whichever core renders next, with fragments on it too.
 
-### `!` AR9 — A held key's release is matched on `code`, and Shift changes `code` mid-hold
+### `!` AR9 — A held key's release is matched on `code`, and Shift changes `code` mid-hold — **done (2026-09-14)**
+
+**Done (2026-09-14), as the fix line says.** `KeyPress::same_key` —
+`physical` when both sides have one, `code` otherwise — is what the
+repeat check and the release match on. The test whose premise the entry
+called false keeps its name with its comment corrected, and two beside
+it pin the case: `w` held, `W` repeated under Shift, `W` released, and
+nothing left for a focus move to let go of; and an injected press with
+`physical: Unknown` still resolving by `code`. Red on `code` matching
+(checked by mutation). CHANGELOG under alpha.12.
 
 `KeyDown` pushes onto `keys_held` unless one with the same `code` is
 there, and `KeyUp` removes by `code`
@@ -2402,7 +2413,24 @@ press") is false whenever Shift moves.
 **Fix:** identify a held key by `physical` when it is not `Unknown`, `code`
 otherwise, for both the repeat check and the release.
 
-### `!` AR10 — The editing channel drops the chord bit, so a chord the sink heard also presses the control; Space ignores every modifier
+### `!` AR10 — The editing channel drops the chord bit, so a chord the sink heard also presses the control; Space ignores every modifier — **done (2026-09-14)**
+
+**Done (2026-09-14), the second of the entry's two carriers.** Not a
+bit on `Mods` — `Text` carries no `Mods`, and a field on a struct every
+binding builds is a wider change than the defect — but the last
+`KeyDown`'s `KeyMods` kept on the core (`pressed_mods`), set by the
+`KeyDown` arm and taken by whatever input event comes next, so the
+`Key` and `Text` arms ask `ctrl || alt || super_key` of the very press
+they are the second channel of; with no press before them they fall
+back to `word || doc` as before, so a test driving one channel behaves
+as it did. `edit_event` returns `None` for Space under Ctrl / Alt /
+Super. The helper derives `doc` from `primary()`. Three tests in
+`tests/key_bubbling.rs`, on the modifier `primary()` ignores for the
+platform the test runs on: Ctrl+Enter reaches the sink and not the
+button; Ctrl+Space has no text channel and reaches the sink; a `Text`
+after a chorded press bubbles with it, and a bare `Text` still presses.
+All three red on the old fold (checked by mutation and against HEAD).
+CHANGELOG under alpha.12.
 
 `route_key` calls any of ctrl/alt/super a chord
 (`runtime/dispatch.rs:919`). `edit_event` then folds them to `word: alt,
@@ -2425,7 +2453,25 @@ arms ask it; return `None` from `edit_event` for a Space under
 ctrl/alt/super like every other chord; make the test helper derive `doc`
 the way `primary()` does.
 
-### `!` AR11 — `attach_lines` reads the producer off `kind` against a table entry spelled `"changed / submit"`; `attach_cells` reads no producer at all
+### `!` AR11 — `attach_lines` reads the producer off `kind` against a table entry spelled `"changed / submit"`; `attach_cells` reads no producer at all — **done (2026-09-14)**
+
+**Done (2026-09-14), every line of the fix.** The mark is the
+producer's: `Interaction::handle` returns how many of the events at the
+end of `out` a press made (every arm pushes its drag and click last),
+and `Core::attach_pointer(out, n)` runs on that tail right after each
+pointer arm's call, before anything can reorder `out` — so a `key`, a
+`changed`, an access click and an Enter-made click are never in it,
+whatever their payload says, and a `{kind:"click"}` payload is. One
+pass: `pointer_point` (the payload's `x`/`y`, else the cursor) feeds
+`cell_row_col` — now `pub(crate)`, the copy in `attach_cells` gone —
+and the sink's line search. The `press_clicks() == 0` guard is not
+needed and is not there: a click with no press is not in the tail;
+`note_synthetic_click` stays for the count. The schema row is two rows
+and `props.md` is regenerated. Three tests, each run against HEAD's
+core to see it red: an `<edit>` under a lined sink typed into after a
+click (`changed` bare), a click payload named `click` (its `line`
+there), and a grid with `on_key` (no `cell` on the key or the reader's
+click, one on the press). CHANGELOG under alpha.12.
 
 Both post-passes (`runtime/dispatch.rs:60-113`, `:127-172`) add fields to
 events after the fact. `attach_lines` decides "pointer-made" by `kind`:
@@ -3198,7 +3244,8 @@ which the archived entry measures and leaves.
 **Build next.** The second architecture review, filed 2026-09-13 above
 as AR7–AR49, in the order its decisions argue for: AR7 and AR8 (the
 session rule written and the audio store and image drops moved under
-it — **both done 2026-09-14**), AR9–AR11 together (the held-key identity, the chord bit carried
+it — **both done 2026-09-14**), AR9–AR11 together — **all three done
+2026-09-14** (the held-key identity, the chord bit carried
 into the second channel, one attach pass with a producer-side mark),
 AR12 (Node's window handle), AR13–AR16 (the `<text>` rows, one token
 miss policy, Cut's `changed`, one `prepare_spec`), AR17–AR18 (the focus

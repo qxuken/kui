@@ -608,6 +608,65 @@ Nothing.
   hears of neither drop — the lists were never exported — which is filed
   rather than built here.
 
+- **A held key survives Shift moving under it** (backlog AR9). A held
+  key was matched to its release — and a repeat to its press — on
+  `code`, which the runner builds from the layout's logical key with no
+  case folding: hold `w`, press Shift to run, and the OS repeat arrived
+  as `W`, a second key held, with `w` stuck down until focus moved or
+  the window blurred and a synthetic `up w` fired at the wrong time.
+  The WASD case ADR 0002 sells `keyUp` for. `KeyPress::same_key` is new
+  and matches by `physical` when the platform reported one, `code`
+  otherwise, and both the repeat check and the release use it
+  (`tests/keys.rs`: the Shift-mid-hold case, and an injected press with
+  no position).
+
+- **Both key channels agree about a chord, and Space under a modifier
+  is one** (backlog AR10, ADR 0011 decision 3). `route_key` called any
+  of Ctrl / Alt / Super a chord; `KeyPress::edit_event` then folded them
+  to `word: alt, doc: primary()`, so the non-primary one — Ctrl on
+  macOS, Super elsewhere — was gone by the time the `Key` arm asked
+  whether the press bubbled: Ctrl+Enter on a focused button inside a
+  sink bubbled to the sink as a chord *and* clicked the button. And
+  Space was `Text(" ")` "whatever is held", with the `Text` arm passing
+  `chord = false` unconditionally, so Ctrl+Space (an IME toggle, an
+  Emacs mark) typed a space into an editor, or clicked a control and
+  reached the sink both. The core now keeps the modifiers of the
+  `KeyDown` the next input event is the second channel of
+  (`Core::pressed_mods`, set by a `KeyDown`, read and cleared by
+  whatever follows), and both arms ask that one bit; a `Key` or `Text`
+  with no press before it — a test driving one channel, a host's
+  editing-key door — falls back to its own `Mods` as before.
+  `edit_event` answers `None` for a Space under Ctrl / Alt / Super, as
+  for every other chord (Shift+Space is still a space). The
+  `tests/key_bubbling.rs` helper derives `doc` the way `primary()` does
+  instead of `ctrl || super`, a mapping no driver used — the F6 trap,
+  where a test passes on a path the runner never takes.
+
+- **A keystroke into an editor under a sink no longer carries the
+  mouse's `line` / `byte` / `clicks`, a `{kind: "click"}` payload is no
+  longer skipped, and a `cells` grid's `key` events no longer carry a
+  `cell`** (backlog AR11). Two post-passes added fields to events after
+  the fact by reading the payload's `kind` against the events table —
+  whose editor row was spelled `"changed / submit"` and matched
+  nothing, so a stock `<edit>` under a sink that draws `role="line"`
+  rows (a shell with a minibuffer) got the three fields on every
+  keystroke, resolved from wherever the mouse rested after a walk of
+  the whole sink and a `hit_at`; an app whose click payload was
+  `{kind: "click"}` got the opposite; and `attach_cells`, a day older
+  than its twin, had neither the filter nor the no-press guard, so a
+  grid with `onKey` got `cell: {row, col}` on every `key`, `text`,
+  `preedit` and `access` event and on an Enter-made click, from the
+  cursor's resting place, restating `cell_row_col` by hand. An event is
+  pointer-made where it is built now: `Interaction::handle` returns how
+  many of the events at the end of its output a press made — a drag in
+  any phase, a click on the release — and one `Core::attach_pointer`
+  runs on exactly those, giving a grid its `cell` through
+  `cell_row_col` and a sink's line its `line` / `byte` / `clicks`
+  through one `pointer_point`. The events table's row is two rows,
+  `changed` and `submit` (`docs/props.md` regenerated). Pinned in
+  `tests/sink_pointer.rs` and `tests/cells.rs`, each red on the old
+  pass.
+
 - **A window with one event in its devtools stream idled again** (found
   on screen building ADR 0029: after the first event reached the dock —
   a Cmd-C's `selectionrange` ask, a Shift key's `modifiers` — the runner

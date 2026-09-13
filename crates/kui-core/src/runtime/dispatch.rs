@@ -39,8 +39,6 @@ impl Core {
         // the core's; then everything that is left is logged on its way
         // out, stamped with its window first (ADR 0024, decision 4).
         self.devtools_consume(&mut out);
-        self.attach_cells(&mut out);
-        self.attach_lines(&mut out);
         self.devtools_translate(&mut out);
         self.stamp(&mut out);
         self.devtools_log(&out);
@@ -53,53 +51,44 @@ impl Core {
         out
     }
 
-    /// A click or drag on a cell grid says which cell: `cell: {row, col}`
-    /// joins the payload, from the event's own point for a drag and from
-    /// the cursor for a click, so the app never divides by a cell size it
-    /// did not choose (backlog C20). Only a map payload can carry it.
-    fn attach_cells(&mut self, out: &mut [UiEvent]) {
-        if self.tree.is_empty() || !self.tree.any_text {
+    /// A click or drag says where it landed, in the terms of the node it
+    /// landed on — the one pass both shapes go through (AR11), run on
+    /// the `n` events at the end of `out` that `Interaction::handle` just
+    /// made from a press, and on nothing else: a click Enter, Space or a
+    /// screen reader made has no point and no count, and the cursor is
+    /// wherever the mouse happens to rest. Only a map payload can carry
+    /// the fields.
+    ///
+    /// On a `cells` grid, `cell: {row, col}` — the same arithmetic a
+    /// selection uses (`cell_row_col`), so the app never divides by a
+    /// cell size it did not choose (backlog C20). Inside a key sink that
+    /// draws `role="line"` rows, `line` — the ordinal among the sink's
+    /// lines, the numbering its `access` events use — `byte` — where the
+    /// point falls in that line's text, what `text_hit` would answer —
+    /// and `clicks` — the press's count, so a double click is a word
+    /// without a timer the app keeps (backlog C34); a point above the
+    /// first line is the first, below the last the last, and one in a
+    /// gutter is the line beside it. The point is the event's own for a
+    /// drag and the cursor's for a click. Not opt-in, like `cell`: the
+    /// fields appear wherever the shape they describe is drawn, and a
+    /// handler that does not read them is not slower for their being
+    /// there.
+    fn attach_pointer(&mut self, out: &mut [UiEvent], n: usize) {
+        if n == 0 || self.tree.is_empty() || !(self.tree.any_text || self.tree.any_line) {
             return;
         }
-        for ev in out.iter_mut() {
+        let clicks = self.interaction.press_clicks();
+        let from = out.len() - n;
+        for ev in &mut out[from..] {
+            let Some(point) = self.pointer_point(ev) else {
+                continue;
+            };
             let Some(i) = self.tree.index_of(ev.key) else {
                 continue;
             };
-            let NodeContent::Cells(id) = self.tree.content[i] else {
-                continue;
-            };
-            let Value::Map(entries) = &ev.payload else {
-                continue;
-            };
-            let field = |name: &str| {
-                entries
-                    .iter()
-                    .find(|(k, _)| k == name)
-                    .and_then(|(_, v)| match v {
-                        Value::Float(f) => Some(*f as f32),
-                        Value::Int(n) => Some(*n as f32),
-                        _ => None,
-                    })
-            };
-            let point = match (field("x"), field("y")) {
-                (Some(x), Some(y)) => Vec2::new(x, y),
-                _ => match self.interaction.cursor() {
-                    Some(p) => p,
-                    None => continue,
-                },
-            };
-            let cell = {
-                let sess = &mut *self.session.state();
-                self.cells
-                    .cell_size(id, false, &sess.resources, &mut sess.fonts)
-            };
-            let (rows, cols) = self.cells.dims(id, false);
-            let pos = self.cells_origin(i);
-            let col = ((point.x - pos.x) / cell.w.max(f32::EPSILON)).floor();
-            let row = ((point.y - pos.y) / cell.h.max(f32::EPSILON)).floor();
-            let col = (col.max(0.0) as usize).min(cols.saturating_sub(1));
-            let row = (row.max(0.0) as usize).min(rows.saturating_sub(1));
-            if let Value::Map(entries) = &mut ev.payload {
+            if let Some((row, col)) = self.cell_row_col(ev.key, point)
+                && let Value::Map(entries) = &mut ev.payload
+            {
                 entries.push((
                     "cell".to_string(),
                     Value::map([
@@ -108,59 +97,9 @@ impl Core {
                     ]),
                 ));
             }
-        }
-    }
-
-    /// A press or drag inside a key sink says which of the sink's lines it
-    /// landed on, and where (backlog C34): `line` — the ordinal among the
-    /// sink's `role="line"` nodes, the numbering its `access` events use —
-    /// `byte` — where the point falls in that line's text, what `text_hit`
-    /// would answer — and `clicks` — the press's count, so a double click
-    /// is a word without a timer the app keeps. They join a click or drag
-    /// payload the way `cell` joins a grid's, from the event's own point
-    /// for a drag and from the cursor for a click; a point above the first
-    /// line is the first, below the last the last, and one in a gutter is
-    /// the line beside it. A sink with no lines adds nothing; only a map
-    /// payload can carry it. Not opt-in, like `cell`: the fields appear
-    /// wherever the shape they describe is drawn, and a handler that
-    /// does not read them is not slower for their being there.
-    fn attach_lines(&mut self, out: &mut [UiEvent]) {
-        // No lines anywhere: nothing to resolve against, and no sink's
-        // subtree is walked — a frame without a custom editor pays one
-        // flag read per event.
-        if self.tree.is_empty() || !self.tree.any_line {
-            return;
-        }
-        for ev in out.iter_mut() {
-            let Value::Map(entries) = &ev.payload else {
-                continue;
-            };
-            // A drag in any phase, or a click — whose payload is the
-            // app's own and carries no `kind` of the core's. A chosen
-            // menu row is the core's too and is not in the events table
-            // (it is documented with the menu bar), so it is named here.
-            let kind = ev.payload.get("kind").and_then(Value::as_str);
-            let drag = kind == Some("drag");
-            let pointer = match kind {
-                Some("drag") => true,
-                Some("menu") => false,
-                Some(k) => !crate::schema::EVENTS.iter().any(|e| e.kind == k),
-                None => true,
-            };
-            if !pointer {
+            if !self.tree.any_line {
                 continue;
             }
-            // A click nothing pressed for — Enter, Space, a screen
-            // reader's `click` — has no point and no count: the cursor
-            // is wherever the mouse happens to rest, and the last press
-            // was about something else.
-            let clicks = self.interaction.press_clicks();
-            if !drag && clicks == 0 {
-                continue;
-            }
-            let Some(i) = self.tree.index_of(ev.key) else {
-                continue;
-            };
             // The sink: this node, or the nearest above it.
             let mut sink = i;
             while self.tree.specs[sink].events().on_key.is_none() {
@@ -173,23 +112,6 @@ impl Core {
             if self.tree.specs[sink].events().on_key.is_none() {
                 continue;
             }
-            let field = |name: &str| {
-                entries
-                    .iter()
-                    .find(|(k, _)| k == name)
-                    .and_then(|(_, v)| match v {
-                        Value::Float(f) => Some(*f as f32),
-                        Value::Int(n) => Some(*n as f32),
-                        _ => None,
-                    })
-            };
-            let point = match (field("x"), field("y")) {
-                (Some(x), Some(y)) => Vec2::new(x, y),
-                _ => match self.interaction.cursor() {
-                    Some(p) => p,
-                    None => continue,
-                },
-            };
             let lines = crate::access::lines_under(&self.tree, sink);
             // Nearest vertically — inside one is a gap of zero — ties to
             // the earlier line.
@@ -218,6 +140,30 @@ impl Core {
                 entries.push(("byte".to_string(), Value::Int(byte as i64)));
                 entries.push(("clicks".to_string(), Value::Int(clicks as i64)));
             }
+        }
+    }
+
+    /// Where a pointer-made event happened: the `x` / `y` its payload
+    /// carries (a drag's), else the cursor (a click's), else nowhere —
+    /// and nowhere for a payload that is not a map, which can carry no
+    /// field anyway.
+    fn pointer_point(&self, ev: &UiEvent) -> Option<Vec2> {
+        let Value::Map(entries) = &ev.payload else {
+            return None;
+        };
+        let field = |name: &str| {
+            entries
+                .iter()
+                .find(|(k, _)| k == name)
+                .and_then(|(_, v)| match v {
+                    Value::Float(f) => Some(*f as f32),
+                    Value::Int(n) => Some(*n as f32),
+                    _ => None,
+                })
+        };
+        match (field("x"), field("y")) {
+            (Some(x), Some(y)) => Some(Vec2::new(x, y)),
+            _ => self.interaction.cursor(),
         }
     }
 
@@ -285,6 +231,18 @@ impl Core {
         // Chrome commands say which window they are about, and a hit
         // region does not know: the interaction store reads it from here.
         self.interaction.window = self.env.window.id;
+        // The press this event is the second channel of, if it is one:
+        // a `KeyDown` leaves its modifiers for the `Key` or `Text` that
+        // follows it, and anything else is not that (AR10).
+        let pressed = self.pressed_mods.take();
+        // Whether a modifier other than Shift was down on that press — the
+        // question `route_key` asked, asked again here so the two channels
+        // agree about a chord (`docs/adr/0011`, decision 3). Without a
+        // press, the editing `Mods` are what there is.
+        let chord = |mods: Option<crate::input::Mods>| match pressed {
+            Some(m) => m.ctrl || m.alt || m.super_key,
+            None => mods.is_some_and(|m| m.word || m.doc),
+        };
         match ev {
             InputEvent::Scroll(delta) => {
                 // Wheel up (positive y) reveals earlier content: offset decreases.
@@ -324,7 +282,7 @@ impl Core {
                         Some(c) => KeyCode::Char(c),
                         None => KeyCode::Unknown,
                     };
-                    if !self.bubbles(i, code, false)
+                    if !self.bubbles(i, code, chord(None))
                         && !self.type_ahead(i, &s, &mut out)
                         && s == " "
                     {
@@ -413,7 +371,7 @@ impl Core {
                     // sink above, nothing bubbled and every arm below runs
                     // as it always did — including Escape, which is how a
                     // control with no shortcut layer over it is let go of.
-                    && !edit_key_code(ek).is_some_and(|c| self.bubbles(i, c, mods.word || mods.doc))
+                    && !edit_key_code(ek).is_some_and(|c| self.bubbles(i, c, chord(Some(mods))))
                 {
                     // A control that is neither an editor nor a sink:
                     // Enter presses it, the arrows nudge a slider (the
@@ -461,11 +419,14 @@ impl Core {
                 }
             }
             InputEvent::KeyDown(kp) => {
+                self.pressed_mods = Some(kp.mods);
                 if self.route_key(&kp, KeyPhase::Down, &mut out) {
                     // Held from here until its release, focus moving, or
                     // the window losing the keyboard. A repeat of a key
-                    // already down is the same key, not a second one.
-                    if !self.keys_held.iter().any(|h| h.code == kp.code) {
+                    // already down is the same key, not a second one —
+                    // matched by position, since Shift moving mid-hold
+                    // changes the repeat's `code` (`KeyPress::same_key`).
+                    if !self.keys_held.iter().any(|h| h.same_key(&kp)) {
                         self.keys_held.push(kp.released());
                     }
                 }
@@ -474,7 +435,7 @@ impl Core {
                 // Only a key whose press was delivered has a release to
                 // deliver: one pressed while an editor held focus, or
                 // already let go of synthetically, resolves nothing.
-                if let Some(i) = self.keys_held.iter().position(|h| h.code == kp.code) {
+                if let Some(i) = self.keys_held.iter().position(|h| h.same_key(&kp)) {
                     self.keys_held.remove(i);
                     self.route_key(&kp.released(), KeyPhase::Up, &mut out);
                 }
@@ -534,8 +495,10 @@ impl Core {
                         if hit.is_none() {
                             self.dismiss(key, "outside", &mut out);
                         }
-                        self.interaction
+                        let n = self
+                            .interaction
                             .handle(InputEvent::MouseDown { button, clicks }, &mut out);
+                        self.attach_pointer(&mut out, n);
                         return out;
                     }
                     // A press moves focus (to a focusable node, or to the
@@ -631,8 +594,10 @@ impl Core {
                         self.focus_visible = false;
                     }
                 }
-                self.interaction
+                let n = self
+                    .interaction
                     .handle(InputEvent::MouseDown { button, clicks }, &mut out);
+                self.attach_pointer(&mut out, n);
                 // A right-click the app did not claim with `onContextMenu`
                 // gets the stock menu, where there is anything standard to
                 // put in one (ADR 0017, decision 5).
@@ -662,8 +627,10 @@ impl Core {
                 }
                 self.rehit(p);
                 self.follow_point(p);
-                self.interaction
+                let n = self
+                    .interaction
                     .handle(InputEvent::CursorMoved(p), &mut out);
+                self.attach_pointer(&mut out, n);
             }
             InputEvent::MouseUp { button } => {
                 if button == MouseButton::Primary {
@@ -672,12 +639,16 @@ impl Core {
                     self.select_dragging = None;
                     self.interaction.scrollbar_drag = None;
                 }
-                self.interaction
+                let n = self
+                    .interaction
                     .handle(InputEvent::MouseUp { button }, &mut out);
+                self.attach_pointer(&mut out, n);
             }
             InputEvent::ForceClick(p) => self.force_click(p, &mut out),
             InputEvent::Access(req) => self.handle_access(req, &mut out),
-            other => self.interaction.handle(other, &mut out),
+            other => {
+                self.interaction.handle(other, &mut out);
+            }
         }
         self.flush_sound_requests();
         // Input moves focus, carets and scroll offsets: an access tree
@@ -1211,8 +1182,10 @@ impl Core {
         let (origin, payload, window, sound) =
             (h.origin, h.payload.clone(), h.window, h.click_sound);
         let takes_focus = h.focusable && (h.edit_origin.is_some() || h.key_sink.is_some());
-        // Not a press: the payload gains no `line` / `byte` / `clicks`
-        // from wherever the pointer rests (`attach_lines`).
+        // Not a press: the payload gains no `cell` and no `line` /
+        // `byte` / `clicks` from wherever the pointer rests — only what
+        // `Interaction::handle` made from a press does (`attach_pointer`)
+        // — and the count the last press carried describes nothing now.
         self.interaction.note_synthetic_click();
         if let Some(sound) = sound {
             self.interaction.sound_requests.push(sound);

@@ -74,6 +74,10 @@ fn field(ev: &UiEvent, name: &str) -> Option<Value> {
     ev.payload.get(name).cloned()
 }
 
+fn field_of(ev: &UiEvent, name: &str) -> Option<Value> {
+    field(ev, name)
+}
+
 fn kind(ev: &UiEvent) -> Option<String> {
     ev.payload
         .get("kind")
@@ -223,6 +227,91 @@ fn a_key_on_the_sink_gains_nothing() {
         .expect("the key arrived");
     assert_eq!(field(key, "line"), None);
     assert_eq!(field(key, "clicks"), None);
+}
+
+/// AR11: the pass used to decide "pointer-made" from the payload's
+/// `kind` against the events table, whose editor row was spelled
+/// `"changed / submit"` — so a stock `<edit>` under a sink that draws
+/// lines (a shell with a minibuffer) got `line`, `byte` and `clicks` on
+/// every keystroke, resolved from wherever the mouse rested, after a
+/// walk of the whole sink. An event is pointer-made where it is built
+/// now, and a keystroke's `changed` is not.
+#[test]
+fn an_editors_changed_under_the_sink_gains_nothing() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill().pad(10.0));
+    let mut field = Key::ROOT;
+    ui.with_keyed(
+        "shell",
+        NodeSpec::column().fill().on_key(Value::Null),
+        |ui| {
+            ui.with(
+                NodeSpec::row().height(Sizing::Fixed(LH)).role(Role::Line),
+                |ui| ui.text("a line", mono()),
+            );
+            field = kui_core::widgets::text_input(ui, "minibuffer", "");
+        },
+    );
+    ui.finish();
+    // A click on the line row first — the count it leaves behind is what
+    // the old pass read for every event after it — then focus into the
+    // field and type, with the mouse still resting on the line.
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(50.0, 10.0 + 5.0)));
+    core.handle_input(InputEvent::mouse_down(1));
+    core.handle_input(InputEvent::mouse_up());
+    core.set_focus(Some(field));
+    let evs = core.handle_input(InputEvent::Text("x".into()));
+    let changed = evs
+        .iter()
+        .find(|e| kind(e).as_deref() == Some("changed"))
+        .expect("the editor changed");
+    assert_eq!(changed.key, field);
+    assert_eq!(field_of(changed, "line"), None, "{:?}", changed.payload);
+    assert_eq!(field_of(changed, "byte"), None);
+    assert_eq!(field_of(changed, "clicks"), None);
+}
+
+/// The other half of the same defect: a click whose payload spelled
+/// `{kind: "click"}` — a name in the events table — counted as the
+/// core's and was skipped. The mark is the press's now, whatever the
+/// payload says.
+#[test]
+fn a_click_payload_named_like_a_core_event_still_gains_its_line() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill().pad(10.0));
+    let sink = ui.with_keyed(
+        "editor",
+        NodeSpec::column()
+            .fill()
+            .on_key(Value::Null)
+            .on_click(Value::map([("kind", Value::str("click"))])),
+        |ui| {
+            for line in ["one", "two"] {
+                ui.with(
+                    NodeSpec::row().height(Sizing::Fixed(LH)).role(Role::Line),
+                    |ui| ui.text(line, mono()),
+                );
+            }
+        },
+    );
+    ui.take_key_focus(sink);
+    ui.finish();
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(12.0, 10.0 + LH + 5.0)));
+    core.handle_input(InputEvent::mouse_down(1));
+    let evs = core.handle_input(InputEvent::mouse_up());
+    let click = evs
+        .iter()
+        .find(|e| kind(e).as_deref() == Some("click"))
+        .expect("the click arrived");
+    assert_eq!(
+        field_of(click, "line"),
+        Some(Value::Int(1)),
+        "{:?}",
+        click.payload
+    );
+    assert_eq!(field_of(click, "clicks"), Some(Value::Int(1)));
 }
 
 #[test]

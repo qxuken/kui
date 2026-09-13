@@ -70,9 +70,9 @@ impl Core {
     }
 
     /// Where `point` lands in that grid, as a row and column clamped to
-    /// it — the same arithmetic a `cell` payload on a click uses, so a
-    /// selection and an app's own hit test agree.
-    fn cell_row_col(&mut self, key: Key, point: Vec2) -> Option<(usize, usize)> {
+    /// it — the one arithmetic, so the `cell` a click's payload carries
+    /// (`attach_pointer`), a selection and an app's own hit test agree.
+    pub(crate) fn cell_row_col(&mut self, key: Key, point: Vec2) -> Option<(usize, usize)> {
         // Off the tree, not off the store: a hit test needs the node's
         // box, and only a built frame has one. Which is also why this one
         // reads the drawn frame rather than `building` — nothing hit-tests

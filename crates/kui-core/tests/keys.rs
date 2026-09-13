@@ -815,8 +815,59 @@ fn both_codes_cross_as_data() {
     assert_eq!(p.get("physical").and_then(Value::as_str), Some("v"));
 }
 
+/// AR9, the WASD case ADR 0002 sells `keyUp` for: hold `w`, press Shift
+/// to run, and the OS repeat arrives as `W`. Matched on `code` that was
+/// a second held key, and letting go of `W` left `w` held until focus
+/// moved — a synthetic `up w` at the wrong time. The position is what
+/// the finger never left, so the repeat is the same key and the release
+/// lets go of it, whichever case the layout put on it.
+#[test]
+fn shift_moving_under_a_held_key_does_not_make_it_a_second_key() {
+    let mut core = Core::new();
+    frame(&mut core, true);
+    let w = KeyPress::new(KeyCode::Char('w'), KeyMods::default());
+    let shift = KeyMods {
+        shift: true,
+        ..KeyMods::default()
+    };
+    let big_w = KeyPress {
+        code: KeyCode::Char('W'),
+        physical: KeyCode::Char('w'),
+        mods: shift,
+        text: None,
+        repeat: true,
+    };
+    let evs = drive(&mut core, &[InputEvent::KeyDown(w)]);
+    assert_eq!(keys(&evs), [("down".into(), "w".into())]);
+    // The repeat under Shift reports as the layout says, and is not a
+    // second key held.
+    let evs = drive(&mut core, &[InputEvent::KeyDown(big_w.clone())]);
+    assert_eq!(keys(&evs), [("down".into(), "W".into())]);
+    // Letting go of `W` is letting go of the one key.
+    let evs = drive(&mut core, &[InputEvent::KeyUp(big_w.released())]);
+    assert_eq!(keys(&evs), [("up".into(), "W".into())]);
+    // Nothing is still held: moving focus releases no `w`.
+    core.set_focus(None);
+    assert!(
+        keys(&core.take_pending_events()).is_empty(),
+        "no key was left held"
+    );
+}
+
+/// An injected press whose position the vocabulary cannot name has only
+/// its `code` to be matched on, and is.
+#[test]
+fn a_press_with_no_position_is_matched_on_its_code() {
+    let mut core = Core::new();
+    frame(&mut core, true);
+    let f = KeyPress::new(KeyCode::Char('f'), KeyMods::default()).with_physical(KeyCode::Unknown);
+    drive(&mut core, &[InputEvent::KeyDown(f.clone())]);
+    let evs = drive(&mut core, &[InputEvent::KeyUp(f.released())]);
+    assert_eq!(keys(&evs), [("up".into(), "f".into())]);
+}
+
 /// A Dvorak user holding a key and letting go resolves it: the release is
-/// matched on `code`, which is stable across the press for a given key.
+/// matched on the key's position, which is what stays put across a press.
 #[test]
 fn a_held_key_on_a_remapped_layout_resolves_its_release() {
     let mut core = Core::new();

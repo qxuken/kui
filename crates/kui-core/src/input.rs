@@ -542,6 +542,22 @@ impl KeyPress {
         self
     }
 
+    /// Whether `other` is a press or release of the same key as this one
+    /// — how a release is matched to the press it lets go of, and a repeat
+    /// to the press it repeats. By position when the platform reported
+    /// one, because `code` moves under a held key: hold `w`, press Shift,
+    /// and the OS repeat arrives as `W`, which by `code` would be a second
+    /// key held, with the first stuck down until focus moved (AR9). A
+    /// press whose position the vocabulary could not name is matched on
+    /// `code`, which is all it has.
+    pub fn same_key(&self, other: &KeyPress) -> bool {
+        if self.physical != KeyCode::Unknown && other.physical != KeyCode::Unknown {
+            self.physical == other.physical
+        } else {
+            self.code == other.code
+        }
+    }
+
     /// The **second** event a real key press produces, after its
     /// [`InputEvent::KeyDown`] — the other half of what a window does with
     /// one key going down, and the one table that says which key is which.
@@ -576,10 +592,16 @@ impl KeyPress {
             KeyCode::Escape => EditKey::Escape,
             // Space is the text channel rather than an `EditKey`: it
             // inserts into a focused editor and presses a focused control
-            // (`docs/adr/0002`), and it says " " whatever is held — the
-            // rule the winit runner has always applied, kept here so
-            // lifting the table changed no window's behaviour.
-            KeyCode::Space => return Some(InputEvent::Text(" ".to_string())),
+            // (`docs/adr/0002`). Under Shift it is still a space; under
+            // any other modifier it is a chord like every other chord —
+            // an IME toggle, an Emacs mark — and inserts nothing (AR10;
+            // before that it said " " whatever was held, so Ctrl+Space
+            // typed a space into an editor and clicked a control).
+            KeyCode::Space => {
+                let m = self.mods;
+                return (!m.ctrl && !m.alt && !m.super_key)
+                    .then(|| InputEvent::Text(" ".to_string()));
+            }
             // Anything else inserts whatever it inserts. A driver leaves
             // `text` unset for a chord, so this is where one stops.
             _ => {
@@ -1267,8 +1289,16 @@ impl Interaction {
         UiEvent::on(state.origin, state.key, payload).tagged(Some(&state.tag))
     }
 
-    pub fn handle(&mut self, ev: InputEvent, out: &mut Vec<UiEvent>) {
+    /// Returns how many of the events at the end of `out` a press made —
+    /// a drag in any phase, a click on the release — as against the
+    /// hover, context-menu and modifier events it also raises. That is
+    /// the mark `Core::attach_pointer` reads to give a click or drag its
+    /// `cell` and `line` / `byte` / `clicks`: said here, where the event
+    /// is built, rather than guessed afterwards from its payload's
+    /// `kind` (AR11). Every arm pushes its pointer-made events last.
+    pub fn handle(&mut self, ev: InputEvent, out: &mut Vec<UiEvent>) -> usize {
         out.append(&mut self.pending);
+        let mut pointer_made = 0;
         match ev {
             InputEvent::CursorMoved(p) => {
                 self.cursor = Some(p);
@@ -1283,6 +1313,7 @@ impl Interaction {
                     }
                     if drag.moved {
                         out.push(Self::drag_event(drag, "move", p, d));
+                        pointer_made += 1;
                     }
                 }
             }
@@ -1325,6 +1356,7 @@ impl Interaction {
                             moved: false,
                         };
                         out.push(Self::drag_event(&state, "start", p, Vec2::ZERO));
+                        pointer_made += 1;
                         self.drag = Some(state);
                     }
                 }
@@ -1358,6 +1390,7 @@ impl Interaction {
                 let dragged = self.drag.take().inspect(|drag| {
                     let p = self.cursor.unwrap_or(drag.last);
                     out.push(Self::drag_event(drag, "end", p, drag.displacement(p)));
+                    pointer_made += 1;
                 });
                 // A press that actually dragged is not a click.
                 let click_ok = !dragged.is_some_and(|d| d.moved);
@@ -1374,18 +1407,22 @@ impl Interaction {
                             self.window_commands.push(b.command(self.window))
                         }
                         (Some(WindowRole::Drag), _) | (None, None) => {}
-                        (None, Some(payload)) => out.push(UiEvent {
-                            origin: region.origin,
-                            window: WindowId::MAIN,
-                            key: region.key,
-                            payload: payload.clone(),
-                        }),
+                        (None, Some(payload)) => {
+                            out.push(UiEvent {
+                                origin: region.origin,
+                                window: WindowId::MAIN,
+                                key: region.key,
+                                payload: payload.clone(),
+                            });
+                            pointer_made += 1;
+                        }
                     }
                 }
                 self.pressed = None;
                 self.pressed_group = None;
             }
         }
+        pointer_made
     }
 
     pub fn is_hovered(&self, key: Key) -> bool {

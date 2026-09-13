@@ -209,6 +209,68 @@ fn a_click_names_its_cell_and_the_screen_is_the_value() {
     assert_eq!(node.value.as_deref(), Some("hello world\n  bye"));
 }
 
+/// AR11: `attach_cells` had neither the pointer filter nor the no-press
+/// guard its twin had, so a grid with `on_key` got `cell: {row, col}` on
+/// every `key` event, and on an Enter-made click, from wherever the
+/// cursor rested. Only what a press made carries a cell now.
+#[test]
+fn a_key_on_the_grid_and_a_click_without_a_press_name_no_cell() {
+    use kui_core::{InputEvent, KeyCode, KeyMods, KeyPress, Value};
+    let mut core = Core::new();
+    let cells: Vec<Cell> = "ab".chars().map(|c| Cell::new(c, 0xffffffff, 0)).collect();
+    let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill().pad(10.0));
+    let key = ui.child_key("term");
+    ui.cells_keyed(
+        "term",
+        &CellGrid {
+            rows: 1,
+            cols: 2,
+            cells: &cells,
+            style: mono(),
+            cursor: None,
+            origin_line: 0,
+        },
+        NodeSpec::default()
+            .on_key(Value::Null)
+            .on_click(Value::map([("kind", Value::str("hit"))])),
+    );
+    ui.take_key_focus(key);
+    ui.finish();
+    let has_cell = |e: &kui_core::UiEvent| e.payload.get("cell").is_some();
+    // The mouse rests on the grid.
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(15.0, 15.0)));
+    let evs = core.handle_input(InputEvent::KeyDown(KeyPress::new(
+        KeyCode::Char('j'),
+        KeyMods::default(),
+    )));
+    let k = evs
+        .iter()
+        .find(|e| e.payload.get("kind").and_then(Value::as_str) == Some("key"))
+        .expect("the key arrived");
+    assert!(!has_cell(k), "{:?}", k.payload);
+    // A click Enter made: the sink holds focus, so it is the keyboard's
+    // and no click arrives; a screen reader's click does, without a cell.
+    use kui_core::{AccessAction, AccessRequest};
+    let evs = core.handle_input(InputEvent::Access(AccessRequest::new(
+        key,
+        AccessAction::Click,
+    )));
+    let click = evs
+        .iter()
+        .find(|e| e.payload.get("kind").and_then(Value::as_str) == Some("hit"))
+        .expect("the click arrived");
+    assert!(!has_cell(click), "{:?}", click.payload);
+    // And a real press does name it.
+    core.handle_input(InputEvent::mouse_down(1));
+    let evs = core.handle_input(InputEvent::mouse_up());
+    let click = evs
+        .iter()
+        .find(|e| e.payload.get("kind").and_then(Value::as_str) == Some("hit"))
+        .expect("the click arrived");
+    assert!(has_cell(click), "{:?}", click.payload);
+}
+
 /// The grid's box is a box like any leaf's (AR5): its `hover_bg` lights
 /// under the pointer and its `transition` tweens the bg. The cells inside
 /// are the app's picture and are not what a tween reaches.

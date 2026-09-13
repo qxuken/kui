@@ -107,10 +107,13 @@ fn window_press(
 ) -> Vec<UiEvent> {
     let mut out = core.handle_input(InputEvent::KeyDown(KeyPress::new(code, mods)));
     if let Some(ek) = ek {
+        // `doc` the way the runner derives it (`KeyMods::primary`): the
+        // platform's primary modifier and not "either", which no driver
+        // sends (AR10's F6 trap).
         let m = Mods {
             shift: mods.shift,
             word: mods.alt,
-            doc: mods.ctrl || mods.super_key,
+            doc: mods.primary(),
         };
         out.extend(core.handle_input(InputEvent::Key(ek, m)));
     }
@@ -254,6 +257,104 @@ fn a_chord_bubbles_even_when_the_bare_key_is_the_controls() {
         evs.iter().all(|e| e.key == k.shell),
         "the button must not also be pressed"
     );
+}
+
+/// The modifier `KeyMods::primary` ignores — Ctrl on macOS, Super
+/// elsewhere. A chord on it is the one the second channel used to fold
+/// away.
+fn non_primary() -> KeyMods {
+    if cfg!(target_os = "macos") {
+        KeyMods {
+            ctrl: true,
+            ..Default::default()
+        }
+    } else {
+        KeyMods {
+            super_key: true,
+            ..Default::default()
+        }
+    }
+}
+
+/// AR10: `edit_event` folds the modifiers to `word: alt, doc: primary()`,
+/// so the non-primary of Ctrl/Super was gone by the time the `Key` arm
+/// asked whether the press bubbled — the raw press had bubbled as a
+/// chord, and then Enter pressed the button as well, the disagreement
+/// ADR 0011 decision 3 forbids. The chord bit is the `KeyDown`'s now,
+/// on both channels.
+#[test]
+fn a_chord_on_the_non_primary_modifier_does_not_also_press_the_control() {
+    let mut core = Core::new();
+    let k = shell(&mut core, false);
+    core.set_focus(Some(k.go));
+    let evs = window_press(
+        &mut core,
+        KeyCode::Enter,
+        non_primary(),
+        Some(EditKey::Enter),
+        None,
+    );
+    assert_eq!(
+        sink_events(&evs),
+        vec![(k.shell, "down".to_string(), "enter".to_string())]
+    );
+    assert!(
+        evs.iter().all(|e| e.key == k.shell),
+        "the button must not also be pressed: {evs:?}"
+    );
+}
+
+/// Space under a modifier other than Shift is a chord like any other:
+/// it reaches the sink as a press and inserts nothing, presses nothing.
+/// Before, `edit_event` said " " whatever was held, so Ctrl+Space (an IME
+/// toggle, an Emacs mark) typed a space and clicked a button both.
+#[test]
+fn space_under_a_modifier_is_a_chord_and_types_nothing() {
+    let ctrl_space = KeyPress::new(KeyCode::Space, non_primary());
+    assert_eq!(ctrl_space.edit_event(), None, "no text channel for a chord");
+    let shift_space = KeyPress::new(
+        KeyCode::Space,
+        KeyMods {
+            shift: true,
+            ..Default::default()
+        },
+    );
+    assert_eq!(
+        shift_space.edit_event(),
+        Some(InputEvent::Text(" ".into())),
+        "Shift+Space is still a space"
+    );
+
+    let mut core = Core::new();
+    let k = shell(&mut core, false);
+    core.set_focus(Some(k.go));
+    let evs = core.press(ctrl_space);
+    assert_eq!(
+        sink_events(&evs),
+        vec![(k.shell, "down".to_string(), "space".to_string())]
+    );
+    assert!(evs.iter().all(|e| e.key == k.shell), "{evs:?}");
+}
+
+/// The `Text` channel asks the press's chord bit too: a driver that still
+/// sends a text for a chorded Space — as every driver did before AR10 —
+/// has it bubble with the press rather than press the control.
+#[test]
+fn a_text_after_a_chorded_press_bubbles_with_it() {
+    let mut core = Core::new();
+    let k = shell(&mut core, false);
+    core.set_focus(Some(k.go));
+    let evs = window_press(&mut core, KeyCode::Space, non_primary(), None, Some(" "));
+    assert_eq!(
+        sink_events(&evs),
+        vec![(k.shell, "down".to_string(), "space".to_string())]
+    );
+    assert!(evs.iter().all(|e| e.key == k.shell), "{evs:?}");
+    // And a bare `Text` with no press before it — a test driving one
+    // channel — has no chord to agree with, and presses as it always did.
+    let evs = core.handle_input(InputEvent::Text(" ".into()));
+    assert_eq!(evs.len(), 1);
+    assert_eq!(evs[0].payload, Value::str("go"));
 }
 
 #[test]

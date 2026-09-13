@@ -24,7 +24,7 @@ use crate::edit::{EditOptions, EditStore};
 use crate::env::{Env, SystemEnv};
 use crate::geom::{Rect, Size, Vec2};
 use crate::input::{
-    EditKey, HitRegion, InputEvent, Interaction, KeyCode, KeyPhase, KeyPress, MouseButton,
+    EditKey, HitRegion, InputEvent, Interaction, KeyCode, KeyMods, KeyPhase, KeyPress, MouseButton,
     ScrollAxis, ScrollRegion, ScrollbarRegion, UiEvent,
 };
 use crate::key::{Key, LabelIndex};
@@ -195,6 +195,14 @@ pub struct Core {
     /// (so a sink never sees a release it did not see the press of), and
     /// focus leaving synthesizes the missing releases from it.
     keys_held: Vec<KeyPress>,
+    /// The modifiers of the `KeyDown` the next input event is the second
+    /// channel of (`KeyPress::edit_event`), so the `Key` and `Text` arms
+    /// ask the same chord question the raw press did (AR10, ADR 0011
+    /// decision 3). Set by a `KeyDown`, read and cleared by whatever
+    /// comes next: a `Key` or `Text` with no press before it — a test
+    /// driving one channel, a host's editing-key door — has no chord to
+    /// agree with and falls back to what its own `Mods` say.
+    pressed_mods: Option<KeyMods>,
     pub(crate) tree: Tree,
     /// Whether `finish_frame` copies the frame into `inspected` (see
     /// `runtime/inspect.rs`); off unless a devtool asked.
@@ -742,6 +750,7 @@ impl Core {
             declared_windows: Vec::new(),
             declared_windows_last: Vec::new(),
             keys_held: Vec::new(),
+            pressed_mods: None,
             access: Default::default(),
             access_built: 0,
             access_inputs: None,
