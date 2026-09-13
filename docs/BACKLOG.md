@@ -2063,6 +2063,38 @@ the shape is named so it does not grow the cell: a side table of
 more than a scalar, keyed into the same `other` glyph map by the
 cluster's string, so a 200 × 50 pane stays 160 KB a frame.
 
+### `.` C38 — The clipboard has no example, in any binding — **done (2026-09-13)**
+
+Filed while building C33, from the question "is there an example of the
+clipboard mechanism?" — there was not. Four examples touched it in
+passing: `widgets/edit` lists the chords, `features/selection` reads
+`selection_text` / `selection_html` in its drive, `widgets/context_menu`
+shows the stock rows, and `apps/modal_editor` (since C33) the sink's two
+doors from Rust. None showed the **drain** a host sees, the virtual
+list's `selectionrange` ask (`tests/virtual_selection.rs` was its only
+pin, and the Node `virtual_list` never answered one), or the C33 doors
+from Node — and the `selectionrange` event was in no events table and
+not in Node's `CoreMsg`.
+
+Done: `examples/rust/features/clipboard.rs` and its Node twin
+`examples/node/features/clipboard.tsx`, one subject each (ADR 0021): the
+four ways onto the one queue — an `edit` under the runner's chords (no
+queue: the drive reads `request_copy` answering at once and
+`take_menu_actions` empty), a `selectable` card whose stock menu's Copy
+queues text and HTML, a selectable `virtual_column` whose copy over
+unbuilt rows is a `selectionrange` the app answers from its rows, and an
+`on_key` register bound to `set_clipboard` / `request_paste` with the
+paste landing as the sink's `text` event — each pinned by the headless
+drive, in both. Both checked on screen with `pbpaste` / `pbcopy`. With
+them: a `selectionrange` row in `schema::EVENTS` (so `props.md` and the
+Node docs carry it), `SelectionRangeMsg` in Node's `CoreMsg`, and
+`docs/howto.md` "How does copy and paste work?" — the map of the
+mechanism, which the breakdown that produced this entry was. What the
+round did not change: the chord path still bypasses the queue (a
+headless test cannot see a chord's copy), a paste still has no address,
+and `MenuAction` is still the queue's name — all three discussed, none
+asked for yet.
+
 ### Wishes, not entries
 
 Three things an editor will ask for that have an answer today and a

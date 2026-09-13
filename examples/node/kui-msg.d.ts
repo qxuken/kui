@@ -22,7 +22,9 @@ type AppMessages =
   | { kind: 'pan' }
   | { kind: 'card'; id: string }
   // widgets/virtual_list.tsx: the row a click picked.
-  | { kind: 'pick'; row: number };
+  | { kind: 'pick'; row: number }
+  // features/clipboard.tsx: the register's key-sink tag.
+  | { kind: 'register' };
 
 declare module '@qxuken/kui/jsx-runtime' {
   interface KuiMsg {

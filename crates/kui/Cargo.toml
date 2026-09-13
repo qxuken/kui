@@ -132,6 +132,7 @@ headless = [
     "cells",
     "menu_bar",
     "selection",
+    "clipboard",
     "context_menu",
     "image",
     "polygon",
@@ -240,6 +241,10 @@ path = "../../examples/rust/widgets/menu_bar.rs"
 [[example]]
 name = "selection"
 path = "../../examples/rust/features/selection.rs"
+
+[[example]]
+name = "clipboard"
+path = "../../examples/rust/features/clipboard.rs"
 
 [[example]]
 name = "transition"

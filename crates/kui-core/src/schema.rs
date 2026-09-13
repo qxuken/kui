@@ -1612,6 +1612,11 @@ pub const EVENTS: &[EventDef] = &[
         doc: "An in-progress IME composition on the focused `onKey` sink: `text` is the uncommitted string to show inline at the caret, `cursor` the byte range inside it the IME's own caret covers (null when it does not say), and an empty `text` means the composition ended without a commit, so what was shown goes away. The OS candidate window is anchored for you: the `line` carrying `caret` says where. A focused `<edit>` draws the composition itself.",
     },
     EventDef {
+        kind: "selectionrange",
+        payload: "`{ kind: \"selectionrange\", from: { index, byte }, to: { index, byte } }` on the scope",
+        doc: "A copy reached rows of a `selectable` virtual list that no frame built (`docs/adr/0017-selection-as-a-scope.md`, tier 3): the core cannot read text it never laid out, so it asks the app for the range — `index` is a row's data index (its `index` prop), `byte` an offset into that row's text — and the app answers with `answerSelectionRange(text)` / `answer_selection_range` / `kui_answer_selection_range`, which is what reaches the clipboard as a `setClipboard` action. Raised only while a copy is outstanding (`requestCopy()` answered `asked`, or the runner's Cmd/Ctrl-C did); a late answer changes nothing. `examples/rust/features/clipboard.rs` and its Node twin show the round trip.",
+    },
+    EventDef {
         kind: "contextmenu",
         payload: "`{ kind: \"contextmenu\", x, y, tag }`",
         doc: "A secondary-button press on an `onContextMenu` node, on the press rather than the release; `x`/`y` are logical viewport coordinates — where the menu goes. The core opens nothing: the app declares the menu (a `modal` float) and stops declaring it on `dismiss`.",

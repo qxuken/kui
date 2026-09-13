@@ -114,6 +114,19 @@ export type MenuMsg<T = AppMsg> = {
   item: T;
 };
 
+/** A copy reached rows of a `selectable` virtual list that no frame built
+ *  (ADR 0017, tier 3): the core cannot read text it never laid out, so it
+ *  asks the app, on the scope, for the range — `from`/`to` are row indices
+ *  (`index`, the row's data index) and byte offsets into each row's text —
+ *  and the app answers with `answerSelectionRange(text)`, which is what
+ *  reaches the clipboard. Only while `requestCopy()` answered `asked`; a
+ *  late answer changes nothing. */
+export type SelectionRangeMsg = {
+  kind: 'selectionrange';
+  from: { index: number; byte: number };
+  to: { index: number; byte: number };
+};
+
 /** The pointer entered or left an `onHover` node — also when a new frame
  *  moved it under a still cursor. */
 export type HoverMsg<T = AppMsg> = {
@@ -299,6 +312,7 @@ export type CoreMsg =
   | PreeditMsg
   | ContextMenuMsg
   | MenuMsg
+  | SelectionRangeMsg
   | HoverMsg
   | LayoutMsg
   | DismissMsg

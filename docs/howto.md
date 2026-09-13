@@ -290,6 +290,58 @@ anchored at the `line` carrying `caret` for you.
 [`text` and `preedit` events](props.md#events) ·
 [alpha.9](../CHANGELOG.md#010-alpha9-2026-09-08)
 
+### How does copy and paste work?
+
+The clipboard is the host's — the core never reads it — so every copy is
+someone working out *what* and handing the host the text, and every
+paste is the host reading the clipboard and handing the text back as
+input. There are four ways onto it, and they end in one queue:
+
+1. **The chords.** `Cmd/Ctrl-C/X/V/A` are the windowed runner's own,
+   performed while an `edit` or a `selectable` scope (a `cells` grid is
+   one) has focus: Copy reads the selection — an editor's, or a scope's
+   runs in reading order with the bold and italic beside as HTML — and
+   writes the clipboard directly; Paste is typing into the editor. No
+   queue, so a headless test sees nothing from a chord: it reads
+   `requestCopy()` / `selectionText()` / `selectionHtml()` instead.
+2. **The stock menus.** The context menu over an editor (Cut / Copy /
+   Paste / Select All) or a scope (Copy / Select All), and `role: copy |
+   cut | paste` rows in your own menus or the menu bar. The core performs
+   the row and queues a `setClipboard` (with `text` and `html`) or a
+   `paste`.
+3. **A virtual list's ask.** A copy whose selection reaches rows no frame
+   built cannot be answered by the core: `requestCopy()` says `asked`, a
+   `{kind:"selectionrange", from:{index, byte}, to:{index, byte}}`
+   message arrives on the scope, and `answerSelectionRange(text)` — the
+   rows are yours — queues the `setClipboard`.
+4. **Your own.** `setClipboard(text, html?)` and `requestPaste()` (Rust
+   `ui.set_clipboard` / `ui.request_paste`, Lua `env.set_clipboard` /
+   `env.request_paste`, C `kui_set_clipboard` / `kui_request_paste`)
+   queue the same two actions from anywhere — an `onKey` sink that hears
+   `Cmd-C` raw and wants a yank register, an "export" button, a
+   `withEffects` handler that calls `surface.setClipboard` the way it
+   calls `surface.play`.
+
+**The queue.** In a window the runner drains it after every input and
+every frame and does the work: a `setClipboard` goes to the OS, a `paste`
+reads the OS and comes back as a **commit** — typing into the focused
+editor, or `{kind:"text", text, tag}` on the focused `onKey` sink (the
+nearest one above a focused control, or the root sink with nothing
+focused), the same message an IME's commit arrives on, so one arm handles
+both. Headless, `takeMenuActions()` (`Core::take_menu_actions`,
+`kui_take_menu_action`) is the queue and `commit(text)` the answer; a C
+host driving its own window drains it the same way and reads the
+clipboard itself. A paste with no editor and no sink to land on is
+dropped.
+
+`examples/rust/features/clipboard.rs` and `examples/node/features/clipboard.tsx`
+do all four, with a headless drive that pins what each leaves in the
+queue.
+
+[`selectionrange` and `text` events](props.md#events) ·
+[ADR 0017](adr/0017-selection-as-a-scope.md) ·
+[alpha.12](../CHANGELOG.md#010-alpha12-unreleased)
+
 ### How do I give the editor I own a mouse and a clipboard?
 
 Put `onDrag` on the same `onKey` sink. Every `drag` event inside it then

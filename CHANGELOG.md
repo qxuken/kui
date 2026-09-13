@@ -118,6 +118,19 @@ Nothing.
   and C suites); `access::lines_under` is the one walk both the access
   tree and the payload use, so the two numberings cannot drift.
 
+- **The clipboard has an example, and an article** (backlog C38, the
+  same day). `examples/rust/features/clipboard.rs` and
+  `examples/node/features/clipboard.tsx` show the four ways onto the
+  host's one queue — the runner's chords in an `edit`, a `selectable`
+  scope's stock Copy with the HTML beside, a selectable virtual list's
+  `selectionrange` ask answered from the app's rows, and an `onKey`
+  register's own `y` / `p` through `setClipboard` / `requestPaste` —
+  and the two ways a paste lands, each pinned by a headless drive that
+  reads the queue. `docs/howto.md` gained "How does copy and paste
+  work?", the map of it. The `selectionrange` event, which only a test
+  and the C header had ever named, is in the events table now and in
+  Node's `CoreMsg` as `SelectionRangeMsg`.
+
 - **Always on top** (backlog C30). A window an app wants kept above every
   other app's — a floating palette, a picture-in-picture player, a timer,
   a pinned note — can now ask for it, and the ask has the title's shape:

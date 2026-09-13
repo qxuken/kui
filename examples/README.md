@@ -147,6 +147,7 @@ table says so.
 | [`drag.rs`](rust/features/drag.rs) | `on_drag`: start/move/end with the displacement since the press — a slider by travel, a card moved by its float offset, the pointer captured until the release | ✓ | |
 | [`transition.rs`](rust/features/transition.rs) | Motion as data: `transition`, every `easing` racing, `slide` between anchors, `keyframes` with `repeat` and `delay` as a chase light | ✓ | |
 | [`selection.rs`](rust/features/selection.rs) | Selection as a scope (ADR 0017) over `text`, spans, `cells` and `edit`: one selection per window, read back | ✓ | force-click a word for Look Up |
+| [`clipboard.rs`](rust/features/clipboard.rs) | The clipboard: every way onto the host's one queue — the runner's chords in an `edit`, a `selectable` scope's Copy with the HTML beside, a virtual list's `selectionrange` ask answered from the app's rows, a key sink's own `y`/`p` through `set_clipboard` / `request_paste` — and a paste landing as typing or as the sink's `text` event | ✓ every path | ⌘C then `pbpaste`; `pbcopy` then `p` |
 | [`audio.rs`](rust/features/audio.rs) | Sound as data: `click_sound`, `hover_sound`, a looped `audio` node declared while on; the dock's `audio` row is the device's side | ✓ the queued commands | the device closes a while after the last sound |
 | [`enter_exit.rs`](rust/features/enter_exit.rs) | `enter` / `exit`: toasts that slide in and back out, the departing copy the core keeps | | Windows: drag the title bar mid-spring (W3) |
 | [`exit_budget.rs`](rust/features/exit_budget.rs) | The exit budget at its boundary (ADR 0012): whole or not at all, the newest outranks the old, a virtual list keeps the picture small | | the boundary watch |
@@ -222,6 +223,7 @@ needs it; the corpus already proves the four bindings lower alike.
 | [`apps/counter.tsx`](node/apps/counter.tsx) | The counter in JSX, the same shape as the other three | ✓ `node dist/apps/counter.mjs --headless` |
 | [`features/window.tsx`](node/features/window.tsx) | The Node windowed driver: `init` handed the window, `resize` messages, images and sounds as the window's resources, custom chrome | |
 | [`features/slide.tsx`](node/features/slide.tsx) | `slide`: a canvas of floats and `line` connectors that eases everything or nothing, panned by an `onDrag` root — the by-hand check for F15 | ✓ the model's pan; **by hand:** drag the empty canvas and watch it while the button is down |
+| [`features/clipboard.tsx`](node/features/clipboard.tsx) | The clipboard from Node, the twin of `rust/features/clipboard.rs`: `takeMenuActions()` as the queue a host drains, `answerSelectionRange` for a virtual list's ask, `setClipboard` / `requestPaste` from `update` with the surface in hand, the paste as a `text` message | ✓ every path |
 | [`widgets/virtual_list.tsx`](node/widgets/virtual_list.tsx) | `virtualColumn`: 10,000 rows costing a screenful, re-sliced on the wheel with no model change | ✓ |
 | [`tools/types.tsx`](node/tools/types.tsx) | The shipped `.d.ts` exercised: a typed drive over every app-facing type, run as code under `--headless` | ✓ |
 | [`tools/bench.mjs`](node/tools/bench.mjs) | The JSX/Node side of `lua/tools/bench.rs` | |
