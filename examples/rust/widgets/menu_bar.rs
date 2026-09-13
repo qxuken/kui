@@ -12,7 +12,10 @@
 //! ▸ Select All and Copy are the same ones the core performs itself (the
 //! card is a selection scope, so they have something to act on), and
 //! every choice — standard or the app's own — arrives as the same one
-//! `menu` event.
+//! `menu` event. The menu titled `Window` is the platform's by name
+//! (`docs/adr/0030-the-standard-menus-the-runner-keeps.md`): on macOS
+//! its row is joined by Fill, Center, the tiling submenus and Enter Full
+//! Screen, and their shortcuts work; elsewhere it is one more drawn menu.
 //!
 //! Run: cargo run -p kui --example menu_bar [-- --headless]
 
@@ -34,6 +37,9 @@ struct Demo {
     notes: Vec<String>,
     /// The last thing the bar reported, shown at the bottom.
     last: Option<String>,
+    /// Whether the counters line is hidden: the one row of the `Window`
+    /// menu, which on macOS shares that menu with the platform's rows.
+    hide_counters: bool,
 }
 
 impl Demo {
@@ -73,6 +79,17 @@ impl Demo {
                     MenuItem::new("Clear the notes")
                         .id(mine("clear"))
                         .enabled(!self.notes.is_empty()),
+                ],
+            ),
+            // `Window` by name: the platform's Window menu where there is
+            // one, the app's row beside whatever the platform adds (macOS
+            // puts its own rows first).
+            BarMenu::new(
+                "Window",
+                vec![
+                    MenuItem::new("Hide the counters")
+                        .id(mine("counters"))
+                        .checked(self.hide_counters),
                 ],
             ),
         ])
@@ -129,16 +146,18 @@ impl App for Demo {
                                     TextWrap::None
                                 }),
                             );
-                            ui.text(
-                                &format!(
-                                    "About chosen {} time{} · {} note{}",
-                                    self.abouts,
-                                    if self.abouts == 1 { "" } else { "s" },
-                                    self.notes.len(),
-                                    if self.notes.len() == 1 { "" } else { "s" },
-                                ),
-                                TextStyle::new(13.0).color(t.muted),
-                            );
+                            if !self.hide_counters {
+                                ui.text(
+                                    &format!(
+                                        "About chosen {} time{} · {} note{}",
+                                        self.abouts,
+                                        if self.abouts == 1 { "" } else { "s" },
+                                        self.notes.len(),
+                                        if self.notes.len() == 1 { "" } else { "s" },
+                                    ),
+                                    TextStyle::new(13.0).color(t.muted),
+                                );
+                            }
                             for note in &self.notes {
                                 ui.text(note, TextStyle::new(13.0));
                             }
@@ -178,6 +197,7 @@ impl App for Demo {
             Some("note") => self.notes.push(format!("note {}", self.notes.len() + 1)),
             Some("wrap") => self.wrap = !self.wrap,
             Some("clear") => self.notes.clear(),
+            Some("counters") => self.hide_counters = !self.hide_counters,
             _ => {}
         }
         self.last = Some(match did {
@@ -208,7 +228,7 @@ impl Example for Demo {
         d.core.set_native_menus(false);
         d.frame(self);
         let bar = d.core.menu_bar().ok_or("the frame declared no menu bar")?;
-        d.check(bar.menus.len() == 3, "the bar has its three menus")?;
+        d.check(bar.menus.len() == 4, "the bar has its four menus")?;
         let view = &bar.menus[2];
         d.check(
             view.items.iter().all(|i| !i.checked),

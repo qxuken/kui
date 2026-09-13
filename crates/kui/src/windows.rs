@@ -168,6 +168,12 @@ impl<A: App> Shell<A> {
                 return;
             }
         };
+        // The Window menu lists windows the user would switch to, and a
+        // popup is not one (ADR 0030).
+        #[cfg(target_os = "macos")]
+        if config.kind == WindowKind::Popup {
+            macos_menu::exclude_from_windows_menu(&window);
+        }
         let Some(gpu) = self.gpu.clone() else {
             eprintln!("kui: cannot open window {}: no device yet", id.0);
             return;

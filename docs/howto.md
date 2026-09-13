@@ -294,8 +294,17 @@ performed by the core — an Edit menu's Copy is the right-click Copy.
 Declare it every frame: it is diffed, so an unchanged bar costs a
 comparison, and an empty list takes it away.
 
+Declare nothing and a macOS app still has the menus a Mac app is expected
+to have: the application menu, an Edit menu whose rows are the ⌘ chords
+the runner already performs, and a Window menu with Minimize, Zoom, Enter
+Full Screen and — added by AppKit because the menu is registered as the
+platform's — Fill, Center and the tiling submenus, so fn+ctrl+F and fn+F
+work. A declared bar is exactly what you declared; name a menu `Window`
+and it is the platform's, with those rows and shortcuts in it.
+
 [`menuBar` element](props.md#elements) ·
 [ADR 0018](adr/0018-a-menu-bar-the-app-declares.md) ·
+[ADR 0030](adr/0030-the-standard-menus-the-runner-keeps.md) ·
 [examples/rust/widgets/menu_bar.rs](../examples/rust/widgets/menu_bar.rs)
 
 ### How do I have global shortcuts and a Tab ring at once?

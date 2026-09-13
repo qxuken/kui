@@ -31,7 +31,17 @@
 //! bar (⌘S with no other event behind it, above all) has to reach a loop
 //! that may be asleep, so the target holds a [`Waker`] and rings it.
 //!
-//! What this is still not: a submenu, or a Services entry.
+//! **And the bar that is up when the app declares none** ([`MacMenuBar`]
+//! again, `docs/adr/0030-the-standard-menus-the-runner-keeps.md`): winit's
+//! application menu kept as it is, with an Edit menu and a Window menu
+//! beside it. The Window menu is what macOS's window shortcuts fire
+//! through — Fill, Center, the tiling arrows and full screen are rows
+//! AppKit adds to `NSApp.windowsMenu` and nowhere else, so a process
+//! without one has no fn+ctrl+F — and the Edit menu's rows replay the
+//! chord they spell rather than binding a role, so an app that hears ⌘C
+//! itself still does.
+//!
+//! What this is still not: a submenu of the app's own, or a Services entry.
 
 use std::cell::{Cell, RefCell};
 
@@ -41,7 +51,7 @@ use objc2::runtime::{AnyObject, Sel};
 use objc2::{DefinedClass, MainThreadOnly, define_class, msg_send, sel};
 use objc2_app_kit::{NSApplication, NSEventModifierFlags, NSMenu, NSMenuItem, NSView};
 use objc2_foundation::{
-    MainThreadMarker, NSAttributedString, NSObject, NSObjectProtocol, NSPoint, NSString,
+    MainThreadMarker, NSAttributedString, NSObject, NSObjectProtocol, NSPoint, NSString, ns_string,
 };
 use winit::window::Window;
 
@@ -241,6 +251,77 @@ pub fn show_definition(window: &Window, at: kui_core::Vec2, text: &str) -> bool 
     true
 }
 
+/// A row the responder chain answers: no target, so the key window (or
+/// the application) is what performs `action`, and AppKit's own
+/// validation greys it where nothing does.
+fn responder_row(
+    mtm: MainThreadMarker,
+    title: &str,
+    action: Sel,
+    key: &str,
+    mods: Option<NSEventModifierFlags>,
+) -> Retained<NSMenuItem> {
+    let row = unsafe {
+        NSMenuItem::initWithTitle_action_keyEquivalent(
+            NSMenuItem::alloc(mtm),
+            &NSString::from_str(title),
+            Some(action),
+            &NSString::from_str(key),
+        )
+    };
+    if let Some(mods) = mods {
+        row.setKeyEquivalentModifierMask(mods);
+    }
+    row
+}
+
+/// Enter Full Screen, in every Window menu kui registers (ADR 0030).
+///
+/// AppKit adds this row itself, but only to a Window menu registered
+/// before `finishLaunching` — which none of kui's are, since the bar is
+/// applied from the run loop — so kui adds it. The row is the platform's
+/// own: `toggleFullScreen:` on the key window, and AppKit's validation
+/// retitles it *Exit Full Screen* while the window is in one. Bound to
+/// fn+F, the chord macOS 15 moved it to, with a hidden twin on ⌃⌘F, the
+/// chord before that; a hidden item's key equivalent still fires, which
+/// is how AppKit spells its own alternates.
+fn full_screen_rows(mtm: MainThreadMarker, menu: &NSMenu) {
+    menu.addItem(&responder_row(
+        mtm,
+        "Enter Full Screen",
+        sel!(toggleFullScreen:),
+        "f",
+        Some(NSEventModifierFlags::Function),
+    ));
+    let twin = responder_row(
+        mtm,
+        "Enter Full Screen",
+        sel!(toggleFullScreen:),
+        "f",
+        Some(NSEventModifierFlags::Control | NSEventModifierFlags::Command),
+    );
+    twin.setHidden(true);
+    menu.addItem(&twin);
+}
+
+/// Keeps `window` out of the Window menu's list of windows (ADR 0030):
+/// a popup is a menu surface with no title, and the list is for windows
+/// the user would switch to.
+pub fn exclude_from_windows_menu(window: &Window) {
+    use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    let Ok(handle) = window.window_handle() else {
+        return;
+    };
+    let RawWindowHandle::AppKit(h) = handle.as_raw() else {
+        return;
+    };
+    // SAFETY: a live winit content view, on the event loop's thread.
+    let view = unsafe { Retained::retain(h.ns_view.as_ptr().cast::<NSView>()) };
+    if let Some(ns_window) = view.and_then(|v| v.window()) {
+        ns_window.setExcludedFromWindowsMenu(true);
+    }
+}
+
 /// One window's menu target, kept alive between presentations because the
 /// row the user picked arrives after the call that showed the menu has
 /// returned.
@@ -307,7 +388,8 @@ impl MacMenu {
 /// about it.
 struct BarIvars {
     /// The flat index of the chosen item in the map the last `apply` built,
-    /// or `-1` for none. Read and cleared by the runner's drain.
+    /// or [`CHORD_TAG`] plus a row of [`EDIT_ROWS`] for the standard Edit
+    /// menu, or `-1` for none. Read and cleared by the runner's drain.
     chosen: Cell<isize>,
     /// The loop to wake when one arrives. A ⌘-shortcut chosen from the
     /// menu bar is the whole of the event as far as winit is concerned —
@@ -362,6 +444,53 @@ pub struct MacMenuBar {
     target: Retained<BarTarget>,
     /// `(menu, item)` per flat tag, so a pick is one index lookup.
     map: RefCell<Vec<(usize, usize)>>,
+    /// The standard bar (ADR 0030), built the first time it is wanted and
+    /// kept: applying it again after a declaration is one `setMainMenu:`,
+    /// and its Window menu stays the one `NSApp.windowsMenu` names.
+    standard: RefCell<Option<Standard>>,
+}
+
+/// The standard bar and the one menu of it the platform must be told
+/// about by name.
+struct Standard {
+    root: Retained<NSMenu>,
+    window: Retained<NSMenu>,
+}
+
+/// Where the standard Edit menu's tags start. The declared bar's tags are
+/// indices into `map`, which never reaches this; a tag at or past it is a
+/// row of [`EDIT_ROWS`].
+const CHORD_TAG: isize = 1 << 20;
+
+/// A row of the standard Edit menu: the chord it spells (ADR 0030,
+/// decision 3). Chosen from the menu, it is *replayed* as that chord
+/// rather than performed as a role, so the sink that would have heard
+/// ⌘C from the keyboard hears it from the menu too.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EditChord {
+    pub letter: char,
+    pub shift: bool,
+}
+
+/// The standard Edit menu, top to bottom: title, letter, Shift. `None` is
+/// a separator. The wording and the order are macOS's own.
+const EDIT_ROWS: [Option<(&str, char, bool)>; 7] = [
+    Some(("Undo", 'z', false)),
+    Some(("Redo", 'z', true)),
+    None,
+    Some(("Cut", 'x', false)),
+    Some(("Copy", 'c', false)),
+    Some(("Paste", 'v', false)),
+    Some(("Select All", 'a', false)),
+];
+
+/// What the user chose from the bar, as the runner reads it back.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BarPick {
+    /// `(menu, item)` of the declared bar.
+    Item(usize, usize),
+    /// A row of the standard Edit menu.
+    Chord(EditChord),
 }
 
 impl MacMenuBar {
@@ -370,6 +499,7 @@ impl MacMenuBar {
         Some(Self {
             target: BarTarget::new(mtm),
             map: RefCell::new(Vec::new()),
+            standard: RefCell::new(None),
         })
     }
 
@@ -384,18 +514,32 @@ impl MacMenuBar {
     /// The first menu is the application menu: macOS draws that one's title
     /// from the process itself whatever the declaration says, which is why
     /// an app's own menu belongs first and is documented as doing so.
-    /// An empty declaration takes the bar away.
+    /// An empty declaration puts the standard bar up (ADR 0030): the one
+    /// a process with no declaration has, not no bar at all.
+    ///
+    /// A declared menu titled `Window` is registered as the platform's
+    /// Window menu, which is what makes AppKit add its tiling rows to it
+    /// (and their shortcuts work), and gains the one row AppKit adds only
+    /// at launch, Enter Full Screen; any other declaration has none of
+    /// this, which is what declaring the bar exactly means.
     pub fn apply(&self, bar: &MenuBar) {
         let Some(mtm) = MainThreadMarker::new() else {
             return;
         };
         let app = NSApplication::sharedApplication(mtm);
+        // Built before anything else is applied, so that the application
+        // menu it keeps is winit's and not a declaration's first menu.
+        self.standard(mtm, &app);
         if bar.is_empty() {
-            app.setMainMenu(None);
             self.map.borrow_mut().clear();
+            let standard = self.standard.borrow();
+            let standard = standard.as_ref().expect("built above");
+            app.setWindowsMenu(Some(&standard.window));
+            app.setMainMenu(Some(&standard.root));
             return;
         }
         let mut map = Vec::new();
+        let mut windows_menu = None;
         let root = NSMenu::new(mtm);
         // Every enable state is the declaration's; without this AppKit
         // greys out every row whose target does not answer
@@ -419,11 +563,132 @@ impl MacMenuBar {
                 map.push((mi, ii));
                 sub.addItem(&self.row(mtm, item, tag));
             }
+            if menu.label == "Window" {
+                full_screen_rows(mtm, &sub);
+                windows_menu = Some(sub.clone());
+            }
             head.setSubmenu(Some(&sub));
             root.addItem(&head);
         }
         *self.map.borrow_mut() = map;
+        app.setWindowsMenu(windows_menu.as_deref());
         app.setMainMenu(Some(&root));
+    }
+
+    /// The standard bar, built once (ADR 0030): the application menu
+    /// already on `NSApp` — winit's, with its Services entry still the one
+    /// the app registered — an Edit menu of [`EDIT_ROWS`], and a Window
+    /// menu with the three rows AppKit does not add itself.
+    ///
+    /// Called before the first bar of any kind is applied: after a
+    /// declaration the menu on `NSApp` is that declaration's first, which
+    /// is not the one to keep.
+    fn standard(&self, mtm: MainThreadMarker, app: &NSApplication) {
+        if self.standard.borrow().is_some() {
+            return;
+        }
+        // A fresh root, with winit's application-menu item moved across —
+        // it stays the menu its Services entry was registered on. Moved
+        // rather than copied, since an `NSMenu` has one supermenu and
+        // re-parenting the menu itself is an exception; and a fresh root
+        // rather than winit's with two items appended, because AppKit
+        // scans a bar for menus it knows by title only in `setMainMenu:`
+        // of a bar it has not seen (Edit gains Emoji & Symbols and
+        // Dictation that way, exactly as a declared Edit does). A process
+        // built without winit's menu
+        // (`EventLoopBuilderExtMacOS::with_default_menu(false)`) gets the
+        // one row nothing can do without.
+        let root = NSMenu::new(mtm);
+        let app_head = app
+            .mainMenu()
+            .filter(|m| m.numberOfItems() > 0)
+            .map(|m| {
+                let head = m.itemAtIndex(0).expect("counted");
+                m.removeItemAtIndex(0);
+                head
+            })
+            .unwrap_or_else(|| {
+                let app_menu = NSMenu::new(mtm);
+                let quit = unsafe {
+                    NSMenuItem::initWithTitle_action_keyEquivalent(
+                        NSMenuItem::alloc(mtm),
+                        ns_string!("Quit"),
+                        Some(sel!(terminate:)),
+                        ns_string!("q"),
+                    )
+                };
+                app_menu.addItem(&quit);
+                let head = NSMenuItem::new(mtm);
+                head.setSubmenu(Some(&app_menu));
+                head
+            });
+        root.addItem(&app_head);
+
+        // Edit: every row is a chord the runner already performs, spelled
+        // where a Mac user looks for it. The key equivalent is real, so
+        // AppKit consumes ⌘C and hands it here — and the runner replays it
+        // as the key it was, which is why nothing is lost by the detour.
+        let edit = NSMenu::initWithTitle(NSMenu::alloc(mtm), ns_string!("Edit"));
+        edit.setAutoenablesItems(false);
+        let target = unsafe { &*(&*self.target as *const BarTarget as *const AnyObject) };
+        for (i, row) in EDIT_ROWS.iter().enumerate() {
+            let Some((title, letter, shift)) = row else {
+                edit.addItem(&NSMenuItem::separatorItem(mtm));
+                continue;
+            };
+            let item = unsafe {
+                NSMenuItem::initWithTitle_action_keyEquivalent(
+                    NSMenuItem::alloc(mtm),
+                    &NSString::from_str(title),
+                    Some(sel!(kuiBarPick:)),
+                    &NSString::from_str(&letter.to_string()),
+                )
+            };
+            let mut flags = NSEventModifierFlags::Command;
+            if *shift {
+                flags |= NSEventModifierFlags::Shift;
+            }
+            unsafe {
+                item.setTarget(Some(target));
+                item.setKeyEquivalentModifierMask(flags);
+                item.setTag(CHORD_TAG + i as isize);
+            }
+            edit.addItem(&item);
+        }
+        let edit_head = NSMenuItem::new(mtm);
+        edit_head.setTitle(ns_string!("Edit"));
+        edit_head.setSubmenu(Some(&edit));
+        root.addItem(&edit_head);
+
+        // Window: the rows AppKit's own responders answer, with no target
+        // so the key window is the one that minimizes, and autoenabled so
+        // a window that cannot zoom greys the row. Registered by `apply`
+        // as the Window menu, which is what makes AppKit add Fill, Center,
+        // the tiling submenus and the window list to it.
+        let window = NSMenu::initWithTitle(NSMenu::alloc(mtm), ns_string!("Window"));
+        window.addItem(&responder_row(
+            mtm,
+            "Minimize",
+            sel!(performMiniaturize:),
+            "m",
+            None,
+        ));
+        window.addItem(&responder_row(mtm, "Zoom", sel!(performZoom:), "", None));
+        full_screen_rows(mtm, &window);
+        window.addItem(&NSMenuItem::separatorItem(mtm));
+        window.addItem(&responder_row(
+            mtm,
+            "Bring All to Front",
+            sel!(arrangeInFront:),
+            "",
+            None,
+        ));
+        let window_head = NSMenuItem::new(mtm);
+        window_head.setTitle(ns_string!("Window"));
+        window_head.setSubmenu(Some(&window));
+        root.addItem(&window_head);
+
+        *self.standard.borrow_mut() = Some(Standard { root, window });
     }
 
     /// One row: its wording, its shortcut where kui can parse one, and the
@@ -437,12 +702,21 @@ impl MacMenuBar {
         menu_row(mtm, item, target, sel!(kuiBarPick:), tag)
     }
 
-    /// The `(menu, item)` the last pick chose, taken. `None` when nothing
-    /// has been chosen since the last drain.
-    pub fn take_chosen(&self) -> Option<(usize, usize)> {
+    /// What the last pick chose, taken. `None` when nothing has been
+    /// chosen since the last drain.
+    pub fn take_chosen(&self) -> Option<BarPick> {
         let tag = self.target.ivars().chosen.replace(-1);
-        (tag >= 0)
-            .then(|| self.map.borrow().get(tag as usize).copied())
-            .flatten()
+        if tag < 0 {
+            return None;
+        }
+        if tag >= CHORD_TAG {
+            let (_, letter, shift) = EDIT_ROWS
+                .get((tag - CHORD_TAG) as usize)
+                .copied()
+                .flatten()?;
+            return Some(BarPick::Chord(EditChord { letter, shift }));
+        }
+        let (menu, item) = self.map.borrow().get(tag as usize).copied()?;
+        Some(BarPick::Item(menu, item))
     }
 }

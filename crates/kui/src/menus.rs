@@ -67,7 +67,8 @@ impl<A: App> Shell<A> {
     }
 
     /// Hands the frontmost window's menu-bar declaration to the platform,
-    /// and the platform's answers back (ADR 0018, decisions 4 and 8).
+    /// and the platform's answers back (ADR 0018, decisions 4 and 8) — or
+    /// the standard bar, when no window has declared one (ADR 0030).
     ///
     /// The bar belongs to the process and a `Core` to a window, so the one
     /// that holds the keyboard is the one whose declaration is up — and,
@@ -98,51 +99,68 @@ impl<A: App> Shell<A> {
                 .iter()
                 .position(|p| p.core.env.focused && declared(p))
                 .or_else(|| self.panes.iter().position(declared));
-            if let Some(i) = front {
-                let pane = &self.panes[i];
-                // A core told to draw the bar itself (`set_native_menu_bar(false)`
-                // — a devtool comparing the two, a test) gets the platform's
-                // taken away rather than both at once: an empty declaration
-                // is how `MacMenuBar` is told there is no bar. Stamped as
-                // revision 0, which a declared bar never is.
-                let drawn = !pane.core.native_menu_bar();
-                let revision = if drawn {
-                    0
-                } else {
-                    pane.core.menu_bar_revision()
-                };
-                let stamp = (pane.core.env.window.id, revision);
-                if self.applied_menu_bar != Some(stamp) {
-                    if drawn {
-                        native.apply(&kui_core::MenuBar::default());
-                    } else {
-                        native.apply(pane.core.menu_bar().expect("checked"));
+            // A core told to draw the bar itself (`set_native_menu_bar(false)`
+            // — a devtool comparing the two, a test) gets the standard bar
+            // rather than both at once, the same as a window that declared
+            // none: an empty declaration is how `MacMenuBar` is told so.
+            let stamp = match front {
+                Some(i) if self.panes[i].core.native_menu_bar() => {
+                    let core = &self.panes[i].core;
+                    AppliedBar::Declared(core.env.window.id, core.menu_bar_revision())
+                }
+                _ => AppliedBar::Standard,
+            };
+            if self.applied_menu_bar != Some(stamp) {
+                match stamp {
+                    AppliedBar::Declared(_, _) => {
+                        let i = front.expect("a declaration names its window");
+                        native.apply(self.panes[i].core.menu_bar().expect("checked"));
                     }
-                    self.applied_menu_bar = Some(stamp);
+                    AppliedBar::Standard => native.apply(&kui_core::MenuBar::default()),
+                }
+                self.applied_menu_bar = Some(stamp);
+            }
+            match chosen {
+                None => {}
+                // Reported to the window the bar was applied from, which
+                // is the one the items are about.
+                Some(macos_menu::BarPick::Item(menu, item)) => {
+                    let Some(i) = self
+                        .applied_menu_bar
+                        .and_then(|a| match a {
+                            AppliedBar::Declared(w, _) => self.pane_of(w),
+                            AppliedBar::Standard => None,
+                        })
+                        .or_else(|| (!self.panes.is_empty()).then_some(0))
+                    else {
+                        return;
+                    };
+                    let events = self.panes[i].core.activate_menu_bar_item(menu, item);
+                    // A chosen row is input that reached the app, so the
+                    // frame after it waits for the host's answer where the
+                    // host answers late (`Launcher::deferred_events`) —
+                    // otherwise it would paint the model the pick was
+                    // about to change.
+                    let reached_app = self.route_events(events);
+                    self.owe_for(reached_app);
+                    self.apply_menu_actions(event_loop, i);
+                    self.apply_window_commands(event_loop);
+                    self.panes[i].window.request_redraw();
+                }
+                // A row of the standard Edit menu is the chord it spells,
+                // and a chord goes to the window with the keyboard.
+                Some(macos_menu::BarPick::Chord(chord)) => {
+                    let Some(i) = self
+                        .panes
+                        .iter()
+                        .position(|p| p.core.env.focused)
+                        .or_else(|| (!self.panes.is_empty()).then_some(0))
+                    else {
+                        return;
+                    };
+                    self.replay_edit_chord(event_loop, i, chord);
                 }
             }
-            // Reported to the window the bar was applied from, which is the
-            // one the items are about.
-            let Some((menu, item)) = chosen else {
-                return;
-            };
-            let Some(i) = self
-                .applied_menu_bar
-                .and_then(|(w, _)| self.pane_of(w))
-                .or_else(|| (!self.panes.is_empty()).then_some(0))
-            else {
-                return;
-            };
-            let events = self.panes[i].core.activate_menu_bar_item(menu, item);
-            // A chosen row is input that reached the app, so the frame
-            // after it waits for the host's answer where the host answers
-            // late (`Launcher::deferred_events`) — otherwise it would
-            // paint the model the pick was about to change.
-            let reached_app = self.route_events(events);
-            self.owe_for(reached_app);
-            self.apply_menu_actions(event_loop, i);
-            self.apply_window_commands(event_loop);
-            self.panes[i].window.request_redraw();
         }
         #[cfg(not(target_os = "macos"))]
         let _ = event_loop;

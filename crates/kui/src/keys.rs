@@ -220,92 +220,16 @@ impl<A: App> Shell<A> {
 
         // Clipboard + select-all shortcuts (edit widgets and selection
         // scopes — a key sink gets the raw chord and brings its own
-        // bindings). A window with a selection in a `selectable` node
-        // copies it with the same Cmd-C an editor does: there is one
-        // selection per window and `copy_selection` answers for whichever
-        // it is (ADR 0017).
-        let pane = &mut self.panes[i];
-        // Whichever scope the window's selection is in — a `selectable`
-        // node's, or a `cells` grid's, which is a scope too. Reading only
-        // the text one left Cmd-C over a terminal doing nothing unless
-        // some editor elsewhere happened to hold focus.
-        let scope = pane
-            .core
-            .selection()
-            .map(|s| s.scope)
-            .or_else(|| pane.core.cell_selection().map(|s| s.node));
-        if (pane.core.edit.focused().is_some() || scope.is_some())
-            && pane.primary()
+        // bindings).
+        if self.panes[i].primary()
             && let WinitKey::Character(c) = &event.logical_key
         {
-            match c.to_lowercase().as_str() {
-                "c" => {
-                    // A selection that reaches rows a virtual list never
-                    // built is answered by the app, not by the core: the
-                    // ask goes out with the pending events and the answer
-                    // comes back as a clipboard action (ADR 0017, tier 3).
-                    match pane.core.request_copy() {
-                        CopyRequest::Ready(text) => {
-                            let html = pane.core.selection_html();
-                            set_clipboard(self.clipboard.as_mut(), text, html);
-                        }
-                        CopyRequest::Asked => {
-                            let events = self.panes[i].core.take_pending_events();
-                            self.route_events(events);
-                            self.apply_menu_actions(event_loop, i);
-                        }
-                        CopyRequest::Nothing => {}
-                    }
-                    return;
-                }
-                "x" => {
-                    if let Some(text) = pane.core.cut_selection() {
-                        set_clipboard(self.clipboard.as_mut(), text, None);
-                        self.after_direct_edit(i);
-                    }
-                    return;
-                }
-                "v" => {
-                    if let Some(text) = self.clipboard.as_mut().and_then(|cb| cb.get_text().ok()) {
-                        self.dispatch(event_loop, i, InputEvent::Text(text));
-                    }
-                    return;
-                }
-                // Select All inside a selection scope stays in that
-                // scope; with none, it is the editor's as before.
-                "a" if scope.is_some() => {
-                    if let Some(scope) = scope {
-                        pane.core.select_all_in(scope);
-                        pane.window.request_redraw();
-                    }
-                    return;
-                }
-                "a" => {
-                    self.dispatch(
-                        event_loop,
-                        i,
-                        InputEvent::Key(EditKey::SelectAll, Mods::default()),
-                    );
-                    return;
-                }
-                "z" => {
-                    let key = if pane.modifiers.shift_key() {
-                        EditKey::Redo
-                    } else {
-                        EditKey::Undo
-                    };
-                    self.dispatch(event_loop, i, InputEvent::Key(key, Mods::default()));
-                    return;
-                }
-                "y" => {
-                    self.dispatch(
-                        event_loop,
-                        i,
-                        InputEvent::Key(EditKey::Redo, Mods::default()),
-                    );
-                    return;
-                }
-                _ => {}
+            let lower = c.to_lowercase();
+            let mut chars = lower.chars();
+            if let (Some(letter), None) = (chars.next(), chars.next())
+                && self.edit_chord(event_loop, i, letter, self.panes[i].modifiers.shift_key())
+            {
+                return;
             }
         }
 
@@ -346,5 +270,121 @@ impl<A: App> Shell<A> {
         {
             self.dispatch(event_loop, i, InputEvent::Text(text.to_string()));
         }
+    }
+
+    /// The clipboard chords the runner performs itself — ⌘C/X/V/A, ⌘Z and
+    /// ⇧⌘Z, ⌘Y — for the primary modifier plus `letter`, whether the
+    /// keyboard sent it or the standard Edit menu spelled it (ADR 0030).
+    /// True when the chord was one of these and was performed, so the
+    /// caller's editor channel does not see the press again.
+    ///
+    /// A window with a selection in a `selectable` node copies it with
+    /// the same Cmd-C an editor does: there is one selection per window
+    /// and `copy_selection` answers for whichever it is (ADR 0017).
+    pub(super) fn edit_chord(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        i: usize,
+        letter: char,
+        shift: bool,
+    ) -> bool {
+        let pane = &mut self.panes[i];
+        // Whichever scope the window's selection is in — a `selectable`
+        // node's, or a `cells` grid's, which is a scope too. Reading only
+        // the text one left Cmd-C over a terminal doing nothing unless
+        // some editor elsewhere happened to hold focus.
+        let scope = pane
+            .core
+            .selection()
+            .map(|s| s.scope)
+            .or_else(|| pane.core.cell_selection().map(|s| s.node));
+        if pane.core.edit.focused().is_none() && scope.is_none() {
+            return false;
+        }
+        match letter {
+            'c' => {
+                // A selection that reaches rows a virtual list never
+                // built is answered by the app, not by the core: the
+                // ask goes out with the pending events and the answer
+                // comes back as a clipboard action (ADR 0017, tier 3).
+                match pane.core.request_copy() {
+                    CopyRequest::Ready(text) => {
+                        let html = pane.core.selection_html();
+                        set_clipboard(self.clipboard.as_mut(), text, html);
+                    }
+                    CopyRequest::Asked => {
+                        let events = self.panes[i].core.take_pending_events();
+                        self.route_events(events);
+                        self.apply_menu_actions(event_loop, i);
+                    }
+                    CopyRequest::Nothing => {}
+                }
+            }
+            'x' => {
+                if let Some(text) = pane.core.cut_selection() {
+                    set_clipboard(self.clipboard.as_mut(), text, None);
+                    self.after_direct_edit(i);
+                }
+            }
+            'v' => {
+                if let Some(text) = self.clipboard.as_mut().and_then(|cb| cb.get_text().ok()) {
+                    self.dispatch(event_loop, i, InputEvent::Text(text));
+                }
+            }
+            // Select All inside a selection scope stays in that scope;
+            // with none, it is the editor's as before.
+            'a' => match scope {
+                Some(scope) => {
+                    pane.core.select_all_in(scope);
+                    pane.window.request_redraw();
+                }
+                None => self.dispatch(
+                    event_loop,
+                    i,
+                    InputEvent::Key(EditKey::SelectAll, Mods::default()),
+                ),
+            },
+            'z' => {
+                let key = if shift { EditKey::Redo } else { EditKey::Undo };
+                self.dispatch(event_loop, i, InputEvent::Key(key, Mods::default()));
+            }
+            'y' => self.dispatch(
+                event_loop,
+                i,
+                InputEvent::Key(EditKey::Redo, Mods::default()),
+            ),
+            _ => return false,
+        }
+        true
+    }
+
+    /// A row of the standard Edit menu was chosen (ADR 0030, decision 3):
+    /// the chord it spells, replayed exactly as the keyboard would have
+    /// sent it — the press to the key-focused sink, the runner's own half
+    /// of the chord, the release — so an app that binds ⌘C itself hears
+    /// the same thing from the menu, and an editor copies through the
+    /// same code the key takes. AppKit consumed the key before winit saw
+    /// it, which is why nothing arrives here twice.
+    #[cfg(target_os = "macos")]
+    pub(super) fn replay_edit_chord(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        i: usize,
+        chord: macos_menu::EditChord,
+    ) {
+        let mods = KeyMods {
+            shift: chord.shift,
+            super_key: true,
+            ..KeyMods::default()
+        };
+        let kp = KeyPress::new(KeyCode::Char(chord.letter), mods);
+        self.dispatch(event_loop, i, InputEvent::KeyDown(kp.clone()));
+        self.edit_chord(event_loop, i, chord.letter, chord.shift);
+        self.dispatch(event_loop, i, InputEvent::KeyUp(kp.released()));
+        // `dispatch` owed the frame for whatever reached the app; what is
+        // left is what a chosen declared row also does after its events.
+        self.apply_menu_actions(event_loop, i);
+        self.apply_window_commands(event_loop);
+        self.panes[i].window.request_redraw();
     }
 }

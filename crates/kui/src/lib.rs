@@ -849,11 +849,11 @@ struct Shell<A: App> {
     /// window that has the keyboard, or of whichever window made one.
     #[cfg(target_os = "macos")]
     native_menu_bar: Option<macos_menu::MacMenuBar>,
-    /// The declaration it currently carries: the window it came from and
-    /// that core's `menu_bar_revision`. The diff that keeps a re-declared
-    /// bar from being rebuilt sixty times a second.
+    /// What it currently carries: a declaration — the window it came from
+    /// and that core's `menu_bar_revision` — or the standard bar. The diff
+    /// that keeps a re-declared bar from being rebuilt sixty times a second.
     #[cfg(target_os = "macos")]
-    applied_menu_bar: Option<(WindowId, u64)>,
+    applied_menu_bar: Option<AppliedBar>,
     /// The audio device the core's audio commands drive; see `audio`.
     audio: audio::Audio,
     /// When the app was last doing something that could lead to a sound:
@@ -1252,6 +1252,17 @@ impl<A: App> Shell<A> {
             wait_ms,
         });
     }
+}
+
+/// Which bar `pump_menu_bar` last handed the platform.
+#[cfg(target_os = "macos")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AppliedBar {
+    /// The standard bar (ADR 0030): no window declared one, or the front
+    /// window draws its own declaration and the platform's is the standard.
+    Standard,
+    /// A window's declaration, at that revision.
+    Declared(WindowId, u64),
 }
 
 impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
