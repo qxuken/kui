@@ -195,6 +195,42 @@ fn a_selection_is_the_windows_and_an_editor_gives_it_up() {
     // A selection in the scope takes the window's one selection with it.
     assert!(core.select_all_in(scope));
     assert_eq!(core.copy_selection().as_deref(), Some("static text"));
+    // And the reverse (AR24): a keyboard-started editor selection takes
+    // it back — the scope's is gone, not just outranked.
+    core.handle_input(InputEvent::Key(EditKey::SelectAll, Mods::default()));
+    assert!(
+        core.selection().is_none(),
+        "the scope's selection is dropped"
+    );
+    assert_eq!(core.copy_selection().as_deref(), Some("typed text"));
+    // Shift+arrow the same; a bare arrow collapses the editor's and
+    // leaves the scope's alone.
+    assert!(core.select_all_in(scope));
+    core.handle_input(InputEvent::Key(
+        EditKey::Left,
+        Mods {
+            shift: true,
+            ..Default::default()
+        },
+    ));
+    assert!(core.selection().is_none());
+    assert!(core.select_all_in(scope));
+    core.handle_input(InputEvent::Key(EditKey::Left, Mods::default()));
+    assert!(
+        core.selection().is_some(),
+        "a caret move is not a selection"
+    );
+    // And a reader's `setTextSelection`.
+    assert!(core.select_all_in(scope));
+    let run = core.access_tree().get(edit).unwrap().runs[0].key;
+    let at = |character: usize| kui_core::TextPos { run, character };
+    let evs = core.handle_input(InputEvent::Access(
+        kui_core::AccessRequest::new(edit, kui_core::AccessAction::SetTextSelection)
+            .with_selection(at(0), at(5)),
+    ));
+    assert!(evs.is_empty());
+    assert!(core.selection().is_none());
+    assert_eq!(core.copy_selection().as_deref(), Some("typed"));
 }
 
 #[test]

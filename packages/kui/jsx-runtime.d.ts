@@ -69,8 +69,9 @@ export type LengthToken = `$${string}` & { readonly __kuiToken?: 'length' };
 /** Logical px, or a length token. */
 export type LengthProp = number | LengthToken;
 
-/** number = fixed logical px; "N%" of parent; grow soaks up leftover space;
- *  a length token is a fixed px the core's table resolves. */
+/** number = fixed logical px; "N%" of parent (`{ percent: N }` is the same
+ *  number); grow soaks up leftover space; a length token is a fixed px the
+ *  core's table resolves. */
 export type SizingProp =
   | number
   | 'fit'

@@ -355,6 +355,7 @@ impl Core {
                 } else if let Some(key) = self.edit.focused() {
                     let (changed, submit) =
                         self.edit_with_fonts(|edit, fs| edit.apply_key(key, ek, mods, fs));
+                    self.editor_took_selection(key);
                     if changed {
                         self.push_edit_event(key, "changed", &mut out);
                     }
@@ -814,6 +815,7 @@ impl Core {
                                 return;
                             };
                             self.edit.set_selection(key, a, f);
+                            self.editor_took_selection(key);
                         }
                         _ => {
                             let text = req.value.unwrap_or_default();
@@ -1261,6 +1263,19 @@ impl Core {
             return self.cell_selection_text();
         }
         self.edit.copy_selection(self.edit.focused()?)
+    }
+
+    /// One selection per window (ADR 0017 decision 1), in the direction
+    /// `set_selection` does not cover: an editor's selection started by
+    /// the keyboard — Select All, Shift+arrows, a reader's
+    /// `setTextSelection` — takes the window's one selection with it, so
+    /// a scope's or a grid's highlight goes and Cmd-A / Cmd-C read the
+    /// editor and not the label dragged over before Tab (AR24).
+    fn editor_took_selection(&mut self, key: Key) {
+        if self.edit.has_selection(key) {
+            self.selection = None;
+            self.cell_selection = None;
+        }
     }
 
     /// Cuts the focused editor's selection, returning the removed text.

@@ -58,7 +58,6 @@ end
 todos = { "ship the layout solver", "wire up wgpu", "write this panel" }
 done = {}
 filter = ""
-filter_key = nil -- set by a "changed" event; read back in view(env)
 title = "lua panel"
 on_toggle = nil -- the host's reply template, kept from view for on_event
 
@@ -71,9 +70,9 @@ function view(env, slot)
   title = params.title or "lua panel"
   on_toggle = params.on_toggle
 
-  if filter_key then
-    filter = env.edit_text(filter_key) or ""
-  end
+  -- The editor's text, by the label its `key` declares; nil until a
+  -- frame has declared it.
+  filter = env.edit_text("filter") or ""
 
   local items = {}
   for i, todo in ipairs(todos) do
@@ -171,7 +170,7 @@ function on_event(ev)
       return reply
     end
   elseif ev.kind == "changed" then
-    filter_key = ev.node_key
+    -- The next view reads the field by label; nothing to keep here.
   elseif ev.kind == "add" then
     todos[#todos + 1] = "todo #" .. (#todos + 1)
   elseif ev.kind == "clear" then

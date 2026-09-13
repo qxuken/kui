@@ -620,6 +620,82 @@ Nothing.
   hears of neither drop — the lists were never exported — which is filed
   rather than built here.
 
+- **The glyph atlas grows for a working set larger than its page, and
+  the frame that reset it asks for the next** (backlog AR19). On a full
+  page the atlas reset, then grew only if the *one* item still did not
+  fit an empty page — so a set of items that each fit (three 800×600
+  atlas-backed images, a code view with many sizes plus CJK and emoji)
+  never grew the page: every frame reset mid-emit, every text template
+  was invalidated, the quads emitted before the reset sampled the
+  overwritten page, and "rebuild next frame" had nothing asking for that
+  frame — an input-driven app kept the corrupt frame until the next
+  event. A page that fills twice in one frame doubles now (a page's
+  worth of new glyphs a frame still resets and never grows), and a frame
+  that moved the epoch sets the frame request. Pinned in `atlas.rs`
+  (grown once, then still; turnover never grows) and `tests/images.rs`
+  (three images past a 128 px page: grown, `animating()` for one frame,
+  still after).
+
+- **A device that failed to open refuses a play** (backlog AR20). The
+  runner's `apply_one` dropped a `Play` on the floor when the device
+  was `Failed` — CI, a container, a muted VM — so a `play(..).tag()` or
+  `<audio tag>` neither ended nor was refused, a view sequenced on
+  `sound ended` hung, and nothing polled. The play is refused like one
+  the device would not take, so the core hears `refused`; the runner's
+  audio tests force the state.
+
+- **A submenu is not outside the menu it opened from** (backlog AR21).
+  A sub-popup a popup's frame declared has the popup as its owner, but
+  the runner's press-outside rule listed every popup but the pressed
+  one, so a press in the child dismissed its parent and — for a
+  non-activating parent — was consumed, the app stopped declaring the
+  parent, the child closed with it, and the row pressed never heard
+  the press; keys stopped at the first level and the sub-popup read
+  `env.focused == false`. The runner follows the owner chain now: a
+  pressed popup's ancestors are not "outside", keys go to the deepest
+  non-activating popup, and the whole chain reads as focused together.
+  Read, not run — a submenu example is on the by-hand list.
+
+- **A window the OS refused is closed in the registry** (backlog AR22).
+  A `create_window` or renderer failure printed and returned, leaving
+  the id live: `windows()` listed a window that did not exist, the app
+  had heard `opened` and never heard `closed`, declaring the name again
+  was a no-op, and `dismiss` / `focus` / `setSize` on the id were silent
+  forever. The failure is told to the registry as a close now, the way
+  an OS close is, and the app hears `closed`.
+
+- **The owner's modifiers stay current while a popup borrows the
+  keyboard** (backlog AR23). `ModifiersChanged` was mirrored to the key
+  target alone: hold Shift, open a menu, release Shift while it is up,
+  choose — the owner's next key was a Shift chord until the next edge.
+  Written to both panes now; the keyboard's state is one fact for the
+  pair.
+
+- **A keyboard-started editor selection takes the window's one
+  selection with it** (backlog AR24, ADR 0017 decision 1). A scope's
+  selection collapsed the editor's, but Select All, Shift+arrows or a
+  reader's `setTextSelection` in an editor left the scope's (or a
+  grid's) selection standing: drag-select a label, Tab into a field,
+  Cmd-A — the runner read the scope first and select-alled *it*, Cmd-C
+  copied the label, and two highlights drew. Cleared whenever the
+  editor reports a non-collapsed selection after a key or a request;
+  `tests/selection.rs` has the reverse case beside the forward one.
+
+- **`{ percent: 50 }` in JSX is 50%** (backlog AR25). The object form
+  wrote `v.percent` raw where `"50%"` divides by 100 and the core reads
+  a fraction, so it was 5000% — in `SizingProp` and in no doc, example
+  or test. Divided now; `test.mjs` pins the two forms to the same bytes.
+
+- **Lua's `env.edit_text` takes a label, and its events say which
+  window** (backlog AR26). `edit_text` took the integer key alone,
+  against its own doc and every query beside it, so the one Lua example
+  kept the key from a `changed` event to work around it — the shape F5
+  and F32 removed everywhere else; and the event table set `node_key`
+  and `from` but not `window`, where Node's `ev.window` and C's
+  `KuiEvent.window` carry it, so a panel drawn into two windows could
+  not tell which one clicked. `env.edit_text("filter")` works, the
+  event carries `window`, and the example reads back by label.
+
 - **An assistive-technology request obeys the modal and `disabled`**
   (backlog AR18). `handle_access` resolved only `Click` against the hit
   list: `SetValue` set an editor's text and posted `changed` with no

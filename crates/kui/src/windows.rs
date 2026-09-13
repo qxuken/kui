@@ -165,6 +165,7 @@ impl<A: App> Shell<A> {
             Ok(w) => Arc::new(w),
             Err(err) => {
                 eprintln!("kui: cannot open window {}: {err}", id.0);
+                self.refuse_pane(event_loop, id);
                 return;
             }
         };
@@ -176,6 +177,7 @@ impl<A: App> Shell<A> {
         }
         let Some(gpu) = self.gpu.clone() else {
             eprintln!("kui: cannot open window {}: no device yet", id.0);
+            self.refuse_pane(event_loop, id);
             return;
         };
         let px = window.inner_size();
@@ -183,6 +185,7 @@ impl<A: App> Shell<A> {
             Ok(r) => r,
             Err(err) => {
                 eprintln!("kui: cannot open window {}: {err}", id.0);
+                self.refuse_pane(event_loop, id);
                 return;
             }
         };
@@ -410,6 +413,23 @@ impl<A: App> Shell<A> {
     /// — and whatever it queues in answer (the `closed` event, and the
     /// `Close` of anything only this window declared) is routed before the
     /// pane goes.
+    /// The OS (or the device) refused a window the registry has opened
+    /// and the app has already heard `opened` for: told to the registry
+    /// as a close, the way an OS close is, so the app hears `closed`,
+    /// `windows()` stops listing it, and declaring the name again reopens
+    /// it — instead of an id that is live forever and answers nothing
+    /// (AR22). Through the owner's core, since no pane of its own exists.
+    fn refuse_pane(&mut self, event_loop: &ActiveEventLoop, id: WindowId) {
+        let Some(core) = self.panes.first_mut().map(|p| &mut p.core) else {
+            return;
+        };
+        core.window_closed(id);
+        let events = core.take_pending_events();
+        let cmds = core.take_window_commands();
+        self.route_events(events);
+        self.apply_commands(event_loop, cmds);
+    }
+
     pub(super) fn close_pane(&mut self, event_loop: &ActiveEventLoop, id: WindowId) {
         let Some(i) = self.pane_of(id) else { return };
         // Whatever this press was about, it is not about this window any

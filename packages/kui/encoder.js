@@ -169,8 +169,11 @@ export function createEncoder(P) {
       f[fi++] = 2;
       f[fi++] = v.grow;
     } else if (v && typeof v === 'object' && typeof v.percent === 'number') {
+      // The same number `"50%"` spells: a percentage, which the core
+      // reads as a fraction (AR25: written raw, `{ percent: 50 }` was
+      // 5000%).
       f[fi++] = 3;
-      f[fi++] = v.percent;
+      f[fi++] = v.percent / 100;
     } else {
       throw new Error(`bad sizing ${JSON.stringify(v)} (fit | grow | number | "N%")`);
     }

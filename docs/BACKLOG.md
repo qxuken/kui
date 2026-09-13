@@ -41,7 +41,8 @@ platform did), AR7–AR49 from the second architecture review, filed
 2026-09-13 — forty-three entries under ten
 decisions, twenty of them defects, the audio store reconciled against
 every window's frame and the two key channels disagreeing about a
-chord at the top; **AR7–AR18 built 2026-09-14**, the session rule
+chord at the top; **AR7–AR26 built 2026-09-14**, every one of the
+round's twenty defects, the session rule
 written and the mounts and the removed ids moved under it, a held key
 matched by position, one chord bit for both key channels, one attach
 pass on what a press made, Node's surface aimed at the window it is
@@ -2737,7 +2738,19 @@ decision 5 says the modal is the one boundary.
 `!self.interactive(i) || specs[i].disabled`, which is what the access tree
 already refuses to advertise (`access.rs:1158,1181,1188`).
 
-### `!` AR19 — The glyph atlas grows for one oversized item and resets for an oversized set
+### `!` AR19 — The glyph atlas grows for one oversized item and resets for an oversized set — **done (2026-09-14)**
+
+**Done (2026-09-14), both halves of the fix line, the first as
+written.** `GlyphAtlas::begin_frame` zeroes a per-frame reset count;
+`alloc_or_make_room` grows on the *second* fill in one frame (a page's
+worth of new glyphs per frame still resets, and a turnover test pins
+that it never grows). `Core` records the epoch at `begin_frame` and
+sets `frame_requested` at the end of `emit_frame` when it moved, so the
+frame that rebuilds the stale templates is asked for. Tests: `atlas.rs`
+(grown once for 100 30 px glyphs, still on the next frame, turnover
+holds at 64) and `tests/images.rs` (three 80 px images on a 128 px
+page: grown, `animating()` once, still after) — the latter red on
+HEAD's atlas. CHANGELOG under alpha.12.
 
 `alloc_or_make_room` (`atlas.rs:108-128`): on a full page, `reset()`, then
 `grow_to` only if the *one* item still does not fit an empty page. After a
@@ -2758,7 +2771,15 @@ blitted area exceeds the page), and set `frame_requested` whenever
 `atlas.epoch` moves during `finish_frame`; a test with a set larger than
 one page.
 
-### `!` AR20 — A device that failed to open drops `Play` without answering `refused`
+### `!` AR20 — A device that failed to open drops `Play` without answering `refused` — **done (2026-09-14)**
+
+**Done (2026-09-14), the one line**, with the reading that makes it
+safe: `apply` and `flush_pending` reach `apply_one` only once the open
+has answered, so `manager()` returning `None` there is `Failed` and
+nothing else. `a_device_that_failed_to_open_refuses_a_play` forces the
+state both ways — failed before the play, and failed while the play
+waited, reported on the apply after the poll that flushed it.
+CHANGELOG under alpha.12.
 
 `apply_one` in the runner's audio: `let Some(m) = self.manager() else {
 return; }` (`crates/kui/src/audio.rs:277-279`), `self.refused` untouched;
@@ -2771,7 +2792,18 @@ decode-failure branch two lines above does push `refused`.
 
 **Fix:** push `playback` onto `self.refused` when `manager()` is `None`.
 
-### `!` AR21 — Popups are one level deep: a press inside a sub-popup dismisses and consumes itself, and keys never reach it
+### `!` AR21 — Popups are one level deep: a press inside a sub-popup dismisses and consumes itself, and keys never reach it — **done (2026-09-14), read and not run**
+
+**Done (2026-09-14), the walk the fix line asks for.** `key_target`
+follows non-activating popups owner to owner to the deepest;
+`ancestors(i)` is the owner chain and `popups_outside` keeps it;
+`lends_to(i, j)` pairs any two panes joined by a chain of
+non-activating popups and `settle_focus` reads the chain as focused
+together. The core's registry already pinned a sub-popup's owner as the
+popup (`tests/windows.rs`, `(2, 1)`); the runner half has no headless
+seam, so it is on the by-hand list below and the corpus step the entry
+names is not written — the corpus has no driver. CHANGELOG under
+alpha.12.
 
 A sub-popup declared by a popup's frame has `owner == popup`
 (`session.rs`, `union`). `popups_outside` lists every popup but the
@@ -2792,7 +2824,13 @@ for one. Read, not run.
 `together` to the deepest non-activating popup; a corpus step for a
 second level.
 
-### `!` AR22 — A window the OS refused stays live in the registry
+### `!` AR22 — A window the OS refused stays live in the registry — **done (2026-09-14)**
+
+**Done (2026-09-14), as the fix line says:** `refuse_pane` calls
+`window_closed(id)` on the main pane's core (no pane of the refused
+window's own exists) and routes the events and commands, at all three
+failure returns of `open_pane`. Read, not run — a window the OS refuses
+is not a thing a test can ask for. CHANGELOG under alpha.12.
 
 `open_pane` on a `create_window`/`new_in` error prints and returns
 (`crates/kui/src/windows.rs:164-181`). `WindowRegistry.windows` still
@@ -2806,7 +2844,10 @@ not run.
 **Fix:** on failure call `window_closed(id)` on the declaring core and
 route its events, as `close_pane` does.
 
-### `!` AR23 — `ModifiersChanged` is mirrored to the key target only, so the owner's modifiers go stale while a popup borrows the keyboard
+### `!` AR23 — `ModifiersChanged` is mirrored to the key target only, so the owner's modifiers go stale while a popup borrows the keyboard — **done (2026-09-14)**
+
+**Done (2026-09-14), the two lines.** Written to `panes[i]` and
+`panes[t]` both. CHANGELOG under alpha.12.
 
 The OS delivers the edge to the owner; the runner writes it to
 `self.panes[t].modifiers` for `t = key_target(i)` alone
@@ -2819,7 +2860,15 @@ the next modifier edge. Read, not run.
 **Fix:** write the mirror to both `i` and `t`; the keyboard's state is
 one fact for the pair.
 
-### `!` AR24 — "One selection per window" is enforced in one direction
+### `!` AR24 — "One selection per window" is enforced in one direction — **done (2026-09-14)**
+
+**Done (2026-09-14), the second of the fix line's two shapes:**
+`editor_took_selection(key)` after `apply_key` and after a reader's
+`SetTextSelection` clears the scope and cell selections when the
+editor reports a non-collapsed one — so a caret move leaves the
+scope's alone and Select All, Shift+arrow and the reader's request take
+it. `tests/selection.rs`'s existing case gained the reverse direction,
+red on HEAD. CHANGELOG under alpha.12.
 
 `set_selection` collapses the editor's selection
 (`runtime/select_api.rs:31-35,265-269,763-768`), but a keyboard-started
@@ -2835,7 +2884,12 @@ only. Read, not run.
 editor, or when `EditStore` reports a non-collapsed selection after
 `apply_key`; the reverse case in `tests/selection.rs`.
 
-### `!` AR25 — `{ percent: 50 }` in JSX is 5000%
+### `!` AR25 — `{ percent: 50 }` in JSX is 5000% — **done (2026-09-14)**
+
+**Done (2026-09-14), divided by 100**, the `SizingProp` doc saying the
+two forms are one number, and `test.mjs` pinning `{ percent: 50 }` and
+`"50%"` to the same bytes and a half-width box to half. CHANGELOG under
+alpha.12.
 
 `"50%"` lowers to `parseFloat(v) / 100` (`packages/kui/encoder.js:163-165`)
 and Lua's `{pct = 50}` to `Sizing::Percent(p / 100.0)`
@@ -2848,7 +2902,14 @@ nothing caught it.
 **Fix:** divide by 100, or drop the object form from the type; a
 `test.mjs` line that `{percent: 50}` and `"50%"` encode the same bytes.
 
-### `!` AR26 — Lua's `env.edit_text` takes an integer only, and its `on_event` drops the window
+### `!` AR26 — Lua's `env.edit_text` takes an integer only, and its `on_event` drops the window — **done (2026-09-14)**
+
+**Done (2026-09-14), all three lines of the fix.** `edit_text` takes
+`mlua::Value` through `key_query` (nil for a label nothing declared);
+the event table sets `window` beside `node_key`; the slots panel reads
+`env.edit_text("filter")` in its view and keeps no key. The
+round-trip test reads by label and asserts the event's window.
+CHANGELOG under alpha.12.
 
 `edit_text` is `move |_, key: i64|` (`kui-lua/src/lib.rs:502-505`); its
 own doc says "each takes either spelling" (`:393-396`) and `set_edit_text`
@@ -3353,7 +3414,8 @@ into the second channel, one attach pass with a producer-side mark),
 AR12 (Node's window handle — **done 2026-09-14**), AR13–AR16 (**all
 four done 2026-09-14**) (the `<text>` rows, one token
 miss policy, Cut's `changed`, one `prepare_spec`), AR17–AR18 (the focus
-stamp and the AT gates — **both done 2026-09-14**), AR19–AR25 as the defects they are, then B1's
+stamp and the AT gates — **both done 2026-09-14**), AR19–AR25 as the defects they are
+(**all seven done 2026-09-14**, AR26 with them), then B1's
 table with AR26, AR27 and AR40 beside it, AR46–AR48 for the tests, and
 AR49 first of all if the alpha.12 notes go out before the rest, since
 its first line is the CHANGELOG contradicting itself on the frame
@@ -3583,6 +3645,12 @@ release, which no headless assertion reads:
 - **Windows: grab the title bar while something animates** (`toasts`,
   mid-spring) and watch whether it keeps moving — W3, filed 2026-09-07
   from a report and not reproduced here.
+- **A submenu (AR21):** an app whose popup declares a popup of its own
+  — hover a row in a non-activating menu, let it open a submenu, press a
+  row in the submenu: the row hears the press, the menu stays until the
+  choice closes it, the arrow keys reach the submenu while it is up, and
+  the window behind reads focused throughout. Built 2026-09-14 by
+  reading; no example opens a second level yet.
 - **Node, two windows:** an app whose `windows(model)` opens a second
   window with an `<edit>` in it — type there, then `win.editText(label)`
   from that window's `view` and `win.setEditText` from the `update` its

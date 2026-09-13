@@ -16,30 +16,90 @@ impl<A: App> Shell<A> {
     /// meanwhile, so the field still draws focused while the arrow keys
     /// walk the list. A popup that *did* ask to activate holds its own
     /// keyboard and needs none of this.
+    /// Followed to the deepest one: a sub-popup a popup's frame declared
+    /// has the popup as its owner (a submenu opened from a menu), and the
+    /// keys the OS delivers to the window that is key go all the way down
+    /// the chain of non-activating popups, not one level (AR21).
     pub(super) fn key_target(&self, i: usize) -> usize {
-        let owner = self.panes[i].id;
-        self.panes
-            .iter()
-            .position(|p| p.kind == WindowKind::Popup && p.owner == owner && !p.activates)
-            .unwrap_or(i)
+        let mut at = i;
+        loop {
+            let owner = self.panes[at].id;
+            match self
+                .panes
+                .iter()
+                .position(|p| p.kind == WindowKind::Popup && p.owner == owner && !p.activates)
+            {
+                Some(next) if next != at => at = next,
+                _ => return at,
+            }
+        }
+    }
+
+    /// The panes pane `i` is owned by, nearest first, up to the window
+    /// that owns itself: a sub-popup's parent popup, then that popup's
+    /// owner. Empty for a window that is nobody's.
+    fn ancestors(&self, i: usize) -> Vec<usize> {
+        let mut out = Vec::new();
+        let mut at = i;
+        while let Some(j) = self.pane_of(self.panes[at].owner)
+            && j != at
+            && !out.contains(&j)
+        {
+            out.push(j);
+            at = j;
+        }
+        out
     }
 
     /// Every popup that a press on pane `i`, or pane `i` losing the
     /// keyboard, should ask to go away: all of them except one the press
-    /// landed in. A press in the owner counts — the owner is "outside" the
-    /// popup, which is the whole distinction a separate surface makes.
+    /// landed in and the ones that popup hangs off — a press in a submenu
+    /// is not outside the menu it opened from (AR21: it was, so the menu
+    /// dismissed, the press was consumed, and the row pressed never heard
+    /// it). A press in the owner counts — the owner is "outside" the
+    /// popup, which is the whole distinction a separate surface makes —
+    /// and so does a press in the parent for the submenu hanging off it.
     ///
     /// Each is paired with whether it took OS focus when it opened, because
     /// ADR 0009 decision 5 treats the two kinds differently: the press that
     /// dismisses a **non-activating** popup is consumed, while an
     /// activating one (a tear-off panel) keeps the pass-through it has.
     pub(super) fn popups_outside(&self, i: usize) -> Vec<(WindowId, bool)> {
+        let keep = self.ancestors(i);
         self.panes
             .iter()
             .enumerate()
-            .filter(|(j, p)| *j != i && p.kind == WindowKind::Popup)
+            .filter(|(j, p)| *j != i && !keep.contains(j) && p.kind == WindowKind::Popup)
             .map(|(_, p)| (p.id, p.activates))
             .collect()
+    }
+
+    /// Whether pane `i` and pane `j` share one keyboard: one is a
+    /// non-activating popup reached from the other by following owners
+    /// through non-activating popups only — a menu and its submenu and
+    /// the window they hang off all read as focused while any of them is
+    /// (AR21: the pairing stopped at the direct owner, so a sub-popup read
+    /// `env.focused == false`).
+    fn lends_to(&self, i: usize, j: usize) -> bool {
+        let chain = |from: usize| -> Vec<usize> {
+            let mut out = vec![from];
+            let mut at = from;
+            while self.panes[at].kind == WindowKind::Popup
+                && !self.panes[at].activates
+                && let Some(o) = self.pane_of(self.panes[at].owner)
+                && o != at
+                && !out.contains(&o)
+            {
+                out.push(o);
+                at = o;
+            }
+            out
+        };
+        let (a, b) = (chain(i), chain(j));
+        (self.panes[i].kind == WindowKind::Popup && !self.panes[i].activates && a.contains(&j))
+            || (self.panes[j].kind == WindowKind::Popup
+                && !self.panes[j].activates
+                && b.contains(&i))
     }
 
     /// Works out what each window's *view* should believe about keyboard
@@ -89,21 +149,12 @@ impl<A: App> Shell<A> {
             self.panes[j].window.focus_window();
         }
         for i in 0..self.panes.len() {
-            let (id, owner, lends) = {
-                let p = &self.panes[i];
-                (p.id, p.owner, p.kind == WindowKind::Popup && !p.activates)
-            };
-            // The pair reads as focused together, because between them the
+            // The chain reads as focused together, because along it the
             // keyboard is being routed rather than lost: an owner while its
-            // popup holds it, and the popup while the owner does.
-            let together = self.panes.iter().any(|p| {
-                p.os_focused
-                    && if lends {
-                        p.id == owner
-                    } else {
-                        p.kind == WindowKind::Popup && !p.activates && p.owner == id
-                    }
-            });
+            // popup holds it, the popup while the owner does, and a
+            // submenu with both.
+            let together = (0..self.panes.len())
+                .any(|j| j != i && self.panes[j].os_focused && self.lends_to(i, j));
             let focused = self.panes[i].os_focused || together;
             let pane = &mut self.panes[i];
             if pane.core.env.focused == focused {

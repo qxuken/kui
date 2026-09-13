@@ -813,6 +813,14 @@ impl Core {
         self.interaction.scrollbars = scrollbars;
         self.ime_rect = self.focused_caret_rect();
         self.note_sink_caret();
+        // The atlas reset or grew under this frame: the templates built
+        // before it are stamped stale and the quads already emitted sample
+        // the page that was overwritten after them. "Rebuild next frame"
+        // needs there to be one (AR19: nothing asked, so an input-driven
+        // app kept the corrupt frame until the next event).
+        if self.atlas.epoch != self.atlas_epoch_seen {
+            self.frame_requested = true;
+        }
     }
 
     /// The exit diff: every key the previous frame declared an `exit` on

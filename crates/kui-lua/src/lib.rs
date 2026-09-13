@@ -243,6 +243,11 @@ impl Extension for LuaExtension {
                 && !t.contains_key("node_key")?
             {
                 t.set("node_key", ev.key.0 as i64)?;
+                // And which window it came from — the number `env.window.id`
+                // reads in that window's view, as Node's `ev.window` and
+                // C's `KuiEvent.window` carry (AR26: a panel drawn into
+                // two windows could not tell which one clicked).
+                t.set("window", ev.window.0)?;
                 // And, when this is a reply from a plugin the script
                 // loaded, who is answering: the namespace it chose in
                 // `env.add_extension`. Absent for the script's own nodes,
@@ -501,9 +506,20 @@ fn env_table<'scope, 'env: 'scope>(
         mt.set(role.name, (role.get)(&metrics))?;
     }
     t.set("metrics", mt)?;
+    // An editor's text, by the label its `key` field declares or by the
+    // integer key an event carried — either spelling, like every query
+    // beside it (AR26: it took the integer alone, against its own doc,
+    // and the one example kept a key from a `changed` event to work
+    // around it). A label no frame declared answers nil.
     t.set(
         "edit_text",
-        scope.create_function(move |_, key: i64| Ok(ui.borrow().edit_text(Key(key as u64))))?,
+        scope.create_function(move |_, key: mlua::Value| {
+            let mut ui = ui.borrow_mut();
+            let Some(key) = key_query(&mut ui, key)? else {
+                return Ok(None);
+            };
+            Ok(ui.edit_text(key))
+        })?,
     )?;
     // Replaces an editor's text, caret at the end. Named by the label its
     // `key` field declares as well as by the integer key, and the label is
@@ -3064,14 +3080,20 @@ mod tests {
             r#"
                 pending = nil
                 seen = nil
+                by_label = nil
+                window = nil
                 function view(env)
                   if pending then seen = env.edit_text(pending) end
+                  -- AR26: by the label its `key` declares, like every
+                  -- query beside it; a label nothing declared is nil.
+                  by_label = env.edit_text("note")
+                  nothing = env.edit_text("nope")
                   return column {
                     edit { key = "note", initial = "hi", autofocus = true, width = 200 },
                   }
                 end
                 function on_event(ev)
-                  if ev.kind == "changed" then pending = ev.node_key end
+                  if ev.kind == "changed" then pending = ev.node_key; window = ev.window end
                 end
             "#,
         )
@@ -3095,6 +3117,14 @@ mod tests {
         // A single-line field opens with the caret after its seed (F20).
         let seen: Option<String> = ext.lua.globals().get("seen").unwrap();
         assert_eq!(seen.as_deref(), Some("hi!"));
+        let by_label: Option<String> = ext.lua.globals().get("by_label").unwrap();
+        assert_eq!(by_label.as_deref(), Some("hi!"), "the same text by label");
+        let nothing: Option<String> = ext.lua.globals().get("nothing").unwrap();
+        assert_eq!(nothing, None);
+        // The event says which window it came from (AR26), the number
+        // `env.window.id` reads: the main one here.
+        let window: Option<i64> = ext.lua.globals().get("window").unwrap();
+        assert_eq!(window, Some(0));
     }
 
     /// `env.set_edit_text` by the label the view declares: the spelling a

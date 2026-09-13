@@ -5143,6 +5143,19 @@ test('a $name nothing declared, or of the other kind, is dropped and warned abou
   assert.match(ws.find((w) => named(w) === 'peech').message, /names no token/);
 });
 
+test('{ percent: 50 } and "50%" are the same sizing (AR25)', () => {
+  // The object form wrote `v.percent` raw where the string form divides
+  // by 100 and the core reads a fraction: `{ percent: 50 }` was 5000%.
+  // In no doc, example or test, which is why nothing caught it.
+  const enc = createEncoder(protocol());
+  const bytes = (w) => enc.encode(box({ width: w, height: 10 })).stream.slice();
+  assert.deepEqual(bytes({ percent: 50 }), bytes('50%'));
+  const ctx = new Ctx();
+  ctx.setInspect(true);
+  ctx.frame(200, 100, 1, box({ width: 'grow', height: 'grow' }, [box({ width: { percent: 50 }, height: 10 }, [], 'half')]));
+  assert.equal(ctx.nodes().find((n) => n.label === 'half').rect.w, 100);
+});
+
 test('a $name reaches a min, a stroke width, a cursor colour and a keyframe stop, and misses by leaving the slot (AR14)', () => {
   // The three slots outside the prop list threw on a `$` — `bad min`,
   // `bad width for <line>`, `bad color` — and a `$` in a keyframe or

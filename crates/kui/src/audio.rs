@@ -274,7 +274,15 @@ mod backend {
                         if fade_in_ms > 0.0 {
                             data = data.fade_in_tween(tween(fade_in_ms));
                         }
+                        // `apply` and `flush_pending` only reach here once
+                        // the open has answered, so no device is a device
+                        // that failed to open: a machine with no output
+                        // (CI, a container, a muted VM). The play is
+                        // refused like any other the device would not
+                        // take — a view sequenced on `sound ended` must
+                        // not hang on it (AR20).
                         let Some(m) = self.manager() else {
+                            self.refused.push(playback);
                             return;
                         };
                         match m.play(data) {
@@ -474,6 +482,42 @@ mod backend {
             }
             audio.close();
             assert!(audio.holds_device(), "a sound mid-flight keeps the device");
+        }
+
+        /// AR20: a device that failed to open refuses every play, so the
+        /// core hears `refused` and a view sequenced on `sound ended`
+        /// does not hang. Before, the play was dropped on the floor and
+        /// neither ended nor was refused. Forced rather than found: a
+        /// machine with a device cannot fail to open one on demand.
+        #[test]
+        fn a_device_that_failed_to_open_refuses_a_play() {
+            use kui_core::{Core, PlayOptions};
+            let mut core = Core::new();
+            let s = core.add_sound(super::super::blip(44_100, 660.0, 30.0, 0.1));
+            let p = core.play(s, PlayOptions::default());
+            let mut audio = Audio::new();
+            audio.device = Device::Failed;
+            let answered = audio.apply(core.take_audio_commands(), &core.resources);
+            assert_eq!(answered.refused, vec![p], "{answered:?}");
+            assert!(answered.truncated.is_empty());
+            assert!(
+                !audio.active(),
+                "nothing waits on a device that will not open"
+            );
+            // And one that waited for the open and then found it failed:
+            // reported on the apply that flushes it.
+            let mut audio = Audio::new();
+            let (_tx, rx) = mpsc::channel();
+            audio.device = Device::Opening(rx);
+            let p2 = core.play(s, PlayOptions::default());
+            let answered = audio.apply(core.take_audio_commands(), &core.resources);
+            assert!(answered.refused.is_empty(), "still opening: the play waits");
+            drop(_tx); // the open thread "died"
+            // The poll is what flushes what waited; the next apply hands
+            // the answer back.
+            assert!(audio.poll_ended().is_empty());
+            let answered = audio.apply(Vec::new(), &core.resources);
+            assert_eq!(answered.refused, vec![p2], "{answered:?}");
         }
 
         /// The decoder needs no device: a synthesized WAV round-trips.

@@ -1438,7 +1438,14 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
             // popup. The modifier mirror follows them, or the popup would
             // read a stale Shift.
             WindowEvent::ModifiersChanged(m) => {
+                // The keyboard's state is one fact for the pair: the OS
+                // delivers the edge to the owner, the target reads it for
+                // the keys it borrows, and the owner keeps reading it once
+                // the popup is gone — written to the target alone, a Shift
+                // released while a menu was up left the owner's next key a
+                // Shift chord (AR23).
                 let t = self.key_target(i);
+                self.panes[i].modifiers = m.state();
                 self.panes[t].modifiers = m.state();
                 let kmods = self.panes[t].kmods();
                 self.dispatch(event_loop, t, InputEvent::Modifiers(kmods));

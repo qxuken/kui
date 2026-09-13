@@ -56,6 +56,10 @@ pub struct GlyphAtlas {
     images: FxHashMap<ImageId, Option<GlyphSlot>>,
     shelves: Vec<Shelf>,
     next_shelf_y: u32,
+    /// How many times the page filled since `begin_frame`: once is a
+    /// working set that turned over, twice is one that does not fit the
+    /// page, which is when the page grows (AR19).
+    resets_this_frame: u32,
 }
 
 impl GlyphAtlas {
@@ -73,7 +77,14 @@ impl GlyphAtlas {
             images: FxHashMap::default(),
             shelves: Vec::new(),
             next_shelf_y: 0,
+            resets_this_frame: 0,
         }
+    }
+
+    /// A frame begins: the count that decides between a reset and a
+    /// growth starts over.
+    pub fn begin_frame(&mut self) {
+        self.resets_this_frame = 0;
     }
 
     /// Drops every cached glyph and image (they re-rasterize on demand) and
@@ -107,14 +118,28 @@ impl GlyphAtlas {
     }
 
     /// Alloc with escalation: on a full page, reset and retry; still no fit,
-    /// double the page (to `MAX_ATLAS_SIZE`) until it fits or can't.
+    /// double the page (to `MAX_ATLAS_SIZE`) until it fits or can't. A
+    /// page that fills *twice in one frame* holds a working set larger
+    /// than itself — three atlas-backed 800×600 images, a code view with
+    /// many sizes plus CJK and emoji — and doubles instead of resetting
+    /// again (AR19): resetting alone left every such frame corrupt, since
+    /// after a reset any one item fits and the page never grew, and every
+    /// frame then reset mid-emit, invalidated every text template and
+    /// sampled the overwritten page from the quads emitted before it.
     fn alloc_or_make_room(&mut self, w: u32, h: u32) -> Option<(u32, u32)> {
         if let Some(pos) = self.alloc(w, h) {
             return Some(pos);
         }
         // Quads emitted earlier this frame may sample stale UVs for one
-        // frame; the epoch bump forces a re-upload so it self-heals.
-        self.reset();
+        // frame; the epoch bump forces a re-upload — and `Core` asks for
+        // the frame that rebuilds them — so it self-heals.
+        self.resets_this_frame += 1;
+        let bigger = (self.size * 2).min(MAX_ATLAS_SIZE);
+        if self.resets_this_frame >= 2 && bigger != self.size {
+            self.grow_to(bigger);
+        } else {
+            self.reset();
+        }
         loop {
             if let Some(pos) = self.alloc(w, h) {
                 return Some(pos);
@@ -350,6 +375,43 @@ mod tests {
         // Still functional after reset.
         let s = atlas.get_or_insert(fake_key(1000), || Some(raster(20, 20)));
         assert!(s.is_some());
+    }
+
+    /// AR19: a set that does not fit the page grows it, once — and from
+    /// the next frame on, nothing resets. Before, the page reset on every
+    /// overflow and never grew for a set of items that each fit, so a
+    /// frame whose glyphs outnumbered the page reset mid-emit every time.
+    #[test]
+    fn a_working_set_larger_than_the_page_grows_it_and_then_holds() {
+        let mut atlas = GlyphAtlas::with_size(64);
+        atlas.begin_frame();
+        for i in 0..100 {
+            atlas.get_or_insert(fake_key(i), || Some(raster(30, 30)));
+        }
+        assert!(atlas.size >= 512, "grown to hold the set: {}", atlas.size);
+        let epoch = atlas.epoch;
+        // The same set next frame: what the last growth dropped is
+        // rasterized again and fits, and the page is still.
+        atlas.begin_frame();
+        for i in 0..100 {
+            atlas.get_or_insert(fake_key(i), || Some(raster(30, 30)));
+        }
+        assert_eq!(atlas.epoch, epoch, "no reset on the second frame");
+        atlas.begin_frame();
+        for i in 0..100 {
+            atlas.get_or_insert(fake_key(i), || panic!("cached by now"));
+        }
+        assert_eq!(atlas.epoch, epoch);
+        // A turned-over set — one page's worth of new keys per frame —
+        // still resets rather than growing without bound.
+        let mut atlas = GlyphAtlas::with_size(64);
+        for frame in 0..10u32 {
+            atlas.begin_frame();
+            for i in 0..4 {
+                atlas.get_or_insert(fake_key(frame * 4 + i), || Some(raster(30, 30)));
+            }
+        }
+        assert_eq!(atlas.size, 64, "one page's worth a frame never grows it");
     }
 
     #[test]
