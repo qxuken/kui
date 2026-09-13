@@ -49,6 +49,9 @@ struct Clipboard {
     clip_out: Option<String>,
     /// `p` asked: the next `text` event is the paste.
     awaiting_paste: bool,
+    /// The ask itself, made once by the next view — not every frame the
+    /// answer is outstanding, which would queue a paste a frame.
+    paste_pending: bool,
     /// A `selectionrange` ask the log has to answer, as the rows it named.
     answer: Option<String>,
     /// The readout.
@@ -67,6 +70,7 @@ impl Clipboard {
             cursor: 0,
             clip_out: None,
             awaiting_paste: false,
+            paste_pending: false,
             answer: None,
             sent: "nothing yet".into(),
             received: "nothing yet".into(),
@@ -126,7 +130,7 @@ impl App for Clipboard {
         if let Some(text) = self.clip_out.take() {
             ui.set_clipboard(text, None);
         }
-        if self.awaiting_paste {
+        if std::mem::take(&mut self.paste_pending) {
             ui.request_paste();
         }
         if let Some(text) = self.answer.take() {
@@ -282,7 +286,10 @@ impl App for Clipboard {
                     self.sent = format!("the register's line: {line:?}");
                     self.clip_out = Some(line);
                 }
-                Some("p") => self.awaiting_paste = true,
+                Some("p") => {
+                    self.awaiting_paste = true;
+                    self.paste_pending = true;
+                }
                 _ => {}
             },
             // The paste `p` asked for — or an IME's commit, which this

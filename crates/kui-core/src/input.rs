@@ -1362,9 +1362,18 @@ impl Interaction {
 
     /// The node a press is held on, if any.
     /// The click count the last primary press carried; see
-    /// `press_clicks`.
+    /// `press_clicks`. Zero after a click nothing pressed for — Enter,
+    /// Space, an assistive-technology `click` — so a payload attached
+    /// from the pointer's position does not describe a press that never
+    /// happened.
     pub(crate) fn press_clicks(&self) -> u8 {
         self.press_clicks
+    }
+
+    /// A click is being made without a press (`Core::click_node`): the
+    /// count the last press carried no longer describes it.
+    pub(crate) fn note_synthetic_click(&mut self) {
+        self.press_clicks = 0;
     }
 
     pub fn pressed_key(&self) -> Option<Key> {

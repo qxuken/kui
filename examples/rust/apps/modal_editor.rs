@@ -141,6 +141,10 @@ struct ModalEditor {
     clip_out: Option<String>,
     /// `p` asked for the clipboard: the next `text` event is the paste.
     awaiting_paste: bool,
+    /// The ask itself, made once by the next view — not every frame the
+    /// answer is still outstanding, which would queue a paste a frame and
+    /// keep the runner redrawing if the answer never landed.
+    paste_pending: bool,
     /// Where the button went down, for a drag-select.
     drag_from: Option<Pos>,
     quit: bool,
@@ -178,6 +182,7 @@ impl ModalEditor {
             pending: None,
             clip_out: None,
             awaiting_paste: false,
+            paste_pending: false,
             drag_from: None,
             quit: false,
         }
@@ -311,7 +316,10 @@ impl ModalEditor {
                 view.anchor = None;
                 self.message = format!("yanked {n} line(s) to the clipboard");
             }
-            "p" => self.awaiting_paste = true,
+            "p" => {
+                self.awaiting_paste = true;
+                self.paste_pending = true;
+            }
             "u" => self.message = "undo is where the demo ends and your app begins".into(),
             ":" => {
                 self.mode = Mode::Command;
@@ -417,7 +425,7 @@ impl App for ModalEditor {
         if let Some(text) = self.clip_out.take() {
             ui.set_clipboard(text, None);
         }
-        if self.awaiting_paste {
+        if std::mem::take(&mut self.paste_pending) {
             ui.request_paste();
         }
         ui.with(NodeSpec::column().fill().bg(pal.bg), |ui| {

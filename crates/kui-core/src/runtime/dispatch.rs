@@ -136,14 +136,26 @@ impl Core {
                 continue;
             };
             // A drag in any phase, or a click — whose payload is the
-            // app's own and carries no `kind` of the core's.
+            // app's own and carries no `kind` of the core's. A chosen
+            // menu row is the core's too and is not in the events table
+            // (it is documented with the menu bar), so it is named here.
             let kind = ev.payload.get("kind").and_then(Value::as_str);
+            let drag = kind == Some("drag");
             let pointer = match kind {
                 Some("drag") => true,
+                Some("menu") => false,
                 Some(k) => !crate::schema::EVENTS.iter().any(|e| e.kind == k),
                 None => true,
             };
             if !pointer {
+                continue;
+            }
+            // A click nothing pressed for — Enter, Space, a screen
+            // reader's `click` — has no point and no count: the cursor
+            // is wherever the mouse happens to rest, and the last press
+            // was about something else.
+            let clicks = self.interaction.press_clicks();
+            if !drag && clicks == 0 {
                 continue;
             }
             let Some(i) = self.tree.index_of(ev.key) else {
@@ -201,7 +213,6 @@ impl Core {
                 .text
                 .hit_at(self.tree.keys[l], point, self.building)
                 .map_or(0, |h| h.byte);
-            let clicks = self.interaction.press_clicks();
             if let Value::Map(entries) = &mut ev.payload {
                 entries.push(("line".to_string(), Value::Int(line as i64)));
                 entries.push(("byte".to_string(), Value::Int(byte as i64)));
@@ -1132,6 +1143,9 @@ impl Core {
         let (origin, payload, window, sound) =
             (h.origin, h.payload.clone(), h.window, h.click_sound);
         let takes_focus = h.focusable && (h.edit_origin.is_some() || h.key_sink.is_some());
+        // Not a press: the payload gains no `line` / `byte` / `clicks`
+        // from wherever the pointer rests (`attach_lines`).
+        self.interaction.note_synthetic_click();
         if let Some(sound) = sound {
             self.interaction.sound_requests.push(sound);
         }

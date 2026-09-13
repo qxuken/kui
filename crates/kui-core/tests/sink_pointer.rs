@@ -178,6 +178,35 @@ fn below_the_last_line_is_the_last_line_and_a_sink_without_lines_adds_nothing() 
     release(&mut core);
 }
 
+/// A click nothing pressed for — Enter or Space on a focused control, a
+/// screen reader's `click` — gains nothing: the cursor is wherever the
+/// mouse rests and the last press was about something else.
+#[test]
+fn a_click_without_a_press_gains_nothing() {
+    use kui_core::{AccessAction, AccessRequest};
+    let mut core = Core::new();
+    let sink = frame(&mut core, &["hello world", "second"]);
+    // A real double click on line 2 leaves its count behind.
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(
+        10.0 + GUTTER + 20.0,
+        10.0 + LH + 5.0,
+    )));
+    core.handle_input(InputEvent::mouse_down(2));
+    core.handle_input(InputEvent::mouse_up());
+    // Then assistive technology clicks the sink: no press, no fields.
+    let evs = core.handle_input(InputEvent::Access(AccessRequest::new(
+        sink,
+        AccessAction::Click,
+    )));
+    let click = evs
+        .iter()
+        .find(|e| kind(e).as_deref() == Some("hit"))
+        .expect("the click arrived");
+    assert_eq!(field(click, "line"), None, "{:?}", click.payload);
+    assert_eq!(field(click, "byte"), None);
+    assert_eq!(field(click, "clicks"), None);
+}
+
 /// A key event on the sink is not a pointer event: nothing is attached.
 #[test]
 fn a_key_on_the_sink_gains_nothing() {
