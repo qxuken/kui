@@ -12,8 +12,9 @@ use crate::key::Key;
 use crate::runtime::Core;
 use crate::select::{
     CellEnd, CellSelection, CopyRequest, DragAnchor, Endpoint, Grain, RangeEnd, SelectDrag,
-    Selection, grained_edges,
+    Selection, grained_edges, unbuilt_row_is_after,
 };
+use crate::tree::NodeContent;
 use crate::value::Value;
 
 impl Core {
@@ -414,20 +415,85 @@ impl Core {
 
     /// The selection's two ends as the app's own addresses — the data
     /// index of the virtualised row each is in, and the byte inside that
-    /// row's text. `None` when there is no selection, or when neither end
-    /// is in a virtualised row (nothing to ask about: the core has it
-    /// all).
+    /// row's text — **in reading order**: `from` precedes `to` whichever
+    /// way the drag was made, so an app answering a `selectionrange` ask
+    /// can iterate `from..=to` (the clipboard examples do). `None` when
+    /// there is no selection, or when neither end is in a virtualised row
+    /// (nothing to ask about: the core has it all). The directed pair is
+    /// [`Self::selection_ends`].
     pub fn selection_range(&self) -> Option<(RangeEnd, RangeEnd)> {
         let sel = self.selection?;
         let (a, f) = (sel.anchor, sel.focus);
-        (a.row.is_some() || f.row.is_some()).then_some((
+        if a.row.is_none() && f.row.is_none() {
+            return None;
+        }
+        let end = |e: Endpoint| RangeEnd {
+            row: e.row,
+            byte: e.byte,
+        };
+        if self.end_precedes(sel.scope, f, a) {
+            Some((end(f), end(a)))
+        } else {
+            Some((end(a), end(f)))
+        }
+    }
+
+    /// Whether `x` comes before `y` in the scope's reading order — the
+    /// question a backwards drag makes of two ends. Both built this frame:
+    /// by their offset in the scope's concatenation, the order the drag
+    /// itself is decided by. Both in virtualised rows: by row, then byte.
+    /// One built and one in a row the frame never built: the unbuilt row
+    /// is placed after the scope's built rows or before them by the one
+    /// rule `resolve_selection` paints by (`unbuilt_row_is_after`), so
+    /// the highlight and the answer agree. Nothing to compare by: the
+    /// pair keeps its order — `false` here, since the caller asks whether
+    /// the focus precedes the anchor.
+    fn end_precedes(&self, scope: Key, x: Endpoint, y: Endpoint) -> bool {
+        let prev = self.building;
+        let ox = self.text.scope_offset(scope, x.node, x.byte, prev);
+        let oy = self.text.scope_offset(scope, y.node, y.byte, prev);
+        match (ox, oy, x.row, y.row) {
+            (Some(ox), Some(oy), ..) => ox < oy,
+            (_, _, Some(rx), Some(ry)) => (rx, x.byte) < (ry, y.byte),
+            (Some(_), None, _, Some(ry)) => unbuilt_row_is_after(ry, self.last_built_row_in(scope)),
+            (None, Some(_), Some(rx), _) => {
+                !unbuilt_row_is_after(rx, self.last_built_row_in(scope))
+            }
+            _ => false,
+        }
+    }
+
+    /// The row of the last text run the frame built inside `scope` that
+    /// carries one — what an end the frame did not build is placed
+    /// against. This scope's rows only: a second virtual list on screen
+    /// says nothing about where a row of this one sits.
+    fn last_built_row_in(&self, scope: Key) -> Option<u64> {
+        (0..self.tree.len()).rev().find_map(|i| {
+            (self.scopes.get(i).copied().flatten() == Some(scope)
+                && matches!(self.tree.content[i], NodeContent::Text(_)))
+            .then(|| self.rows.get(i).copied().flatten())
+            .flatten()
+        })
+    }
+
+    /// The selection's two ends as the drag made them — the anchor where
+    /// the press landed, the focus where the pointer is — each as the
+    /// data index of the virtualised row it is in (`None` outside every
+    /// virtualised row) and the byte inside that node's own text. The
+    /// directed pair, unlike [`Self::selection_range`]'s: what a test or
+    /// a model that mirrors the selection reads, and what says whether a
+    /// Shift-press kept the anchor (ADR 0029). `None` with no text
+    /// selection; a grid's is `cell_selection`.
+    pub fn selection_ends(&self) -> Option<(RangeEnd, RangeEnd)> {
+        let sel = self.selection?;
+        Some((
             RangeEnd {
-                row: a.row,
-                byte: a.byte,
+                row: sel.anchor.row,
+                byte: sel.anchor.byte,
             },
             RangeEnd {
-                row: f.row,
-                byte: f.byte,
+                row: sel.focus.row,
+                byte: sel.focus.byte,
             },
         ))
     }
@@ -486,12 +552,6 @@ impl Core {
             // about, and nothing to hand over.
             return CopyRequest::Nothing;
         };
-        let end = |row: Option<u64>, byte: usize| {
-            Value::map([
-                ("index", row.map_or(Value::Null, |r| Value::Int(r as i64))),
-                ("byte", Value::Int(byte as i64)),
-            ])
-        };
         self.pending.push(crate::input::UiEvent {
             // The scope's own origin: an extension that declared the
             // list is the one that can answer for its rows.
@@ -505,8 +565,8 @@ impl Core {
             key: sel.scope,
             payload: Value::map([
                 ("kind", Value::str("selectionrange")),
-                ("from", end(from.row, from.byte)),
-                ("to", end(to.row, to.byte)),
+                ("from", from.to_value()),
+                ("to", to.to_value()),
             ]),
         });
         self.awaiting_selection = true;
@@ -699,10 +759,37 @@ impl Core {
     /// selects in cells and a paragraph in bytes (ADR 0017, decision 4):
     /// this is where the two are told apart, once, and the anchor carries
     /// the answer for the drag. In a grid, Alt makes it the rectangular
-    /// selection every terminal has.
-    pub(crate) fn arm_select_drag(&mut self, scope: Key, point: Vec2, clicks: u8) {
-        let grain = Grain::of_clicks(clicks);
-        let armed = if self.cells_id_of_ref(scope).is_some() {
+    /// selection every terminal has. With `extend` — a Shift-press in
+    /// the scope the selection is in — the anchor is kept and the press
+    /// is the live end (ADR 0029, decision 3). Whether a drag was armed.
+    pub(crate) fn arm_select_drag(
+        &mut self,
+        scope: Key,
+        point: Vec2,
+        clicks: u8,
+        extend: bool,
+    ) -> bool {
+        let grain = if extend {
+            Grain::Char
+        } else {
+            Grain::of_clicks(clicks)
+        };
+        let armed = if extend {
+            // The anchor stays; the live end is the press, and the drag
+            // goes on from there by characters, whatever the click count
+            // — armed whether or not the press moved the end (one on the
+            // focus itself moves nothing and still drags on). The
+            // window's one selection is this one, so a focused editor's
+            // collapses as `set_selection` would have it.
+            let drag = SelectDrag {
+                scope,
+                grain,
+                anchor: None,
+            };
+            self.extend_select_drag(drag, point);
+            self.collapse_editor_selection();
+            Some(None)
+        } else if self.cells_id_of_ref(scope).is_some() {
             let block = self.interaction.modifiers().alt;
             match grain {
                 Grain::Char => self
@@ -733,6 +820,7 @@ impl Core {
                 anchor,
             });
         }
+        armed.is_some()
     }
 
     /// Moves the live end of the drag [`Self::arm_select_drag`] started,

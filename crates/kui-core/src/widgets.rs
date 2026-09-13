@@ -1380,6 +1380,14 @@ pub fn virtual_rows(
     let mut top = (offset_y - pad.t).max(0.0);
     let anchor = heights.row_at(top);
     let into = top - heights.offset_of(anchor);
+    // What the passes below move `top` away from. The correction is for a
+    // *measurement* moving the numbers — not for the clamp above, which
+    // on a list shorter than its box (offset 0, padding 6) makes
+    // `top + pad.t` differ from the offset every frame, and a `set_scroll`
+    // every frame is a frame requested every frame: the devtools' events
+    // list never idled again once it had one row (found building ADR
+    // 0029, ~130 frames/s after the first event).
+    let top_before = top;
 
     let mut range = visible_range(heights, top, vh, OVERSCAN);
     for _ in 0..PASSES {
@@ -1411,9 +1419,8 @@ pub fn virtual_rows(
     // the positions pass reads the store after the view has run. So the
     // frame that learned the rows are a different size is drawn already
     // corrected, and the uncorrected one is never seen.
-    let corrected = top + pad.t;
-    if (corrected - offset_y).abs() > 0.01 {
-        ui.set_scroll(key, Vec2::new(0.0, corrected));
+    if (top - top_before).abs() > 0.01 {
+        ui.set_scroll(key, Vec2::new(0.0, top + pad.t));
     }
 
     let lead = heights.offset_of(range.start);

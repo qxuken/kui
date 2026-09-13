@@ -1030,18 +1030,31 @@ impl EditStore {
 
     /// Mouse press inside the edit at content-local logical position.
     /// `clicks` is the driver-counted multi-click: 2 selects the word,
-    /// 3 the line (cosmic-text's double/triple click actions).
-    pub(crate) fn click(&mut self, key: Key, local: Vec2, clicks: u8, fs: &mut FontSystem) {
+    /// 3 the line (cosmic-text's double/triple click actions). With
+    /// `extend` — a Shift-press — the caret moves there keeping the
+    /// selection's anchor, seeding one at the caret when there is none
+    /// (cosmic-text's `Drag` does both; ADR 0029, decision 3), and the
+    /// click count says nothing. Either way it is a click: a live
+    /// composition is abandoned and the next edit starts an undo unit.
+    pub(crate) fn click(
+        &mut self,
+        key: Key,
+        local: Vec2,
+        clicks: u8,
+        extend: bool,
+        fs: &mut FontSystem,
+    ) {
         if let Some(s) = self.states.get_mut(&key) {
             if s.abandon_preedit() {
                 s.version += 1;
                 s.invalidate_measurements();
             }
             let (x, y) = ((local.x * s.scale) as i32, (local.y * s.scale) as i32);
-            let action = match clicks {
-                0 | 1 => Action::Click { x, y },
-                2 => Action::DoubleClick { x, y },
-                _ => Action::TripleClick { x, y },
+            let action = match (extend, clicks) {
+                (true, _) => Action::Drag { x, y },
+                (false, 0 | 1) => Action::Click { x, y },
+                (false, 2) => Action::DoubleClick { x, y },
+                (false, _) => Action::TripleClick { x, y },
             };
             s.editor.action(fs, action);
             s.editor.shape_as_needed(fs, false);
@@ -1050,11 +1063,24 @@ impl EditStore {
         }
     }
 
+    /// Mouse motion with the button held: moves the caret to the point
+    /// and keeps the selection's anchor (seeding one at the caret when
+    /// there is none — cosmic-text's `Drag` does both). The caret moved,
+    /// so it is marked like a keyboard motion's: a field scrolls its own
+    /// text toward the drag at once, and a scroller above a document
+    /// reveals the caret on the release — not under the held pointer,
+    /// where the drag's own rate is what moves it (ADR 0029, decision 2;
+    /// `scroll_caret_into_view`).
     pub(crate) fn drag(&mut self, key: Key, local: Vec2, fs: &mut FontSystem) {
         if let Some(s) = self.states.get_mut(&key) {
             let (x, y) = ((local.x * s.scale) as i32, (local.y * s.scale) as i32);
+            let before = s.editor.cursor();
             s.editor.action(fs, Action::Drag { x, y });
-            self.caret_stamp += 1;
+            if s.editor.cursor() != before {
+                self.touch_caret(key);
+            } else {
+                self.caret_stamp += 1;
+            }
         }
     }
 

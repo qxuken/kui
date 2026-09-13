@@ -99,6 +99,27 @@ export type ContextMenuMsg<T = AppMsg> = {
   tag?: T;
 };
 
+/** The wheel over an `onScroll` node, or a drag-select held past a
+ *  `cells` grid's top or bottom edge
+ *  (`docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md`).
+ *  `dx`/`dy` are the delta in logical px as the driver reported it
+ *  (positive `dy` is the wheel rolling up, toward earlier content),
+ *  `x`/`y` the pointer, and `lines` the whole lines a `cells` grid's `dy`
+ *  covers — positive is later history, the sign `originLine` grows in,
+ *  the fraction carried to the next notch — and null on any other node.
+ *  The core scrolls nothing for it: re-declare the grid's `originLine`,
+ *  or zoom the canvas. From the edge drag it comes once a frame while the
+ *  pointer is held past the edge. */
+export type ScrollMsg<T = AppMsg> = {
+  kind: 'scroll';
+  x: number;
+  y: number;
+  dx: number;
+  dy: number;
+  lines: number | null;
+  tag?: T;
+};
+
 /** A menu row was chosen — a context menu's (`Ctx.openMenu`, or the stock
  *  one a right-click opens) or the application menu bar's
  *  (`docs/adr/0018-a-menu-bar-the-app-declares.md`). One message for both,
@@ -311,6 +332,7 @@ export type CoreMsg =
   | TextMsg
   | PreeditMsg
   | ContextMenuMsg
+  | ScrollMsg
   | MenuMsg
   | SelectionRangeMsg
   | HoverMsg
@@ -1319,6 +1341,22 @@ export type EditKeyName =
   | 'backspace' | 'delete' | 'enter' | 'tab' | 'selectall' | 'undo' | 'redo'
   | 'escape';
 // -- end generated --
+
+/** One end of the text selection as `selectionEnds()` reads it: the data
+ *  index of the virtualised row it is in (null outside every virtualised
+ *  row) and the byte inside that row's own text. */
+export interface SelectionEnd {
+  index: number | null;
+  byte: number;
+}
+
+/** The text selection's two ends as the drag made them — the anchor where
+ *  the press landed, the focus where the pointer is — so a Shift-click
+ *  that kept the anchor reads as one (ADR 0029). */
+export interface SelectionEnds {
+  anchor: SelectionEnd;
+  focus: SelectionEnd;
+}
 
 /** A scroll container's retained offset, in logical px: positive means the
  *  content has moved up / left inside it. */
@@ -2386,6 +2424,17 @@ export declare class Ctx {
    */
   selectionText(): string | null
   /**
+   * The text selection's two ends as the drag made them:
+   * `{anchor: {index, byte}, focus: {index, byte}}`, `index` the
+   * data index of the virtualised row the end is in (null
+   * outside every virtualised row — the `index` a
+   * `selectionrange` ask would name) and `byte` the offset in
+   * that row's own text. Directed, so a Shift-click that kept
+   * the anchor reads as one (ADR 0029). Null with no text
+   * selection; a grid's is `cellSelection()`.
+   */
+  selectionEnds(): SelectionEnds | null
+  /**
    * The selection as HTML, carrying the formatting the text
    * declared — bold, italic, a span's own colour — and *not*
    * the node's colour, which is the app's theme rather than
@@ -3259,6 +3308,17 @@ export declare class KuiWindow {
    * `docs/adr/0017-selection-as-a-scope.md`.
    */
   selectionText(): string | null
+  /**
+   * The text selection's two ends as the drag made them:
+   * `{anchor: {index, byte}, focus: {index, byte}}`, `index` the
+   * data index of the virtualised row the end is in (null
+   * outside every virtualised row — the `index` a
+   * `selectionrange` ask would name) and `byte` the offset in
+   * that row's own text. Directed, so a Shift-click that kept
+   * the anchor reads as one (ADR 0029). Null with no text
+   * selection; a grid's is `cellSelection()`.
+   */
+  selectionEnds(): SelectionEnds | null
   /**
    * The selection as HTML, carrying the formatting the text
    * declared — bold, italic, a span's own colour — and *not*

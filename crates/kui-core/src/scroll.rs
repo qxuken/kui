@@ -67,6 +67,13 @@ impl ScrollGeometry {
 struct Entry {
     offset: Vec2,
     geom: Option<(Rect, Size, Vec2)>,
+    /// The offset the last layout *placed the content at* — `offset` as
+    /// `resolve` clamped it, before anything wrote a newer one. A wheel
+    /// notch between two frames moves `offset` at once and this only at
+    /// the next layout, which is the difference a drag following its
+    /// scroller reads (ADR 0029, decision 1): the frame on screen is at
+    /// this offset, whatever the store already holds.
+    laid: Vec2,
     /// The frame a layout last resolved this key, or an offset was last
     /// written at it. Only the budget reads it (see
     /// [`MAX_UNDECLARED_SCROLLS`]).
@@ -142,6 +149,16 @@ impl ScrollStore {
     /// The last layout's geometry for `key`, or `None` for a key no layout
     /// has ever resolved as a scroll container — including one that only
     /// ever had an offset written at it.
+    /// The offset the last layout placed `key`'s content at, or `None`
+    /// for a key no layout has resolved as a scroll container. Unlike
+    /// [`Self::geometry`]'s `offset`, an offset written since is not in
+    /// it: this is where the frame on screen *is*.
+    pub(crate) fn laid_offset(&self, key: Key) -> Option<Vec2> {
+        let e = self.entries.get(&key)?;
+        e.geom?;
+        Some(e.laid)
+    }
+
     pub fn geometry(&self, key: Key) -> Option<ScrollGeometry> {
         let e = self.entries.get(&key)?;
         let (rect, content, max_offset) = e.geom?;
@@ -220,6 +237,7 @@ impl ScrollStore {
         e.geom = Some((rect, content, Vec2::new(max.x.max(0.0), max.y.max(0.0))));
         e.offset.x = e.offset.x.clamp(0.0, max.x.max(0.0));
         e.offset.y = e.offset.y.clamp(0.0, max.y.max(0.0));
+        e.laid = e.offset;
         e.offset
     }
 }

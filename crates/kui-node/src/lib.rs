@@ -2903,6 +2903,25 @@ macro_rules! core_methods {
                 Ok(self.$core().copy_selection())
             }
 
+            /// The text selection's two ends as the drag made them:
+            /// `{anchor: {index, byte}, focus: {index, byte}}`, `index` the
+            /// data index of the virtualised row the end is in (null
+            /// outside every virtualised row — the `index` a
+            /// `selectionrange` ask would name) and `byte` the offset in
+            /// that row's own text. Directed, so a Shift-click that kept
+            /// the anchor reads as one (ADR 0029). Null with no text
+            /// selection; a grid's is `cellSelection()`.
+            #[napi(ts_return_type = "SelectionEnds | null")]
+            pub fn selection_ends(&mut self) -> Result<Json> {
+                Ok(match self.$core().selection_ends() {
+                    Some((a, f)) => readback(&Value::map([
+                        ("anchor", a.to_value()),
+                        ("focus", f.to_value()),
+                    ])),
+                    None => Json::Null,
+                })
+            }
+
             /// The selection as HTML, carrying the formatting the text
             /// declared — bold, italic, a span's own colour — and *not*
             /// the node's colour, which is the app's theme rather than

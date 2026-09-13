@@ -1372,6 +1372,87 @@ test('a selection reaches the runs a scroller clipped away', () => {
   );
 });
 
+// A held drag follows its scroller, and Shift extends (ADR 0029, backlog
+// C39): the live end is placed again when the rows move under a still
+// pointer, a press held past the edge scrolls the list a frame at a time,
+// and a Shift-press keeps the anchor — read back through `selectionEnds`.
+test('a drag held past the edge scrolls, follows, and Shift extends from the anchor', () => {
+  const ctx = new Ctx();
+  const style = { size: 14 };
+  const rows = [];
+  for (let i = 0; i < 10; i++) rows.push(box({ height: 20, width: 'grow' }, [text(`row ${i}`, style)], `r${i}`));
+  const list = box({ selectable: true, dir: 'column', height: 60, width: 'grow', scrollY: true }, rows, 'list');
+  const tree = box({ width: 'grow', height: 'grow' }, [list]);
+  ctx.frame(400, 300, 1, tree);
+  ctx.cursor(1, 6); ctx.mouse(true); ctx.cursor(200, 26);
+  assert.equal(ctx.selectionText(), 'row 0\nrow 1');
+  // Two rows scroll under the still pointer: the text moves on the next
+  // frame, the highlight follows a frame later.
+  ctx.scroll(0, -40);
+  ctx.frame(400, 300, 1, tree);
+  ctx.frame(400, 300, 1, tree);
+  assert.equal(ctx.selectionText(), 'row 0\nrow 1\nrow 2\nrow 3');
+  // Held 60 px below the list: 600 px/s, ten px a clockless frame.
+  ctx.cursor(200, 120);
+  for (let i = 0; i < 6; i++) ctx.frame(400, 300, 1, tree);
+  assert.ok(ctx.animating(), 'a held pointer past the edge asks for frames');
+  assert.equal(ctx.scrollOffset('list').y, 100);
+  ctx.mouse(false);
+  ctx.frame(400, 300, 1, tree);
+  assert.ok(!ctx.animating());
+  assert.ok(ctx.selectionText().endsWith('row 7'), ctx.selectionText());
+  // Shift-click one character into row 7 (the last on screen) keeps the
+  // anchor on row 0.
+  ctx.modifiers({ shift: true });
+  ctx.cursor(5, 50); ctx.mouse(true); ctx.mouse(false);
+  ctx.modifiers({});
+  assert.equal(ctx.selectionText(), 'row 0\nrow 1\nrow 2\nrow 3\nrow 4\nrow 5\nrow 6\nr');
+  const ends = ctx.selectionEnds();
+  assert.deepEqual(ends, { anchor: { index: null, byte: 0 }, focus: { index: null, byte: 1 } });
+  assert.equal(ctx.clearSelection(), true);
+  assert.equal(ctx.selectionEnds(), null);
+});
+
+// An `onScroll` node hears the wheel instead of scrolling: pixels on any
+// node, whole lines on a `cells` grid with the fraction carried, and it
+// takes the notch from the scroller above it (ADR 0029, decision 4).
+test('onScroll takes the wheel as a message, in lines on a cells grid', () => {
+  const ctx = new Ctx();
+  const screen = new Uint32Array(3 * 11 * 4);
+  for (let i = 0; i < 33; i++) { screen[i * 4] = 32; screen[i * 4 + 1] = 0xd6d8e0ff; }
+  const outer = box({ width: 'grow', height: 200, scrollY: true }, [
+    box({ width: 'grow', height: 40, onScroll: { kind: 'zoom' } }, [], 'canvas'),
+    el('cells', { rows: 3, cols: 11, cells: screen, size: 13, family: 'mono', lineHeight: 18, onScroll: { kind: 'term' } }, [], 'term'),
+    box({ width: 'grow', height: 400 }, [], 'filler'),
+  ], 'outer');
+  const tree = box({ width: 'grow', height: 'grow' }, [outer]);
+  ctx.frame(400, 200, 1, tree);
+  ctx.cursor(50, 20);
+  ctx.scroll(3, -12);
+  let evs = ctx.pollEvents().map((e) => e.payload);
+  assert.deepEqual(evs, [{ kind: 'scroll', x: 50, y: 20, dx: 3, dy: -12, lines: null, tag: { kind: 'zoom' } }]);
+  ctx.frame(400, 200, 1, tree);
+  assert.equal(ctx.scrollOffset('outer').y, 0, 'the canvas took the notch from the scroller above it');
+  // Two and a half rows down on the grid: two lines, a half carried; then
+  // the half made whole.
+  ctx.cursor(50, 60);
+  ctx.scroll(0, -45);
+  evs = ctx.pollEvents().map((e) => e.payload);
+  assert.equal(evs.length, 1);
+  assert.equal(evs[0].lines, 2);
+  assert.deepEqual(evs[0].tag, { kind: 'term' });
+  ctx.scroll(0, -9);
+  assert.equal(ctx.pollEvents()[0].payload.lines, 1);
+  ctx.scroll(0, 36);
+  assert.equal(ctx.pollEvents()[0].payload.lines, -2, 'earlier history is negative');
+  // Below both: the scroller scrolls, nothing is heard.
+  ctx.cursor(50, 150);
+  ctx.scroll(0, -12);
+  assert.deepEqual(ctx.pollEvents(), []);
+  ctx.frame(400, 200, 1, tree);
+  assert.equal(ctx.scrollOffset('outer').y, 12);
+});
+
 // A point on the text a keyed node drew is a byte offset, and a byte
 // offset is a caret rect (backlog C18): the `line` row of a custom editor
 // answers across its token runs, so a click becomes a caret with one call.
@@ -3456,6 +3537,47 @@ SCENE_TREES.selection = () =>
 // is the core's, opened by a secondary press that nothing claimed, so no
 // binding declares it and all four must still draw it identically.
 SCENE_TREES.menu = () => SCENE_TREES.selection();
+// And so is `selection-extend`: the Shift-press that keeps the anchor is
+// the core's reading of the modifier, nothing the view declares (ADR 0029).
+SCENE_TREES['selection-extend'] = () => SCENE_TREES.selection();
+
+// `conformance::build_selection_scroll`: the same card, forty px tall and
+// scrolling, over six runs — what a press held past its edge scrolls.
+const SELECTION_SCROLL_LINES = ['one', 'two', 'three', 'four', 'five', 'six'];
+SCENE_TREES['selection-scroll'] = () =>
+  root({}, [
+    box(
+      { width: 200, height: 40, pad: 8, gap: 4, bg: '#14161e', scrollY: true, selectable: true },
+      SELECTION_SCROLL_LINES.map((line) => text(line, { size: 13 })),
+      'card',
+    ),
+  ]);
+
+// `conformance::build_cells_scroll`: the `cells` screen three rows tall,
+// `selectable` and hearing the wheel, row 0 at 100 plus the phase — the
+// phase being how the scene's view answers a `scroll` event.
+const CELLS_SCROLL_ROWS = ['hello world', 'brave', 'bye'];
+SCENE_TREES['cells-scroll'] = (_fx, phase) => {
+  const cols = 11;
+  const screen = new Uint32Array(3 * cols * 4);
+  for (let i = 0; i < 3 * cols; i++) {
+    screen[i * 4] = ' '.codePointAt(0);
+    screen[i * 4 + 1] = 0xd6d8e0ff;
+  }
+  CELLS_SCROLL_ROWS.forEach((row, r) => {
+    row.split('').forEach((ch, c) => {
+      screen[(r * cols + c) * 4] = ch.codePointAt(0);
+    });
+  });
+  return root({}, [
+    box({ pad: 10 }, [
+      el('cells', {
+        rows: 3, cols, cells: screen, size: 13, family: 'mono', lineHeight: 18,
+        originLine: 100 + phase, selectable: true, onScroll: { kind: 'term' }, label: 'term',
+      }, [], 'term'),
+    ]),
+  ]);
+};
 
 // `conformance::build_drag`: one keyed handle whose drag deltas the event
 // rows carry, measured from the press point in every phase.
@@ -3664,6 +3786,12 @@ function driveScene(env, steps, build) {
     else if (step[0] === 'scroll') ctx.scroll(step[1], step[2]);
     else if (step[0] === 'tab') ctx.key('tab');
     else if (step[0] === 'shifttab') ctx.key('tab', { shift: true });
+    // The modifier state as bits — Shift 1, Ctrl 2, Alt 4, Super 8
+    // (`KeyMods::bits`): what a Shift-press reads (ADR 0029).
+    else if (step[0] === 'modifiers') {
+      const m = step[1];
+      ctx.modifiers({ shift: !!(m & 1), ctrl: !!(m & 2), alt: !!(m & 4), super: !!(m & 8) });
+    }
     else if (step[0] === 'escape') ctx.key('escape');
     // `conformance::ARROWS` order: left, right, up, down.
     else if (step[0] === 'arrow') ctx.key(['left', 'right', 'up', 'down'][step[1]]);
@@ -3787,6 +3915,9 @@ function sceneReport(name, env, steps, { ctx, events, commands, audio }) {
     // displacement from the press point in every phase, and the corpus
     // steps are integers, so the deltas print exactly.
     if (p?.kind === 'drag') tag += ` ${p.phase} ${Math.trunc(p.dx)} ${Math.trunc(p.dy)}`;
+    // A scroll's lines ride the same way — the whole lines a grid's notch
+    // covers, `-` off a grid — so a lost carry disagrees here (ADR 0029).
+    if (p?.kind === 'scroll') tag += ` ${p.lines ?? '-'}`;
     lines.push(`event ${p?.kind ?? '-'} ${tag}`);
   }
   for (const c of commands) lines.push(commandLine(c));

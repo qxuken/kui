@@ -2165,6 +2165,56 @@ headless test cannot see a chord's copy), a paste still has no address,
 and `MenuAction` is still the queue's name — all three discussed, none
 asked for yet.
 
+### `~` C39 — A selection stops at the edge, ignores the wheel under a held press, and knows no Shift — **done (2026-09-13)**
+
+Filed and built the same day under
+[ADR 0029](adr/0029-a-selection-follows-the-pointer-past-the-edge.md),
+whose *What the building changed* section is the record. Found by
+running C38's `clipboard` example: drag the log's rows and keep going
+below the card, and the selection stops at the last row the frame drew
+while the list stays put; roll the wheel with the button held and the
+rows move under a selection that does not; Shift-click anywhere and it
+is a plain click. Read from the code, the three are one gap in all three
+places a selection lives (the stock editor, a `selectable` scope, a
+`cells` grid): the live end moved only from the `CursorMoved` arm,
+`scope_hit` clamped a point past the edge to the nearest *drawn* run
+with nothing asking the scroller to move, `EditStore::drag` never
+`touch_caret`ed, and the press read `modifiers().alt` for a block
+selection and never `.shift`. ADR 0017 had written "autoscroll is a
+call, not a mechanism" and left the call unmade. And a fourth, larger
+than the three for the mux use case: a `cells` grid heard no wheel at
+all — `scroll_target` knew only scroll containers — so a terminal pane
+scrolled the column it sat in, or nothing.
+
+Done as the ADR decided, with `onScroll` widened from `cells` to every
+node at the user's ask: `runtime/follow.rs` re-places the live end at
+the start of a frame whenever the scroller's *laid* offset (new
+`ScrollStore::laid_offset`, since a notch writes the store a frame before
+the text moves) or a grid's `origin_line` changed, steps the nearest
+ancestor-or-self scroller at 10 px/s per px past the edge (capped 100 px
+out, the clock's delta or a sixtieth without one, `animating()` while
+stepping, the last point kept across `CursorLeft`, one more re-hit on the
+release), and for an `on_scroll` node emits the step as a `scroll` event
+with the lines it covers on a grid, the fraction carried; a Shift-press
+inside the selection's scope, grid or focused editor keeps the anchor
+(cosmic-text's `Drag` is the editor's whole gesture); `EventSpec::on_scroll`
+as `P_ON_SCROLL` 99 with the wheel routed through `ScrollRegion::handler`
+by paint order; `Core::selection_ends` with doors in Node, Lua and C;
+`Step::Modifiers(u32)` and the `selection-extend`,
+`selection-scroll` and `cells-scroll` scenes in four adapters (35 scenes
+agree); `tests/follow.rs` (nine cases), a C-surface test, two Node tests;
+the `clipboard` drives in Rust and Node pin all three gestures on the
+log, and `widgets/cells` scrolls its session through the row instead of
+two buttons. Checked on screen with a CGEvent driver: the log scrolls
+to row 35 in a second past the edge and the highlight follows, Cmd-C
+after a Shift-click puts rows 0–37 on the OS clipboard, the terminal's
+edge drag reaches line 1215 with the anchor on 1205 and the wheel moves
+the screen under the selection. Two defects found on the way and filed as
+their own tasks rather than folded in: `selection_range` hands a
+backwards drag's ends unordered to the `selectionrange` ask, and a Cmd-C
+over the virtual log leaves the windowed runner drawing ~130 frames/s
+(on main too). CHANGELOG under alpha.12's `### Added` and `What breaks`.
+
 ### Wishes, not entries
 
 Three things an editor will ask for that have an answer today and a
@@ -3068,7 +3118,10 @@ and a paste as a commit, the press's `line` / `byte` / `clicks` as
 C35 **the same day** (the clock armed on the sink's `caret` row, the
 phase readable in four bindings), with C38 (the clipboard example and
 article) filed and built between them, and C36 + C37 **the same day**
-(the three drives, the doc line) — (a sink's clipboard, and the press
+(the three drives, the doc line), and C39 **the same day** — the
+held drag following its scroller, Shift extending, `onScroll` on every
+node with a grid's lines, [ADR 0029](adr/0029-a-selection-follows-the-pointer-past-the-edge.md)
+— (a sink's clipboard, and the press
 carrying `line`, `byte` and `clicks` the way a grid's carries `cell`),
 C35 (the blink clock armed for a sink's `caret`), and C36's drives to
 pin all four; C37's doc line goes with whichever lands first. Before

@@ -135,8 +135,41 @@ as a text node per cell. A click or drag on it carries `cell: {row, col}`
 in its payload, and the node reads as a `terminal` with the rows joined as
 its value. Inverse, dim and a wide cell's blank spacer are the app's.
 
+So is the scrollback: a grid is one screenful, and `originLine` says which.
+Declare `onScroll` on it and the wheel arrives as `{kind:"scroll", lines,
+…}` — the whole lines the notch covers, positive toward later history, the
+fraction carried to the next notch — and you re-declare the grid with
+`originLine + lines`. A drag-select held past the grid's top or bottom
+edge arrives the same way, once a frame with the lines that frame scrolled
+by, and the selection's ends are absolute lines, so they stay put through
+the scroll you answer with. `examples/rust/widgets/cells.rs` does both.
+
 [`cells` row](props.md#elements) ·
-[alpha.9](../CHANGELOG.md#010-alpha9-2026-09-08)
+[`scroll` event](props.md#events) ·
+[ADR 0029](adr/0029-a-selection-follows-the-pointer-past-the-edge.md) ·
+[alpha.12](../CHANGELOG.md#010-alpha12-unreleased)
+
+### How does a selection follow the pointer past the edge?
+
+On its own. A press-drag in an `edit`, a `selectable` scope or a `cells`
+grid keeps following a held pointer after it leaves the scroller: the core
+scrolls the nearest scrolling ancestor toward the pointer at 10 px/s for
+every px past the edge (capped 100 px out, so 1000 px/s), and places the
+live end again whenever the layout under the pointer moves — that nudge, a
+wheel notch under the held press, a virtual list re-slicing its rows. A
+Shift-press keeps the anchor and moves the live end, in all three, by
+characters. Nothing to declare; a headless test sees the nudge as
+`scrollOffset` moving a frame at a time under `animating()` — ten px a
+frame with no clock, the clock's own share with one (`app.advance(ms)` in
+Node, `Drive::advance` in Rust). The wheel over any node that declares
+`onScroll` is a message instead — `{kind:"scroll", x, y, dx, dy, lines,
+tag}` — and the node takes it from the scroller above; a `cells` grid
+gets its edge drag the same way, since its history is yours.
+
+[`onScroll` row](props.md#container-props) ·
+[`scroll` event](props.md#events) ·
+[ADR 0029](adr/0029-a-selection-follows-the-pointer-past-the-edge.md) ·
+[alpha.12](../CHANGELOG.md#010-alpha12-unreleased)
 
 ### How do I pan a canvas with a drag?
 
@@ -336,7 +369,9 @@ dropped.
 
 `examples/rust/features/clipboard.rs` and `examples/node/features/clipboard.tsx`
 do all four, with a headless drive that pins what each leaves in the
-queue.
+queue — and, on the way to the copy, the drag held past the log's edge,
+the wheel under the held press and the Shift-click that extends
+(ADR 0029).
 
 [`selectionrange` and `text` events](props.md#events) ·
 [ADR 0017](adr/0017-selection-as-a-scope.md) ·

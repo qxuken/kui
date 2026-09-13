@@ -407,6 +407,8 @@ fn menu_items(t: &mlua::Table) -> mlua::Result<Vec<kui_core::MenuItem>> {
 /// `scroll_geometry(key)`, the text queries `text_hit(key, x, y)` /
 /// `caret_rect(key, byte)`, the selection calls `selection_text()` /
 /// `selection_html()` (the same words with the formatting they declared) /
+/// `selection_ends()` (the anchor and the focus as row indices and bytes,
+/// ADR 0029) /
 /// `request_copy()` + `answer_selection_range(text)` (a copy that reaches
 /// rows a virtual list never built is asked of the app) /
 /// `set_clipboard(text, html?)` + `request_paste()` (a key sink's own
@@ -797,6 +799,32 @@ fn env_table<'scope, 'env: 'scope>(
         })?,
     )?;
     // The selection as HTML: the formatting the text declared (bold,
+    // The text selection's two ends as the drag made them: `{anchor =
+    // {index, byte}, focus = {index, byte}}`, `index` the data index of
+    // the virtualised row the end is in (nil outside one) and `byte` the
+    // offset in that row's own text. Directed, so a Shift-click that kept
+    // the anchor reads as one (ADR 0029). Nil with no text selection.
+    t.set(
+        "selection_ends",
+        scope.create_function(move |lua, ()| {
+            let ui = ui.borrow();
+            let Some((a, f)) = ui.selection_ends() else {
+                return Ok(mlua::Value::Nil);
+            };
+            let end = |e: kui_core::RangeEnd| -> mlua::Result<mlua::Table> {
+                let t = lua.create_table()?;
+                if let Some(r) = e.row {
+                    t.set("index", r)?;
+                }
+                t.set("byte", e.byte)?;
+                Ok(t)
+            };
+            let out = lua.create_table()?;
+            out.set("anchor", end(a)?)?;
+            out.set("focus", end(f)?)?;
+            Ok(mlua::Value::Table(out))
+        })?,
+    )?;
     // italic, a span's own colour) and not the node's colour, which is
     // the theme's. Nil with no text selection. A second clipboard flavour
     // beside the plain text, never instead of it.
@@ -3651,6 +3679,7 @@ mod tests {
                 "scroll_geometry",
                 "scroll_offset",
                 "select_all_in",
+                "selection_ends",
                 "selection_html",
                 "selection_text",
                 "set_clipboard",

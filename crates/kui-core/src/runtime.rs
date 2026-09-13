@@ -56,6 +56,7 @@ mod dispatch;
 mod emit;
 mod fills;
 mod focus;
+pub mod follow;
 pub mod inspect;
 mod menu_api;
 mod menubar_api;
@@ -323,6 +324,19 @@ pub struct Core {
     /// on the press inside a scope, cleared on release. The counterpart of
     /// `EditStore::dragging` for text nobody is editing.
     select_dragging: Option<crate::select::SelectDrag>,
+    /// The held drag — a caret drag or a drag-select — following its
+    /// scroller: the pointer's last position, the scroller found for it,
+    /// and what that scroller was at when the live end was last placed
+    /// (ADR 0029). Set with either drag, cleared with both.
+    drag_follow: Option<follow::DragFollow>,
+    /// The frame clock's reading at the last frame, for the edge drag's
+    /// rate (`follow::follow_drag`); `None` before a clock is set.
+    last_frame_time: Option<f64>,
+    /// The fraction of a line the last delta over an `on_scroll` grid —
+    /// a wheel notch or an edge step — did not cover, with the grid it
+    /// was over: the next delta on the same grid adds to it (ADR 0029,
+    /// decision 4).
+    line_carry: Option<(Key, f32)>,
     sel_ords: Vec<u32>,
     sel_ends: Option<crate::select::Ends>,
     /// Per-node innermost enclosing selection scope — the key of the
@@ -769,6 +783,9 @@ impl Core {
             cell_selection: None,
             awaiting_selection: false,
             select_dragging: None,
+            drag_follow: None,
+            last_frame_time: None,
+            line_carry: None,
             sel_ords: Vec::new(),
             sel_ends: None,
             scopes: Vec::new(),
@@ -1029,6 +1046,7 @@ impl Core {
             || self.depart.animating()
             || self.frame_requested
             || self.tree.any_animate
+            || self.autoscrolling()
     }
 
     /// Asks the driver for one more frame right after this one. A view
@@ -1107,6 +1125,11 @@ impl Core {
     }
 
     pub fn begin_frame(&mut self, viewport: Size, scale: f32) {
+        // Against the finished frame, before anything below clears it: a
+        // held drag re-places its live end where the last layout moved
+        // the text under the pointer, and steps its scroller when the
+        // pointer is past the edge (ADR 0029).
+        self.follow_drag();
         self.age_type_ahead();
         // A window that changed size is a fact the driver reports, so the
         // core turns it into data like any other: `{kind="resize", width,

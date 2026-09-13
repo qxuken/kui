@@ -45,6 +45,42 @@ pub extern "C" fn kui_selection_html(ptr: *mut KuiCtx, out: *mut KuiStr) -> bool
     })
 }
 
+/// The text selection's two ends as the drag made them — the anchor
+/// where the press landed, the focus where the pointer is — each as the
+/// data index of the virtualised row it is in (`-1` outside every
+/// virtualised row) and the byte inside that row's own text. Directed,
+/// so a Shift-press that kept the anchor reads as one (ADR 0029). False
+/// with no text selection; a grid's is `kui_cell_selection`. Any out
+/// pointer may be NULL.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_selection_ends(
+    ptr: *mut KuiCtx,
+    anchor_index: *mut i64,
+    anchor_byte: *mut usize,
+    focus_index: *mut i64,
+    focus_byte: *mut usize,
+) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        let Some((a, f)) = c.core().selection_ends() else {
+            return false;
+        };
+        let put = |index: *mut i64, byte: *mut usize, e: kui_core::RangeEnd| unsafe {
+            if let Some(p) = index.as_mut() {
+                *p = e.row.map_or(-1, |r| r as i64);
+            }
+            if let Some(p) = byte.as_mut() {
+                *p = e.byte;
+            }
+        };
+        put(anchor_index, anchor_byte, a);
+        put(focus_index, focus_byte, f);
+        true
+    })
+}
+
 /// Selects everything in the scope `key` declared — every run of a
 /// `selectable` container, or the whole screen of a `cells` grid. False
 /// for a node that is not a scope, or drew nothing.

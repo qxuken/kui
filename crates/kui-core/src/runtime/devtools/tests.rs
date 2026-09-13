@@ -1440,3 +1440,37 @@ fn the_facts_list_the_tokens_and_the_inspector_names_a_painted_one() {
         "the rect prints bare: {t:?}"
     );
 }
+
+/// The events tab following its newest row must not ask for a frame every
+/// frame: once one event is in the stream the list exists, and a follow
+/// that pinned the offset unconditionally asked for another frame each
+/// time — a window that had shown one event never idled again (found on
+/// screen building ADR 0029: ~130 frames/s after a Cmd-C).
+#[test]
+fn a_followed_event_stream_settles_instead_of_asking_for_frames_forever() {
+    let mut core = on();
+    let press = core.key_of("press").unwrap();
+    assert!(!core.animating(), "idle before any event");
+    access_click(&mut core, press);
+    // The event lands: a couple of frames to lay the row out and pin the
+    // list past its end, then nothing.
+    let mut asked = 0;
+    for _ in 0..10 {
+        frame(&mut core);
+        if core.animating() {
+            asked += 1;
+        }
+    }
+    assert!(
+        asked <= 2,
+        "following one new row asked for {asked} more frames; a follow must settle"
+    );
+    frame(&mut core);
+    assert!(!core.animating(), "and the window idles again");
+    // Another event: the same, once more.
+    access_click(&mut core, press);
+    for _ in 0..5 {
+        frame(&mut core);
+    }
+    assert!(!core.animating());
+}

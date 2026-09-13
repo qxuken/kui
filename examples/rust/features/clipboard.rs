@@ -22,6 +22,11 @@
 //!     as the `{kind="text"}` event an IME's commit arrives on, and the
 //!     sink appends it as a line.
 //!
+//! And two things every selection does on the way to a copy (ADR 0029):
+//! a Shift-click extends it from its anchor instead of starting over, and
+//! a drag held past the log's edge scrolls the log toward the pointer —
+//! the wheel under a held press moves the live end too.
+//!
 //! Every path but the first ends in one queue — `MenuAction::SetClipboard`
 //! and `MenuAction::Paste` — which the runner drains after every input and
 //! every frame, and a headless drive reads with `take_menu_actions`. The
@@ -312,6 +317,8 @@ impl App for Clipboard {
 impl Example for Clipboard {
     const KEYS: &'static [(&'static str, &'static str)] = &[
         ("⌘C ⌘X ⌘V", "in the field and the card"),
+        ("⇧-click", "extend a selection"),
+        ("drag past the edge", "scroll the log"),
         ("right-click", "the stock menu's Copy / Paste"),
         ("j k y p", "in the register"),
     ];
@@ -418,6 +425,84 @@ impl Example for Clipboard {
         );
         d.input(self, InputEvent::mouse_up());
         d.frame(self);
+        // Held past the log's bottom edge, the log scrolls toward the
+        // pointer a frame at a time and the live end follows (ADR 0029):
+        // half a second 60 px past is 600 px/s, so rows 0..2 became rows
+        // 0..~13. The wheel under the held press moves it too.
+        d.input(
+            self,
+            InputEvent::CursorMoved(kui::Vec2::new(r.x + 20.0, r.y + 6.0)),
+        );
+        d.input(self, InputEvent::mouse_down(1));
+        d.input(
+            self,
+            InputEvent::CursorMoved(kui::Vec2::new(r.x + 200.0, r.y + r.h + 60.0)),
+        );
+        for _ in 0..30 {
+            d.advance(1.0 / 60.0);
+            d.frame(self);
+        }
+        let scrolled = d.core.scroll_offset(log).y;
+        d.check(
+            scrolled > 10.0 * ROW_H,
+            "a press held past the edge scrolls the log toward the pointer",
+        )?;
+        d.check(
+            d.core.selection().is_some_and(|s| s.focus.row >= Some(10)),
+            "and the live end followed onto the rows that scrolled in",
+        )?;
+        d.input(
+            self,
+            InputEvent::CursorMoved(kui::Vec2::new(r.x + 200.0, r.y + 2.5 * ROW_H)),
+        );
+        d.wheel(self, r.x + 200.0, r.y + 2.5 * ROW_H, 0.0, -20.0 * ROW_H);
+        d.frame(self);
+        d.frame(self);
+        d.check(
+            d.core.selection().is_some_and(|s| s.focus.row >= Some(30)),
+            "the wheel under a held press moves the live end with the rows",
+        )?;
+        d.input(self, InputEvent::mouse_up());
+        d.frame(self);
+        // A Shift-click keeps the anchor: the selection still starts on
+        // row 0 and now ends where the click landed.
+        d.input(
+            self,
+            InputEvent::Modifiers(KeyMods {
+                shift: true,
+                ..KeyMods::default()
+            }),
+        );
+        d.input(
+            self,
+            InputEvent::CursorMoved(kui::Vec2::new(r.x + 100.0, r.y + 1.5 * ROW_H)),
+        );
+        d.input(self, InputEvent::mouse_down(1));
+        d.input(self, InputEvent::mouse_up());
+        d.input(self, InputEvent::Modifiers(KeyMods::default()));
+        d.frame(self);
+        let sel = d
+            .core
+            .selection()
+            .ok_or("the Shift-click lost the selection")?;
+        d.check(
+            sel.anchor.row == Some(0) && sel.focus.row.is_some_and(|f| f > 25),
+            "a Shift-click extends from the anchor instead of starting over",
+        )?;
+        // Back to the top for the copy below: a plain drag over rows 0..2.
+        d.core.set_scroll(log, kui::Vec2::ZERO);
+        d.frame(self);
+        d.input(
+            self,
+            InputEvent::CursorMoved(kui::Vec2::new(r.x + 20.0, r.y + 6.0)),
+        );
+        d.input(self, InputEvent::mouse_down(1));
+        d.input(
+            self,
+            InputEvent::CursorMoved(kui::Vec2::new(r.x + 200.0, r.y + 2.5 * ROW_H)),
+        );
+        d.input(self, InputEvent::mouse_up());
+        d.frame(self);
         d.wheel(self, r.x + 100.0, r.y + 40.0, 0.0, -40.0 * ROW_H);
         d.frame(self);
         let asked = d.core.request_copy() == CopyRequest::Asked;
@@ -434,9 +519,48 @@ impl Example for Clipboard {
         let queued = d.core.take_menu_actions();
         // The press landed a few bytes into row 0, so the answer starts
         // mid-row; the drag ended on row 2.
+        let forwards = match &queued[..] {
+            [MenuAction::SetClipboard { text, html: None }]
+                if text.contains("log line 0\n") && text.contains("log line 2") =>
+            {
+                text.clone()
+            }
+            _ => String::new(),
+        };
         d.check(
-            matches!(&queued[..], [MenuAction::SetClipboard { text, html: None }] if text.contains("log line 0\n") && text.contains("log line 2")),
+            !forwards.is_empty(),
             "and the answer is what reaches the clipboard",
+        )?;
+        // The same drag made backwards — pressed on row 2, released on
+        // row 0 — is asked for as the same range: `from` precedes `to`
+        // whichever end the press was, so the app's `from..=to` answers
+        // the same rows.
+        d.core.set_scroll(log, kui::Vec2::ZERO);
+        d.frame(self);
+        d.input(
+            self,
+            InputEvent::CursorMoved(kui::Vec2::new(r.x + 200.0, r.y + 2.5 * ROW_H)),
+        );
+        d.input(self, InputEvent::mouse_down(1));
+        d.input(
+            self,
+            InputEvent::CursorMoved(kui::Vec2::new(r.x + 20.0, r.y + 6.0)),
+        );
+        d.input(self, InputEvent::mouse_up());
+        d.frame(self);
+        d.wheel(self, r.x + 100.0, r.y + 40.0, 0.0, -40.0 * ROW_H);
+        d.frame(self);
+        let asked = d.core.request_copy() == CopyRequest::Asked;
+        d.check(
+            asked,
+            "a backwards drag over unbuilt rows is asked the same way",
+        )?;
+        d.frame(self);
+        d.frame(self);
+        let queued = d.core.take_menu_actions();
+        d.check(
+            matches!(&queued[..], [MenuAction::SetClipboard { text, html: None }] if *text == forwards),
+            "and asks for the same rows in reading order, so the answer is the same text",
         )?;
 
         // The register: the sink's own bindings, through `Ui`.

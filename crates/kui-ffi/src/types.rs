@@ -554,6 +554,16 @@ pub struct KuiSpec {
     /// ABI 14 the compatible way; a host that predates it passes the
     /// shorter struct and reads as zero.
     pub anchor: u32,
+    /// Scroll tag (`on_scroll`): the wheel over this node emits
+    /// `{kind:"scroll", x, y, dx, dy, lines, tag}` on it instead of
+    /// scrolling anything — `lines` the whole lines a `cells` grid's delta
+    /// covers, null elsewhere — and a drag-select held past a grid's edge
+    /// arrives the same way once a frame
+    /// (`docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md`).
+    /// Borrowed while the node opens, like every other tag. Appended after
+    /// ABI 15 the compatible way; a host that predates it passes the
+    /// shorter struct and reads as NULL.
+    pub on_scroll: *const KuiValue,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a
@@ -1831,11 +1841,13 @@ pub const KUI_SPAN_UNDERLINE: u32 = 1 << 2;
 pub const KUI_SPAN_STRIKETHROUGH: u32 = 1 << 3;
 
 /// `KUI_KMOD_*`: the modifier bits `kui_input_key_down` and its siblings
-/// take, and `kui_input_modifiers` reports.
-pub const KUI_KMOD_SHIFT: u32 = 1 << 0;
-pub const KUI_KMOD_CTRL: u32 = 1 << 1;
-pub const KUI_KMOD_ALT: u32 = 1 << 2;
-pub const KUI_KMOD_SUPER: u32 = 1 << 3;
+/// take, and `kui_input_modifiers` reports — the core's own
+/// `KeyMods::bits`, which is also what the conformance corpus's
+/// `modifiers` step spells, so the header and the corpus cannot drift.
+pub const KUI_KMOD_SHIFT: u32 = kui_core::KeyMods::SHIFT;
+pub const KUI_KMOD_CTRL: u32 = kui_core::KeyMods::CTRL;
+pub const KUI_KMOD_ALT: u32 = kui_core::KeyMods::ALT;
+pub const KUI_KMOD_SUPER: u32 = kui_core::KeyMods::SUPER;
 
 /// `KUI_EDIT_*`: the flags `kui_text_edit` takes. `WRAP` is the `wrap`
 /// row declared on a field (the mode is `KuiTextStyle.wrap`, whose zero

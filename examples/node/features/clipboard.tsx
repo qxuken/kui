@@ -202,6 +202,26 @@ await run<Model, AppMsg>({
     // The log: select across rows, scroll them away, and the copy is a
     // question for the app — answered from its rows.
     const log = rect('log');
+    // Held past the log's bottom edge, the log scrolls toward the pointer a
+    // frame at a time and the live end follows (ADR 0029): half a second
+    // 60 px past is 600 px/s. The wheel under the held press moves it too,
+    // and a Shift-click extends from the anchor instead of starting over.
+    ctx.cursor(log.x + 20, log.y + 6); ctx.mouse(true); ctx.cursor(log.x + 200, log.y + log.h + 60);
+    for (let i = 0; i < 30; i++) app.advance(1000 / 60);
+    ok(ctx.scrollOffset('log').y > 10 * ROW_H, 'a press held past the edge scrolls the log toward the pointer');
+    ok((ctx.selectionEnds()?.focus.index ?? 0) >= 10, 'and the live end followed onto the rows that scrolled in');
+    ctx.cursor(log.x + 200, log.y + 2.5 * ROW_H); ctx.scroll(0, -20 * ROW_H);
+    app.render(); app.render();
+    ok((ctx.selectionEnds()?.focus.index ?? 0) >= 30, 'the wheel under a held press moves the live end with the rows');
+    ctx.mouse(false);
+    ctx.modifiers({ shift: true });
+    ctx.cursor(log.x + 100, log.y + 1.5 * ROW_H); ctx.mouse(true); ctx.mouse(false);
+    ctx.modifiers({});
+    app.render();
+    const extended = ctx.selectionEnds();
+    ok(extended?.anchor.index === 0 && (extended?.focus.index ?? 0) > 25, 'a Shift-click extends from the anchor instead of starting over');
+    ctx.setScroll('log', 0, 0);
+    app.render();
     ctx.cursor(log.x + 20, log.y + 6); ctx.mouse(true); ctx.cursor(log.x + 200, log.y + 2.5 * ROW_H); ctx.mouse(false);
     app.render();
     ctx.cursor(log.x + 100, log.y + 40); ctx.scroll(0, -40 * ROW_H);
@@ -212,6 +232,20 @@ await run<Model, AppMsg>({
     const answered = ctx.takeMenuActions();
     ok(answered.length === 1 && answered[0].kind === 'setClipboard' && answered[0].text.includes('log line 0\n') && answered[0].text.includes('log line 2'),
       'and the answer is what reaches the clipboard');
+    // The same drag made backwards — pressed on row 2, released on row 0
+    // — is asked for as the same range: `from` precedes `to` whichever
+    // end the press was, so the app's `from..=to` answers the same rows.
+    ctx.setScroll('log', 0, 0);
+    app.render();
+    ctx.cursor(log.x + 200, log.y + 2.5 * ROW_H); ctx.mouse(true); ctx.cursor(log.x + 20, log.y + 6); ctx.mouse(false);
+    app.render();
+    ctx.cursor(log.x + 100, log.y + 40); ctx.scroll(0, -40 * ROW_H);
+    app.render();
+    ok(ctx.requestCopy().asked, 'a backwards drag over unbuilt rows is asked the same way');
+    app.settle();
+    const backwards = ctx.takeMenuActions();
+    ok(backwards.length === 1 && backwards[0].kind === 'setClipboard' && backwards[0].text === answered[0].text,
+      'and asks for the same rows in reading order, so the answer is the same text');
 
     // The register: the sink's own bindings, one call each.
     ctx.focus('register');

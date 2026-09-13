@@ -94,14 +94,21 @@ impl Core {
     }
 
     /// Sets the container `key`'s retained offset, the way the wheel would.
-    /// Takes effect on the next frame, whose layout clamps it to that
-    /// frame's overflow: `Vec2::ZERO` is "jump to the top", and a large
-    /// value is "jump to the end" without knowing the content height.
-    /// Writing an offset for a key that never scrolls is harmless; it just
-    /// never reads back.
+    /// Takes effect at the next layout, which clamps it to that frame's
+    /// overflow: `Vec2::ZERO` is "jump to the top", and a large value is
+    /// "jump to the end" without knowing the content height. Writing an
+    /// offset for a key that never scrolls is harmless; it just never
+    /// reads back. Between two frames the write asks for the frame that
+    /// lands it; from inside a view it asks for nothing, because the
+    /// frame being built is that frame — the positions pass reads the
+    /// store after the view has run — and a view writing every frame
+    /// would otherwise be a window that never idles (found twice building
+    /// ADR 0029: the devtools' events list, `virtual_rows`).
     pub fn set_scroll(&mut self, key: Key, offset: Vec2) {
         self.scroll.set(key, offset);
-        self.request_frame();
+        if !self.building {
+            self.request_frame();
+        }
     }
 
     /// After layout: if the focused edit's caret moved this frame, nudge the
@@ -109,9 +116,19 @@ impl Core {
     /// the positions pass with the adjusted offset (positions is the only
     /// pass scroll offsets feed into, so nothing else needs recomputing).
     pub(crate) fn scroll_caret_into_view(&mut self) {
-        let Some(key) = self.edit.caret_moved.take() else {
+        let Some(key) = self.edit.caret_moved else {
             return;
         };
+        // Not under a held pointer drag: the caret is where the pointer
+        // is, past the edge or not, and what moves the scroller then is
+        // the drag's own rate (ADR 0029, decision 2) — a reveal there
+        // would jump it by the whole distance past, every frame. The move
+        // stays noted, so the release reveals where the caret landed;
+        // a field still scrolls its own text below, at once.
+        let held = self.edit.dragging.is_some_and(|(k, _)| k == key);
+        if !held {
+            self.edit.caret_moved = None;
+        }
         if self.edit.focused() != Some(key) {
             return;
         }
@@ -128,6 +145,9 @@ impl Core {
         // itself (F41); emission recomputes the same number.
         let inner_w = (self.tree.size[i].w - pad.x()).max(0.0) * self.scale;
         self.edit_with_fonts(|edit, fs| edit.line_offset(key, inner_w, fs));
+        if held {
+            return;
+        }
         let Some(caret_phys) = self.edit_with_fonts(|edit, fs| edit.caret_rect(key, fs)) else {
             return;
         };

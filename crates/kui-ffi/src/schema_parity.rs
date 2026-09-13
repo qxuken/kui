@@ -224,6 +224,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             "scrollbarActiveColor" => s.scrollbar_active_color = C,
             "anchor" => s.anchor = 1,
             "onForceClick" => s.on_force_click = &layout_tag,
+            "onScroll" => s.on_scroll = &layout_tag,
             "window" => s.window_role = 2, // KUI_WINDOW_* = schema index + 1
             "transition" => s.transition_ms = F,
             "easing" => s.easing = 1,
@@ -387,6 +388,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         scrollbar_color: 0x11223344,
         scrollbar_active_color: 0x55667788,
         anchor: 1,
+        on_scroll: &menu_tag,
         window_role: 1,
         transition_ms: 150.0,
         easing: 3,
@@ -492,6 +494,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .accent()
         .selectable()
         .on_force_click(Value::str("cm"))
+        .on_scroll(Value::str("cm"))
         .focus_region()
         .scrollbar(kui_core::ScrollbarMode::Auto)
         .scrollbar_width(8.0)

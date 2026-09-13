@@ -75,12 +75,7 @@ fn edit_key_of(key: u32) -> Option<EditKey> {
 pub extern "C" fn kui_input_modifiers(ptr: *mut KuiCtx, mods: u32) {
     push_input(
         ptr,
-        InputEvent::Modifiers(kui_core::KeyMods {
-            shift: mods & KUI_KMOD_SHIFT != 0,
-            ctrl: mods & KUI_KMOD_CTRL != 0,
-            alt: mods & KUI_KMOD_ALT != 0,
-            super_key: mods & KUI_KMOD_SUPER != 0,
-        }),
+        InputEvent::Modifiers(kui_core::KeyMods::from_bits(mods)),
     );
 }
 
@@ -104,12 +99,7 @@ fn key_press_of(
     text: KuiStr,
 ) -> Option<kui_core::KeyPress> {
     let layout = kui_core::KeyCode::from_name(&kstr(code))?;
-    let mods = kui_core::KeyMods {
-        shift: kmods & KUI_KMOD_SHIFT != 0,
-        ctrl: kmods & KUI_KMOD_CTRL != 0,
-        alt: kmods & KUI_KMOD_ALT != 0,
-        super_key: kmods & KUI_KMOD_SUPER != 0,
-    };
+    let mods = kui_core::KeyMods::from_bits(kmods);
     // A NULL `physical` means "the key I just named": a host that does not
     // track positions says so by omission, and gets `code` through unchanged
     // because the two agree. A host that does track them hands both over and

@@ -41,6 +41,14 @@ field reports).
   the one addition to C is a new setter, not an argument, and the `system`
   event's payload grew a key a handler that destructures the old four
   still reads.
+- `KuiSpec` grew `on_scroll` at its end and `kui_selection_ends` is a new
+  function (backlog C39): `KUI_ABI_VERSION` stays **15**, since an [in]
+  struct that never travels as an array is absorbed by the size
+  handshake, and a host built against the shorter struct reads NULL.
+  The corpus's step vocabulary grew `modifiers N` (Shift 1, Ctrl 2, Alt
+  4, Super 8, `KeyMods::bits`), and its
+  event rows print a `scroll`'s lines — an adapter you maintain outside
+  this repo needs both arms.
 
 Nothing.
 
@@ -71,6 +79,63 @@ Nothing.
   opened to paper over the draft that came back.
 
 ### Added
+
+- **A held drag follows its scroller, and Shift extends** (backlog C39,
+  [ADR 0029](docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md),
+  found by running the clipboard example after C38). Three gestures every
+  text UI has and no selection in kui had — a stock `edit`'s, a
+  `selectable` scope's or a `cells` grid's alike. *Past the edge:* a
+  press held outside its scroller scrolls the nearest scrolling ancestor
+  toward the pointer at 10 px/s per px past (capped 100 px out), a frame
+  at a time on the driver's clock (a sixtieth a frame with none, so a
+  headless drive steps by a knowable amount), and `animating()` is true
+  while it does, so the runner keeps drawing with nothing in the queue.
+  *Following:* the live end is placed again where the pointer is
+  whenever the layout under it moved — that nudge, a wheel notch under
+  the held press, a virtual list re-slicing its rows — against the
+  finished frame, at the start of the next, and once more on the release
+  so nothing lands a frame behind; the gate is the offset the last
+  layout *placed the content at*, not the store's, since a notch writes
+  the store a frame before the text moves. *Shift:* a press with Shift
+  held inside the scope, grid or focused editor the selection is in keeps
+  its anchor and moves the live end, by characters whatever the click
+  count, and clears nothing; anywhere else Shift is a press. A caret
+  drag marks the caret moved the way a keyboard motion does, so a
+  single-line field scrolls its own text toward a drag past its end at
+  once; a scroller above a document reveals the caret on the release,
+  not under the held pointer, where the rate above is what moves it.
+  The `selection-extend` and `selection-scroll` corpus scenes pin the
+  anchor, the rate on both clocks, the cap, the clamp and the re-hit in
+  four adapters; `Core::selection_ends` / `ctx.selectionEnds()` /
+  `env.selection_ends()` / `kui_selection_ends` read the directed pair
+  back — the anchor and the focus as a virtual row's index and a byte —
+  which is what says a Shift-press kept it.
+
+- **`onScroll`: the wheel as a message** (the same round, decision 4).
+  A node declaring it hears `{kind:"scroll", x, y, dx, dy, lines, tag}`
+  instead of anything scrolling — `dx`/`dy` the delta in logical px as
+  the driver reported it, `x`/`y` the pointer — and takes the notch from
+  any scroller above it, while a scroller inside it still wins, by paint
+  order like any scroll region. On a `cells` grid `lines` is the whole
+  lines the delta covers, positive toward later history (the sign
+  `originLine` grows in), the fraction carried per grid to the next
+  delta — a notch's or an edge step's, one carry — so a trackpad's small
+  steps add up; on any other node it is null. A
+  grid is one screenful of history the core does not hold, so this is
+  also where its edge drag lands: a drag-select held past a grid's top or
+  bottom edge arrives once a frame with the lines that frame scrolled by,
+  the app re-declares `originLine`, and ADR 0017's absolute lines keep the
+  selection's ends where they were. A terminal built on `cells` gets
+  scrollback under the wheel for the first time by it — the larger gain,
+  and not what the example was opened to find. The `cells-scroll` scene
+  pins the lines and the carry; `examples/rust/widgets/cells.rs` scrolls
+  its session through the row instead of two buttons.
+
+  *What you can delete:* a `setScroll` an app called from an `onDrag`
+  `move` when the pointer left the list; the buttons or key bindings a
+  terminal pane offered because the wheel over it scrolled the column it
+  sat in or nothing; and the "click again to extend" a list grew for want
+  of Shift.
 
 - **A key sink has a clipboard** (backlog C33, from the third
   editor-and-mux round of 2026-09-13). The runner performs the clipboard
@@ -428,6 +493,88 @@ Nothing.
   same by hand. No code changed.
 
 ### Fixed
+
+- **A window with one event in its devtools stream idled again** (found
+  on screen building ADR 0029: after the first event reached the dock —
+  a Cmd-C's `selectionrange` ask, a Shift key's `modifiers` — the runner
+  drew ~130 frames/s until the window closed, on main as well). Two
+  frame-requesters, each honest on its own: `widgets::virtual_rows`
+  corrected its offset whenever `top + pad.t` differed from the laid
+  offset, which on a padded list shorter than its box — offset 0,
+  padding 6, `top` clamped at 0 — is every frame, and `Core::set_scroll`
+  asks for a frame; and the events tab's *follow* pinned the list past
+  its end every frame through the same call. Now the widget corrects
+  only when a measurement moved the anchor row, and the follow pins only
+  when the list's travel changed (the stream grew, a row opened, the
+  pane resized) and reads an offset short of an *unchanged* travel as the
+  user's wheel. Pinned by a devtools test that counts the frames one
+  event asks for (at most two, then none) and a `virtual_rows` test a
+  padded short list passes with zero; the on-screen count is flat after
+  a Cmd-C. The review of the branch then moved the fix to the mechanism:
+  `Core::set_scroll` from inside a view asks for no frame at all, since
+  the frame being built is the one that lands the write (the positions
+  pass reads the store after the view has run), so the next view that
+  writes an offset every frame — a Lua tail-pin, a stock widget — does
+  not spin either; between two frames it asks as before. The two guards
+  stay as the cheaper path.
+
+- **A held drag past the edge of a scroller at its end idles** (review
+  of ADR 0029's branch). The step counted as one whenever the pointer
+  was past the edge, so a scroller whose content fits, or one that had
+  reached its clamp, kept `animating()` true — the runner at display
+  rate — until the release. A step the clamp would undo is no step now,
+  and the list at its end under a held pointer asks for nothing
+  (`tests/follow.rs`). A window that loses focus with a drag held drops
+  the follow too, since the release will not reach it — and its
+  modifiers with the held keys, as the `modifiers` event it is, so a
+  host that does not resend the state on the way back (winit does; a C
+  loop may not) does not leave every later press an extending one.
+
+- **A caret drag past a document's scroller moves at the drag's rate**
+  (same review). `EditStore::drag` marking the caret moved put the
+  caret's reveal under a held pointer: a caret placed 60 px past the
+  edge was revealed by 60 px, every frame, on top of the step — ~3,600
+  px/s at 60 Hz against the 600 the rate says, and twice that at 120.
+  The reveal now waits for the release when the editor is the one being
+  dragged (a field's own text still scrolls at once), which also keeps a
+  click-and-hold on a half-clipped line from landing a line lower when
+  the focus reveal moved the content under the still pointer. Pinned:
+  three frames past a document's edge are three steps.
+
+- **A Shift-press in the scope arms the drag whether or not it moved
+  the end, and a Shift-click in an editor is a click** (same review).
+  The editor's Shift arm went straight to cosmic's `Drag` and skipped
+  what `click` does first — abandoning a live composition and ending the
+  typing unit — so a Shift-click at the caret between "ab" and "c" made
+  one undo of the three; and the scope's Shift arm left a focused
+  editor's own selection standing beside the window's, which
+  `set_selection` collapses. Both go through the one arming now
+  (`arm_select_drag(.., extend)`, `click(.., extend)`), pinned in
+  `tests/follow.rs`.
+
+- **An unbuilt selection end is placed against its own list's rows**
+  (same review, of the ordering fix below). The ask ordered a built end
+  against an unbuilt row by the lowest row *any* virtual list on screen
+  built, so a header selected down to a row that then scrolled away
+  answered in the wrong order once a second list stood beside it — and by
+  a different rule from the highlight's. One rule now
+  (`select::unbuilt_row_is_after`, the scope's last built row), shared by
+  `resolve_selection` and `selection_range`; the fallback with nothing
+  to compare keeps the drag's order instead of swapping it. Pinned in
+  `tests/virtual_selection.rs` against the old rule.
+
+- **A backwards drag-select asks for its range in reading order** (found
+  building ADR 0029 / C39). `Core::selection_range` handed the anchor as
+  `from` and the focus as `to`, so a drag pressed on a later row and
+  released on an earlier one posted a `selectionrange` ask whose `from`
+  came after `to`, and an app iterating `from..=to` — both clipboard
+  examples do — answered with nothing. The two ends are now ordered before
+  the ask: by their place in the frame when both are built, by row when
+  neither is, and an unbuilt row before or after every built one
+  otherwise — the same placement the highlight uses. The directed pair is
+  `selection_ends`, new in the same round. Pinned in
+  `tests/virtual_selection.rs` and by a backwards drag in both clipboard
+  drives whose answer is the forwards one's text.
 
 - **`Mono` is an upright monospaced face on a machine without Noto Sans
   Mono** (backlog C32, observed in the first editor-and-mux round of

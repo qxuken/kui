@@ -194,19 +194,23 @@ pub(super) fn events_tab(ui: &mut Ui<'_>, st: &mut State, t: &Theme) {
             row(ui, t, e, open);
         },
     );
-    // Follow the newest row: the retained offset is pinned past the end,
-    // and stays there whatever the content does — a row opening, the pane
-    // resizing. Only a wheel moves it back inside the travel, and that is
-    // the user taking over until `follow` is pressed again (which forces
-    // one more pin through `stream_grew`).
+    // Follow the newest row: the retained offset is pinned past the end
+    // whenever the travel changed — the stream grew, a row opened, the
+    // pane resized — and left alone otherwise, because `set_scroll` asks
+    // for a frame and a pin every frame is a window that never idles
+    // again once it has shown one event (~130 frames/s, found on screen
+    // building ADR 0029). A wheel moves the offset back inside a travel
+    // that did *not* change, and that is the user taking over until
+    // `follow` is pressed again (which forces one more pin through
+    // `stream_grew`).
     if st.follow {
         let forced = std::mem::take(&mut st.stream_grew);
-        let wheeled = ui
-            .scroll_geometry(list)
-            .is_some_and(|g| ui.scroll_offset(list).y + 1.0 < g.max_offset.y);
-        if forced || !wheeled {
+        let max = ui.scroll_geometry(list).map_or(0.0, |g| g.max_offset.y);
+        let travel_changed = max != st.followed_max;
+        if forced || travel_changed {
             ui.set_scroll(list, Vec2::new(0.0, f32::MAX));
-        } else {
+            st.followed_max = max;
+        } else if ui.scroll_offset(list).y + 1.0 < max {
             st.follow = false;
         }
     }
