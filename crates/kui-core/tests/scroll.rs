@@ -945,3 +945,41 @@ fn an_auto_scrollbar_without_a_clock_is_visible() {
     assert_eq!(bars(&mut core).len(), 1);
     assert!(!core.animating());
 }
+
+/// A padded `virtual_rows` list shorter than its box asks for no frame once
+/// it is laid out: the correction that puts a measured anchor back where it
+/// was is for measurements, not for the clamp that keeps `top` at zero
+/// while the offset is zero and the padding is not — a `set_scroll` every
+/// frame was a frame every frame, which the devtools' events list paid
+/// from its first event on (found building ADR 0029).
+#[test]
+fn a_short_padded_virtual_rows_list_settles() {
+    let mut core = Core::new();
+    let mut heights = kui_core::widgets::RowHeights::new(3, 20.0);
+    let frame = |core: &mut Core, heights: &mut kui_core::widgets::RowHeights| {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        kui_core::widgets::virtual_rows(
+            &mut ui,
+            "list",
+            NodeSpec::column().fill().pad(6.0),
+            heights,
+            |_ui, _i, _w| 20.0,
+            |ui, _i| {
+                ui.with(NodeSpec::row().fill(), |_| {});
+            },
+        );
+        ui.finish();
+    };
+    frame(&mut core, &mut heights);
+    frame(&mut core, &mut heights);
+    let mut asked = 0;
+    for _ in 0..5 {
+        frame(&mut core, &mut heights);
+        asked += usize::from(core.animating());
+    }
+    assert_eq!(
+        asked, 0,
+        "a laid-out list with nothing to measure asks for no frame"
+    );
+}

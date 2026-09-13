@@ -490,6 +490,24 @@ Nothing.
 
 ### Fixed
 
+- **A window with one event in its devtools stream idled again** (found
+  on screen building ADR 0029: after the first event reached the dock —
+  a Cmd-C's `selectionrange` ask, a Shift key's `modifiers` — the runner
+  drew ~130 frames/s until the window closed, on main as well). Two
+  frame-requesters, each honest on its own: `widgets::virtual_rows`
+  corrected its offset whenever `top + pad.t` differed from the laid
+  offset, which on a padded list shorter than its box — offset 0,
+  padding 6, `top` clamped at 0 — is every frame, and `Core::set_scroll`
+  asks for a frame; and the events tab's *follow* pinned the list past
+  its end every frame through the same call. Now the widget corrects
+  only when a measurement moved the anchor row, and the follow pins only
+  when the list's travel changed (the stream grew, a row opened, the
+  pane resized) and reads an offset short of an *unchanged* travel as the
+  user's wheel. Pinned by a devtools test that counts the frames one
+  event asks for (at most two, then none) and a `virtual_rows` test a
+  padded short list passes with zero; the on-screen count is flat after
+  a Cmd-C.
+
 - **A backwards drag-select asks for its range in reading order** (found
   building ADR 0029 / C39). `Core::selection_range` handed the anchor as
   `from` and the focus as `to`, so a drag pressed on a later row and

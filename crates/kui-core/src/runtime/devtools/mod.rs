@@ -300,6 +300,10 @@ pub(crate) struct State {
     stream_dirty: bool,
     /// The stream grew since the list last followed it.
     stream_grew: bool,
+    /// The list's travel (`max_offset.y`) the follow last pinned against:
+    /// a travel that differs is content that changed under the pin, an
+    /// offset short of an unchanged travel is the user's wheel.
+    followed_max: f32,
     paused: bool,
     follow: bool,
     stream_filter: String,
@@ -372,6 +376,7 @@ impl Default for State {
             expanded: FxHashSet::default(),
             stream_dirty: false,
             stream_grew: false,
+            followed_max: 0.0,
             paused: false,
             follow: true,
             stream_filter: String::new(),
