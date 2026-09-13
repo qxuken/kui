@@ -501,3 +501,21 @@ node.
     take one, and a host calling the parser directly makes it from
     `core.token_lookup()`; `with_refs` is the private helper that raises
     what did not resolve once the borrow is handed back.
+12. **One miss policy, written once (2026-09-14, backlog AR14).** The
+    second architecture review found the miss decided three ways:
+    Node and Lua left the slot out, Rust's `ui.token_color` answered
+    transparent and `token_length` zero, and `diag.rs` documented the
+    Rust behaviour as everyone's. The rule is decision 4's, now in one
+    place: a `$name` that resolves to nothing, or to the other kind,
+    leaves the slot at the row's default, as if the prop had not been
+    written — `Ui::token_color` / `token_length` answer `Option` for
+    it, `kui_token_color` was already `false` with `out` untouched, and
+    Lua's `Refs` is the core's `NameRefs`. The three slots "any colour
+    or length prop" did not reach — `min`, a line's `width`, a grid's
+    `cursorColor` — reach it (Node frame v11 tags a min row, and the
+    line's flags word and the cursor-shape slot say when their value is
+    an index), and a `$name` in a keyframe stop or an entrance resolves
+    in the core through the same lookup (`keyframes::parse_with`,
+    `enter::parse_with`) instead of failing the frame. The `props.md`
+    sentence this ADR promised is the `unknown-token` row and the
+    `$` form in each kind's type text.

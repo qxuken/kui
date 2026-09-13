@@ -332,19 +332,22 @@ pub fn easing_idx(i: usize) -> Easing {
 
 /// How a prop's value is parsed (per transport) and encoded (binary slots).
 pub enum Kind {
-    /// One number. Binary: 1 slot.
+    /// One number, or a `"$length"` token (ADR 0027). Binary: 1 slot.
     F32,
-    /// One color: `0xRRGGBBAA` number or `#hex` string. Binary: 1 slot (u32).
+    /// One color: `0xRRGGBBAA` number or `#hex` string, or a `"$color"`
+    /// token. Binary: 1 slot (u32).
     Color,
     /// Marker, present-or-absent (`false` = absent). Binary: 0 slots.
     Flag,
     /// One of a closed name list. Binary: 1 slot (index).
     Enum(&'static [&'static str]),
-    /// A sizing: number | "fit" | "grow" | "N%" | {grow} | {percent}.
-    /// Binary: 2 slots (mode, value).
+    /// A sizing: number | "fit" | "grow" | "N%" | {grow} | {percent}, or
+    /// a `"$length"` token (a fixed length). Binary: 2 slots (mode, value);
+    /// tagged, 1 slot (the index).
     Sizing,
-    /// A lower clamp: number | "fit" (the node's own fit size on that axis).
-    /// Binary: 2 slots (mode, value), a sizing's first two modes.
+    /// A lower clamp: number | "fit" (the node's own fit size on that axis),
+    /// or a `"$length"` token. Binary: 2 slots (mode, value), a sizing's
+    /// first two modes; tagged, 1 slot (the index).
     Min,
     /// An arbitrary message payload (a `Value`). Binary: strref to JSON.
     Msg,

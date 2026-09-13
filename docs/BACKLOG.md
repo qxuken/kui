@@ -2576,7 +2576,26 @@ fire for them.
 for a style-only element; a `types.tsx` line that `<text live>` is
 refused.
 
-### `!` AR14 — An unresolved `$token` has three outcomes, and the published text matches none
+### `!` AR14 — An unresolved `$token` has three outcomes, and the published text matches none — **done (2026-09-14)**
+
+**Done (2026-09-14), every line of the fix.** The policy is the core's:
+`tokens::NameRefs` (a lookup plus the misses, the thing Lua's `Refs`
+was — it is a type alias for it now), and `Ui::token_color` /
+`token_length` answer `Option`, so the Rust corpus adapter leaves the
+missed cell's `bg` undeclared as the other three do and the reference
+report did not move. The `$` reaches `min` (a tagged Min row, one
+slot), a line's `width` (flags bit 2) and a grid's `cursorColor`
+(shape-slot bit 4) in Node — frame **v11** — and through `length_of`
+in Lua; `keyframes::parse_with` and `enter::parse_with` take a
+`&mut NameRefs` so a stop's `$name` resolves in the core and a miss
+leaves that slot unnamed instead of failing the frame, in Node (its
+`Refs` grew a by-name half) and Lua both. `diag.rs`'s `unknown-token`
+row states the rule and `gen-types` prints the `$` form in every kind's
+type text (`props.md` and `index.d.ts` regenerated); ADR 0027's
+amendment 12 records it. Tests: `tests/tokens.rs` (`Option`, and a
+stop/entrance resolving and missing), kui-lua (min, stroke, stops, one
+warning per miss), `test.mjs` (the same over v11, four misses named
+once). CHANGELOG under alpha.12, "What breaks" for v11 and the `Option`.
 
 Rust: `Ui::token_color` answers transparent and `token_length` zero
 (`ui.rs:204-223`). Node: the slot is left out and the core keeps the row's
@@ -3285,8 +3304,8 @@ session rule written and the audio store and image drops moved under
 it — **both done 2026-09-14**), AR9–AR11 together — **all three done
 2026-09-14** (the held-key identity, the chord bit carried
 into the second channel, one attach pass with a producer-side mark),
-AR12 (Node's window handle — **done 2026-09-14**), AR13–AR16 (AR13
-**done 2026-09-14**) (the `<text>` rows, one token
+AR12 (Node's window handle — **done 2026-09-14**), AR13–AR16 (AR13 and
+AR14 **done 2026-09-14**) (the `<text>` rows, one token
 miss policy, Cut's `changed`, one `prepare_spec`), AR17–AR18 (the focus
 stamp and the AT gates), AR19–AR25 as the defects they are, then B1's
 table with AR26, AR27 and AR40 beside it, AR46–AR48 for the tests, and

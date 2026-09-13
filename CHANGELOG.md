@@ -21,7 +21,19 @@ field reports).
 
 **What breaks.**
 
-- The Node binary frame is **version 10**: a prop id may carry the
+- The Node binary frame is **version 11** (backlog AR14): a tagged `min`
+  row is one slot, the token index; a `line`'s flags word bit 2 says its
+  width slot is a length index; a `cells`' cursor-shape slot bit 4 says
+  its colour slot is a colour index. Encoder and addon ship together, so
+  nothing to do unless you own an encoder.
+- `Ui::token_color` and `Ui::token_length` return `Option` — `None` for
+  a name nothing declared or of the other kind, where they answered
+  transparent and zero. A Rust view writes `.bg(ui.token_color("peach")
+  .unwrap_or(fallback))` or leaves the row alone, which is what a `$name`
+  does in every other binding.
+- `kui_lua::Refs` is a type alias for `kui_core::NameRefs` (same
+  constructor, `take_missed()` where a caller read `.errors`).
+- The Node binary frame was **version 10**: a prop id may carry the
   `0x8000` token tag and its value slot then holds a token index; the
   `pad` shorthand gains a second mask and `border` a flags word when
   tagged; a span's flags gain bits 64 and 128. The encoder and the addon
@@ -607,6 +619,31 @@ Nothing.
   A host rendering the display list itself through Node or C still
   hears of neither drop — the lists were never exported — which is filed
   rather than built here.
+
+- **An unresolved `$token` means one thing everywhere** (backlog AR14).
+  Three outcomes before: Rust's `ui.token_color` answered transparent and
+  `token_length` zero; Node left the slot out and the core kept the row's
+  default; Lua did the same and said why; `diag.rs` and `props.md`
+  documented the Rust behaviour as everyone's — so `color="$typo"` on a
+  text painted in the theme's fg in Node and Lua and invisibly in Rust,
+  `width="$typo"` was `Fit` there and `Fixed(0)` here. Coverage differed
+  too: `cursorColor` threw on a `$` in Node and resolved in Lua;
+  `minWidth="$x"` and `<line width="$x">` were "bad" in both while
+  `color` on the same line resolved; and a `$` in a `keyframes` /
+  `enter` / `exit` stop errored the whole frame — the one place a token
+  was fatal, against ADR 0027's "any colour or length prop". One policy
+  now, in the core: a miss leaves the slot at the row's default as if
+  the prop had not been written, with one `unknown-token` naming it.
+  `NameRefs` is the by-name resolver every binding shares (Lua's `Refs`
+  is it), `keyframes::parse_with` / `enter::parse_with` take one so a
+  stop's `$name` resolves through the same lookup, `Ui::token_color` /
+  `token_length` answer `Option`, and the three slots reach it: Node
+  frame v11 (above) for `min`, the line's width and the cursor colour,
+  Lua through its refs. The `unknown-token` row in `props.md` says the
+  rule, and every kind's type text shows the `$` form. Tests in
+  `tests/tokens.rs`, kui-lua and `test.mjs`; the corpus's `tokens` scene
+  unchanged, since its Rust adapter now leaves the missed cell's `bg`
+  undeclared the way the other three always did.
 
 - **A container or access row on a `<text>` warns instead of vanishing**
   (backlog AR13). `text`'s element definition admitted every shared

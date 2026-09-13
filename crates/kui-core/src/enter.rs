@@ -61,13 +61,26 @@ impl Enter {
 /// same shapes a keyframe stop accepts). Every binding funnels `enter`
 /// through here, so the shape is the same in JSX, Lua and C.
 pub fn parse(v: &Value) -> Result<Enter, String> {
+    parse_with(v, None)
+}
+
+/// [`parse`] with a token lookup, as `keyframes::parse_with`: a `$name`
+/// in `width`, `height`, `bg` or `radius` resolves, and a miss leaves the
+/// slot unnamed and is remembered on the refs (backlog AR14).
+pub fn parse_with(
+    v: &Value,
+    mut refs: Option<&mut crate::tokens::NameRefs<'_>>,
+) -> Result<Enter, String> {
     let Value::Map(fields) = v else {
         return Err("enter must be an object".into());
     };
     let mut e = Enter::default();
     for (k, v) in fields {
         let bad = |what: &str| format!("enter: {what}");
-        if e.slots.parse_field(k, v).map_err(|e| bad(&e))? {
+        if e.slots
+            .parse_field(k, v, refs.as_deref_mut())
+            .map_err(|e| bad(&e))?
+        {
             continue;
         }
         let num = |what: &str| {

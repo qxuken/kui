@@ -1350,7 +1350,13 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
                     vec![point(from)?, point(to)?]
                 }
             };
-            let width = t.get::<Option<f32>>("width")?.unwrap_or(1.0);
+            // A `$name` width is a length token; one that misses is the
+            // default stroke, 1 px (AR14).
+            let width = match t.get::<mlua::Value>("width")? {
+                mlua::Value::Nil => None,
+                v => with_refs(ui, |refs| length_of(&v, refs))?,
+            }
+            .unwrap_or(1.0);
             // No `color` is the theme's foreground, as for a text run.
             let stroke_color = p.style.color.unwrap_or(ui.theme().fg);
             let mut stroke = kui_core::Stroke::new(width, stroke_color);
@@ -1828,40 +1834,10 @@ fn parse_color_op(name: &str, op: &Table) -> mlua::Result<kui_core::ColorOp> {
 /// it keeps its default — the theme's foreground for a text's `color`, a
 /// fit width, the default text size — the way Node's encoder drops the
 /// prop; not an explicit transparent or zero, which would hide the text
-/// a typo was on.
-pub struct Refs<'a> {
-    look: kui_core::TokenLookup<'a>,
-    errors: Vec<kui_core::TokenError>,
-}
-
-impl<'a> Refs<'a> {
-    pub fn new(look: kui_core::TokenLookup<'a>) -> Self {
-        Self {
-            look,
-            errors: Vec::new(),
-        }
-    }
-
-    fn color(&mut self, name: &str) -> Option<Color> {
-        match self.look.color(name) {
-            Ok(c) => Some(c),
-            Err(e) => {
-                self.errors.push(e);
-                None
-            }
-        }
-    }
-
-    fn length(&mut self, name: &str) -> Option<f32> {
-        match self.look.length(name) {
-            Ok(v) => Some(v),
-            Err(e) => {
-                self.errors.push(e);
-                None
-            }
-        }
-    }
-}
+/// a typo was on. The core's [`kui_core::NameRefs`] since AR14: the one
+/// miss policy, written once, that a keyframe stop and an entrance
+/// resolve through in every binding.
+pub type Refs<'a> = kui_core::NameRefs<'a>;
 
 /// Runs `f` with a [`Refs`] over the frame's lookup, then raises what did
 /// not resolve. The lookup borrows the core for `f`'s duration and nothing
@@ -1873,7 +1849,7 @@ fn with_refs<R>(
     let (r, errors) = {
         let mut refs = Refs::new(ui.core().token_lookup());
         let r = f(&mut refs);
-        (r, refs.errors)
+        (r, refs.take_missed())
     };
     for e in errors {
         ui.core().warn_unknown_token(&e);
@@ -2052,7 +2028,13 @@ fn parse_value(kind: &Kind, v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Resul
             Some(s) => Parsed::Sizing(s),
             None => return Ok(None),
         },
+        // A `$name` is a fixed clamp of that many px, as a sizing's is;
+        // one that misses leaves the row at its default (AR14).
         Kind::Min => Parsed::Min(match v {
+            v if reference(v)?.is_some() => match length_of(v, refs)? {
+                Some(px) => kui_core::Min::px(px),
+                None => return Ok(None),
+            },
             mlua::Value::String(s) => schema::min_str(&s.to_str()?).map_err(bad)?,
             v => kui_core::Min::px(number(v).ok_or_else(|| bad("expected a number or \"fit\""))?),
         }),
@@ -2068,10 +2050,14 @@ fn parse_value(kind: &Kind, v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Resul
             mlua::Value::Number(n) => Parsed::Resource(*n as u64),
             _ => return Err(bad("expected a resource handle (integer)")),
         },
-        Kind::Keyframes => {
-            Parsed::Keyframes(kui_core::keyframes::parse(&lua_to_value(v)?).map_err(bad)?)
+        // A `$name` in a stop resolves through the same refs as a prop's
+        // and misses the same way (AR14).
+        Kind::Keyframes => Parsed::Keyframes(
+            kui_core::keyframes::parse_with(&lua_to_value(v)?, Some(refs)).map_err(bad)?,
+        ),
+        Kind::Enter => {
+            Parsed::Enter(kui_core::enter::parse_with(&lua_to_value(v)?, Some(refs)).map_err(bad)?)
         }
-        Kind::Enter => Parsed::Enter(kui_core::enter::parse(&lua_to_value(v)?).map_err(bad)?),
     }))
 }
 
@@ -4040,6 +4026,66 @@ mod tests {
         assert!(heights[0] > 0.0, "{heights:?}");
         assert_eq!(heights[0], heights[1], "$gap is the literal 6: {heights:?}");
         assert!(heights[2] > heights[0], "and not the default: {heights:?}");
+    }
+
+    /// AR14: the three slots a `$name` could not reach, and the stops it
+    /// failed the frame from — a `min_width`, a line's `width`, a
+    /// keyframe's `bg` and an entrance's `width` — resolve like any prop,
+    /// and a miss leaves the slot at its default with one `unknown-token`.
+    #[test]
+    fn a_token_reaches_a_min_a_stroke_and_a_stop_and_misses_by_leaving_the_slot() {
+        let mut ext = LuaExtension::from_source(
+            "everywhere",
+            r##"
+                tokens = { colors = { peach = "#ffcc99" }, lengths = { gap = 6, wide = 40 } }
+                function view(env)
+                  return column { pad = 4,
+                    row { key = "clamp", width = 10, height = 10, min_width = "$wide" },
+                    row { key = "typo", width = 10, height = 10, min_width = "$nope" },
+                    line { key = "stroke", from = { 0, 0 }, to = { 30, 0 }, width = "$gap", color = "$peach" },
+                    row { key = "anim", width = 10, height = 10, transition = 100,
+                          keyframes = { { bg = "$peach", width = "$wide" }, { bg = "$peech", radius = "$gap" } },
+                          enter = { width = "$nothing", bg = "$peach" } },
+                  }
+                end
+            "##,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        core.set_inspect(true);
+        frame(&mut core, &mut ext);
+        let nodes = core.nodes();
+        let by = |label: &str| {
+            nodes
+                .iter()
+                .find(|n| n.label.as_deref() == Some(label))
+                .unwrap()
+        };
+        assert_eq!(by("clamp").rect.w, 40.0, "the clamp is the token's 40 px");
+        assert_eq!(
+            by("typo").rect.w,
+            10.0,
+            "a miss leaves the row at its default"
+        );
+        let dl = core.output().0;
+        let seg = dl
+            .quads
+            .iter()
+            .find(|q| q.kind == kui_core::QuadKind::Segment)
+            .expect("the line drew");
+        assert_eq!(seg.color, Color::hex(0xffcc99ff));
+        assert_eq!(seg.border_w, 6.0, "the stroke is the token's width");
+        let ws = core.take_warnings();
+        let mut names: Vec<String> = ws
+            .iter()
+            .filter(|w| w.code == kui_core::diag::UNKNOWN_TOKEN)
+            .map(|w| w.message.clone())
+            .collect();
+        names.sort();
+        assert_eq!(names.len(), 3, "nope, peech, nothing: {ws:?}");
+        assert!(names.iter().any(|m| m.contains("`$nope`")), "{names:?}");
+        assert!(names.iter().any(|m| m.contains("`$peech`")), "{names:?}");
+        assert!(names.iter().any(|m| m.contains("`$nothing`")), "{names:?}");
     }
 
     #[test]

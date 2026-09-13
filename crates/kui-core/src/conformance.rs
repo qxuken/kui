@@ -2664,24 +2664,29 @@ fn build_tokens(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     }
     ui.set_tokens(t);
     // Rust holds no reference: it reads each value by name and writes it,
-    // which is what the other adapters' `$name` resolves to.
-    let peach = ui.token_color("peach");
-    let ink = ui.token_color("ink");
-    let surface = ui.token_color("surface");
+    // which is what the other adapters' `$name` resolves to — and a name
+    // that resolves to nothing leaves the row undeclared, as their
+    // `$nothing` does (AR14: one miss policy).
+    let peach = ui.token_color("peach").expect("declared");
+    let ink = ui.token_color("ink").expect("declared");
+    let surface = ui.token_color("surface").expect("a role");
     let nothing = ui.token_color("nothing");
-    let derived: Vec<Color> = TOKEN_KEYS[4..]
+    let derived: Vec<Option<Color>> = TOKEN_KEYS[4..]
         .iter()
         .map(|name| ui.token_color(name))
         .collect();
-    let side_w = ui.token_length("side_w");
-    let gap = ui.token_length("gap");
-    let big = ui.token_length("big");
-    let radius = ui.token_length("radius");
-    let cell = |bg: Color| {
-        NodeSpec::column()
+    let side_w = ui.token_length("side_w").expect("declared");
+    let gap = ui.token_length("gap").expect("declared");
+    let big = ui.token_length("big").expect("declared");
+    let radius = ui.token_length("radius").expect("a role");
+    let cell = |bg: Option<Color>| {
+        let spec = NodeSpec::column()
             .width(Sizing::Fixed(side_w))
-            .height(Sizing::Fixed(30.0))
-            .bg(bg)
+            .height(Sizing::Fixed(30.0));
+        match bg {
+            Some(bg) => spec.bg(bg),
+            None => spec,
+        }
     };
     ui.with(
         NodeSpec::row()
@@ -2693,9 +2698,9 @@ fn build_tokens(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             })
             .gap(gap),
         |ui| {
-            ui.with_keyed(TOKEN_KEYS[0], cell(peach), |_| {});
-            ui.with_keyed(TOKEN_KEYS[1], cell(ink).border(gap, peach), |_| {});
-            ui.with_keyed(TOKEN_KEYS[2], cell(surface).radius(radius), |_| {});
+            ui.with_keyed(TOKEN_KEYS[0], cell(Some(peach)), |_| {});
+            ui.with_keyed(TOKEN_KEYS[1], cell(Some(ink)).border(gap, peach), |_| {});
+            ui.with_keyed(TOKEN_KEYS[2], cell(Some(surface)).radius(radius), |_| {});
             ui.with_keyed(TOKEN_KEYS[3], cell(nothing), |_| {});
             for (key, c) in TOKEN_KEYS[4..].iter().zip(derived) {
                 ui.with_keyed(key, cell(c), |_| {});

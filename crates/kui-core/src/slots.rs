@@ -58,13 +58,37 @@ impl Slots {
     /// `{grow}` / `{percent}`; colours as `0xRRGGBBAA` or `"#hex"`).
     /// `Ok(false)` when `name` is none of the five, so the caller can read
     /// its own fields after. Every binding funnels through here, so the
-    /// shape is the same in JSX, Lua and C.
-    pub(crate) fn parse_field(&mut self, name: &str, v: &Value) -> Result<bool, String> {
+    /// shape is the same in JSX, Lua and C. With `refs`, a `$name` in a
+    /// colour or length slot resolves through it — and one that misses
+    /// leaves the slot unnamed, remembered on the refs (AR14: a token in
+    /// a stop is a token like any other, not a frame-wide error).
+    pub(crate) fn parse_field(
+        &mut self,
+        name: &str,
+        v: &Value,
+        refs: Option<&mut crate::tokens::NameRefs<'_>>,
+    ) -> Result<bool, String> {
         let num = |what: &str| {
             v.as_float()
                 .map(|n| n as f32)
                 .ok_or_else(|| format!("{what} must be a number"))
         };
+        if let Some(refs) = refs {
+            let hit = match name {
+                "width" => refs
+                    .length_ref(v)
+                    .map(|px| self.width = px.map(Sizing::Fixed)),
+                "height" => refs
+                    .length_ref(v)
+                    .map(|px| self.height = px.map(Sizing::Fixed)),
+                "bg" => refs.color_ref(v).map(|c| self.bg = c),
+                "radius" => refs.length_ref(v).map(|r| self.radius = r),
+                _ => None,
+            };
+            if hit.is_some() {
+                return Ok(true);
+            }
+        }
         match name {
             "width" => self.width = Some(sizing_value(v)?),
             "height" => self.height = Some(sizing_value(v)?),

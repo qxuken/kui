@@ -5143,6 +5143,52 @@ test('a $name nothing declared, or of the other kind, is dropped and warned abou
   assert.match(ws.find((w) => named(w) === 'peech').message, /names no token/);
 });
 
+test('a $name reaches a min, a stroke width, a cursor colour and a keyframe stop, and misses by leaving the slot (AR14)', () => {
+  // The three slots outside the prop list threw on a `$` — `bad min`,
+  // `bad width for <line>`, `bad color` — and a `$` in a keyframe or
+  // `enter` stop failed the whole frame in the core. Frame v11: the min
+  // row tags like a sizing, the line's flags word says its width slot is
+  // an index, the cursor-shape slot says the colour is; a stop resolves
+  // in the core through the same lookup, and every miss is the one
+  // policy — the slot at its default, one `unknown-token` naming it.
+  const ctx = new Ctx();
+  ctx.setInspect(true);
+  ctx.setTokens({ colors: { peach: '#ffcc99' }, lengths: { gap: 6, wide: 40 } });
+  const cells = new Uint32Array([0x61, 0xffffffff, 0, 0, 0x62, 0xffffffff, 0, 0]);
+  const tree = root({ pad: 4 }, [
+    box({ width: 10, height: 10, minWidth: '$wide' }, [], 'clamp'),
+    box({ width: 10, height: 10, minWidth: '$nope' }, [], 'typo'),
+    el('line', { from: [0, 0], to: [30, 0], width: '$gap', color: '$peach' }, [], 'stroke'),
+    el('line', { from: [0, 0], to: [30, 0], width: '$nothing' }, [], 'plain'),
+    el('cells', { rows: 1, cols: 2, cells, cursorAt: [0, 0], cursorColor: '$peach', size: 14, family: 'mono' }, [], 'term'),
+    box(
+      {
+        width: 10,
+        height: 10,
+        transition: 100,
+        keyframes: [{ bg: '$peach', width: '$wide' }, { bg: '$peech', radius: '$gap' }],
+        enter: { width: '$missing', bg: '$peach' },
+      },
+      [],
+      'anim',
+    ),
+  ]);
+  ctx.frame(320, 240, 1, tree);
+  const node = (label) => ctx.nodes().find((n) => n.label === label);
+  assert.equal(node('clamp').rect.w, 40, 'the clamp is the token');
+  assert.equal(node('typo').rect.w, 10, 'a miss leaves the row at its default');
+  const segs = decodeQuads(ctx.quads()).filter((q) => q.kind === 6);
+  assert.equal(segs.length, 2);
+  assert.equal(segs[0].borderW, 6, 'the stroke width is the token');
+  assert.equal(segs[1].borderW, 1, 'a miss is the default stroke');
+  const cursor = decodeQuads(ctx.quads()).find((q) => q.kind === 0 && q.color[0] > 0.99 && q.color[1] > 0.79 && q.color[1] < 0.81);
+  assert.ok(cursor, 'the cursor painted in peach');
+  ctx.frame(320, 240, 1, tree);
+  const ws = ctx.warnings().filter((w) => w.code === 'unknown-token');
+  const named = (w) => /`\$([a-z]+)`/.exec(w.message)?.[1] ?? w.message;
+  assert.deepEqual(ws.map(named).sort(), ['missing', 'nope', 'nothing', 'peech'], JSON.stringify(ws));
+});
+
 test('a derived token is a recipe over an earlier one, resolved by the core and indexed like any other', () => {
   // ADR 0028: `{ from, ops }`, the ops `[verb, …]` tuples folded in order.
   const ctx = new Ctx();

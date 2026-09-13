@@ -116,10 +116,14 @@ fn the_two_warnings() {
             .length("radius", 1.0),
     );
     let mut ui = core.frame(Size::new(100.0, 100.0), 1.0);
+    // A miss is `None` — the view leaves the row at its default, as a
+    // `$name` in a prop does in every binding (AR14) — never an explicit
+    // transparent or zero that would hide the node the typo was on.
     let c = ui.token_color("peech");
-    assert_eq!(c, Color::TRANSPARENT);
-    assert_eq!(ui.token_color("peech"), Color::TRANSPARENT);
-    assert_eq!(ui.token_length("peach"), 0.0, "a colour in a length slot");
+    assert_eq!(c, None);
+    assert_eq!(ui.token_color("peech"), None);
+    assert_eq!(ui.token_length("peach"), None, "a colour in a length slot");
+    assert_eq!(ui.token_color("peach"), Some(PEACH));
     ui.finish();
     let warnings = core.take_warnings();
     let raised = codes(&warnings);
@@ -187,6 +191,70 @@ impl Extension for Guest {
 /// A guest reads the host's `peach` until it declares its own; its `grey`
 /// is its own and never the host's; and its declaration leaves the host's
 /// table exactly as it was.
+/// AR14: a `$name` in a keyframe stop or an entrance is a token like any
+/// other — resolved through the same lookup, and a miss leaves that slot
+/// unnamed and is remembered for the binding to raise, where before it
+/// was an error that failed the whole frame.
+#[test]
+fn a_stop_and_an_entrance_resolve_tokens_and_miss_by_leaving_the_slot() {
+    use kui_core::{NameRefs, Sizing, enter, keyframes};
+    let mut core = Core::new();
+    core.set_tokens(host_tokens());
+    let mut refs = NameRefs::new(core.token_lookup());
+    let stops = Value::List(vec![
+        Value::map([
+            ("bg", Value::str("$peach")),
+            ("width", Value::str("$side_w")),
+        ]),
+        Value::map([
+            ("bg", Value::str("$peech")),
+            ("radius", Value::str("$side_w")),
+        ]),
+        Value::map([("height", Value::str("$peach"))]),
+    ]);
+    let frames = keyframes::parse_with(&stops, Some(&mut refs)).expect("a miss is not an error");
+    assert_eq!(frames.len(), 3);
+    assert_eq!(frames[0].slots.bg, Some(PEACH));
+    assert_eq!(frames[0].slots.width, Some(Sizing::Fixed(132.0)));
+    assert_eq!(frames[1].slots.bg, None, "the miss leaves the slot unnamed");
+    assert_eq!(frames[1].slots.radius, Some(132.0));
+    assert_eq!(frames[2].slots.height, None, "a colour in a length slot");
+    let e = enter::parse_with(
+        &Value::map([
+            ("bg", Value::str("$ink")),
+            ("dx", Value::Float(4.0)),
+            ("width", Value::str("$nothing")),
+        ]),
+        Some(&mut refs),
+    )
+    .unwrap();
+    assert_eq!(e.dx, 4.0);
+    assert_eq!(
+        e.slots.bg,
+        Some(PAPER),
+        "the dark half under the default appearance"
+    );
+    assert_eq!(e.slots.width, None);
+    let missed = refs.take_missed();
+    assert_eq!(missed.len(), 3, "{missed:?}");
+    assert!(matches!(&missed[0], TokenError::Unknown(n) if n == "peech"));
+    assert!(matches!(&missed[1], TokenError::Kind { name, .. } if name == "peach"));
+    assert!(matches!(&missed[2], TokenError::Unknown(n) if n == "nothing"));
+    // Without a lookup a `$name` is what it always was: not a colour.
+    assert!(keyframes::parse(&stops).is_err());
+    // And a plain value beside a reference still parses as itself.
+    let plain = keyframes::parse_with(
+        &Value::List(vec![Value::map([
+            ("bg", Value::Int(0x11223344)),
+            ("opacity", Value::Float(0.5)),
+        ])]),
+        Some(&mut refs),
+    )
+    .unwrap();
+    assert_eq!(plain[0].slots.opacity, Some(0.5));
+    assert!(refs.take_missed().is_empty());
+}
+
 #[test]
 fn a_guest_reads_its_own_table_over_the_hosts() {
     let seen = Rc::new(RefCell::new(Vec::new()));

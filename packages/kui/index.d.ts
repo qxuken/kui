@@ -783,15 +783,20 @@ export type WarningCode =
   | 'unknown-slot'
   /** A colour or length prop named a token — `bg = "$peach"` — that nothing
    *  declared and that is no theme or metrics role, or named one of the other
-   *  kind (a length in a colour slot). The slot is left at its default:
-   *  transparent, or zero. Raised by the binding that lowered the reference,
-   *  through `Core::warn_unknown_token`, once per name, since the name is gone
-   *  by the time the frame is a tree. Also raised at the declaration for a
-   *  derived token whose source — the `from`, or the colour a `mix` or
-   *  `readable` names — is no colour token declared before it and no theme
-   *  role: that token is dropped, the message names both, and the rest of the
-   *  table lands. See `docs/adr/0027-tokens-beside-the-theme.md`, decision 4,
-   *  and `docs/adr/0028-derived-tokens.md`. */
+   *  kind (a length in a colour slot). The slot is left at the row's default,
+   *  as if the prop had not been written — no `bg`, a fit width, the theme's
+   *  foreground for a text's `color` — never an explicit transparent or zero,
+   *  which would hide the node a typo was on; the same in every binding and in
+   *  every place a `$name` can go, a keyframe stop and an entrance included
+   *  (backlog AR14), and what `ui.token_color` / `token_length` answer `None`
+   *  for in Rust. Raised by the binding that lowered the reference, through
+   *  `Core::warn_unknown_token`, once per name, since the name is gone by the
+   *  time the frame is a tree. Also raised at the declaration for a derived
+   *  token whose source — the `from`, or the colour a `mix` or `readable` names
+   *  — is no colour token declared before it and no theme role: that token is
+   *  dropped, the message names both, and the rest of the table lands. See
+   *  `docs/adr/0027-tokens-beside-the-theme.md`, decision 4, and
+   *  `docs/adr/0028-derived-tokens.md`. */
   | 'unknown-token'
   /** A declared token took a theme or metrics role's name (`surface`, `radius`)
    *  and was dropped: the roles are the corpus's contract and `$surface` always

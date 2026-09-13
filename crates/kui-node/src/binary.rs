@@ -59,7 +59,14 @@ use crate::{Result, err, value_of};
 /// middle of an existing op are what the bump is for.
 /// v9: `fragment` carries its `image` handle as two slots after `src`
 /// (backlog V1, ADR 0025 decision 7) — slots in the middle of an op again.
-pub const VERSION: u32 = 10;
+/// v10: a prop id may carry `TOKEN_TAG` (ADR 0027).
+/// v11: a `$name` reaches the three slots it could not (backlog AR14): a
+/// tagged `min` row is one slot, the index; a `line`'s flags word bit 2
+/// says its width slot is a length index; a `cells`' cursor-shape slot
+/// bit 4 says its colour slot is a colour index. And a keyframe stop or
+/// an entrance resolves a `$name` in the core — no wire change, but the
+/// same release.
+pub const VERSION: u32 = 11;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a
 /// token index rather than a value (`docs/adr/0027-tokens-beside-the-theme.md`,
@@ -264,9 +271,34 @@ fn read_props(r: &mut Reader<'_>, refs: &mut Refs<'_>) -> Result<PropsOut> {
 struct Refs<'a> {
     look: TokenLookup<'a>,
     missed: Vec<(TokenKind, u32)>,
+    /// The by-name half, for a keyframe stop or an entrance, which cross
+    /// as plain data with the `$name` still in them (AR14).
+    names: kui_core::NameRefs<'a>,
+}
+
+/// What a lowering could not resolve: token indices the table does not
+/// hold, and names a stop or an entrance spelled that nothing declared.
+struct Missed {
+    by_index: Vec<(TokenKind, u32)>,
+    by_name: Vec<kui_core::TokenError>,
 }
 
 impl<'a> Refs<'a> {
+    fn new(look: TokenLookup<'a>) -> Self {
+        Self {
+            look,
+            missed: Vec::new(),
+            names: kui_core::NameRefs::new(look),
+        }
+    }
+
+    fn take(mut self) -> Missed {
+        Missed {
+            by_index: std::mem::take(&mut self.missed),
+            by_name: self.names.take_missed(),
+        }
+    }
+
     fn color(&mut self, index: f64) -> Option<Color> {
         let c = self.look.color_at(index as u32);
         if c.is_none() {
@@ -285,9 +317,13 @@ impl<'a> Refs<'a> {
 }
 
 /// The warnings a lowering's misses become, once the borrow of the core
-/// is handed back: keyed by the index, since the name never crossed.
-fn warn_missed(core: &mut kui_core::Core, missed: Vec<(TokenKind, u32)>) {
-    for (kind, index) in missed {
+/// is handed back: keyed by the index, since the name never crossed —
+/// except for a stop's or an entrance's, which did.
+fn warn_missed(core: &mut kui_core::Core, missed: Missed) {
+    for e in &missed.by_name {
+        core.warn_unknown_token(e);
+    }
+    for (kind, index) in missed.by_index {
         core.warn(Warning {
             code: kui_core::diag::UNKNOWN_TOKEN,
             key: Key::ROOT.str(kui_core::diag::UNKNOWN_TOKEN).str(&format!(
@@ -306,6 +342,25 @@ fn warn_missed(core: &mut kui_core::Core, missed: Vec<(TokenKind, u32)>) {
     }
 }
 
+/// One length by wire index, for a slot outside a prop list (a line's
+/// width); a miss is raised the way a prop's is.
+fn lookup_length(ui: &mut kui_core::Ui<'_>, index: f64) -> Option<f32> {
+    let mut refs = Refs::new(ui.core().token_lookup());
+    let v = refs.length(index);
+    let missed = refs.take();
+    warn_missed(ui.core(), missed);
+    v
+}
+
+/// One colour by wire index (a grid's cursor colour), the same way.
+fn lookup_color(ui: &mut kui_core::Ui<'_>, index: f64) -> Option<Color> {
+    let mut refs = Refs::new(ui.core().token_lookup());
+    let c = refs.color(index);
+    let missed = refs.take();
+    warn_missed(ui.core(), missed);
+    c
+}
+
 /// Reads one prop list through the core's lookup and raises what missed.
 fn lower_props(r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<PropsOut> {
     lower_props_over(r, PropsOut::new(), ui)
@@ -317,11 +372,8 @@ fn lower_props_over(
     ui: &mut kui_core::Ui<'_>,
 ) -> Result<PropsOut> {
     let (p, missed) = {
-        let mut refs = Refs {
-            look: ui.core().token_lookup(),
-            missed: Vec::new(),
-        };
-        (read_props_over(r, out, &mut refs), refs.missed)
+        let mut refs = Refs::new(ui.core().token_lookup());
+        (read_props_over(r, out, &mut refs), refs.take())
     };
     warn_missed(ui.core(), missed);
     p
@@ -329,11 +381,8 @@ fn lower_props_over(
 
 fn lower_spans<'a>(r: &mut Reader<'a>, ui: &mut kui_core::Ui<'_>) -> Result<Vec<Span<'a>>> {
     let (spans, missed) = {
-        let mut refs = Refs {
-            look: ui.core().token_lookup(),
-            missed: Vec::new(),
-        };
-        (read_spans(r, &mut refs), refs.missed)
+        let mut refs = Refs::new(ui.core().token_lookup());
+        (read_spans(r, &mut refs), refs.take())
     };
     warn_missed(ui.core(), missed);
     spans
@@ -497,11 +546,11 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut, refs: &mut Refs<'_>) -
             _ if is_ref
                 && !matches!(
                     schema::by_id(id).map(|d| &d.kind),
-                    Some(Kind::F32 | Kind::Color | Kind::Sizing)
+                    Some(Kind::F32 | Kind::Color | Kind::Sizing | Kind::Min)
                 ) =>
             {
                 return Err(err(format!(
-                    "prop id {id} carries a token reference, and only a colour, a length or a \
+                    "prop id {id} carries a token reference, and only a colour, a length, a min or a \
                      sizing row takes one"
                 )));
             }
@@ -523,6 +572,12 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut, refs: &mut Refs<'_>) -
                     // fixed length in px.
                     Kind::Sizing if is_ref => match refs.length(r.f()?) {
                         Some(px) => Parsed::Sizing(Sizing::Fixed(px)),
+                        None => continue,
+                    },
+                    // A min reference is one slot too: a fixed clamp of
+                    // that many px (v11, AR14).
+                    Kind::Min if is_ref => match refs.length(r.f()?) {
+                        Some(px) => Parsed::Min(kui_core::Min::px(px)),
                         None => continue,
                     },
                     Kind::F32 => Parsed::F32(r.f()? as f32),
@@ -547,12 +602,20 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut, refs: &mut Refs<'_>) -
                     Kind::Str => Parsed::Str(r.req_str()?.to_string()),
                     Kind::Resource => Parsed::Resource(crate::parse_u64(r.req_str()?)?),
                     // Carried as JSON like a message; the core reads the stops.
+                    // A `$name` in a stop resolves in the core through
+                    // the by-name refs, and misses the way a prop's does
+                    // (AR14).
                     Kind::Keyframes => Parsed::Keyframes(
-                        kui_core::keyframes::parse(&payload(r.req_str()?)?).map_err(err)?,
+                        kui_core::keyframes::parse_with(
+                            &payload(r.req_str()?)?,
+                            Some(&mut refs.names),
+                        )
+                        .map_err(err)?,
                     ),
-                    Kind::Enter => {
-                        Parsed::Enter(kui_core::enter::parse(&payload(r.req_str()?)?).map_err(err)?)
-                    }
+                    Kind::Enter => Parsed::Enter(
+                        kui_core::enter::parse_with(&payload(r.req_str()?)?, Some(&mut refs.names))
+                            .map_err(err)?,
+                    ),
                 };
                 schema::apply(def, parsed, &mut out)?;
             }
@@ -640,24 +703,18 @@ pub fn measure_binary(
         OP_TEXT => {
             let content = r.req_str()?;
             let (p, missed) = {
-                let mut refs = Refs {
-                    look: core.token_lookup(),
-                    missed: Vec::new(),
-                };
-                (read_props(&mut r, &mut refs), refs.missed)
+                let mut refs = Refs::new(core.token_lookup());
+                (read_props(&mut r, &mut refs), refs.take())
             };
             warn_missed(core, missed);
             Ok(core.measure_text(content, &p?.style, max_w))
         }
         OP_RICH_TEXT => {
             let (p, spans, missed) = {
-                let mut refs = Refs {
-                    look: core.token_lookup(),
-                    missed: Vec::new(),
-                };
+                let mut refs = Refs::new(core.token_lookup());
                 let p = read_props(&mut r, &mut refs);
                 let spans = read_spans(&mut r, &mut refs);
-                (p, spans, refs.missed)
+                (p, spans, refs.take())
             };
             warn_missed(core, missed);
             Ok(core.measure_rich_text(&spans?, &p?.style, max_w))
@@ -819,9 +876,16 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
                 let y = r.f()? as f32;
                 points.push(kui_core::Vec2::new(x, y));
             }
-            let width = r.f()? as f32;
+            let width_slot = r.f()?;
             let flags = r.u()?;
             let p = lower_props(r, ui)?;
+            // Bit 2: the width slot is a length token's index (v11, AR14);
+            // one the table does not hold is the default stroke, 1 px.
+            let width = if flags & 2 != 0 {
+                lookup_length(ui, width_slot).unwrap_or(1.0)
+            } else {
+                width_slot as f32
+            };
             // No `color` is the theme's foreground, as for a text run.
             let stroke_color = p.style.color.unwrap_or(ui.theme().fg);
             let mut stroke = kui_core::Stroke::new(width, stroke_color);
@@ -860,8 +924,8 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             let has_cursor = r.u()? == 1;
             let crow = r.u()? as usize;
             let ccol = r.u()? as usize;
-            let cshape = r.u()? as usize;
-            let ccolor = r.f()? as u32;
+            let cshape_slot = r.u()? as usize;
+            let ccolor_slot = r.f()?;
             let origin_line = r.f()?.max(0.0) as u64;
             let n = r.u()? as usize;
             if n != rows * cols {
@@ -880,12 +944,21 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
                 });
             }
             let p = lower_props(r, ui)?;
+            // Bit 4 of the shape slot: the colour slot is a colour token's
+            // index (v11, AR14); one the table does not hold is the
+            // default, white.
+            let cshape = cshape_slot & 3;
+            let ccolor = if cshape_slot & 4 != 0 {
+                lookup_color(ui, ccolor_slot).unwrap_or(Color::WHITE)
+            } else {
+                color_num(ccolor_slot as u32)
+            };
             let cursor = has_cursor.then(|| {
                 (
                     crow,
                     ccol,
                     kui_core::CellCursor::from_index(cshape).unwrap_or(kui_core::CellCursor::Block),
-                    color_num(ccolor),
+                    ccolor,
                 )
             });
             let grid = kui_core::CellGrid {
@@ -994,10 +1067,7 @@ mod tests {
             strings,
         };
         let core = kui_core::Core::new();
-        let mut refs = Refs {
-            look: core.token_lookup(),
-            missed: Vec::new(),
-        };
+        let mut refs = Refs::new(core.token_lookup());
         read_props(&mut r, &mut refs).unwrap()
     }
 

@@ -198,26 +198,29 @@ impl<'a> Ui<'a> {
         self.core.token_lookup()
     }
 
-    /// A colour token by name, this frame's half; a name that resolves
-    /// to nothing raises `unknown-token` and answers transparent, the way
-    /// a `$name` in a prop does.
-    pub fn token_color(&mut self, name: &str) -> crate::color::Color {
+    /// A colour token by name, this frame's half. A name that resolves
+    /// to nothing — or to a length — raises `unknown-token` and answers
+    /// `None`, so the view leaves the slot at the row's default the way
+    /// a `$name` in a prop does in every binding (`.bg(ui.token_color(
+    /// "peach").unwrap_or(t.surface))`), rather than painting an explicit
+    /// transparent that would hide the node a typo was on (AR14).
+    pub fn token_color(&mut self, name: &str) -> Option<crate::color::Color> {
         match self.core.token_lookup().color(name) {
-            Ok(c) => c,
+            Ok(c) => Some(c),
             Err(e) => {
                 self.core.warn_unknown_token(&e);
-                crate::color::Color::TRANSPARENT
+                None
             }
         }
     }
 
-    /// A length token by name; unknown answers 0 and warns, as above.
-    pub fn token_length(&mut self, name: &str) -> f32 {
+    /// A length token by name; unknown warns and answers `None`, as above.
+    pub fn token_length(&mut self, name: &str) -> Option<f32> {
         match self.core.token_lookup().length(name) {
-            Ok(v) => v,
+            Ok(v) => Some(v),
             Err(e) => {
                 self.core.warn_unknown_token(&e);
-                0.0
+                None
             }
         }
     }

@@ -720,6 +720,77 @@ pub fn reference(s: &str) -> Option<&str> {
     s.strip_prefix('$').filter(|n| !n.is_empty())
 }
 
+/// A lookup plus the names it could not answer — the shape every
+/// by-name lowering wants (Lua's props, a keyframe stop or an entrance
+/// in any binding, since those cross as plain data with the name still
+/// in them), so the one miss policy (ADR 0027 decision 4, backlog AR14)
+/// is written once: a `$name` that resolves to nothing, or to the other
+/// kind, is `None` — the slot is left at the row's default, the way the
+/// prop would be if it were not declared — and the miss is remembered for
+/// the caller to raise as `unknown-token` once the lookup's borrow of the
+/// core is handed back (`Core::warn_unknown_token`).
+pub struct NameRefs<'a> {
+    look: TokenLookup<'a>,
+    missed: Vec<TokenError>,
+}
+
+impl<'a> NameRefs<'a> {
+    pub fn new(look: TokenLookup<'a>) -> Self {
+        Self {
+            look,
+            missed: Vec::new(),
+        }
+    }
+
+    /// The lookup itself, for a caller that reads a token without the
+    /// miss bookkeeping.
+    pub fn lookup(&self) -> TokenLookup<'a> {
+        self.look
+    }
+
+    /// The colour `name` resolves to this frame, or `None` (remembered).
+    pub fn color(&mut self, name: &str) -> Option<Color> {
+        match self.look.color(name) {
+            Ok(c) => Some(c),
+            Err(e) => {
+                self.missed.push(e);
+                None
+            }
+        }
+    }
+
+    /// The length `name` resolves to this frame, or `None` (remembered).
+    pub fn length(&mut self, name: &str) -> Option<f32> {
+        match self.look.length(name) {
+            Ok(v) => Some(v),
+            Err(e) => {
+                self.missed.push(e);
+                None
+            }
+        }
+    }
+
+    /// A value that is a `$name` colour reference, resolved; `None` for a
+    /// value that is not a reference. A reference that missed is
+    /// `Some(None)`: consumed, unresolved, remembered.
+    pub fn color_ref(&mut self, v: &crate::value::Value) -> Option<Option<Color>> {
+        let name = v.as_str().and_then(reference)?;
+        Some(self.color(name))
+    }
+
+    /// The same for a length.
+    pub fn length_ref(&mut self, v: &crate::value::Value) -> Option<Option<f32>> {
+        let name = v.as_str().and_then(reference)?;
+        Some(self.length(name))
+    }
+
+    /// The names that resolved to nothing, taken; each one line of
+    /// `unknown-token` for the caller to raise.
+    pub fn take_missed(&mut self) -> Vec<TokenError> {
+        std::mem::take(&mut self.missed)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

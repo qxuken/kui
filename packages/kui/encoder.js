@@ -399,10 +399,11 @@ export function createEncoder(P) {
             }
             break;
           }
-          // A reference on a colour, length or sizing row: the tagged id
-          // and the index, or nothing at all for a name that did not
-          // resolve (reported through `unknownTokens`).
-          if (isRef(v) && (def.kind === 'f32' || def.kind === 'color' || def.kind === 'sizing')) {
+          // A reference on a colour, length, sizing or min row: the
+          // tagged id and the index, or nothing at all for a name that did
+          // not resolve (reported through `unknownTokens`), so the core
+          // keeps the row's default (AR14).
+          if (isRef(v) && (def.kind === 'f32' || def.kind === 'color' || def.kind === 'sizing' || def.kind === 'min')) {
             const i = tokenRef(v, def.kind === 'color' ? 'color' : 'length');
             if (i !== undefined) {
               f[fi++] = def.id | TOKEN_TAG;
@@ -765,7 +766,10 @@ export function createEncoder(P) {
           pts = [p.from, p.to];
         }
         if (!Array.isArray(pts) || pts.length < 2) throw new Error('<line> needs at least two points');
-        if (p.width !== undefined && typeof p.width !== 'number') throw new Error(`bad width ${JSON.stringify(p.width)} for <line> (a stroke width in px)`);
+        // A `$name` width rides as its index with flag bit 2 set (v11);
+        // one that does not resolve is left out, the default stroke.
+        const widthRef = isRef(p.width) ? tokenRef(p.width, 'length') : undefined;
+        if (p.width !== undefined && typeof p.width !== 'number' && !isRef(p.width)) throw new Error(`bad width ${JSON.stringify(p.width)} for <line> (a stroke width in px, or a "$length")`);
         reserve(6 + pts.length * 2);
         f[fi++] = OP.line;
         f[fi++] = pts.length;
@@ -776,8 +780,8 @@ export function createEncoder(P) {
           f[fi++] = pt[0];
           f[fi++] = pt[1];
         }
-        f[fi++] = typeof p.width === 'number' ? p.width : 1;
-        f[fi++] = p.curve ? 1 : 0;
+        f[fi++] = widthRef !== undefined ? widthRef : typeof p.width === 'number' ? p.width : 1;
+        f[fi++] = (p.curve ? 1 : 0) | (widthRef !== undefined ? 2 : 0);
         props(p, el.key, false);
         return;
       }
@@ -805,8 +809,11 @@ export function createEncoder(P) {
         f[fi++] = cur ? cur[1] | 0 : 0;
         const shape = p.cursorShape == null ? 0 : ['block', 'bar', 'underline'].indexOf(p.cursorShape);
         if (shape < 0) throw new Error(`bad cursorShape ${JSON.stringify(p.cursorShape)} for <cells> (block, bar or underline)`);
-        f[fi++] = shape;
-        f[fi++] = p.cursorColor != null ? color(p.cursorColor) : 0xffffffff;
+        // A `$name` cursor colour rides as its index with shape bit 4 set
+        // (v11); one that does not resolve is left out, the default.
+        const cursorRef = isRef(p.cursorColor) ? tokenRef(p.cursorColor, 'color') : undefined;
+        f[fi++] = shape | (cursorRef !== undefined ? 4 : 0);
+        f[fi++] = cursorRef !== undefined ? cursorRef : p.cursorColor != null && !isRef(p.cursorColor) ? color(p.cursorColor) : 0xffffffff;
         // The absolute line row 0 is: what makes a selection in a
         // scrolling terminal keep its ends (ADR 0017, decision 4).
         f[fi++] = typeof p.originLine === 'number' ? p.originLine : 0;

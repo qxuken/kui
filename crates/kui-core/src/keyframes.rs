@@ -45,6 +45,18 @@ impl Keyframe {
 /// colors as `0xRRGGBBAA` or `"#hex"`). Every binding funnels its
 /// keyframes through here, so the shape is the same in JSX, Lua and C.
 pub fn parse(v: &Value) -> Result<Vec<Keyframe>, String> {
+    parse_with(v, None)
+}
+
+/// [`parse`] with a token lookup: a `$name` in a stop's `width`,
+/// `height`, `bg` or `radius` resolves through `refs`, and one that
+/// misses leaves that slot unnamed and is remembered on the refs for the
+/// binding to raise (backlog AR14). Without refs a `$name` is the error
+/// it always was, since there is nothing to resolve it against.
+pub fn parse_with(
+    v: &Value,
+    mut refs: Option<&mut crate::tokens::NameRefs<'_>>,
+) -> Result<Vec<Keyframe>, String> {
     let Value::List(stops) = v else {
         return Err("keyframes must be a list of stops".into());
     };
@@ -57,7 +69,11 @@ pub fn parse(v: &Value) -> Result<Vec<Keyframe>, String> {
         let mut kf = Keyframe::default();
         for (k, v) in fields {
             let bad = |what: &str| format!("keyframe {i}: {what}");
-            if kf.slots.parse_field(k, v).map_err(|e| bad(&e))? {
+            if kf
+                .slots
+                .parse_field(k, v, refs.as_deref_mut())
+                .map_err(|e| bad(&e))?
+            {
                 continue;
             }
             match k.as_str() {

@@ -138,11 +138,11 @@ console.log(
 // in diag.rs) through protocol(); this file only lays them out.
 
 const TYPE_DOC = {
-  f32: 'number',
-  color: 'color (`#hex` or `0xRRGGBBAA`)',
+  f32: 'number, or a `"$length"` token',
+  color: 'color (`#hex` or `0xRRGGBBAA`), or a `"$color"` token',
   flag: 'boolean',
-  sizing: 'sizing (`number` \\| `"fit"` \\| `"grow"` \\| `"N%"`)',
-  min: 'minimum (`number` \\| `"fit"`)',
+  sizing: 'sizing (`number` \\| `"fit"` \\| `"grow"` \\| `"N%"` \\| `"$length"`)',
+  min: 'minimum (`number` \\| `"fit"` \\| `"$length"`)',
   msg: 'message (any plain data)',
   tag: 'tag (a message merged into the event under `tag`, or `null` for none)',
   str: 'string',
