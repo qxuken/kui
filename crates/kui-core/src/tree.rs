@@ -118,6 +118,10 @@ pub struct Tree {
     pub any_wrap: bool,
     /// Whether any node is text (a `Text` or `Edit` content).
     pub any_text: bool,
+    /// Whether any node is a `role="line"` row — what a pointer payload
+    /// inside a key sink is resolved against (backlog C34), so a frame
+    /// without a custom editor never walks a sink's subtree for one.
+    pub any_line: bool,
     /// Whether any node clips (`clip`, or an overflow that scrolls).
     pub any_clip: bool,
     /// Whether any node clips *and* has a radius, so the clip its
@@ -205,6 +209,7 @@ impl Tree {
         self.any_float = false;
         self.any_wrap = false;
         self.any_text = false;
+        self.any_line = false;
         self.any_selectable = false;
         self.any_clip = false;
         self.any_rounded_clip = false;
@@ -243,6 +248,9 @@ impl Tree {
         if let Some(i) = spec.interact.as_deref() {
             self.any_selectable |= i.selectable;
             self.any_region |= i.focus_region;
+        }
+        if let Some(a) = spec.access.as_deref() {
+            self.any_line |= a.role == Some(crate::access::Role::Line);
         }
         if spec.layout.clips() {
             self.any_clip = true;

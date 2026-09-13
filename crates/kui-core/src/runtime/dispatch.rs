@@ -121,9 +121,14 @@ impl Core {
     /// for a drag and from the cursor for a click; a point above the first
     /// line is the first, below the last the last, and one in a gutter is
     /// the line beside it. A sink with no lines adds nothing; only a map
-    /// payload can carry it.
+    /// payload can carry it. Not opt-in, like `cell`: the fields appear
+    /// wherever the shape they describe is drawn, and a handler that
+    /// does not read them is not slower for their being there.
     fn attach_lines(&mut self, out: &mut [UiEvent]) {
-        if self.tree.is_empty() || !self.tree.any_text {
+        // No lines anywhere: nothing to resolve against, and no sink's
+        // subtree is walked — a frame without a custom editor pays one
+        // flag read per event.
+        if self.tree.is_empty() || !self.tree.any_line {
             return;
         }
         for ev in out.iter_mut() {
