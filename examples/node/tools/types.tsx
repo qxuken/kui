@@ -44,7 +44,9 @@ const wrongRole = <box width={roles.surface} />;
 const wrongArity = defineTokens({ colors: { x: { from: 'peach', ops: [['lift', 'ink', 0.3]] } } });
 // @ts-expect-error — `glow` is no verb
 const wrongVerb = defineTokens({ colors: { x: { from: 'peach', ops: [['glow', 0.3]] } } });
-void peach; void hover; void sideW; void lit; void typo; void wrongKind; void wrongRole; void wrongArity; void wrongVerb;
+// @ts-expect-error — a text is content plus a style: `live` (and `role`, `label`, `onClick`) goes on the box around it (AR13)
+const liveText = <text live="polite">saved</text>;
+void peach; void hover; void sideW; void lit; void typo; void wrongKind; void wrongRole; void wrongArity; void wrongVerb; void liveText;
 
 type Model = { count: number; note: string };
 type CounterMsg = { kind: 'add'; by: number } | { kind: 'reset' };

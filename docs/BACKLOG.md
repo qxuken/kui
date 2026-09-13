@@ -2541,7 +2541,23 @@ documents the rest. C's view ctx is the drawing window
 or `KuiWindow` methods routed through `Shell` by window id; a two-window
 case in `test.mjs` on `editText`/`focus`/`setTokens`.
 
-### `!` AR13 — `<text>` admits every container and access row, and all four doors drop them silently
+### `!` AR13 — `<text>` admits every container and access row, and all four doors drop them silently — **done (2026-09-14)**
+
+**Done (2026-09-14), the first of the fix's two shapes.** `TEXT_ROWS_JSX`
+/ `TEXT_ROWS_LUA` beside the button's: the ten `Target::Style` rows and
+`size`, and `text_admits_exactly_the_style_rows` pins the list equal to
+the schema's style rows so a new style row is a row here or a red test
+(deriving from `PropDef::target` at the table would have wanted a const
+filter; a pinned list is the same guarantee). `known_prop` and `suggest`
+read it as they read the button's, the encoder's `checkProps` gets it
+through the same `rows` column, and Lua through `known_prop` — the C
+door takes a style and has no names to check. The `admitted_rows` test's
+"`label` is never left out" clause is scoped to closed *controls* (a
+text is its own name). Tests: schema, `test.mjs` (`live`, `role`,
+`label`, `onClick` warned, naming `maxLines`; a span's rows quiet),
+kui-lua (`live`, `label`, `on_click` in Lua spelling), and the
+`types.tsx` line the entry asks for. `props.md` regenerated with the
+element's doc saying which rows it reads. CHANGELOG under alpha.12.
 
 `text`'s `ElementDef` has `jsx_rows: None, lua_rows: None`
 (`schema.rs:1403-1413`), which `known_prop` reads as "every shared name"
@@ -3269,7 +3285,8 @@ session rule written and the audio store and image drops moved under
 it — **both done 2026-09-14**), AR9–AR11 together — **all three done
 2026-09-14** (the held-key identity, the chord bit carried
 into the second channel, one attach pass with a producer-side mark),
-AR12 (Node's window handle — **done 2026-09-14**), AR13–AR16 (the `<text>` rows, one token
+AR12 (Node's window handle — **done 2026-09-14**), AR13–AR16 (AR13
+**done 2026-09-14**) (the `<text>` rows, one token
 miss policy, Cut's `changed`, one `prepare_spec`), AR17–AR18 (the focus
 stamp and the AT gates), AR19–AR25 as the defects they are, then B1's
 table with AR26, AR27 and AR40 beside it, AR46–AR48 for the tests, and

@@ -1387,6 +1387,43 @@ pub struct ElementDef {
     pub doc: &'static str,
 }
 
+/// The rows a `text` reads (`ElementDef::jsx_rows` / `lua_rows`): the
+/// `TextStyle` rows and `size`, the composite the style is built from —
+/// and nothing else, because every door lowers a text as content plus a
+/// style and no spec (`Core::text_node`), so a container or access row
+/// on it reaches no tree. Before AR13 the element admitted every shared
+/// row, and `<text live="polite">`, `<text role="heading">`, `<text
+/// label>` and `<text onClick>` were dropped silently by all four
+/// bindings — no `unknown-prop`, and `live-region-without-name` could
+/// never fire for them. Pinned equal to the `Target::Style` rows by a
+/// test, so a style row added to `PROPS` is a row here or a red test.
+pub const TEXT_ROWS_JSX: &[&str] = &[
+    "size",
+    "lineHeight",
+    "color",
+    "family",
+    "font",
+    "wrap",
+    "maxLines",
+    "ellipsis",
+    "underline",
+    "strikethrough",
+    "features",
+];
+pub const TEXT_ROWS_LUA: &[&str] = &[
+    "size",
+    "line_height",
+    "color",
+    "family",
+    "font",
+    "wrap",
+    "max_lines",
+    "ellipsis",
+    "underline",
+    "strikethrough",
+    "features",
+];
+
 /// The rows the stock button reads (`ElementDef::jsx_rows` / `lua_rows`):
 /// the click, the identity, the access rows — what a button *is* and what
 /// a reader says of it — and the one paint row it takes, `accent`, which
@@ -1427,12 +1464,12 @@ pub const ELEMENTS: &[ElementDef] = &[
         name: "text",
         jsx_own: &["bold", "italic", "bg"],
         lua_own: &["value", "spans"],
-        jsx_rows: None,
-        lua_rows: None,
+        jsx_rows: Some(TEXT_ROWS_JSX),
+        lua_rows: Some(TEXT_ROWS_LUA),
         jsx: "`<text>` with `<span bold italic underline strikethrough bg color>` children",
         lua: "`text(\"s\", {…})`, `text({ \"a\", { \"b\", bold = true, underline = true, bg = 0x.. } })`",
         c: "`kui_text`, `kui_rich_text`",
-        doc: "Plain or rich text; spans shape as one paragraph, so wrapping crosses style boundaries. `wrap`, `maxLines` and `ellipsis` control line breaking. A span's `bg` is a background behind its glyphs alone, one rect per line it spans, so it follows the span across a wrap the way a box around a run cannot; `underline` and `strikethrough` on a span or on the whole text are lines where the face puts them. A plain text with no line breaks that is 4096 bytes or longer (and no `maxLines` or `ellipsis`) is shaped in ~1 KB chunks as they come on screen, so a minified bundle or a log line with a blob in it costs the screenful it shows and a keystroke into it costs the chunk it lands in; wrapped, the rows are broken from the chunks' positions, so a 100k-character paragraph costs the rows it shows. Its size is estimated from the first chunk until the rest shape (exact under monospace), and the access tree carries its value without its runs.",
+        doc: "Plain or rich text; spans shape as one paragraph, so wrapping crosses style boundaries. A text is content plus a style and no box of its own, so the rows it reads are the style rows (`size`, `lineHeight`, `color`, `family`, `font`, `wrap`, `maxLines`, `ellipsis`, `underline`, `strikethrough`, `features`) and nothing else: a container row, an access row (`label`, `role`, `live`), `key` or `onClick` on a text is dropped with an `unknown-prop` warning naming the rows it does take — put them on the box around it. `wrap`, `maxLines` and `ellipsis` control line breaking. A span's `bg` is a background behind its glyphs alone, one rect per line it spans, so it follows the span across a wrap the way a box around a run cannot; `underline` and `strikethrough` on a span or on the whole text are lines where the face puts them. A plain text with no line breaks that is 4096 bytes or longer (and no `maxLines` or `ellipsis`) is shaped in ~1 KB chunks as they come on screen, so a minified bundle or a log line with a blob in it costs the screenful it shows and a keystroke into it costs the chunk it lands in; wrapped, the rows are broken from the chunks' positions, so a 100k-character paragraph costs the rows it shows. Its size is estimated from the first chunk until the rest shape (exact under monospace), and the access tree carries its value without its runs.",
     },
     ElementDef {
         name: "button",
@@ -3114,8 +3151,11 @@ mod tests {
             }
             // The row a reader hears first: a stock button without a name
             // is the warning `control-without-name`, so `label` is never
-            // the row a closed element leaves out.
-            assert!(jsx.contains(&"label"), "{}: `label` missing", e.name);
+            // the row a closed *control* leaves out. A text is its own
+            // name.
+            if jsx.contains(&"onClick") {
+                assert!(jsx.contains(&"label"), "{}: `label` missing", e.name);
+            }
         }
         assert!(known_prop("button", "description", Spelling::Camel));
         assert!(known_prop("button", "on_click", Spelling::Snake));
@@ -3131,6 +3171,47 @@ mod tests {
         );
         assert_eq!(suggest("button", "hover_bg", Spelling::Camel), None);
         assert_eq!(suggest("box", "hover_bg", Spelling::Camel), Some("hoverBg"));
+    }
+
+    /// AR13: a text is content plus a style, so the rows it admits are
+    /// exactly the rows that land on a `TextStyle`, plus `size`, the
+    /// composite the style is built from. Every other row — a container's,
+    /// an access row, `key` — is the `unknown-prop` warning in every
+    /// binding rather than a silent drop.
+    #[test]
+    fn text_admits_exactly_the_style_rows() {
+        let style: Vec<&str> = PROPS
+            .iter()
+            .filter(|d| d.target() == Target::Style)
+            .map(|d| d.name)
+            .collect();
+        let mut expect = vec!["size"];
+        expect.extend(style);
+        let mut got = TEXT_ROWS_JSX.to_vec();
+        expect.sort_unstable();
+        got.sort_unstable();
+        assert_eq!(got, expect, "TEXT_ROWS_JSX is not the style rows");
+        for name in ["lineHeight", "color", "wrap", "size"] {
+            assert!(known_prop("text", name, Spelling::Camel), "{name}");
+        }
+        for name in ["live", "role", "label", "onClick", "key", "pad", "bg"] {
+            assert_eq!(
+                known_prop("text", name, Spelling::Camel),
+                name == "bg",
+                "{name}: `bg` is the element's own (a span's), the rest are not rows it reads"
+            );
+        }
+        assert!(known_prop("text", "line_height", Spelling::Snake));
+        assert!(known_prop("text", "value", Spelling::Snake));
+        assert!(!known_prop("text", "live", Spelling::Snake));
+        assert!(!known_prop("text", "on_click", Spelling::Snake));
+        // A misspelling is still steered to a row it reads, and to nothing
+        // it would drop.
+        assert_eq!(
+            suggest("text", "max_lines", Spelling::Camel),
+            Some("maxLines")
+        );
+        assert_eq!(suggest("text", "hover_bg", Spelling::Camel), None);
     }
 
     #[test]

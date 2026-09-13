@@ -2725,6 +2725,42 @@ mod tests {
         assert!(core.take_warnings().is_empty());
     }
 
+    /// AR13: a text reads its style rows and nothing else — `live`,
+    /// `label`, `on_click`, `key` on one reach no tree and used to be
+    /// dropped silently; they warn now, naming the rows a text does read.
+    #[test]
+    fn a_text_warns_about_the_rows_it_does_not_read() {
+        let mut ext = LuaExtension::from_source(
+            "textrows",
+            r#"
+                function view(env)
+                  return column { pad = 8,
+                    text("hi", { live = "polite", label = "x", on_click = "go", size = 14, line_height = 20, max_lines = 2 }),
+                    text({ "a", { "b", bold = true, bg = 0x00ff00ff } }, { color = 0xff0000ff }),
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        let mut warned: Vec<String> = core
+            .take_warnings()
+            .into_iter()
+            .filter(|w| w.code == kui_core::diag::UNKNOWN_PROP)
+            .map(|w| w.message)
+            .collect();
+        warned.sort();
+        assert_eq!(warned.len(), 3, "{warned:#?}");
+        for (w, name) in warned.iter().zip(["label", "live", "on_click"]) {
+            assert!(
+                w.contains(&format!("`{name}`")) && w.contains("not one text reads"),
+                "{w}"
+            );
+            assert!(w.contains("`max_lines`"), "names the rows it reads: {w}");
+        }
+    }
+
     /// `direction` is the Lua spelling of the `repeat` row (a Lua keyword),
     /// and the check reads the same alias table the parser remaps through.
     #[test]

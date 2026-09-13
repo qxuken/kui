@@ -608,6 +608,24 @@ Nothing.
   hears of neither drop — the lists were never exported — which is filed
   rather than built here.
 
+- **A container or access row on a `<text>` warns instead of vanishing**
+  (backlog AR13). `text`'s element definition admitted every shared
+  row, and all four doors lower a text as content plus a style and no
+  spec — so `<text live="polite">` (what the `live` doc tells you to
+  write), `<text role="heading">`, `<text label>`, `<text onClick>` and
+  a Lua `key` on one reached no tree, raised no `unknown-prop`, and
+  `live-region-without-name` could never fire for them. The element
+  names its rows now (`TEXT_ROWS_JSX` / `TEXT_ROWS_LUA`: the
+  `TextStyle` rows and `size`), pinned equal to the schema's
+  `Target::Style` rows by a test, so a style row added later is a row
+  here or a red test; anything else on a text is the `unknown-prop`
+  warning naming the rows it does take, in Node (`checkProps` reads the
+  same list) and Lua alike. The TypeScript `TextProps` already refused
+  them; `types.tsx` now says so with an expected error. The Node
+  examples' `typecheck` had one unrelated error under TypeScript 7 (a
+  discriminant narrowed on an index expression in `clipboard.tsx`'s
+  drive), fixed in passing.
+
 - **Node's window surface addresses the window it is handed for**
   (backlog AR12). Every `KuiWindow` door but `setViewBinary` — `focus`,
   `editText`, `setEditText`, `isHovered`, `scrollGeometry`, `openMenu`,

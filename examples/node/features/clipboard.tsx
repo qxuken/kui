@@ -244,7 +244,9 @@ await run<Model, AppMsg>({
     ok(ctx.requestCopy().asked, 'a backwards drag over unbuilt rows is asked the same way');
     app.settle();
     const backwards = ctx.takeMenuActions();
-    ok(backwards.length === 1 && backwards[0].kind === 'setClipboard' && backwards[0].text === answered[0].text,
+    const back = backwards[0];
+    const sent = answered[0].kind === 'setClipboard' ? answered[0].text : null;
+    ok(backwards.length === 1 && back.kind === 'setClipboard' && back.text === sent,
       'and asks for the same rows in reading order, so the answer is the same text');
 
     // The register: the sink's own bindings, one call each.

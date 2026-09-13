@@ -326,6 +326,31 @@ test('the stock button admits the access rows and warns about the rest', () => {
   assert.ok(plain.quads().length > before, 'the tooltip floated under the disabled button');
 });
 
+test('a text reads its style rows and warns about every other (AR13)', () => {
+  // `text` admitted every shared row and every door dropped all but the
+  // style: `<text live="polite">` — what the `live` doc tells you to write
+  // — `<text role="heading">`, `<text label>` and `<text onClick>` reached
+  // no tree and raised nothing. They are `unknown-prop` now, naming the
+  // rows a text does read.
+  const ctx = new Ctx();
+  ctx.setDiagnostics(true);
+  ctx.frame(320, 240, 1, box({ pad: 4 }, [
+    el('text', { live: 'polite', role: 'heading', label: 'x', onClick: 'go', size: 14, color: '#ff0000', maxLines: 2 }, ['hi']),
+  ]));
+  const ws = ctx.warnings().filter((w) => w.code === 'unknown-prop');
+  const named = ws.map((w) => w.message.match(/`(\w+)`/)[1]).sort();
+  assert.deepEqual(named, ['label', 'live', 'onClick', 'role'], JSON.stringify(ws));
+  assert.match(ws[0].message, /not one text reads/);
+  assert.match(ws[0].message, /`maxLines`/, 'names the rows it does take');
+  // A span's own rows and the style rows are silent.
+  const quiet = new Ctx();
+  quiet.setDiagnostics(true);
+  quiet.frame(320, 240, 1, box({ pad: 4 }, [
+    el('text', { size: 14, lineHeight: 20, wrap: 'word' }, [el('span', { bold: true, bg: '#00ff00', underline: true }, ['a']), 'b']),
+  ]));
+  assert.deepEqual(quiet.warnings().filter((w) => w.code === 'unknown-prop'), []);
+});
+
 test('createApp reports unknown props too, and a shipped build does not', () => {
   const app = createApp(
     { init: 0, update: () => undefined, view: () => box({ onclick: 'go', width: 10, height: 10 }) },
