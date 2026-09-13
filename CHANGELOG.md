@@ -620,6 +620,22 @@ Nothing.
   hears of neither drop — the lists were never exported — which is filed
   rather than built here.
 
+- **`set_focus` on a modal's closing frame stands over the restore**
+  (backlog AR17). The focus a modal displaced comes back when it closes
+  unless a `keyFocus` edge on that frame says otherwise (ADR 0003
+  decision 4, backlog F4) — and an imperative move said nothing: an app
+  that closed a dialog from its handler and called `set_focus` /
+  `focus('label')` / `ui.focus` to name where focus lands got the
+  pre-dialog node instead. Three focus doors, three precedences, one
+  frame-end pass. The app's door (`Core::set_focus`, which `Ui::focus`,
+  Node's `focus`, `kui_focus` and Lua's `env.set_focus` are) stamps the
+  move, the restore yields to the stamp as it yields to the edge, and
+  the core's own moves — a press, a Tab, an autofocus, the restore
+  itself — go through `move_focus` and stamp nothing, so a click on the
+  dialog's own button still hands focus back where the dialog found it.
+  The sentence is in decision 4 now; `tests/focus.rs` has the handler's
+  move, the view's, and a core move that does not count.
+
 - **A polygon's and a line's `hover_bg` paints, and `accent` reaches
   every door** (backlog AR16). `open_content` ran accent → hover → ease;
   `cells` and `image` ran hover + ease; `text_edit`, `line` and

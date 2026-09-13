@@ -34,7 +34,7 @@ impl Core {
     /// Puts keyboard focus on node `i` of the last frame the way a Tab
     /// step does: shown, and scrolled into view.
     pub(crate) fn land_focus(&mut self, i: usize) {
-        self.set_focus(Some(self.tree.keys[i]));
+        self.move_focus(Some(self.tree.keys[i]));
         self.focus_visible = true;
         let rect = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
         self.scroll_rect_into_view(i, rect, false);
@@ -315,7 +315,7 @@ impl Core {
         match landing.and_then(|k| self.tree.index_of(k)) {
             Some(i) => self.land_focus(i),
             None => {
-                self.set_focus(landing);
+                self.move_focus(landing);
                 self.focus_visible = true;
             }
         }
@@ -347,7 +347,7 @@ impl Core {
             self.remember_region_focus();
             self.region = None;
             let back = self.remembered_region_focus(None);
-            self.set_focus(back);
+            self.move_focus(back);
         }
     }
 
@@ -444,17 +444,21 @@ impl Core {
         // is the default for an app that says nothing, not a rule for one
         // that did. A sink redeclaring itself every frame is no edge, so
         // the restore still lands where it always has under one.
+        // The same for an imperative move since the last frame — a
+        // handler closing the dialog and naming where focus lands
+        // (AR17): three doors, one precedence.
         let edge = self
             .declared_focus
             .iter()
-            .any(|k| !self.declared_focus_last.contains(k));
+            .any(|k| !self.declared_focus_last.contains(k))
+            || self.focus_asked;
         if let Some(saved) = closed
             && !edge
         {
             // Exactly what it displaced, nothing included: leaving focus
             // on the dismissed modal's own button would be a focus on a
             // node that is not there any more.
-            self.set_focus(saved);
+            self.move_focus(saved);
         }
         self.modal_focus = now;
         // Containment: focus outside the scope enters it, or is dropped
@@ -468,8 +472,12 @@ impl Core {
         if self.modal.is_some() && !self.focus.is_some_and(|k| self.within_modal(k)) {
             let ring = self.focus_ring();
             let entry = self.ring_entry(&ring);
-            self.set_focus(entry);
+            self.move_focus(entry);
         }
+        // Read: the stamp covers the moves since the last frame's end —
+        // a handler's between frames and the view's during the build —
+        // and a redraw of the same tree starts clean.
+        self.focus_asked = false;
     }
 
     /// Where a primary press on node `key` puts the keyboard: the node
@@ -582,11 +590,27 @@ impl Core {
         self.focus_visible
     }
 
-    /// Moves keyboard focus (None blurs). The one writer: the edit store
-    /// mirrors it for editor keys, and a landing editor scrolls its caret
-    /// into view. Any node can be focused this way; only focusable ones
-    /// (see `access::focusable`) are reached by Tab.
+    /// Moves keyboard focus (None blurs) — the app's door: `Ui::focus`,
+    /// Node's `focus`, `kui_focus`, Lua's `env.set_focus`. Any node can be
+    /// focused this way; only focusable ones (see `access::focusable`)
+    /// are reached by Tab. A move made here is the app saying where focus
+    /// goes, and it stands at the frame's end against a closing modal's
+    /// restore, the way a `keyFocus` edge does (ADR 0003 decision 4,
+    /// backlog AR17): the restore is the default for an app that said
+    /// nothing, and this is an app that did. The core's own moves — a
+    /// press, a Tab, an autofocus, the restore itself — go through
+    /// [`Self::move_focus`] and say nothing.
     pub fn set_focus(&mut self, key: Option<Key>) {
+        if self.focus != key {
+            self.focus_asked = true;
+        }
+        self.move_focus(key);
+    }
+
+    /// The one writer of `focus`: the edit store mirrors it for editor
+    /// keys, a landing editor scrolls its caret into view, the region
+    /// follows.
+    pub(crate) fn move_focus(&mut self, key: Option<Key>) {
         let edit_key = key.filter(|k| self.edit.contains(*k));
         if self.focus != key {
             // The keys the leaving sink is holding come up first, while it
@@ -639,14 +663,14 @@ impl Core {
     /// click). To move focus at any time, `set_focus`.
     pub fn set_key_focus(&mut self, key: Option<Key>) {
         let Some(k) = key else {
-            self.set_focus(None);
+            self.move_focus(None);
             return;
         };
         if !self.declared_focus.contains(&k) {
             self.declared_focus.push(k);
         }
         if !self.declared_focus_last.contains(&k) {
-            self.set_focus(Some(k));
+            self.move_focus(Some(k));
         }
     }
 

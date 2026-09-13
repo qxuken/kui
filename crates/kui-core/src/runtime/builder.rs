@@ -697,7 +697,7 @@ impl Core {
         // frame, it would take focus straight back from every blur, and an
         // app with an autofocus field could never have nothing focused.
         if opts.autofocus && edge && self.focus.is_none() && !spec.disabled {
-            self.set_focus(Some(key));
+            self.move_focus(Some(key));
         }
         let parent = self.current();
         self.tree

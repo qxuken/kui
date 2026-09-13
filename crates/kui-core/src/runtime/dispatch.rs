@@ -362,7 +362,7 @@ impl Core {
                         self.push_edit_event(key, "submit", &mut out);
                     }
                     if ek == EditKey::Escape {
-                        self.set_focus(None);
+                        self.move_focus(None);
                     }
                 } else if let Some(i) = self.focused_control()
                     // A key this control does not claim has already gone to
@@ -394,7 +394,7 @@ impl Core {
                             self.focus_visible = true;
                             self.click_node(self.tree.keys[i], &mut out);
                         }
-                        EditKey::Escape => self.set_focus(None),
+                        EditKey::Escape => self.move_focus(None),
                         EditKey::Right | EditKey::Up if slider => {
                             self.focus_visible = true;
                             self.nudge(i, AccessAction::Increment, &mut out);
@@ -549,7 +549,7 @@ impl Core {
                                 // cursor and keeps (or seeds) the
                                 // selection, which is the whole gesture.
                                 let extend = shift && self.edit.focused() == Some(key);
-                                self.set_focus(Some(key));
+                                self.move_focus(Some(key));
                                 let local = Vec2::new(p.x - origin.x, p.y - origin.y);
                                 self.edit_with_fonts(|edit, fs| {
                                     edit.click(key, local, clicks, extend, fs)
@@ -563,7 +563,7 @@ impl Core {
                             // take the word, three the whole run.
                             Some((key, _, focusable, Some(scope), _)) => {
                                 let target = self.press_focus(key, focusable);
-                                self.set_focus(target);
+                                self.move_focus(target);
                                 self.settle_region(Some(key));
                                 // The press arms the drag with what the
                                 // click count says it moves by: a second
@@ -580,14 +580,14 @@ impl Core {
                             // disabled editor (no caret to place).
                             Some((key, _, focusable, None, _)) => {
                                 let target = self.press_focus(key, focusable);
-                                self.set_focus(target);
+                                self.move_focus(target);
                                 // Whatever the press did to focus, Tab
                                 // afterwards enters the ring under the
                                 // pointer (`docs/adr/0022`, decision 3).
                                 self.settle_region(Some(key));
                             }
                             None => {
-                                self.set_focus(None);
+                                self.move_focus(None);
                                 self.settle_region(None);
                             }
                         }
@@ -695,7 +695,7 @@ impl Core {
         self.drag_follow = None;
         if let Some((key, content_origin)) = editor {
             let local = Vec2::new(p.x - content_origin.x, p.y - content_origin.y);
-            self.set_focus(Some(key));
+            self.move_focus(Some(key));
             self.edit_with_fonts(|edit, fs| edit.click(key, local, 2, false, fs));
             self.menu_editor = Some(key);
             if let Some(action) = self.lookup_action() {
@@ -747,13 +747,13 @@ impl Core {
                 // can see (decoration is not in its tree); show it.
                 let exposed = self.access_tree().get(key).is_some();
                 if exposed && idx.is_some_and(|i| crate::access::focusable(&self.tree, i)) {
-                    self.set_focus(Some(key));
+                    self.move_focus(Some(key));
                     self.focus_visible = true;
                 }
             }
             AccessAction::Blur => {
                 if self.focus == Some(key) {
-                    self.set_focus(None);
+                    self.move_focus(None);
                 }
             }
             AccessAction::SetValue => {
@@ -1204,7 +1204,7 @@ impl Core {
             _ => {}
         }
         if takes_focus {
-            self.set_focus(Some(key));
+            self.move_focus(Some(key));
         }
     }
 

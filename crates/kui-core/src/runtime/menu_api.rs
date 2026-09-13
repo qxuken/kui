@@ -364,7 +364,7 @@ impl Core {
                 // selects its own text, a scope selects its runs.
                 match self.menu_editor {
                     Some(key) => {
-                        self.set_focus(Some(key));
+                        self.move_focus(Some(key));
                         // The editor directly, not back through
                         // `handle_input`: this runs *inside* one already,
                         // and the events the nested call returned were
@@ -406,7 +406,7 @@ impl Core {
                 if let Some(key) = self.menu_editor
                     && let Some(text) = self.cut_editor(key)
                 {
-                    self.set_focus(Some(key));
+                    self.move_focus(Some(key));
                     // No `html`: an editor's text is one style, and what
                     // was cut is gone anyway.
                     self.menu_actions

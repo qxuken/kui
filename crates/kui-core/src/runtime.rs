@@ -159,6 +159,10 @@ pub struct Core {
     /// does not clobber a Tab press.
     declared_focus: Vec<Key>,
     declared_focus_last: Vec<Key>,
+    /// Whether the app moved focus through `set_focus` since the last
+    /// frame began — the edge a closing modal's restore yields to, like a
+    /// `keyFocus` edge (AR17). Cleared by `begin_frame`.
+    focus_asked: bool,
     /// The `.str`-keyed nodes this frame and last, with their labels
     /// (`open_keyed`): what `key_of` resolves a name through. The same
     /// swap-and-clear pair as the focus declarations, so a frame that
@@ -736,6 +740,7 @@ impl Core {
             focus_visible: false,
             declared_focus: Vec::new(),
             declared_focus_last: Vec::new(),
+            focus_asked: false,
             key_labels: LabelIndex::default(),
             key_labels_last: LabelIndex::default(),
             slot_labels: LabelIndex::default(),

@@ -1250,6 +1250,61 @@ fn a_modal_closing_over_no_edge_still_gives_the_focus_back() {
     assert_eq!(core.focus(), Some(a));
 }
 
+/// AR17: F4's scenario through the door F4 did not cover. An app that
+/// closes the dialog and *says* where focus lands — `set_focus` from the
+/// dismissing handler, or `ui.focus` from the view that drops the modal
+/// — got the pre-dialog node instead, because the restore yielded to a
+/// `keyFocus` edge and a Tab step and nothing else. An imperative move
+/// since the last frame is an edge too: three doors, one precedence.
+#[test]
+fn an_imperative_focus_beats_the_focus_the_modal_gives_back() {
+    let mut core = Core::new();
+    let k = rename_frame(&mut core, &["a", "b"], false, Some("a"));
+    let (a, b) = (k[0], k[1]);
+    rename_frame(&mut core, &["a", "b"], true, None);
+    assert_eq!(core.focus(), Some(Key::ROOT.str("rename").str("field")));
+
+    // The handler that closes the dialog names `b`, between frames.
+    core.set_focus(Some(b));
+    rename_frame(&mut core, &["a", "b"], false, None);
+    assert_eq!(
+        core.focus(),
+        Some(b),
+        "the app's move stands over the restore"
+    );
+
+    // The same from inside the view that drops the modal.
+    core.set_focus(Some(a));
+    rename_frame(&mut core, &["a", "b"], true, None);
+    let mut ui = core.frame(Size::new(200.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let row = || {
+        NodeSpec::row()
+            .width(Sizing::Fixed(100.0))
+            .height(Sizing::Fixed(H))
+    };
+    ui.with_keyed("a", row().focusable().label("a"), |_| {});
+    ui.with_keyed("b", row().focusable().label("b"), |_| {});
+    ui.focus(b);
+    ui.finish();
+    assert_eq!(core.focus(), Some(b));
+
+    // And a move the *core* made — a press inside the dialog, which is
+    // pointer focus — is not the app saying anything: the restore lands
+    // where it always has.
+    core.set_focus(Some(a));
+    rename_frame(&mut core, &["a", "b"], true, None);
+    let field = Key::ROOT.str("rename").str("field");
+    assert_eq!(core.focus(), Some(field));
+    // The editor's own box, low right: a press on it moves nothing (it
+    // already holds focus) — so press the editor after a Tab away first.
+    // Simpler: the frame after, focus is the field's and the stamp is
+    // spent; closing now restores `a`.
+    rename_frame(&mut core, &["a", "b"], true, None);
+    rename_frame(&mut core, &["a", "b"], false, None);
+    assert_eq!(core.focus(), Some(a), "no app move since: the restore");
+}
+
 /// A click focuses without showing (pointer focus, ADR 0002 decision 4) —
 /// and then the keyboard acts on that focus. Space presses the button the
 /// pointer left focused, and a press whose ring never appears is a press

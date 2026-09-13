@@ -105,7 +105,13 @@ can stop declaring the dialog.
    view says where focus lands on the way *out* (backlog F4: a rename
    editor opened on a node created in the same frame displaced the node
    the user came from, and handing that back put the next Enter in the
-   wrong place).
+   wrong place). The same for an imperative move — `set_focus` from the
+   handler that closes the dialog, `ui.focus` from the view that drops
+   it — made since the last frame's end: an app that said where focus
+   goes is not an app that said nothing (backlog AR17, 2026-09-14; the
+   core's own moves, a press or a Tab, say nothing). A Tab step asked
+   for during the build lands after both and wins over both, like a
+   real Tab press.
 5. **Everything outside the scope is inert.** Nodes outside emit no hit
    region, so they cannot be clicked, dragged, hovered, pressed, focused
    by a press, or activated by Enter, Space or an assistive-technology
