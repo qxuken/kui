@@ -290,6 +290,27 @@ anchored at the `line` carrying `caret` for you.
 [`text` and `preedit` events](props.md#events) ·
 [alpha.9](../CHANGELOG.md#010-alpha9-2026-09-08)
 
+### How do I give the editor I own a mouse and a clipboard?
+
+Put `onDrag` on the same `onKey` sink. Every `drag` event inside it then
+carries `line` (which of the sink's `role="line"` rows the pointer is on —
+the same numbering its `access` events use), `byte` (where on that line,
+as `textHit` would answer) and `clicks` (the press's count), so the press
+places the caret, a `move` extends the selection from where it pressed,
+and a count of two takes the word — all arithmetic in the handler, with
+no query and no frame of lag. A click's map payload gains the same three.
+
+The clipboard is the host's, and the sink hears the raw `Ctrl-c` /
+`Ctrl-v`: bind `y` to `setClipboard(text)` (Lua `env.set_clipboard`, C
+`kui_set_clipboard`, Rust `ui.set_clipboard`) and `p` to `requestPaste()`
+— the paste comes back as the same `{kind:"text", text}` event an IME's
+commit does, so one arm inserts both. A window applies both after every
+input and every frame; headless, `takeMenuActions()` hands them out and
+`commit(text)` answers the paste.
+
+[`drag` and `text` events](props.md#events) ·
+[alpha.12](../CHANGELOG.md#010-alpha12-unreleased)
+
 ### How do I reset an editor's text?
 
 `initial` seeds a *new* editor only — a key declared again keeps the draft

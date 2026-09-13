@@ -1171,6 +1171,57 @@ test('a composition and its commit reach the focused sink, anchored at its caret
   assert.equal(ctx.imeRect(), null);
 });
 
+// A custom editor's mouse and clipboard (backlog C34, C33): a press or
+// drag inside an `onKey` sink carries `line`, `byte` and `clicks` the way
+// a grid's carries `cell`, and the sink's own Ctrl-c / Ctrl-v bind to
+// `setClipboard` / `requestPaste`, the paste coming back as `text`.
+test('a press in a sink names the line, the byte and the click count, and the sink has a clipboard', () => {
+  const ctx = new Ctx();
+  const mono = { size: 14, family: 'mono', lineHeight: 20 };
+  const view = box({ pad: 10 }, [
+    box({ onKey: { kind: 'ed' }, onDrag: 'sel', onClick: { kind: 'hit' }, role: 'multilineTextInput', label: 'Buffer', dir: 'row', width: 300, height: 60 }, [
+      box({ width: 30, role: 'none' }, [
+        box({ dir: 'row', height: 20 }, [text('1', mono)]),
+        box({ dir: 'row', height: 20 }, [text('2', mono)]),
+      ]),
+      box({ width: 'grow' }, [
+        box({ dir: 'row', height: 20, role: 'line' }, [text('hello ', mono), text('world', mono)]),
+        box({ dir: 'row', height: 20, role: 'line' }, [text('second', mono)]),
+      ]),
+    ], 'editor'),
+  ]);
+  ctx.frame(400, 200, 1, view);
+  ctx.focus('editor');
+  ctx.frame(400, 200, 1, view);
+  ctx.pollEvents();
+  const w = ctx.measureText('M', mono).width;
+  // A double click on the second line, after its third glyph: the drag
+  // starts there and the click follows, both carrying the count.
+  ctx.cursor(10 + 30 + 3.3 * w, 10 + 20 + 5);
+  ctx.mouse(true, 2);
+  ctx.mouse(false);
+  const evs = ctx.pollEvents().map((e) => e.payload);
+  const start = evs.find((p) => p.kind === 'drag' && p.phase === 'start');
+  assert.equal(start.line, 1, JSON.stringify(start));
+  assert.equal(start.byte, 3);
+  assert.equal(start.clicks, 2);
+  const hit = evs.find((p) => p.kind === 'hit');
+  assert.deepEqual(hit, { kind: 'hit', line: 1, byte: 3, clicks: 2 });
+  // The clipboard: the two doors queue what a menu's Copy and Paste
+  // would, and the host answers a paste with `commit`, which the sink
+  // hears as `text`.
+  ctx.setClipboard('yanked', null);
+  ctx.requestPaste();
+  assert.deepEqual(ctx.takeMenuActions(), [
+    { kind: 'setClipboard', text: 'yanked', html: null },
+    { kind: 'paste' },
+  ]);
+  ctx.commit('from the clipboard');
+  assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [
+    { kind: 'text', text: 'from the clipboard', tag: { kind: 'ed' } },
+  ]);
+});
+
 // Context menus (ADR 0017, decision 5): a list of items and a point, not
 // a node — the core holds the open one and draws it, so a view asks with
 // a call and hears what was chosen as an event on the node it named.

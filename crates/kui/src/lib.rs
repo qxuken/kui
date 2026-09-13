@@ -1630,7 +1630,10 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
                 // Views can declare windows and window commands too
                 // (ui.window, ui.window_command); apply them the same frame
                 // they were declared. Likewise the sounds a frame started
-                // (audio nodes, ui.play).
+                // (audio nodes, ui.play), and the clipboard work a view
+                // queued (ui.set_clipboard, ui.request_paste — backlog
+                // C33), which until now only an input's drain reached.
+                self.apply_menu_actions(event_loop, i);
                 self.apply_window_commands(event_loop);
                 self.apply_audio();
                 // The frame may have closed this very pane.

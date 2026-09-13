@@ -2642,6 +2642,13 @@ impl TextSystem {
             })
             .copied()?;
         let (ox, oy) = self.physical_origin(place);
+        // Into the run's box vertically: the nearest run was chosen for a
+        // point outside every run, and cosmic-text answers a point above
+        // its first row with byte 0 whatever the x — so a press in the
+        // padding above a line's text placed the caret at its start
+        // (backlog C34). Clamped, it hits the nearest row at that x.
+        let bx = self.physical_box(place, entry);
+        let py = py.clamp(bx.y, (bx.y + bx.h - 0.01).max(bx.y));
         let cursor = entry.buffer.hit(px - ox, py - oy)?;
         let line = visual_line(&entry.buffer, cursor.line, cursor.index).map_or(0, |(l, _)| l);
         Some(TextHit {

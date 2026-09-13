@@ -2653,7 +2653,9 @@ macro_rules! core_methods {
             /// clipboard, which is the host's in this library. Each entry
             /// is `{kind}` — `"setClipboard"` with `text` (and `html`
             /// where there is formatting to carry), `"paste"` asking for
-            /// what is on the clipboard (deliver it back with `text()`),
+            /// what is on the clipboard (deliver it back with `commit()`,
+            /// which a focused editor takes as typing and a focused
+            /// `onKey` sink hears as `{kind:"text"}`),
             /// or `"lookUp"` with the `text` to show a definition panel
             /// for at `x`, `y`.
             ///
@@ -2688,6 +2690,32 @@ macro_rules! core_methods {
                     })
                     .collect();
                 Ok(Json::Array(out))
+            }
+
+            /// Puts `text` on the system clipboard — the action a menu's
+            /// Copy queues, with a door on it for an `onKey` sink that
+            /// hears the raw `Ctrl-c` and had nowhere to bind it (backlog
+            /// C33). `html` is a second flavour beside the text for the
+            /// host to offer, never in place of it. A window applies it
+            /// at its next drain (after every input and every frame); a
+            /// headless `Ctx` hands it out through `takeMenuActions()`.
+            #[napi]
+            pub fn set_clipboard(&mut self, text: String, html: Option<String>) {
+                self.$core().set_clipboard(text, html);
+            }
+
+            /// Asks for what is on the clipboard — the action a menu's
+            /// Paste queues. A window reads the clipboard and hands the
+            /// text back as a commit: a focused `<edit>` takes it as
+            /// typing, and a focused `onKey` sink hears it as
+            /// `{kind:"text", text, tag}`, so an app that owns its text
+            /// inserts a paste the way it inserts a committed IME string
+            /// and never reads the clipboard itself. Headless, the
+            /// request comes out of `takeMenuActions()` as `{kind:"paste"}`
+            /// and the test answers it with `commit(...)`.
+            #[napi]
+            pub fn request_paste(&mut self) {
+                self.$core().request_paste();
             }
 
             /// The menu this window has open, or null:

@@ -365,6 +365,18 @@ impl<'a> Ui<'a> {
         self.core.selection_html()
     }
 
+    /// Puts text on the system clipboard; see `Core::set_clipboard`.
+    pub fn set_clipboard(&mut self, text: impl Into<String>, html: Option<String>) {
+        self.core.set_clipboard(text, html);
+    }
+
+    /// Asks for the clipboard's text, delivered as a `text` event on the
+    /// focused sink or as typing into the focused editor; see
+    /// `Core::request_paste`.
+    pub fn request_paste(&mut self) {
+        self.core.request_paste();
+    }
+
     /// Selects everything in the scope `key` declared; see
     /// `Core::select_all_in`.
     pub fn select_all_in(&mut self, key: Key) -> bool {

@@ -1304,11 +1304,12 @@ fn set_positions(tree: &Tree, out: &mut AccessTree) {
     }
 }
 
-/// A custom editor's text: its `role="line"` descendants in order, each
-/// line the text nodes inside it concatenated, runs from their buffers,
-/// caret and anchor from the lines that declare them. Subtrees under
-/// `role="none"` (a gutter) do not count.
-fn custom_editor(tree: &Tree, src: &Sources<'_>, i: usize, node: &mut AccessNode) {
+/// The `role="line"` nodes under `i`, in tree order — the numbering a
+/// custom editor's `access` events use for `line`, and the one a press
+/// inside a key sink carries (backlog C34), so the two agree. Subtrees
+/// under `role="none"` (a gutter) do not count, and a line's own subtree
+/// is not searched for lines.
+pub(crate) fn lines_under(tree: &Tree, i: usize) -> Vec<usize> {
     let end = tree.subtree_end(i);
     let mut lines: Vec<usize> = Vec::new();
     let mut j = i + 1;
@@ -1325,6 +1326,15 @@ fn custom_editor(tree: &Tree, src: &Sources<'_>, i: usize, node: &mut AccessNode
         }
         j += 1;
     }
+    lines
+}
+
+/// A custom editor's text: its `role="line"` descendants in order, each
+/// line the text nodes inside it concatenated, runs from their buffers,
+/// caret and anchor from the lines that declare them. Subtrees under
+/// `role="none"` (a gutter) do not count.
+fn custom_editor(tree: &Tree, src: &Sources<'_>, i: usize, node: &mut AccessNode) {
+    let lines = lines_under(tree, i);
     let mut value = String::new();
     let mut run_no = 0usize;
     let mut caret: Option<(usize, usize)> = None;

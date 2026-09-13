@@ -408,6 +408,8 @@ fn menu_items(t: &mlua::Table) -> mlua::Result<Vec<kui_core::MenuItem>> {
 /// `selection_html()` (the same words with the formatting they declared) /
 /// `request_copy()` + `answer_selection_range(text)` (a copy that reaches
 /// rows a virtual list never built is asked of the app) /
+/// `set_clipboard(text, html?)` + `request_paste()` (a key sink's own
+/// Ctrl-c and Ctrl-v; the paste comes back as a `text` event) /
 /// `select_all_in(key)` / `clear_selection()` (ADR 0017 — one selection
 /// per window, a `selectable` scope's or the focused editor's), the menu
 /// verbs `open_menu(key, x, y, items)` / `close_menu()` (whose chosen row
@@ -772,6 +774,25 @@ fn env_table<'scope, 'env: 'scope>(
         scope.create_function(move |_, text: String| {
             let mut ui = ui.borrow_mut();
             Ok(ui.answer_selection_range(&text))
+        })?,
+    )?;
+    // The clipboard for a script that owns its text (backlog C33): a key
+    // sink hears the raw Ctrl-c / Ctrl-v and binds them here. Both queue
+    // the action a menu's Copy or Paste would, for the host to apply at
+    // its next drain; a paste comes back as a `text` event on the focused
+    // sink (or as typing into a focused editor).
+    t.set(
+        "set_clipboard",
+        scope.create_function(move |_, (text, html): (String, Option<String>)| {
+            ui.borrow_mut().set_clipboard(text, html);
+            Ok(())
+        })?,
+    )?;
+    t.set(
+        "request_paste",
+        scope.create_function(move |_, ()| {
+            ui.borrow_mut().request_paste();
+            Ok(())
         })?,
     )?;
     // The selection as HTML: the formatting the text declared (bold,
@@ -3126,6 +3147,94 @@ mod tests {
         );
     }
 
+    /// A script that owns its text has a clipboard (backlog C33) and a
+    /// mouse (C34): `y` in its keymap queues `env.set_clipboard` from the
+    /// next view and `p` asks `env.request_paste`, whose answer arrives as
+    /// a `text` event on the sink; a press inside the sink says which
+    /// `role = "line"` row it landed on, where, and how many clicks.
+    #[test]
+    fn a_lua_editor_yanks_pastes_and_hears_where_a_press_landed() {
+        use kui_core::testing::{press, release};
+        use kui_core::{KeyCode, KeyMods, KeyPress, MenuAction, Vec2};
+        let mut ext = LuaExtension::from_source(
+            "ed",
+            r#"
+                yank = nil
+                paste = false
+                log = {}
+                function view(env)
+                  if yank then env.set_clipboard(yank, nil); yank = nil end
+                  if paste then env.request_paste(); paste = false end
+                  return column { key = "editor", on_key = "ed", on_drag = "sel",
+                    key_focus = true, role = "multilineTextInput", label = "buf",
+                    width = 400, height = 300,
+                    row { role = "line", height = 20, text("hello world", { family = "mono", size = 14 }) },
+                    row { role = "line", height = 20, text("second", { family = "mono", size = 14 }) },
+                  }
+                end
+                function on_event(ev)
+                  if ev.kind == "key" and ev.code == "y" then yank = "hello world" end
+                  if ev.kind == "key" and ev.code == "p" then paste = true end
+                  if ev.kind == "text" then log[#log + 1] = "text:" .. ev.text end
+                  if ev.kind == "drag" then
+                    log[#log + 1] = ev.phase .. ":" .. ev.line .. ":" .. ev.byte .. ":" .. ev.clicks
+                  end
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        let feed = |core: &mut Core, ext: &mut LuaExtension, ev| {
+            for e in core.handle_input(ev) {
+                ext.on_event(&e);
+            }
+        };
+        let key = |c| KeyPress::new(KeyCode::Char(c), KeyMods::default());
+        feed(&mut core, &mut ext, InputEvent::KeyDown(key('y')));
+        frame(&mut core, &mut ext);
+        assert_eq!(
+            core.take_menu_actions(),
+            vec![MenuAction::SetClipboard {
+                text: "hello world".into(),
+                html: None
+            }]
+        );
+        feed(&mut core, &mut ext, InputEvent::KeyDown(key('p')));
+        frame(&mut core, &mut ext);
+        assert_eq!(core.take_menu_actions(), vec![MenuAction::Paste]);
+        // The host reads the clipboard and commits it.
+        feed(
+            &mut core,
+            &mut ext,
+            InputEvent::Commit("from the clipboard".into()),
+        );
+        // A double click on the second line, past its end.
+        for e in press(&mut core, Vec2::new(390.0, 30.0)) {
+            ext.on_event(&e);
+        }
+        for e in release(&mut core) {
+            ext.on_event(&e);
+        }
+        for e in core.handle_input(InputEvent::mouse_down(2)) {
+            ext.on_event(&e);
+        }
+        for e in release(&mut core) {
+            ext.on_event(&e);
+        }
+        let log: Vec<String> = ext.lua.globals().get("log").unwrap();
+        assert_eq!(
+            log,
+            [
+                "text:from the clipboard",
+                "start:1:6:1",
+                "end:1:6:1",
+                "start:1:6:2",
+                "end:1:6:2",
+            ]
+        );
+    }
+
     /// `audio { }` nodes are retained playbacks: declared → play, declared
     /// again → nothing, gone → stop. The host hands the sound id to the
     /// script as an integer, like images.
@@ -3499,12 +3608,14 @@ mod tests {
                 "measure_text",
                 "open_menu",
                 "request_copy",
+                "request_paste",
                 "reveal",
                 "scroll_geometry",
                 "scroll_offset",
                 "select_all_in",
                 "selection_html",
                 "selection_text",
+                "set_clipboard",
                 "set_edit_text",
                 "set_focus",
                 "set_scroll",

@@ -40,6 +40,7 @@ impl Core {
         // out, stamped with its window first (ADR 0024, decision 4).
         self.devtools_consume(&mut out);
         self.attach_cells(&mut out);
+        self.attach_lines(&mut out);
         self.devtools_translate(&mut out);
         self.stamp(&mut out);
         self.devtools_log(&out);
@@ -106,6 +107,100 @@ impl Core {
                         ("col", Value::Int(col as i64)),
                     ]),
                 ));
+            }
+        }
+    }
+
+    /// A press or drag inside a key sink says which of the sink's lines it
+    /// landed on, and where (backlog C34): `line` — the ordinal among the
+    /// sink's `role="line"` nodes, the numbering its `access` events use —
+    /// `byte` — where the point falls in that line's text, what `text_hit`
+    /// would answer — and `clicks` — the press's count, so a double click
+    /// is a word without a timer the app keeps. They join a click or drag
+    /// payload the way `cell` joins a grid's, from the event's own point
+    /// for a drag and from the cursor for a click; a point above the first
+    /// line is the first, below the last the last, and one in a gutter is
+    /// the line beside it. A sink with no lines adds nothing; only a map
+    /// payload can carry it.
+    fn attach_lines(&mut self, out: &mut [UiEvent]) {
+        if self.tree.is_empty() || !self.tree.any_text {
+            return;
+        }
+        for ev in out.iter_mut() {
+            let Value::Map(entries) = &ev.payload else {
+                continue;
+            };
+            // A drag in any phase, or a click — whose payload is the
+            // app's own and carries no `kind` of the core's.
+            let kind = ev.payload.get("kind").and_then(Value::as_str);
+            let pointer = match kind {
+                Some("drag") => true,
+                Some(k) => !crate::schema::EVENTS.iter().any(|e| e.kind == k),
+                None => true,
+            };
+            if !pointer {
+                continue;
+            }
+            let Some(i) = self.tree.index_of(ev.key) else {
+                continue;
+            };
+            // The sink: this node, or the nearest above it.
+            let mut sink = i;
+            while self.tree.specs[sink].events().on_key.is_none() {
+                let p = self.tree.parent[sink];
+                if p == crate::tree::NIL {
+                    break;
+                }
+                sink = p as usize;
+            }
+            if self.tree.specs[sink].events().on_key.is_none() {
+                continue;
+            }
+            let field = |name: &str| {
+                entries
+                    .iter()
+                    .find(|(k, _)| k == name)
+                    .and_then(|(_, v)| match v {
+                        Value::Float(f) => Some(*f as f32),
+                        Value::Int(n) => Some(*n as f32),
+                        _ => None,
+                    })
+            };
+            let point = match (field("x"), field("y")) {
+                (Some(x), Some(y)) => Vec2::new(x, y),
+                _ => match self.interaction.cursor() {
+                    Some(p) => p,
+                    None => continue,
+                },
+            };
+            let lines = crate::access::lines_under(&self.tree, sink);
+            // Nearest vertically — inside one is a gap of zero — ties to
+            // the earlier line.
+            let gap = |l: usize| {
+                let (top, h) = (self.tree.pos[l].y, self.tree.size[l].h);
+                (top - point.y).max(point.y - (top + h)).max(0.0)
+            };
+            let Some((line, l)) = lines
+                .iter()
+                .enumerate()
+                .map(|(n, &l)| (n, l))
+                .min_by(|a, b| {
+                    gap(a.1)
+                        .partial_cmp(&gap(b.1))
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+            else {
+                continue;
+            };
+            let byte = self
+                .text
+                .hit_at(self.tree.keys[l], point, self.building)
+                .map_or(0, |h| h.byte);
+            let clicks = self.interaction.press_clicks();
+            if let Value::Map(entries) = &mut ev.payload {
+                entries.push(("line".to_string(), Value::Int(line as i64)));
+                entries.push(("byte".to_string(), Value::Int(byte as i64)));
+                entries.push(("clicks".to_string(), Value::Int(clicks as i64)));
             }
         }
     }
@@ -850,7 +945,18 @@ impl Core {
     /// nothing is asked about the key. False with no sink to hear it.
     fn sink_event(&mut self, payload: Value, out: &mut Vec<UiEvent>) -> bool {
         let Some(i) = self.focus_index() else {
-            return false;
+            // With nothing focused, the root sink that hears every
+            // unclaimed key (`key_target`) hears this too — a paste a
+            // shell asked for with nothing focused would otherwise
+            // vanish (backlog C33). Not under a modal.
+            if self.tree.is_empty() || self.modal.is_some() {
+                return false;
+            }
+            let root = &self.tree.specs[0];
+            if root.events().on_key.is_none() || root.disabled {
+                return false;
+            }
+            return self.deliver_to_sink(self.tree.keys[0], payload, out);
         };
         let target = if self.tree.specs[i].events().on_key.is_some() {
             self.tree.keys[i]

@@ -1,0 +1,258 @@
+//! A custom editor's mouse (backlog C34): a press or drag inside a key
+//! sink carries `line` (the ordinal among the sink's `role="line"` nodes —
+//! the numbering `access` events use), `byte` (where the point falls in
+//! that line's text) and `clicks` (the press's count), so click-to-caret,
+//! drag-select and double-click-word are `on_event` arithmetic with no
+//! query and no frame of lag. And the clipboard for the same editor
+//! (backlog C33): `set_clipboard` / `request_paste` are the two actions a
+//! menu's Copy and Paste queue, and a paste comes back as a `text` event
+//! on the sink.
+
+use kui_core::testing::{press, release};
+use kui_core::{
+    Core, InputEvent, Key, MenuAction, NodeSpec, Role, Size, Sizing, TextStyle, UiEvent, Value,
+    Vec2,
+};
+
+const LH: f32 = 20.0;
+const GUTTER: f32 = 30.0;
+
+fn mono() -> TextStyle {
+    TextStyle::new(14.0).mono().line_height(LH)
+}
+
+/// The shape `modal_editor` draws: a sink with a gutter (`role="none"`)
+/// and a column of `role="line"` rows, each a row of text runs. The sink
+/// carries `on_drag` and a map `on_click`, as an editor that wants a mouse
+/// would. Root padding 10.
+fn frame(core: &mut Core, lines: &[&str]) -> Key {
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill().pad(10.0));
+    let sink = ui.with_keyed(
+        "editor",
+        NodeSpec::row()
+            .width(Sizing::Grow(1.0))
+            .height(Sizing::Grow(1.0))
+            .on_key(Value::Null)
+            .on_drag(Value::str("sel"))
+            .on_click(Value::map([("kind", Value::str("hit"))]))
+            .role(Role::MultilineTextInput),
+        |ui| {
+            ui.with(
+                NodeSpec::column()
+                    .width(Sizing::Fixed(GUTTER))
+                    .role(Role::None),
+                |ui| {
+                    for (n, _) in lines.iter().enumerate() {
+                        ui.with(NodeSpec::row().height(Sizing::Fixed(LH)), |ui| {
+                            ui.text(&format!("{}", n + 1), mono());
+                        });
+                    }
+                },
+            );
+            ui.with(NodeSpec::column().width(Sizing::Grow(1.0)), |ui| {
+                for line in lines {
+                    ui.with(
+                        NodeSpec::row().height(Sizing::Fixed(LH)).role(Role::Line),
+                        |ui| {
+                            // Two runs, as a line with a caret in it has.
+                            let (a, b) = line.split_at(line.len() / 2);
+                            ui.text(a, mono());
+                            ui.text(b, mono());
+                        },
+                    );
+                }
+            });
+        },
+    );
+    ui.take_key_focus(sink);
+    ui.finish();
+    sink
+}
+
+fn field(ev: &UiEvent, name: &str) -> Option<Value> {
+    ev.payload.get(name).cloned()
+}
+
+fn kind(ev: &UiEvent) -> Option<String> {
+    ev.payload
+        .get("kind")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+}
+
+#[test]
+fn a_press_in_a_sink_says_which_line_and_where() {
+    let mut core = Core::new();
+    let sink = frame(&mut core, &["hello world", "second line", "third"]);
+    let w = core.measure_text("M", &mono(), None).width;
+    // The text column starts at x = 10 + GUTTER; line n's row spans
+    // y = 10 + n·LH .. + LH. Press on the second line, after the sixth
+    // glyph (past the seam between its two runs).
+    let at = Vec2::new(10.0 + GUTTER + 6.2 * w, 10.0 + LH + 5.0);
+    let evs = press(&mut core, at);
+    let start = evs
+        .iter()
+        .find(|e| kind(e).as_deref() == Some("drag"))
+        .expect("the drag started");
+    assert_eq!(start.key, sink);
+    assert_eq!(field(start, "line"), Some(Value::Int(1)));
+    assert_eq!(field(start, "byte"), Some(Value::Int(6)));
+    assert_eq!(field(start, "clicks"), Some(Value::Int(1)));
+    // A move carries the line and byte under the pointer now.
+    let evs = core.handle_input(InputEvent::CursorMoved(Vec2::new(
+        10.0 + GUTTER + 2.8 * w,
+        10.0 + 2.0 * LH + 5.0,
+    )));
+    let mv = evs
+        .iter()
+        .find(|e| field(e, "phase") == Some(Value::str("move")))
+        .expect("a move");
+    assert_eq!(field(mv, "line"), Some(Value::Int(2)));
+    assert_eq!(field(mv, "byte"), Some(Value::Int(3)));
+    let evs = release(&mut core);
+    let end = evs
+        .iter()
+        .find(|e| field(e, "phase") == Some(Value::str("end")))
+        .expect("the drag ended");
+    assert_eq!(field(end, "line"), Some(Value::Int(2)));
+    assert_eq!(field(end, "clicks"), Some(Value::Int(1)));
+}
+
+#[test]
+fn a_click_carries_the_press_count_and_the_gutter_is_the_line_beside_it() {
+    let mut core = Core::new();
+    frame(&mut core, &["hello world", "second line"]);
+    // A double click in the gutter, level with the second line: the
+    // click (no x/y of its own) reads the cursor, the line is the one
+    // beside the gutter, and the byte is the line's start.
+    let at = Vec2::new(10.0 + 5.0, 10.0 + LH + 2.0);
+    core.handle_input(InputEvent::CursorMoved(at));
+    core.handle_input(InputEvent::mouse_down(2));
+    let evs = core.handle_input(InputEvent::mouse_up());
+    let click = evs
+        .iter()
+        .find(|e| kind(e).as_deref() == Some("hit"))
+        .expect("the click arrived");
+    assert_eq!(field(click, "line"), Some(Value::Int(1)));
+    assert_eq!(field(click, "byte"), Some(Value::Int(0)));
+    assert_eq!(field(click, "clicks"), Some(Value::Int(2)));
+    // The drag's start carried the same count.
+}
+
+#[test]
+fn below_the_last_line_is_the_last_line_and_a_sink_without_lines_adds_nothing() {
+    let mut core = Core::new();
+    frame(&mut core, &["only"]);
+    let evs = press(&mut core, Vec2::new(10.0 + GUTTER + 200.0, 250.0));
+    let start = evs
+        .iter()
+        .find(|e| kind(e).as_deref() == Some("drag"))
+        .expect("the drag started");
+    assert_eq!(field(start, "line"), Some(Value::Int(0)));
+    // Past the end of the line's text: its length.
+    assert_eq!(field(start, "byte"), Some(Value::Int(4)));
+    release(&mut core);
+
+    // A sink that draws no lines: the payload is as it was.
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let sink = ui.with_keyed(
+        "plain",
+        NodeSpec::column()
+            .fill()
+            .on_key(Value::Null)
+            .on_drag(Value::str("d")),
+        |ui| ui.text("no lines here", mono()),
+    );
+    ui.take_key_focus(sink);
+    ui.finish();
+    let evs = press(&mut core, Vec2::new(50.0, 50.0));
+    let start = evs
+        .iter()
+        .find(|e| kind(e).as_deref() == Some("drag"))
+        .expect("the drag started");
+    assert_eq!(field(start, "line"), None);
+    assert_eq!(field(start, "byte"), None);
+    assert_eq!(field(start, "clicks"), None);
+    release(&mut core);
+}
+
+/// A key event on the sink is not a pointer event: nothing is attached.
+#[test]
+fn a_key_on_the_sink_gains_nothing() {
+    use kui_core::{KeyCode, KeyMods, KeyPress};
+    let mut core = Core::new();
+    frame(&mut core, &["hello"]);
+    let evs = core.handle_input(InputEvent::KeyDown(KeyPress::new(
+        KeyCode::Char('j'),
+        KeyMods::default(),
+    )));
+    let key = evs
+        .iter()
+        .find(|e| kind(e).as_deref() == Some("key"))
+        .expect("the key arrived");
+    assert_eq!(field(key, "line"), None);
+    assert_eq!(field(key, "clicks"), None);
+}
+
+#[test]
+fn the_sink_yanks_to_the_clipboard_and_a_paste_comes_back_as_text() {
+    let mut core = Core::new();
+    let sink = frame(&mut core, &["hello"]);
+    assert!(core.take_menu_actions().is_empty());
+    // The two doors queue the two actions a menu's Copy and Paste would.
+    core.set_clipboard("yanked", None);
+    core.request_paste();
+    assert_eq!(
+        core.take_menu_actions(),
+        vec![
+            MenuAction::SetClipboard {
+                text: "yanked".into(),
+                html: None
+            },
+            MenuAction::Paste
+        ]
+    );
+    assert!(core.take_menu_actions().is_empty());
+    // The host answers a paste with a commit, which the focused sink
+    // hears as `text` — the way it hears an IME's commit.
+    let evs = core.handle_input(InputEvent::Commit("from the clipboard".into()));
+    let text = evs
+        .iter()
+        .find(|e| kind(e).as_deref() == Some("text"))
+        .expect("the paste arrived");
+    assert_eq!(text.key, sink);
+    assert_eq!(field(text, "text"), Some(Value::str("from the clipboard")));
+    // From a view too, through `Ui`.
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.set_clipboard("from the view", Some("<b>from the view</b>".into()));
+    ui.finish();
+    assert_eq!(
+        core.take_menu_actions(),
+        vec![MenuAction::SetClipboard {
+            text: "from the view".into(),
+            html: Some("<b>from the view</b>".into())
+        }]
+    );
+}
+
+/// With nothing focused, a root sink hears the paste the way it hears an
+/// unclaimed key (ADR 0022, decision 8) — a shell that asked for one with
+/// nothing focused would otherwise lose it.
+#[test]
+fn a_root_sink_hears_a_paste_with_nothing_focused() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill().on_key(Value::str("shell")));
+    ui.text("nothing focusable", mono());
+    ui.finish();
+    assert_eq!(core.focus(), None);
+    let evs = core.handle_input(InputEvent::Commit("pasted".into()));
+    let text = evs
+        .iter()
+        .find(|e| kind(e).as_deref() == Some("text"))
+        .expect("the root sink heard it");
+    assert_eq!(text.key, Key::ROOT);
+    assert_eq!(field(text, "tag"), Some(Value::str("shell")));
+}

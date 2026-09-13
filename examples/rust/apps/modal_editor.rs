@@ -9,6 +9,13 @@
 //! boundary, not the rope. An IO/LSP/undo layer replaces the model; the view
 //! code stays.
 //!
+//! The mouse and the clipboard are the same shape as the keyboard: a press
+//! or drag inside the sink arrives as a `drag` event carrying `line`,
+//! `byte` and `clicks` (backlog C34), so click-to-caret, drag-select and
+//! double-click-word are arithmetic in `on_event`; `y` and `p` go through
+//! `ui.set_clipboard` / `ui.request_paste` (backlog C33), and the paste
+//! comes back as a `text` event the way an IME's commit does.
+//!
 //! Run: cargo run -p kui --example modal_editor
 //!
 //! Keys: see the buffer text (`:help` puts a summary in the minibuffer).
@@ -127,7 +134,14 @@ struct ModalEditor {
     cmd: String,
     message: String,
     pending: Option<char>,
-    yank: Vec<String>,
+    /// Text to put on the clipboard at the next view — `on_event` has no
+    /// `Ui`, and the runner draws right after an event, so this is one
+    /// frame away. Linewise text ends with a newline.
+    clip_out: Option<String>,
+    /// `p` asked for the clipboard: the next `text` event is the paste.
+    awaiting_paste: bool,
+    /// Where the button went down, for a drag-select.
+    drag_from: Option<Pos>,
     quit: bool,
 }
 
@@ -161,7 +175,9 @@ impl ModalEditor {
             cmd: String::new(),
             message: "modal editing demo — the buffer text is the keymap".into(),
             pending: None,
-            yank: Vec::new(),
+            clip_out: None,
+            awaiting_paste: false,
+            drag_from: None,
             quit: false,
         }
     }
@@ -215,7 +231,7 @@ impl ModalEditor {
                     clamp_col(doc, view);
                 }
                 ('d', "d") => {
-                    self.yank = vec![doc.lines[view.cur.line].clone()];
+                    self.clip_out = Some(doc.lines[view.cur.line].clone() + "\n");
                     delete_line(doc, view);
                     self.message = "deleted line (p puts it back)".into();
                 }
@@ -242,7 +258,7 @@ impl ModalEditor {
             "g" => self.pending = Some('g'),
             "d" => {
                 if view.anchor.is_some() {
-                    self.yank = sel_lines(doc, view);
+                    self.clip_out = Some(sel_lines(doc, view).join("\n"));
                     delete_sel(doc, view);
                 } else {
                     self.pending = Some('d');
@@ -282,11 +298,19 @@ impl ModalEditor {
                 }
             }
             "y" => {
-                self.yank = sel_lines(doc, view);
+                // A whole line when nothing is selected, and linewise:
+                // the newline says so to the paste.
+                let lines = sel_lines(doc, view);
+                let n = lines.len();
+                let mut text = lines.join("\n");
+                if view.anchor.is_none() {
+                    text.push('\n');
+                }
+                self.clip_out = Some(text);
                 view.anchor = None;
-                self.message = format!("yanked {} line(s)", self.yank.len());
+                self.message = format!("yanked {n} line(s) to the clipboard");
             }
-            "p" => paste(doc, view, &self.yank),
+            "p" => self.awaiting_paste = true,
             "u" => self.message = "undo is where the demo ends and your app begins".into(),
             ":" => {
                 self.mode = Mode::Command;
@@ -387,6 +411,14 @@ impl App for ModalEditor {
         // Rebuilt from the theme each frame, so the window follows the OS.
         self.pal = ui.theme().into();
         let pal = self.pal;
+        // What the keymap queued for the clipboard, and the paste it asked
+        // for: both are the host's, so both go out through `Ui`.
+        if let Some(text) = self.clip_out.take() {
+            ui.set_clipboard(text, None);
+        }
+        if self.awaiting_paste {
+            ui.request_paste();
+        }
         ui.with(NodeSpec::column().fill().bg(pal.bg), |ui| {
             widgets::titlebar(ui, "kui — modal editor (the app owns the keymap)");
 
@@ -402,6 +434,9 @@ impl App for ModalEditor {
                     .bg(pal.panel)
                     .clip()
                     .on_key(Value::Null)
+                    // The mouse: a press or drag anywhere in the sink says
+                    // which line and byte it landed on (`on_drag`).
+                    .on_drag(Value::Null)
                     // The app owns the text, so it says what the sink is; the
                     // lines it draws (`Role::Line` rows) are the editor's text
                     // to a screen reader, and selection requests come back as
@@ -423,9 +458,86 @@ impl App for ModalEditor {
                     self.on_key(k);
                 }
             }
+            // The clipboard's answer, or an IME's commit: the paste `p`
+            // asked for, else typed text in insert mode.
+            Some("text") => {
+                let text = ev.payload.get("text").and_then(Value::as_str).unwrap_or("");
+                if std::mem::take(&mut self.awaiting_paste) {
+                    paste(&mut self.doc, &mut self.view, text);
+                } else if self.mode == Mode::Insert {
+                    insert_text(&mut self.doc, &mut self.view, text);
+                }
+            }
+            Some("drag") => self.on_drag(&ev.payload),
             Some("access") => self.on_access(&ev.payload),
             _ => {}
         }
+    }
+}
+
+impl ModalEditor {
+    /// The mouse, as the sink's `drag` events carry it: `line` is the
+    /// ordinal among the drawn lines (so `view.top` maps it back into the
+    /// document), `byte` is into the line's drawn text, `clicks` the
+    /// press's count. One click places the caret, two take the word,
+    /// three the line; the pointer moving extends from where it pressed.
+    fn on_drag(&mut self, p: &Value) {
+        let Some(pos) = self.drag_pos(p) else {
+            return;
+        };
+        let clicks = p.get("clicks").and_then(Value::as_int).unwrap_or(1);
+        let (doc, view) = (&self.doc, &mut self.view);
+        match p.get("phase").and_then(Value::as_str) {
+            Some("start") => {
+                self.drag_from = Some(pos);
+                match clicks {
+                    1 => {
+                        view.cur = pos;
+                        view.anchor = None;
+                    }
+                    2 => {
+                        let (a, b) = word_at(doc, pos);
+                        view.anchor = Some(a);
+                        view.cur = b;
+                    }
+                    _ => {
+                        view.anchor = Some(Pos {
+                            line: pos.line,
+                            col: 0,
+                        });
+                        view.cur = Pos {
+                            line: pos.line,
+                            col: line_len(doc, pos.line),
+                        };
+                    }
+                }
+            }
+            Some("move") => {
+                if let Some(from) = self.drag_from
+                    && pos != from
+                {
+                    view.anchor.get_or_insert(from);
+                    view.cur = pos;
+                }
+            }
+            _ => self.drag_from = None,
+        }
+        if self.mode == Mode::Command {
+            self.mode = Mode::Normal;
+        }
+    }
+
+    /// The document position a pointer payload names. The drawn text is
+    /// the line with its spaces as NBSP, one char for one, so the byte
+    /// offset into it counts back to a column the same way.
+    fn drag_pos(&self, p: &Value) -> Option<Pos> {
+        let line = p.get("line")?.as_int()? as usize + self.view.top;
+        let line = line.min(self.doc.lines.len().saturating_sub(1));
+        let byte = p.get("byte")?.as_int()? as usize;
+        Some(Pos {
+            line,
+            col: col_at(&nbsp(&self.doc.lines[line]), byte),
+        })
     }
 }
 
@@ -956,19 +1068,49 @@ fn open_line(doc: &mut Doc, view: &mut View, offset: usize) {
     view.anchor = None;
 }
 
-fn paste(doc: &mut Doc, view: &mut View, yank: &[String]) {
-    match yank {
-        [] => {}
-        [one] => insert_text(doc, view, one),
-        many => {
+/// Linewise text (ending in a newline, as `dd` and a bare `y` leave it)
+/// goes in below the current line; anything else at the caret.
+fn paste(doc: &mut Doc, view: &mut View, text: &str) {
+    match text.strip_suffix('\n') {
+        Some(lines) => {
             doc.modified = true;
-            for (i, line) in many.iter().enumerate() {
-                doc.lines.insert(view.cur.line + 1 + i, line.clone());
+            for (i, line) in lines.split('\n').enumerate() {
+                doc.lines.insert(view.cur.line + 1 + i, line.to_string());
             }
             view.cur.line += 1;
             view.cur.col = 0;
         }
+        _ => insert_text(doc, view, text),
     }
+}
+
+/// The word around `pos` as an inclusive selection — a double click's.
+/// Not on a word: the run of non-word characters there.
+fn word_at(doc: &Doc, pos: Pos) -> (Pos, Pos) {
+    let chars: Vec<char> = doc.lines[pos.line].chars().collect();
+    if chars.is_empty() {
+        return (pos, pos);
+    }
+    let c = pos.col.min(chars.len() - 1);
+    let class = is_word(chars[c]);
+    let mut a = c;
+    while a > 0 && is_word(chars[a - 1]) == class {
+        a -= 1;
+    }
+    let mut b = c;
+    while b + 1 < chars.len() && is_word(chars[b + 1]) == class {
+        b += 1;
+    }
+    (
+        Pos {
+            line: pos.line,
+            col: a,
+        },
+        Pos {
+            line: pos.line,
+            col: b,
+        },
+    )
 }
 
 // ---------------------------------------------------------------- content

@@ -1101,7 +1101,9 @@ enum {
 /* [out] What choosing a row left for the host: the clipboard, which is the
  * host's in this library. SET_CLIPBOARD carries the text to put there - the
  * core worked out *what*, which is the half only it can do - and PASTE asks
- * for what is there, which the host delivers back with kui_input_text. */
+ * for what is there, which the host delivers back with kui_input_commit: a
+ * focused editor takes it as typing, a focused on_key sink hears it as
+ * {kind:"text"}. */
 typedef struct KuiMenuAction {
     uint32_t size; /* = sizeof(KuiMenuAction) in, bytes filled out */
     uint32_t kind;
@@ -2468,6 +2470,17 @@ uint32_t kui_request_copy(KuiCtx *ctx, KuiStr *out);
  * nothing asked - a late answer cannot overwrite what has been copied
  * since. */
 bool kui_answer_selection_range(KuiCtx *ctx, KuiStr text);
+/* The clipboard for an app that owns its text (backlog C33): an on_key sink
+ * hears the raw Ctrl-c / Ctrl-v and binds them here. kui_set_clipboard
+ * queues a KUI_MENU_ACTION_SET_CLIPBOARD with `text` (and `html` as a
+ * second flavour beside it - empty for none, never instead of it);
+ * kui_request_paste queues a KUI_MENU_ACTION_PASTE, which the host answers
+ * with kui_input_commit so the text reaches the focused editor as typing
+ * or the focused sink as {kind:"text"}. Under kui_run the runner drains
+ * both after every input and every frame; a host driving its own window
+ * drains them with kui_take_menu_action as it does a menu's. */
+void kui_set_clipboard(KuiCtx *ctx, KuiStr text, KuiStr html);
+void kui_request_paste(KuiCtx *ctx);
 /* Tells the core this host shows menus itself, however the platform draws
  * them: the core then keeps the open menu as state and draws none of it.
  * Read what is open, show it, and report back with kui_activate_menu_item

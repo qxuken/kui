@@ -527,8 +527,11 @@ export interface OpenMenu {
  *  `setClipboard` carries `text` (and `html` where the selection had
  *  formatting to carry — beside the text, never instead of it);
  *  `paste` asks for what is on the clipboard, delivered back with
- *  `Ctx.text(...)`; `lookUp` asks for the platform's definition panel for
- *  `text`, anchored at the baseline origin `x`, `y`. */
+ *  `Ctx.commit(...)` — a focused editor takes it as typing, a focused
+ *  `onKey` sink hears it as `{kind:"text"}`; `lookUp` asks for the
+ *  platform's definition panel for `text`, anchored at the baseline
+ *  origin `x`, `y`. A view queues the first two itself with
+ *  `setClipboard` / `requestPaste`. */
 export type MenuAction =
   | { kind: 'setClipboard'; text: string; html: string | null }
   | { kind: 'paste' }
@@ -2236,7 +2239,9 @@ export declare class Ctx {
    * clipboard, which is the host's in this library. Each entry
    * is `{kind}` — `"setClipboard"` with `text` (and `html`
    * where there is formatting to carry), `"paste"` asking for
-   * what is on the clipboard (deliver it back with `text()`),
+   * what is on the clipboard (deliver it back with `commit()`,
+   * which a focused editor takes as typing and a focused
+   * `onKey` sink hears as `{kind:"text"}`),
    * or `"lookUp"` with the `text` to show a definition panel
    * for at `x`, `y`.
    *
@@ -2245,6 +2250,28 @@ export declare class Ctx {
    * and a Copy nobody drains is a copy that never happened.
    */
   takeMenuActions(): MenuAction[]
+  /**
+   * Puts `text` on the system clipboard — the action a menu's
+   * Copy queues, with a door on it for an `onKey` sink that
+   * hears the raw `Ctrl-c` and had nowhere to bind it (backlog
+   * C33). `html` is a second flavour beside the text for the
+   * host to offer, never in place of it. A window applies it
+   * at its next drain (after every input and every frame); a
+   * headless `Ctx` hands it out through `takeMenuActions()`.
+   */
+  setClipboard(text: string, html?: string | undefined | null): void
+  /**
+   * Asks for what is on the clipboard — the action a menu's
+   * Paste queues. A window reads the clipboard and hands the
+   * text back as a commit: a focused `<edit>` takes it as
+   * typing, and a focused `onKey` sink hears it as
+   * `{kind:"text", text, tag}`, so an app that owns its text
+   * inserts a paste the way it inserts a committed IME string
+   * and never reads the clipboard itself. Headless, the
+   * request comes out of `takeMenuActions()` as `{kind:"paste"}`
+   * and the test answers it with `commit(...)`.
+   */
+  requestPaste(): void
   /**
    * The menu this window has open, or null:
    * `{target, x, y, items}`. What a host rendering menus itself
@@ -3071,7 +3098,9 @@ export declare class KuiWindow {
    * clipboard, which is the host's in this library. Each entry
    * is `{kind}` — `"setClipboard"` with `text` (and `html`
    * where there is formatting to carry), `"paste"` asking for
-   * what is on the clipboard (deliver it back with `text()`),
+   * what is on the clipboard (deliver it back with `commit()`,
+   * which a focused editor takes as typing and a focused
+   * `onKey` sink hears as `{kind:"text"}`),
    * or `"lookUp"` with the `text` to show a definition panel
    * for at `x`, `y`.
    *
@@ -3080,6 +3109,28 @@ export declare class KuiWindow {
    * and a Copy nobody drains is a copy that never happened.
    */
   takeMenuActions(): MenuAction[]
+  /**
+   * Puts `text` on the system clipboard — the action a menu's
+   * Copy queues, with a door on it for an `onKey` sink that
+   * hears the raw `Ctrl-c` and had nowhere to bind it (backlog
+   * C33). `html` is a second flavour beside the text for the
+   * host to offer, never in place of it. A window applies it
+   * at its next drain (after every input and every frame); a
+   * headless `Ctx` hands it out through `takeMenuActions()`.
+   */
+  setClipboard(text: string, html?: string | undefined | null): void
+  /**
+   * Asks for what is on the clipboard — the action a menu's
+   * Paste queues. A window reads the clipboard and hands the
+   * text back as a commit: a focused `<edit>` takes it as
+   * typing, and a focused `onKey` sink hears it as
+   * `{kind:"text", text, tag}`, so an app that owns its text
+   * inserts a paste the way it inserts a committed IME string
+   * and never reads the clipboard itself. Headless, the
+   * request comes out of `takeMenuActions()` as `{kind:"paste"}`
+   * and the test answers it with `commit(...)`.
+   */
+  requestPaste(): void
   /**
    * The menu this window has open, or null:
    * `{target, x, y, items}`. What a host rendering menus itself

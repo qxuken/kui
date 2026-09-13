@@ -152,8 +152,12 @@ impl<A: App> Shell<A> {
     /// clipboard, which is this driver's in the same way Cmd-C's is (ADR
     /// 0017, decision 5). Copy and Cut arrive as the text to put there —
     /// the core worked out *what*, which is the half only it can do — and
-    /// Paste as a request for what is there, delivered back as typing so
-    /// it takes exactly the path Cmd-V takes.
+    /// Paste as a request for what is there, delivered back as a commit:
+    /// a focused editor takes it as typing, the path Cmd-V takes, and a
+    /// focused key sink hears it as `{kind:"text"}` — the paste an app
+    /// that owns its text asked for with `request_paste` (backlog C33).
+    /// Called after every input and after every frame, since a view can
+    /// queue both (`ui.set_clipboard`, `ui.request_paste`).
     pub(super) fn apply_menu_actions(&mut self, event_loop: &ActiveEventLoop, i: usize) {
         let Some(pane) = self.panes.get_mut(i) else {
             return;
@@ -165,7 +169,7 @@ impl<A: App> Shell<A> {
                 }
                 MenuAction::Paste => {
                     if let Some(text) = self.clipboard.as_mut().and_then(|cb| cb.get_text().ok()) {
-                        self.dispatch(event_loop, i, InputEvent::Text(text));
+                        self.dispatch(event_loop, i, InputEvent::Commit(text));
                     }
                 }
                 MenuAction::LookUp { text, at } => {

@@ -991,6 +991,10 @@ pub struct Interaction {
     pub(crate) sound_requests: Vec<crate::resources::SoundId>,
     /// Pointer-captured drag on an `on_drag` node.
     drag: Option<DragState>,
+    /// The last primary press's driver-measured click count (1 for a
+    /// single, 2 for a double, …): what the `clicks` a press or drag
+    /// inside a key sink carries reads (backlog C34).
+    press_clicks: u8,
     /// Last reported physical modifier state.
     modifiers: KeyMods,
     cursor: Option<Vec2>,
@@ -1249,9 +1253,10 @@ impl Interaction {
                     out.push(ev);
                 }
             }
-            InputEvent::MouseDown { .. } => {
+            InputEvent::MouseDown { clicks, .. } => {
                 self.pressed = self.hovered;
                 self.pressed_group = self.hovered_group;
+                self.press_clicks = clicks;
                 if let Some(h) = self.cursor.and_then(|p| self.hit_at(p)) {
                     if h.window == Some(WindowRole::Drag) {
                         // The OS drag steals subsequent mouse events, so don't
@@ -1356,6 +1361,12 @@ impl Interaction {
     }
 
     /// The node a press is held on, if any.
+    /// The click count the last primary press carried; see
+    /// `press_clicks`.
+    pub(crate) fn press_clicks(&self) -> u8 {
+        self.press_clicks
+    }
+
     pub fn pressed_key(&self) -> Option<Key> {
         self.pressed
     }

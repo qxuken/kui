@@ -938,6 +938,104 @@ mod queries_headless {
         kui_ctx_free(ctx);
     }
 
+    /// A C editor's clipboard and mouse (backlog C33, C34): the two
+    /// clipboard doors queue what a menu's Copy and Paste would, a paste
+    /// the host commits reaches the sink as `text`, and a press inside
+    /// the sink carries `line`, `byte` and `clicks`.
+    #[test]
+    fn a_c_sink_has_a_clipboard_and_a_press_in_it_names_the_line() {
+        let ctx = kui_ctx_new();
+        let sized = |w: f32, h: f32| {
+            let mut spec = unsafe { std::mem::zeroed::<KuiSpec>() };
+            spec.width = KuiSizing { tag: 2, value: w };
+            spec.height = KuiSizing { tag: 2, value: h };
+            spec
+        };
+        let mut style: KuiTextStyle = unsafe { std::mem::zeroed() };
+        style.size = 14.0;
+        style.line_height = 20.0;
+        style.family = 2; // KUI_FONT_MONO
+        kui_frame_begin(ctx, 400.0, 200.0, 1.0);
+        let mut spec = sized(300.0, 60.0);
+        spec.role = 20; // KUI_ROLE_MULTILINE_TEXT_INPUT
+        spec.label = ks("buf");
+        let sink = kui_open_with(
+            ctx,
+            ks("editor"),
+            &spec,
+            NONE,
+            kui_value_str(ks("sel")),
+            kui_value_str(ks("ed")),
+            NONE,
+        );
+        for line in ["hello world", "second"] {
+            let mut row = sized(300.0, 20.0);
+            row.dir = 1; // KUI_DIR_ROW
+            row.role = 22; // KUI_ROLE_LINE
+            kui_open(ctx, &row, NONE);
+            kui_text(ctx, ks(line), &style);
+            kui_close(ctx);
+        }
+        kui_close(ctx);
+        kui_set_key_focus(ctx, sink);
+        kui_frame_finish(ctx);
+
+        kui_set_clipboard(ctx, ks("yanked"), ks(""));
+        kui_request_paste(ctx);
+        let mut action = KuiMenuAction {
+            size: std::mem::size_of::<KuiMenuAction>() as u32,
+            ..unsafe { std::mem::zeroed() }
+        };
+        assert!(kui_take_menu_action(ctx, &mut action));
+        assert_eq!(action.kind, KUI_MENU_ACTION_SET_CLIPBOARD);
+        assert_eq!(kstr(action.text).as_ref(), "yanked");
+        assert_eq!(action.html.len, 0);
+        assert!(kui_take_menu_action(ctx, &mut action));
+        assert_eq!(action.kind, KUI_MENU_ACTION_PASTE);
+        assert!(!kui_take_menu_action(ctx, &mut action));
+
+        // The host answers the paste with a commit; the sink hears it.
+        kui_input_commit(ctx, ks("from the clipboard"));
+        // A double click on the second line, past its end.
+        kui_input_cursor(ctx, 290.0, 30.0);
+        kui_input_mouse(ctx, true, 2);
+        kui_input_mouse(ctx, false, 2);
+
+        let mut ev = KuiEvent::default();
+        let mut seen = Vec::new();
+        while kui_poll_event(ctx, &mut ev) {
+            let get_str = |k: &str| {
+                let v = kui_value_get(ev.payload, ks(k));
+                let mut out = KuiStr {
+                    ptr: std::ptr::null(),
+                    len: 0,
+                };
+                kui_value_as_str(v, &mut out).then(|| kstr(out).into_owned())
+            };
+            let get_int = |k: &str| {
+                let mut out = 0i64;
+                kui_value_as_int(kui_value_get(ev.payload, ks(k)), &mut out).then_some(out)
+            };
+            assert_eq!(ev.key, sink);
+            match get_str("kind").as_deref() {
+                Some("text") => seen.push(format!("text:{}", get_str("text").unwrap())),
+                Some("drag") => seen.push(format!(
+                    "{}:{}:{}:{}",
+                    get_str("phase").unwrap(),
+                    get_int("line").unwrap(),
+                    get_int("byte").unwrap(),
+                    get_int("clicks").unwrap()
+                )),
+                other => panic!("{other:?}"),
+            }
+        }
+        assert_eq!(
+            seen,
+            ["text:from the clipboard", "start:1:6:2", "end:1:6:2"]
+        );
+        kui_ctx_free(ctx);
+    }
+
     /// `kui_edit_set_text_label` names the editor the *next* frame will
     /// declare, which is the only name a host opening one for the first
     /// time has: `kui_key_of` answers 0 for it, and no event has carried

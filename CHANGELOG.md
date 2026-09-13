@@ -72,6 +72,52 @@ Nothing.
 
 ### Added
 
+- **A key sink has a clipboard** (backlog C33, from the third
+  editor-and-mux round of 2026-09-13). The runner performs the clipboard
+  chords itself only while an editor or a selection scope has focus; a
+  sink hears the raw `Ctrl-c` / `Ctrl-v` and brings its own bindings —
+  and had nowhere to bind them to, since the only ways onto the system
+  clipboard were a menu's Copy and Paste. Now the two actions those queue
+  have a door: `ui.set_clipboard(text, html)` in Rust
+  (`Core::set_clipboard`), `ctx.setClipboard(text, html?)` / `win.…` in
+  Node, `env.set_clipboard(text, html?)` in Lua and `kui_set_clipboard`
+  in C queue the `SetClipboard` a Copy does, and `ui.request_paste()` /
+  `requestPaste()` / `env.request_paste()` / `kui_request_paste` the
+  `Paste`. A paste comes back as `InputEvent::Commit`, the one committed
+  text the core already routes to a focused editor as typing and to a
+  focused sink as `{kind:"text", text, tag}` (alpha.9's IME commit) — so
+  an app that owns its text inserts a paste with the arm it already has
+  for an IME, never sees the clipboard any other way, and the read stays
+  on the driver's side where the permission lives. The runner drains
+  the two after every frame as well as after every input, since a view
+  is where `Ui` is. Three things moved with it: the runner delivers a
+  menu's Paste as a commit too (it was `Text`, which never reached a
+  sink; an editor reads both the same), a commit with nothing focused
+  reaches a root sink the way an unclaimed key does (ADR 0022, decision
+  8), and `text_hit` clamps a point into the run it chose, so a press in
+  the padding above a line's text no longer answers byte 0 whatever the
+  x. `modal_editor`'s `y`, `dd` and `p` are on it — `pbpaste` reads the
+  yank, and a paste from another app lands at the caret.
+
+- **A custom editor has a mouse** (backlog C34, the same round). A press
+  or drag inside an `onKey` sink that draws `role="line"` rows — the
+  shape the access tree and the IME anchor already read — carries three
+  more fields on its `drag` payload (and on a map `click` payload), the
+  way a `cells` grid's carries `cell`: `line`, the ordinal among the
+  sink's lines in the numbering its `access` events use; `byte`, where
+  the point falls in that line's text, what `textHit` would have
+  answered a frame later; and `clicks`, the press's driver-measured
+  count. Click-to-caret, drag-select and double-click-word are then
+  `on_event` arithmetic in every binding, with no query, no `Ui` and no
+  frame of lag — and no timer the app keeps for the count. A point above
+  the first line is the first, below the last the last, one in a
+  `role="none"` gutter the line beside it; a sink with no lines adds
+  nothing. `modal_editor` gets all three: one click places the caret,
+  two select the word, three the line, and a drag extends from the press.
+  Pinned in four bindings (`tests/sink_pointer.rs`, `test.mjs`, the Lua
+  and C suites); `access::lines_under` is the one walk both the access
+  tree and the payload use, so the two numberings cannot drift.
+
 - **Always on top** (backlog C30). A window an app wants kept above every
   other app's — a floating palette, a picture-in-picture player, a timer,
   a pinned note — can now ask for it, and the ask has the title's shape:
@@ -537,6 +583,15 @@ and the `chan` / `hex2` helpers under it: a shade is a derived token now
 (`peachHover: { from: 'peach', ops: [['lift', 0.3]] }`), computed by the
 core on the half in effect and named by the inspector; what stays in the
 app is the map from a chosen colour to its shade (ADR 0028).
+
+**The in-process yank register and the arboard link beside it** — a
+custom editor's `Vec<String>` that `y` and `p` went through because the
+sink could not reach the system clipboard, and, for a Rust host, the
+`arboard` it linked itself to reach around the runner; and **the
+double-click timer and the stashed press point** — the `Instant` an
+editor kept to turn two clicks into a word, and the `pending_click` it
+stashed in `on_event` to resolve with `text_hit` in the next `view`, a
+frame late: the count and the byte are on the event now (C33, C34).
 
 **Whatever stood in for the OS setting you could not flip** — the
 reduced-motion branch of a view is now reachable in a window from the

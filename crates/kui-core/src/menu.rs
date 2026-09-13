@@ -324,9 +324,12 @@ pub enum MenuAction {
     /// only flavour is HTML pastes markup into every plain-text field on
     /// the machine.
     SetClipboard { text: String, html: Option<String> },
-    /// Read the clipboard and deliver it as `InputEvent::Text`, exactly
-    /// as the host does for Cmd-V. The core cannot read a clipboard, so
-    /// Paste is the one standard item it can only ask for.
+    /// Read the clipboard and deliver it as `InputEvent::Commit`: a
+    /// focused editor takes it as typing, the way it takes Cmd-V, and a
+    /// focused key sink hears it as `{kind:"text"}` — which is how an
+    /// app that owns its text gets a paste it asked for with
+    /// `Core::request_paste` (backlog C33). The core cannot read a
+    /// clipboard, so Paste is the one standard item it can only ask for.
     Paste,
     /// Show the platform's definition panel for `text`, anchored at
     /// `rect` (logical viewport px — the word's own box, which is what

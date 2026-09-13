@@ -789,7 +789,7 @@ pub const PROPS: &[PropDef] = &[
         id: P_ON_DRAG,
         kind: Kind::Tag,
         apply: Apply::SpecMsg(|s, v| s.on_drag(v)),
-        doc: "Drag tag: emits {kind:\"drag\", phase, x, y, dx, dy, parent, tag} events, `dx`/`dy` measured from the press point in every phase.",
+        doc: "Drag tag: emits {kind:\"drag\", phase, x, y, dx, dy, parent, tag} events, `dx`/`dy` measured from the press point in every phase. On a `cells` grid the events also carry `cell: {row, col}`; inside an `onKey` sink that draws `role=\"line\"` rows they carry `line`, `byte` and `clicks` — see the events table.",
     },
     PropDef {
         name: "onKey",
@@ -1589,12 +1589,12 @@ pub const EVENTS: &[EventDef] = &[
     EventDef {
         kind: "click",
         payload: "the `onClick` payload as-is",
-        doc: "A press and release on the node (suppressed when a drag moved past the slop).",
+        doc: "A press and release on the node (suppressed when a drag moved past the slop). A map payload gains fields where the node can say more: `cell: {row, col}` on a `cells` grid, and inside an `onKey` sink that draws `role=\"line\"` rows, `line`, `byte` and `clicks` as a `drag` inside one carries them.",
     },
     EventDef {
         kind: "drag",
         payload: "`{ kind: \"drag\", phase: \"start\" | \"move\" | \"end\", x, y, dx, dy, parent: { x, y, w, h }, tag }`",
-        doc: "A pointer-captured drag on an `onDrag` node. `x`/`y` are where the pointer is; `dx`/`dy` are its displacement **from the press point**, in every phase — `start` carries zero, a `move` how far the pointer is from where it pressed, `end` the whole distance — so a handler sets `value = start + dx` rather than summing deltas, and can commit from `end` alone. Nothing is dropped under the click slop (3 px, measured from the press): the first `move` already carries the whole distance. `parent` is the container rect, so fractions need no geometry query.",
+        doc: "A pointer-captured drag on an `onDrag` node. `x`/`y` are where the pointer is; `dx`/`dy` are its displacement **from the press point**, in every phase — `start` carries zero, a `move` how far the pointer is from where it pressed, `end` the whole distance — so a handler sets `value = start + dx` rather than summing deltas, and can commit from `end` alone. Nothing is dropped under the click slop (3 px, measured from the press): the first `move` already carries the whole distance. `parent` is the container rect, so fractions need no geometry query. On a `cells` grid every phase also carries `cell: {row, col}`. Inside an `onKey` sink that draws `role=\"line\"` rows — an editor the app owns — every phase carries `line` (the ordinal among the sink's lines, the numbering its `access` events use), `byte` (where the point falls in that line's text, what `textHit` would answer) and `clicks` (the press's count), so click-to-caret, drag-select and double-click-word are arithmetic on the event with no query and no frame of lag; a point above the first line is the first, below the last the last, and one in a `role=\"none\"` gutter is the line beside it. Nothing is added where the sink draws no lines.",
     },
     EventDef {
         kind: "key",
@@ -1604,7 +1604,7 @@ pub const EVENTS: &[EventDef] = &[
     EventDef {
         kind: "text",
         payload: "`{ kind: \"text\", text, tag }`",
-        doc: "Text an IME committed at the end of a composition, on the focused `onKey` sink (or the nearest one above the focused control) — the one committed text the platform never reports as a key press carrying `text`, so a custom editor inserts it as it would a key's `text`. Plain typing does not arrive this way: the `key` event already carries what the press would insert, and a sink hearing both would type every character twice. A focused `<edit>` takes the commit itself and reports `changed`.",
+        doc: "Text an IME committed at the end of a composition — or the clipboard's text, when the app asked for a paste with `requestPaste` / `request_paste` / `kui_request_paste` — on the focused `onKey` sink (or the nearest one above the focused control, or the root sink with nothing focused) — the one committed text the platform never reports as a key press carrying `text`, so a custom editor inserts it as it would a key's `text`. Plain typing does not arrive this way: the `key` event already carries what the press would insert, and a sink hearing both would type every character twice. A focused `<edit>` takes the commit itself and reports `changed`.",
     },
     EventDef {
         kind: "preedit",

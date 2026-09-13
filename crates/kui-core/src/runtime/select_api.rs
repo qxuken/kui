@@ -529,6 +529,39 @@ impl Core {
         true
     }
 
+    // -- The clipboard, for an app that owns its text ---------------------
+    // A key sink hears the raw `Ctrl-c` / `Ctrl-v` and brings its own
+    // bindings — and had nowhere to bind them to (backlog C33): the only
+    // ways onto the system clipboard were a menu's Copy and Paste. These
+    // are those two actions with a door on them. The clipboard stays the
+    // host's: the core never reads it, and what a paste brings back
+    // arrives as input, the way a menu's Paste does.
+
+    /// Puts `text` on the system clipboard — queued as the
+    /// `MenuAction::SetClipboard` a menu's Copy produces, for the host to
+    /// apply at its next drain (the runner's is after every input and
+    /// every frame). `html` is a second flavour beside the text for a
+    /// host that offers one, never in place of it.
+    pub fn set_clipboard(&mut self, text: impl Into<String>, html: Option<String>) {
+        self.menu_actions
+            .push(crate::menu::MenuAction::SetClipboard {
+                text: text.into(),
+                html,
+            });
+    }
+
+    /// Asks for what is on the clipboard — queued as the
+    /// `MenuAction::Paste` a menu's Paste produces. The host reads the
+    /// clipboard and hands the text back as `InputEvent::Commit`, which
+    /// reaches a focused editor as typing and a focused sink as
+    /// `{kind:"text", text, tag}` (backlog C17) — so the app that asked
+    /// inserts it the way it inserts a committed IME string, and never
+    /// sees the clipboard any other way. The read stays on the driver's
+    /// side, where the permission lives.
+    pub fn request_paste(&mut self) {
+        self.menu_actions.push(crate::menu::MenuAction::Paste);
+    }
+
     /// Starts a selection at `point` inside `scope` — the press half of a
     /// drag-select. Both ends land together, so nothing is selected until
     /// the pointer moves.

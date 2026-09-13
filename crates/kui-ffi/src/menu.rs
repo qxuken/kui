@@ -185,6 +185,40 @@ pub extern "C" fn kui_answer_selection_range(ptr: *mut KuiCtx, text: KuiStr) -> 
     })
 }
 
+/// Puts `text` on the system clipboard, as a `KUI_MENU_ACTION_SET_CLIPBOARD`
+/// the host drains — the action a menu's Copy queues, with a door on it
+/// for an `on_key` sink that hears the raw `Ctrl-c` and had nowhere to
+/// bind it (backlog C33). `html` is a second flavour beside the text,
+/// never in place of it; an empty `html` is none. Under `kui_run` the
+/// runner applies it after every input and every frame.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_clipboard(ptr: *mut KuiCtx, text: KuiStr, html: KuiStr) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            let text = kstr(text).into_owned();
+            let html = kstr(html).into_owned();
+            c.core()
+                .set_clipboard(text, (!html.is_empty()).then_some(html));
+        }
+    });
+}
+
+/// Asks for what is on the clipboard, as a `KUI_MENU_ACTION_PASTE` the
+/// host drains and answers with `kui_input_commit`: a focused editor takes
+/// the text as typing, a focused `on_key` sink hears it as
+/// `{kind:"text", text, tag}` — so an app that owns its text inserts a
+/// paste the way it inserts a committed IME string, and the clipboard is
+/// read on the host's side, where the permission lives. Under `kui_run`
+/// the runner does both halves.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_request_paste(ptr: *mut KuiCtx) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().request_paste();
+        }
+    });
+}
+
 /// Closes whatever menu is open; true when there was one.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_close_menu(ptr: *mut KuiCtx) -> bool {
@@ -197,7 +231,8 @@ pub extern "C" fn kui_close_menu(ptr: *mut KuiCtx) -> bool {
 /// is the host's in this library. `KUI_MENU_ACTION_SET_CLIPBOARD` carries
 /// the text to put there — the core worked out *what*, which is the half
 /// only it can do — and `KUI_MENU_ACTION_PASTE` asks for what is there,
-/// which a host delivers back with `kui_input_text`.
+/// which a host delivers back with `kui_input_commit` (an editor takes it
+/// as typing; a sink hears it as `{kind:"text"}`).
 ///
 /// Writes one action into `out` and returns true; false when the queue is
 /// empty. `text` is borrowed until the next call on this context.

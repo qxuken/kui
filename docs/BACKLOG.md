@@ -1888,7 +1888,32 @@ skipped with a message on a machine with no monospaced face at all. The
 devtools' facts tab shows the three resolved families, so the next
 machine this differs on says so on screen.
 
-### `~` C33 — A key sink has no clipboard
+### `~` C33 — A key sink has no clipboard — **done (2026-09-13)**
+
+Done as written: `Core::set_clipboard(text, html)` and
+`Core::request_paste` in `select_api.rs`, queueing the two `MenuAction`s
+a menu's Copy and Paste do; `Ui::set_clipboard` / `request_paste`, Node
+`setClipboard` / `requestPaste` on the shared macro (so `Ctx` and
+`KuiWindow` alike), Lua `env.set_clipboard` / `env.request_paste`, C
+`kui_set_clipboard(text, html)` / `kui_request_paste` (an empty `html`
+is none; no ABI bump, two functions appended). The runner drains menu
+actions after every frame now as well as after every input, since a
+view is where `Ui` is, and delivers `Paste` as `InputEvent::Commit` —
+the entry's choice — which also changes a *menu's* Paste from `Text` to
+`Commit`: an editor reads both the same, and `Text` never reached a
+sink. Two things the building added: `sink_event` falls through to a
+root sink with nothing focused, the way `key_target` does (a shell that
+asked for a paste with nothing focused lost it), and a `text` event's
+doc names the paste as its second source. `modal_editor`'s `y`, `dd`
+and `p` moved onto it (`clip_out` stashed for the next view, since
+`on_event` has no `Ui`; `awaiting_paste` marks the next `text` event as
+the paste; linewise text ends in a newline). Tests: the sink hears
+`{kind:"text"}` after a `Commit` in `tests/sink_pointer.rs`, the C
+parity (`a_c_sink_has_a_clipboard…` drains both kinds), a Lua script
+yanking and pasting from its keymap, and the Node test beside C34's.
+Checked on screen: a drag-select then `y` puts the lines where
+`pbpaste` reads them, and `p` after `pbcopy` inserts at the caret.
+CHANGELOG under alpha.12's `### Added`.
 
 The runner performs the clipboard chords itself only when an edit
 widget or a selection scope has focus (`crates/kui/src/keys.rs:221`); a
@@ -1921,7 +1946,33 @@ today. `modal_editor` moves `y` and `p` onto them. Tests: the sink hears
 `{kind:"text"}` with what a stand-in driver handed back; the C parity
 check; a Lua script yanking from a slot.
 
-### `~` C34 — A custom editor has no mouse: a press carries no point, a click no count, and the reference has none
+### `~` C34 — A custom editor has no mouse: a press carries no point, a click no count, and the reference has none — **done (2026-09-13)**
+
+Done as written, as `attach_lines` beside `attach_cells` in
+`dispatch.rs`: a `drag` payload in any phase, or a map `click` payload,
+whose node is or is inside an `on_key` sink gains `line`, `byte` and
+`clicks`. `line` comes from `access::lines_under`, the walk
+`custom_editor` used to do inline (factored out so the two numberings
+are one), picked as the line nearest the point vertically with ties to
+the earlier one — above the first is the first, below the last the
+last, a gutter is the line beside it; `byte` is `TextSystem::hit_at` on
+that line's key at the point (window coordinates, before
+`devtools_translate`, as `attach_cells` reads them); `clicks` is the
+last primary press's count, now kept in `Interaction::press_clicks`.
+One fix underneath: `hit_at` clamps the point into the run it chose,
+because cosmic-text answers a point above a run's first row with byte 0
+whatever the x, and a press in the 3 px above a line's text put the
+caret at the line's start. `modal_editor` carries `on_drag` on its sink
+and `on_drag` in the app does the three: one click places the caret,
+two take the word (`word_at`), three the line, a `move` extends from the
+press; `drag_pos` maps `byte` back through the NBSP'd line one char for
+one. Pinned in four bindings: `tests/sink_pointer.rs` (five cases,
+including a key event gaining nothing and a sink with no lines adding
+nothing), `test.mjs`, the Lua and C suites. Checked on screen with a
+CGEvent driver: click, double-click on "document", a three-line drag.
+The question the entry left — whether a plain `click` should carry
+`x`/`y` in general — is still not asked. CHANGELOG under alpha.12's
+`### Added`.
 
 `modal_editor::on_event` handles `key` and `access` and nothing else
 (`modal_editor.rs:419`): a click in the buffer moves nothing, a drag
@@ -2056,7 +2107,10 @@ machine without Noto Sans Mono is whatever face cosmic-text's fallback
 pops, italic here — a defect under the flagship use case and older than
 alpha.1 — **done the same day**: the three generic families pinned to
 the first installed face of a per-platform list, a `fonts` row in the
-facts tab), then C33 and C34 together (a sink's clipboard, and the press
+facts tab), then C33 and C34 together — **both done the same day**, the
+sink's clipboard as the two menu actions with doors in four bindings
+and a paste as a commit, the press's `line` / `byte` / `clicks` as
+`attach_lines` beside `attach_cells`, `modal_editor` on all of it — (a sink's clipboard, and the press
 carrying `line`, `byte` and `clicks` the way a grid's carries `cell`),
 C35 (the blink clock armed for a sink's `caret`), and C36's drives to
 pin all four; C37's doc line goes with whichever lands first. Before
