@@ -2682,7 +2682,20 @@ the float box.
 every door; one `float_box_for(rect, spec)`; `hover_is_by_shape` asserts
 the quad's colour.
 
-### `!` AR17 — `set_focus` on the modal's closing frame loses to the restore; a `keyFocus` edge and a Tab step win
+### `!` AR17 — `set_focus` on the modal's closing frame loses to the restore; a `keyFocus` edge and a Tab step win — **done (2026-09-14)**
+
+**Done (2026-09-14), as the fix line says, with one distinction the
+line did not make.** The stamp (`focus_asked`) is set by the *app's*
+door — `Core::set_focus`, which every binding's focus verb and
+`Ui::focus` reach — and not by the core's own moves, which now go
+through `move_focus`: a press on the dialog's OK button is pointer
+focus, and if it counted, closing a dialog by clicking it would drop
+the keyboard instead of handing it back (F4's own case). Read and
+cleared at the end of `resolve_modal_focus`, so it covers a handler's
+move between frames and the view's during the build, and a redraw of
+the same tree starts clean. The sentence is in ADR 0003 decision 4.
+`tests/focus.rs`: the handler's move, the view's `ui.focus`, and the
+core's move not counting. CHANGELOG under alpha.12.
 
 `resolve_modal_focus` restores what the modal displaced unless
 `declared_focus` has an edge this frame (`runtime/focus.rs:438-457`). A
@@ -3331,7 +3344,7 @@ into the second channel, one attach pass with a producer-side mark),
 AR12 (Node's window handle — **done 2026-09-14**), AR13–AR16 (**all
 four done 2026-09-14**) (the `<text>` rows, one token
 miss policy, Cut's `changed`, one `prepare_spec`), AR17–AR18 (the focus
-stamp and the AT gates), AR19–AR25 as the defects they are, then B1's
+stamp — **done 2026-09-14** — and the AT gates), AR19–AR25 as the defects they are, then B1's
 table with AR26, AR27 and AR40 beside it, AR46–AR48 for the tests, and
 AR49 first of all if the alpha.12 notes go out before the rest, since
 its first line is the CHANGELOG contradicting itself on the frame
