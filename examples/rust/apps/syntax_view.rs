@@ -11,7 +11,7 @@
 //! Keys: j/k or arrows move · pageup/pagedown · g/G ends · tab next buffer.
 
 use kui::widgets;
-use kui::{Align, App, Color, NodeSpec, Sizing, TextStyle, Theme, Ui, UiEvent, Value};
+use kui::{Align, App, Color, Core, NodeSpec, Sizing, TextStyle, Theme, Ui, UiEvent, Value};
 use kui_devtools::Example;
 
 const FONT: f32 = 13.5;
@@ -478,6 +478,44 @@ impl Example for SyntaxView {
 
     fn dock(&self) -> kui_devtools::Dock {
         kui_devtools::Dock::Bottom
+    }
+
+    /// The keys, driven (backlog C36): `j`, `G` and `tab` move the line,
+    /// the view and the buffer — and the view keeps the line on screen.
+    fn headless(&mut self, core: &mut Core) -> Result<(), String> {
+        use kui::KeyMods;
+        use kui_devtools::Drive;
+        let mut d = Drive::new(core, 900.0, 700.0);
+        d.frame(self);
+        d.check(
+            self.cur == 0 && self.line == 0 && self.top == 0,
+            "the first buffer, at its top",
+        )?;
+        d.key(self, "j", KeyMods::default());
+        d.frame(self);
+        d.check(self.line == 1 && self.top == 0, "j moves down a line")?;
+        d.key(self, "G", KeyMods::default());
+        d.frame(self);
+        let last = self.docs[0].lines.len() - 1;
+        d.check(self.line == last, "G goes to the last line")?;
+        d.check(
+            self.top > 0 && self.top + self.rows > last,
+            "and the view scrolled so the line is on screen",
+        )?;
+        d.key(self, "k", KeyMods::default());
+        d.frame(self);
+        d.check(self.line == last - 1, "k moves up")?;
+        // Tab is the sink's, not the ring's: a sink that holds focus keeps
+        // every key (ADR 0002, decision 3).
+        d.key(self, "tab", KeyMods::default());
+        d.frame(self);
+        d.check(
+            self.cur == 1 && self.line == 0 && self.top == 0,
+            "tab switches to the next buffer, at its top",
+        )?;
+        d.key(self, "tab", KeyMods::default());
+        d.frame(self);
+        d.check(self.cur == 0, "and wraps around")
     }
 }
 

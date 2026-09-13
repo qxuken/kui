@@ -2045,7 +2045,23 @@ the phase: `ui.caret_visible()`, Lua `env.caret_visible`, Node
 node on the on phase and skips it on the off. The stock editor and the
 custom one then blink in step, and in the background neither does.
 
-### `.` C36 — The three app-shaped examples have no headless drive
+### `.` C36 — The three app-shaped examples have no headless drive — **done (2026-09-13)**
+
+Done as written, each as `Example::headless` and enrolled in
+`crates/kui/Cargo.toml`'s `headless` list, so the smoke round's headless
+channel runs them: `modal_editor` — `jjj ww v lll` selects "docu",
+Escape, `dd` deletes the line and queues it linewise, `p` twice asks and
+the drive plays the host with a `Commit`, `:help` fills the minibuffer
+and Enter runs it, then C34's first pin (a click places the caret on the
+line and column, a double click selects "document") and C35's (the off
+phase keeps the `caret` row); `splitmux` — Alt-v, Alt-s, Alt-o, Alt-t,
+Alt-1 leave five panes on tab 1, Alt-w closes one, and the keymap is
+still the sink's; `syntax_view` — `j`, `G` (and the view scrolls to keep
+the line on screen), `k`, `tab` twice wrapping. Two things the drives
+found about driving: `Drive::key` carries no `text`, so a keymap that
+reads `text` in command mode (the minibuffer) needs `KeyPress::with_text`;
+and `dd` after `v lll` deletes the selection, not the line — the by-hand
+check had an Escape in it nobody wrote down.
 
 `modal_editor --headless`, `splitmux --headless` and `syntax_view
 --headless` each print "no headless drive" and exit 0; `cells` runs its
@@ -2063,7 +2079,15 @@ whose keymaps most deserve a drive.
 focused; `syntax_view`: `j`, `G`, `tab` move the view and the buffer.
 The C34 payloads get their first pin in the same drive.
 
-### `.` C37 — A cell is a scalar, and its doc says it is a grapheme
+### `.` C37 — A cell is a scalar, and its doc says it is a grapheme — **done (2026-09-13)**
+
+The doc line, fixed with C36: `cells.rs` says a cell is one scalar in
+all three transports, what that excludes (a base with marks, a ZWJ
+sequence, a flag, a conjunct — precompose what NFC can, drop the rest),
+and names the side-table shape the cluster would take when a view asks,
+so it does not grow the cell. "Rust-only for now" is gone; the paragraph
+lists the four bindings. No `grapheme` claim remains in the schema, the
+header or the Node types.
 
 `cells.rs:11` says "a grapheme cluster (an emoji, a base with its
 combining marks) is one cell's `text`, shaped once"; the field is
@@ -2164,7 +2188,8 @@ and a paste as a commit, the press's `line` / `byte` / `clicks` as
 `attach_lines` beside `attach_cells`, `modal_editor` on all of it — and
 C35 **the same day** (the clock armed on the sink's `caret` row, the
 phase readable in four bindings), with C38 (the clipboard example and
-article) filed and built between them — (a sink's clipboard, and the press
+article) filed and built between them, and C36 + C37 **the same day**
+(the three drives, the doc line) — (a sink's clipboard, and the press
 carrying `line`, `byte` and `clicks` the way a grid's carries `cell`),
 C35 (the blink clock armed for a sink's `caret`), and C36's drives to
 pin all four; C37's doc line goes with whichever lands first. Before

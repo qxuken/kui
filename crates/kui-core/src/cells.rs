@@ -8,13 +8,24 @@
 //! could otherwise be built from do not have (see `benches/stream.rs`).
 //!
 //! What it deliberately is not: shaped text. No ligatures, no kerning, no
-//! wrapping — a cell is a cell. A grapheme cluster (an emoji, a base with
-//! its combining marks) is one cell's `text`, shaped once; a wide one is
-//! marked `WIDE` and the cell after it is a spacer the app leaves blank.
+//! wrapping — a cell is a cell. And a cell is one *scalar*: `Cell::ch` is
+//! a `char`, C's `KuiCell.ch` a `uint32_t`, Node's stream a codepoint
+//! packed with its flags. A precomposed character (`é` as U+00E9) is one
+//! cell; a base with combining marks, a ZWJ emoji sequence, a flag or a
+//! conjunct is not representable — the app precomposes what NFC can and
+//! drops what it cannot (backlog C37). A wide character is marked `WIDE`
+//! and the cell after it is a spacer the app leaves blank. When a view
+//! needs a cluster, the shape is named so it does not grow the cell: a
+//! side table of `(cell index, &str)` on `CellGrid` for the few cells
+//! whose content is more than a scalar, keyed into the same `other`
+//! glyph map by the cluster's string, so a 200 × 50 pane stays 160 KB a
+//! frame.
 //!
-//! Rust-only for now: the element rows, the bindings' transports, the
-//! access row and the `cell` field on click and drag payloads are the
-//! entry's steps 1–4 and follow the measurement this prototype exists for.
+//! Bound four ways: the `cells` element row, C's `kui_cells` over a
+//! `KuiCell` array, Node's `Uint32Array` stream and Lua's `lines` +
+//! `runs`, the `terminal` access row, and the `cell` field on click and
+//! drag payloads — the entry's steps 1–4, built after the measurement
+//! this began as.
 
 use cosmic_text::{Attrs, Buffer, FontSystem, Metrics, Shaping, Style as FontStyle, Weight};
 use rustc_hash::FxHashMap;

@@ -22,7 +22,8 @@
 
 use kui::widgets;
 use kui::{
-    Align, App, Color, NodeSpec, Role, Sizing, TextStyle, Theme, Ui, UiEvent, Value, WindowCommand,
+    Align, App, Color, Core, NodeSpec, Role, Sizing, TextStyle, Theme, Ui, UiEvent, Value,
+    WindowCommand,
 };
 use kui_devtools::Example;
 
@@ -1163,6 +1164,106 @@ impl Example for ModalEditor {
 
     fn dock(&self) -> kui_devtools::Dock {
         kui_devtools::Dock::Bottom
+    }
+
+    /// The keymap, the mouse and the clipboard, driven (backlog C36) —
+    /// what the smoke round once checked by hand with real keystrokes.
+    fn headless(&mut self, core: &mut Core) -> Result<(), String> {
+        use kui::{InputEvent, KeyCode, KeyMods, KeyPress, MenuAction, Vec2};
+        use kui_devtools::Drive;
+        let mut d = Drive::new(core, 900.0, 700.0);
+        d.frame(self);
+        // Typed characters, as a driver reports them: the code and the
+        // text the press would insert, which the minibuffer reads.
+        let keys = |d: &mut Drive<'_>, app: &mut Self, seq: &str| {
+            for c in seq.chars().filter(|c| *c != ' ') {
+                let kp =
+                    KeyPress::new(KeyCode::Char(c), KeyMods::default()).with_text(c.to_string());
+                d.input(app, InputEvent::KeyDown(kp.clone()));
+                d.input(app, InputEvent::KeyUp(kp.released()));
+                d.frame(app);
+            }
+        };
+        // `jjj ww v lll`: down three, two words on, select, right three —
+        // "docu" of "document" on line 4.
+        keys(&mut d, self, "jjj ww v lll");
+        d.check(
+            self.view.cur.line == 3 && self.view.anchor.is_some(),
+            "jjj ww v lll leaves a selection on line 4",
+        )?;
+        d.check(
+            sel_lines(&self.doc, &self.view) == ["docu"],
+            "which is the first four letters of \"document\"",
+        )?;
+        // `dd` takes the line to the clipboard, and `p` twice asks for it
+        // back: the clipboard is the host's, so the drive plays the host.
+        let lines = self.doc.lines.len();
+        d.key(self, "escape", KeyMods::default());
+        d.frame(self);
+        d.check(self.view.anchor.is_none(), "escape drops the selection")?;
+        keys(&mut d, self, "dd");
+        d.check(self.doc.lines.len() == lines - 1, "dd deletes the line")?;
+        let queued = d.core.take_menu_actions();
+        let linewise = matches!(&queued[..], [MenuAction::SetClipboard { text, .. }] if text.starts_with("owns the document") && text.ends_with('\n'));
+        d.check(linewise, "and hands it to the clipboard, linewise")?;
+        for _ in 0..2 {
+            keys(&mut d, self, "p");
+            let asked = d.core.take_menu_actions() == vec![MenuAction::Paste];
+            d.check(asked, "p asks the host for the clipboard")?;
+            d.input(
+                self,
+                InputEvent::Commit("owns the document, the modes, and (in real life)\n".into()),
+            );
+            d.frame(self);
+        }
+        d.check(
+            self.doc.lines.len() == lines + 1,
+            "and each paste puts the line back below the caret",
+        )?;
+        // `:help` fills the minibuffer.
+        keys(&mut d, self, ":help");
+        d.check(
+            self.mode == Mode::Command && self.cmd == "help",
+            ": enters command mode and the letters go to the minibuffer",
+        )?;
+        d.key(self, "enter", KeyMods::default());
+        d.frame(self);
+        d.check(
+            self.mode == Mode::Normal && self.message.contains("h j k l"),
+            "enter runs it: the keymap summary is the message",
+        )?;
+        // The mouse (backlog C34): a press inside the sink carries the
+        // line, the byte and the click count; a double click takes a word.
+        let editor = d.key_of("editor").ok_or("no editor")?;
+        let r = d.rect_of(editor).ok_or("the editor has no rect")?;
+        let cell = d.core.measure_text("M", &mono(&self.pal), None).width;
+        let x = r.x + GUTTER_W + 12.5 * cell; // the thirteenth column: inside "document"
+        let y = r.y + 4.0 + 4.0 * LH + LH / 2.0; // the fifth drawn line
+        d.input(self, InputEvent::CursorMoved(Vec2::new(x, y)));
+        d.input(self, InputEvent::mouse_down(1));
+        d.input(self, InputEvent::mouse_up());
+        d.frame(self);
+        d.check(
+            self.view.cur.line == 4 && self.view.anchor.is_none() && self.view.cur.col > 0,
+            "a click places the caret on the line and column it landed on",
+        )?;
+        d.input(self, InputEvent::mouse_down(2));
+        d.input(self, InputEvent::mouse_up());
+        d.frame(self);
+        d.check(
+            self.view.anchor.is_some() && sel_lines(&self.doc, &self.view) == ["document"],
+            "a double click selects the word under it",
+        )?;
+        // The caret blinks (backlog C35): on the off phase the caret node
+        // is gone and the `caret` row stays.
+        d.core.set_caret_visible(false);
+        d.frame(self);
+        d.check(
+            d.core.has_caret(),
+            "the caret row is declared through the off phase",
+        )?;
+        d.core.set_caret_visible(true);
+        Ok(())
     }
 }
 

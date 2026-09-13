@@ -116,9 +116,9 @@ table says so.
 | Example | Shows | Headless | By hand |
 |---|---|---|---|
 | [`counter.rs`](rust/apps/counter.rs) | The smallest app that is the whole pattern, and the one every binding has in the same shape: the Elm loop, a button, an `edit` field read back, a right-click that declares a `modal` menu | ✓ the Rosetta drive | |
-| [`splitmux.rs`](rust/apps/splitmux.rs) | tmux-style splits, tabs, focus, ⌘-drag pane moves; the pane tree is data and the app owns the chord keymap | `cargo test` (its `mod tests`) | |
-| [`modal_editor.rs`](rust/apps/modal_editor.rs) | Helix-flavored modal editing; the app owns the document, the keymap and the modes | | |
-| [`syntax_view.rs`](rust/apps/syntax_view.rs) | Syntax highlighting as coalesced style runs; the frame shape the `highlight` bench measures | | |
+| [`splitmux.rs`](rust/apps/splitmux.rs) | tmux-style splits, tabs, focus, ⌘-drag pane moves; the pane tree is data and the app owns the chord keymap | ✓ the chords, and `cargo test` (its `mod tests`) | ⌘-drag a pane |
+| [`modal_editor.rs`](rust/apps/modal_editor.rs) | Helix-flavored modal editing; the app owns the document, the keymap, the modes, the mouse (a press carries `line`/`byte`/`clicks`) and the clipboard (`y`/`p`), and its caret blinks on `caret_visible` | ✓ `jjj ww v lll`, `dd` + `p`, `:help`, a click and a double click, the off phase | `pbpaste` after `y` |
+| [`syntax_view.rs`](rust/apps/syntax_view.rs) | Syntax highlighting as coalesced style runs; the frame shape the `highlight` bench measures | ✓ `j`, `G`, `k`, `tab` | |
 
 ### `widgets/`
 

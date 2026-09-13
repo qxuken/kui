@@ -35,7 +35,7 @@
 
 use kui::widgets;
 use kui::{
-    Align, App, Color, Easing, FloatConfig, KeyMods, NodeSpec, Sizing, TextStyle, Theme, Ui,
+    Align, App, Color, Core, Easing, FloatConfig, KeyMods, NodeSpec, Sizing, TextStyle, Theme, Ui,
     UiEvent, Value, WindowCommand,
 };
 use kui_devtools::Example;
@@ -1051,6 +1051,59 @@ impl Example for Splitmux {
 
     fn dock(&self) -> kui_devtools::Dock {
         kui_devtools::Dock::Bottom
+    }
+
+    /// The chord keymap, driven (backlog C36): two splits, a tab, and a
+    /// jump back — the keys the smoke round once checked by hand.
+    fn headless(&mut self, core: &mut Core) -> Result<(), String> {
+        use kui_devtools::Drive;
+        let alt = KeyMods {
+            alt: true,
+            ..KeyMods::default()
+        };
+        let mut d = Drive::new(core, 1100.0, 720.0);
+        d.frame(self);
+        let panes = |app: &Splitmux| {
+            fn count(n: &Node) -> usize {
+                match n {
+                    Node::Pane(_) => 1,
+                    Node::Split { a, b, .. } => count(a) + count(b),
+                }
+            }
+            count(&app.tabs[app.tab].root)
+        };
+        d.check(panes(self) == 3, "three panes to start")?;
+        d.key(self, "v", alt);
+        d.frame(self);
+        d.check(panes(self) == 4, "Alt-v splits the focused pane")?;
+        d.key(self, "s", alt);
+        d.frame(self);
+        d.check(panes(self) == 5, "Alt-s splits the focused half again")?;
+        let focused = self.focused;
+        d.key(self, "o", alt);
+        d.frame(self);
+        d.check(self.focused != focused, "Alt-o hops to another pane")?;
+        d.key(self, "t", alt);
+        d.frame(self);
+        d.check(
+            self.tabs.len() == 2 && self.tab == 1 && panes(self) == 1,
+            "Alt-t opens a second tab with one pane and moves to it",
+        )?;
+        d.key(self, "1", alt);
+        d.frame(self);
+        d.check(
+            self.tab == 0 && panes(self) == 5,
+            "Alt-1 jumps back to the first tab, its five panes intact",
+        )?;
+        d.key(self, "w", alt);
+        d.frame(self);
+        d.check(panes(self) == 4, "Alt-w closes the focused pane")?;
+        // A click on a pane focuses it, and the chords still work after:
+        // the trap the unit tests below pin.
+        let before = self.focused;
+        d.key(self, "o", alt);
+        d.frame(self);
+        d.check(self.focused != before, "and the keymap is still the sink's")
     }
 }
 

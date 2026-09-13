@@ -139,6 +139,20 @@ Nothing.
   `modal_editor` blinks. `caret_visible` is an `ENV_FIELDS` row, so the
   Lua env, `props.md` and the C parity carry it.
 
+- **The three app-shaped examples drive themselves** (backlog C36, the
+  same round). `modal_editor --headless`, `splitmux --headless` and
+  `syntax_view --headless` printed "no headless drive" and exited 0; the
+  smoke round ran them windowed for 120 frames, which pinned that they
+  draw, not that `hjkl` moves the caret or `Alt-v` splits — that was
+  checked by hand with real keystrokes each round. Each has a drive now,
+  in the headless roster: the modal editor's keymap (`jjj ww v lll`,
+  `dd` + `p` through the clipboard, `:help`), its mouse and its blink;
+  the mux's chords (five panes on tab 1, a tab, a jump, a close); the
+  code view's `j` / `G` / `k` / `tab`. And `cells.rs` no longer promises
+  a grapheme cluster its `char` cannot hold (backlog C37): a cell is one
+  scalar in every transport, and the doc names the side-table shape a
+  cluster would take.
+
 - **The clipboard has an example, and an article** (backlog C38, the
   same day). `examples/rust/features/clipboard.rs` and
   `examples/node/features/clipboard.tsx` show the four ways onto the
