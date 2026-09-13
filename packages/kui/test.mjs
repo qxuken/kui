@@ -3786,9 +3786,12 @@ function driveScene(env, steps, build) {
     else if (step[0] === 'scroll') ctx.scroll(step[1], step[2]);
     else if (step[0] === 'tab') ctx.key('tab');
     else if (step[0] === 'shifttab') ctx.key('tab', { shift: true });
-    // The Shift key itself, down and up: what a Shift-press reads (ADR 0029).
-    else if (step[0] === 'shiftdown') ctx.modifiers({ shift: true });
-    else if (step[0] === 'shiftup') ctx.modifiers({});
+    // The modifier state as bits — Shift 1, Ctrl 2, Alt 4, Super 8
+    // (`KeyMods::bits`): what a Shift-press reads (ADR 0029).
+    else if (step[0] === 'modifiers') {
+      const m = step[1];
+      ctx.modifiers({ shift: !!(m & 1), ctrl: !!(m & 2), alt: !!(m & 4), super: !!(m & 8) });
+    }
     else if (step[0] === 'escape') ctx.key('escape');
     // `conformance::ARROWS` order: left, right, up, down.
     else if (step[0] === 'arrow') ctx.key(['left', 'right', 'up', 'down'][step[1]]);

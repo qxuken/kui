@@ -309,9 +309,12 @@ carrying both — so it is built whole.
 
 ### 5. The corpus gains `Shift` as a step, and three scenes
 
-`Step::ShiftDown` / `Step::ShiftUp` — the modifier going down and up,
-`InputEvent::Modifiers` with only `shift` set and then cleared — one word
-each like `ShiftTab`, no argument, in four adapters. Two scenes:
+`Step::Modifiers(u32)` — the modifier state as `KeyMods::bits` (Shift 1,
+Ctrl 2, Alt 4, Super 8), `InputEvent::Modifiers` — one step kind with an
+integer the way `Arrow` is, so a chord is one line and every argument
+stays an integer, in four adapters. (The draft had `ShiftDown` /
+`ShiftUp`, two kinds per key; the review of the build replaced them
+before anything outside the repo learned the names.) Two scenes:
 
 - `selection-extend`: the `selection` card, a click in the first run, a
   Shift-click in the third, then a Shift-press-drag back into the second.
@@ -443,7 +446,7 @@ app-side hook and there should not be one.
       fraction carried per grid, the edge drag's lines per frame with the
       fraction carried in the drag, the re-hit gate on `origin_line`; the
       `cells` example on the wheel and the drag, buttons gone.
-- [x] Decision 5: `Step::ShiftDown` / `ShiftUp` in four adapters; the
+- [x] Decision 5: `Step::Modifiers(u32)` in four adapters; the
       `selection-extend`, `selection-scroll` and `cells-scroll` scenes.
 - [x] The `clipboard` example's headless drive pins all three on the log
       (Shift-click, drag past the bottom, wheel under a held press), in
@@ -508,7 +511,7 @@ and these things the draft could not know:
   corpus's report carries a scroll's `lines` the way it carries a drag's
   deltas, in all four writers, because the carry is the contract and a
   binding that lost it between two notches would agree on the kind.
-  `Step::ShiftDown` / `ShiftUp` are `Modifiers` inputs, and the modifier
+  `Step::Modifiers(bits)` is the `Modifiers` input, and the modifier
   changing is itself an event on the root, so `selection-extend` pins two
   `modifiers -` rows too.
 - **A grid without `onScroll` is unchanged**, and one with it is its own

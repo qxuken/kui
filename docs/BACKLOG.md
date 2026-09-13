@@ -2173,7 +2173,7 @@ inside the selection's scope, grid or focused editor keeps the anchor
 (cosmic-text's `Drag` is the editor's whole gesture); `EventSpec::on_scroll`
 as `P_ON_SCROLL` 99 with the wheel routed through `ScrollRegion::handler`
 by paint order; `Core::selection_ends` with doors in Node, Lua and C;
-`Step::ShiftDown` / `ShiftUp` and the `selection-extend`,
+`Step::Modifiers(u32)` and the `selection-extend`,
 `selection-scroll` and `cells-scroll` scenes in four adapters (35 scenes
 agree); `tests/follow.rs` (nine cases), a C-surface test, two Node tests;
 the `clipboard` drives in Rust and Node pin all three gestures on the

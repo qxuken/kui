@@ -297,13 +297,14 @@ pub enum Step {
     /// step with an argument, so the report's step lines stay one word.
     Tab,
     ShiftTab,
-    /// The Shift key going down and coming up — `InputEvent::Modifiers`
-    /// with `shift` set, then cleared — one word each like `ShiftTab`,
-    /// so a step line stays one word. What a Shift-press reads: a press
-    /// while it is down extends the selection from its anchor instead of
-    /// starting over (ADR 0029, decision 3).
-    ShiftDown,
-    ShiftUp,
+    /// The modifier state, as `KeyMods::bits` — Shift 1, Ctrl 2, Alt 4,
+    /// Super 8 — the way `Arrow` is an index: one step kind with an
+    /// integer rather than a down and an up per key, so a chord is one
+    /// line and every argument stays an integer. `InputEvent::Modifiers`.
+    /// What a Shift-press reads: a press while `1` is set extends the
+    /// selection from its anchor instead of starting over (ADR 0029,
+    /// decision 3).
+    Modifiers(u32),
     /// Escape: lets go of a focused control, or asks a modal to go away.
     Escape,
     /// An arrow key, as an index into [`ARROWS`] — inside a composite it
@@ -383,8 +384,9 @@ impl Step {
             }
             Step::Tab => out.push_str("step tab\n"),
             Step::ShiftTab => out.push_str("step shifttab\n"),
-            Step::ShiftDown => out.push_str("step shiftdown\n"),
-            Step::ShiftUp => out.push_str("step shiftup\n"),
+            Step::Modifiers(m) => {
+                let _ = writeln!(out, "step modifiers {m}");
+            }
             Step::Escape => out.push_str("step escape\n"),
             Step::Arrow(d) => {
                 let _ = writeln!(out, "step arrow {d}");
@@ -456,11 +458,7 @@ impl Step {
                     ..Default::default()
                 },
             ),
-            Step::ShiftDown => InputEvent::Modifiers(KeyMods {
-                shift: true,
-                ..KeyMods::default()
-            }),
-            Step::ShiftUp => InputEvent::Modifiers(KeyMods::default()),
+            Step::Modifiers(m) => InputEvent::Modifiers(KeyMods::from_bits(m)),
             Step::Escape => InputEvent::Key(EditKey::Escape, Mods::default()),
             Step::Arrow(d) => InputEvent::Key(ARROWS[d as usize], Mods::default()),
             Step::Home => InputEvent::Key(EditKey::Home, Mods::default()),
@@ -2029,7 +2027,7 @@ pub const SCENES: &[Scene] = &[
             Step::Cursor(14, 16),
             Step::MouseDown,
             Step::MouseUp,
-            Step::ShiftDown,
+            Step::Modifiers(KeyMods::SHIFT),
             Step::Cursor(30, 60),
             Step::MouseDown,
             Step::MouseUp,
@@ -2037,7 +2035,7 @@ pub const SCENES: &[Scene] = &[
             Step::MouseDown,
             Step::Cursor(14, 38),
             Step::MouseUp,
-            Step::ShiftUp,
+            Step::Modifiers(0),
         ],
         expect: Expect {
             solid: 3,

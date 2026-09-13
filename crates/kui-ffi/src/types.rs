@@ -1841,11 +1841,13 @@ pub const KUI_SPAN_UNDERLINE: u32 = 1 << 2;
 pub const KUI_SPAN_STRIKETHROUGH: u32 = 1 << 3;
 
 /// `KUI_KMOD_*`: the modifier bits `kui_input_key_down` and its siblings
-/// take, and `kui_input_modifiers` reports.
-pub const KUI_KMOD_SHIFT: u32 = 1 << 0;
-pub const KUI_KMOD_CTRL: u32 = 1 << 1;
-pub const KUI_KMOD_ALT: u32 = 1 << 2;
-pub const KUI_KMOD_SUPER: u32 = 1 << 3;
+/// take, and `kui_input_modifiers` reports — the core's own
+/// `KeyMods::bits`, which is also what the conformance corpus's
+/// `modifiers` step spells, so the header and the corpus cannot drift.
+pub const KUI_KMOD_SHIFT: u32 = kui_core::KeyMods::SHIFT;
+pub const KUI_KMOD_CTRL: u32 = kui_core::KeyMods::CTRL;
+pub const KUI_KMOD_ALT: u32 = kui_core::KeyMods::ALT;
+pub const KUI_KMOD_SUPER: u32 = kui_core::KeyMods::SUPER;
 
 /// `KUI_EDIT_*`: the flags `kui_text_edit` takes. `WRAP` is the `wrap`
 /// row declared on a field (the mode is `KuiTextStyle.wrap`, whose zero

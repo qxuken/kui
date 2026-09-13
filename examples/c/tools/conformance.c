@@ -1513,9 +1513,9 @@ static void conf_apply(KuiCtx *ctx, const ConfStep *s) {
     else if (strcmp(s->kind, "scroll") == 0) kui_input_scroll(ctx, (float)s->a, (float)s->b);
     else if (strcmp(s->kind, "tab") == 0) kui_input_key(ctx, KUI_KEY_TAB, 0);
     else if (strcmp(s->kind, "shifttab") == 0) kui_input_key(ctx, KUI_KEY_TAB, KUI_MOD_SHIFT);
-    /* The Shift key itself, down and up: what a Shift-press reads (ADR 0029). */
-    else if (strcmp(s->kind, "shiftdown") == 0) kui_input_modifiers(ctx, KUI_KMOD_SHIFT);
-    else if (strcmp(s->kind, "shiftup") == 0) kui_input_modifiers(ctx, 0);
+    /* The modifier state as KUI_KMOD_* bits, the corpus's own spelling:
+       what a Shift-press reads (ADR 0029). */
+    else if (strcmp(s->kind, "modifiers") == 0) kui_input_modifiers(ctx, (uint32_t)s->a);
     else if (strcmp(s->kind, "escape") == 0) kui_input_key(ctx, KUI_KEY_ESCAPE, 0);
     /* conformance::ARROWS order: left, right, up, down - which is
      * KUI_KEY_LEFT..KUI_KEY_DOWN, so the index is the key. */

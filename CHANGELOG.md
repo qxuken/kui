@@ -45,7 +45,8 @@ field reports).
   function (backlog C39): `KUI_ABI_VERSION` stays **15**, since an [in]
   struct that never travels as an array is absorbed by the size
   handshake, and a host built against the shorter struct reads NULL.
-  The corpus's step vocabulary grew `shiftdown` / `shiftup`, and its
+  The corpus's step vocabulary grew `modifiers N` (Shift 1, Ctrl 2, Alt
+  4, Super 8, `KeyMods::bits`), and its
   event rows print a `scroll`'s lines — an adapter you maintain outside
   this repo needs both arms.
 
