@@ -452,6 +452,34 @@ pub extern "C" fn kui_audio_ended(ptr: *mut KuiCtx, playback: u64) {
     });
 }
 
+/// The same host reports that a stop it drained landed on a playback
+/// still running, `at` seconds in: a one-shot `audio` node that went away
+/// without `finish` is named in a `truncated-playback` warning
+/// (kui_take_warnings); any other stop reports nothing (backlog F36).
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_audio_truncated(ptr: *mut KuiCtx, playback: u64, at: f64) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().audio_truncated(kui_core::PlaybackId(playback), at);
+        }
+    });
+}
+
+/// The same host reports that its device refused a play it drained: a
+/// tagged playback becomes a `sound` event with phase `refused` for
+/// kui_poll_event, and the node that asked is named in a
+/// `playback-refused` warning either way (backlog F36).
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_audio_refused(ptr: *mut KuiCtx, playback: u64) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().audio_refused(kui_core::PlaybackId(playback));
+            let pending = c.core().take_pending_events();
+            c.absorb(pending);
+        }
+    });
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_image_remove(ptr: *mut KuiCtx, id: u64) {
     guard((), || {

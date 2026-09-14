@@ -2987,6 +2987,47 @@ test('an <audio finish> node releases its playback when the view drops it', () =
   ]);
 });
 
+// A driver with its own device owes two more answers than `ended` (backlog
+// F36): a stop it found still playing, and a play its device refused. Both
+// warnings are in `WarningCode`, and until these doors only the Rust runner
+// could raise them.
+test('a custom audio driver reports a truncation and a refusal through the same doors the runner uses', () => {
+  const ctx = new Ctx();
+  ctx.setDiagnostics(true);
+  const snd = ctx.addSound(Buffer.from('RIFF....WAVE'));
+  const view = (playing) =>
+    box({ pad: 8 }, playing ? [el('audio', { src: snd, tag: { kind: 'jingle' } }, [], 'jingle')] : []);
+  const codes = () => ctx.warnings().map((w) => [w.code, w.key]);
+
+  // A one-shot node declared once and gone the next frame is a stop; the
+  // warning waits for the device to say the sound was still running.
+  ctx.frame(320, 240, 1, view(true));
+  const [play] = ctx.audioCommands();
+  assert.equal(play.kind, 'play');
+  ctx.frame(320, 240, 1, view(false));
+  assert.deepEqual(ctx.audioCommands().map((c) => c.kind), ['stop']);
+  assert.deepEqual(codes(), []);
+  ctx.audioTruncated(play.playback, 0.5);
+  const truncated = codes();
+  assert.equal(truncated.length, 1);
+  const [code, jingle] = truncated[0];
+  assert.equal(code, 'truncated-playback');
+  assert.match(jingle, /^[0-9a-f]{16}$/, 'named on the audio node');
+  // A second answer for the same playback is nothing: the entry is gone.
+  ctx.audioTruncated(play.playback, 0.5);
+  assert.deepEqual(codes(), []);
+
+  // Declared again, and the device will not take it: the tag comes back
+  // as a refused sound event, and the node is warned either way.
+  ctx.frame(320, 240, 1, view(true));
+  const [again] = ctx.audioCommands();
+  ctx.audioRefused(again.playback);
+  assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [
+    { kind: 'sound', phase: 'refused', playback: again.playback, tag: { kind: 'jingle' } },
+  ]);
+  assert.deepEqual(codes(), [['playback-refused', jingle]], 'the same node, redeclared under its label');
+});
+
 // ---------------------------------------------------------------------------
 // The scene corpus (crates/kui-core/src/conformance.rs)
 //

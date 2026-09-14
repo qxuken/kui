@@ -1778,6 +1778,20 @@ export declare class Ctx {
    */
   audioEnded(playback: number): void
   /**
+   * The same driver reports that a `stop` it drained landed on a
+   * playback still running, `at` seconds in: a one-shot `<audio>` that
+   * went away without `finish` is named in a `truncated-playback`
+   * warning (`warnings()`); any other stop reports nothing.
+   */
+  audioTruncated(playback: number, at: number): void
+  /**
+   * The same driver reports that its device refused a `play` it
+   * drained: a tagged playback becomes a `sound` event with phase
+   * `refused` in `pollEvents`, and the node that asked is named in a
+   * `playback-refused` warning either way.
+   */
+  audioRefused(playback: number): void
+  /**
    * Drains the window commands the core queued, as plain objects: what
    * chrome nodes asked for (`{kind:"startDrag"|"close"|"minimize"|
    * "toggleMaximize", window}`) and what the declared window set decided

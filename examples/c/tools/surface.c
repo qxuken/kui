@@ -453,6 +453,19 @@ static int surface(void) {
     check(cmd_count >= 6 && cmds[0].kind == KUI_AUDIO_PLAY, "the audio commands queued");
     check(kui_take_audio_commands(ui, cmds, 1) == 0, "and drained");
     kui_audio_ended(ui, playback);
+    /* The other two answers a device owes (backlog F36): an imperative
+     * stop that cut the sound short reports nothing - only a one-shot
+     * node's removal does - and a refusal names the node that asked (the
+     * root, for a kui_play) whether or not anything was tagged. */
+    kui_audio_truncated(ui, playback, 0.25);
+    kui_audio_refused(ui, playback);
+    {
+        KuiWarning refused[4];
+        size_t n = kui_take_warnings(ui, refused, sizeof refused / sizeof refused[0]);
+        check(n == 1 && refused[0].code.len == 16 &&
+                  memcmp(refused[0].code.ptr, "playback-refused", 16) == 0,
+              "a refused playback is one warning, and a truncation on an imperative stop none");
+    }
     kui_sound_remove(ui, k.sound);
 
     /* Window chrome turns clicks into commands rather than events. */

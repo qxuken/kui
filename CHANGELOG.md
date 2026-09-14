@@ -98,6 +98,17 @@ field reports).
 
 ### Added
 
+- **A host driving its own audio device can report the other two
+  answers** (backlog F36): `kui_audio_truncated(ctx, playback, at)` /
+  `kui_audio_refused(ctx, playback)` beside `kui_audio_ended` in C, and
+  `ctx.audioTruncated(playback, at)` / `ctx.audioRefused(playback)`
+  beside `audioEnded` on a Node `Ctx`. A stop the device found still
+  running names the one-shot `audio` node that went away in
+  `truncated-playback`; a play it would not take is a `sound` event with
+  phase `refused` for a tagged playback and `playback-refused` on the node
+  either way — the two warnings that were in every binding's table and
+  that only the Rust runner's own device could raise. Two rows in the
+  verb table; no ABI bump, two new functions.
 - **The verb table** (backlog B1a, on the condition ADR 0020 set and the
   second architecture review met): `schema::DOORS`, one row per verb an
   app or a host calls on its context — a resource registered, a focus

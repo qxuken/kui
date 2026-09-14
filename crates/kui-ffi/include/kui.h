@@ -2344,6 +2344,16 @@ uint64_t kui_audio(KuiCtx *ctx, KuiStr label, const KuiAudio *spec, KuiValue *ta
  * a tagged one becomes a sound event. */
 size_t kui_take_audio_commands(KuiCtx *ctx, KuiAudioCommand *out, size_t cap);
 void kui_audio_ended(KuiCtx *ctx, uint64_t playback);
+/* The other two answers such a host owes (backlog F36), so its warnings
+ * match the runner's: a KUI_AUDIO_STOP it drained that landed on a
+ * playback still running, `at` seconds in - a one-shot audio node that
+ * went away without `finish` is named in a "truncated-playback" warning,
+ * any other stop reports nothing; and a KUI_AUDIO_PLAY its device refused
+ * (voices all held, a sound that failed to decode) - the node that asked
+ * is named in a "playback-refused" warning and a tagged playback, which
+ * can now never end, gets a sound event with phase "refused" instead. */
+void kui_audio_truncated(KuiCtx *ctx, uint64_t playback, double at);
+void kui_audio_refused(KuiCtx *ctx, uint64_t playback);
 /* An image node. Fit sizing = the image's pixel size as logical px; a Fit
  * height against a resolved width keeps the aspect; radius rounds corners. */
 void kui_image(KuiCtx *ctx, uint64_t id, const KuiSpec *spec);

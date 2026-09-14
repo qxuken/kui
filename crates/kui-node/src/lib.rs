@@ -873,6 +873,26 @@ impl Ctx {
         self.take_events(pending);
     }
 
+    /// The same driver reports that a `stop` it drained landed on a
+    /// playback still running, `at` seconds in: a one-shot `<audio>` that
+    /// went away without `finish` is named in a `truncated-playback`
+    /// warning (`warnings()`); any other stop reports nothing.
+    #[napi]
+    pub fn audio_truncated(&mut self, playback: f64, at: f64) {
+        self.core.audio_truncated(PlaybackId(playback as u64), at);
+    }
+
+    /// The same driver reports that its device refused a `play` it
+    /// drained: a tagged playback becomes a `sound` event with phase
+    /// `refused` in `pollEvents`, and the node that asked is named in a
+    /// `playback-refused` warning either way.
+    #[napi]
+    pub fn audio_refused(&mut self, playback: f64) {
+        self.core.audio_refused(PlaybackId(playback as u64));
+        let pending = self.core.take_pending_events();
+        self.take_events(pending);
+    }
+
     // -- Windows (headless) -----------------------------------------------
     // A `KuiWindow`'s runner applies these itself; a bare `Ctx` hands them
     // back so a driver or a test can see what a frame asked for.

@@ -1021,6 +1021,20 @@ pub const DOORS: &[Door] = &[
         lua: No(GUEST),
         doc: "The device reports a playback over.",
     },
+    Door {
+        rust: "Core::audio_truncated",
+        c: Is("kui_audio_truncated"),
+        node: Is("Ctx.audioTruncated"),
+        lua: No(GUEST),
+        doc: "The device reports a stop that cut a playback short — a one-shot node's removal becomes `truncated-playback`.",
+    },
+    Door {
+        rust: "Core::audio_refused",
+        c: Is("kui_audio_refused"),
+        node: Is("Ctx.audioRefused"),
+        lua: No(GUEST),
+        doc: "The device reports a play it would not take — a `refused` sound event and `playback-refused`.",
+    },
     // -- The runner's options (`Launcher` in Rust, `WindowOptions` in Node,
     // `kui_run_with` in C). One row for the set, since they are one
     // decision: what a window opens as.

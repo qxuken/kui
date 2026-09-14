@@ -68,8 +68,9 @@ headings — C12, C13 and C14, each waiting for a view that wants it — B1a
 from the ABI-and-bindings audit of 2026-09-10 (a table declined with the
 condition that would build it), and F36, which fell out of building the
 last two of the four entries the two alpha.9 field reports and the
-bake-off produced, and which is filed rather than built on purpose (the
-only host driving its own audio device today is the runner). Everything
+bake-off produced, and which was filed rather than built on purpose (the
+only host driving its own audio device today is the runner) — **built
+2026-09-14**, once the round it waited behind was closed. Everything
 else that has been filed has shipped: the six the round of 2026-09-11 took
 together — V1, D1a, D2a, T2, C26's last two steps and E3, each in the
 archive under its round with what the building settled on top; the
@@ -562,9 +563,26 @@ new one.
 **All four, F32–F35, were built on 2026-09-08** and moved whole to
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md#from-two-alpha9-field-reports-and-a-bake-off-2026-09-08)
 before the alpha.10 tag. What stays here is F36, which fell out of
-building the last two of them and is in neither report.
+building the last two of them and is in neither report — **done
+2026-09-14**.
 
-### `.` F36 — A host driving its own audio device can report an end and nothing else
+### `.` F36 — A host driving its own audio device can report an end and nothing else — **done (2026-09-14)**
+
+**Built 2026-09-14, as the fix line says — with one correction to it.**
+`kui_audio_truncated(ctx, playback, at)` and `kui_audio_refused(ctx,
+playback)` beside `kui_audio_ended` (the refusal absorbs the pending
+`refused` event as `ended` does); `audioTruncated` / `audioRefused`
+beside `audioEnded` on Node's `Ctx` — not on `core_methods!`, where the
+entry put them: `audioEnded` was never there either, since a `KuiWindow`'s
+device is the runner's and these are the custom driver's answers. Two
+rows in `schema::DOORS` (Lua: a guest), the walk in `surface.c` calls
+both and checks a refusal is one warning and a truncation on an
+imperative stop none, and one test per binding drives the truncation
+onto the node and the refusal into the event queue and the warning.
+Seen on the way and left: `kui_key_of` / `keyOf` answer 0 / null for an
+`audio` node's label — the element is declared outside `open`, so its
+label is not in the index; `kui_audio` returns the key, and the warning
+carries it, so nothing here needed it.
 
 Found reviewing F34 and F35 together, and in neither report. A host that
 drains `take_audio_commands` and drives a device itself — which is the
@@ -3864,7 +3882,10 @@ AR49 first of all if the alpha.12 notes go out before the rest, since
 its first line is the CHANGELOG contradicting itself on the frame
 version (**AR49 done 2026-09-14**, the reused ids retired as `B1a` /
 `D1a` / `D2a` with a test). The `~` and `.` entries between wait for
-the defects.
+the defects. With the round closed, the unconditioned `.` entry left
+was F36 (**done 2026-09-14** — the two audio answers in C and Node);
+what remains is conditioned (C12–C14, V2–V8), decided as it stands
+(C27), or by hand on a Mac (W15).
 Before it, the third editor-and-mux round, filed 2026-09-13 above,
 in the order its entries argue for: C32 first (every mono glyph on a
 machine without Noto Sans Mono is whatever face cosmic-text's fallback

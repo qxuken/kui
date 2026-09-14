@@ -673,6 +673,88 @@ mod audio_headless {
         ptr: "music".as_ptr(),
         len: 5,
     };
+
+    /// The two answers a host with its own device owes besides `ended`
+    /// (backlog F36), which only the runner could give before: a stop it
+    /// found still playing names the one-shot node that went away in
+    /// `truncated-playback`, and a play its device refused is a `refused`
+    /// sound event plus `playback-refused` on the node — the same
+    /// warnings the runner raises, through the C door.
+    #[test]
+    fn a_c_host_s_device_reports_a_truncation_and_a_refusal() {
+        let ctx = kui_ctx_new();
+        kui_set_diagnostics(ctx, true);
+        let wav = b"RIFF....WAVE";
+        let sound = kui_sound_add(ctx, wav.as_ptr(), wav.len());
+        let one_shot = KuiAudio {
+            src: sound,
+            volume: 1.0,
+            looped: 0,
+            paused: 0,
+            finish: 0,
+        };
+        let frame = |ctx: *mut KuiCtx, declare: bool| -> u64 {
+            kui_frame_begin(ctx, 200.0, 100.0, 1.0);
+            let node = if declare {
+                kui_audio(ctx, ks("jingle"), &one_shot, kui_value_str(ks("jingle")))
+            } else {
+                0
+            };
+            kui_frame_finish(ctx);
+            node
+        };
+        let mut out = [KuiAudioCommand::default(); 8];
+        let mut warnings = [KuiWarning {
+            code: ks(""),
+            key: 0,
+            message: ks(""),
+        }; 8];
+        let codes = |ctx: *mut KuiCtx, warnings: &mut [KuiWarning; 8]| -> Vec<String> {
+            let n = kui_take_warnings(ctx, warnings.as_mut_ptr(), warnings.len());
+            warnings[..n]
+                .iter()
+                .map(|w| kstr(w.code).into_owned())
+                .collect()
+        };
+
+        // Declared once, gone the next frame: a stop the device answers
+        // for as "still running" is the truncation warning, on the node.
+        let node = frame(ctx, true);
+        assert_ne!(node, 0);
+        assert_eq!(kui_take_audio_commands(ctx, out.as_mut_ptr(), out.len()), 1);
+        let playback = out[0].playback;
+        frame(ctx, false);
+        assert_eq!(kui_take_audio_commands(ctx, out.as_mut_ptr(), out.len()), 1);
+        assert_eq!(out[0].kind, 2, "a stop");
+        assert!(
+            codes(ctx, &mut warnings).is_empty(),
+            "no device has answered"
+        );
+        kui_audio_truncated(ctx, playback, 0.5);
+        assert_eq!(codes(ctx, &mut warnings), ["truncated-playback"]);
+        assert_eq!(warnings[0].key, node);
+        assert!(kstr(warnings[0].message).contains("0.50s"));
+
+        // Declared again, and this time the device will not take it: the
+        // tag comes back as a refused sound event, the node is warned.
+        let node = frame(ctx, true);
+        assert_eq!(kui_take_audio_commands(ctx, out.as_mut_ptr(), out.len()), 1);
+        let playback = out[0].playback;
+        kui_audio_refused(ctx, playback);
+        let mut ev = KuiEvent::default();
+        assert!(kui_poll_event(ctx, &mut ev));
+        let payload = unsafe { &*ev.payload };
+        assert_eq!(payload.0.get("kind").and_then(Value::as_str), Some("sound"));
+        assert_eq!(
+            payload.0.get("phase").and_then(Value::as_str),
+            Some("refused")
+        );
+        assert_eq!(payload.0.get("tag").and_then(Value::as_str), Some("jingle"));
+        assert!(!kui_poll_event(ctx, &mut ev), "one event");
+        assert_eq!(codes(ctx, &mut warnings), ["playback-refused"]);
+        assert_eq!(warnings[0].key, node);
+        kui_ctx_free(ctx);
+    }
 }
 
 #[cfg(test)]
