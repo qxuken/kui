@@ -275,29 +275,39 @@ fn responder_row(
     row
 }
 
-/// Removes the rows AppKit appended to an Edit menu — everything past
-/// the `own` rows kui put there.
+/// Keeps, of the rows AppKit appended to an Edit menu, the two the
+/// runner made work, and removes the two it cannot.
 ///
 /// AppKit recognises a bar's Edit menu by its head's title in
 /// `setMainMenu:` of a root it has not seen, and appends a separator,
 /// Writing Tools ▸, AutoFill ▸, Start Dictation and Emoji & Symbols
-/// (backlog W15, checked by hand on macOS 26.6). Every one is inert in
-/// a kui window, and three of them are inert *quietly*: the palette opens
-/// at the caret and the emoji picked in it never arrives, because winit's
-/// view commits an `insertText:` only inside an IME composition
-/// (`view.rs`, `insert_text`); Start Dictation finds no responder that
-/// implements `startDictation:` and does nothing; the Writing Tools panel
-/// opens beside the selection and every tool in it does nothing, because
-/// the view answers `selectedRange` with `NSNotFound` and
-/// `attributedSubstringForProposedRange:` with nil; AutoFill greys its
-/// own rows. A row that opens a picker and drops the pick is worse than
-/// no row, so they go. Removing them holds: AppKit appends in the scan
-/// and not on open, and does not scan a root twice. The user defaults
-/// `NSDisabledCharacterPaletteMenuItem` / `NSDisabledDictationMenuItem`
-/// would hide two of the four and nothing hides the submenus, so one
-/// mechanism for all four is this one.
+/// (backlog W15, checked by hand on macOS 26.6). None of the four did
+/// anything in a winit window; Emoji & Symbols and Start Dictation do
+/// now, through the view answers `mod macos_text_input` installs, and
+/// stay. Writing Tools opens its panel and every tool in it does
+/// nothing, because the view cannot hand back the selected text; AutoFill
+/// greys its own rows, wanting an `NSTextField`. A row that opens a panel
+/// that cannot act is worse than no row, so those two go, with their
+/// separator when nothing is left after it. Removing them holds: AppKit
+/// appends in the scan and not on open, and does not scan a root twice.
 fn trim_edit(menu: &NSMenu, own: isize) {
-    while menu.numberOfItems() > own {
+    let kept = |item: &NSMenuItem| {
+        item.action()
+            .is_some_and(|a| a == sel!(orderFrontCharacterPalette:) || a == sel!(startDictation:))
+    };
+    let mut i = own;
+    while i < menu.numberOfItems() {
+        let item = menu.itemAtIndex(i).expect("counted");
+        if item.isSeparatorItem() || kept(&item) {
+            i += 1;
+        } else {
+            menu.removeItemAtIndex(i);
+        }
+    }
+    // The separator AppKit put before its rows, alone: nothing after it.
+    if menu.numberOfItems() == own + 1
+        && menu.itemAtIndex(own).is_some_and(|it| it.isSeparatorItem())
+    {
         menu.removeItemAtIndex(own);
     }
 }
@@ -717,13 +727,12 @@ impl MacMenuBar {
         // it stays the menu its Services entry was registered on. Moved
         // rather than copied, since an `NSMenu` has one supermenu and
         // re-parenting the menu itself is an exception; and a fresh root
-        // rather than winit's with two items appended — built that way
-        // so AppKit would scan it and append its rows to Edit, which it
-        // does only in `setMainMenu:` of a root it has not seen; W15 then
-        // found every one of those rows inert and `trim_edit` removes
-        // them, and the fresh root stays because one bar object with the
-        // app menu first is also what a declared bar is. A process
-        // built without winit's menu
+        // rather than winit's with two items appended, because AppKit
+        // scans a bar for the menus it knows by title only in
+        // `setMainMenu:` of a root it has not seen — and that scan is
+        // where Edit gains Emoji & Symbols and Dictation, which W15 made
+        // work (`trim_edit` keeps those two and removes the two that
+        // cannot). A process built without winit's menu
         // (`EventLoopBuilderExtMacOS::with_default_menu(false)`) gets the
         // one row nothing can do without.
         let root = NSMenu::new(mtm);

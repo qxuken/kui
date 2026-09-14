@@ -178,6 +178,29 @@ impl<A: App> Shell<A> {
         let _ = event_loop;
     }
 
+    /// Text the platform typed into a window from outside the keyboard —
+    /// an emoji picked from the palette, a dictated phrase — delivered
+    /// the way a composition's commit is (backlog W15,
+    /// `mod macos_text_input`): to the window whose view took it, at
+    /// its key target, as `InputEvent::Commit`. Collected here because
+    /// no winit event carries it; the override rang the loop.
+    pub(super) fn pump_text_input(&mut self, event_loop: &ActiveEventLoop) {
+        #[cfg(target_os = "macos")]
+        for (view, text) in macos_text_input::take_commits() {
+            let Some(i) = self
+                .panes
+                .iter()
+                .position(|p| macos_text_input::view_ptr(&p.window) == Some(view))
+            else {
+                continue;
+            };
+            let t = self.key_target(i);
+            self.dispatch(event_loop, t, InputEvent::Commit(text));
+        }
+        #[cfg(not(target_os = "macos"))]
+        let _ = event_loop;
+    }
+
     /// What choosing a stock context-menu item left for the host: the
     /// clipboard, which is this driver's in the same way Cmd-C's is (ADR
     /// 0017, decision 5). Copy and Cut arrive as the text to put there —

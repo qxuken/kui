@@ -3809,38 +3809,51 @@ and nothing has asked.
 
 ### `~` W15 — AppKit's own Edit rows arrive unchecked — **done (2026-09-14)**
 
-**Checked by hand the same day, and none of the four works — so all
-four go.** Driven on macOS 26.6 against `examples/rust/widgets/edit.rs`
-with a CGEvent click into the field, `AXPress` on each row, and the
-field's `AXValue` read back, with TextEdit beside it taking the same
-presses as the control. *Emoji & Symbols* opens the palette at the
-caret (the C17 rect is right) and the emoji clicked in it never
-arrives — winit's view commits an `insertText:` only inside a
-composition (`view.rs`, `insert_text`; master gates on
-`pending_commit`, the same effect), and the palette's insert is not
-one. *Start Dictation* does nothing: nothing in a winit window
-implements `startDictation:`; TextEdit's row retitles to Stop Dictation
-and the microphone popover comes up, kui's does neither. *Writing
-Tools* opens its panel beside the selection and every tool in it does
-nothing, since `selectedRange` is `{NSNotFound, 0}` and the substring
-ask answers nil. *AutoFill* greys its own rows (enabled in TextEdit).
-The guess was two working and two not; the two guessed working are
-the worse two, since an enabled row that opens a picker and drops the
-pick reads as the app's bug. The lever turned out finer than renaming
-the menu: a probe app showed AppKit appends the rows in
-`setMainMenu:`'s scan of a root it has not seen — keyed on the *head
-item's* title; a menu titled `Edit` under an untitled head gets
-nothing — and neither re-appends on open nor scans a root twice. So
-`macos_menu::trim_edit` removes everything past kui's rows after every
-`setMainMenu:`, standard and declared Edit alike, and the menu opened
-for real afterwards is seven rows. `NSDisabledCharacterPaletteMenuItem`
-/ `NSDisabledDictationMenuItem` as registered defaults hide those two
-and nothing hides the submenus, which is why one mechanism. Documented
-in `howto.md` and as *what checking W15 showed* under ADR 0030. Not
-built, with the condition on it: an `insertText:` that commits outside
-a composition would make the palette (and ⌃⌘Space, which no menu
-controls) type — a winit change or a runtime override of that method on
-winit's class from the runner — the day a report asks for the palette.
+**Checked by hand the same day — none of the four worked — and the two
+that could work were built the same evening.** Driven on macOS 26.6
+against `examples/rust/widgets/edit.rs` with a CGEvent click into the
+field, `AXPress` on each row, and the field's `AXValue` read back, with
+TextEdit beside it taking the same presses as the control. *Emoji &
+Symbols* opened the palette at the caret (the C17 rect is right) and
+the emoji clicked in it never arrived — winit's view commits an
+`insertText:` only inside a composition (`view.rs`, `insert_text`;
+master gates on `pending_commit`, the same effect), and the palette's
+insert is not one. *Start Dictation* did nothing: a bare
+`NSTextInputClient` view logging what AppKit sends found the gate —
+`isEditable` YES and a real `selectedRange`, both, or it stays silent —
+and winit's view answers neither. *Writing Tools* opened its panel and
+every tool in it did nothing, since `selectedRange` is `{NSNotFound,
+0}` and the substring ask answers nil. *AutoFill* greyed its own rows
+(enabled in TextEdit). The guess was two working and two not; the two
+guessed working were the worse two, an enabled row that opens a picker
+and drops the pick reading as the app's bug.
+
+So the runner answers what the two needed (`mod macos_text_input`):
+the three selectors overridden on winit's view class at runtime and
+the fourth added — Apple's protocol selectors, not winit's names —
+each on the class in the chain that defines it (the view's own class
+is AccessKit's runtime subclass, which defines none), winit's
+implementation running first. An `insertText:` with no marked text and
+no `keyDown:` on the stack is the platform's, not the keyboard's, and
+is dispatched as `InputEvent::Commit` to the window's key target;
+`selectedRange` and `isEditable` answer from per-frame stamps (editable
+while `Core::ime_rect` is `Some`, the caret and selection as UTF-16
+offsets into the focused stock editor's text). Verified by hand: the
+emoji lands in the field and in the document at the caret, and Start
+Dictation flips to Stop Dictation with the microphone over the caret.
+`macos_menu::trim_edit` keeps those two rows and removes Writing Tools
+and AutoFill after every `setMainMenu:`, standard and declared Edit
+alike — a probe app showed AppKit appends in the scan of an unseen
+root, keyed on the *head item's* title, and neither re-appends on open
+nor scans a root twice. Documented in `howto.md` and as *what checking
+W15 showed* under ADR 0030. Left, with the condition on it: **Writing
+Tools** would need the surrounding-text half of `NSTextInputClient`
+answered from the editor — `attributedSubstringForProposedRange:` with
+the selected text, `writingToolsBehavior`, and the result applied
+through `insertText:replacementRange:` with a real range, which winit
+ignores today — the day a view on kui wants it; and a dictation
+*revision* of committed words appends rather than replaces for the
+same ignored range.
 
 Setting a bar with a menu titled `Edit` makes AppKit append Writing
 Tools ▸, AutoFill ▸, Start Dictation… and Emoji & Symbols to it — to
@@ -3919,8 +3932,9 @@ the defects. With the round closed, the unconditioned `.` entry left
 was F36 (**done 2026-09-14** — the two audio answers in C and Node);
 what remains is conditioned (C12–C14, V2–V8) or decided as it stands
 (C27); W15, the one by-hand check, was **done 2026-09-14** — none of
-AppKit's four Edit rows works in a winit window, and the runner now
-trims them.
+AppKit's four Edit rows worked in a winit window, the runner now
+answers what Emoji & Symbols and Dictation need and trims the other
+two.
 Before it, the third editor-and-mux round, filed 2026-09-13 above,
 in the order its entries argue for: C32 first (every mono glyph on a
 machine without Noto Sans Mono is whatever face cosmic-text's fallback

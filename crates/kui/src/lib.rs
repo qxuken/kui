@@ -25,6 +25,9 @@ mod keys;
 mod macos_force;
 #[cfg(target_os = "macos")]
 mod macos_menu;
+/// The palette's and dictation's inserts, which winit's view drops (W15).
+#[cfg(target_os = "macos")]
+mod macos_text_input;
 mod menus;
 mod pane;
 mod popups;
@@ -460,6 +463,10 @@ impl Launcher {
         if let Some(bar) = &shell.native_menu_bar {
             bar.set_waker(Waker(event_loop.create_proxy()));
         }
+        // And so does an insert the platform makes from the palette or
+        // dictation: no winit event carries it.
+        #[cfg(target_os = "macos")]
+        macos_text_input::set_waker(Waker(event_loop.create_proxy()));
         event_loop.run_app(&mut shell)?;
         Ok(())
     }
@@ -483,6 +490,10 @@ impl Launcher {
         if let Some(bar) = &shell.native_menu_bar {
             bar.set_waker(Waker(event_loop.create_proxy()));
         }
+        // And so does an insert the platform makes from the palette or
+        // dictation: no winit event carries it.
+        #[cfg(target_os = "macos")]
+        macos_text_input::set_waker(Waker(event_loop.create_proxy()));
         // First pump delivers `resumed`, creating the window + renderer.
         let alive = pump_once(&mut event_loop, &mut shell);
         Ok(PumpRunner {
@@ -1264,6 +1275,10 @@ impl<A: App> Shell<A> {
                 winit::dpi::LogicalSize::new(r.w.max(1.0), r.h),
             );
         }
+        // And say what the platform's own text input may ask the view:
+        // whether there is somewhere to type, and where the caret is.
+        #[cfg(target_os = "macos")]
+        macos_text_input::stamp(window, &pane.core);
 
         let t_render = std::time::Instant::now();
         // The ground under the frame is a theme role like any other
@@ -1806,6 +1821,7 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
         // over and read back from the same place, for the same reason.
         self.pump_native_menu(event_loop);
         self.pump_menu_bar(event_loop);
+        self.pump_text_input(event_loop);
         self.settle_focus();
         self.dismiss_popups_if_deactivated();
         self.poll_audio();

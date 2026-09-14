@@ -232,28 +232,42 @@ field reports).
   `Option` reads a batch. A row stays lit while a sink would hear its
   chord, since a sink may bind it to anything.
 
-- **An Edit menu is only its rows** (backlog W15, checked by hand on
-  macOS 26.6 and closed the same day). AppKit appends Writing Tools ▸,
-  AutoFill ▸, Start Dictation and Emoji & Symbols to any bar's `Edit`
-  menu — the standard one and a declared one alike — and ADR 0030
-  guessed two of the four would type into a focused editor. None does.
-  Emoji & Symbols opens the palette at the caret and the emoji picked
-  in it never arrives: winit's view commits an `insertText:` only
-  inside an IME composition, and the palette's is not one. Start
-  Dictation does nothing — no responder in a winit window implements
-  `startDictation:` (TextEdit, same press, starts listening). Writing
-  Tools opens its panel beside the selection and every tool in it does
-  nothing, since the view answers `selectedRange` with `NSNotFound` and
-  the substring ask with nil. AutoFill greys itself. A row that opens a
-  picker and drops the pick is worse than no row, so the runner removes
-  everything AppKit appended after every `setMainMenu:`
-  (`macos_menu::trim_edit`); AppKit appends in the scan and not on
-  open, and never scans a root twice, so it stays gone. A declared bar
-  is now exactly its declaration for `Edit` too, which is what ADR 0030
-  said it was. Still winit's, not kui's: ⌃⌘Space opens the same palette
-  from the keyboard and its pick is dropped the same way; the only fix
-  is an `insertText:` that commits outside a composition, which is a
-  change to winit's view.
+- **The Emoji & Symbols palette and Dictation type into a kui window**
+  (backlog W15, checked by hand on macOS 26.6 and built the same day).
+  AppKit appends Writing Tools ▸, AutoFill ▸, Start Dictation and Emoji
+  & Symbols to any bar's `Edit` menu — the standard one and a declared
+  one alike — and ADR 0030 guessed two would type into a focused
+  editor. Driven, none did: the palette opened at the caret and the
+  emoji picked in it never arrived, because winit's view commits an
+  `insertText:` only inside an IME composition; Start Dictation did
+  nothing, because dictation starts only against a view answering
+  `isEditable` and a real `selectedRange`, and winit's answers neither
+  (measured on a bare `NSTextInputClient` view — with both it starts);
+  Writing Tools opened a panel whose every tool did nothing, since the
+  view cannot hand back the selected text; AutoFill greyed itself. The
+  runner now overrides those three selectors on winit's view class at
+  runtime and adds the fourth (`mod macos_text_input` — Apple's
+  protocol selectors, not winit's names; installed once, on the class
+  in the chain that defines each, which is not the view's own since
+  AccessKit subclasses it): winit's implementation runs first, and an
+  insert that arrives with no marked text and outside a `keyDown:` —
+  the palette's, ⌃⌘Space's, dictation's — is dispatched as
+  `InputEvent::Commit` to the window's key target, the channel a
+  composition's commit already takes, so a stock editor types it and a
+  sink hears a `text` event; `isEditable` and `selectedRange` answer
+  from facts the runner stamps per frame (editable while the core has
+  an IME anchor, the caret and selection as UTF-16 offsets into the
+  focused stock editor's text). Verified by hand: an emoji picked from
+  the menu lands in the field and in the document at the caret, and
+  Start Dictation flips to Stop Dictation with the microphone popover
+  over the caret. The two rows that cannot work are removed after every
+  `setMainMenu:` (`macos_menu::trim_edit`) — a declared `Edit` is now
+  its declaration plus the two rows that work. Still winit's: a
+  replacement range is ignored (its own TODO), so a dictation revision
+  of words already committed appends rather than replaces. This is the
+  first place the runner reaches into winit rather than around it; a
+  winit whose view stopped defining one of the selectors is skipped at
+  install, not crashed.
 
 - **A held drag follows its scroller, and Shift extends** (backlog C39,
   [ADR 0029](docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md),

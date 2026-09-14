@@ -77,10 +77,11 @@ date: 2026-09-14
    Select All) and **Window** (Minimize ⌘M, Zoom, Enter Full Screen,
    Bring All to Front) beside it, the Window menu registered as
    `NSApp.windowsMenu`. AppKit adds the rest to Window: Fill, Center and
-   the tiling submenus. What it adds to Edit — Writing Tools, AutoFill,
-   Dictation, Emoji & Symbols — the runner removes again, since none of
-   the four does anything in a kui window (*what checking W15 showed*,
-   below). It goes up at the first pump, comes back when an app that
+   the tiling submenus. Of what it adds to Edit, Emoji & Symbols and
+   Dictation stay and type into the window — through view answers the
+   runner installs on winit's view, since winit's own drop them — and
+   Writing Tools and AutoFill are removed again, since neither can act
+   in a kui window (*what checking W15 showed*, below). It goes up at the first pump, comes back when an app that
    declared a bar declares an empty one, and is what the platform shows
    while a core draws its own bar — the platform's standard menus above,
    the app's drawn ones in the window, never two copies of the app's.
@@ -98,10 +99,10 @@ date: 2026-09-14
    `validateMenuItem:` answers a declared row with its own enabled flag.
    Declaring `View` or `Help` was already this (ADR 0018, *what running
    it showed*): macOS adds rows to menus it knows by title, and a
-   declared bar was never only its declaration. A declared `Edit` *is*
-   only its declaration, since 2026-09-14: the rows AppKit appends to it
-   are the four that do nothing here, and they are trimmed from a
-   declared Edit exactly as from the standard one.
+   declared bar was never only its declaration. A declared `Edit` is,
+   since 2026-09-14, its declaration plus the two appended rows that
+   work — Emoji & Symbols and Dictation — with the two that cannot
+   trimmed from it exactly as from the standard one.
 
 3. **The standard Edit menu's rows are chords, not roles.** Choosing
    Copy — by mouse or by the ⌘C AppKit consumed — *replays* ⌘C: the
@@ -216,47 +217,76 @@ rows but not the palettes they open. Driven by hand on macOS 26.6 against
 `examples/rust/widgets/edit.rs`, with TextEdit beside it as the control
 for the same presses, and read back through the field's `AXValue`:
 
-- **Emoji & Symbols** opens the palette, anchored at the field's caret
+- **Emoji & Symbols** opened the palette, anchored at the field's caret
   (kui's `firstRectForCharacterRange` answer, the C17 rect, is right).
-  Clicking an emoji closes the palette and nothing arrives — no
+  Clicking an emoji closed the palette and nothing arrived — no
   `changed`, the field unchanged. winit's view commits an `insertText:`
   only when it has marked text (0.30.13 `view.rs`, `insert_text`; master
   gates on a `pending_commit` from a composition session instead, the
   same effect), and the palette's insert is not a composition. AppKit
-  delivered it; winit dropped it. The same is true of the palette opened
-  from the keyboard (⌃⌘Space), which no menu controls.
-- **Start Dictation** does nothing: the row's `startDictation:` walks
-  the responder chain and nothing in a winit window implements it. In
-  TextEdit the same `AXPress` retitles the row to Stop Dictation and
-  puts the microphone popover up; in kui the row keeps its title and no
-  microphone appears.
-- **Writing Tools** opens its panel beside the selection, and every
-  tool in it does nothing — the view answers `selectedRange` with
+  delivered it; winit dropped it. The same was true of the palette
+  opened from the keyboard (⌃⌘Space), which no menu controls.
+- **Start Dictation** did nothing. In TextEdit the same `AXPress`
+  retitled the row to Stop Dictation and put the microphone popover up;
+  in kui the row kept its title and no microphone appeared. A bare
+  `NSTextInputClient` view shaped like winit's, logging every message
+  AppKit sent it, found the gate: dictation probes the responder for
+  `isEditable` and reads `selectedRange`, and starts only when the first
+  answers YES **and** the second is a real range — with either missing
+  it stays silent, with both the row flips and the microphone comes up.
+  winit's view answers neither (its `selectedRange` is `{NSNotFound,
+  0}` by design). The row's `startDictation:` never reaches the view
+  even when the view implements it: AppKit handles it and asks.
+- **Writing Tools** opened its panel beside the selection, and every
+  tool in it did nothing — the view answers `selectedRange` with
   `{NSNotFound, 0}` and `attributedSubstringForProposedRange:` with nil,
-  so the panel has no text to work on. Summary, clicked, closes the
-  panel with no result.
-- **AutoFill** greys its three rows itself (enabled in TextEdit): they
+  so the panel had no text to work on; it also probes for
+  `writingToolsBehavior` and `willBeginWritingToolsSession:`. Summary,
+  clicked, closed the panel with no result.
+- **AutoFill** greyed its three rows itself (enabled in TextEdit): they
   validate against a text-input responder the view is not.
 
-So none of the four works, and the two that "most likely" would are the
-worse two: an enabled row that opens a picker and drops the pick reads
-as a bug in the app. The lever the entry named was renaming the menu;
-the finer one, found the same day with a probe app, is that AppKit
-appends the rows in `setMainMenu:`'s scan of a root it has not seen —
-recognised by the *head item's* title, a menu merely titled `Edit` under
-an untitled head gets nothing — and neither re-appends on open nor
-scans a root twice. `macos_menu::trim_edit` removes everything past the
-rows kui put there, after every `setMainMenu:`, for the standard Edit
-and a declared one alike; opened for real afterwards, the menu is seven
-rows. The user defaults `NSDisabledCharacterPaletteMenuItem` and
-`NSDisabledDictationMenuItem` would have hidden those two rows and
-nothing hides the two submenus, so one mechanism does all four.
+So none of the four worked, and the two that "most likely" would were
+the worse two: an enabled row that opens a picker and drops the pick
+reads as a bug in the app. The entry's lever was renaming the menu; a
+probe app found a finer one — AppKit appends the rows in `setMainMenu:`'s
+scan of a root it has not seen, recognised by the *head item's* title (a
+menu merely titled `Edit` under an untitled head gets nothing), and
+neither re-appends on open nor scans a root twice — so the rows can be
+removed after the set and stay removed. The user defaults
+`NSDisabledCharacterPaletteMenuItem` and `NSDisabledDictationMenuItem`
+would hide those two rows and nothing hides the two submenus.
 
-What would make Emoji & Symbols work is an `insertText:` that commits
-outside a composition — a change to winit's view, or a runtime override
-of that one method on winit's class from kui's runner. Neither is
-built: the first is upstream, the second is patching a dependency's
-ObjC class, and no report has asked for the palette. Dictation and
-Writing Tools need `selectedRange` and the substring ask answered from
-the editor, which is the surrounding-text half of `NSTextInputClient`
-winit's TODO names and no window on kui has wanted.
+**And what building it showed, the same day.** The two rows that could
+work were made to: the probe view had shown what each needed, and the
+selectors are Apple's protocol selectors, so the runner overrides them
+on winit's view class at runtime (`mod macos_text_input`,
+`method_setImplementation` / `class_addMethod`) — the first thing in the
+runner that reaches into winit rather than around it. `keyDown:` is
+wrapped to count depth, because ordinary typing also passes through
+`insertText:` (winit's `keyDown:` calls `interpretKeyEvents:` and makes
+`KeyboardInput` of it); `insertText:replacementRange:` runs winit's and
+then, with no marked text and no key press on the stack, queues the
+string for the runner, which dispatches it as `InputEvent::Commit` to
+the window's key target — never twice, since winit commits exactly when
+it had marked text; `selectedRange` is replaced and `isEditable` added,
+both answering from facts the runner stamps per frame (editable while
+`Core::ime_rect` is `Some`, the caret and selection as UTF-16 offsets
+into the focused stock editor's text, recounted only when the editor's
+key, version, caret or selection moved). Two traps: the view's class is
+not winit's — AccessKit subclasses it at runtime
+(`AccessKitSubclassOfWinitView`) and defines none of these selectors, so
+the override walks the chain to the class that defines each and patches
+*that* one, never an inherited `NSView` method; and the first synthetic
+keystroke after a launch is dropped by the probe, not the window. With
+it, an emoji picked from the menu lands in the field and in the
+document at the caret, ⌃⌘Space's does too, and Start Dictation flips to
+Stop Dictation with the microphone over the caret. `macos_menu::trim_edit`
+now keeps those two rows and removes Writing Tools and AutoFill, for the
+standard Edit and a declared one alike. A dictation revision of words
+already committed arrives with a replacement range winit ignores (its
+own TODO), so it appends rather than replaces. Writing Tools would need
+the surrounding-text half of the protocol answered from the editor —
+the selected text back, `writingToolsBehavior`, and a real range on the
+insert that applies its result — a feature, filed under W15's outcome
+with its condition; AutoFill wants an `NSTextField` and is out of reach.

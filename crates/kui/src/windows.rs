@@ -360,6 +360,10 @@ impl<A: App> Shell<A> {
         macos_force::configure(&window);
         window.set_visible(true);
         window.set_ime_allowed(true);
+        // Answer the palette and dictation, which winit's view does not
+        // (W15); the class is patched once, the view registered per window.
+        #[cfg(target_os = "macos")]
+        macos_text_input::attach(&window);
         window.request_redraw();
         let appearance = appearance_of(&window);
         self.panes.push(Pane {
@@ -487,6 +491,8 @@ impl<A: App> Shell<A> {
         self.panes[i].core.window_closed(id);
         let events = self.panes[i].core.take_pending_events();
         let cmds = self.panes[i].core.take_window_commands();
+        #[cfg(target_os = "macos")]
+        macos_text_input::detach(&self.panes[i].window);
         self.panes.remove(i);
         if let Some(j) = hand_back.and_then(|o| self.pane_of(o)) {
             self.panes[j].os_focused = true;
