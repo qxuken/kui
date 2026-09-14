@@ -49,7 +49,7 @@ pass on what a press made, Node's surface aimed at the window it is
 handed for, `<text>`'s rows closed, one token-miss policy, Cut's
 `changed`, one spec pipeline for every door, the focus stamp and the
 reader's gates — with the amendment on B1a whose condition that round
-met, and **B1a, AR40, AR49, AR27 and AR46 built the same day** (AR50, the
+met, and **B1a, AR40, AR49, AR27, AR46 and AR47 built the same day** (AR50, the
 [in] rule's unkept promise, filed from under AR27); C31, found
 the same day building the tokens (Node's corpus adapter disagreeing with
 the reference on one scene when run alone — **done the same evening**:
@@ -3341,7 +3341,42 @@ release without failing anything.
 `surface.c`, with an exempt list and the reason per line; the walk's
 comment made true.
 
-### `.` AR47 — Coverage is pinned for elements; 31 generic rows, `animate` among them, are in no scene and no test
+### `.` AR47 — Coverage is pinned for elements; 31 generic rows, `animate` among them, are in no scene and no test — **done (2026-09-14)**
+
+**All four built, 2026-09-14.** The coverage pin is in the Node suite,
+the binding that spells a prop by its schema name: every generic
+`PROPS` row is written as `name:` in some scene builder's source
+(`SCENE_TREES[x].toString()`), or is in `UNCOVERED_PROPS` with a reason
+— one entry, `font`, since the corpus carries no font bytes (AR48's
+fixture). Not a claim list: the source is what the scene declares, and
+the other three adapters then have to produce the same bytes. Forty
+rows were missing in that form (the review's thirty-one plus nine that
+Rust scenes reached through a stock widget), and the **`sampler`
+scene** declares them all on four nodes in four adapters — a card with
+the size ceilings, `center`, the four corner radii, an offset shadow,
+the hover / pressed / focus colours, a hover group, `initial_focus`,
+`accent`, a pointer cursor, `selected` (on a `tab`, the role that
+reports it) and `expanded`, the hover / layout / force-click tags, a
+click and a hover sound, `animate`, and an eased, delayed, alternating
+keyframe run with an entrance read 60 ms in so the easing, the delay
+and the direction are in the digest; a window-drag strip; a focus
+region aligned both ways; a text with `max_lines`, `ellipsis`, both
+decorations and a feature string; a `line` with a caret and a selection
+anchor. Found on the way: Lua's `direction` is the only spelling of
+`repeat` (a keyword; documented already). `tests/anim.rs::
+an_animate_node_owes_a_frame_while_it_is_declared` pins the row
+(mutation-checked against `Tree::any_animate`). The Node generic-prop
+test reads each prop back through `nodes()` where the snapshot carries
+it — a `READBACK` table of thirty-three rows: sizings, floors and
+ceilings, gap, wrap, both alignments, `bg`, the four corners each
+alone, opacity, `center`, the five flags, the eight handlers by name,
+the role — so a value under a neighbour's id fails where "the bytes
+changed and it lowered" could not tell; on the way the snapshot's
+floor doc was made honest (a `fit` floor reads as the number the fit
+pass wrote back, not as the word). `bench-check.sh` guards
+`frame_10k_rects_with_access_tree` and `list_10k_rows_virtual` (seven
+rows) and takes `KUI_BENCH=<file>` for the other bench files, whose
+rows are read and not judged.
 
 `the_corpus_covers_every_hand_written_row` iterates `CUSTOM` and
 `ELEMENTS` (`tests/conformance.rs:136-183`). Absent from every scene in
@@ -3588,7 +3623,9 @@ table with AR26, AR27 and AR40 beside it (**B1a done 2026-09-14** — the
 table, its four pins and the one-line rows; **AR40 done 2026-09-14**;
 **AR27 done 2026-09-14**, `KuiRunConfig` under ABI 16 and the
 context's core handed over through `Launcher::core`), AR46–AR48 for
-the tests (**AR46 done 2026-09-14**, the walk complete and pinned), and
+the tests (**AR46 and AR47 done 2026-09-14**: the walk complete and
+pinned; the `sampler` scene, the `animate` test, the `nodes()` readback
+and two more guarded rows), and
 AR49 first of all if the alpha.12 notes go out before the rest, since
 its first line is the CHANGELOG contradicting itself on the frame
 version (**AR49 done 2026-09-14**, the reused ids retired as `B1a` /

@@ -1025,7 +1025,8 @@ test with a bound on it, so the next inline field has a number to fail against
 rather than a release audit to wait for. A fat struct is not the only way to
 lose a frame, though, so there is a second guard for the case that test cannot
 see: `scripts/bench-check.sh` benches HEAD against the previous `v*` tag in a
-worktree and fails if one of five frame benches is more than 10% slower. It is
+worktree and fails if one of seven frame benches is more than 10% slower
+(`KUI_BENCH=stream` reads another bench file's rows, unjudged). It is
 run before tagging rather than in CI — the docker runner is too weak to
 measure a frame and would false-fail — and it prints the table above with the
 run's own medians, so re-measuring these numbers is that same command.

@@ -616,6 +616,43 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         // is over it in phase 0; the popover closes in phase 1 and reopens
         // in phase 2, which puts it over the toast. The rows overflow so
         // the page has a bar for the popover to cover.
+        // `conformance::build_sampler` (backlog AR47): the generic rows no
+        // other scene declares, every one by its snake_case schema name —
+        // `direction` for `repeat`, which is a Lua keyword.
+        "sampler" => format!(
+            r#"
+            return column {{ pad = 8, gap = 6,
+              row {{ key = "card", width = 120, height = 40, max_width = 100, max_height = 30,
+                     center = true, bg = 0x1b1d27ff,
+                     radius_tl = 8, radius_tr = 2, radius_br = 8, radius_bl = 2,
+                     shadow_color = 0x00000080, shadow_x = 3, shadow_y = 2, shadow_blur = 2,
+                     hoverable = true, hover_bg = 0x262a3aff, pressed_bg = 0x30364aff,
+                     hover_group = "cards", focusable = true, focus_bg = 0x2b3350ff,
+                     initial_focus = true, accent = true, cursor = "pointer",
+                     selected = true, expanded = "expanded",
+                     on_click = {{ kind = "card" }}, on_hover = {{ kind = "hov" }},
+                     on_layout = {{ kind = "lay" }}, on_force_click = {{ kind = "force" }},
+                     click_sound = {snd}, hover_sound = {snd}, animate = true,
+                     transition = 100, easing = "easeInOut", slide = true, delay = 20,
+                     direction = "alternate",
+                     keyframes = {{ {{ bg = 0x1b1d27ff }}, {{ at = 1, bg = 0x3b5bd4ff, radius = 12 }} }},
+                     enter = {{ dx = -12, opacity = 0 }},
+                     role = "tab", label = "Card",
+                     text("ab", {{ size = 12 }}) }},
+              row {{ key = "strip", width = 60, height = 10, bg = 0x3a3f52ff, window = "drag" }},
+              row {{ key = "dock", focus_region = true, gap = 4, height = 30,
+                     main_align = "center", cross_align = "end",
+                     row {{ key = "stop", width = 20, height = 20, bg = 0x2a2d3aff,
+                            focusable = true, role = "button", label = "Stop" }} }},
+              column {{ width = 60,
+                        text("a long line that is cut short", {{ size = 12, max_lines = 1, ellipsis = true,
+                              underline = true, strikethrough = true, features = "liga=0" }}) }},
+              row {{ key = "line", height = 16, role = "line", caret = 2, selection_anchor = 0,
+                     text("sel", {{ size = 12 }}) }},
+            }}
+        "#,
+            snd = f.sound.to_ffi(),
+        ),
         "layers" => format!(
             r#"
             local rows = {{ key = "page", width = {{ grow = 1 }}, height = {{ grow = 1 }},

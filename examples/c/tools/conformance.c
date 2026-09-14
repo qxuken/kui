@@ -1339,6 +1339,84 @@ static void conf_layers(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* conformance::build_sampler (backlog AR47): the generic rows no other
+ * scene declares, on four nodes. `center` is both alignments at
+ * KUI_CENTER here, as the Rust builder's center() is; the per-corner
+ * radii need per_corner set; the caret and the anchor ride value_set. */
+static void conf_sampler(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)phase;
+    KuiSpec outer = {.pad_l = 8, .pad_r = 8, .pad_t = 8, .pad_b = 8, .gap = 6};
+    kui_open(ui, &outer, NULL);
+    KuiValue *click = kui_value_map();
+    kui_value_map_set(click, KUI_STR("kind"), kui_value_str(KUI_STR("card")));
+    KuiValue *hover = kui_value_map();
+    kui_value_map_set(hover, KUI_STR("kind"), kui_value_str(KUI_STR("hov")));
+    KuiValue *layout = kui_value_map();
+    kui_value_map_set(layout, KUI_STR("kind"), kui_value_str(KUI_STR("lay")));
+    KuiValue *force = kui_value_map();
+    kui_value_map_set(force, KUI_STR("kind"), kui_value_str(KUI_STR("force")));
+    KuiKeyframe stops[] = {
+        {.set = KUI_KF_BG, .bg = 0x1b1d27ff},
+        {.set = KUI_KF_AT | KUI_KF_BG | KUI_KF_RADIUS, .at = 1, .bg = 0x3b5bd4ff, .radius = 12},
+    };
+    KuiSpec card = {
+        .dir = KUI_ROW,
+        .width = {KUI_FIXED, 120}, .height = {KUI_FIXED, 40},
+        .max_w = 100, .max_h = 30,
+        .main_align = KUI_CENTER, .cross_align = KUI_CENTER,
+        .bg = 0x1b1d27ff,
+        .per_corner = 1, .radius_tl = 8, .radius_tr = 2, .radius_br = 8, .radius_bl = 2,
+        .shadow_color = 0x00000080, .shadow_x = 3, .shadow_y = 2, .shadow_blur = 2,
+        .hoverable = 1, .hover_bg = 0x262a3aff, .pressed_bg = 0x30364aff,
+        .hover_group = KUI_STR("cards"),
+        .focusable = 1, .focus_bg = 0x2b3350ff, .initial_focus = 1,
+        .accent = 1,
+        .cursor = KUI_CURSOR_POINTER,
+        .selected = 1, .expanded = KUI_EXPANDED_EXPANDED,
+        .on_layout = layout, .on_force_click = force,
+        .click_sound = f->sound, .hover_sound = f->sound,
+        .animate = 1,
+        .transition_ms = 100, .easing = KUI_EASE_IN_OUT, .slide = 1,
+        .delay_ms = 20, .repeat = KUI_REPEAT_ALTERNATE,
+        .keyframes = stops, .keyframes_len = 2,
+        .enter = {.set = KUI_ENTER_OFFSET | KUI_ENTER_OPACITY, .dx = -12, .opacity = 0},
+        .role = KUI_ROLE_TAB, .label = KUI_STR("Card"),
+    };
+    kui_open_with(ui, KUI_STR("card"), &card, click, NULL, NULL, hover);
+    KuiTextStyle s12 = {.size = 12};
+    kui_text(ui, KUI_STR("ab"), &s12);
+    kui_close(ui);
+    kui_value_free(layout);
+    kui_value_free(force);
+    KuiSpec strip = {.dir = KUI_ROW, .width = {KUI_FIXED, 60}, .height = {KUI_FIXED, 10},
+                     .bg = 0x3a3f52ff, .window_role = KUI_WINDOW_DRAG};
+    kui_open_keyed(ui, KUI_STR("strip"), &strip, NULL);
+    kui_close(ui);
+    KuiSpec dock = {.dir = KUI_ROW, .focus_region = 1, .gap = 4, .height = {KUI_FIXED, 30},
+                    .main_align = KUI_CENTER, .cross_align = KUI_END};
+    kui_open_keyed(ui, KUI_STR("dock"), &dock, NULL);
+    KuiSpec stop = {.dir = KUI_ROW, .width = {KUI_FIXED, 20}, .height = {KUI_FIXED, 20},
+                    .bg = 0x2a2d3aff, .focusable = 1, .role = KUI_ROLE_BUTTON,
+                    .label = KUI_STR("Stop")};
+    kui_open_keyed(ui, KUI_STR("stop"), &stop, NULL);
+    kui_close(ui);
+    kui_close(ui);
+    KuiSpec narrow = {.width = {KUI_FIXED, 60}};
+    kui_open(ui, &narrow, NULL);
+    KuiTextStyle cut = {.size = 12, .max_lines = 1, .ellipsis = 1,
+                        .features = KUI_STR("liga=0"),
+                        .decoration = KUI_DECO_UNDERLINE | KUI_DECO_STRIKETHROUGH};
+    kui_text(ui, KUI_STR("a long line that is cut short"), &cut);
+    kui_close(ui);
+    KuiSpec line = {.dir = KUI_ROW, .height = {KUI_FIXED, 16}, .role = KUI_ROLE_LINE,
+                    .value_set = KUI_VALUE_CARET | KUI_VALUE_ANCHOR,
+                    .caret = 2, .selection_anchor = 0};
+    kui_open_keyed(ui, KUI_STR("line"), &line, NULL);
+    kui_text(ui, KUI_STR("sel"), &s12);
+    kui_close(ui);
+    kui_close(ui);
+}
+
 /* conformance::build_menu_bar: the application menu bar (ADR 0018) - a
  * declaration, and the widget that draws it. The rows are the KuiMenuItems
  * a context menu takes, one level down; `id` values are borrowed for the
@@ -1418,6 +1496,7 @@ static const ConfScene CONF_SCENES[] = {
     {"anchor", conf_anchor},
     {"scrollbar", conf_scrollbar},
     {"tokens", conf_tokens},
+    {"sampler", conf_sampler},
 };
 
 /* -- driving one scene --------------------------------------------------- */

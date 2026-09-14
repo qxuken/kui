@@ -7,6 +7,13 @@
 # list instead - see docs/BACKLOG.md.
 #
 #   scripts/bench-check.sh [base-ref] [divan filter...]
+#   KUI_BENCH=stream scripts/bench-check.sh [base-ref] [divan filter...]
+#
+# KUI_BENCH names the bench file (default `frame`, the one with guarded
+# rows; `stream`, `long_line`, `cells`, `editing`, `highlight` are the
+# others - every row of those is reported and none judged, since the
+# guard list is per bench and only `frame` has one). The README table at
+# the end is filled in for whichever rows that bench has.
 #
 # The base ref is checked out into a worktree under target/bench-base/ (kept
 # between runs, so its build cache survives; `git worktree remove
@@ -46,9 +53,14 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 tolerance="${KUI_BENCH_TOLERANCE:-10}"
-bench_file=crates/kui-core/benches/frame.rs
+bench="${KUI_BENCH:-frame}"
+bench_file=crates/kui-core/benches/$bench.rs
 base_dir=target/bench-base
 out_dir=target/bench-check
+if [ ! -f "$bench_file" ]; then
+  echo "bench-check: no such bench: $bench_file (KUI_BENCH names a file under crates/kui-core/benches/)" >&2
+  exit 2
+fi
 
 head_sha=$(git rev-parse HEAD)
 if [ $# -gt 0 ] && [ "$1" != "--" ]; then
@@ -70,7 +82,7 @@ if ! git diff --quiet HEAD -- crates/kui-core; then
   echo "bench-check: note: crates/kui-core has uncommitted changes; HEAD's side benches the working tree" >&2
 fi
 
-echo "bench-check: HEAD ${head_sha:0:7} against $base (${base_sha:0:7}), tolerance ${tolerance}% on the guarded rows"
+echo "bench-check: $bench: HEAD ${head_sha:0:7} against $base (${base_sha:0:7}), tolerance ${tolerance}% on the guarded rows"
 
 # Said before the benching rather than after it, because a loaded machine
 # will spend the benching minutes earning nothing. This sums the CPU of what
@@ -104,21 +116,21 @@ bench() { # side dir run [divan filter...]
   local side=$1 dir=$2 run=$3
   shift 3
   echo "bench-check: $side, run $run"
-  (cd "$dir" && cargo bench --quiet -p kui-core --bench frame -- --color never "$@") \
+  (cd "$dir" && cargo bench --quiet -p kui-core --bench "$bench" -- --color never "$@") \
     > "$out_dir/$side-$run.txt" 2>&1 \
     || { cat "$out_dir/$side-$run.txt"; echo "bench-check: $side run $run failed" >&2; exit 1; }
 }
 
 echo "bench-check: building both sides"
-(cd "$base_dir" && cargo bench --quiet -p kui-core --bench frame --no-run)
-cargo bench --quiet -p kui-core --bench frame --no-run
+(cd "$base_dir" && cargo bench --quiet -p kui-core --bench "$bench" --no-run)
+cargo bench --quiet -p kui-core --bench "$bench" --no-run
 
 bench base "$base_dir" 1 "$@"
 bench head . 1 "$@"
 bench base "$base_dir" 2 "$@"
 bench head . 2 "$@"
 
-git show "$base_sha:$bench_file" > "$out_dir/frame.rs.base"
+git show "$base_sha:$bench_file" > "$out_dir/$bench.rs.base"
 if git diff --quiet "$base_sha" HEAD -- "$bench_file"; then
   bench_file_differs=0
 else
@@ -130,22 +142,33 @@ os=$(uname -sr)
 command -v sw_vers >/dev/null 2>&1 && os="macOS $(sw_vers -productVersion)"
 machine_line="measured $(date +%F) on $(uname -m), $os, $(rustc -V | cut -d' ' -f1-2), release, steady-state warm caches"
 
-node - "$out_dir" "$base" "$tolerance" "$bench_file_differs" "$bench_file" "$machine_line" <<'EOF'
+node - "$out_dir" "$base" "$tolerance" "$bench_file_differs" "$bench_file" "$machine_line" "$bench" <<'EOF'
 const fs = require("fs");
-const [outDir, baseName, tolArg, differsArg, benchFile, machineLine] = process.argv.slice(2);
+const [outDir, baseName, tolArg, differsArg, benchFile, machineLine, bench] = process.argv.slice(2);
 const tolerance = Number(tolArg);
 const differs = differsArg === "1";
 
-const GUARDED = [
-  "frame_10k_rects",
-  "frame_1k_typical",
-  "frame_10k_rects_with_text_and_hits",
-  "deep_nesting_64_levels",
-  // Ten thousand leaf floats: what the float stack costs per float (ADR
-  // 0023), which the four above cannot see - C29 found +12% here while
-  // they read flat.
-  "frame_10k_segments",
-];
+// The guarded rows, per bench file. Only `frame` has any: the other
+// benches are read, not judged.
+const GUARDED_BY_BENCH = {
+  frame: [
+    "frame_10k_rects",
+    "frame_1k_typical",
+    "frame_10k_rects_with_text_and_hits",
+    "deep_nesting_64_levels",
+    // Ten thousand leaf floats: what the float stack costs per float (ADR
+    // 0023), which the four above cannot see - C29 found +12% here while
+    // they read flat.
+    "frame_10k_segments",
+    // The access tree over 10k nodes: the row 18cf953's cache is justified
+    // by, and the virtual list: the row the README's "a list costs a
+    // screenful" rests on. Neither was guarded until backlog AR47, and
+    // the class C29 found regressing was exactly the unguarded rows.
+    "frame_10k_rects_with_access_tree",
+    "list_10k_rows_virtual",
+  ],
+};
+const GUARDED = GUARDED_BY_BENCH[bench] || [];
 const UNIT = { ns: 1, "µs": 1e3, us: 1e3, ms: 1e6, s: 1e9 };
 
 // divan's table: "├─ name  fastest │ slowest │ median │ mean │ samples │ iters"
@@ -211,7 +234,7 @@ function reaches(all, start) {
   return seen;
 }
 const headItems = items(fs.readFileSync(benchFile, "utf8"));
-const baseItems = items(fs.readFileSync(`${outDir}/frame.rs.base`, "utf8"));
+const baseItems = items(fs.readFileSync(`${outDir}/${bench}.rs.base`, "utf8"));
 const changedItems = new Set();
 for (const [n, body] of headItems) if (baseItems.get(n) !== body) changedItems.add(n);
 for (const n of baseItems.keys()) if (!headItems.has(n)) changedItems.add(n);
@@ -311,5 +334,9 @@ if (failures.length) {
   console.log(`bench-check: FAIL - more than ${tolerance}% slower than ${baseName}, on rows steady enough to say so: ${failures.join(", ")}${unreadable.length ? `. ${unreadable.join(", ")} was too noisy to read either way` : ""} (logs in ${outDir}/)`);
   process.exit(1);
 }
-console.log(`bench-check: ok - none of the ${GUARDED.length} guarded rows is more than ${tolerance}% slower than ${baseName} (logs in ${outDir}/)`);
+if (GUARDED.length === 0) {
+  console.log(`bench-check: read - \`${bench}\` has no guarded rows, so nothing was judged; the table above is the comparison (logs in ${outDir}/)`);
+} else {
+  console.log(`bench-check: ok - none of the ${GUARDED.length} guarded rows is more than ${tolerance}% slower than ${baseName} (logs in ${outDir}/)`);
+}
 EOF

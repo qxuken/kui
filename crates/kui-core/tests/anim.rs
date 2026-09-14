@@ -196,6 +196,39 @@ fn request_frame_owes_exactly_one_frame() {
     assert!(!core.animating(), "and only one");
 }
 
+/// The `animate` row is `request_frame` as a declaration: the frame owes
+/// another for as long as a declared node carries it, and stops owing the
+/// frame after the last one that does — the class of regression C27
+/// measured as idle CPU, which until backlog AR47 no test in any binding
+/// pinned (the C struct round-trip alone touched the row).
+#[test]
+fn an_animate_node_owes_a_frame_while_it_is_declared() {
+    let mut core = Core::new();
+    let frame = |core: &mut Core, animate: bool| {
+        let mut ui = core.frame(Size::new(100.0, 100.0), 1.0);
+        let mut spec = NodeSpec::column().width(Sizing::Fixed(10.0));
+        if animate {
+            spec = spec.animate();
+        }
+        ui.with_keyed("node", spec, |_| {});
+        ui.finish();
+    };
+    frame(&mut core, false);
+    assert!(!core.animating());
+    frame(&mut core, true);
+    assert!(
+        core.animating(),
+        "a declared `animate` asks for the next frame"
+    );
+    frame(&mut core, true);
+    assert!(core.animating(), "and keeps asking while it is declared");
+    frame(&mut core, false);
+    assert!(
+        !core.animating(),
+        "the frame that stops declaring it stops asking — nothing is retained"
+    );
+}
+
 /// A row whose left half is keyframed between grow 0 and grow 1 against a
 /// grow-1 sibling; returns its laid-out width.
 fn frame_keyframed(core: &mut Core, now: Option<f64>, repeat: Repeat) -> f32 {

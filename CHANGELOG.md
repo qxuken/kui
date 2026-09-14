@@ -616,6 +616,21 @@ field reports).
 
 ### Fixed
 
+- **The corpus declares every generic row, and `animate` has a test**
+  (backlog AR47): a `sampler` scene in all four adapters carries the
+  forty generic props no other scene spelled — the corner radii, the
+  shadow offset, the hover / pressed / focus colours, a hover group, the
+  cursor, `selected` / `expanded`, the hover / layout / force-click
+  tags, the sounds, `animate`, an eased, delayed, alternating keyframe
+  run with an entrance read mid-flight, a window-drag strip, a focus
+  region, `max_lines` / `ellipsis` / the decorations / a feature string,
+  a caret and a selection anchor — and the Node suite holds every
+  generic prop to some scene's source (`font` exempt, with the reason).
+  `tests/anim.rs` pins that an `animate` node owes a frame while
+  declared and none after; the Node generic-prop test reads thirty-three
+  props back off the node snapshot, so a value under a neighbour's id
+  fails; `bench-check.sh` guards `frame_10k_rects_with_access_tree` and
+  `list_10k_rows_virtual` and takes `KUI_BENCH=<file>`.
 - **Every C prototype is called by a C program** (backlog AR46):
   `surface.c` opened with "every prototype in kui.h called once" and
   twenty-two were called by nothing in the tree — a door nobody calls

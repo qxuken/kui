@@ -2290,6 +2290,66 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
         },
     },
+    Scene {
+        name: "sampler",
+        doc: "The generic rows no other scene declares, on four nodes \
+              (backlog AR47): a card carrying the size ceilings, `center`, \
+              the four corner radii, an offset shadow, \
+              the hover / pressed / focus colours, a hover group, \
+              `initial_focus`, `accent`, a pointer cursor, `selected` and \
+              `expanded`, the hover and layout and force-click tags, a \
+              click and a hover sound, `animate`, and an eased, delayed, \
+              alternating keyframe run with an entrance — read 60 ms in, so \
+              the easing, the delay and the direction are in the quads; a \
+              window-drag strip; a focus region aligned both ways with one \
+              stop; a text with \
+              `max_lines`, `ellipsis`, both decorations and a feature \
+              string; and a `line` with a caret and a selection anchor. \
+              The pointer enters the card (its hover tag and sound) and \
+              clicks it (its sound), and the layout tag reports its rect. \
+              The Node suite holds every generic prop to some scene's \
+              source; this is the scene the rest land in.",
+        custom: &["key", "size"],
+        elements: &["box", "text"],
+        build: build_sampler,
+        env: NATIVE_CHROME,
+        steps: &[
+            Step::Time(0),
+            Step::Cursor(40, 30),
+            Step::MouseDown,
+            Step::MouseUp,
+            Step::Time(60),
+        ],
+        expect: Expect {
+            // The card, the strip, the region's stop, and the line's
+            // caret and its selection.
+            solid: 5,
+            shadows: 1,
+            images: 0,
+            segments: 0,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 6,
+            access: &[
+                "0 window ||",
+                "1 tab Card||",
+                "1 titleBar ||",
+                "1 button Stop||",
+                "1 staticText a long line that is cut short||",
+                "1 staticText sel||",
+            ],
+            // The layout tag from the first frame, the hover tag as the
+            // pointer entered, and the click; the hover sound and the
+            // click sound as two playbacks.
+            events: &["layout lay", "hover hov", "card -"],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &["play 1 0", "play 2 0"],
+            title: None,
+            always_on_top: false,
+        },
+    },
 ];
 
 /// The rows a virtual list builds, at the data indices it builds them at.
@@ -4672,6 +4732,120 @@ pub fn blocks(text: &str) -> Vec<(String, String)> {
 /// The rows the `layers` scene's scroller holds: enough to overflow the
 /// viewport, so it has a bar for the popover to cover.
 pub const LAYERS_ROWS: usize = 16;
+
+fn build_sampler(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
+    use crate::anim::{Easing, Repeat};
+    use crate::keyframes::Keyframe;
+    let tag = |k: &str| Value::map([("kind", Value::str(k))]);
+    ui.with(NodeSpec::column().pad(8.0).gap(6.0), |ui| {
+        let card = NodeSpec::row()
+            .width(Sizing::Fixed(120.0))
+            .height(Sizing::Fixed(40.0))
+            .max_width(100.0)
+            .max_height(30.0)
+            .center()
+            .bg(Color::hex(0x1b1d27ff))
+            .radius_tl(8.0)
+            .radius_tr(2.0)
+            .radius_br(8.0)
+            .radius_bl(2.0)
+            .shadow_color(Color::hex(0x00000080))
+            .shadow_x(3.0)
+            .shadow_y(2.0)
+            .shadow_blur(2.0)
+            .hoverable()
+            .hover_bg(Color::hex(0x262a3aff))
+            .pressed_bg(Color::hex(0x30364aff))
+            .hover_group("cards")
+            .focusable()
+            .focus_bg(Color::hex(0x2b3350ff))
+            .initial_focus()
+            .accent()
+            .cursor(crate::cursor::CursorShape::Pointer)
+            .selected(true)
+            .expanded(true)
+            .on_click(tag("card"))
+            .on_hover(tag("hov"))
+            .on_layout(tag("lay"))
+            .on_force_click(tag("force"))
+            .click_sound(f.sound)
+            .hover_sound(f.sound)
+            .animate()
+            .transition(100.0)
+            .easing(Easing::EaseInOut)
+            .slide()
+            .delay(20.0)
+            .repeat(Repeat::Alternate)
+            .keyframes(vec![
+                Keyframe::default().bg(Color::hex(0x1b1d27ff)),
+                Keyframe::default()
+                    .at(1.0)
+                    .bg(Color::hex(0x3b5bd4ff))
+                    .radius(12.0),
+            ])
+            .enter(Enter::from(-12.0, 0.0).opacity(0.0))
+            // A tab reports `selected` either way, where a button keeps
+            // the state to itself — so the row shows the flag landed.
+            .role(Role::Tab)
+            .label("Card");
+        ui.with_keyed("card", card, |ui| {
+            ui.text("ab", TextStyle::new(12.0));
+        });
+        ui.with_keyed(
+            "strip",
+            NodeSpec::row()
+                .width(Sizing::Fixed(60.0))
+                .height(Sizing::Fixed(10.0))
+                .bg(Color::hex(0x3a3f52ff))
+                .window_drag(),
+            |_| {},
+        );
+        ui.with_keyed(
+            "dock",
+            NodeSpec::row()
+                .focus_region()
+                .gap(4.0)
+                .height(Sizing::Fixed(30.0))
+                .main_align(Align::Center)
+                .cross_align(Align::End),
+            |ui| {
+                ui.with_keyed(
+                    "stop",
+                    NodeSpec::row()
+                        .width(Sizing::Fixed(20.0))
+                        .height(Sizing::Fixed(20.0))
+                        .bg(Color::hex(0x2a2d3aff))
+                        .focusable()
+                        .role(Role::Button)
+                        .label("Stop"),
+                    |_| {},
+                );
+            },
+        );
+        ui.with(NodeSpec::column().width(Sizing::Fixed(60.0)), |ui| {
+            ui.text(
+                "a long line that is cut short",
+                TextStyle::new(12.0)
+                    .max_lines(1)
+                    .ellipsis()
+                    .underline()
+                    .strikethrough()
+                    .features(crate::spec::FontFeatures::parse("liga=0")),
+            );
+        });
+        ui.with_keyed(
+            "line",
+            NodeSpec::row()
+                .height(Sizing::Fixed(16.0))
+                .role(Role::Line)
+                .caret(2)
+                .selection_anchor(0),
+            |ui| {
+                ui.text("sel", TextStyle::new(12.0));
+            },
+        );
+    });
+}
 
 fn build_layers(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
     // One wrapper the size of the window, as every binding's scene returns

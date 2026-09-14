@@ -85,8 +85,12 @@ pub struct NodeInfo {
     pub main_align: Align,
     pub cross_align: Align,
     pub wrap: bool,
-    /// The size floors and ceilings: a floor is `None` for the fit floor
-    /// (`Min::FIT`), and a ceiling `None` when unbounded.
+    /// The size floors and ceilings, as layout left them: a floor is the
+    /// declared px, or the number a `fit` floor resolved to in the fit
+    /// pass (the pass writes it back into the spec, so a declared `"fit"`
+    /// reads as its measurement here, not as the word); `None` only for a
+    /// fit floor the pass never measured. A ceiling is `None` when
+    /// unbounded.
     pub min_w: Option<f32>,
     pub min_h: Option<f32>,
     pub max_w: Option<f32>,

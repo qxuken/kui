@@ -81,12 +81,59 @@ test('protocol exports a version and the schema rows', () => {
   assert.ok(Object.keys(p.prop).length > 20);
 });
 
+// What the node snapshot (`nodes()`, ADR 0024) reads back for a prop
+// declared with its sample, where the snapshot carries that prop at all:
+// the check that the value landed *under its own id* (backlog AR47) — a
+// prop encoded under a neighbour's id still changes the bytes and still
+// lowers, and only a readback tells the two apart. The snapshot carries
+// the layout and paint spec, the flags and the handlers; a row it does
+// not carry (a sound, a cursor, an easing) has no reader here.
+const READBACK = {
+  width: (n) => n.width === '50%',
+  height: (n) => n.height === '50%',
+  // A `fit` floor reads as the number the fit pass resolved it to — the
+  // text's own width and height here — since the pass writes it back.
+  minWidth: (n) => n.minWidth > 0,
+  minHeight: (n) => n.minHeight > 0,
+  maxWidth: (n) => n.maxWidth === 12,
+  maxHeight: (n) => n.maxHeight === 12,
+  gap: (n) => n.gap === 12,
+  wrapChildren: (n) => n.wrap === true,
+  mainAlign: (n) => n.mainAlign === 'end',
+  crossAlign: (n) => n.crossAlign === 'end',
+  bg: (n) => n.bg === 0x3b5bd4ff,
+  radius: (n) => n.radius.every((r) => r === 12),
+  radiusTL: (n) => n.radius[0] === 12 && n.radius[1] === 0,
+  radiusTR: (n) => n.radius[1] === 12 && n.radius[0] === 0,
+  radiusBR: (n) => n.radius[2] === 12 && n.radius[1] === 0,
+  radiusBL: (n) => n.radius[3] === 12 && n.radius[2] === 0,
+  opacity: (n) => n.opacity === 0.5,
+  center: (n) => n.mainAlign === 'center' && n.crossAlign === 'center',
+  hoverable: (n) => n.flags.includes('hoverable'),
+  selectable: (n) => n.flags.includes('selectable'),
+  focusable: (n) => n.flags.includes('focusable'),
+  disabled: (n) => n.flags.includes('disabled'),
+  transition: (n) => n.flags.includes('transition'),
+  onClick: (n) => n.events.click?.kind === 'm',
+  onDrag: (n) => n.events.drag?.kind === 't',
+  onKey: (n) => n.events.key?.kind === 't',
+  onHover: (n) => n.events.hover?.kind === 't',
+  onContextMenu: (n) => n.events['context-menu']?.kind === 't',
+  onForceClick: (n) => n.events['force-click']?.kind === 't',
+  onLayout: (n) => n.events.layout?.kind === 't',
+  modal: (n) => n.events.modal?.kind === 't',
+  role: (n) => n.role === 'terminal',
+};
+
 // Every prop writes at least its own id, so declaring one has to change the
 // encoded bytes. That is the check the JSON transport used to provide by
 // disagreeing: it catches the `switch` arm that never got written, or the
-// name the encoder quietly falls through on.
-test('every generic schema prop reaches the stream and lowers', () => {
+// name the encoder quietly falls through on. And where the snapshot can
+// say so, the value is read back off the node it was declared on.
+test('every generic schema prop reaches the stream, lowers, and reads back where the snapshot carries it', () => {
   const { prop } = protocol();
+  for (const name of Object.keys(READBACK)) assert.ok(name in prop, `READBACK names ${name}, which is not a prop`);
+  let readBack = 0;
   for (const [name, def] of Object.entries(prop)) {
     if (def.kind === 'custom') continue;
     const value =
@@ -96,14 +143,23 @@ test('every generic schema prop reaches the stream and lowers', () => {
       def.target === 'style'
         ? box({ pad: 4, bg: '#101010' }, [text('sample', { size: 14, ...props })])
         : box({ pad: 4, bg: '#101010' }, [
-            box({ width: 60, height: 20, bg: '#333333', ...props }, [text('x', { size: 12 })]),
+            box({ width: 60, height: 20, bg: '#333333', ...props }, [text('x', { size: 12 })], 'probe'),
           ]);
     assert.ok(
       !encoded(build({ [name]: value })).equals(encoded(build({}))),
       `${name}: the encoder dropped it — the stream is the same as without it`,
     );
-    assertLowers(name, () => build({ [name]: value }));
+    const { ctx } = assertLowers(name, () => build({ [name]: value }));
+    if (name in READBACK) {
+      ctx.setInspect(true);
+      ctx.frame(320, 240, 1, build({ [name]: value }));
+      const probe = ctx.nodes().find((n) => n.label === 'probe');
+      assert.ok(probe, `${name}: the probe node is in the snapshot`);
+      assert.ok(READBACK[name](probe), `${name}: declared as ${JSON.stringify(value)}, the snapshot reads ${JSON.stringify(probe)}`);
+      readBack++;
+    }
   }
+  assert.equal(readBack, Object.keys(READBACK).length);
 });
 
 // `alwaysOnTop` is a root declaration with no node, like `title`, and a
@@ -3551,6 +3607,71 @@ SCENE_TREES.layers = (_fx, phase) => {
 // (ADR 0017). One row on the container is the whole declaration — the
 // labels inside say nothing about selection.
 const SELECTION_LINES = ['one', 'two', 'three'];
+// `conformance::build_sampler` (backlog AR47): the generic rows no other
+// scene declares. Every prop below is spelled by its schema name, which is
+// what the coverage test after the corpus reads.
+SCENE_TREES.sampler = (fx) =>
+  root({}, [
+    box({ pad: 8, gap: 6 }, [
+      box(
+        {
+          dir: 'row',
+          width: 120,
+          height: 40,
+          maxWidth: 100,
+          maxHeight: 30,
+          center: true,
+          bg: '#1b1d27',
+          radiusTL: 8,
+          radiusTR: 2,
+          radiusBR: 8,
+          radiusBL: 2,
+          shadowColor: '#00000080',
+          shadowX: 3,
+          shadowY: 2,
+          shadowBlur: 2,
+          hoverable: true,
+          hoverBg: '#262a3a',
+          pressedBg: '#30364a',
+          hoverGroup: 'cards',
+          focusable: true,
+          focusBg: '#2b3350',
+          initialFocus: true,
+          accent: true,
+          cursor: 'pointer',
+          selected: true,
+          expanded: 'expanded',
+          onClick: { kind: 'card' },
+          onHover: { kind: 'hov' },
+          onLayout: { kind: 'lay' },
+          onForceClick: { kind: 'force' },
+          clickSound: fx().sound,
+          hoverSound: fx().sound,
+          animate: true,
+          transition: 100,
+          easing: 'easeInOut',
+          slide: true,
+          delay: 20,
+          repeat: 'alternate',
+          keyframes: [{ bg: '#1b1d27' }, { at: 1, bg: '#3b5bd4', radius: 12 }],
+          enter: { dx: -12, opacity: 0 },
+          role: 'tab',
+          label: 'Card',
+        },
+        [text('ab', { size: 12 })],
+        'card',
+      ),
+      box({ dir: 'row', width: 60, height: 10, bg: '#3a3f52', window: 'drag' }, [], 'strip'),
+      box({ dir: 'row', focusRegion: true, gap: 4, height: 30, mainAlign: 'center', crossAlign: 'end' }, [
+        box({ dir: 'row', width: 20, height: 20, bg: '#2a2d3a', focusable: true, role: 'button', label: 'Stop' }, [], 'stop'),
+      ], 'dock'),
+      box({ width: 60 }, [
+        text('a long line that is cut short', { size: 12, maxLines: 1, ellipsis: true, underline: true, strikethrough: true, features: 'liga=0' }),
+      ]),
+      box({ dir: 'row', height: 16, role: 'line', caret: 2, selectionAnchor: 0 }, [text('sel', { size: 12 })], 'line'),
+    ]),
+  ]);
+
 SCENE_TREES.selection = () =>
   root({}, [
     box(
@@ -4210,6 +4331,32 @@ test('every corpus scene lowers the way kui-core does', (t) => {
       { id: 0, ...declared, nativeControls: declared.nativeControls && { x: 0, y: 0, ...declared.nativeControls } },
       `scene ${name}: env().window reads back differently than it was declared`,
     );
+  }
+});
+
+// The corpus covers every generic row, or says why not (backlog AR47).
+// `the_corpus_covers_every_hand_written_row` in kui-core holds `CUSTOM` and
+// `ELEMENTS` to the scenes' claims; the generic `PROPS` rows had no claim
+// list and thirty-one of them were in no scene. This is the pin for those,
+// at the binding that spells a prop by its schema name: every generic row
+// is written in some scene's source — `name:` in the JSX-object form — and
+// the other three adapters then have to agree on its bytes, which is what
+// a scene is for. Not a claim list: the source is what the scene declares.
+const UNCOVERED_PROPS = {
+  font: 'a registered font is a file, and the corpus carries no font bytes (backlog AR48 files the fixture)',
+};
+test('every generic schema prop is declared by some corpus scene (AR47)', () => {
+  const source = Object.values(SCENE_TREES).map((f) => f.toString()).join('\n');
+  const { prop } = protocol();
+  const missing = Object.entries(prop)
+    .filter(([name, def]) => def.kind !== 'custom' && !(name in UNCOVERED_PROPS))
+    .map(([name]) => name)
+    .filter((name) => !new RegExp(`\\b${name}\\s*:`).test(source));
+  assert.deepEqual(missing, [], 'no corpus scene declares these generic props');
+  for (const [name, why] of Object.entries(UNCOVERED_PROPS)) {
+    assert.ok(name in prop, `UNCOVERED_PROPS names ${name}, which is not a prop`);
+    assert.ok(why, `${name} is exempted without a reason`);
+    assert.ok(!new RegExp(`\\b${name}\\s*:`).test(source), `${name} is exempted, but a scene declares it — drop the exemption`);
   }
 });
 
