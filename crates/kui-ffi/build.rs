@@ -73,11 +73,12 @@ fn main() {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default();
     let entries = entry_points(&manifest_dir);
     write_abi_rows(&manifest_dir, &entries);
+    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    install_name(&target_os);
     if !std::path::Path::new(&manifest_dir).join(EXAMPLE).is_file() {
         return;
     }
 
-    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     let flag = match target_os.as_str() {
         "macos" | "ios" => "-Wl,-export_dynamic".to_string(),
         "windows" => match export_def(&entries) {
@@ -89,6 +90,41 @@ fn main() {
         _ => "-Wl,--export-dynamic".to_string(),
     };
     println!("cargo::rustc-link-arg-examples={flag}");
+}
+
+/// The third job: the cdylib's own name, as a host records it.
+///
+/// rustc gives a Mach-O cdylib the absolute path it was written to as its
+/// install name — `<target>/debug/deps/libkui_ffi.dylib` — and a host that
+/// links `-lkui_ffi` records that path as the library to load. Which is
+/// the wrong file to name twice over. Shipped, it is a build machine's
+/// path baked into every host. And in this workspace `deps/` is written by
+/// *whichever* package last built kui-ffi: cargo builds every crate type
+/// of a path dependency with the dependent's features, so a build of
+/// kui-lua or kui-node (which take kui-ffi without `runner`) overwrote the
+/// dylib the C hosts had been linked against with one lacking `kui_run`,
+/// and `target/debug/counter` died at load with "Symbol not found:
+/// _kui_run" until `cbuild` was run again (the QA round of 2026-09-14).
+/// The uplifted copy in `target/debug/` is only ever a root build's — the
+/// `runner` one — and was never touched; the hosts just did not point at
+/// it.
+///
+/// So the install name is `@rpath/libkui_ffi.dylib`: a host resolves it
+/// through the rpath it was linked with (`cbuild` gives the C programs
+/// `target/<profile>/`), and a shipped host through whatever rpath its
+/// packager chose, which is the convention every other dylib follows. ELF
+/// gets the same by a soname, so `DT_NEEDED` is the bare name resolved
+/// through `RUNPATH` rather than the path the linker happened to find it
+/// at. Windows names a DLL by its file name already. `rustc-cdylib-link-arg`
+/// reaches the cdylib link alone: the rlib a Rust host embeds and the
+/// staticlib carry no name to set.
+fn install_name(target_os: &str) {
+    let arg = match target_os {
+        "macos" | "ios" => "-Wl,-install_name,@rpath/libkui_ffi.dylib",
+        "windows" => return,
+        _ => "-Wl,-soname,libkui_ffi.so",
+    };
+    println!("cargo::rustc-cdylib-link-arg={arg}");
 }
 
 /// One `pub extern "C" fn kui_*` of the sources: which file, its name,

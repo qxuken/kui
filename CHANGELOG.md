@@ -657,6 +657,17 @@ field reports).
 
 ### Fixed
 
+- **`libkui_ffi` names itself `@rpath/libkui_ffi.dylib`** (a soname on
+  ELF; found by the QA round of 2026-09-14): rustc's default install
+  name was the absolute path of `target/<profile>/deps/libkui_ffi.dylib`,
+  which a host linking `-lkui_ffi` recorded as the file to load — a
+  build machine's path in a shipped host, and in this workspace a file
+  any build of kui-lua or kui-node (kui-ffi without `runner`) rewrote
+  without `kui_run`, so `target/debug/counter` died at load with "Symbol
+  not found: _kui_run" until `cbuild` ran again. A host now resolves the
+  name through its rpath; `cbuild`'s is `target/<profile>/`, whose copy
+  is only ever a root build's. A host you link yourself gives its rpath,
+  as it would for any other dylib.
 - **A window that closes takes its `audio` nodes with it** (found in the
   code review of the round): since AR7 a mount is reconciled against its
   own window's frames alone, so a popup's or a second window's looped

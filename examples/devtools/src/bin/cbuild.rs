@@ -316,7 +316,15 @@ fn build_and_round(release: bool, run: bool) -> Result<(), String> {
     // One source into one executable, linking kui_ffi as a library. No rpath
     // spelling both unix linkers take, so the absolute path: the hosts are
     // beside the library either way, and this survives being run from
-    // anywhere. On Windows the link is against the import library.
+    // anywhere. The rpath is what the host resolves the library's name
+    // through — `@rpath/libkui_ffi.dylib`, the soname on ELF (kui-ffi's
+    // build.rs sets both) — and it names the uplifted copy in
+    // `target/<profile>/`, which only a root build of kui-ffi writes and
+    // so is always the `runner` one. Before the name was set, rustc's
+    // default named `deps/libkui_ffi.dylib` by absolute path, and any
+    // build of a crate depending on kui-ffi without `runner` rewrote that
+    // file under the hosts. On Windows the link is against the import
+    // library.
     let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
     let exe = |src: &str, out: &str| -> Result<(), String> {
         let out_path = if cc.msvc {
