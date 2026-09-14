@@ -49,7 +49,7 @@ pass on what a press made, Node's surface aimed at the window it is
 handed for, `<text>`'s rows closed, one token-miss policy, Cut's
 `changed`, one spec pipeline for every door, the focus stamp and the
 reader's gates — with the amendment on B1a whose condition that round
-met, and **B1a, AR40, AR49, AR27, AR46–AR48, AR29–AR39 and AR41–AR45 built the same day** (AR50, the
+met, and **B1a, AR40, AR49, AR27, AR46–AR48, AR28–AR39 and AR41–AR45 built the same day** — every entry of the round but AR50 (AR50, the
 [in] rule's unkept promise, filed from under AR27); C31, found
 the same day building the tokens (Node's corpus adapter disagreeing with
 the reference on one scene when run alone — **done the same evening**:
@@ -3016,7 +3016,25 @@ min_h, max_w, max_h, chrome, text_aa, diagnostics}` on `kui_run_with`
 launcher as its main core via `Launcher::setup_core`; the header says what
 still cannot cross.
 
-### `~` AR28 — No keyboard path starts or extends a selection in a `selectable` scope
+### `~` AR28 — No keyboard path starts or extends a selection in a `selectable` scope — **done (2026-09-14)**
+
+**Built 2026-09-14, the first way.** `Core::keyboard_select(scope,
+key, mods)`: Shift with Left / Right / Home / End on a focused node
+inside a scope — the scope itself when `focusable`, a control inside
+it — moves the selection's focus a character or (with `mods.word`) a
+word at a time through the scope's runs in order, a run's end being a
+word's end since the concatenation carries no separator, and to the
+scope's first or last byte; nothing selected, the anchor is the scope's
+start, so Shift-End on a freshly focused label selects it whole.
+Offsets go through `scope_offset` and back through a new
+`endpoint_at_offset`, so the endpoints carry their virtual rows like a
+drag's. Hooked in the editor-channel `Key` arm before the composite
+motions, only where the press did not bubble to a sink (the arrows are
+unclaimed, as before). Up and Down are not motions (no line geometry);
+AT still sets a selection on editors only — ADR 0017's consequences say
+so in a new paragraph, and the `selectable` row's doc names the keys.
+Test: char and word motions across two runs, Home, End, a focus behind
+the anchor, a control inside the scope, no Shift no motion.
 
 A scope's drag is armed from a press only (`runtime/dispatch.rs:559-571`)
 and `select_all_in` is a chord (`select_api.rs:278`); the stock editor has
@@ -3815,8 +3833,8 @@ label lookup / caret rect; **AR29 and AR30 done 2026-09-14** — the
 caret follows the keys to the enclosing sink, `TextHit.line` is the
 visual row across the node's runs, a gutter is not its line's text,
 `text-beyond-line`; **AR32 and AR33 done 2026-09-14** — a popup is
-borderless and not resizable, the retarget frame is points on macOS),
-and
+borderless and not resizable, the retarget frame is points on macOS;
+**AR28 done 2026-09-14** — Shift-motions select in a scope), and
 AR49 first of all if the alpha.12 notes go out before the rest, since
 its first line is the CHANGELOG contradicting itself on the frame
 version (**AR49 done 2026-09-14**, the reused ids retired as `B1a` /

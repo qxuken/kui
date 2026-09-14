@@ -8,6 +8,7 @@
 //! assembled in response to it.
 
 use crate::geom::{Rect, Vec2};
+use crate::input::{EditKey, Mods};
 use crate::key::Key;
 use crate::runtime::Core;
 use crate::select::{
@@ -734,6 +735,127 @@ impl Core {
         }
         self.selection = Some(Selection { focus, ..sel });
         true
+    }
+
+    /// A keyboard's selection in a `selectable` scope (backlog AR28):
+    /// Shift with an arrow, Home or End on a focused node inside `scope`
+    /// — the scope itself when it is focusable, a control inside it —
+    /// moves the selection's focus the way the stock editor's Shift-
+    /// motions move its caret: a character (a word with `mods.word`)
+    /// left or right through the scope's runs in order, Home and End to
+    /// the scope's first and last byte. Nothing selected yet, the anchor
+    /// is placed at the scope's start, so Shift-End from a freshly
+    /// focused label selects it whole. Returns whether the selection
+    /// changed. Answered from the frame that finished, like a drag; the
+    /// endpoints carry their virtual rows like every other selection, so
+    /// a copy past the built range asks the app as ADR 0017's tier 3
+    /// does. Up and Down are not motions here: a scope has no line
+    /// geometry a caret could keep a column in.
+    pub fn keyboard_select(&mut self, scope: Key, key: EditKey, mods: Mods) -> bool {
+        let prev = self.building;
+        // Every character of the scope with its offset in the
+        // concatenation and the run it is in: what the motions step
+        // through. A run's end is a word's end — the concatenation has no
+        // separator, and a copy puts a newline there.
+        let chars: Vec<(usize, char, usize)> = self
+            .text
+            .scope_runs(scope, prev)
+            .iter()
+            .enumerate()
+            .flat_map(|(n, r)| {
+                let base = r.base;
+                r.text
+                    .content()
+                    .char_indices()
+                    .map(move |(i, c)| (base + i, c, n))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        let total = chars.last().map_or(0, |(o, c, _)| o + c.len_utf8());
+        let sel = self.selection.filter(|s| s.scope == scope);
+        let at = |e: Endpoint| self.text.scope_offset(scope, e.node, e.byte, prev);
+        let (anchor, focus) = match sel {
+            Some(s) => match (at(s.anchor), at(s.focus)) {
+                (Some(a), Some(f)) => (a, f),
+                _ => (0, 0),
+            },
+            None => (0, 0),
+        };
+        let word = mods.word;
+        let ws = |i: usize| chars[i].1.is_whitespace();
+        let next = match key {
+            EditKey::Right => {
+                let mut i = chars
+                    .iter()
+                    .position(|(o, ..)| *o >= focus)
+                    .unwrap_or(chars.len());
+                if word {
+                    while i < chars.len() && ws(i) {
+                        i += 1;
+                    }
+                    let run = chars.get(i).map(|c| c.2);
+                    while i < chars.len() && !ws(i) && Some(chars[i].2) == run {
+                        i += 1;
+                    }
+                    chars.get(i).map_or(total, |(o, ..)| *o)
+                } else {
+                    chars.get(i).map_or(total, |(o, c, _)| o + c.len_utf8())
+                }
+            }
+            EditKey::Left => {
+                let mut i = chars
+                    .iter()
+                    .rposition(|(o, ..)| *o < focus)
+                    .map_or(0, |i| i + 1);
+                if word {
+                    while i > 0 && ws(i - 1) {
+                        i -= 1;
+                    }
+                    let run = (i > 0).then(|| chars[i - 1].2);
+                    while i > 0 && !ws(i - 1) && Some(chars[i - 1].2) == run {
+                        i -= 1;
+                    }
+                    chars.get(i).map_or(total, |(o, ..)| *o)
+                } else if i == 0 {
+                    0
+                } else {
+                    chars[i - 1].0
+                }
+            }
+            EditKey::Home => 0,
+            EditKey::End => total,
+            _ => return false,
+        };
+        if sel.is_some() && next == focus {
+            return false;
+        }
+        let Some(anchor) = self.endpoint_at_offset(scope, anchor, prev) else {
+            return false;
+        };
+        let Some(focus) = self.endpoint_at_offset(scope, next, prev) else {
+            return false;
+        };
+        self.set_selection(Selection::new(scope, anchor, focus));
+        true
+    }
+
+    /// The endpoint at `offset` in the scope's concatenation: the run it
+    /// falls in and the byte inside that run's text — the last run's end
+    /// for the offset past everything. `None` for a scope with no runs.
+    fn endpoint_at_offset(&self, scope: Key, offset: usize, prev: bool) -> Option<Endpoint> {
+        let runs = self.text.scope_runs(scope, prev);
+        let run = runs
+            .iter()
+            .find(|r| {
+                let (start, end) = r.span();
+                offset >= start && offset < end
+            })
+            .or_else(|| runs.last())?;
+        let node = run.place.key;
+        let byte = offset
+            .saturating_sub(run.base)
+            .min(run.text.content().len());
+        Some(Endpoint::new(node, byte).in_row(self.row_of(node)))
     }
 
     /// The motion half of a drag that is moving by *words* or by whole

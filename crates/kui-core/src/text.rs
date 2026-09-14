@@ -662,7 +662,8 @@ pub(crate) struct ScopeRun<'a> {
 
 impl ScopeRun<'_> {
     /// The half-open byte range this run occupies in the concatenation.
-    fn span(&self) -> (usize, usize) {
+    /// The run's `[start, end)` in the scope's concatenation.
+    pub(crate) fn span(&self) -> (usize, usize) {
         (self.base, self.base + self.text.content().len())
     }
 }

@@ -533,6 +533,18 @@ that keeps its own menu keeps only its *items*: the column of `onClick`
 rows, the float, the dismissal and the keyboard navigation under them all
 become one `menu` node.
 
+**The keyboard's half** (added 2026-09-14, backlog AR28). A scope is in
+the family of keyboard focus, and it has a keyboard: Shift with Left,
+Right, Home or End on a focused node inside a scope — the scope itself
+when it is `focusable`, a control inside it — moves the selection's focus
+the way the editor's Shift-motions move its caret, a character or (with
+the word modifier) a word at a time through the runs in order, and to the
+scope's first or last byte; a scope with nothing selected anchors at its
+start, so Shift-End on a freshly focused label selects it whole. Up and
+Down are not motions: a scope has no line geometry to keep a column in.
+Under a key sink the press bubbles as every unclaimed arrow does, and
+assistive technology still sets a selection on editors only.
+
 **What stays impossible, and should be documented as such.**
 
 - Selecting *between* two scopes. Two `selectable` cards are two

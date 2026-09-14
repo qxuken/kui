@@ -394,7 +394,20 @@ impl Core {
                     // Escape acts by letting go, and a ring around nothing
                     // is not a ring; a key the control does not claim went
                     // to the sink above and never arrives here at all.
+                    // Shift with a horizontal motion on a node inside a
+                    // `selectable` scope moves the scope's selection
+                    // (backlog AR28) — the keyboard's half of what a
+                    // drag does, and the one way a keyboard user selects
+                    // a label. Under a sink the press already bubbled and
+                    // never arrives here, like every other motion.
+                    let scope = self.scopes.get(i).copied().flatten();
                     match ek {
+                        EditKey::Left | EditKey::Right | EditKey::Home | EditKey::End
+                            if mods.shift && scope.is_some() =>
+                        {
+                            self.focus_visible = true;
+                            self.keyboard_select(scope.unwrap_or(Key::ROOT), ek, mods);
+                        }
                         EditKey::Enter => {
                             self.focus_visible = true;
                             self.click_node(self.tree.keys[i], &mut out);

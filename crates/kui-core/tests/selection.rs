@@ -474,3 +474,98 @@ fn a_single_press_still_drags_by_characters() {
     core.handle_input(InputEvent::CursorMoved(Vec2::new(two, 8.0)));
     assert_eq!(core.selection_text().as_deref(), Some("br"));
 }
+
+/// A keyboard user can select a label (backlog AR28): Shift with an arrow,
+/// Home or End on a focused node inside a `selectable` scope moves the
+/// scope's selection the way the editor's Shift-motions move its caret —
+/// a character or a word at a time through the runs in order, Home and End
+/// to the scope's ends — and a scope with nothing selected starts from its
+/// first byte. The same reading every other selection has: `selection_text`
+/// and the ends. Without Shift the arrows are what they were.
+#[test]
+fn shift_motions_on_a_focused_scope_select_its_text() {
+    let mut core = Core::new();
+    let frame = |core: &mut Core| -> Key {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        let scope = ui.with_keyed(
+            "card",
+            NodeSpec::column()
+                .width(Sizing::Grow(1.0))
+                .selectable()
+                .focusable(),
+            |ui| {
+                ui.text("one two", style());
+                ui.text("three", style());
+            },
+        );
+        ui.finish();
+        scope
+    };
+    let scope = frame(&mut core);
+    core.set_focus(Some(scope));
+    frame(&mut core);
+    let key = |core: &mut Core, k: EditKey, mods: Mods| core.handle_input(InputEvent::Key(k, mods));
+    let shift = Mods {
+        shift: true,
+        ..Mods::default()
+    };
+    let shift_word = Mods {
+        shift: true,
+        word: true,
+        ..Mods::default()
+    };
+    // Nothing selected: Shift-Right starts at the scope's first byte.
+    key(&mut core, EditKey::Right, shift);
+    assert_eq!(core.selection_text().as_deref(), Some("o"));
+    key(&mut core, EditKey::Right, shift);
+    key(&mut core, EditKey::Right, shift);
+    assert_eq!(core.selection_text().as_deref(), Some("one"));
+    // A word at a time: past the space to the end of the next word.
+    key(&mut core, EditKey::Right, shift_word);
+    assert_eq!(core.selection_text().as_deref(), Some("one two"));
+    // Into the second run: the runs are one text, joined as a copy joins
+    // them.
+    key(&mut core, EditKey::Right, shift);
+    assert_eq!(core.selection_text().as_deref(), Some("one two\nt"));
+    // Back a word, then to the start: the anchor stays put, the focus
+    // moves, and a focus behind the anchor is still a selection.
+    key(&mut core, EditKey::Left, shift_word);
+    assert_eq!(core.selection_text().as_deref(), Some("one two"));
+    key(&mut core, EditKey::Home, shift);
+    assert_eq!(core.selection_text().as_deref(), Some(""));
+    // End selects everything from the anchor.
+    key(&mut core, EditKey::End, shift);
+    assert_eq!(core.selection_text().as_deref(), Some("one two\nthree"));
+    assert!(
+        core.focus_visible(),
+        "the keyboard used the focus, so it shows"
+    );
+    // Without Shift an arrow is not a selection motion.
+    core.clear_selection();
+    key(&mut core, EditKey::Right, Mods::default());
+    assert_eq!(core.selection_text(), None);
+    // A control inside the scope selects the scope's text too.
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let mut button = Key::ROOT;
+    ui.with_keyed(
+        "card",
+        NodeSpec::column().width(Sizing::Grow(1.0)).selectable(),
+        |ui| {
+            ui.text("one two", style());
+            button = ui.with_keyed(
+                "copy",
+                NodeSpec::row()
+                    .width(Sizing::Fixed(20.0))
+                    .height(Sizing::Fixed(20.0))
+                    .on_click(kui_core::Value::str("copy")),
+                |_| {},
+            );
+        },
+    );
+    ui.finish();
+    core.set_focus(Some(button));
+    key(&mut core, EditKey::End, shift);
+    assert_eq!(core.selection_text().as_deref(), Some("one two"));
+}

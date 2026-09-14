@@ -632,6 +632,13 @@ field reports).
 
 ### Fixed
 
+- **A keyboard selects in a `selectable` scope** (backlog AR28): Shift
+  with Left / Right / Home / End on a focused node inside a scope moves
+  the selection's focus the way the editor's Shift-motions move its
+  caret — a character or a word at a time through the runs in order, to
+  the scope's ends — and a scope with nothing selected anchors at its
+  start, so Shift-End on a focused label selects it whole. Up and Down
+  are not motions; under a key sink the press bubbles as before.
 - **The caret follows the keys** (backlog AR29): a custom editor's
   caret — what arms the blink clock and anchors the IME — is the
   enclosing sink's wherever focus sits inside it (a pane button, an AT
