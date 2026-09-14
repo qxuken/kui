@@ -350,10 +350,10 @@ impl Core {
     pub(crate) fn find_label(&mut self, label: &str, fall_back: bool) -> Option<Key> {
         let (first, count) = {
             let mut hits = self.key_labels.find_for(label, self.origin);
-            if hits.is_empty() && fall_back && self.building {
+            if hits.0.is_none() && fall_back && self.building {
                 hits = self.key_labels_last.find_for(label, self.origin);
             }
-            (*hits.first()?, hits.len())
+            (hits.0?, hits.1)
         };
         if count > 1 {
             self.diag

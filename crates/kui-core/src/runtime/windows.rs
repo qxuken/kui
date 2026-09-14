@@ -103,7 +103,18 @@ impl Core {
             name
         };
         self.push_window_event("closed", &name, id);
+        self.release_window_audio(id);
         self.apply_window_changes(changes);
+    }
+
+    /// A window that will finish no more frames leaves its `audio` mounts
+    /// behind: they are reconciled against that window's frames alone
+    /// (AR7), so nothing else would ever stop them — a popup's looped bed
+    /// played on after the popup closed. Reconciling the window against
+    /// the nothing it now declares stops each mount by the rule a removed
+    /// node follows (`finish` releases a one-shot, a loop stops).
+    fn release_window_audio(&mut self, id: WindowId) {
+        self.session.state().audio.reconcile(id);
     }
 
     /// The driver reports that window `id` was asked to go away — a press
@@ -196,6 +207,7 @@ impl Core {
                         .window_commands
                         .push(crate::window::WindowCommand::Close(id));
                     self.push_window_event("closed", &name, id);
+                    self.release_window_audio(id);
                 }
             }
         }

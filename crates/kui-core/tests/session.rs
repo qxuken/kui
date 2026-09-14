@@ -265,6 +265,76 @@ fn a_second_window_frame_leaves_the_first_window_s_audio_node_playing() {
     );
 }
 
+/// A window's mounts are its own to reconcile (AR7) — so a window that
+/// closes, and finishes no more frames, has to let them go on its way out,
+/// or a popup's looped bed plays on after the popup is gone (found in the
+/// code review of the round). Both ways a window closes: the OS's close
+/// (`window_closed`) and the app no longer declaring it.
+#[test]
+fn a_closed_window_s_audio_nodes_stop_with_it() {
+    let session = Session::new();
+    let mut a = Core::new_in(&session);
+    let sound = a.add_sound(vec![0u8; 32]);
+    let declare = |core: &mut Core, popup: bool| {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        if popup {
+            ui.window("popup", kui_core::WindowConfig::sized(200.0, 100.0));
+        }
+        ui.finish();
+    };
+    declare(&mut a, true);
+    let id = match a.take_window_commands().as_slice() {
+        [kui_core::WindowCommand::Open { id, .. }] => *id,
+        other => panic!("{other:?}"),
+    };
+    let mut b = Core::new_in(&session);
+    b.env.window.id = id;
+    audio_frame(&mut b, Some(AudioSpec::new(sound).looped()));
+    let playback = match a.take_audio_commands().as_slice() {
+        [AudioCommand::Play { playback, .. }] => *playback,
+        other => panic!("{other:?}"),
+    };
+
+    // The OS closes it: the loop stops with it.
+    a.window_closed(id);
+    assert_eq!(
+        a.take_audio_commands(),
+        vec![AudioCommand::Stop {
+            playback,
+            fade_ms: 0.0
+        }]
+    );
+
+    // Declared again — a new window, its own mount — and this time the
+    // app stops declaring it.
+    declare(&mut a, false);
+    a.take_window_commands();
+    declare(&mut a, true);
+    let id = match a.take_window_commands().as_slice() {
+        [kui_core::WindowCommand::Open { id, .. }] => *id,
+        other => panic!("{other:?}"),
+    };
+    let mut b = Core::new_in(&session);
+    b.env.window.id = id;
+    audio_frame(&mut b, Some(AudioSpec::new(sound).looped()));
+    let playback = match a.take_audio_commands().as_slice() {
+        [AudioCommand::Play { playback, .. }] => *playback,
+        other => panic!("{other:?}"),
+    };
+    declare(&mut a, false);
+    assert!(matches!(
+        a.take_window_commands().as_slice(),
+        [kui_core::WindowCommand::Close(_)]
+    ));
+    assert_eq!(
+        a.take_audio_commands(),
+        vec![AudioCommand::Stop {
+            playback,
+            fade_ms: 0.0
+        }]
+    );
+}
+
 /// The `ended` and `refused` events used to be stamped `MAIN` by hand,
 /// because the store did not know its window; now the mount does, and the
 /// event lands on the window that declared the node whichever core the

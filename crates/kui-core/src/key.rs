@@ -103,17 +103,26 @@ impl LabelIndex {
     /// reading of its own view). The host, whose frame it is, sees its
     /// own first and everyone's when it opened none. Only a clash within
     /// what the asker sees is an ambiguity.
-    pub(crate) fn find_for(&self, label: &str, origin: crate::tree::OriginId) -> Vec<Key> {
-        let all: Vec<(Key, crate::tree::OriginId)> = self.find(label).collect();
-        let mine: Vec<Key> = all
-            .iter()
-            .filter(|(_, o)| *o == origin)
-            .map(|(k, _)| *k)
-            .collect();
-        if mine.is_empty() && origin == crate::tree::OriginId::HOST {
-            all.into_iter().map(|(k, _)| k).collect()
-        } else {
-            mine
+    /// Answers the first key in tree order and how many there were, so
+    /// the caller can warn of a clash — without allocating, since `key_of`
+    /// is asked from view code every frame.
+    pub(crate) fn find_for(
+        &self,
+        label: &str,
+        origin: crate::tree::OriginId,
+    ) -> (Option<Key>, usize) {
+        let mut mine = self.find(label).filter(|(_, o)| *o == origin);
+        let first = mine.next();
+        if let Some((k, _)) = first {
+            return (Some(k), 1 + mine.count());
+        }
+        if origin != crate::tree::OriginId::HOST {
+            return (None, 0);
+        }
+        let mut all = self.find(label);
+        match all.next() {
+            Some((k, _)) => (Some(k), 1 + all.count()),
+            None => (None, 0),
         }
     }
 }
@@ -133,16 +142,27 @@ mod tests {
         assert_eq!(a, [Key::ROOT.str("a"), Key::ROOT.index(0).str("a")]);
         // The asker's own; a guest sees no one else's, the host sees
         // everyone's when it opened none.
-        assert_eq!(idx.find_for("a", OriginId::HOST), [Key::ROOT.str("a")]);
+        assert_eq!(
+            idx.find_for("a", OriginId::HOST),
+            (Some(Key::ROOT.str("a")), 1)
+        );
         assert_eq!(
             idx.find_for("a", OriginId(1)),
-            [Key::ROOT.index(0).str("a")]
+            (Some(Key::ROOT.index(0).str("a")), 1)
         );
-        assert_eq!(idx.find_for("a", OriginId(2)), []);
-        assert_eq!(idx.find_for("ab", OriginId(1)), []);
-        assert_eq!(idx.find_for("ab", OriginId::HOST), [Key::ROOT.str("ab")]);
+        assert_eq!(idx.find_for("a", OriginId(2)), (None, 0));
+        assert_eq!(idx.find_for("ab", OriginId(1)), (None, 0));
+        assert_eq!(
+            idx.find_for("ab", OriginId::HOST),
+            (Some(Key::ROOT.str("ab")), 1)
+        );
         idx.push(Key::ROOT.str("g"), "g", OriginId(1));
-        assert_eq!(idx.find_for("g", OriginId::HOST), [Key::ROOT.str("g")]);
+        idx.push(Key::ROOT.index(1).str("g"), "g", OriginId(2));
+        assert_eq!(
+            idx.find_for("g", OriginId::HOST),
+            (Some(Key::ROOT.str("g")), 2),
+            "the host sees both guests' and hears of the clash"
+        );
         assert_eq!(idx.find("ab").count(), 1, "a prefix is not a match");
         assert_eq!(idx.find("b").count(), 0);
         assert_eq!(idx.label_of(Key::ROOT.str("ab")), Some("ab"));

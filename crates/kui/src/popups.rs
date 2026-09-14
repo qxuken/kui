@@ -22,17 +22,21 @@ impl<A: App> Shell<A> {
     /// the chain of non-activating popups, not one level (AR21).
     pub(super) fn key_target(&self, i: usize) -> usize {
         let mut at = i;
-        loop {
+        // Bounded by the pane count: a chain cannot be longer than the
+        // panes there are, so an owner loop — which nothing should build,
+        // but which this walk must not hang on — ends where it started.
+        for _ in 0..self.panes.len() {
             let owner = self.panes[at].id;
             match self
                 .panes
                 .iter()
                 .position(|p| p.kind == WindowKind::Popup && p.owner == owner && !p.activates)
             {
-                Some(next) if next != at => at = next,
+                Some(next) if next != at && next != i => at = next,
                 _ => return at,
             }
         }
+        at
     }
 
     /// The panes pane `i` is owned by, nearest first, up to the window

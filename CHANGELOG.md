@@ -657,6 +657,14 @@ field reports).
 
 ### Fixed
 
+- **A window that closes takes its `audio` nodes with it** (found in the
+  code review of the round): since AR7 a mount is reconciled against its
+  own window's frames alone, so a popup's or a second window's looped
+  `<audio>` played on after the window closed — by the OS or by the app
+  no longer declaring it — with nothing left to stop it. Both close
+  paths now reconcile the window against the nothing it declares: a loop
+  stops, a one-shot with `finish` plays out, one without is reported
+  `truncated-playback` if the device found it running.
 - **A plugin's label lookup is its own** (found by the QA round of
   2026-09-14, on `lua_panel`): `key_of` / `keyOf` / `kui_key_of` and every
   verb that takes a label — Lua's `env.edit_text("filter")`, a focus, a
