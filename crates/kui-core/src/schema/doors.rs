@@ -1019,12 +1019,10 @@ pub const DOORS: &[Door] = &[
     // decision: what a window opens as.
     Door {
         rust: "Launcher::size",
-        c: No(
-            "`kui_run` / `kui_run_with` take a title and nothing else (backlog AR27): a C app sizes from its first view with `kui_set_window_size`",
-        ),
+        c: As("`width` / `height` in the `KuiRunConfig` `kui_run_with` takes"),
         node: As("`width` / `height` in `WindowOptions`"),
         lua: No(GUEST),
-        doc: "The window's opening size; `min_size` / `max_size` / `chrome` / `text_aa` / `diagnostics` / `devtools` are the rest of the set, and Node has each (`minWidth`, `chrome`, `textAa`, `diagnostics`, `devtools`) where C has `KUI_TEXT_AA` and `KUI_DEVTOOLS` in the environment.",
+        doc: "The window's opening size; `min_size` / `max_size` / `chrome` / `text_aa` / `diagnostics` are the rest of the set, and each binding's form carries them all (`min_w`, `chrome`, `text_aa`, `diagnostics` in C; `minWidth`, `chrome`, `textAa`, `diagnostics` in Node). `Launcher::devtools` and `Launcher::core` are the two the others reach another way: `kui_set_devtools` / `setDevtools` on the context, and the context handed to `kui_run_with` *is* the core.",
     },
 ];
 

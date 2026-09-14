@@ -176,7 +176,14 @@
 /// decision 7). An *array* element again, so the append moves the stride
 /// — the `KuiSpan` and `KuiMenuItem` exception, for the same reason.
 /// Recompile; a host that never reads `fragments` has nothing to change.
-pub const KUI_ABI_VERSION: u32 = 15;
+///
+/// ABI 16 gives `kui_run_with` a `KuiRunConfig` (backlog AR27): a third
+/// argument, between the title and the view. The struct is [in] and would
+/// not bump on its own; the bump is ABI 12's case again — an existing
+/// function's *signature* — since a host that did not recompile passes
+/// one argument too few and the library reads its view callback out of
+/// the register the config should be in. `kui_run` is unchanged.
+pub const KUI_ABI_VERSION: u32 = 16;
 
 /// The ABI version this library implements, for a host to compare against
 /// the `KUI_ABI_VERSION` of the header it compiled against, before its

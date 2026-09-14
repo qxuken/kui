@@ -33,15 +33,21 @@ field reports).
   an encoder (`createEncoder(p).encode(tree, tokens)` takes the surface's
   token map as a second argument and returns `unknownTokens` beside
   `unknown`).
-- `KUI_ABI_VERSION` stays **15**. `KuiColorToken` / `KuiLengthToken` /
-  `KuiColorOp` / `KuiDerivedToken` are new [in] arrays and
-  `kui_tokens_set`, `kui_token_color`, `kui_token_length`,
-  `kui_tokens_derive`, `kui_selection_ends`, `kui_env_set_always_on_top`,
-  `kui_cell_selection` and the six devtools doors are new functions;
-  `KuiSpec` grew `on_scroll` at its end (backlog C39), which an [in]
-  struct that never travels as an array absorbs through the size
-  handshake — a host built against the shorter struct reads NULL there.
-  Nothing the library writes moved.
+- `KUI_ABI_VERSION` is **16**, from 15, for one signature: `kui_run_with`
+  takes a `const KuiRunConfig *` between the title and the view (backlog
+  AR27) — `kui_run_with(ctx, title, NULL, view, on_event, user)` is what
+  the five-argument call was, and `kui_run` is unchanged. The bump is
+  ABI 12's case (a host that did not recompile passes one argument too
+  few), not the struct's: `KuiRunConfig` is [in]. Everything else is
+  additive — `KuiColorToken` / `KuiLengthToken` / `KuiColorOp` /
+  `KuiDerivedToken` are new [in] arrays and `kui_tokens_set`,
+  `kui_token_color`, `kui_token_length`, `kui_tokens_derive`,
+  `kui_selection_ends`, `kui_env_set_always_on_top`, `kui_cell_selection`
+  and the six devtools doors are new functions; `KuiSpec` grew
+  `on_scroll` at its end (backlog C39), which an [in] struct that never
+  travels as an array absorbs through the size handshake — a host built
+  against the shorter struct reads NULL there. Nothing the library writes
+  moved.
 - `Ui::token_color` and `Ui::token_length` return `Option` — `None` for
   a name nothing declared or of the other kind, where they answered
   transparent and zero. A Rust view writes `.bg(ui.token_color("peach")
@@ -89,6 +95,27 @@ field reports).
   the always-drawn node form beside the hover-gated prop (the edit op's
   flags bit 4 and a `tooltip` op, still frame v11). `protocol().doors`
   carries the table to JS.
+- **C's runner takes a window, and the context's registrations reach
+  it** (backlog AR27, ABI 16): `kui_run_with(ctx, title, &config, view,
+  on_event, user)` takes a `KuiRunConfig` — `width`/`height`, the
+  `min_*`/`max_*` bounds (a zero side unbounded, as Node's lone
+  `minWidth` is), `chrome` (`KUI_CHROME_NATIVE` / `CUSTOM` /
+  `BORDERLESS`, so a `kui_titlebar` no longer draws under a native
+  bar), `text_aa` (`KUI_TEXT_AA_*`) and `diagnostics` (`KUI_DIAG_*`,
+  the default the build's) — NULL for every default, `KUI_RUN_CONFIG_INIT`
+  to start from, and a word this build lacks refused with its reason on
+  stderr before a window opens. The context's core becomes the window's:
+  a font, image, sound, token, theme, devtools door, `kui_set_native_menus`
+  or text-cache budget registered before the call reaches the window and
+  the handles keep drawing, where the runner used to open a fresh session
+  and a C host that registered first got `foreign-resource` warnings
+  from its first frame. The context is left a fresh core, still yours to
+  free. In Rust that is `Launcher::core(core)` — open the main window on
+  a core you made, its session the app's, with `diagnostics`,
+  `KUI_DEVTOOLS` and every `setup_core` landing on top in that order.
+  Node's `WindowOptions` gained `textAa: 'auto' | 'gray' | 'subpixel'`
+  so the verb table's `Launcher::size` row says one thing in three
+  bindings. The slots host opens at 720×480 with a 360 minimum.
 - **A stock button takes `index`** (backlog AR40, from the second
   architecture review): `<button index={i}>` / `button { index = i }`
   in a virtual column keys the button by its row, as a box is keyed, so

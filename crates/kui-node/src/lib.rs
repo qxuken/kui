@@ -1423,9 +1423,9 @@ pub struct KuiWindow {
 #[napi]
 impl KuiWindow {
     /// Options: `{width, height, minWidth, minHeight, maxWidth, maxHeight,
-    /// chrome: "native" | "custom" | "borderless", system}`. The min/max
-    /// pairs bound what the user can resize the window to; either half may
-    /// stand alone. `system` pins part of `env.system` over what the OS
+    /// chrome: "native" | "custom" | "borderless", textAa: "auto" | "gray"
+    /// | "subpixel", system}`. The min/max pairs bound what the user can
+    /// resize the window to; either half may stand alone. `system` pins part of `env.system` over what the OS
     /// says, for the life of the window — `{motion: 'reduced'}` is what a
     /// user who asked for less motion would get, on a machine whose owner
     /// did not; see `WindowOptions`.
@@ -1505,6 +1505,19 @@ impl KuiWindow {
             Some(other) => {
                 return Err(err(format!(
                     "window options: chrome must be \"native\", \"custom\" or \"borderless\", not {other}"
+                )));
+            }
+        };
+        // The glyph antialiasing, the launcher's `text_aa`; `KUI_TEXT_AA`
+        // in the environment still wins, for an A/B by hand.
+        launcher = match o.get("textAa") {
+            None | Some(Json::Null) => launcher,
+            Some(Json::String(s)) if s == "auto" => launcher.text_aa(kui::TextAa::Auto),
+            Some(Json::String(s)) if s == "gray" => launcher.text_aa(kui::TextAa::Grayscale),
+            Some(Json::String(s)) if s == "subpixel" => launcher.text_aa(kui::TextAa::Subpixel),
+            Some(other) => {
+                return Err(err(format!(
+                    "window options: textAa must be \"auto\", \"gray\" or \"subpixel\", not {other}"
                 )));
             }
         };

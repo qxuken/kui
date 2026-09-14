@@ -115,6 +115,20 @@ impl KuiCtx {
         unsafe { &mut *self.core }
     }
 
+    /// Takes the core a standalone context owns, for `kui_run_with` to
+    /// open the window on (backlog AR27), and leaves the context a fresh
+    /// one so that it stays a context — still the caller's to free, and
+    /// to use, as one that has registered nothing. `None` on a borrowing
+    /// context, whose core is someone else's frame.
+    pub(crate) fn take_core(&mut self) -> Option<Box<Core>> {
+        let taken = self._owned.take()?;
+        let mut fresh = Box::new(Core::new());
+        fresh.set_diagnostics(false);
+        self.core = &mut *fresh;
+        self._owned = Some(fresh);
+        Some(taken)
+    }
+
     /// A context that borrows someone else's frame instead of owning a
     /// `Core`: what `kui_run`'s view callback and a C extension's both get.
     /// Only the builder entry points are meaningful on one - the queues
@@ -1313,6 +1327,147 @@ pub(crate) fn window_config_of(c: Option<&KuiWindowConfig>) -> WindowConfig {
         activates: c.activates != 0,
         anchor: Rect::new(c.anchor_x, c.anchor_y, c.anchor_w, c.anchor_h),
     }
+}
+
+/// How `kui_run_with` opens its window ([in]; backlog AR27): the
+/// `Launcher` options a Rust host has and Node's `WindowOptions` carry,
+/// as one struct. Read literally, so start from `KUI_RUN_CONFIG_INIT`,
+/// which is every zero, or pass NULL for exactly that — a 960x640 native
+/// window, unbounded, antialiasing chosen by the GPU, diagnostics as the
+/// build has them.
+#[repr(C)]
+#[derive(Clone, Copy, Default, Debug, PartialEq)]
+pub struct KuiRunConfig {
+    /// Initial inner size, logical px; zero is the default. Clamped into
+    /// the bounds below, as the OS would. `KUI_WINDOW=WxH` in the
+    /// environment still overrides.
+    pub width: f32,
+    pub height: f32,
+    /// Smallest and largest inner size the user may resize to, logical
+    /// px; a zero side is unbounded, so a lone `min_h` stands. A max
+    /// below its min loses to it, as on the OS side.
+    pub min_w: f32,
+    pub min_h: f32,
+    pub max_w: f32,
+    pub max_h: f32,
+    /// `KUI_CHROME_*`: native decorations, the custom titlebar a
+    /// `kui_titlebar` draws, or none.
+    pub chrome: u32,
+    /// `KUI_TEXT_AA_*`; `KUI_TEXT_AA=gray|subpixel` in the environment
+    /// still overrides, for an A/B by hand.
+    pub text_aa: u32,
+    /// `KUI_DIAG_*`: whether the core runs its checks and the runner
+    /// prints them to stderr. The window's setting, over whatever
+    /// `kui_set_diagnostics` set on the context handed in; the default is
+    /// the build's — on in a debug build, off in release — as `kui_run`
+    /// always had it.
+    pub diagnostics: u32,
+}
+
+/// `KUI_CHROME_NATIVE`: the OS's decorations.
+pub const KUI_CHROME_NATIVE: u32 = 0;
+/// `KUI_CHROME_CUSTOM`: undecorated; the view draws a `kui_titlebar` and
+/// the runner synthesizes edge resizing and double-click maximize.
+pub const KUI_CHROME_CUSTOM: u32 = 1;
+/// `KUI_CHROME_BORDERLESS`: no decorations and no chrome expectations.
+pub const KUI_CHROME_BORDERLESS: u32 = 2;
+/// `KUI_TEXT_AA_AUTO`: LCD subpixel coverage when the GPU can blend per
+/// channel, grayscale otherwise.
+pub const KUI_TEXT_AA_AUTO: u32 = 0;
+/// `KUI_TEXT_AA_GRAYSCALE`.
+pub const KUI_TEXT_AA_GRAYSCALE: u32 = 1;
+/// `KUI_TEXT_AA_SUBPIXEL`.
+pub const KUI_TEXT_AA_SUBPIXEL: u32 = 2;
+/// `KUI_DIAG_DEFAULT`: the build's — on in debug, off in release.
+pub const KUI_DIAG_DEFAULT: u32 = 0;
+/// `KUI_DIAG_ON`.
+pub const KUI_DIAG_ON: u32 = 1;
+/// `KUI_DIAG_OFF`.
+pub const KUI_DIAG_OFF: u32 = 2;
+
+/// A `KuiRunConfig` read: what `kui_run_with` tells the launcher, in the
+/// launcher's own terms. Separate from the launcher so the reading is a
+/// test without a window.
+#[derive(Debug, PartialEq, Default)]
+pub(crate) struct RunOptions {
+    pub size: Option<(f64, f64)>,
+    pub min_size: Option<(f64, f64)>,
+    pub max_size: Option<(f64, f64)>,
+    /// `KUI_CHROME_*`, checked.
+    pub chrome: u32,
+    /// `KUI_TEXT_AA_*`, checked.
+    pub text_aa: u32,
+    /// `None` is the build's default.
+    pub diagnostics: Option<bool>,
+}
+
+/// A max side left at zero is unbounded: a bound no display reaches, as
+/// Node's `maxWidth` alone is.
+pub(crate) const UNBOUNDED_SIZE: f64 = 65_535.0;
+
+/// Reads a config the way `kui_window_declare` reads its own — literally,
+/// NULL for the defaults — except that a word this build does not have is
+/// refused with its reason rather than degraded: a window that opened
+/// native when asked for the custom chrome would draw its titlebar under
+/// the OS's, which is the bug AR27 was filed for.
+pub(crate) fn run_options_of(c: Option<&KuiRunConfig>) -> Result<RunOptions, String> {
+    let Some(c) = c else {
+        return Ok(RunOptions::default());
+    };
+    let side = |v: f32, what: &str| -> Result<f64, String> {
+        if v.is_finite() && v >= 0.0 {
+            Ok(f64::from(v))
+        } else {
+            Err(format!(
+                "KuiRunConfig.{what} must be a finite, non-negative size, not {v}"
+            ))
+        }
+    };
+    let (w, h) = (side(c.width, "width")?, side(c.height, "height")?);
+    let size =
+        match (w > 0.0, h > 0.0) {
+            (true, true) => Some((w, h)),
+            (false, false) => None,
+            _ => return Err(
+                "KuiRunConfig: width and height go together (a min or max side may stand alone)"
+                    .into(),
+            ),
+        };
+    let (min_w, min_h) = (side(c.min_w, "min_w")?, side(c.min_h, "min_h")?);
+    let min_size = (min_w > 0.0 || min_h > 0.0).then_some((min_w, min_h));
+    let (max_w, max_h) = (side(c.max_w, "max_w")?, side(c.max_h, "max_h")?);
+    let unbounded = |v: f64| if v > 0.0 { v } else { UNBOUNDED_SIZE };
+    let max_size = (max_w > 0.0 || max_h > 0.0).then_some((unbounded(max_w), unbounded(max_h)));
+    if c.chrome > KUI_CHROME_BORDERLESS {
+        return Err(format!(
+            "KuiRunConfig.chrome must be KUI_CHROME_NATIVE, KUI_CHROME_CUSTOM or KUI_CHROME_BORDERLESS, not {}",
+            c.chrome
+        ));
+    }
+    if c.text_aa > KUI_TEXT_AA_SUBPIXEL {
+        return Err(format!(
+            "KuiRunConfig.text_aa must be KUI_TEXT_AA_AUTO, KUI_TEXT_AA_GRAYSCALE or KUI_TEXT_AA_SUBPIXEL, not {}",
+            c.text_aa
+        ));
+    }
+    let diagnostics = match c.diagnostics {
+        KUI_DIAG_DEFAULT => None,
+        KUI_DIAG_ON => Some(true),
+        KUI_DIAG_OFF => Some(false),
+        other => {
+            return Err(format!(
+                "KuiRunConfig.diagnostics must be KUI_DIAG_DEFAULT, KUI_DIAG_ON or KUI_DIAG_OFF, not {other}"
+            ));
+        }
+    };
+    Ok(RunOptions {
+        size,
+        min_size,
+        max_size,
+        chrome: c.chrome,
+        text_aa: c.text_aa,
+        diagnostics,
+    })
 }
 
 fn window_config_to_c(c: WindowConfig) -> KuiWindowConfig {

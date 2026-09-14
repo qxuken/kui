@@ -4565,6 +4565,11 @@ test("a cells cursor's shapes are the addon's list, and a window's size and chro
   // The constructor refuses before it opens anything, so this runs headless.
   assert.throws(() => new KuiWindow('t', { width: 320 }), /width` and `height` go together/);
   assert.throws(() => new KuiWindow('t', { chrome: 'frameless' }), /chrome must be/);
+  // `textAa` is the launcher's `text_aa`, C's `KuiRunConfig.text_aa`
+  // (AR27); it passes through `windowOptions` and an unknown word is
+  // refused the same way.
+  assert.equal(windowOptions({ textAa: 'gray' }).textAa, 'gray');
+  assert.throws(() => new KuiWindow('t', { textAa: 'lcd' }), /textAa must be "auto", "gray" or "subpixel"/);
 });
 
 test('an index is a row number, and anything else is refused', () => {

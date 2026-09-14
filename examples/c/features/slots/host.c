@@ -263,8 +263,16 @@ int main(int argc, char **argv) {
     KuiCtx *ctx = load(plugin);
     if (!ctx) return 1;
     Host host = {0};
-    bool ok = kui_run_with(ctx, KUI_STR("kui - a C host and a C panel"), view,
-                           on_event, &host);
+    /* The window is the host's to describe (backlog AR27): a size and the
+     * bound below which the panel's rows would wrap. NULL would be the
+     * launcher's defaults. What is registered on the context before this
+     * call - the plugin above, and any font or image - reaches the window. */
+    KuiRunConfig window = KUI_RUN_CONFIG_INIT;
+    window.width = 720;
+    window.height = 480;
+    window.min_w = 360;
+    bool ok = kui_run_with(ctx, KUI_STR("kui - a C host and a C panel"), &window,
+                           view, on_event, &host);
     kui_ctx_free(ctx);
     return ok ? 0 : 1;
 }

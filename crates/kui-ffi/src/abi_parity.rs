@@ -132,6 +132,7 @@ c_type! {
     KuiLengthToken => "KuiLengthToken", KuiColorOp => "KuiColorOp",
     KuiDerivedToken => "KuiDerivedToken",
     KuiEvent => "KuiEvent", KuiWindowConfig => "KuiWindowConfig",
+    KuiRunConfig => "KuiRunConfig",
     KuiWindowCommand => "KuiWindowCommand", KuiDrawData => "KuiDrawData",
     ViewFn => "KuiViewFn",
 }
@@ -420,6 +421,15 @@ fn asserts() -> (String, Vec<&'static str>) {
             KUI_FLOAT_NONE,
             KUI_FLOAT_PARENT,
             KUI_FLOAT_VIEWPORT,
+            KUI_CHROME_NATIVE,
+            KUI_CHROME_CUSTOM,
+            KUI_CHROME_BORDERLESS,
+            KUI_TEXT_AA_AUTO,
+            KUI_TEXT_AA_GRAYSCALE,
+            KUI_TEXT_AA_SUBPIXEL,
+            KUI_DIAG_DEFAULT,
+            KUI_DIAG_ON,
+            KUI_DIAG_OFF,
             KUI_KF_AT,
             KUI_KF_WIDTH,
             KUI_KF_HEIGHT,
@@ -871,6 +881,18 @@ fn asserts() -> (String, Vec<&'static str>) {
         anchor_y: f32 => "float",
         anchor_w: f32 => "float",
         anchor_h: f32 => "float",
+    });
+
+    abi_struct!(o, KuiRunConfig {
+        width: f32 => "float",
+        height: f32 => "float",
+        min_w: f32 => "float",
+        min_h: f32 => "float",
+        max_w: f32 => "float",
+        max_h: f32 => "float",
+        chrome: u32 => "uint32_t",
+        text_aa: u32 => "uint32_t",
+        diagnostics: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiWindowCommand {

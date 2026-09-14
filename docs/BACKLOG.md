@@ -49,7 +49,8 @@ pass on what a press made, Node's surface aimed at the window it is
 handed for, `<text>`'s rows closed, one token-miss policy, Cut's
 `changed`, one spec pipeline for every door, the focus stamp and the
 reader's gates — with the amendment on B1a whose condition that round
-met; C31, found
+met, and **B1a, AR40, AR49 and AR27 built the same day** (AR50, the
+[in] rule's unkept promise, filed from under AR27); C31, found
 the same day building the tokens (Node's corpus adapter disagreeing with
 the reference on one scene when run alone — **done the same evening**:
 the handle was raw 1, the first the mint hands out, and the fixtures now
@@ -1471,8 +1472,9 @@ label already), `Core::cursor` (the driver's own fact), `is_group_*`
 C plugin pays the re-parse; one line once a plugin asks), `Ui::play`
 in Lua (view-time env: a playback started there would start every
 frame), `Core::windows` in C (the ids arrive on `KUI_CMD_OPEN`),
-`Launcher::size` in C (AR27, still open — the table carries the gap
-rather than hiding it). AR27 and AR40 stand as their own entries.
+`Launcher::size` in C (AR27 — the table carried the gap as a `No`
+naming it until the entry was built the same day, and the cell is an
+`As` now). AR27 and AR40 stand as their own entries.
 
 **The condition is met (2026-09-13).** The second architecture review
 (AR7–AR49 below) read the four door lists side by side and found thirteen
@@ -2957,7 +2959,40 @@ which one clicked.
 `is_focused` beside it; `t.set("window", ev.window.0)` beside `node_key`;
 the example reads back by label.
 
-### `~` AR27 — C's runner takes no window, and `kui_run_with` drops what the ctx registered
+### `~` AR27 — C's runner takes no window, and `kui_run_with` drops what the ctx registered — **done (2026-09-14)**
+
+**Both built, 2026-09-14, under ABI 16.** `kui_run_with` takes a
+`const KuiRunConfig *` between the title and the view — `{width,
+height, min_w, min_h, max_w, max_h, chrome, text_aa, diagnostics}`,
+with `KUI_CHROME_*` / `KUI_TEXT_AA_*` / `KUI_DIAG_*` beside it, read
+literally the way `kui_window_declare` reads its own (NULL = every
+default; a zero bound side is unbounded, as Node's lone `minWidth` is;
+`KUI_DIAG_DEFAULT` is the build's, as `kui_run` always had it). A word
+this build lacks, or a lone `width`, returns false before any window
+opens with the reason on stderr — refused, not degraded, since a window
+opened native when asked for the custom chrome draws its titlebar under
+the OS's, and that was the bug. Not size-led: the crate's rule is that
+an [in] struct carries no `size` (`abi.rs`, and the audit test ties a
+leading `size` to `OutParam`), so it is `KuiWindowConfig`'s shape. The
+bump is ABI 12's case — an existing function's signature — and not the
+struct's; `kui_run` is unchanged. The context's core changes hands: a
+new `Launcher::core(Core)` opens the main window on a core the host
+made (its session is the app's; `diagnostics`, `KUI_DEVTOOLS` and
+every `setup_core` still land on top, in that order), and
+`kui_run_with` hands its context's owned core over through it —
+`setup_core` could not, since the launcher's session would have been a
+different one from the core's — leaving the context a fresh core, still
+the caller's to free and to use. Node gained `textAa` in
+`WindowOptions` on the way, so the `Launcher::size` row's three cells
+say the same thing; the row is an `As` in C now, and the row's doc no
+longer credits Node with a `devtools` option it never had. The slots
+host opens at 720×480 with a 360 minimum. Tests: `run_options_of`
+(every default, every field, every refusal), `take_core` (the image
+and the devtools door go with it, a frame still builds on what is
+left), `Launcher::core` in kui (session identity, the doors held, the
+launcher's diagnostics after, `setup_core` last), Node's `textAa`
+through `windowOptions` and refused. ADR 0020's "Not done here" names
+what it had not.
 
 `kui_run`/`kui_run_with` build `kui::app(title).with_extensions().system()`
 and nothing else (`kui-ffi/src/run.rs:31-60`; `kui.h:2705,2728`):
@@ -3404,6 +3439,32 @@ the five doc comments reworded to the code; `NSWindow.level` /
 `WS_EX_TOPMOST` queried in `sync_env` or the two docs say "what was asked".
 
 
+### `~` AR50 — The header says an [in] append is safe for a host that did not recompile; the library reads the whole struct
+
+`kui.h`'s ABI block (line 47) and `abi.rs`'s note say an [in] struct
+may gain a field without a bump because "a host that predates the field
+passes a shorter struct and gets the zeroed default", naming `KuiSpec`'s
+`tooltip` as the case. Every reader takes the whole struct — `frame.rs`
+reads `spec.as_ref()` and copies `*spec`, `window_config_of` reads every
+field of `KuiWindowConfig` — so a host binary built against the shorter
+`KuiSpec` and linked against this library passes the ABI check
+(equality, and [in] appends do not bump) and then has its `tooltip`
+read from whatever follows its struct on the stack: a `KuiStr` whose
+pointer is garbage, dereferenced when its length is not zero. The
+[out] rule's `size` handshake is what makes an append safe, and only
+[out] structs have it; the [in] rule as written is a claim the code
+does not keep, masked by every host in the tree recompiling. Found
+building AR27, whose `KuiRunConfig` follows the [in] rule as it stands
+rather than opening a third category (a size-led [in]).
+
+**Fix:** one of two, and it is a policy in ADR 0006's territory: bump
+`KUI_ABI_VERSION` on an [in] append too, and say so in both notes (the
+cost is a recompile every host would need anyway; the gain is that the
+check catches the binary the sentence currently promises to serve); or
+keep the rule and give the [in] structs that are not arrays a leading
+`size` with a `read_in` mirroring `write_out` — a tax on every `KuiSpec`
+literal, which `abi.rs` declined once. Either way the sentence goes.
+
 ## From the standard-menus round (2026-09-14)
 
 [ADR 0030](adr/0030-the-standard-menus-the-runner-keeps.md) gave every
@@ -3493,7 +3554,9 @@ stamp and the AT gates — **both done 2026-09-14**), AR19–AR25 as the defects
 (**all seven done 2026-09-14**, AR26 with them), then B1a's
 table with AR26, AR27 and AR40 beside it (**B1a done 2026-09-14** — the
 table, its four pins and the one-line rows; **AR40 done 2026-09-14**;
-AR27 open beside it), AR46–AR48 for the tests, and
+**AR27 done 2026-09-14**, `KuiRunConfig` under ABI 16 and the
+context's core handed over through `Launcher::core`), AR46–AR48 for
+the tests, and
 AR49 first of all if the alpha.12 notes go out before the rest, since
 its first line is the CHANGELOG contradicting itself on the frame
 version (**AR49 done 2026-09-14**, the reused ids retired as `B1a` /

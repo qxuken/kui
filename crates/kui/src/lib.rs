@@ -126,6 +126,7 @@ pub fn app(title: &str) -> Launcher {
         extensions: Extensions::new(),
         text_aa: TextAa::Auto,
         diagnostics: None,
+        core: None,
         setup_core: Vec::new(),
         deferred_events: false,
         system: SystemEnv::default(),
@@ -146,6 +147,9 @@ pub struct Launcher {
     max_size: Option<(f64, f64)>,
     extensions: Extensions,
     text_aa: TextAa,
+    /// The main window's core, when the host made it ahead
+    /// ([`Launcher::core`]); the launcher makes one otherwise.
+    core: Option<Core>,
     /// What to do to the main core before its first frame
     /// ([`Launcher::setup_core`]).
     setup_core: Vec<CoreSetup>,
@@ -196,6 +200,23 @@ impl Launcher {
     /// they run in order.
     pub fn setup_core(mut self, f: impl FnOnce(&mut Core) + 'static) -> Self {
         self.setup_core.push(Box::new(f));
+        self
+    }
+
+    /// Opens the main window on `core` rather than on one the launcher
+    /// makes: everything the host registered on it beforehand — fonts,
+    /// images, sounds, tokens, a pinned theme, the devtools doors,
+    /// `set_native_menus`, the text-cache budget — reaches the window,
+    /// and the core's session is the app's, so a declared second window
+    /// joins it and the handles a headless frame minted keep drawing. What
+    /// the launcher is told still applies on top, in the order it always
+    /// has: [`Launcher::diagnostics`] (or the build's default), then
+    /// `KUI_DEVTOOLS`, then every [`Launcher::setup_core`]. A C host
+    /// registers on a context and hands it to `kui_run_with`, which is
+    /// this door (backlog AR27); a Rust host that built a core to draw
+    /// headless first has it too.
+    pub fn core(mut self, core: Core) -> Self {
+        self.core = Some(core);
         self
     }
 
@@ -344,8 +365,15 @@ impl Launcher {
         // Diagnostics are a development aid: on in debug builds unless the
         // launcher says otherwise, so a shipped app pays and prints nothing.
         let diagnostics = self.diagnostics.unwrap_or(cfg!(debug_assertions));
-        let session = Session::new();
-        let mut core = Core::new_in(&session);
+        // A handed core brings its session; a made one gets a fresh one.
+        let (session, mut core) = match self.core {
+            Some(core) => (core.session().clone(), core),
+            None => {
+                let session = Session::new();
+                let core = Core::new_in(&session);
+                (session, core)
+            }
+        };
         core.set_diagnostics(diagnostics);
         // `KUI_DEVTOOLS=1` opens the panel for a program that never asked
         // (ADR 0024); read here, for a window, and never by a headless
@@ -1964,6 +1992,40 @@ mod tests {
                 .core_mut()
                 .diagnostics()
         );
+    }
+
+    /// `Launcher::core` (backlog AR27): what the host registered on the
+    /// core it hands over is the window's, its session is the app's, and
+    /// what the launcher was told still lands on top, in order.
+    #[test]
+    fn a_handed_core_is_the_main_window_s_and_its_session_the_app_s() {
+        let session = Session::new();
+        let mut core = Core::new_in(&session);
+        core.set_devtools(true);
+        core.set_native_menus(false);
+        let image = core.resources.add_image(1, 1, vec![0; 4]);
+        let mut shell = app("t").diagnostics(false).core(core).shell(Empty);
+        assert!(shell.session.is(&session), "the session came along");
+        assert!(shell.core_mut().devtools(), "the devtools door held");
+        assert!(!shell.core_mut().native_menus(), "so did the menus one");
+        assert!(
+            !shell.core_mut().diagnostics(),
+            "the launcher's own setting lands after"
+        );
+        assert_eq!(
+            shell.core_mut().resources.image_size(image),
+            Some((1, 1)),
+            "a resource the host registered draws in the window"
+        );
+
+        // `setup_core` runs on the handed core, last.
+        let mut core = Core::new();
+        core.set_devtools(true);
+        let mut shell = app("t")
+            .core(core)
+            .setup_core(|c| c.set_devtools(false))
+            .shell(Empty);
+        assert!(!shell.core_mut().devtools());
     }
 
     #[test]

@@ -186,8 +186,17 @@ extern "C" {
  * verb table's C column (backlog B1a): kui_cell_selection, kui_set_inspect,
  * kui_nodes, kui_devtools, kui_devtools_dock, kui_set_devtools_theme and
  * kui_set_devtools_legend - seven functions, no struct.
+ *
+ * ABI 16 gives kui_run_with a KuiRunConfig (backlog AR27): a third
+ * argument, between the title and the view. The struct is [in] and would
+ * not bump on its own; the bump is ABI 12's case again - an existing
+ * function's *signature* - since a host that did not recompile passes one
+ * argument too few and the library reads its view callback out of the
+ * register the config should be in. Recompile: kui_run is unchanged, and
+ * kui_run_with(ctx, title, NULL, view, on_event, user) is what the five-
+ * argument call was.
  */
-#define KUI_ABI_VERSION 15u
+#define KUI_ABI_VERSION 16u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -200,7 +209,8 @@ uint32_t kui_abi_version(void);
  *          bumps KUI_ABI_VERSION instead (ABI 8, ABI 13).
  *          KuiSpec, KuiSizing, KuiKeyframe, KuiEnter, KuiTextStyle, KuiSpan,
  *          KuiCell, KuiMenuItem, KuiMenu, KuiPlay, KuiAudio, KuiWindowConfig,
- *          KuiColorToken, KuiLengthToken, KuiColorOp, KuiDerivedToken.
+ *          KuiRunConfig, KuiColorToken, KuiLengthToken, KuiColorOp,
+ *          KuiDerivedToken.
  *
  * [out]    You allocate it; the library WRITES it. These lead with a
  *          `uint32_t size` you set to sizeof the struct, and the library
@@ -2774,13 +2784,52 @@ void kui_value_free(KuiValue *v);
  * that fails at run time. Everything else in this header is always there. */
 typedef void (*KuiEventFn)(void *user, const KuiEvent *ev);
 bool kui_run(KuiStr title, KuiViewFn view, KuiEventFn on_event, void *user);
-/* kui_run with the extensions `ctx` loaded (ADR 0014): make a context,
- * kui_ctx_add_extension each plugin into it - kui_ctx_extension_error says
- * why one was refused, before any window opens - and hand it here. The
- * window takes them; the context is left with none and is still yours to
- * free. NULL is kui_run.
+
+/* What kui_run's window opens as: the chrome, the antialiasing and the
+ * diagnostics words KuiRunConfig takes. Zero is the default of each. */
+enum { KUI_CHROME_NATIVE = 0, KUI_CHROME_CUSTOM = 1, KUI_CHROME_BORDERLESS = 2 };
+enum { KUI_TEXT_AA_AUTO = 0, KUI_TEXT_AA_GRAYSCALE = 1, KUI_TEXT_AA_SUBPIXEL = 2 };
+enum { KUI_DIAG_DEFAULT = 0, KUI_DIAG_ON = 1, KUI_DIAG_OFF = 2 };
+
+/* [in] How kui_run_with opens its window: the options a Rust host's
+ * Launcher has and Node's WindowOptions carry, as one struct. Read
+ * literally, so start from KUI_RUN_CONFIG_INIT (every zero) or pass NULL
+ * for exactly that: a 960x640 native window, unbounded, antialiasing
+ * chosen by the GPU, diagnostics as the build has them. A word this
+ * build does not have - a chrome past KUI_CHROME_BORDERLESS, a size that
+ * is not a size - makes kui_run_with return false before any window
+ * opens, with the reason on stderr, rather than open something else. */
+typedef struct KuiRunConfig {
+    float width, height;   /* initial inner size, logical px; 0,0 = 960x640;
+                            * both or neither. Clamped into the bounds
+                            * below; KUI_WINDOW=WxH still overrides. */
+    float min_w, min_h;    /* smallest inner size the user may resize to;
+                            * a 0 side is unbounded, so one side may stand */
+    float max_w, max_h;    /* largest; a max below its min loses to it */
+    uint32_t chrome;       /* KUI_CHROME_*: with KUI_CHROME_CUSTOM the view
+                            * draws kui_titlebar and the runner synthesizes
+                            * edge resizing and double-click maximize */
+    uint32_t text_aa;      /* KUI_TEXT_AA_*; KUI_TEXT_AA=gray|subpixel in
+                            * the environment still overrides */
+    uint32_t diagnostics;  /* KUI_DIAG_*: the window's, over what
+                            * kui_set_diagnostics set on the context; the
+                            * default is the build's (debug on, release off) */
+} KuiRunConfig;
+#define KUI_RUN_CONFIG_INIT ((KuiRunConfig){0})
+
+/* kui_run with a window of your choosing and the context's registrations
+ * (backlog AR27; ABI 16). `config` is the window, NULL for every default.
+ * `ctx`'s core becomes the window's: the fonts, images, sounds, tokens,
+ * theme, devtools doors, kui_set_native_menus and text-cache budget you
+ * registered on it before the call reach the window, and the handles you
+ * minted keep drawing there - register, then run, in the order a Node
+ * host does. The context is left with a fresh core and no extensions,
+ * still yours to free. NULL for both is kui_run.
  *
- * Your view declares slots with kui_slot exactly as it would headless, and
+ * The extensions come along the same way (ADR 0014): make a context,
+ * kui_ctx_add_extension each plugin into it - kui_ctx_extension_error says
+ * why one was refused, before any window opens - and hand it here. Your
+ * view declares slots with kui_slot exactly as it would headless, and
  * what a plugin's nodes produce reaches your on_event as replies carrying
  * that plugin's origin.
  *
@@ -2796,8 +2845,8 @@ bool kui_run(KuiStr title, KuiViewFn view, KuiEventFn on_event, void *user);
  * loads plugins into it. It is the launcher's option and not an
  * environment variable on purpose: a shipped app's motion is its own code's
  * decision. */
-bool kui_run_with(KuiCtx *ctx, KuiStr title, KuiViewFn view, KuiEventFn on_event,
-                  void *user);
+bool kui_run_with(KuiCtx *ctx, KuiStr title, const KuiRunConfig *config,
+                  KuiViewFn view, KuiEventFn on_event, void *user);
 
 /* -- Extension ABI: C as the guest rather than the host ------------------
  *

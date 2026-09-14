@@ -2104,3 +2104,133 @@ mod follow_headless {
         kui_ctx_free(ctx);
     }
 }
+
+/// `kui_run_with`'s two halves that need no window (backlog AR27): the
+/// `KuiRunConfig` reading, and the context's core changing hands.
+#[cfg(test)]
+mod run_config_headless {
+    use super::*;
+
+    #[test]
+    fn a_run_config_reads_as_the_launcher_s_options_and_refuses_a_word_it_lacks() {
+        // NULL and every zero are the same: the launcher's own defaults.
+        assert_eq!(run_options_of(None).unwrap(), RunOptions::default());
+        let zero = KuiRunConfig::default();
+        assert_eq!(run_options_of(Some(&zero)).unwrap(), RunOptions::default());
+
+        let full = KuiRunConfig {
+            width: 800.0,
+            height: 600.0,
+            min_w: 400.0,
+            min_h: 0.0,
+            max_w: 0.0,
+            max_h: 900.0,
+            chrome: KUI_CHROME_CUSTOM,
+            text_aa: KUI_TEXT_AA_GRAYSCALE,
+            diagnostics: KUI_DIAG_OFF,
+        };
+        assert_eq!(
+            run_options_of(Some(&full)).unwrap(),
+            RunOptions {
+                size: Some((800.0, 600.0)),
+                // A zero side of a bound is unbounded, as Node's lone
+                // `minWidth` / `maxHeight` are.
+                min_size: Some((400.0, 0.0)),
+                max_size: Some((UNBOUNDED_SIZE, 900.0)),
+                chrome: KUI_CHROME_CUSTOM,
+                text_aa: KUI_TEXT_AA_GRAYSCALE,
+                diagnostics: Some(false),
+            }
+        );
+        assert_eq!(
+            run_options_of(Some(&KuiRunConfig {
+                diagnostics: KUI_DIAG_ON,
+                ..zero
+            }))
+            .unwrap()
+            .diagnostics,
+            Some(true)
+        );
+
+        // Refused with the reason, not degraded: a window that opened
+        // native when asked for a chrome this build lacks would draw its
+        // titlebar under the OS's.
+        let refused = |c: KuiRunConfig| run_options_of(Some(&c)).unwrap_err();
+        assert!(
+            refused(KuiRunConfig { chrome: 3, ..zero }).contains("KUI_CHROME_BORDERLESS, not 3")
+        );
+        assert!(
+            refused(KuiRunConfig { text_aa: 9, ..zero }).contains("KUI_TEXT_AA_SUBPIXEL, not 9")
+        );
+        assert!(
+            refused(KuiRunConfig {
+                diagnostics: 3,
+                ..zero
+            })
+            .contains("KUI_DIAG_OFF, not 3")
+        );
+        assert!(
+            refused(KuiRunConfig {
+                width: 320.0,
+                ..zero
+            })
+            .contains("width and height go together")
+        );
+        assert!(
+            refused(KuiRunConfig {
+                min_h: -1.0,
+                ..zero
+            })
+            .contains("min_h must be")
+        );
+        assert!(
+            refused(KuiRunConfig {
+                max_w: f32::NAN,
+                ..zero
+            })
+            .contains("max_w must be")
+        );
+    }
+
+    #[test]
+    fn a_context_s_core_changes_hands_and_the_context_stays_a_context() {
+        let ctx = kui_ctx_new();
+        let c = unsafe { &mut *ctx };
+        let image = c.core().resources.add_image(2, 2, vec![0; 16]);
+        c.core().set_devtools(true);
+
+        let mut taken = c.take_core().expect("a standalone context owns its core");
+        assert_eq!(
+            taken.resources.image_size(image),
+            Some((2, 2)),
+            "the registration went with the core"
+        );
+        assert!(taken.devtools());
+
+        // What is left is a context that has registered nothing, and is
+        // still one: a frame builds on it and it frees.
+        assert_eq!(c.core().resources.image_size(image), None);
+        assert!(!c.core().devtools());
+        assert!(
+            !c.core().diagnostics(),
+            "off until asked, as kui_ctx_new leaves it"
+        );
+        kui_frame_begin(ctx, 100.0, 100.0, 1.0);
+        let text = KuiStr {
+            ptr: "still here".as_ptr(),
+            len: 10,
+        };
+        kui_text(ctx, text, std::ptr::null());
+        kui_frame_finish(ctx);
+        let mut dd = KuiDrawData {
+            size: std::mem::size_of::<KuiDrawData>() as u32,
+            ..Default::default()
+        };
+        assert!(kui_draw_data(ctx, &mut dd));
+        assert!(dd.quad_count > 0);
+        // A borrowing context has no core of its own to hand over.
+        let mut borrowing = KuiCtx::borrowing(&mut taken);
+        assert!(borrowing.take_core().is_none());
+        kui_ctx_free(ctx);
+    }
+}

@@ -1421,6 +1421,11 @@ export interface WindowOptions {
   maxWidth?: number;
   maxHeight?: number;
   chrome?: 'native' | 'custom' | 'borderless';
+  /** How outline glyphs are antialiased: `'auto'` (the default) is LCD
+   *  subpixel coverage where the GPU blends per channel and grayscale
+   *  otherwise. `KUI_TEXT_AA=gray|subpixel` in the environment still
+   *  overrides, for an A/B by hand. */
+  textAa?: 'auto' | 'gray' | 'subpixel';
   /** Pins part of `env.system` for the life of the window, over whatever
    *  the OS says: `{ motion: 'reduced' }` opens the window as a user who
    *  asked for less motion sees it, on a machine whose owner did not. The
@@ -2615,9 +2620,9 @@ export declare function clipStride(): number
 export declare class KuiWindow {
   /**
    * Options: `{width, height, minWidth, minHeight, maxWidth, maxHeight,
-   * chrome: "native" | "custom" | "borderless", system}`. The min/max
-   * pairs bound what the user can resize the window to; either half may
-   * stand alone. `system` pins part of `env.system` over what the OS
+   * chrome: "native" | "custom" | "borderless", textAa: "auto" | "gray"
+   * | "subpixel", system}`. The min/max pairs bound what the user can
+   * resize the window to; either half may stand alone. `system` pins part of `env.system` over what the OS
    * says, for the life of the window — `{motion: 'reduced'}` is what a
    * user who asked for less motion would get, on a machine whose owner
    * did not; see `WindowOptions`.

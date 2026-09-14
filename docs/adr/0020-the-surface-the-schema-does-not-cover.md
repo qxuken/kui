@@ -319,6 +319,12 @@ nothing that worked.
   truthiness writes it.
 - **The Windows runner has no native context menu**, so decision 5's
   macOS half has no twin to keep in step there yet.
+- **C's runner took a title and nothing else**, and `kui_run_with` let the
+  launcher build a fresh session — a font or image registered on the
+  context before the call never reached the window. Neither was named
+  here at the time; both closed on 2026-09-14 (backlog AR27, ABI 16):
+  `kui_run_with` takes a `KuiRunConfig` and opens the window on the
+  context's own core (`Launcher::core`).
 
 ## Amendment: the rows are read off the functions (2026-09-11)
 
