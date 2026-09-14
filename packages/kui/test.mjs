@@ -1321,12 +1321,16 @@ test('a press in a sink names the line, the byte and the click count, and the si
   // would, and the host answers a paste with `commit`, which the sink
   // hears as `text`.
   ctx.setClipboard('yanked', null);
+  assert.equal(ctx.awaitingPaste(), false);
   ctx.requestPaste();
+  ctx.requestPaste(); // one ask at a time (AR34): dropped
+  assert.equal(ctx.awaitingPaste(), true);
   assert.deepEqual(ctx.takeMenuActions(), [
     { kind: 'setClipboard', text: 'yanked', html: null },
     { kind: 'paste' },
   ]);
   ctx.commit('from the clipboard');
+  assert.equal(ctx.awaitingPaste(), false, 'the commit is the answer');
   assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [
     { kind: 'text', text: 'from the clipboard', tag: { kind: 'ed' } },
   ]);
@@ -5542,7 +5546,9 @@ test('metrics() is the sizes the protocol declares, and setMetrics reaches the s
   // A named base, then a scale over it: a density slider.
   ctx.setMetrics({ base: 'compact', scale: 2 });
   assert.equal(ctx.metrics().radius, 8);
-  assert.equal(ctx.metrics().titlebarH, stock.titlebarH * 2);
+  // The platform's row is the OS's number, not a density: it stays (AR35).
+  assert.equal(ctx.metrics().titlebarH, stock.titlebarH);
+  assert.equal(ctx.metrics().controlText, 26);
   // null is the stock set again, and an unknown key is a typo.
   ctx.setMetrics(null);
   assert.deepEqual(ctx.metrics(), stock);

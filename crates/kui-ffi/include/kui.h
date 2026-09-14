@@ -2551,6 +2551,11 @@ bool kui_answer_selection_range(KuiCtx *ctx, KuiStr text);
  * drains them with kui_take_menu_action as it does a menu's. */
 void kui_set_clipboard(KuiCtx *ctx, KuiStr text, KuiStr html);
 void kui_request_paste(KuiCtx *ctx);
+/* One paste ask at a time: while one is unanswered a second
+ * kui_request_paste is dropped, and the kui_input_commit that answers it -
+ * send an empty one when the clipboard held nothing - lets the next
+ * through. This reads whether one is out (backlog AR34). */
+bool kui_awaiting_paste(KuiCtx *ctx);
 /* Tells the core this host shows menus itself, however the platform draws
  * them: the core then keeps the open menu as state and draws none of it.
  * Read what is open, show it, and report back with kui_activate_menu_item
@@ -2633,7 +2638,8 @@ void kui_set_inspect(KuiCtx *ctx, bool on);
  * with key, parent, depth, kind, label, rect, role, text, flags, layer,
  * origin, children, the layout spec and events (the node's own payloads
  * by handler name) - what a tree view and a node inspector are built
- * from; read it with kui_value_at / kui_value_get. Empty until
+ * from; read it with kui_value_at / kui_value_get. Rects are in your
+ * viewport's logical px, like kui_layout_of's (backlog AR36). Empty until
  * kui_set_inspect(ctx, true) and a frame after it. Borrowed until the
  * next call; NULL on a bad context. */
 const KuiValue *kui_nodes(KuiCtx *ctx);

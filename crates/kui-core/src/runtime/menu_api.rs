@@ -418,7 +418,7 @@ impl Core {
                     self.push_edit_event(key, "changed", out);
                 }
             }
-            MenuRole::Paste => self.menu_actions.push(MenuAction::Paste),
+            MenuRole::Paste => self.queue_paste(),
             MenuRole::LookUp => {
                 if let Some(action) = self.lookup_action() {
                     self.menu_actions.push(action);

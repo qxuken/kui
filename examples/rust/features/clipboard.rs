@@ -54,9 +54,6 @@ struct Clipboard {
     clip_out: Option<String>,
     /// `p` asked: the next `text` event is the paste.
     awaiting_paste: bool,
-    /// The ask itself, made once by the next view — not every frame the
-    /// answer is outstanding, which would queue a paste a frame.
-    paste_pending: bool,
     /// A `selectionrange` ask the log has to answer, as the rows it named.
     answer: Option<String>,
     /// The readout.
@@ -75,7 +72,6 @@ impl Clipboard {
             cursor: 0,
             clip_out: None,
             awaiting_paste: false,
-            paste_pending: false,
             answer: None,
             sent: "nothing yet".into(),
             received: "nothing yet".into(),
@@ -135,7 +131,10 @@ impl App for Clipboard {
         if let Some(text) = self.clip_out.take() {
             ui.set_clipboard(text, None);
         }
-        if std::mem::take(&mut self.paste_pending) {
+        // Asked on every frame the answer is outstanding: the core queues
+        // one ask at a time, so this is one paste and not one per frame
+        // (backlog AR34).
+        if self.awaiting_paste {
             ui.request_paste();
         }
         if let Some(text) = self.answer.take() {
@@ -293,7 +292,6 @@ impl App for Clipboard {
                 }
                 Some("p") => {
                     self.awaiting_paste = true;
-                    self.paste_pending = true;
                 }
                 _ => {}
             },

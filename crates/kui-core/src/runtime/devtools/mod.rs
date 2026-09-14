@@ -331,8 +331,6 @@ pub(crate) struct State {
     /// rows in hand: `up`, `down`, `left`, `right`, `home`, `end`,
     /// `pageup`, `pagedown`, `enter`, `space`.
     tree_key: Option<String>,
-    /// `Core::set_inspect` has been asked on the main core.
-    inspecting: bool,
     // What the main window wrote for the others.
     facts: Facts,
     nodes: Vec<NodeInfo>,
@@ -390,7 +388,6 @@ impl Default for State {
             fold_all: false,
             tree_cursor: None,
             tree_key: None,
-            inspecting: false,
             facts: Facts::default(),
             nodes: Vec::new(),
             frames: 0,
@@ -930,13 +927,18 @@ impl Core {
                 d.theme_override(app, &self.env.system),
                 d.native_menus,
                 app,
-                d.tab == Tab::Tree && !d.inspecting,
+                // The panel's need for the node snapshot, derived every
+                // frame rather than latched (backlog AR38): the tree tab
+                // showing, or a pick under way. Off, the O(nodes) copy a
+                // frame stops; the host's own `set_inspect` is apart.
+                d.on && (d.tab == Tab::Tree || d.pick),
             )
         };
         if !on {
             if let Some((app, _)) = self.dt_theme.take() {
                 self.set_theme_source(app);
             }
+            self.dt_inspect = false;
             return;
         }
         // The theme: the override while there is one, and the app's own
@@ -971,10 +973,7 @@ impl Core {
         if !main {
             return;
         }
-        if want_inspect {
-            self.set_inspect(true);
-            self.session.state().devtools.inspecting = true;
-        }
+        self.dt_inspect = want_inspect;
         if dock.docked() {
             self.tree.specs[0] = match dock {
                 Dock::Bottom => NodeSpec::column(),

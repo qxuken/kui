@@ -65,6 +65,12 @@ field reports).
   lines — an adapter you maintain outside this repo needs both arms.
 - The `system` event's payload grew a key; a handler that destructures
   the old four still reads.
+- `Core::nodes()` returns `Vec<NodeInfo>` (rects in the host's
+  viewport) where it returned `&[NodeInfo]` (backlog AR36), and
+  `Core::finish_frame` is crate-private (AR37): a Rust host that called
+  it finishes through `Ui::finish` — `Ui::wrap(core).finish()` from a
+  bare core — which also runs the fills, the panel and the open menu it
+  was skipping.
 
 ### Added
 
@@ -616,6 +622,37 @@ field reports).
 
 ### Fixed
 
+- **One paste ask at a time** (backlog AR34): `request_paste` — and a
+  menu's Paste row — queues one `Paste` while none is outstanding and
+  drops a second until the `Commit` that answers it lands, so a view
+  that asks on every frame until the answer comes asks once; the runner
+  answers every ask, an empty commit for an empty clipboard. Readable as
+  `Ui::awaiting_paste` / `awaitingPaste()` / `env.awaiting_paste()` /
+  `kui_awaiting_paste`. The two Rust examples dropped their own guard.
+- **A hovered scrollbar is not a hovered row** (backlog AR31): hover
+  resolves through the same `target_at` the press and the cursor use,
+  so over a bar's track the node beneath drops its `hoverBg` and hears
+  `leave`, where a press there would have grabbed the thumb.
+- **`Metrics::scaled` leaves the titlebar** (backlog AR35): the row the
+  schema marks the platform's keeps its height under a density slider,
+  as `compact()` always left it — a 1.5 slider drew a 51 px strip beside
+  34 px traffic lights. `scale` in Node's `setMetrics` the same.
+- **`nodes()` reads in the app's viewport** (backlog AR36), like
+  `layoutOf` and every other readback: under a left dock its rects no
+  longer disagree with `layoutOf` by the dock's width. `Core::nodes()`
+  returns a `Vec<NodeInfo>` now, not a slice.
+- **The devtools' node snapshot follows the tree tab** (backlog AR38):
+  the panel asks for it while its tree tab shows or it is picking, and
+  stops when neither — a closed panel no longer copies every node every
+  frame, and a host's `setInspect(false)` no longer blanks the panel's
+  tree for the session. The host's ask and the panel's are kept apart.
+- **`Core::finish_frame` is crate-private** (backlog AR37): `Ui::finish`
+  is the one door out of a frame; a driver holding a bare core finishes
+  through `Ui::wrap(core).finish()`, which every driver did already.
+- **The runner re-finds a pane by id after an input's commands ran**
+  (backlog AR39): a chrome close on pane *i* moved the cursor apply, the
+  input-time charge and the redraw to the next pane, and a key that
+  closed a window was one chrome-shaped key from an out-of-bounds.
 - **A font the tests carry with them** (backlog AR48):
   `kui_core::testing::liga_font()` builds a small TrueType face — family
   "Kui Liga", every printable character a square, one `liga` ligature —

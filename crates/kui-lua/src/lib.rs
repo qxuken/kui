@@ -418,7 +418,8 @@ fn menu_items(t: &mlua::Table) -> mlua::Result<Vec<kui_core::MenuItem>> {
 /// `request_copy()` + `answer_selection_range(text)` (a copy that reaches
 /// rows a virtual list never built is asked of the app) /
 /// `set_clipboard(text, html?)` + `request_paste()` (a key sink's own
-/// Ctrl-c and Ctrl-v; the paste comes back as a `text` event) /
+/// Ctrl-c and Ctrl-v; the paste comes back as a `text` event, one ask at
+/// a time) + `awaiting_paste()` (whether one is unanswered) /
 /// `select_all_in(key)` / `clear_selection()` (ADR 0017 — one selection
 /// per window, a `selectable` scope's or the focused editor's), the menu
 /// verbs `open_menu(key, x, y, items)` / `close_menu()` (whose chosen row
@@ -814,6 +815,10 @@ fn env_table<'scope, 'env: 'scope>(
             ui.borrow_mut().request_paste();
             Ok(())
         })?,
+    )?;
+    t.set(
+        "awaiting_paste",
+        scope.create_function(move |_, ()| Ok(ui.borrow().awaiting_paste()))?,
     )?;
     // The selection as HTML: the formatting the text declared (bold,
     // The text selection's two ends as the drag made them: `{anchor =
@@ -3390,7 +3395,9 @@ mod tests {
                 log = {}
                 function view(env)
                   if yank then env.set_clipboard(yank, nil); yank = nil end
-                  if paste then env.request_paste(); paste = false end
+                  -- Asked on every view until the answer lands: the core
+                  -- takes one ask at a time (AR34), so this is one paste.
+                  if paste then env.request_paste() end
                   return column { key = "editor", on_key = "ed", on_drag = "sel",
                     key_focus = true, role = "multilineTextInput", label = "buf",
                     width = 400, height = 300,
@@ -3401,7 +3408,7 @@ mod tests {
                 function on_event(ev)
                   if ev.kind == "key" and ev.code == "y" then yank = "hello world" end
                   if ev.kind == "key" and ev.code == "p" then paste = true end
-                  if ev.kind == "text" then log[#log + 1] = "text:" .. ev.text end
+                  if ev.kind == "text" then paste = false; log[#log + 1] = "text:" .. ev.text end
                   if ev.kind == "drag" then
                     log[#log + 1] = ev.phase .. ":" .. ev.line .. ":" .. ev.byte .. ":" .. ev.clicks
                   end
@@ -3428,12 +3435,24 @@ mod tests {
         );
         feed(&mut core, &mut ext, InputEvent::KeyDown(key('p')));
         frame(&mut core, &mut ext);
-        assert_eq!(core.take_menu_actions(), vec![MenuAction::Paste]);
+        frame(&mut core, &mut ext);
+        assert_eq!(
+            core.take_menu_actions(),
+            vec![MenuAction::Paste],
+            "two views asked, one paste queued"
+        );
+        assert!(core.awaiting_paste());
         // The host reads the clipboard and commits it.
         feed(
             &mut core,
             &mut ext,
             InputEvent::Commit("from the clipboard".into()),
+        );
+        assert!(!core.awaiting_paste());
+        frame(&mut core, &mut ext);
+        assert!(
+            core.take_menu_actions().is_empty(),
+            "answered: the script stopped asking"
         );
         // A double click on the second line, past its end.
         for e in press(&mut core, Vec2::new(390.0, 30.0)) {

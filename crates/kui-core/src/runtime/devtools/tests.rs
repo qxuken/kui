@@ -64,8 +64,11 @@ fn access_click(core: &mut Core, key: Key) -> Vec<UiEvent> {
     )))
 }
 
+/// A node of the snapshot as the panel reads it — window px, the frame
+/// the dock's own geometry is asserted in. `Core::nodes()` is the host's
+/// reading, shifted into its viewport (backlog AR36).
 fn node(core: &Core, key: Key) -> NodeInfo {
-    core.nodes()
+    core.snapshot()
         .iter()
         .find(|n| n.key == key)
         .cloned()
@@ -128,7 +131,7 @@ fn configure_root_is_split_between_root_and_container() {
     };
     frame_with(&mut core, Some(root()));
     frame_with(&mut core, Some(root()));
-    let nodes = core.nodes().to_vec();
+    let nodes = core.nodes();
     let r = &nodes[0];
     assert_eq!(r.key, Key::ROOT);
     assert!(
@@ -971,11 +974,11 @@ fn node_info_carries_the_layer_and_the_picker_reads_it() {
     assert_eq!(node(&core, under).layer, 0);
     assert_eq!(node(&core, over).layer, 1);
     assert_eq!(
-        tree::pick_target(core.nodes(), Vec2::new(60.0, 60.0)),
+        tree::pick_target(&core.nodes(), Vec2::new(60.0, 60.0)),
         Some(over)
     );
     assert_eq!(
-        tree::pick_target(core.nodes(), Vec2::new(10.0, 10.0)),
+        tree::pick_target(&core.nodes(), Vec2::new(10.0, 10.0)),
         Some(under)
     );
 }
@@ -1170,6 +1173,22 @@ fn the_host_s_viewport_is_the_window_less_the_dock() {
         node(&core, centred).rect.x,
         DOCK_SIDE_W + (VIEWPORT.w - DOCK_SIDE_W - 100.0) / 2.0
     );
+    // What the host reads through `nodes()` is its own viewport, like
+    // `layout_of` and the layout event — not the window (backlog AR36).
+    let host = |key: Key| {
+        core.nodes()
+            .into_iter()
+            .find(|n| n.key == key)
+            .unwrap()
+            .rect
+    };
+    assert_eq!(
+        host(target).x,
+        0.0,
+        "the app's coordinates, not the window's"
+    );
+    assert_eq!(core.layout_of(target).map(|r| r.x), Some(0.0));
+    assert_eq!(host(centred).x, (VIEWPORT.w - DOCK_SIDE_W - 100.0) / 2.0);
     // A right-click on it: the point comes back in the app's coordinates,
     // and the cursor reads the same way.
     let p = Vec2::new(r.x + 10.0, r.y + 10.0);
@@ -1467,4 +1486,54 @@ fn a_followed_event_stream_settles_instead_of_asking_for_frames_forever() {
         frame(&mut core);
     }
     assert!(!core.animating());
+}
+
+/// The panel's need for the node snapshot is derived every frame, not
+/// latched (backlog AR38): the tree tab showing asks for it, another tab
+/// stops the O(nodes) copy, the tab back asks again — and the host's own
+/// `set_inspect` is a separate ask neither side turns off.
+#[test]
+fn the_panel_s_inspect_ask_follows_its_tab_and_stays_apart_from_the_host_s() {
+    let mut core = on();
+    assert!(
+        core.snapshot().is_empty(),
+        "the facts tab needs no snapshot"
+    );
+    core.handle_input(chord('N'));
+    frame(&mut core);
+    assert_eq!(state(&core, |s| s.tab), Tab::Tree);
+    frame(&mut core);
+    assert!(!core.snapshot().is_empty(), "the tree tab asks for one");
+    // The host says no: the panel's ask is not the host's to withdraw.
+    core.set_inspect(false);
+    frame(&mut core);
+    assert!(
+        !core.snapshot().is_empty(),
+        "the tab still shows, so still asked"
+    );
+    // Another tab: the copy stops.
+    core.handle_input(chord('N'));
+    frame(&mut core);
+    frame(&mut core);
+    assert_ne!(state(&core, |s| s.tab), Tab::Tree);
+    assert!(core.snapshot().is_empty(), "nobody asks, nothing is copied");
+    // Back to the tree: asked again, where a latch would have left it blank.
+    while state(&core, |s| s.tab) != Tab::Tree {
+        core.handle_input(chord('N'));
+        frame(&mut core);
+    }
+    frame(&mut core);
+    assert!(!core.snapshot().is_empty());
+    // The host's ask survives the panel closing.
+    core.set_inspect(true);
+    core.set_devtools(false);
+    frame(&mut core);
+    frame(&mut core);
+    assert!(
+        !core.nodes().is_empty(),
+        "the host asked, the panel is gone"
+    );
+    core.set_inspect(false);
+    frame(&mut core);
+    assert!(core.nodes().is_empty());
 }

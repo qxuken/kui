@@ -219,6 +219,17 @@ pub extern "C" fn kui_request_paste(ptr: *mut KuiCtx) {
     });
 }
 
+/// Whether a paste asked for is still unanswered: `kui_request_paste`
+/// queues one ask at a time, and the `kui_input_commit` that answers it
+/// — an empty one for an empty clipboard — is what lets the next through
+/// (backlog AR34).
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_awaiting_paste(ptr: *mut KuiCtx) -> bool {
+    guard(false, || {
+        unsafe { ctx(ptr) }.is_some_and(|c| c.core().awaiting_paste())
+    })
+}
+
 /// Closes whatever menu is open; true when there was one.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_close_menu(ptr: *mut KuiCtx) -> bool {

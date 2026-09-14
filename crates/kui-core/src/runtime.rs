@@ -208,9 +208,15 @@ pub struct Core {
     /// agree with and falls back to what its own `Mods` say.
     pressed_mods: Option<KeyMods>,
     pub(crate) tree: Tree,
-    /// Whether `finish_frame` copies the frame into `inspected` (see
-    /// `runtime/inspect.rs`); off unless a devtool asked.
+    /// Whether the host asked for `finish_frame` to copy the frame into
+    /// `inspected` (see `runtime/inspect.rs`, `set_inspect`); off unless
+    /// it did. The panel's own need is `dt_inspect`, derived each frame
+    /// and kept apart (backlog AR38), so neither ask can turn the other
+    /// off.
     inspect: bool,
+    /// The devtools panel's need for the snapshot this frame: its tree
+    /// tab is showing, or it is picking.
+    dt_inspect: bool,
     inspected: Vec<inspect::NodeInfo>,
     /// The devtools' hold on this window's frame (`docs/adr/0024`): the
     /// tree index of the app container the host's tree is wrapped in
@@ -330,6 +336,11 @@ pub struct Core {
     cell_selection: Option<crate::select::CellSelection>,
     /// Whether a `selectionrange` ask is outstanding (ADR 0017, tier 3).
     awaiting_selection: bool,
+    /// Whether a paste ask is outstanding — queued, or taken by the
+    /// driver and not yet answered with a `Commit` (backlog AR34). A
+    /// second ask while one is out is dropped, so a view that asks every
+    /// frame until the answer lands asks once.
+    awaiting_paste: bool,
     /// The drag a press is running through a selection scope, if any: set
     /// on the press inside a scope, cleared on release. The counterpart of
     /// `EditStore::dragging` for text nobody is editing.
@@ -766,6 +777,7 @@ impl Core {
             access_rebuilds: 0,
             tree: Tree::new(),
             inspect: false,
+            dt_inspect: false,
             inspected: Vec::new(),
             prev_tree: Tree::new(),
             lines: Default::default(),
@@ -798,6 +810,7 @@ impl Core {
             selection: None,
             cell_selection: None,
             awaiting_selection: false,
+            awaiting_paste: false,
             select_dragging: None,
             drag_follow: None,
             last_frame_time: None,
@@ -1076,7 +1089,10 @@ impl Core {
     }
 
     /// Starts a frame. Build the tree through the returned `Ui` (or the
-    /// `Core` builder methods directly), then `finish_frame()`.
+    /// `Core` builder methods directly), then `Ui::finish` — the one door
+    /// out of a frame, which runs the extension fills, the devtools panel
+    /// and the open menu before layout. A driver holding a bare `Core`
+    /// mid-frame finishes through `Ui::wrap(core).finish()`.
     pub fn frame(&mut self, viewport: Size, scale: f32) -> Ui<'_> {
         self.begin_frame(viewport, scale);
         Ui::new(self)

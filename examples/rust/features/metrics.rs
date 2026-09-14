@@ -194,8 +194,12 @@ impl Example for Page {
         d.check(stock3.h > stock.h, "large grows the stock button")?;
         d.check(own3.h > own.h, "and the card")?;
         d.check(
-            d.core.metrics().titlebar_h == Metrics::default().titlebar_h * 1.4,
-            "scaled multiplies every length, the titlebar included",
+            d.core.metrics().titlebar_h == Metrics::default().titlebar_h,
+            "scaled multiplies every density and leaves the platform's titlebar",
+        )?;
+        d.check(
+            d.core.metrics().control_text == Metrics::default().control_text * 1.4,
+            "the rest scales",
         )?;
         Ok(())
     }

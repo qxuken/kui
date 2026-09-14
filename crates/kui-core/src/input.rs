@@ -1201,9 +1201,15 @@ impl Interaction {
     /// leave/enter events when the hovered node changes.
     fn refresh_hover(&mut self, out: &mut Vec<UiEvent>) {
         let before = self.hovered;
-        let idx = self
-            .cursor
-            .and_then(|p| self.hits.iter().rposition(|h| self.contains(h, p)));
+        // Through `target_at`, like the press and the cursor shape (ADR
+        // 0023, decision 4): over a bar painted above the node, nothing
+        // is hovered — the node beneath used to light its `hover_bg` and
+        // fire `enter` while the press would have grabbed the thumb
+        // (backlog AR31).
+        let idx = self.cursor.and_then(|p| match self.target_at(p)? {
+            Target::Bar(_) => None,
+            Target::Hit(h) => self.hits.iter().rposition(|x| std::ptr::eq(x, h)),
+        });
         let (hovered, group) = match idx {
             Some(i) => (Some(self.hits[i].key), self.hits[i].group),
             None => (None, None),

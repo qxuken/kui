@@ -374,3 +374,37 @@ fn a_root_sink_hears_a_paste_with_nothing_focused() {
     assert_eq!(text.key, Key::ROOT);
     assert_eq!(field(text, "tag"), Some(Value::str("shell")));
 }
+
+/// One paste ask at a time (backlog AR34): a view that asks on every frame
+/// until the answer lands queues one `Paste`, not one per frame, and the
+/// commit that answers — empty for an empty clipboard — lets the next ask
+/// through. A menu's Paste row goes through the same gate.
+#[test]
+fn a_second_paste_ask_is_dropped_until_the_first_is_answered() {
+    let mut core = Core::new();
+    frame(&mut core, &["hello"]);
+    assert!(!core.awaiting_paste());
+    core.request_paste();
+    core.request_paste();
+    core.request_paste();
+    assert!(core.awaiting_paste());
+    assert_eq!(core.take_menu_actions(), vec![MenuAction::Paste], "one ask");
+    // Taken by the driver, still unanswered: an ask now is still a
+    // duplicate, since the driver's answer is on its way.
+    core.request_paste();
+    assert!(core.take_menu_actions().is_empty());
+    assert!(core.awaiting_paste());
+    // The answer, empty: the clipboard held nothing. The sink hears it
+    // as a text of nothing, and the gate opens.
+    let evs = core.handle_input(InputEvent::Commit(String::new()));
+    assert_eq!(evs.len(), 1);
+    assert!(!core.awaiting_paste());
+    core.request_paste();
+    assert_eq!(
+        core.take_menu_actions(),
+        vec![MenuAction::Paste],
+        "the next ask goes through"
+    );
+    core.handle_input(InputEvent::Commit("pasted".into()));
+    assert!(!core.awaiting_paste());
+}

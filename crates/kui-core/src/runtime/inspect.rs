@@ -53,7 +53,8 @@ pub struct NodeInfo {
     pub kind: NodeKind,
     /// The label it was opened under, when it was opened by one.
     pub label: Option<String>,
-    /// Where layout put it, logical viewport px.
+    /// Where layout put it, logical px — the host's viewport through
+    /// [`Core::nodes`], the window's in the snapshot the panel reads.
     pub rect: Rect,
     pub dir: Dir,
     pub width: Sizing,
@@ -178,22 +179,50 @@ const TEXT_CUT: usize = 60;
 impl Core {
     /// Turns the per-frame snapshot on or off (see the module doc). Off by
     /// default; a devtool that reads [`Self::nodes`] turns it on once.
+    /// The host's ask alone: the core's own devtools panel asks for the
+    /// snapshot separately, per frame, while its tree tab shows or it is
+    /// picking, and neither ask turns the other off (backlog AR38).
     pub fn set_inspect(&mut self, on: bool) {
         self.inspect = on;
-        if !on {
+        if !on && !self.dt_inspect {
             self.inspected.clear();
         }
     }
 
+    /// Whether the host asked for the snapshot.
+    pub fn inspect(&self) -> bool {
+        self.inspect
+    }
+
     /// The last finished frame's nodes, in tree order — empty until
     /// [`Self::set_inspect`] asked for them and a frame has finished since.
-    pub fn nodes(&self) -> &[NodeInfo] {
+    /// Rects in the host's viewport coordinates, like every other readback
+    /// (`layout_of`, `scroll_geometry`, `text_hit`): under a left dock the
+    /// snapshot itself is kept in window px for the panel's outlines, and
+    /// this is the translated copy (backlog AR36).
+    pub fn nodes(&self) -> Vec<NodeInfo> {
+        let mut out = self.snapshot().to_vec();
+        let shift = self.dt_shift();
+        if shift != Vec2::ZERO {
+            for n in &mut out {
+                n.rect.x -= shift.x;
+                n.rect.y -= shift.y;
+            }
+        }
+        out
+    }
+
+    /// The snapshot as kept: rects in window px, which is what the
+    /// devtools panel outlines with, docked or not.
+    pub(crate) fn snapshot(&self) -> &[NodeInfo] {
         &self.inspected
     }
 
     /// Called at the end of `finish_frame`, after layout.
     pub(crate) fn snapshot_nodes(&mut self) {
-        if !self.inspect {
+        if !self.inspect && !self.dt_inspect {
+            // Nobody asked this frame: no copy, and nothing stale to read.
+            self.inspected.clear();
             return;
         }
         let tree = &self.tree;

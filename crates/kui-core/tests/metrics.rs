@@ -97,13 +97,23 @@ fn scaling_is_the_apps_not_the_scale_factors() {
     assert_eq!((two.w, two.h), (one[0].w * 2.0, one[0].h * 2.0));
 }
 
-/// The compact set keeps the platform's titlebar: that number is the
-/// OS's, not a density.
+/// The compact set keeps the platform's titlebar, and so does a scaled
+/// one (backlog AR35): that number is the OS's, not a density.
 #[test]
-fn compact_keeps_the_platforms_titlebar() {
+fn compact_and_scaled_keep_the_platforms_titlebar() {
     assert_eq!(Metrics::compact().titlebar_h, Metrics::default().titlebar_h);
-    // And the titlebar draws from the metrics, not the constant: a scaled
-    // set makes it taller. Its box is read off a child that fills it.
+    assert_eq!(
+        Metrics::default().scaled(2.0).titlebar_h,
+        Metrics::default().titlebar_h
+    );
+    assert_eq!(
+        Metrics::default().scaled(2.0).control_text,
+        Metrics::default().control_text * 2.0,
+        "every other row scales"
+    );
+    // And the titlebar draws from the metrics, not the constant: a set
+    // whose titlebar_h is set by hand makes it taller. Its box is read off
+    // a child that fills it.
     let bar_h = |core: &mut Core| {
         let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
         ui.configure_root(NodeSpec::column().fill());
@@ -122,5 +132,10 @@ fn compact_keeps_the_platforms_titlebar() {
     let mut core = Core::new();
     assert_eq!(bar_h(&mut core), widgets::TITLEBAR_H);
     core.set_metrics(Metrics::compact().scaled(2.0));
+    assert_eq!(bar_h(&mut core), widgets::TITLEBAR_H, "scaled leaves it");
+    core.set_metrics(Metrics {
+        titlebar_h: widgets::TITLEBAR_H * 2.0,
+        ..Metrics::compact()
+    });
     assert_eq!(bar_h(&mut core), widgets::TITLEBAR_H * 2.0);
 }

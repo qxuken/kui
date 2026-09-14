@@ -1415,7 +1415,7 @@ mod tests {
         // view with no extensions loaded gets and what every op but
         // `OP_SLOT` cares about.
         lower_binary(&mut kui_core::Ui::wrap(&mut core), &stream, b"hi").unwrap();
-        core.finish_frame();
+        kui_core::Ui::wrap(&mut core).finish();
         assert!(!core.output().0.quads.is_empty(), "root bg draws a quad");
 
         let stale = [v + 1.0, OP_ROOT as f64, 0.0, OP_END as f64];

@@ -265,7 +265,9 @@ impl<A: App> Shell<A> {
                     self.panes[j].cursor = q;
                     self.dispatch(event_loop, j, InputEvent::CursorMoved(q));
                 }
-                None if was => self.dispatch(event_loop, j, InputEvent::CursorLeft),
+                None if was => {
+                    self.dispatch(event_loop, j, InputEvent::CursorLeft);
+                }
                 None => {}
             }
         }

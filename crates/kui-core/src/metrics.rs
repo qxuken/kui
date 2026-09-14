@@ -146,13 +146,20 @@ impl Metrics {
         }
     }
 
-    /// Every length multiplied by `factor` — a density slider, or an OS
+    /// Every density multiplied by `factor` — a density slider, or an OS
     /// text-size setting the day one is plumbed. Logical px in, logical
     /// px out: `env.scale` is applied after this by the renderer and is
-    /// never folded in here.
+    /// never folded in here. A row the schema marks the platform's
+    /// (`titlebar_h`: the OS's caption height, which the traffic lights
+    /// are drawn against) is left alone, as [`Metrics::compact`] leaves
+    /// it — a 1.5 slider drew a 51 px strip beside 34 px buttons
+    /// (backlog AR35).
     pub fn scaled(self, factor: f32) -> Self {
         let mut m = self;
         for row in crate::schema::METRIC_ROLES {
+            if row.platform.is_some() {
+                continue;
+            }
             (row.set)(&mut m, (row.get)(&self) * factor);
         }
         m

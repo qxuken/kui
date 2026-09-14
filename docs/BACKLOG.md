@@ -49,7 +49,7 @@ pass on what a press made, Node's surface aimed at the window it is
 handed for, `<text>`'s rows closed, one token-miss policy, Cut's
 `changed`, one spec pipeline for every door, the focus stamp and the
 reader's gates — with the amendment on B1a whose condition that round
-met, and **B1a, AR40, AR49, AR27 and AR46–AR48 built the same day** (AR50, the
+met, and **B1a, AR40, AR49, AR27, AR46–AR48, AR31 and AR34–AR39 built the same day** (AR50, the
 [in] rule's unkept promise, filed from under AR27); C31, found
 the same day building the tokens (Node's corpus adapter disagreeing with
 the reference on one scene when run alone — **done the same evening**:
@@ -3065,7 +3065,14 @@ diagnostic.
 documented as "visual row"; `runs_of` gets the `Role::None` skip; a diag
 when a text under a `line` row exceeds `PLACE_ANCESTORS`.
 
-### `.` AR31 — Hover ignores the scrollbar the press and the cursor honour
+### `.` AR31 — Hover ignores the scrollbar the press and the cursor honour — **done (2026-09-14)**
+
+**Built 2026-09-14.** `refresh_hover` resolves through `target_at`, as
+the press and the cursor shape do; `Target::Bar` is nothing hovered, so
+the row under a bar's track drops its `hover_bg` and fires `leave`, and
+`enter` again beside it. `tests/scroll.rs::
+hover_over_the_scrollbar_is_not_hover_over_the_row_beneath` (red on the
+old resolve).
 
 ADR 0023 decision 4 routes press and cursor through `target_at`
 (`input.rs:1179`, `:1395`); `refresh_hover` resolves against `hits` alone
@@ -3108,7 +3115,24 @@ creating monitor). Mechanism read; frequency low.
 **Fix:** `Surface` platform-aware — points as the common frame on macOS,
 `PhysicalPosition` into `with_position` on Windows.
 
-### `.` AR34 — `request_paste` has no outstanding-request guard, so both examples carry one
+### `.` AR34 — `request_paste` has no outstanding-request guard, so both examples carry one — **done (2026-09-14)**
+
+**Built 2026-09-14, as the fix line says.** `awaiting_paste` on the
+core: `request_paste` and a menu's Paste row go through one
+`queue_paste`, which drops a second ask while one is out — queued, or
+taken by the driver and unanswered — and the `Commit` that answers
+clears it. The runner answers every ask, an empty commit for an empty
+clipboard, so the gate cannot wedge (an editor inserts nothing for it; a
+sink hears a text of nothing, which is the truth). Readable as
+`Ui::awaiting_paste` / `awaitingPaste()` / `env.awaiting_paste()` /
+`kui_awaiting_paste` — a row in the verb table, called in the walk. Both
+Rust examples dropped `paste_pending` and ask on every frame the answer
+is outstanding, which is now one paste. Tests in the core (three asks,
+one action; a fourth after the driver took it, still dropped; the empty
+answer opens the gate), Node, Lua (the script asks on every view) and
+the C walk. What the review's "loop" is in practice: a view that re-asks
+while its own flag is set queued a paste a frame, and every one of them
+was answered — the same text pasted as many times as frames passed.
 
 `pub fn request_paste(&mut self) { self.menu_actions.push(MenuAction::Paste) }`
 (`runtime/select_api.rs:561-563`). The drain dispatches `Commit`, `dispatch`
@@ -3122,7 +3146,14 @@ no other place to put one. `answer_selection_range` has the
 **Fix:** one `awaiting_paste` in the core, duplicate `Paste` dropped while
 set, cleared on `Commit`, readable so a view can ask.
 
-### `.` AR35 — `Metrics::scaled` scales `titlebar_h`, the row the schema marks the platform's and `compact()` exempts
+### `.` AR35 — `Metrics::scaled` scales `titlebar_h`, the row the schema marks the platform's and `compact()` exempts — **done (2026-09-14)**
+
+**Built 2026-09-14, the first way.** `scaled` skips a row whose
+`platform` is `Some`, as `compact()` does; the metrics test pins
+`scaled(2.0).titlebar_h == default` beside `control_text * 2`, the
+Node `scale` test the same, the metrics example's headless drive too,
+and `props.md` says the titlebar keeps its height under a density
+slider.
 
 `scaled` loops every `METRIC_ROLES` row (`metrics.rs:153-159`); the row
 is `platform: Some` — "the OS's number and not a density"
@@ -3134,7 +3165,15 @@ traffic lights.
 **Fix:** skip `platform.is_some()` rows in `scaled` and flip the test, or
 delete the "not a density" claim.
 
-### `.` AR36 — `nodes()` rects are window px; every other readback is dock-shifted viewport px
+### `.` AR36 — `nodes()` rects are window px; every other readback is dock-shifted viewport px — **done (2026-09-14)**
+
+**Built 2026-09-14, as the fix line says.** The snapshot stays in
+window px for the panel (`Core::snapshot()`, crate-private); `Core::
+nodes()` returns a translated copy — a `Vec<NodeInfo>` now, not a
+slice — with rects in the host's viewport, and says so in Node and C.
+The devtools test that read the target's `rect.x` as `DOCK_SIDE_W`
+reads the snapshot for that and `nodes()` for the host's `0.0`, beside
+`layout_of`.
 
 `layout_of` returns `r.x - shift.x` (`runtime/inspect.rs:63,238-242`), as
 do `selection_rect`, `scroll_geometry`, `text_hit`, `caret_rect` and
@@ -3148,7 +3187,13 @@ own outlines need window px, so the snapshot cannot move in place.
 **Fix:** keep `inspected` in window px for the panel and translate in
 `Core::nodes()`, the way every other readback does.
 
-### `.` AR37 — `Core::finish_frame` is a public second door that skips the fills, the menu and the devtools
+### `.` AR37 — `Core::finish_frame` is a public second door that skips the fills, the menu and the devtools — **done (2026-09-14)**
+
+**Built 2026-09-14.** `finish_frame` is `pub(crate)`; `Core::frame`'s
+doc points at `Ui::finish` and names `Ui::wrap(core).finish()` for a
+driver holding a bare core, which is what every driver did already
+(the one Node unit test that called it directly now finishes through
+`Ui::wrap`).
 
 `Core::frame`'s doc says "then `finish_frame()`" (`runtime.rs:1040-1047`);
 `Ui::finish` runs filler → `devtools_finish` → `build_menu` →
@@ -3160,7 +3205,16 @@ warning.
 **Fix:** `pub(crate)`, or the three steps inside it behind an optional
 filler; the doc points at `Ui::finish`.
 
-### `.` AR38 — `devtools.inspecting` is a one-way latch
+### `.` AR38 — `devtools.inspecting` is a one-way latch — **done (2026-09-14)**
+
+**Built 2026-09-14, as the fix line says.** The latch is gone: the
+panel's need — `on && (tab == Tree || pick)` — is derived in
+`devtools_begin_frame` into the core's own `dt_inspect`, kept apart
+from the host's `set_inspect`; `snapshot_nodes` runs for either and
+clears the snapshot when neither asks, so a closed panel stops the
+O(nodes) copy and a host's `set_inspect(false)` no longer blanks the
+panel's tree. Test: the tab showing asks, another tab stops it, the tab
+back asks again, the host's ask survives the panel closing.
 
 `want_inspect = d.tab == Tab::Tree && !d.inspecting` →
 `set_inspect(true); inspecting = true`
@@ -3174,7 +3228,16 @@ tree tab stays blank for the session. No test covers either.
 **Fix:** drop the latch and derive `set_inspect(d.on && d.tab == Tree ||
 host_asked)` each `devtools_begin_frame`, the host's ask kept apart.
 
-### `.` AR39 — The runner indexes a pane by position after a command may have removed it
+### `.` AR39 — The runner indexes a pane by position after a command may have removed it — **done (2026-09-14)**
+
+**Built 2026-09-14, as the fix line says.** `dispatch` takes the
+pane's id first and re-finds it after the drain — the cursor apply, the
+input-time charge and the redraw land on the pane the input was for —
+and returns where that pane is now, `None` when the input closed it.
+`on_key` rebinds its index after the key-channel dispatch before the
+chord and editor channels index again, and the menu-chord replay
+re-finds by id between its three steps and its redraw. Runner-only;
+read, not run.
 
 `dispatch` runs `apply_window_commands` then `self.panes.get_mut(i)`
 (`crates/kui/src/lib.rs:952-960`); `lib.rs:1520` and `:1601` re-find by
@@ -3650,7 +3713,11 @@ context's core handed over through `Launcher::core`), AR46–AR48 for
 the tests (**AR46, AR47 and AR48 done 2026-09-14**: the walk complete
 and pinned; the `sampler` scene, the `animate` test, the `nodes()`
 readback and two more guarded rows; the fixture face and the helpers
-hoisted), and
+hoisted), the small core defects among the `.` entries (**AR31,
+AR34–AR39 done 2026-09-14** — hover through `target_at`, one paste ask
+at a time, `scaled` leaves the titlebar, `nodes()` in viewport px,
+`finish_frame` crate-private, the inspect latch gone, panes re-found by
+id), and
 AR49 first of all if the alpha.12 notes go out before the rest, since
 its first line is the CHANGELOG contradicting itself on the frame
 version (**AR49 done 2026-09-14**, the reused ids retired as `B1a` /

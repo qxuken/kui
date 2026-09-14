@@ -519,7 +519,8 @@ fn visible_rows_covers_the_band_and_no_more() {
 // measured, and the prefix sums over both are what the spacers and the search
 // are made of.
 
-use kui_core::testing::click;
+use kui_core::Key;
+use kui_core::testing::{click, hover, kinds};
 use kui_core::widgets::RowHeights;
 
 const VAR_ROWS: usize = 1_000;
@@ -982,4 +983,62 @@ fn a_short_padded_virtual_rows_list_settles() {
         asked, 0,
         "a laid-out list with nothing to measure asks for no frame"
     );
+}
+
+/// Hover resolves through the same `target_at` the press and the cursor
+/// use (ADR 0023 decision 4; backlog AR31): over the scrollbar's track the
+/// row beneath is not hovered — no `enter`, no `hover_bg` — where a press
+/// there would grab the thumb; beside the bar it is.
+#[test]
+fn hover_over_the_scrollbar_is_not_hover_over_the_row_beneath() {
+    let mut core = Core::new();
+    let hovered_row = |core: &mut Core| -> Option<Key> {
+        let mut ui = core.frame(Size::new(400.0, VIEW_H), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.with_keyed("list", NodeSpec::column().fill().scroll_y(), |ui| {
+            for i in 0..ROWS {
+                ui.with_keyed(
+                    &format!("row{i}"),
+                    NodeSpec::row()
+                        .width(Sizing::Grow(1.0))
+                        .height(Sizing::Fixed(ROW_H))
+                        .bg(Color::rgb8(40, 40, 60))
+                        .hover_bg(Color::WHITE)
+                        .on_hover(Value::Int(i as i64)),
+                    |_| {},
+                );
+            }
+        });
+        ui.finish();
+        let keys: Vec<Key> = (0..ROWS)
+            .map(|i| core.key_of(&format!("row{i}")).unwrap())
+            .collect();
+        keys.into_iter().find(|k| core.is_hovered(*k))
+    };
+    hovered_row(&mut core);
+    // Beside the bar, on row 1: entered.
+    let evs = hover(&mut core, Vec2::new(200.0, 45.0));
+    assert_eq!(kinds(&evs), ["hover"]);
+    assert_eq!(hovered_row(&mut core), core.key_of("row1"));
+    // On the bar's track (the 4 px at the right edge), still at row 1's
+    // height: the row is left, nothing is hovered, and the cursor is the
+    // plain arrow the bar has.
+    let evs = hover(&mut core, Vec2::new(398.0, 45.0));
+    assert_eq!(kinds(&evs), ["hover"], "the leave");
+    assert_eq!(
+        evs[0].payload.get("phase").and_then(Value::as_str),
+        Some("leave")
+    );
+    assert_eq!(
+        hovered_row(&mut core),
+        None,
+        "over the bar, no row is hovered"
+    );
+    // Back beside it: entered again.
+    let evs = hover(&mut core, Vec2::new(200.0, 45.0));
+    assert_eq!(
+        evs[0].payload.get("phase").and_then(Value::as_str),
+        Some("enter")
+    );
+    assert_eq!(hovered_row(&mut core), core.key_of("row1"));
 }

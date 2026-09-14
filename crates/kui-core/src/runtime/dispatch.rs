@@ -294,6 +294,10 @@ impl Core {
                 }
             }
             InputEvent::Commit(s) => {
+                // The paste's answer, when one was asked — a driver answers
+                // every ask, with an empty commit for an empty clipboard,
+                // which is what lets the next ask through (AR34).
+                self.awaiting_paste = false;
                 if let Some(key) = self.edit.focused() {
                     if self.edit_with_fonts(|edit, fs| edit.apply_text(key, &s, fs)) {
                         self.push_edit_event(key, "changed", &mut out);

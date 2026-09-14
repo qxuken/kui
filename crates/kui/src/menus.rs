@@ -198,9 +198,16 @@ impl<A: App> Shell<A> {
                     set_clipboard(self.clipboard.as_mut(), text, html);
                 }
                 MenuAction::Paste => {
-                    if let Some(text) = self.clipboard.as_mut().and_then(|cb| cb.get_text().ok()) {
-                        self.dispatch(event_loop, i, InputEvent::Commit(text));
-                    }
+                    // Every ask is answered, an empty clipboard with an
+                    // empty commit: the answer is what clears the core's
+                    // one-ask gate (backlog AR34), and an editor inserts
+                    // nothing for it.
+                    let text = self
+                        .clipboard
+                        .as_mut()
+                        .and_then(|cb| cb.get_text().ok())
+                        .unwrap_or_default();
+                    self.dispatch(event_loop, i, InputEvent::Commit(text));
                 }
                 MenuAction::LookUp { text, at } => {
                     // Only macOS has a panel to show. Everywhere else the

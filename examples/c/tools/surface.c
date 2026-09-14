@@ -893,14 +893,20 @@ static int surface(void) {
     {
         kui_set_lookup_available(ui, true);
         kui_set_clipboard(ui, KUI_STR("plain"), KUI_STR("<b>plain</b>"));
+        check(!kui_awaiting_paste(ui), "no paste asked yet");
         kui_request_paste(ui);
+        kui_request_paste(ui); /* one ask at a time: dropped (AR34) */
+        check(kui_awaiting_paste(ui), "kui_awaiting_paste while one is out");
         KuiMenuAction act = KUI_MENU_ACTION_INIT;
         check(kui_take_menu_action(ui, &act) && act.kind == KUI_MENU_ACTION_SET_CLIPBOARD
                   && has(act.text, "plain") && has(act.html, "<b>"),
               "kui_set_clipboard queues both flavours");
         check(kui_take_menu_action(ui, &act) && act.kind == KUI_MENU_ACTION_PASTE,
               "kui_request_paste queues the ask");
-        check(!kui_take_menu_action(ui, &act), "drained");
+        check(!kui_take_menu_action(ui, &act), "drained, and the second ask was dropped");
+        check(kui_awaiting_paste(ui), "still out until answered");
+        kui_input_commit(ui, KUI_STR("")); /* the clipboard held nothing */
+        check(!kui_awaiting_paste(ui), "an empty commit is an answer");
     }
 
     /* A context menu the host shows itself: opened over a node, read row

@@ -395,6 +395,12 @@ impl<'a> Ui<'a> {
         self.core.request_paste();
     }
 
+    /// Whether a paste asked for is still unanswered; see
+    /// `Core::awaiting_paste`.
+    pub fn awaiting_paste(&self) -> bool {
+        self.core.awaiting_paste()
+    }
+
     /// Selects everything in the scope `key` declared; see
     /// `Core::select_all_in`.
     pub fn select_all_in(&mut self, key: Key) -> bool {

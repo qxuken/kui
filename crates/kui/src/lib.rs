@@ -1001,12 +1001,25 @@ impl<A: App> Shell<A> {
         }
     }
 
-    fn dispatch(&mut self, event_loop: &ActiveEventLoop, i: usize, ev: InputEvent) {
+    /// Hands one input to pane `i`'s core and does what followed from it:
+    /// the events routed, the menu actions, the window commands, the
+    /// audio. Returns where that pane is afterwards — the commands may
+    /// have closed a window, and a close in front of it moves it down,
+    /// so its index is not its identity (backlog AR39); `None` when the
+    /// input closed the pane itself. A caller that goes on addressing the
+    /// pane goes on with the returned index.
+    fn dispatch(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        i: usize,
+        ev: InputEvent,
+    ) -> Option<usize> {
         let t0 = std::time::Instant::now();
         // Someone is using the app, so a sound may be moments away: keep
         // the device warm (`AUDIO_IDLE_CLOSE`).
         self.audio_touch = t0;
         let completes = input_completes(&ev);
+        let here = self.panes[i].id;
         let events = self.panes[i].core.handle_input(ev);
         let reached_app = self.route_events(events);
         self.owe_for(reached_app && completes);
@@ -1014,13 +1027,14 @@ impl<A: App> Shell<A> {
         self.apply_window_commands(event_loop);
         self.apply_audio();
         self.pump_native_menu(event_loop);
-        if let Some(pane) = self.panes.get_mut(i) {
-            pane.apply_cursor();
-            // Hover styling depends on input too, so any input redraws. A
-            // damage pass can tighten this later.
-            pane.core.stats.pending_input_ms += t0.elapsed().as_secs_f32() * 1e3;
-            pane.window.request_redraw();
-        }
+        let i = self.pane_of(here)?;
+        let pane = &mut self.panes[i];
+        pane.apply_cursor();
+        // Hover styling depends on input too, so any input redraws. A
+        // damage pass can tighten this later.
+        pane.core.stats.pending_input_ms += t0.elapsed().as_secs_f32() * 1e3;
+        pane.window.request_redraw();
+        Some(i)
     }
 
     /// Hands the session's queued audio commands to the device. A session
@@ -1421,7 +1435,9 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
                 // joined, the same move again in that popup's coordinates.
                 self.retarget_move(event_loop, from, p);
             }
-            WindowEvent::CursorLeft { .. } => self.dispatch(event_loop, i, InputEvent::CursorLeft),
+            WindowEvent::CursorLeft { .. } => {
+                self.dispatch(event_loop, i, InputEvent::CursorLeft);
+            }
             // Recorded, not acted on: what a view reads is derived from
             // every window's copy at the end of the batch (`settle_focus`),
             // because focus *moving* is two events and neither alone is the
@@ -1487,7 +1503,7 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
                 // `text` event and a keystroke as a `key` event, once each
                 // (backlog C17); a stock editor takes both the same way.
                 let t = self.key_target(i);
-                self.dispatch(event_loop, t, InputEvent::Commit(text))
+                self.dispatch(event_loop, t, InputEvent::Commit(text));
             }
             WindowEvent::Ime(Ime::Preedit(text, cursor)) => {
                 let t = self.key_target(i);

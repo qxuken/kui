@@ -680,7 +680,31 @@ impl Core {
     /// inserts it the way it inserts a committed IME string, and never
     /// sees the clipboard any other way. The read stays on the driver's
     /// side, where the permission lives.
+    ///
+    /// One ask at a time: while a paste is outstanding — queued, or taken
+    /// by the driver and not yet answered — a second ask is dropped, so a
+    /// view that asks on every frame until the answer lands asks once
+    /// (backlog AR34; both Rust examples carried this guard themselves).
+    /// The answer is the `Commit` the driver sends, an empty one when the
+    /// clipboard held nothing, and [`Core::awaiting_paste`] reads the
+    /// state.
     pub fn request_paste(&mut self) {
+        self.queue_paste();
+    }
+
+    /// Whether a paste ask is outstanding: asked and not yet answered
+    /// with a `Commit`.
+    pub fn awaiting_paste(&self) -> bool {
+        self.awaiting_paste
+    }
+
+    /// The one place a `Paste` is queued — the app's ask and a menu's
+    /// Paste row alike — so the gate is one.
+    pub(crate) fn queue_paste(&mut self) {
+        if self.awaiting_paste {
+            return;
+        }
+        self.awaiting_paste = true;
         self.menu_actions.push(crate::menu::MenuAction::Paste);
     }
 

@@ -203,8 +203,11 @@ impl<A: App> Shell<A> {
             repeat: event.repeat,
             ..kp
         };
+        // Rebound after each dispatch: a chord the app answers by closing
+        // a window moves every pane behind it down one (backlog AR39).
+        let mut i = i;
         if kp.code != KeyCode::Unknown {
-            self.dispatch(
+            let Some(still) = self.dispatch(
                 event_loop,
                 i,
                 if pressed {
@@ -212,7 +215,10 @@ impl<A: App> Shell<A> {
                 } else {
                     InputEvent::KeyUp(kp.clone().released())
                 },
-            );
+            ) else {
+                return;
+            };
+            i = still;
         }
         if !pressed {
             return;
@@ -338,21 +344,25 @@ impl<A: App> Shell<A> {
                     pane.core.select_all_in(scope);
                     pane.window.request_redraw();
                 }
-                None => self.dispatch(
-                    event_loop,
-                    i,
-                    InputEvent::Key(EditKey::SelectAll, Mods::default()),
-                ),
+                None => {
+                    self.dispatch(
+                        event_loop,
+                        i,
+                        InputEvent::Key(EditKey::SelectAll, Mods::default()),
+                    );
+                }
             },
             'z' => {
                 let key = if shift { EditKey::Redo } else { EditKey::Undo };
                 self.dispatch(event_loop, i, InputEvent::Key(key, Mods::default()));
             }
-            'y' => self.dispatch(
-                event_loop,
-                i,
-                InputEvent::Key(EditKey::Redo, Mods::default()),
-            ),
+            'y' => {
+                self.dispatch(
+                    event_loop,
+                    i,
+                    InputEvent::Key(EditKey::Redo, Mods::default()),
+                );
+            }
             _ => return false,
         }
         true
@@ -387,13 +397,23 @@ impl<A: App> Shell<A> {
         };
         let kp =
             KeyPress::new(KeyCode::Char(code), mods).with_physical(KeyCode::Char(chord.letter));
-        self.dispatch(event_loop, i, InputEvent::KeyDown(kp.clone()));
+        // Each step may close the window the next is for (backlog AR39):
+        // re-found by id after every one.
+        let here = self.panes[i].id;
+        let Some(i) = self.dispatch(event_loop, i, InputEvent::KeyDown(kp.clone())) else {
+            return;
+        };
         self.edit_chord(event_loop, i, chord.letter, chord.shift);
-        self.dispatch(event_loop, i, InputEvent::KeyUp(kp.released()));
+        let Some(i) = self.pane_of(here) else { return };
+        let Some(i) = self.dispatch(event_loop, i, InputEvent::KeyUp(kp.released())) else {
+            return;
+        };
         // `dispatch` owed the frame for whatever reached the app; what is
         // left is what a chosen declared row also does after its events.
         self.apply_menu_actions(event_loop, i);
         self.apply_window_commands(event_loop);
-        self.panes[i].window.request_redraw();
+        if let Some(i) = self.pane_of(here) {
+            self.panes[i].window.request_redraw();
+        }
     }
 }

@@ -589,7 +589,14 @@ pub const DOORS: &[Door] = &[
         c: Is("kui_request_paste"),
         node: Is("requestPaste"),
         lua: Is("request_paste"),
-        doc: "A key sink's own Ctrl-V: the clipboard comes back as a commit.",
+        doc: "A key sink's own Ctrl-V: the clipboard comes back as a commit. One ask at a time — a second while one is unanswered is dropped.",
+    },
+    Door {
+        rust: "Ui::awaiting_paste",
+        c: Is("kui_awaiting_paste"),
+        node: Is("awaitingPaste"),
+        lua: Is("awaiting_paste"),
+        doc: "Whether a paste asked for is still unanswered (backlog AR34).",
     },
     Door {
         rust: "Core::set_lookup_available",

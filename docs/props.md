@@ -489,7 +489,8 @@ binding is a row with its three other cells, or a red test.
 | `Ui::request_copy` | `kui_request_copy` | `requestCopy` | `request_copy` | Asks for the selection as a copy, which may come back as a `selectionrange` question. |
 | `Ui::answer_selection_range` | `kui_answer_selection_range` | `answerSelectionRange` | `answer_selection_range` | The app's answer to that question. |
 | `Ui::set_clipboard` | `kui_set_clipboard` | `setClipboard` | `set_clipboard` | A key sink's own Ctrl-C: posts a clipboard action for the host (backlog C33). |
-| `Ui::request_paste` | `kui_request_paste` | `requestPaste` | `request_paste` | A key sink's own Ctrl-V: the clipboard comes back as a commit. |
+| `Ui::request_paste` | `kui_request_paste` | `requestPaste` | `request_paste` | A key sink's own Ctrl-V: the clipboard comes back as a commit. One ask at a time — a second while one is unanswered is dropped. |
+| `Ui::awaiting_paste` | `kui_awaiting_paste` | `awaitingPaste` | `awaiting_paste` | Whether a paste asked for is still unanswered (backlog AR34). |
 | `Core::set_lookup_available` | `kui_set_lookup_available` | `setLookupAvailable` | *none: a script is a guest in the host's frame (ADR 0014): its env is the view's reading, and registering, driving, pacing and reading back are the host's* | Whether the host can show the platform's definition panel, which decides whether Look Up is offered. |
 | `Ui::open_menu` | `kui_open_menu` | `openMenu` | `open_menu` | Opens a context menu on a node at a point. |
 | `Ui::close_menu` | `kui_close_menu` | `closeMenu` | `close_menu` | Closes it. |

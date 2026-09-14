@@ -2127,9 +2127,10 @@ export declare class Ctx {
   setDevtoolsLegend(legend: [string, string][]): void
   /**
    * The last finished frame's nodes in tree order, each with what
-   * it is, the label it was opened under, where layout put it,
-   * and the declarations that explain the rest — what a tree
-   * view and a node inspector are built from. Empty until
+   * it is, the label it was opened under, where layout put it
+   * (in the app's viewport, like `layoutOf`; backlog AR36), and
+   * the declarations that explain the rest — what a tree view
+   * and a node inspector are built from. Empty until
    * `setInspect(true)` and a frame after it.
    */
   nodes(): NodeInfo[]
@@ -2392,6 +2393,13 @@ export declare class Ctx {
    * and the test answers it with `commit(...)`.
    */
   requestPaste(): void
+  /**
+   * Whether a paste asked for is still unanswered: one ask at a
+   * time — a second `requestPaste` while one is out is dropped,
+   * and the `commit` that answers it (an empty one for an empty
+   * clipboard) lets the next through (backlog AR34).
+   */
+  awaitingPaste(): boolean
   /**
    * The menu this window has open, or null:
    * `{target, x, y, items}`. What a host rendering menus itself
@@ -3037,9 +3045,10 @@ export declare class KuiWindow {
   setDevtoolsLegend(legend: [string, string][]): void
   /**
    * The last finished frame's nodes in tree order, each with what
-   * it is, the label it was opened under, where layout put it,
-   * and the declarations that explain the rest — what a tree
-   * view and a node inspector are built from. Empty until
+   * it is, the label it was opened under, where layout put it
+   * (in the app's viewport, like `layoutOf`; backlog AR36), and
+   * the declarations that explain the rest — what a tree view
+   * and a node inspector are built from. Empty until
    * `setInspect(true)` and a frame after it.
    */
   nodes(): NodeInfo[]
@@ -3302,6 +3311,13 @@ export declare class KuiWindow {
    * and the test answers it with `commit(...)`.
    */
   requestPaste(): void
+  /**
+   * Whether a paste asked for is still unanswered: one ask at a
+   * time — a second `requestPaste` while one is out is dropped,
+   * and the `commit` that answers it (an empty one for an empty
+   * clipboard) lets the next through (backlog AR34).
+   */
+  awaitingPaste(): boolean
   /**
    * The menu this window has open, or null:
    * `{target, x, y, items}`. What a host rendering menus itself

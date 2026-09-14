@@ -266,8 +266,14 @@ impl Core {
     }
 
     /// Runs layout and emission into `output()`, and installs this frame's
-    /// hit and scroll regions for input handling.
-    pub fn finish_frame(&mut self) {
+    /// hit and scroll regions for input handling. The last step of
+    /// `Ui::finish`, which runs the extension fills, the devtools panel
+    /// and the open menu first — and crate-private for that reason
+    /// (backlog AR37): a host that called this directly got a frame where
+    /// `open_menu` drew nothing and `KUI_DEVTOOLS` did nothing, with no
+    /// warning. A driver with a bare `Core` finishes through
+    /// `Ui::wrap(core).finish()`.
+    pub(crate) fn finish_frame(&mut self) {
         self.layout_frame();
         self.emit_frame();
         self.building = false;

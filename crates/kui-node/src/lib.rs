@@ -2367,9 +2367,10 @@ macro_rules! core_methods {
             }
 
             /// The last finished frame's nodes in tree order, each with what
-            /// it is, the label it was opened under, where layout put it,
-            /// and the declarations that explain the rest — what a tree
-            /// view and a node inspector are built from. Empty until
+            /// it is, the label it was opened under, where layout put it
+            /// (in the app's viewport, like `layoutOf`; backlog AR36), and
+            /// the declarations that explain the rest — what a tree view
+            /// and a node inspector are built from. Empty until
             /// `setInspect(true)` and a frame after it.
             #[napi(ts_return_type = "NodeInfo[]")]
             pub fn nodes(&mut self) -> Json {
@@ -2799,6 +2800,15 @@ macro_rules! core_methods {
             #[napi]
             pub fn request_paste(&mut self) {
                 self.$core().request_paste();
+            }
+
+            /// Whether a paste asked for is still unanswered: one ask at a
+            /// time — a second `requestPaste` while one is out is dropped,
+            /// and the `commit` that answers it (an empty one for an empty
+            /// clipboard) lets the next through (backlog AR34).
+            #[napi]
+            pub fn awaiting_paste(&mut self) -> bool {
+                self.$core().awaiting_paste()
             }
 
             /// The menu this window has open, or null:
@@ -4028,8 +4038,8 @@ mod readback_payloads {
             |_| {},
         );
         ui.finish();
-        let row = core
-            .nodes()
+        let nodes = core.nodes();
+        let row = nodes
             .iter()
             .find(|n| n.label.as_deref() == Some("b"))
             .unwrap();
