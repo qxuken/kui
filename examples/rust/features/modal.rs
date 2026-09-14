@@ -89,7 +89,7 @@ impl App for Page {
                             widgets::button(ui, "discard", Value::str("discard"));
                             // `initial_focus`: the dialog opens here, not on the
                             // field — the entry precedence of ADR 0003 / 0007.
-                            let spec = widgets::button_spec(&ui.metrics())
+                            let spec = widgets::button_spec(&ui.theme(), &ui.metrics())
                                 .accent()
                                 .on_click(Value::str("save"))
                                 .initial_focus();

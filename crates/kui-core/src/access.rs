@@ -229,8 +229,11 @@ pub enum Live {
 }
 
 impl Live {
-    /// The camelCase spelling every binding uses, and `schema::LIVE`'s
-    /// wire order.
+    /// Every politeness, in wire order: `schema::LIVE` is `ALL` by `name`
+    /// (backlog AR42).
+    pub const ALL: &'static [Live] = &[Live::Off, Live::Polite, Live::Assertive];
+
+    /// The camelCase spelling every binding uses.
     pub fn name(self) -> &'static str {
         match self {
             Live::Off => "off",
@@ -239,13 +242,10 @@ impl Live {
         }
     }
 
-    /// The variant `schema::LIVE` index `i` names.
+    /// The variant `schema::LIVE` index `i` names; `Off` for an index
+    /// this build lacks.
     pub fn from_index(i: usize) -> Live {
-        match i {
-            1 => Live::Polite,
-            2 => Live::Assertive,
-            _ => Live::Off,
-        }
+        Self::ALL.get(i).copied().unwrap_or_default()
     }
 }
 

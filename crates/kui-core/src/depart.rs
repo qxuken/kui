@@ -269,6 +269,7 @@ pub struct DepartStore {
     /// Nodes across every ghost, kept in step with `ghosts` so the budget
     /// is a comparison rather than a walk.
     nodes: usize,
+    /// The core's frame counter as of `begin_frame`.
     frame_no: u64,
     /// Whether a ghost replayed this frame is still mid-flight.
     active: bool,
@@ -288,8 +289,9 @@ pub struct DepartStore {
 }
 
 impl DepartStore {
-    pub(crate) fn begin_frame(&mut self) {
-        self.frame_no += 1;
+    /// Starts a frame under the core's counter (backlog AR45).
+    pub(crate) fn begin_frame(&mut self, frame_no: u64) {
+        self.frame_no = frame_no;
         self.active = false;
         // A ghost not replayed for a while goes — the same backstop the
         // anim store keeps, for a driver whose clock stops moving while
@@ -639,6 +641,16 @@ impl Replay {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The core's frame counter, stood in for: each test's frames count
+    /// from one.
+    struct Frames(u64);
+    impl Frames {
+        fn next(&mut self) -> u64 {
+            self.0 += 1;
+            self.0
+        }
+    }
     use crate::tree::OriginId;
 
     const IN_FLOW: Place = Place::InFlow { before: None };
@@ -679,22 +691,23 @@ mod tests {
     #[test]
     fn a_ghost_plays_out_and_then_goes() {
         let mut d = DepartStore::default();
+        let mut frame = Frames(0);
         let text = crate::text::TextSystem::new();
         let lines = crate::line::LineStore::default();
         let fragments = crate::fragment::FragmentList::default();
         let tree = tree_with(departing(NodeSpec::column()), 2);
-        d.begin_frame();
+        d.begin_frame(frame.next());
         d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments);
         assert_eq!(d.node_count(), 3, "the subtree, not just its root");
 
         let mut seen = Vec::new();
-        d.begin_frame();
+        d.begin_frame(frame.next());
         d.replay(0.05, |_, p| seen.push(p.offset.x));
         assert!(d.animating());
         assert_eq!(seen.len(), 1);
         assert!(seen[0] > 0.0 && seen[0] < 50.0, "halfway out: {}", seen[0]);
 
-        d.begin_frame();
+        d.begin_frame(frame.next());
         d.replay(0.2, |_, _| panic!("the exit is over"));
         assert!(!d.animating());
         assert!(d.is_empty());
@@ -704,11 +717,12 @@ mod tests {
     #[test]
     fn a_key_that_comes_back_takes_its_ghost_with_it() {
         let mut d = DepartStore::default();
+        let mut frame = Frames(0);
         let text = crate::text::TextSystem::new();
         let lines = crate::line::LineStore::default();
         let fragments = crate::fragment::FragmentList::default();
         let tree = tree_with(departing(NodeSpec::column()), 0);
-        d.begin_frame();
+        d.begin_frame(frame.next());
         d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments);
         assert_eq!(d.keys().collect::<Vec<_>>(), vec![Key::ROOT.str("x")]);
         d.retire(Key::ROOT.str("x"));
@@ -725,11 +739,12 @@ mod tests {
     #[test]
     fn a_second_departure_of_one_key_replaces_the_first() {
         let mut d = DepartStore::default();
+        let mut frame = Frames(0);
         let text = crate::text::TextSystem::new();
         let lines = crate::line::LineStore::default();
         let fragments = crate::fragment::FragmentList::default();
         let tree = tree_with(departing(NodeSpec::column()), 2);
-        d.begin_frame();
+        d.begin_frame(frame.next());
         d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments);
         assert_eq!(d.keys().count(), 1);
         assert_eq!(d.node_count(), 3);
@@ -754,8 +769,9 @@ mod tests {
         ] {
             assert!(!can_depart(&spec), "and the diff never counts it");
             let mut d = DepartStore::default();
+            let mut frame = Frames(0);
             let tree = tree_with(spec, 0);
-            d.begin_frame();
+            d.begin_frame(frame.next());
             d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments);
             assert!(d.is_empty());
         }
@@ -804,10 +820,11 @@ mod tests {
     #[test]
     fn a_removal_over_the_budget_is_refused_whole() {
         let mut d = DepartStore::default();
-        d.begin_frame();
+        let mut frame = Frames(0);
+        d.begin_frame(frame.next());
         assert!(d.admit(3 * 16));
         depart_sixteens(&mut d, 0, 3, 0.0);
-        d.begin_frame();
+        d.begin_frame(frame.next());
         assert!(!d.admit(MAX_NODES + 1), "one node past the budget");
         assert_eq!(d.keys().count(), 3, "and the store was not touched");
         assert_eq!(d.node_count(), 48);
@@ -820,14 +837,15 @@ mod tests {
     #[test]
     fn a_new_removal_evicts_the_oldest_ghosts_until_it_fits() {
         let mut d = DepartStore::default();
+        let mut frame = Frames(0);
         // 20 subtrees of 16 = 320 nodes in flight, keyed ROOT[0..20].
-        d.begin_frame();
+        d.begin_frame(frame.next());
         assert!(d.admit(20 * 16));
         depart_sixteens(&mut d, 0, 20, 0.0);
         assert_eq!(d.node_count(), 320);
         // A frame wants 15 more of 16 = 240: 320 + 240 = 560, so 48 nodes
         // (three ghosts) have to go, and they are ROOT[0], [1], [2].
-        d.begin_frame();
+        d.begin_frame(frame.next());
         assert!(d.admit(15 * 16));
         assert_eq!(d.node_count(), 320 - 48, "three evicted, not four, not two");
         assert_eq!(
@@ -847,10 +865,11 @@ mod tests {
     #[test]
     fn a_removal_that_fits_evicts_nothing() {
         let mut d = DepartStore::default();
-        d.begin_frame();
+        let mut frame = Frames(0);
+        d.begin_frame(frame.next());
         assert!(d.admit(16));
         depart_sixteens(&mut d, 0, 1, 0.0);
-        d.begin_frame();
+        d.begin_frame(frame.next());
         assert!(d.admit(MAX_NODES - 16));
         assert_eq!(d.keys().count(), 1);
         assert_eq!(d.node_count(), 16);
@@ -860,15 +879,16 @@ mod tests {
     #[test]
     fn a_ghost_nobody_replays_is_swept() {
         let mut d = DepartStore::default();
+        let mut frame = Frames(0);
         let text = crate::text::TextSystem::new();
         let lines = crate::line::LineStore::default();
         let fragments = crate::fragment::FragmentList::default();
         let tree = tree_with(departing(NodeSpec::column()), 0);
-        d.begin_frame();
+        d.begin_frame(frame.next());
         d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments);
         // Frames without a replay: the sweep runs on the 240th.
         for _ in 0..480 {
-            d.begin_frame();
+            d.begin_frame(frame.next());
         }
         assert!(d.is_empty(), "an unreplayed ghost does not live forever");
         assert_eq!(d.node_count(), 0);
@@ -877,6 +897,7 @@ mod tests {
     #[test]
     fn springs_play_out_as_ease_out() {
         let mut d = DepartStore::default();
+        let mut frame = Frames(0);
         let text = crate::text::TextSystem::new();
         let lines = crate::line::LineStore::default();
         let fragments = crate::fragment::FragmentList::default();
@@ -885,7 +906,7 @@ mod tests {
             .easing(Easing::Spring)
             .exit(Enter::from(100.0, 0.0));
         let tree = tree_with(spec, 0);
-        d.begin_frame();
+        d.begin_frame(frame.next());
         d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments);
         let mut x = 0.0;
         d.replay(0.05, |_, p| x = p.offset.x);
@@ -896,6 +917,7 @@ mod tests {
     #[test]
     fn the_exit_reads_an_enter_backwards() {
         let mut d = DepartStore::default();
+        let mut frame = Frames(0);
         let text = crate::text::TextSystem::new();
         let lines = crate::line::LineStore::default();
         let fragments = crate::fragment::FragmentList::default();
@@ -912,7 +934,7 @@ mod tests {
             );
         let mut tree = tree_with(spec, 0);
         tree.size[1] = crate::geom::Size::new(40.0, 20.0);
-        d.begin_frame();
+        d.begin_frame(frame.next());
         d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments);
         d.replay(0.05, |_, p| {
             assert!((p.opacity - 0.5).abs() < 1e-4, "halfway faded");

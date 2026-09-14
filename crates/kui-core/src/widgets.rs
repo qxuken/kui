@@ -474,18 +474,23 @@ fn window_button(ui: &mut Ui<'_>, button: WindowButton, maximized: bool) {
 /// on the node and resolved by the core, so every binding's button is this
 /// same data. Add the label as a child.
 ///
-/// The three colours are hand-picked rather than derived from the first, so
-/// that the stock button paints exactly what it has always painted; the
-/// derivation for any *other* base is [`button_palette`]. Takes the
-/// metrics rather than reading them, as [`menu_panel_spec`] takes the
-/// palette: `widgets::button_spec(&ui.metrics())` is the idiom, and the
-/// stock numbers are `button_spec(&Metrics::default())`.
-pub fn button_spec(m: &Metrics) -> NodeSpec {
+/// The three backgrounds are the theme's accent trio — `accent`,
+/// `accent_hover`, `accent_pressed` — so the stock button paints from the
+/// palette like every other stock widget (backlog AR41): the OS's accent
+/// where the host reports one, the app's where it set or pinned one, and
+/// kui's blue otherwise, which is byte-for-byte the trio the button
+/// always had (`Theme::dark()` carries the same three values). Takes the
+/// theme and the metrics rather than reading them, as [`menu_panel_spec`]
+/// takes the palette: `widgets::button_spec(&ui.theme(), &ui.metrics())`
+/// is the idiom, and the stock numbers are `button_spec(&Theme::dark(),
+/// &Metrics::default())`. The derivation for any *other* base colour is
+/// [`button_palette`].
+pub fn button_spec(theme: &Theme, m: &Metrics) -> NodeSpec {
     NodeSpec::row()
         .pad_xy(m.control_pad_x, m.control_pad_y)
-        .bg(Color::rgb8(0x3b, 0x5b, 0xd4))
-        .hover_bg(Color::rgb8(0x47, 0x6c, 0xe0))
-        .pressed_bg(Color::rgb8(0x2f, 0x54, 0xc4))
+        .bg(theme.accent)
+        .hover_bg(theme.accent_hover)
+        .pressed_bg(theme.accent_pressed)
         .radius(m.radius)
         .center()
 }
@@ -533,12 +538,12 @@ pub const BUTTON_DISABLED_OPACITY: f32 = 0.5;
 /// the node — a new node, so it loses keyboard focus and a screen reader's
 /// cursor; declare such a button with [`button_with`] and a key of its own.
 pub fn button(ui: &mut Ui<'_>, text: &str, payload: impl Into<Value>) {
-    let m = ui.metrics();
+    let (theme, m) = (ui.theme(), ui.metrics());
     button_with(
         ui,
         text,
         text,
-        button_spec(&m).on_click(payload.into()),
+        button_spec(&theme, &m).on_click(payload.into()),
         None,
     );
 }
@@ -579,13 +584,13 @@ fn button_body(ui: &mut Ui<'_>, ident: Ident<'_>, text: &str, spec: NodeSpec, hi
     let theme = ui.theme();
     // `accent` asks for the whole family, not just the background the
     // core would substitute for any node: a button whose hover and pressed
-    // shades stayed the stock blue would flash blue under a yellow accent.
-    //
-    // The family is the *theme's* (ADR 0019), which is the OS accent
-    // where the host reports one, the app's brand colour where it set
-    // one, and kui's blue otherwise — so this widened from "the OS
-    // accent, or nothing" without a single call site changing.
-    let spec = if spec.accent && ui.has_accent() {
+    // shades stayed put would flash under a yellow accent. On a stock
+    // spec it changes nothing — `button_spec` paints from the theme's
+    // trio already (AR41) — and on a spec whose caller set its own `bg`
+    // it is the ask to take the theme's instead. The family is the
+    // *theme's* (ADR 0019), and the theme always has one, so there is no
+    // gate here: kui's blue is the accent nobody chose.
+    let spec = if spec.accent {
         spec.bg(theme.accent)
             .hover_bg(theme.accent_hover)
             .pressed_bg(theme.accent_pressed)

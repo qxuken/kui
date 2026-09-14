@@ -909,7 +909,13 @@ impl TextSystem {
     /// Starts a frame. `keep_prev` retains the list just finished so the
     /// next frame can still read its texts — `Core` sets it exactly when it
     /// keeps the previous tree, and the two are read together.
-    pub(crate) fn begin_frame(&mut self, fs: &mut FontSystem, scale: f32, keep_prev: bool) {
+    pub(crate) fn begin_frame(
+        &mut self,
+        fs: &mut FontSystem,
+        scale: f32,
+        keep_prev: bool,
+        frame_no: u64,
+    ) {
         // Scale change invalidates every physical-px measurement.
         if (scale - self.scale).abs() > f32::EPSILON {
             self.entries.clear();
@@ -920,7 +926,8 @@ impl TextSystem {
         // Always kept, unlike `frame`: a query while this frame builds
         // answers from the last one, and this is what it answers from.
         self.places.begin(true);
-        self.frame_no += 1;
+        // The core's counter, not one of this store's own (backlog AR45).
+        self.frame_no = frame_no;
         if let Some(cutoff) = crate::retain::sweep_cutoff(self.frame_no) {
             let mut freed = 0usize;
             self.entries.retain(|_, e| {

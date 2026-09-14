@@ -278,14 +278,11 @@ impl Core {
                 .map(|_| Some(k)),
             RegionTarget::Label(ref label) => {
                 // The first in tree order, as `key_of` resolves a label,
-                // with the same warning when the name is not unique.
-                let hits: Vec<Key> = self.key_labels.find(label).collect();
-                if let (Some(&first), true) = (hits.first(), hits.len() > 1) {
-                    self.diag
-                        .raise(crate::diag::ambiguous_key(label, first, hits.len()));
-                }
-                hits.first()
-                    .and_then(|k| self.tree.index_of(*k))
+                // with the same warning when the name is not unique — the
+                // one lookup (AR45), without the fall-back to last frame:
+                // this runs at the frame's end, when its labels are whole.
+                self.find_label(label, false)
+                    .and_then(|k| self.tree.index_of(k))
                     .filter(|&i| self.tree.any_region && self.tree.specs[i].interact().focus_region)
                     .map(|i| Some(self.tree.keys[i]))
             }

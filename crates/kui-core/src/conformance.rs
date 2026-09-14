@@ -3068,7 +3068,7 @@ fn build_controls(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             ui,
             "go",
             "go",
-            widgets::button_spec(&ui.metrics())
+            widgets::button_spec(&ui.theme(), &ui.metrics())
                 .on_click(Value::map([("kind", Value::str("go"))]))
                 .description("Starts the run"),
             None,
@@ -3084,7 +3084,7 @@ fn build_controls(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             ui,
             "stop",
             "stop",
-            widgets::button_spec(&ui.metrics())
+            widgets::button_spec(&ui.theme(), &ui.metrics())
                 .on_click(Value::map([("kind", Value::str("stop"))]))
                 .label("Stop the run")
                 .disabled(true)

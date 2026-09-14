@@ -10,7 +10,7 @@ use kui_core::{Core, Metrics, NodeSpec, QuadKind, Rect, Value, widgets};
 /// tooltip, the menu panel and its first row.
 fn boxes(core: &mut Core) -> Vec<Rect> {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
-    let spec = widgets::button_spec(&ui.metrics()).on_click(Value::str("ok"));
+    let spec = widgets::button_spec(&ui.theme(), &ui.metrics()).on_click(Value::str("ok"));
     widgets::button_with(&mut ui, "ok", "OK", spec, None);
     widgets::text_input(&mut ui, "search", "hello");
     widgets::tooltip(&mut ui, "a hint");
@@ -90,7 +90,7 @@ fn scaling_is_the_apps_not_the_scale_factors() {
     let mut core = Core::new();
     let one = boxes(&mut core);
     let mut ui = core.frame(Size::new(400.0, 300.0), 2.0);
-    let spec = widgets::button_spec(&ui.metrics()).on_click(Value::str("ok"));
+    let spec = widgets::button_spec(&ui.theme(), &ui.metrics()).on_click(Value::str("ok"));
     widgets::button_with(&mut ui, "ok", "OK", spec, None);
     ui.finish();
     let two = core.output().0.quads[0].rect;

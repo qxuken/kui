@@ -1593,7 +1593,7 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
                 None => Value::Null,
             };
             let mut out = PropsOut::new();
-            out.spec = widgets::button_spec(&ui.metrics())
+            out.spec = widgets::button_spec(&ui.theme(), &ui.metrics())
                 .on_click(payload)
                 .label(label.as_str());
             if let Some(hint) = t.get::<Option<String>>("tooltip")? {

@@ -21,7 +21,8 @@ field reports).
 
 **What breaks.**
 
-- The Node binary frame is **version 11**, from 9 (backlog T4 and AR14):
+- The Node binary frame is **version 12**, from 9 (backlog T4, AR14 and
+  AR43):
   a prop id may carry the `0x8000` token tag and its value slot then
   holds a token index, the `pad` shorthand gains a second mask and
   `border` a flags word when tagged, and a span's flags gain bits 64 and
@@ -29,7 +30,8 @@ field reports).
   flags word bit 2 says its width slot is a length index, a `cells`'
   cursor-shape slot bit 4 says its colour slot is a colour index, the
   edit op's flags bit 4 is the stock field and `tooltip` is a new op
-  (v11). Encoder and addon ship together, so nothing to do unless you own
+  (v11); the root's `windows` list rides as one JSON string read through
+  `WindowConfig::from_value` (v12). Encoder and addon ship together, so nothing to do unless you own
   an encoder (`createEncoder(p).encode(tree, tokens)` takes the surface's
   token map as a second argument and returns `unknownTokens` beside
   `unknown`).
@@ -65,6 +67,14 @@ field reports).
   lines — an adapter you maintain outside this repo needs both arms.
 - The `system` event's payload grew a key; a handler that destructures
   the old four still reads.
+- **The stock button paints from the theme's accent trio** (backlog
+  AR41): `widgets::button_spec(&theme, &metrics)` takes the theme, and a
+  plain `<button>` / `button { }` / `kui_button` is `theme.accent` with
+  the theme's hover and pressed shades — byte-for-byte the stock blue on
+  a host that reports nothing, the app's brand where it set one, and the
+  OS's accent where the host reports one, which on a Mac is every stock
+  button now, where before only one declaring `accent` was. A Rust
+  caller adds `&ui.theme()` as the first argument.
 - `Core::nodes()` returns `Vec<NodeInfo>` (rects in the host's
   viewport) where it returned `&[NodeInfo]` (backlog AR36), and
   `Core::finish_frame` is crate-private (AR37): a Rust host that called
@@ -622,6 +632,13 @@ field reports).
 
 ### Fixed
 
+- **The enum lists are their enums** (backlog AR42): `Easing`, `Repeat`,
+  `Live` and `FontFamily` carry `ALL`, `name()` and `from_index()`, the
+  schema's name lists are pinned to them by a test, and an index a build
+  lacks reads as the default rather than mapping one off.
+- **`index.d.ts`'s `Theme`, `ThemeOverrides` and `Metrics` are
+  generated** from the role tables (backlog AR44), docs included; `Env`
+  and `NodeInfo` are held to the runtime objects' keys by a test.
 - **One paste ask at a time** (backlog AR34): `request_paste` — and a
   menu's Paste row — queues one `Paste` while none is outstanding and
   drops a second until the `Commit` that answers it lands, so a view

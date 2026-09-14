@@ -168,6 +168,8 @@ pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
 /// changed. C spells it as the index plus one (`KUI_SCROLLBAR_*`), so a
 /// zeroed field is "unset".
 pub const SCROLLBARS: &[&str] = &["visible", "hidden", "auto"];
+/// The stock families (`FontFamily::name` spellings, in `FontFamily::ALL`
+/// order); a registered font travels as the `font` row's handle instead.
 pub const FAMILIES: &[&str] = &["sans", "serif", "mono"];
 /// The pointer shapes a view can declare (`CursorShape::name` spellings, in
 /// `CursorShape::ALL` order — a `cursor.rs` test pins the two together).
@@ -306,6 +308,8 @@ pub fn role_idx(i: usize) -> Role {
         .and_then(|n| Role::parse(n))
         .unwrap_or(Role::Group)
 }
+/// The easing curves (`Easing::name` spellings, in `Easing::ALL` order —
+/// the test below pins the two together, as `CURSORS` is pinned).
 pub const EASINGS: &[&str] = &[
     "easeOut",
     "linear",
@@ -315,27 +319,15 @@ pub const EASINGS: &[&str] = &[
     "bouncy",
 ];
 
-/// CSS's `animation-direction` values, in `Repeat`'s order.
+/// CSS's `animation-direction` values, in `Repeat::ALL`'s order.
 pub const REPEATS: &[&str] = &["normal", "reverse", "alternate", "alternateReverse"];
 
 pub fn repeat_idx(i: usize) -> Repeat {
-    match i {
-        1 => Repeat::Reverse,
-        2 => Repeat::Alternate,
-        3 => Repeat::AlternateReverse,
-        _ => Repeat::Normal,
-    }
+    Repeat::from_index(i)
 }
 
 pub fn easing_idx(i: usize) -> Easing {
-    match i {
-        1 => Easing::Linear,
-        2 => Easing::EaseIn,
-        3 => Easing::EaseInOut,
-        4 => Easing::Spring,
-        5 => Easing::Bouncy,
-        _ => Easing::EaseOut,
-    }
+    Easing::from_index(i)
 }
 
 /// How a prop's value is parsed (per transport) and encoded (binary slots).
@@ -947,11 +939,7 @@ pub const PROPS: &[PropDef] = &[
         name: "family",
         id: P_FAMILY,
         kind: Kind::Enum(FAMILIES),
-        apply: Apply::StyleEnum(|t, i| match i {
-            1 => t.family(FontFamily::Serif),
-            2 => t.family(FontFamily::Mono),
-            _ => t,
-        }),
+        apply: Apply::StyleEnum(|t, i| t.family(FontFamily::from_index(i))),
         doc: "Font family.",
     },
     PropDef {
@@ -1495,7 +1483,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<button onClick key|index label description tooltip disabled accent>`",
         lua: "`button { label=, on_click=, key= | index=, text=, description=, tooltip=, disabled=, accent= }`",
         c: "`kui_button`, `kui_button_with`",
-        doc: "The stock button: `widgets::button_spec(&metrics)` with hover/pressed colors declared on the node, keyed by its text (`key` overrides). Its look is its spec, so the layout and paint rows are closed — declared, they are dropped with an `unknown-prop` warning naming the rows it does read — and those are the access rows: `label` when the text is not the name, `description`, `tooltip`, and `disabled` (inert, and dimmed to half). The one paint row it takes is `accent`, which is a question and not a colour: with it the three backgrounds come off `env.system.accent` and the label goes black or white by its luminance, so a yellow accent is still readable, and on a host that never said what the accent is the stock blue stands. In Lua `label` is the name and the text both unless `text` says otherwise; in C the rows ride a `KuiSpec` whose other fields `kui_button_with` ignores. A button that needs any other row is a box with `role=\"button\"` and the same rows spelled out.",
+        doc: "The stock button: `widgets::button_spec(&theme, &metrics)` — the theme's accent trio as its three backgrounds, declared on the node and resolved by the core — keyed by its text (`key` overrides). It paints from the palette like every stock widget (backlog AR41): the OS's accent where the host reports one, the app's where it set or pinned one, kui's blue otherwise; the label goes black or white by the background's luminance. Its look is its spec, so the layout and paint rows are closed — declared, they are dropped with an `unknown-prop` warning naming the rows it does read — and those are the access rows: `label` when the text is not the name, `description`, `tooltip`, and `disabled` (inert, and dimmed to half). The one paint row it takes is `accent`, which on a button changes nothing (it is the accent already) and is kept for the box's sake. In Lua `label` is the name and the text both unless `text` says otherwise; in C the rows ride a `KuiSpec` whose other fields `kui_button_with` ignores. A button that needs any other row is a box with `role=\"button\"` and the same rows spelled out.",
     },
     ElementDef {
         name: "edit",
@@ -2792,6 +2780,59 @@ pub fn sizing_str(s: &str) -> Result<Sizing, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An enum row's name list is the wire order — a binding sends the
+    /// index — so each list is its enum's `ALL` by `name`, and the index
+    /// map is a lookup in `ALL` and not a second table (backlog AR42:
+    /// `Easing`, `Repeat`, `Live` and `FontFamily` were hand maps that a
+    /// variant appended or a list reordered put one off, with nothing to
+    /// say so). `CURSORS` has the same pin in `cursor.rs`, `ROLES` its
+    /// own below.
+    #[test]
+    fn every_enum_list_is_its_enum_s_all_by_name() {
+        fn names(it: &[&'static str]) -> Vec<&'static str> {
+            it.to_vec()
+        }
+        assert_eq!(
+            Easing::ALL.iter().map(|e| e.name()).collect::<Vec<_>>(),
+            names(EASINGS)
+        );
+        assert_eq!(
+            Repeat::ALL.iter().map(|r| r.name()).collect::<Vec<_>>(),
+            names(REPEATS)
+        );
+        assert_eq!(
+            crate::access::Live::ALL
+                .iter()
+                .map(|l| l.name())
+                .collect::<Vec<_>>(),
+            names(LIVE)
+        );
+        assert_eq!(
+            FontFamily::ALL
+                .iter()
+                .map(|f| f.name().expect("a stock family has a name"))
+                .collect::<Vec<_>>(),
+            names(FAMILIES)
+        );
+        // And the index map round-trips through the list, every index.
+        for (i, e) in Easing::ALL.iter().enumerate() {
+            assert_eq!(easing_idx(i), *e);
+        }
+        for (i, r) in Repeat::ALL.iter().enumerate() {
+            assert_eq!(repeat_idx(i), *r);
+        }
+        for (i, l) in crate::access::Live::ALL.iter().enumerate() {
+            assert_eq!(crate::access::Live::from_index(i), *l);
+        }
+        for (i, f) in FontFamily::ALL.iter().enumerate() {
+            assert_eq!(FontFamily::from_index(i), *f);
+        }
+        // An index this build lacks is the default, not a panic.
+        assert_eq!(easing_idx(99), Easing::default());
+        assert_eq!(repeat_idx(99), Repeat::default());
+        assert_eq!(FontFamily::from_index(99), FontFamily::Sans);
+    }
 
     #[test]
     fn ids_and_names_are_unique() {

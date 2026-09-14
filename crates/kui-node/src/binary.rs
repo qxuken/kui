@@ -24,9 +24,8 @@
 //!   in the table.
 
 use kui_core::{
-    Align, Color, Content, EditOptions, FloatConfig, ImageId, Key, NodeSpec, PadShorthand, Rect,
-    Size, Sizing, Span, TextStyle, TokenKind, TokenLookup, Warning, WindowConfig, WindowKind,
-    widgets,
+    Align, Color, Content, EditOptions, FloatConfig, ImageId, Key, NodeSpec, PadShorthand, Sizing,
+    Span, TextStyle, TokenKind, TokenLookup, Warning, WindowConfig, widgets,
 };
 use serde_json::{Map as JsonMap, Value as Json};
 
@@ -68,7 +67,11 @@ use crate::{Result, err, value_of};
 /// same release. Also (backlog B1a): the edit op's flags word bit 4 says
 /// the op is the stock field (`<input>`, `widgets::text_input`) and its
 /// prop list is empty; and `tooltip` is a new op, the node form.
-pub const VERSION: u32 = 11;
+/// v12: the root's `windows` list rides as one JSON string, read entry by
+/// entry through `WindowConfig::from_value` (backlog AR43) — the ten-slot
+/// stanza v7 shaped is gone, and with it the encoder's own copy of the
+/// kind list and of what a zero size means.
+pub const VERSION: u32 = 12;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a
 /// token index rather than a value (`docs/adr/0027-tokens-beside-the-theme.md`,
@@ -565,33 +568,21 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut, refs: &mut Refs<'_>) -
             P_TITLE => out.title = Some(r.req_str()?.to_string()),
             // Root only, like `title`; a flag, like `keyFocus`.
             P_ALWAYS_ON_TOP => out.always_on_top = true,
-            // A count, then per window: name, kind (an index into
-            // `WindowKind::ALL`), width, height (zero = the default size),
-            // activates (0 no, 1 yes, 2 unsaid — the kind's own default,
-            // `WindowConfig::of_kind`, so the popup rule lives in the core
-            // and not in the encoder), and the anchor rect a popup is
-            // placed against (four zeros for a normal window).
+            // One JSON blob, the list as the view wrote it, each entry
+            // read by `WindowConfig::from_value` — the reader Lua's list
+            // goes through, so the two cannot disagree on what a zero
+            // width means or which kinds there are (v12, backlog AR43;
+            // `menuBar` rides the same way).
             P_WINDOWS => {
-                let n = r.u()?;
-                for _ in 0..n {
-                    let name = r.req_str()?.to_string();
-                    let k = r.u()? as usize;
-                    let kind = *WindowKind::ALL
-                        .get(k)
-                        .ok_or_else(|| err(format!("unknown window kind {k}")))?;
-                    let (w, h) = (r.f()? as f32, r.f()? as f32);
-                    let activates = r.u()?;
-                    let anchor =
-                        Rect::new(r.f()? as f32, r.f()? as f32, r.f()? as f32, r.f()? as f32);
-                    let mut cfg = WindowConfig::of_kind(kind);
-                    cfg.anchor = anchor;
-                    if activates != 2 {
-                        cfg.activates = activates == 1;
-                    }
-                    if w > 0.0 && h > 0.0 {
-                        cfg.size = Size::new(w, h);
-                    }
-                    out.windows.push((name, cfg));
+                let list = payload(r.req_str()?)?;
+                let kui_core::Value::List(entries) = &list else {
+                    return Err(err("windows: a list of names or entries"));
+                };
+                for entry in entries {
+                    out.windows.push(
+                        WindowConfig::from_value(entry)
+                            .map_err(|e| err(format!("windows: {e}")))?,
+                    );
                 }
             }
             P_TOOLTIP => out.apply_tooltip(r.req_str()?),
@@ -813,7 +804,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             };
             let label_key = key.unwrap_or(label);
             let mut base = PropsOut::new();
-            base.spec = widgets::button_spec(&ui.metrics());
+            base.spec = widgets::button_spec(&ui.theme(), &ui.metrics());
             let p = lower_props_over(r, base, ui)?;
             // An `index` keys the button by its row, as it does a box
             // (backlog AR40): declared beside `key`, the index wins.
@@ -1300,19 +1291,20 @@ mod tests {
                     expected.apply_tooltip("abc");
                 }
                 "windows" => {
-                    // One window: "abc", a popup 400x300, non-activating,
-                    // anchored to a 60x20 rect at (10, 20).
-                    s.extend([
-                        1.0, 0.0, 3.0, 1.0, 400.0, 300.0, 0.0, 10.0, 20.0, 60.0, 20.0,
-                    ]);
-                    strings = b"abc";
+                    // One JSON blob (v12): a popup 400x300, non-activating,
+                    // anchored to a 60x20 rect at (10, 20) — read by
+                    // `WindowConfig::from_value`, the same reader Lua's
+                    // list goes through.
+                    const LIST: &[u8] = br#"[{"name":"abc","kind":"popup","width":400,"height":300,"activates":false,"anchor":{"x":10,"y":20,"w":60,"h":20}}]"#;
+                    s.extend([0.0, LIST.len() as f64]);
+                    strings = LIST;
                     expected.windows.push((
                         "abc".into(),
                         WindowConfig {
-                            kind: WindowKind::Popup,
+                            kind: kui_core::WindowKind::Popup,
                             size: Size::new(400.0, 300.0),
                             activates: false,
-                            anchor: Rect::new(10.0, 20.0, 60.0, 20.0),
+                            anchor: kui_core::Rect::new(10.0, 20.0, 60.0, 20.0),
                         },
                     ));
                 }

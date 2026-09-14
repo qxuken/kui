@@ -4349,6 +4349,37 @@ test('every corpus scene lowers the way kui-core does', (t) => {
 const UNCOVERED_PROPS = {
   font: 'a registered font is a file, and the corpus carries no font bytes (backlog AR48 files the fixture)',
 };
+// `index.d.ts`'s `Theme`, `ThemeOverrides` and `Metrics` are generated
+// from the role tables now (backlog AR44). `Env` and `NodeInfo` cannot be —
+// the tables carry no TypeScript types — so they are pinned instead: the
+// property names each interface declares are exactly the keys the runtime
+// object has, both ways, nested interfaces included. A field added to
+// `NodeInfo::to_value` or `ENV_FIELDS` is a red test here until the
+// interface says so.
+test("index.d.ts's Env and NodeInfo name exactly the keys the objects carry (AR44)", () => {
+  const dts = readFileSync(new URL('./index.d.ts', import.meta.url), 'utf8');
+  const declared = (name) => {
+    const m = new RegExp(`export interface ${name} \\{([\\s\\S]*?)\\n\\}`).exec(dts);
+    assert.ok(m, `interface ${name} in index.d.ts`);
+    // Property lines at the interface's own indent, comments skipped.
+    return [...m[1].matchAll(/^  ([A-Za-z_][A-Za-z0-9_]*)\??:/gm)].map((x) => x[1]).sort();
+  };
+  const ctx = new Ctx();
+  ctx.setInspect(true);
+  ctx.frame(320, 240, 1, box({ pad: 4 }, [box({ width: 10, height: 10 }, [], 'probe')]));
+  const env = ctx.env();
+  assert.deepEqual(declared('Env'), Object.keys(env).sort());
+  assert.deepEqual(declared('SystemEnv'), Object.keys(env.system).sort());
+  assert.deepEqual(declared('WindowEnv'), Object.keys(env.window).sort());
+  assert.deepEqual(declared('AudioEnv'), Object.keys(env.audio).sort());
+  assert.deepEqual(declared('WindowSize'), Object.keys(env.viewport).sort());
+  const node = ctx.nodes().find((n) => n.label === 'probe');
+  assert.deepEqual(declared('NodeInfo'), Object.keys(node).sort());
+  // And the three generated ones read back whole: every role is a key.
+  assert.deepEqual(declared('Theme'), Object.keys(ctx.theme()).sort());
+  assert.deepEqual(declared('Metrics'), Object.keys(ctx.metrics()).sort());
+});
+
 test('every generic schema prop is declared by some corpus scene (AR47)', () => {
   const source = Object.values(SCENE_TREES).map((f) => f.toString()).join('\n');
   const { prop } = protocol();
@@ -4990,7 +5021,7 @@ test('env().viewport is the window less the devtools dock (F43)', () => {
 // whose colour the environment decides: with no accent pushed it is exactly
 // the stock button, and with one it is that colour, its shades, and a label
 // that stays readable on it.
-test('<button accent> follows the OS accent, and the stock blue until there is one', () => {
+test('a button follows the theme accent, and the stock blue until there is one', () => {
   const view = (extra = {}) => el('button', { onClick: 'go', ...extra }, ['go']);
   // The button's own quad is the solid one, its label a glyph quad;
   // `decodeQuads` gives both colours as floats.
@@ -5028,11 +5059,15 @@ test('<button accent> follows the OS accent, and the stock blue until there is o
   near(paint(light).bg, hex(0xffc409ff), 'the accent, however it was spelled');
   near(paint(light).label, [0, 0, 0, 1], 'white on yellow is not a button');
 
-  // And a button that did not ask is the stock one whatever the OS says.
+  // And a button that did not ask paints the same: the stock button's
+  // trio is the theme's accent trio (backlog AR41), so on a host that
+  // reports an accent every button is that colour, `accent` or not — the
+  // row is kept for a box's sake and changes nothing on a button.
   const other = new Ctx();
   other.setEnv({ system: { accent: 0x007affff } });
   other.frame(320, 240, 1, view());
-  assert.deepEqual(other.quads(), plain.quads());
+  assert.deepEqual(other.quads(), dark.quads(), 'the plain button is the accent one');
+  near(paint(other).bg, hex(0x007affff), 'the accent, unasked');
 });
 
 // The OS settings a host pushes: two enums whose third reading is "nobody

@@ -107,7 +107,7 @@ fn an_accent_button_repaints_its_whole_palette() {
     let palette = |core: &mut Core, accent: Option<Color>| -> (Color, Color, Color) {
         core.env.system.accent = accent;
         let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
-        let spec = widgets::button_spec(&ui.metrics())
+        let spec = widgets::button_spec(&ui.theme(), &ui.metrics())
             .accent()
             .on_click(Value::str("ok"));
         widgets::button_with(&mut ui, "ok", "OK", spec, None);

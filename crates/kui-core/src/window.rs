@@ -199,7 +199,7 @@ impl WindowConfig {
 
     /// A declaration from plain data: a bare name (the defaults), or a map
     /// with `name`, `kind` (`"normal"` | `"popup"`), `width` and `height`
-    /// (both, or the default size), `activates`, and the `anchor` rect
+    /// (both and positive, or the default size), `activates`, and the `anchor` rect
     /// (`{x, y, w, h}`) a popup is placed against. Returns the name with
     /// the config. An entry is plain data with a fixed shape, not a node's
     /// loose prop bag, so a value that does nothing is refused rather than
@@ -230,7 +230,13 @@ impl WindowConfig {
                 };
                 let mut cfg = Self::of_kind(kind);
                 let num = |key: &str| v.get(key).and_then(Value::as_float).map(|n| n as f32);
-                if let (Some(w), Some(h)) = (num("width"), num("height")) {
+                // Both, and positive: a zero is the default size, as C's
+                // `kui_window_declare` reads it and the runner opens it —
+                // Node's own decoder said so and this did not (AR43).
+                if let (Some(w), Some(h)) = (num("width"), num("height"))
+                    && w > 0.0
+                    && h > 0.0
+                {
                     cfg.size = Size::new(w, h);
                 }
                 if let Some(a) = v.get("activates").and_then(Value::as_bool) {

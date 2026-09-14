@@ -45,6 +45,36 @@ pub enum Easing {
 }
 
 impl Easing {
+    /// Every curve, in wire order: `schema::EASINGS` is `ALL` by `name`,
+    /// and a binding sends the index (backlog AR42 — the two were a hand
+    /// map that a variant appended or a list reordered put one off).
+    pub const ALL: &'static [Easing] = &[
+        Easing::EaseOut,
+        Easing::Linear,
+        Easing::EaseIn,
+        Easing::EaseInOut,
+        Easing::Spring,
+        Easing::Bouncy,
+    ];
+
+    /// The camelCase spelling every binding uses.
+    pub fn name(self) -> &'static str {
+        match self {
+            Easing::EaseOut => "easeOut",
+            Easing::Linear => "linear",
+            Easing::EaseIn => "easeIn",
+            Easing::EaseInOut => "easeInOut",
+            Easing::Spring => "spring",
+            Easing::Bouncy => "bouncy",
+        }
+    }
+
+    /// The variant `schema::EASINGS` index `i` names; the default for an
+    /// index this build lacks.
+    pub fn from_index(i: usize) -> Easing {
+        Self::ALL.get(i).copied().unwrap_or_default()
+    }
+
     /// Damping ratio for the spring easings; None for timed curves.
     fn damping(self) -> Option<f32> {
         match self {
@@ -88,6 +118,31 @@ pub enum Repeat {
 }
 
 impl Repeat {
+    /// Every direction, in wire order: `schema::REPEATS` is `ALL` by
+    /// `name` (backlog AR42).
+    pub const ALL: &'static [Repeat] = &[
+        Repeat::Normal,
+        Repeat::Reverse,
+        Repeat::Alternate,
+        Repeat::AlternateReverse,
+    ];
+
+    /// CSS's `animation-direction` spelling, camelCased.
+    pub fn name(self) -> &'static str {
+        match self {
+            Repeat::Normal => "normal",
+            Repeat::Reverse => "reverse",
+            Repeat::Alternate => "alternate",
+            Repeat::AlternateReverse => "alternateReverse",
+        }
+    }
+
+    /// The variant `schema::REPEATS` index `i` names; the default for an
+    /// index this build lacks.
+    pub fn from_index(i: usize) -> Repeat {
+        Self::ALL.get(i).copied().unwrap_or_default()
+    }
+
     /// Where in the keyframe cycle (0..=1) a clock reading lands, with `u`
     /// in periods.
     fn progress(self, u: f64) -> f32 {
@@ -308,6 +363,7 @@ pub struct AnimStore {
     tweens: FxHashMap<Key, [Option<Tween>; SLOTS]>,
     /// Driver time in seconds; None until the driver first sets it.
     now: Option<f64>,
+    /// The core's frame counter as of `begin_frame`.
     frame_no: u64,
     /// Whether any tween driven this frame is still mid-flight.
     active: bool,
@@ -330,8 +386,12 @@ impl AnimStore {
         self.active
     }
 
-    pub(crate) fn begin_frame(&mut self) {
-        self.frame_no += 1;
+    /// Starts a frame: `frame_no` is the core's counter (backlog AR45 —
+    /// each store counted for itself, in step only because `Core::
+    /// begin_frame` happened to call every one), stamped on what this
+    /// frame drives.
+    pub(crate) fn begin_frame(&mut self, frame_no: u64) {
+        self.frame_no = frame_no;
         self.active = false;
         // Tweens nothing has driven for a while go (`retain::sweep_cutoff`).
         if !self.tweens.is_empty()
@@ -532,6 +592,16 @@ impl NodeAnim<'_> {
 mod tests {
     use super::*;
 
+    /// The core's frame counter, stood in for: each test's frames count
+    /// from one.
+    struct Frames(u64);
+    impl Frames {
+        fn next(&mut self) -> u64 {
+            self.0 += 1;
+            self.0
+        }
+    }
+
     /// `Tween` is retained per slot, nine slots per transitioning node, and
     /// walked in full every frame the node is driven: a 10,000-node frame
     /// with a transition on every node carries 8.6 MB of it. So a field
@@ -581,24 +651,25 @@ mod tests {
     #[test]
     fn first_sight_snaps_then_retargets_ease() {
         let mut a = AnimStore::default();
+        let mut frame = Frames(0);
         let k = Key::ROOT.str("x");
         let t = Transition::ms(100.0).easing(Easing::Linear);
         a.set_time(0.0);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         assert_eq!(a.drive(k, Slot::Width, None, one(10.0), t, true)[0], 10.0);
         assert!(!a.animating());
 
         a.set_time(0.0);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         assert_eq!(a.drive(k, Slot::Width, None, one(20.0), t, true)[0], 10.0);
         assert!(a.animating(), "mid-flight after retarget");
 
         a.set_time(0.05);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         assert!((a.drive(k, Slot::Width, None, one(20.0), t, true)[0] - 15.0).abs() < 1e-4);
 
         a.set_time(0.2);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         assert_eq!(a.drive(k, Slot::Width, None, one(20.0), t, true)[0], 20.0);
         assert!(!a.animating(), "settled");
     }
@@ -606,11 +677,12 @@ mod tests {
     #[test]
     fn unchanged_targets_owe_no_frames() {
         let mut a = AnimStore::default();
+        let mut frame = Frames(0);
         let k = Key::ROOT.str("x");
         let t = Transition::ms(100.0);
         for i in 0..3 {
             a.set_time(i as f64 * 0.001);
-            a.begin_frame();
+            a.begin_frame(frame.next());
             a.drive(k, Slot::Width, None, one(5.0), t, true);
             assert!(!a.animating(), "frame {i}: same value, nothing to animate");
         }
@@ -619,40 +691,42 @@ mod tests {
     #[test]
     fn retarget_mid_flight_starts_from_current_value() {
         let mut a = AnimStore::default();
+        let mut frame = Frames(0);
         let k = Key::ROOT.str("x");
         let t = Transition::ms(100.0).easing(Easing::Linear);
         a.set_time(0.0);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         a.drive(k, Slot::Width, None, one(0.0), t, true);
         a.set_time(0.0);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         a.drive(k, Slot::Width, None, one(100.0), t, true);
         a.set_time(0.05);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         assert!((a.drive(k, Slot::Width, None, one(100.0), t, true)[0] - 50.0).abs() < 1e-4);
         // Reverse: eases back from 50, not from 100.
         a.set_time(0.05);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         assert!((a.drive(k, Slot::Width, None, one(0.0), t, true)[0] - 50.0).abs() < 1e-4);
         a.set_time(0.10);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         assert!((a.drive(k, Slot::Width, None, one(0.0), t, true)[0] - 25.0).abs() < 1e-4);
     }
 
     #[test]
     fn springs_overshoot_settle_and_keep_momentum() {
         let mut a = AnimStore::default();
+        let mut frame = Frames(0);
         let k = Key::ROOT.str("x");
         let t = Transition::ms(200.0).easing(Easing::Bouncy);
         a.set_time(0.0);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         a.drive(k, Slot::Width, None, one(0.0), t, true);
         // Retarget to 100 and step at 60Hz.
         let mut max = 0.0f32;
         let mut settled_at = None;
         for i in 1..=180 {
             a.set_time(i as f64 / 60.0);
-            a.begin_frame();
+            a.begin_frame(frame.next());
             let v = a.drive(k, Slot::Width, None, one(100.0), t, true)[0];
             max = max.max(v);
             if !a.animating() && settled_at.is_none() {
@@ -663,24 +737,24 @@ mod tests {
         let settled = settled_at.expect("settles within 3s");
         assert!(settled > 6, "not instant: {settled}");
         a.set_time(4.0);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         assert_eq!(a.drive(k, Slot::Width, None, one(100.0), t, true)[0], 100.0);
 
         // Momentum: retargeting mid-flight continues from the current
         // velocity rather than restarting, so the value keeps moving up
         // for a moment even though the new target is behind it.
         a.set_time(4.0);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         a.drive(k, Slot::Width, None, one(200.0), t, true);
         let mut v_prev = 100.0;
         for i in 1..=2 {
             a.set_time(4.0 + i as f64 / 60.0);
-            a.begin_frame();
+            a.begin_frame(frame.next());
             v_prev = a.drive(k, Slot::Width, None, one(200.0), t, true)[0];
         }
         assert!(v_prev > 100.0);
         a.set_time(4.0 + 3.0 / 60.0);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         let after = a.drive(k, Slot::Width, None, one(100.0), t, true)[0];
         assert!(
             after > v_prev,
@@ -691,10 +765,11 @@ mod tests {
     #[test]
     fn an_entrance_starts_its_first_leg_from_the_declared_value() {
         let mut a = AnimStore::default();
+        let mut frame = Frames(0);
         let k = Key::ROOT.str("x");
         let t = Transition::ms(100.0).easing(Easing::Linear);
         a.set_time(0.0);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         assert_eq!(
             a.drive(k, Slot::Pos, Some(one(-100.0)), one(0.0), t, true)[0],
             -100.0,
@@ -702,12 +777,12 @@ mod tests {
         );
         assert!(a.animating(), "and owes a frame");
         a.set_time(0.05);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         assert!(
             (a.drive(k, Slot::Pos, Some(one(-100.0)), one(0.0), t, true)[0] + 50.0).abs() < 1e-3
         );
         a.set_time(0.2);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         assert_eq!(
             a.drive(k, Slot::Pos, Some(one(-100.0)), one(0.0), t, true)[0],
             0.0
@@ -715,13 +790,13 @@ mod tests {
         assert!(!a.animating());
         // Once seen, the entrance is spent: a retarget eases from where it is.
         a.set_time(0.2);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         assert_eq!(
             a.drive(k, Slot::Pos, Some(one(-100.0)), one(40.0), t, true)[0],
             0.0
         );
         a.set_time(0.25);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         assert!(
             (a.drive(k, Slot::Pos, Some(one(-100.0)), one(40.0), t, true)[0] - 20.0).abs() < 1e-3
         );
@@ -730,10 +805,11 @@ mod tests {
     #[test]
     fn an_entrance_equal_to_the_target_is_no_entrance() {
         let mut a = AnimStore::default();
+        let mut frame = Frames(0);
         let k = Key::ROOT.str("x");
         let t = Transition::ms(100.0);
         a.set_time(0.0);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         assert_eq!(
             a.drive(k, Slot::Bg, Some(one(5.0)), one(5.0), t, true)[0],
             5.0
@@ -744,16 +820,17 @@ mod tests {
     #[test]
     fn a_spring_entrance_carries_no_velocity_in() {
         let mut a = AnimStore::default();
+        let mut frame = Frames(0);
         let k = Key::ROOT.str("x");
         let t = Transition::ms(100.0).easing(Easing::Spring);
         a.set_time(0.0);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         assert_eq!(
             a.drive(k, Slot::Pos, Some(one(-100.0)), one(0.0), t, true)[0],
             -100.0
         );
         a.set_time(0.016);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         let first = a.drive(k, Slot::Pos, Some(one(-100.0)), one(0.0), t, true)[0];
         assert!(
             first > -100.0 && first < 0.0,
@@ -763,7 +840,7 @@ mod tests {
         let mut v = first;
         for i in 2..=90 {
             a.set_time(i as f64 * 0.016);
-            a.begin_frame();
+            a.begin_frame(frame.next());
             v = a.drive(k, Slot::Pos, Some(one(-100.0)), one(0.0), t, true)[0];
         }
         assert!(v.abs() < 1.0, "settled on the target: {v}");
@@ -773,24 +850,25 @@ mod tests {
     #[test]
     fn off_the_leash_a_settled_slot_snaps_to_a_new_target() {
         let mut a = AnimStore::default();
+        let mut frame = Frames(0);
         let k = Key::ROOT.str("x");
         let t = Transition::ms(100.0).easing(Easing::Linear);
         a.set_time(0.0);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         a.drive(k, Slot::Pos, Some(one(-100.0)), one(0.0), t, false);
         // Retargeted mid-entrance: still eases, a fresh leg from where it is.
         a.set_time(0.05);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         let at = a.drive(k, Slot::Pos, Some(one(-100.0)), one(20.0), t, false)[0];
         a.set_time(0.1);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         let mid = a.drive(k, Slot::Pos, Some(one(-100.0)), one(20.0), t, false)[0];
         assert!(
             at < mid && mid < 20.0,
             "mid-flight retarget keeps easing: {at} -> {mid}"
         );
         a.set_time(0.3);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         assert_eq!(
             a.drive(k, Slot::Pos, Some(one(-100.0)), one(20.0), t, false)[0],
             20.0
@@ -798,7 +876,7 @@ mod tests {
         assert!(!a.animating());
         // Settled and moved by layout: a node that doesn't slide snaps.
         a.set_time(0.3);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         assert_eq!(
             a.drive(k, Slot::Pos, Some(one(-100.0)), one(300.0), t, false)[0],
             300.0
@@ -814,10 +892,11 @@ mod tests {
     #[test]
     fn a_target_that_moves_every_frame_still_advances() {
         let mut a = AnimStore::default();
+        let mut frame = Frames(0);
         let k = Key::ROOT.str("card");
         let t = Transition::ms(160.0);
         a.set_time(0.0);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         a.drive(k, Slot::Pos, None, one(0.0), t, true);
         // 16 ms frames, 9.6 px of pan each: a second of a drag in flight.
         let mut behind = Vec::new();
@@ -825,7 +904,7 @@ mod tests {
         for f in 1..=60 {
             let target = f as f32 * 9.6;
             a.set_time(f as f64 * 0.016);
-            a.begin_frame();
+            a.begin_frame(frame.next());
             drawn = a.drive(k, Slot::Pos, None, one(target), t, true)[0];
             behind.push(target - drawn);
         }
@@ -846,16 +925,17 @@ mod tests {
     #[test]
     fn a_slot_skipped_for_a_frame_snaps() {
         let mut a = AnimStore::default();
+        let mut frame = Frames(0);
         let k = Key::ROOT.str("x");
         let t = Transition::ms(100.0);
         a.set_time(0.0);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         a.drive(k, Slot::Width, None, one(0.0), t, true);
         // A frame without this node (or without its transition).
         a.set_time(0.01);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         a.set_time(0.02);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         assert_eq!(a.drive(k, Slot::Width, None, one(100.0), t, true)[0], 100.0);
         assert!(!a.animating());
     }
@@ -865,10 +945,11 @@ mod tests {
     #[test]
     fn keyframes_cycle_in_every_direction() {
         let track = [(0.0, one(0.0)), (1.0, one(100.0))];
-        let at = |a: &mut AnimStore, repeat: Repeat, now: f64| {
+        let mut frame = Frames(0);
+        let mut at = |a: &mut AnimStore, repeat: Repeat, now: f64| {
             let t = Transition::ms(1000.0).easing(Easing::Linear).repeat(repeat);
             a.set_time(now);
-            a.begin_frame();
+            a.begin_frame(frame.next());
             let v = a.node(Key::ROOT).sample(&track, t).unwrap()[0];
             assert!(a.animating(), "a keyframed slot always owes a frame");
             v
@@ -893,19 +974,20 @@ mod tests {
     #[test]
     fn delay_shifts_the_cycle_and_easing_shapes_each_segment() {
         let mut a = AnimStore::default();
+        let mut frame = Frames(0);
         let track = [(0.0, one(0.0)), (0.5, one(10.0)), (1.0, one(0.0))];
         let t = Transition::ms(1000.0).easing(Easing::Linear);
         a.set_time(0.25);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         assert!((a.node(Key::ROOT).sample(&track, t).unwrap()[0] - 5.0).abs() < 1e-3);
         // Held back 250ms: reads what an undelayed node read at 0.
         a.set_time(0.25);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         assert!((a.node(Key::ROOT).sample(&track, t.delay(250.0)).unwrap()[0]).abs() < 1e-3);
         // Ease-in per segment: a quarter of the way through the first leg
         // sits well below linear's 5.
         a.set_time(0.125);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         let v = a
             .node(Key::ROOT)
             .sample(&track, t.easing(Easing::EaseIn))
@@ -914,15 +996,16 @@ mod tests {
         // Stops that don't start at 0 hold the first value until they do.
         let late = [(0.5, one(3.0)), (1.0, one(9.0))];
         a.set_time(0.1);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         assert_eq!(a.node(Key::ROOT).sample(&late, t).unwrap()[0], 3.0);
     }
 
     #[test]
     fn keyframes_need_a_clock_and_a_duration() {
         let mut a = AnimStore::default();
+        let mut frame = Frames(0);
         let track = [(0.0, one(0.0)), (1.0, one(1.0))];
-        a.begin_frame();
+        a.begin_frame(frame.next());
         assert!(
             a.node(Key::ROOT)
                 .sample(&track, Transition::ms(100.0))
@@ -930,7 +1013,7 @@ mod tests {
         );
         assert!(!a.animating());
         a.set_time(1.0);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         assert!(
             a.node(Key::ROOT)
                 .sample(&track, Transition::ms(0.0))
@@ -947,11 +1030,12 @@ mod tests {
     #[test]
     fn no_clock_means_no_animation() {
         let mut a = AnimStore::default();
+        let mut frame = Frames(0);
         let k = Key::ROOT.str("x");
         let t = Transition::ms(100.0);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         a.drive(k, Slot::Width, None, one(0.0), t, true);
-        a.begin_frame();
+        a.begin_frame(frame.next());
         assert_eq!(a.drive(k, Slot::Width, None, one(100.0), t, true)[0], 100.0);
         assert!(!a.animating());
     }

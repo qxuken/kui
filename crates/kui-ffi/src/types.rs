@@ -120,6 +120,7 @@ impl KuiCtx {
     /// one so that it stays a context — still the caller's to free, and
     /// to use, as one that has registered nothing. `None` on a borrowing
     /// context, whose core is someone else's frame.
+    #[cfg(any(feature = "runner", test))]
     pub(crate) fn take_core(&mut self) -> Option<Box<Core>> {
         let taken = self._owned.take()?;
         let mut fresh = Box::new(Core::new());
@@ -1388,6 +1389,7 @@ pub const KUI_DIAG_OFF: u32 = 2;
 /// A `KuiRunConfig` read: what `kui_run_with` tells the launcher, in the
 /// launcher's own terms. Separate from the launcher so the reading is a
 /// test without a window.
+#[cfg(any(feature = "runner", test))]
 #[derive(Debug, PartialEq, Default)]
 pub(crate) struct RunOptions {
     pub size: Option<(f64, f64)>,
@@ -1403,6 +1405,7 @@ pub(crate) struct RunOptions {
 
 /// A max side left at zero is unbounded: a bound no display reaches, as
 /// Node's `maxWidth` alone is.
+#[cfg(any(feature = "runner", test))]
 pub(crate) const UNBOUNDED_SIZE: f64 = 65_535.0;
 
 /// Reads a config the way `kui_window_declare` reads its own — literally,
@@ -1410,6 +1413,7 @@ pub(crate) const UNBOUNDED_SIZE: f64 = 65_535.0;
 /// refused with its reason rather than degraded: a window that opened
 /// native when asked for the custom chrome would draw its titlebar under
 /// the OS's, which is the bug AR27 was filed for.
+#[cfg(any(feature = "runner", test))]
 pub(crate) fn run_options_of(c: Option<&KuiRunConfig>) -> Result<RunOptions, String> {
     let Some(c) = c else {
         return Ok(RunOptions::default());

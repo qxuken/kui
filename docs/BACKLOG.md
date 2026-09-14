@@ -49,7 +49,7 @@ pass on what a press made, Node's surface aimed at the window it is
 handed for, `<text>`'s rows closed, one token-miss policy, Cut's
 `changed`, one spec pipeline for every door, the focus stamp and the
 reader's gates — with the amendment on B1a whose condition that round
-met, and **B1a, AR40, AR49, AR27, AR46–AR48, AR31 and AR34–AR39 built the same day** (AR50, the
+met, and **B1a, AR40, AR49, AR27, AR46–AR48, AR31, AR34–AR39 and AR41–AR45 built the same day** (AR50, the
 [in] rule's unkept promise, filed from under AR27); C31, found
 the same day building the tokens (Node's corpus adapter disagreeing with
 the reference on one scene when run alone — **done the same evening**:
@@ -3284,7 +3284,20 @@ encoder's "refuse, don't drop".
 `NAMES` through `protocol_tables`, Lua `bad(...)` on a miss; an error on a
 half-given size and an unknown chrome word.
 
-### `.` AR41 — `button_spec` hard-codes the accent trio `Theme::dark()` also hard-codes
+### `.` AR41 — `button_spec` hard-codes the accent trio `Theme::dark()` also hard-codes — **done (2026-09-14)**
+
+**Built 2026-09-14, as the fix line says — and the ADR revised.**
+`button_spec(&theme, &metrics)` reads `accent` / `accent_hover` /
+`accent_pressed`; every caller (four bindings, the corpus, the tests,
+nine examples) passes `&ui.theme()`. `button_body`'s `accent` branch
+lost its `has_accent` gate — the theme always has an accent, and on a
+stock spec the branch changes nothing now. Byte-identical on a silent
+host (the test pins the stock trio against `Theme::dark()`); a brand
+colour set on the theme recolours a plain button; and on a host that
+reports an OS accent every stock button is that colour, where before
+only one declaring `accent` was — ADR 0019's "unchanged" bullet carries
+the revision, the schema's button doc and the Node accent test say the
+new rule.
 
 `widgets.rs:483-491` and `theme.rs:193-195` carry the same three hex
 values, cross-referenced by comment; `button_with` substitutes the theme's
@@ -3298,7 +3311,15 @@ not painting from the palette.
 `accent_pressed` (byte-identical for `Derived` with no accent, since the
 trio is the same) and no `has_accent` gate.
 
-### `.` AR42 — `Easing`, `Repeat`, `Live` and `FontFamily` are index→variant matches with no pin
+### `.` AR42 — `Easing`, `Repeat`, `Live` and `FontFamily` are index→variant matches with no pin — **done (2026-09-14)**
+
+**Built 2026-09-14, as the fix line says.** `ALL` + `name()` +
+`from_index()` on the four (`FontFamily::name` is an `Option`, since
+`Custom` is not a family on the wire — the `font` row is), `easing_idx`
+/ `repeat_idx` / the `family` row's apply are lookups in `ALL`, and
+`schema::tests::every_enum_list_is_its_enum_s_all_by_name` holds each
+list to its enum by name and round-trips every index, with an index the
+build lacks reading as the default.
 
 `schema.rs:299-329,930-934` map an index to a variant by hand; `anim.rs`
 has no `ALL`/`name()` (`:32-46,78-90`); `Live::from_index` is a second map
@@ -3311,7 +3332,16 @@ pins the header to the *names*.
 **Fix:** `ALL` + `name()` on the four, the lists as `ALL.map(name)`, one
 round-trip test, as `Appearance` already has.
 
-### `.` AR43 — Node's `windows` root prop is hand-lowered on both wire sides while `WindowConfig::from_value` exists
+### `.` AR43 — Node's `windows` root prop is hand-lowered on both wire sides while `WindowConfig::from_value` exists — **done (2026-09-14)**
+
+**Built 2026-09-14, as the fix line says — frame v12.** The encoder
+writes the list as one JSON string and the addon reads each entry
+through `WindowConfig::from_value`, the way `menuBar` rides; the
+ten-slot stanza, the encoder's copy of the kind list and its own "zero
+is the default" rule are gone. `from_value` treats a non-positive size
+as the default now, as C's `kui_window_declare` and the runner do, so
+the `Open` command carries 640×480 from every binding. The v12 note in
+`binary.rs`, the parity test's `windows` arm as JSON.
 
 A ten-slot stanza in the encoder (`encoder.js:340-380`) and its mirror in
 `binary.rs:462-484`; `WindowConfig::from_value` (`window.rs:208-250`) is
@@ -3323,7 +3353,17 @@ already disagree: `{width: 0, height: 0}` is "default size" in Node
 **Fix:** `windows` as a JSON string through `from_value`, both arms
 deleted (a protocol bump, as v7 was for this stanza).
 
-### `.` AR44 — `index.d.ts`'s `Env`, `NodeInfo`, `Theme` and `Metrics` are hand-written mirrors of generated tables
+### `.` AR44 — `index.d.ts`'s `Env`, `NodeInfo`, `Theme` and `Metrics` are hand-written mirrors of generated tables — **done (2026-09-14)**
+
+**Built 2026-09-14, the half that can be and a pin for the rest.**
+`Theme`'s 23 roles, `ThemeOverrides`' 23 and `Metrics`' 16 are
+generated between markers from `THEME_ROLES` / `METRIC_ROLES` with the
+tables' docs (`appearance` and `disabledOpacity` stay hand-written
+around them). `Env` and `NodeInfo` cannot be — `ENV_FIELDS` carries no
+TypeScript types and `NodeInfo` has no table — so a Node test parses
+the six interfaces (`Env`, `SystemEnv`, `WindowEnv`, `AudioEnv`,
+`WindowSize`, `NodeInfo`, plus the generated two) for their property
+names and holds each to the runtime object's keys, both ways.
 
 `index.d.ts:919,947,1034,1141` restate `ENV_FIELDS`, `THEME_ROLES` and
 `METRIC_ROLES`; `gen-types.mjs:46` already destructures `env, theme,
@@ -3335,7 +3375,17 @@ interface, and `types.tsx` catches only the roles it uses.
 **Fix:** the four interfaces emitted between the `-- generated --` markers
 the access, warning and input lists already use.
 
-### `.` AR45 — Three frame counters, two label resolvers, one caret rect twice
+### `.` AR45 — Three frame counters, two label resolvers, one caret rect twice — **done (2026-09-14)**
+
+**Built 2026-09-14, as the fix line says.** `AnimStore`,
+`DepartStore` and the text cache take `Core::frame_no` in
+`begin_frame` (their own counters gone; the store tests stand a
+counter in), and `layouts.retain` sweeps on `retain::sweep_cutoff` like
+every by-last-use store. `Core::find_label(label, fall_back)` is the
+one label lookup under `key_of` (falls back to last frame's labels
+mid-build) and `resolve_regions` (does not: it runs at the frame's
+end). `stock_caret_viewport_rect(key)` is the one caret placement, read
+by the IME anchor and the scroll-into-view.
 
 `Core::frame_no` (`runtime.rs:385`) is passed to edit and scroll;
 `AnimStore` and `DepartStore` each `frame_no += 1` in their own
@@ -3717,7 +3767,10 @@ hoisted), the small core defects among the `.` entries (**AR31,
 AR34–AR39 done 2026-09-14** — hover through `target_at`, one paste ask
 at a time, `scaled` leaves the titlebar, `nodes()` in viewport px,
 `finish_frame` crate-private, the inspect latch gone, panes re-found by
-id), and
+id; **AR41–AR45 done 2026-09-14** — the button from the palette, the
+enum lists pinned to their enums, `windows` as JSON under v12, the role
+interfaces generated and `Env` / `NodeInfo` pinned, one frame counter /
+label lookup / caret rect), and
 AR49 first of all if the alpha.12 notes go out before the rest, since
 its first line is the CHANGELOG contradicting itself on the frame
 version (**AR49 done 2026-09-14**, the reused ids retired as `B1a` /

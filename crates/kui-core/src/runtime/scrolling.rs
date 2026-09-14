@@ -148,15 +148,9 @@ impl Core {
         if held {
             return;
         }
-        let Some(caret_phys) = self.edit_with_fonts(|edit, fs| edit.caret_rect(key, fs)) else {
+        let Some((_, caret)) = self.stock_caret_viewport_rect(key) else {
             return;
         };
-        let caret = Rect::new(
-            self.tree.pos[i].x + pad.l + caret_phys.x / self.scale,
-            self.tree.pos[i].y + pad.t + caret_phys.y / self.scale,
-            caret_phys.w / self.scale,
-            caret_phys.h / self.scale,
-        );
         self.scroll_rect_into_view(i, caret, true);
     }
 

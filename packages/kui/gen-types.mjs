@@ -449,6 +449,58 @@ if (!inputRe.test(indexSrc)) throw new Error('input-list markers not found in in
 indexSrc = indexSrc.replace(inputRe, inputBlock);
 console.log(`index.d.ts: ${editKeys.length} edit keys, ${mouseButtons.length} mouse buttons generated`);
 
+// The palette and the metrics as TypeScript, one property per row of the
+// tables the readings are generated from (backlog AR44): `ctx.theme()`,
+// `setTheme`'s overrides and `ctx.metrics()` were hand-written mirrors that
+// a role added to `THEME_ROLES` left behind until someone noticed. The
+// non-role fields around them (`appearance`, `disabledOpacity`) stay
+// hand-written, outside the markers.
+const docLines = (doc) => {
+  // The table's one-line doc, wrapped as a `/** */` at the interface's
+  // indent, for the hover a TypeScript editor shows.
+  const words = doc.split(' ');
+  const lines = [];
+  let line = '';
+  for (const w of words) {
+    if (line && line.length + 1 + w.length > 72) {
+      lines.push(line);
+      line = w;
+    } else {
+      line = line ? `${line} ${w}` : w;
+    }
+  }
+  if (line) lines.push(line);
+  return lines.length === 1
+    ? [`  /** ${lines[0]} */`]
+    : [`  /** ${lines[0]}`, ...lines.slice(1, -1).map((l) => `   *  ${l}`), `   *  ${lines[lines.length - 1]} */`];
+};
+const roleLines = (rows, sig) => rows.flatMap((r) => [...docLines(r.doc), `  ${sig(r)}`]);
+const themeBlock = [
+  "  // -- generated from the core's theme roles; edit THEME_ROLES in crates/kui-core/src/schema.rs, then `npm run gen` --",
+  ...roleLines(theme, (r) => `${r.node}: number;`),
+  '  // -- end generated --',
+].join('\n');
+const themeRe = /  \/\/ -- generated from the core's theme roles;[\s\S]*?  \/\/ -- end generated --/;
+if (!themeRe.test(indexSrc)) throw new Error('theme-role markers not found in index.d.ts');
+indexSrc = indexSrc.replace(themeRe, themeBlock);
+const overridesBlock = [
+  "  // -- generated from the core's theme roles (overrides); edit THEME_ROLES in crates/kui-core/src/schema.rs, then `npm run gen` --",
+  ...theme.map((r) => `  ${r.node}?: number | string;`),
+  '  // -- end generated --',
+].join('\n');
+const overridesRe = /  \/\/ -- generated from the core's theme roles \(overrides\);[\s\S]*?  \/\/ -- end generated --/;
+if (!overridesRe.test(indexSrc)) throw new Error('theme-override markers not found in index.d.ts');
+indexSrc = indexSrc.replace(overridesRe, overridesBlock);
+const metricsBlock = [
+  "  // -- generated from the core's metric roles; edit METRIC_ROLES in crates/kui-core/src/schema.rs, then `npm run gen` --",
+  ...roleLines(metrics, (r) => `${r.node}: number;`),
+  '  // -- end generated --',
+].join('\n');
+const metricsRe = /  \/\/ -- generated from the core's metric roles;[\s\S]*?  \/\/ -- end generated --/;
+if (!metricsRe.test(indexSrc)) throw new Error('metric-role markers not found in index.d.ts');
+indexSrc = indexSrc.replace(metricsRe, metricsBlock);
+console.log(`index.d.ts: ${theme.length} theme roles (twice), ${metrics.length} metric roles generated`);
+
 const menuBlock = [
   "// -- generated from the core's menu roles; edit MenuRole::ALL in crates/kui-core/src/menu.rs, then `npm run gen` --",
   '/** What a menu row is: the app\'s own (`custom`), a divider, or one of',

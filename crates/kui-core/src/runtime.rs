@@ -1230,8 +1230,9 @@ impl Core {
         self.refresh_theme();
         self.framed = true;
         self.frame_no += 1;
-        if self.frame_no.is_multiple_of(240) {
-            let cutoff = self.frame_no.saturating_sub(300);
+        // The layout rects a node reported, swept on the one cadence
+        // every by-last-use store sweeps on (`retain::sweep_cutoff`, AR45).
+        if let Some(cutoff) = crate::retain::sweep_cutoff(self.frame_no) {
             self.layouts.retain(|_, (_, seen)| *seen >= cutoff);
         }
         self.viewport = viewport;
@@ -1283,16 +1284,20 @@ impl Core {
         self.atlas_epoch_seen = self.atlas.epoch;
         // The text list goes with the tree: a kept frame's text nodes carry
         // that frame's `TextId`s, and nothing else can resolve them.
-        self.text
-            .begin_frame(&mut self.session.state().fonts, scale, keep_prev);
+        self.text.begin_frame(
+            &mut self.session.state().fonts,
+            scale,
+            keep_prev,
+            self.frame_no,
+        );
         // And the strokes, for the same reason: a kept frame's `line`
         // nodes index that frame's list.
         self.lines.begin_frame(keep_prev);
         self.fragments.begin_frame(keep_prev);
         self.cells.begin_frame(scale);
         self.sync_font_names();
-        self.anim.begin_frame();
-        self.depart.begin_frame();
+        self.anim.begin_frame(self.frame_no);
+        self.depart.begin_frame(self.frame_no);
         // The two stores that keep state by key across a key's absence:
         // they stamp this frame onto what it declares, and cap what it
         // does not (backlog F26).

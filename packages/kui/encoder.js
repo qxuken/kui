@@ -16,10 +16,6 @@ export function createEncoder(P) {
   const OP = P.op;
   const PR = P.prop;
   const VERSION = P.version;
-  // `kind` on a `windows` entry, as the index the addon decodes: the
-  // core's list (`WindowKind::ALL`), not a copy — a window is not a node,
-  // but its kinds are still one list (see `docs/adr/0004-multi-window.md`).
-  const WINDOW_KINDS = P.windowKinds;
   // Value tables come from the addon too, so "below" cannot mean one thing
   // here and another in kui-core.
   const ALIGN = indexOf(P.align);
@@ -350,40 +346,15 @@ export function createEncoder(P) {
           }
           break;
         case 'windows':
-          // Root only, like `title`: a count, then per window its name,
-          // kind (0 = normal, 1 = popup), width, height (0 = the default
-          // size), whether it activates, and the anchor rect a popup is
-          // placed against. An entry may be just a name.
+          // Root only, like `title`. The list rides as one JSON blob, the
+          // way `menuBar`'s does (v12, backlog AR43): the addon hands each
+          // entry to `WindowConfig::from_value`, the reader Lua's list goes
+          // through, so a name, `{ name, kind?, width?, height?,
+          // activates?, anchor? }` and the refusal of a kind kui does not
+          // have are one rule in the core and not a second stanza here.
           if (isRoot && Array.isArray(v)) {
             f[fi++] = PR.windows.id;
-            f[fi++] = v.length;
-            for (const w of v) {
-              reserve(12);
-              const d = typeof w === 'string' ? { name: w } : w;
-              if (d == null || typeof d.name !== 'string') {
-                throw new Error(`bad windows entry ${JSON.stringify(w)} (a name, or { name, kind?, anchor?, width?, height?, activates? })`);
-              }
-              // An entry is plain data with a fixed shape, not a node's loose
-              // prop bag, so a value that does nothing is refused rather than
-              // dropped: a kind kui does not have would otherwise open a
-              // normal window and read as the popup having worked.
-              const kind = WINDOW_KINDS.indexOf(d.kind ?? 'normal');
-              if (kind < 0) {
-                throw new Error(`windows entry ${JSON.stringify(d.name)} has kind ${JSON.stringify(d.kind)}; the kinds are ${WINDOW_KINDS.map((k) => JSON.stringify(k)).join(' and ')}`);
-              }
-              const a = d.anchor ?? {};
-              strRef(d.name);
-              f[fi++] = kind;
-              f[fi++] = d.width ?? 0;
-              f[fi++] = d.height ?? 0;
-              // Unsaid is 2: the kind's own default, decided by the core
-              // (a popup does not take OS focus unless asked).
-              f[fi++] = d.activates == null ? 2 : d.activates ? 1 : 0;
-              f[fi++] = a.x ?? 0;
-              f[fi++] = a.y ?? 0;
-              f[fi++] = a.w ?? 0;
-              f[fi++] = a.h ?? 0;
-            }
+            strRef(JSON.stringify(v));
             n++;
           }
           break;

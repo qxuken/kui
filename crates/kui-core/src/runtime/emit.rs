@@ -1435,18 +1435,30 @@ impl Core {
         self.ime_rect
     }
 
-    fn focused_caret_rect(&mut self) -> Option<Rect> {
-        if let Some(key) = self.edit.focused() {
-            let i =
-                (0..self.tree.len()).find(|&i| self.tree.content[i] == NodeContent::Edit(key))?;
-            let caret = self.edit_with_fonts(|edit, fs| edit.caret_rect(key, fs))?;
-            let pad = self.tree.specs[i].layout.padding;
-            return Some(Rect::new(
+    /// The stock editor `key`'s node and its caret rect in viewport
+    /// coordinates, from the frame laid out: the editor's own caret
+    /// (physical px inside its text box) placed at the node's content
+    /// origin. The one place this arithmetic lives (backlog AR45) — the
+    /// IME anchor and the scroll-into-view both read it. None when no
+    /// node of this frame is that editor, or it has no caret.
+    pub(crate) fn stock_caret_viewport_rect(&mut self, key: Key) -> Option<(usize, Rect)> {
+        let i = (0..self.tree.len()).find(|&i| self.tree.content[i] == NodeContent::Edit(key))?;
+        let caret = self.edit_with_fonts(|edit, fs| edit.caret_rect(key, fs))?;
+        let pad = self.tree.specs[i].layout.padding;
+        Some((
+            i,
+            Rect::new(
                 self.tree.pos[i].x + pad.l + caret.x / self.scale,
                 self.tree.pos[i].y + pad.t + caret.y / self.scale,
                 caret.w / self.scale,
                 caret.h / self.scale,
-            ));
+            ),
+        ))
+    }
+
+    fn focused_caret_rect(&mut self) -> Option<Rect> {
+        if let Some(key) = self.edit.focused() {
+            return self.stock_caret_viewport_rect(key).map(|(_, r)| r);
         }
         // A custom editor (backlog C17): the focused node's subtree holds
         // the `line` rows it draws, and the one carrying `caret` says

@@ -64,14 +64,14 @@ impl App for Tooltip {
                         ui,
                         "save",
                         "save",
-                        widgets::button_spec(&ui.metrics()).on_click(Value::str("save")).apply_tooltip("⌘S · write the file"),
+                        widgets::button_spec(&ui.theme(), &ui.metrics()).on_click(Value::str("save")).apply_tooltip("⌘S · write the file"),
                         Some("⌘S · write the file"),
                     );
                     widgets::button_with(
                         ui,
                         "run",
                         "run",
-                        widgets::button_spec(&ui.metrics()).accent().on_click(Value::str("run")).apply_tooltip("⌘R · run the current file"),
+                        widgets::button_spec(&ui.theme(), &ui.metrics()).accent().on_click(Value::str("run")).apply_tooltip("⌘R · run the current file"),
                         Some("⌘R · run the current file"),
                     );
                 });

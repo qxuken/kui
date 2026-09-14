@@ -68,7 +68,7 @@ impl App for Page {
                         // The chosen one in the accent, the others in the
                         // surface: `accent` asks for the whole family, so
                         // it is declared only where it is wanted.
-                        let spec = widgets::button_spec(&m).on_click(Value::str(d.name()));
+                        let spec = widgets::button_spec(&t, &m).on_click(Value::str(d.name()));
                         let spec = if d == self.density {
                             spec.accent()
                         } else {
@@ -92,7 +92,7 @@ impl App for Page {
 
                 // The stock widgets, as the metrics build them.
                 ui.with(NodeSpec::row().gap(16.0).cross_align(Align::Center), |ui| {
-                    let spec = widgets::button_spec(&m).on_click(Value::str("noop"));
+                    let spec = widgets::button_spec(&t, &m).on_click(Value::str("noop"));
                     widgets::button_with(
                         ui,
                         "a stock button",

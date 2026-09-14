@@ -1701,8 +1701,32 @@ pub enum FontFamily {
     Mono,
     /// A font registered with the core (`Core::add_font_data` from file
     /// bytes, or `Core::add_system_font` by installed family name). A
-    /// stale handle shapes as sans-serif.
+    /// stale handle shapes as sans-serif. Not on the wire as a family:
+    /// the `font` row carries the handle.
     Custom(crate::resources::FontId),
+}
+
+impl FontFamily {
+    /// The three stock families, in wire order: `schema::FAMILIES` is
+    /// `ALL` by `name`, and a binding sends the index (backlog AR42).
+    /// `Custom` is not a family on the wire — the `font` row is.
+    pub const ALL: &'static [FontFamily] = &[FontFamily::Sans, FontFamily::Serif, FontFamily::Mono];
+
+    /// The spelling every binding uses; a registered font has none.
+    pub fn name(self) -> Option<&'static str> {
+        match self {
+            FontFamily::Sans => Some("sans"),
+            FontFamily::Serif => Some("serif"),
+            FontFamily::Mono => Some("mono"),
+            FontFamily::Custom(_) => None,
+        }
+    }
+
+    /// The variant `schema::FAMILIES` index `i` names; `Sans` for an
+    /// index this build lacks.
+    pub fn from_index(i: usize) -> FontFamily {
+        Self::ALL.get(i).copied().unwrap_or_default()
+    }
 }
 
 /// How a text node breaks lines at its width.

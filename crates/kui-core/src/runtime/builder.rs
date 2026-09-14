@@ -333,11 +333,21 @@ impl Core {
     }
 
     pub fn key_of(&mut self, label: &str) -> Option<Key> {
+        self.find_label(label, true)
+    }
+
+    /// The one label lookup (backlog AR45): the first node in tree order
+    /// opened under `label` in the frame being built, and — with
+    /// `fall_back` and a build under way — in the last frame when this
+    /// one has not declared it yet; an `ambiguous-key` warning when more
+    /// than one did. `key_of` falls back; `resolve_regions` runs at the
+    /// frame's end, when this frame's labels are the whole story.
+    pub(crate) fn find_label(&mut self, label: &str, fall_back: bool) -> Option<Key> {
         let (first, count) = {
             let mut hits = self.key_labels.find(label);
             match hits.next() {
                 Some(k) => (k, 1 + hits.count()),
-                None if self.building => {
+                None if fall_back && self.building => {
                     let mut hits = self.key_labels_last.find(label);
                     (hits.next()?, 1 + hits.count())
                 }

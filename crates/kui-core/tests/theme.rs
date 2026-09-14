@@ -12,7 +12,7 @@ use kui_core::{Appearance, Color, Core, NodeSpec, Theme, ThemeSource, Value, wid
 fn painted(core: &mut Core) -> Vec<u32> {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill().bg(ui.theme().bg));
-    let spec = widgets::button_spec(&ui.metrics()).on_click(Value::str("ok"));
+    let spec = widgets::button_spec(&ui.theme(), &ui.metrics()).on_click(Value::str("ok"));
     widgets::button_with(&mut ui, "ok", "OK", spec, None);
     widgets::label(&mut ui, "a label");
     widgets::text_input(&mut ui, "search", "hello");
@@ -145,6 +145,54 @@ fn a_host_can_derive_pin_or_bring_its_own_accent() {
     core.derive_theme();
     core.frame(Size::new(10.0, 10.0), 1.0).finish();
     assert_eq!(core.theme().accent, Color::WHITE);
+}
+
+/// The stock button paints from the palette like every other stock widget
+/// (backlog AR41): a plain `button` — no `accent` row — is the theme's
+/// accent trio, so a brand colour set on the theme recolours it along
+/// with the ring, the selection and the menu rows, where it used to stay
+/// kui's blue unless every button said `accent`. And on a silent host the
+/// trio is byte-for-byte what the button always was.
+#[test]
+fn a_plain_button_paints_from_the_theme_s_accent() {
+    let button_bg = |core: &mut Core| -> Color {
+        let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
+        widgets::button(&mut ui, "OK", Value::str("ok"));
+        ui.finish();
+        let (list, _) = core.output();
+        list.quads[0].color
+    };
+    let mut core = Core::new();
+    assert_eq!(
+        button_bg(&mut core),
+        Color::rgb8(0x3b, 0x5b, 0xd4),
+        "the stock blue, as ever"
+    );
+    let brand = Color::hex(0xd2691eff);
+    core.set_accent(brand);
+    assert_eq!(
+        button_bg(&mut core),
+        brand,
+        "the brand, with no row declared"
+    );
+    core.set_theme(Theme::light().with_accent(Color::hex(0x2e8b57ff)));
+    assert_eq!(
+        button_bg(&mut core),
+        Color::hex(0x2e8b57ff),
+        "a pinned palette's too"
+    );
+    // The stock trio is the dark theme's trio, so `Theme::dark()` cannot
+    // drift from what the button paints on a silent host.
+    let stock = widgets::button_spec(&Theme::dark(), &kui_core::Metrics::default());
+    assert_eq!(stock.style.bg, Theme::ACCENT);
+    assert_eq!(
+        stock.interact().hover_bg,
+        Some(Color::rgb8(0x47, 0x6c, 0xe0))
+    );
+    assert_eq!(
+        stock.interact().pressed_bg,
+        Some(Color::rgb8(0x2f, 0x54, 0xc4))
+    );
 }
 
 /// A host that reports nothing sees no change at all — the property that

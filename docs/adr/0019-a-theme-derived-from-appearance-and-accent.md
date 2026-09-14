@@ -337,6 +337,14 @@ and a stock menu that was dark on a light desktop.
 - `widgets::button_spec()` is unchanged. The stock button was already
   theme-correct: an accent-filled control with a luminance-picked label
   reads on both bases. What was wrong was everything *around* it.
+  *(Revised 2026-09-14, backlog AR41: it takes the theme now —
+  `button_spec(&theme, &metrics)` — and its trio is the theme's `accent`
+  / `accent_hover` / `accent_pressed`, so a brand colour set on the
+  palette recolours a plain button along with the ring and the menu
+  rows. On a silent host the trio is byte-for-byte the one it always
+  had, which is the same "no change" this ADR promised; on a host that
+  reports an OS accent, a stock button is that colour now, where before
+  only one declaring `accent` was.)*
 - The corpus report changes where the widget colours consolidated (the
   menu's surface is now `raised`, its hovered row a wash). One
   regeneration of `target/conformance.txt` covers all four bindings.

@@ -1064,13 +1064,14 @@ export interface Theme {
   /** Which base this came from. `'unknown'` is the dark base, without
    *  claiming the user chose it — what kui painted before themes. */
   appearance: 'unknown' | 'light' | 'dark';
+  // -- generated from the core's theme roles; edit THEME_ROLES in crates/kui-core/src/schema.rs, then `npm run gen` --
   /** The window behind everything. */
   bg: number;
   /** A card, panel or list sitting on `bg`. */
   surface: number;
-  /** A surface floating above content: a menu, a tooltip, a popover.
-   *  Under a light theme it is no lighter than `surface` — a float on a
-   *  white page separates by its border. */
+  /** A surface floating above content: a menu, a tooltip, a popover. Under a
+   *  light theme it is no lighter than `surface` — a float on a white page
+   *  separates by its border. */
   raised: number;
   /** A well cut into a surface: a text field, a code block, a track. */
   sunken: number;
@@ -1078,48 +1079,49 @@ export interface Theme {
   border: number;
   /** A border that has to be seen — a float's edge, a focused field. */
   borderStrong: number;
-  /** Body text, and what a `<text>` with no `color` resolves to. */
+  /** Body text, and what a `color`-less text run resolves to. */
   fg: number;
   /** Secondary text: captions, hints, an accelerator beside a label. */
   muted: number;
   /** Text that is barely there: a placeholder, a gutter number. */
   faint: number;
-  /** The one saturated colour: the OS accent where the host reports
-   *  one, this app's where it called `setAccent`, kui's blue otherwise.
-   *  The `accent` prop paints from this. */
+  /** The one saturated colour: the OS accent where the host reports one, the
+   *  app's where it pinned one, kui's blue otherwise. The `accent` prop
+   *  paints from this. */
   accent: number;
   /** `accent` under a pointer. */
   accentHover: number;
   /** `accent` under a press. */
   accentPressed: number;
-  /** Black or white — whichever a reader can see on `accent`. What a
-   *  button's label is. */
+  /** Black or white — whichever a reader can see on `accent`. What a button's
+   *  label is. */
   onAccent: number;
-  /** The accent as a translucent wash rather than a fill: a selected
-   *  menu row, a chosen tab, a highlighted list item. Keeps `fg`
-   *  readable over it on both bases, which a fill does not. */
+  /** The accent as a translucent wash rather than a fill: a selected menu
+   *  row, a chosen tab, a highlighted list item. Keeps `fg` readable over it
+   *  on both bases, which a fill does not. */
   accentSoft: number;
   /** What a text selection is painted under, in an editor and over a
    *  `selectable` scope alike. */
   selection: number;
-  /** The default keyboard focus ring. */
+  /** The default keyboard focus ring (ADR 0002). */
   focusRing: number;
-  /** A translucent wash over a hovered neutral control — an overlay,
-   *  not a fill, so one value works on every surface. */
+  /** A translucent wash over a hovered neutral control. An overlay, not a
+   *  fill, so one value works on every surface. */
   hover: number;
-  /** The same over a pressed one, and the firmer of the two. */
+  /** The same over a pressed one, and the firmer of the two on both bases. */
   pressed: number;
-  /** A good outcome. Readable on `surface` on both bases, which is why
-   *  it is not one colour for both. */
+  /** A good outcome. Readable on `surface` on both bases, which is why it is
+   *  not one colour for both. */
   success: number;
   /** Something that wants attention. */
   warning: number;
-  /** A destructive action or a failure. */
+  /** A destructive action or a failure. The close button's hover, too. */
   danger: number;
   /** The scrollbar thumb at rest. */
   scrollbar: number;
   /** The thumb while hovered or dragged. */
   scrollbarActive: number;
+  // -- end generated --
   /** What a disabled control's opacity is multiplied by. */
   disabledOpacity: number;
 }
@@ -1135,6 +1137,7 @@ export interface Theme {
 export interface ThemeOverrides {
   /** Which base to start from; the OS's when absent. */
   appearance?: 'unknown' | 'light' | 'dark';
+  // -- generated from the core's theme roles (overrides); edit THEME_ROLES in crates/kui-core/src/schema.rs, then `npm run gen` --
   bg?: number | string;
   surface?: number | string;
   raised?: number | string;
@@ -1158,6 +1161,7 @@ export interface ThemeOverrides {
   danger?: number | string;
   scrollbar?: number | string;
   scrollbarActive?: number | string;
+  // -- end generated --
   disabledOpacity?: number;
 }
 
@@ -1168,6 +1172,7 @@ export interface ThemeOverrides {
  *  The stock set is the constants the widgets always had; `setMetrics`
  *  changes it, and nothing in the OS is followed. */
 export interface Metrics {
+  // -- generated from the core's metric roles; edit METRIC_ROLES in crates/kui-core/src/schema.rs, then `npm run gen` --
   /** A stock control's label: the button's text size. */
   controlText: number;
   /** The chrome's text: a menu row, a menu-bar title, the titlebar's title. */
@@ -1178,25 +1183,30 @@ export interface Metrics {
   radius: number;
   /** The corner of a row inside one: a menu row, a menu-bar title. */
   radiusInner: number;
-  /** A button's padding. */
+  /** A button's horizontal padding. */
   controlPadX: number;
+  /** A button's vertical padding. */
   controlPadY: number;
-  /** A text field's padding. */
+  /** A text field's horizontal padding. */
   fieldPadX: number;
+  /** A text field's vertical padding. */
   fieldPadY: number;
-  /** A tooltip's padding. */
+  /** A tooltip's horizontal padding. */
   hintPadX: number;
+  /** A tooltip's vertical padding. */
   hintPadY: number;
-  /** A menu row's padding; a menu-bar title's is two px shorter. */
+  /** A menu row's horizontal padding, and a menu-bar title's. */
   menuPadX: number;
+  /** A menu row's vertical padding; a menu-bar title's is two px less. */
   menuPadY: number;
   /** A menu panel's width. */
   menuWidth: number;
   /** The drawn menu bar's height. */
   menuBarH: number;
-  /** The titlebar's height: the platform's caption height, 32 on Windows
-   *  and 34 elsewhere. */
+  /** The titlebar's height: the platform's caption height, 32 on Windows and
+   *  34 elsewhere. */
   titlebarH: number;
+  // -- end generated --
 }
 
 /** `setMetrics`'s argument: overrides on top of the set in effect, or on

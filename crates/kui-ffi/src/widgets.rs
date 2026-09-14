@@ -123,7 +123,11 @@ pub extern "C" fn kui_button_with(
         // are declared on the spec and resolved by the core. The tooltip
         // is applied before the description, as `spec_of` orders them, so
         // the explicit field wins over the shorthand.
-        let mut node = kui_core::widgets::button_spec(c.core().metrics()).on_click(value);
+        let (theme, metrics) = {
+            let core = c.core();
+            (*core.theme(), *core.metrics())
+        };
+        let mut node = kui_core::widgets::button_spec(&theme, &metrics).on_click(value);
         let mut hint = None;
         if let Some(s) = unsafe { spec.as_ref() } {
             if let Some(h) = opt_str(s.tooltip) {
