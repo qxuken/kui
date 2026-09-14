@@ -15,11 +15,134 @@ that argue each one. The list is for the reader with a build to fix, who
 needs to grep for a name before reading 30 KB of prose; the paragraphs are
 for the reader deciding whether to upgrade. Earlier sections keep the shape
 they shipped with and are not retrofitted (backlog F31, from the alpha.8
-field reports).
+field reports). A fix that changes what an existing input draws is a break
+too — for whoever wrote to the old behaviour, documented or not — and is
+listed under both (backlog F61, from the alpha.12 field reports: the list
+is what the release knows it broke, and a fix it did not think of as one
+was the first bare bump to break an app in five releases).
 
 ## 0.1.0-alpha.13 (unreleased)
 
-Nothing yet.
+**What breaks.**
+
+- `UiEvent` gained a field, `slot: Option<Key>` (backlog K2): a Rust host
+  or test that builds one as a struct literal adds `slot: None` (or uses
+  `UiEvent::on`, which sets it). Nothing else about the type moved.
+  `KuiEvent` grew `uint64_t slot` at its end under the [out] rule — no
+  bump, a host reserving the older layout never sees it — and Node's
+  `pollEvents()` objects and Lua's `on_event(ev)` tables carry it as
+  `slot`, so a handler that pinned an event's exact key set adds one.
+- A `PumpRunner` whose `pump()` has returned false has **dropped its
+  windows** and parked the event loop for the next runner on the thread
+  (backlog F58); its core stays readable. A host that kept a window on
+  screen by holding a finished runner until process exit does not any
+  more, and one that wanted a second `Launcher::open` in the same
+  process — refused with `EventLoop can't be recreated` until now — has
+  it. The pump path no longer asks winit to exit at all; `Launcher::run`
+  is unchanged.
+- The windowed Node driver's backoff no longer resets on a tick's own
+  frame (backlog F57): a stopped app whose once-a-second tick returns a
+  model idles at `idlePumpMs` between digits, where it used to spend the
+  `quietMs` after every digit back at `pumpMs`. The next tick is a
+  deadline the pump sleeps to regardless, so nothing ticks later; what an
+  app paying for that busy half-second got from it was a click answered
+  within 8 ms rather than 32 in the half-second after a digit. Measured
+  on a real window: 67 → 29 pumps a second, the same tick.
+
+### Added
+
+- **`slots = { "*" }`** — an extension whose slot names are not known
+  when it loads (backlog K1, [ADR 0014's amendment of
+  2026-09-15](docs/adr/0014-slots-an-extension-fills-in-place.md#amendment-a-wildcard-for-slots-not-known-at-load-2026-09-15)):
+  `kui_core::ANY_SLOT` in `Extension::slots`, the same string in a Lua
+  script's `slots` global and a C plugin's `kui_ext_slots`, matches every
+  name the host declares under the namespace — a `root` declared
+  explicitly among them, since under a wildcard it is one more name and
+  not the auto-fill — and raises no `unknown-slot`, there being no list
+  to check. The first consumer built on the Lua binding registers views
+  from `init.lua` at runtime, one slot per (view, pane), and was
+  bypassing the runner's list with a `Core::fill` of its own to do it.
+- **An event says which slot its node was filled into** (backlog K2):
+  `UiEvent::slot`, the slot's key — what `key_of` / `keyOf` /
+  `kui_key_of` answer for the slot's full name — or none for a node the
+  host drew; `ev.slot` in Lua is the full name the script was handed.
+  One extension fills many slots, so `origin` could not say which pane a
+  click was in, and the alternative was the extension stamping a pane id
+  onto every handler payload it built. Stamped by the core on the way
+  out, like `window`, from the node ranges each fill recorded
+  (`Tree::fills`, a side list: a frame with no extension records none
+  and pays one emptiness check per batch); a reply keeps the slot of the
+  event it answers; a fill inside a fill reports the inner one.
+- **A second `runWindowed` in one process** (backlog F58), and a second
+  `Launcher::open`: winit builds one event loop per process, so a runner
+  whose main window closed parks it and the next `open` on the thread
+  takes it back. What made it work is not in the runner: the second
+  window's view got no `NSTextInputContext`, because AppKit will not
+  create one for a view answering `isEditable` NO, and the runner's
+  override of that selector (W15) answered NO for a view it had not yet
+  registered — the first window's view was born before the class was
+  patched. It answers YES for an unregistered view now. Node's
+  `features/relaunch.tsx` reopens its window under the other chrome;
+  the harness gained `after`, and the windowed smoke round runs both.
+- **`tick.msg(now, every)`** (backlog F59): the cadence the tick fired
+  on, beside the time — the bound on how stale `model.now` may be by the
+  next press. A bound, not the time: the pomodoro's answer, that a press
+  anchors nothing and the next tick writes the anchor from its own
+  `now`, stays the right one; this is for the model that wants to know
+  which reading it holds.
+- **`KeyMsg.physical`, `LayoutMsg.scale`, `ForceClickMsg`, and a `menu`
+  row in the event table** (backlog F55). The first two were fields the
+  runtime object carried and `index.d.ts` did not (the F37 class); the
+  `menu` event (ADR 0017) and the `forceclick` one had no `EventDef` at
+  all, so `props.md`'s event table and the Lua and C docs never listed
+  them, and `forceclick` had no message type. `test.mjs` pins every
+  message type against the payload shapes `schema::EVENTS` documents,
+  both ways, and every `CoreMsg` member against a row of the table — the
+  pin found the four before it was green.
+
+### Changed
+
+- A `KuiWindow.access()` hands the sound the click asked for to the
+  device before the frame it asks for (backlog F56), the order the
+  runner's own input path has always kept: `env.audio.live` used to read
+  0 on that frame and the sound started a paint late — the "counted 35
+  ms late" of the pomodoro's smoke trace, and a third of its race.
+- A shifted letter is documented (backlog F60): `code` is the
+  upper-case letter with `shift` set, as the OS spells it — `Z` with
+  `physical` `z` for ⇧⌘Z — and a headless press is spelled the same way,
+  since no door re-spells it. `press("z", { shift: true })` is a chord no
+  keyboard produces; the mind map's redo was green over it for six
+  releases and had never worked from a keyboard.
+- `docs/adr/0014` amended (K1, above); alpha.12's **What breaks** list
+  gained the `{ percent }` line after the fact, and this file's charter
+  the rule it stands for (backlog F61): a fix that changes what an
+  existing input draws is a break for whoever wrote to the old
+  behaviour, documented or not, and is listed under both.
+
+### Fixed
+
+- The windowed Node driver's pacing is a value with a test
+  (`runWindowed`'s `pacer`), where it was four variables in the pump.
+
+### What you can delete
+
+**The NBSP a monospace editor mapped its spaces to** — `s.replace(' ',
+"\u{a0}")` in front of every run, and the byte arithmetic mapping a
+pointer's `byte` back through the two-byte stand-in (backlog K3): a
+run's spaces measure at the face's advance, leading, repeated and
+trailing, unwrapped — `crates/kui-core/tests/measure.rs` pins `"ab  "`
+at four cells and the NBSP spelling at the same width. What does drop a
+trailing space is a *wrap*, which hangs it past the break; a row of runs
+never meets that. `modal_editor` and `syntax_view` carried the mapping
+since alpha.9 with a comment blaming fonts, and carry it no more.
+
+The `_slot` an extension stamped onto every handler payload so its host
+could route by pane, and the table walk that stamped it (K2); the
+`Core::fill` under a private origin that placed a slot the runner's list
+did not know (K1).
+
+The child process a smoke test spawned to run a second windowed
+configuration (F58).
 
 ## 0.1.0-alpha.12 (2026-09-14)
 
@@ -99,6 +222,18 @@ Nothing yet.
   it finishes through `Ui::finish` — `Ui::wrap(core).finish()` from a
   bare core — which also runs the fills, the panel and the open menu it
   was skipping.
+- **`{ percent: N }` in JSX is N%** — listed here on 2026-09-15, after
+  the fact, from the pomodoro's alpha.12 report (backlog F61). It was
+  under `### Fixed` (AR25, below) as the fix it is: the object form wrote
+  the number raw where `"50%"` divides by 100, so `{ percent: 50 }` was
+  5000% and no doc, example or test said so. But an app that had been
+  passing *fractions* to it — `{ percent: 0.74 }` for a 74% row, the
+  number the core reads — drew right by two wrongs cancelling, and draws
+  0.74% under alpha.12: its cascade rows and slider fills collapsed, two
+  headless assertions caught the rows, none the fills. Multiply by 100.
+  The rule this adds to the list's charter: a fix that changes what an
+  existing input draws is a break for whoever wrote to the old behaviour,
+  documented or not, and goes here as well as under `### Fixed`.
 
 ### Added
 

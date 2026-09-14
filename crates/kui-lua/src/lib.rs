@@ -94,13 +94,20 @@ pub struct LuaExtension {
     lua: Lua,
     name: String,
     /// The script's `slots` global, read once at load: the slot names it
-    /// fills (ADR 0014 decision 2). Empty — no global — means `"root"`.
+    /// fills (ADR 0014 decision 2). Empty — no global — means `"root"`;
+    /// `{ "*" }` means every name the host declares under the namespace,
+    /// for a script that registers its views after it loads (backlog K1).
     slots: Vec<String>,
     /// The C extensions this script loaded (`env.add_extension`), in the
     /// order it asked for them. A `RefCell` because the loading happens
     /// inside `view`, where the script's own interpreter holds a shared
     /// borrow of everything else here.
     loaded: std::cell::RefCell<Vec<Loaded>>,
+    /// The full name of every slot this script has filled, by the slot's
+    /// key — what `on_event` reads `ev.slot` off, since an event carries
+    /// the key and the script thinks in the names it was handed
+    /// (backlog K2).
+    slot_names: std::collections::HashMap<kui_core::Key, String>,
     /// The `tokens = { colors = …, lengths = … }` global the script
     /// declared at load (ADR 0027), declared into the core under this
     /// extension's origin on the first `view` that finds none there;
@@ -147,6 +154,7 @@ impl LuaExtension {
             name,
             slots,
             loaded: Default::default(),
+            slot_names: Default::default(),
             tokens,
         })
     }
@@ -200,6 +208,9 @@ impl Extension for LuaExtension {
         // host's fact, not the driver's. A script written as `view(env)`
         // never sees it.
         let slot_table = slot_table(&self.lua, slot).map_err(|e| format!("slot: {e}"))?;
+        self.slot_names
+            .entry(slot.key)
+            .or_insert_with(|| slot.full_name());
         // The table the script was loaded with, declared once per core
         // under this origin — a script that declares from `view` through
         // `env.set_tokens` has already, and is not overwritten.
@@ -250,6 +261,14 @@ impl Extension for LuaExtension {
                 // C's `KuiEvent.window` carry (AR26: a panel drawn into
                 // two windows could not tell which one clicked).
                 t.set("window", ev.window.0)?;
+                // And the slot the node was filled into, by its full name
+                // — what the script declared with `fill { name = … }` —
+                // so a script filling one slot per pane routes by pane
+                // without stamping every payload (backlog K2). Absent for
+                // a node outside any fill.
+                if let Some(name) = ev.slot.and_then(|k| self.slot_names.get(&k)) {
+                    t.set("slot", name.as_str())?;
+                }
                 // And, when this is a reply from a plugin the script
                 // loaded, who is answering: the namespace it chose in
                 // `env.add_extension`. Absent for the script's own nodes,
@@ -2562,6 +2581,7 @@ mod tests {
             key: Key::ROOT,
             payload: Value::map([("kind", "bump".into())]),
             window: WindowId::MAIN,
+            slot: None,
         });
         let count: i64 = ext.lua.globals().get("count").unwrap();
         assert_eq!(count, 42);

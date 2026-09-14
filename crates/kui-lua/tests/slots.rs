@@ -112,6 +112,7 @@ fn what_on_event_returns_is_the_scripts_replies() {
         window: WindowId::MAIN,
         key: Key::ROOT,
         payload: Value::map(std::iter::once(("kind", Value::str(kind))).chain(extra)),
+        slot: None,
     };
     // One table: one reply, the host's template with the field added.
     let replies = ext_ref.on_event(&ev("pick", Some(("item", "foo.rs".into()))));
@@ -134,6 +135,66 @@ fn what_on_event_returns_is_the_scripts_replies() {
     ext = LuaExtension::from_source("mute.lua", "function view() return column {} end").unwrap();
     assert!(ext.on_event(&ev("pick", None)).is_empty());
     assert!(ext.slots().is_empty(), "no `slots` global: the root fill");
+}
+
+/// `slots = { "*" }` fills every name the host declares under the
+/// namespace (backlog K1), and `on_event` reads which one its node was in
+/// as `ev.slot`, the full name the script was handed (backlog K2) — so a
+/// script with a view per pane routes by pane without stamping payloads.
+#[test]
+fn a_wildcard_script_fills_every_declared_name_and_hears_which_one() {
+    const VIEWS: &str = r#"
+        slots = { "*" }
+        function view(env, slot)
+          return column { key = "box", width = 40, height = 20,
+            on_click = { kind = "cell" },
+            text(slot.name),
+          }
+        end
+        function on_event(ev)
+          if ev.kind == "cell" then
+            return { kind = "routed", slot = ev.slot }
+          end
+        end
+    "#;
+    let ext = LuaExtension::from_source("views.lua", VIEWS).unwrap();
+    assert_eq!(ext.slots(), ["*".to_owned()]);
+    let mut exts = Extensions::new();
+    exts.push_as("views", Box::new(ext)).unwrap();
+    let mut core = Core::new();
+    let mut ui = core.frame_with(Size::new(400.0, 100.0), 1.0, &mut exts);
+    ui.configure_root(NodeSpec::row().fill());
+    ui.slot("views/pane:1");
+    ui.slot("views/pane:2");
+    ui.finish();
+    assert!(
+        core.take_warnings().is_empty(),
+        "a wildcard raises no unknown-slot"
+    );
+    assert_eq!(
+        core.access_tree()
+            .nodes
+            .iter()
+            .filter(|n| n.origin == OriginId(1))
+            .count(),
+        2,
+        "both names filled"
+    );
+    // A click on the second pane's cell (x 40..80 in the row).
+    let events = kui_core::testing::click_at(&mut core, 60.0, 10.0);
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].slot, core.key_of("views/pane:2"));
+    let mut replies = Vec::new();
+    exts.route(events, |ev| replies.push(ev));
+    assert_eq!(replies.len(), 1);
+    assert_eq!(
+        replies[0].payload.get("kind").and_then(Value::as_str),
+        Some("routed")
+    );
+    assert_eq!(
+        replies[0].payload.get("slot").and_then(Value::as_str),
+        Some("views/pane:2")
+    );
 }
 
 #[test]
@@ -273,6 +334,7 @@ fn a_placed_plugins_reply_reaches_the_script_and_not_the_host() {
             window: WindowId::MAIN,
             key: Key::ROOT,
             payload: Value::map([("kind", "click".into())]),
+            slot: None,
         }],
         |ev| to_host.push(ev),
     );

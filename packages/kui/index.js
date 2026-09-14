@@ -24,6 +24,12 @@ const BUDGET = Symbol('kui.budget');
 // The frame a `dispatch` made outside the loop is owed, drawn before the
 // driver pumps — see `runWindowed`.
 const OWED = Symbol('kui.owed');
+// `step`, answering what the turn was *for* beside whether it drew — the
+// windowed driver paces itself on the first and a tick's own frame is not
+// the user doing anything (backlog F57).
+const STEP = Symbol('kui.step');
+// The windowed driver's backoff, as a value — see `pacer`.
+const PACE = Symbol('kui.pace');
 
 /**
  * What `update` returns when it has effects to hand the loop besides the
@@ -394,7 +400,9 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
         lastTick = t;
         nextTick = t + every;
       }
-      const msg = typeof tick.msg === 'function' ? tick.msg(t) : tick.msg;
+      // `every` beside `now`: the cadence this tick fired on, so a model
+      // can tell a 16 ms reading from a 1000 ms one (backlog F59).
+      const msg = typeof tick.msg === 'function' ? tick.msg(t, every) : tick.msg;
       inTick = lastTick;
       try {
         if (apply(updateFrom(msg, { origin: 0, key: '', payload: msg }))) {
@@ -562,18 +570,30 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
      *  clock owes, then a frame if either changed the model. The windowed
      *  driver runs one after every `win.pump()`.
      *
-     *  Returns whether the turn drew — which is how the windowed driver
-     *  knows the app is being used, and paces itself from it. */
+     *  Returns whether the turn drew. */
     step() {
-      let redraw = false;
+      return app[STEP]().drew;
+    },
+    /** `step`, saying what the turn was for as well: `drew`, whether a
+     *  frame went out, and `used`, whether something other than the loop's
+     *  own clock asked for it — an event the surface queued, or a model a
+     *  `dispatch` outside the loop changed. A tick that returned a model
+     *  draws and is not `used`: the windowed driver paces itself on `used`,
+     *  so a stopped app drawing a clock digit once a second stays at its
+     *  idle rate instead of paying the busy one for half of every second
+     *  (backlog F57). */
+    [STEP]() {
+      let used = false;
+      let drew = false;
       try {
         drainWarnings();
-        redraw = drainEvents();
-        if (ticksTo(at(), false)) redraw = true;
-        if (dirty) redraw = true;
+        used = drainEvents() || dirty;
+        drew = used;
+        if (ticksTo(at(), false)) drew = true;
+        if (dirty) drew = true;
         // A tick that returned effects and no model draws nothing, so the
         // step that owed them is what hands them on.
-        if (redraw) draw();
+        if (drew) draw();
         else flushEffects();
       } catch (e) {
         failWaiters(e);
@@ -581,7 +601,7 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
       }
       // The turn is over, so whatever was waiting for one has its answer.
       drainWaiters();
-      return redraw;
+      return { drew, used };
     },
     /** Drain events -> update -> re-render until no events remain. */
     settle() {
@@ -765,8 +785,16 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
  * at 16 ms half that, at 100 ms a tenth. So the gap between pumps grows
  * while nothing happens: `pumpMs` (8) while the app is being used, doubling
  * once it has been quiet for `quietMs` (500), up to `idlePumpMs` (32).
- * Anything at all — an event, a tick, a frame, a transition, and any OS
- * event the app itself never sees — puts it back to `pumpMs` on the spot.
+ * Anything the *user* does — an event, a transition, a `dispatch` from
+ * outside the loop, and any OS event the app itself never sees — puts it
+ * back to `pumpMs` on the spot. A tick is not that: the loop's own clock
+ * firing says nothing about whether anyone is there, and the frame a tick
+ * draws needs no faster pumping, since the next tick is a deadline the
+ * pump already sleeps to. So a stopped app that draws a clock digit once a
+ * second idles at `idlePumpMs` between digits, where it used to spend the
+ * first `quietMs` after every digit back at `pumpMs` — half of every second
+ * at the busy rate, for a change that should have cost sixty times less
+ * (backlog F57, the pomodoro's mid tier: 4.5% of a core against 2.2%).
  *
  * `idlePumpMs` is the whole trade and it was measured both ways, clicking a
  * real window with posted `CGEvent`s. A driver that never backs off answers
@@ -808,17 +836,14 @@ export function runWindowed(config, opts = {}) {
   const win = opts.surface ?? new KuiWindow(opts.title ?? 'kui', windowOptions(opts));
   const app = createLoop(config, opts, win, opts.clock ?? Date.now);
   const busyMs = opts.pumpMs ?? 8;
-  const idleMs = Math.max(opts.idlePumpMs ?? 32, busyMs);
-  const quietMs = opts.quietMs ?? 500;
-  // How long to wait before the next pump, and since when there has been
-  // nothing to pump for.
-  let gap = busyMs;
-  let quietSince = 0;
+  const at = opts.clock ?? Date.now;
+  const pace = pacer({ busyMs, idleMs: Math.max(opts.idlePumpMs ?? 32, busyMs), quietMs: opts.quietMs ?? 500 });
   app.render();
   return new Promise((resolve, reject) => {
     const pump = () => {
       let alive;
       let worked;
+      let owed;
       let animating;
       try {
         // A model a `dispatch` outside the loop changed — from `setup`, a
@@ -826,9 +851,12 @@ export function runWindowed(config, opts = {}) {
         // runner never paints a tree older than that `dispatch` (F42).
         worked = app[OWED]();
         alive = win.pump();
+        // Read before `step`, whose own frame (a tick's) is not the user's:
+        // zero here is a redraw the runner owes an OS event.
+        owed = win.nextDeadlineMs();
         // `step` draws if anything arrived; a transition draws without it.
         animating = win.animating();
-        worked = app.step() || worked || animating;
+        worked = app[STEP]().used || worked || animating;
         // A real driver drains every channel every frame, the app's
         // effects included: the handler had them at the frame, and what
         // `effects()` keeps is for a headless test.
@@ -847,27 +875,18 @@ export function runWindowed(config, opts = {}) {
         resolve(app.model);
         return;
       }
-      // When the runner next wants pumping. Zero means it has an event's
-      // redraw to present — which is also the only way this driver hears
-      // about OS input the *app* never sees: a pointer crossing a window
-      // that declares no hover produces no app event at all, and a driver
-      // pacing itself on app events alone reads that as an idle window and
-      // goes on backing off while somebody is reaching for a button. It
-      // measured 520 ms from click to update before this counted as work,
-      // against 34 ms for a driver that never backs off.
+      // When the runner next wants pumping. Zero (read above, before
+      // `step`) means it has an event's redraw to present — which is also
+      // the only way this driver hears about OS input the *app* never
+      // sees: a pointer crossing a window that declares no hover produces
+      // no app event at all, and a driver pacing itself on app events
+      // alone reads that as an idle window and goes on backing off while
+      // somebody is reaching for a button. It measured 520 ms from click
+      // to update before this counted as work, against 34 ms for a driver
+      // that never backs off. Read again after `step` for the sleep: the
+      // frame a tick just drew is due now, and must not wait a gap.
       const due = win.nextDeadlineMs();
-      const now = Date.now();
-      if (worked || (due !== null && due <= 1)) {
-        gap = busyMs;
-        quietSince = 0;
-      } else if (!quietSince) {
-        quietSince = now;
-      } else if (now - quietSince >= quietMs) {
-        // Doubling rather than jumping: the window that just went quiet is
-        // the one most likely to be used again in a moment, and it keeps
-        // its cadence for the first half-second either way.
-        gap = Math.min(gap * 2, idleMs);
-      }
+      const gap = pace.after(worked || (owed !== null && owed <= 1), at());
       // The loop's own timing (ticks, anything animating) capped by the
       // backoff, and then the runner's deadline if it is sooner. Floored at
       // 1ms rather than `busyMs`: every deadline the shell reports is one it
@@ -881,6 +900,38 @@ export function runWindowed(config, opts = {}) {
     pump();
   });
 }
+
+/**
+ * `runWindowed`'s backoff as a value: how long to wait before the next
+ * pump, and since when there has been nothing to pump for. `after(used,
+ * now)` is one turn's verdict — `used` when something other than the
+ * loop's own clock happened — and answers the gap to sleep. Doubling
+ * rather than jumping: the window that just went quiet is the one most
+ * likely to be used again in a moment, and it keeps its cadence for the
+ * first `quietMs` either way. A value so the pacing has a test of its own
+ * (`runWindowed[PACE]`), where it used to be four variables in the pump.
+ */
+function pacer({ busyMs, idleMs, quietMs }) {
+  let gap = busyMs;
+  let quietSince = 0;
+  return {
+    get gap() {
+      return gap;
+    },
+    after(used, now) {
+      if (used) {
+        gap = busyMs;
+        quietSince = 0;
+      } else if (!quietSince) {
+        quietSince = now;
+      } else if (now - quietSince >= quietMs) {
+        gap = Math.min(gap * 2, idleMs);
+      }
+      return gap;
+    },
+  };
+}
+runWindowed[PACE] = pacer;
 
 /**
  * The `KuiWindow` constructor's options, picked out of `runWindowed`'s —

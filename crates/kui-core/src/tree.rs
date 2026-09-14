@@ -170,6 +170,14 @@ pub struct Tree {
     /// build — and the count is the one thing about the data the core
     /// cannot see (ADR 0017, tier 3).
     pub row_counts: Vec<(u32, u64)>,
+    /// The node range every slot fill opened, by the slot's key: `(slot,
+    /// first, end)` over node indices, innermost fill first (a fill
+    /// records itself after the fills inside it). A side list for the
+    /// reason `indexed` is one — a frame with no extension is one empty
+    /// `Vec` — and what stamps `UiEvent::slot`, so a host that fills many
+    /// slots from one extension can route an event by the slot it came
+    /// from without stamping every payload (backlog K2).
+    pub fills: Vec<(Key, u32, u32)>,
     /// Whether any node declares `selectable` (ADR 0017). False on every
     /// frame of an app that never asks for one, which is what keeps the
     /// scope walk and the off-screen places of tier 2 off those frames
@@ -234,6 +242,16 @@ impl Tree {
         self.any_animate = false;
         self.indexed.clear();
         self.row_counts.clear();
+        self.fills.clear();
+    }
+
+    /// The innermost slot fill node `i` was opened inside, if any.
+    pub fn slot_of(&self, i: usize) -> Option<Key> {
+        let i = i as u32;
+        self.fills
+            .iter()
+            .find(|(_, first, end)| (*first..*end).contains(&i))
+            .map(|(slot, _, _)| *slot)
     }
 
     /// Notes what a spec asks of the frame, so a pass whose work exists

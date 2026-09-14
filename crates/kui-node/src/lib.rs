@@ -746,6 +746,15 @@ impl Ctx {
     /// with mods `{shift, ctrl, alt, super}`, `repeat` for an OS
     /// auto-repeat, and `physical` for the US-QWERTY key at that position.
     /// `release()` is the other end of the same key.
+    ///
+    /// Spell it the way the OS does, because nothing here re-spells it: a
+    /// shifted letter is the upper-case letter with `shift` set —
+    /// `press("Z", { shift: true, super: true })` is ⇧⌘Z — and
+    /// `press("z", { shift: true })` is a chord no keyboard produces, which
+    /// a handler switching on `"z"` hears headless and never from a user
+    /// (backlog F60: an app's redo was green for six releases over it).
+    /// Fold a one-character `code` to lower case under a chord if a keymap
+    /// binds letters.
     #[napi(ts_args_type = "code: string, mods?: KeySinkMods, repeat?: boolean, physical?: string")]
     pub fn press(
         &mut self,
@@ -1723,6 +1732,13 @@ fn events_json(events: Vec<UiEvent>) -> Json {
                 o.insert("window".into(), Json::from(ev.window.0));
                 o.insert("key".into(), Json::String(key_str(ev.key)));
                 o.insert("payload".into(), json_of(&ev.payload));
+                // The slot the node was filled into, as its key (`keyOf` of
+                // the slot's full name answers the same), or null for a
+                // node the app drew (backlog K2).
+                o.insert(
+                    "slot".into(),
+                    ev.slot.map_or(Json::Null, |k| Json::String(key_str(k))),
+                );
                 Json::Object(o)
             })
             .collect(),
@@ -2445,6 +2461,11 @@ macro_rules! core_methods {
                 let req = access_request(key, &action, value)?;
                 let events = self.$core().handle_input(InputEvent::Access(req));
                 self.$take(events);
+                // Input, so the sound it may have asked for (`clickSound`)
+                // goes to the device now, before the frame the redraw
+                // draws reads `env.audio` — the order the runner's own
+                // input path keeps (backlog F56).
+                self.$audio();
                 self.$redraw();
                 Ok(())
             }

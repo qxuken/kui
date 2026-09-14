@@ -381,3 +381,22 @@ This is not a new capability in the security sense, and the Lua side is
 where that is worth saying: `Lua::new` has `package`, so a script could
 already `package.loadlib` anything on the disk. What it could not do is
 put what it loaded in its own tree.
+
+## Amendment: a wildcard for slots not known at load (2026-09-15)
+
+Decision 2's list is read once, when the extension loads, and `fill`
+answers only a listed name. The first consumer to build on the Lua binding
+(kawoosh, its requirements list of 2026-09-15, K1) registers views from
+`init.lua` at runtime, one slot per (view, pane), and had no name to list
+before the script ran — its workaround was to bypass the runner's list
+with a `Core::fill` of its own under an origin the runner does not know.
+So the list admits one more entry: **`"*"` (`kui_core::ANY_SLOT`) means
+every name the host declares under the extension's namespace**, `root`
+included as one more name and not as the auto-fill (a wildcard extension
+with nothing declared draws nowhere). `finish` has no list to check a
+wildcard against, so such an extension never raises `unknown-slot`; the
+host's side is unchanged, and a namespace nobody loaded is still nobody's.
+The same string in a Lua script's `slots = { "*" }` global, a C plugin's
+`kui_ext_slots`, and a Node `extensions` entry, since all three hand the
+list to the same `Extensions::fill`. `crates/kui-core/tests/slots.rs`
+pins it.

@@ -869,6 +869,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         payload: *const KuiValue => "const KuiValue *",
         window: u32 => "uint32_t",
         reply_sink: *mut KuiReplySink => "KuiReplySink *",
+        slot: u64 => "uint64_t",
     });
     abi_out_struct!(o, KuiEvent);
 

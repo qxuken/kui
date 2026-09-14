@@ -31,6 +31,7 @@ impl kui::App for CApp {
             key: ev.key.0,
             payload: &payload,
             window: ev.window.0,
+            slot: ev.slot.map_or(0, |k| k.0),
             ..Default::default()
         };
         cb(self.user, &out);

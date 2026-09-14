@@ -1191,6 +1191,7 @@ impl Core {
                     ("height", Value::Float(area.h as f64)),
                     ("scale", Value::Float(scale as f64)),
                 ]),
+                slot: None,
             });
         }
         self.dt_area = area;
@@ -1225,6 +1226,7 @@ impl Core {
                     ),
                     ("assistive", Value::str(sys.assistive.name())),
                 ]),
+                slot: None,
             });
         }
         self.system_seen = self.env.system;
@@ -1350,7 +1352,12 @@ impl Default for Core {
 /// this extension's origin on them.
 pub trait Extension {
     fn name(&self) -> &str;
-    /// The slot names this extension fills; empty means `"root"`.
+    /// The slot names this extension fills; empty means `"root"`. The one
+    /// entry [`crate::slot::ANY_SLOT`] (`"*"`) means every name declared
+    /// under its namespace, for an extension whose slots are not known
+    /// when it loads — a Lua host whose `init.lua` registers views at
+    /// runtime, one slot per view — and it then gets no `unknown-slot`
+    /// warning, since there is no list to check against (backlog K1).
     fn slots(&self) -> &[String] {
         &[]
     }

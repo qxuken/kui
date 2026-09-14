@@ -631,6 +631,7 @@ impl Core {
                 ("from", from.to_value()),
                 ("to", to.to_value()),
             ]),
+            slot: None,
         });
         self.awaiting_selection = true;
         CopyRequest::Asked

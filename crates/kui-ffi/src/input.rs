@@ -287,6 +287,7 @@ pub extern "C" fn kui_poll_event(ptr: *mut KuiCtx, out: *mut KuiEvent) -> bool {
                 key: ev.key.0,
                 payload: payload_ptr,
                 window: ev.window.0,
+                slot: ev.slot.map_or(0, |k| k.0),
                 ..Default::default()
             },
         )

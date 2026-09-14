@@ -411,6 +411,7 @@ impl Extension for CExtension {
             key: ev.key.0,
             payload: &payload,
             window: ev.window.0,
+            slot: ev.slot.map_or(0, |k| k.0),
             ..Default::default()
         };
         // Replies (ADR 0014 decision 6): the plugin calls `kui_reply(ev,

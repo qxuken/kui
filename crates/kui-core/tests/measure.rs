@@ -101,3 +101,52 @@ fn measurement_is_logical_px_at_the_frame_scale() {
     );
     assert_eq!(at_2x.height, at_1x.height);
 }
+
+/// A run's spaces measure — leading, repeated, trailing — at the face's
+/// advance, laid out and measured alike, so a monospace editor that draws
+/// a line as a row of runs needs no NBSP stand-in and no byte arithmetic
+/// mapping it back (backlog K3: the examples carried one, and the
+/// requirements list of the first consumer built on it asked for it to go).
+/// What *does* drop a trailing space is a wrap: the line-breaking rule
+/// hangs it past the break, and that is the case an unwrapped run never
+/// meets.
+#[test]
+fn spaces_measure_at_the_advance_unwrapped() {
+    let mut core = Core::new();
+    let mono = TextStyle::new(14.0).mono();
+    let cell = core.measure_text("a", &mono, None).width;
+    for (text, cells) in [
+        ("ab", 2),
+        ("ab ", 3),
+        ("ab  ", 4),
+        (" ab", 3),
+        ("a  b", 4),
+        ("  ", 2),
+    ] {
+        let m = core.measure_text(text, &mono, None);
+        assert!(
+            (m.width - cell * cells as f32).abs() < 0.01,
+            "{text:?}: {} against {cells} cells of {cell}",
+            m.width
+        );
+        assert_eq!(
+            text_box(&mut core, text, mono, None).w,
+            m.width,
+            "{text:?} laid out"
+        );
+    }
+    // The same text with NBSP in place of every space is the same width:
+    // the stand-in bought nothing.
+    let plain = core.measure_text("hello world  ", &mono, None).width;
+    let nbsp = core
+        .measure_text("hello\u{a0}world\u{a0}\u{a0}", &mono, None)
+        .width;
+    assert_eq!(plain, nbsp);
+    // A proportional face too: its space has an advance of its own, and it
+    // counts.
+    let prop = TextStyle::new(14.0);
+    let space = core.measure_text(" ", &prop, None).width;
+    assert!(space > 0.0);
+    let ab = core.measure_text("ab", &prop, None).width;
+    assert!((core.measure_text("ab  ", &prop, None).width - (ab + 2.0 * space)).abs() < 0.01);
+}

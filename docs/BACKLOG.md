@@ -2,9 +2,11 @@
 
 From the architecture review of `93169ed` (2026-09-03), after 0.1.0-alpha.5,
 the six rounds that followed it, and the field reports from two apps built on
-alpha.6 through alpha.11 outside this repo (F1–F15 on 2026-09-06,
+alpha.6 through alpha.12 outside this repo (F1–F15 on 2026-09-06,
 F16–F31 on 2026-09-07, F32–F35 on 2026-09-08, F37–F41 on
-2026-09-09, F42–F49 and F50–F54 on 2026-09-12). Every item names the
+2026-09-09, F42–F49 and F50–F54 on 2026-09-12, F55–F61 on 2026-09-15)
+and, on 2026-09-15, the first requirements list a consumer wrote
+against kui (K1–K4). Every item names the
 evidence that produced it, so a task that turns out to be wrong can be argued with rather
 than guessed at.
 
@@ -32,8 +34,12 @@ the canvas question of 2026-09-11 (five waiting for a view, two declined
 with a condition — V1, the one with an order attached, was built the
 round after, on 2026-09-11), W16 from the alpha.12 pre-tag round (the
 headless round overwriting `kui_ffi.dll` under the C hosts, filed with
-two fixes to choose between), the three editor wishes parked at the end
-of the third editor-and-mux round, and the "theirs, not ours" lists the
+two fixes to choose between), two of the three editor wishes parked at
+the end of the third editor-and-mux round (the third, the underline, is
+K4 now — a view asked), the eleven entries of the two rounds of
+2026-09-15 built the day they were filed and waiting for the alpha.13
+tag to move (F55–F61 from the alpha.12 reports, K1–K3 from the kawoosh
+list) with K4 open beside them, and the "theirs, not ours" lists the
 field reports left behind. Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -762,7 +768,8 @@ better one later, each parked until a view asks:
   wave under keyword-coloured text, a terminal's SGR 58 undercurl.
   `Span::underline` is a bool in the text's colour (C22). Today: a
   `line` element under the run, whose rect a monospace column gives
-  for free and `caret_rect` gives otherwise.
+  for free and `caret_rect` gives otherwise. **A view asked on
+  2026-09-15**: this is K4 below, with its shape.
 - **The middle button** (C2: "reaches the core and routes nowhere") —
   a Linux terminal's paste and an editor's close-tab. Today: nothing.
 - **Window position**, declared and read (the README's Status names
@@ -814,6 +821,390 @@ use; decide when the round is next run on a unix host, where the same
 overwrite happens and nothing has yet opened the hosts in that order.
 Until then the recipe's order is the guard.
 
+## From the two alpha.12 upgrade reports (2026-09-15)
+
+Both apps upgraded to alpha.12 the day it was tagged and reported: the
+mind map's `FINDINGS.md` (alpha.11 → alpha.12) and the LCARS pomodoro's
+`docs/kui-alpha-12.md` (wishes 1–4). The bare bump was a drop-in for one
+and broke the other for the first time in five releases — on a *fix*,
+`{ percent }`, that the release listed under Fixed and not under What
+breaks, which is F61. Every claim below was checked against this tree
+before it became an entry, and the round's shape is the alpha.11 one:
+two things the reports could not see from outside. The pomodoro's "the
+play that opens the device is not counted for ~35 ms" is a Node door
+handing the sound over *after* the frame it asked for (F56), and its
+smoke test's third-of-the-time race was that late hand-over widening a
+window it already had. And the mind map's `KeyMsg` without `physical`
+turned out to be one of four gaps a single pin finds (F55): a second
+field, and two event kinds the schema's table never listed.
+
+What the reports corrected in their own earlier claims stands and is
+worth writing down once: the "echo frame" that alpha.12's deletion line
+for F44 named ("the echo frame's last word had somewhere to go") **was
+never presented**. The mind map put a presented-frame counter beside its
+sampler and read the same count on every reading that put text past the
+field: the core's editor store is re-shaped at the old width between the
+OS event and the app's step, and that state is visible to `accessTree()`
+and to nothing on screen, because every runner's order is pump, step,
+paint. The headroom guarded a state no user saw. Nothing to build; the
+line in this file's archive and the changelog's stands as written, with
+this paragraph beside it.
+
+Seven entries, **F55–F61, all built or written on 2026-09-15**, with
+their outcomes on top.
+
+### `.` F55 — `KeyMsg` has no `physical`; the message types are a step behind the payloads — **done (2026-09-15)**
+
+**Done (2026-09-15).** `physical` on `KeyMsg`, `scale` on `LayoutMsg`,
+a `ForceClickMsg` in the `CoreMsg` union, and `menu` and `forceclick`
+rows in `schema::EVENTS` — so `docs/props.md`'s event table lists them
+for the first time. The pin is `index.d.ts's message types name exactly
+the fields the event payloads carry (F55)` in `packages/kui/test.mjs`:
+every `{ … }` shape a payload string names is parsed for its top-level
+fields, the type whose `kind` literal it is must declare each, every
+property the type declares must be in some shape (the dismiss payload
+has two), and every `CoreMsg` member's kind must be a row of the table.
+Written before the fixes, it went red on all four; mutation-tested by
+removing `physical` and by removing `ForceClickMsg`. Two traps: a regex
+with `(?:[^}]|\n)*?` over a 4,000-line file backtracks for minutes (the
+suite hung with no output), and the type bodies are found by a line
+scan to the `}` at column 0, since a nested `{ x: number; … }` sits on
+one indented line. CHANGELOG under alpha.13.
+
+**Symptom** (mind map, "two notes from driving it"): `KeyMsg` in
+`index.d.ts` has no `physical` field, and the runtime message carries
+one — "F37's class, a `.d.ts` a step behind the object". Checked: the
+schema's `key` payload string names `physical`, `KeyPress::to_value`
+writes it, the type does not declare it. Reading the other message
+types against their payload strings the same way: `LayoutMsg` lacks
+`scale` (ADR 0025's addition, documented on the `layout` row and in the
+`onLayout` prop's doc), and two kinds the core spells — `menu`
+(`menu_api.rs`, ADR 0017 decision 5) and `forceclick` (`dispatch.rs`,
+the `onForceClick` prop) — have no `EventDef` at all, so the generated
+event table never listed them and `forceclick` has no message type.
+
+**Do:** the fields and the rows, and a static pin in `test.mjs` beside
+AR44's: `protocol().events` gives every payload string, the d.ts gives
+every type, and the two are compared both ways per kind.
+
+### `!` F56 — `KuiWindow.access()` hands the click's sound to the device a frame late, and `env.audio.live` reads 0 on the frame that asked — **done (2026-09-15)**
+
+**Done (2026-09-15).** `access` in `core_methods!` calls `$audio()`
+between `$take` and `$redraw`, the order `Shell::dispatch` has always
+had for a real input. Checked on a real window with a scratch probe
+(`clickSound` on a button, `access('go', 'click')`, `env().audio` read
+after each `frame()`): the unfixed addon reads `{opening, live: 0}` on
+the frame after the click and `live: 1` on the next; the fixed one reads
+`live: 1` on the first. No test in the suite can open a window, so the
+A/B is the record. CHANGELOG under alpha.13.
+
+**Symptom** (pomodoro, "found after the bump", wish 1): "the play that
+opens the device is not in `live` while the device is `opening`" — a
+smoke test that waited on `live === 0` between a click and a finish got
+a 0 that meant "not yet counted", the click's blip was counted ~35 ms
+on, and the "released" reading said 2 whenever the alert's first blink
+fell inside the blip's 120 ms: a failure one run in three.
+
+**The line.** The store counts a play the moment it is queued against an
+opening device (`Audio::apply` → `pending`), so the report's mechanism
+is not the store's. It is the door's: `KuiWindow::access` — the one
+input injector a window has, since pointer and key injection stayed
+`Ctx`-only (D4) — runs `handle_input`, routes the events and requests a
+redraw, and never hands the core's queued audio commands to the store.
+A real press goes through `Shell::dispatch`, which calls `apply_audio()`
+before `request_redraw()`. So on an `access` click the frame is built
+first (`redraw` stamps `sync_env(audio.env())` at its top, reading the
+store before the command reached it), and `apply_audio` runs after the
+paint (`lib.rs`, the "sounds a frame started" drain). `live` lags one
+frame, and the sound starts a paint late. The report's attribution —
+"the chime, counted at once" at 212 ms, "the blip, counted 35 ms late"
+at 235 — is the two swapped: the 1 at 212 is the blip, on the next frame
+drawn; the 2 at 235 is both.
+
+**Do:** `self.$audio()` in `access` before `self.$redraw()`. A `Ctx`'s
+`$audio` is `no_flush`, so headless is unchanged.
+
+### `.` F57 — A frame the loop's own tick draws resets the idle backoff — **done (2026-09-15)**
+
+**Done (2026-09-15).** `createLoop` gained a `[STEP]` door beside
+`[BUDGET]` — `step` answering `{ drew, used }`, `used` when something
+other than the loop's clock asked for the turn (an event the surface
+queued, or a model a foreign `dispatch` changed) — and `step()` is its
+`drew`. `runWindowed` paces on `used`, reads the runner's deadline
+*before* `step` for the "an OS event's redraw is owed" signal (a tick's
+frame requested inside `step` must not count as one) and again after it
+for the sleep (the frame a tick drew is due now). The backoff itself is
+a `pacer` value with `after(used, now)`, reachable as `runWindowed[PACE]`
+for its test. Pinned in `test.mjs` (`a tick's own frame is not the user
+… (F57)`): the four answers of `[STEP]`, and the pacer holding 32 across
+tick frames at 1000 and 2000 and returning to 8 on a click. Measured on
+a real window with a scratch probe counting `pump()` calls through a
+forwarding surface — a stopped app whose once-a-second tick returns a
+model: **67.0 pumps/s under alpha.12, 29.4 with the change**, the same
+window and tick. The `quietMs` doc and the `runWindowed` essay say the
+new rule. CHANGELOG under alpha.13.
+
+**Symptom** (pomodoro, "found after the bump", wish 2): with `every:
+(m) => m.running ? 16 : 1000`, the stopped mid tier read 4.5% of a core
+against 5.6% at 16 ms — "for a change that should have cost sixty times
+less". The driver doc says why: "anything at all — an event, a tick, a
+frame, a transition — resets both" the gap and the quiet clock, so a
+tick that returns a model is a frame, the gap goes back to 8 ms, and
+the next 500 ms are pumped at the busy rate — half of every second. The
+app got out of it by not drawing the digit where nothing shows it; the
+wide tier under reduced motion, which shows it, kept paying.
+
+**The reasoning.** The backoff exists because the driver cannot know
+whether an OS event is waiting, and something happening is its proxy
+for someone being there. A tick is the loop's own clock: it says
+nothing about whether anyone is there, and the frame it draws needs no
+faster pumping — the next tick is a deadline `[BUDGET]` already sleeps
+to. What the busy half-second bought was a click answered within 8 ms
+rather than 32 in the half-second after a digit, which is the trade the
+backoff already makes for every quiet window.
+
+**Do:** `step` says what the turn was for; the driver paces on that and
+on the runner's owed redraw read before `step`.
+
+### `~` F58 — A second `runWindowed` in one process, after the first window closed — **done (2026-09-15)**
+
+**Done (2026-09-15).** `crates/kui/src/lib.rs`: a thread-local
+`PARKED_LOOP`; `Launcher::open` and `run` take it or build one;
+`PumpRunner` holds `Option<EventLoop>` and, when a pump returns false,
+`retire`s — drops its panes (which closes the windows; the main core is
+moved back to `main_core` so `core_mut` keeps answering, the text-input
+facts are detached), and parks the loop; `Drop` retires too. The pump
+path never calls winit's `exit()` any more: `Shell::exit_main` sets
+`exit_requested` and exits the loop only for `run_app` (`pumped`
+false), because an exited loop answers every later pump with `Exit` and
+nothing public clears that. A reused loop delivers no `resumed`, so
+`about_to_wait` opens the main window on the first turn a pumped shell
+gets (`opened` guards it, and a main window the user closed is not
+reopened from there). **What made it work was not in the runner:** the
+second window's view panicked in winit's initialiser at `inputContext()
+.expect("input context")`. AppKit will not *create* an
+`NSTextInputContext` for a view answering `isEditable` NO — an existing
+one is handed back regardless, which is why the first window never
+showed it — and W15's `isEditable` override answered NO for a view it
+had not registered yet; the first window's view was born before the
+class was patched, the second was born patched. It answers YES for an
+unregistered view now (`macos_text_input.rs`). Pinned by the windowed
+smoke round: `examples/node/features/relaunch.tsx` reopens its window
+under the other chrome through the harness's new `after` hook, and
+under `KUI_SMOKE_FRAMES` the round passes only if the second window
+opened; checked by hand too — the first window closed through its close
+button, the second captured with custom chrome. CHANGELOG under
+alpha.13.
+
+**Symptom** (pomodoro, wish 3): "A second `runWindowed` in the same
+process, after the first window has closed, is refused with `EventLoop
+can't be recreated` — winit's, one per process — so `smoke.tsx` spawns
+itself with the flag and folds the exit code in."
+
+**The facts.** winit 0.30's `EventLoopBuilder::build` sets a static
+`EVENT_LOOP_CREATED` and never clears it (except on web); `Launcher::open`
+built a new loop per runner. But `pump_app_events` does not consume the
+loop, and winit's macOS pump has an explicit branch for "we just
+started to re-run the same `EventLoop` again"; Windows and Linux support
+`run_on_demand` on the same terms. So the loop can be kept and reused,
+provided the runner never lets winit *exit* it — after `exit()`,
+`pump_events` returns `Exit` forever and `clear_exit` is `pub(crate)`.
+
+**Do:** park the loop, end the runner on `exit_requested` alone, open
+the window from `about_to_wait` when no `resumed` comes.
+
+### `.` F59 — The cadence on the tick — **done (2026-09-15)**
+
+**Done (2026-09-15).** `tick.msg(now, every)`: `ticksTo` passes the
+cadence in force as the second argument; the type and its doc say so;
+`tick.msg is told the cadence it fired on, beside the time (F59)` in
+`test.mjs` reads `[1000, 1000], [2000, 1000]` and then `[2016, 16],
+[2032, 16]` after the model turns fast. Not a substitute for the
+pomodoro's own fix — a press anchors nothing, the next tick writes the
+anchor from its `now` — which the changelog says. CHANGELOG under
+alpha.13.
+
+**Symptom** (pomodoro, wish 4): "A field on the `tick` message for the
+cadence that fired it … so a model can tell a 16 ms reading from a
+1000 ms one and know how stale `now` may be, rather than the app
+carrying a flag for the one press that cares." The message is the app's
+own (`tick.msg(now)`), so the cadence goes to the function that builds
+it.
+
+### `.` F60 — A shifted letter's spelling is nowhere written, and a headless press can spell one no keyboard produces — **done (2026-09-15)**
+
+**Done (2026-09-15).** The `key` event's doc in `schema::EVENTS` (and
+so `props.md`, the Lua and C docs) says a shifted letter arrives as the
+upper-case letter with `shift` set and `physical` lower — `Z` / `z` for
+⇧⌘Z — and that a keymap binding letters folds a one-character `code`
+under a chord; the Node `press` door's doc says to spell a headless
+press as the OS does, and names `press("z", { shift: true })` as the
+chord no keyboard produces. No door re-spells anything: a test's
+spelling stays the test's, and the trap is now written where both
+readers look. CHANGELOG under alpha.13.
+
+**Symptom** (mind map, "the standard Edit menu, and a bug of this app's
+it found"): Edit ▸ Redo replayed ⇧⌘Z and the app's `handleKey` switched
+on `'z'`; the sink hears `code: "Z"`, `shift: true`, `physical: "z"`.
+"This app's redo has never worked from a keyboard on macOS" — its suite
+pressed `'z'` with `{ shift: true }`, "the headless driver's spelling
+and not the OS's", green since alpha.6. Checked: `KeyPress::from_layout`
+takes the layout's character, which is shifted; ADR 0002 d.11, the
+event doc and the press doors said nothing about case.
+
+### `.` F61 — `{ percent }` was a break the changelog filed under Fixed — **done (2026-09-15)**
+
+**Done (2026-09-15).** alpha.12's **What breaks** list gained the `{
+percent: N }` line after the fact, dated, with what an app that wrote to
+the old behaviour sees; and the file's charter paragraph gained the
+rule: a fix that changes what an existing input draws is a break for
+whoever wrote to the old behaviour, documented or not, and is listed
+under both. CHANGELOG under alpha.12 and its header.
+
+**Symptom** (pomodoro, "what changed in the release" and its
+assessment): "The bare bump broke two things, both the same thing":
+`{ percent: 0.74 }` for a cascade row, written as the fraction the core
+reads, drew 74% under alpha.11 by two wrongs cancelling and 0.74% under
+alpha.12, where AR25 made the object form divide by 100 as `"74%"`
+does. The release's list "did not name it because, from the library's
+side, nothing that was documented changed — the type said N%
+throughout. Which is the lesson: the list is what the release knows it
+broke."
+
+### Theirs, not ours
+
+- **The `starting` flag** (pomodoro). The right fix for a press that
+  cannot know the time: time enters through the tick and nowhere else.
+  F59's `every` is a bound on the staleness, not the time, and the
+  changelog says it does not replace this.
+- **The blip and the chime sharing a device that opens on the first**
+  (pomodoro). A fact about the first sound after launch — the device
+  takes ~90 ms — and the right wait is for the device to answer, as the
+  report's test now does. F56 is why the race was as wide as it was.
+- **The System Events click on a menu row hanging osascript** (mind
+  map). A by-hand data point about System Events on a winit window,
+  consistent with the standard-menus round's own notes: open the menu
+  by its title and walk it with the keyboard.
+- **The wide tier under reduced motion drawing a frame a second** and
+  **`idlePumpMs`** (pomodoro, "ours to fix"). Theirs, as they say — and
+  F57 makes the frame-a-second cheaper than it was, since the frame no
+  longer resets the backoff.
+
+## From the kawoosh requirements list (2026-09-15)
+
+The fourth editor-and-mux round, and the first written by a consumer
+rather than by kui about itself:
+`~/projects/kawoosh/docs/design/kui-requirements.md`, forty-two
+requirements checked door by door against alpha.12 with each line either
+a fact with the door named or a gap with the change named, written "to
+be pasted into kui's `docs/BACKLOG.md`". Its ids are kept (K1–K4);
+nothing is renumbered, ever. The doors it names were spot-checked
+against the tree: every one exists under the name given, with two lines
+half right — R8.2 names `InputEvent::Text` for a headless paste, and a
+paste to a key sink is `InputEvent::Commit` (`Text` is never delivered
+to a sink, by design: the raw press already carried it), which kawoosh's
+M2 tests should know before they wonder why the paste never arrived;
+and R3.8's premise, below. **K1, K2 and K3 built or answered on
+2026-09-15; K4 filed with its shape**, for the milestone that wants it.
+
+### `~` K1 — A slot name not known when the extension loaded — **done (2026-09-15)**
+
+**Done (2026-09-15).** `kui_core::ANY_SLOT` (`"*"`): `Extensions::fill`
+matches any declared name under the namespace against it, `root`
+included as one more name (under a wildcard it is not the auto-fill,
+and a wildcard extension with nothing declared draws nowhere), and
+`finish` skips the `unknown-slot` walk for it. The same string in a Lua
+`slots = { "*" }` global, a C `kui_ext_slots` list and a Node
+`extensions` entry, since all three hand the list to the one `fill`.
+ADR 0014 amended (2026-09-15). Pinned in `crates/kui-core/tests/slots.rs`
+(`a_wildcard_extension_fills_whatever_the_host_declares_under_its_namespace`)
+and in `crates/kui-lua/tests/slots.rs` with a script. CHANGELOG under
+alpha.13.
+
+**Symptom** (kawoosh R6.3): "`Extension::slots` is read once at load
+and copied into `Entry::slots`; `Extensions::fill` fills only a listed
+name" — checked, exactly so — and a view registered from `init.lua` at
+runtime has no name to list. Their workaround bypasses the runner's list
+with a `Core::fill` under an origin the runner does not know, "whose
+events `route` hands to the host to forward — it works and it bypasses
+the runner's list". Their proposal was this entry's shape: one branch in
+`fill`, one in `finish`.
+
+### `.` K2 — An event knows which fill it came from — **done (2026-09-15)**
+
+**Done (2026-09-15).** `UiEvent::slot: Option<Key>`, stamped by the
+core in `stamp` beside `window` from `Tree::fills` — a side list of
+`(slot key, first node, end)` that `fill_within` records after the
+fills inside it, so the innermost is found first and a frame with no
+extension records none — resolved through `Tree::index_of` on the
+event's key; a reply in `Extensions::route` keeps the slot of the event
+it answers. Node: `slot` on every `pollEvents()` object, the slot's hex
+key or null (`keyOf(fullName)` answers the same); Lua: `ev.slot`, the
+full name, from a map the extension fills as it is handed each `Slot`;
+C: `uint64_t slot` appended to `KuiEvent` under the [out] rule with no
+bump, 0 for none, checked by `host.c` against `kui_key_of`. Pinned in
+`tests/slots.rs` (host node none, pane 1 and pane 2 their own, the
+reply's kept), in the Lua slots test, in `test.mjs` (the plugin's reply
+names `todos/panel`; a host node reads null and the key set is pinned),
+and in the C round. CHANGELOG under alpha.13.
+
+**Symptom** (kawoosh R6.4): `UiEvent { origin, window, key, payload }`
+— one extension fills a slot per (view, pane), and "the bootstrap walks
+the returned table and stamps `_slot` onto every handler payload — a
+table walk per dirty frame, and a convention every plugin author must
+not break." Their proposal was `UiEvent::slot: Option<Key>` surfaced in
+all three bindings, which is what was built; the one thing decided here
+is the Lua spelling, the name rather than the key, since a script thinks
+in the names it was handed.
+
+### `.` K3 — Trailing and repeated spaces measure reliably in a run — **answered (2026-09-15)**
+
+**Answered (2026-09-15): they already do, unwrapped.** Measured through
+`Core::measure_text` and laid out: `"ab  "` is four cells in the mono
+face, `" ab"` three, `"a  b"` four, and the NBSP spelling of the same
+text is the same width; a proportional face's space has an advance of
+its own and counts too. What drops a trailing space is a *wrap* — the
+line-breaking rule hangs it past the break — which a row of runs never
+meets. `spaces_measure_at_the_advance_unwrapped` in
+`crates/kui-core/tests/measure.rs` pins it, and the `nbsp` mapping in
+`modal_editor` and `syntax_view` (there since alpha.9, its comment
+blaming fonts) is deleted, with the byte arithmetic that mapped a
+pointer's `byte` back through it; both drives pass. No
+`TextStyle::preserve_spaces()`: nothing needs preserving. CHANGELOG
+under alpha.13's "what you can delete".
+
+**Symptom** (kawoosh R3.8): "the examples map ` ` → NBSP; kawoosh does
+the same and maps bytes back. A `TextStyle::preserve_spaces()` (or mono
+runs measuring whitespace by advance) would remove the mapping and the
+2-byte NBSP arithmetic from every consumer." The examples' comment
+("unreliable across fonts") predates C32, which pinned the generic mono
+family to an installed face; whether it was ever true is not on record,
+and it is not true now.
+
+### `.` K4 — An underline of its own colour and style
+
+The wish parked at the end of the third editor-and-mux round, now with
+a view that asks: kawoosh's M6 (a diagnostic's wavy red under
+keyword-coloured text) and M4 (a terminal's SGR 58 / 4:3 undercurl per
+cell). Today `Span::underline` is a bool in the text's colour (C22) and
+`Cell::flags` has one underline; the interim both name — a `line`
+element under the run, its rect from the mono column or `caret_rect` —
+works, and kawoosh says it works until M6.
+
+**The shape**, as kawoosh proposes it and as it fits: `Underline {
+color: Option<Color>, style: Solid | Wavy | Dotted }` on `Span` and
+`TextStyle` (the bool becomes `Solid` in the text's colour, so nothing
+written to it changes), and on `Cell` a colour slot and a style in the
+flags (SGR 58 is the colour, 4:3 the curl). Solid and dotted are
+segments the core already draws (ADR 0010's capsule quad, V2's `dash`
+would give dotted for free); wavy is the one new thing to paint — a
+zigzag of short segments per run is the cheap answer and a `QuadKind`
+of its own the right one if a screenful of diagnostics makes the
+segment count show. Four bindings and a corpus scene, since the
+decorations are corpus-pinned (C22). Not built in this round: the
+milestone that wants it is two away, the interim is real, and the wavy
+kind wants a measurement before it picks a shape.
+
 ## After alpha.12
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -840,7 +1231,13 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** The second architecture review, filed 2026-09-13 above
+**Build next.** K4, when kawoosh's M6 arrives or a measurement of the
+wavy kind is worth taking sooner. The two rounds of 2026-09-15 — the
+alpha.12 upgrade reports (F55–F61) and the kawoosh requirements list
+(K1–K3) — were **built the day they were filed**, each with its outcome
+on top of its entry above; what the round settled beyond its entries is
+in the two introductions: the "echo frame" was never presented, and a
+paste to a key sink is `Commit`. Before them: the second architecture review, filed 2026-09-13 above
 as AR7–AR49, in the order its decisions argue for: AR7 and AR8 (the
 session rule written and the audio store and image drops moved under
 it — **both done 2026-09-14**), AR9–AR11 together — **all three done

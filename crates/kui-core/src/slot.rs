@@ -127,6 +127,12 @@ pub fn full_name(namespace: &str, name: &str) -> String {
 
 /// Splits a full slot name at its last separator into (namespace, name);
 /// a name with none has the empty namespace.
+/// The one entry in `Extension::slots` that means "every name the host
+/// declares under my namespace": for an extension that learns its slots
+/// after it loads. `fill` matches any declared name against it and
+/// `finish` has nothing to warn about for it (backlog K1).
+pub const ANY_SLOT: &str = "*";
+
 pub fn split_name(full: &str) -> (&str, &str) {
     match full.rfind(NAMESPACE_SEPARATOR) {
         Some(i) => (&full[..i], &full[i + 1..]),
@@ -354,6 +360,8 @@ impl Extensions {
                     window: ev.window,
                     key: ev.key,
                     payload,
+                    // About the same node, so from the same slot.
+                    slot: ev.slot,
                 };
                 if up == OriginId::HOST || depth + 1 >= MAX_REPLY_HOPS {
                     to_host(reply);
@@ -433,11 +441,15 @@ impl Fill for Extensions {
         let Some(i) = self.list.iter().position(|e| e.namespace == ns) else {
             return;
         };
-        let wants = if name == ROOT_SLOT {
-            self.list[i].slots.is_empty()
-        } else {
-            self.list[i].slots.iter().any(|s| s == name)
-        };
+        let slots = &self.list[i].slots;
+        // A wildcard takes every declared name, `root` included: under it
+        // `root` is one more name the host chose, not the auto-fill.
+        let wants = slots.iter().any(|s| s == ANY_SLOT)
+            || if name == ROOT_SLOT {
+                slots.is_empty()
+            } else {
+                slots.iter().any(|s| s == name)
+            };
         if wants {
             self.fill_one(i, name, key, params, ui);
         }
@@ -460,7 +472,12 @@ impl Fill for Extensions {
                     self.fill_one(i, ROOT_SLOT, key, &NULL_PARAMS, ui);
                 }
             } else {
+                // A wildcard lists nothing to check: whatever the host
+                // declared under the namespace was filled above.
                 for name in self.list[i].slots.clone() {
+                    if name == ANY_SLOT {
+                        continue;
+                    }
                     let full = full_name(&ns, &name);
                     if ui.slot_declared(&full) {
                         continue;

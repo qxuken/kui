@@ -56,6 +56,13 @@ export type Example<M, A extends { kind: string }> = {
   /** The self-check `--headless` runs over a bare `createApp`: return
    *  false (or throw) on a wrong answer. */
   headless?: (app: App<M, A | CoreMsg>) => boolean | Promise<boolean>;
+  /** What to open once the window has closed, with the model it closed
+   *  on: another example — the same one under other `window` options is
+   *  the usual answer — or nothing, and the process exits. A second
+   *  `runWindowed` in one process reuses the event loop the first parked
+   *  (backlog F58); under `KUI_SMOKE_FRAMES` each window closes on its own
+   *  and the round passes only if every one of them opened. */
+  after?: (model: M) => Example<M, A> | undefined;
 };
 
 /** The dock's extents, logical px — the core's (`kui_core::devtools`), so
@@ -128,7 +135,8 @@ export function fmtValue(v: unknown): string {
 }
 
 /** Runs `example` under the harness: the CLI, then either its headless
- *  drive or a window with the dock beside it. Exits the process. */
+ *  drive or a window with the dock beside it — and whatever `after` asks
+ *  for once that window closes, in turn. Exits the process. */
 export async function run<M, A extends { kind: string }>(example: Example<M, A>): Promise<never> {
   let cli: Cli;
   try {
@@ -168,6 +176,16 @@ export async function run<M, A extends { kind: string }>(example: Example<M, A>)
     process.exit(ok ? 0 : 1);
   }
 
+  let next: Example<M, A> | undefined = example;
+  while (next) {
+    const model: M = await open(next, cli);
+    next = next.after?.(model);
+  }
+  process.exit(0);
+}
+
+/** One window of `example`, resolved with the model it closed on. */
+async function open<M, A extends { kind: string }>(example: Example<M, A>, cli: Cli): Promise<M> {
   const dock = cli.dock ?? example.dock ?? 'right';
   let w = example.window?.width ?? 960;
   let h = example.window?.height ?? 640;
@@ -194,7 +212,7 @@ export async function run<M, A extends { kind: string }>(example: Example<M, A>)
     },
   };
 
-  const done = runWindowed(config as never, {
+  return runWindowed(config as never, {
     title: `kui — ${example.name}`,
     width: w,
     height: h,
@@ -216,7 +234,5 @@ export async function run<M, A extends { kind: string }>(example: Example<M, A>)
       }
       example.setup?.(win);
     },
-  });
-  await done;
-  process.exit(0);
+  }) as Promise<M>;
 }

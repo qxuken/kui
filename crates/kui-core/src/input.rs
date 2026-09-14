@@ -676,17 +676,27 @@ pub struct UiEvent {
     pub window: WindowId,
     pub key: Key,
     pub payload: Value,
+    /// The slot whose fill drew the node — its key, the one `begin_slot`
+    /// returned and `key_of(full_name)` answers — or `None` for a node the
+    /// host drew itself. What `origin` cannot say: one extension fills
+    /// many slots (a Lua host with a view per pane), and an event routed
+    /// by pane needs the slot, not the extension. Stamped by the core on
+    /// the way out like `window`, from the fill ranges the last frame
+    /// recorded (`Tree::fills`); a producer leaves it `None` (backlog K2).
+    pub slot: Option<Key>,
 }
 
 impl UiEvent {
     /// An event as a producer builds it: the window is left [`WindowId::MAIN`]
-    /// for the core to stamp on the way out (see [`UiEvent::window`]).
+    /// and the slot `None` for the core to stamp on the way out (see
+    /// [`UiEvent::window`], [`UiEvent::slot`]).
     pub fn on(origin: OriginId, key: Key, payload: Value) -> Self {
         Self {
             origin,
             window: WindowId::MAIN,
             key,
             payload,
+            slot: None,
         }
     }
 
@@ -1375,6 +1385,7 @@ impl Interaction {
                         window: WindowId::MAIN,
                         key: Key::ROOT,
                         payload: m.to_value(),
+                        slot: None,
                     });
                 }
             }
@@ -1419,6 +1430,7 @@ impl Interaction {
                                 window: WindowId::MAIN,
                                 key: region.key,
                                 payload: payload.clone(),
+                                slot: None,
                             });
                             pointer_made += 1;
                         }

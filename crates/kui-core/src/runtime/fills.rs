@@ -75,11 +75,16 @@ impl Core {
         self.origin = origin;
         self.ns_depth = depth;
         self.ns_key = slot.key;
+        let first = self.tree.len() as u32;
 
         match filler {
             Some(filler) => f(&mut Ui::with_filler(self, filler)),
             None => f(&mut Ui::new(self)),
         }
+        // After the fills inside it, so the innermost is found first.
+        self.tree
+            .fills
+            .push((slot.key, first, self.tree.len() as u32));
 
         if self.stack.len() > depth {
             let open = self.stack.len() - depth;

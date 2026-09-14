@@ -70,6 +70,7 @@ typedef struct {
     long long clicks;  /* our own button */
     long long toggles; /* replies from the panel */
     uint16_t reply_from;
+    uint64_t reply_slot; /* which slot's fill the reply is about */
 } Host;
 
 static KuiValue *msg(const char *kind) {
@@ -145,6 +146,9 @@ static void on_event(void *user, const KuiEvent *ev) {
     } else if (kui_str_eq(s, "toggled")) {
         h->toggles++;
         h->reply_from = ev->origin;
+        /* And which slot: one plugin may fill several, and `origin` cannot
+         * say which one this row was in. */
+        h->reply_slot = ev->slot;
     }
 }
 
@@ -241,6 +245,11 @@ static int headless(const char *plugin) {
     if (rc == 0 && !kui_ctx_extension_namespace(ctx, host.reply_from, &ns)) {
         fprintf(stderr, "FAIL: the reply's origin %u names no extension\n",
                 host.reply_from);
+        rc = 1;
+    }
+    if (rc == 0 && host.reply_slot != kui_key_of(ctx, KUI_STR("todos/panel"))) {
+        fprintf(stderr, "FAIL: the reply names slot %llx, not todos/panel's\n",
+                (unsigned long long)host.reply_slot);
         rc = 1;
     }
     if (rc == 0)

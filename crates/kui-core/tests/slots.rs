@@ -14,8 +14,8 @@ use kui_core::diag::{
 };
 use kui_core::testing::codes;
 use kui_core::{
-    Core, Extension, Extensions, Key, NodeSpec, OriginId, Size, Sizing, Slot, Ui, UiEvent, Value,
-    split_name,
+    ANY_SLOT, Core, Extension, Extensions, Key, NodeSpec, OriginId, Size, Sizing, Slot, Ui,
+    UiEvent, Value, split_name,
 };
 
 /// A stand-in extension: opens one keyed, focusable cell (so it is in the
@@ -426,6 +426,144 @@ fn unknown_and_duplicate_slots_warn_once_and_draw_nothing_extra() {
     );
 }
 
+/// An extension whose slots are not known when it loads — a Lua host whose
+/// `init.lua` registers views at runtime, one slot per (view, pane) — lists
+/// `"*"` and fills every name the host declares under its namespace, each
+/// as its own slot; it gets no `unknown-slot`, since there is no list to
+/// check, and an unrelated namespace is still nobody's (backlog K1).
+#[test]
+fn a_wildcard_extension_fills_whatever_the_host_declares_under_its_namespace() {
+    let seen = Rc::new(RefCell::new(Vec::new()));
+    let mut core = Core::new();
+    let mut exts = load(vec![Box::new(Ext {
+        name: "views",
+        slots: vec![ANY_SLOT.to_owned()],
+        seen: seen.clone(),
+        ..Default::default()
+    })]);
+    for _ in 0..2 {
+        let mut ui = core.frame_with(Size::new(600.0, 100.0), 1.0, &mut exts);
+        ui.configure_root(NodeSpec::row().fill());
+        ui.slot_with("views/buffer:1", &Value::Int(1));
+        ui.slot_with("views/buffer:2", &Value::Int(2));
+        ui.slot("views/root");
+        ui.slot("nobody/home");
+        ui.finish();
+    }
+    assert_eq!(codes(&core.take_warnings()), Vec::<&str>::new());
+    let names: Vec<(String, String, Value)> = seen.borrow().iter().cloned().collect();
+    assert_eq!(
+        names
+            .iter()
+            .map(|(ns, n, p)| (ns.as_str(), n.as_str(), p.clone()))
+            .collect::<Vec<_>>(),
+        [
+            ("views", "buffer:1", Value::Int(1)),
+            ("views", "buffer:2", Value::Int(2)),
+            ("views", "root", Value::Null),
+            ("views", "buffer:1", Value::Int(1)),
+            ("views", "buffer:2", Value::Int(2)),
+            ("views", "root", Value::Null),
+        ],
+        "every declared name, each frame, `root` as one more name and not the auto-fill"
+    );
+    let tree = core.access_tree();
+    assert_eq!(
+        tree.nodes
+            .iter()
+            .filter(|n| n.origin == OriginId(1))
+            .count(),
+        3,
+        "three fills, three cells"
+    );
+    // A wildcard is not the "lists nothing" case: with no declaration it
+    // draws nowhere, rather than after the host's view as `root`.
+    let mut ui = core.frame_with(Size::new(600.0, 100.0), 1.0, &mut exts);
+    ui.configure_root(NodeSpec::row().fill());
+    ui.finish();
+    assert_eq!(codes(&core.take_warnings()), Vec::<&str>::new());
+    assert!(
+        core.access_tree()
+            .nodes
+            .iter()
+            .all(|n| n.origin != OriginId(1)),
+        "nothing declared, nothing drawn"
+    );
+}
+
+/// An event says which slot's fill drew its node (backlog K2): one
+/// extension filling a slot per pane routes a click by pane without
+/// stamping every payload, since `origin` alone cannot tell the panes
+/// apart. The host's own nodes carry none, and a reply keeps the slot of
+/// the event it answers.
+#[test]
+fn an_event_carries_the_slot_its_node_was_filled_into() {
+    /// Fills any slot with one clickable cell.
+    struct Clicky;
+    impl Extension for Clicky {
+        fn name(&self) -> &str {
+            "views"
+        }
+        fn slots(&self) -> &[String] {
+            std::slice::from_ref(Box::leak(Box::new(ANY_SLOT.to_owned())))
+        }
+        fn view(&mut self, _slot: &Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+            ui.with_keyed(
+                "box",
+                cell().on_click(Value::map([("kind", "cell".into())])),
+                |_| {},
+            );
+            Ok(())
+        }
+        fn on_event(&mut self, _ev: &UiEvent) -> Vec<Value> {
+            vec![Value::map([("kind", "seen".into())])]
+        }
+    }
+    let mut core = Core::new();
+    let mut exts = load(vec![Box::new(Clicky)]);
+    // A row: the host's cell at x 0..40, pane 1's at 40..80, pane 2's at
+    // 80..120.
+    let mut ui = core.frame_with(Size::new(600.0, 100.0), 1.0, &mut exts);
+    ui.configure_root(NodeSpec::row().fill());
+    ui.with_keyed(
+        "host",
+        cell().on_click(Value::map([("kind", "host".into())])),
+        |_| {},
+    );
+    ui.slot("views/pane:1");
+    ui.slot("views/pane:2");
+    ui.finish();
+    let pane1 = core.key_of("views/pane:1").expect("the slot's key");
+    let pane2 = core.key_of("views/pane:2").expect("the slot's key");
+    assert_ne!(pane1, pane2);
+
+    let stamped = |core: &mut Core, x: f32| -> Vec<(Key, Option<Key>)> {
+        kui_core::testing::click_at(core, x, 10.0)
+            .into_iter()
+            .map(|e| (e.key, e.slot))
+            .collect()
+    };
+    let host = core.key_of("host").unwrap();
+    assert_eq!(
+        stamped(&mut core, 20.0),
+        [(host, None)],
+        "the host's own node: no slot"
+    );
+    assert_eq!(stamped(&mut core, 60.0), [(pane1.str("box"), Some(pane1))]);
+    let raw = kui_core::testing::click_at(&mut core, 100.0, 10.0);
+    assert_eq!(
+        raw.iter().map(|e| (e.key, e.slot)).collect::<Vec<_>>(),
+        [(pane2.str("box"), Some(pane2))]
+    );
+    // Routed, the reply is about the same node and keeps its slot.
+    let mut host_got = Vec::new();
+    exts.route(raw, |ev| host_got.push(ev));
+    assert_eq!(host_got.len(), 1);
+    assert_eq!(kind_of(&host_got[0].payload), "seen");
+    assert_eq!(host_got[0].slot, Some(pane2));
+    assert_eq!(host_got[0].origin, OriginId(1));
+}
+
 /// A view that errors leaves its message in the tree where the fill would
 /// have been and is reported once, not once per frame.
 #[test]
@@ -560,6 +698,7 @@ fn a_nested_extensions_replies_reach_whoever_placed_it() {
             window: kui_core::WindowId::MAIN,
             key: Key::ROOT,
             payload: Value::map([("kind", "click".into())]),
+            slot: None,
         }],
         |ev| to_host.push(ev),
     );

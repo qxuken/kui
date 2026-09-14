@@ -6,6 +6,7 @@
     "build": "esbuild apps/*.tsx features/*.tsx widgets/*.tsx tools/*.tsx --bundle --packages=external --jsx=automatic --jsx-import-source=@qxuken/kui --format=esm --platform=node --outdir=dist --outbase=. --out-extension:.js=.mjs",
     "counter": "npm run build && node dist/apps/counter.mjs",
     "window": "npm run build && node dist/features/window.mjs",
+    "relaunch": "npm run build && node dist/features/relaunch.mjs",
     "slide": "npm run build && node dist/features/slide.mjs",
     "clipboard": "npm run build && node dist/features/clipboard.mjs",
     "virtual_list": "npm run build && node dist/widgets/virtual_list.mjs",
@@ -14,7 +15,7 @@
     "bench": "node tools/bench.mjs"
   },
   "kui": {
-    "windowed": ["apps/counter", "features/window", "features/slide", "features/clipboard", "widgets/virtual_list"],
+    "windowed": ["apps/counter", "features/window", "features/relaunch", "features/slide", "features/clipboard", "widgets/virtual_list"],
     "headless": ["apps/counter", "features/slide", "features/clipboard", "widgets/virtual_list", "tools/types"]
   },
   "dependencies": {

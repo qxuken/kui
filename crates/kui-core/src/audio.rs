@@ -488,6 +488,7 @@ impl AudioStore {
                 ("playback", Value::Int(playback.0 as i64)),
                 ("tag", t.tag),
             ]),
+            slot: None,
         })
     }
 
@@ -517,6 +518,7 @@ impl AudioStore {
                 ("playback", Value::Int(playback.0 as i64)),
                 ("tag", t.tag),
             ]),
+            slot: None,
         });
         (event, warning)
     }

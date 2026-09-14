@@ -24,7 +24,9 @@ type AppMessages =
   // widgets/virtual_list.tsx: the row a click picked.
   | { kind: 'pick'; row: number }
   // features/clipboard.tsx: the register's key-sink tag.
-  | { kind: 'register' };
+  | { kind: 'register' }
+  // features/relaunch.tsx: the button that closes the window for the next.
+  | { kind: 'reopen' };
 
 declare module '@qxuken/kui/jsx-runtime' {
   interface KuiMsg {

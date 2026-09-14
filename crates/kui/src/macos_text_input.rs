@@ -389,6 +389,14 @@ unsafe extern "C-unwind" fn selected_range_override(this: &AnyObject, sel: Sel) 
     }
 }
 
+/// YES for a view the runner has not registered yet — one being created.
+/// AppKit will not *create* an `NSTextInputContext` for a view that
+/// answers `isEditable` NO (an existing context is handed back regardless,
+/// which is why the first window never showed this), and winit's view
+/// reads `inputContext` in its initialiser and panics on nil. The first
+/// window's view was born before the class was patched; a second one, on
+/// a loop taken back from an earlier runner, is born patched — and got
+/// no context (backlog F58). Registered views answer from the stamp.
 unsafe extern "C-unwind" fn is_editable_override(this: &AnyObject, _sel: Sel) -> Bool {
-    Bool::new(facts_of(this).is_some_and(|f| f.editable))
+    Bool::new(facts_of(this).is_none_or(|f| f.editable))
 }

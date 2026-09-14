@@ -2292,6 +2292,77 @@ test('a model that says 1000 lets the windowed driver idle, where 16 pinned it (
   assert.equal(ask(8, 32), 8);
 });
 
+test("a tick's own frame is not the user, so the windowed driver keeps idling through it (F57)", () => {
+  // The pomodoro took `every: (m) => m.running ? 16 : 1000` and found its
+  // stopped mid tier at 4.5% of a core against 5.6% at 16 ms, for a change
+  // that should have cost sixty times less: the once-a-second tick drew a
+  // frame, the frame counted as work, and the backoff went back to 8 ms
+  // for the `quietMs` after every digit. `step` now says what the turn was
+  // for, and only something other than the loop's clock counts.
+  const state = { animating: false, events: [] };
+  let t = 0;
+  const app = createApp(
+    {
+      init: { n: 0 },
+      update: (m, msg) => (msg === 'tick' ? { n: m.n + 1 } : { n: 100 }),
+      view: () => box({ pad: 4 }),
+      tick: { every: 1000, msg: 'tick' },
+    },
+    { surface: fakeWindow(state), clock: () => t },
+  );
+  const STEP = Object.getOwnPropertySymbols(app).find((s) => s.description === 'kui.step');
+  app.render();
+  t = 500;
+  assert.deepEqual(app[STEP](), { drew: false, used: false }, 'nothing to do');
+  t = 1000;
+  assert.deepEqual(app[STEP](), { drew: true, used: false }, 'the tick drew and is not use');
+  assert.equal(app.model.n, 1);
+  state.events.push({ origin: 0, key: '', payload: 'click' });
+  assert.deepEqual(app[STEP](), { drew: true, used: true }, 'an event is');
+  app.dispatch('foreign');
+  assert.deepEqual(app[STEP](), { drew: true, used: true }, 'and so is a dispatch from outside the loop');
+  assert.equal(app.step(), false, 'the public `step` still answers whether it drew');
+
+  // The driver's backoff over those answers: a tick frame a second leaves
+  // the gap at its idle value; an event brings it back to the busy one.
+  const PACE = Object.getOwnPropertySymbols(runWindowed).find((s) => s.description === 'kui.pace');
+  const pace = runWindowed[PACE]({ busyMs: 8, idleMs: 32, quietMs: 500 });
+  let now = 0;
+  const quiet = (ms) => {
+    for (let i = 0; i < ms / 8; i++) pace.after(false, (now += 8));
+    return pace.gap;
+  };
+  assert.equal(quiet(496), 8, 'the first half-second keeps the busy cadence');
+  assert.equal(quiet(16), 16, 'then doubles');
+  assert.equal(quiet(16), 32, 'to the ceiling');
+  // Ticks at 1000 and 2000: not used, so the gap stays where it was.
+  assert.equal(pace.after(false, (now = 1000)), 32, 'a tick frame at 1000 changes nothing');
+  assert.equal(quiet(1000), 32);
+  assert.equal(pace.after(true, (now = 2016)), 8, 'a click is use');
+  assert.equal(quiet(496), 8, 'and the quiet counts from it');
+  assert.equal(quiet(40), 32);
+});
+
+test('tick.msg is told the cadence it fired on, beside the time (F59)', () => {
+  // The pomodoro's fourth wish: a press cannot anchor on `model.now` when
+  // the tick that wrote it may be a second old, and the model had no way
+  // to know which. The cadence in force when the tick fired is the bound
+  // on that staleness, and `msg(now, every)` carries it.
+  const app = createApp({
+    init: { seen: [] },
+    update: (m, msg) => (msg.kind === 'tick' ? { ...m, seen: [...m.seen, [msg.now, msg.every]] } : msg.kind === 'fast' ? { ...m, fast: true } : m),
+    view: () => box({ pad: 4 }),
+    tick: { every: (m) => (m.fast ? 16 : 1000), msg: (now, every) => ({ kind: 'tick', now, every }) },
+  }, { startTime: 0 });
+  app.advance(1000);
+  app.advance(1000);
+  assert.deepEqual(app.model.seen, [[1000, 1000], [2000, 1000]]);
+  app.dispatch({ kind: 'fast' });
+  app.advance(16);
+  app.advance(16);
+  assert.deepEqual(app.model.seen.slice(2), [[2016, 16], [2032, 16]]);
+});
+
 test('a loop over a surface that takes no synthetic input says so', () => {
   const app = createApp(
     { init: 0, update: () => undefined, view: () => box({ pad: 4 }) },
@@ -4421,6 +4492,111 @@ test("index.d.ts's Env and NodeInfo name exactly the keys the objects carry (AR4
   assert.deepEqual(declared('Metrics'), Object.keys(ctx.metrics()).sort());
 });
 
+// The message types — `KeyMsg`, `LayoutMsg` and the rest — are written by
+// hand too, against the payload shapes `schema::EVENTS` documents, and
+// two of them were a field behind the object (`physical` on a key,
+// `scale` on a layout) while two kinds the core spells (`menu`,
+// `forceclick`) had no row in the table at all (backlog F55). The pin is
+// static: every field a payload shape names is a property of the type
+// whose `kind` literal it is, and every property that type declares is in
+// some shape of the payload — the dismiss payload has two, one per
+// surface, and the type's optional `name` / `id` are the second's.
+test("index.d.ts's message types name exactly the fields the event payloads carry (F55)", () => {
+  const dts = readFileSync(new URL('./index.d.ts', import.meta.url), 'utf8');
+  const { events } = protocol();
+  // The fields of every `{ … }` group in a payload string, at depth 0:
+  // `a`, `b: …`, `c?: …` and `kind: "x"` each name one; a nested `{ x, y }`
+  // is one field's value.
+  const shapes = (payload) => {
+    const out = [];
+    for (let at = payload.indexOf('{'); at !== -1; at = payload.indexOf('{', at)) {
+      let depth = 0;
+      let end = at;
+      for (let i = at; i < payload.length; i++) {
+        const c = payload[i];
+        if (c === '{' || c === '[') depth++;
+        else if (c === '}' || c === ']') depth--;
+        if (depth === 0) {
+          end = i;
+          break;
+        }
+      }
+      // Names before `:` or bare, `?` dropped, nested groups skipped.
+      const names = [];
+      let d = 0;
+      let cur = '';
+      for (const c of payload.slice(at + 1, end) + ',') {
+        if (c === '{' || c === '[') d++;
+        if (c === '}' || c === ']') d--;
+        if (c === ',' && d === 0) {
+          const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\??\s*(:|$)/.exec(cur);
+          if (m) names.push(m[1]);
+          cur = '';
+        } else cur += c;
+      }
+      out.push(names);
+      at = end + 1;
+    }
+    return out;
+  };
+  // Every multi-line `export type X = {` / `export interface X {` block,
+  // to the `}` at column 0 that ends it (a nested `{ x: number; … }` sits
+  // on one indented line), with the property names at the block's own
+  // indent; and the one-line union members such as `EditMsg`'s.
+  const blocks = [];
+  const lines = dts.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const m = /^export (?:type|interface) (\w+)(?:<[^>]*>)? (?:= )?\{$/.exec(lines[i]);
+    if (!m) continue;
+    const body = [];
+    for (i++; i < lines.length && !/^\};?$/.test(lines[i]); i++) body.push(lines[i]);
+    blocks.push({ name: m[1], body });
+  }
+  const declared = (kind) => {
+    for (const { name, body } of blocks) {
+      if (!body.includes(`  kind: '${kind}';`)) continue;
+      const fields = body.map((l) => /^  ([A-Za-z_][A-Za-z0-9_]*)\??:/.exec(l)).filter(Boolean).map((x) => x[1]).sort();
+      return { name, fields };
+    }
+    return dts.includes(`{ kind: '${kind}' }`) ? { name: `{ kind: '${kind}' }`, fields: ['kind'] } : null;
+  };
+  const untyped = [];
+  for (const { kind, payload } of events) {
+    const groups = shapes(payload);
+    if (kind === 'click') {
+      assert.equal(groups.length, 0, 'the click payload is the app\'s own, and names no shape');
+      continue;
+    }
+    assert.ok(groups.length > 0, `the ${kind} payload names a shape`);
+    const type = declared(kind);
+    if (!type) {
+      untyped.push(kind);
+      continue;
+    }
+    const named = [...new Set(groups.flat())].sort();
+    for (const f of named) {
+      assert.ok(type.fields.includes(f), `${type.name} declares \`${f}\`, which the ${kind} payload carries`);
+    }
+    for (const f of type.fields) {
+      assert.ok(named.includes(f), `the ${kind} payload carries \`${f}\`, which ${type.name} declares`);
+    }
+  }
+  assert.deepEqual(untyped, [], 'every event kind has a message type');
+  // And no type in the union names a kind the table does not: a message
+  // type is a claim the payload table has to back.
+  const union = /export type CoreMsg =\n((?:  \| \w+\n)+)/.exec(dts);
+  assert.ok(union, 'the CoreMsg union');
+  const kinds = new Set(events.map((e) => e.kind));
+  for (const member of union[1].match(/\w+/g)) {
+    const block = blocks.find((b) => b.name === member);
+    const text = block ? block.body.join('\n') : (new RegExp(`export type ${member} = ((?:\\{ kind: '\\w+' \\}(?: \\| )?)+);`).exec(dts) ?? [])[1];
+    assert.ok(text, `${member} is declared`);
+    for (const k of text.match(/kind: '(\w+)'/g).map((x) => /'(\w+)'/.exec(x)[1])) {
+      assert.ok(kinds.has(k), `${member}'s kind '${k}' is a row of the event table`);
+    }
+  }
+});
+
 test('every generic schema prop is declared by some corpus scene (AR47)', () => {
   const source = Object.values(SCENE_TREES).map((f) => f.toString()).join('\n');
   const { prop } = protocol();
@@ -6245,8 +6421,26 @@ test('a C extension fills the slot the view declares, and its reply comes back',
   const replies = events.filter((e) => e.payload?.kind === 'toggled');
   assert.equal(replies.length, 1, 'the plugin replied once');
   assert.equal(replies[0].origin, 1, 'and the reply carries the plugin’s origin');
+  // And which slot the row was filled into — the reply keeps the slot of
+  // the event it answers (backlog K2). `keyOf` answers the slot's key.
+  assert.equal(replies[0].slot, ctx.keyOf('todos/panel'), 'the reply names the slot it came from');
   assert.ok(
     !events.some((e) => e.payload?.kind === 'toggle'),
     'the plugin’s own event stayed with the plugin',
   );
+});
+
+test('an event names the slot its node was filled into, and null for the app’s own (K2)', () => {
+  // Without a plugin: the stamp is the core's, from the fill ranges the
+  // frame recorded, so a host's own node reads null and nothing else
+  // changes shape. (The C plugin test above reads a real slot.)
+  const ctx = new Ctx();
+  ctx.frame(320, 240, 1, box({ pad: 4 }, [box({ width: 40, height: 20, onClick: 'hit' }, [], 'b')]));
+  ctx.cursor(20, 20);
+  ctx.mouse(true);
+  ctx.mouse(false);
+  const [ev] = ctx.pollEvents();
+  assert.equal(ev.payload, 'hit');
+  assert.deepEqual(Object.keys(ev).sort(), ['key', 'origin', 'payload', 'slot', 'window']);
+  assert.equal(ev.slot, null);
 });

@@ -1369,6 +1369,12 @@ typedef struct KuiEvent {
      * read or write - pass the event back to kui_reply and it is used for
      * you. See KuiReplySink. */
     KuiReplySink *reply_sink;
+    /* The key of the slot whose fill drew the node - what kui_key_of answers
+     * for the slot's full name - or 0 for a node you drew yourself. One
+     * extension fills many slots, so `origin` cannot say which; this routes
+     * an event by the slot it came from. Appended under the [out] rule (no
+     * bump): a host reserving the older layout never sees it. */
+    uint64_t slot;
 } KuiEvent;
 #define KUI_EVENT_INIT ((KuiEvent){ .size = sizeof(KuiEvent) })
 

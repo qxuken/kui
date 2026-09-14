@@ -389,7 +389,7 @@ impl ModalEditor {
             |ui| {
                 if self.mode == Mode::Command {
                     ui.text(":", TextStyle::new(FONT).mono().color(pal.command));
-                    ui.text(&nbsp(&self.cmd), TextStyle::new(FONT).mono().color(pal.fg));
+                    ui.text(&self.cmd, TextStyle::new(FONT).mono().color(pal.fg));
                     caret_bar(ui, pal.command);
                 } else {
                     ui.text(&self.message, TextStyle::new(12.0).color(pal.dim));
@@ -534,15 +534,16 @@ impl ModalEditor {
     }
 
     /// The document position a pointer payload names. The drawn text is
-    /// the line with its spaces as NBSP, one char for one, so the byte
-    /// offset into it counts back to a column the same way.
+    /// the line as it is — a run's spaces measure at the face's advance
+    /// (backlog K3) — so the byte offset into it counts back to a column
+    /// directly.
     fn drag_pos(&self, p: &Value) -> Option<Pos> {
         let line = p.get("line")?.as_int()? as usize + self.view.top;
         let line = line.min(self.doc.lines.len().saturating_sub(1));
         let byte = p.get("byte")?.as_int()? as usize;
         Some(Pos {
             line,
-            col: col_at(&nbsp(&self.doc.lines[line]), byte),
+            col: col_at(&self.doc.lines[line], byte),
         })
     }
 }
@@ -603,12 +604,6 @@ fn col_at(text: &str, offset: usize) -> usize {
 
 fn mono(pal: &Pal) -> TextStyle {
     TextStyle::new(FONT).mono().line_height(LH).color(pal.fg)
-}
-
-/// Trailing spaces in a measured text run are unreliable across fonts; NBSP
-/// has the same advance in monospace and always measures.
-fn nbsp(s: &str) -> String {
-    s.replace(' ', "\u{a0}")
 }
 
 fn caret_bar(ui: &mut Ui<'_>, color: Color) {
@@ -772,7 +767,7 @@ fn emit_line(
                         .height(Sizing::Fixed(LH))
                         .cross_align(Align::Center)
                         .bg(pal.accent),
-                    |ui| ui.text(&nbsp(&chars[i].to_string()), mono(pal).color(pal.bg)),
+                    |ui| ui.text(&chars[i].to_string(), mono(pal).color(pal.bg)),
                 );
                 i += 1;
                 continue;
@@ -792,10 +787,10 @@ fn emit_line(
                         .height(Sizing::Fixed(LH))
                         .cross_align(Align::Center)
                         .bg(pal.select),
-                    |ui| ui.text(&nbsp(&run), mono(pal)),
+                    |ui| ui.text(&run, mono(pal)),
                 );
             } else {
-                ui.text(&nbsp(&run), mono(pal));
+                ui.text(&run, mono(pal));
             }
         }
         // Caret at end of line.

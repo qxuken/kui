@@ -1662,7 +1662,7 @@ pub const EVENTS: &[EventDef] = &[
     EventDef {
         kind: "key",
         payload: "`{ kind: \"key\", phase: \"down\" | \"up\", code, physical, shift, ctrl, alt, super, text, repeat, tag }`",
-        doc: "A key press or release on the focused `onKey` sink; `code` is a character or a name (`\"left\"`, `\"f5\"`) and is what a keymap binds against. `physical` is the US-QWERTY key at that *position*, spelled the same way — bind it instead when you want the finger rather than the label (WASD stays a square on every layout). `code` follows the layout while the layout speaks ASCII, so a chord lands on the key the user can see (Dvorak's `⌥v` on the key printed V); on a layout that does not (Cyrillic, Greek, Hebrew, Arabic) the position's US letter stands in, so a Latin keymap keeps matching instead of matching nothing. `repeat` marks a press the OS auto-repeated; `text` is what the press would insert — always the layout's own character — and is null on every release. A key only comes up where it went down: a release whose press the sink never got is dropped, and focus leaving while a key is held delivers the `up` first, so a held-key binding (WASD, press-and-hold) cannot be left stuck down.",
+        doc: "A key press or release on the focused `onKey` sink; `code` is a character or a name (`\"left\"`, `\"f5\"`) and is what a keymap binds against. `physical` is the US-QWERTY key at that *position*, spelled the same way — bind it instead when you want the finger rather than the label (WASD stays a square on every layout). `code` follows the layout while the layout speaks ASCII, so a chord lands on the key the user can see (Dvorak's `⌥v` on the key printed V); on a layout that does not (Cyrillic, Greek, Hebrew, Arabic) the position's US letter stands in, so a Latin keymap keeps matching instead of matching nothing. A shifted letter arrives as the upper-case letter — `Z` with `shift` set for ⇧⌘Z, `physical` staying `z` — so a keymap that binds letters folds a one-character `code` to lower case under a chord; a headless press is spelled the same way, since no door re-spells it (`\"z\"` with `shift` is a chord no keyboard produces). `repeat` marks a press the OS auto-repeated; `text` is what the press would insert — always the layout's own character — and is null on every release. A key only comes up where it went down: a release whose press the sink never got is dropped, and focus leaving while a key is held delivers the `up` first, so a held-key binding (WASD, press-and-hold) cannot be left stuck down.",
     },
     EventDef {
         kind: "text",
@@ -1683,6 +1683,16 @@ pub const EVENTS: &[EventDef] = &[
         kind: "contextmenu",
         payload: "`{ kind: \"contextmenu\", x, y, tag }`",
         doc: "A secondary-button press on an `onContextMenu` node, on the press rather than the release; `x`/`y` are logical viewport coordinates — where the menu goes. The core opens nothing: the app declares the menu (a `modal` float) and stops declaring it on `dismiss`.",
+    },
+    EventDef {
+        kind: "menu",
+        payload: "`{ kind: \"menu\", role, item }`",
+        doc: "A row of the core's own context menu was chosen (`openMenu` / `open_menu` / `kui_open_menu`), on the node the menu was about. `item` is the row's `id`, or its label when it declared none; `role` is the row's standard role or `custom`. Every chosen row posts, the standard ones included: a `cut` or `paste` role is carried out by the core (its clipboard work queued for the host) *and* reported, so an app can hear its editor being cut from and is free to ignore it (`docs/adr/0017-selection-as-a-scope.md`, decision 5).",
+    },
+    EventDef {
+        kind: "forceclick",
+        payload: "`{ kind: \"forceclick\", x, y, tag }`",
+        doc: "A press that deepened past the second stage of a Force Touch trackpad, on an `onForceClick` node, at the logical viewport point it happened at. Routed as a secondary press is — no focus moved, no caret placed, no click — but asked of the topmost node only, and the ordinary click the press is still producing arrives afterwards. Text needs none of this: over an `edit` or a `selectable` scope the core selects the word under it and asks the host for its Look Up panel instead. macOS-only in practice.",
     },
     EventDef {
         kind: "scroll",

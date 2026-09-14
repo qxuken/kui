@@ -145,6 +145,7 @@ impl Core {
                 ("name", Value::str(&*name)),
                 ("id", Value::Int(id.0 as i64)),
             ]),
+            slot: None,
         });
     }
 
@@ -228,6 +229,7 @@ impl Core {
                 ("name", Value::str(name)),
                 ("id", Value::Int(id.0 as i64)),
             ]),
+            slot: None,
         });
     }
 

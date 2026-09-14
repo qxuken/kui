@@ -1242,6 +1242,12 @@ pub struct KuiEvent {
     /// it knows about. A host has no use for it: it is the library's own
     /// channel to a plugin, and the plugin passes the event straight back.
     pub reply_sink: *mut KuiReplySink,
+    /// The key of the slot whose fill drew the node — what `kui_key_of`
+    /// answers for the slot's full name — or 0 for a node the host drew
+    /// itself (backlog K2). **Appended 2026-09-15**, after `reply_sink`,
+    /// under the [out] rule and without a bump: a host reserving the older
+    /// layout never sees it.
+    pub slot: u64,
 }
 
 impl Default for KuiEvent {
@@ -1253,6 +1259,7 @@ impl Default for KuiEvent {
             payload: std::ptr::null(),
             window: 0,
             reply_sink: std::ptr::null_mut(),
+            slot: 0,
         }
     }
 }

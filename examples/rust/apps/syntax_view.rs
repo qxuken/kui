@@ -256,12 +256,6 @@ fn mono(pal: &Pal) -> TextStyle {
     TextStyle::new(FONT).mono().line_height(LH).color(pal.fg)
 }
 
-/// Trailing spaces in a measured text run are unreliable across fonts; NBSP
-/// has the same advance in monospace and always measures.
-fn nbsp(s: &str) -> String {
-    s.replace(' ', "\u{a0}")
-}
-
 /// One line as a row of coalesced color runs: adjacent chars sharing a color
 /// become one text node. The cache in the core is keyed by (content, style,
 /// scale) — color excluded — so token runs dedupe across lines and colors.
@@ -285,7 +279,7 @@ fn emit_line(ui: &mut Ui<'_>, pal: &Pal, text: &str, lang: Lang, current: bool) 
                 i += 1;
             }
             let run: String = chars[start..i].iter().collect();
-            ui.text(&nbsp(&run), mono(pal).color(color));
+            ui.text(&run, mono(pal).color(color));
         }
     });
 }

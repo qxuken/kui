@@ -214,6 +214,18 @@ impl Core {
     /// main window, as every driver's is.
     pub(crate) fn stamp(&self, out: &mut [UiEvent]) {
         let id = self.env.window.id;
+        // The slot a node was filled into, from the last frame's fill
+        // ranges (`Tree::fills`): a frame with no extension recorded none,
+        // and pays one emptiness check per batch.
+        if !self.tree.fills.is_empty() {
+            for ev in out.iter_mut() {
+                if ev.slot.is_none()
+                    && let Some(i) = self.tree.index_of(ev.key)
+                {
+                    ev.slot = self.tree.slot_of(i);
+                }
+            }
+        }
         if id == WindowId::MAIN {
             // What producers already wrote. Skipped rather than written so
             // the single-window case stays free.
@@ -1232,6 +1244,7 @@ impl Core {
                 window: WindowId::MAIN,
                 key,
                 payload,
+                slot: None,
             }),
             _ => {}
         }
@@ -1264,6 +1277,7 @@ impl Core {
             window: WindowId::MAIN,
             key,
             payload: Value::map([("kind", kind.into())]),
+            slot: None,
         });
     }
 

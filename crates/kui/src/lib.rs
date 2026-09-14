@@ -417,6 +417,8 @@ impl Launcher {
             smoke_frames: Self::smoke_frames(),
             frames_drawn: 0,
             exit_requested: false,
+            pumped: false,
+            opened: false,
             primary_down: None,
             armed: Vec::new(),
             swallowed_press: None,
@@ -451,7 +453,7 @@ impl Launcher {
     }
 
     pub fn run<A: App>(self, app: A) -> Result<(), Box<dyn std::error::Error>> {
-        let event_loop = EventLoop::<access_bridge::UserEvent>::with_user_event().build()?;
+        let event_loop = take_event_loop()?;
         event_loop.set_control_flow(ControlFlow::Wait);
         let mut shell = self.shell(app);
         shell.proxy = Some(event_loop.create_proxy());
@@ -475,12 +477,16 @@ impl Launcher {
     /// returned [`PumpRunner`] processes OS events only when [`PumpRunner::pump`]
     /// is called, so a foreign loop (Node/libuv, a game loop, a test harness)
     /// can interleave with winit on the main thread. One event loop per
-    /// process — winit event loops are not recreatable on every platform —
-    /// but any number of windows on it.
+    /// process — winit event loops are not recreatable on any desktop
+    /// platform — but any number of windows on it, and any number of
+    /// runners *in turn*: a runner whose main window has closed parks the
+    /// loop, and the next `open` on the thread takes it back (backlog
+    /// F58), so a process can open a window, close it, and open another.
     pub fn open<A: App>(self, app: A) -> Result<PumpRunner<A>, Box<dyn std::error::Error>> {
-        let mut event_loop = EventLoop::<access_bridge::UserEvent>::with_user_event().build()?;
+        let mut event_loop = take_event_loop()?;
         event_loop.set_control_flow(ControlFlow::Wait);
         let mut shell = self.shell(app);
+        shell.pumped = true;
         shell.proxy = Some(event_loop.create_proxy());
         shell.app.setup(Waker(event_loop.create_proxy()));
         // A menu-bar item chosen by its ⌘-shortcut is the whole of the
@@ -494,14 +500,44 @@ impl Launcher {
         // dictation: no winit event carries it.
         #[cfg(target_os = "macos")]
         macos_text_input::set_waker(Waker(event_loop.create_proxy()));
-        // First pump delivers `resumed`, creating the window + renderer.
+        // First pump delivers `resumed`, creating the window + renderer —
+        // or, on a loop taken back from an earlier runner, `about_to_wait`
+        // does, since winit's init events came and went with the first.
         let alive = pump_once(&mut event_loop, &mut shell);
-        Ok(PumpRunner {
-            event_loop,
+        let mut runner = PumpRunner {
+            event_loop: Some(event_loop),
             shell,
             alive,
-        })
+        };
+        if !alive {
+            runner.retire();
+        }
+        Ok(runner)
     }
+}
+
+thread_local! {
+    /// The process's one event loop, parked between runners. winit refuses
+    /// to build a second (`EventLoopError::RecreationAttempt`, a static
+    /// flag it never clears), so a host that opens a window, closes it
+    /// and opens another — a smoke test running two configurations in
+    /// sequence, an app whose second launch is in-process — needs the
+    /// first runner to hand the loop back rather than drop it. The pump
+    /// path never calls winit's `exit()` for the same reason: an exited
+    /// loop answers every later pump with `Exit` and nothing public clears
+    /// that; the runner ends itself on `exit_requested` instead, and the
+    /// loop stays live for the next shell (backlog F58).
+    static PARKED_LOOP: std::cell::RefCell<Option<EventLoop<access_bridge::UserEvent>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// The parked loop if an earlier runner left one, else a new one — which
+/// winit allows once per process.
+fn take_event_loop() -> Result<EventLoop<access_bridge::UserEvent>, winit::error::EventLoopError> {
+    if let Some(parked) = PARKED_LOOP.with(|p| p.borrow_mut().take()) {
+        return Ok(parked);
+    }
+    EventLoop::<access_bridge::UserEvent>::with_user_event().build()
 }
 
 /// Whether this input is one whose own visible effect is finished, so the
@@ -597,20 +633,51 @@ fn pump_once<A: App>(
 /// (input mapping, IME, clipboard, chrome, caret blink), but the host calls
 /// [`pump`](Self::pump) on its own cadence instead of parking in `run_app`.
 pub struct PumpRunner<A: App> {
-    event_loop: EventLoop<access_bridge::UserEvent>,
+    /// `None` once the runner has retired: the loop is parked for the next
+    /// runner on this thread (see `PARKED_LOOP`).
+    event_loop: Option<EventLoop<access_bridge::UserEvent>>,
     shell: Shell<A>,
     alive: bool,
 }
 
 impl<A: App> PumpRunner<A> {
     /// Processes all pending OS events without blocking. Returns false once
-    /// the main window has closed (further pumps are no-ops).
+    /// the main window has closed — and from that pump on the windows are
+    /// gone and the loop is parked for the next runner; further pumps are
+    /// no-ops.
     pub fn pump(&mut self) -> bool {
-        if !self.alive {
+        let Some(event_loop) = &mut self.event_loop else {
             return false;
+        };
+        self.alive = pump_once(event_loop, &mut self.shell);
+        if !self.alive {
+            self.retire();
         }
-        self.alive = pump_once(&mut self.event_loop, &mut self.shell);
         self.alive
+    }
+
+    /// The end of this runner: every window closed (dropping the panes
+    /// is what closes them — the pump path never asks winit to exit) and
+    /// the loop handed back for the next `Launcher::open` on the thread.
+    fn retire(&mut self) {
+        self.alive = false;
+        // The main core outlives its window, as it predated it: a host
+        // still reads events, warnings and the tree off a runner that
+        // has ended (`core_mut`), and the Node driver does so for the
+        // pump that returned false.
+        let mut panes = std::mem::take(&mut self.shell.panes);
+        for pane in &panes {
+            // The facts the platform's text input reads are keyed by the
+            // view's address, which the next window's view may get.
+            #[cfg(target_os = "macos")]
+            macos_text_input::detach(&pane.window);
+        }
+        if !panes.is_empty() {
+            self.shell.main_core = Some(panes.remove(0).core);
+        }
+        if let Some(event_loop) = self.event_loop.take() {
+            PARKED_LOOP.with(|p| *p.borrow_mut() = Some(event_loop));
+        }
     }
 
     /// `pump`, but parked until an OS event, a [`Waker::wake`] or
@@ -619,17 +686,17 @@ impl<A: App> PumpRunner<A> {
     /// Returns false once the main window has closed.
     pub fn pump_until(&mut self, deadline: std::time::Instant) -> bool {
         use winit::platform::pump_events::{EventLoopExtPumpEvents, PumpStatus};
-        if !self.alive {
+        let Some(event_loop) = &mut self.event_loop else {
             return false;
-        }
+        };
         let timeout = deadline.saturating_duration_since(std::time::Instant::now());
-        self.alive = match self
-            .event_loop
-            .pump_app_events(Some(timeout), &mut self.shell)
-        {
+        self.alive = match event_loop.pump_app_events(Some(timeout), &mut self.shell) {
             PumpStatus::Continue => !self.shell.exit_requested,
             PumpStatus::Exit(_) => false,
         };
+        if !self.alive {
+            self.retire();
+        }
         self.alive
     }
 
@@ -654,7 +721,16 @@ impl<A: App> PumpRunner<A> {
     /// A [`Waker`] for this loop, to clone into the threads the host's
     /// data arrives on.
     pub fn waker(&self) -> Waker {
-        Waker(self.event_loop.create_proxy())
+        match &self.event_loop {
+            Some(event_loop) => Waker(event_loop.create_proxy()),
+            // Retired: the proxy the shell kept still names the loop.
+            None => Waker(
+                self.shell
+                    .proxy
+                    .clone()
+                    .expect("a pump runner keeps its proxy"),
+            ),
+        }
     }
 
     pub fn app_mut(&mut self) -> &mut A {
@@ -739,7 +815,18 @@ impl<A: App> PumpRunner<A> {
     pub fn request_exit(&mut self) {
         self.shell.exit_requested = true;
     }
+}
 
+impl<A: App> Drop for PumpRunner<A> {
+    /// A runner dropped while alive — a host that let go of it without
+    /// pumping to the end — parks the loop too, so the next `open` on the
+    /// thread is not refused for its sake.
+    fn drop(&mut self) {
+        self.retire();
+    }
+}
+
+impl<A: App> PumpRunner<A> {
     /// Hands the core's queued audio commands to the device now, rather
     /// than at the next pump — for hosts that call `Core::play` between
     /// pumps and want the sound to start at once.
@@ -944,6 +1031,14 @@ struct Shell<A: App> {
     /// Set by `WindowCommand::Close` on the main window; honored at the end
     /// of the event.
     exit_requested: bool,
+    /// Driven by a `PumpRunner` rather than `run_app`: the main window's
+    /// close ends the runner (`exit_requested`) instead of exiting winit's
+    /// loop, which the next runner on this thread reuses (backlog F58).
+    pumped: bool,
+    /// Whether `resumed` has opened the main window — once per shell, so a
+    /// reused loop that delivers no `resumed` opens it from `about_to_wait`
+    /// and a main window the user closed is not reopened from there.
+    opened: bool,
     /// Which pane the primary button is down in, if any. ADR 0009 arms a
     /// popup against it: a non-activating popup that opens while this is
     /// set joins that press, which is the observable form of "the drag
@@ -1009,6 +1104,16 @@ impl<A: App> Shell<A> {
         match self.panes.first() {
             Some(p) => p.size(),
             None => (Size::new(self.size.0 as f32, self.size.1 as f32), 1.0),
+        }
+    }
+
+    /// The main window is done: `run_app`'s loop exits; a pumped loop is
+    /// left running for the next runner, and the runner ends itself on
+    /// the flag (see `PARKED_LOOP`).
+    fn exit_main(&mut self, event_loop: &ActiveEventLoop) {
+        self.exit_requested = true;
+        if !self.pumped {
+            event_loop.exit();
         }
     }
 
@@ -1344,9 +1449,10 @@ enum AppliedBar {
 
 impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if !self.panes.is_empty() {
+        if !self.panes.is_empty() || self.opened {
             return;
         }
+        self.opened = true;
         // KUI_WINDOW=WxH overrides the initial size (useful for testing).
         let size = std::env::var("KUI_WINDOW")
             .ok()
@@ -1422,7 +1528,7 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
         match event {
             WindowEvent::CloseRequested => {
                 if self.panes[i].id == WindowId::MAIN {
-                    event_loop.exit();
+                    self.exit_main(event_loop);
                 } else {
                     let id = self.panes[i].id;
                     self.close_pane(event_loop, id);
@@ -1767,7 +1873,7 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
             _ => {}
         }
         if self.exit_requested {
-            event_loop.exit();
+            self.exit_main(event_loop);
         }
     }
 
@@ -1816,6 +1922,12 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
     /// asks for the next frame right away (vsync paces it). While a sound
     /// plays, the loop wakes every `AUDIO_POLL` to notice it finishing.
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        // A loop taken back from an earlier runner delivered its init
+        // events — `resumed` among them — to that runner's shell; this one
+        // opens its window from the first turn it gets instead.
+        if self.pumped && !self.opened && !self.exit_requested {
+            self.resumed(event_loop);
+        }
         // The platform's menu comes and goes between turns of the loop, so
         // this is where its answer is collected. The menu bar is handed
         // over and read back from the same place, for the same reason.

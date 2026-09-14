@@ -53,6 +53,12 @@ export type KeyMsg<T = AppMsg> = {
   kind: 'key';
   phase: 'down' | 'up';
   code: string;
+  /** The US-QWERTY key at that *position*, spelled as `code` is — bind
+   *  it when you want the finger rather than the label (WASD stays a
+   *  square on every layout). A shifted letter arrives as the upper-case
+   *  letter in `code` with `shift` set, as the OS spells it, and as the
+   *  lower-case one here. */
+  physical: string;
   shift: boolean;
   ctrl: boolean;
   alt: boolean;
@@ -171,6 +177,22 @@ export type LayoutMsg<T = AppMsg> = {
   w: number;
   h: number;
   parent: { x: number; y: number; w: number; h: number };
+  /** Physical px per logical px at the node — `w × scale` by `h × scale`
+   *  is how many pixels to render for it before `updateImage`. */
+  scale: number;
+  tag?: T;
+};
+
+/** A press that deepened past the second stage of a Force Touch trackpad,
+ *  on an `onForceClick` node, at the logical viewport point it happened
+ *  at. Routed as a secondary press is — no focus moved, no click — and the
+ *  ordinary click the press is still producing arrives afterwards. Text
+ *  needs none of this: over an `edit` or a `selectable` scope the core
+ *  selects the word and asks the host for its Look Up panel instead. */
+export type ForceClickMsg<T = AppMsg> = {
+  kind: 'forceclick';
+  x: number;
+  y: number;
   tag?: T;
 };
 
@@ -339,6 +361,7 @@ export type CoreMsg =
   | SelectionRangeMsg
   | HoverMsg
   | LayoutMsg
+  | ForceClickMsg
   | DismissMsg
   | ResizeMsg
   | SystemMsg
@@ -905,6 +928,11 @@ export interface UiEvent<A = AppMsg | CoreMsg> {
   /** Node key as a hex string; pass back to editText()/isFocused()/... */
   key: string;
   payload: A;
+  /** The slot whose fill drew the node, as its key (`keyOf` of the slot's
+   *  full name answers the same), or null for a node your app drew. One
+   *  extension fills many slots, so `origin` cannot say which; this is
+   *  what routes an event by the slot it came from. */
+  slot: string | null;
 }
 
 /** Window inner size in logical px plus the device pixel ratio. */
@@ -1746,6 +1774,15 @@ export declare class Ctx {
    * with mods `{shift, ctrl, alt, super}`, `repeat` for an OS
    * auto-repeat, and `physical` for the US-QWERTY key at that position.
    * `release()` is the other end of the same key.
+   *
+   * Spell it the way the OS does, because nothing here re-spells it: a
+   * shifted letter is the upper-case letter with `shift` set —
+   * `press("Z", { shift: true, super: true })` is ⇧⌘Z — and
+   * `press("z", { shift: true })` is a chord no keyboard produces, which
+   * a handler switching on `"z"` hears headless and never from a user
+   * (backlog F60: an app's redo was green for six releases over it).
+   * Fold a one-character `code` to lower case under a chord if a keymap
+   * binds letters.
    */
   press(code: string, mods?: KeySinkMods, repeat?: boolean, physical?: string): void
   /**
@@ -3674,9 +3711,11 @@ export interface LoopConfig<M, A, S, E = never> {
    *  window opens on the first frame that lists it and closes on the first
    *  that does not; the `WindowMsg` says when. Leave it out for one window. */
   windows?: (model: M) => WindowDecl[];
-  /** A clock: every `every` ms the loop feeds `msg` (or `msg(now)`, with the
-   *  clock's own reading — `Date.now()` under a window, the loop's own
-   *  milliseconds headless) to `update`. Ticks are frequent, so unlike UI
+  /** A clock: every `every` ms the loop feeds `msg` (or `msg(now, every)`,
+   *  with the clock's own reading — `Date.now()` under a window, the loop's
+   *  own milliseconds headless — and the cadence this tick fired on, so a
+   *  model can tell a 16 ms reading from a 1000 ms one and know how stale
+   *  `now` may be by the next press) to `update`. Ticks are frequent, so unlike UI
    *  events they re-render only when `update` returns a new model — a
    *  countdown that returns undefined until the displayed second changes
    *  costs nothing in between. Read backwards, that is the trap: a tick
@@ -3700,7 +3739,7 @@ export interface LoopConfig<M, A, S, E = never> {
    *  its start: a cadence that shortens after a long quiet owes one tick
    *  `every` from now, not a burst. `0` or less means no tick, as the
    *  number does. */
-  tick?: { every: number | ((model: M) => number); msg: A | ((now: number) => A) };
+  tick?: { every: number | ((model: M) => number); msg: A | ((now: number, every: number) => A) };
 }
 
 /** `runWindowed`'s config: `update` also gets the window. */
@@ -3726,8 +3765,13 @@ export declare function runWindowed<M, A = AppMsg | CoreMsg, E = never>(
      *  silence pays it. Floored at `pumpMs`. */
     idlePumpMs?: number;
     /** How long a window must have been quiet before the gap starts
-     *  growing, in ms (default 500). Anything at all — an event, a tick, a
-     *  frame, a transition — resets both the gap and this. */
+     *  growing, in ms (default 500). Anything the user does — an event, a
+     *  transition, a `dispatch` from outside the loop, an OS event the app
+     *  never sees — resets both the gap and this. A tick does not, nor the
+     *  frame it draws: the loop's own clock says nothing about whether
+     *  anyone is there, and the next tick is a deadline the pump sleeps to
+     *  regardless, so a stopped app drawing a clock digit once a second
+     *  idles between digits. */
     quietMs?: number;
     /** The loop's time source, in milliseconds. A window fills it with
      *  `Date.now`: ticks fire off it and `tick.msg(now)` reads it (the

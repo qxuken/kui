@@ -439,6 +439,7 @@ impl Core {
                 ("role", Value::str(item.role.name())),
                 ("item", payload),
             ]),
+            slot: None,
         });
     }
 }
