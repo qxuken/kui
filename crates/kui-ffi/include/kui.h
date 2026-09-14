@@ -2772,7 +2772,7 @@ void kui_value_free(KuiValue *v);
 
 /* -- Windowed runner (winit + wgpu), blocks until the window closes ------ */
 /* These two are the library's `runner` feature, on by default and the only
- * thing in it. They are also the only two of the 173 entry points that need
+ * thing in it. They are also the only two entry points that need
  * the GUI runtime - winit, wgpu, kira, accesskit - and it is most of the
  * library's size: the release cdylib is 12.3 MB with them and 5.1 MB
  * without (x86_64-pc-windows-msvc). A host that already has a window and

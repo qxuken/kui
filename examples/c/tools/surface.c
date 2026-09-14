@@ -1,8 +1,12 @@
-/* The header walk: every prototype in kui.h called once, and what comes
- * back checked — a self-test of the C surface, not an example, kept
- * beside the examples because it is the one program that links against
- * the real header (the ABI asserts the cbuild tool compiles cover the
- * structs; this covers the functions).
+/* The header walk: every prototype in kui.h called once — here, or in one
+ * of the C programs beside this one (the runner and the extension
+ * contract are theirs: counter.c, host.c, panel.c, conformance.c) — and
+ * what comes back checked. A self-test of the C surface, not an example,
+ * kept beside the examples because it is the one program that links
+ * against the real header (the ABI asserts the cbuild tool compiles cover
+ * the structs; this covers the functions). kui-ffi's
+ * `every_entry_point_is_called` holds the claim: a prototype no C program
+ * calls is a red test there (backlog AR46).
  *
  *   cargo run -p kui-devtools --bin cbuild -- --run   # what CI runs; or
  *   ./target/debug/surface          # exit 0 on a clean walk
@@ -28,6 +32,7 @@ typedef struct Keys {
     uint64_t sound;    /* in: a registered sound handle */
     bool claim_focus;  /* in: declare the editor focused this frame */
     uint64_t card, slider, sink, editor, input, drag, child; /* out: node keys */
+    uint64_t hitline, region; /* out: the selectable row, the focus region */
 } Keys;
 
 static void surface_view(void *user, KuiCtx *ui) {
@@ -164,12 +169,12 @@ static void surface_view(void *user, KuiCtx *ui) {
 
         /* A line of text runs a custom editor would draw, for the two text
          * queries: the row's key answers for every run inside it. */
-        KuiSpec line = {.dir = KUI_ROW};
+        KuiSpec line = {.dir = KUI_ROW, .selectable = 1};
         /* `features` was appended to KuiTextStyle the compatible way; a
          * zeroed one is the font's defaults, this one turns ligatures off. */
         KuiTextStyle hit_mono = {.size = 16, .family = KUI_FONT_MONO,
                                  .features = KUI_STR("liga=0 calt=0")};
-        kui_open_keyed(ui, KUI_STR("hitline"), &line, NULL);
+        k->hitline = kui_open_keyed(ui, KUI_STR("hitline"), &line, NULL);
         kui_text(ui, KUI_STR("let "), &hit_mono);
         kui_text(ui, KUI_STR("value"), &hit_mono);
         kui_text(ui, KUI_STR(" = 1;"), &hit_mono);
@@ -190,6 +195,16 @@ static void surface_view(void *user, KuiCtx *ui) {
         KuiSpec term = {0};
         kui_cells(ui, KUI_STR("term"), 2, 6, screen, 12, &cell_style, &term, NULL, NULL, NULL,
                   1, 2, KUI_CELL_CURSOR_BLOCK, 0x6a8bffff, 0);
+
+        /* A focus region (ADR 0022): a ring of its own, entered by name. */
+        KuiSpec region = {.dir = KUI_ROW, .focus_region = 1};
+        k->region = kui_open_keyed(ui, KUI_STR("dock"), &region, NULL);
+        KuiSpec stop = {.width = {KUI_FIXED, 20}, .height = {KUI_FIXED, 20},
+                        .bg = 0x2a2d3aff, .focusable = 1,
+                        .role = KUI_ROLE_BUTTON, .label = KUI_STR("dock button")};
+        kui_open_keyed(ui, KUI_STR("dock-button"), &stop, NULL);
+        kui_close(ui);
+        kui_close(ui);
 
         kui_latency_graph(ui);
         kui_latency_hud(ui, KUI_END, KUI_START);
@@ -700,6 +715,283 @@ static int surface(void) {
             if (kind && kui_value_as_str(kind, &s) && has(s, "menu")) menus_heard++;
         }
         check(menus_heard == 1, "and the app hears one menu event");
+    }
+
+    /* -- The rest of the header, so that the walk is what it says it is
+     * (backlog AR46): every prototype called once here or in one of the C
+     * programs beside this one, held by
+     * kui-ffi's `every_entry_point_is_called`. Grouped as the header is. */
+
+    /* Values: the list half, and the readers the counter never needs. */
+    {
+        KuiValue *list = kui_value_list();
+        kui_value_list_push(list, kui_value_bool(true));
+        kui_value_list_push(list, kui_value_float(2.5));
+        kui_value_list_push(list, kui_value_null());
+        check(kui_value_len(list) == 3, "kui_value_len counts a list");
+        bool b = false;
+        double f = 0;
+        check(kui_value_as_bool(kui_value_at(list, 0), &b) && b, "kui_value_at / as_bool");
+        check(kui_value_as_float(kui_value_at(list, 1), &f) && f == 2.5, "kui_value_as_float");
+        check(kui_value_is_null(kui_value_at(list, 2)) && kui_value_is_null(kui_value_at(list, 3)),
+              "an explicit null and a missing entry read the same");
+        check(!kui_value_as_bool(kui_value_at(list, 1), &b), "the readers do not coerce");
+        KuiValue *map = kui_value_map();
+        kui_value_map_set(map, KUI_STR("k"), kui_value_int(1));
+        KuiStr key = {0};
+        int64_t one = 0;
+        check(kui_value_entry(map, 0, &key) && has(key, "k")
+                  && kui_value_as_int(kui_value_entry(map, 0, NULL), &one) && one == 1,
+              "kui_value_entry walks a map whose keys you do not know");
+        check(kui_value_entry(map, 1, &key) == NULL && kui_value_len(kui_value_null()) == 0,
+              "past the end is NULL, and a scalar has no entries");
+        kui_value_free(list);
+        kui_value_free(map);
+    }
+
+    /* The theme's two setters and the metrics: pin, read, restore. */
+    {
+        KuiTheme theme = KUI_THEME_INIT;
+        check(kui_theme(ui, &theme), "kui_theme");
+        kui_theme_set_accent(ui, 0xff8800ff);
+        KuiTheme accented = KUI_THEME_INIT;
+        check(kui_theme(ui, &accented) && accented.accent == 0xff8800ff, "kui_theme_set_accent");
+        theme.bg = 0x102030ff;
+        kui_theme_set(ui, &theme);
+        KuiTheme pinned = KUI_THEME_INIT;
+        check(kui_theme(ui, &pinned) && pinned.bg == 0x102030ff, "kui_theme_set pins the palette");
+        kui_theme_set(ui, NULL); /* back to deriving */
+        KuiMetrics metrics = KUI_METRICS_INIT;
+        check(kui_metrics(ui, &metrics) && metrics.control_text > 0, "kui_metrics");
+        metrics.control_text = 11;
+        kui_metrics_set(ui, &metrics);
+        KuiMetrics compact = KUI_METRICS_INIT;
+        check(kui_metrics(ui, &compact) && compact.control_text == 11, "kui_metrics_set");
+        kui_metrics_set(ui, NULL);
+    }
+
+    /* The text cache's budget and its reading; the font families. */
+    kui_set_text_cache_budget(ui, 4 << 20);
+    check(kui_text_cache_bytes(ui) > 0, "kui_text_cache_bytes: the frames above shaped text");
+    {
+        KuiStr families[4];
+        size_t nf = kui_font_families(ui, families, 4);
+        check(nf > 0 && families[0].len > 0, "kui_font_families lists the stock set");
+    }
+
+    /* The image's pixels read back, and a fragment's whole module. */
+    {
+        uint32_t w = 0, h = 0;
+        const uint8_t *px = NULL;
+        check(kui_image_pixels(ui, k.image, &w, &h, &px) && w == 2 && h == 2 && px
+                  && px[0] == 255 && px[4 + 1] == 255,
+              "kui_image_pixels reads the RGBA back");
+        uint64_t frag = kui_fragment_add(ui, KUI_STR(
+            "fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32> {\n"
+            "    return params[0];\n}\n"));
+        check(frag != 0, "kui_fragment_add compiles a one-line fragment");
+        KuiStr wgsl = {0};
+        check(kui_fragment_source(ui, frag, &wgsl) && has(wgsl, "params[0]"),
+              "kui_fragment_source is the module around it");
+        float params[4] = {1, 0, 0, 1};
+        KuiSpec fspec = {.width = {KUI_FIXED, 20}, .height = {KUI_FIXED, 20}};
+        kui_frame_begin(ui, 320, 240, 1);
+        kui_fragment_open_with(ui, KUI_STR("painted"), frag, 0, params, 4, &fspec);
+        kui_text(ui, KUI_STR("over it"), NULL);
+        kui_close(ui);
+        kui_frame_finish(ui);
+        KuiDrawData fdd = KUI_DRAW_DATA_INIT;
+        check(kui_draw_data(ui, &fdd) && fdd.fragment_count == 1, "kui_fragment_open_with drew one");
+        kui_fragment_remove(ui, frag);
+        check(!kui_fragment_source(ui, frag, &wgsl), "kui_fragment_remove: the handle is dead");
+    }
+
+    /* The assistive fact, and the cursor the last hover derived. */
+    kui_env_set_assistive(ui, KUI_ASSISTIVE_LISTENING);
+    kui_set_time(ui, 0.3);
+    kui_frame_begin(ui, 800, 600, 2.0f);
+    surface_view(&k, ui);
+    kui_frame_finish(ui);
+    check(kui_cursor_shape(ui) != 0, "kui_cursor_shape names a cursor once a frame has hovered");
+
+    /* The caret clock a host runs itself. */
+    kui_focus(ui, k.editor);
+    check(kui_has_caret(ui) && kui_caret_visible(ui), "a focused editor has a caret, shown");
+    uint64_t stamp = kui_caret_stamp(ui);
+    kui_set_caret_visible(ui, false);
+    check(!kui_caret_visible(ui), "kui_set_caret_visible parks it");
+    kui_set_caret_visible(ui, true);
+    kui_input_key(ui, KUI_KEY_LEFT, 0);
+    check(kui_caret_stamp(ui) != stamp, "kui_caret_stamp moves with the caret");
+    kui_edit_set_text_label(ui, KUI_STR("notes"), KUI_STR("by label"));
+    check(kui_edit_text(ui, k.editor, &text) && has(text, "by label"), "kui_edit_set_text_label");
+
+    /* Layout and scrolling read back by key; a reveal resolves at the frame. */
+    {
+        KuiLayoutRect rect = KUI_LAYOUT_RECT_INIT;
+        check(kui_layout_of(ui, k.card, &rect) && rect.w > 0 && rect.h > 0,
+              "kui_layout_of answers for the on_layout node");
+        check(!kui_layout_of(ui, k.sink, &rect), "and for no other");
+        KuiScrollGeometry geo = KUI_SCROLL_GEOMETRY_INIT;
+        check(kui_scroll_geometry(ui, k.card, &geo) && geo.h > 0, "kui_scroll_geometry on the card");
+        kui_set_scroll(ui, k.card, 0, 9999);
+        kui_reveal(ui, k.slider);
+        kui_frame_begin(ui, 800, 600, 2.0f);
+        surface_view(&k, ui);
+        kui_frame_finish(ui);
+        float sx = -1, sy = -1;
+        kui_scroll_offset(ui, k.card, &sx, &sy);
+        check(sx == 0 && sy >= 0, "kui_scroll_offset reads the clamped offset back");
+        kui_scroll_offset(ui, 12345, NULL, &sy);
+        check(sy == 0, "a node that never scrolled is 0");
+    }
+
+    /* Focus regions: entered by name, read back as the ring in effect. */
+    check(kui_region(ui) == 0, "the main ring to begin with");
+    kui_focus_region(ui, k.region);
+    kui_frame_begin(ui, 800, 600, 2.0f);
+    surface_view(&k, ui);
+    kui_frame_finish(ui);
+    check(kui_region(ui) == k.region, "kui_focus_region entered the dock's ring");
+    check(kui_focused(ui) == kui_key_of(ui, KUI_STR("dock-button")), "and landed on its stop");
+    kui_focus_region(ui, 0);
+    kui_frame_begin(ui, 800, 600, 2.0f);
+    surface_view(&k, ui);
+    kui_frame_finish(ui);
+    check(kui_region(ui) == 0, "and 0 is the main ring again");
+
+    /* Selection (ADR 0017): a scope selected whole, read three ways,
+     * copied, cleared; a grid's the same by lines and columns. */
+    {
+        check(kui_select_all_in(ui, k.hitline), "kui_select_all_in on the selectable row");
+        KuiStr sel = {0}, html = {0};
+        check(kui_selection_text(ui, &sel) && has(sel, "let value = 1;"), "kui_selection_text");
+        check(kui_selection_html(ui, &html) && html.len > 0, "kui_selection_html");
+        int64_t ai = 5, fi = 5;
+        size_t ab = 1, fb = 0;
+        check(kui_selection_ends(ui, &ai, &ab, &fi, &fb) && ai == -1 && fi == -1 && ab == 0 && fb > 0,
+              "kui_selection_ends: outside every virtual row, from the start to the end");
+        KuiStr copied = {0};
+        check(kui_request_copy(ui, &copied) == KUI_COPY_READY && has(copied, "value"),
+              "kui_request_copy is ready with the text");
+        check(!kui_answer_selection_range(ui, KUI_STR("late")), "nothing asked, so no answer taken");
+        check(kui_clear_selection(ui), "kui_clear_selection");
+        check(!kui_selection_text(ui, &sel), "and there is none");
+        uint64_t term = kui_key_of(ui, KUI_STR("term"));
+        check(kui_select_all_in(ui, term), "kui_select_all_in on the grid");
+        uint64_t node = 0, al = 9, fl = 0;
+        size_t ac = 9, fc = 0;
+        bool block = true;
+        check(kui_cell_selection(ui, &node, &al, &ac, &fl, &fc, &block) && node == term
+                  && al == 0 && ac == 0 && fl == 1 && fc == 6 && !block,
+              "kui_cell_selection: the whole screen, linewise");
+        check(kui_clear_selection(ui) && !kui_cell_selection(ui, NULL, NULL, NULL, NULL, NULL, NULL),
+              "cleared, a grid's selection reads false");
+    }
+
+    /* The clipboard the app owns, drained as menu actions. */
+    {
+        kui_set_lookup_available(ui, true);
+        kui_set_clipboard(ui, KUI_STR("plain"), KUI_STR("<b>plain</b>"));
+        kui_request_paste(ui);
+        KuiMenuAction act = KUI_MENU_ACTION_INIT;
+        check(kui_take_menu_action(ui, &act) && act.kind == KUI_MENU_ACTION_SET_CLIPBOARD
+                  && has(act.text, "plain") && has(act.html, "<b>"),
+              "kui_set_clipboard queues both flavours");
+        check(kui_take_menu_action(ui, &act) && act.kind == KUI_MENU_ACTION_PASTE,
+              "kui_request_paste queues the ask");
+        check(!kui_take_menu_action(ui, &act), "drained");
+    }
+
+    /* A context menu the host shows itself: opened over a node, read row
+     * by row, chosen, and one closed unchosen. */
+    {
+        kui_set_native_menus(ui, true);
+        kui_set_native_menu_bar(ui, true);
+        KuiMenuItem rows[] = {
+            {.label = KUI_STR("Rename"), .role = KUI_MENU_CUSTOM, .enabled = 1},
+            {.role = KUI_MENU_SEPARATOR},
+            {.role = KUI_MENU_COPY, .enabled = 1},
+        };
+        check(kui_open_menu(ui, k.card, 10, 20, rows, 3), "kui_open_menu");
+        uint64_t target = 0;
+        float mx = 0, my = 0;
+        check(kui_menu_item_count(ui, &target, &mx, &my) == 3 && target == k.card && mx == 10 && my == 20,
+              "kui_menu_item_count: the rows, the node and the point");
+        KuiStr label = {0}, accel = {0};
+        uint32_t role = 99, flags = 0;
+        check(kui_menu_item(ui, 0, &label, &accel, &role, &flags) && has(label, "Rename")
+                  && role == KUI_MENU_CUSTOM && (flags & KUI_MENU_ITEM_ENABLED),
+              "kui_menu_item reads a row back");
+        check(kui_menu_item(ui, 2, &label, &accel, &role, NULL) && role == KUI_MENU_COPY && label.len > 0,
+              "a standard role carries its own label");
+        check(!kui_menu_item(ui, 3, NULL, NULL, NULL, NULL), "past the end is false");
+        check(kui_activate_menu_item(ui, 0), "kui_activate_menu_item chooses the row");
+        check(kui_menu_item_count(ui, NULL, NULL, NULL) == 0, "which closed the menu");
+        KuiEvent mev = KUI_EVENT_INIT;
+        int chosen = 0;
+        while (kui_poll_event(ui, &mev)) {
+            const KuiValue *kind = mev.payload ? kui_value_get(mev.payload, KUI_STR("kind")) : NULL;
+            KuiStr ks = {0};
+            if (kind && kui_value_as_str(kind, &ks) && has(ks, "menu") && mev.key == k.card) chosen++;
+        }
+        check(chosen == 1, "and the app heard it on the node");
+        check(kui_open_menu(ui, k.card, 0, 0, rows, 3) && kui_close_menu(ui), "kui_close_menu");
+        check(!kui_close_menu(ui), "false when nothing was open");
+        check(!kui_open_menu(ui, 0, 0, 0, rows, 3), "a key of 0 opens nothing");
+        kui_set_native_menus(ui, false);
+        kui_set_native_menu_bar(ui, false);
+    }
+
+    /* The devtools doors (ADR 0024): the panel, its dock, its theme and
+     * legend, and the node snapshot a tree view reads. */
+    {
+        check(!kui_devtools(ui), "the panel is off until asked");
+        kui_set_devtools(ui, true);
+        check(kui_devtools(ui), "kui_set_devtools");
+        check(kui_set_devtools_dock(ui, KUI_STR("left")), "kui_set_devtools_dock");
+        check(!kui_set_devtools_dock(ui, KUI_STR("sideways")), "a dock word this build lacks is false");
+        KuiStr dock = {0};
+        check(kui_devtools_dock(ui, &dock) && has(dock, "left"), "kui_devtools_dock reads it back");
+        check(kui_set_devtools_theme(ui, KUI_STR("dark"), 0x3b5bd4ff), "kui_set_devtools_theme");
+        check(!kui_set_devtools_theme(ui, KUI_STR("blue"), 0), "a base that is not one is false");
+        KuiStr keys[] = {KUI_STR("Space")};
+        KuiStr what[] = {KUI_STR("play")};
+        kui_set_devtools_legend(ui, keys, what, 1);
+        kui_set_inspect(ui, true);
+        kui_frame_begin(ui, 800, 600, 2.0f);
+        surface_view(&k, ui);
+        kui_frame_finish(ui);
+        const KuiValue *nodes_list = kui_nodes(ui);
+        check(nodes_list && kui_value_len(nodes_list) > 1, "kui_nodes: the frame's nodes, as data");
+        const KuiValue *first_node = kui_value_at(nodes_list, 0);
+        check(first_node && kui_value_get(first_node, KUI_STR("key")) && kui_value_get(first_node, KUI_STR("kind")),
+              "each with a key and a kind");
+        kui_set_inspect(ui, false);
+        kui_set_devtools(ui, false);
+        check(!kui_devtools(ui), "and off again");
+        KuiWindowCommand cmd = KUI_WINDOW_COMMAND_INIT;
+        while (kui_take_window_command(ui, &cmd)) {}
+        KuiEvent dev = KUI_EVENT_INIT;
+        while (kui_poll_event(ui, &dev)) {}
+    }
+
+    /* A standalone context is nobody's slot. */
+    {
+        KuiStr name = {0};
+        check(!kui_slot_name(ui, &name) && !kui_slot_namespace(ui, &name),
+              "kui_slot_name / kui_slot_namespace are false outside an extension");
+    }
+
+    /* And none of that raised a diagnostic either. */
+    {
+        size_t late = kui_take_warnings(ui, warnings, sizeof warnings / sizeof warnings[0]);
+        for (size_t i = 0; i < late; i++) {
+            fprintf(stderr, "  warning: %.*s: %.*s\n",
+                    (int)warnings[i].code.len, (const char *)warnings[i].code.ptr,
+                    (int)warnings[i].message.len, (const char *)warnings[i].message.ptr);
+        }
+        check(late == 0, "the rest of the walk raises no diagnostics");
     }
 
     kui_image_remove(ui, k.image);

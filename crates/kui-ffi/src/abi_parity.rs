@@ -1051,14 +1051,12 @@ fn every_edit_key_has_one_c_constant() {
 /// here fails by name. The header's `kui_ext_*` are the plugin's exports,
 /// not the library's, and `kui_str_eq` is a static inline the header
 /// defines itself; neither is a symbol of this crate.
-#[test]
-fn every_entry_point_is_pinned() {
-    use std::collections::BTreeSet;
-    let (_, pinned) = asserts();
-    let pinned: BTreeSet<&str> = pinned.into_iter().collect();
-
+/// The functions `include/kui.h` declares, by name: every `kui_*` that
+/// opens a prototype, less the plugin's exports and the header's own
+/// static inline.
+fn header_declares() -> std::collections::BTreeSet<&'static str> {
     let header = include_str!("../include/kui.h");
-    let mut declared = BTreeSet::new();
+    let mut declared = std::collections::BTreeSet::new();
     for line in header.lines() {
         // A prototype: the first `kui_` word on a line that ends in `(`
         // territory and is not a comment. Multi-line prototypes name the
@@ -1089,6 +1087,15 @@ fn every_entry_point_is_pinned() {
         }
         declared.insert(name);
     }
+    declared
+}
+
+#[test]
+fn every_entry_point_is_pinned() {
+    use std::collections::BTreeSet;
+    let (_, pinned) = asserts();
+    let pinned: BTreeSet<&str> = pinned.into_iter().collect();
+    let declared = header_declares();
 
     let mut exported = BTreeSet::new();
     for src in [
@@ -1133,6 +1140,63 @@ fn every_entry_point_is_pinned() {
     assert_eq!(
         exported, declared,
         "the sources export and the header declares different functions"
+    );
+}
+
+/// `examples/c/tools/surface.c` opens with "every prototype in kui.h
+/// called once", and for a long while twenty-one were called by nothing
+/// in the tree (backlog AR46): the pin above holds a prototype's *types*
+/// to the Rust signature, and a door nobody calls can still decode its
+/// arguments wrong for a release without failing anything. This holds
+/// the walk's claim: every function the header declares is called by
+/// one of the C programs `cbuild` compiles and the C round runs —
+/// `surface.c` for nearly all of them, `counter.c` / `host.c` for the
+/// runner, `host.c` / `panel.c` for the extension contract,
+/// `conformance.c` for the corpus's elements. A call in a comment does
+/// not count; a prototype no program calls fails by name, and the fix is
+/// a call with something checked, not a line here — which is why there
+/// is no exempt list.
+#[test]
+fn every_entry_point_is_called() {
+    let programs = [
+        include_str!("../../../examples/c/common.h"),
+        include_str!("../../../examples/c/tools/surface.c"),
+        include_str!("../../../examples/c/tools/conformance.c"),
+        include_str!("../../../examples/c/apps/counter.c"),
+        include_str!("../../../examples/c/features/slots/host.c"),
+        include_str!("../../../examples/c/features/slots/panel.c"),
+    ];
+    let mut called = std::collections::BTreeSet::new();
+    for src in programs {
+        // Comments out first: a prototype a program only talks about is
+        // not one it calls.
+        let mut code = String::with_capacity(src.len());
+        let mut rest = src;
+        while let Some(open) = rest.find("/*") {
+            code.push_str(&rest[..open]);
+            let Some(close) = rest[open..].find("*/") else {
+                break;
+            };
+            rest = &rest[open + close + 2..];
+        }
+        code.push_str(rest);
+        for (i, _) in code.match_indices("kui_") {
+            let name: &str = code[i..]
+                .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                .next()
+                .unwrap();
+            if code[i + name.len()..].trim_start().starts_with('(') {
+                called.insert(name.to_string());
+            }
+        }
+    }
+    let uncalled: Vec<&str> = header_declares()
+        .into_iter()
+        .filter(|name| !called.contains(*name))
+        .collect();
+    assert!(
+        uncalled.is_empty(),
+        "no C program under examples/c calls these; add each to surface.c's walk with something checked: {uncalled:?}"
     );
 }
 

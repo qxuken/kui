@@ -49,7 +49,7 @@ pass on what a press made, Node's surface aimed at the window it is
 handed for, `<text>`'s rows closed, one token-miss policy, Cut's
 `changed`, one spec pipeline for every door, the focus stamp and the
 reader's gates — with the amendment on B1a whose condition that round
-met, and **B1a, AR40, AR49 and AR27 built the same day** (AR50, the
+met, and **B1a, AR40, AR49, AR27 and AR46 built the same day** (AR50, the
 [in] rule's unkept promise, filed from under AR27); C31, found
 the same day building the tokens (Node's corpus adapter disagreeing with
 the reference on one scene when run alone — **done the same evening**:
@@ -3288,7 +3288,39 @@ Edit(key))` then `pos + pad + caret/scale`.
 **Fix:** `Core::frame_no` into the two stores' `begin_frame`; one
 `find_label` under both callers; one `stock_caret_viewport_rect(key)`.
 
-### `.` AR46 — `surface.c` says every prototype is called once; twenty-one are called by nothing
+### `.` AR46 — `surface.c` says every prototype is called once; twenty-one are called by nothing — **done (2026-09-14)**
+
+**Built 2026-09-14, with the exempt list empty.** `abi_parity::
+every_entry_point_is_called` scans the six C sources under `examples/c`
+(comments stripped) for `kui_*(` and holds every prototype the header
+declares to a call in one of them — the programs `cbuild` compiles and
+the C round runs, so a call there is a call that ran. No exempt list,
+on purpose: the runner's two are `counter.c`'s and `host.c`'s, the
+extension contract `host.c`'s and `panel.c`'s, the corpus's elements
+`conformance.c`'s, and the sixty-two `surface.c` lacked — the
+twenty-two nothing in the tree called (twenty-one at filing, plus
+`kui_cell_selection` since) and forty a Rust test called and no C
+program did — are in the walk now, each with something checked: the
+list half of the values, the theme's two setters and the metrics
+round-trip, the text-cache budget and reading, the font families, the
+image's pixels back, a fragment added / its source read / opened as a
+parent / removed, the assistive fact, the cursor shape, the caret clock
+(`has_caret`, `caret_visible`, `set_caret_visible`, `caret_stamp`
+moving), `edit_set_text_label`, `layout_of` on the `on_layout` node and
+false on another, `scroll_geometry` / `set_scroll` / `scroll_offset` /
+`reveal`, a focus region entered and left (`focus_region` / `region`,
+the stop it landed on), a `selectable` row selected whole and read as
+text / html / ends / a ready copy, a late `answer_selection_range`
+refused, the grid's `cell_selection` linewise across the screen and
+cleared, the owned clipboard drained as two menu actions, a context
+menu the host shows itself (`open_menu`, `menu_item_count`,
+`menu_item`, `activate_menu_item` heard on the node, `close_menu`), the
+devtools doors (`set_devtools` / `devtools`, dock set / refused / read,
+theme set / refused, legend, `set_inspect` and `kui_nodes` as data),
+and `slot_name` / `slot_namespace` false on a standalone context; the
+walk drains its diagnostics at the end and holds them at none. The
+walk's opening comment says what is true now. Checked red on `HEAD`'s
+walk (sixty-two names).
 
 `examples/c/tools/surface.c:1-2`: "every prototype in kui.h called once".
 Of 202 `pub extern "C" fn kui_*`, 90 are absent from it, and these are
@@ -3556,7 +3588,7 @@ table with AR26, AR27 and AR40 beside it (**B1a done 2026-09-14** — the
 table, its four pins and the one-line rows; **AR40 done 2026-09-14**;
 **AR27 done 2026-09-14**, `KuiRunConfig` under ABI 16 and the
 context's core handed over through `Launcher::core`), AR46–AR48 for
-the tests, and
+the tests (**AR46 done 2026-09-14**, the walk complete and pinned), and
 AR49 first of all if the alpha.12 notes go out before the rest, since
 its first line is the CHANGELOG contradicting itself on the frame
 version (**AR49 done 2026-09-14**, the reused ids retired as `B1a` /

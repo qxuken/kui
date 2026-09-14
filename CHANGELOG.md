@@ -616,6 +616,19 @@ field reports).
 
 ### Fixed
 
+- **Every C prototype is called by a C program** (backlog AR46):
+  `surface.c` opened with "every prototype in kui.h called once" and
+  twenty-two were called by nothing in the tree — a door nobody calls
+  can decode its arguments wrong for a release without failing
+  anything. The sixty-two the walk lacked are in it now, each with
+  something checked (the values' list half, the theme and metrics
+  setters, the text cache, font families, image pixels, a fragment's
+  whole life, the caret clock, layout and scroll readers, a focus
+  region entered and left, a scope and a grid selected whole and read
+  back, the owned clipboard, a host-shown context menu, the devtools
+  doors, the node snapshot), and `abi_parity::every_entry_point_is_called`
+  holds every declared prototype to a call in one of the six C sources
+  `cbuild` compiles — no exempt list.
 - **The documents agree with the code, and a backlog id names one
   entry** (backlog AR49, from the second architecture review). Three
   ids headed two entries each — `B1`, `D1`, `D2` — and code cited both
