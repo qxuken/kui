@@ -49,7 +49,7 @@ pass on what a press made, Node's surface aimed at the window it is
 handed for, `<text>`'s rows closed, one token-miss policy, Cut's
 `changed`, one spec pipeline for every door, the focus stamp and the
 reader's gates — with the amendment on B1a whose condition that round
-met, and **B1a, AR40, AR49, AR27, AR46–AR48, AR31, AR34–AR39 and AR41–AR45 built the same day** (AR50, the
+met, and **B1a, AR40, AR49, AR27, AR46–AR48, AR29–AR31, AR34–AR39 and AR41–AR45 built the same day** (AR50, the
 [in] rule's unkept promise, filed from under AR27); C31, found
 the same day building the tokens (Node's corpus adapter disagreeing with
 the reference on one scene when run alone — **done the same evening**:
@@ -3029,7 +3029,17 @@ cannot select a label.
 moves `Selection.focus` through `scope_offset`, mirroring the editor's
 motions; or a sentence in ADR 0017 declining it.
 
-### `~` AR29 — The sink's caret and IME anchor read the focused node's subtree; keys read the enclosing sink
+### `~` AR29 — The sink's caret and IME anchor read the focused node's subtree; keys read the enclosing sink — **done (2026-09-14)**
+
+**Built 2026-09-14, as the fix line says.** `sink_caret_line` starts
+at the focused sink or the sink enclosing the focused node — the one
+`key_target` and `sink_event` route to — and takes its candidates from
+`lines_under` (a `role="none"` gutter's line is not one, a line's own
+subtree is not descended into), the *last* line declaring a caret
+being the caret, as `custom_editor` reads it. Test: focus on a button
+inside the editor keeps `has_caret`, the IME anchor and the stamp; two
+carets read as the last; the gutter's never counts; focus outside is
+none. Red on `HEAD`'s walk.
 
 `sink_caret_line` walks `(focus_index() .. subtree_end)` for the first
 `role="line"` with a caret (`runtime/emit.rs:1425-1440`), while
@@ -3045,7 +3055,22 @@ takes the *last* (`access.rs:1349`).
 **Fix:** start the walk at `enclosing_sink`-or-self and take the candidates
 from `lines_under`.
 
-### `.` AR30 — Three meanings of `line`, and a `byte` that counts text the access tree excludes
+### `.` AR30 — Three meanings of `line`, and a `byte` that counts text the access tree excludes — **done (2026-09-14)**
+
+**Built 2026-09-14, the three parts.** `TextHit.line` is the visual
+row within the node asked about — the hit's row placed among every row
+of every run the key covers by its top edge, so three inline runs are
+one row, two stacked are two, a wrapped run as many as it wrapped to —
+and its doc in the core and the three bindings says so, and says it is
+not the ordinal `line` node a pointer event's `line` names. A text's
+place records the depth of the nearest `role="none"` ancestor
+(`Ancestry`, from `text_ancestors`), and `answers_to` refuses a query
+from above it, so a gutter's text is not the line's for `text_hit` and
+`caret_rect` while it is still the gutter's own — `byte` now counts
+the characters the access tree's `offset` counts. A text more than
+`PLACE_ANCESTORS` levels under its `line` raises `text-beyond-line`
+(a new warning code, generated into the d.ts) naming the text and the
+row. Three tests in `text_hit.rs`.
 
 `TextHit.line` is the wrapped row *within one run's buffer*
 (`text.rs:645-660`, `visual_line`) while `byte` in the same struct spans
@@ -3770,7 +3795,10 @@ at a time, `scaled` leaves the titlebar, `nodes()` in viewport px,
 id; **AR41–AR45 done 2026-09-14** — the button from the palette, the
 enum lists pinned to their enums, `windows` as JSON under v12, the role
 interfaces generated and `Env` / `NodeInfo` pinned, one frame counter /
-label lookup / caret rect), and
+label lookup / caret rect; **AR29 and AR30 done 2026-09-14** — the
+caret follows the keys to the enclosing sink, `TextHit.line` is the
+visual row across the node's runs, a gutter is not its line's text,
+`text-beyond-line`), and
 AR49 first of all if the alpha.12 notes go out before the rest, since
 its first line is the CHANGELOG contradicting itself on the frame
 version (**AR49 done 2026-09-14**, the reused ids retired as `B1a` /

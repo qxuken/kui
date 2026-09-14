@@ -1154,7 +1154,11 @@ typedef struct KuiMenuAction {
 
 /* [out] Where a point landed in the text a keyed node drew (kui_text_hit):
  * a byte offset into that text - across the node's text runs in order, the
- * way the access tree reads a `line` - and the visual (wrapped) line. */
+ * way the access tree reads a `line`, a `role="none"` subtree skipped - and
+ * the visual row within that node, counted across every run the key covers
+ * by where the rows sit (a row of inline runs is one row, a wrapped run as
+ * many as it wrapped to; not the ordinal `line` node a pointer event's
+ * `line` names - backlog AR30). */
 typedef struct KuiTextHit {
     uint32_t size; /* = sizeof(KuiTextHit) in, bytes filled out */
     uint32_t line;

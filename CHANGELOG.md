@@ -632,6 +632,23 @@ field reports).
 
 ### Fixed
 
+- **The caret follows the keys** (backlog AR29): a custom editor's
+  caret — what arms the blink clock and anchors the IME — is the
+  enclosing sink's wherever focus sits inside it (a pane button, an AT
+  `Focus`, `setFocus`), the way keys and commits already went there; the
+  candidates are the editor's lines as the access tree reads them, a
+  gutter's line excluded, the last caret declared being the caret.
+- **`textHit().line` is the visual row of the node asked about**
+  (backlog AR30): counted across every run the key covers by where the
+  rows sit — a `line` row of inline runs is one row, a wrapped run as
+  many as it wrapped to — where it was the wrapped line within whichever
+  run's buffer took the hit; it is not the ordinal `line` node a pointer
+  event's `line` names, and the docs in every binding now say which is
+  which. A `role="none"` subtree under a `line` (a gutter's number) is
+  not the line's text for `textHit` and `caretRect`, as it is not for
+  the access tree, so `byte` counts the characters an access event's
+  `offset` counts. A text more than four levels below its `line` raises
+  `text-beyond-line` instead of answering byte 0 in silence.
 - **The enum lists are their enums** (backlog AR42): `Easing`, `Repeat`,
   `Live` and `FontFamily` carry `ALL`, `name()` and `from_index()`, the
   schema's name lists are pinned to them by a test, and an index a build

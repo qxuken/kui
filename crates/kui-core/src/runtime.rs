@@ -888,8 +888,13 @@ impl Core {
     }
 
     /// Where a point lands in the text node `key` drew: a byte offset into
-    /// its content and the visual line, or `None` for a key that is not a
-    /// text node or was not drawn (backlog C18). `point` is logical
+    /// its content and the visual row within that node — counted across
+    /// every run the key covers by where the rows sit, so a `line` row of
+    /// inline runs is one row and a wrapped run as many as it wrapped to
+    /// (backlog AR30); not the ordinal `line` node a pointer event names
+    /// — or `None` for a key that is not a text node or was not drawn
+    /// (backlog C18). A `role="none"` subtree under the key (a gutter) is
+    /// not its text, as the access tree reads it. `point` is logical
     /// viewport px — the `x`/`y` a click or drag event carries — so a
     /// custom editor turns the event into a caret position with one call
     /// instead of measuring prefixes or assuming a cell width. Answered

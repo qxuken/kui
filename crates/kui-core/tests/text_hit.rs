@@ -202,3 +202,129 @@ fn a_line_of_runs_answers_by_the_row_key() {
         Some(1)
     );
 }
+
+/// `TextHit.line` is the visual row within the node asked about (backlog
+/// AR30): two runs stacked are rows 0 and 1, three side by side are one
+/// row, and a wrapped run counts as many rows as it wrapped to — where it
+/// used to be the wrapped line within whichever run's buffer took the
+/// hit, so a two-run node answered `line: 0` for its second run.
+#[test]
+fn the_line_is_the_visual_row_across_the_nodes_runs() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let stacked = ui.with_keyed("stacked", NodeSpec::column(), |ui| {
+        ui.text("first", mono());
+        ui.text("second", mono());
+        // A row of three runs, then a run that wraps onto two rows.
+        ui.with(NodeSpec::row(), |ui| {
+            ui.text("a ", mono());
+            ui.text("b ", mono());
+            ui.text("c", mono());
+        });
+        ui.with(NodeSpec::row().width(Sizing::Fixed(60.0)), |ui| {
+            ui.text("wrapping text here", mono());
+        });
+    });
+    ui.finish();
+    let w = cell(&mut core);
+    let row = |core: &mut Core, y: f32| core.text_hit(stacked, Vec2::new(w, y)).map(|h| h.line);
+    assert_eq!(row(&mut core, LH * 0.5), Some(0), "first");
+    assert_eq!(row(&mut core, LH * 1.5), Some(1), "second");
+    assert_eq!(
+        row(&mut core, LH * 2.5),
+        Some(2),
+        "the row of three runs is one row"
+    );
+    assert_eq!(
+        core.text_hit(stacked, Vec2::new(3.0 * w, LH * 2.5))
+            .map(|h| h.line),
+        Some(2),
+        "and so is its third run"
+    );
+    assert_eq!(
+        row(&mut core, LH * 3.5),
+        Some(3),
+        "the wrapped run's first row"
+    );
+    assert_eq!(row(&mut core, LH * 4.5), Some(4), "and its second");
+}
+
+/// A `role="none"` subtree under a `line` — a gutter's number, a fold
+/// marker — is not the line's text (backlog AR30): the access tree skips
+/// it, and so does a hit or a caret asked by the line's key, so `byte`
+/// counts the same characters `offset` in an access event does.
+#[test]
+fn a_none_subtree_under_a_line_is_not_its_text() {
+    use kui_core::Role;
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let line = ui.with_keyed("line", NodeSpec::row().role(Role::Line), |ui| {
+        ui.with(NodeSpec::row().role(Role::None), |ui| {
+            ui.text("12 ", mono())
+        });
+        ui.text("let x", mono());
+    });
+    ui.finish();
+    let w = cell(&mut core);
+    // The gutter takes three cells; the line's text starts after it, and
+    // byte 0 is its first character, not the gutter's.
+    let start = core.caret_rect(line, 0).unwrap();
+    assert!((start.x - 3.0 * w).abs() < 0.75, "{}", start.x);
+    assert_eq!(
+        core.text_hit(line, Vec2::new(3.0 * w + 0.2 * w, LH * 0.5))
+            .map(|h| h.byte),
+        Some(0)
+    );
+    assert_eq!(
+        core.caret_rect(line, 5)
+            .map(|r| r.x)
+            .map(|x| (x - 8.0 * w).abs() < 0.75),
+        Some(true)
+    );
+    // The gutter's own key still answers for its text.
+    let gutter = line.index(0);
+    assert_eq!(
+        core.text_hit(gutter, Vec2::new(0.2 * w, LH * 0.5))
+            .map(|h| h.byte),
+        Some(0)
+    );
+}
+
+/// A text further below its `line` than a place remembers cannot be found
+/// from the row's key; the frame says so (backlog AR30) instead of
+/// answering byte 0 in silence.
+#[test]
+fn a_text_too_deep_under_its_line_is_a_named_diagnostic() {
+    use kui_core::Role;
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    ui.with_keyed("line", NodeSpec::row().role(Role::Line), |ui| {
+        ui.with(NodeSpec::row(), |ui| {
+            ui.with(NodeSpec::row(), |ui| {
+                ui.with(NodeSpec::row(), |ui| {
+                    ui.with(NodeSpec::row(), |ui| {
+                        ui.with(NodeSpec::row(), |ui| ui.text("deep", mono()));
+                    });
+                });
+            });
+        });
+    });
+    ui.finish();
+    let codes = kui_core::testing::codes(&core.take_warnings());
+    assert_eq!(codes, ["text-beyond-line"]);
+    // Four wrappers is within reach: no warning.
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    ui.with_keyed("line", NodeSpec::row().role(Role::Line), |ui| {
+        ui.with(NodeSpec::row(), |ui| {
+            ui.with(NodeSpec::row(), |ui| {
+                ui.with(NodeSpec::row(), |ui| ui.text("deep", mono()));
+            });
+        });
+    });
+    ui.finish();
+    assert!(core.take_warnings().is_empty());
+}

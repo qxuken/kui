@@ -221,6 +221,12 @@ warnings! {
     /// absent, which reads as "wrapping is broken"; see `LayoutSpec::wrap` for
     /// why a column cannot have it.
     pub const WRAP_IGNORED: &str = "wrap-ignored";
+    /// A text node sits more than four levels below the `line` row above
+    /// it, which is as far as a text's place remembers its ancestors — so
+    /// `textHit` / `caretRect` asked by that row's key cannot find the run,
+    /// and a press inside it reports `byte: 0`. Flatten the wrappers between
+    /// the row and its text, or ask by a nearer key.
+    pub const TEXT_BEYOND_LINE: &str = "text-beyond-line";
     /// One frame removed more nodes declaring `exit` than the exit store
     /// will hold (512, `depart::MAX_NODES`), so none of that frame's removal
     /// animated: every departing node of it vanished at once, as a node with
@@ -375,6 +381,19 @@ warnings! {
     /// Stop what the view no longer needs rather than releasing it, or
     /// release shorter sounds.
     pub const PLAYBACK_REFUSED: &str = "playback-refused";
+}
+
+/// The [`TEXT_BEYOND_LINE`] warning for one text node under `line`
+/// (backlog AR30). Keyed by the text's node.
+pub fn text_beyond_line(text: Key, line: Key, reach: usize) -> Warning {
+    Warning {
+        code: TEXT_BEYOND_LINE,
+        key: text,
+        message: format!(
+            "the text ({:016x}) is more than {reach} levels below its `line` row ({:016x}), further than a              place remembers, so a hit asked by the row's key answers byte 0; flatten the wrappers              between them, or ask by a nearer key",
+            text.0, line.0
+        ),
+    }
 }
 
 /// The [`UNKNOWN_SLOT`] warning for one extension and slot. Keyed by the

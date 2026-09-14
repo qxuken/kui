@@ -2684,8 +2684,13 @@ macro_rules! core_methods {
             }
 
             /// Where a point lands in the text a keyed node drew: a byte
-            /// offset into its text and the visual line, or null for a key
-            /// that drew no text. `x`/`y` are the logical viewport px a
+            /// offset into its text and the visual row within that node —
+            /// counted across every run the key covers, so a `line` row of
+            /// inline runs is one row and a wrapped run as many as it
+            /// wrapped to; not the ordinal `line` node a pointer event's
+            /// `line` names (backlog AR30) — or null for a key that drew no
+            /// text. A `role="none"` subtree under the key (a gutter) is
+            /// not its text, as the access tree reads it. `x`/`y` are the logical viewport px a
             /// `click` or `drag` event carries, so a custom editor turns the
             /// event into a caret position with one call — no prefix
             /// measuring, no cell-width arithmetic. A node holding several

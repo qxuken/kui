@@ -221,10 +221,10 @@ impl Core {
             NodeContent::Text(tid) => {
                 // The keys above it, nearest first, so a query by the
                 // `line` row (or a wrapper) finds the runs inside it.
-                let (ancestors, depth) = self.text_ancestors(i);
+                let ancestry = self.text_ancestors(i);
                 self.text.place(
                     self.tree.keys[i],
-                    &ancestors[..depth],
+                    &ancestry,
                     tid,
                     self.tree.pos[i],
                     self.scope_of(i),
@@ -469,16 +469,48 @@ impl Core {
     /// The keys above node `i`, nearest first, as many as a `TextPlace`
     /// remembers — what lets a query by a `line` row or a wrapper find
     /// the runs inside it.
-    fn text_ancestors(&self, i: usize) -> ([Key; 4], usize) {
-        let mut ancestors = [Key::ROOT; 4];
+    /// The keys above text node `i`, nearest first, as many as a place
+    /// remembers; how many there are; and the depth of the nearest
+    /// `role="none"` ancestor among them, which a query from above it
+    /// does not reach (backlog AR30). A `line` row further up than the
+    /// place can remember raises `text-beyond-line`, once per text.
+    fn text_ancestors(&mut self, i: usize) -> crate::text::Ancestry {
+        use crate::access::Role;
+        let mut ancestors = [Key::ROOT; crate::text::PLACE_ANCESTORS];
         let mut depth = 0;
+        let mut none_at = None;
         let mut p = self.tree.parent[i];
         while p != NIL && depth < ancestors.len() {
-            ancestors[depth] = self.tree.keys[p as usize];
+            let j = p as usize;
+            ancestors[depth] = self.tree.keys[j];
+            if none_at.is_none() && self.tree.specs[j].access().role == Some(Role::None) {
+                none_at = Some(depth);
+            }
             depth += 1;
-            p = self.tree.parent[p as usize];
+            p = self.tree.parent[j];
         }
-        (ancestors, depth)
+        // Past the reach: a `line` row still above is one the text cannot
+        // be found from, and the app should hear it.
+        if p != NIL && self.tree.any_line {
+            let mut q = p;
+            while q != NIL {
+                let j = q as usize;
+                if self.tree.specs[j].access().role == Some(Role::Line) {
+                    self.diag.raise(crate::diag::text_beyond_line(
+                        self.tree.keys[i],
+                        self.tree.keys[j],
+                        crate::text::PLACE_ANCESTORS,
+                    ));
+                    break;
+                }
+                q = self.tree.parent[j];
+            }
+        }
+        crate::text::Ancestry {
+            keys: ancestors,
+            depth,
+            none_at,
+        }
     }
 
     /// The frame's second half: the laid-out tree into the display list,
@@ -689,10 +721,10 @@ impl Core {
                     && let Some(scope) = self.scope_of(i)
                     && let NodeContent::Text(tid) = self.tree.content[i]
                 {
-                    let (anc, depth) = self.text_ancestors(i);
+                    let ancestry = self.text_ancestors(i);
                     self.text.place(
                         self.tree.keys[i],
-                        &anc[..depth],
+                        &ancestry,
                         tid,
                         self.tree.pos[i],
                         Some(scope),
@@ -1476,12 +1508,26 @@ impl Core {
         if !self.tree.any_line {
             return None;
         }
+        // The editor whose caret this is: the focused sink, or the sink
+        // enclosing a focused control inside it — the node keys and
+        // commits already go to (`key_target`, `sink_event`). Read from
+        // the focused node alone, focus on a pane button inside a custom
+        // editor un-armed the blink clock and lost the IME its anchor
+        // while the keys kept arriving (backlog AR29).
         let i = self.focus_index()?;
-        let end = self.tree.subtree_end(i);
-        let l = (i..end).find(|&l| {
-            let a = self.tree.specs[l].access();
-            a.role == Some(crate::access::Role::Line) && a.caret.is_some()
-        })?;
+        let i = if self.tree.specs[i].events().on_key.is_some() {
+            i
+        } else {
+            self.enclosing_sink(i)?
+        };
+        // The candidates are the editor's lines as the access tree reads
+        // them — `role="none"` subtrees (a gutter) skipped, a line's own
+        // subtree not descended into — and the *last* one declaring a
+        // caret is the caret, as `custom_editor` reads it.
+        let l = crate::access::lines_under(&self.tree, i)
+            .into_iter()
+            .rev()
+            .find(|&l| self.tree.specs[l].access().caret.is_some())?;
         Some((l, self.tree.specs[l].access().caret?))
     }
 

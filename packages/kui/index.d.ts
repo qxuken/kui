@@ -695,6 +695,12 @@ export type WarningCode =
    *  which reads as "wrapping is broken"; see `LayoutSpec::wrap` for why a
    *  column cannot have it. */
   | 'wrap-ignored'
+  /** A text node sits more than four levels below the `line` row above it,
+   *  which is as far as a text's place remembers its ancestors — so `textHit` /
+   *  `caretRect` asked by that row's key cannot find the run, and a press
+   *  inside it reports `byte: 0`. Flatten the wrappers between the row and its
+   *  text, or ask by a nearer key. */
+  | 'text-beyond-line'
   /** One frame removed more nodes declaring `exit` than the exit store will
    *  hold (512, `depart::MAX_NODES`), so none of that frame's removal animated:
    *  every departing node of it vanished at once, as a node with no `exit`
@@ -2337,8 +2343,13 @@ export declare class Ctx {
   layoutOf(key: string): { x: number, y: number, w: number, h: number } | null
   /**
    * Where a point lands in the text a keyed node drew: a byte
-   * offset into its text and the visual line, or null for a key
-   * that drew no text. `x`/`y` are the logical viewport px a
+   * offset into its text and the visual row within that node —
+   * counted across every run the key covers, so a `line` row of
+   * inline runs is one row and a wrapped run as many as it
+   * wrapped to; not the ordinal `line` node a pointer event's
+   * `line` names (backlog AR30) — or null for a key that drew no
+   * text. A `role="none"` subtree under the key (a gutter) is
+   * not its text, as the access tree reads it. `x`/`y` are the logical viewport px a
    * `click` or `drag` event carries, so a custom editor turns the
    * event into a caret position with one call — no prefix
    * measuring, no cell-width arithmetic. A node holding several
@@ -3255,8 +3266,13 @@ export declare class KuiWindow {
   layoutOf(key: string): { x: number, y: number, w: number, h: number } | null
   /**
    * Where a point lands in the text a keyed node drew: a byte
-   * offset into its text and the visual line, or null for a key
-   * that drew no text. `x`/`y` are the logical viewport px a
+   * offset into its text and the visual row within that node —
+   * counted across every run the key covers, so a `line` row of
+   * inline runs is one row and a wrapped run as many as it
+   * wrapped to; not the ordinal `line` node a pointer event's
+   * `line` names (backlog AR30) — or null for a key that drew no
+   * text. A `role="none"` subtree under the key (a gutter) is
+   * not its text, as the access tree reads it. `x`/`y` are the logical viewport px a
    * `click` or `drag` event carries, so a custom editor turns the
    * event into a caret position with one call — no prefix
    * measuring, no cell-width arithmetic. A node holding several

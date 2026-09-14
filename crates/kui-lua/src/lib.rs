@@ -712,8 +712,9 @@ fn env_table<'scope, 'env: 'scope>(
     // resize slices one frame late; declare a row or two extra at each end.
     // Where a point (the `x`, `y` a click or drag event carried) lands in
     // the text a keyed node drew: `{ byte, line }` — the byte offset into
-    // that text, across the node's runs in order, and the visual line — or
-    // nil for a key that drew no text. Answered from the frame that
+    // that text, across the node's runs in order (a `role="none"` subtree
+    // skipped), and the visual row within the node, counted across its
+    // runs (AR30) — or nil for a key that drew no text. Answered from the frame that
     // finished, which is the layout the pointer was over.
     t.set(
         "text_hit",

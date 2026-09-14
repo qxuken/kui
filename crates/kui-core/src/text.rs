@@ -588,8 +588,18 @@ fn chunk_ranges(content: &str) -> Vec<(usize, usize)> {
 
 /// How many enclosing keys a place remembers: a text run answers to its
 /// own key and to any of this many ancestors, which is a `line` row, a
-/// selection wrapper around a run, and two to spare.
-const PLACE_ANCESTORS: usize = 4;
+/// selection wrapper around a run, and two to spare. A text further than
+/// this below its `line` raises `text-beyond-line` (backlog AR30).
+pub(crate) const PLACE_ANCESTORS: usize = 4;
+
+/// The keys above a text node, nearest first, as many as a place
+/// remembers, and where among them a `role="none"` ancestor sits — what
+/// `Core::text_ancestors` gathers for [`TextSystem::place`].
+pub(crate) struct Ancestry {
+    pub(crate) keys: [Key; PLACE_ANCESTORS],
+    pub(crate) depth: usize,
+    pub(crate) none_at: Option<usize>,
+}
 
 /// Where a text node was drawn: what `Core::text_hit` and
 /// `Core::caret_rect` answer from (backlog C18). Recorded at emission, so
@@ -600,6 +610,12 @@ pub(crate) struct TextPlace {
     /// The keys above it, nearest first, as many as `depth` says.
     ancestors: [Key; PLACE_ANCESTORS],
     depth: u8,
+    /// The nearest ancestor (an index into `ancestors`) declaring
+    /// `role="none"`, or `u8::MAX` for none within reach: a query by a key
+    /// above it does not reach this run, the way the access tree skips a
+    /// gutter's text when it reads a `line` (backlog AR30); a query by the
+    /// gutter itself still does.
+    none_at: u8,
     cache_key: u64,
     /// The node's origin, logical viewport px.
     origin: Vec2,
@@ -619,7 +635,16 @@ pub(crate) struct TextPlace {
 
 impl TextPlace {
     fn answers_to(&self, key: Key) -> bool {
-        self.key == key || self.ancestors[..self.depth as usize].contains(&key)
+        if self.key == key {
+            return true;
+        }
+        // Found among the ancestors, and not through a `role="none"`
+        // subtree below the key: a gutter's text is not the line's, and
+        // is still the gutter's own.
+        self.ancestors[..self.depth as usize]
+            .iter()
+            .position(|k| *k == key)
+            .is_some_and(|d| d <= self.none_at as usize)
     }
 }
 
@@ -643,11 +668,18 @@ impl ScopeRun<'_> {
 }
 
 /// Where a point landed in the text a keyed node drew: a byte offset and
-/// the visual line it is on — the wrapped line, 0-based, not the paragraph.
-/// `byte` is a caret position: between two characters, past the last one
-/// at the end, and cosmic-text's rule for which side of a glyph the point
-/// fell on. For a node holding several text runs the offset runs across
-/// them in tree order, the way the access tree reads a `line`.
+/// the visual row it is on. `byte` is a caret position: between two
+/// characters, past the last one at the end, and cosmic-text's rule for
+/// which side of a glyph the point fell on. For a node holding several
+/// text runs the offset runs across them in tree order, the way the
+/// access tree reads a `line`. `line` is the **visual row** within the
+/// node, 0-based, counted across every run the key covers by where the
+/// rows sit: a `line` row of three inline runs is one row, a run that
+/// wrapped is as many as it wrapped to, and two runs stacked are two —
+/// not the wrapped line within one run's buffer, which is what it was
+/// until backlog AR30, and not the ordinal `role="line"` node a pointer
+/// event's `line` names (that one counts rows of the editor, this one
+/// rows of the text asked about).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct TextHit {
     pub byte: usize,
@@ -2033,20 +2065,18 @@ impl TextSystem {
     pub(crate) fn place(
         &mut self,
         key: Key,
-        ancestors: &[Key],
+        ancestry: &Ancestry,
         id: TextId,
         origin: Vec2,
         scope: Option<Key>,
         drawn: bool,
     ) {
         let cache_key = self.frame[id.0 as usize].cache_key;
-        let mut anc = [Key::ROOT; PLACE_ANCESTORS];
-        let depth = ancestors.len().min(PLACE_ANCESTORS);
-        anc[..depth].copy_from_slice(&ancestors[..depth]);
         self.places.push(TextPlace {
             key,
-            ancestors: anc,
-            depth: depth as u8,
+            ancestors: ancestry.keys,
+            depth: ancestry.depth.min(PLACE_ANCESTORS) as u8,
+            none_at: ancestry.none_at.map_or(u8::MAX, |n| n as u8),
             cache_key,
             origin,
             scope,
@@ -2657,7 +2687,27 @@ impl TextSystem {
         let bx = self.physical_box(place, entry);
         let py = py.clamp(bx.y, (bx.y + bx.h - 0.01).max(bx.y));
         let cursor = entry.buffer.hit(px - ox, py - oy)?;
-        let line = visual_line(&entry.buffer, cursor.line, cursor.index).map_or(0, |(l, _)| l);
+        // The visual row within the node (AR30): the row the hit landed
+        // on, placed among every row of every run the key covers by its
+        // top edge, so runs side by side share a row and runs stacked
+        // count in turn.
+        let row = visual_line(&entry.buffer, cursor.line, cursor.index).map_or(0, |(l, _)| l);
+        let hit_top = oy
+            + entry
+                .buffer
+                .layout_runs()
+                .nth(row)
+                .map_or(0.0, |r| r.line_top);
+        let mut tops: Vec<f32> = runs
+            .iter()
+            .flat_map(|(p, e, _)| {
+                let (_, oy) = self.physical_origin(p);
+                e.buffer.layout_runs().map(move |r| oy + r.line_top)
+            })
+            .collect();
+        tops.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        tops.dedup_by(|a, b| (*a - *b).abs() < 0.5);
+        let line = tops.iter().filter(|t| **t < hit_top - 0.5).count();
         Some(TextHit {
             byte: base + entry.byte_of(cursor),
             line: line as u32,

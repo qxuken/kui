@@ -136,3 +136,90 @@ fn a_stock_editor_and_a_sink_share_the_stamp_and_the_phase() {
     assert!(core.has_caret());
     assert_ne!(core.caret_stamp(), stamp);
 }
+
+/// The caret follows the keys (backlog AR29): focus on a control inside
+/// the custom editor — a pane button, an AT `Focus`, `set_focus` — still
+/// routes keys and commits to the enclosing sink, and the caret is still
+/// that editor's, so the blink clock stays armed and the IME keeps its
+/// anchor. The candidates are the editor's lines as the access tree reads
+/// them: a `role="none"` gutter's line is not one, and where two lines
+/// declare a caret the last does, as `custom_editor` reads it.
+#[test]
+fn the_caret_is_the_enclosing_sinks_wherever_focus_sits_inside_it() {
+    let mut core = Core::new();
+    let frame = |core: &mut Core, carets: &[Option<u32>]| -> (Key, Key) {
+        let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        let mut button = Key::ROOT;
+        let sink = ui.with_keyed(
+            "editor",
+            NodeSpec::column()
+                .fill()
+                .on_key(Value::Null)
+                .role(Role::MultilineTextInput)
+                .label("buf"),
+            |ui| {
+                // A gutter the access tree skips, with a line of its own
+                // that must not count — and a button inside the editor.
+                ui.with(NodeSpec::row().role(Role::None), |ui| {
+                    ui.with(
+                        NodeSpec::row()
+                            .height(Sizing::Fixed(20.0))
+                            .role(Role::Line)
+                            .caret(9),
+                        |ui| ui.text("gutter", mono()),
+                    );
+                });
+                button = ui.with_keyed(
+                    "wrap",
+                    NodeSpec::row()
+                        .width(Sizing::Fixed(20.0))
+                        .height(Sizing::Fixed(20.0))
+                        .on_click(Value::str("wrap"))
+                        .label("Wrap"),
+                    |_| {},
+                );
+                for (n, text) in ["first line", "second"].iter().enumerate() {
+                    let mut row = NodeSpec::row().height(Sizing::Fixed(20.0)).role(Role::Line);
+                    if let Some(b) = carets[n] {
+                        row = row.caret(b);
+                    }
+                    ui.with(row, |ui| ui.text(text, mono()));
+                }
+            },
+        );
+        ui.finish();
+        (sink, button)
+    };
+    let (sink, button) = frame(&mut core, &[Some(3), None]);
+    core.set_focus(Some(sink));
+    frame(&mut core, &[Some(3), None]);
+    assert!(core.has_caret());
+    let anchor = core.ime_rect().expect("the caret line anchors the IME");
+    let stamp = core.caret_stamp();
+
+    // Focus moves to the button inside the editor: keys still reach the
+    // sink, and so the caret is still the sink's.
+    core.set_focus(Some(button));
+    frame(&mut core, &[Some(3), None]);
+    assert_eq!(core.focus(), Some(button));
+    assert!(
+        core.has_caret(),
+        "the enclosing sink's caret, not the button's none"
+    );
+    assert_eq!(core.ime_rect(), Some(anchor), "the anchor held");
+    assert_eq!(core.caret_stamp(), stamp, "the caret did not move");
+
+    // Two lines declare one: the last is the caret, as the access tree
+    // reads it, and the gutter's never was.
+    frame(&mut core, &[Some(3), Some(2)]);
+    let moved = core.ime_rect().expect("still a caret");
+    assert!(moved.y > anchor.y, "the second line's, below the first's");
+    assert_ne!(core.caret_stamp(), stamp);
+
+    // Focus outside the editor: no caret.
+    core.set_focus(None);
+    frame(&mut core, &[Some(3), Some(2)]);
+    assert!(!core.has_caret());
+    assert_eq!(core.ime_rect(), None);
+}
