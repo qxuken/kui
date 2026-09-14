@@ -293,6 +293,19 @@ impl Pane {
     pub(crate) fn surface(&self) -> Option<retarget::Surface> {
         let origin = self.window.inner_position().ok()?;
         let (size, scale) = self.size();
+        // The common frame (`retarget`'s module doc): physical pixels
+        // where the platform positions windows in them, points on macOS,
+        // where `inner_position` is points times this window's own scale
+        // and two windows on displays of different scale would otherwise
+        // be in two frames (backlog AR33).
+        if cfg!(target_os = "macos") {
+            let origin = origin.to_logical::<f64>(scale as f64);
+            return Some(retarget::Surface {
+                origin: (origin.x, origin.y),
+                scale: 1.0,
+                size,
+            });
+        }
         Some(retarget::Surface {
             origin: (origin.x as f64, origin.y as f64),
             scale: scale as f64,
@@ -309,7 +322,10 @@ impl Pane {
         if self.nc.is_some() {
             return false;
         }
-        self.chrome != Chrome::Native && !cfg!(target_os = "macos")
+        // A popup is not resizable at all (backlog AR32).
+        self.chrome != Chrome::Native
+            && self.kind != WindowKind::Popup
+            && !cfg!(target_os = "macos")
     }
 
     pub(crate) fn resize_edge_at(&self, p: Vec2) -> Option<ResizeDirection> {

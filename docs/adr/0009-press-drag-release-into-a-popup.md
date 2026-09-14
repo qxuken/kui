@@ -168,7 +168,11 @@ it was retargeted; the only headless part is the arithmetic.
    owner's coordinates and are ignored.
 7. **The arithmetic is a pure function, and the only headless part.**
    `crates/kui/src/retarget.rs`: a `Surface` is a window's client origin
-   in **physical** screen pixels, its scale and its logical size;
+   in the platform's common screen frame — **physical** pixels on
+   Windows and X11, **points** on macOS, which has no physical screen
+   frame (backlog AR33, 2026-09-14: winit's macOS `inner_position` is
+   points times that window's own scale) — the frame's units per logical
+   pixel, and its logical size;
    `retarget(from, p, to)` maps a logical point in one to a logical point
    in the other when it lands inside; `landing(owner, p, anchor, popups)`
    is decision 4's classification, topmost popup last. Physical pixels

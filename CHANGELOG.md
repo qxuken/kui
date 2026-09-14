@@ -683,6 +683,18 @@ field reports).
 - **`Core::finish_frame` is crate-private** (backlog AR37): `Ui::finish`
   is the one door out of a frame; a driver holding a bare core finishes
   through `Ui::wrap(core).finish()`, which every driver did already.
+- **A popup is a menu surface** (backlog AR32): borderless whatever
+  chrome the launcher asked for, not resizable (AppKit and Win32 both
+  kept edge resizing on an undecorated window), and without the
+  non-client hit test or the synthesized resize band the app's own
+  custom chrome gets.
+- **Popup retargeting works in points on macOS** (backlog AR33): the
+  drag-into-a-popup arithmetic's common frame is the platform's — points
+  on macOS, where winit's `inner_position` is points times that window's
+  own scale, physical pixels on Windows and X11 — so a popup on a Retina
+  / non-Retina boundary retargets to the right rows; and a popup on
+  Windows is positioned with a physical position, which resolves against
+  the owner's monitor rather than the one the window is created on.
 - **The runner re-finds a pane by id after an input's commands ran**
   (backlog AR39): a chrome close on pane *i* moved the cursor apply, the
   input-time charge and the redraw to the next pane, and a key that

@@ -49,7 +49,7 @@ pass on what a press made, Node's surface aimed at the window it is
 handed for, `<text>`'s rows closed, one token-miss policy, Cut's
 `changed`, one spec pipeline for every door, the focus stamp and the
 reader's gates — with the amendment on B1a whose condition that round
-met, and **B1a, AR40, AR49, AR27, AR46–AR48, AR29–AR31, AR34–AR39 and AR41–AR45 built the same day** (AR50, the
+met, and **B1a, AR40, AR49, AR27, AR46–AR48, AR29–AR39 and AR41–AR45 built the same day** (AR50, the
 [in] rule's unkept promise, filed from under AR27); C31, found
 the same day building the tokens (Node's corpus adapter disagreeing with
 the reference on one scene when run alone — **done the same evening**:
@@ -3107,7 +3107,13 @@ grabs the thumb, while the node beneath lights `hover_bg` and fires
 
 **Fix:** hover through `target_at`, with `Target::Bar` as "nothing hovered".
 
-### `.` AR32 — A popup surface is resizable and, under custom chrome, gets the app's non-client treatment
+### `.` AR32 — A popup surface is resizable and, under custom chrome, gets the app's non-client treatment — **done (2026-09-14)**
+
+**Built 2026-09-14, as the fix line says.** A `WindowKind::Popup`
+opens as `Chrome::Borderless` whatever the launcher asked for, its
+attrs carry `.with_resizable(false)`, the Windows non-client hit test
+is not installed on one, and `synthesizes_resize` is false for one.
+Runner-only; read, not run.
 
 Popup attrs come from `window_attrs("", size, chrome)` plus `undecorated`
 and no `with_resizable(false)` (`crates/kui/src/windows.rs:138-146`);
@@ -3123,7 +3129,17 @@ window; Win32 keeps `WS_THICKFRAME` undecorated), and under
 semantics for `WindowKind::Popup`, and no `NcHitTest`/`synthesizes_resize`
 for one.
 
-### `.` AR33 — Retarget's common frame is physical pixels, which AppKit does not have
+### `.` AR33 — Retarget's common frame is physical pixels, which AppKit does not have — **done (2026-09-14)**
+
+**Built 2026-09-14, as the fix line says.** `Pane::surface` builds a
+`Surface` in the platform's frame — points on macOS (`inner_position`
+to logical, `scale` 1), physical pixels elsewhere — and `Surface.scale`
+means "common-frame units per logical px", so `retarget`'s arithmetic
+is one; `popup_position` works in the same frame and hands winit a
+`PhysicalPosition` on Windows, where a logical one resolved against the
+creating monitor. `retarget.rs`'s module doc and ADR 0009's decision 7
+say which frame is which; a test pins the points-frame shape beside the
+mixed-DPI one. Runner-only; read, not run.
 
 `retarget.rs:9-12` and `Surface::origin` (`pane.rs:285-293`, from
 `inner_position()`) assume one physical screen frame — the Win32 model,
@@ -3798,7 +3814,9 @@ interfaces generated and `Env` / `NodeInfo` pinned, one frame counter /
 label lookup / caret rect; **AR29 and AR30 done 2026-09-14** — the
 caret follows the keys to the enclosing sink, `TextHit.line` is the
 visual row across the node's runs, a gutter is not its line's text,
-`text-beyond-line`), and
+`text-beyond-line`; **AR32 and AR33 done 2026-09-14** — a popup is
+borderless and not resizable, the retarget frame is points on macOS),
+and
 AR49 first of all if the alpha.12 notes go out before the rest, since
 its first line is the CHANGELOG contradicting itself on the frame
 version (**AR49 done 2026-09-14**, the reused ids retired as `B1a` /

@@ -6,9 +6,15 @@
 //! press on a combobox field and a release over its popup arrive at the
 //! *owner*, in the owner's coordinates. The driver holds both windows'
 //! screen positions, so the owner's point is the popup's point by way of
-//! the screen. The common frame is **physical** pixels: two windows on
-//! two monitors can have two scales, and on a mixed-DPI desktop logical
-//! coordinates do not share an origin.
+//! the screen. The common frame is the one the platform positions its
+//! windows in: **physical** pixels on Windows and X11, where two windows
+//! on two monitors can have two scales and logical coordinates do not
+//! share an origin — and **points** on macOS, which has no physical
+//! screen frame at all: winit's `inner_position` there is points times
+//! *that window's* scale, so two windows on displays of different scale
+//! would have origins in two frames (backlog AR33). [`Surface`] carries
+//! whichever it is as `scale`, the common-frame units per logical px —
+//! 1 on macOS — so the arithmetic is one.
 //!
 //! `Shell` calls it from three places: `retarget_move` while a press is
 //! armed, `classify_release` when that press ends, and `Pane::surface`,
@@ -18,14 +24,17 @@
 
 use kui_core::{Rect, Size, Vec2};
 
-/// One window as retargeting sees it: where its client area sits on the
-/// screen in physical pixels, its scale factor, and its logical size.
+/// One window as retargeting sees it: where its client area sits in the
+/// common screen frame, how many of that frame's units a logical pixel
+/// is, and its logical size.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Surface {
-    /// Top-left of the client area in physical screen pixels
-    /// (`Window::inner_position`).
+    /// Top-left of the client area in the common frame: physical screen
+    /// pixels (`Window::inner_position`) on Windows and X11, points on
+    /// macOS (see the module doc).
     pub origin: (f64, f64),
-    /// Physical pixels per logical pixel (`Window::scale_factor`).
+    /// Common-frame units per logical pixel: `Window::scale_factor` where
+    /// the frame is physical, 1 where it is points.
     pub scale: f64,
     /// Client area in logical pixels.
     pub size: Size,
@@ -180,6 +189,29 @@ mod tests {
         let q = retarget(&owner, Vec2::new(250.0, 350.0), &popup).unwrap();
         assert!(close(q, Vec2::new(100.0, 100.0)), "{q:?}");
         // And back: the popup's (100, 100) is the owner's (250, 350).
+        let r = retarget(&popup, q, &owner).unwrap();
+        assert!(close(r, Vec2::new(250.0, 350.0)), "{r:?}");
+    }
+
+    /// The macOS shape of the same desktop (backlog AR33): the platform
+    /// positions windows in points, so both surfaces carry `scale` 1 and
+    /// origins in points, and a Retina owner beside a 1x popup retargets
+    /// by points alone — the display scales never enter the arithmetic,
+    /// which is what makes `inner_position`'s per-window scaling harmless.
+    #[test]
+    fn on_macos_the_common_frame_is_points() {
+        let owner = Surface {
+            origin: (0.0, 0.0),
+            scale: 1.0,
+            size: Size::new(400.0, 400.0),
+        };
+        let popup = Surface {
+            origin: (200.0, 300.0),
+            scale: 1.0,
+            size: Size::new(200.0, 300.0),
+        };
+        let q = retarget(&owner, Vec2::new(250.0, 350.0), &popup).unwrap();
+        assert!(close(q, Vec2::new(50.0, 50.0)), "{q:?}");
         let r = retarget(&popup, q, &owner).unwrap();
         assert!(close(r, Vec2::new(250.0, 350.0)), "{r:?}");
     }

@@ -79,8 +79,14 @@ impl<A: App> Shell<A> {
                     config,
                 } => {
                     if self.pane_of(id).is_none() {
+                        // A popup is a menu surface: no chrome whatever the
+                        // launcher asked for (backlog AR32 — under `Custom`
+                        // its outer 6 px answered resize cursors and the
+                        // app's caption regions).
                         let chrome = if origin == OriginId::DEVTOOLS {
                             Chrome::Native
+                        } else if config.kind == WindowKind::Popup {
+                            Chrome::Borderless
                         } else {
                             self.chrome
                         };
@@ -140,10 +146,15 @@ impl<A: App> Shell<A> {
             .with_active(config.activates);
         if config.kind == WindowKind::Popup {
             // A menu surface, not a window with the app's chrome: no
-            // decorations whatever the launcher asked for, above its owner,
-            // and placed against the anchor rather than wherever the window
-            // manager would have put a new window.
-            attrs = undecorated(attrs).with_window_level(winit::window::WindowLevel::AlwaysOnTop);
+            // decorations whatever the launcher asked for, not resizable
+            // (AppKit keeps edge resizing on a hidden-titlebar window and
+            // Win32 keeps `WS_THICKFRAME` undecorated, so a menu's edge
+            // could be dragged — backlog AR32), above its owner, and placed
+            // against the anchor rather than wherever the window manager
+            // would have put a new window.
+            attrs = undecorated(attrs)
+                .with_resizable(false)
+                .with_window_level(winit::window::WindowLevel::AlwaysOnTop);
             if let Some(pos) = self.popup_position(owner, config, size) {
                 attrs = attrs.with_position(pos);
             }
@@ -241,23 +252,43 @@ impl<A: App> Shell<A> {
         owner: WindowId,
         config: WindowConfig,
         size: Size,
-    ) -> Option<LogicalPosition<f64>> {
+    ) -> Option<winit::dpi::Position> {
         let pane = self.panes.get(self.pane_of(owner)?)?;
         let scale = pane.window.scale_factor();
-        let origin = pane.window.inner_position().ok()?.to_logical::<f64>(scale);
+        // Worked in the platform's own frame (`retarget`'s module doc):
+        // points on macOS, physical pixels elsewhere — a logical position
+        // handed to winit on Windows resolves against the monitor the
+        // window is *created* on, which is not the owner's when the two
+        // differ in scale (backlog AR33). `unit` is the frame's units per
+        // logical px of the owner.
+        let points = cfg!(target_os = "macos");
+        let unit = if points { 1.0 } else { scale };
+        let raw = pane.window.inner_position().ok()?;
+        let origin = if points {
+            let l = raw.to_logical::<f64>(scale);
+            (l.x, l.y)
+        } else {
+            (raw.x as f64, raw.y as f64)
+        };
         let a = config.anchor;
-        let x = origin.x + a.x as f64;
-        let below = origin.y + (a.y + a.h) as f64;
-        // The monitor the owner is on, in its own logical coordinates. With
-        // no monitor to ask, "below" is the answer and the WM may move it.
+        let x = origin.0 + a.x as f64 * unit;
+        let below = origin.1 + (a.y + a.h) as f64 * unit;
+        // The monitor the owner is on, in the same frame. With no monitor
+        // to ask, "below" is the answer and the WM may move it.
         let y = match pane.window.current_monitor() {
             Some(m) => {
-                let top = m.position().to_logical::<f64>(scale).y;
-                let height = m.size().to_logical::<f64>(scale).height;
-                if below + size.h as f64 > top + height {
+                let (top, height) = if points {
+                    (
+                        m.position().to_logical::<f64>(scale).y,
+                        m.size().to_logical::<f64>(scale).height,
+                    )
+                } else {
+                    (m.position().y as f64, m.size().height as f64)
+                };
+                if below + size.h as f64 * unit > top + height {
                     // Above the anchor instead, unless there is even less
                     // room up there — then stay below and let it clip.
-                    let above = origin.y + a.y as f64 - size.h as f64;
+                    let above = origin.1 + a.y as f64 * unit - size.h as f64 * unit;
                     if above >= top { above } else { below }
                 } else {
                     below
@@ -265,7 +296,11 @@ impl<A: App> Shell<A> {
             }
             None => below,
         };
-        Some(LogicalPosition::new(x, y))
+        Some(if points {
+            LogicalPosition::new(x, y).into()
+        } else {
+            winit::dpi::PhysicalPosition::new(x, y).into()
+        })
     }
 
     /// Finishes a window whose surface and renderer exist: the platform
@@ -310,8 +345,10 @@ impl<A: App> Shell<A> {
             .proxy
             .clone()
             .and_then(|proxy| access_bridge::Bridge::new(event_loop, &window, proxy));
+        // The non-client hit test answers resize borders and the caption
+        // for a window with the app's chrome; a popup has neither (AR32).
         #[cfg(target_os = "windows")]
-        let nc = (chrome != Chrome::Native)
+        let nc = (chrome != Chrome::Native && config.kind != WindowKind::Popup)
             .then(|| windows_nc::NcHitTest::install(&window, true))
             .flatten();
         #[cfg(target_os = "windows")]
