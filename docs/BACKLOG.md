@@ -3807,7 +3807,40 @@ it is a read of the core from inside an AppKit callback the runner did
 not schedule, the kind of re-entrance `macos_menu` exists to avoid —
 and nothing has asked.
 
-### `~` W15 — AppKit's own Edit rows arrive unchecked
+### `~` W15 — AppKit's own Edit rows arrive unchecked — **done (2026-09-14)**
+
+**Checked by hand the same day, and none of the four works — so all
+four go.** Driven on macOS 26.6 against `examples/rust/widgets/edit.rs`
+with a CGEvent click into the field, `AXPress` on each row, and the
+field's `AXValue` read back, with TextEdit beside it taking the same
+presses as the control. *Emoji & Symbols* opens the palette at the
+caret (the C17 rect is right) and the emoji clicked in it never
+arrives — winit's view commits an `insertText:` only inside a
+composition (`view.rs`, `insert_text`; master gates on
+`pending_commit`, the same effect), and the palette's insert is not
+one. *Start Dictation* does nothing: nothing in a winit window
+implements `startDictation:`; TextEdit's row retitles to Stop Dictation
+and the microphone popover comes up, kui's does neither. *Writing
+Tools* opens its panel beside the selection and every tool in it does
+nothing, since `selectedRange` is `{NSNotFound, 0}` and the substring
+ask answers nil. *AutoFill* greys its own rows (enabled in TextEdit).
+The guess was two working and two not; the two guessed working are
+the worse two, since an enabled row that opens a picker and drops the
+pick reads as the app's bug. The lever turned out finer than renaming
+the menu: a probe app showed AppKit appends the rows in
+`setMainMenu:`'s scan of a root it has not seen — keyed on the *head
+item's* title; a menu titled `Edit` under an untitled head gets
+nothing — and neither re-appends on open nor scans a root twice. So
+`macos_menu::trim_edit` removes everything past kui's rows after every
+`setMainMenu:`, standard and declared Edit alike, and the menu opened
+for real afterwards is seven rows. `NSDisabledCharacterPaletteMenuItem`
+/ `NSDisabledDictationMenuItem` as registered defaults hide those two
+and nothing hides the submenus, which is why one mechanism. Documented
+in `howto.md` and as *what checking W15 showed* under ADR 0030. Not
+built, with the condition on it: an `insertText:` that commits outside
+a composition would make the palette (and ⌃⌘Space, which no menu
+controls) type — a winit change or a runtime override of that method on
+winit's class from the runner — the day a report asks for the palette.
 
 Setting a bar with a menu titled `Edit` makes AppKit append Writing
 Tools ▸, AutoFill ▸, Start Dictation… and Emoji & Symbols to it — to
@@ -3884,8 +3917,10 @@ version (**AR49 done 2026-09-14**, the reused ids retired as `B1a` /
 `D1a` / `D2a` with a test). The `~` and `.` entries between wait for
 the defects. With the round closed, the unconditioned `.` entry left
 was F36 (**done 2026-09-14** — the two audio answers in C and Node);
-what remains is conditioned (C12–C14, V2–V8), decided as it stands
-(C27), or by hand on a Mac (W15).
+what remains is conditioned (C12–C14, V2–V8) or decided as it stands
+(C27); W15, the one by-hand check, was **done 2026-09-14** — none of
+AppKit's four Edit rows works in a winit window, and the runner now
+trims them.
 Before it, the third editor-and-mux round, filed 2026-09-13 above,
 in the order its entries argue for: C32 first (every mono glyph on a
 machine without Noto Sans Mono is whatever face cosmic-text's fallback
@@ -4090,9 +4125,9 @@ fourteen of this one (W3, W4–W12, F32–F35) before the alpha.10 tag, and
 the six of the round of 2026-09-11 (V1, D1a, D2a, T2, C26 whole, E3) the day
 they were built, and T1, E1 and E2 — closed in their rounds and left here
 — before the alpha.11 tag. This file is now three parked entries, C27
-with its measurements, F36, V2–V8, the open AR27–AR48, this section, and the
+with its measurements, V2–V8, this section, and the
 entries built since the tag with their outcomes on top (F42–F54, T5, C30,
-C31, C29, W13, W14, C32–C39, AR7–AR26, B1a), waiting for alpha.12 to move
+C31, C29, W13, W14, W15, C32–C39, F36, AR7–AR50, B1a), waiting for alpha.12 to move
 them.
 Still open, both waiting on something outside the repo: enable `SMOKE_MACOS`
 / `SMOKE_WINDOWS` the day a runner exists (P8) — which has two jobs waiting

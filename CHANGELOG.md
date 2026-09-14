@@ -232,6 +232,29 @@ field reports).
   `Option` reads a batch. A row stays lit while a sink would hear its
   chord, since a sink may bind it to anything.
 
+- **An Edit menu is only its rows** (backlog W15, checked by hand on
+  macOS 26.6 and closed the same day). AppKit appends Writing Tools ▸,
+  AutoFill ▸, Start Dictation and Emoji & Symbols to any bar's `Edit`
+  menu — the standard one and a declared one alike — and ADR 0030
+  guessed two of the four would type into a focused editor. None does.
+  Emoji & Symbols opens the palette at the caret and the emoji picked
+  in it never arrives: winit's view commits an `insertText:` only
+  inside an IME composition, and the palette's is not one. Start
+  Dictation does nothing — no responder in a winit window implements
+  `startDictation:` (TextEdit, same press, starts listening). Writing
+  Tools opens its panel beside the selection and every tool in it does
+  nothing, since the view answers `selectedRange` with `NSNotFound` and
+  the substring ask with nil. AutoFill greys itself. A row that opens a
+  picker and drops the pick is worse than no row, so the runner removes
+  everything AppKit appended after every `setMainMenu:`
+  (`macos_menu::trim_edit`); AppKit appends in the scan and not on
+  open, and never scans a root twice, so it stays gone. A declared bar
+  is now exactly its declaration for `Edit` too, which is what ADR 0030
+  said it was. Still winit's, not kui's: ⌃⌘Space opens the same palette
+  from the keyboard and its pick is dropped the same way; the only fix
+  is an `insertText:` that commits outside a composition, which is a
+  change to winit's view.
+
 - **A held drag follows its scroller, and Shift extends** (backlog C39,
   [ADR 0029](docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md),
   found by running the clipboard example after C38). Three gestures every

@@ -300,7 +300,16 @@ the runner already performs (greyed when the chord would do nothing), and a Wind
 Full Screen and — added by AppKit because the menu is registered as the
 platform's — Fill, Center and the tiling submenus, so fn+ctrl+F and fn+F
 work. A declared bar is exactly what you declared; name a menu `Window`
-and it is the platform's, with those rows and shortcuts in it.
+and it is the platform's, with those rows and shortcuts in it. An `Edit`
+menu, standard or declared, has only the rows in it: AppKit appends
+Writing Tools, AutoFill, Dictation and Emoji & Symbols to any menu by
+that name, and none of the four does anything in a kui window (the
+palette's pick and dictation's text never reach a winit view; Writing
+Tools finds no selection to read), so the runner removes them — a menu
+whose rows work is worth more than one that looks complete. The palette
+opened from the keyboard (⌃⌘Space) is the system's and still opens; its
+pick is dropped the same way, which is winit's `insertText:` and not
+yours to fix.
 
 [`menuBar` element](props.md#elements) ·
 [ADR 0018](adr/0018-a-menu-bar-the-app-declares.md) ·

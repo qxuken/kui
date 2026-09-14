@@ -275,6 +275,33 @@ fn responder_row(
     row
 }
 
+/// Removes the rows AppKit appended to an Edit menu — everything past
+/// the `own` rows kui put there.
+///
+/// AppKit recognises a bar's Edit menu by its head's title in
+/// `setMainMenu:` of a root it has not seen, and appends a separator,
+/// Writing Tools ▸, AutoFill ▸, Start Dictation and Emoji & Symbols
+/// (backlog W15, checked by hand on macOS 26.6). Every one is inert in
+/// a kui window, and three of them are inert *quietly*: the palette opens
+/// at the caret and the emoji picked in it never arrives, because winit's
+/// view commits an `insertText:` only inside an IME composition
+/// (`view.rs`, `insert_text`); Start Dictation finds no responder that
+/// implements `startDictation:` and does nothing; the Writing Tools panel
+/// opens beside the selection and every tool in it does nothing, because
+/// the view answers `selectedRange` with `NSNotFound` and
+/// `attributedSubstringForProposedRange:` with nil; AutoFill greys its
+/// own rows. A row that opens a picker and drops the pick is worse than
+/// no row, so they go. Removing them holds: AppKit appends in the scan
+/// and not on open, and does not scan a root twice. The user defaults
+/// `NSDisabledCharacterPaletteMenuItem` / `NSDisabledDictationMenuItem`
+/// would hide two of the four and nothing hides the submenus, so one
+/// mechanism for all four is this one.
+fn trim_edit(menu: &NSMenu, own: isize) {
+    while menu.numberOfItems() > own {
+        menu.removeItemAtIndex(own);
+    }
+}
+
 /// Enter Full Screen, in every Window menu kui registers (ADR 0030).
 ///
 /// AppKit adds this row itself, but only to a Window menu registered
@@ -484,6 +511,9 @@ pub struct MacMenuBar {
 struct Standard {
     root: Retained<NSMenu>,
     window: Retained<NSMenu>,
+    /// The Edit menu and how many of its rows are kui's, for
+    /// [`trim_edit`] after every `setMainMenu:`.
+    edit: (Retained<NSMenu>, isize),
 }
 
 /// Where the standard Edit menu's tags start. The declared bar's tags are
@@ -617,10 +647,12 @@ impl MacMenuBar {
             let standard = standard.as_ref().expect("built above");
             app.setWindowsMenu(Some(&standard.window));
             app.setMainMenu(Some(&standard.root));
+            trim_edit(&standard.edit.0, standard.edit.1);
             return;
         }
         let mut map = Vec::new();
         let mut windows_menu = None;
+        let mut edit_menus = Vec::new();
         let root = NSMenu::new(mtm);
         // Every enable state is the declaration's; without this AppKit
         // greys out every row whose target does not answer
@@ -644,6 +676,9 @@ impl MacMenuBar {
                 map.push((mi, ii));
                 sub.addItem(&self.row(mtm, item, tag));
             }
+            if menu.label == "Edit" {
+                edit_menus.push((sub.clone(), sub.numberOfItems()));
+            }
             if menu.label == "Window" {
                 full_screen_rows(mtm, &sub);
                 // Validated, unlike the other declared menus: the rows
@@ -661,6 +696,9 @@ impl MacMenuBar {
         *self.map.borrow_mut() = map;
         app.setWindowsMenu(windows_menu.as_deref());
         app.setMainMenu(Some(&root));
+        for (menu, own) in &edit_menus {
+            trim_edit(menu, *own);
+        }
     }
 
     /// The standard bar, built once (ADR 0030): the application menu
@@ -679,10 +717,12 @@ impl MacMenuBar {
         // it stays the menu its Services entry was registered on. Moved
         // rather than copied, since an `NSMenu` has one supermenu and
         // re-parenting the menu itself is an exception; and a fresh root
-        // rather than winit's with two items appended, because AppKit
-        // scans a bar for menus it knows by title only in `setMainMenu:`
-        // of a bar it has not seen (Edit gains Emoji & Symbols and
-        // Dictation that way, exactly as a declared Edit does). A process
+        // rather than winit's with two items appended — built that way
+        // so AppKit would scan it and append its rows to Edit, which it
+        // does only in `setMainMenu:` of a root it has not seen; W15 then
+        // found every one of those rows inert and `trim_edit` removes
+        // them, and the fresh root stays because one bar object with the
+        // app menu first is also what a declared bar is. A process
         // built without winit's menu
         // (`EventLoopBuilderExtMacOS::with_default_menu(false)`) gets the
         // one row nothing can do without.
@@ -745,6 +785,7 @@ impl MacMenuBar {
             }
             edit.addItem(&item);
         }
+        let edit_own = edit.numberOfItems();
         let edit_head = NSMenuItem::new(mtm);
         edit_head.setTitle(ns_string!("Edit"));
         edit_head.setSubmenu(Some(&edit));
@@ -778,7 +819,11 @@ impl MacMenuBar {
         window_head.setSubmenu(Some(&window));
         root.addItem(&window_head);
 
-        *self.standard.borrow_mut() = Some(Standard { root, window });
+        *self.standard.borrow_mut() = Some(Standard {
+            root,
+            window,
+            edit: (edit, edit_own),
+        });
     }
 
     /// One row: its wording, its shortcut where kui can parse one, and the
