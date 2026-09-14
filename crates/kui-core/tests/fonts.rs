@@ -20,7 +20,10 @@ fn installed_family_registers_by_name_and_unknown_is_rejected() {
     assert!(core.add_system_font("kui-no-such-family-2026").is_none());
     let families = core.system_font_families();
     let Some(name) = families.first().cloned() else {
-        return; // a fontless CI image: nothing to register
+        // The one font test the fixture face cannot stand in for: it is
+        // about the *installed* set, which a fontless CI image has none of.
+        eprintln!("skipped: no installed font on this machine");
+        return;
     };
     let id = core
         .add_system_font(&name)
@@ -38,23 +41,16 @@ fn installed_family_registers_by_name_and_unknown_is_rejected() {
 fn font_file_bytes_register_and_garbage_is_rejected() {
     let mut core = Core::new();
     assert!(core.add_font_data(vec![0u8; 64]).is_none());
-    let candidates = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/System/Library/Fonts/Supplemental/Arial.ttf",
-        "/System/Library/Fonts/Helvetica.ttc",
-        "C:/Windows/Fonts/arial.ttf",
-    ];
-    let Some(bytes) = candidates.iter().find_map(|p| std::fs::read(p).ok()) else {
-        return; // no known font file on this machine
-    };
+    // The face the tests carry with them (backlog AR48): this used to look
+    // for a system font at four paths and pass green where none was.
     let id = core
-        .add_font_data(bytes)
+        .add_font_data(kui_core::testing::liga_font())
         .expect("a real font file registers");
     let family = core
         .font_family(id)
         .expect("family name recorded")
         .to_string();
-    assert!(!family.is_empty());
+    assert_eq!(family, "Kui Liga");
     assert!(glyph_quads(&mut core, TextStyle::new(20.0).font(id)) > 0);
     // Two styles differing only in font must not share a shaping cache entry.
     let a = glyph_quads(&mut core, TextStyle::new(20.0));
@@ -69,22 +65,13 @@ fn font_folders_and_files_load_by_path_and_names_resolve_idempotently() {
     let mut core = Core::new();
     assert!(core.load_font_file("/no/such/font.ttf").is_none());
     assert_eq!(core.load_fonts_dir("/no/such/dir"), 0);
-    let candidates = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/System/Library/Fonts/Supplemental/Arial.ttf",
-        "C:/Windows/Fonts/arial.ttf",
-    ];
-    let Some(src) = candidates
-        .iter()
-        .find(|p| std::path::Path::new(p).is_file())
-    else {
-        return;
-    };
-    // A private folder with one font in it, the "bundled fonts/ dir" case.
+    // A private folder with one font in it, the "bundled fonts/ dir" case:
+    // the fixture face written out, so the path doors are exercised on a
+    // machine with no font of its own.
     let dir = std::env::temp_dir().join(format!("kui-fonts-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let file = dir.join("bundled.ttf");
-    std::fs::copy(src, &file).unwrap();
+    std::fs::write(&file, kui_core::testing::liga_font()).unwrap();
 
     let by_file = core.load_font_file(&file).expect("file loads by path");
     let family = core.font_family(by_file).unwrap().to_string();

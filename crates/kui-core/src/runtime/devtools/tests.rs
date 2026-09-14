@@ -5,6 +5,7 @@ use super::*;
 use crate::access::{AccessAction, AccessRequest};
 use crate::input::{KeyMods, KeyPress};
 use crate::spec::{Align, TextStyle};
+use crate::testing::click_at;
 use crate::ui::Ui;
 use crate::widgets;
 
@@ -54,13 +55,6 @@ fn chord(c: char) -> InputEvent {
             ..Default::default()
         },
     ))
-}
-
-fn click_at(core: &mut Core, x: f32, y: f32) -> Vec<UiEvent> {
-    let mut evs = core.handle_input(InputEvent::CursorMoved(Vec2::new(x, y)));
-    evs.extend(core.handle_input(InputEvent::mouse_down(1)));
-    evs.extend(core.handle_input(InputEvent::mouse_up()));
-    evs
 }
 
 fn access_click(core: &mut Core, key: Key) -> Vec<UiEvent> {

@@ -49,7 +49,7 @@ pass on what a press made, Node's surface aimed at the window it is
 handed for, `<text>`'s rows closed, one token-miss policy, Cut's
 `changed`, one spec pipeline for every door, the focus stamp and the
 reader's gates — with the amendment on B1a whose condition that round
-met, and **B1a, AR40, AR49, AR27, AR46 and AR47 built the same day** (AR50, the
+met, and **B1a, AR40, AR49, AR27 and AR46–AR48 built the same day** (AR50, the
 [in] rule's unkept promise, filed from under AR27); C31, found
 the same day building the tokens (Node's corpus adapter disagreeing with
 the reference on one scene when run alone — **done the same evening**:
@@ -3406,7 +3406,31 @@ list, or one sampler scene; a `tests/anim.rs` case — one frame with
 the node back through `nodes()` and asserts the value survived; the two
 bench rows guarded and `bench-check.sh` taking a bench name.
 
-### `.` AR48 — Test helpers re-derived beside `kui_core::testing`, and font tests that pass with no font
+### `.` AR48 — Test helpers re-derived beside `kui_core::testing`, and font tests that pass with no font — **done (2026-09-14)**
+
+**Both halves built, 2026-09-14.** `kui_core::testing::liga_font()` is
+a TrueType face the tests carry with them — family "Kui Liga", every
+printable ASCII character a filled square, and one `liga` ligature
+(`f` + `i` → one wider glyph) under `DFLT` and `latn` — built table by
+table in `testing.rs` (`head`, `hhea`, `maxp`, `OS/2`, `hmtx`, `cmap`
+format 4, `glyf`/`loca`, `name`, `post`, `GSUB`) rather than checked in
+as bytes, so the fixture is readable and cannot rot into a blob nobody
+can regenerate; ~1.5 KB, built in microseconds, and cosmic-text's
+shaper applies its ligature the way a real font's. `font_features.rs`
+pins the effect on every machine (`fi` one glyph by default and two
+with `liga=0`, `if` two either way, `fifi` two); `fonts.rs`'s two
+file tests and `session.rs`'s two cross-window font tests register the
+fixture instead of hunting four system paths and returning green when
+none existed; the one test that is about the *installed* set says
+`skipped:` on stderr where it skips. The helpers: `ks` is one function
+at the top of kui-ffi's `tests.rs` (six copies gone), the devtools
+tests use `crate::testing::click_at`, and `testing` gained
+`key_press` / `key_release` (the events, for a `drive` batch — what
+`keys.rs` had), `key_down` / `key_up` (sent, with modifiers — what
+`focus_regions.rs` had) and `tags` (the string-or-tag reading
+`focus_regions.rs` re-derived). Node's two font skips stand: the
+fixture lives behind kui-core's `conformance` feature and the Rust pin
+now holds on every machine.
 
 `fn ks(&str) -> KuiStr` appears five times in kui-ffi's tests
 (`src/tests.rs:9,348,686,1430,1585`); devtools' `click_at` is a
@@ -3623,9 +3647,10 @@ table with AR26, AR27 and AR40 beside it (**B1a done 2026-09-14** — the
 table, its four pins and the one-line rows; **AR40 done 2026-09-14**;
 **AR27 done 2026-09-14**, `KuiRunConfig` under ABI 16 and the
 context's core handed over through `Launcher::core`), AR46–AR48 for
-the tests (**AR46 and AR47 done 2026-09-14**: the walk complete and
-pinned; the `sampler` scene, the `animate` test, the `nodes()` readback
-and two more guarded rows), and
+the tests (**AR46, AR47 and AR48 done 2026-09-14**: the walk complete
+and pinned; the `sampler` scene, the `animate` test, the `nodes()`
+readback and two more guarded rows; the fixture face and the helpers
+hoisted), and
 AR49 first of all if the alpha.12 notes go out before the rest, since
 its first line is the CHANGELOG contradicting itself on the frame
 version (**AR49 done 2026-09-14**, the reused ids retired as `B1a` /

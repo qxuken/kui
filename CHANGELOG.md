@@ -616,6 +616,15 @@ field reports).
 
 ### Fixed
 
+- **A font the tests carry with them** (backlog AR48):
+  `kui_core::testing::liga_font()` builds a small TrueType face — family
+  "Kui Liga", every printable character a square, one `liga` ligature —
+  table by table, so the font tests that used to hunt four system paths
+  and pass green on a fontless machine register it instead, and the
+  ligature effect (`fi` one glyph by default, two with `liga=0`) is
+  pinned on every machine, CI's included. `testing` also gained
+  `key_press` / `key_release` / `key_down` / `key_up` and `tags`, the
+  helpers two test files had re-derived beside it.
 - **The corpus declares every generic row, and `animate` has a test**
   (backlog AR47): a `sampler` scene in all four adapters carries the
   forty generic props no other scene spelled — the corner radii, the

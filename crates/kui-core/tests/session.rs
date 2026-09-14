@@ -158,16 +158,9 @@ fn a_font_registered_in_one_window_shapes_in_the_other() {
     let mut a = Core::new_in(&session);
     let mut b = Core::new_in(&session);
 
-    let candidates = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/System/Library/Fonts/Supplemental/Arial.ttf",
-        "/System/Library/Fonts/Helvetica.ttc",
-        "C:/Windows/Fonts/arial.ttf",
-    ];
-    let Some(bytes) = candidates.iter().find_map(|p| std::fs::read(p).ok()) else {
-        return; // no known font file on this machine
-    };
-    let id = a.add_font_data(bytes).expect("a real font file registers");
+    let id = a
+        .add_font_data(kui_core::testing::liga_font())
+        .expect("the fixture face registers");
     let family = a.font_family(id).expect("family name recorded").to_string();
 
     // The name mirror is per window and refreshed by the frame, so b sees
@@ -387,12 +380,9 @@ fn an_image_from_another_session_draws_nothing_and_warns_once() {
 fn a_font_from_another_session_shapes_as_sans_and_warns() {
     let mut a = Core::new();
     let mut b = Core::new();
-    let Some(family) = a.system_font_families().into_iter().next() else {
-        return; // no installed font on this machine
-    };
-    let Some(id) = a.add_system_font(&family) else {
-        return;
-    };
+    let id = a
+        .add_font_data(kui_core::testing::liga_font())
+        .expect("the fixture face registers");
 
     // b shapes the text anyway (sans-serif), and says why.
     assert!(glyph_quads(&mut b, TextStyle::new(20.0).font(id)) > 0);

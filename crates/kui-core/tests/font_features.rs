@@ -88,3 +88,46 @@ fn ligatures_come_apart_when_asked() {
         "the ligatures hold by default ({joined} glyphs) and come apart with the features off ({apart})"
     );
 }
+
+/// The same effect on the face the tests carry with them
+/// (`testing::liga_font`, backlog AR48): pinned on every machine, CI's
+/// fontless image included, where the test above pins it only where a
+/// coding font happens to be installed. `fi` is one glyph under `liga`
+/// and two with it off; `if` is two either way, since the ligature is
+/// ordered.
+#[test]
+fn the_fixture_font_s_ligature_holds_by_default_and_comes_apart_with_liga_off() {
+    let mut core = Core::new();
+    let id = core
+        .add_font_data(kui_core::testing::liga_font())
+        .expect("the fixture face registers");
+    assert_eq!(core.font_family(id), Some("Kui Liga"));
+    let glyphs = |core: &mut Core, text: &str, features: &str| {
+        let mut ui = core.frame(Size::new(300.0, 100.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.text(
+            text,
+            TextStyle::new(24.0)
+                .font(id)
+                .features(FontFeatures::parse(features)),
+        );
+        ui.finish();
+        let (dl, _) = core.output();
+        dl.quads
+            .iter()
+            .filter(|q| matches!(q.kind, QuadKind::GlyphMask | QuadKind::GlyphSubpixel))
+            .count()
+    };
+    assert_eq!(glyphs(&mut core, "fi", ""), 1, "f + i joined by default");
+    assert_eq!(
+        glyphs(&mut core, "fi", "liga=0"),
+        2,
+        "and apart with liga off"
+    );
+    assert_eq!(glyphs(&mut core, "if", ""), 2, "the ligature is ordered");
+    assert_eq!(
+        glyphs(&mut core, "fifi", ""),
+        2,
+        "and applies at every match"
+    );
+}

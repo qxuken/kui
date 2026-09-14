@@ -2,7 +2,7 @@
 //! the key-focused sink receives presses as data — the path an app that owns
 //! its own text model (a modal editor, a terminal) binds against.
 
-use kui_core::testing::{click_at, drive};
+use kui_core::testing::{click_at, drive, key_press as press, key_release as release};
 use kui_core::{
     Align, Core, EditKey, EditOptions, FloatConfig, InputEvent, Key, KeyCode, KeyMods, KeyPress,
     Mods, NodeSpec, Size, Sizing, UiEvent, Value, Vec2,
@@ -33,14 +33,6 @@ fn frame(core: &mut Core, focus_left: bool) -> (Key, Key) {
     ui.take_key_focus(if focus_left { left } else { right });
     ui.finish();
     (left, right)
-}
-
-fn press(code: KeyCode) -> InputEvent {
-    InputEvent::KeyDown(KeyPress::new(code, KeyMods::default()))
-}
-
-fn release(code: KeyCode) -> InputEvent {
-    InputEvent::KeyUp(KeyPress::new(code, KeyMods::default()))
 }
 
 /// The `(phase, code)` of every key event in a batch, in order.

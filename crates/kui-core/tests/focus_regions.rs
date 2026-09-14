@@ -6,10 +6,9 @@
 //! back — and, from the same round, a root sink hears what nothing claims
 //! when nothing is focused.
 
-use kui_core::testing::{click_at, tab};
+use kui_core::testing::{click_at, key_down, tab, tags};
 use kui_core::{
-    Core, EditKey, InputEvent, Key, KeyCode, KeyMods, KeyPress, Mods, NodeSpec, Size, Sizing,
-    UiEvent, Value,
+    Core, EditKey, InputEvent, Key, KeyCode, KeyMods, KeyPress, Mods, NodeSpec, Size, Sizing, Value,
 };
 
 const H: f32 = 20.0;
@@ -108,20 +107,6 @@ const WITH_DOCK: Shape = Shape {
 };
 
 /// A raw press, the channel a key sink hears.
-fn press(core: &mut Core, c: char, mods: KeyMods) -> Vec<UiEvent> {
-    core.handle_input(InputEvent::KeyDown(KeyPress::new(KeyCode::Char(c), mods)))
-}
-
-fn tags(evs: &[UiEvent]) -> Vec<&str> {
-    evs.iter()
-        .filter_map(|e| {
-            e.payload
-                .as_str()
-                .or_else(|| e.payload.get("tag")?.as_str())
-        })
-        .collect()
-}
-
 #[test]
 fn the_main_ring_skips_a_region_and_the_region_keeps_its_own() {
     let mut core = Core::new();
@@ -405,13 +390,13 @@ fn keys_bubble_through_the_region_boundary_to_the_root_sink() {
         shift: true,
         ..Default::default()
     };
-    let evs = press(&mut core, 'i', chord);
+    let evs = key_down(&mut core, KeyCode::Char('i'), chord);
     assert_eq!(
         tags(&evs),
         ["root"],
         "a chord from inside the dock reaches the app's root sink"
     );
-    let evs = press(&mut core, 'x', KeyMods::default());
+    let evs = key_down(&mut core, KeyCode::Char('x'), KeyMods::default());
     assert_eq!(
         tags(&evs),
         ["root"],
@@ -433,7 +418,7 @@ fn a_root_sink_hears_what_nothing_claims_when_nothing_is_focused() {
         shift: true,
         ..Default::default()
     };
-    let evs = press(&mut core, 'i', chord);
+    let evs = key_down(&mut core, KeyCode::Char('i'), chord);
     assert_eq!(
         tags(&evs),
         ["root"],
@@ -451,7 +436,7 @@ fn a_root_sink_hears_what_nothing_claims_when_nothing_is_focused() {
     // Without a root sink the key goes nowhere, as before.
     let mut plain = Core::new();
     frame(&mut plain, Shape::default());
-    assert!(press(&mut plain, 'i', chord).is_empty());
+    assert!(key_down(&mut plain, KeyCode::Char('i'), chord).is_empty());
     // And not under a modal: the root is inert like the rest of the app.
     let mut under = Core::new();
     frame(
@@ -463,7 +448,7 @@ fn a_root_sink_hears_what_nothing_claims_when_nothing_is_focused() {
         },
     );
     under.set_focus(None);
-    assert!(press(&mut under, 'i', chord).is_empty());
+    assert!(key_down(&mut under, KeyCode::Char('i'), chord).is_empty());
 }
 
 #[test]

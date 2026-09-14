@@ -2,16 +2,19 @@
 
 use super::*;
 
+/// A borrowed `KuiStr` over a Rust string, for the length of the call
+/// that takes it — the one helper every module below wants (backlog AR48
+/// hoisted it from five copies).
+fn ks(s: &str) -> KuiStr {
+    KuiStr {
+        ptr: s.as_ptr(),
+        len: s.len(),
+    }
+}
+
 #[cfg(test)]
 mod widgets_headless {
     use super::*;
-
-    fn ks(s: &str) -> KuiStr {
-        KuiStr {
-            ptr: s.as_ptr(),
-            len: s.len(),
-        }
-    }
 
     extern "C" fn tab(_user: *mut c_void, ctx: *mut KuiCtx) {
         let style: KuiTextStyle = unsafe { std::mem::zeroed() };
@@ -345,13 +348,6 @@ mod window_commands_headless {
     /// `MAIN`, which the header spells for C.
     const MAIN: u32 = WindowId::MAIN.0;
 
-    fn ks(s: &str) -> KuiStr {
-        KuiStr {
-            ptr: s.as_ptr(),
-            len: s.len(),
-        }
-    }
-
     fn drain(ctx: *mut KuiCtx) -> Vec<(u32, u32, f32, f32)> {
         let mut out = Vec::new();
         let mut cmd = KuiWindowCommand::default();
@@ -682,13 +678,6 @@ mod audio_headless {
 #[cfg(test)]
 mod queries_headless {
     use super::*;
-
-    fn ks(s: &str) -> KuiStr {
-        KuiStr {
-            ptr: s.as_ptr(),
-            len: s.len(),
-        }
-    }
 
     /// A host that never saw an event from a node names it by the label it
     /// opened it under (backlog F5): `kui_key_of` hands back the key the
@@ -1427,13 +1416,6 @@ mod queries_headless {
 mod env_headless {
     use super::*;
 
-    fn ks(s: &str) -> KuiStr {
-        KuiStr {
-            ptr: s.as_ptr(),
-            len: s.len(),
-        }
-    }
-
     fn system(ctx: *mut KuiCtx) -> kui_core::SystemEnv {
         unsafe { ctx.as_mut() }.unwrap().core().env.system
     }
@@ -1581,13 +1563,6 @@ mod env_headless {
 #[cfg(test)]
 mod parity_headless {
     use super::*;
-
-    fn ks(s: &str) -> KuiStr {
-        KuiStr {
-            ptr: s.as_ptr(),
-            len: s.len(),
-        }
-    }
 
     fn s(k: KuiStr) -> String {
         kstr(k).into_owned()
@@ -1827,13 +1802,6 @@ mod parity_headless {
 #[cfg(test)]
 mod follow_headless {
     use super::*;
-
-    fn ks(s: &str) -> KuiStr {
-        KuiStr {
-            ptr: s.as_ptr(),
-            len: s.len(),
-        }
-    }
 
     fn fixed(w: f32, h: f32) -> KuiSpec {
         let mut spec = unsafe { std::mem::zeroed::<KuiSpec>() };
