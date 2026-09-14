@@ -217,6 +217,16 @@ pub fn protocol_json() -> Json {
                 .collect(),
         ),
     );
+    // A `cells` cursor's shapes, in wire order (backlog AR40).
+    o.insert(
+        "cellCursors".into(),
+        Json::Array(
+            kui_core::CellCursor::NAMES
+                .iter()
+                .map(|a| Json::String((*a).into()))
+                .collect(),
+        ),
+    );
     o.insert(
         "floatPreset".into(),
         Json::Array(
@@ -805,13 +815,24 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             let mut base = PropsOut::new();
             base.spec = widgets::button_spec(&ui.metrics());
             let p = lower_props_over(r, base, ui)?;
-            widgets::button_with(
-                ui,
-                label_key,
-                label,
-                p.spec.on_click(msg),
-                p.tooltip.as_deref(),
-            );
+            // An `index` keys the button by its row, as it does a box
+            // (backlog AR40): declared beside `key`, the index wins.
+            match p.index {
+                Some(i) => widgets::button_indexed(
+                    ui,
+                    i,
+                    label,
+                    p.spec.on_click(msg),
+                    p.tooltip.as_deref(),
+                ),
+                None => widgets::button_with(
+                    ui,
+                    label_key,
+                    label,
+                    p.spec.on_click(msg),
+                    p.tooltip.as_deref(),
+                ),
+            }
             Ok(())
         }
         OP_EDIT => {

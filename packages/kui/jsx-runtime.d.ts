@@ -471,7 +471,7 @@ export interface ButtonProps
   // -- generated from the addon's button rows; edit BUTTON_ROWS_JSX in schema.rs, then `npm run gen` --
   extends Keyed,
     Pick<GeneratedSpecProps, 'onClick' | 'label' | 'description' | 'disabled' | 'accent'>,
-    Pick<CustomSpecProps, 'tooltip'>
+    Pick<CustomSpecProps, 'index' | 'tooltip'>
   // -- end generated --
 {
   children?: KuiNode;

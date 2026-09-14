@@ -556,6 +556,26 @@ pub fn button(ui: &mut Ui<'_>, text: &str, payload: impl Into<Value>) {
 /// This is what `<button>`, `button { }` and `kui_button_with` lower to,
 /// so a binding cannot end up with a button of its own.
 pub fn button_with(ui: &mut Ui<'_>, key: &str, text: &str, spec: NodeSpec, hint: Option<&str>) {
+    button_body(ui, Ident::Label(key), text, spec, hint);
+}
+
+/// [`button_with`] keyed by a data index rather than a label — a row of a
+/// virtual list (`Ui::open_indexed`), so the button keeps its focus, its
+/// hover and its tweens as the built range slides and the same text on
+/// two rows is two nodes (backlog AR40). What `<button index>` and
+/// `button { index = }` lower to.
+pub fn button_indexed(ui: &mut Ui<'_>, index: u64, text: &str, spec: NodeSpec, hint: Option<&str>) {
+    button_body(ui, Ident::Index(index), text, spec, hint);
+}
+
+/// How a button is keyed: by the label its `key` declares, or by the
+/// data index its `index` declares.
+enum Ident<'a> {
+    Label(&'a str),
+    Index(u64),
+}
+
+fn button_body(ui: &mut Ui<'_>, ident: Ident<'_>, text: &str, spec: NodeSpec, hint: Option<&str>) {
     let theme = ui.theme();
     // `accent` asks for the whole family, not just the background the
     // core would substitute for any node: a button whose hover and pressed
@@ -582,15 +602,26 @@ pub fn button_with(ui: &mut Ui<'_>, key: &str, text: &str, spec: NodeSpec, hint:
     // it has always been, black on an accent light enough to need it.
     let label = readable_on(spec.style.bg);
     let size = ui.metrics().control_text;
-    let node = ui.child_key(key);
-    ui.with_keyed(key, spec, |ui| {
+    let node = match ident {
+        Ident::Label(key) => ui.child_key(key),
+        Ident::Index(i) => ui.child_key_index(i),
+    };
+    let body = |ui: &mut Ui<'_>| {
         ui.text(text, TextStyle::new(size).color(label));
         if let Some(hint) = hint
             && ui.is_hovered(node)
         {
             tooltip(ui, hint);
         }
-    });
+    };
+    match ident {
+        Ident::Label(key) => {
+            ui.with_keyed(key, spec, body);
+        }
+        Ident::Index(i) => {
+            ui.with_indexed(i, spec, body);
+        }
+    }
 }
 
 // -- Context menus ----------------------------------------------------------

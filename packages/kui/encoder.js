@@ -845,8 +845,11 @@ export function createEncoder(P) {
         f[fi++] = cur ? 1 : 0;
         f[fi++] = cur ? cur[0] | 0 : 0;
         f[fi++] = cur ? cur[1] | 0 : 0;
-        const shape = p.cursorShape == null ? 0 : ['block', 'bar', 'underline'].indexOf(p.cursorShape);
-        if (shape < 0) throw new Error(`bad cursorShape ${JSON.stringify(p.cursorShape)} for <cells> (block, bar or underline)`);
+        // The shape names come from the addon (`CellCursor::NAMES`), like
+        // every other value table here; the literal that stood in for them
+        // could drift (backlog AR40).
+        const shape = p.cursorShape == null ? 0 : P.cellCursors.indexOf(p.cursorShape);
+        if (shape < 0) throw new Error(`bad cursorShape ${JSON.stringify(p.cursorShape)} for <cells> (${P.cellCursors.join(' | ')})`);
         // A `$name` cursor colour rides as its index with shape bit 4 set
         // (v11); one that does not resolve is left out, the default.
         const cursorRef = isRef(p.cursorColor) ? tokenRef(p.cursorColor, 'color') : undefined;

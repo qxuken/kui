@@ -1440,10 +1440,20 @@ impl KuiWindow {
         // to that answer, and a click paints once — the button let go and
         // the count moved in one frame, not two.
         let mut launcher = kui::app(&title).deferred_events();
+        // A size is both halves or neither: a lone `width` used to be
+        // dropped silently, against the encoder's own "refuse, don't drop"
+        // (backlog AR40). The min/max pairs below are different — either
+        // half of a bound stands alone, and says so.
         let w = o.get("width").and_then(Json::as_f64);
         let h = o.get("height").and_then(Json::as_f64);
-        if let (Some(w), Some(h)) = (w, h) {
-            launcher = launcher.size(w, h);
+        match (w, h) {
+            (Some(w), Some(h)) => launcher = launcher.size(w, h),
+            (None, None) => {}
+            _ => {
+                return Err(err(
+                    "window options: `width` and `height` go together (a min or max bound may stand alone)",
+                ));
+            }
         }
         let num = |k: &str| o.get(k).and_then(Json::as_f64).filter(|v| v.is_finite());
         // A lone `minWidth` leaves the other axis free: 0 for a missing min,
@@ -1487,10 +1497,16 @@ impl KuiWindow {
             let ext = unsafe { kui_ffi::CExtension::open(path) }.map_err(err)?;
             launcher = launcher.try_extension_as(ns, ext).map_err(err)?;
         }
-        launcher = match o.get("chrome").and_then(Json::as_str) {
-            Some("custom") => launcher.custom_titlebar(),
-            Some("borderless") => launcher.borderless(),
-            _ => launcher,
+        launcher = match o.get("chrome") {
+            None | Some(Json::Null) => launcher,
+            Some(Json::String(s)) if s == "native" => launcher,
+            Some(Json::String(s)) if s == "custom" => launcher.custom_titlebar(),
+            Some(Json::String(s)) if s == "borderless" => launcher.borderless(),
+            Some(other) => {
+                return Err(err(format!(
+                    "window options: chrome must be \"native\", \"custom\" or \"borderless\", not {other}"
+                )));
+            }
         };
         // `system: {motion: 'reduced'}` — the same partial `setEnv` takes
         // headless, read the same way, but pinned at the launcher rather

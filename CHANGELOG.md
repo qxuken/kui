@@ -89,6 +89,17 @@ field reports).
   the always-drawn node form beside the hover-gated prop (the edit op's
   flags bit 4 and a `tooltip` op, still frame v11). `protocol().doors`
   carries the table to JS.
+- **A stock button takes `index`** (backlog AR40, from the second
+  architecture review): `<button index={i}>` / `button { index = i }`
+  in a virtual column keys the button by its row, as a box is keyed, so
+  it keeps its focus and tweens as the range slides and two rows with
+  the same text are two nodes — it warned `unknown-prop` and keyed by
+  text before. Declared beside `key`, the index wins. Beside it, two
+  refusals where a value was dropped: Lua's `cursor_shape` names the
+  three shapes for a word that is none of them (Node's encoder reads
+  the same list off the addon now, `protocol().cellCursors`), and `new
+  KuiWindow` refuses a lone `width` or `height` and a `chrome` word it
+  does not have, before it opens anything.
 - **The standard menus, on macOS** ([ADR
   0030](docs/adr/0030-the-standard-menus-the-runner-keeps.md), raised by
   pressing fn+ctrl+F in a kui window and getting nothing). macOS's window

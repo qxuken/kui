@@ -4527,6 +4527,46 @@ test('a virtualColumn whose list shrank under it lands in one frame', () => {
   assert.equal(app.ctx.scrollGeometry('log').offset.y, 0);
 });
 
+test('a stock button takes an index, as a box does, and the index wins over its text (AR40)', () => {
+  // In a virtual column `<button index={i}>` warned `unknown-prop` and was
+  // keyed by its text, so two rows saying "Open" were one node and focus
+  // slid with the range. The row is one of the button's now.
+  const ctx = new Ctx();
+  ctx.setDiagnostics(true);
+  const view = (from) => box({ pad: 4 }, [
+    ...[from, from + 1].map((i) => el('button', { onClick: { row: i }, index: i }, ['Open'])),
+    el('button', { onClick: 'k', index: 7 }, ['Keyed'], 'named'),
+  ]);
+  ctx.frame(200, 200, 1, view(0));
+  assert.deepEqual(ctx.warnings(), [], 'index is a button row');
+  const buttons = ctx.accessTree().nodes.filter((n) => n.role === 'button');
+  assert.equal(buttons.length, 3, 'two rows with the same text are two nodes');
+  const [row0, row1] = buttons;
+  assert.notEqual(row0.key, row1.key);
+  ctx.focus(row1.key);
+  ctx.frame(200, 200, 1, view(1));
+  const slid = ctx.accessTree().nodes.filter((n) => n.role === 'button');
+  assert.equal(slid[0].key, row1.key, 'row 1 keeps its key as it moves up the list');
+  assert.equal(ctx.focused(), row1.key, 'and its focus');
+  assert.equal(ctx.keyOf('named'), null, 'declared beside `key`, the index wins');
+  ctx.cursor(20, 12); ctx.mouse(true); ctx.mouse(false);
+  assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [{ row: 1 }], 'the click carries the row its index named');
+});
+
+test("a cells cursor's shapes are the addon's list, and a window's size and chrome words are refused, not dropped (AR40)", () => {
+  assert.deepEqual(protocol().cellCursors, ['block', 'bar', 'underline']);
+  const ctx = new Ctx();
+  const mono = { size: 14, family: 'mono', lineHeight: 20 };
+  const grid = new Uint32Array(4 * 4);
+  assert.throws(
+    () => ctx.frame(100, 100, 1, box({}, [el('cells', { ...mono, rows: 1, cols: 4, cells: grid, cursorAt: [0, 0], cursorShape: 'blob' })])),
+    /block \| bar \| underline/,
+  );
+  // The constructor refuses before it opens anything, so this runs headless.
+  assert.throws(() => new KuiWindow('t', { width: 320 }), /width` and `height` go together/);
+  assert.throws(() => new KuiWindow('t', { chrome: 'frameless' }), /chrome must be/);
+});
+
 test('an index is a row number, and anything else is refused', () => {
   // Folded to 0 it would silently take row 0's key, and two of them in one
   // frame would share it - the `duplicate-key` case, arrived at in silence.

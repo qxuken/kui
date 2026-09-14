@@ -1447,10 +1447,17 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             }
             let cursor = match t.get::<Option<Table>>("cursor_at")? {
                 Some(cur) => {
-                    let shape = t
-                        .get::<Option<String>>("cursor_shape")?
-                        .and_then(|s| kui_core::CellCursor::from_name(&s))
-                        .unwrap_or(kui_core::CellCursor::Block);
+                    // An unknown name is refused, as Node refuses it —
+                    // not folded to a block (backlog AR40).
+                    let shape = match t.get::<Option<String>>("cursor_shape")? {
+                        None => kui_core::CellCursor::Block,
+                        Some(s) => kui_core::CellCursor::from_name(&s).ok_or_else(|| {
+                            bad(format!(
+                                "cursor_shape must be {}, not {s:?}",
+                                kui_core::CellCursor::NAMES.join(" | ")
+                            ))
+                        })?,
+                    };
                     let color = match t.get::<mlua::Value>("cursor_color")? {
                         mlua::Value::Nil => None,
                         v => with_refs(ui, |refs| parse_color(&v, refs))?,
@@ -1602,7 +1609,12 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
                 }
                 Ok(())
             })?;
-            widgets::button_with(ui, &key, &text, out.spec, out.tooltip.as_deref());
+            // An `index` keys the button by its row, as it does a box
+            // (backlog AR40): declared beside `key`, the index wins.
+            match t.get::<Option<u64>>("index")? {
+                Some(i) => widgets::button_indexed(ui, i, &text, out.spec, out.tooltip.as_deref()),
+                None => widgets::button_with(ui, &key, &text, out.spec, out.tooltip.as_deref()),
+            }
             Ok(())
         }
         other => Err(mlua::Error::runtime(format!("unknown node type '{other}'"))),
@@ -2661,6 +2673,76 @@ mod tests {
         let err = ext.view(&Slot::root(), &mut ui).unwrap_err();
         assert!(err.contains("sheet"), "{err}");
         assert!(err.contains("popup"), "{err}");
+    }
+
+    /// A stock button takes `index` as a box does, and the index wins over
+    /// its label; a `cells` cursor with a shape nobody has is refused
+    /// rather than folded to a block (backlog AR40).
+    #[test]
+    fn a_button_takes_an_index_and_a_cursor_shape_is_refused() {
+        let mut ext = LuaExtension::from_source(
+            "rows",
+            r#"
+                from = 0
+                function view(env)
+                  return column {
+                    button { label = "Open", index = from, on_click = { row = from } },
+                    button { label = "Open", index = from + 1, on_click = { row = from + 1 } },
+                    button { label = "Keyed", key = "named", index = 7, on_click = "k" },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        core.set_diagnostics(true);
+        let frame = |core: &mut Core, ext: &mut LuaExtension| {
+            let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
+            ui.set_origin(OriginId(1));
+            ext.view(&Slot::root(), &mut ui).unwrap();
+            ui.finish();
+        };
+        frame(&mut core, &mut ext);
+        assert!(core.take_warnings().is_empty(), "index is a button row");
+        let buttons = |core: &mut Core| -> Vec<Key> {
+            core.access_tree()
+                .nodes
+                .iter()
+                .filter(|n| n.role == kui_core::Role::Button)
+                .map(|n| n.key)
+                .collect()
+        };
+        let before = buttons(&mut core);
+        assert_eq!(before.len(), 3, "two rows with the same text are two nodes");
+        assert!(
+            core.key_of("named").is_none(),
+            "declared beside `key`, the index wins"
+        );
+        ext.lua.globals().set("from", 1).unwrap();
+        frame(&mut core, &mut ext);
+        let after = buttons(&mut core);
+        assert_eq!(
+            after[0], before[1],
+            "row 1 keeps its key as it moves up the list"
+        );
+
+        let mut ext = LuaExtension::from_source(
+            "term",
+            r#"
+                function view(env)
+                  return column { cells { key = "term", rows = 1, cols = 4, size = 14,
+                    lines = { "abcd" }, cursor_at = { 1, 1 }, cursor_shape = "blob" } }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
+        ui.set_origin(OriginId(1));
+        let err = ext.view(&Slot::root(), &mut ui).unwrap_err().to_string();
+        assert!(
+            err.contains("block | bar | underline") && err.contains("blob"),
+            "{err}"
+        );
     }
 
     /// Every node type the prelude offers lowers without error and draws.

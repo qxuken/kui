@@ -3152,7 +3152,22 @@ key away from an out-of-bounds.
 **Fix:** `let here = self.panes[i].id` at the top and `pane_of(here)` after
 the drain.
 
-### `.` AR40 — Three small door rules broken: `index` on a button, `cells` cursor names, a lone `width`
+### `.` AR40 — Three small door rules broken: `index` on a button, `cells` cursor names, a lone `width` — **done (2026-09-14)**
+
+**All three, 2026-09-14.** `index` is a row of both `BUTTON_ROWS` lists
+and `widgets::button_indexed` (one body with `button_with`, keyed
+through `child_key_index` / `with_indexed`) is what `<button index>`
+and `button { index = }` lower to — declared beside `key`, the index
+wins, as on a box — so a button in a virtual column keeps its key,
+focus and tweens as the range slides and two rows saying "Open" are two
+nodes; C keeps `kui_button_with` by text, a row there being
+`kui_open_indexed` with a button role, one function away if a host
+asks. `CellCursor::NAMES` rides `protocol().cellCursors` and the encoder
+reads it, and Lua refuses an unknown `cursor_shape` naming the three,
+as Node does. `new KuiWindow` refuses a lone `width` or `height` (a min
+or max bound still stands alone, as documented) and any `chrome` word
+but the three, before it opens anything. Tests in the Node and Lua
+suites, each red on the old lowering.
 
 The stock `<button>` admits `key` and not `index` (`schema.rs:1372-1389`
 vs `:1196`, "declared beside `key` the index wins"); in a `virtual_column`
@@ -3477,8 +3492,8 @@ miss policy, Cut's `changed`, one `prepare_spec`), AR17–AR18 (the focus
 stamp and the AT gates — **both done 2026-09-14**), AR19–AR25 as the defects they are
 (**all seven done 2026-09-14**, AR26 with them), then B1a's
 table with AR26, AR27 and AR40 beside it (**B1a done 2026-09-14** — the
-table, its four pins and the one-line rows; AR27 and AR40 open beside
-it), AR46–AR48 for the tests, and
+table, its four pins and the one-line rows; **AR40 done 2026-09-14**;
+AR27 open beside it), AR46–AR48 for the tests, and
 AR49 first of all if the alpha.12 notes go out before the rest, since
 its first line is the CHANGELOG contradicting itself on the frame
 version (**AR49 done 2026-09-14**, the reused ids retired as `B1a` /

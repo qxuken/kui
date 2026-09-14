@@ -1436,13 +1436,16 @@ pub const TEXT_ROWS_LUA: &[&str] = &[
 ];
 
 /// The rows the stock button reads (`ElementDef::jsx_rows` / `lua_rows`):
-/// the click, the identity, the access rows — what a button *is* and what
-/// a reader says of it — and the one paint row it takes, `accent`, which
-/// is not a colour but a question put to the OS. The two lists are the
-/// same rows in each spelling, index for index.
+/// the click, the identity (`key`, or `index` in a virtual list — declared
+/// beside `key` the index wins, as on a box, backlog AR40), the access
+/// rows — what a button *is* and what a reader says of it — and the one
+/// paint row it takes, `accent`, which is not a colour but a question put
+/// to the OS. The two lists are the same rows in each spelling, index for
+/// index.
 pub const BUTTON_ROWS_JSX: &[&str] = &[
     "onClick",
     "key",
+    "index",
     "label",
     "description",
     "tooltip",
@@ -1452,6 +1455,7 @@ pub const BUTTON_ROWS_JSX: &[&str] = &[
 pub const BUTTON_ROWS_LUA: &[&str] = &[
     "on_click",
     "key",
+    "index",
     "label",
     "description",
     "tooltip",
@@ -1488,8 +1492,8 @@ pub const ELEMENTS: &[ElementDef] = &[
         lua_own: &["text"],
         jsx_rows: Some(BUTTON_ROWS_JSX),
         lua_rows: Some(BUTTON_ROWS_LUA),
-        jsx: "`<button onClick label description tooltip disabled accent>`",
-        lua: "`button { label=, on_click=, text=, description=, tooltip=, disabled=, accent= }`",
+        jsx: "`<button onClick key|index label description tooltip disabled accent>`",
+        lua: "`button { label=, on_click=, key= | index=, text=, description=, tooltip=, disabled=, accent= }`",
         c: "`kui_button`, `kui_button_with`",
         doc: "The stock button: `widgets::button_spec(&metrics)` with hover/pressed colors declared on the node, keyed by its text (`key` overrides). Its look is its spec, so the layout and paint rows are closed — declared, they are dropped with an `unknown-prop` warning naming the rows it does read — and those are the access rows: `label` when the text is not the name, `description`, `tooltip`, and `disabled` (inert, and dimmed to half). The one paint row it takes is `accent`, which is a question and not a colour: with it the three backgrounds come off `env.system.accent` and the label goes black or white by its luminance, so a yellow accent is still readable, and on a host that never said what the accent is the stock blue stands. In Lua `label` is the name and the text both unless `text` says otherwise; in C the rows ride a `KuiSpec` whose other fields `kui_button_with` ignores. A button that needs any other row is a box with `role=\"button\"` and the same rows spelled out.",
     },
