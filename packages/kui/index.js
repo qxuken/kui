@@ -843,7 +843,6 @@ export function runWindowed(config, opts = {}) {
     const pump = () => {
       let alive;
       let worked;
-      let owed;
       let animating;
       try {
         // A model a `dispatch` outside the loop changed — from `setup`, a
@@ -851,9 +850,6 @@ export function runWindowed(config, opts = {}) {
         // runner never paints a tree older than that `dispatch` (F42).
         worked = app[OWED]();
         alive = win.pump();
-        // Read before `step`, whose own frame (a tick's) is not the user's:
-        // zero here is a redraw the runner owes an OS event.
-        owed = win.nextDeadlineMs();
         // `step` draws if anything arrived; a transition draws without it.
         animating = win.animating();
         worked = app[STEP]().used || worked || animating;
@@ -875,18 +871,19 @@ export function runWindowed(config, opts = {}) {
         resolve(app.model);
         return;
       }
-      // When the runner next wants pumping. Zero (read above, before
-      // `step`) means it has an event's redraw to present — which is also
-      // the only way this driver hears about OS input the *app* never
-      // sees: a pointer crossing a window that declares no hover produces
-      // no app event at all, and a driver pacing itself on app events
-      // alone reads that as an idle window and goes on backing off while
-      // somebody is reaching for a button. It measured 520 ms from click
-      // to update before this counted as work, against 34 ms for a driver
-      // that never backs off. Read again after `step` for the sleep: the
-      // frame a tick just drew is due now, and must not wait a gap.
+      // When the runner next wants pumping. Zero means the pump saw an OS
+      // window event and has its redraw to present — which is also the
+      // only way this driver hears about OS input the *app* never sees: a
+      // pointer crossing a window that declares no hover produces no app
+      // event at all, and a driver pacing itself on app events alone reads
+      // that as an idle window and goes on backing off while somebody is
+      // reaching for a button. It measured 520 ms from click to update
+      // before this counted as work, against 34 ms for a driver that never
+      // backs off. A frame `step` drew for a tick does not read as zero:
+      // only the pump's own events set that deadline (`saw_event`), and a
+      // redraw is presented inside the pump that asked for it.
       const due = win.nextDeadlineMs();
-      const gap = pace.after(worked || (owed !== null && owed <= 1), at());
+      const gap = pace.after(worked || (due !== null && due <= 1), at());
       // The loop's own timing (ticks, anything animating) capped by the
       // backoff, and then the runner's deadline if it is sooner. Floored at
       // 1ms rather than `busyMs`: every deadline the shell reports is one it

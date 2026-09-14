@@ -453,7 +453,18 @@ impl Launcher {
     }
 
     pub fn run<A: App>(self, app: A) -> Result<(), Box<dyn std::error::Error>> {
-        let event_loop = take_event_loop()?;
+        // Not a parked loop: a pumped runner leaves winit's loop *running*
+        // (it never exits it — see `PARKED_LOOP`), and `run_app` on a
+        // running loop is a `debug_assert` in winit's macOS path. `run` is
+        // the one-shot runner; a process that has pumped opens again.
+        if PARKED_LOOP.with(|p| p.borrow().is_some()) {
+            return Err(
+                "kui: `run` cannot follow a pumped runner in this process — a loop \
+                        a `PumpRunner` parked is still running; open another `PumpRunner`"
+                    .into(),
+            );
+        }
+        let event_loop = EventLoop::<access_bridge::UserEvent>::with_user_event().build()?;
         event_loop.set_control_flow(ControlFlow::Wait);
         let mut shell = self.shell(app);
         shell.proxy = Some(event_loop.create_proxy());
@@ -532,7 +543,8 @@ thread_local! {
 }
 
 /// The parked loop if an earlier runner left one, else a new one — which
-/// winit allows once per process.
+/// winit allows once per process. For `open` only: `run` builds its own
+/// (above), since a parked loop is a running one.
 fn take_event_loop() -> Result<EventLoop<access_bridge::UserEvent>, winit::error::EventLoopError> {
     if let Some(parked) = PARKED_LOOP.with(|p| p.borrow_mut().take()) {
         return Ok(parked);
