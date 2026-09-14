@@ -3,9 +3,11 @@
 //! theme's three backgrounds (rest, hover, pressed), a label readable on
 //! whichever it is, a click payload, and a `button` role named by its
 //! text. `button_with` hands the spec back to the caller for the rest —
-//! `accent` (the whole family off the theme's accent, not just the rest
-//! colour), `disabled` (dimmed, inert, out of the Tab ring), a `label`
-//! when the text is not the name, a `description`, a `tooltip` hint — and
+//! `accent` (a no-op on the stock spec since backlog AR41, which paints
+//! every plain button from the theme's accent trio; it still recolours a
+//! spec of the app's own), `disabled` (dimmed, inert, out of the Tab
+//! ring), a `label` when the text is not the name, a `description`, a
+//! `tooltip` hint — and
 //! `button_spec` / `button_palette` / `readable_on` are the pieces for a
 //! button of the app's own colour that still reads as the same control.
 //!
@@ -35,7 +37,7 @@ impl App for Buttons {
                 .gap(18.0)
                 .cross_align(Align::Start),
             |ui| {
-                ui.text("`widgets::button` · rest, hover, pressed, and the ring on Tab", TextStyle::new(12.0).color(t.muted));
+                ui.text("`widgets::button` · the theme's accent trio (rest, hover, pressed; `accent` adds nothing to a stock spec), the ring on Tab, disabled", TextStyle::new(12.0).color(t.muted));
                 ui.with(NodeSpec::row().gap(10.0), |ui| {
                     widgets::button(ui, "plain", Value::str("plain"));
                     widgets::button_with(

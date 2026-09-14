@@ -604,8 +604,11 @@ export type WarningCode =
    *  in Lua, `kui_key_of` in C) is declared by more than one node in the frame,
    *  under different parents, so they have distinct keys and the name picked
    *  the first in tree order. Labels are unique among siblings, not across a
-   *  tree. Give the node meant a label nothing else declares, or pass the hex
-   *  key an event carried. Two nodes with the *same* key are `duplicate-key`. */
+   *  tree. An extension asking from inside its fill is answered from the nodes
+   *  it opened and no one else's, and the host from its own first — so this is
+   *  a clash among the asker's own. Give the node meant a label nothing else
+   *  declares, or pass the hex key an event carried. Two nodes with the *same*
+   *  key are `duplicate-key`. */
   | 'ambiguous-key'
   /** A `focusRegion(name)` (`Core::focus_region`, `env.focus_region`,
    *  `kui_focus_region`) named a node the frame after it did not declare as a
@@ -2276,7 +2279,8 @@ export declare class Ctx {
    * is for caching one, or for checking that a name reached
    * the view. Two nodes on one label under different parents
    * resolve to the first in tree order and raise
-   * `ambiguous-key`.
+   * `ambiguous-key` — among the host's own first, and a
+   * plugin filling a slot is answered from its own nodes only.
    */
   keyOf(label: string): string | null
   blur(): void
@@ -3199,7 +3203,8 @@ export declare class KuiWindow {
    * is for caching one, or for checking that a name reached
    * the view. Two nodes on one label under different parents
    * resolve to the first in tree order and raise
-   * `ambiguous-key`.
+   * `ambiguous-key` — among the host's own first, and a
+   * plugin filling a slot is answered from its own nodes only.
    */
   keyOf(label: string): string | null
   blur(): void

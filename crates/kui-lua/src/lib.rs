@@ -39,10 +39,12 @@
 //! way it can be spelled: the integer key an event carried, or the string
 //! its `key` field declared — `env.set_focus("note")` — resolved through
 //! the frame being built so far and then the last finished one
-//! (`Ui::key_of`), so a node no event has come from can be named. Two
-//! nodes on one label under different parents resolve to the first in tree
-//! order with an `ambiguous-key` warning; a label no node declared is an
-//! error naming both spellings.
+//! (`Ui::key_of`), so a node no event has come from can be named — among
+//! the script's own nodes: a script is a guest in the host's frame, and a
+//! label the host or another plugin declared is not one it can see. Two
+//! nodes of its own on one label under different parents resolve to the
+//! first in tree order with an `ambiguous-key` warning; a label no node
+//! declared is an error naming both spellings.
 //!
 //! `set_focus` and `blur` take effect at once; `focus_next` / `focus_prev`
 //! resolve when the frame finishes, because the Tab ring is made of a

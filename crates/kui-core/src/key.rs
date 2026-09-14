@@ -54,7 +54,10 @@ impl Key {
 /// rows allocates nothing after its first.
 #[derive(Default)]
 pub(crate) struct LabelIndex {
-    entries: Vec<(Key, u32, u32)>,
+    /// The key, the label's span in `text`, and the origin the node was
+    /// opened under — so a lookup can prefer the asker's own nodes (a
+    /// guest's `key_of` is asked from inside its fill; see `find_label`).
+    entries: Vec<(Key, u32, u32, crate::tree::OriginId)>,
     text: String,
 }
 
@@ -64,29 +67,54 @@ impl LabelIndex {
         self.text.clear();
     }
 
-    pub(crate) fn push(&mut self, key: Key, label: &str) {
+    pub(crate) fn push(&mut self, key: Key, label: &str, origin: crate::tree::OriginId) {
         let start = self.text.len() as u32;
         self.text.push_str(label);
-        self.entries.push((key, start, label.len() as u32));
+        self.entries.push((key, start, label.len() as u32, origin));
     }
 
     /// The label `key` was opened under, if it was opened by label.
     pub(crate) fn label_of(&self, key: Key) -> Option<&str> {
         self.entries
             .iter()
-            .find(|(k, _, _)| *k == key)
-            .map(|(_, start, len)| &self.text[*start as usize..(*start + *len) as usize])
+            .find(|(k, ..)| *k == key)
+            .map(|(_, start, len, _)| &self.text[*start as usize..(*start + *len) as usize])
     }
 
-    /// The keys opened under `label`, in tree order.
-    pub(crate) fn find<'a>(&'a self, label: &'a str) -> impl Iterator<Item = Key> + 'a {
+    /// The keys opened under `label` and the origin each was opened
+    /// under, in tree order.
+    pub(crate) fn find<'a>(
+        &'a self,
+        label: &'a str,
+    ) -> impl Iterator<Item = (Key, crate::tree::OriginId)> + 'a {
         self.entries
             .iter()
-            .filter(move |(_, start, len)| {
+            .filter(move |(_, start, len, _)| {
                 *len as usize == label.len()
                     && &self.text[*start as usize..(*start + *len) as usize] == label
             })
-            .map(|(k, _, _)| *k)
+            .map(|(k, _, _, o)| (*k, *o))
+    }
+
+    /// `find`, narrowed to the asker. A guest sees the keys it opened
+    /// under `label` and no one else's: labels are unique among siblings,
+    /// not across a frame, and a guest cannot know what the host or
+    /// another guest called its nodes (ADR 0014 — a script's env is a
+    /// reading of its own view). The host, whose frame it is, sees its
+    /// own first and everyone's when it opened none. Only a clash within
+    /// what the asker sees is an ambiguity.
+    pub(crate) fn find_for(&self, label: &str, origin: crate::tree::OriginId) -> Vec<Key> {
+        let all: Vec<(Key, crate::tree::OriginId)> = self.find(label).collect();
+        let mine: Vec<Key> = all
+            .iter()
+            .filter(|(_, o)| *o == origin)
+            .map(|(k, _)| *k)
+            .collect();
+        if mine.is_empty() && origin == crate::tree::OriginId::HOST {
+            all.into_iter().map(|(k, _)| k).collect()
+        } else {
+            mine
+        }
     }
 }
 
@@ -96,12 +124,25 @@ mod tests {
 
     #[test]
     fn label_index_finds_in_tree_order_and_clears() {
+        use crate::tree::OriginId;
         let mut idx = LabelIndex::default();
-        idx.push(Key::ROOT.str("a"), "a");
-        idx.push(Key::ROOT.str("ab"), "ab");
-        idx.push(Key::ROOT.index(0).str("a"), "a");
-        let a: Vec<Key> = idx.find("a").collect();
+        idx.push(Key::ROOT.str("a"), "a", OriginId::HOST);
+        idx.push(Key::ROOT.str("ab"), "ab", OriginId::HOST);
+        idx.push(Key::ROOT.index(0).str("a"), "a", OriginId(1));
+        let a: Vec<Key> = idx.find("a").map(|(k, _)| k).collect();
         assert_eq!(a, [Key::ROOT.str("a"), Key::ROOT.index(0).str("a")]);
+        // The asker's own; a guest sees no one else's, the host sees
+        // everyone's when it opened none.
+        assert_eq!(idx.find_for("a", OriginId::HOST), [Key::ROOT.str("a")]);
+        assert_eq!(
+            idx.find_for("a", OriginId(1)),
+            [Key::ROOT.index(0).str("a")]
+        );
+        assert_eq!(idx.find_for("a", OriginId(2)), []);
+        assert_eq!(idx.find_for("ab", OriginId(1)), []);
+        assert_eq!(idx.find_for("ab", OriginId::HOST), [Key::ROOT.str("ab")]);
+        idx.push(Key::ROOT.str("g"), "g", OriginId(1));
+        assert_eq!(idx.find_for("g", OriginId::HOST), [Key::ROOT.str("g")]);
         assert_eq!(idx.find("ab").count(), 1, "a prefix is not a match");
         assert_eq!(idx.find("b").count(), 0);
         assert_eq!(idx.label_of(Key::ROOT.str("ab")), Some("ab"));

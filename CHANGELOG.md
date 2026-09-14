@@ -657,6 +657,17 @@ field reports).
 
 ### Fixed
 
+- **A plugin's label lookup is its own** (found by the QA round of
+  2026-09-14, on `lua_panel`): `key_of` / `keyOf` / `kui_key_of` and every
+  verb that takes a label — Lua's `env.edit_text("filter")`, a focus, a
+  scroll — asked from inside a fill are answered from the nodes that
+  extension opened and no one else's, and the host from its own first
+  (everyone's when it declared none). The Lua panel and the C plugin it
+  loads both key an editor `filter`, and the script's read hit both from
+  its second frame on — an `ambiguous-key` warning every frame, and the
+  first in tree order, which was its own only by luck of the order. A
+  guest cannot know what the host or another guest called its nodes;
+  labels are unique among siblings, and now among an asker's own.
 - **A keyboard selects in a `selectable` scope** (backlog AR28): Shift
   with Left / Right / Home / End on a focused node inside a scope moves
   the selection's focus the way the editor's Shift-motions move its

@@ -2573,7 +2573,8 @@ macro_rules! core_methods {
             /// is for caching one, or for checking that a name reached
             /// the view. Two nodes on one label under different parents
             /// resolve to the first in tree order and raise
-            /// `ambiguous-key`.
+            /// `ambiguous-key` — among the host's own first, and a
+            /// plugin filling a slot is answered from its own nodes only.
             #[napi]
             pub fn key_of(&mut self, label: String) -> Option<String> {
                 self.$core().key_of(&label).map(key_str)

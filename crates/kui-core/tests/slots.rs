@@ -606,3 +606,70 @@ fn an_extension_cannot_fill_its_own_slot() {
         1
     );
 }
+
+/// A guest asking by label gets its own node (found by the QA round of
+/// 2026-09-14 on `lua_panel`, whose script and the C plugin it loads both
+/// key an editor "filter"): the script's `env.edit_text("filter")` was a
+/// whole-frame lookup, so from its second frame on it hit both and warned
+/// `ambiguous-key` every frame. Labels are unique among siblings, and a
+/// guest cannot know what the host or another guest called its nodes — so
+/// `key_of` prefers the nodes the asking origin opened, in this frame and
+/// in the last one, and only a clash among those is an ambiguity.
+#[test]
+fn a_label_asked_for_by_a_guest_is_the_guests_own_node() {
+    /// (what `key_of` answered before the fill declared it, the key the
+    /// fill then declared)
+    type Asked = (Option<Key>, Key);
+    struct Asker {
+        seen: Rc<RefCell<Vec<Asked>>>,
+    }
+    impl Extension for Asker {
+        fn name(&self) -> &str {
+            "asker"
+        }
+        fn slots(&self) -> &[String] {
+            &[]
+        }
+        fn view(&mut self, _slot: &Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+            // Asked before this frame declares it — the last frame's
+            // answer — the way a script reads an editor at the top of
+            // its view.
+            let asked = ui.key_of("filter");
+            let mine = ui.with_keyed("filter", cell(), |_| {});
+            self.seen.borrow_mut().push((asked, mine));
+            Ok(())
+        }
+        fn on_event(&mut self, _ev: &UiEvent) -> Vec<Value> {
+            vec![]
+        }
+    }
+    let seen = Rc::new(RefCell::new(vec![]));
+    let mut exts = load(vec![Box::new(Asker { seen: seen.clone() })]);
+    let mut core = Core::new();
+    core.set_diagnostics(true);
+    let mut host_keys = vec![];
+    for _ in 0..2 {
+        let mut ui = core.frame_with(Size::new(600.0, 100.0), 1.0, &mut exts);
+        ui.configure_root(NodeSpec::row().fill());
+        // The host's own "filter", declared before the slot in tree order.
+        host_keys.push(ui.with_keyed("filter", cell(), |_| {}));
+        // And the host asks for its own, this frame's — not the guest's.
+        assert_eq!(ui.key_of("filter"), host_keys.last().copied());
+        ui.slot_with("asker/root", &Value::Null);
+        ui.finish();
+    }
+    let seen = seen.borrow();
+    assert_eq!(seen.len(), 2);
+    assert_eq!(seen[0].0, None, "nothing declared before the first frame");
+    assert_eq!(
+        seen[1].0,
+        Some(seen[0].1),
+        "the second frame's ask is answered from the first frame's fill"
+    );
+    assert_ne!(seen[1].1, host_keys[1], "two nodes, one label, two parents");
+    assert_eq!(
+        codes(&core.take_warnings()),
+        Vec::<&str>::new(),
+        "and no ambiguity"
+    );
+}

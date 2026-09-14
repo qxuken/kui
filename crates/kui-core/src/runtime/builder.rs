@@ -307,20 +307,10 @@ impl Core {
             return key;
         }
         self.open_with_key(key, spec);
-        self.key_labels.push(key, label);
+        self.key_labels.push(key, label, self.origin);
         key
     }
 
-    /// The key of the node opened under `label` (`open_keyed`; a `key`
-    /// prop in JSX or a Lua table) in the last finished frame — or, while
-    /// a frame is being built, in it so far and then in the last one. The
-    /// door for a caller that holds only strings: keys are hashes of the
-    /// path from the root, and that path runs through auto-keyed
-    /// ancestors nothing outside the build can spell, so "focus the node
-    /// I just declared" is this and not `child_key`. None when no node
-    /// declared the label. Labels are unique among siblings, not across a
-    /// tree, so two nodes may share one under different parents: the
-    /// first in tree order wins and an `ambiguous-key` warning says so.
     /// The inverse of [`Self::key_of`]: the label `key` was opened under
     /// — in the frame being built so far, else in the last one — or
     /// `None` for an auto-keyed node or a key no frame has declared. What
@@ -332,6 +322,21 @@ impl Core {
             .or_else(|| self.key_labels_last.label_of(key))
     }
 
+    /// The key of the node opened under `label` (`open_keyed`; a `key`
+    /// prop in JSX or a Lua table) in the last finished frame — or, while
+    /// a frame is being built, in it so far and then in the last one. The
+    /// door for a caller that holds only strings: keys are hashes of the
+    /// path from the root, and that path runs through auto-keyed
+    /// ancestors nothing outside the build can spell, so "focus the node
+    /// I just declared" is this and not `child_key`. None when no node
+    /// declared the label. Labels are unique among siblings, not across a
+    /// tree, so two nodes may share one under different parents. A guest
+    /// asking from inside its fill (ADR 0014) is answered from the nodes
+    /// it opened and no one else's — it cannot know what the host or
+    /// another guest called theirs, and its env is a reading of its own
+    /// view; the host, whose frame it is, from its own first and from
+    /// everyone's when it opened none. Within that, the first in tree
+    /// order wins and an `ambiguous-key` warning says so.
     pub fn key_of(&mut self, label: &str) -> Option<Key> {
         self.find_label(label, true)
     }
@@ -344,15 +349,11 @@ impl Core {
     /// frame's end, when this frame's labels are the whole story.
     pub(crate) fn find_label(&mut self, label: &str, fall_back: bool) -> Option<Key> {
         let (first, count) = {
-            let mut hits = self.key_labels.find(label);
-            match hits.next() {
-                Some(k) => (k, 1 + hits.count()),
-                None if fall_back && self.building => {
-                    let mut hits = self.key_labels_last.find(label);
-                    (hits.next()?, 1 + hits.count())
-                }
-                None => return None,
+            let mut hits = self.key_labels.find_for(label, self.origin);
+            if hits.is_empty() && fall_back && self.building {
+                hits = self.key_labels_last.find_for(label, self.origin);
             }
+            (*hits.first()?, hits.len())
         };
         if count > 1 {
             self.diag
@@ -551,7 +552,7 @@ impl Core {
         // a virtual row is ordered by when the row is not built (ADR 0017).
         if self.tree.len() as u32 > at {
             match identity {
-                Identity::Label(l) => self.key_labels.push(key, l),
+                Identity::Label(l) => self.key_labels.push(key, l, self.origin),
                 Identity::Index(i) => self.tree.indexed.push((at, i)),
                 Identity::Auto => {}
             }
@@ -634,7 +635,7 @@ impl Core {
         self.cells_at(key, grid, spec);
         // Like every other keyed door: the label after the node, so a
         // frame with no root records no name (AR16).
-        self.key_labels.push(key, label);
+        self.key_labels.push(key, label, self.origin);
     }
 
     /// [`Self::cells`] under a data index; see [`Self::open_indexed`].
@@ -714,7 +715,7 @@ impl Core {
             .push(parent, key, self.origin, spec, NodeContent::Edit(key));
         // A leaf keyed by its label, like `open_keyed`: `key_of` must find
         // the editor an app wants to focus by name.
-        self.key_labels.push(key, label);
+        self.key_labels.push(key, label, self.origin);
         key
     }
 
@@ -824,7 +825,7 @@ impl Core {
         }
         let key = self.child_key(label);
         self.fragment_with_key(key, frag.into(), params, spec);
-        self.key_labels.push(key, label);
+        self.key_labels.push(key, label, self.origin);
         key
     }
 
@@ -915,7 +916,7 @@ impl Core {
         let key = self.child_key(label);
         self.line_with_key(key, points, stroke, spec);
         // Like every other keyed door: the label `key_of` resolves through.
-        self.key_labels.push(key, label);
+        self.key_labels.push(key, label, self.origin);
     }
 
     /// [`Self::line_node`] under a data index; see [`Self::open_indexed`].
@@ -984,7 +985,7 @@ impl Core {
         }
         let key = self.child_key(label);
         self.polygon_with_key(key, points, spec);
-        self.key_labels.push(key, label);
+        self.key_labels.push(key, label, self.origin);
     }
 
     /// [`Self::polygon_node`] under a data index; see [`Self::open_indexed`].

@@ -2176,7 +2176,9 @@ void kui_focus(KuiCtx *ctx, uint64_t key);
  * from is named this way: kui_focus(ctx, kui_key_of(ctx, KUI_STR("note"))).
  * Labels are unique among siblings, not across the tree: two nodes on one
  * label under different parents resolve to the first in tree order, with an
- * "ambiguous-key" warning (kui_take_warnings). */
+ * "ambiguous-key" warning (kui_take_warnings). A plugin asking from inside
+ * its fill is answered from the nodes it opened and no one else's; the host
+ * from its own first, and everyone's when it opened none. */
 uint64_t kui_key_of(KuiCtx *ctx, KuiStr label);
 /* What Tab (forward) / Shift-Tab does: the next / previous focusable node,
  * wrapping. */
