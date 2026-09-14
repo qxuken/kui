@@ -516,10 +516,13 @@ export function createEncoder(P) {
     return { v: color(v), ref: false };
   }
 
-  // Flattens <span> nesting into (text, flags, color, bg) quads, inheritance
-  // matching the Rust collect_spans. Flags: 1 bold, 2 italic, 4 has color,
-  // 8 underline, 16 strikethrough, 32 has bg, 64 the colour is a token
-  // index, 128 the bg is.
+  // Flattens <span> nesting into (text, flags, color, bg, underline colour)
+  // records, inheritance matching the Rust collect_spans. Flags: 1 bold,
+  // 2 italic, 4 has color, 8 underline, 16 strikethrough, 32 has bg, 64
+  // the colour is a token index, 128 the bg is, 256 has an underline
+  // colour, 512 it is a token index, 1024 the underline is wavy, 2048
+  // dotted (v13, backlog K4). A span's own underline colour and style
+  // beat the enclosing span's; either implies the underline.
   function collectSpans(node, st, out) {
     if (node == null || typeof node === 'boolean') return;
     if (typeof node === 'string' || typeof node === 'number') {
@@ -531,8 +534,12 @@ export function createEncoder(P) {
         (st.strikethrough ? 16 : 0) |
         (st.bg !== undefined ? 32 : 0) |
         (st.color?.ref ? 64 : 0) |
-        (st.bg?.ref ? 128 : 0);
-      out.push([String(node), flags, st.color?.v ?? 0, st.bg?.v ?? 0]);
+        (st.bg?.ref ? 128 : 0) |
+        (st.ul !== undefined ? 256 : 0) |
+        (st.ul?.ref ? 512 : 0) |
+        (st.ulStyle === 'wavy' ? 1024 : 0) |
+        (st.ulStyle === 'dotted' ? 2048 : 0);
+      out.push([String(node), flags, st.color?.v ?? 0, st.bg?.v ?? 0, st.ul?.v ?? 0]);
       return;
     }
     if (Array.isArray(node)) {
@@ -541,15 +548,20 @@ export function createEncoder(P) {
     }
     if (node.type !== 'span') throw new Error('only strings and <span> may nest inside rich <text>');
     const p = node.props ?? {};
+    if (p.underlineStyle != null && !P.underlineStyles.includes(p.underlineStyle)) {
+      throw new Error(`bad underlineStyle ${JSON.stringify(p.underlineStyle)} on <span> (${P.underlineStyles.join(' | ')})`);
+    }
     collectSpans(
       node.children,
       {
         bold: st.bold || !!p.bold,
         italic: st.italic || !!p.italic,
         color: spanColor(p.color, st.color),
-        underline: st.underline || !!p.underline,
+        underline: st.underline || !!p.underline || p.underlineColor !== undefined || p.underlineStyle != null,
         strikethrough: st.strikethrough || !!p.strikethrough,
         bg: spanColor(p.bg, st.bg),
+        ul: spanColor(p.underlineColor, st.ul),
+        ulStyle: p.underlineStyle ?? st.ulStyle,
       },
       out,
     );
@@ -600,13 +612,14 @@ export function createEncoder(P) {
           collectSpans(el.children, {}, spans);
           f[fi++] = OP.richText;
           props(p, null, false);
-          reserve(8 + spans.length * 6);
+          reserve(8 + spans.length * 7);
           f[fi++] = spans.length;
-          for (const [text, flags, c, bg] of spans) {
+          for (const [text, flags, c, bg, ul] of spans) {
             strRef(text);
             f[fi++] = flags;
             f[fi++] = c;
             f[fi++] = bg;
+            f[fi++] = ul;
           }
         } else {
           f[fi++] = OP.text;
@@ -796,19 +809,21 @@ export function createEncoder(P) {
       }
       case 'cells': {
         // rows × cols cells as four entries each — codepoint, fg, bg,
-        // flags — in a Uint32Array or a plain array, row-major; the
-        // stream carries three slots a cell (codepoint | flags << 21, fg,
-        // bg). The style rows ride the props pass; the cursor names a
-        // cell to paint under its glyph.
+        // flags — or five, with the underline's own colour (0 = fg,
+        // backlog K4), in a Uint32Array or a plain array, row-major; the
+        // stream carries four slots a cell (codepoint | flags << 21, fg,
+        // bg, underline colour). The style rows ride the props pass; the
+        // cursor names a cell to paint under its glyph.
         const rows = p.rows | 0;
         const cols = p.cols | 0;
         if (!(rows > 0 && cols > 0)) throw new Error('<cells> needs rows and cols');
         const cells = p.cells;
         const n = rows * cols;
-        if (cells == null || cells.length !== n * 4) {
-          throw new Error(`<cells> needs a cells array of ${n * 4} entries (four per cell) for ${rows}×${cols}, got ${cells?.length}`);
+        const per = cells != null && cells.length === n * 5 ? 5 : 4;
+        if (cells == null || cells.length !== n * per) {
+          throw new Error(`<cells> needs a cells array of ${n * 4} entries (four per cell) or ${n * 5} (five, with an underline colour) for ${rows}×${cols}, got ${cells?.length}`);
         }
-        reserve(13 + n * 3);
+        reserve(13 + n * 4);
         f[fi++] = OP.cells;
         f[fi++] = rows;
         f[fi++] = cols;
@@ -831,11 +846,12 @@ export function createEncoder(P) {
         f[fi++] = typeof p.originLine === 'number' ? p.originLine : 0;
         f[fi++] = n;
         for (let i = 0; i < n; i++) {
-          const ch = cells[i * 4] >>> 0;
-          const flags = cells[i * 4 + 3] & 0xff;
+          const ch = cells[i * per] >>> 0;
+          const flags = cells[i * per + 3] & 0xff;
           f[fi++] = (ch & 0x1fffff) + flags * 0x200000;
-          f[fi++] = cells[i * 4 + 1] >>> 0;
-          f[fi++] = cells[i * 4 + 2] >>> 0;
+          f[fi++] = cells[i * per + 1] >>> 0;
+          f[fi++] = cells[i * per + 2] >>> 0;
+          f[fi++] = per === 5 ? cells[i * per + 4] >>> 0 : 0;
         }
         props(p, el.key, false);
         return;

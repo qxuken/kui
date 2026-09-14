@@ -335,6 +335,22 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             ip = lua_numbers(&kui_core::conformance::FRAGMENT_IMAGE_PARAMS),
             pl = lua_numbers(&kui_core::conformance::FRAGMENT_PARAMS_LONG),
         ),
+        // Backlog K4: a wave in red under a span, a green solid line, dots
+        // in their own colour, and an undercurl over three cells whose run
+        // carries the wave bit and a seventh entry, the underline colour.
+        "underlines" => r#"
+            local mono = { size = 14, family = "mono", line_height = 20 }
+            return column { pad = 10, gap = 4,
+              text({ "let ", { "value", underline_color = 0xff0000ff, underline_style = "wavy" } }, mono),
+              text("warn", { size = 14, family = "mono", line_height = 20, underline_color = 0x00ff00ff }),
+              text("dots", { size = 14, family = "mono", line_height = 20,
+                             underline_color = 0x7f9cf5ff, underline_style = "dotted" }),
+              cells { key = "term", rows = 1, cols = 3, size = 14, family = "mono",
+                      line_height = 20, lines = { "abc" },
+                      runs = { { 0, 0, 3, 0xd6d8e0ff, 0, 32, 0xff0000ff } }, label = "term" },
+            }
+        "#
+        .to_string(),
         // docs/adr/0010-a-segment-primitive.md: three strokes and a box in
         // a 200×120 canvas; the elbow takes a click, hit by its stroke.
         "lines" => r#"

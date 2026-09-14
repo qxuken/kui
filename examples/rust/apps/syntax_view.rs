@@ -6,12 +6,19 @@
 //!
 //! This is the frame shape the kui-core `highlight` bench measures.
 //!
+//! One line carries a diagnostic: the runs under it are underlined by a
+//! red wave in their own colour (`underline_color` + `underline_style`,
+//! backlog K4), the way an editor marks an unused field — no `line` float
+//! under the run, no rect arithmetic.
+//!
 //! Run: cargo run -p kui --example syntax_view
 //!
 //! Keys: j/k or arrows move · pageup/pagedown · g/G ends · tab next buffer.
 
 use kui::widgets;
-use kui::{Align, App, Color, Core, NodeSpec, Sizing, TextStyle, Theme, Ui, UiEvent, Value};
+use kui::{
+    Align, App, Color, Core, NodeSpec, Sizing, TextStyle, Theme, Ui, UiEvent, UnderlineStyle, Value,
+};
 use kui_devtools::Example;
 
 const FONT: f32 = 13.5;
@@ -37,6 +44,8 @@ struct Pal {
     comment: Color,
     ty: Color,
     mac: Color,
+    /// The diagnostic wave: the theme's danger role.
+    error: Color,
 }
 
 impl From<Theme> for Pal {
@@ -66,6 +75,7 @@ impl From<Theme> for Pal {
             comment: t.faint,
             ty: hue(0x6fc3d6ff, 0x17697dff),
             mac: hue(0xe09a6aff, 0xa1541cff),
+            error: t.danger,
         }
     }
 }
@@ -92,6 +102,18 @@ impl Doc {
             lines,
             lang,
         }
+    }
+
+    /// The columns a diagnostic marks on `line`, if any: the Rust sample
+    /// has one, on the field its counter never reads — the columns of
+    /// `count` on the line that declares it.
+    fn diagnostic_on(&self, line: usize) -> Option<std::ops::Range<usize>> {
+        if self.lang != Lang::Rust {
+            return None;
+        }
+        let text = self.lines.get(line)?;
+        let at = text.find("count: i64")?;
+        Some(at..at + "count".len())
     }
 }
 
@@ -224,6 +246,7 @@ impl App for SyntaxView {
                                             &doc.lines[ln],
                                             doc.lang,
                                             ln == cur_line,
+                                            doc.diagnostic_on(ln),
                                         );
                                     }
                                 },
@@ -259,9 +282,19 @@ fn mono(pal: &Pal) -> TextStyle {
 /// One line as a row of coalesced color runs: adjacent chars sharing a color
 /// become one text node. The cache in the core is keyed by (content, style,
 /// scale) — color excluded — so token runs dedupe across lines and colors.
-fn emit_line(ui: &mut Ui<'_>, pal: &Pal, text: &str, lang: Lang, current: bool) {
+fn emit_line(
+    ui: &mut Ui<'_>,
+    pal: &Pal,
+    text: &str,
+    lang: Lang,
+    current: bool,
+    diagnostic: Option<std::ops::Range<usize>>,
+) {
     let chars: Vec<char> = text.chars().collect();
     let colors = highlight(pal, &chars, lang);
+    // A run breaks where the diagnostic starts and ends, so the wave
+    // covers the marked columns and nothing beside them.
+    let marked = |i: usize| diagnostic.as_ref().is_some_and(|d| d.contains(&i));
     let mut row = NodeSpec::row()
         .width(Sizing::Grow(1.0))
         .height(Sizing::Fixed(LH))
@@ -274,12 +307,19 @@ fn emit_line(ui: &mut Ui<'_>, pal: &Pal, text: &str, lang: Lang, current: bool) 
         while i < chars.len() {
             let start = i;
             let color = colors[i];
+            let mark = marked(i);
             i += 1;
-            while i < chars.len() && colors[i] == color {
+            while i < chars.len() && colors[i] == color && marked(i) == mark {
                 i += 1;
             }
             let run: String = chars[start..i].iter().collect();
-            ui.text(&run, mono(pal).color(color));
+            let mut style = mono(pal).color(color);
+            if mark {
+                style = style
+                    .underline_color(pal.error)
+                    .underline_style(UnderlineStyle::Wavy);
+            }
+            ui.text(&run, style);
         }
     });
 }

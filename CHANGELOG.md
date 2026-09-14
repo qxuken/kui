@@ -25,6 +25,25 @@ was the first bare bump to break an app in five releases).
 
 **What breaks.**
 
+- `KUI_ABI_VERSION` is **17**, from 16, for three [in] appends under the
+  withdrawn rule (backlog K4): `KuiTextStyle` and `KuiSpan` gain
+  `underline_color` and `underline_style` at their ends, `KuiCell` gains
+  `ul` — two of them array elements, so the stride moved. A zeroed field
+  is what the struct meant before; recompile. A positional `KuiSpan`
+  initializer (`{text, color, flags, bg}`) still compiles and now warns
+  under `-Wmissing-field-initializers`; the designated form does not.
+  `KUI_UNDERLINE_SOLID` / `_WAVY` / `_DOTTED` and `KUI_CELL_WAVY` /
+  `KUI_CELL_DOTTED` are new constants.
+- The Node binary frame is **version 13**, from 12 (backlog K4): a span
+  carries a third colour slot, its underline's, with flags bits 256, 512,
+  1024 and 2048; a cell carries a fourth slot, its underline colour.
+  Encoder and addon ship together, so nothing to do unless you own an
+  encoder. `<cells cells>` takes four *or five* entries a cell.
+- `kui_core::Cell` and `TextStyle` / `Span` gained fields
+  (`ul`; `underline_color`, `underline_style`): a Rust struct literal adds
+  them, or uses the constructors (`Cell::new`, `TextStyle::new`,
+  `Span::new`) as everything in this repository does. Nothing else about
+  the types moved, and `underline()` still means what it did.
 - `UiEvent` gained a field, `slot: Option<Key>` (backlog K2): a Rust host
   or test that builds one as a struct literal adds `slot: None` (or uses
   `UiEvent::on`, which sets it). Nothing else about the type moved.
@@ -51,6 +70,25 @@ was the first bare bump to break an app in five releases).
 
 ### Added
 
+- **An underline of its own colour and shape** (backlog K4, the wish
+  parked since the third editor-and-mux round; kawoosh's M4 and M6 asked
+  for it): `underlineColor` / `underline_color` and `underlineStyle` /
+  `underline_style` — `solid`, `wavy`, `dotted` — on a text's style rows
+  and on a `<span>`, each implying `underline`; on a cell, the underline
+  colour as a fifth entry (JSX), a seventh run entry (Lua), `KuiCell.ul`
+  (C) and `Cell::ul` (Rust), with flag bits 32 (wavy, a terminal's SGR
+  4:3 undercurl) and 64 (dotted). In Rust, `TextStyle::underline_color`
+  / `underline_style`, the same two on `Span`, `Cell::underline_color`
+  and `cells::flags::WAVY` / `DOTTED`. A solid line is the one rect C22
+  drew; a wave (three strokes tall, a six-stroke period) and dots (two
+  strokes across, four apart) are runs of the segment primitive a `line`
+  draws — `kui_core::deco` — so no backend, header or protocol learned a
+  quad kind, and the cost is quads: two a period. The `underlines`
+  corpus scene pins the shapes in four adapters by their segment count;
+  `syntax_view` marks its counter's unread field with a red wave and
+  `cells` undercurls a word. Not built: a `QuadKind` of its own, which
+  the entry names as the next step if a screenful of diagnostics ever
+  shows in a profile.
 - **`slots = { "*" }`** — an extension whose slot names are not known
   when it loads (backlog K1, [ADR 0014's amendment of
   2026-09-15](docs/adr/0014-slots-an-extension-fills-in-place.md#amendment-a-wildcard-for-slots-not-known-at-load-2026-09-15)):

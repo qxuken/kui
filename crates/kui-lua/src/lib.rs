@@ -1427,8 +1427,9 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
         }
         "cells" => {
             // A string per row in `lines`, cells past a row's end blank;
-            // `runs` of {row, col, len, fg, bg, flags} colour and attribute
-            // spans over them (0 keeps the default). The style rows size
+            // `runs` of {row, col, len, fg, bg, flags, ul} colour and
+            // attribute spans over them (0 keeps the default; `ul` is the
+            // underline's own colour, backlog K4). The style rows size
             // the cells; the node rows are the node's.
             let p = with_refs(ui, |refs| parse_props(t, false, refs))?;
             let rows: usize = t.get::<Option<usize>>("rows")?.unwrap_or(0);
@@ -1457,6 +1458,7 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
                     let fg: u32 = run.get::<Option<u32>>(4)?.unwrap_or(0);
                     let bg: u32 = run.get::<Option<u32>>(5)?.unwrap_or(0);
                     let flags: u8 = run.get::<Option<u8>>(6)?.unwrap_or(0);
+                    let ul: u32 = run.get::<Option<u32>>(7)?.unwrap_or(0);
                     if row >= rows {
                         continue;
                     }
@@ -1469,6 +1471,9 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
                             cell.bg = bg;
                         }
                         cell.flags |= flags;
+                        if ul != 0 {
+                            cell.ul = ul;
+                        }
                     }
                 }
             }
@@ -1653,6 +1658,10 @@ struct SpanPart {
     bold: bool,
     italic: bool,
     underline: bool,
+    /// `underline_color` / `underline_style` (backlog K4); either implies
+    /// `underline`.
+    underline_color: Option<Color>,
+    underline_style: Option<kui_core::UnderlineStyle>,
     strikethrough: bool,
     color: Option<Color>,
     bg: Option<Color>,
@@ -1668,6 +1677,12 @@ fn span_of(p: &SpanPart) -> Span<'_> {
     }
     if p.underline {
         s = s.underline();
+    }
+    if let Some(c) = p.underline_color {
+        s = s.underline_color(c);
+    }
+    if let Some(st) = p.underline_style {
+        s = s.underline_style(st);
     }
     if p.strikethrough {
         s = s.strikethrough();
@@ -1691,6 +1706,8 @@ fn collect_spans(spans: &Table, refs: &mut Refs<'_>) -> mlua::Result<Vec<SpanPar
                 bold: false,
                 italic: false,
                 underline: false,
+                underline_color: None,
+                underline_style: None,
                 strikethrough: false,
                 color: None,
                 bg: None,
@@ -1707,11 +1724,32 @@ fn collect_spans(spans: &Table, refs: &mut Refs<'_>) -> mlua::Result<Vec<SpanPar
                     mlua::Value::Nil => None,
                     v => parse_color(&v, refs)?,
                 };
+                let underline_color = match t.get::<mlua::Value>("underline_color")? {
+                    mlua::Value::Nil => None,
+                    v => parse_color(&v, refs)?,
+                };
+                let underline_style = match t.get::<Option<String>>("underline_style")? {
+                    None => None,
+                    Some(name) => Some(
+                        kui_core::UnderlineStyle::NAMES
+                            .iter()
+                            .position(|n| *n == name)
+                            .map(|i| kui_core::UnderlineStyle::from_index(i as u32))
+                            .ok_or_else(|| {
+                                bad(format!(
+                                    "underline_style must be one of {}, got {name:?}",
+                                    kui_core::UnderlineStyle::NAMES.join(" | ")
+                                ))
+                            })?,
+                    ),
+                };
                 out.push(SpanPart {
                     text,
                     bold: t.get::<Option<bool>>("bold")?.unwrap_or(false),
                     italic: t.get::<Option<bool>>("italic")?.unwrap_or(false),
                     underline: t.get::<Option<bool>>("underline")?.unwrap_or(false),
+                    underline_color,
+                    underline_style,
                     strikethrough: t.get::<Option<bool>>("strikethrough")?.unwrap_or(false),
                     color,
                     bg,
@@ -4774,6 +4812,67 @@ mod tests {
             .filter(|q| q.kind == kui_core::QuadKind::Solid)
             .count();
         assert_eq!(solids, 2, "a background and an underline");
+    }
+
+    /// An underline's own colour and shape (backlog K4): `underline_color`
+    /// and `underline_style` on a span, on a text's options, and a run's
+    /// seventh entry and the shape bits on cells. A wave is segment quads
+    /// in the underline's colour; a solid coloured line is one solid.
+    #[test]
+    fn underlines_have_a_colour_and_a_shape_of_their_own() {
+        let mut ext = LuaExtension::from_source(
+            "k4",
+            r#"
+                function view(env)
+                  return column {
+                    text({ "let ", { "value", underline_color = 0xff0000ff, underline_style = "wavy" } },
+                         { size = 14, family = "mono" }),
+                    text("warn", { size = 14, family = "mono", underline_color = 0x00ff00ff }),
+                    cells { rows = 1, cols = 3, size = 14, family = "mono",
+                            lines = { "abc" }, runs = { { 0, 0, 3, 0, 0, 32, 0xff0000ff } } },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+        ui.set_origin(OriginId(1));
+        ext.view(&Slot::root(), &mut ui).unwrap();
+        ui.finish();
+        let (dl, _) = core.output();
+        let red = Color::hex(0xff0000ff);
+        let segs: Vec<_> = dl
+            .quads
+            .iter()
+            .filter(|q| q.kind == kui_core::QuadKind::Segment)
+            .collect();
+        assert!(
+            segs.len() >= 6,
+            "a wave under the span and an undercurl over the cells: {}",
+            segs.len()
+        );
+        assert!(
+            segs.iter().all(|q| q.color == red),
+            "in the underline colour"
+        );
+        let solids: Vec<_> = dl
+            .quads
+            .iter()
+            .filter(|q| q.kind == kui_core::QuadKind::Solid)
+            .collect();
+        assert_eq!(solids.len(), 1, "the text's solid line, coloured");
+        assert_eq!(solids[0].color, Color::hex(0x00ff00ff));
+        // A shape nobody spells is refused where it is declared.
+        let mut bad = LuaExtension::from_source(
+            "k4bad",
+            r#"function view(env) return text({ { "x", underline_style = "squiggly" } }) end"#,
+        )
+        .unwrap();
+        let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+        ui.set_origin(OriginId(1));
+        let err = bad.view(&Slot::root(), &mut ui).unwrap_err();
+        assert!(err.contains("solid | wavy | dotted"), "{err}");
     }
 
     /// `features = "liga=0"` reaches the shaper through the same schema

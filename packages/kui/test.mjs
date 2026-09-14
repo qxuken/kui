@@ -1184,6 +1184,68 @@ test('a span carries its own background and lines', () => {
   assert.equal(decodeQuads(ctx.quads()).filter((q) => q.kind === 0).length, 1);
 });
 
+// An underline's own colour and shape (backlog K4): on a span, on a whole
+// text and on a cell. A solid one is the rect C22 drew; a wave or dots are
+// runs of the segment quad (kind 6) a `line` draws, so no backend learned
+// a kind; a colour of its own tints the line and leaves the glyphs alone.
+test("an underline can be its own colour and a wave or dots (K4)", () => {
+  const ctx = new Ctx();
+  const mono = { size: 14, family: 'mono', lineHeight: 20 };
+  const isRed = (q) => q.color[0] === 1 && q.color[1] === 0 && q.color[2] === 0;
+  const draw = (tree) => {
+    ctx.frame(400, 100, 1, box({}, [tree]));
+    return decodeQuads(ctx.quads());
+  };
+  // A span: the wave's pieces are segments in the underline's colour; the
+  // glyphs keep the text's.
+  let quads = draw(text(['let ', el('span', { underlineColor: '#ff0000', underlineStyle: 'wavy' }, ['value']), ';'], mono));
+  const segs = quads.filter((q) => q.kind === 6);
+  assert.ok(segs.length >= 4, `a wave is pieces: ${segs.length}`);
+  assert.ok(segs.every(isRed), 'in the underline colour');
+  assert.equal(quads.filter((q) => q.kind === 0).length, 0, 'no solid line beside them');
+  assert.ok(quads.filter((q) => q.kind === 1).every((q) => !isRed(q)), 'glyphs keep the text colour');
+  const w = ctx.measureText('M', mono).width;
+  const x0 = Math.min(...segs.map((q) => q.x));
+  const x1 = Math.max(...segs.map((q) => q.x + q.w));
+  assert.ok(Math.abs(x0 - 4 * w) < 4 && Math.abs(x1 - 9 * w) < 4, `under the span: ${x0}..${x1} vs ${4 * w}..${9 * w}`);
+  // Dots: zero-length segments.
+  quads = draw(text(['a', el('span', { underlineStyle: 'dotted' }, ['bcdef'])], mono));
+  const dots = quads.filter((q) => q.kind === 6);
+  assert.ok(dots.length >= 3, `dots: ${dots.length}`);
+  assert.ok(dots.every((q) => q.ends[0] === q.ends[2] && q.ends[1] === q.ends[3]), 'each a dot');
+  // A whole text: the style rows.
+  quads = draw(text('warn', { ...mono, underlineColor: '#ff0000', underlineStyle: 'wavy' }));
+  assert.ok(quads.filter((q) => q.kind === 6).length >= 3);
+  // The colour alone: still a solid line, in that colour.
+  quads = draw(text('warn', { ...mono, underlineColor: '#ff0000' }));
+  const line = quads.filter((q) => q.kind === 0);
+  assert.equal(line.length, 1);
+  assert.ok(isRed(line[0]));
+  // A `$name` resolves for it like any colour row.
+  ctx.setTokens({ colors: { err: { light: '#ff0000', dark: '#ff0000' } } });
+  quads = draw(text(['x', el('span', { underlineColor: '$err' }, ['y'])], mono));
+  assert.equal(quads.filter((q) => q.kind === 0 && isRed(q)).length, 1, 'a token underline colour on a span');
+  // Cells: five entries a cell, the fifth the underline's colour; the
+  // wave bit implies the line.
+  const cells = new Uint32Array(3 * 5);
+  for (let i = 0; i < 3; i++) {
+    cells[i * 5] = 'a'.charCodeAt(0) + i;
+    cells[i * 5 + 1] = 0xffffffff;
+    cells[i * 5 + 3] = 32; // wavy
+    cells[i * 5 + 4] = 0xff0000ff;
+  }
+  quads = draw(el('cells', { rows: 1, cols: 3, cells, ...mono }));
+  const curl = quads.filter((q) => q.kind === 6);
+  assert.ok(curl.length >= 3, `an undercurl over three cells: ${curl.length}`);
+  assert.ok(curl.every(isRed));
+  // Four entries a cell still work: the underline is the foreground's.
+  const four = new Uint32Array([0x61, 0xffffffff, 0, 4]);
+  quads = draw(el('cells', { rows: 1, cols: 1, cells: four, ...mono }));
+  assert.equal(quads.filter((q) => q.kind === 0).length, 1);
+  // And a bad style is refused where it is declared.
+  assert.throws(() => draw(text([el('span', { underlineStyle: 'squiggly' }, ['x'])], mono)), /bad underlineStyle/);
+});
+
 // OpenType features on a text style (backlog C23): one string every
 // binding shares, part of what the text is shaped as. The ligature half runs
 // only where a font with one is installed.
@@ -3497,6 +3559,27 @@ const SCENE_TREES = {
     ]),
   // docs/adr/0010-a-segment-primitive.md: three strokes and a box; the
   // elbow takes a click, hit by its stroke (ADR 0026).
+  underlines: () => {
+    // Backlog K4: a wave in red under a span, a green solid line through
+    // the style rows, dots in their own colour, and an undercurl over
+    // three cells carrying the wave bit and a red fifth entry.
+    const mono = { size: 14, family: 'mono', lineHeight: 20 };
+    const screen = new Uint32Array(3 * 5);
+    'abc'.split('').forEach((ch, i) => {
+      screen[i * 5] = ch.codePointAt(0);
+      screen[i * 5 + 1] = 0xd6d8e0ff;
+      screen[i * 5 + 3] = 32;
+      screen[i * 5 + 4] = 0xff0000ff;
+    });
+    return root({}, [
+      box({ pad: 10, gap: 4 }, [
+        text(['let ', el('span', { underlineColor: '#ff0000', underlineStyle: 'wavy' }, ['value'])], mono),
+        text('warn', { ...mono, underlineColor: '#00ff00' }),
+        text('dots', { ...mono, underlineColor: '#7f9cf5', underlineStyle: 'dotted' }),
+        el('cells', { rows: 1, cols: 3, cells: screen, ...mono, label: 'term' }, [], 'term'),
+      ]),
+    ]);
+  },
   lines: () =>
     root({}, [
       box({ width: 200, height: 120, bg: '#14161e' }, [

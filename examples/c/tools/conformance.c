@@ -205,9 +205,9 @@ static void conf_layout(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_open(ui, &shorthand, NULL);
     kui_close(ui);
     KuiSpan spans[] = {
-        {KUI_STR("a "), 0, 0, 0},
-        {KUI_STR("b"), 0x73d98cff, KUI_SPAN_BOLD, 0},
-        {KUI_STR(" c"), 0, KUI_SPAN_ITALIC, 0},
+        {.text = KUI_STR("a ")},
+        {.text = KUI_STR("b"), .color = 0x73d98cff, .flags = KUI_SPAN_BOLD},
+        {.text = KUI_STR(" c"), .flags = KUI_SPAN_ITALIC},
     };
     KuiTextStyle s13 = {.size = 13};
     kui_rich_text(ui, spans, 3, &s13);
@@ -416,8 +416,8 @@ static void conf_tokens(KuiCtx *ui, const Fixtures *f, int phase) {
         kui_close(ui);
     }
     KuiSpan spans[] = {
-        {KUI_STR("tokens"), 0, 0, 0},
-        {KUI_STR("x"), ink, 0, 0},
+        {.text = KUI_STR("tokens")},
+        {.text = KUI_STR("x"), .color = ink},
     };
     KuiTextStyle style = {.size = big, .color = peach};
     kui_rich_text(ui, spans, 2, &style);
@@ -743,6 +743,41 @@ static void conf_fragments(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_fragment_with(ui, KUI_STR(""), f->sampler, f->dead, CONF_FRAGMENT_IMAGE_PARAMS, 4, &sq);
     kui_close(ui);
 
+    kui_close(ui);
+}
+
+/* Backlog K4: a wave in red under a span, a green solid line through the
+ * style's fields, dots in their own colour, and an undercurl over three
+ * cells carrying KUI_CELL_WAVY and a red `ul`. */
+static void conf_underlines(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiSpec outer = {.pad_l = 10, .pad_r = 10, .pad_t = 10, .pad_b = 10, .gap = 4};
+    kui_open(ui, &outer, NULL);
+    KuiTextStyle mono = {.size = 14, .family = KUI_FONT_MONO, .line_height = 20};
+    KuiSpan spans[] = {
+        {.text = KUI_STR("let ")},
+        {.text = KUI_STR("value"), .underline_color = 0xff0000ff,
+         .underline_style = KUI_UNDERLINE_WAVY},
+    };
+    kui_rich_text(ui, spans, 2, &mono);
+    KuiTextStyle green = mono;
+    green.underline_color = 0x00ff00ff;
+    kui_text(ui, KUI_STR("warn"), &green);
+    KuiTextStyle dotted = mono;
+    dotted.underline_color = 0x7f9cf5ff;
+    dotted.underline_style = KUI_UNDERLINE_DOTTED;
+    kui_text(ui, KUI_STR("dots"), &dotted);
+    KuiCell screen[3] = {0};
+    for (int i = 0; i < 3; i++) {
+        screen[i].ch = (uint32_t)"abc"[i];
+        screen[i].fg = 0xd6d8e0ff;
+        screen[i].flags = KUI_CELL_WAVY;
+        screen[i].ul = 0xff0000ff;
+    }
+    KuiSpec term = {.label = KUI_STR("term")};
+    kui_cells(ui, KUI_STR("term"), 1, 3, screen, 3, &mono, &term, NULL, NULL, NULL, 0, 0, 0, 0,
+              0);
     kui_close(ui);
 }
 
@@ -1472,6 +1507,7 @@ static const ConfScene CONF_SCENES[] = {
     {"keys", conf_keys},
     {"ime", conf_ime},
     {"cells", conf_cells},
+    {"underlines", conf_underlines},
     {"media", conf_media},
     {"lines", conf_lines},
     {"polygon", conf_polygon},

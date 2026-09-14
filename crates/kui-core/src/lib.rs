@@ -18,6 +18,7 @@ pub(crate) mod composite;
 #[cfg(feature = "conformance")]
 pub mod conformance;
 pub mod cursor;
+pub mod deco;
 pub mod depart;
 pub mod diag;
 pub mod display;
@@ -102,7 +103,7 @@ pub use slot::{
 pub use spec::{
     Align, Dir, FLOAT_PRESETS, FloatAnchor, FloatConfig, FontFamily, FontFeatures, Min, NodeSpec,
     OVERFLOW_CLIP, OVERFLOW_SCROLL_X, OVERFLOW_SCROLL_Y, PadShorthand, Scrollbar, ScrollbarMode,
-    Shadow, Sizing, TextStyle, TextWrap, Vec2Offset, corner,
+    Shadow, Sizing, TextStyle, TextWrap, UnderlineStyle, Vec2Offset, corner,
 };
 pub use stats::{FrameSample, FrameStats};
 pub use text::{DEFAULT_TEXT_CACHE_BYTES, LONG_LINE_BYTES, Span, TextHit, TextMetrics};

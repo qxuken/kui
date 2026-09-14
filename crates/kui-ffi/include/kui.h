@@ -212,7 +212,7 @@ extern "C" {
  * kui_run_with(ctx, title, NULL, view, on_event, user) is what the five-
  * argument call was.
  */
-#define KUI_ABI_VERSION 16u
+#define KUI_ABI_VERSION 17u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -365,6 +365,10 @@ enum {
 };
 /* KuiTextStyle.decoration: the same two lines over a whole text. */
 enum { KUI_DECO_UNDERLINE = 1u << 0, KUI_DECO_STRIKETHROUGH = 1u << 1 };
+/* An underline's shape (KuiTextStyle.underline_style, KuiSpan.underline_style):
+ * the face's line, a wave three strokes tall with a six-stroke period, dots
+ * two strokes across and four apart. A non-solid style implies the underline. */
+enum { KUI_UNDERLINE_SOLID = 0, KUI_UNDERLINE_WAVY = 1, KUI_UNDERLINE_DOTTED = 2 };
 /* Overflow flags */
 enum { KUI_CLIP = 1u << 0, KUI_SCROLL_X = 1u << 1, KUI_SCROLL_Y = 1u << 2 };
 /* Editing keys (kui_input_key) */
@@ -1052,6 +1056,8 @@ typedef struct KuiTextMetrics {
  * change here is an ABI bump. */
 typedef struct KuiCell {
     uint32_t ch, fg, bg, flags;
+    uint32_t ul; /* the underline's own colour (SGR 58), 0 = fg. ABI 17: cells travel as
+                    an array, so this append moved the stride. */
 } KuiCell;
 enum {
     KUI_CELL_BOLD = 1u << 0,
@@ -1059,6 +1065,8 @@ enum {
     KUI_CELL_UNDERLINE = 1u << 2,
     KUI_CELL_STRIKETHROUGH = 1u << 3,
     KUI_CELL_WIDE = 1u << 4, /* the glyph spans this cell and the next, left blank */
+    KUI_CELL_WAVY = 1u << 5, /* the underline is a wave (SGR 4:3); implies it */
+    KUI_CELL_DOTTED = 1u << 6, /* the underline is dotted (SGR 4:4); implies it */
 };
 /* kui_cells cursor_shape: 0 = none. */
 enum { KUI_CELL_CURSOR_BLOCK = 1, KUI_CELL_CURSOR_BAR = 2, KUI_CELL_CURSOR_UNDERLINE = 3 };
@@ -1275,6 +1283,9 @@ typedef struct KuiTextStyle {
                           it then stood (see the ABI block). */
     uint32_t decoration; /* KUI_DECO_* : underline / strikethrough over every glyph, paint only.
                             Appended without a bump, the same way. */
+    uint32_t underline_color; /* 0xRRGGBBAA, the underline's own; 0 = the text's. Non-zero implies
+                                 KUI_DECO_UNDERLINE. ABI 17. */
+    uint32_t underline_style; /* KUI_UNDERLINE_* ; non-solid implies KUI_DECO_UNDERLINE. ABI 17. */
 } KuiTextStyle;
 
 /* [in] One run of a rich-text paragraph. */
@@ -1285,6 +1296,9 @@ typedef struct KuiSpan {
     uint32_t bg;    /* 0xRRGGBBAA behind the span's glyphs alone, one rect per line it
                        covers, so it follows the span across a wrap; 0 = none. ABI 8:
                        spans travel as an array, so this append moved the stride. */
+    uint32_t underline_color; /* the underline's own, 0 = the span's; non-zero implies
+                                 KUI_SPAN_UNDERLINE. ABI 17. */
+    uint32_t underline_style; /* KUI_UNDERLINE_* ; non-solid implies KUI_SPAN_UNDERLINE. ABI 17. */
 } KuiSpan;
 
 /* The window an app starts in - the one kui_run opens - which is always

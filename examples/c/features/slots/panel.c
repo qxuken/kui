@@ -129,8 +129,8 @@ void kui_ext_view(void *user, KuiCtx *ui) {
         char left[32];
         snprintf(left, sizeof left, " · %d left", remaining);
         KuiSpan head[] = {
-            {title, 0, 0, 0},
-            {KUI_STR(left), t.muted, 0, 0},
+            {.text = title},
+            {.text = KUI_STR(left), .color = t.muted},
         };
         KuiTextStyle muted = {.size = 12, .color = t.muted};
         kui_rich_text(ui, head, 2, &muted);

@@ -17,7 +17,7 @@ use crate::geom::{Rect, Size, Vec2};
 use crate::key::Key;
 use crate::resources::Resources;
 use crate::retain::Kept;
-use crate::spec::{FontFamily, TextStyle, TextWrap};
+use crate::spec::{FontFamily, TextStyle, TextWrap, UnderlineStyle};
 use crate::tree::TextId;
 use crate::value::Value;
 
@@ -246,12 +246,17 @@ struct DecoTemplate {
     color: Option<Color>,
     /// Painted before the glyphs (a background) rather than after (a line).
     under: bool,
+    /// The shape, for an underline: the rect is where a solid line goes,
+    /// and a wave or dots are built around it at emission (backlog K4).
+    style: UnderlineStyle,
 }
 
 /// The decorations one span (or a plain text's whole content) asked for.
 #[derive(Clone, Copy, Default)]
 struct SpanDeco {
     underline: bool,
+    underline_color: Option<Color>,
+    underline_style: UnderlineStyle,
     strikethrough: bool,
     bg: Option<Color>,
 }
@@ -260,6 +265,8 @@ impl SpanDeco {
     fn of_style(style: &TextStyle) -> Self {
         Self {
             underline: style.underline,
+            underline_color: style.underline_color,
+            underline_style: style.underline_style,
             strikethrough: style.strikethrough,
             bg: None,
         }
@@ -281,6 +288,10 @@ pub struct Span<'a> {
     /// A line under the span, where the face puts its underline (backlog
     /// C22).
     pub underline: bool,
+    /// The underline's own colour; `None` is the span's (backlog K4).
+    pub underline_color: Option<Color>,
+    /// The underline's shape (backlog K4).
+    pub underline_style: UnderlineStyle,
     /// A line through the span, where the face puts its strikeout.
     pub strikethrough: bool,
     /// A background behind the span's glyphs, one rect per line it spans,
@@ -296,6 +307,8 @@ impl<'a> Span<'a> {
             bold: false,
             italic: false,
             underline: false,
+            underline_color: None,
+            underline_style: UnderlineStyle::Solid,
             strikethrough: false,
             bg: None,
         }
@@ -318,6 +331,20 @@ impl<'a> Span<'a> {
 
     pub fn underline(mut self) -> Self {
         self.underline = true;
+        self
+    }
+
+    /// An underline in its own colour (backlog K4); turns it on.
+    pub fn underline_color(mut self, c: Color) -> Self {
+        self.underline = true;
+        self.underline_color = Some(c);
+        self
+    }
+
+    /// An underline of this shape (backlog K4); turns it on.
+    pub fn underline_style(mut self, s: UnderlineStyle) -> Self {
+        self.underline = true;
+        self.underline_style = s;
         self
     }
 
@@ -1030,8 +1057,17 @@ impl TextSystem {
             mix(&v.to_le_bytes());
         }
         // Paint only, but a decorated text is a different entry: the
-        // decoration rects are built beside the glyph templates.
-        mix(&[style.underline as u8, style.strikethrough as u8]);
+        // decoration rects are built beside the glyph templates — and
+        // their shape and colour with them (backlog K4).
+        mix(&[
+            style.underline as u8,
+            style.strikethrough as u8,
+            style.underline_style as u8,
+            style.underline_color.is_some() as u8,
+        ]);
+        if let Some(c) = style.underline_color {
+            mix(&c.to_hex().to_le_bytes());
+        }
         h
     }
 
@@ -1423,8 +1459,10 @@ impl TextSystem {
                 s.underline as u8,
                 s.strikethrough as u8,
                 s.bg.is_some() as u8,
+                s.underline_style as u8,
+                s.underline_color.is_some() as u8,
             ]);
-            for c in [s.color, s.bg].into_iter().flatten() {
+            for c in [s.color, s.bg, s.underline_color].into_iter().flatten() {
                 mix(&c.r.to_bits().to_le_bytes());
                 mix(&c.g.to_bits().to_le_bytes());
                 mix(&c.b.to_bits().to_le_bytes());
@@ -1455,6 +1493,13 @@ impl TextSystem {
                 .iter()
                 .map(|s| SpanDeco {
                     underline: s.underline || base.underline,
+                    // The span's own where it says, else the paragraph's.
+                    underline_color: s.underline_color.or(base.underline_color),
+                    underline_style: if s.underline {
+                        s.underline_style
+                    } else {
+                        base.underline_style
+                    },
                     strikethrough: s.strikethrough || base.strikethrough,
                     bg: s.bg,
                 })
@@ -1955,13 +2000,27 @@ fn emit_entry(
                     uv: g.uv,
                 }),
         );
-        out.extend(
-            entry
-                .deco
-                .iter()
-                .filter(|d| !d.under && inside(d.x, d.y, d.w, d.h))
-                .map(deco_quad),
-        );
+        for d in entry
+            .deco
+            .iter()
+            .filter(|d| !d.under && inside(d.x, d.y, d.w, d.h))
+        {
+            // A solid line is its rect; a wave or dots are pieces built
+            // around it (`crate::deco`, backlog K4).
+            match d.style {
+                UnderlineStyle::Solid => out.push(deco_quad(d)),
+                style => crate::deco::push_line(
+                    out,
+                    style,
+                    ox + d.x,
+                    oy + d.y,
+                    d.w,
+                    d.h,
+                    d.color.unwrap_or(color),
+                    clip_id,
+                ),
+            }
+        }
     }
 }
 
@@ -2014,6 +2073,7 @@ fn build_decorations(
                     h: run.line_height,
                     color: Some(bg),
                     under: true,
+                    style: UnderlineStyle::Solid,
                 });
             }
             if deco.underline || deco.strikethrough {
@@ -2039,10 +2099,13 @@ fn build_decorations(
                         y: (baseline - under_off).round(),
                         w,
                         h: stroke,
-                        color: first
-                            .color_opt
-                            .map(|c| Color::rgba8(c.r(), c.g(), c.b(), c.a())),
+                        color: deco.underline_color.or_else(|| {
+                            first
+                                .color_opt
+                                .map(|c| Color::rgba8(c.r(), c.g(), c.b(), c.a()))
+                        }),
                         under: false,
+                        style: deco.underline_style,
                     });
                 }
                 if deco.strikethrough {
@@ -2055,6 +2118,7 @@ fn build_decorations(
                             .color_opt
                             .map(|c| Color::rgba8(c.r(), c.g(), c.b(), c.a())),
                         under: false,
+                        style: UnderlineStyle::Solid,
                     });
                 }
             }

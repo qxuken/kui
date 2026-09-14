@@ -71,7 +71,14 @@ use crate::{Result, err, value_of};
 /// entry through `WindowConfig::from_value` (backlog AR43) — the ten-slot
 /// stanza v7 shaped is gone, and with it the encoder's own copy of the
 /// kind list and of what a zero size means.
-pub const VERSION: u32 = 12;
+/// v13: an underline's own colour and shape (backlog K4). A span carries
+/// a third colour slot, the underline's, with flags bits 256 (has one),
+/// 512 (it is a token index), 1024 (wavy) and 2048 (dotted); a cell
+/// carries a fourth slot, its underline colour (0 = fg), and the JSX
+/// array may have four or five entries a cell. Slots in the middle of two
+/// ops, which is what the bump is for; `underlineColor` and
+/// `underlineStyle` on a `<text>` are ordinary schema rows.
+pub const VERSION: u32 = 13;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a
 /// token index rather than a value (`docs/adr/0027-tokens-beside-the-theme.md`,
@@ -225,6 +232,17 @@ pub fn protocol_json() -> Json {
         "cellCursors".into(),
         Json::Array(
             kui_core::CellCursor::NAMES
+                .iter()
+                .map(|a| Json::String((*a).into()))
+                .collect(),
+        ),
+    );
+    // An underline's shapes, in wire order — what a `<span underlineStyle>`
+    // is checked against (backlog K4).
+    o.insert(
+        "underlineStyles".into(),
+        Json::Array(
+            kui_core::UnderlineStyle::NAMES
                 .iter()
                 .map(|a| Json::String((*a).into()))
                 .collect(),
@@ -670,7 +688,9 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut, refs: &mut Refs<'_>) -
 /// The span list of a rich text: a count, then per span its text and the
 /// flags the encoder's `collectSpans` packed (1 bold, 2 italic, 4 has
 /// colour, 8 underline, 16 strikethrough, 32 has bg, 64 the colour is a
-/// token index, 128 the bg is) with the two colours.
+/// token index, 128 the bg is, 256 has an underline colour, 512 it is a
+/// token index, 1024 the underline is wavy, 2048 dotted) with the three
+/// colours (v13, backlog K4).
 fn read_spans<'a>(r: &mut Reader<'a>, refs: &mut Refs<'_>) -> Result<Vec<Span<'a>>> {
     let nspans = r.u()? as usize;
     let mut spans = Vec::with_capacity(nspans);
@@ -679,6 +699,7 @@ fn read_spans<'a>(r: &mut Reader<'a>, refs: &mut Refs<'_>) -> Result<Vec<Span<'a
         let flags = r.u()?;
         let color = r.f()?;
         let bg = r.f()?;
+        let ul = r.f()?;
         let mut s = Span::new(text);
         if flags & 1 != 0 {
             s = s.bold();
@@ -711,6 +732,21 @@ fn read_spans<'a>(r: &mut Reader<'a>, refs: &mut Refs<'_>) -> Result<Vec<Span<'a
             if let Some(c) = c {
                 s = s.bg(c);
             }
+        }
+        if flags & 256 != 0 {
+            let c = if flags & 512 != 0 {
+                refs.color(ul)
+            } else {
+                Some(color_num(ul as u32))
+            };
+            if let Some(c) = c {
+                s = s.underline_color(c);
+            }
+        }
+        if flags & 1024 != 0 {
+            s = s.underline_style(kui_core::UnderlineStyle::Wavy);
+        } else if flags & 2048 != 0 {
+            s = s.underline_style(kui_core::UnderlineStyle::Dotted);
         }
         spans.push(s);
     }
@@ -978,7 +1014,8 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
         }
         OP_CELLS => {
             // rows, cols, cursor (present, row, col, shape, colour), then
-            // three slots a cell: codepoint | flags << 21, fg, bg.
+            // four slots a cell: codepoint | flags << 21, fg, bg, and the
+            // underline's own colour, 0 for fg (v13, backlog K4).
             let rows = r.u()? as usize;
             let cols = r.u()? as usize;
             let has_cursor = r.u()? == 1;
@@ -996,11 +1033,13 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
                 let packed = r.f()? as u32;
                 let fg = r.f()? as u32;
                 let bg = r.f()? as u32;
+                let ul = r.f()? as u32;
                 cells.push(kui_core::Cell {
                     ch: char::from_u32(packed & 0x1f_ffff).unwrap_or(' '),
                     fg,
                     bg,
                     flags: (packed >> 21) as u8,
+                    ul,
                 });
             }
             let p = lower_props(r, ui)?;

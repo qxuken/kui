@@ -1892,6 +1892,73 @@ mod follow_headless {
         spec
     }
 
+    /// An underline's own colour and shape cross the boundary (backlog
+    /// K4, ABI 17): `KuiSpan.underline_color` / `.underline_style`, the
+    /// same two on `KuiTextStyle`, and `KuiCell.ul` with the shape bits —
+    /// a wave is segment quads in that colour, a coloured solid line one
+    /// solid quad.
+    #[test]
+    fn underlines_carry_a_colour_and_a_shape_across_the_boundary() {
+        let ctx = kui_ctx_new();
+        kui_frame_begin(ctx, 400.0, 200.0, 1.0);
+        let mut mono = unsafe { std::mem::zeroed::<KuiTextStyle>() };
+        mono.size = 14.0;
+        mono.family = 2;
+        let mut wavy = unsafe { std::mem::zeroed::<KuiSpan>() };
+        wavy.text = ks("value");
+        wavy.underline_color = 0xff0000ff;
+        wavy.underline_style = KUI_UNDERLINE_WAVY;
+        let mut plain = unsafe { std::mem::zeroed::<KuiSpan>() };
+        plain.text = ks("let ");
+        kui_rich_text(ctx, [plain, wavy].as_ptr(), 2, &mono);
+        let mut lined = mono;
+        lined.underline_color = 0x00ff00ff;
+        kui_text(ctx, ks("warn"), &lined);
+        let screen = [KuiCell {
+            ch: 'a' as u32,
+            fg: 0xffffffff,
+            bg: 0,
+            flags: kui_core::cells::flags::WAVY as u32,
+            ul: 0xff0000ff,
+        }; 3];
+        let term = fixed(200.0, 20.0);
+        kui_cells(
+            ctx,
+            ks("term"),
+            1,
+            3,
+            screen.as_ptr(),
+            3,
+            &mono,
+            &term,
+            NONE,
+            NONE,
+            NONE,
+            0,
+            0,
+            0,
+            0,
+            0,
+        );
+        kui_frame_finish(ctx);
+        let mut draw = KuiDrawData::default();
+        kui_draw_data(ctx, &mut draw);
+        let quads = unsafe { std::slice::from_raw_parts(draw.quads, draw.quad_count) };
+        let segs: Vec<_> = quads
+            .iter()
+            .filter(|q| q.kind == kui_core::QuadKind::Segment as u32)
+            .collect();
+        assert!(segs.len() >= 6, "a wave and an undercurl: {}", segs.len());
+        assert!(segs.iter().all(|q| q.color == [1.0, 0.0, 0.0, 1.0]));
+        let solids: Vec<_> = quads
+            .iter()
+            .filter(|q| q.kind == kui_core::QuadKind::Solid as u32)
+            .collect();
+        assert_eq!(solids.len(), 1, "the text's coloured line");
+        assert_eq!(solids[0].color, [0.0, 1.0, 0.0, 1.0]);
+        kui_ctx_free(ctx);
+    }
+
     /// A press through the C surface with Shift held (`kui_input_modifiers`)
     /// keeps the anchor, which `kui_selection_ends` reads back as the
     /// directed pair (ADR 0029, backlog C39); an `on_scroll` grid hears
@@ -1919,6 +1986,7 @@ mod follow_headless {
                 fg: 0xffffffff,
                 bg: 0,
                 flags: 0,
+                ul: 0,
             }; 33];
             let mut mono = unsafe { std::mem::zeroed::<KuiTextStyle>() };
             mono.size = 13.0;
@@ -2038,6 +2106,7 @@ mod follow_headless {
                 fg: 0xffffffff,
                 bg: 0,
                 flags: 0,
+                ul: 0,
             }; 33];
             let mut mono = unsafe { std::mem::zeroed::<KuiTextStyle>() };
             mono.size = 13.0;

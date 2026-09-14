@@ -534,6 +534,13 @@ fn with_spans<R>(
             if s.flags & KUI_SPAN_STRIKETHROUGH != 0 {
                 span = span.strikethrough();
             }
+            if s.underline_color != 0 {
+                span = span.underline_color(Color::hex(s.underline_color));
+            }
+            if s.underline_style != 0 {
+                span =
+                    span.underline_style(kui_core::UnderlineStyle::from_index(s.underline_style));
+            }
             if s.color != 0 {
                 span = span.color(Color::hex(s.color));
             }
@@ -746,6 +753,7 @@ pub extern "C" fn kui_cells(
                 fg: k.fg,
                 bg: k.bg,
                 flags: k.flags as u8,
+                ul: k.ul,
             })
             .collect();
         let style = unsafe { style.as_ref() }

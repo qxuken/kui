@@ -36,10 +36,10 @@ round after, on 2026-09-11), W16 from the alpha.12 pre-tag round (the
 headless round overwriting `kui_ffi.dll` under the C hosts, filed with
 two fixes to choose between), two of the three editor wishes parked at
 the end of the third editor-and-mux round (the third, the underline, is
-K4 now — a view asked), the eleven entries of the two rounds of
+K4 — a view asked, and it is built), the twelve entries of the two rounds of
 2026-09-15 built the day they were filed and waiting for the alpha.13
-tag to move (F55–F61 from the alpha.12 reports, K1–K3 from the kawoosh
-list) with K4 open beside them, and the "theirs, not ours" lists the
+tag to move (F55–F61 from the alpha.12 reports, K1–K4 from the kawoosh
+list), and the "theirs, not ours" lists the
 field reports left behind. Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -1105,7 +1105,7 @@ paste to a key sink is `InputEvent::Commit` (`Text` is never delivered
 to a sink, by design: the raw press already carried it), which kawoosh's
 M2 tests should know before they wonder why the paste never arrived;
 and R3.8's premise, below. **K1, K2 and K3 built or answered on
-2026-09-15; K4 filed with its shape**, for the milestone that wants it.
+2026-09-15, and K4 built the same day** — the shape it filed, as written.
 
 ### `~` K1 — A slot name not known when the extension loaded — **done (2026-09-15)**
 
@@ -1181,7 +1181,32 @@ runs measuring whitespace by advance) would remove the mapping and the
 family to an installed face; whether it was ever true is not on record,
 and it is not true now.
 
-### `.` K4 — An underline of its own colour and style
+### `.` K4 — An underline of its own colour and style — **done (2026-09-15)**
+
+**Done (2026-09-15), the shape below as written.** `UnderlineStyle`
+(`Solid | Wavy | Dotted`, `NAMES`) in `spec.rs`; `underline_color` and
+`underline_style` on `TextStyle` and `Span` with builders that imply the
+line; `Cell::ul` and `flags::WAVY` / `DOTTED` (`LINES` is what a run of
+cells has to agree on). `crates/kui-core/src/deco.rs` draws the shapes:
+a solid line is the rect it was, a wave is a zigzag of segment quads
+whose round caps soften the corners, dots are zero-length segments —
+the capsule ADR 0010's `line` already draws, so no backend, header or
+protocol learned a kind; the text system's `DecoTemplate` carries a
+style and expands non-solid lines at emission, the cell painter
+coalesces runs on the line bits and both colours. Four bindings: two
+schema rows (`underlineColor`, `underlineStyle`, ids 101–102) for a
+text and the same spellings on `<span>` (Node's span record gains a
+third colour slot and four flag bits, frame v13; a cell a fourth slot,
+the JSX array four or five entries a cell), Lua's span table and a
+run's seventh entry, C's `KuiTextStyle` / `KuiSpan` / `KuiCell` appends
+under ABI 17 with `KUI_UNDERLINE_*` and `KUI_CELL_WAVY` / `DOTTED`.
+Pinned: `deco.rs`'s own tests, the `underlines` corpus scene in four
+adapters (32 segments, one solid, the counts pin the shapes), a Node
+test (K4), a Lua test, a C test, the ABI parity walk and the [in] size
+table. Seen on screen: `syntax_view`'s red wave under `count` and
+`cells`' accent undercurl under `layout`, captured from real windows.
+The `QuadKind` of its own stays the next step, on a profile. CHANGELOG
+under alpha.13.
 
 The wish parked at the end of the third editor-and-mux round, now with
 a view that asks: kawoosh's M6 (a diagnostic's wavy red under
@@ -1231,10 +1256,10 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** K4, when kawoosh's M6 arrives or a measurement of the
-wavy kind is worth taking sooner. The two rounds of 2026-09-15 — the
+**Build next.** Nothing filed is open but the parked headings. K4 was
+**built on 2026-09-15** too, the same day as the rest of its round. The two rounds of 2026-09-15 — the
 alpha.12 upgrade reports (F55–F61) and the kawoosh requirements list
-(K1–K3) — were **built the day they were filed**, each with its outcome
+(K1–K4) — were **built the day they were filed**, each with its outcome
 on top of its entry above; what the round settled beyond its entries is
 in the two introductions: the "echo frame" was never presented, and a
 paste to a key sink is `Commit`. Before them: the second architecture review, filed 2026-09-13 above

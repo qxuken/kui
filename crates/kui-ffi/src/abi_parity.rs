@@ -298,6 +298,9 @@ fn asserts() -> (String, Vec<&'static str>) {
     abi_enum!(o, kui_core::schema::WRAPS, 0 => [
         "KUI_WRAP_WORD", "KUI_WRAP_GLYPH", "KUI_WRAP_NONE",
     ]);
+    abi_enum!(o, kui_core::schema::UNDERLINE_STYLES, 0 => [
+        "KUI_UNDERLINE_SOLID", "KUI_UNDERLINE_WAVY", "KUI_UNDERLINE_DOTTED",
+    ]);
     abi_enum!(o, kui_core::schema::EASINGS, 0 => [
         "KUI_EASE_OUT", "KUI_EASE_LINEAR", "KUI_EASE_IN",
         "KUI_EASE_IN_OUT", "KUI_EASE_SPRING", "KUI_EASE_BOUNCY",
@@ -377,6 +380,8 @@ fn asserts() -> (String, Vec<&'static str>) {
             kui_core::cells::flags::STRIKETHROUGH,
         ),
         ("KUI_CELL_WIDE", kui_core::cells::flags::WIDE),
+        ("KUI_CELL_WAVY", kui_core::cells::flags::WAVY),
+        ("KUI_CELL_DOTTED", kui_core::cells::flags::DOTTED),
     ] {
         writeln!(o, "KUI_ENUM({name}, {bit});").unwrap();
     }
@@ -496,6 +501,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         fg: u32 => "uint32_t",
         bg: u32 => "uint32_t",
         flags: u32 => "uint32_t",
+        ul: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiMenuItem {
@@ -832,6 +838,8 @@ fn asserts() -> (String, Vec<&'static str>) {
         ellipsis: u32 => "uint32_t",
         features: KuiStr => "KuiStr",
         decoration: u32 => "uint32_t",
+        underline_color: u32 => "uint32_t",
+        underline_style: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiSpan {
@@ -839,6 +847,8 @@ fn asserts() -> (String, Vec<&'static str>) {
         color: u32 => "uint32_t",
         flags: u32 => "uint32_t",
         bg: u32 => "uint32_t",
+        underline_color: u32 => "uint32_t",
+        underline_style: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiColorToken {
@@ -1312,9 +1322,9 @@ fn an_in_struct_s_size_is_the_abi_s() {
         ("KuiSizing", 8, 16),
         ("KuiKeyframe", 36, 16),
         ("KuiEnter", 40, 16),
-        ("KuiTextStyle", 64, 16),
-        ("KuiSpan", 32, 16),
-        ("KuiCell", 16, 16),
+        ("KuiTextStyle", 72, 17),
+        ("KuiSpan", 40, 17),
+        ("KuiCell", 20, 17),
         ("KuiMenuItem", 56, 16),
         ("KuiMenu", 40, 16),
         ("KuiPlay", 12, 16),

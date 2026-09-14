@@ -1859,8 +1859,43 @@ pub struct TextStyle {
     /// A line under every glyph, where the face puts its underline (backlog
     /// C22). Paint only: not part of what the text is shaped as.
     pub underline: bool,
+    /// The underline's own colour; `None` is the text's (backlog K4).
+    pub underline_color: Option<Color>,
+    /// The underline's shape: a line, a wave, dots (backlog K4).
+    pub underline_style: UnderlineStyle,
     /// A line through every glyph, where the face puts its strikeout.
     pub strikethrough: bool,
+}
+
+/// The shape of an underline (backlog K4): the face's line, a wave under a
+/// diagnostic, dots. Where it goes and how thick it is are the face's
+/// recommendation either way; a wave is three strokes tall around the
+/// line's centre with a six-stroke period, dots two strokes across and
+/// four apart (`crate::deco`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum UnderlineStyle {
+    #[default]
+    Solid,
+    Wavy,
+    Dotted,
+}
+
+impl UnderlineStyle {
+    /// The spellings, in discriminant order (`underlineStyle` /
+    /// `underline_style`; C's `KUI_UNDERLINE_*`).
+    pub const NAMES: &[&str] = &["solid", "wavy", "dotted"];
+
+    pub fn from_index(i: u32) -> Self {
+        match i {
+            1 => Self::Wavy,
+            2 => Self::Dotted,
+            _ => Self::Solid,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        Self::NAMES[self as usize]
+    }
 }
 
 impl Default for TextStyle {
@@ -1881,12 +1916,30 @@ impl TextStyle {
             ellipsis: false,
             features: FontFeatures::new(),
             underline: false,
+            underline_color: None,
+            underline_style: UnderlineStyle::Solid,
             strikethrough: false,
         }
     }
 
     pub fn underline(mut self) -> Self {
         self.underline = true;
+        self
+    }
+
+    /// An underline in its own colour rather than the text's — a
+    /// diagnostic's red under keyword-coloured text (backlog K4). Turns
+    /// the underline on.
+    pub fn underline_color(mut self, c: Color) -> Self {
+        self.underline = true;
+        self.underline_color = Some(c);
+        self
+    }
+
+    /// An underline of this shape (backlog K4). Turns the underline on.
+    pub fn underline_style(mut self, s: UnderlineStyle) -> Self {
+        self.underline = true;
+        self.underline_style = s;
         self
     }
 

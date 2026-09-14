@@ -192,7 +192,13 @@
 /// function's *signature* — since a host that did not recompile passes
 /// one argument too few and the library reads its view callback out of
 /// the register the config should be in. `kui_run` is unchanged.
-pub const KUI_ABI_VERSION: u32 = 16;
+///
+/// ABI 17 appends the underline's own colour and shape (backlog K4) to
+/// `KuiTextStyle` and `KuiSpan` (`underline_color`, `underline_style`)
+/// and the underline colour `ul` to `KuiCell` — three [in] appends under
+/// the withdrawn rule, two of them array elements whose stride moved.
+/// Recompile; a zeroed field is what the struct meant before.
+pub const KUI_ABI_VERSION: u32 = 17;
 
 /// The ABI version this library implements, for a host to compare against
 /// the `KUI_ABI_VERSION` of the header it compiled against, before its

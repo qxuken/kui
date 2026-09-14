@@ -124,9 +124,9 @@ static void view(void *user, KuiCtx *ui) {
         kui_close(ui);
 
         KuiSpan spans[] = {
-            {KUI_STR("same IR as Rust and "), 0, 0, 0},
-            {KUI_STR("Lua"), t.success, KUI_SPAN_BOLD, 0},
-            {KUI_STR(" — just flatter"), 0, KUI_SPAN_ITALIC, 0},
+            {.text = KUI_STR("same IR as Rust and ")},
+            {.text = KUI_STR("Lua"), .color = t.success, .flags = KUI_SPAN_BOLD},
+            {.text = KUI_STR(" — just flatter"), .flags = KUI_SPAN_ITALIC},
         };
         KuiTextStyle base = {.size = 13, .color = t.faint};
         kui_rich_text(ui, spans, 3, &base);

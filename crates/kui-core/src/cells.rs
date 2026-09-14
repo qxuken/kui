@@ -47,17 +47,27 @@ pub mod flags {
     pub const STRIKETHROUGH: u8 = 8;
     /// The glyph is two cells wide; the app leaves the next cell blank.
     pub const WIDE: u8 = 16;
+    /// The underline is a wave (SGR 4:3, a terminal's undercurl; backlog
+    /// K4). Implies `UNDERLINE`.
+    pub const WAVY: u8 = 32;
+    /// The underline is dotted (SGR 4:4). Implies `UNDERLINE`.
+    pub const DOTTED: u8 = 64;
+    /// The bits that make a line under or through a cell, and its shape:
+    /// what a run of cells has to agree on to share one.
+    pub const LINES: u8 = UNDERLINE | STRIKETHROUGH | WAVY | DOTTED;
 }
 
 /// One cell: a character, its colours as `0xRRGGBBAA` (a background of 0
-/// is none), and attribute bits. Sixteen bytes, so a 200×50 pane is a
-/// 160 KB slice a frame.
+/// is none, an underline colour of 0 the foreground's), and attribute
+/// bits. Sixteen bytes, so a 200×50 pane is a 160 KB slice a frame.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct Cell {
     pub ch: char,
     pub fg: u32,
     pub bg: u32,
     pub flags: u8,
+    /// The underline's own colour (SGR 58; backlog K4), or 0 for `fg`.
+    pub ul: u32,
 }
 
 impl Cell {
@@ -67,7 +77,15 @@ impl Cell {
             fg,
             bg,
             flags: 0,
+            ul: 0,
         }
+    }
+
+    /// An underline in its own colour (backlog K4); sets `UNDERLINE`.
+    pub const fn underline_color(mut self, ul: u32) -> Self {
+        self.flags |= flags::UNDERLINE;
+        self.ul = ul;
+        self
     }
 
     pub const fn with(mut self, flags: u8) -> Self {
@@ -527,8 +545,9 @@ impl CellStore {
                 };
                 out.push(quad(rect, color, QuadKind::Solid, [0; 4]));
             }
-            // Glyphs, and the lines through and under them per run.
-            let mut line_run: Option<(usize, u8, u32)> = None;
+            // Glyphs, and the lines through and under them per run: cells
+            // sharing the same line bits and colours share one line.
+            let mut line_run: Option<(usize, u8, u32, u32)> = None;
             for c in c0..c1 {
                 let cell = &row[c];
                 let cx = ox + c as f32 * cw;
@@ -545,21 +564,26 @@ impl CellStore {
                         ));
                     }
                 }
-                let lines = cell.flags & (flags::UNDERLINE | flags::STRIKETHROUGH);
-                let same = line_run.is_some_and(|(_, f, fg)| f == lines && fg == cell.fg);
+                let lines = cell.flags & flags::LINES;
+                let same = line_run
+                    .is_some_and(|(_, f, fg, ul)| f == lines && fg == cell.fg && ul == cell.ul);
                 if !same {
-                    if let Some((start, f, fg)) = line_run.take()
+                    if let Some((start, f, fg, ul)) = line_run.take()
                         && f != 0
                     {
-                        push_lines(out, &quad, ox, cy, cw, ch, stroke, start, c, f, fg);
+                        push_lines(
+                            out, &quad, clip_id, ox, cy, cw, ch, stroke, start, c, f, fg, ul,
+                        );
                     }
-                    line_run = Some((c, lines, cell.fg));
+                    line_run = Some((c, lines, cell.fg, cell.ul));
                 }
             }
-            if let Some((start, f, fg)) = line_run
+            if let Some((start, f, fg, ul)) = line_run
                 && f != 0
             {
-                push_lines(out, &quad, ox, cy, cw, ch, stroke, start, c1, f, fg);
+                push_lines(
+                    out, &quad, clip_id, ox, cy, cw, ch, stroke, start, c1, f, fg, ul,
+                );
             }
         }
     }
@@ -569,6 +593,7 @@ impl CellStore {
 fn push_lines(
     out: &mut Vec<Quad>,
     quad: &dyn Fn(Rect, Color, QuadKind, [u32; 4]) -> Quad,
+    clip_id: ClipId,
     ox: f32,
     cy: f32,
     cw: f32,
@@ -578,16 +603,31 @@ fn push_lines(
     end: usize,
     f: u8,
     fg: u32,
+    ul: u32,
 ) {
     let x = ox + start as f32 * cw;
     let w = (end - start) as f32 * cw;
-    if f & flags::UNDERLINE != 0 {
-        out.push(quad(
-            Rect::new(x, cy + ch - 2.0 * stroke, w, stroke),
-            Color::hex(fg),
-            QuadKind::Solid,
-            [0; 4],
-        ));
+    if f & (flags::UNDERLINE | flags::WAVY | flags::DOTTED) != 0 {
+        // The shape bits imply the line; its colour is its own where the
+        // cell says (SGR 58), else the foreground's (backlog K4).
+        let style = if f & flags::WAVY != 0 {
+            crate::spec::UnderlineStyle::Wavy
+        } else if f & flags::DOTTED != 0 {
+            crate::spec::UnderlineStyle::Dotted
+        } else {
+            crate::spec::UnderlineStyle::Solid
+        };
+        let color = Color::hex(if ul != 0 { ul } else { fg });
+        crate::deco::push_line(
+            out,
+            style,
+            x,
+            cy + ch - 2.0 * stroke,
+            w,
+            stroke,
+            color,
+            clip_id,
+        );
     }
     if f & flags::STRIKETHROUGH != 0 {
         out.push(quad(

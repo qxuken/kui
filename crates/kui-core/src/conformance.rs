@@ -2291,6 +2291,45 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "underlines",
+        doc: "An underline's own colour and shape (backlog K4): a rich text \
+              whose span is underlined in red by a wave, a text underlined \
+              in green by a solid line through its style rows, a text \
+              underlined by dots in its own colour, and a 1×3 cell grid \
+              whose cells carry the wave bit and a red underline colour. \
+              A solid line is the one rect C22 drew; a wave and dots are \
+              segments — the capsule a `line` draws — so the segment count \
+              pins the shapes and no backend learned a kind.",
+        custom: &["key"],
+        elements: &["box", "text", "cells"],
+        build: build_underlines,
+        env: NATIVE_CHROME,
+        steps: &[],
+        expect: Expect {
+            solid: 1,
+            shadows: 0,
+            images: 0,
+            segments: 32,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 12,
+            access: &[
+                "0 window ||",
+                "1 staticText let value||",
+                "1 staticText warn||",
+                "1 staticText dots||",
+                "1 terminal term||abc",
+            ],
+            events: &[],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+        },
+    },
+    Scene {
         name: "sampler",
         doc: "The generic rows no other scene declares, on four nodes \
               (backlog AR47): a card carrying the size ceilings, `center`, \
@@ -3358,6 +3397,49 @@ fn build_polygon(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 /// Points are in the canvas's box space, the way a floated card's offset
 /// is. The curve's chords are 44.7, 50 and 82.5, which
 /// `line::flatten_curve` cuts into 8, 9 and 14 pieces at `CURVE_STEP` 6.
+fn build_underlines(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    use crate::cells::{Cell, CellGrid, flags};
+    use crate::spec::UnderlineStyle;
+    let mono = TextStyle::new(14.0).mono().line_height(20.0);
+    ui.with(NodeSpec::column().pad(10.0).gap(4.0), |ui| {
+        ui.rich_text(
+            &[
+                Span::new("let "),
+                Span::new("value")
+                    .underline_color(Color::hex(0xff0000ff))
+                    .underline_style(UnderlineStyle::Wavy),
+            ],
+            mono,
+        );
+        ui.text("warn", mono.underline_color(Color::hex(0x00ff00ff)));
+        ui.text(
+            "dots",
+            mono.underline_color(Color::hex(0x7f9cf5ff))
+                .underline_style(UnderlineStyle::Dotted),
+        );
+        let cells: Vec<Cell> = "abc"
+            .chars()
+            .map(|ch| {
+                Cell::new(ch, 0xd6d8e0ff, 0)
+                    .with(flags::WAVY)
+                    .underline_color(0xff0000ff)
+            })
+            .collect();
+        ui.cells_keyed(
+            "term",
+            &CellGrid {
+                rows: 1,
+                cols: 3,
+                cells: &cells,
+                style: mono,
+                cursor: None,
+                origin_line: 0,
+            },
+            NodeSpec::default().label("term"),
+        );
+    });
+}
+
 fn build_lines(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     ui.with(
         NodeSpec::column()

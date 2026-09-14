@@ -1110,6 +1110,12 @@ pub struct KuiTextStyle {
     /// face puts them, over every glyph. Paint only. Appended without a
     /// bump, the same way (backlog C22).
     pub decoration: u32,
+    /// The underline's own colour as `0xRRGGBBAA`, 0 for the text's;
+    /// non-zero implies `KUI_DECO_UNDERLINE` (backlog K4). ABI 17.
+    pub underline_color: u32,
+    /// `KUI_UNDERLINE_SOLID` / `_WAVY` / `_DOTTED`; a non-solid style
+    /// implies `KUI_DECO_UNDERLINE` (backlog K4). ABI 17.
+    pub underline_style: u32,
 }
 
 #[repr(C)]
@@ -1125,6 +1131,11 @@ pub struct KuiSpan {
     /// span covers; 0 = none. Its append is ABI 8: spans travel as an
     /// array, so the stride moved (backlog C22).
     pub bg: u32,
+    /// The underline's own colour, 0 for the span's (backlog K4); non-zero
+    /// implies `KUI_SPAN_UNDERLINE`. ABI 17.
+    pub underline_color: u32,
+    /// `KUI_UNDERLINE_*`; non-solid implies `KUI_SPAN_UNDERLINE`. ABI 17.
+    pub underline_style: u32,
 }
 
 /// One colour token as `kui_tokens_set` reads it
@@ -1831,6 +1842,9 @@ pub struct KuiCell {
     pub fg: u32,
     pub bg: u32,
     pub flags: u32,
+    /// The underline's own colour (SGR 58), 0 for `fg` (backlog K4).
+    /// ABI 17: cells travel as an array, so the stride moved.
+    pub ul: u32,
 }
 
 /// [out] What choosing a context-menu row left for the host
@@ -2005,6 +2019,13 @@ pub const KUI_SPAN_BOLD: u32 = 1 << 0;
 pub const KUI_SPAN_ITALIC: u32 = 1 << 1;
 pub const KUI_SPAN_UNDERLINE: u32 = 1 << 2;
 pub const KUI_SPAN_STRIKETHROUGH: u32 = 1 << 3;
+
+/// `KUI_UNDERLINE_*`: an underline's shape, `KuiTextStyle.underline_style`
+/// and `KuiSpan.underline_style` (backlog K4) — `UnderlineStyle`'s
+/// discriminants.
+pub const KUI_UNDERLINE_SOLID: u32 = 0;
+pub const KUI_UNDERLINE_WAVY: u32 = 1;
+pub const KUI_UNDERLINE_DOTTED: u32 = 2;
 
 /// `KUI_KMOD_*`: the modifier bits `kui_input_key_down` and its siblings
 /// take, and `kui_input_modifiers` reports — the core's own

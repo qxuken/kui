@@ -239,8 +239,9 @@ static int surface(void) {
     /* bg was appended to KuiSpan (ABI 8): a decorated span measures like a
      * plain one, since decorations are paint. */
     KuiSpan spans[] = {
-        {KUI_STR("rich "), 0, KUI_SPAN_BOLD | KUI_SPAN_UNDERLINE, 0x3b5bd455},
-        {KUI_STR("measure"), 0x73d98cff, KUI_SPAN_ITALIC | KUI_SPAN_STRIKETHROUGH, 0},
+        {.text = KUI_STR("rich "), .flags = KUI_SPAN_BOLD | KUI_SPAN_UNDERLINE, .bg = 0x3b5bd455},
+        {.text = KUI_STR("measure"), .color = 0x73d98cff,
+         .flags = KUI_SPAN_ITALIC | KUI_SPAN_STRIKETHROUGH},
     };
     check(kui_measure_rich_text(ui, spans, 2, &body, 0, &rich), "kui_measure_rich_text");
     check(rich.width > 0 && rich.lines == 1, "spans measure as one line");

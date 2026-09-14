@@ -52,7 +52,9 @@ use crate::color::Color;
 use crate::cursor::CursorShape;
 use crate::enter::Enter;
 use crate::keyframes::Keyframe;
-use crate::spec::{Align, FontFamily, Min, NodeSpec, PadShorthand, Sizing, TextStyle, TextWrap};
+use crate::spec::{
+    Align, FontFamily, Min, NodeSpec, PadShorthand, Sizing, TextStyle, TextWrap, UnderlineStyle,
+};
 use crate::value::Value;
 use crate::window::{WindowButton, WindowConfig};
 
@@ -160,6 +162,8 @@ pub const P_ANCHOR: u32 = 97;
 pub const P_ALWAYS_ON_TOP: u32 = 98;
 pub const P_ON_SCROLL: u32 = 99;
 pub const P_ROW_COUNT: u32 = 100;
+pub const P_UNDERLINE_COLOR: u32 = 101;
+pub const P_UNDERLINE_STYLE: u32 = 102;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -193,6 +197,8 @@ pub fn cursor_idx(i: usize) -> CursorShape {
         .unwrap_or(CursorShape::Default)
 }
 pub const WRAPS: &[&str] = &["word", "glyph", "none"];
+/// `underlineStyle` / `underline_style` (backlog K4); `UnderlineStyle::NAMES`.
+pub const UNDERLINE_STYLES: &[&str] = UnderlineStyle::NAMES;
 /// `expanded` names its state rather than being a flag: a disclosure that
 /// is shut has to say "collapsed", and an absent flag cannot — absent has
 /// to keep meaning "this node does not expand" (AccessKit's `expanded`,
@@ -979,7 +985,21 @@ pub const PROPS: &[PropDef] = &[
         id: P_UNDERLINE,
         kind: Kind::Flag,
         apply: Apply::StyleFlag(|t| t.underline()),
-        doc: "A line under the text, where the face puts its underline and as thick as it says, in the text colour. Paint only. On a `<span>` it covers the span alone and follows it across a wrap, one rect per line.",
+        doc: "A line under the text, where the face puts its underline and as thick as it says, in the text colour. Paint only. On a `<span>` it covers the span alone and follows it across a wrap, one rect per line. `underlineColor` gives it a colour of its own and `underlineStyle` a shape; either implies it.",
+    },
+    PropDef {
+        name: "underlineColor",
+        id: P_UNDERLINE_COLOR,
+        kind: Kind::Color,
+        apply: Apply::StyleColor(|t, c| t.underline_color(c)),
+        doc: "The underline's own colour — a diagnostic's red under keyword-coloured text (backlog K4). Implies `underline`. On a `<span>` the span's; a span with no colour of its own takes the text's.",
+    },
+    PropDef {
+        name: "underlineStyle",
+        id: P_UNDERLINE_STYLE,
+        kind: Kind::Enum(UNDERLINE_STYLES),
+        apply: Apply::StyleEnum(|t, i| t.underline_style(UnderlineStyle::from_index(i as u32))),
+        doc: "The underline's shape (backlog K4): `solid` (the face's line), `wavy` (three strokes tall around the line, a six-stroke period — a diagnostic's squiggle, a terminal's undercurl) or `dotted` (dots two strokes across, four apart). Implies `underline`. A wave or dots are runs of the segment primitive a `line` draws, so no backend learns a kind; the cost is two quads per period.",
     },
     PropDef {
         name: "strikethrough",
@@ -1345,6 +1365,14 @@ pub const C_FIELDS: &[(&str, &str)] = &[
         "strikethrough",
         "`KuiTextStyle.decoration` (`KUI_DECO_STRIKETHROUGH`); `KuiSpan.flags` (`KUI_SPAN_STRIKETHROUGH`)",
     ),
+    (
+        "underlineColor",
+        "`KuiTextStyle.underline_color`; `KuiSpan.underline_color`",
+    ),
+    (
+        "underlineStyle",
+        "`KuiTextStyle.underline_style` (`KUI_UNDERLINE_*`); `KuiSpan.underline_style`",
+    ),
     ("color", "`KuiTextStyle.color`"),
 ];
 
@@ -1406,6 +1434,8 @@ pub const TEXT_ROWS_JSX: &[&str] = &[
     "maxLines",
     "ellipsis",
     "underline",
+    "underlineColor",
+    "underlineStyle",
     "strikethrough",
     "features",
 ];
@@ -1419,6 +1449,8 @@ pub const TEXT_ROWS_LUA: &[&str] = &[
     "max_lines",
     "ellipsis",
     "underline",
+    "underline_color",
+    "underline_style",
     "strikethrough",
     "features",
 ];
@@ -1556,7 +1588,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<cells rows cols cells={Uint32Array} cursorAt={[row, col]} cursorShape cursorColor size family lineHeight/>`",
         lua: "`cells { rows=, cols=, lines={\"row text\", …}, runs={{row, col, len, fg, bg, flags}, …}, cursor_at={row, col}, cursor_shape=, cursor_color=, size=, family= }`",
         c: "`kui_cells`",
-        doc: "A terminal's screen as one node (backlog C20): `rows × cols` cells, each a character, a foreground and background as `0xRRGGBBAA` (0 = no background), and attribute bits — 1 bold, 2 italic, 4 underline, 8 strikethrough, 16 wide (the glyph spans this cell and the next, which the app leaves blank). A glyph is shaped once per character and style variant and thereafter placed at `col × cell_w` without shaping, so a screen whose every cell is new each frame costs what a still one costs (~60 µs for 200 × 50). The cell width is `M`'s advance in the style's font snapped to whole pixels, the height its `lineHeight`; a cell is a cell, so ligatures never form. JSX passes the cells as a `Uint32Array` (or number array) of four entries per cell — codepoint, fg, bg, flags — in row-major order; Lua a string per row in `lines` plus `runs` of `{row, col, len, fg, bg, flags}` over them (a run's fg or bg of 0 keeps the default: the style's colour, and no background); C a `KuiCell` array. `cursorAt` (`cursor_at`) names a cell to paint under its glyph in `cursorColor` as a `block` (default), `bar` or `underline` — its own name, since `cursor` is the pointer shape. `originLine` (`origin_line`) is the absolute line number of row 0: a grid is one screenful of the app's own history, so a row number means a different line after every scroll, and stamping where the screen sits is what lets a selection keep its ends across one (`docs/adr/0017-selection-as-a-scope.md`). Saying nothing is 0, and a selection then holds only while the screen does not move. The node's own rows apply — an `onKey` makes it the terminal's sink, an `onClick` or `onDrag` carries `cell: {row, col}` on its events — and its access row is `terminal`, the rows joined as its value.",
+        doc: "A terminal's screen as one node (backlog C20): `rows × cols` cells, each a character, a foreground and background as `0xRRGGBBAA` (0 = no background), and attribute bits — 1 bold, 2 italic, 4 underline, 8 strikethrough, 16 wide (the glyph spans this cell and the next, which the app leaves blank), 32 the underline is a wave (a terminal's undercurl, SGR 4:3) and 64 dotted (SGR 4:4), either implying it — plus, optionally, the underline's own colour (SGR 58), 0 for the foreground (backlog K4). A glyph is shaped once per character and style variant and thereafter placed at `col × cell_w` without shaping, so a screen whose every cell is new each frame costs what a still one costs (~60 µs for 200 × 50). The cell width is `M`'s advance in the style's font snapped to whole pixels, the height its `lineHeight`; a cell is a cell, so ligatures never form. JSX passes the cells as a `Uint32Array` (or number array) of four entries per cell — codepoint, fg, bg, flags — or five, with the underline colour, in row-major order; Lua a string per row in `lines` plus `runs` of `{row, col, len, fg, bg, flags, ul}` over them (a run's fg, bg or ul of 0 keeps the default: the style's colour, no background, the foreground); C a `KuiCell` array with `ul`. `cursorAt` (`cursor_at`) names a cell to paint under its glyph in `cursorColor` as a `block` (default), `bar` or `underline` — its own name, since `cursor` is the pointer shape. `originLine` (`origin_line`) is the absolute line number of row 0: a grid is one screenful of the app's own history, so a row number means a different line after every scroll, and stamping where the screen sits is what lets a selection keep its ends across one (`docs/adr/0017-selection-as-a-scope.md`). Saying nothing is 0, and a selection then holds only while the screen does not move. The node's own rows apply — an `onKey` makes it the terminal's sink, an `onClick` or `onDrag` carries `cell: {row, col}` on its events — and its access row is `terminal`, the rows joined as its value.",
     },
     ElementDef {
         name: "line",

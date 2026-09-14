@@ -365,8 +365,12 @@ export interface GeneratedStyleProps {
   maxLines?: LengthProp;
   /** A line through the text, where the face puts its strikeout. Paint only; on a `<span>` the span alone, per line. */
   strikethrough?: boolean;
-  /** A line under the text, where the face puts its underline and as thick as it says, in the text colour. Paint only. On a `<span>` it covers the span alone and follows it across a wrap, one rect per line. */
+  /** A line under the text, where the face puts its underline and as thick as it says, in the text colour. Paint only. On a `<span>` it covers the span alone and follows it across a wrap, one rect per line. `underlineColor` gives it a colour of its own and `underlineStyle` a shape; either implies it. */
   underline?: boolean;
+  /** The underline's own colour — a diagnostic's red under keyword-coloured text (backlog K4). Implies `underline`. On a `<span>` the span's; a span with no colour of its own takes the text's. */
+  underlineColor?: ColorProp;
+  /** The underline's shape (backlog K4): `solid` (the face's line), `wavy` (three strokes tall around the line, a six-stroke period — a diagnostic's squiggle, a terminal's undercurl) or `dotted` (dots two strokes across, four apart). Implies `underline`. A wave or dots are runs of the segment primitive a `line` draws, so no backend learns a kind; the cost is two quads per period. */
+  underlineStyle?: 'solid' | 'wavy' | 'dotted';
   /** Line breaking at the node's width: between words (default), anywhere, or never (one line per paragraph, clipped to the node). On a single-line `edit` — a field, which otherwise takes one line and scrolls it — declaring it is what makes the field fold to its width like a document, by this mode, while Enter still submits (see `edit`). */
   wrap?: 'word' | 'glyph' | 'none';
 }
@@ -443,6 +447,14 @@ export interface SpanProps extends Keyed {
   color?: ColorProp;
   /** A line under the span, where the face puts it; nested spans inherit. */
   underline?: boolean;
+  /** The underline's own colour — a diagnostic's red under keyword-coloured
+   *  text; implies `underline`, nested spans inherit. Without it the
+   *  underline is the span's colour. */
+  underlineColor?: ColorProp;
+  /** The underline's shape: `solid` (the face's line), `wavy` (a squiggle,
+   *  three strokes tall with a six-stroke period) or `dotted`; implies
+   *  `underline`, nested spans inherit. */
+  underlineStyle?: 'solid' | 'wavy' | 'dotted';
   /** A line through the span, where the face puts it; nested spans inherit. */
   strikethrough?: boolean;
   /** A background behind the span's glyphs alone — one rect per line it
@@ -679,6 +691,10 @@ export declare namespace JSX {
       CustomSpecProps & {
         rows: number;
         cols: number;
+        /** Four entries a cell — codepoint, fg, bg, flags — or five, the
+         *  fifth the underline's own colour (0 = fg), row-major. Flags: 1
+         *  bold, 2 italic, 4 underline, 8 strikethrough, 16 wide, 32 the
+         *  underline is a wave (undercurl), 64 dotted. */
         cells: Uint32Array | number[];
         cursorAt?: [number, number];
         cursorShape?: 'block' | 'bar' | 'underline';

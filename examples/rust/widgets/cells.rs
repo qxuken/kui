@@ -18,6 +18,7 @@
 //!
 //! Run: cargo run -p kui --example cells [-- --headless]
 
+use kui::cells::flags;
 use kui::{
     Align, App, Cell, CellCursor, CellGrid, Core, FontFamily, NodeSpec, Sizing, TextStyle, Theme,
     Ui, UiEvent, Value,
@@ -93,6 +94,17 @@ impl App for Cells {
             let fg = ink.of(&t);
             for (c, ch) in line.chars().take(TERM_COLS).enumerate() {
                 cells[r * TERM_COLS + c] = Cell::new(ch, fg, 0);
+            }
+            // A shell's "did you mean": the word after `--` on the bench
+            // line carries an undercurl in the accent (SGR 4:3 + 58,
+            // `flags::WAVY` + `ul`; backlog K4).
+            if let Some(at) = line.find("-- ") {
+                let word = at + 3..line.len().min(TERM_COLS);
+                for c in word {
+                    cells[r * TERM_COLS + c] = cells[r * TERM_COLS + c]
+                        .with(flags::WAVY)
+                        .underline_color(t.accent.to_hex());
+                }
             }
         }
         // The cursor sits after the last prompt, when it is on screen.

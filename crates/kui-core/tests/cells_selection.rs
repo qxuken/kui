@@ -411,12 +411,7 @@ fn a_wide_glyph_copies_as_itself_and_selects_with_its_spacer() {
     let mut core = Core::new();
     let mut cells = vec![Cell::new(' ', 0xffffffff, 0); ROWS * COLS];
     // "漢字x" — each wide glyph followed by the app's blank.
-    let wide = |ch: char| Cell {
-        ch,
-        fg: 0xffffffff,
-        bg: 0,
-        flags: flags::WIDE,
-    };
+    let wide = |ch: char| Cell::new(ch, 0xffffffff, 0).with(flags::WIDE);
     cells[0] = wide('漢');
     cells[2] = wide('字');
     cells[4] = Cell::new('x', 0xffffffff, 0);

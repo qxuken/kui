@@ -404,6 +404,12 @@ pub(crate) fn text_style_of(s: &KuiTextStyle) -> TextStyle {
     if s.decoration & 2 != 0 {
         style = style.strikethrough();
     }
+    if s.underline_color != 0 {
+        style = style.underline_color(Color::hex(s.underline_color));
+    }
+    if s.underline_style != 0 {
+        style = style.underline_style(kui_core::UnderlineStyle::from_index(s.underline_style));
+    }
     style
 }
 
