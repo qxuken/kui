@@ -105,7 +105,8 @@ it has no announcement API to call.
   already.
 - **Nothing here is an ABI break.** ADR 0006, decision 2: an [in] struct
   gaining a field does not bump (`KuiSpec` is host-allocated and
-  library-read), and a new function does not bump (a host that does not
+  library-read — *a rule withdrawn 2026-09-14 by ADR 0006's amendment,
+  backlog AR50*), and a new function does not bump (a host that does not
   call it is unaffected; one that does fails to link, loudly). A new
   [out-array] struct has no older layout to overrun. So the C side is
   additive at ABI 5.

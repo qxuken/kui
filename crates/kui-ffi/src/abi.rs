@@ -16,12 +16,18 @@
 //   `KuiSpec`, `KuiSizing`, `KuiKeyframe`, `KuiEnter`, `KuiTextStyle`,
 //   `KuiSpan`, `KuiPlay`, `KuiAudio`, `KuiWindowConfig`, `KuiTheme` (which
 //   `kui_theme_set` reads, and `kui_theme` writes — so it is bound by the
-//   stricter [out] rule below). Appending a field is compatible: a
-//   host that predates it passes the shorter struct, the library reads no
-//   further than the host wrote, and the zeroed tail is the documented
-//   default. `KuiSpec` grew `tooltip` exactly this way. The exception is
-//   an [in] struct that travels as an *array* — `KuiSpan` — where an
-//   append moves the stride and is a bump (ABI 8).
+//   stricter [out] rule below). Appending a field is a bump, since
+//   2026-09-14 (backlog AR50, ADR 0006's amendment). The note here used
+//   to say the opposite — "the library reads no further than the host
+//   wrote" — and the library never did: `kui_open` copies `*spec`,
+//   `window_config_of` reads every field, so a host built against the
+//   shorter `KuiSpec` had the appended field read from whatever followed
+//   its struct on the stack, a garbage `KuiStr` in `tooltip`'s case.
+//   Only a host-written `size` could make an append safe, and [in]
+//   structs carry none — a `size` on every `KuiSpec` literal was the tax
+//   declined below — so they are held to the one rule with everything
+//   else. The array-shaped ones (`KuiSpan`, `KuiMenuItem`) were bumps
+//   already, for the stride (ABI 8, ABI 13).
 // - **[out]** — the host allocates it, the library writes it: `KuiEvent`,
 //   `KuiDrawData`, `KuiTextMetrics`, `KuiScrollGeometry`, `KuiTextHit`,
 //   `KuiCaretRect`, `KuiWindowCommand`, `KuiTheme`. Appending a field
@@ -55,12 +61,15 @@
 /// `KUI_ABI_VERSION` in `include/kui.h` is the one a host compiled against,
 /// and `mod abi_parity` asserts the two agree.
 ///
-/// **Bump it when the layout of anything the library writes or allocates
-/// changes** — an [out], [out-array] or [lib] struct in the note above, in
-/// any way, appends included. **Do not bump it** for a field appended to an
-/// [in] struct, which old hosts survive by construction, nor for a new
-/// function: a host that does not call one is unaffected, and one that does
-/// fails to *link*, which is loud.
+/// **Bump it when the layout of any struct in the note above changes** —
+/// [in], [out], [out-array] or [lib], in any way, appends included — and
+/// when an existing function's signature changes (ABI 12, ABI 16). **Do
+/// not bump it** for a new function: a host that does not call one is
+/// unaffected, and one that does fails to *link*, which is loud. An [in]
+/// append was exempt until 2026-09-14 on a premise the readers never kept
+/// (the note above, backlog AR50); `abi_parity::an_in_struct_s_size_is_
+/// the_abi_s` pins every [in] layout so the next append fails a test
+/// until this number moves.
 ///
 /// **It bumps per change, not per release** (ADR 0006 decision 8), so the
 /// entries below are a log of breaks and not a list of published versions:
@@ -157,7 +166,7 @@
 ///
 /// ABI 13 appends `checked` to `KuiMenuItem` (the menu bar, ADR 0018): a
 /// row that is a setting rather than a command draws a checkmark. An [in]
-/// struct, whose appends are ordinarily compatible — but this one travels
+/// struct, which the rule as it then stood exempted — but this one travels
 /// as an *array*, so the append moves the stride and every row after the
 /// first is read from the wrong bytes. The same exception `KuiSpan` is,
 /// for the same reason (ABI 8). A recompiled host's zeroed tail is

@@ -535,29 +535,27 @@ pub struct KuiSpec {
     /// Non-zero: this node is a selection scope — the text of every node
     /// inside it selects as one run, and a press-drag across them takes
     /// the lot (`docs/adr/0017-selection-as-a-scope.md`). Declared on the
-    /// container, not on each label. Appended after ABI 11 the way
-    /// `accent` was: an [in] struct that never travels as an array, so
-    /// the size handshake absorbs it and no version moves.
+    /// container, not on each label. Appended after ABI 11 without a
+    /// bump, the way `accent` was — under the [in] rule as it then stood
+    /// (`abi.rs`, backlog AR50).
     pub selectable: u32,
     /// Force-click tag (`on_force_click`): a press that deepens past the
     /// second stage of a Force Touch trackpad over this node emits
     /// `{kind:"forceclick", x, y, tag}` on it. Borrowed while the node
-    /// opens, like every other tag. Appended after ABI 11 the compatible
-    /// way; a host that predates it passes the shorter struct and reads
-    /// as NULL.
+    /// opens, like every other tag. Appended after ABI 11 without a bump,
+    /// under the [in] rule as it then stood.
     pub on_force_click: *const KuiValue,
     /// Non-zero: this node's subtree is a focus region — a Tab ring of its
     /// own that the ring outside never enters and that never leaves
     /// (`docs/adr/0022-focus-regions.md`). Entered on purpose:
     /// `kui_focus_region`, a press inside it, or a focus on a node in it.
-    /// Nothing else about the node changes. Appended after ABI 13 the
-    /// compatible way; a host that predates it passes the shorter struct
-    /// and reads as zero.
+    /// Nothing else about the node changes. Appended after ABI 13 without
+    /// a bump, under the [in] rule as it then stood.
     pub focus_region: u32,
     /// When this node's scrollbars are drawn: `KUI_SCROLLBAR_*` (the
     /// `scrollbar` row's index plus one), 0 for the default, which is
-    /// `KUI_SCROLLBAR_VISIBLE`. Appended after ABI 13 the compatible way,
-    /// like the three below.
+    /// `KUI_SCROLLBAR_VISIBLE`. Appended after ABI 13 without a bump, like
+    /// the three below.
     pub scrollbar: u32,
     /// The thumb's width at rest, logical px; 0 for the stock 4. Under
     /// the pointer or dragged it is 2 px wider.
@@ -570,8 +568,7 @@ pub struct KuiSpec {
     /// Non-zero: scroll anchoring on this scrolling node (backlog C26,
     /// CSS's `overflow-anchor`) — the first child in view keeps its place
     /// on screen when the content before it changes size. Appended after
-    /// ABI 14 the compatible way; a host that predates it passes the
-    /// shorter struct and reads as zero.
+    /// ABI 14 without a bump, under the [in] rule as it then stood.
     pub anchor: u32,
     /// Scroll tag (`on_scroll`): the wheel over this node emits
     /// `{kind:"scroll", x, y, dx, dy, lines, tag}` on it instead of
@@ -580,8 +577,8 @@ pub struct KuiSpec {
     /// arrives the same way once a frame
     /// (`docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md`).
     /// Borrowed while the node opens, like every other tag. Appended after
-    /// ABI 15 the compatible way; a host that predates it passes the
-    /// shorter struct and reads as NULL.
+    /// ABI 15 without a bump, under the [in] rule as it then stood — the
+    /// last append that rule covered.
     pub on_scroll: *const KuiValue,
 }
 
@@ -1062,9 +1059,8 @@ pub struct KuiAudio {
     pub looped: u32,
     pub paused: u32,
     /// Removal releases the playback instead of stopping it: it plays to
-    /// its end. Appended after `paused`, which a host that predates it
-    /// simply does not write — the zeroed tail is the old behaviour, so
-    /// this is the compatible append `abi.rs` describes for an [in] struct.
+    /// its end. Appended after `paused` without a bump, under the [in]
+    /// rule as it then stood (`abi.rs`); zero is the old behaviour.
     pub finish: u32,
 }
 
@@ -1107,12 +1103,12 @@ pub struct KuiTextStyle {
     /// OpenType features for the shaper, in the spelling every binding
     /// shares: `tag=value` pairs separated by spaces or commas, a bare
     /// tag meaning 1 and `-tag` 0 (`"liga=0 calt=0"`, `"tnum"`). Empty
-    /// (a zeroed `KuiStr`) is the font's defaults. Appended in the
-    /// compatible way: a host predating it passes the shorter struct.
+    /// (a zeroed `KuiStr`) is the font's defaults. Appended without a
+    /// bump, under the [in] rule as it then stood (`abi.rs`).
     pub features: KuiStr,
     /// `KUI_DECO_UNDERLINE` | `KUI_DECO_STRIKETHROUGH`: lines where the
-    /// face puts them, over every glyph. Paint only. Appended the
-    /// compatible way (backlog C22).
+    /// face puts them, over every glyph. Paint only. Appended without a
+    /// bump, the same way (backlog C22).
     pub decoration: u32,
 }
 

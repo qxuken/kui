@@ -1291,3 +1291,73 @@ fn the_headers_audit_names_every_struct_once() {
         );
     }
 }
+
+/// An [in] struct's layout is the ABI's like any other's (ADR 0006's
+/// 2026-09-14 amendment, backlog AR50): the library reads the whole
+/// struct, so a field appended to one is read from past the end of a
+/// host that did not recompile, and the version has to say so. This
+/// holds every struct the header's `[in]` paragraph lists to its size
+/// here, so an append fails until the row and `KUI_ABI_VERSION` both
+/// move — the table is the reminder, the message is the rule. Sizes are
+/// the 64-bit ones (`KuiStr` and the tag pointers are pointer-wide);
+/// the field-by-field pin above is what holds the layout per target.
+#[cfg(target_pointer_width = "64")]
+#[test]
+fn an_in_struct_s_size_is_the_abi_s() {
+    use std::collections::BTreeMap;
+    // (name, size in bytes, the ABI the size is from)
+    const IN_LAYOUTS: &[(&str, usize, u32)] = &[
+        ("KuiSpec", 560, 16),
+        ("KuiSizing", 8, 16),
+        ("KuiKeyframe", 36, 16),
+        ("KuiEnter", 40, 16),
+        ("KuiTextStyle", 64, 16),
+        ("KuiSpan", 32, 16),
+        ("KuiCell", 16, 16),
+        ("KuiMenuItem", 56, 16),
+        ("KuiMenu", 40, 16),
+        ("KuiPlay", 12, 16),
+        ("KuiAudio", 24, 16),
+        ("KuiWindowConfig", 32, 16),
+        ("KuiRunConfig", 36, 16),
+        ("KuiColorToken", 24, 16),
+        ("KuiLengthToken", 24, 16),
+        ("KuiColorOp", 24, 16),
+        ("KuiDerivedToken", 48, 16),
+    ];
+    let (text, _) = asserts();
+    let sizes: BTreeMap<&str, usize> = text
+        .lines()
+        .filter_map(|l| l.strip_prefix("KUI_STRUCT("))
+        .map(|l| {
+            let mut it = l.split(", ");
+            (it.next().unwrap(), it.next().unwrap().parse().unwrap())
+        })
+        .collect();
+    let header = include_str!("../include/kui.h");
+    let start = header.find(" * [in]     ").expect("the [in] paragraph");
+    let end = header[start..].find(" * [out]    ").expect("its end") + start;
+    let listed: Vec<&str> = header[start..end]
+        .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+        .filter(|w| w.starts_with("Kui") && *w != "KuiStr")
+        .collect();
+    for name in &listed {
+        let (_, pinned, abi) = IN_LAYOUTS
+            .iter()
+            .find(|(n, ..)| n == name)
+            .unwrap_or_else(|| panic!("{name} is an [in] struct with no size row here"));
+        assert!(*abi <= KUI_ABI_VERSION, "{name}'s row is from the future");
+        assert_eq!(
+            sizes[name], *pinned,
+            "{name} changed size: an [in] struct's layout is the ABI's, so bump \
+             KUI_ABI_VERSION, log it in include/kui.h and abi.rs, and set this row \
+             to the new size and number"
+        );
+    }
+    for (name, ..) in IN_LAYOUTS {
+        assert!(
+            listed.contains(name),
+            "{name} has a row here but is not [in]"
+        );
+    }
+}

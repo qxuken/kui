@@ -42,14 +42,29 @@ extern "C" {
  * against an older host, which is the direction that corrupts memory rather
  * than merely missing a feature.
  *
- * The number bumps when the layout of anything the library writes or
- * allocates changes - an [out], [out[]] or [lib] struct below, in any way,
- * appended fields included. It does not bump when an [in] struct gains a
- * field: the library only reads those, so a host that predates the field
- * passes a shorter struct and gets the zeroed default (KuiSpec grew
- * `tooltip` exactly this way). It does not bump for a new function either -
- * a host that does not call one is unaffected, and one that does fails to
- * link, which is loud.
+ * The number bumps when the layout of any struct below changes - [in],
+ * [out], [out[]] or [lib], in any way, appended fields included - and
+ * when an existing function's signature changes (ABI 12, ABI 16). It does
+ * not bump for a new function: a host that does not call one is
+ * unaffected, and one that does fails to link, which is loud.
+ *
+ * Until 2026-09-14 this block exempted an [in] append: "the library only
+ * reads those, so a host that predates the field passes a shorter struct
+ * and gets the zeroed default". The library does no such thing. It reads
+ * the whole struct - kui_open copies *spec, kui_window_declare reads
+ * every field of its config - so a host that reserved the shorter
+ * KuiSpec had the new field read from whatever followed it on its stack:
+ * for a
+ * KuiStr, a pointer of garbage, dereferenced when its length was not zero
+ * (backlog AR50). A size the host writes is what makes an append
+ * safe, and only the [out] structs carry one; giving every KuiSpec
+ * literal a `size` was the tax ADR 0006 declined, and the amendment
+ * there takes the other way out: one rule for every struct, and an [in]
+ * append is a recompile - which every host in this tree did anyway,
+ * having always been built against the header it linked. The appends
+ * KuiSpec, KuiTextStyle and KuiAudio took after ABI 9, 11, 13, 14 and 15
+ * went without a bump under the old rule; they are behind ABI 16 now, so
+ * a host that checks the number is served from here on.
  *
  * It bumps per change, not per release, so what follows is a log of breaks
  * and not a list of published versions. 1 through 5 all came and went
@@ -157,7 +172,7 @@ extern "C" {
  *
  * ABI 13 appends `checked` to KuiMenuItem (the menu bar, ADR 0018): a row
  * that is a setting rather than a command draws a checkmark. An [in]
- * struct, which would ordinarily be a compatible append - but this one
+ * struct, which the rule as it then stood exempted - but this one
  * travels as an ARRAY, so the append moves the stride and every row after
  * the first is read from the wrong bytes. Same reason ABI 8 bumped for
  * KuiSpan. Recompile; a zeroed tail is `checked = 0`, which is what every
@@ -188,11 +203,12 @@ extern "C" {
  * kui_set_devtools_legend - seven functions, no struct.
  *
  * ABI 16 gives kui_run_with a KuiRunConfig (backlog AR27): a third
- * argument, between the title and the view. The struct is [in] and would
- * not bump on its own; the bump is ABI 12's case again - an existing
+ * argument, between the title and the view. The struct is new, so no
+ * layout a host had moved; the bump is ABI 12's case again - an existing
  * function's *signature* - since a host that did not recompile passes one
  * argument too few and the library reads its view callback out of the
- * register the config should be in. Recompile: kui_run is unchanged, and
+ * register the config should be in. The same number stands over the
+ * rule change above (backlog AR50): an [in] append bumps from here on. Recompile: kui_run is unchanged, and
  * kui_run_with(ctx, title, NULL, view, on_event, user) is what the five-
  * argument call was.
  */
@@ -203,10 +219,11 @@ uint32_t kui_abi_version(void);
  *
  * [in]     You allocate and fill it; the library reads it. Zero-initialize
  *          and set what you need - a zeroed field is the documented default.
- *          A later kui may append fields; your shorter struct is fine -
- *          unless the struct travels as an ARRAY (KuiSpan, KuiCell,
- *          KuiMenuItem, KuiMenu), where an append moves the stride and
- *          bumps KUI_ABI_VERSION instead (ABI 8, ABI 13).
+ *          A later kui may append fields, and when it does it bumps
+ *          KUI_ABI_VERSION: the library reads the whole struct, so a
+ *          shorter one is not fine (the ABI block says why this once
+ *          claimed otherwise). Recompile, and the zeroed new field is
+ *          its default.
  *          KuiSpec, KuiSizing, KuiKeyframe, KuiEnter, KuiTextStyle, KuiSpan,
  *          KuiCell, KuiMenuItem, KuiMenu, KuiPlay, KuiAudio, KuiWindowConfig,
  *          KuiRunConfig, KuiColorToken, KuiLengthToken, KuiColorOp,
@@ -734,9 +751,8 @@ typedef struct KuiSpec {
      * host pushed through kui_env_set_system, keeping `bg` where it never
      * said what the accent is. On kui_button_with it takes the hover and
      * pressed shades and the label colour with it, so <button accent> is
-     * one field rather than a palette. Appended after ABI 9 the compatible
-     * way (an [in] struct, not one that travels as an array), so a host
-     * that predates it passes the shorter struct and reads as zero. */
+     * one field rather than a palette. Appended after ABI 9 without a bump,
+     * under the [in] rule as it then stood (see the ABI block). */
     uint32_t accent;
     /* Non-zero: this node is a selection scope. The text of every node
      * inside it is one selectable run, in tree order, and a press-drag
@@ -747,10 +763,9 @@ typedef struct KuiSpec {
      * anywhere clears the last, an editor's included, and kui_copy_text
      * reads whichever exists. Text scrolled out of view inside the scope
      * is still part of it - selection and copy reach it, hit-testing does
-     * not. Appended after ABI 11 the compatible way (an [in] struct, not
-     * one that travels as an array), so a host that predates it passes
-     * the shorter struct and reads as zero: not a selection scope, which
-     * is what every node was before this. */
+     * not. Appended after ABI 11 without a bump, under the [in] rule as
+     * it then stood (see the ABI block); zero is not a selection scope,
+     * which is what every node was before this. */
     uint32_t selectable;
     /* Force-click tag: a press that deepens past the second stage of a
      * Force Touch trackpad over this node emits {kind:"forceclick", x, y,
@@ -762,8 +777,8 @@ typedef struct KuiSpec {
      * a `selectable` scope selects the word and asks the host for its
      * definition panel. macOS-only in practice, and switchable off there,
      * so nothing may be reachable only this way. Borrowed while the node
-     * opens; appended after ABI 11 the compatible way, so a host that
-     * predates it passes the shorter struct and reads as NULL. */
+     * opens; appended after ABI 11 without a bump, under the [in] rule as
+     * it then stood (see the ABI block). */
     const KuiValue *on_force_click;
     /* Non-zero: this node's subtree is a focus region - a Tab ring of its
      * own that the ring outside never enters and that never leaves: a
@@ -776,8 +791,8 @@ typedef struct KuiSpec {
      * back to what the main ring last held. Only the ring is scoped: keys
      * bubble through the boundary to the sink above, the pointer and
      * assistive technology see a plain node, and a `modal` in effect is the
-     * ring wherever it sits. Appended after ABI 13 the compatible way; a
-     * host that predates it passes the shorter struct and reads as zero. */
+     * ring wherever it sits. Appended after ABI 13 without a bump, under
+     * the [in] rule as it then stood (see the ABI block). */
     uint32_t focus_region;
     /* When this node's scrollbars are drawn: KUI_SCROLLBAR_* (the
      * `scrollbar` row's index plus one), 0 for the default, which is
@@ -785,8 +800,8 @@ typedef struct KuiSpec {
      * width at rest in logical px (0 = the stock 4; under the pointer or
      * dragged it is 2 px wider), its colour at rest and under the pointer
      * as 0xRRGGBBAA (0 = the theme's scrollbar / scrollbar_active roles).
-     * Appended after ABI 13 the compatible way; a host that predates them
-     * passes the shorter struct and reads as zero. */
+     * Appended after ABI 13 without a bump, under the [in] rule as it then
+     * stood (see the ABI block). */
     uint32_t scrollbar;
     float scrollbar_width;
     uint32_t scrollbar_color;
@@ -796,8 +811,8 @@ typedef struct KuiSpec {
      * before it changes size - a chat that prepends history, a log that
      * inserts above the viewport. The child is found by key, so give the
      * rows stable keys; on the scroll axis that is the node's main axis
-     * only. Appended after ABI 14 the compatible way; a host that predates
-     * it passes the shorter struct and reads as zero. */
+     * only. Appended after ABI 14 without a bump, under the [in] rule as
+     * it then stood (see the ABI block). */
     uint32_t anchor;
     /* Scroll tag: the wheel over this node emits {kind:"scroll", x, y, dx,
      * dy, lines, tag} on it instead of scrolling anything - dx/dy the
@@ -811,9 +826,8 @@ typedef struct KuiSpec {
      * drag-select held past a grid's top or bottom edge arrives here too,
      * once a frame with the lines that frame scrolled by
      * (docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md).
-     * Borrowed while the node opens; appended after ABI 15 the compatible
-     * way, so a host that predates it passes the shorter struct and reads
-     * as NULL. */
+     * Borrowed while the node opens; appended after ABI 15 without a
+     * bump, under the [in] rule as it then stood (see the ABI block). */
     const KuiValue *on_scroll;
 } KuiSpec;
 
@@ -1257,9 +1271,10 @@ typedef struct KuiTextStyle {
     uint32_t ellipsis; /* non-zero: end the last line with "..." when cut off (one line unless max_lines) */
     KuiStr features;   /* OpenType features, "tag=value ..." (bare tag = 1, -tag = 0), e.g.
                           "liga=0 calt=0" to keep a coding font's ligatures apart; zeroed =
-                          the font's defaults. Appended the compatible way, like KuiSpec.tooltip. */
+                          the font's defaults. Appended without a bump, under the [in] rule as
+                          it then stood (see the ABI block). */
     uint32_t decoration; /* KUI_DECO_* : underline / strikethrough over every glyph, paint only.
-                            Appended the compatible way. */
+                            Appended without a bump, the same way. */
 } KuiTextStyle;
 
 /* [in] One run of a rich-text paragraph. */
@@ -2734,7 +2749,7 @@ void kui_edit_set_text(KuiCtx *ctx, uint64_t key, KuiStr text);
  * editor opening for the first time has fired none. A declared label is
  * applied at once; one no frame has declared is held for the frame that
  * declares it, seeding a new editor over `initial` and replacing a
- * retained one's draft. Appended the compatible way, so no ABI bump. */
+ * retained one's draft. A new function, so no ABI bump. */
 void kui_edit_set_text_label(KuiCtx *ctx, KuiStr label, KuiStr text);
 bool kui_is_focused(KuiCtx *ctx, uint64_t key);
 void kui_frame_finish(KuiCtx *ctx);

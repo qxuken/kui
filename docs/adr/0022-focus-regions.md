@@ -193,7 +193,8 @@ have somewhere for its chords to land.
   nothing focused now hears keys it used to lose; none of the examples
   minded, and a sink that heard nothing was not a sink anyone tested.
 - `KuiSpec` grows `focus_region` at its tail, an [in] append — no ABI
-  bump. `kui_focus_region(ctx, key)` and `kui_region(ctx)` are new
+  bump under the rule as it then stood (withdrawn 2026-09-14, ADR 0006's
+  amendment). `kui_focus_region(ctx, key)` and `kui_region(ctx)` are new
   functions; `ctx.focusRegion(name | null)` / `ctx.region()` in Node,
   `env.focus_region(key | nil)` and the `env.region` reading in Lua.
 - Headless tests pin the ring's confinement in both directions, the entry

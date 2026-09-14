@@ -582,7 +582,9 @@ rather than discovered in the field.
 [in] struct's append is *not* a bump — a host built against the older
 header passes the shorter struct, the library reads the prefix it was given
 and takes the rest as zero (`crates/kui-ffi/src/abi.rs:52`, and `accent`
-did exactly this after ABI 9). The menu drain is a **new symbol** with a
+did exactly this after ABI 9). *(The rule and its premise were withdrawn
+2026-09-14 — ADR 0006's amendment, backlog AR50: the library reads the
+whole struct, and an [in] append bumps.)* The menu drain is a **new symbol** with a
 new [out] struct (`kui_take_menu_command`), which by the same rule is not a
 bump either: a host that never calls it is unaffected. So the version moves
 only if some [out] struct a host already reads has to change shape, and

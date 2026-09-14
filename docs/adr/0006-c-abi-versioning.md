@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-09-04
-amended: 2026-09-06
+amended: 2026-09-14
 ---
 
 # The C ABI has a version, and the structs the library writes carry their size
@@ -80,7 +80,10 @@ previously implicit.
    [in] struct gains a field: old hosts survive that by construction, and
    pretending otherwise would make every `KuiSpec` prop a flag day. It does
    not bump for a new function either — a host that does not call one is
-   unaffected, and one that does fails to *link*, loudly.
+   unaffected, and one that does fails to *link*, loudly. *Amended
+   2026-09-14 (backlog AR50): the [in] exemption is withdrawn — see the
+   amendment at the end. The rule is now: any struct's layout, in any way,
+   and any existing function's signature; never a new function.*
 3. **Equality, not `>=`.** The mismatch worth catching is a *newer* library
    against an older host, which is the direction that corrupts memory. An
    older library against a newer host is also a mismatch, just a duller
@@ -152,7 +155,8 @@ previously implicit.
   it is simple in the wrong direction. Every new `KuiSpec` prop — and the
   prop schema grows most releases — would become a hard break for hosts
   that are provably unaffected, and a version that bumps for harmless
-  reasons is one hosts learn to ignore.
+  reasons is one hosts learn to ignore. *Reversed 2026-09-14: the hosts
+  were not unaffected — see the amendment below.*
 - **Coalesce bumps within a release window**, so the number moves at most
   once per release and every published number is one a host could have
   linked against (considered 2026-09-06, backlog S8). Rejected: it buys
@@ -205,3 +209,49 @@ previously implicit.
   minimum compatible version rather than more meaning packed into this one.
   Nothing here helps a host that never calls `kui_abi_version()`; the
   `size` handshake is what still catches those, on four structs.
+
+## Amendment 2026-09-14: an [in] append bumps too (backlog AR50)
+
+The context above rests on one sentence — a host that predates an [in]
+field "passes a shorter struct, the library reads no further than the host
+wrote, and the zeroed tail is the documented default" — and the second
+clause was never true. Nothing in `kui-ffi` reads an [in] struct field by
+field up to a length the host supplied, because no [in] struct carries a
+length: `kui_open` copies `*spec` whole, `window_config_of` reads every
+field of a `KuiWindowConfig`, `kui_audio` reads the whole `KuiAudio`. A host
+binary built against the shorter `KuiSpec` and run against a library that
+had appended `tooltip` passed the version check (equality, and [in]
+appends did not bump) and then had `tooltip` read from whatever followed
+its struct on the stack — a `KuiStr` whose pointer was garbage, dereferenced
+whenever the length word happened not to be zero. Every append made under
+the rule (`accent` after ABI 9, `selectable` and `on_force_click` after 11,
+`focus_region` and the scrollbar quartet after 13, `anchor` after 14,
+`on_scroll` after 15, `KuiTextStyle.features` / `.decoration`,
+`KuiAudio.finish`) carried this hazard. None of it bit, because every host
+in the tree is built against the header it links; the claim was masked, not
+kept. It was found building `KuiRunConfig` for backlog AR27, where a new
+[in] struct had to choose between the rule as written and a third category.
+
+**Decision.** The rejected option above becomes the rule: `KUI_ABI_VERSION`
+bumps when **any** struct's layout changes, [in] included, and when an
+existing function's signature changes (the ABI 12 and 16 case, which the
+original text did not name). Only a new function is free. The alternative
+— a leading `size` on every [in] struct that is not an array, read by a
+`read_in` mirroring `write_out` — would have kept the exemption honest,
+but at a `size` on every `KuiSpec` literal in every C host, which is the
+tax the "size on array elements" option above was already rejected for
+levying on a subtler contract. The "flag day" the original rejection
+feared is a recompile, and a recompile is what an [in] append has always
+required of a host that wanted the field to be read from its own struct;
+the number now says so instead of pretending otherwise.
+
+**What holds it.** `abi_parity::an_in_struct_s_size_is_the_abi_s` pins
+the size of every struct the header's `[in]` paragraph lists to a table in
+the test, on 64-bit targets. An append fails that test until the row and
+the version both move, with the rule in the failure message. The header's
+ABI block and `abi.rs`'s note say the new rule and keep the old sentence
+as a quotation of what was wrong with it; the per-field comments that said
+"the compatible way" now say "without a bump, under the rule as it then
+stood". No number moved for the amendment itself: ABI 16 was current and
+covers every append the old rule let through, so a host that checks the
+number is served from here on.

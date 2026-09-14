@@ -40,16 +40,30 @@ field reports).
   AR27) — `kui_run_with(ctx, title, NULL, view, on_event, user)` is what
   the five-argument call was, and `kui_run` is unchanged. The bump is
   ABI 12's case (a host that did not recompile passes one argument too
-  few), not the struct's: `KuiRunConfig` is [in]. Everything else is
+  few), not the struct's: `KuiRunConfig` is new. Everything else is
   additive — `KuiColorToken` / `KuiLengthToken` / `KuiColorOp` /
   `KuiDerivedToken` are new [in] arrays and `kui_tokens_set`,
   `kui_token_color`, `kui_token_length`, `kui_tokens_derive`,
   `kui_selection_ends`, `kui_env_set_always_on_top`, `kui_cell_selection`
   and the six devtools doors are new functions; `KuiSpec` grew
-  `on_scroll` at its end (backlog C39), which an [in] struct that never
-  travels as an array absorbs through the size handshake — a host built
-  against the shorter struct reads NULL there. Nothing the library writes
-  moved.
+  `on_scroll` at its end (backlog C39) without a bump of its own, under
+  the [in] rule as it then stood — ABI 16 covers it (below). Nothing the
+  library writes moved.
+- **The C ABI's [in] rule is withdrawn** (backlog AR50, ADR 0006's
+  2026-09-14 amendment): a field appended to an [in] struct — `KuiSpec`,
+  `KuiTextStyle`, `KuiWindowConfig` and the rest of the header's `[in]`
+  paragraph — bumps `KUI_ABI_VERSION` from here on, like every other
+  layout change. The header and `abi.rs` said such an append was safe
+  for a host that did not recompile, "the library reads no further than
+  the host wrote"; it reads the whole struct, so the appended field was
+  read from past the end of that host's struct — a garbage `KuiStr` in
+  `tooltip`'s case. No host in the tree was bitten (each is built
+  against the header it links), and no number moves for the rule itself:
+  ABI 16 is current and stands over every append the old rule let
+  through, so a host that checks `kui_abi_version()` is served from now
+  on. `abi_parity::an_in_struct_s_size_is_the_abi_s` pins every [in]
+  struct's size, so the next append fails a test until the number moves.
+  Nothing to do beyond the recompile ABI 16 already asks for.
 - `Ui::token_color` and `Ui::token_length` return `Option` — `None` for
   a name nothing declared or of the other kind, where they answered
   transparent and zero. A Rust view writes `.bg(ui.token_color("peach")

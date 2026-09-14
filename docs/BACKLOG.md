@@ -49,8 +49,9 @@ pass on what a press made, Node's surface aimed at the window it is
 handed for, `<text>`'s rows closed, one token-miss policy, Cut's
 `changed`, one spec pipeline for every door, the focus stamp and the
 reader's gates — with the amendment on B1a whose condition that round
-met, and **B1a, AR40, AR49, AR27, AR46–AR48, AR28–AR39 and AR41–AR45 built the same day** — every entry of the round but AR50 (AR50, the
-[in] rule's unkept promise, filed from under AR27); C31, found
+met, and **B1a, AR40, AR49, AR27, AR46–AR48, AR28–AR39 and AR41–AR45 built the same day** — and AR50, the
+[in] rule's unkept promise filed from under AR27, **decided and done the
+same day**: an [in] append bumps — every entry of the round; C31, found
 the same day building the tokens (Node's corpus adapter disagreeing with
 the reference on one scene when run alone — **done the same evening**:
 the handle was raw 1, the first the mint hands out, and the fixtures now
@@ -3702,7 +3703,29 @@ the five doc comments reworded to the code; `NSWindow.level` /
 `WS_EX_TOPMOST` queried in `sync_env` or the two docs say "what was asked".
 
 
-### `~` AR50 — The header says an [in] append is safe for a host that did not recompile; the library reads the whole struct
+### `~` AR50 — The header says an [in] append is safe for a host that did not recompile; the library reads the whole struct — **done (2026-09-14)**
+
+**Decided the first way and built 2026-09-14: an [in] append bumps.**
+ADR 0006 carries the amendment — decision 2 and the rejected option
+cross-reference it, and it names every append the old rule let through
+(`accent`, `selectable`, `on_force_click`, `focus_region`, the scrollbar
+quartet, `anchor`, `on_scroll`, `KuiTextStyle.features` / `.decoration`,
+`KuiAudio.finish`) and why none bit: every host in the tree is built
+against the header it links. The header's ABI block and `abi.rs`'s note
+state the one rule for every struct plus the signature case ABI 12 and
+16 were, keeping the old sentence as a quotation of what was wrong with
+it; the nine per-field "the compatible way" comments in `kui.h` and
+`types.rs` say "without a bump, under the rule as it then stood"; the
+`[in]` paragraph of "Who writes what" says recompile; ADRs 0008, 0017 and
+0022 carry a withdrawal note where they cited the rule; the alpha.12
+CHANGELOG entry that claimed `on_scroll` was "absorbed through the size
+handshake" says what happened. What holds it:
+`abi_parity::an_in_struct_s_size_is_the_abi_s` pins the size of every
+struct the header's `[in]` paragraph lists (17 rows, 64-bit sizes; the
+paragraph is parsed, so a new [in] struct needs a row), and its failure
+message is the rule — mutation-checked by moving a row. No number moved
+for the amendment: ABI 16 was current and stands over every append the
+old rule let through.
 
 `kui.h`'s ABI block (line 47) and `abi.rs`'s note say an [in] struct
 may gain a field without a bump because "a host that predates the field
@@ -3834,7 +3857,9 @@ caret follows the keys to the enclosing sink, `TextHit.line` is the
 visual row across the node's runs, a gutter is not its line's text,
 `text-beyond-line`; **AR32 and AR33 done 2026-09-14** — a popup is
 borderless and not resizable, the retarget frame is points on macOS;
-**AR28 done 2026-09-14** — Shift-motions select in a scope), and
+**AR28 done 2026-09-14** — Shift-motions select in a scope; **AR50
+decided and done 2026-09-14** — the first way, an [in] append bumps,
+ADR 0006 amended and every [in] size pinned), and
 AR49 first of all if the alpha.12 notes go out before the rest, since
 its first line is the CHANGELOG contradicting itself on the frame
 version (**AR49 done 2026-09-14**, the reused ids retired as `B1a` /
