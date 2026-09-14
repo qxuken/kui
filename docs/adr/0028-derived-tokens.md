@@ -160,7 +160,10 @@ pub enum ColorToken {
     Value { light: Color, dark: Color },
     Derived { from: TokenRef /* Color(i) | ColorRole(i) */, ops: OpRange },  // a range into Tokens::ops
 }
-pub enum ColorOp { Lift(f32), Darken(f32), Raise(f32), Alpha(f32), Mix(TokenRef, f32), Readable { on: TokenRef, ratio: f32 } }
+pub enum ColorOp { Lift(f32), Darken(f32), Raise(f32), Alpha(f32), Mix(String, f32), Readable(String, f32) }
+// As built: an op names its other colour (a token or a role) by name and
+// resolves it at read; the sketch had a `TokenRef` here, which would have
+// pinned the op to an index before the table it indexes was complete.
 ```
 
 `Tokens::resolve(i, &theme)` follows `from` (a role reads the theme; a

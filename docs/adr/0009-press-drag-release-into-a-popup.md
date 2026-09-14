@@ -248,7 +248,8 @@ it was retargeted; the only headless part is the arithmetic.
   an app can delete, and the only code here is `crates/kui/src/retarget.rs`
   with its tests, which nothing calls yet. Backlog W2 becomes *accepted,
   unbuilt*, whole in `docs/backlog/closed-2026-09.md` and trimmed in
-  `docs/BACKLOG.md` to the build.
+  `docs/BACKLOG.md` to the build — and went whole to the archive on
+  2026-09-07, when the driver half was built.
 - **The build is one change in one file**, `crates/kui/src/lib.rs`:
   `Shell` gains the armed set and a per-pane "primary held"; `open_pane`
   arms; the `CursorMoved` arm retargets; the `MouseInput` arm classifies

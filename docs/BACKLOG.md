@@ -3,12 +3,12 @@
 From the architecture review of `93169ed` (2026-09-03), after 0.1.0-alpha.5,
 the six rounds that followed it, and the field reports from two apps built on
 alpha.6 through alpha.11 outside this repo (F1–F15 on 2026-09-06,
-F16–F23 and F25–F31 on 2026-09-07, F32–F35 on 2026-09-08, F37–F41 on
+F16–F31 on 2026-09-07, F32–F35 on 2026-09-08, F37–F41 on
 2026-09-09, F42–F49 and F50–F54 on 2026-09-12). Every item names the
 evidence that produced it, so a task that turns out to be wrong can be argued with rather
 than guessed at.
 
-**This file is the open list.** The hundred and ten closed entries — each with its
+**This file is the open list.** Every closed entry — each with its
 outcome written on top of the original finding, and the tables, profiles and
 evidence it argued from — are in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md); forty-six moved there
@@ -48,7 +48,7 @@ matched by position, one chord bit for both key channels, one attach
 pass on what a press made, Node's surface aimed at the window it is
 handed for, `<text>`'s rows closed, one token-miss policy, Cut's
 `changed`, one spec pipeline for every door, the focus stamp and the
-reader's gates — with the amendment on B1 whose condition that round
+reader's gates — with the amendment on B1a whose condition that round
 met; C31, found
 the same day building the tokens (Node's corpus adapter disagreeing with
 the reference on one scene when run alone — **done the same evening**:
@@ -62,14 +62,14 @@ same evening**, the row carries both platforms' values), V2–V8 from the
 canvas question of 2026-09-11 (five
 waiting for a view, two declined with a condition — V1, the one with an
 order attached, was built the round after, on 2026-09-11), three parked
-headings — C12, C13 and C14, each waiting for a view that wants it — B1
+headings — C12, C13 and C14, each waiting for a view that wants it — B1a
 from the ABI-and-bindings audit of 2026-09-10 (a table declined with the
 condition that would build it), and F36, which fell out of building the
 last two of the four entries the two alpha.9 field reports and the
 bake-off produced, and which is filed rather than built on purpose (the
 only host driving its own audio device today is the runner). Everything
 else that has been filed has shipped: the six the round of 2026-09-11 took
-together — V1, D1, D2, T2, C26's last two steps and E3, each in the
+together — V1, D1a, D2a, T2, C26's last two steps and E3, each in the
 archive under its round with what the building settled on top; the
 design-system audit's T1 (the defect) and T2 (the axis ADR 0019 scoped
 itself out of) are both closed now, T3 the day it was filed, and T4 —
@@ -1443,7 +1443,7 @@ constants and the header's audit are pinned now the way struct layout has
 been since P6 — and one thing was declined with a condition, which is what
 this entry keeps.
 
-### `.` B1 — The verb surface is documented, not pinned — **done (2026-09-14)**
+### `.` B1a — The verb surface is documented, not pinned — **done (2026-09-14)**
 
 **Built 2026-09-14** as `schema::DOORS` (`crates/kui-core/src/schema/doors.rs`):
 one row per verb, the Rust spelling as the name, three cells that are
@@ -1569,8 +1569,8 @@ the examples' dock moved into `kui-core`, drawn by the core into any
 app's frame with one door per binding, and grew what the brief asked for
 — the events tab as a virtual list with a payload viewer, a collapsible
 and filterable tree, a picker, a fuller inspector, and a window of its
-own. Built whole the same day. Its two follow-ups — D1, the tree's
-keyboard, and D2, the panel's icons — were built the same day they were
+own. Built whole the same day. Its two follow-ups — D1a, the tree's
+keyboard, and D2a, the panel's icons — were built the same day they were
 filed and are in
 [the archive](backlog/closed-2026-09.md#from-the-devtools-round-2026-09-11-the-two-follow-ups).
 
@@ -1712,7 +1712,7 @@ one line a commit, and it reads:
   730 at `b30cc98` (+2%); rounded takes +8 µs at `8ab3607` (the clip
   shrink, +1.1% — priced in the CHANGELOG as +2.5% on the M3), sits at
   ~745, and reads 766 at `b30cc98` (+2.8%). `b30cc98` is the six-entry
-  round (V1, D1/D2, T2, C26, E3): 1,431 lines, and none of them per node
+  round (V1, D1a/D2a, T2, C26, E3): 1,431 lines, and none of them per node
   on the rects path — `NodeSpec` is 224 bytes on both sides, `Core` grew
   the 64 bytes of `Metrics`, the anchor arithmetic in `positions` is per
   container and behind `spec.anchor`. A +2% that no line accounts for,
@@ -2281,7 +2281,7 @@ and its tests rather than grepping, each rejecting its own first pass
 before reporting; then every defect marked `!` below re-read against
 the code by hand, and every claim that dissolved on that reading
 dropped. Nothing from AR1–AR6 or from an open entry is repeated. Forty-three
-entries, AR7–AR49, and one amendment on top of B1, whose condition this
+entries, AR7–AR49, and one amendment on top of B1a, whose condition this
 round met.
 
 Ten of them are one decision each, and the entries under a decision
@@ -2307,7 +2307,7 @@ decisions, in the order they matter:
   AR5 fixed two of them; the two it did not touch have AR5's defect.
 - **Node's window handle is the main window** (AR12). C and Lua are
   per window because their view-time handle is the drawing core's.
-- **B1's condition is met** (B1, AR26, AR27, AR40): thirteen verbs
+- **B1a's condition is met** (B1a, AR26, AR27, AR40): thirteen verbs
   reach some bindings and not others, and the C runner takes no window
   at all.
 - **Coverage is enforced for elements, not rows** (AR46, AR47, AR48).
@@ -3307,7 +3307,38 @@ pinned on nobody's machine.
 tests on `crate::testing`; a tiny test-only font with a `liga` table under
 `tests/fixtures/`, or at least a stderr line when a test skips.
 
-### `!` AR49 — The documents disagree with the code and with each other in eleven places
+### `!` AR49 — The documents disagree with the code and with each other in eleven places — **done (2026-09-14)**
+
+**All eleven reworded to the code, 2026-09-14.** The alpha.12 "What
+breaks" is one list: the frame is version 11 from 9 with v10's and
+v11's changes under it, the ABI line names every function and array
+added at 15 with `on_scroll`'s handshake note folded in, the "Nothing"
+and "stays 9" leftovers are gone, and the F42 entry that sat between it
+and `### Added` is under `### Fixed`. The reused ids are retired with a
+suffix — the newer holder in each pair: `B1a` (the verb surface), `D1a`
+(the tree's keyboard), `D2a` (the drawn icons) — in both backlog files,
+the index, ADR 0024, the CHANGELOG and every code comment, and
+`tests/docs.rs::a_backlog_id_names_one_entry` holds every `###` heading
+id across the open list and the archive to one entry and the index to
+one row per id (red on a reuse, checked). The archive is no longer
+counted in prose; the intro's F-range is `F16–F31`; the hygiene
+inventory lists what is here. ADR 0017 is `accepted` with its decisions
+7 and 8 in order (the CHANGELOG's "decision 7" is the formatted copy,
+as it says); ADR 0006 says every [out] struct with the four it started
+from; ADR 0021's action item 9 says the two scripts became the `smoke`
+binary (AR4); ADR 0028's sketch shows `Mix(String, f32)` as built;
+ADR 0014 and ADR 0009 point at where the backlog text went;
+`access.rs` sends F8 to the archive. `ENV_FIELDS`, `SystemEnv` and
+`props.md` say the core acts on `appearance` and `accent` in one way —
+the theme — and on nothing else. `env.window.always_on_top` is
+documented in its four places as the driver's record of the level it
+set on a platform that has one, not a query (winit has no getter), so a
+level the OS dropped is not seen — the docs fix of the two the entry
+offered; querying `NSWindow.level` / `WS_EX_TOPMOST` in `sync_env` is
+the other and waits for a pin button that needs it. `KUI_WINDOW=WxH` is
+in the README beside `KUI_DEVTOOLS` and `KUI_TEXT_AA`; C34's bullet says
+a keyboard- or AT-made click carries none of the three. `binary.rs`'s
+version history was completed by AR14.
 
 The `!` is for the first; the rest are `.`.
 
@@ -3444,13 +3475,15 @@ AR12 (Node's window handle — **done 2026-09-14**), AR13–AR16 (**all
 four done 2026-09-14**) (the `<text>` rows, one token
 miss policy, Cut's `changed`, one `prepare_spec`), AR17–AR18 (the focus
 stamp and the AT gates — **both done 2026-09-14**), AR19–AR25 as the defects they are
-(**all seven done 2026-09-14**, AR26 with them), then B1's
-table with AR26, AR27 and AR40 beside it (**B1 done 2026-09-14** — the
+(**all seven done 2026-09-14**, AR26 with them), then B1a's
+table with AR26, AR27 and AR40 beside it (**B1a done 2026-09-14** — the
 table, its four pins and the one-line rows; AR27 and AR40 open beside
 it), AR46–AR48 for the tests, and
 AR49 first of all if the alpha.12 notes go out before the rest, since
 its first line is the CHANGELOG contradicting itself on the frame
-version. The `~` and `.` entries between wait for the defects.
+version (**AR49 done 2026-09-14**, the reused ids retired as `B1a` /
+`D1a` / `D2a` with a test). The `~` and `.` entries between wait for
+the defects.
 Before it, the third editor-and-mux round, filed 2026-09-13 above,
 in the order its entries argue for: C32 first (every mono glyph on a
 machine without Noto Sans Mono is whatever face cosmic-text's fallback
@@ -3495,7 +3528,7 @@ fixtures remove one now; the four bench rows were swept commit by
 commit, the segment row's +12% was ADR 0023's chrome call per leaf
 float and half of it is back, the row guarded; and `props.md`'s
 metrics table carries both platforms' `titlebar_h`. Before them
-the open list was C12, C13, C14, F36, B1 and V2–V8 — every one parked on a
+the open list was C12, C13, C14, F36, B1a and V2–V8 — every one parked on a
 condition — and one entry with work in it: C30, always on top,
 filed 2026-09-12 as a per-frame fact in `window_title`'s shape with a
 door per binding and a readback in `env.window`, and **built the same
@@ -3652,12 +3685,13 @@ saying it until one does.
 so all of F1–F15 sit together — W2 whole on 2026-09-07, once its driver
 half was built, the fourteen of alpha.9's round on 2026-09-08, and the
 fourteen of this one (W3, W4–W12, F32–F35) before the alpha.10 tag, and
-the six of the round of 2026-09-11 (V1, D1, D2, T2, C26 whole, E3) the day
+the six of the round of 2026-09-11 (V1, D1a, D2a, T2, C26 whole, E3) the day
 they were built, and T1, E1 and E2 — closed in their rounds and left here
 — before the alpha.11 tag. This file is now three parked entries, C27
-with its measurements, F36, B1, V2–V8, this section, and the
-entries built since the tag with their outcomes on top (F42–F54, C30, C31,
-C29, W13), waiting for alpha.12 to move them.
+with its measurements, F36, V2–V8, the open AR27–AR48, this section, and the
+entries built since the tag with their outcomes on top (F42–F54, T5, C30,
+C31, C29, W13, W14, C32–C39, AR7–AR26, B1a), waiting for alpha.12 to move
+them.
 Still open, both waiting on something outside the repo: enable `SMOKE_MACOS`
 / `SMOKE_WINDOWS` the day a runner exists (P8) — which has two jobs waiting
 for it now, F13's launch probe beside the AX audit, sharing the one
@@ -3699,12 +3733,13 @@ release, which no headless assertion reads:
 
 ## Closed — index
 
-A hundred and ten entries, all in
-[`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) and all verbatim.
+Every closed entry, all in
+[`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) and all verbatim — one heading
+per id, and `tests/docs.rs` holds every id to one entry across both files.
 This index is here so an id resolves without opening that file: the open items
 above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.11" and
 the hygiene note cite C2, C5(b), P3, R4 and R7, and code comments, ADRs and
-commit messages cite ids of their own. All hundred are whole in the
+commit messages cite ids of their own. All of them are whole in the
 archive. **C11**, **W2** and **C15** were each split for a while — an entry
 appearing there in full and here trimmed to what was still open — until their
 remainders landed: C11's last step on 2026-09-06, ADR 0009's driver half on
@@ -3885,8 +3920,8 @@ move.
 **From the round of 2026-09-11** — six entries from five rounds, built together the day after the canvas question and archived under their own rounds
 
 - `.` **V1** — [Fragment image input](backlog/closed-2026-09.md#-v1--fragment-image-input--done-2026-09-11) — done (2026-09-11) — `image` on `fragment`, `kui_sample` / `kui_sample_nearest`, the atlas or the image's own texture bound by the core, ABI 15, the removal order pinned both ways
-- `.` **D1** — [The tree rows have no keyboard](backlog/closed-2026-09.md#-d1--the-tree-rows-have-no-keyboard--done-2026-09-11) — done (2026-09-11) — the list is the sink with a cursor of its own; Left folds, Right unfolds, built in the panel and not as a fifth composite pair
-- `.` **D2** — [The panel's buttons are Unicode blocks, not icons](backlog/closed-2026-09.md#-d2--the-panels-buttons-are-unicode-blocks-not-icons--done-2026-09-11) — done (2026-09-11) — `icons.rs`, a `line` per stroke and a `polygon` per fill
+- `.` **D1a** — [The tree rows have no keyboard](backlog/closed-2026-09.md#-d1a--the-tree-rows-have-no-keyboard--done-2026-09-11) — done (2026-09-11) — the list is the sink with a cursor of its own; Left folds, Right unfolds, built in the panel and not as a fifth composite pair
+- `.` **D2a** — [The panel's buttons are Unicode blocks, not icons](backlog/closed-2026-09.md#-d2a--the-panels-buttons-are-unicode-blocks-not-icons--done-2026-09-11) — done (2026-09-11) — `icons.rs`, a `line` per stroke and a `polygon` per fill
 - `.` **T2** — [The metrics are still constants](backlog/closed-2026-09.md#-t2--the-metrics-are-still-constants--done-2026-09-11) — done (2026-09-11) — `Metrics` beside `Theme` in four bindings; a metric never scales by itself, the stock set is the corpus's contract
 - `.` **C26** — [Rows of varying height](backlog/closed-2026-09.md#-c26--rows-of-varying-height--steps-0-and-1-built-2026-09-09-2-and-3-built-2026-09-11) — steps 0 and 1 built (2026-09-09), 2 and 3 built (2026-09-11) — `anchor` (CSS's `overflow-anchor`) in the core with a corpus scene, and `layout_of(key)`
 - `.` **E3** — [`features/modal` is still inside two other examples](backlog/closed-2026-09.md#-e3--featuresmodal-is-still-inside-two-other-examples--done-2026-09-11) — done (2026-09-11) — the dialog, the nested confirm, Escape by tag, focus restored; with a drive

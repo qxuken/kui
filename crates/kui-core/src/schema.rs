@@ -38,7 +38,7 @@
 //! `diag::UNKNOWN_PROP` warning.
 //!
 //! The verbs — what an app or a host *calls* rather than declares — are
-//! the one surface this table did not cover; [`DOORS`] does (backlog B1),
+//! the one surface this table did not cover; [`DOORS`] does (backlog B1a),
 //! one row per verb with its C, Node and Lua spelling or the reason there
 //! is none, pinned by each binding's own test.
 
@@ -1243,7 +1243,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`alwaysOnTop` (root box only)",
         lua: "`always_on_top = true` (root table)",
         c: "`kui_set_always_on_top`",
-        doc: "Declares that this frame wants the window kept above every other app's — a floating palette, a picture-in-picture player, a timer (backlog C30). Frame state the way `title` is, applied by the driver on change and free on the frames it does not change, but with a default of false rather than \"leave as-is\": a frame that stops declaring it lowers the window again, so a pin button is a toggle on the app's own state and nothing has to remember to undo it. Whether the platform agreed is `env.window.always_on_top`, which is what the pin button should draw its state from — an OS can refuse or drop the level (a tiling manager, a fullscreen space), and Wayland has no call for it at all, so there the window never moves and the reading says so. A popup keeps its own level whatever its owner declares.",
+        doc: "Declares that this frame wants the window kept above every other app's — a floating palette, a picture-in-picture player, a timer (backlog C30). Frame state the way `title` is, applied by the driver on change and free on the frames it does not change, but with a default of false rather than \"leave as-is\": a frame that stops declaring it lowers the window again, so a pin button is a toggle on the app's own state and nothing has to remember to undo it. Whether the platform has a level to set is `env.window.always_on_top`, which is what the pin button should draw its state from — Wayland has no call for it at all, so there the window never moves and the reading says so; it is the driver's record of what it set, not a query, so a level the OS dropped afterwards (a fullscreen space, a tiling manager) is not reported. A popup keeps its own level whatever its owner declares.",
     },
     CustomProp {
         name: "windows",
@@ -1919,7 +1919,7 @@ pub const ENV_FIELDS: &[EnvField] = &[
         node: &["system.appearance"],
         lua: &["system.appearance"],
         c: "`kui_env_set_system(appearance)`",
-        doc: "The OS light/dark setting: `\"light\"`, `\"dark\"`, or `\"unknown\"` when the host has no way to ask (`KUI_APPEARANCE_*` in C, where unknown is 0). Unknown is a real answer and the default — a view picks its own palette for it rather than being handed a guess. The core acts on none of this: nothing repaints because the setting changed, because only the view knows which of its colours is the background.",
+        doc: "The OS light/dark setting: `\"light\"`, `\"dark\"`, or `\"unknown\"` when the host has no way to ask (`KUI_APPEARANCE_*` in C, where unknown is 0). Unknown is a real answer and the default — a view picks its own palette for it rather than being handed a guess. The core acts on it in one way: the theme is derived from it (ADR 0019), so the stock widgets and a `<text>` with no colour follow the setting — and nothing of the app's own repaints, because only the view knows which of its colours is the background.",
     },
     EnvField {
         name: "system.accent",
@@ -2010,7 +2010,7 @@ pub const ENV_FIELDS: &[EnvField] = &[
         node: &["window.alwaysOnTop"],
         lua: &["window.always_on_top"],
         c: "`kui_env_set_always_on_top(always_on_top)`",
-        doc: "The window is above every other app's: what the driver applied after the frame asked for it (`alwaysOnTop` / `always_on_top` / `kui_set_always_on_top`, backlog C30), not what was asked. A platform can refuse or drop the level, and on Wayland winit has no call for it, so a driver there reports false however often the app asks — which is why a pin button draws its state from this and not from the app's own flag. A C host reports it through its own setter rather than an argument on `kui_env_set_window`, the way `kui_env_set_assistive` is, so an older host that never applies a level has nothing to recompile.",
+        doc: "The window is above every other app's: the level the driver set after the frame asked for it (`alwaysOnTop` / `always_on_top` / `kui_set_always_on_top`, backlog C30), on a platform that has one. On Wayland winit has no call for it, so a driver there reports false however often the app asks — which is why a pin button draws its state from this and not from the app's own flag. It is the driver's record of what it set and not a query (winit has no level getter), so a level the OS dropped afterwards — a fullscreen space, a tiling manager — is not seen here. A C host reports it through its own setter rather than an argument on `kui_env_set_window`, the way `kui_env_set_assistive` is, so an older host that never applies a level has nothing to recompile.",
     },
     EnvField {
         name: "window.native_controls",

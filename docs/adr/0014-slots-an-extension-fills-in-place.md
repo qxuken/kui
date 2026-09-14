@@ -280,9 +280,10 @@ there, not appended to a node that has closed.
 
 ## Consequences
 
-- **Nothing ships to an app from this ADR until it is built.**
-  `CHANGELOG.md` is untouched. `docs/BACKLOG.md`'s "After alpha.8" names
-  this as the one written ADR with no code.
+- **Nothing shipped to an app from this ADR until it was built** (the
+  same day, for alpha.9; the CHANGELOG entry is alpha.9's). Until then
+  `docs/BACKLOG.md`'s "After alpha.8" — the heading has moved with each
+  tag since — named this as the one written ADR with no code.
 - **When built, no existing app or extension changes behaviour.** An
   extension with no `slots` fills the root after the host's view, as now;
   a host that never calls `ui.slot` sees the same frame. The one visible

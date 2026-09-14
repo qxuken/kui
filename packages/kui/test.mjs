@@ -5487,7 +5487,7 @@ test('useWindow is on both classes, and a headless Ctx is the main window alone 
   app.render();
 });
 
-// The verb table (`schema::DOORS`, backlog B1) is the one statement of
+// The verb table (`schema::DOORS`, backlog B1a) is the one statement of
 // which doors each binding has; this is Node's pin to it, both ways. A
 // row's Node cell names a method — on both classes, or on the one it is
 // prefixed with — and every method of either class is a row's cell or one
@@ -5497,7 +5497,7 @@ test('useWindow is on both classes, and a headless Ctx is the main window alone 
 // readers beside `quads`. A method added to `lib.rs` or `index.js`
 // without a row is a red test here; a row spelling a method that is not
 // there is the same.
-test('the two classes are the verb table\'s Node column, both ways (B1)', () => {
+test('the two classes are the verb table\'s Node column, both ways (B1a)', () => {
   const methods = (cls) =>
     Object.getOwnPropertyNames(cls.prototype).filter((n) => n !== 'constructor' && typeof cls.prototype[n] === 'function');
   const on = { Ctx: new Set(methods(Ctx)), KuiWindow: new Set(methods(KuiWindow)) };
@@ -5530,7 +5530,7 @@ test('the two classes are the verb table\'s Node column, both ways (B1)', () => 
   assert.deepEqual(unrowed, [], 'methods with no row in schema::DOORS (a verb needs a row with its three other cells)');
 });
 
-test('cellSelection() reads a grid\'s selection as absolute lines and columns (B1)', () => {
+test('cellSelection() reads a grid\'s selection as absolute lines and columns (B1a)', () => {
   // The row ADR 0017 §4 offered "because a grid's ends mean something to
   // the app" and only Rust had. Directed like `selectionEnds()`, and the
   // lines are the session's own: row 1 of a screen whose row 0 is line
@@ -5559,7 +5559,7 @@ test('cellSelection() reads a grid\'s selection as absolute lines and columns (B
   assert.equal(ctx.cellSelection(), null);
 });
 
-test('<input> is the stock field and <tooltip> the node form, the doors Lua and C had (B1)', () => {
+test('<input> is the stock field and <tooltip> the node form, the doors Lua and C had (B1a)', () => {
   // `<input label initial>` is `widgets::text_input`: an editor read back
   // by its label, in the field's own chrome, and nothing else is read —
   // the same two fields Lua's `input { }` takes. `<tooltip>` always draws

@@ -21,78 +21,48 @@ field reports).
 
 **What breaks.**
 
-- The Node binary frame is **version 11** (backlog AR14): a tagged `min`
-  row is one slot, the token index; a `line`'s flags word bit 2 says its
-  width slot is a length index; a `cells`' cursor-shape slot bit 4 says
-  its colour slot is a colour index. Encoder and addon ship together, so
-  nothing to do unless you own an encoder.
+- The Node binary frame is **version 11**, from 9 (backlog T4 and AR14):
+  a prop id may carry the `0x8000` token tag and its value slot then
+  holds a token index, the `pad` shorthand gains a second mask and
+  `border` a flags word when tagged, and a span's flags gain bits 64 and
+  128 (v10); a tagged `min` row is one slot, the token index, a `line`'s
+  flags word bit 2 says its width slot is a length index, a `cells`'
+  cursor-shape slot bit 4 says its colour slot is a colour index, the
+  edit op's flags bit 4 is the stock field and `tooltip` is a new op
+  (v11). Encoder and addon ship together, so nothing to do unless you own
+  an encoder (`createEncoder(p).encode(tree, tokens)` takes the surface's
+  token map as a second argument and returns `unknownTokens` beside
+  `unknown`).
+- `KUI_ABI_VERSION` stays **15**. `KuiColorToken` / `KuiLengthToken` /
+  `KuiColorOp` / `KuiDerivedToken` are new [in] arrays and
+  `kui_tokens_set`, `kui_token_color`, `kui_token_length`,
+  `kui_tokens_derive`, `kui_selection_ends`, `kui_env_set_always_on_top`,
+  `kui_cell_selection` and the six devtools doors are new functions;
+  `KuiSpec` grew `on_scroll` at its end (backlog C39), which an [in]
+  struct that never travels as an array absorbs through the size
+  handshake — a host built against the shorter struct reads NULL there.
+  Nothing the library writes moved.
 - `Ui::token_color` and `Ui::token_length` return `Option` — `None` for
   a name nothing declared or of the other kind, where they answered
   transparent and zero. A Rust view writes `.bg(ui.token_color("peach")
   .unwrap_or(fallback))` or leaves the row alone, which is what a `$name`
   does in every other binding.
 - `kui_lua::Refs` is a type alias for `kui_core::NameRefs` (same
-  constructor, `take_missed()` where a caller read `.errors`).
-- The Node binary frame was **version 10**: a prop id may carry the
-  `0x8000` token tag and its value slot then holds a token index; the
-  `pad` shorthand gains a second mask and `border` a flags word when
-  tagged; a span's flags gain bits 64 and 128. The encoder and the addon
-  ship together, so nothing to do unless you own an encoder
-  (`createEncoder(p).encode(tree, tokens)` takes the surface's token map
-  as a second argument and returns `unknownTokens` beside `unknown`).
-- `Refs` is a new second argument to `kui_lua::parse_props` and its
-  siblings; a Rust host that called the Lua parser directly passes
-  `&mut Refs::new(core.token_lookup())`. Every f32 prop in
-  `jsx-runtime.d.ts` is `LengthProp` (`number | LengthToken`) and
-  `SizingProp` admits a `LengthToken`, which widens and breaks nothing.
-- `KUI_ABI_VERSION` stays **15**: `KuiColorToken` and `KuiLengthToken`
-  are new [in] arrays and `kui_tokens_set` / `kui_token_color` /
-  `kui_token_length` new functions, nothing the library writes moved.
-
-- Nothing. `KUI_ABI_VERSION` stays 15 and the Node binary frame stays 9:
-  the one addition to C is a new setter, not an argument, and the `system`
-  event's payload grew a key a handler that destructures the old four
-  still reads.
-- `KuiSpec` grew `on_scroll` at its end and `kui_selection_ends` is a new
-  function (backlog C39): `KUI_ABI_VERSION` stays **15**, since an [in]
-  struct that never travels as an array is absorbed by the size
-  handshake, and a host built against the shorter struct reads NULL.
-  The corpus's step vocabulary grew `modifiers N` (Shift 1, Ctrl 2, Alt
-  4, Super 8, `KeyMods::bits`), and its
-  event rows print a `scroll`'s lines — an adapter you maintain outside
-  this repo needs both arms.
-
-Nothing.
-
-- **A `dispatch` made outside the loop no longer loses a `setEditText`
-  seed to the redraw the call itself asked for** (backlog F42, from the
-  mind map's alpha.11 report: `sync: views=1 field=absent`, `frame +1:
-  views=2 field=absent`, `frame +2: field=present`, with
-  `edit-text-without-editor` raised between, so a reopened editor came
-  back with the abandoned draft over the model's text). Two halves. On
-  the driver's side, `runWindowed` draws the model a foreign `dispatch`
-  changed — from `setup`, a timer, a promise, an effect handler —
-  **before** `win.pump()`, so no runner redraw (a caret blink, a hover, a
-  resize, or one a call asked for) can re-lower a tree older than that
-  `dispatch`; the pump-then-step order for events stays, and `dispatch`
-  still does not draw synchronously. On the binding's side, `setEditText`
-  asks for a redraw only when the text reached an editor: a seed the core
-  held changed nothing on screen, and the frame that will is the app's.
-  `Core::set_edit_text` / `set_edit_text_by_label` (and `Ui`'s two) now
-  return whether the text landed, which is what the binding reads.
-  `runWindowed` takes a `surface` option the way `createApp` does, so a
-  test can run the driver itself — pump order and all — over a stand-in
-  window; the guard does exactly that, over a stand-in whose `pump()`
-  re-lowers its last tree through a real `Ctx`.
-
-  *What you can delete:* an `app.frame()` (or a `setTimeout`) an app
-  awaited between a foreign `dispatch` and a `setEditText` so the seed
-  would land, and a `setEditText` repeated on the frame after a rename
-  opened to paper over the draft that came back.
+  constructor, `take_missed()` where a caller read `.errors`), and a new
+  second argument to `kui_lua::parse_props` and its siblings; a Rust host
+  that called the Lua parser directly passes `&mut Refs::new(core.token_lookup())`.
+- Every f32 prop in `jsx-runtime.d.ts` is `LengthProp` (`number |
+  LengthToken`) and `SizingProp` admits a `LengthToken`, which widens and
+  breaks nothing.
+- The corpus's step vocabulary grew `modifiers N` (Shift 1, Ctrl 2, Alt
+  4, Super 8, `KeyMods::bits`) and its event rows print a `scroll`'s
+  lines — an adapter you maintain outside this repo needs both arms.
+- The `system` event's payload grew a key; a handler that destructures
+  the old four still reads.
 
 ### Added
 
-- **The verb table** (backlog B1, on the condition ADR 0020 set and the
+- **The verb table** (backlog B1a, on the condition ADR 0020 set and the
   second architecture review met): `schema::DOORS`, one row per verb an
   app or a host calls on its context — a resource registered, a focus
   moved, a selection read, a menu opened, a window sized, the driver's
@@ -280,7 +250,10 @@ Nothing.
   frame of lag — and no timer the app keeps for the count. A point above
   the first line is the first, below the last the last, one in a
   `role="none"` gutter the line beside it; a sink with no lines adds
-  nothing. `modal_editor` gets all three: one click places the caret,
+  nothing, and neither does a click the keyboard or assistive technology
+  made (Enter on a focused row, an AT `click`), which has no point and
+  no count — only a pointer's press carries the three. `modal_editor`
+  gets all three: one click places the caret,
   two select the word, three the line, and a drag extends from the press.
   Pinned in four bindings (`tests/sink_pointer.rs`, `test.mjs`, the Lua
   and C suites); `access::lines_under` is the one walk both the access
@@ -604,6 +577,52 @@ Nothing.
   same by hand. No code changed.
 
 ### Fixed
+
+- **The documents agree with the code, and a backlog id names one
+  entry** (backlog AR49, from the second architecture review). Three
+  ids headed two entries each — `B1`, `D1`, `D2` — and code cited both
+  senses; the newer holder of each is `B1a` (the verb surface, above),
+  `D1a` (the devtools tree's keyboard) and `D2a` (its drawn icons) now,
+  in the backlog, the index, ADR 0024 and every comment, and a test
+  holds every heading id across the open list and the archive to one
+  entry. The rest were words against code: ADR 0017 was `proposed` with
+  its decisions 7 and 8 out of order and is accepted, in order; ADR 0006
+  counted four `[out]` structs where the header has eleven; ADR 0021
+  ticked two scripts the `smoke` binary replaced; ADR 0028 sketched an
+  op over an index where the enum takes a name; `ENV_FIELDS`,
+  `SystemEnv` and `docs/props.md` said the core acts on none of
+  `system.*` forty lines from saying the stock widgets follow the OS —
+  it derives the theme from two of them and acts on nothing else;
+  `env.window.always_on_top` was "what the platform did" in four places
+  and is the driver's record of the level it set, not a query, which is
+  what the runner has; `KUI_WINDOW=WxH` was read by the runner and
+  documented nowhere; and this file's own alpha.12 "What breaks" said
+  the Node frame was 10, then 9, then "Nothing" — it is 11, in one list.
+- **A `dispatch` made outside the loop no longer loses a `setEditText`
+  seed to the redraw the call itself asked for** (backlog F42, from the
+  mind map's alpha.11 report: `sync: views=1 field=absent`, `frame +1:
+  views=2 field=absent`, `frame +2: field=present`, with
+  `edit-text-without-editor` raised between, so a reopened editor came
+  back with the abandoned draft over the model's text). Two halves. On
+  the driver's side, `runWindowed` draws the model a foreign `dispatch`
+  changed — from `setup`, a timer, a promise, an effect handler —
+  **before** `win.pump()`, so no runner redraw (a caret blink, a hover, a
+  resize, or one a call asked for) can re-lower a tree older than that
+  `dispatch`; the pump-then-step order for events stays, and `dispatch`
+  still does not draw synchronously. On the binding's side, `setEditText`
+  asks for a redraw only when the text reached an editor: a seed the core
+  held changed nothing on screen, and the frame that will is the app's.
+  `Core::set_edit_text` / `set_edit_text_by_label` (and `Ui`'s two) now
+  return whether the text landed, which is what the binding reads.
+  `runWindowed` takes a `surface` option the way `createApp` does, so a
+  test can run the driver itself — pump order and all — over a stand-in
+  window; the guard does exactly that, over a stand-in whose `pump()`
+  re-lowers its last tree through a real `Ctx`.
+
+  *What you can delete:* an `app.frame()` (or a `setTimeout`) an app
+  awaited between a foreign `dispatch` and a `setEditText` so the seed
+  would land, and a `setEditText` repeated on the frame after a rename
+  opened to paper over the draft that came back.
 
 - **A second window's frame no longer stops the first window's `<audio>`
   node** (backlog AR7, from the second architecture review). The audio
@@ -1681,7 +1700,7 @@ frame (F44).
   next build with no event, no tag and no model field; `None` for a key
   that did not declare `on_layout` last frame. Read during a build it
   describes the previous frame, like `scroll_geometry`.
-- **The devtools tree walks by keyboard** (backlog D1). The tree tab's
+- **The devtools tree walks by keyboard** (backlog D1a). The tree tab's
   list is one Tab stop and one key sink with a cursor of its own — the
   composite shape ADR 0007 describes, built in the panel rather than as
   a fifth container/item pair, since a tree's Left and Right fold and
@@ -1699,7 +1718,7 @@ frame (F44).
   an untouched dialog, ask the confirm on a dirty one), and focus
   restored to the opener when the dialog goes — with a drive that pins
   all of it.
-- **The devtools panel's buttons are drawn, not typed** (backlog D2). The
+- **The devtools panel's buttons are drawn, not typed** (backlog D2a). The
   placement buttons, the base / accent / menus toggles and the tree tab's
   picker were Unicode blocks from whatever font the platform fell back to;
   they are now `runtime/devtools/icons.rs` — a `line` per stroke, a

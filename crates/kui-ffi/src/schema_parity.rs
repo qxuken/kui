@@ -693,7 +693,7 @@ fn header_prototypes() -> std::collections::BTreeSet<&'static str> {
     declared
 }
 
-/// The verb table's C column, both ways (backlog B1): every name a row
+/// The verb table's C column, both ways (backlog B1a): every name a row
 /// spells — in an `Is` cell, or inside an `As` / `No` cell's prose — is a
 /// prototype in `kui.h`, and every prototype that is a verb is in a row.
 /// What is not a verb is listed here by what it is instead: the elements

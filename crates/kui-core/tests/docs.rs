@@ -252,3 +252,58 @@ fn howto_cites_no_closed_entry_and_every_anchor_lands() {
         missing.join("\n")
     );
 }
+
+/// Every `### … ID — …` heading across the open list and the archive.
+fn headed_ids(page: &str) -> Vec<String> {
+    page.lines()
+        .filter_map(|l| l.strip_prefix("### "))
+        .filter_map(|l| {
+            // `` `!` F25 — `` or `F25 — `: the id is the first id-shaped
+            // token followed by the em dash.
+            let l = l.trim_start_matches(['`', '!', '~', '.', ' ']);
+            let id = id_at(l.as_bytes(), 0)?;
+            l[id.len()..].starts_with(" — ").then(|| id.to_string())
+        })
+        .collect()
+}
+
+/// A backlog id names one entry (backlog AR49). Three were reused —
+/// `B1`, `D1` and `D2` each headed two entries, the index listed each
+/// twice, and code cited both senses with nothing to tell them apart —
+/// and were retired with a suffix (`B1a`, `D1a`, `D2a`), the way a split
+/// entry's parts already were. This is what keeps the next reuse from
+/// landing: every heading id in the open list and the archive is unique
+/// across both, and the closed index lists each archived id once.
+#[test]
+fn a_backlog_id_names_one_entry() {
+    let open = read("BACKLOG.md");
+    let archive = read("backlog/closed-2026-09.md");
+    let mut ids = headed_ids(&open);
+    ids.extend(headed_ids(&archive));
+    assert!(
+        ids.len() > 150,
+        "parsed {} headings — the format moved",
+        ids.len()
+    );
+    let mut seen = std::collections::BTreeSet::new();
+    let dup: Vec<_> = ids.iter().filter(|id| !seen.insert(id.as_str())).collect();
+    assert!(dup.is_empty(), "backlog ids heading two entries: {dup:?}");
+
+    // The index's rows, not its prose, which names the three entries that
+    // were split for a while beside their rows.
+    let rows: String = open
+        .split("## Closed")
+        .nth(1)
+        .unwrap()
+        .lines()
+        .filter(|l| l.starts_with("- "))
+        .map(|l| format!("## Closed\n{l}\n"))
+        .collect();
+    let index = closed(&rows);
+    let mut seen = std::collections::BTreeSet::new();
+    let dup: Vec<_> = index
+        .iter()
+        .filter(|id| !seen.insert(id.as_str()))
+        .collect();
+    assert!(dup.is_empty(), "the closed index lists twice: {dup:?}");
+}

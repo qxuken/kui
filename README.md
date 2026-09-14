@@ -501,7 +501,11 @@ that are hard to reverse and would look arbitrary without their context.
   stand alone). The OS enforces the bounds — including the synthesized edge
   resizing under custom chrome — and the initial size is clamped into them,
   so the pre-first-frame `window_size()` never reports a size the window
-  cannot have; where the two bounds cross, the minimum wins.
+  cannot have; where the two bounds cross, the minimum wins. The Rust
+  runner also reads `KUI_WINDOW=WxH` from the environment as the opening
+  size — over `.size(..)`, inside the bounds — for driving an example at a
+  size without editing it (`KUI_DEVTOOLS` and `KUI_TEXT_AA` are its other
+  two variables).
 - **Pointer state is declared, not queried.** A node says what it looks
   like while hovered or pressed (`hover_bg` / `pressed_bg`; JSX `hoverBg`,
   Lua `hover_bg`, `KuiSpec.hover_bg`) and the core swaps the color in when

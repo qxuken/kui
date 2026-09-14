@@ -1,5 +1,5 @@
 //! The panel's icons, drawn from the core's own vocabulary rather than
-//! pulled from whatever font the platform falls back to (backlog D2): a
+//! pulled from whatever font the platform falls back to (backlog D2a): a
 //! `line` per stroke (ADR 0010), a `polygon` per fill (ADR 0025), a
 //! zero-length segment for a dot — all in a 16-px box the button centres,
 //! all in the theme's colours, so they read as one set on every platform

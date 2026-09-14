@@ -183,7 +183,7 @@ extern "C" {
  * arrays and three functions - nothing the library writes moved).
  * Still at 15: KuiColorOp / KuiDerivedToken with kui_tokens_derive (ADR
  * 0028) - two more [in] arrays and one function. And still at 15, the
- * verb table's C column (backlog B1): kui_cell_selection, kui_set_inspect,
+ * verb table's C column (backlog B1a): kui_cell_selection, kui_set_inspect,
  * kui_nodes, kui_devtools, kui_devtools_dock, kui_set_devtools_theme and
  * kui_set_devtools_legend - seven functions, no struct.
  */

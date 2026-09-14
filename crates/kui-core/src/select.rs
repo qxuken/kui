@@ -183,7 +183,7 @@ impl CellSelection {
     /// The selection as data — `{node, anchor: {line, col}, focus: {line,
     /// col}, block}`, the ends as the drag made them (directed, like
     /// [`RangeEnd::to_value`]'s) and the lines absolute: the shape a
-    /// binding's `cell_selection` reads back, spelled once (backlog B1,
+    /// binding's `cell_selection` reads back, spelled once (backlog B1a,
     /// the row ADR 0017 §4 offers "because a grid's ends mean something
     /// to the app").
     pub fn to_value(self, handles: crate::value::Handles) -> crate::value::Value {

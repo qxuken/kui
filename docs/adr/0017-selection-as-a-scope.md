@@ -1,11 +1,16 @@
 ---
-status: proposed
+status: accepted
 date: 2026-09-09
 ---
 
 # Selection is a scope, and the menu is what acts on it
 
-> **Proposed (2026-09-09).** Out of a field question with a small surface
+> **Accepted (2026-09-09), built the same round** — `selectable`, the
+> three tiers, cells, the menu as IR, force click, the counted drag and the
+> formatted copy are all in `schema.rs`, `select_api.rs` and the four
+> bindings, and seven CHANGELOG entries cite this document; the header
+> said "proposed" until the second architecture review (backlog AR49)
+> read it against the code. Out of a field question with a small surface
 > and a large back: on macOS, force-clicking a word selects it and shows
 > the system Look Up panel, and a kui app does none of that. Answering it
 > honestly needs three things kui has never had — a selection that is not
@@ -427,36 +432,6 @@ view configuration does not deliver stage 2 —
 content view at window creation, reached through the raw window handle the
 way `windows_nc.rs:69` already reaches a Win32 one.
 
-### 8. A drag moves by what the press counted
-
-**Added 2026-09-09, from the field.** A press arms its drag with a
-granularity: one click drags by characters, two by words, three by whole
-runs. Both ends round outwards to that unit, not just the live one — a
-double-click-drag turned back on itself keeps the word it started in
-whole, which is the difference between a gesture that selects words and
-one that snaps to them.
-
-This is not novel; it is what every text UI does, and what the stock
-`<edit>` already did without being asked, since cosmic-text's
-`Selection::Word` expands both ends as the cursor moves. Only a
-`selectable` scope had to be taught, and the editor's half now has a test
-so it cannot quietly stop working.
-
-**Revised 2026-09-10, from the field.** A `cells` grid was left dragging
-in cells at every click count, on the argument that a word in a terminal is
-the app's idea rather than the grid's. That was wrong in practice: a
-terminal that does not select a word on a double click reads as broken,
-and every terminal emulator has an opinion about words without asking its
-app for one. So a grid takes the same three grains, counted in cells — one
-click a cell, two the word under it, three the whole row, edge to edge.
-
-The word is the run of like cells the pointer is in, classed the way a
-double click classes text: word characters (alphanumeric or `_`), blanks,
-and everything else. A wide glyph and the blank the app leaves after it
-are one cell for this purpose, since on the screen they are one character.
-An app that wants a different rule — `-` and `/` inside a path, say — still
-owns the gesture through `cell: {row, col}`, as decision 4 says.
-
 ### 7. A copy carries the formatting the text declared — and not the theme
 
 **Added 2026-09-09, while building steps 4 and 5.** A selection knows more
@@ -486,6 +461,36 @@ covers both.
 
 Not carried: a `cells` selection, whose colours are the app's grid rather
 than the text's, and a long line, which holds one style throughout.
+
+### 8. A drag moves by what the press counted
+
+**Added 2026-09-09, from the field.** A press arms its drag with a
+granularity: one click drags by characters, two by words, three by whole
+runs. Both ends round outwards to that unit, not just the live one — a
+double-click-drag turned back on itself keeps the word it started in
+whole, which is the difference between a gesture that selects words and
+one that snaps to them.
+
+This is not novel; it is what every text UI does, and what the stock
+`<edit>` already did without being asked, since cosmic-text's
+`Selection::Word` expands both ends as the cursor moves. Only a
+`selectable` scope had to be taught, and the editor's half now has a test
+so it cannot quietly stop working.
+
+**Revised 2026-09-10, from the field.** A `cells` grid was left dragging
+in cells at every click count, on the argument that a word in a terminal is
+the app's idea rather than the grid's. That was wrong in practice: a
+terminal that does not select a word on a double click reads as broken,
+and every terminal emulator has an opinion about words without asking its
+app for one. So a grid takes the same three grains, counted in cells — one
+click a cell, two the word under it, three the whole row, edge to edge.
+
+The word is the run of like cells the pointer is in, classed the way a
+double click classes text: word characters (alphanumeric or `_`), blanks,
+and everything else. A wide glyph and the blank the app leaves after it
+are one cell for this purpose, since on the screen they are one character.
+An app that wants a different rule — `-` and `/` inside a path, say — still
+owns the gesture through `cell: {row, col}`, as decision 4 says.
 
 ## Considered options
 

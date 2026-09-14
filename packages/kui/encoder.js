@@ -55,7 +55,7 @@ export function createEncoder(P) {
   // `<span>` is part of the text element (its props are read by collectSpans),
   // and the hud is the graph's other spelling.
   // `<input>` is the stock field around an `edit` (`widgets::text_input`),
-  // the same two fields Lua's `input { }` takes (backlog B1).
+  // the same two fields Lua's `input { }` takes (backlog B1a).
   const ELEMENT_OF = { span: 'text', latencyHud: 'latencyGraph', input: 'edit' };
   let unknown = [];
   // A `$name` in a colour or length slot rides as the prop's id with this
@@ -694,7 +694,7 @@ export function createEncoder(P) {
         // The stock single-line field with its chrome (`widgets::text_input`):
         // `label` is the key and the accessible name both, `initial` the
         // seed, and nothing else is read — the same door Lua's
-        // `input { label = }` and C's `kui_text_input` are (backlog B1).
+        // `input { label = }` and C's `kui_text_input` are (backlog B1a).
         // Flag bit 4 on the edit op says so; the prop list is empty.
         const label = p.label ?? el.key;
         if (label == null) throw new Error('<input> needs a label (its key and accessible name)');

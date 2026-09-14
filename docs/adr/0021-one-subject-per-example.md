@@ -683,7 +683,10 @@ Phase 2 — the smoke contract:
    same flags, same contract), both rounds running each example under
    `--light` and `--dark`; and a `scripts/smoke-headless.sh` that reads
    the metadata lists and prints its round when not running it; `check`
-   calls the second.
+   calls the second. *Both scripts were replaced on 2026-09-11 (backlog
+   AR4) by one program, `cargo run -p kui-devtools --bin smoke --
+   --headless` / `--windowed`, which reads the same rosters the pin tests
+   read; the contract is the scripts', the shell is gone.*
 10. [x] The two pin tests: every workspace `[[example]]` is in
     `examples/README.md`; every `headless` name is an `[[example]]`.
 11. [x] The by-hand checks named per example — as the *By hand* column of

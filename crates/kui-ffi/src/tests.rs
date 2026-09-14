@@ -1972,7 +1972,7 @@ mod follow_headless {
         kui_ctx_free(ctx);
     }
 
-    /// The three doors B1's table closed for C (backlog B1): a grid's
+    /// The three doors B1a's table closed for C (backlog B1a): a grid's
     /// selection reads back through `kui_cell_selection` as absolute
     /// lines and columns, directed, and false while the window's
     /// selection is not a grid's; the devtools readers answer what the

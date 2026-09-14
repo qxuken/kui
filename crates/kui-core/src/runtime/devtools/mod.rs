@@ -323,7 +323,7 @@ pub(crate) struct State {
     reveal: Option<Key>,
     /// Collapse every row with children on the next build.
     fold_all: bool,
-    /// The row the keyboard is on (backlog D1): the tree's own cursor,
+    /// The row the keyboard is on (backlog D1a): the tree's own cursor,
     /// moved by the arrows on the list's sink and painted as a ring while
     /// the list holds focus. None until a key lands on the list.
     tree_cursor: Option<Key>,

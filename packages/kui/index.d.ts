@@ -1450,7 +1450,7 @@ export interface WindowOptions {
  *  constructor option), or the reason there is none. */
 export type DoorCell = { is: string } | { as: string } | { no: string };
 
-/** One row of the verb table (`schema::DOORS`, backlog B1): a verb by its
+/** One row of the verb table (`schema::DOORS`, backlog B1a): a verb by its
  *  Rust spelling and what each binding has for it. The suite pins `Ctx`
  *  and `KuiWindow` to the Node column both ways. */
 export interface Door {

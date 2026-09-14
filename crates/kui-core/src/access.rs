@@ -525,7 +525,7 @@ pub struct AccessNode {
     /// A slider that names its reading has *only* that reading — the
     /// string wins over the number wherever both could be said, which is
     /// what `aria-valuetext` means and what `accesskit_macos` does with
-    /// `AXValue` (see `docs/BACKLOG.md`, F8). `min` / `max` are unaffected,
+    /// `AXValue` (see backlog F8, in `docs/backlog/closed-2026-09.md`). `min` / `max` are unaffected,
     /// and so are the increment actions.
     pub value: Option<String>,
     /// An editor's caret, a byte offset into `value`.

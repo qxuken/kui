@@ -212,7 +212,7 @@ pub(super) fn tree_tab(
         },
     );
     let mut rows = rows(nodes, st);
-    // The keyboard (backlog D1): the list is one sink with a cursor of its
+    // The keyboard (backlog D1a): the list is one sink with a cursor of its
     // own, and a key it heard last frame moves that cursor over the rows
     // this build has — Up/Down by one, Home/End to the ends, PageUp/Down
     // by a screenful, Left folds the row (or goes to its parent), Right
@@ -311,7 +311,7 @@ pub(super) fn tree_tab(
             .scrollbar(crate::spec::ScrollbarMode::Auto)
             // The list is the keyboard's one stop and its own sink: the
             // rows are clickable and not Tab stops, and the arrows reach
-            // this rather than a row (backlog D1, ADR 0011).
+            // this rather than a row (backlog D1a, ADR 0011).
             .on_key(action("tree-key"))
             .role(crate::access::Role::List)
             .label("nodes")

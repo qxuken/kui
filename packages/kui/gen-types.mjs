@@ -260,9 +260,11 @@ window, so it pushes what it knows through its env setter.
 Unknown is a reading, not a missing value: the enums
 spell it \`"unknown"\` and always have a key, the two values are \`null\` in
 Node and an absent key in Lua, and C reads zero as it does everywhere
-else. Nothing in the core acts on any of it — a dark appearance repaints
-nothing and a reduced motion shortens nothing, because only the view knows
-which of its colours is the background and which of its animations carries
+else. The core acts on two of them in one way — \`appearance\` and
+\`accent\` derive the theme below, so the stock widgets follow the OS — and
+on nothing else: a dark appearance repaints none of the app's own colours
+and a reduced motion shortens nothing, because only the view knows which
+of its colours is the background and which of its animations carries
 meaning. The fifth row, \`system.assistive\`, is not a setting but a fact
 of the same shape: whether an accessibility client has asked for the tree,
 written by the runner's bridge rather than by a settings query, and the
@@ -337,7 +339,7 @@ ${tableOf(
 
 The verbs — what an app or a host *calls* on its context, as against what
 it declares in the tree above — one row per verb across the four bindings
-(\`schema::DOORS\`, backlog B1). A cell is the binding's spelling (a
+(\`schema::DOORS\`, backlog B1a). A cell is the binding's spelling (a
 \`kui_*\` function; a method on both of Node's classes, or on the one it
 is prefixed with; a function on Lua's \`env\`), the same thing in another
 form (a prop, a reading, a callback, a constructor option), or — in

@@ -85,13 +85,16 @@ previously implicit.
    against an older host, which is the direction that corrupts memory. An
    older library against a newer host is also a mismatch, just a duller
    one. Neither is worth a compatibility matrix at this size.
-4. **A leading `uint32_t size` on the four [out] structs.** The host sets it
-   to `sizeof` its own copy; the library writes no further than that, and
+4. **A leading `uint32_t size` on every [out] struct** — the four there
+   were when this was written (`KuiEvent`, `KuiDrawData`,
+   `KuiTextMetrics`, `KuiTextHit`) and every one added since, which is
+   how the header has come to carry it on eleven. The host sets it to
+   `sizeof` its own copy; the library writes no further than that, and
    writes back the number of bytes it filled. That is the stronger guard,
    because it turns a future append from a break into a compatible change:
    an un-recompiled host keeps getting the prefix it knows. `KUI_EVENT_INIT`
-   and its three siblings set it, so the handshake is one token at the
-   declaration and invisible after that.
+   and its siblings — one `KUI_*_INIT` per such struct — set it, so the
+   handshake is one token at the declaration and invisible after that.
    A `size` below the ABI-1 layout — which is what a zeroed or never-set one
    looks like — is refused rather than guessed at: the call writes nothing
    and returns false. `kui_poll_event` checks *before* it pops, so a refused

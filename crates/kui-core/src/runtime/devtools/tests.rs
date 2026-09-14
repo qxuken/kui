@@ -631,7 +631,7 @@ fn the_tree_tab_lists_the_app_and_outlines_what_is_picked() {
     assert!(core.key_of(&format!("node:{:016x}", hello.0)).is_none());
 }
 
-/// The tree's keyboard (backlog D1): the list is one sink with a cursor
+/// The tree's keyboard (backlog D1a): the list is one sink with a cursor
 /// of its own. Down walks the rows from the top, Enter selects the row the
 /// cursor is on, Left folds it (and then goes to its parent), Right
 /// unfolds it, Home and End go to the ends, and the keys reach nobody

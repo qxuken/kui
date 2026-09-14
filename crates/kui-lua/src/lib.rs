@@ -848,7 +848,7 @@ fn env_table<'scope, 'env: 'scope>(
     // move them) and the ends as the drag made them (ADR 0017, decision
     // 4). Nil when the window's selection is not a grid's; a text
     // selection's ends are `selection_ends()`. The row ADR 0017 §4
-    // offered and only Rust had (backlog B1).
+    // offered and only Rust had (backlog B1a).
     t.set(
         "cell_selection",
         scope.create_function(move |lua, ()| {
@@ -3730,7 +3730,7 @@ mod tests {
             "env's value keys and schema::ENV_FIELDS + THEME_ROLES + METRIC_ROLES + tokens disagree"
         );
         // The queries and verbs are the verb table's Lua column, exactly
-        // (`schema::DOORS`, backlog B1): a function added to `env` is a
+        // (`schema::DOORS`, backlog B1a): a function added to `env` is a
         // row there with its three other cells, and a row's Lua spelling
         // is a function here. The table carries the reasons for the
         // rows Lua has no door for — a guest's env is a reading, not a
@@ -4555,7 +4555,7 @@ mod tests {
     }
 
     /// `env.cell_selection()` reads a grid's selection back the way
-    /// `selection_ends()` reads a text's (backlog B1): the ends as the
+    /// `selection_ends()` reads a text's (backlog B1a): the ends as the
     /// drag made them, the lines absolute — row 1 of a screen whose row 0
     /// is line 900 is line 901 — and nil while the window's selection is
     /// not a grid's.

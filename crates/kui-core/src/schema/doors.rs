@@ -1,5 +1,5 @@
 //! The verb surface, one row per verb across the four bindings (backlog
-//! B1, built on the condition ADR 0020 set: "the next time a verb reaches
+//! B1a, built on the condition ADR 0020 set: "the next time a verb reaches
 //! one binding and not the others, build the table, and put the n/a
 //! reasons in it"). The second architecture review found thirteen such
 //! verbs, none with a stated reason, so this is the table.

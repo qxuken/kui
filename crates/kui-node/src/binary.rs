@@ -65,7 +65,7 @@ use crate::{Result, err, value_of};
 /// says its width slot is a length index; a `cells`' cursor-shape slot
 /// bit 4 says its colour slot is a colour index. And a keyframe stop or
 /// an entrance resolves a `$name` in the core — no wire change, but the
-/// same release. Also (backlog B1): the edit op's flags word bit 4 says
+/// same release. Also (backlog B1a): the edit op's flags word bit 4 says
 /// the op is the stock field (`<input>`, `widgets::text_input`) and its
 /// prop list is empty; and `tooltip` is a new op, the node form.
 pub const VERSION: u32 = 11;
@@ -135,7 +135,7 @@ pub fn protocol_json() -> Json {
         ),
     );
     o.insert("prop".into(), schema::protocol_props());
-    // The verb table (backlog B1), for the suite's pin of the two classes
+    // The verb table (backlog B1a), for the suite's pin of the two classes
     // against it and for the docs generator: one row per verb, each cell
     // `{is}` (the binding's spelling), `{as}` (the same thing in another
     // form) or `{no}` (why there is none).

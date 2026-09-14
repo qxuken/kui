@@ -57,9 +57,10 @@ pub(crate) fn sync_env(
         custom_chrome: chrome != Chrome::Native,
         maximized: window.is_maximized(),
         fullscreen: window.fullscreen().is_some(),
-        // What was applied, not what the frame asked: winit has no getter
-        // for the level, so this is the runner's own record, and a platform
-        // without a level reports false whatever was asked of it.
+        // The runner's own record of the level it set — winit has no
+        // getter, so a level the OS dropped afterwards is not seen (backlog
+        // AR49) — and false on a platform without a level whatever was
+        // asked of it.
         always_on_top: pane.applied_on_top && pane.level_supported,
         native_controls: (cfg!(target_os = "macos") && chrome == Chrome::Custom)
             .then_some(MACOS_TRAFFIC_LIGHTS),

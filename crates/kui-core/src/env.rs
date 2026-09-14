@@ -63,10 +63,13 @@ impl Env {
 
 /// The user's OS settings, as the host reports them. Not window facts and
 /// not display facts: things the person chose once, in a settings app, that
-/// a view is expected to honour — and that the core itself never acts on.
-/// Reduced motion does not shorten an animation, a dark appearance does not
-/// repaint anything: the view decides, because only it knows which of its
-/// colours is the background and which of its animations carries meaning.
+/// a view is expected to honour. The core acts on two of them in one way:
+/// `appearance` and `accent` derive the theme (ADR 0019), so the stock
+/// widgets and a `<text>` with no colour follow the OS — and nothing else
+/// moves. Reduced motion does not shorten an animation and a dark
+/// appearance repaints none of the app's own colours: the view decides,
+/// because only it knows which of its colours is the background and which
+/// of its animations carries meaning.
 ///
 /// Each field defaults to "the host cannot tell", which is what a headless
 /// core reports and what any driver reports for a fact its platform gives

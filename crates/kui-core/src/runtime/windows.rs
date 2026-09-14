@@ -277,11 +277,12 @@ impl Core {
     /// nothing when it does not — but it defaults to `false` rather than
     /// "leave as-is", so a frame that stops declaring it lowers the window
     /// again and a pin button is a toggle on the app's own state. Whether
-    /// the platform agreed is `env.window.always_on_top`: the OS may
-    /// refuse or drop the level (a tiling manager, a fullscreen space,
-    /// Wayland, where winit has no call for it), and the report is what a
-    /// pin button should draw from. A popup's level is its own whatever
-    /// its owner declares.
+    /// the platform has a level to set is `env.window.always_on_top`: the
+    /// driver's record of what it set, false on Wayland (where winit has
+    /// no call for it) however often the app asks — and not a query, so a
+    /// level the OS dropped afterwards (a fullscreen space, a tiling
+    /// manager) is not reported. A popup's level is its own whatever its
+    /// owner declares.
     pub fn set_always_on_top(&mut self, on_top: bool) {
         self.always_on_top = on_top;
     }
