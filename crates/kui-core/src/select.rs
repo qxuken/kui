@@ -180,6 +180,28 @@ impl CellSelection {
         self.anchor == self.focus
     }
 
+    /// The selection as data — `{node, anchor: {line, col}, focus: {line,
+    /// col}, block}`, the ends as the drag made them (directed, like
+    /// [`RangeEnd::to_value`]'s) and the lines absolute: the shape a
+    /// binding's `cell_selection` reads back, spelled once (backlog B1,
+    /// the row ADR 0017 §4 offers "because a grid's ends mean something
+    /// to the app").
+    pub fn to_value(self, handles: crate::value::Handles) -> crate::value::Value {
+        use crate::value::Value;
+        let end = |e: CellEnd| {
+            Value::map([
+                ("line", Value::Int(e.line as i64)),
+                ("col", Value::Int(e.col as i64)),
+            ])
+        };
+        Value::map([
+            ("node", (handles.key)(self.node)),
+            ("anchor", end(self.anchor)),
+            ("focus", end(self.focus)),
+            ("block", Value::Bool(self.block)),
+        ])
+    }
+
     /// The two ends in reading order.
     pub fn ordered(&self) -> (CellEnd, CellEnd) {
         if self.anchor <= self.focus {

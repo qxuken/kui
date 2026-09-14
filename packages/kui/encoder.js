@@ -54,7 +54,9 @@ export function createEncoder(P) {
   const BUTTON_ROWS = new Set([...(ROWS.get('button') ?? [])].filter((k) => k !== 'onClick'));
   // `<span>` is part of the text element (its props are read by collectSpans),
   // and the hud is the graph's other spelling.
-  const ELEMENT_OF = { span: 'text', latencyHud: 'latencyGraph' };
+  // `<input>` is the stock field around an `edit` (`widgets::text_input`),
+  // the same two fields Lua's `input { }` takes (backlog B1).
+  const ELEMENT_OF = { span: 'text', latencyHud: 'latencyGraph', input: 'edit' };
   let unknown = [];
   // A `$name` in a colour or length slot rides as the prop's id with this
   // bit set and the token's index in the value slot (ADR 0027, decision
@@ -686,6 +688,39 @@ export function createEncoder(P) {
         strRef(p.initial ?? '');
         f[fi++] = (p.multiline ? 1 : 0) | (p.autofocus ? 2 : 0);
         props(p, null, false);
+        return;
+      }
+      case 'input': {
+        // The stock single-line field with its chrome (`widgets::text_input`):
+        // `label` is the key and the accessible name both, `initial` the
+        // seed, and nothing else is read — the same door Lua's
+        // `input { label = }` and C's `kui_text_input` are (backlog B1).
+        // Flag bit 4 on the edit op says so; the prop list is empty.
+        const label = p.label ?? el.key;
+        if (label == null) throw new Error('<input> needs a label (its key and accessible name)');
+        f[fi++] = OP.edit;
+        strRef(String(label));
+        strRef(p.initial ?? '');
+        f[fi++] = 4;
+        props({}, null, false);
+        return;
+      }
+      case 'tooltip': {
+        // The node form of a tooltip (`widgets::tooltip` / `tooltip_with`):
+        // always drawn, where the `tooltip` prop is hover-gated — for a
+        // hint the view gates itself. `value` alone is the text; children
+        // are the float's content.
+        const kids = el.children;
+        const empty = kids == null || (Array.isArray(kids) && kids.length === 0);
+        if (empty && typeof p.value !== 'string') throw new Error('<tooltip> needs a value or children');
+        f[fi++] = OP.tooltip;
+        strRef(empty ? p.value : null);
+        f[fi++] = empty ? 0 : 1;
+        if (!empty) {
+          children(kids);
+          reserve(4);
+          f[fi++] = OP.close;
+        }
         return;
       }
       case 'image': {

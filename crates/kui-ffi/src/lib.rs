@@ -110,6 +110,7 @@ pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
             selection_text: String::new(),
             selection_html: String::new(),
             font_families: Vec::new(),
+            nodes: None,
             last_window_name: None,
             slot_name: None,
             slot_namespace: None,
@@ -672,6 +673,136 @@ pub extern "C" fn kui_set_devtools_dock(ptr: *mut KuiCtx, dock: KuiStr) -> bool 
         };
         c.core().set_devtools_dock(dock);
         true
+    })
+}
+
+/// Whether the devtools panel is on.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_devtools(ptr: *mut KuiCtx) -> bool {
+    guard(false, || {
+        unsafe { ctx(ptr) }.is_some_and(|c| c.core().devtools())
+    })
+}
+
+/// Where the devtools panel sits, as the word `kui_set_devtools_dock`
+/// takes (`"right"` for the side); the string is static. False on a bad
+/// context.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_devtools_dock(ptr: *mut KuiCtx, out: *mut KuiStr) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        let name = c.core().devtools_dock().name();
+        if let Some(out) = unsafe { out.as_mut() } {
+            *out = KuiStr {
+                ptr: name.as_ptr(),
+                len: name.len(),
+            };
+        }
+        true
+    })
+}
+
+/// Seeds the panel's theme override, what its `T` and `A` chords cycle
+/// from: `base` is `"light"`, `"dark"` or empty for the app's own;
+/// `accent` a `0xRRGGBBAA` colour, or 0 for none. False for any other
+/// base word.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_devtools_theme(ptr: *mut KuiCtx, base: KuiStr, accent: u32) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        let base = match kstr(base).as_ref() {
+            "" => None,
+            "light" => Some(kui_core::Appearance::Light),
+            "dark" => Some(kui_core::Appearance::Dark),
+            _ => return false,
+        };
+        let accent = (accent != 0).then(|| color_of(accent));
+        c.core().set_devtools_theme(base, accent);
+        true
+    })
+}
+
+/// The key legend the panel's facts tab shows: `count` pairs, the keys in
+/// `keys` and what each does in `what`, index for index.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_devtools_legend(
+    ptr: *mut KuiCtx,
+    keys: *const KuiStr,
+    what: *const KuiStr,
+    count: usize,
+) {
+    guard((), || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return;
+        };
+        let rows: Vec<(String, String)> = if keys.is_null() || what.is_null() {
+            Vec::new()
+        } else {
+            let keys = unsafe { std::slice::from_raw_parts(keys, count) };
+            let what = unsafe { std::slice::from_raw_parts(what, count) };
+            keys.iter()
+                .zip(what)
+                .map(|(k, w)| (kstr(*k).into_owned(), kstr(*w).into_owned()))
+                .collect()
+        };
+        let borrowed: Vec<(&str, &str)> =
+            rows.iter().map(|(k, w)| (k.as_str(), w.as_str())).collect();
+        c.core().set_devtools_legend(&borrowed);
+    });
+}
+
+/// Turns the per-frame node snapshot behind `kui_nodes` on or off (off
+/// unless a devtool asked: the copy is O(nodes) a frame).
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_inspect(ptr: *mut KuiCtx, on: bool) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().set_inspect(on);
+        }
+    });
+}
+
+/// The last finished frame's nodes in tree order, as a list of maps —
+/// each with `key`, `parent`, `depth`, `kind`, `label`, `rect`, `role`,
+/// `text`, `flags`, `layer`, `origin`, `children`, the layout spec, and
+/// `events` (the node's own payloads by handler name) — what a tree view
+/// and a node inspector are built from; read it with `kui_value_at` /
+/// `kui_value_get`. Empty until `kui_set_inspect(ctx, true)` and a frame
+/// after it. Borrowed until the next call; NULL on a bad context.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_nodes(ptr: *mut KuiCtx) -> *const KuiValue {
+    guard(std::ptr::null(), || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return std::ptr::null();
+        };
+        let list = c
+            .core()
+            .nodes()
+            .iter()
+            .map(|n| {
+                let mut v = n.to_value(kui_core::Handles::INT);
+                if let Value::Map(entries) = &mut v {
+                    entries.push((
+                        "events".into(),
+                        Value::Map(
+                            n.events
+                                .iter()
+                                .map(|(name, v)| ((*name).to_string(), v.clone()))
+                                .collect(),
+                        ),
+                    ));
+                }
+                v
+            })
+            .collect();
+        c.nodes = Some(Box::new(KuiValue(Value::List(list))));
+        c.nodes
+            .as_deref()
+            .map_or(std::ptr::null(), |v| v as *const KuiValue)
     })
 }
 

@@ -46,7 +46,14 @@ const wrongArity = defineTokens({ colors: { x: { from: 'peach', ops: [['lift', '
 const wrongVerb = defineTokens({ colors: { x: { from: 'peach', ops: [['glow', 0.3]] } } });
 // @ts-expect-error — a text is content plus a style: `live` (and `role`, `label`, `onClick`) goes on the box around it (AR13)
 const liveText = <text live="polite">saved</text>;
+// The two element forms Lua and C had and JSX did not (backlog B1): the
+// stock field, and a tooltip the view gates itself.
+const field = <input label="search" initial="" />;
+const hint = <box hoverable>{true && <tooltip value="a hint" />}<tooltip><text>legend</text></tooltip></box>;
+// @ts-expect-error — `<input>` is the stock field: `label` and `initial`, nothing else
+const styledField = <input label="search" radius={4} />;
 void peach; void hover; void sideW; void lit; void typo; void wrongKind; void wrongRole; void wrongArity; void wrongVerb; void liveText;
+void field; void hint; void styledField;
 
 type Model = { count: number; note: string };
 type CounterMsg = { kind: 'add'; by: number } | { kind: 'reset' };

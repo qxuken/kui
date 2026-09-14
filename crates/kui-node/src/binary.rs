@@ -65,7 +65,9 @@ use crate::{Result, err, value_of};
 /// says its width slot is a length index; a `cells`' cursor-shape slot
 /// bit 4 says its colour slot is a colour index. And a keyframe stop or
 /// an entrance resolves a `$name` in the core — no wire change, but the
-/// same release.
+/// same release. Also (backlog B1): the edit op's flags word bit 4 says
+/// the op is the stock field (`<input>`, `widgets::text_input`) and its
+/// prop list is empty; and `tooltip` is a new op, the node form.
 pub const VERSION: u32 = 11;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a
@@ -96,6 +98,7 @@ pub const OP_FRAGMENT: u32 = 16;
 pub const OP_SLOT: u32 = 17;
 pub const OP_MENU_BAR: u32 = 18;
 pub const OP_POLYGON: u32 = 19;
+pub const OP_TOOLTIP: u32 = 20;
 
 pub fn protocol_json() -> Json {
     let mut o = JsonMap::new();
@@ -124,6 +127,7 @@ pub fn protocol_json() -> Json {
                 ("slot", OP_SLOT),
                 ("menuBar", OP_MENU_BAR),
                 ("polygon", OP_POLYGON),
+                ("tooltip", OP_TOOLTIP),
             ]
             .into_iter()
             .map(|(k, v)| (k.to_string(), Json::from(v)))
@@ -131,6 +135,44 @@ pub fn protocol_json() -> Json {
         ),
     );
     o.insert("prop".into(), schema::protocol_props());
+    // The verb table (backlog B1), for the suite's pin of the two classes
+    // against it and for the docs generator: one row per verb, each cell
+    // `{is}` (the binding's spelling), `{as}` (the same thing in another
+    // form) or `{no}` (why there is none).
+    o.insert(
+        "doors".into(),
+        Json::Array(
+            kui_core::schema::DOORS
+                .iter()
+                .map(|d| {
+                    let cell = |c: kui_core::schema::Cell| {
+                        let (k, v) = match c {
+                            kui_core::schema::Cell::Is(s) => ("is", s),
+                            kui_core::schema::Cell::As(s) => ("as", s),
+                            kui_core::schema::Cell::No(s) => ("no", s),
+                        };
+                        Json::Object(
+                            [(k.to_string(), Json::String(v.into()))]
+                                .into_iter()
+                                .collect(),
+                        )
+                    };
+                    Json::Object(
+                        [
+                            ("rust", Json::String(d.rust.into())),
+                            ("c", cell(d.c)),
+                            ("node", cell(d.node)),
+                            ("lua", cell(d.lua)),
+                            ("doc", Json::String(d.doc.into())),
+                        ]
+                        .into_iter()
+                        .map(|(k, v)| (k.to_string(), v))
+                        .collect(),
+                    )
+                })
+                .collect(),
+        ),
+    );
     o.insert("tokenTag".into(), Json::from(TOKEN_TAG));
     // The role names a `$name` may take in front of the app's tokens, in
     // wire order (ADR 0027, decision 6): the encoder resolves `$surface`
@@ -777,6 +819,12 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             let initial = r.str_ref()?.unwrap_or("");
             let flags = r.u()?;
             let p = lower_props(r, ui)?;
+            // Bit 4: the stock field (`<input label initial>`), the same
+            // widget Lua's `input { }` and C's `kui_text_input` lower to.
+            if flags & 4 != 0 {
+                widgets::text_input(ui, label, initial);
+                return Ok(());
+            }
             let opts = EditOptions {
                 style: p.style,
                 multiline: flags & 1 != 0,
@@ -994,6 +1042,22 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
         OP_WINDOW_BUTTONS => {
             widgets::window_buttons(ui);
             Ok(())
+        }
+        // The node form of a tooltip: `value` alone, or children until
+        // the CLOSE op, the way a titlebar's are.
+        OP_TOOLTIP => {
+            let value = r.str_ref()?.map(str::to_string);
+            let has_children = r.u()? == 1;
+            if has_children {
+                let mut result = Ok(());
+                widgets::tooltip_with(ui, |ui| {
+                    result = decode_until_close(r, ui);
+                });
+                result
+            } else {
+                widgets::tooltip(ui, value.as_deref().unwrap_or(""));
+                Ok(())
+            }
         }
         OP_MENU_BAR => {
             // One JSON blob, read by the same parser `openMenu`'s items go

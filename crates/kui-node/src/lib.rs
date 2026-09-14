@@ -2956,6 +2956,21 @@ macro_rules! core_methods {
                 })
             }
 
+            /// A `cells` grid's selection, the window's when it lives in
+            /// one: the grid's key, `anchor` and `focus` as the drag made
+            /// them — each an absolute `line` (`originLine` plus the row,
+            /// so a scroll does not move it) and a `col` — and `block`
+            /// for a rectangular one (ADR 0017, decision 4). Null when the
+            /// window's selection is not a grid's; a text selection's ends
+            /// are `selectionEnds()`.
+            #[napi(ts_return_type = "CellSelection | null")]
+            pub fn cell_selection(&mut self) -> Json {
+                match self.$core().cell_selection() {
+                    Some(sel) => readback(&sel.to_value(HEX)),
+                    None => Json::Null,
+                }
+            }
+
             /// The selection as HTML, carrying the formatting the text
             /// declared — bold, italic, a span's own colour — and *not*
             /// the node's colour, which is the app's theme rather than

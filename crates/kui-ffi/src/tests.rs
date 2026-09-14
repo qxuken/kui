@@ -1971,4 +1971,136 @@ mod follow_headless {
         kui_value_free(tag);
         kui_ctx_free(ctx);
     }
+
+    /// The three doors B1's table closed for C (backlog B1): a grid's
+    /// selection reads back through `kui_cell_selection` as absolute
+    /// lines and columns, directed, and false while the window's
+    /// selection is not a grid's; the devtools readers answer what the
+    /// setters took; and `kui_nodes` is the frame's node list once
+    /// `kui_set_inspect` asked for it, as maps the value readers walk.
+    #[test]
+    fn the_cell_selection_the_devtools_readers_and_the_node_list_cross() {
+        let ctx = kui_ctx_new();
+        let build = |ctx: *mut KuiCtx| {
+            kui_frame_begin(ctx, 300.0, 200.0, 1.0);
+            let screen = [KuiCell {
+                ch: 'x' as u32,
+                fg: 0xffffffff,
+                bg: 0,
+                flags: 0,
+            }; 33];
+            let mut mono = unsafe { std::mem::zeroed::<KuiTextStyle>() };
+            mono.size = 13.0;
+            mono.family = 2; // KUI_FONT_MONO
+            mono.line_height = 18.0;
+            let mut term = fixed(200.0, 54.0);
+            term.selectable = 1;
+            kui_cells(
+                ctx,
+                ks("term"),
+                3,
+                11,
+                screen.as_ptr(),
+                33,
+                &mono,
+                &term,
+                NONE,
+                NONE,
+                NONE,
+                0,
+                0,
+                0,
+                0,
+                700,
+            );
+            kui_frame_finish(ctx);
+        };
+        build(ctx);
+        let mut out = (0u64, 0u64, 0usize, 0u64, 0usize, true);
+        let read = |ctx: *mut KuiCtx, out: &mut (u64, u64, usize, u64, usize, bool)| {
+            kui_cell_selection(
+                ctx, &mut out.0, &mut out.1, &mut out.2, &mut out.3, &mut out.4, &mut out.5,
+            )
+        };
+        assert!(!read(ctx, &mut out), "nothing selected yet");
+        // A drag from row 1 col 4 back to row 0 col 1: the cell width is
+        // the mono `M`, read through the grid's own metrics.
+        let mut m = KuiTextMetrics::default();
+        let mut mono = unsafe { std::mem::zeroed::<KuiTextStyle>() };
+        mono.size = 13.0;
+        mono.family = 2;
+        mono.line_height = 18.0;
+        assert!(kui_measure_text(ctx, ks("M"), &mono, -1.0, &mut m));
+        let at = |r: f32, c: f32| (m.width * (c + 0.5), 18.0 * (r + 0.5));
+        let (x, y) = at(1.0, 4.0);
+        kui_input_cursor(ctx, x, y);
+        kui_input_mouse(ctx, true, 1);
+        let (x, y) = at(0.0, 1.0);
+        kui_input_cursor(ctx, x, y);
+        kui_input_mouse(ctx, false, 1);
+        assert!(read(ctx, &mut out));
+        assert_eq!(out.0, kui_key_of(ctx, ks("term")));
+        assert_eq!((out.1, out.2), (701, 4), "the press, row 1 of line 700");
+        assert_eq!((out.3, out.4), (700, 1), "the pointer, backwards");
+        assert!(!out.5, "linewise");
+        assert!(
+            kui_cell_selection(
+                ctx,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            "NULL outs are fine"
+        );
+
+        // The devtools readers.
+        assert!(!kui_devtools(ctx));
+        kui_set_devtools(ctx, true);
+        assert!(kui_devtools(ctx));
+        assert!(kui_set_devtools_dock(ctx, ks("left")));
+        let mut dock = KuiStr {
+            ptr: std::ptr::null(),
+            len: 0,
+        };
+        assert!(kui_devtools_dock(ctx, &mut dock));
+        assert_eq!(&*kstr(dock), "left");
+        assert!(kui_set_devtools_theme(ctx, ks("dark"), 0xff8800ff));
+        assert!(!kui_set_devtools_theme(ctx, ks("sepia"), 0), "not a base");
+        assert!(kui_set_devtools_theme(ctx, ks(""), 0), "the app's own");
+        let keys = [ks("⌘K"), ks("Esc")];
+        let what = [ks("palette"), ks("close")];
+        kui_set_devtools_legend(ctx, keys.as_ptr(), what.as_ptr(), 2);
+        kui_set_devtools(ctx, false);
+
+        // The node list: empty until asked for, then one map per node
+        // with the grid's label and its `cells` kind among them.
+        let list = kui_nodes(ctx);
+        assert!(!list.is_null());
+        assert_eq!(kui_value_len(list), 0, "not inspecting yet");
+        kui_set_inspect(ctx, true);
+        build(ctx);
+        let list = kui_nodes(ctx);
+        let n = kui_value_len(list);
+        assert!(n >= 2, "a root and a grid: {n}");
+        let mut labels = Vec::new();
+        for i in 0..n {
+            let node = kui_value_at(list, i);
+            let mut label = KuiStr {
+                ptr: std::ptr::null(),
+                len: 0,
+            };
+            if kui_value_as_str(kui_value_get(node, ks("label")), &mut label) {
+                labels.push(kstr(label).into_owned());
+            }
+            assert!(
+                !kui_value_get(node, ks("events")).is_null(),
+                "every node carries its events map"
+            );
+        }
+        assert!(labels.iter().any(|l| l == "term"), "{labels:?}");
+        kui_ctx_free(ctx);
+    }
 }

@@ -72,6 +72,9 @@ pub struct KuiCtx {
     /// held so the `KuiStr`s written into the host's array stay valid
     /// until the next call.
     pub(crate) font_families: Vec<String>,
+    /// The node list most recently handed out by `kui_nodes`; borrowed
+    /// until the next call, like every other reading here.
+    pub(crate) nodes: Option<Box<KuiValue>>,
     /// The name most recently handed out by kui_ctx_window_name; valid
     /// until the next call.
     pub(crate) last_window_name: Option<Rc<str>>,
@@ -142,6 +145,7 @@ impl KuiCtx {
             selection_text: String::new(),
             selection_html: String::new(),
             font_families: Vec::new(),
+            nodes: None,
             last_window_name: None,
             slot_name: None,
             slot_namespace: None,

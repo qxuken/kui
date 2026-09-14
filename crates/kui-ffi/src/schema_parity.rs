@@ -658,3 +658,154 @@ fn theme_struct_covers_every_role() {
         );
     }
 }
+
+/// The header's prototypes, by name: the first `kui_` word of every
+/// uncommented line that starts with a return type and goes on to `(`.
+/// The plugin's own exports (`kui_ext_*`) and the header's one static
+/// inline (`kui_str_eq`) are not the library's.
+fn header_prototypes() -> std::collections::BTreeSet<&'static str> {
+    let header = include_str!("../include/kui.h");
+    let mut declared = std::collections::BTreeSet::new();
+    for line in header.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with('*')
+            || trimmed.starts_with("/*")
+            || trimmed.starts_with('#')
+            || line.starts_with(char::is_whitespace)
+        {
+            continue;
+        }
+        let Some(idx) = line.find("kui_") else {
+            continue;
+        };
+        let name = line[idx..]
+            .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+            .next()
+            .unwrap();
+        if !line[idx + name.len()..].trim_start().starts_with('(') {
+            continue;
+        }
+        if name.starts_with("kui_ext_") || name == "kui_str_eq" {
+            continue;
+        }
+        declared.insert(name);
+    }
+    declared
+}
+
+/// The verb table's C column, both ways (backlog B1): every name a row
+/// spells — in an `Is` cell, or inside an `As` / `No` cell's prose — is a
+/// prototype in `kui.h`, and every prototype that is a verb is in a row.
+/// What is not a verb is listed here by what it is instead: the elements
+/// (`ELEMENTS` pins them), the env setters (`ENV_FIELDS`' C column), the
+/// value plumbing, the context and frame mechanics, the plugin's side of
+/// ADR 0014, and the ABI handshake. A `kui_*` function added without a
+/// row — or a row spelling a function the header lost — fails by name.
+#[test]
+fn the_verb_table_names_every_c_verb_and_nothing_else() {
+    use kui_core::schema::{Cell, DOORS};
+    let declared = header_prototypes();
+    let mut named = std::collections::BTreeSet::new();
+    for d in DOORS {
+        match d.c {
+            Cell::Is(name) => {
+                assert!(
+                    declared.contains(name),
+                    "{}: {name} is not a prototype in kui.h",
+                    d.rust
+                );
+                named.insert(name.to_string());
+            }
+            Cell::As(text) | Cell::No(text) => {
+                for word in text.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_')) {
+                    if word.starts_with("kui_") && !word.starts_with("kui_ext_") {
+                        assert!(
+                            declared.contains(word),
+                            "{}: {word} (in the cell's prose) is not a prototype in kui.h",
+                            d.rust
+                        );
+                        named.insert(word.to_string());
+                    }
+                }
+            }
+        }
+    }
+    let not_a_verb = |name: &str| {
+        // The elements, one constructor (and its `_with` / keyed forms) each.
+        const ELEMENTS: &[&str] = &[
+            "kui_root",
+            "kui_open",
+            "kui_open_with",
+            "kui_open_keyed",
+            "kui_open_indexed",
+            "kui_open_draggable",
+            "kui_close",
+            "kui_text",
+            "kui_rich_text",
+            "kui_button",
+            "kui_button_with",
+            "kui_text_edit",
+            "kui_text_input",
+            "kui_image",
+            "kui_image_with",
+            "kui_fragment",
+            "kui_fragment_with",
+            "kui_fragment_open",
+            "kui_fragment_open_with",
+            "kui_line",
+            "kui_polyline",
+            "kui_polygon",
+            "kui_cells",
+            "kui_audio",
+            "kui_titlebar",
+            "kui_titlebar_with",
+            "kui_window_buttons",
+            "kui_menu_bar",
+            "kui_latency_graph",
+            "kui_latency_hud",
+            "kui_tooltip",
+            "kui_tooltip_with",
+            "kui_slot",
+            "kui_child_key",
+            "kui_row_count",
+            "kui_set_key_focus",
+            "kui_spec_float_preset",
+        ];
+        // The plugin's side of a slot (ADR 0014) and an event's reply.
+        const PLUGIN: &[&str] = &[
+            "kui_slot_name",
+            "kui_slot_namespace",
+            "kui_slot_params",
+            "kui_reply",
+        ];
+        // The context, the frame and the handshake.
+        const MECHANICS: &[&str] = &[
+            "kui_ctx_new",
+            "kui_ctx_free",
+            "kui_ctx_window",
+            "kui_ctx_extension_error",
+            "kui_frame_begin",
+            "kui_frame_finish",
+            "kui_abi_version",
+            "kui_run",
+            "kui_run_with",
+        ];
+        name.starts_with("kui_value_")
+            || name.starts_with("kui_env_set")
+            || name.starts_with("kui_input_")
+            || name == "kui_access_runs"
+            || ELEMENTS.contains(&name)
+            || PLUGIN.contains(&name)
+            || MECHANICS.contains(&name)
+    };
+    let unrowed: Vec<&str> = declared
+        .iter()
+        .copied()
+        .filter(|n| !named.contains(*n) && !not_a_verb(n))
+        .collect();
+    assert!(
+        unrowed.is_empty(),
+        "prototypes in kui.h with no row in schema::DOORS (a verb needs a row with its three other cells; \
+         what is not a verb is listed in this test): {unrowed:?}"
+    );
+}

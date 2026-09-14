@@ -1443,7 +1443,36 @@ constants and the header's audit are pinned now the way struct layout has
 been since P6 — and one thing was declined with a condition, which is what
 this entry keeps.
 
-### `.` B1 — The verb surface is documented, not pinned
+### `.` B1 — The verb surface is documented, not pinned — **done (2026-09-14)**
+
+**Built 2026-09-14** as `schema::DOORS` (`crates/kui-core/src/schema/doors.rs`):
+one row per verb, the Rust spelling as the name, three cells that are
+`Is(name)` (the binding's spelling), `As(how)` (the same thing in another
+form — a prop, a reading, a callback, a constructor option) or `No(why)`,
+and the reasons written once as consts where they repeat (a Lua script
+is a guest whose env is a reading; a Node host never paints; a script
+owns no handle). Pinned in every binding both ways — kui-ffi against
+the header's prototypes with the non-verbs (elements, env setters,
+value plumbing, context and frame mechanics, the plugin's side) listed
+by name, the Node suite against the two classes' own methods, kui-lua
+against `env`'s functions (the hand-written list is gone; the table is
+the list), kui-core against the sources for the Rust column — and
+exported through `protocol().doors` so `docs/props.md` renders it as
+the **Doors** section. The rows named as one line each closed with it:
+`cellSelection` / `cell_selection` / `kui_cell_selection`;
+`kui_set_inspect`, `kui_nodes`, `kui_devtools`, `kui_devtools_dock`,
+`kui_set_devtools_theme`, `kui_set_devtools_legend`; `<input label
+initial>` and `<tooltip value>` / `<tooltip>…</tooltip>` in JSX (the
+edit op's flags bit 4, a `tooltip` op, frame v11 unbumped since it is
+unreleased); `window` on a Lua event was AR26's. The rows that stay
+`No` say why in the table — `label_of` (every door names a node by its
+label already), `Core::cursor` (the driver's own fact), `is_group_*`
+(`hoverBg` on a `hoverGroup` member is the door), `tokens_declared` (a
+C plugin pays the re-parse; one line once a plugin asks), `Ui::play`
+in Lua (view-time env: a playback started there would start every
+frame), `Core::windows` in C (the ids arrive on `KUI_CMD_OPEN`),
+`Launcher::size` in C (AR27, still open — the table carries the gap
+rather than hiding it). AR27 and AR40 stand as their own entries.
 
 **The condition is met (2026-09-13).** The second architecture review
 (AR7–AR49 below) read the four door lists side by side and found thirteen
@@ -3416,7 +3445,9 @@ four done 2026-09-14**) (the `<text>` rows, one token
 miss policy, Cut's `changed`, one `prepare_spec`), AR17–AR18 (the focus
 stamp and the AT gates — **both done 2026-09-14**), AR19–AR25 as the defects they are
 (**all seven done 2026-09-14**, AR26 with them), then B1's
-table with AR26, AR27 and AR40 beside it, AR46–AR48 for the tests, and
+table with AR26, AR27 and AR40 beside it (**B1 done 2026-09-14** — the
+table, its four pins and the one-line rows; AR27 and AR40 open beside
+it), AR46–AR48 for the tests, and
 AR49 first of all if the alpha.12 notes go out before the rest, since
 its first line is the CHANGELOG contradicting itself on the frame
 version. The `~` and `.` entries between wait for the defects.

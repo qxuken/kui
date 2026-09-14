@@ -413,7 +413,8 @@ fn menu_items(t: &mlua::Table) -> mlua::Result<Vec<kui_core::MenuItem>> {
 /// `caret_rect(key, byte)`, the selection calls `selection_text()` /
 /// `selection_html()` (the same words with the formatting they declared) /
 /// `selection_ends()` (the anchor and the focus as row indices and bytes,
-/// ADR 0029) /
+/// ADR 0029) / `cell_selection()` (a grid's, as absolute lines and
+/// columns) /
 /// `request_copy()` + `answer_selection_range(text)` (a copy that reaches
 /// rows a virtual list never built is asked of the app) /
 /// `set_clipboard(text, html?)` + `request_paste()` (a key sink's own
@@ -839,6 +840,23 @@ fn env_table<'scope, 'env: 'scope>(
             out.set("anchor", end(a)?)?;
             out.set("focus", end(f)?)?;
             Ok(mlua::Value::Table(out))
+        })?,
+    )?;
+    // A `cells` grid's selection, the window's when it lives in one:
+    // `{node, anchor = {line, col}, focus = {line, col}, block}`, the
+    // lines absolute (`origin_line` plus the row, so a scroll does not
+    // move them) and the ends as the drag made them (ADR 0017, decision
+    // 4). Nil when the window's selection is not a grid's; a text
+    // selection's ends are `selection_ends()`. The row ADR 0017 §4
+    // offered and only Rust had (backlog B1).
+    t.set(
+        "cell_selection",
+        scope.create_function(move |lua, ()| {
+            let ui = ui.borrow();
+            match ui.cell_selection() {
+                Some(sel) => value_to_lua(lua, &sel.to_value(kui_core::Handles::INT)),
+                None => Ok(mlua::Value::Nil),
+            }
         })?,
     )?;
     // italic, a span's own colour) and not the node's colour, which is
@@ -3634,9 +3652,9 @@ mod tests {
     /// The table `view(env)` gets is the documented env reading and
     /// nothing else: its value keys are `schema::ENV_FIELDS`'s Lua
     /// spellings, key for key, under an env with every optional fact
-    /// present. The queries and verbs beside them are Lua's own surface —
-    /// Node and C spell them as calls on the context — and are pinned here
-    /// too, so adding one is a deliberate two-place change.
+    /// present. The queries and verbs beside them are pinned to the verb
+    /// table's Lua column (`schema::DOORS`), so adding one is a row there
+    /// with its C and Node cells beside it.
     #[test]
     fn the_env_table_is_the_documented_env_shape() {
         let mut ext = LuaExtension::from_source(
@@ -3711,46 +3729,24 @@ mod tests {
             documented,
             "env's value keys and schema::ENV_FIELDS + THEME_ROLES + METRIC_ROLES + tokens disagree"
         );
+        // The queries and verbs are the verb table's Lua column, exactly
+        // (`schema::DOORS`, backlog B1): a function added to `env` is a
+        // row there with its three other cells, and a row's Lua spelling
+        // is a function here. The table carries the reasons for the
+        // rows Lua has no door for — a guest's env is a reading, not a
+        // handle on the host — so this test need not restate them.
+        let mut doors: Vec<String> = kui_core::schema::DOORS
+            .iter()
+            .filter_map(|d| match d.lua {
+                kui_core::schema::Cell::Is(name) => Some(name.to_string()),
+                _ => None,
+            })
+            .collect();
+        doors.sort();
         assert_eq!(
             sorted("calls"),
-            [
-                "add_extension",
-                "announce",
-                "answer_selection_range",
-                "blur",
-                "caret_rect",
-                "clear_selection",
-                "close_menu",
-                "edit_text",
-                "extension_namespaces",
-                "focus_next",
-                "focus_prev",
-                "focus_region",
-                "focus_window",
-                "is_focused",
-                "is_hovered",
-                "is_pressed",
-                "layout_of",
-                "measure_text",
-                "open_menu",
-                "request_copy",
-                "request_paste",
-                "reveal",
-                "scroll_geometry",
-                "scroll_offset",
-                "select_all_in",
-                "selection_ends",
-                "selection_html",
-                "selection_text",
-                "set_clipboard",
-                "set_edit_text",
-                "set_focus",
-                "set_scroll",
-                "set_tokens",
-                "set_window_size",
-                "text_hit",
-            ],
-            "env's queries and verbs changed; update env_table's doc too"
+            doors,
+            "env's queries and verbs and schema::DOORS's Lua column disagree; update env_table's doc too"
         );
     }
 
@@ -4556,6 +4552,76 @@ mod tests {
         click(&mut core, at(1, 1), 3);
         frame(&mut core, &mut ext);
         assert_eq!(said(&ext).as_deref(), Some("bye there"), "a triple click");
+    }
+
+    /// `env.cell_selection()` reads a grid's selection back the way
+    /// `selection_ends()` reads a text's (backlog B1): the ends as the
+    /// drag made them, the lines absolute — row 1 of a screen whose row 0
+    /// is line 900 is line 901 — and nil while the window's selection is
+    /// not a grid's.
+    #[test]
+    fn a_grid_selection_reads_back_as_absolute_lines_and_columns() {
+        let mut ext = LuaExtension::from_source(
+            "term",
+            r#"
+                function view(env)
+                  sel = env.cell_selection()
+                  return column { cells { key = "term", rows = 2, cols = 12,
+                    size = 14, family = "mono", line_height = 20,
+                    origin_line = 900, selectable = true,
+                    lines = { "hello world", "bye there" } } }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        let frame = |core: &mut Core, ext: &mut LuaExtension| {
+            let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+            ui.set_origin(OriginId(1));
+            ext.view(&Slot::root(), &mut ui).unwrap();
+            ui.finish();
+        };
+        frame(&mut core, &mut ext);
+        assert!(
+            ext.lua
+                .globals()
+                .get::<mlua::Value>("sel")
+                .unwrap()
+                .is_nil(),
+            "nothing selected yet"
+        );
+        let w = core
+            .measure_text(
+                "M",
+                &kui_core::TextStyle::new(14.0)
+                    .family(kui_core::FontFamily::Mono)
+                    .line_height(20.0),
+                None,
+            )
+            .width;
+        let at = |r: usize, c: usize| Vec2::new(w * (c as f32 + 0.5), 20.0 * (r as f32 + 0.5));
+        core.handle_input(InputEvent::CursorMoved(at(1, 4)));
+        core.handle_input(InputEvent::MouseDown {
+            button: kui_core::MouseButton::Primary,
+            clicks: 1,
+        });
+        core.handle_input(InputEvent::CursorMoved(at(0, 1)));
+        core.handle_input(InputEvent::MouseUp {
+            button: kui_core::MouseButton::Primary,
+        });
+        frame(&mut core, &mut ext);
+        let sel: Table = ext.lua.globals().get("sel").unwrap();
+        let end = |name: &str| -> (u64, usize) {
+            let t: Table = sel.get(name).unwrap();
+            (t.get("line").unwrap(), t.get("col").unwrap())
+        };
+        assert_eq!(end("anchor"), (901, 4), "the press, on the second row");
+        assert_eq!(end("focus"), (900, 1), "the pointer, backwards");
+        assert_eq!(
+            sel.get::<i64>("node").unwrap(),
+            core.key_of("term").unwrap().0 as i64
+        );
+        assert!(!sel.get::<bool>("block").unwrap());
     }
 
     /// A span's `underline`, `strikethrough` and `bg` reach the core

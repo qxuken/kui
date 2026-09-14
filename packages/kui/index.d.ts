@@ -1365,6 +1365,23 @@ export interface SelectionEnds {
   focus: SelectionEnd;
 }
 
+/** One end of a `cells` grid's selection: an absolute line (`originLine`
+ *  plus the row, so a scroll does not move it) and a column. */
+export interface CellEnd {
+  line: number;
+  col: number;
+}
+
+/** A `cells` grid's selection as `cellSelection()` reads it: the grid's
+ *  key, the two ends as the drag made them, and whether it is a block
+ *  (rectangular) rather than linewise (ADR 0017, decision 4). */
+export interface CellSelection {
+  node: string;
+  anchor: CellEnd;
+  focus: CellEnd;
+  block: boolean;
+}
+
 /** A scroll container's retained offset, in logical px: positive means the
  *  content has moved up / left inside it. */
 export interface ScrollOffset {
@@ -1428,10 +1445,27 @@ export interface WindowOptions {
  *  its opcodes and its prop ids, which is everything `createEncoder` needs.
  *  (`protocol()` also carries the schema tables `npm run gen` reads; those
  *  are generator input, not app surface, so they are not typed here.) */
+/** One binding's cell in the verb table: its spelling of the verb, the
+ *  same thing in another form (a prop, a reading, a callback, a
+ *  constructor option), or the reason there is none. */
+export type DoorCell = { is: string } | { as: string } | { no: string };
+
+/** One row of the verb table (`schema::DOORS`, backlog B1): a verb by its
+ *  Rust spelling and what each binding has for it. The suite pins `Ctx`
+ *  and `KuiWindow` to the Node column both ways. */
+export interface Door {
+  rust: string;
+  c: DoorCell;
+  node: DoorCell;
+  lua: DoorCell;
+  doc: string;
+}
+
 export interface Protocol {
   version: number;
   op: Record<string, number>;
   prop: Record<string, number>;
+  doors: Door[];
 }
 
 /** The `KuiWindow` constructor's options, picked out of `runWindowed`'s
@@ -2449,6 +2483,16 @@ export declare class Ctx {
    */
   selectionEnds(): SelectionEnds | null
   /**
+   * A `cells` grid's selection, the window's when it lives in
+   * one: the grid's key, `anchor` and `focus` as the drag made
+   * them — each an absolute `line` (`originLine` plus the row,
+   * so a scroll does not move it) and a `col` — and `block`
+   * for a rectangular one (ADR 0017, decision 4). Null when the
+   * window's selection is not a grid's; a text selection's ends
+   * are `selectionEnds()`.
+   */
+  cellSelection(): CellSelection | null
+  /**
    * The selection as HTML, carrying the formatting the text
    * declared — bold, italic, a span's own colour — and *not*
    * the node's colour, which is the app's theme rather than
@@ -3348,6 +3392,16 @@ export declare class KuiWindow {
    * selection; a grid's is `cellSelection()`.
    */
   selectionEnds(): SelectionEnds | null
+  /**
+   * A `cells` grid's selection, the window's when it lives in
+   * one: the grid's key, `anchor` and `focus` as the drag made
+   * them — each an absolute `line` (`originLine` plus the row,
+   * so a scroll does not move it) and a `col` — and `block`
+   * for a rectangular one (ADR 0017, decision 4). Null when the
+   * window's selection is not a grid's; a text selection's ends
+   * are `selectionEnds()`.
+   */
+  cellSelection(): CellSelection | null
   /**
    * The selection as HTML, carrying the formatting the text
    * declared — bold, italic, a span's own colour — and *not*

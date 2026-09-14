@@ -182,7 +182,10 @@ extern "C" {
  * with kui_tokens_set, kui_token_color and kui_token_length (two new [in]
  * arrays and three functions - nothing the library writes moved).
  * Still at 15: KuiColorOp / KuiDerivedToken with kui_tokens_derive (ADR
- * 0028) - two more [in] arrays and one function.
+ * 0028) - two more [in] arrays and one function. And still at 15, the
+ * verb table's C column (backlog B1): kui_cell_selection, kui_set_inspect,
+ * kui_nodes, kui_devtools, kui_devtools_dock, kui_set_devtools_theme and
+ * kui_set_devtools_legend - seven functions, no struct.
  */
 #define KUI_ABI_VERSION 15u
 uint32_t kui_abi_version(void);
@@ -2496,6 +2499,16 @@ bool kui_selection_html(KuiCtx *ctx, KuiStr *out);
  * pointer may be NULL. */
 bool kui_selection_ends(KuiCtx *ctx, int64_t *anchor_index, size_t *anchor_byte,
                         int64_t *focus_index, size_t *focus_byte);
+/* A cells grid's selection, the window's when it lives in one: the grid's
+ * key, the anchor and the focus as the drag made them - each an absolute
+ * line (origin_line plus the row, so a scroll does not move it) and a
+ * column - and whether it is a block rather than linewise
+ * (docs/adr/0017-selection-as-a-scope.md, decision 4). False when the
+ * window's selection is not a grid's; a text selection's ends are
+ * kui_selection_ends. Any out pointer may be NULL. */
+bool kui_cell_selection(KuiCtx *ctx, uint64_t *node, uint64_t *anchor_line,
+                        size_t *anchor_col, uint64_t *focus_line, size_t *focus_col,
+                        bool *block);
 /* Selects everything in the scope `key` declared: every run of a
  * `selectable` container, or the whole screen of a `cells` grid. */
 bool kui_select_all_in(KuiCtx *ctx, uint64_t key);
@@ -2590,6 +2603,30 @@ void kui_set_devtools(KuiCtx *ctx, bool on);
  * again) or "off" (hidden, the chords still live). False for any other
  * word. */
 bool kui_set_devtools_dock(KuiCtx *ctx, KuiStr dock);
+/* Whether the panel is on. */
+bool kui_devtools(KuiCtx *ctx);
+/* Where it sits, as the word kui_set_devtools_dock takes ("right" for the
+ * side); the string is static. False on a bad context. */
+bool kui_devtools_dock(KuiCtx *ctx, KuiStr *out);
+/* Seeds the panel's theme override, what its T and A chords cycle from:
+ * base is "light", "dark" or empty for the app's own; accent a 0xRRGGBBAA
+ * colour, or 0 for none. False for any other base word. */
+bool kui_set_devtools_theme(KuiCtx *ctx, KuiStr base, uint32_t accent);
+/* The key legend the panel's facts tab shows: count pairs, the keys in
+ * keys and what each does in what, index for index. */
+void kui_set_devtools_legend(KuiCtx *ctx, const KuiStr *keys, const KuiStr *what,
+                             size_t count);
+/* Turns the per-frame node snapshot behind kui_nodes on or off (off unless
+ * a devtool asked: the copy is O(nodes) a frame). */
+void kui_set_inspect(KuiCtx *ctx, bool on);
+/* The last finished frame's nodes in tree order, as a list of maps - each
+ * with key, parent, depth, kind, label, rect, role, text, flags, layer,
+ * origin, children, the layout spec and events (the node's own payloads
+ * by handler name) - what a tree view and a node inspector are built
+ * from; read it with kui_value_at / kui_value_get. Empty until
+ * kui_set_inspect(ctx, true) and a frame after it. Borrowed until the
+ * next call; NULL on a bad context. */
+const KuiValue *kui_nodes(KuiCtx *ctx);
 /* -- Accessibility (docs/adr/0001-accessibility-as-data.md) ---------------- */
 /* The access tree of the last finished frame: fills out with up to cap
  * nodes in tree order (root first) and returns the total count, so a short

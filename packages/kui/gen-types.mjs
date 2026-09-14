@@ -43,7 +43,7 @@ try {
 
 const native = createRequire(import.meta.url)('./native.cjs');
 const {
-  prop, elements, events, resources, warnings, env, theme, metrics,
+  prop, elements, events, resources, warnings, env, theme, metrics, doors,
   accessRoles, accessActions, menuRoles, editKeys, mouseButtons,
 } = native.protocol();
 
@@ -169,6 +169,11 @@ const propRow = ([name, def]) => [`\`${name}\``, `\`${def.lua}\``, def.c, typeOf
 // which OS generated it (backlog W13). Both columns take the pair, because
 // the schema test pins that `compact()` leaves a platform row alone.
 const metricCell = (r, value) => (r.platform ? `${r.platform.windows} / ${r.platform.elsewhere}` : `${value}`);
+
+// A verb table cell: the binding's spelling in code font, the same thing
+// in another form as prose, or — in italics, so the reasons read as what
+// they are — why the binding has none.
+const doorCell = (c) => ('is' in c ? `\`${c.is}\`` : 'as' in c ? c.as : `*none: ${c.no}*`);
 
 const md = `# kui props, elements, events and warnings
 
@@ -327,11 +332,36 @@ ${tableOf(
   ['metric', 'Node', 'stock', 'compact', 'description'],
   metrics.map((r) => [`\`${r.name}\``, `\`${r.node}\``, metricCell(r, r.stock), metricCell(r, r.compact), r.doc]),
 )}
+
+## Doors
+
+The verbs — what an app or a host *calls* on its context, as against what
+it declares in the tree above — one row per verb across the four bindings
+(\`schema::DOORS\`, backlog B1). A cell is the binding's spelling (a
+\`kui_*\` function; a method on both of Node's classes, or on the one it
+is prefixed with; a function on Lua's \`env\`), the same thing in another
+form (a prop, a reading, a callback, a constructor option), or — in
+italics — the reason the binding has none. The reasons are the point: the
+bindings are not one surface. A Lua script is a guest in the host's frame
+([ADR 0014](adr/0014-slots-an-extension-fills-in-place.md)) whose env is
+a reading, so registering, driving, pacing and reading back are the
+host's; Node's \`Ctx\` drives a headless core and its \`KuiWindow\` is
+driven by the runner, so the driver's half is on \`Ctx\` alone; and a
+Node host never paints, so the renderer's rows are C's.
+
+Each binding's own test pins its column both ways: every spelling here is
+a door there, and every door there is a row here — so a verb added to one
+binding is a row with its three other cells, or a red test.
+
+${tableOf(
+  ['verb', 'C', 'Node', 'Lua', 'description'],
+  doors.map((d) => [`\`${d.rust}\``, doorCell(d.c), doorCell(d.node), doorCell(d.lua), d.doc]),
+)}
 `;
 
 writeFileSync(new URL('../../docs/props.md', import.meta.url), md);
 console.log(
-  `docs/props.md: ${spec.length + style.length} schema rows, ${custom.length} composites, ${elements.length} elements, ${events.length} events, ${warnings.length} warnings, ${env.length} env fields, ${theme.length} theme roles, ${metrics.length} metrics`,
+  `docs/props.md: ${spec.length + style.length} schema rows, ${custom.length} composites, ${elements.length} elements, ${events.length} events, ${warnings.length} warnings, ${env.length} env fields, ${theme.length} theme roles, ${metrics.length} metrics, ${doors.length} doors`,
 );
 
 // ------------------------------------------------------ the warning codes --

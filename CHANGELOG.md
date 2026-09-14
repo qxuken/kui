@@ -92,6 +92,33 @@ Nothing.
 
 ### Added
 
+- **The verb table** (backlog B1, on the condition ADR 0020 set and the
+  second architecture review met): `schema::DOORS`, one row per verb an
+  app or a host calls on its context — a resource registered, a focus
+  moved, a selection read, a menu opened, a window sized, the driver's
+  half — with its C, Node and Lua spelling, the same thing in another
+  form (a prop, a reading, a callback), or the *reason* the binding has
+  none, written once. A Lua script is a guest whose env is a reading; a
+  Node host never paints and its `KuiWindow` is driven by the runner;
+  those sentences were in seven heads and no file. Pinned both ways in
+  each binding: kui-ffi holds every C cell to a header prototype and
+  every prototype that is a verb to a row, the Node suite the two classes'
+  methods, kui-lua `env`'s functions, and kui-core resolves every Rust
+  spelling against the sources — so a verb added to one binding is a row
+  with its three other cells or a red test. Rendered as the **Doors**
+  section of `docs/props.md`. Building it closed the rows that were one
+  line each: **`cellSelection()` / `env.cell_selection()` /
+  `kui_cell_selection`** (a grid's ends as absolute lines and columns,
+  the reading ADR 0017 §4 offered and only Rust had), the devtools
+  readers and the inspector in C (**`kui_set_inspect`, `kui_nodes`,
+  `kui_devtools`, `kui_devtools_dock`, `kui_set_devtools_theme`,
+  `kui_set_devtools_legend`** — `KUI_ABI_VERSION` stays 15, seven
+  functions and no struct), and the two element forms JSX lacked:
+  **`<input label initial>`**, the stock field Lua's `input { }` and C's
+  `kui_text_input` are, and **`<tooltip value>` / `<tooltip>…</tooltip>`**,
+  the always-drawn node form beside the hover-gated prop (the edit op's
+  flags bit 4 and a `tooltip` op, still frame v11). `protocol().doors`
+  carries the table to JS.
 - **The standard menus, on macOS** ([ADR
   0030](docs/adr/0030-the-standard-menus-the-runner-keeps.md), raised by
   pressing fn+ctrl+F in a kui window and getting nothing). macOS's window

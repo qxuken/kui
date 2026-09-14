@@ -81,6 +81,52 @@ pub extern "C" fn kui_selection_ends(
     })
 }
 
+/// A `cells` grid's selection, the window's when it lives in one: the
+/// grid's key, the anchor and the focus as the drag made them — each an
+/// absolute line (`originLine` plus the row, so a scroll does not move
+/// it) and a column — and whether it is a block rather than linewise
+/// (ADR 0017, decision 4). False when the window's selection is not a
+/// grid's; a text selection's ends are `kui_selection_ends`. Any out
+/// pointer may be NULL.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_cell_selection(
+    ptr: *mut KuiCtx,
+    node: *mut u64,
+    anchor_line: *mut u64,
+    anchor_col: *mut usize,
+    focus_line: *mut u64,
+    focus_col: *mut usize,
+    block: *mut bool,
+) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        let Some(sel) = c.core().cell_selection() else {
+            return false;
+        };
+        let put = |line: *mut u64, col: *mut usize, e: kui_core::CellEnd| unsafe {
+            if let Some(p) = line.as_mut() {
+                *p = e.line;
+            }
+            if let Some(p) = col.as_mut() {
+                *p = e.col;
+            }
+        };
+        unsafe {
+            if let Some(p) = node.as_mut() {
+                *p = sel.node.0;
+            }
+            if let Some(p) = block.as_mut() {
+                *p = sel.block;
+            }
+        }
+        put(anchor_line, anchor_col, sel.anchor);
+        put(focus_line, focus_col, sel.focus);
+        true
+    })
+}
+
 /// Selects everything in the scope `key` declared — every run of a
 /// `selectable` container, or the whole screen of a `cells` grid. False
 /// for a node that is not a scope, or drew nothing.

@@ -1,0 +1,1142 @@
+//! The verb surface, one row per verb across the four bindings (backlog
+//! B1, built on the condition ADR 0020 set: "the next time a verb reaches
+//! one binding and not the others, build the table, and put the n/a
+//! reasons in it"). The second architecture review found thirteen such
+//! verbs, none with a stated reason, so this is the table.
+//!
+//! A *verb* is a call an app or a host makes on its context — a resource
+//! registered, a focus moved, a selection read, a menu opened, a window
+//! sized — as against the three surfaces pinned elsewhere: the elements
+//! (`ELEMENTS`, one constructor per binding), the props (`PROPS`) and the
+//! readings (`ENV_FIELDS`, `THEME_ROLES`, `METRIC_ROLES`). The rows are
+//! named by their Rust spelling and grouped the way the audit grouped
+//! them; a cell is the binding's spelling, the same thing in another form
+//! (a prop, a reading, a callback, a constructor option), or a reason
+//! there is none — and the reason is the point. ADR 0020 declined the
+//! table because "the verbs are not one surface": Lua is a guest with a
+//! view-time env, Node's `Ctx` is a driver and its `KuiWindow` refuses
+//! input, C is both. That is still true, and it is what the [`Cell::No`]
+//! cells say, once each, rather than what every reader re-derives.
+//!
+//! What pins it: `schema`'s own test resolves every Rust name against the
+//! sources; kui-ffi checks every C name against the header's prototypes
+//! and every prototype that is a verb against the table; the Node suite
+//! checks every Node name against the two classes and every method of
+//! theirs against the table; kui-lua checks every Lua name against
+//! `env`'s functions and every function against the table. A verb added
+//! to one binding is a row here — with its three other cells — or a red
+//! test in that binding.
+
+/// One binding's cell.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Cell {
+    /// The binding has the verb under this name: a `kui_*` function in C;
+    /// a method in Node, on both classes unless prefixed `Ctx.` or
+    /// `KuiWindow.`; a function on `env` in Lua. Checked by the binding's
+    /// test.
+    Is(&'static str),
+    /// The binding has the same thing in another form — a prop, a
+    /// reading of `env`, a callback, a constructor option — and the text
+    /// says which.
+    As(&'static str),
+    /// The binding does not have it, and this is why.
+    No(&'static str),
+}
+
+/// One verb.
+pub struct Door {
+    /// The Rust spelling: `Ui::x` (view-time), `Core::x` (a host between
+    /// frames), `SharedResources::x` (the session's registry, reached as
+    /// `core.resources`), `Tokens::x` (a table), `Launcher::x` (the runner).
+    pub rust: &'static str,
+    pub c: Cell,
+    pub node: Cell,
+    pub lua: Cell,
+    pub doc: &'static str,
+}
+
+use Cell::{As, Is, No};
+
+/// The reason most of Lua's column is `No`: a script's env is a *reading*
+/// the host hands it for one `view`, not a handle on the host (ADR 0014).
+/// It declares a tree and answers events; what it registers, drives,
+/// times or reads back is the host's.
+pub const GUEST: &str = "a script is a guest in the host's frame (ADR 0014): its env is the view's reading, and registering, driving, pacing and reading back are the host's";
+
+/// The reason for Lua's `No` on the resource rows.
+const NO_HANDLE: &str = "a script owns no handle: the host registers and the script names the id it was given (`image { id = }`, `font = id`, `audio { src = id }`)";
+
+/// The reason for Node's `No` on the renderer rows (ADR 0020, not done
+/// here).
+const NEVER_PAINTS: &str = "a Node host never paints: the renderer behind `KuiWindow` is the runner's, and a headless `Ctx` has none";
+
+pub const DOORS: &[Door] = &[
+    // -- Resources ---------------------------------------------------------
+    Door {
+        rust: "SharedResources::add_image",
+        c: Is("kui_image_add"),
+        node: Is("addImage"),
+        lua: No(NO_HANDLE),
+        doc: "Registers RGBA pixels and mints an id for `<image src>`.",
+    },
+    Door {
+        rust: "Core::update_image",
+        c: Is("kui_image_update"),
+        node: Is("updateImage"),
+        lua: No(NO_HANDLE),
+        doc: "Replaces the pixels behind a live id, keeping the id (ADR 0025).",
+    },
+    Door {
+        rust: "Core::remove_image",
+        c: Is("kui_image_remove"),
+        node: Is("removeImage"),
+        lua: No(NO_HANDLE),
+        doc: "Drops an image; every window's atlas lets it go (backlog AR8).",
+    },
+    Door {
+        rust: "Core::image_pixels",
+        c: Is("kui_image_pixels"),
+        node: No(NEVER_PAINTS),
+        lua: No(NO_HANDLE),
+        doc: "The pixels behind a handle, for a renderer meeting a texture quad.",
+    },
+    Door {
+        rust: "Core::add_fragment",
+        c: Is("kui_fragment_add"),
+        node: Is("addFragment"),
+        lua: No(NO_HANDLE),
+        doc: "Registers a WGSL function and mints an id for `<fragment src>` (ADR 0015).",
+    },
+    Door {
+        rust: "Core::remove_fragment",
+        c: Is("kui_fragment_remove"),
+        node: Is("removeFragment"),
+        lua: No(NO_HANDLE),
+        doc: "Drops a fragment; the renderer drops its pipelines (backlog AR8).",
+    },
+    Door {
+        rust: "Core::fragment_module_source",
+        c: Is("kui_fragment_source"),
+        node: No(NEVER_PAINTS),
+        lua: No(NO_HANDLE),
+        doc: "The whole WGSL module behind a handle, which is what a renderer compiles.",
+    },
+    Door {
+        rust: "Core::add_font_data",
+        c: Is("kui_font_add"),
+        node: Is("addFont"),
+        lua: No(NO_HANDLE),
+        doc: "Registers a font's bytes and mints an id for `font`.",
+    },
+    Door {
+        rust: "Core::add_system_font",
+        c: Is("kui_font_add_system"),
+        node: Is("addSystemFont"),
+        lua: No(NO_HANDLE),
+        doc: "Registers an installed family by name.",
+    },
+    Door {
+        rust: "Core::load_font_file",
+        c: Is("kui_font_load_file"),
+        node: Is("loadFontFile"),
+        lua: No(NO_HANDLE),
+        doc: "Registers a font file by path.",
+    },
+    Door {
+        rust: "Core::load_fonts_dir",
+        c: Is("kui_font_load_dir"),
+        node: Is("loadFontsDir"),
+        lua: No(NO_HANDLE),
+        doc: "Registers every font file in a directory.",
+    },
+    Door {
+        rust: "Core::remove_font",
+        c: Is("kui_font_remove"),
+        node: Is("removeFont"),
+        lua: No(NO_HANDLE),
+        doc: "Drops a font.",
+    },
+    Door {
+        rust: "Core::system_font_families",
+        c: Is("kui_font_families"),
+        node: Is("systemFontFamilies"),
+        lua: No(NO_HANDLE),
+        doc: "The installed family names `add_system_font` accepts.",
+    },
+    Door {
+        rust: "Core::add_sound",
+        c: Is("kui_sound_add"),
+        node: Is("addSound"),
+        lua: No(NO_HANDLE),
+        doc: "Registers a sound's bytes and mints an id for `<audio src>`, `clickSound` and `play`.",
+    },
+    Door {
+        rust: "Core::remove_sound",
+        c: Is("kui_sound_remove"),
+        node: Is("removeSound"),
+        lua: No(NO_HANDLE),
+        doc: "Drops a sound.",
+    },
+    Door {
+        rust: "Core::set_text_cache_budget",
+        c: Is("kui_set_text_cache_budget"),
+        node: Is("setTextCacheBudget"),
+        lua: No(GUEST),
+        doc: "The shaped-text cache's byte budget (backlog C16).",
+    },
+    Door {
+        rust: "Core::text_cache_bytes",
+        c: Is("kui_text_cache_bytes"),
+        node: Is("textCacheBytes"),
+        lua: No(GUEST),
+        doc: "What the shaped-text cache holds.",
+    },
+    // -- Audio -------------------------------------------------------------
+    Door {
+        rust: "Ui::play",
+        c: Is("kui_play"),
+        node: Is("play"),
+        lua: No(
+            "a script owns no sound handle, and its env is the view's: a playback started there would start again every frame — `audio { src = id }` is the declarative form, and what a script has",
+        ),
+        doc: "Starts a playback of a registered sound, outside any node; answers the playback id.",
+    },
+    Door {
+        rust: "Core::stop",
+        c: Is("kui_stop"),
+        node: Is("stop"),
+        lua: No("as `play`: a script declares `audio { }` and stops it by not declaring it"),
+        doc: "Stops a playback, with an optional fade.",
+    },
+    Door {
+        rust: "Core::set_volume",
+        c: Is("kui_set_volume"),
+        node: Is("setVolume"),
+        lua: As("`audio { volume = }` applies live"),
+        doc: "A playback's volume, with an optional tween.",
+    },
+    Door {
+        rust: "Core::pause",
+        c: Is("kui_pause"),
+        node: Is("pause"),
+        lua: As("`audio { paused = true }` applies live"),
+        doc: "Pauses a playback.",
+    },
+    Door {
+        rust: "Core::resume",
+        c: Is("kui_resume"),
+        node: Is("resume"),
+        lua: As("`audio { paused = false }`"),
+        doc: "Resumes a paused playback.",
+    },
+    Door {
+        rust: "Core::set_master_volume",
+        c: Is("kui_set_master_volume"),
+        node: Is("setMasterVolume"),
+        lua: No(GUEST),
+        doc: "The device's master volume, with an optional tween.",
+    },
+    // -- Assistive ---------------------------------------------------------
+    Door {
+        rust: "Ui::announce",
+        c: Is("kui_announce"),
+        node: Is("announce"),
+        lua: Is("announce"),
+        doc: "Says something once with no node behind it (ADR 0001).",
+    },
+    Door {
+        rust: "Core::take_announcements",
+        c: Is("kui_take_announcements"),
+        node: Is("Ctx.announcements"),
+        lua: No(GUEST),
+        doc: "Drains what was announced, for a host bridging assistive technology; a `KuiWindow`'s bridge is the runner's.",
+    },
+    Door {
+        rust: "Core::access_tree",
+        c: Is("kui_access_tree"),
+        node: Is("accessTree"),
+        lua: No(GUEST),
+        doc: "The access tree of the last finished frame (ADR 0001).",
+    },
+    // -- Focus -------------------------------------------------------------
+    Door {
+        rust: "Ui::focus",
+        c: Is("kui_focus"),
+        node: Is("focus"),
+        lua: Is("set_focus"),
+        doc: "Moves focus to a node now; an app's move stands over a modal's restore (backlog AR17). `keyFocus` is the declarative, edge-triggered form.",
+    },
+    Door {
+        rust: "Ui::blur",
+        c: As("`kui_focus(ctx, 0)`"),
+        node: Is("blur"),
+        lua: Is("blur"),
+        doc: "Drops focus.",
+    },
+    Door {
+        rust: "Ui::focus_next",
+        c: Is("kui_focus_next"),
+        node: Is("focusNext"),
+        lua: Is("focus_next"),
+        doc: "Steps the Tab ring forward (ADR 0002).",
+    },
+    Door {
+        rust: "Ui::focus_prev",
+        c: As("`kui_focus_next(ctx, false)`"),
+        node: Is("focusPrev"),
+        lua: Is("focus_prev"),
+        doc: "Steps the Tab ring backward.",
+    },
+    Door {
+        rust: "Ui::focus_region",
+        c: Is("kui_focus_region"),
+        node: Is("focusRegion"),
+        lua: Is("focus_region"),
+        doc: "Enters a `focusRegion`'s ring, or leaves it for the main one (ADR 0022).",
+    },
+    Door {
+        rust: "Ui::region",
+        c: Is("kui_region"),
+        node: Is("region"),
+        lua: As("`env.region`, a reading"),
+        doc: "The region in effect.",
+    },
+    Door {
+        rust: "Ui::focused",
+        c: Is("kui_focused"),
+        node: Is("focused"),
+        lua: As("`env.focus`, a reading"),
+        doc: "The focused node's key.",
+    },
+    Door {
+        rust: "Ui::is_focused",
+        c: Is("kui_is_focused"),
+        node: Is("isFocused"),
+        lua: Is("is_focused"),
+        doc: "Whether a node has focus.",
+    },
+    Door {
+        rust: "Ui::focus_visible",
+        c: Is("kui_focus_visible"),
+        node: Is("focusVisible"),
+        lua: As("`env.focus_visible`, a reading"),
+        doc: "Whether focus came from the keyboard and the ring should show.",
+    },
+    Door {
+        rust: "Ui::key_of",
+        c: Is("kui_key_of"),
+        node: Is("keyOf"),
+        lua: As("every query and verb takes the label itself (`key_query`)"),
+        doc: "The key a label names this frame.",
+    },
+    Door {
+        rust: "Core::label_of",
+        c: No(
+            "the label is the app's own word for the node, and every door names a node by it or by the key an event carried; the one reader is the devtools' inspector, in the core",
+        ),
+        node: No("the same reason as C's"),
+        lua: No("the same reason as C's"),
+        doc: "The label a key was opened under.",
+    },
+    Door {
+        rust: "Ui::caret_visible",
+        c: Is("kui_caret_visible"),
+        node: Is("caretVisible"),
+        lua: As("`env.caret_visible`, a reading"),
+        doc: "The blink phase a custom editor draws its caret on.",
+    },
+    Door {
+        rust: "Core::set_caret_visible",
+        c: Is("kui_set_caret_visible"),
+        node: Is("setCaretVisible"),
+        lua: No(GUEST),
+        doc: "The host's blink clock writes the phase.",
+    },
+    Door {
+        rust: "Core::has_caret",
+        c: Is("kui_has_caret"),
+        node: As(
+            "the loop in `index.js` runs the blink from `nextDeadlineMs`; a headless `Ctx` never blinks",
+        ),
+        lua: No(GUEST),
+        doc: "Whether anything focused draws a caret, which arms a host's blink clock.",
+    },
+    Door {
+        rust: "Core::caret_stamp",
+        c: Is("kui_caret_stamp"),
+        node: As("as `has_caret`"),
+        lua: No(GUEST),
+        doc: "Changes when the caret moves or focus does, which re-arms the clock solid.",
+    },
+    // -- Queries -----------------------------------------------------------
+    Door {
+        rust: "Ui::is_hovered",
+        c: Is("kui_is_hovered"),
+        node: Is("isHovered"),
+        lua: Is("is_hovered"),
+        doc: "Whether the pointer is over a node.",
+    },
+    Door {
+        rust: "Ui::is_pressed",
+        c: Is("kui_is_pressed"),
+        node: Is("isPressed"),
+        lua: Is("is_pressed"),
+        doc: "Whether a press started on a node and the pointer is still over it.",
+    },
+    Door {
+        rust: "Ui::is_group_hovered",
+        c: As(
+            "`hoverBg` / `pressedBg` on a `hoverGroup` member paint it; the reader is what the Rust widgets ask when they paint by hand",
+        ),
+        node: As("the same form as C's"),
+        lua: As("the same form as C's"),
+        doc: "Whether any member of a hover group is hovered (`is_group_pressed` the same for a press).",
+    },
+    Door {
+        rust: "Core::cursor",
+        c: No("the pointer's position is the driver's own fact — it injected it"),
+        node: No("the same reason as C's"),
+        lua: No("the same reason as C's, one step removed"),
+        doc: "Where the pointer is, in logical viewport px.",
+    },
+    Door {
+        rust: "Core::cursor_shape",
+        c: Is("kui_cursor_shape"),
+        node: Is("cursorShape"),
+        lua: No(GUEST),
+        doc: "The pointer shape the frame asks for, which the host sets on its window.",
+    },
+    Door {
+        rust: "Ui::layout_of",
+        c: Is("kui_layout_of"),
+        node: Is("layoutOf"),
+        lua: Is("layout_of"),
+        doc: "Where layout put a node last frame (backlog C26).",
+    },
+    Door {
+        rust: "Ui::scroll_offset",
+        c: Is("kui_scroll_offset"),
+        node: Is("scrollOffset"),
+        lua: Is("scroll_offset"),
+        doc: "A scrolling node's offset.",
+    },
+    Door {
+        rust: "Ui::scroll_geometry",
+        c: Is("kui_scroll_geometry"),
+        node: Is("scrollGeometry"),
+        lua: Is("scroll_geometry"),
+        doc: "A scrolling node's viewport and content sizes.",
+    },
+    Door {
+        rust: "Ui::set_scroll",
+        c: Is("kui_set_scroll"),
+        node: Is("setScroll"),
+        lua: Is("set_scroll"),
+        doc: "Scrolls a node to an offset.",
+    },
+    Door {
+        rust: "Ui::reveal",
+        c: Is("kui_reveal"),
+        node: Is("reveal"),
+        lua: Is("reveal"),
+        doc: "Scrolls whatever encloses a node until it is in view.",
+    },
+    Door {
+        rust: "Ui::text_hit",
+        c: Is("kui_text_hit"),
+        node: Is("textHit"),
+        lua: Is("text_hit"),
+        doc: "The byte and line under a point in a node's text (backlog C18).",
+    },
+    Door {
+        rust: "Ui::caret_rect",
+        c: Is("kui_caret_rect"),
+        node: Is("caretRect"),
+        lua: Is("caret_rect"),
+        doc: "The caret rect for a byte offset in a node's text.",
+    },
+    Door {
+        rust: "Core::ime_rect",
+        c: Is("kui_ime_rect"),
+        node: Is("imeRect"),
+        lua: No(GUEST),
+        doc: "Where the OS candidate window goes, which the host hands to the platform (backlog C17).",
+    },
+    Door {
+        rust: "Ui::measure_text",
+        c: Is("kui_measure_text"),
+        node: Is("measureText"),
+        lua: Is("measure_text"),
+        doc: "Shapes text in a style at a width and answers its size and line count.",
+    },
+    Door {
+        rust: "Ui::measure_rich_text",
+        c: Is("kui_measure_rich_text"),
+        node: As("`measureText` takes spans too"),
+        lua: As("`measure_text` takes spans too"),
+        doc: "The same for spans, shaped as one paragraph.",
+    },
+    Door {
+        rust: "Ui::edit_text",
+        c: Is("kui_edit_text"),
+        node: Is("editText"),
+        lua: Is("edit_text"),
+        doc: "An editor's text, by key or by label.",
+    },
+    Door {
+        rust: "Ui::set_edit_text",
+        c: Is("kui_edit_set_text"),
+        node: Is("setEditText"),
+        lua: Is("set_edit_text"),
+        doc: "Replaces an editor's text, caret at the end.",
+    },
+    Door {
+        rust: "Ui::set_edit_text_by_label",
+        c: Is("kui_edit_set_text_label"),
+        node: As("`setEditText` takes the label too"),
+        lua: As("`set_edit_text` takes the label too"),
+        doc: "The same by the label an editor's `key` declares, which reaches one the frame is about to declare (backlog AR26).",
+    },
+    Door {
+        rust: "Core::animating",
+        c: Is("kui_animating"),
+        node: Is("animating"),
+        lua: No(GUEST),
+        doc: "Whether the last frame left a transition mid-flight, so the host draws another without waiting for input.",
+    },
+    Door {
+        rust: "Ui::request_frame",
+        c: As("`animate` on a node, and `kui_animating` for the driver to read"),
+        node: As("the same form as C's"),
+        lua: As("the same form as C's"),
+        doc: "Asks for a frame after this one; the driver paces off `animating()`.",
+    },
+    Door {
+        rust: "Ui::modifiers",
+        c: No(
+            "the held modifiers ride on every key and pointer event's `mods`; the reader is what the stock editor's Shift-drag asks, inside the core",
+        ),
+        node: No("the same reason as C's"),
+        lua: No("the same reason as C's"),
+        doc: "The modifier keys held now.",
+    },
+    // -- Selection (ADR 0017) ----------------------------------------------
+    Door {
+        rust: "Ui::selection_text",
+        c: Is("kui_selection_text"),
+        node: Is("selectionText"),
+        lua: Is("selection_text"),
+        doc: "The window's selected text — a scope's, a grid's or the focused editor's.",
+    },
+    Door {
+        rust: "Ui::selection_html",
+        c: Is("kui_selection_html"),
+        node: Is("selectionHtml"),
+        lua: Is("selection_html"),
+        doc: "The same with the formatting the text declared.",
+    },
+    Door {
+        rust: "Ui::selection_ends",
+        c: Is("kui_selection_ends"),
+        node: Is("selectionEnds"),
+        lua: Is("selection_ends"),
+        doc: "A text selection's anchor and focus as row indices and bytes (ADR 0029).",
+    },
+    Door {
+        rust: "Ui::cell_selection",
+        c: Is("kui_cell_selection"),
+        node: Is("cellSelection"),
+        lua: Is("cell_selection"),
+        doc: "A `cells` grid's selection: its ends as absolute lines and columns, and whether it is a block (ADR 0017 §4).",
+    },
+    Door {
+        rust: "Ui::select_all_in",
+        c: Is("kui_select_all_in"),
+        node: Is("selectAllIn"),
+        lua: Is("select_all_in"),
+        doc: "Select All, scoped to a `selectable` node or a grid.",
+    },
+    Door {
+        rust: "Ui::clear_selection",
+        c: Is("kui_clear_selection"),
+        node: Is("clearSelection"),
+        lua: Is("clear_selection"),
+        doc: "Drops the window's selection.",
+    },
+    Door {
+        rust: "Ui::request_copy",
+        c: Is("kui_request_copy"),
+        node: Is("requestCopy"),
+        lua: Is("request_copy"),
+        doc: "Asks for the selection as a copy, which may come back as a `selectionrange` question.",
+    },
+    Door {
+        rust: "Ui::answer_selection_range",
+        c: Is("kui_answer_selection_range"),
+        node: Is("answerSelectionRange"),
+        lua: Is("answer_selection_range"),
+        doc: "The app's answer to that question.",
+    },
+    Door {
+        rust: "Ui::set_clipboard",
+        c: Is("kui_set_clipboard"),
+        node: Is("setClipboard"),
+        lua: Is("set_clipboard"),
+        doc: "A key sink's own Ctrl-C: posts a clipboard action for the host (backlog C33).",
+    },
+    Door {
+        rust: "Ui::request_paste",
+        c: Is("kui_request_paste"),
+        node: Is("requestPaste"),
+        lua: Is("request_paste"),
+        doc: "A key sink's own Ctrl-V: the clipboard comes back as a commit.",
+    },
+    Door {
+        rust: "Core::set_lookup_available",
+        c: Is("kui_set_lookup_available"),
+        node: Is("setLookupAvailable"),
+        lua: No(GUEST),
+        doc: "Whether the host can show the platform's definition panel, which decides whether Look Up is offered.",
+    },
+    // -- Menus (ADR 0018) --------------------------------------------------
+    Door {
+        rust: "Ui::open_menu",
+        c: Is("kui_open_menu"),
+        node: Is("openMenu"),
+        lua: Is("open_menu"),
+        doc: "Opens a context menu on a node at a point.",
+    },
+    Door {
+        rust: "Ui::close_menu",
+        c: Is("kui_close_menu"),
+        node: Is("closeMenu"),
+        lua: Is("close_menu"),
+        doc: "Closes it.",
+    },
+    Door {
+        rust: "Core::take_menu_actions",
+        c: Is("kui_take_menu_action"),
+        node: Is("takeMenuActions"),
+        lua: As(
+            "a chosen row comes back as a `menu` event on the node; the clipboard actions are the host's",
+        ),
+        doc: "Drains what a menu (or a chord, or the standard bar) asked of the host: a clipboard write, a paste, a Look Up.",
+    },
+    Door {
+        rust: "Core::menu",
+        c: As("`kui_menu_item_count` / `kui_menu_item`, one row at a time"),
+        node: Is("menu"),
+        lua: No(GUEST),
+        doc: "The open menu, for a host showing it natively.",
+    },
+    Door {
+        rust: "Core::set_native_menus",
+        c: Is("kui_set_native_menus"),
+        node: Is("setNativeMenus"),
+        lua: No(GUEST),
+        doc: "Whether the host shows menus itself; the core then draws none.",
+    },
+    Door {
+        rust: "Core::activate_menu_item",
+        c: Is("kui_activate_menu_item"),
+        node: Is("activateMenuItem"),
+        lua: No(GUEST),
+        doc: "Reports that the host's own menu chose a row.",
+    },
+    Door {
+        rust: "Core::menu_bar",
+        c: As(
+            "`kui_menu_bar_menu_count` / `kui_menu_bar_menu` / `kui_menu_bar_item`, one row at a time",
+        ),
+        node: Is("menuBar"),
+        lua: No(GUEST),
+        doc: "The declared menu bar, for a host handing it to the OS.",
+    },
+    Door {
+        rust: "Core::set_native_menu_bar",
+        c: Is("kui_set_native_menu_bar"),
+        node: Is("setNativeMenuBar"),
+        lua: No(GUEST),
+        doc: "Whether the host owns the bar; the core then draws no strip.",
+    },
+    Door {
+        rust: "Core::activate_menu_bar_item",
+        c: Is("kui_activate_menu_bar_item"),
+        node: Is("activateMenuBarItem"),
+        lua: No(GUEST),
+        doc: "Reports that the OS bar chose a row.",
+    },
+    // -- Windows -----------------------------------------------------------
+    Door {
+        rust: "Ui::window",
+        c: Is("kui_window_declare"),
+        node: As("the root's `windows` prop"),
+        lua: As("the root's `windows` field"),
+        doc: "Declares that a named window exists this frame (ADR 0003 step 3).",
+    },
+    Door {
+        rust: "Core::windows",
+        c: As("the ids arrive on `KUI_CMD_OPEN`; a host keeps the list it opened"),
+        node: Is("windows"),
+        lua: No(GUEST),
+        doc: "The names of the windows open now.",
+    },
+    Door {
+        rust: "Ui::window_name",
+        c: Is("kui_ctx_window_name"),
+        node: Is("windowName"),
+        lua: As("`env.window.name`, a reading"),
+        doc: "The name of the window this context draws.",
+    },
+    Door {
+        rust: "Ui::set_window_size",
+        c: Is("kui_set_window_size"),
+        node: Is("setWindowSize"),
+        lua: Is("set_window_size"),
+        doc: "Asks the driver to resize a window.",
+    },
+    Door {
+        rust: "Ui::focus_window",
+        c: Is("kui_focus_window"),
+        node: Is("focusWindow"),
+        lua: Is("focus_window"),
+        doc: "Asks the driver to bring a window to the front.",
+    },
+    Door {
+        rust: "Ui::window_title",
+        c: Is("kui_window_title"),
+        node: As("the root's `title` prop"),
+        lua: As("the root's `title` field"),
+        doc: "Declares the window's title this frame.",
+    },
+    Door {
+        rust: "Ui::always_on_top",
+        c: Is("kui_set_always_on_top"),
+        node: As("the root's `alwaysOnTop` prop"),
+        lua: As("the root's `always_on_top` field"),
+        doc: "Declares that the window sits above every other app's this frame (backlog C30).",
+    },
+    Door {
+        rust: "Ui::window_command",
+        c: As(
+            "the chrome roles (`KuiSpec.window_role`) are the door; the verb is what `widgets::window_buttons` lowers to",
+        ),
+        node: As(
+            "`KuiWindow.close()` for the one command the runner takes from outside a frame; the rest are `windowRole`",
+        ),
+        lua: As("`window_role`"),
+        doc: "Minimize, toggle-maximize, start-drag, close — what a chrome node asks for on a press.",
+    },
+    Door {
+        rust: "Core::window_title",
+        c: Is("kui_window_title_get"),
+        node: Is("Ctx.windowTitle"),
+        lua: No(GUEST),
+        doc: "What the frame declared, for a driver applying it; a `KuiWindow` applies its own.",
+    },
+    Door {
+        rust: "Core::always_on_top",
+        c: Is("kui_always_on_top_get"),
+        node: Is("Ctx.alwaysOnTop"),
+        lua: As("`env.window.always_on_top`, a reading"),
+        doc: "The same for the level.",
+    },
+    Door {
+        rust: "Core::take_window_commands",
+        c: Is("kui_take_window_command"),
+        node: Is("Ctx.windowCommands"),
+        lua: No(GUEST),
+        doc: "Drains what the frame asked of the driver: open, close, resize, focus, redraw.",
+    },
+    Door {
+        rust: "Core::window_closed",
+        c: Is("kui_window_closed"),
+        node: Is("Ctx.windowClosed"),
+        lua: No(GUEST),
+        doc: "The driver reports a window gone.",
+    },
+    Door {
+        rust: "Core::dismiss_window",
+        c: Is("kui_window_dismissed"),
+        node: Is("Ctx.windowDismissed"),
+        lua: No(GUEST),
+        doc: "The driver reports a popup dismissed, with why (ADR 0003 step 4).",
+    },
+    // -- Theme, metrics, tokens --------------------------------------------
+    Door {
+        rust: "Core::set_theme",
+        c: Is("kui_theme_set"),
+        node: Is("setTheme"),
+        lua: No("read-only: the palette is the host's (ADR 0019)"),
+        doc: "Pins a whole palette.",
+    },
+    Door {
+        rust: "Core::set_accent",
+        c: Is("kui_theme_set_accent"),
+        node: Is("setAccent"),
+        lua: No("as `set_theme`"),
+        doc: "Pins an accent and keeps the OS's base.",
+    },
+    Door {
+        rust: "Ui::theme",
+        c: Is("kui_theme"),
+        node: Is("theme"),
+        lua: As("`env.theme`, a reading"),
+        doc: "The palette in effect (`THEME_ROLES`).",
+    },
+    Door {
+        rust: "Core::set_metrics",
+        c: Is("kui_metrics_set"),
+        node: Is("setMetrics"),
+        lua: No("as `set_theme` (backlog T2)"),
+        doc: "Pins the stock widgets' sizes.",
+    },
+    Door {
+        rust: "Ui::metrics",
+        c: Is("kui_metrics"),
+        node: Is("metrics"),
+        lua: As("`env.metrics`, a reading"),
+        doc: "The sizes in effect (`METRIC_ROLES`).",
+    },
+    Door {
+        rust: "Ui::set_tokens",
+        c: Is("kui_tokens_set"),
+        node: Is("setTokens"),
+        lua: Is("set_tokens"),
+        doc: "Declares the origin's colour and length tokens (ADR 0027).",
+    },
+    Door {
+        rust: "Tokens::derive",
+        c: Is("kui_tokens_derive"),
+        node: As("a colour with `from` in `setTokens`"),
+        lua: As("a colour with `from` in `set_tokens`"),
+        doc: "Adds derived colours to the declared ones (ADR 0028).",
+    },
+    Door {
+        rust: "Ui::tokens",
+        c: As("`kui_token_color` / `kui_token_length`, one name at a time"),
+        node: Is("tokens"),
+        lua: As("`env.tokens`, a reading"),
+        doc: "The tokens in effect, resolved for the appearance.",
+    },
+    Door {
+        rust: "Core::tokens_declared",
+        c: No(
+            "a plugin declares in every `kui_ext_view` and pays the parse; a reader that lets it skip the second is one line, once a plugin asks for it",
+        ),
+        node: No("an app declares once, before its loop"),
+        lua: No("the `tokens` global is declared once, at load"),
+        doc: "Whether an origin declared tokens.",
+    },
+    // -- Diagnostics and devtools (ADR 0024) -------------------------------
+    Door {
+        rust: "Core::set_diagnostics",
+        c: Is("kui_set_diagnostics"),
+        node: Is("setDiagnostics"),
+        lua: No(GUEST),
+        doc: "Turns the per-frame checks on.",
+    },
+    Door {
+        rust: "Core::take_warnings",
+        c: Is("kui_take_warnings"),
+        node: Is("warnings"),
+        lua: No("the host drains and the Lua runner prints"),
+        doc: "Drains the warnings raised since the last call.",
+    },
+    Door {
+        rust: "Core::warnings_raised",
+        c: No(
+            "the C smoke round drains `kui_take_warnings` after each frame; a non-draining reader waits for a C harness that needs one",
+        ),
+        node: Is("warningsRaised"),
+        lua: No(GUEST),
+        doc: "The warnings raised so far, undrained, which is what an example's self-check reads (ADR 0021).",
+    },
+    Door {
+        rust: "Core::set_devtools",
+        c: Is("kui_set_devtools"),
+        node: Is("setDevtools"),
+        lua: No(GUEST),
+        doc: "Turns the devtools panel on.",
+    },
+    Door {
+        rust: "Core::devtools",
+        c: Is("kui_devtools"),
+        node: Is("devtools"),
+        lua: No(GUEST),
+        doc: "Whether it is on.",
+    },
+    Door {
+        rust: "Core::set_devtools_dock",
+        c: Is("kui_set_devtools_dock"),
+        node: Is("setDevtoolsDock"),
+        lua: No(GUEST),
+        doc: "Where it sits.",
+    },
+    Door {
+        rust: "Core::devtools_dock",
+        c: Is("kui_devtools_dock"),
+        node: Is("devtoolsDock"),
+        lua: No(GUEST),
+        doc: "Where it sits, read back.",
+    },
+    Door {
+        rust: "Core::set_devtools_theme",
+        c: Is("kui_set_devtools_theme"),
+        node: Is("setDevtoolsTheme"),
+        lua: No(GUEST),
+        doc: "Seeds the panel's theme override.",
+    },
+    Door {
+        rust: "Core::set_devtools_legend",
+        c: Is("kui_set_devtools_legend"),
+        node: Is("setDevtoolsLegend"),
+        lua: No(GUEST),
+        doc: "The key legend the panel's facts tab shows.",
+    },
+    Door {
+        rust: "Core::set_inspect",
+        c: Is("kui_set_inspect"),
+        node: Is("setInspect"),
+        lua: No(GUEST),
+        doc: "Turns the per-frame node snapshot behind `nodes` on.",
+    },
+    Door {
+        rust: "Core::nodes",
+        c: Is("kui_nodes"),
+        node: Is("nodes"),
+        lua: No(GUEST),
+        doc: "The last frame's nodes with what layout and the declarations made of them — a tree view's and an inspector's data.",
+    },
+    // -- Extensions (ADR 0014) ---------------------------------------------
+    Door {
+        rust: "Ui::add_extension",
+        c: Is("kui_ctx_add_extension"),
+        node: Is("Ctx.addExtension"),
+        lua: Is("add_extension"),
+        doc: "Loads a plugin under a namespace; a `KuiWindow` takes its list at construction (`extensions`).",
+    },
+    Door {
+        rust: "Launcher::extensions",
+        c: As("`kui_ctx_extension_count` / `kui_ctx_extension_namespace`, one at a time"),
+        node: Is("Ctx.extensionNamespaces"),
+        lua: Is("extension_namespaces"),
+        doc: "The namespaces loaded.",
+    },
+    // -- The driver's half: what a host does to run a core ----------------
+    // Lua has none of these, for the one reason `GUEST` states; Node's are
+    // on `Ctx` alone because a `KuiWindow`'s driver is the runner.
+    Door {
+        rust: "Core::frame",
+        c: As("`kui_frame_begin` … `kui_frame_finish`"),
+        node: Is("Ctx.frame"),
+        lua: No(GUEST),
+        doc: "Runs one frame: the view, layout, the draw list; `KuiWindow.setView` is the windowed form, the runner calling it.",
+    },
+    Door {
+        rust: "Core::output",
+        c: Is("kui_draw_data"),
+        node: Is("quads"),
+        lua: No(GUEST),
+        doc: "The draw list: quads, clips, fragment and texture draws (`clips`, `fragmentDraws`, `textureDraws` beside `quads` in Node) and the frame's stats.",
+    },
+    Door {
+        rust: "Core::take_pending_events",
+        c: Is("kui_poll_event"),
+        node: Is("pollEvents"),
+        lua: As("`on_event(ev)`, pushed after each frame"),
+        doc: "What the frame and the input since produced, for `update`.",
+    },
+    Door {
+        rust: "Core::set_time",
+        c: Is("kui_set_time"),
+        node: Is("Ctx.setTime"),
+        lua: No(GUEST),
+        doc: "The clock the tweens read; a window's runner sets it from the display.",
+    },
+    Door {
+        rust: "Core::env",
+        c: As("`kui_env_set` and its four siblings, `ENV_FIELDS`' C column"),
+        node: Is("Ctx.setEnv"),
+        lua: No(GUEST),
+        doc: "The host facts written in (the `env` field); a `KuiWindow`'s runner writes its own.",
+    },
+    Door {
+        rust: "Ui::env",
+        c: No("C is the host, so it writes the facts and has no reading (`ENV_FIELDS`)"),
+        node: Is("env"),
+        lua: As("`env`, the view's argument"),
+        doc: "The facts read back, `ENV_FIELDS` row for row.",
+    },
+    Door {
+        rust: "Core::handle_input",
+        c: As("`kui_input_cursor` … `kui_input_access`, one per `InputEvent`"),
+        node: As(
+            "`Ctx.cursor` … `Ctx.access`, one per `InputEvent`; a `KuiWindow` refuses injection",
+        ),
+        lua: No(GUEST),
+        doc: "Pointer, wheel, key, text, IME and assistive input; `press` / `release` are a click by label (`kui_input_press`, `Ctx.press`).",
+    },
+    Door {
+        rust: "Core::modifiers",
+        c: Is("kui_input_modifiers"),
+        node: Is("Ctx.modifiers"),
+        lua: No(GUEST),
+        doc: "The modifier state, reported on its own when the OS does (backlog AR22).",
+    },
+    Door {
+        rust: "Core::release_held_keys",
+        c: Is("kui_release_held_keys"),
+        node: As(
+            "`Ctx.setEnv({focused: false})` releases, as losing the keyboard does for every driver (ADR 0020)",
+        ),
+        lua: No(GUEST),
+        doc: "Lets go of every key the focused sink holds.",
+    },
+    Door {
+        rust: "Core::set_subpixel_text",
+        c: Is("kui_set_subpixel_text"),
+        node: No(NEVER_PAINTS),
+        lua: No(GUEST),
+        doc: "LCD subpixel coverage for outline glyphs, for a renderer that blends per channel.",
+    },
+    Door {
+        rust: "Core::take_audio_commands",
+        c: Is("kui_take_audio_commands"),
+        node: Is("Ctx.audioCommands"),
+        lua: No(GUEST),
+        doc: "Drains what the frame asked of the audio device; a `KuiWindow`'s device is the runner's.",
+    },
+    Door {
+        rust: "Core::audio_ended",
+        c: Is("kui_audio_ended"),
+        node: Is("Ctx.audioEnded"),
+        lua: No(GUEST),
+        doc: "The device reports a playback over.",
+    },
+    // -- The runner's options (`Launcher` in Rust, `WindowOptions` in Node,
+    // `kui_run_with` in C). One row for the set, since they are one
+    // decision: what a window opens as.
+    Door {
+        rust: "Launcher::size",
+        c: No(
+            "`kui_run` / `kui_run_with` take a title and nothing else (backlog AR27): a C app sizes from its first view with `kui_set_window_size`",
+        ),
+        node: As("`width` / `height` in `WindowOptions`"),
+        lua: No(GUEST),
+        doc: "The window's opening size; `min_size` / `max_size` / `chrome` / `text_aa` / `diagnostics` / `devtools` are the rest of the set, and Node has each (`minWidth`, `chrome`, `textAa`, `diagnostics`, `devtools`) where C has `KUI_TEXT_AA` and `KUI_DEVTOOLS` in the environment.",
+    },
+];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A row's Rust spelling is a `pub fn` in the file its prefix names —
+    /// `Ui::` in `ui.rs`, `Core::` under `runtime/`, `SharedResources::`
+    /// in `session.rs`, `Tokens::` in `tokens.rs`, `Launcher::` in the
+    /// `kui` crate — so a renamed or
+    /// removed verb is a red row and not a stale one, which is the pin
+    /// Rust's column can have without reflection.
+    #[test]
+    fn every_rust_spelling_is_a_public_fn() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let read = |p: std::path::PathBuf| std::fs::read_to_string(&p).unwrap_or_default();
+        let mut runtime = read(root.join("runtime.rs"));
+        for dir in ["runtime", "runtime/devtools"] {
+            for entry in std::fs::read_dir(root.join(dir)).unwrap() {
+                let p = entry.unwrap().path();
+                if p.extension().is_some_and(|e| e == "rs") {
+                    runtime.push_str(&read(p));
+                }
+            }
+        }
+        let ui = read(root.join("ui.rs"));
+        let session = read(root.join("session.rs"));
+        let tokens = read(root.join("tokens.rs"));
+        let launcher = read(root.join("../../kui/src/lib.rs"));
+        for d in DOORS {
+            let (ty, name) = d.rust.split_once("::").expect(d.rust);
+            let src = match ty {
+                "Ui" => &ui,
+                "Core" => &runtime,
+                "SharedResources" => &session,
+                "Tokens" => &tokens,
+                "Launcher" => &launcher,
+                other => panic!("{}: {other} is not a prefix the table knows", d.rust),
+            };
+            let (public, any) = (format!("pub fn {name}("), format!("fn {name}("));
+            assert!(
+                src.contains(&public) || (ty == "Core" && name == "env"),
+                "{}: no `{public}` in {ty}'s sources{}",
+                d.rust,
+                if src.contains(&any) {
+                    " (a private fn is)"
+                } else {
+                    ""
+                }
+            );
+        }
+    }
+
+    /// The table is one row per verb, and a `No` says why in a sentence
+    /// rather than in a word — the reasons are what ADR 0020 said a table
+    /// would be made of, and the point of building one.
+    #[test]
+    fn rows_are_unique_and_every_no_has_a_reason() {
+        let mut seen = std::collections::BTreeSet::new();
+        for d in DOORS {
+            assert!(seen.insert(d.rust), "{} is two rows", d.rust);
+            assert!(!d.doc.is_empty(), "{} has no doc", d.rust);
+            for (binding, cell) in [("C", d.c), ("Node", d.node), ("Lua", d.lua)] {
+                match cell {
+                    Is(name) => assert!(
+                        !name.is_empty() && !name.contains(' '),
+                        "{} in {binding}: {name:?} is not a name",
+                        d.rust
+                    ),
+                    As(how) | No(how) => assert!(
+                        how.len() >= 12,
+                        "{} in {binding}: {how:?} is not a reason",
+                        d.rust
+                    ),
+                }
+            }
+        }
+    }
+
+    /// The C column's spellings are the header's: `kui_` and snake case.
+    /// Node's are camelCase, optionally under one of the two classes;
+    /// Lua's snake case. A cell in the wrong column's spelling is a pasted
+    /// row.
+    #[test]
+    fn cells_are_spelled_in_their_bindings_case() {
+        let snake = |s: &str| {
+            s.bytes()
+                .all(|b| b.is_ascii_lowercase() || b == b'_' || b.is_ascii_digit())
+        };
+        for d in DOORS {
+            if let Is(c) = d.c {
+                assert!(
+                    c.starts_with("kui_") && snake(c),
+                    "{}: C cell {c:?}",
+                    d.rust
+                );
+            }
+            if let Is(n) = d.node {
+                let n = n
+                    .strip_prefix("Ctx.")
+                    .or_else(|| n.strip_prefix("KuiWindow."))
+                    .unwrap_or(n);
+                assert!(
+                    !n.contains('_') && n.starts_with(|c: char| c.is_ascii_lowercase()),
+                    "{}: Node cell {n:?}",
+                    d.rust
+                );
+            }
+            if let Is(l) = d.lua {
+                assert!(snake(l), "{}: Lua cell {l:?}", d.rust);
+            }
+        }
+    }
+}

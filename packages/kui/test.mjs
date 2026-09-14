@@ -5487,6 +5487,114 @@ test('useWindow is on both classes, and a headless Ctx is the main window alone 
   app.render();
 });
 
+// The verb table (`schema::DOORS`, backlog B1) is the one statement of
+// which doors each binding has; this is Node's pin to it, both ways. A
+// row's Node cell names a method — on both classes, or on the one it is
+// prefixed with — and every method of either class is a row's cell or one
+// of the few named here as plumbing: the wire's own ends (the binary
+// frame, the raw tokens, the encoder's warnings), the two-class mechanics
+// (`useWindow`, `pump`, `size`, `close`), and the draw list's other
+// readers beside `quads`. A method added to `lib.rs` or `index.js`
+// without a row is a red test here; a row spelling a method that is not
+// there is the same.
+test('the two classes are the verb table\'s Node column, both ways (B1)', () => {
+  const methods = (cls) =>
+    Object.getOwnPropertyNames(cls.prototype).filter((n) => n !== 'constructor' && typeof cls.prototype[n] === 'function');
+  const on = { Ctx: new Set(methods(Ctx)), KuiWindow: new Set(methods(KuiWindow)) };
+  const named = new Set();
+  for (const d of protocol().doors) {
+    if (!('is' in d.node)) continue;
+    const [cls, name] = d.node.is.includes('.') ? d.node.is.split('.') : [null, d.node.is];
+    for (const c of cls ? [cls] : ['Ctx', 'KuiWindow']) {
+      assert.ok(on[c].has(name), `${d.rust}: ${c}.prototype.${name} is not a function`);
+      named.add(`${c}.${name}`);
+    }
+  }
+  const plumbing = new Set([
+    // The wire: the binary frame and its readers, the raw tokens, the
+    // encoder's warnings, and the tree's other readers beside `quads`.
+    'frameBinary', 'setViewBinary', 'setView', 'measureTextBinary', 'setTokensRaw',
+    'warnUnknownProps', 'warnUnknownTokens', 'clips', 'fragmentDraws', 'textureDraws', 'stats',
+    // The input injection, one per `InputEvent` (the table's `handle_input` row).
+    'cursor', 'cursorLeft', 'mouse', 'scroll', 'text', 'commit', 'preedit', 'key', 'keyDown', 'keyUp',
+    'press', 'release', 'access',
+    // The two-class mechanics: the window's own loop and its lifetime.
+    'useWindow', 'pump', 'pumpUntil', 'nextDeadlineMs', 'size', 'frameStats', 'close',
+  ]);
+  const unrowed = [];
+  for (const c of ['Ctx', 'KuiWindow']) {
+    for (const name of on[c]) {
+      if (!named.has(`${c}.${name}`) && !plumbing.has(name)) unrowed.push(`${c}.${name}`);
+    }
+  }
+  assert.deepEqual(unrowed, [], 'methods with no row in schema::DOORS (a verb needs a row with its three other cells)');
+});
+
+test('cellSelection() reads a grid\'s selection as absolute lines and columns (B1)', () => {
+  // The row ADR 0017 §4 offered "because a grid's ends mean something to
+  // the app" and only Rust had. Directed like `selectionEnds()`, and the
+  // lines are the session's own: row 1 of a screen whose row 0 is line
+  // 900 is line 901, so a scroll does not move them.
+  const ctx = new Ctx();
+  const mono = { size: 14, family: 'mono', lineHeight: 20 };
+  const rows = 2, cols = 12;
+  const grid = new Uint32Array(rows * cols * 4);
+  for (let i = 0; i < rows * cols; i++) { grid[i * 4] = 'x'.codePointAt(0); grid[i * 4 + 1] = 0xffffffff; }
+  const view = box({}, [
+    el('cells', { ...mono, rows, cols, cells: grid, originLine: 900, selectable: true }, [], 'term'),
+  ]);
+  ctx.frame(400, 200, 1, view);
+  assert.equal(ctx.cellSelection(), null, 'nothing selected yet');
+  const w = Math.round(ctx.measureText('M', mono).width);
+  const at = (r, c) => ctx.cursor((c + 0.5) * w, (r + 0.5) * 20);
+  at(1, 4); ctx.mouse(true, 1); at(0, 1); ctx.mouse(false);
+  assert.deepEqual(ctx.cellSelection(), {
+    node: ctx.keyOf('term'),
+    anchor: { line: 901, col: 4 },
+    focus: { line: 900, col: 1 },
+    block: false,
+  });
+  assert.equal(ctx.selectionEnds(), null, 'a grid\'s selection is not a text selection');
+  ctx.clearSelection();
+  assert.equal(ctx.cellSelection(), null);
+});
+
+test('<input> is the stock field and <tooltip> the node form, the doors Lua and C had (B1)', () => {
+  // `<input label initial>` is `widgets::text_input`: an editor read back
+  // by its label, in the field's own chrome, and nothing else is read —
+  // the same two fields Lua's `input { }` takes. `<tooltip>` always draws
+  // where the prop is hover-gated, for a hint the view gates itself.
+  const ctx = new Ctx();
+  ctx.setDiagnostics(true);
+  ctx.frame(300, 200, 1, box({ pad: 8, width: 200 }, [
+    el('input', { label: 'search', initial: 'kui' }),
+  ]));
+  assert.equal(ctx.editText('search'), 'kui', 'the editor is keyed by its label');
+  const field = ctx.accessTree().nodes.find((n) => n.role === 'textInput');
+  assert.ok(field, 'an editor in the tree');
+  assert.equal(field.name, 'search', 'and the label is its name');
+  assert.ok(decodeQuads(ctx.quads()).some((q) => q.kind === 0), 'with the field\'s chrome behind it');
+  assert.deepEqual(ctx.warnings(), []);
+  assert.throws(() => ctx.frame(300, 200, 1, box({}, [el('input', {})])), /needs a label/);
+
+  // The node form: `value` alone, or children.
+  const hint = box({ pad: 8 }, [
+    el('box', { hoverable: true, width: 100, height: 40, bg: '#333333' }, [
+      el('tooltip', { value: 'a hint' }),
+    ]),
+  ]);
+  ctx.frame(300, 200, 1, hint);
+  const before = decodeQuads(ctx.quads()).length;
+  ctx.frame(300, 200, 1, box({ pad: 8 }, [el('box', { hoverable: true, width: 100, height: 40, bg: '#333333' }, [])]));
+  assert.ok(before > decodeQuads(ctx.quads()).length, 'the tooltip drew without a hover');
+  ctx.frame(300, 200, 1, box({ pad: 8 }, [
+    el('box', { width: 100, height: 40 }, [el('tooltip', {}, [text('legend'), text('⌘K')])]),
+  ]));
+  assert.ok(ctx.accessTree().nodes.some((n) => n.name === 'legend'), 'children are the float\'s content');
+  assert.deepEqual(ctx.warnings(), []);
+  assert.throws(() => ctx.frame(300, 200, 1, box({}, [el('tooltip', {})])), /needs a value or children/);
+});
+
 test('env() is on both classes and setEnv is only on the headless one', () => {
   // A window's runner reports the real window every frame, so a fact set on
   // one would be overwritten before the next view ran; the read is shared.

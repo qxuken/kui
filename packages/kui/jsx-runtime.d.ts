@@ -510,6 +510,19 @@ export declare namespace JSX {
     text: TextProps;
     button: ButtonProps;
     edit: EditProps;
+    /** The stock single-line field with its chrome (`widgets::text_input`):
+     *  `label` is the key and the accessible name both, `initial` the seed
+     *  (a new editor only), and nothing else is read — the same door as
+     *  Lua's `input { label= }` and C's `kui_text_input`. Read it back
+     *  with `editText(label)`; a field that needs any other row is an
+     *  `<edit>` in a box of its own. */
+    input: { key?: string | number; label?: string; initial?: string };
+    /** The node form of a tooltip (`widgets::tooltip`): a float hanging
+     *  below the parent, always drawn — where the `tooltip` prop is
+     *  hover-gated — for a hint the view gates itself
+     *  (`{hovered && <tooltip value="hint"/>}`). `value` alone is the
+     *  text; children are the float's own content. */
+    tooltip: Keyed & { value?: string; children?: KuiNode };
     /** Styled run inside a rich <text>: bold/italic/color, nestable. */
     span: SpanProps;
     /** A registered image (id from addImage). Fit sizing = pixel size as

@@ -36,6 +36,11 @@
 //! (`<edit initial>`, `<image src>`), each in both conventions;
 //! [`known_prop`] answers from them and everything else is a
 //! `diag::UNKNOWN_PROP` warning.
+//!
+//! The verbs — what an app or a host *calls* rather than declares — are
+//! the one surface this table did not cover; [`DOORS`] does (backlog B1),
+//! one row per verb with its C, Node and Lua spelling or the reason there
+//! is none, pinned by each binding's own test.
 
 use std::sync::LazyLock;
 
@@ -50,6 +55,9 @@ use crate::keyframes::Keyframe;
 use crate::spec::{Align, FontFamily, Min, NodeSpec, PadShorthand, Sizing, TextStyle, TextWrap};
 use crate::value::Value;
 use crate::window::{WindowButton, WindowConfig};
+
+mod doors;
+pub use doors::{Cell, DOORS, Door, GUEST};
 
 // Wire ids, stable within a binary protocol version (see kui-node).
 pub const P_DIR: u32 = 1;
@@ -1491,8 +1499,8 @@ pub const ELEMENTS: &[ElementDef] = &[
         lua_own: &["initial", "multiline", "autofocus"],
         jsx_rows: None,
         lua_rows: None,
-        jsx: "`<edit key initial multiline autofocus>`",
-        lua: "`edit { key=, initial=, … }`, `input { label= }`",
+        jsx: "`<edit key initial multiline autofocus>`, `<input label initial>`",
+        lua: "`edit { key=, initial=, … }`, `input { label=, initial= }`",
         c: "`kui_text_edit`, `kui_text_input`",
         doc: "Retained editor state by key; read it back with `editText(key)` after a `changed` event. `initial` seeds a new editor only — a key declared again keeps the draft the user typed, and `setEditText(name, text)` is what resets one (it leaves the caret at the end). Name it by the label its `key` prop declares — `setEditText(\'note\', text)` — or by the hex key an event carried. It reaches an editor that does not exist yet: the text is held for the frame that declares that name and seeds it there, over `initial`, so the `update` that opens a rename field can fill it in the same turn, which is what the label spelling is for — the hex key comes from an event an editor being opened has not fired. A name nothing declares on that frame drops its text with an `edit-text-without-editor` warning. A single-line editor is a field and a `multiline` one a document, which decides how each is laid out as well as how it reads: a field takes one line whatever its box, sizes to the text it holds when its width is `fit`, and scrolls that line under the caret when it is not, while a document wraps to its box. The one exception is a field with `wrap` declared (`wrap=\"word\"` or `\"glyph\"`): it folds to its width the way a document does and keeps a field\'s keyboard — Enter still submits, a newline is still never admitted, the caret still opens at the end — so a rename field breaks where the label it renames breaks, and with `width=\"fit\"` plus `maxWidth` it sizes to its wrapped draft on the keystroke frame. A single-line editor opens with the caret after its seeded text, as a native field does; a multiline one is a document and opens at its top — a held `setEditText` is the call, not a seed, so it opens at the end either way. State is kept while the key is declared; an undeclared one is kept until the budget needs the room (256 undeclared editors, longest-undeclared evicted first). `autofocus` asks once: the editor takes focus on the frame the flag starts being declared — a new editor, or one whose flag just turned on — and only while nothing holds focus, so a blur afterwards stands and a focused control is never robbed (`docs/adr/0022-focus-regions.md`, decision 9); `focus(key)` is the call for taking it at any other time.",
     },
@@ -1608,11 +1616,11 @@ pub const ELEMENTS: &[ElementDef] = &[
     },
     ElementDef {
         name: "tooltip",
-        jsx_own: &[],
+        jsx_own: &["value"],
         lua_own: &["value"],
         jsx_rows: None,
         lua_rows: None,
-        jsx: "`tooltip=\"hint\"` prop (see composites)",
+        jsx: "`<tooltip value=\"hint\"/>` / `<tooltip>…</tooltip>` nodes, or the `tooltip=\"hint\"` prop (see composites)",
         lua: "`tooltip(\"hint\")` / `tooltip { … }` nodes, or the prop",
         c: "`kui_tooltip`, `kui_tooltip_with`",
         doc: "A float hanging below the parent; the node form always draws, the prop form is hover-gated.",
