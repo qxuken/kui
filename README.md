@@ -1157,7 +1157,11 @@ through (backlog W3–W6). Which example is in which round — windowed,
 headless, by hand — is enrolled from the manifests and the example itself
 rather than a list somebody keeps ([ADR 0021](docs/adr/0021-one-subject-per-example.md));
 `smoke -- --headless` runs the headless round, which CI does, and
-`--headless --list` prints it.
+`--headless --list` prints it. Open the C hosts (`counter`, `host`) straight
+after `cbuild`, or run `cbuild` again after the headless round: that round
+rebuilds `kui_ffi.dll` as kui-lua's runner-less dependency over the one the
+hosts were linked against, and they then fail to start with
+`STATUS_ENTRYPOINT_NOT_FOUND` (backlog W16).
 
 Pushing the tag does not check the commit twice. The push to main and the push
 of the tag that names it share a concurrency group keyed by the commit, and

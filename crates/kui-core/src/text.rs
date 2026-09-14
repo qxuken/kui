@@ -1725,10 +1725,15 @@ fn emit_entry_rows(
         let x = ox + g.x + dx;
         let y = oy + g.y + r as f32 * line_h;
         // Rows only go down: past the clip's bottom nothing comes back.
-        if y > clip.rect.y + clip.rect.h {
+        // Both edges are inclusive, as the x test's are: a glyph whose ink
+        // ends exactly at the clip's top or starts exactly at its bottom
+        // has no pixel inside it, and which glyph that is depends on the
+        // face the machine resolved `Mono` to (the alpha.12 Windows round
+        // saw two, after C32 moved the face).
+        if y >= clip.rect.y + clip.rect.h {
             break;
         }
-        if y + g.h < clip.rect.y || x >= clip.rect.x + clip.rect.w || x + g.w <= clip.rect.x {
+        if y + g.h <= clip.rect.y || x >= clip.rect.x + clip.rect.w || x + g.w <= clip.rect.x {
             continue;
         }
         out.push(Quad {

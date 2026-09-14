@@ -90,9 +90,12 @@ echo "bench-check: $bench: HEAD ${head_sha:0:7} against $base (${base_sha:0:7}),
 # one-minute decay: a box that has just gone quiet still reports a load in
 # the tens, so the average both cries wolf and misses a lull that is long
 # enough to bench in. Advisory either way - what actually decides a run is
-# the two-runs-per-side spread the table reports.
+# the two-runs-per-side spread the table reports. Git for Windows' `ps`
+# has no `-o`, and under `set -eo pipefail` that failure ended the run
+# before it benched (the alpha.12 Windows round): the `|| true` keeps an
+# advisory advisory.
 cpus=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 8)
-busy=$(ps -Ao %cpu= 2>/dev/null | awk '$1 > 15 { s += $1 } END { printf "%.0f", s + 0 }')
+busy=$( (ps -Ao %cpu= 2>/dev/null || true) | awk '$1 > 15 { s += $1 } END { printf "%.0f", s + 0 }')
 if [ -n "$busy" ] && awk -v b="$busy" -v c="$cpus" 'BEGIN { exit !(b > c * 25) }'; then
   echo "bench-check: WARNING: other processes are using ~${busy}% CPU of ${cpus}00% available. These medians will be noise. Close what else is running first." >&2
 fi
@@ -294,7 +297,10 @@ if (differs) {
 }
 
 // -- README table -----------------------------------------------------------
-const readme = fs.readFileSync("README.md", "utf8").split("\n");
+// `\r?`: a CRLF checkout (Windows, autocrlf) left every row unmatched
+// against the `$` below and printed "(not in the README yet)" for all of
+// them, in the alpha.12 Windows round.
+const readme = fs.readFileSync("README.md", "utf8").split(/\r?\n/);
 const described = new Map();
 for (const line of readme) {
   const m = /^\| `([A-Za-z0-9_]+)` \| (.*) \| ~[^|]+ \|$/.exec(line);

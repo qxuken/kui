@@ -147,7 +147,7 @@ the scroll you answer with. `examples/rust/widgets/cells.rs` does both.
 [`cells` row](props.md#elements) ·
 [`scroll` event](props.md#events) ·
 [ADR 0029](adr/0029-a-selection-follows-the-pointer-past-the-edge.md) ·
-[alpha.12](../CHANGELOG.md#010-alpha12-unreleased)
+[alpha.12](../CHANGELOG.md#010-alpha12-2026-09-14)
 
 ### How does a selection follow the pointer past the edge?
 
@@ -169,7 +169,7 @@ gets its edge drag the same way, since its history is yours.
 [`onScroll` row](props.md#container-props) ·
 [`scroll` event](props.md#events) ·
 [ADR 0029](adr/0029-a-selection-follows-the-pointer-past-the-edge.md) ·
-[alpha.12](../CHANGELOG.md#010-alpha12-unreleased)
+[alpha.12](../CHANGELOG.md#010-alpha12-2026-09-14)
 
 ### How do I pan a canvas with a drag?
 
@@ -395,7 +395,7 @@ the wheel under the held press and the Shift-click that extends
 
 [`selectionrange` and `text` events](props.md#events) ·
 [ADR 0017](adr/0017-selection-as-a-scope.md) ·
-[alpha.12](../CHANGELOG.md#010-alpha12-unreleased)
+[alpha.12](../CHANGELOG.md#010-alpha12-2026-09-14)
 
 ### How do I give the editor I own a mouse and a clipboard?
 
@@ -416,7 +416,7 @@ input and every frame; headless, `takeMenuActions()` hands them out and
 `commit(text)` answers the paste.
 
 [`drag` and `text` events](props.md#events) ·
-[alpha.12](../CHANGELOG.md#010-alpha12-unreleased)
+[alpha.12](../CHANGELOG.md#010-alpha12-2026-09-14)
 
 ### How do I make the caret I draw blink?
 
@@ -435,7 +435,7 @@ the off phase drawn, and how a C host with its own window drives it
 `keyframes` for this: they ask for a frame every vsync and never stop.
 
 [`caret_visible`](props.md#env) ·
-[alpha.12](../CHANGELOG.md#010-alpha12-unreleased)
+[alpha.12](../CHANGELOG.md#010-alpha12-2026-09-14)
 
 ### How do I reset an editor's text?
 
@@ -469,7 +469,7 @@ glyph. `wrap="none"` is the plain field; a `multiline` editor wraps either
 way.
 
 [`edit` element](props.md#elements) · [`wrap`](props.md#text-props) ·
-[alpha.12](../CHANGELOG.md#010-alpha12-unreleased)
+[alpha.12](../CHANGELOG.md#010-alpha12-2026-09-14)
 
 ### How do I keep a panel's controls out of my app's Tab ring?
 
@@ -847,7 +847,7 @@ did not.
 
 [`system.*` rows](props.md#env) ·
 [`system` event](props.md#events) ·
-[alpha.12](../CHANGELOG.md#010-alpha12-unreleased)
+[alpha.12](../CHANGELOG.md#010-alpha12-2026-09-14)
 
 ### How do I see what the core thinks is misconfigured?
 

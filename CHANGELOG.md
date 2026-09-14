@@ -17,7 +17,7 @@ for the reader deciding whether to upgrade. Earlier sections keep the shape
 they shipped with and are not retrofitted (backlog F31, from the alpha.8
 field reports).
 
-## 0.1.0-alpha.12 (unreleased)
+## 0.1.0-alpha.12 (2026-09-14)
 
 **What breaks.**
 
@@ -1451,6 +1451,30 @@ field reports).
   `scripts/bench-check.sh`, since it is the one row that sees a
   per-float cost.
 
+- **A wrapped long line's edge glyphs are culled like everything
+  else's** (found by the alpha.12 Windows round). `emit_entry_rows` — the
+  wrapped long-line path C19 added — dropped a glyph horizontally when
+  its ink merely touched the clip's edge (`x >= right`, `x + w <= left`)
+  and vertically only when it crossed it (`y > bottom`, `y + h < top`),
+  so a glyph whose ink ended exactly at the clip's top or began exactly
+  at its bottom — no pixel inside — was still pushed. Which glyph that
+  is depends on the face `Mono` resolves to and on where the scroll
+  offset lands a row, which is why `long_line.rs`'s "every glyph drawn
+  is inside the view" passed on every machine until C32 moved the face
+  this one picks: at 12,000 px down, two of 417 glyphs sat on the
+  boundary. Both vertical tests are inclusive now, as the horizontal
+  pair always were. The unwrapped path (`emit_entry`) has the same
+  asymmetry and is left alone for this release: every text takes it,
+  and the corpus counts its quads.
+
+- **`scripts/bench-check.sh` runs on Windows** (the same round). Two
+  things a macOS shell never met: Git for Windows' `ps` has no `-o`, and
+  under `set -eo pipefail` the CPU-load advisory's failed substitution
+  ended the run before it built anything; and a CRLF checkout left every
+  README row unmatched against the table regex's `$`, so the refreshed
+  table said "(not in the README yet)" for all thirty-two. `|| true`
+  on the advisory and `\r?` on the split. Repo tooling, not API.
+
 ### What you can delete
 
 The `isDark ? light : dark` branch in front of every app colour that
@@ -1503,6 +1527,110 @@ frame (F44).
   countdown needs and the one a stopped one can afford, and the
   `idlePumpMs` raised to compensate: `every` reads the model now.
 - The `@ts-expect-error` on `clock` in a `runWindowed` call.
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), run before this tag on
+2026-09-14 on `main` over the 102 commits since alpha.11. What follows is
+what executed on what. One platform this time: the round ran on Windows
+only, and the macOS half — `cargo test --workspace` against the real
+SDK, the AX audit, the gestures on the by-hand list — was not run for
+this tag.
+
+**Windows 11 Pro 26200 (x64), rustc 1.98.1, Node 25.2.1, MSVC 14.52**,
+Ryzen 9 9950X3D and an RTX 5080 at 3840×2160. `cargo fmt --all --check`
+and `cargo clippy --workspace --all-targets -- -D warnings` are clean.
+`cargo test --workspace`: **1177 tests over 93 suites, 0 failed** (1
+ignored, the devtools' `drive.rs` doc example), from alpha.11's 1036
+over 89. The scene corpus runs in all four adapters against one
+reference report: **36 scenes** — `sampler`, `tokens`, `cells-scroll`,
+`selection-extend` and `selection-scroll` new since alpha.11's 31 — Rust and Lua
+through `cargo test`, C through `target/debug/conformance` (the header
+at **366 fields, 245 enum members and 213 prototypes**, from 344 / 224 /
+187, matched against the MSVC layout by the parity assert; the 213 are
+the DLL's 211 exports and the two runner entry points), Node through
+`npm test` with `KUI_CONFORMANCE_REQUIRED=1` (**158 Node tests, 157
+passed, 0 failed, 1 skipped** — the `RTLD_GLOBAL` pin alpha.11 taught
+to skip on a platform with no dlopen flags — from 124). The C round,
+`cbuild --run`, passes its **six checks** against **ABI 16**: the C
+counter's drive, the header walk with every prototype called, a C host
+loading the C panel, the same plugin in a Rust host, the Windows plugin
+importing from the Rust host, and the plugin with `kui_ext_abi` deleted
+refused with the number. `npm run gen` leaves the three generated files
+unchanged on Windows — W13's `titlebar_h` drift is gone, and the only
+diff it makes is the line endings a CRLF checkout adds. `npm run
+typecheck` on `examples/node` is clean. The headless round, `smoke --
+--headless`, passes all **26 drives**, from 22: C36's three app-shaped
+examples and C38's `clipboard` are new in it.
+
+**The windowed round**, `cargo run -p kui-devtools --bin smoke -- --node`:
+**32 Rust examples on both bases and the five Node windows, 120 frames
+each, every one exiting 0 with nothing on stderr** — 69 windows, from
+alpha.11's 66 (`clipboard` new on both sides). The C and Lua hosts by
+hand under `KUI_SMOKE_FRAMES=120`: `counter.exe`, `host.exe`, `c_panel`
+and `lua_panel` each opened a window and exited 0, warning-free — **73
+windows over five hosts.**
+
+**What the round found.** One test, one script, one ordering, one
+bench row.
+
+- `cargo test --workspace` failed on the first run, in one test:
+  `long_line::scrolling_down_shapes_what_scrolls_in_and_draws_it_in_the_view`,
+  "every glyph drawn is inside the view". Two of 417 glyphs sat exactly
+  on the view's edge — ink ending at y = 0, ink starting at y = 100 —
+  admitted by the wrapped long-line path's vertical cull, which was
+  strict where its horizontal cull was inclusive. Which glyph lands
+  there depends on the face `Mono` resolves to, and C32 moved that face
+  on this machine between the tags; the test had passed on alpha.11's
+  Windows round with the italic one. The cull is inclusive on both axes
+  now (**Fixed** above); the second run is 1177 / 0.
+- `scripts/bench-check.sh` exited before benching: Git for Windows'
+  `ps` has no `-o`, and `set -eo pipefail` turned the CPU-load
+  advisory's empty read into an exit. With that and the README table's
+  `\r` fixed (**Fixed** above), it ran — for the first time on Windows;
+  C29's sweep last release used `cargo bench` directly.
+- The four hosts by hand failed to start on the first try, `counter.exe`
+  and `host.exe` with `STATUS_ENTRYPOINT_NOT_FOUND`: `target/debug/
+  kui_ffi.dll` had been rebuilt under the headless round as kui-lua's
+  runner-less dependency (211 exports, no `kui_run`) over the one
+  `cbuild` linked the hosts against. Rerunning `cbuild` — a fingerprint
+  check — put it back and all four opened. Filed as **backlog W16**
+  with the two fixes to choose between; the README's recipe says the
+  order until then.
+- **The bench guard, read honestly.** Against alpha.11 on this machine,
+  the first run flagged one guarded row, `frame_10k_rects_with_text_and_hits`,
+  at **+19.6%** (1.12 → 1.34 ms, ±2.8% run-to-run), and a second run of
+  that row alone at +12.9% (1.27 → 1.43 ms). A bisect with the row as
+  its oracle landed inside the noise (1.359 vs 1.367 ms), so the
+  seventeen core commits from AR16 to HEAD were swept in tree order,
+  two runs each in one worktree, the lower median kept: **every one
+  reads between 1.33 and 1.39 ms, HEAD at 1.35 against the tag's 1.29
+  in the same worktree (+4.6%), with no step at any commit.** A third
+  guard run then read the row *unreadable* at ±12.0% — with the
+  alpha.11 side itself at 1.41 ms, a tenth above what it read an hour
+  earlier. The row is bimodal here by about 10%: two readings cluster
+  at 1.27–1.34 and two at 1.41–1.43, on both sides of the tag, which is
+  what a bench looks like when the scheduler moves it between a
+  9950X3D's two CCDs (one carries the V-cache). The first run paired a
+  low base with a high HEAD. The verdict is that **no regression is
+  demonstrated** on this row and the machine cannot read it to 10%; on
+  the M3 Pro, where the guard has run every release, the row reads to
+  ±3% and the next macOS round is where it is settled. The other six
+  guarded rows: `deep_nesting_64_levels` +1.7%, `frame_10k_rects`
+  +1.7%, `frame_10k_rects_with_access_tree` +0.6% on the clean run
+  (unreadable at ±16.6% on the first), `frame_10k_segments` **−4.3%**
+  (C29's chrome skip, holding), `frame_1k_typical` +0.5% to +5.5%
+  across runs, `list_10k_rows_virtual` +0.7%. Unguarded, nothing over
+  ±6%. The README's table is left at its 2026-09-11 M3 Pro numbers
+  rather than refreshed from a machine that reads one row two ways.
+
+**Not run for this tag:** the macOS round — `scripts/ax-audit.swift`
+(106/106 on alpha.11), the three gestures on the by-hand list captured
+mid-press, `lua_panel`'s window looked at rather than counted, and the
+AppKit half of ADR 0030's Edit menu (W14, W15) that was checked by hand
+while it was built on 2026-09-14 and not again here. The by-hand list
+in `docs/BACKLOG.md` ("After alpha.12") carries what a macOS session
+should open first.
 
 
 ## 0.1.0-alpha.11 (2026-09-11)
