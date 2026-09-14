@@ -447,7 +447,11 @@ mod backend {
             audio.warm();
             assert!(audio.holds_device(), "warm holds the device");
             // Let the open land, the way the ~90 ms one does in an app.
-            let deadline = std::time::Instant::now() + Duration::from_secs(3);
+            // Ten seconds, not three: right after a windowed smoke round
+            // (seventy processes each opening and closing the HAL) the
+            // open took over three on a Mac, and a slow open is not a
+            // failed one — this test read as red for it (2026-09-14).
+            let deadline = std::time::Instant::now() + Duration::from_secs(10);
             while matches!(audio.device, Device::Opening(_)) && std::time::Instant::now() < deadline
             {
                 std::thread::sleep(Duration::from_millis(20));
