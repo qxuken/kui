@@ -17,6 +17,10 @@ for the reader deciding whether to upgrade. Earlier sections keep the shape
 they shipped with and are not retrofitted (backlog F31, from the alpha.8
 field reports).
 
+## 0.1.0-alpha.13 (unreleased)
+
+Nothing yet.
+
 ## 0.1.0-alpha.12 (2026-09-14)
 
 **What breaks.**
