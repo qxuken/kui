@@ -626,3 +626,30 @@ fn a_wrapped_rich_line_draws_a_background_on_every_row_it_covers() {
     let g = core.scroll_geometry(view).unwrap();
     assert!(g.content.h > 10.0 * LH, "{}", g.content.h);
 }
+
+// ---- C44 -------------------------------------------------------------
+
+/// A long line of three-byte characters and no whitespace: every window
+/// edge but one falls inside a character, which `chunk_ranges` sliced at
+/// and panicked on — for any long line, plain or rich, since alpha.9.
+#[test]
+fn a_multibyte_character_on_a_chunk_edge_is_not_a_panic() {
+    let mut core = Core::new();
+    // U+FFFD is what a lossy decode of a binary is made of; 1024 % 3 = 1,
+    // so the first window's end is one byte into a character.
+    let text: String = std::iter::repeat_n('\u{FFFD}', 4000).collect();
+    let (view, node, glyphs) = frame(&mut core, &text, None);
+    assert_eq!(core.long_lines(), 1);
+    assert!(glyphs > 0, "nothing drawn");
+    // The chunks cover the content, and a caret query into a later chunk
+    // answers — both walk the ranges that used to be cut mid-character.
+    assert!(core.caret_rect(node, 9_000).is_some());
+    assert!(core.scroll_geometry(view).unwrap().content.w > 0.0);
+    // Rich, the same (a span boundary inside is also a char boundary).
+    let spans = [
+        Span::new(&text[..3000]).color(red()),
+        Span::new(&text[3000..]),
+    ];
+    rich_frame(&mut core, &spans, None);
+    assert_eq!(core.long_lines(), 2);
+}

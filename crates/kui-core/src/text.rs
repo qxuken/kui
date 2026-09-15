@@ -660,7 +660,13 @@ fn chunk_ranges(content: &str) -> Vec<(usize, usize)> {
     let mut out = Vec::with_capacity(content.len() / CHUNK_BYTES + 1);
     let mut start = 0usize;
     while start < content.len() {
-        let window_end = (start + CHUNK_BYTES).min(content.len());
+        // The window's end floored to a char boundary: a multibyte
+        // character straddling `start + CHUNK_BYTES` is the window's, not
+        // the next one's, and slicing inside it was a panic (backlog C44).
+        let mut window_end = (start + CHUNK_BYTES).min(content.len());
+        while !content.is_char_boundary(window_end) {
+            window_end -= 1;
+        }
         let end = if window_end == content.len() {
             window_end
         } else {

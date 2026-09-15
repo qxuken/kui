@@ -118,6 +118,85 @@ was the first bare bump to break an app in five releases).
   cosmic-text's shape-run cache warm for every word but the edited one.
   The table says so; the alpha.9 outcome is left as written, with its
   number, since the archive is what was measured then.
+- **The README's bench table is refreshed** for the first time since the
+  machine moved to macOS 27 — the pre-tag guard run against alpha.14 was
+  quiet (worst guarded spread 3.7%), so its HEAD medians are the table's;
+  alpha.13's own code reads ~9% slower under 27.0 than the table recorded
+  under 26.6.2, so the absolute numbers moved with the OS, not the code.
+
+### Fixed
+
+- **A long line with a multibyte character on a chunk edge panicked**
+  (backlog C44, found by the pre-tag round's field check — kawoosh on
+  this tree opening a 2.6 MB font — and fixed before the tag).
+  `chunk_ranges` cut each ~1 KB window at a byte and sliced the content
+  there to look for whitespace, so a character straddling byte 1024 (or
+  2048, …) of a long line was a slice inside a `char`: `end byte index
+  2942 is not a char boundary`, on the first frame, for any long line
+  with a multibyte character at the wrong offset — a lossy-decoded binary
+  every time (U+FFFD is three bytes, 1024 % 3 = 1), a log line with an
+  arrow in it or prose past 4 KB with a curly quote when unlucky — since
+  the chunked path shipped in alpha.9. The window's end is floored to a
+  char boundary now; one test pins it, plain and rich.
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), run before this tag
+in the night of 2026-09-16 on `main` after `29d4a3e` — the C42/C43
+round, its review and its formatting, three commits after the alpha.14
+tag, plus C44 found and fixed inside this round. What follows is what
+executed on what.
+
+**macOS 27.0 (26A428, arm64, Apple M3 Pro), Xcode 27.0, rustc 1.98.0,
+Node 26.8.1.** `cargo fmt --all --check` and `cargo clippy --workspace
+--all-targets -- -D warnings` are clean. `cargo test --workspace`:
+**1220 tests over 95 suites, 0 failed** (1 ignored, the devtools'
+`drive.rs` doc example), from alpha.14's 1215 — before C44's test, which
+makes 1221. The scene corpus runs in all four adapters against one
+reference report: **38 scenes**, Rust and Lua through `cargo test`, C
+through `target/debug/conformance` (the header at **374 fields, 255 enum
+members and 229 prototypes**, unchanged — nothing in this release
+touched the ABI, which stays **18**, or the Node frame, which stays
+**version 14**), Node through `npm test` (**168 Node tests, 168 passed,
+0 skipped**). The C round, `cbuild --run`, passes its five checks and the
+conformance replay. `npm run gen` regenerated `props.md`,
+`jsx-runtime.d.ts` and `index.d.ts` and the tree carries the result (a
+zero-line diff). `npm run typecheck` on `examples/node` is clean, and
+the examples lockfile matches the linked package. The headless round,
+`smoke -- --headless`, passes all **28 drives**.
+
+**The windowed round**, `cargo run -p kui-devtools --bin smoke --
+--node`: **34 Rust examples on both bases and the eight Node windows,
+120 frames each, every one exiting 0 with nothing on stderr** — 84
+windows. The C and Lua hosts by hand under `KUI_SMOKE_FRAMES=120`:
+`counter`, `host`, `c_panel` and `lua_panel` each opened a window and
+exited 0, warning-free — **88 windows over five hosts.** The AX audit
+against `accessibility`: **106/106**.
+
+**Driven by hand, the field case itself.** No example holds a long rich
+line, so the round ran kawoosh — its `kui` by path on this tree, release
+— on a 2.6 MB `.ttf`, the shape of file that filed C42, with its
+`:kui_framerate_hud` on. The first attempt panicked on the first frame:
+**C44**, above, fixed and re-run. On the fix: the file opened, `:400`
+landed, and sixty caret moves over the rows (each an `ex` line through
+the instance's socket) filled the HUD's ring at **2.68 ms a frame
+average, 36.6 ms at the worst**, against the **17.9 / 229 ms** the
+report that filed C42 read on alpha.14 — the frame captured from the
+window, not read from the tree.
+
+**The bench guard**, run alone against the alpha.14 tag on a quiet
+machine (worst guarded spread 3.7%): every guarded row within its own
+noise — `deep_nesting_64_levels` −0.8%, `frame_10k_rects` −1.8%,
+`frame_10k_rects_with_access_tree` +0.2%,
+`frame_10k_rects_with_text_and_hits` +1.0%, `frame_10k_segments` +3.9%
+at ±3.7%, `frame_1k_typical` +2.1%, `list_10k_rows_virtual` −0.2% — and
+every unguarded row "same"; `frame_1k_curves` reads 285 → 287 µs, so
+**C41** (alpha.14's +10% on that row, bisected to the drop-zone commit)
+is neither worse nor addressed and the tag carries it as alpha.14 did.
+The README's table is refreshed from this run (the first since the OS
+moved), and its `long_line` rows from the same day's `--bench
+long_line`: the three new rows, and `long_line_100k_edit` at its honest
+number.
 
 ## 0.1.0-alpha.14 (2026-09-15)
 

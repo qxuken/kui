@@ -25,8 +25,10 @@ the seventy-four closed between the alpha.11 and alpha.12 tags —
 F36, F42–F54, T5, B1a, C29–C39, W13–W15 and AR7–AR50 — went with the
 alpha.12 tag on 2026-09-14, the largest move so far, the twelve of
 the two rounds of 2026-09-15 — F55–F61 and K1–K4 — with the alpha.13
-tag, and the eight of the four rounds of the same day — W17, W18,
-F62–F66 and C40 — with the alpha.14 tag. The index
+tag, the eight of the four rounds of the same day — W17, W18,
+F62–F66 and C40 — with the alpha.14 tag, and the three of 2026-09-16 — C42 and C43 from the kawoosh
+binary-file report, C44 from the pre-tag round that followed — the day
+they were filed, before the alpha.15 tag. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -70,7 +72,7 @@ architecture review (forty-four entries under ten decisions, every one
 built on 2026-09-14), the standard-menus round, and the pre-tag round's
 own two finds. C26 was the last split entry, and it closed on 2026-09-11.
 
-Ordered by area, not by priority. What to do next is under "After alpha.13".
+Ordered by area, not by priority. What to do next is under "After alpha.14".
 
 **Legend** — `!` a defect that ships today · `~` a gap with no workaround ·
 `.` cost without correctness risk.
@@ -364,7 +366,7 @@ moved whole to
 before the alpha.10 tag, W7 last — the one that wanted a decision rather
 than a patch, settled as: a displacement moves a subtree by whole physical
 pixels, scrolling included. Nothing from the round is open; what it did
-not cover is in "After alpha.13" below.
+not cover is in "After alpha.14" below.
 
 ## From two alpha.9 field reports and a bake-off (2026-09-08)
 
@@ -1146,10 +1148,22 @@ itself can do is under "theirs".
 - A syntax-run cap on long lines (vim's `synmaxcol`, VS Code's 20k
   tokenisation cap) is the editor's policy, not the toolkit's.
 
-## After alpha.13
+## From the alpha.15 pre-tag round (2026-09-16)
+
+The round that tagged alpha.15, run the night C42 and C43 were built.
+Every check passed; the one gesture the round owed that no example
+covers — kawoosh itself, on this tree, opening a 2.6 MB font with its
+framerate HUD on — found a panic on the first frame, in code that had
+shipped six releases earlier. One entry, **built 2026-09-16** in the
+round and in the archive.
+
+## After alpha.14
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
-alpha.12" until 2026-09-15, when the four rounds between the alpha.13
+alpha.13" until 2026-09-16, when the two rounds between the alpha.14 and
+alpha.15 tags — the kawoosh binary-file report and the pre-tag round's
+own find, three entries, every one built the day it was filed — had
+landed and the heading moved with the tag; "After alpha.12" until 2026-09-15, when the four rounds between the alpha.13
 and alpha.14 tags — the macOS 27 round, the two alpha.13 upgrade
 reports, the kawoosh terminal report and the drop-zone ask, eight
 entries, every one built the day it was filed — had all landed and the
@@ -1493,7 +1507,7 @@ Every closed entry, all in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) and all verbatim — one heading
 per id, and `tests/docs.rs` holds every id to one entry across both files.
 This index is here so an id resolves without opening that file: the open items
-above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.13" and
+above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.14" and
 the hygiene note cite C2, C5(b), P3, R4 and R7, and code comments, ADRs and
 commit messages cite ids of their own. All of them are whole in the
 archive. **C11**, **W2** and **C15** were each split for a while — an entry
@@ -1855,3 +1869,7 @@ move.
 
 - `~` **C42** — [`rich_text` never takes the long-line path: a 50 KB line with one styled span is shaped whole, and a screenful of them thrashes the cache](backlog/closed-2026-09.md#-c42--rich_text-never-takes-the-long-line-path-a-50-kb-line-with-one-styled-span-is-shaped-whole-and-a-screenful-of-them-thrashes-the-cache--done-2026-09-16) — done (2026-09-16) — rich chunks of the sliced spans, decorations on the wrapped rows
 - `.` **C43** — [A long line's cache key is a byte-serial FNV of its whole content, every frame](backlog/closed-2026-09.md#-c43--a-long-lines-cache-key-is-a-byte-serial-fnv-of-its-whole-content-every-frame--done-2026-09-16) — done (2026-09-16) — `key::hash_bulk`, the newline scan only on a miss; the app-supplied key not built
+
+**From the alpha.15 pre-tag round (2026-09-16)** — C44, found by kawoosh on this tree and built in the round
+
+- `!` **C44** — [A long line with a multibyte character on a chunk edge panics in `chunk_ranges`](backlog/closed-2026-09.md#-c44--a-long-line-with-a-multibyte-character-on-a-chunk-edge-panics-in-chunk_ranges--done-2026-09-16) — done (2026-09-16) — the window's end floored to a char boundary
