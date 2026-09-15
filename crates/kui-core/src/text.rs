@@ -396,9 +396,9 @@ impl<'a> Span<'a> {
     }
 }
 
-/// A [`Span`]'s attributes with its byte range in the paragraph, owned:
-/// a long rich line keeps these beside its content and hands each chunk
-/// the spans that intersect it, sliced (backlog C42).
+/// A [`Span`]'s attributes without its text, owned: what a long rich
+/// line keeps per span, with the range in [`OwnedSpan`], so a chunk can
+/// be handed the spans that intersect it, sliced (backlog C42).
 #[derive(Clone, Copy)]
 struct SpanAttrs {
     color: Option<Color>,
@@ -1434,11 +1434,22 @@ impl TextSystem {
     /// the prefix sums if its width was an estimate. Returns whether it
     /// shaped now — what tells a wrapped line its rows need breaking.
     fn ensure_chunk(&mut self, key: u64, i: usize, res: &Resources, fs: &mut FontSystem) -> bool {
-        let (text, spans, style, chunk_key, known) = {
+        let (chunk_key, known) = {
+            let c = &self.long(key).expect("a long line").chunks[i];
+            (c.key, c.width)
+        };
+        let frame_no = self.frame_no;
+        if known.is_some()
+            && let Some(e) = self.run_mut(chunk_key)
+        {
+            e.last_used = frame_no;
+            return false;
+        }
+        // Shaping now: the chunk's text and its spans rebased to the
+        // slice, copied out so the line stays in the map meanwhile.
+        let (text, spans, style) = {
             let line = self.long(key).expect("a long line");
             let c = &line.chunks[i];
-            // The chunk's spans, rebased to the slice: what `shape_chunk`
-            // is handed, the line itself staying in the map meanwhile.
             let first = line.spans.partition_point(|s| s.end <= c.start);
             let spans: Vec<OwnedSpan> = line.spans[first..]
                 .iter()
@@ -1449,21 +1460,8 @@ impl TextSystem {
                     attrs: s.attrs,
                 })
                 .collect();
-            (
-                line.content[c.start..c.end].to_string(),
-                spans,
-                line.style,
-                c.key,
-                c.width,
-            )
+            (line.content[c.start..c.end].to_string(), spans, line.style)
         };
-        let frame_no = self.frame_no;
-        if known.is_some()
-            && let Some(e) = self.run_mut(chunk_key)
-        {
-            e.last_used = frame_no;
-            return false;
-        }
         let k = self.shape_chunk(&text, &spans, 0, text.len(), &style, res, fs);
         let w = self.run(k).expect("just interned").intrinsic.w;
         let line = self.long_mut(key).expect("just read");
@@ -2027,19 +2025,21 @@ fn emit_entry_rows(
                 clip: clip_id,
                 uv: [0; 4],
             };
-            match d.style {
-                _ if d.under => out.push(quad),
-                UnderlineStyle::Solid => out.push(quad),
-                style => crate::deco::push_line(
+            // A background or a solid line is its rect; a wave or dots
+            // are pieces built around it, as in `emit_entry`.
+            if d.under || d.style == UnderlineStyle::Solid {
+                out.push(quad);
+            } else {
+                crate::deco::push_line(
                     out,
-                    style,
+                    d.style,
                     x,
                     y,
                     b - a,
                     d.h,
                     d.color.unwrap_or(color),
                     clip_id,
-                ),
+                );
             }
         }
     };
