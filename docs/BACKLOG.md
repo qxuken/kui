@@ -4,7 +4,8 @@ From the architecture review of `93169ed` (2026-09-03), after 0.1.0-alpha.5,
 the six rounds that followed it, and the field reports from two apps built on
 alpha.6 through alpha.12 outside this repo (F1–F15 on 2026-09-06,
 F16–F31 on 2026-09-07, F32–F35 on 2026-09-08, F37–F41 on
-2026-09-09, F42–F49 and F50–F54 on 2026-09-12, F55–F61 on 2026-09-15)
+2026-09-09, F42–F49 and F50–F54 on 2026-09-12, F55–F61 and F62–F66
+on 2026-09-15)
 and, on 2026-09-15, the first requirements list a consumer wrote
 against kui (K1–K4). Every item names the
 evidence that produced it, so a task that turns out to be wrong can be argued with rather
@@ -38,7 +39,11 @@ round after, on 2026-09-11), W16 from the alpha.12 pre-tag round (the
 headless round overwriting `kui_ffi.dll` under the C hosts, filed with
 two fixes to choose between), two of the three editor wishes parked at
 the end of the third editor-and-mux round (the third, the underline, is
-K4 — a view asked, and it is built), the two rounds of 2026-09-15 keeping only their introductions (their
+K4 — a view asked, and it is built), the two alpha.13 upgrade reports
+and the kawoosh terminal report of the same day — F62–F65, four small
+ones from the reports, and F66, a `cells` node drawing box-drawing
+glyphs from a font that cannot know the cell's height, the one defect
+filed since the tag — the two rounds of 2026-09-15 keeping only their introductions (their
 twelve entries — F55–F61 from the alpha.12 reports, K1–K4 from the
 kawoosh list — were built the day they were filed and went to the
 archive with the alpha.13 tag), and the "theirs, not ours" lists the
@@ -986,6 +991,272 @@ written; all four moved whole to
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md#from-the-kawoosh-requirements-list-2026-09-15)
 with the alpha.13 tag.
 
+## From the two alpha.13 upgrade reports (2026-09-15)
+
+Both apps upgraded to alpha.13 the day it was tagged and reported: the
+mind map's `FINDINGS.md` (alpha.12 → alpha.13) and the LCARS pomodoro's
+`docs/kui-alpha-13.md` (wishes 1–3). The bare bump was a drop-in for
+both — where alpha.12 had broken one on a fix — and the first release
+where the mind map's `preview:check` script, not a hand
+comparison, got to say so. All four alpha.12 wishes came back (F56–F59)
+and the reports measured them: the pomodoro's smoke test asserts
+`live=1` on the frame after the click where alpha.12's had to write a
+paragraph about why it could not wait on `live` at all; its child
+process is gone, two `runWindowed`s in one process; the mind map opened
+three windows in a row where alpha.12 refused the second with
+`EventLoop can't be recreated`; and the wide tier under reduced motion,
+which alpha.12's notes left under *Ours to fix*, dropped from 2.9% to
+1.9% of a core with nothing changed in the app (F57). The mind map's
+suite also stopped pressing the chord no keyboard produces (F60): `redo
+removes it again` presses `Z` now, and the freed slot presses ⌃Y, which
+the alpha.12 report guessed worked and no check had ever pressed.
+
+Every claim below was checked against this tree before it became an
+entry. Four are small: three wishes the pomodoro wrote and one note the
+mind map recorded and did not file. Nothing here is a defect a user
+sees; the one of those this round produced came from a third app and
+is the section after this one (F66).
+
+### `.` F62 — `frameStats().frames` is the ring's length, and nothing counts pumps
+
+**Symptom** (pomodoro, wish 1): the release measured F57 as "67 → 29
+pumps a second" with a scratch probe through a forwarding surface, and
+the app measured it as 2.9% → 1.9% through `top`, "because the runner
+knows how often it pumped and the app cannot ask". A `pumps` beside
+`frames` would let the smoke test assert the backoff — under N pumps
+over the pinned window's first second — where today only a process
+monitor can.
+
+**Checked.** Worse than the report says: `frames` is not a counter
+either. `frame_stats_json` (`crates/kui-node/src/lib.rs`) writes
+`stats.len()`, and `FrameStats` is a 120-sample ring
+(`STATS_CAPACITY`, `crates/kui-core/src/stats.rs`) — `frames` climbs
+to 120 in the first two seconds of a running window and stays there.
+The doc says "over the last 120 frames" for the averages and does not
+say it for `frames`, so a test reading `frames` as a total is reading
+the wrong number after 120 of them. And the pump count lives nowhere:
+`runWindowed`'s `pump()` in `index.js` calls `win.pump()` and counts
+nothing, and the runner beneath it has no counter to read.
+
+**Do:** two monotonic totals on `FrameTiming` — `framesTotal` (or
+rename: the ring length is not a public fact, but `frames` has shipped
+under that name since the HUD and a rename is a break for nothing) and
+`pumps`, the number of `pump()` calls the window has taken. `pumps` is
+a `u64` on the runner incremented where `PumpRunner::pump` runs its
+turn, and `frames_total` a `u64` beside the ring's `push`. The doc on
+`frames` says it saturates at 120. Pin in `test.mjs` beside the F57
+pacer test: a stopped app with a once-a-second tick takes fewer pumps
+in its second second than in its first 100 ms after a click. Then the
+pomodoro's bench can be an assertion rather than a `top` reading.
+
+### `.` F63 — What `env.audio.live` reads for a play that waited on an open the device then refused
+
+**Symptom** (pomodoro, wish 2): the smoke test's assertion on the
+click's frame — `live=1` while `device=opening` — guards on `device
+=== 'failed'` because "this machine cannot show the answer". A
+sentence on the row — counted until the refusal, or never — would let
+the guard be an assertion of its own.
+
+**Checked, and the answer is *counted until the refusal*.** `Audio::env`
+(`crates/kui/src/audio.rs`) reads `live` as `playing.len() +
+pending.len()`, and a play that arrives while `Device::Opening` goes
+to `pending`, so it counts from the frame it was asked. When the open
+answers with an error, `opening()` sets `Device::Failed`, the next
+`apply` flushes `pending` through `manager()`, which is `None` for a
+failed device, and every flushed play lands in `refused` — the core
+hears `{kind:"sound", phase:"refused"}` (AR20) and `live` reads 0 on
+the apply that flushed it (`flush_pending`). So the sequence a machine with no output device shows is
+`device=opening live=1` → `device=failed live=0` with a refusal event
+between, and the pomodoro's guard can assert exactly that. The
+`a_device_that_failed_to_open_refuses_a_play` test already pins the
+refusal half; nothing pins `live` across it.
+
+**Do:** the sentence, on the `live` row of `AudioEnv` in `index.d.ts`
+(and wherever the C and Lua docs repeat it): "a play waiting on the open counts here
+until the open answers; if the device refuses, the play is refused on
+the next apply and leaves the count with it". One assertion in the
+existing test: `env().live` is 1 while the play waits and 0 after the
+apply that refuses it. Nothing changes in behaviour.
+
+### `.` F64 — `settled()` never resolves while a keyframe cycle runs, and nothing separates a transition owed from a cycle running
+
+**Symptom** (pomodoro, wish 3): the unpinned window never settles
+because a `repeat="alternate"` keyframe cycle never ends, so the smoke
+test waits on `frame()` and cannot use the wait that means "nothing
+owed". A `settled({ ignoreKeyframes: true })`, or a reading that
+separates a transition owed from a cycle running, would let the first
+window assert what the second one does.
+
+**Checked.** `animating()` (`crates/kui-core/src/runtime.rs`) is one
+bool over five sources — the anim store's `active`, `depart`, a
+requested frame, `tree.any_animate`, autoscroll — and the anim store
+sets `active` for a keyframed slot on every frame ("a keyframed slot
+always owes a frame", `keyframes_cycle_in_every_direction` in
+`anim.rs`). A looping keyframe is, to the driver, indistinguishable
+from a transition mid-flight, which is right for the driver — it must
+schedule the frame either way — and useless for a test that wants to
+know whether the *transitions* have run out. `settled` in `index.js`
+resolves on `!animating()` and nothing else, so under a cycle it
+resolves only at `maxMs`, with `animating()` still true, which is what
+`runOut` returning its cap says headless.
+
+**Do:** not an option on `settled` — a wait that ignores something is
+a wait that lies — but a second reading beside `animating()`: what is
+owed, by kind. `AnimStore` knows at `sample` time whether the
+transition it stamped is a `repeat` cycle or a finite tween; keep two
+flags where it keeps `active` — `owes_transition` and `owes_cycle` —
+and expose `Core::animating_why()` (name open) as `{ transition,
+cycle, depart, requested, autoscroll }`, with `animating()` unchanged
+as their `||`. Then `settled` gains no option and `WindowLoop` gains
+`quiet(maxMs)`: resolves when nothing but a cycle is owed. The
+pomodoro's first window asserts `quiet()` where its second asserts
+`settled()`. Small: two bits in the anim store, one door, one wait written like
+`settled`.
+
+### `.` F65 — A headless press's default `physical` is `code` verbatim, and a window's is lower-case
+
+**Symptom** (mind map, "one note from the log, not a finding"): under
+headless, `press('Z', { shift: true })` reaches the sink with
+`physical: "Z"`, where the window reported `physical: "z"` beside
+`code: "Z"` for the same ⇧Z (the alpha.12 menu trace). `KeyMsg.physical`'s
+doc (F55) says "as the lower-case one here"; `keyDown`'s says "omit it
+and it equals `code`". Both are true, and they disagree.
+
+**Checked.** The window's `physical` comes from `physical_code`
+(`crates/kui/src/keys.rs`), a table from winit's `PhysicalKey` to the
+US-QWERTY character at that position — letters are their lower-case
+character regardless of shift, because the table never sees the
+modifier. The headless `keyDown` / `press` doors take `physical` as an
+optional fourth argument and default it to `code`, so a shifted letter
+spelled as the OS spells it (`Z`, per F60) gets a `physical` no window
+ever reports. Nothing in this tree binds `physical` from a headless
+test, which is why it took a log to notice; the first app that binds
+WASD by position and drives it headless with shift held will match in
+the window and miss in the test, or the other way round.
+
+**Do:** the default folds: a one-character ASCII letter `code` yields
+its lower-case as `physical` when the argument is omitted, in the
+Node door (`index.js`) and any other headless door that shares the
+default. Not a re-spelling of what a test passes — F60's rule
+stands, a spelled `physical` is delivered as spelled — only the
+default, which was already a guess. The `keyDown` doc says "omit it
+and it is the position's US letter: the lower-case one for a letter,
+`code` for everything else". Pin in `test.mjs`: `press("Z", { shift:
+true })` headless reaches the sink with `physical: "z"`, the same
+pair the window reports.
+
+### Theirs, not ours
+
+- **The first window of a process measures high once** (pomodoro,
+  "found after the bump"). A launch, not a regression — the second
+  reading is the steady state, and the release's own native round saw
+  the same shape. A bench that opens one window and reads once is
+  reading the launch.
+- **`access` reads `live=0` in the call that asked** (pomodoro). Not a
+  defect: the doc says the sound reaches the device before the *frame*
+  the play asked for, and the test asserts after the frame, as it
+  should.
+- **The child was hiding a warm-process number** (pomodoro). Two thirds
+  of the pinned window's ~78 ms `settled` time was the child starting
+  cold; in one process it is ~30 ms. F58 is why the number is readable
+  now.
+- **The pass over the controls, `idlePumpMs`, a `frames(n)` helper, the
+  bench in the scratchpad** (pomodoro, "ours to fix"). Theirs, as they
+  say — though F62 is the bench's missing number.
+- **The suite's `press` helper is still `keyDown` + `keyUp` + `settle`**
+  (mind map, "still this app's own work"). The driver's `press` has been
+  the one to reach for since F6; their line to change.
+
+## From the kawoosh terminal field report (2026-09-15)
+
+The first thing kawoosh showed on alpha.13 that a user could see:
+lazygit in its terminal pane, every `│` of the panel frames a dashed
+line and the scrollbar thumb a column of separate black dashes. The
+report asked whether it was the wrong font or something kui should do,
+and measured the font before answering: the answer is kui. One entry,
+and the one defect of the day's three rounds.
+
+### `!` F66 — A `cells` node draws box-drawing and block glyphs from the font, and no font's are the cell's height
+
+**Symptom** (kawoosh, 2026-09-15, macOS, lazygit 0.65.1 in a `cells`
+node): kawoosh's terminal style is `size 13`, `line_height 20`, in the
+bundled Iosevka Navcon. Every `│` (U+2502) renders as a dash with a gap
+below it, every row; `▐` (U+2590, lazygit's scrollbar thumb) stacks as
+separate black dashes rather than one bar. Any box-drawn frame in any
+TUI shows it.
+
+**Why, measured.** Iosevka's box-drawing (U+2500–U+257F) and
+block-element (U+2580–U+259F) glyphs span exactly the font's own line
+box: the report read the file — hhea 965/−215, typo 965/−285, and the
+glyph bounds of U+2502, U+2503, U+2588, U+2590 and U+2551 all
+y ∈ [−285, 965] on 1000 upm, advance 500 — so 1.25 em tall, 16.25 px at
+13 px. `cells` makes the cell `line_height × scale` tall
+(`StyleTable::cell_h`, `crates/kui-core/src/cells.rs`), 20 px, and
+`shape_cell` places the glyph where cosmic-text's line puts it; 3.75 px
+of each row is empty under the stroke. No font can know the cell is
+20 px: a font fills *its* line box, and any face shows some gap unless
+its glyphs happen to be 1.54 em tall. A face without these codepoints
+is worse — cosmic-text falls back to another family and the strokes
+change weight and width mid-frame. This is why Alacritty
+(`builtin_box_drawing`), kitty, WezTerm, foot and Ghostty all bypass
+the font for these ranges and draw them from the cell box. kui owns
+the cell box, so kui draws them.
+
+**Where it goes.** `shape_cell` is the one door: `lookup` caches on
+`(ch, variant)` in front of it and every cell of the grid comes through
+it once per table. Before shaping, a `ch` in a synthesized range is
+rasterized procedurally into an alpha mask of exactly `cell_w × cell_h`
+physical pixels (both on the `StyleTable`) and returned as a `CellGlyph`
+at `(0, 0)` of the cell with `w = cell_w`, `h = cell_h`, `GlyphMask`
+kind. The atlas needs a key that is not a font glyph's: `get_or_insert`
+takes a cosmic-text `CacheKey` and `get_or_insert_image` marks its slot
+`color_glyph: true` (so the image path would not tint by the cell's
+foreground) — a third map keyed on `(ch, cell_w, cell_h)` beside the
+two, or a synthesized `CacheKey` with a reserved font id, whichever
+`atlas.rs` finds cleaner; the point is that one cell size and character
+share one slot and a different cell size does not. `text` nodes are
+untouched: a mono `text` row showing a box-drawn table has the same gap,
+but there the line box is not a cell contract — leave it, as a wish
+beside this entry.
+
+**Shapes, in order of value.** (1) Light and heavy lines, corners, tees
+and crosses, U+2500–U+254B: light stroke `max(1, round(cell_w / 8))`
+px, heavy 2–3× that, both snapped to whole physical pixels and centred
+so adjacent cells' strokes meet with no seam — the centreline is
+computed once per cell size from `cell_w`/`cell_h`, not per glyph, so
+every character in a row lands on the same pixel column and every one
+in a column on the same pixel row. (2) Rounded corners, U+256D–U+2570
+(lazygit's): a quarter arc of the light stroke, radius
+`min(cell_w, cell_h) / 2`, joined to straight stubs at the edges. (3)
+Block elements, U+2580–U+259F: exact rectangles covering fractions of
+the cell, edges snapped so `▀` over `▄` fills the cell and `▐` stacked
+is one bar; the shades `░▒▓` as ordered dither at 25/50/75 % (or flat
+alpha; pick one and say which). (4) Dashed and double lines and
+diagonals, U+254C–U+254F, U+2550–U+256C, U+2571–U+2573: the double
+gap ≈ the light stroke, a diagonal one anti-aliased line corner to
+corner. (5) Optional, same mechanism: Powerline PUA U+E0B0–U+E0B3,
+which prompts render in every terminal. `flags::BOLD` does not thicken
+a light line (the set has heavy variants), italic is ignored, and
+`Raster::subpixel` is irrelevant — a plain mask, which the atlas
+already blends.
+
+**Tests**, in `crates/kui-core/tests/cells.rs`: two rows of `│` at
+`size 13`, `line_height 20` — the rendered coverage column is
+continuous across the row boundary, no zero-alpha scanline between
+them; the same for `▐`, `█`, and `─` across two columns. `┌─┐` /
+`│ │` / `└─┘` at 2× scale: the corner strokes meet the edge strokes on
+the same pixel columns and rows. `line_height 16` then `20` produce
+different atlas slots for the same `ch`, and the same size twice one.
+A character outside the set (`a`, `é`, an emoji) still goes through
+`shape_one`, so the fast path is a fast path and not a regression. The
+`terminal` accessibility value and the `cell` click payload are
+unchanged — the change is drawing only.
+
+**Do:** the door, the first three shape groups, and the tests; (4) and
+(5) as the same change or the next. CHANGELOG under alpha.14 as a
+fix, and — since what a `│` draws changes for every `cells` node —
+under *What breaks* too, per F61's rule.
+
 ## After alpha.12
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -1012,7 +1283,12 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** Nothing filed is open but the parked headings. K4 was
+**Build next.** F66 first — the dashed `│` is what every TUI in a
+`cells` node shows today, and the entry carries its shapes, its atlas
+key and its tests; then F62–F65 from the alpha.13 reports, each a
+morning: two counters (F62), a sentence and an assertion (F63), two
+bits and a wait (F64), a default that folds (F65). Before them,
+everything filed had shipped: K4 was
 **built on 2026-09-15** too, the same day as the rest of its round. The two rounds of 2026-09-15 — the
 alpha.12 upgrade reports (F55–F61) and the kawoosh requirements list
 (K1–K4) — were **built the day they were filed**, each with its outcome
