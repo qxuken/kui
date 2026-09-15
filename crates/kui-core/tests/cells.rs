@@ -338,3 +338,217 @@ fn the_grids_box_hovers_and_eases_like_any_leaf() {
     draw(&mut core);
     assert_eq!(bg(&mut core), HOVER, "a hovered grid takes its hover_bg");
 }
+
+/// F66: box drawing, block elements and the Powerline arrows are drawn
+/// from the cell box, not the font — a font's `│` is its own line box
+/// tall, and the cell is `line_height` tall, so through the font every
+/// `│` was a dash with a gap under it. The tests read the atlas back:
+/// what the quad samples is the cell's whole height.
+mod boxdraw {
+    use super::*;
+
+    /// Draws `rows × cols` of `text` at `scale` and returns, per glyph
+    /// quad, its rect, its slot, and the coverage down the slot's fullest
+    /// column and along its fullest row.
+    struct Drawn {
+        quads: Vec<(f32, f32, f32, f32)>,
+        /// Alpha down the slot's most-covered column, top to bottom.
+        columns: Vec<Vec<u8>>,
+        /// Alpha along the slot's most-covered row, left to right.
+        rows: Vec<Vec<u8>>,
+        uvs: Vec<[u32; 4]>,
+    }
+
+    fn draw(core: &mut Core, text: &str, rows: usize, cols: usize, scale: f32, lh: f32) -> Drawn {
+        let cells: Vec<Cell> = text.chars().map(|c| Cell::new(c, 0xffffffff, 0)).collect();
+        let mut ui = core.frame(Size::new(400.0, 200.0), scale);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.cells(
+            &CellGrid {
+                rows,
+                cols,
+                cells: &cells,
+                style: TextStyle::new(13.0).mono().line_height(lh),
+                cursor: None,
+                origin_line: 0,
+            },
+            NodeSpec::default(),
+        );
+        ui.finish();
+        let (dl, atlas) = core.output();
+        let glyphs: Vec<_> = dl
+            .quads
+            .iter()
+            .filter(|q| q.kind == QuadKind::GlyphMask)
+            .collect();
+        let at = |x: u32, y: u32| atlas.pixels[((y * atlas.size + x) * 4 + 3) as usize];
+        // The stroke's own column and row: the ones with the most ink.
+        let columns = glyphs
+            .iter()
+            .map(|q| {
+                let [x, y, w, h] = q.uv;
+                let col: Vec<Vec<u8>> = (0..w)
+                    .map(|dx| (0..h).map(|dy| at(x + dx, y + dy)).collect())
+                    .collect();
+                col.into_iter()
+                    .max_by_key(|c| c.iter().map(|&a| a as u32).sum::<u32>())
+                    .unwrap()
+            })
+            .collect();
+        let rows = glyphs
+            .iter()
+            .map(|q| {
+                let [x, y, w, h] = q.uv;
+                let row: Vec<Vec<u8>> = (0..h)
+                    .map(|dy| (0..w).map(|dx| at(x + dx, y + dy)).collect())
+                    .collect();
+                row.into_iter()
+                    .max_by_key(|r| r.iter().map(|&a| a as u32).sum::<u32>())
+                    .unwrap()
+            })
+            .collect();
+        Drawn {
+            quads: glyphs
+                .iter()
+                .map(|q| (q.rect.x, q.rect.y, q.rect.w, q.rect.h))
+                .collect(),
+            columns,
+            rows,
+            uvs: glyphs.iter().map(|q| q.uv).collect(),
+        }
+    }
+
+    #[test]
+    fn a_vertical_line_covers_the_cell_top_to_bottom_across_rows() {
+        let mut core = Core::new();
+        for ch in ['│', '▐', '█'] {
+            let d = draw(&mut core, &format!("{ch}{ch}"), 2, 1, 1.0, 20.0);
+            assert_eq!(d.quads.len(), 2, "{ch}");
+            // Each quad is its whole cell, and the second starts where the
+            // first ends.
+            let (a, b) = (d.quads[0], d.quads[1]);
+            assert_eq!((a.1, a.3), (0.0, 20.0), "{ch}: {a:?}");
+            assert_eq!((b.1, b.3), (20.0, 20.0), "{ch}: {b:?}");
+            // And the slot's centre column is solid every scanline.
+            assert_eq!(d.columns[0].len(), 20);
+            assert!(
+                d.columns[0].iter().all(|&a| a == 255),
+                "{ch}: a zero-alpha scanline: {:?}",
+                d.columns[0]
+            );
+            assert_eq!(d.uvs[0], d.uvs[1], "{ch}: both rows share the slot");
+        }
+        // The same across two columns for a horizontal line.
+        let d = draw(&mut core, "──", 1, 2, 1.0, 20.0);
+        let (a, b) = (d.quads[0], d.quads[1]);
+        assert_eq!(a.0 + a.2, b.0, "abutting: {a:?} {b:?}");
+        assert!(d.rows[0].iter().all(|&a| a == 255), "{:?}", d.rows[0]);
+    }
+
+    /// `┌─┐` / `│ │` / `└─┘` at 2×: the corner's strokes are on the same
+    /// pixel columns as `│` and the same pixel rows as `─`.
+    #[test]
+    fn corners_meet_edges_on_the_same_pixels() {
+        let mut core = Core::new();
+        let d = draw(&mut core, "┌─┐│ │└─┘", 3, 3, 2.0, 20.0);
+        // Eight glyphs: the space draws nothing.
+        assert_eq!(d.quads.len(), 8);
+        let (_, atlas) = core.output();
+        let mask = |uv: [u32; 4]| -> Vec<Vec<u8>> {
+            let [x, y, w, h] = uv;
+            (0..h)
+                .map(|dy| {
+                    (0..w)
+                        .map(|dx| atlas.pixels[(((y + dy) * atlas.size + x + dx) * 4 + 3) as usize])
+                        .collect()
+                })
+                .collect()
+        };
+        let solid = |row: &[u8]| -> Vec<usize> {
+            row.iter()
+                .enumerate()
+                .filter(|(_, a)| **a == 255)
+                .map(|(i, _)| i)
+                .collect()
+        };
+        let (tl, top, _tr, left, _right, bl, _bottom, _br) = (
+            mask(d.uvs[0]),
+            mask(d.uvs[1]),
+            mask(d.uvs[2]),
+            mask(d.uvs[3]),
+            mask(d.uvs[4]),
+            mask(d.uvs[5]),
+            mask(d.uvs[6]),
+            mask(d.uvs[7]),
+        );
+        let h = tl.len();
+        // The stem of ┌ on its bottom row is the column of │ on its top row.
+        assert_eq!(solid(&tl[h - 1]), solid(&left[0]), "┌ stem vs │");
+        assert_eq!(solid(&bl[0]), solid(&left[h - 1]), "└ stem vs │");
+        assert!(!solid(&left[0]).is_empty());
+        // The arm of ┌ on its right edge is the rows ─ fills on its left.
+        let col = |m: &[Vec<u8>], x: usize| -> Vec<usize> {
+            m.iter()
+                .enumerate()
+                .filter(|(_, r)| r[x] == 255)
+                .map(|(i, _)| i)
+                .collect()
+        };
+        let w = tl[0].len();
+        assert_eq!(col(&tl, w - 1), col(&top, 0), "┌ arm vs ─");
+        assert!(!col(&top, 0).is_empty());
+        // At 2× the light stroke is 2 px, not 1.
+        assert!(solid(&left[0]).len() >= 2, "{:?}", solid(&left[0]));
+    }
+
+    /// One cell size, one slot; another size, another.
+    #[test]
+    fn a_slot_per_cell_size() {
+        let mut core = Core::new();
+        let a = draw(&mut core, "│", 1, 1, 1.0, 16.0).uvs[0];
+        let b = draw(&mut core, "│", 1, 1, 1.0, 20.0).uvs[0];
+        let c = draw(&mut core, "│", 1, 1, 1.0, 20.0).uvs[0];
+        assert_ne!(a, b, "16 and 20 px rows are different slots");
+        assert_eq!(b, c, "the same size twice is one");
+        assert_eq!(a[3], 16);
+        assert_eq!(b[3], 20);
+    }
+
+    /// Characters outside the set still go through the font, so the fast
+    /// path is a fast path and not a regression: their slots are not the
+    /// cell's size, and a space draws nothing.
+    #[test]
+    fn the_rest_is_still_shaped() {
+        let mut core = Core::new();
+        let d = draw(&mut core, "aé│", 1, 3, 1.0, 20.0);
+        assert_eq!(d.quads.len(), 3);
+        assert_ne!(
+            d.quads[0].3, 20.0,
+            "a is a glyph, not a cell: {:?}",
+            d.quads[0]
+        );
+        assert_ne!(d.quads[1].3, 20.0, "é likewise: {:?}", d.quads[1]);
+        assert_eq!(d.quads[2].3, 20.0, "│ is the cell: {:?}", d.quads[2]);
+        // The value a screen reader gets and the cell a click names are
+        // unchanged: drawing only.
+        let cells: Vec<Cell> = "┌─┐".chars().map(|c| Cell::new(c, 0xffffffff, 0)).collect();
+        let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.cells_keyed(
+            "t",
+            &CellGrid {
+                rows: 1,
+                cols: 3,
+                cells: &cells,
+                style: mono(),
+                cursor: None,
+                origin_line: 0,
+            },
+            NodeSpec::default(),
+        );
+        ui.finish();
+        let tree = core.access_tree();
+        let node = tree.get(kui_core::Key::ROOT.str("t")).unwrap();
+        assert_eq!(node.value.as_deref(), Some("┌─┐"));
+    }
+}

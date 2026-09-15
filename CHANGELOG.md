@@ -33,8 +33,61 @@ was the first bare bump to break an app in five releases).
   laid something out against the metric under the strip reads
   `widgets::titlebar_height(ui)` instead, which is the metric everywhere
   the OS keeps no controls over the strip.
+- A `cells` node draws **box drawing, block elements and the Powerline
+  arrows from the cell box, not the font** (backlog F66): U+2500–U+259F
+  and U+E0B0–U+E0B3 in every `cells` node — JSX, Lua, C and Rust — now
+  render as cell-sized masks whose strokes sit on whole pixels, so what a
+  `│`, a `▐` or a `═` draws changes for every grid, and a screenshot pinned
+  against alpha.13's dashed frames needs re-taking. Bold no longer
+  thickens a light line (the set has its heavy variants), italic is
+  ignored, and a font's own box-drawing glyphs are never consulted.
 
 ### Fixed
+
+- **A `cells` node's `│` was a dash with a gap under it, every row**
+  (backlog F66, kawoosh's terminal on alpha.13: lazygit's panel frames
+  dashed, its `▐` scrollbar thumb a column of separate dashes). A font's
+  box-drawing and block glyphs span *its* line box — the report read
+  Iosevka's: 1.25 em, 16.25 px at 13 px — and a cell is `lineHeight` tall,
+  20 px there, which no font can know; 3.75 px of every row was empty
+  under the stroke, and a face without the codepoints was worse, since
+  cosmic-text's fallback changed weight and width mid-frame. Every
+  terminal that draws these from the cell (Alacritty, kitty, WezTerm,
+  foot, Ghostty) does what `cells` does now: `shape_cell` — the one door
+  every cell of the grid comes through once per table — hands
+  U+2500–U+259F and U+E0B0–U+E0B3 to `cells/boxdraw.rs`, which
+  rasterizes the character into an alpha mask of exactly `cell_w × cell_h`
+  physical pixels. The light stroke is `max(1, round(cell_w / 8))` px, the
+  heavy three times that, and every stroke sits on the row or column
+  `(cell − stroke) / 2` computed from the cell size alone, so every
+  character in a row lands on the same pixel column and every one in a
+  column on the same pixel row: adjacent cells' strokes meet with no seam.
+  The whole set: light and heavy lines, corners, tees and crosses in every
+  mixed weight (U+2500–U+254B, U+2574–U+257F), the double, triple and
+  quadruple dashes with the gap split at the cell's edges so two cells
+  show the same gap as two dashes, single-and-double lines (U+2550–U+256C)
+  as two light rails a light stroke apart with the outer corner closed at
+  the far rail and the inner at the near, the rounded corners
+  (U+256D–U+2570) as a quarter arc of the light stroke joining two stubs,
+  the diagonals (U+2571–U+2573) anti-aliased corner to corner, the block
+  elements (U+2580–U+259F) as rectangles on eighths of the cell with the
+  edges snapped so `▀` over `▄` fills the cell and `▐` stacked is one bar —
+  the shades `░▒▓` as flat alpha at 25 / 50 / 75 % — and the Powerline
+  triangles and chevrons. The atlas keys them on `(character, cell_w,
+  cell_h)` beside its glyphs and images (`get_or_insert_synth`), so one
+  cell size shares one slot and another size does not, and a reset drops
+  them with the rest; `lookup`'s per-table cache holds them the same way
+  it holds a glyph. `text` nodes are untouched — a mono `text` row showing
+  a box-drawn table has the same gap, but there the line box is not a
+  cell contract. The `terminal` access value and the `cell` click payload
+  are unchanged: drawing only. Pinned in `tests/cells.rs` by reading the
+  atlas back — two rows of `│` (and `▐`, `█`) are solid down every
+  scanline with the second quad starting where the first ends, `┌─┐` /
+  `│ │` / `└─┘` at 2× puts the corner's strokes on `│`'s columns and `─`'s
+  rows, 16 px and 20 px rows are different slots and the same size twice
+  is one, and `a` / `é` still go through the font — and the `cells`
+  example's fake session now ends in a box-drawn bench table with block
+  bars, which the native round captured seamless.
 
 - **The macOS keep-out rect is measured, not assumed** (backlog W17,
   found on the first macOS 27 machine). `env.window.native_controls`

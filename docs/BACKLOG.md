@@ -43,7 +43,7 @@ K4 — a view asked, and it is built), the two alpha.13 upgrade reports
 and the kawoosh terminal report of the same day — F62–F65, four small
 ones from the reports, and F66, a `cells` node drawing box-drawing
 glyphs from a font that cannot know the cell's height, the one defect
-filed since the tag — the two rounds of 2026-09-15 keeping only their introductions (their
+filed since the tag, **built the same day** — the two rounds of 2026-09-15 keeping only their introductions (their
 twelve entries — F55–F61 from the alpha.12 reports, K1–K4 from the
 kawoosh list — were built the day they were filed and went to the
 archive with the alpha.13 tag), and the "theirs, not ours" lists the
@@ -1176,7 +1176,31 @@ report asked whether it was the wrong font or something kui should do,
 and measured the font before answering: the answer is kui. One entry,
 and the one defect of the day's three rounds.
 
-### `!` F66 — A `cells` node draws box-drawing and block glyphs from the font, and no font's are the cell's height
+### `!` F66 — A `cells` node draws box-drawing and block glyphs from the font, and no font's are the cell's height — **done (2026-09-15)**
+
+**Done, as written, all five shape groups:** `crates/kui-core/src/cells/boxdraw.rs`
+behind `shape_cell` — `boxdraw::draws(ch)` decides, `boxdraw::raster(ch,
+w, h)` is the cell-sized mask, and the atlas gained a third map,
+`get_or_insert_synth` keyed on `(char, cell_w, cell_h)`, cleared with the
+glyphs on a reset. The light stroke is `max(1, round(cell_w / 8))`, the
+heavy `3×` (same parity, so both centre on the same pixel), every stroke
+on `(cell − stroke) / 2` from the cell size alone. Two things the entry
+did not decide: the shades are flat alpha (64 / 128 / 192), since a 2 × 2
+dither's phase shifts at every odd-width cell boundary; and a dash
+pattern splits its gap at the cell's edges by construction (`left =
+gap / 2`, the rest to the right edge), not by rounding, so the seam
+between two cells is one gap wide. The double-line rules, since 41
+glyphs share them: a rail ends at the *near* rail of a double on its own
+side (an inner corner), at the *far* rail of a double on the other side
+when nothing continues past the centre (an outer corner), and at the
+centre otherwise (a line running through); a single arm runs to the
+centre when its opposite continues it, to the near rail between two
+doubles (a tee), to the far rail of one (a corner). Tests: the six the
+entry asked for in `tests/cells.rs`, reading the atlas back; the tables
+and the shape rules in the module; the `cells` example's session ends in
+a box-drawn bench table with block bars, captured seamless at 2×.
+CHANGELOG under both *Fixed* and *What breaks*. The `text` wish stays a
+wish: a mono `text` row's line box is not a cell contract.
 
 **Symptom** (kawoosh, 2026-09-15, macOS, lazygit 0.65.1 in a `cells`
 node): kawoosh's terminal style is `size 13`, `line_height 20`, in the
@@ -1283,10 +1307,10 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** F66 first — the dashed `│` is what every TUI in a
-`cells` node shows today, and the entry carries its shapes, its atlas
-key and its tests; then F62–F65 from the alpha.13 reports, each a
-morning: two counters (F62), a sentence and an assertion (F63), two
+**Build next.** F62–F65 from the alpha.13 reports, each a
+morning (F66 went first, **built 2026-09-15** — the dashed `│` was what
+every TUI in a `cells` node showed, and the entry's shapes, atlas key
+and tests are what was built): two counters (F62), a sentence and an assertion (F63), two
 bits and a wait (F64), a default that folds (F65). Before them,
 everything filed had shipped: K4 was
 **built on 2026-09-15** too, the same day as the rest of its round. The two rounds of 2026-09-15 — the

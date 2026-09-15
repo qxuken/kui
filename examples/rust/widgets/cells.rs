@@ -16,6 +16,12 @@
 //! `lines` the app adds to its own `top` (ADR 0029). A selection's ends
 //! stay where they were through it, which the readout shows.
 //!
+//! The bench table's frame is box drawing and its bars are block
+//! elements, and neither comes from the font: a `cells` node draws
+//! U+2500–U+259F from the cell box, so every `│` is the row's full
+//! height and the frame has no seams (backlog F66) — through the font
+//! they were 1.25 em tall in a 20 px row, a dash with a gap under it.
+//!
 //! Run: cargo run -p kui --example cells [-- --headless]
 
 use kui::cells::flags;
@@ -61,10 +67,10 @@ const SESSION: [(&str, Ink); 12] = [
     ("test result: ok. 23 passed; 0 failed", Ink::Good),
     ("~/kui $ cargo bench -p kui-core -- layout", Ink::Plain),
     ("   Compiling kui-core v0.1.0-alpha.10", Ink::Quiet),
-    ("    Finished `bench` profile in 6.10s", Ink::Quiet),
-    ("deep_nesting        fastest │ 41.2 µs", Ink::Plain),
-    ("list_10k_rows       fastest │ 2.98 ms", Ink::Plain),
-    ("done                                   ", Ink::Good),
+    ("┌────────────────┬──────────┬───────┐", Ink::Plain),
+    ("│ deep_nesting   │  41.2 µs │ ▁▂▃▅▇ │", Ink::Plain),
+    ("│ list_10k_rows  │  2.98 ms │ ▇▅▃▂▁ │", Ink::Plain),
+    ("└────────────────┴──────────┴───────┘", Ink::Plain),
     ("~/kui $ ", Ink::Plain),
 ];
 /// Where the session's first line sits in its history: an end of a

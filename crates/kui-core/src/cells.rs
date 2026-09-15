@@ -21,6 +21,14 @@
 //! glyph map by the cluster's string, so a 200 × 50 pane stays 160 KB a
 //! frame.
 //!
+//! Box drawing, block elements and the Powerline arrows are not shaped
+//! at all: a font's are its line box's height and the cell is
+//! `line_height` tall, so every `│` through the font was a dash with a
+//! gap under it (backlog F66). `boxdraw` rasterizes them from the cell
+//! box into a mask of exactly the cell's size, keyed in the atlas on the
+//! character and that size, and they come through `shape_cell` like any
+//! glyph so `lookup`'s table caches them the same way.
+//!
 //! Bound four ways: the `cells` element row, C's `kui_cells` over a
 //! `KuiCell` array, Node's `Uint32Array` stream and Lua's `lines` +
 //! `runs`, the `terminal` access row, and the `cell` field on click and
@@ -38,6 +46,8 @@ use crate::key::Key;
 use crate::resources::Resources;
 use crate::spec::TextStyle;
 use crate::text::{Raster, glyph_kind, raster_glyph};
+
+mod boxdraw;
 
 /// Bits in [`Cell::flags`].
 pub mod flags {
@@ -660,19 +670,41 @@ fn lookup(
         if let Some(g) = table.ascii[i] {
             return g;
         }
-        let g = shape_cell(ch, flags, style, res, fs, raster, atlas, scale);
+        let g = shape_cell(
+            ch,
+            flags,
+            style,
+            res,
+            fs,
+            raster,
+            atlas,
+            scale,
+            (table.cell_w, table.cell_h),
+        );
         table.ascii[i] = Some(g);
         return g;
     }
     if let Some(g) = table.other.get(&(ch, v as u8)) {
         return *g;
     }
-    let g = shape_cell(ch, flags, style, res, fs, raster, atlas, scale);
+    let g = shape_cell(
+        ch,
+        flags,
+        style,
+        res,
+        fs,
+        raster,
+        atlas,
+        scale,
+        (table.cell_w, table.cell_h),
+    );
     table.other.insert((ch, v as u8), g);
     g
 }
 
-/// Shapes one cell's character and rasterizes its glyph into the atlas.
+/// Shapes one cell's character and rasterizes its glyph into the atlas —
+/// or, for a character the cell box draws (`boxdraw`), rasterizes the
+/// cell-sized mask and skips the font.
 #[allow(clippy::too_many_arguments)]
 fn shape_cell(
     ch: char,
@@ -683,7 +715,20 @@ fn shape_cell(
     raster: &mut Raster,
     atlas: &mut GlyphAtlas,
     scale: f32,
+    cell: (f32, f32),
 ) -> Option<CellGlyph> {
+    if boxdraw::draws(ch) {
+        let (w, h) = (cell.0 as u32, cell.1 as u32);
+        let slot = atlas.get_or_insert_synth(ch, w, h, || boxdraw::raster(ch, w, h))?;
+        return Some(CellGlyph {
+            x: 0.0,
+            y: 0.0,
+            w: w as f32,
+            h: h as f32,
+            uv: [slot.x, slot.y, slot.w, slot.h],
+            kind: QuadKind::GlyphMask,
+        });
+    }
     let mut buf = [0u8; 4];
     let (key, _, (px, py, line_y)) =
         shape_one(style, ch.encode_utf8(&mut buf), flags, res, fs, scale)?;

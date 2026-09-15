@@ -131,7 +131,7 @@ table says so.
 | [`line.rs`](rust/widgets/line.rs) | The `line` element: a mind map whose links are curves between floats, brightening by transition | | |
 | [`polygon.rs`](rust/widgets/polygon.rs) | The `polygon` element: a pie whose wedges light under a hover box, arrowheads on a graph's links, the area under a sparkline, a concave star | ✓ | |
 | [`fragment.rs`](rust/widgets/fragment.rs) | The `fragment` element: boxes a WGSL function paints — a gradient, a ring, a shimmer, a card with children; a heatmap reading a data texture the app replaces every frame and a ripple over an atlas-backed icon, the `image` input (V1) | ✓ | |
-| [`cells.rs`](rust/widgets/cells.rs) | The `cells` element: a terminal grid with a cursor and an `origin_line`, selecting in cells, copy trimming blanks, the screen scrolled under a selection | ✓ | |
+| [`cells.rs`](rust/widgets/cells.rs) | The `cells` element: a terminal grid with a cursor and an `origin_line`, selecting in cells, copy trimming blanks, the screen scrolled under a selection, a box-drawn table drawn from the cell box | ✓ | |
 | [`virtual_list.rs`](rust/widgets/virtual_list.rs) | `widgets::virtual_column`, the same list by hand (`--by-hand`), and `virtual_rows` for rows of no fixed height (`--variable`) | ✓ every mode | |
 | [`context_menu.rs`](rust/widgets/context_menu.rs) | Who gets a context menu: the stock one over a selectable scope, the app's own over a row, the editor's four, nothing over a plain box | ✓ | |
 | [`menu_bar.rs`](rust/widgets/menu_bar.rs) | The application menu bar the frame declares (ADR 0018): a `checked` row, an `enabled` one, and the same `menu` event whoever showed it | ✓ | |

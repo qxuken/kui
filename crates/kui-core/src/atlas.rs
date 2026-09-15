@@ -54,6 +54,11 @@ pub struct GlyphAtlas {
     /// Registered images blitted into the same page (one texture, one draw
     /// call). Keyed by handle; re-blitted from `Resources` after a reset.
     images: FxHashMap<ImageId, Option<GlyphSlot>>,
+    /// Shapes drawn from a cell box rather than a font — box drawing,
+    /// blocks, Powerline (backlog F66) — keyed on the character and the
+    /// cell size in physical px, so one cell size shares one slot and
+    /// another size does not. Plain masks, tinted like a glyph's.
+    synth: FxHashMap<(char, u32, u32), Option<GlyphSlot>>,
     shelves: Vec<Shelf>,
     next_shelf_y: u32,
     /// How many times the page filled since `begin_frame`: once is a
@@ -75,6 +80,7 @@ impl GlyphAtlas {
             epoch: 0,
             map: FxHashMap::default(),
             images: FxHashMap::default(),
+            synth: FxHashMap::default(),
             shelves: Vec::new(),
             next_shelf_y: 0,
             resets_this_frame: 0,
@@ -98,6 +104,7 @@ impl GlyphAtlas {
         self.pixels.fill(0);
         self.map.clear();
         self.images.clear();
+        self.synth.clear();
         self.shelves.clear();
         self.next_shelf_y = 0;
         self.epoch += 1;
@@ -111,6 +118,7 @@ impl GlyphAtlas {
         self.pixels = vec![0; (size * size * 4) as usize];
         self.map.clear();
         self.images.clear();
+        self.synth.clear();
         self.shelves.clear();
         self.next_shelf_y = 0;
         self.epoch += 1;
@@ -224,6 +232,45 @@ impl GlyphAtlas {
             subpixel: glyph.subpixel,
         };
         self.map.insert(key, Some(slot));
+        Some(slot)
+    }
+
+    /// Cached lookup for a shape drawn to a `w × h` cell (backlog F66);
+    /// `coverage` is called on a miss for `w * h` alpha bytes, which land
+    /// as a white mask the renderer tints like any glyph's. `None` means
+    /// the cell does not fit a `MAX_ATLAS_SIZE` page.
+    pub fn get_or_insert_synth(
+        &mut self,
+        ch: char,
+        w: u32,
+        h: u32,
+        coverage: impl FnOnce() -> Vec<u8>,
+    ) -> Option<GlyphSlot> {
+        if let Some(slot) = self.synth.get(&(ch, w, h)) {
+            return *slot;
+        }
+        let Some((x, y)) = self.alloc_or_make_room(w, h) else {
+            self.synth.insert((ch, w, h), None);
+            return None;
+        };
+        let mask = coverage();
+        debug_assert_eq!(mask.len(), (w * h) as usize);
+        let mut rgba = Vec::with_capacity(mask.len() * 4);
+        for &a in &mask {
+            rgba.extend_from_slice(&[255, 255, 255, a]);
+        }
+        self.blit(x, y, w, h, &rgba);
+        let slot = GlyphSlot {
+            x,
+            y,
+            w,
+            h,
+            left: 0,
+            top: 0,
+            color_glyph: false,
+            subpixel: false,
+        };
+        self.synth.insert((ch, w, h), Some(slot));
         Some(slot)
     }
 
@@ -412,6 +459,37 @@ mod tests {
             }
         }
         assert_eq!(atlas.size, 64, "one page's worth a frame never grows it");
+    }
+
+    /// F66: a synthesized shape is one slot per character and cell size —
+    /// the same size twice shares, another size does not — and a reset
+    /// drops it with the glyphs.
+    #[test]
+    fn a_synthesized_shape_is_keyed_on_its_cell_size() {
+        use std::cell::Cell;
+        let mut atlas = GlyphAtlas::with_size(128);
+        let calls = Cell::new(0);
+        let draw = |atlas: &mut GlyphAtlas, w, h| {
+            atlas
+                .get_or_insert_synth('│', w, h, || {
+                    calls.set(calls.get() + 1);
+                    vec![255; (w * h) as usize]
+                })
+                .expect("fits")
+        };
+        let a = draw(&mut atlas, 7, 16);
+        let b = draw(&mut atlas, 7, 16);
+        let c = draw(&mut atlas, 7, 20);
+        assert_eq!((a.x, a.y), (b.x, b.y), "the same size shares a slot");
+        assert_ne!((a.x, a.y), (c.x, c.y), "another size does not");
+        assert_eq!(calls.get(), 2);
+        assert!(!a.color_glyph && !a.subpixel && a.left == 0 && a.top == 0);
+        // The mask landed as a tinted white mask.
+        let i = ((a.y * atlas.size + a.x) * 4) as usize;
+        assert_eq!(&atlas.pixels[i..i + 4], &[255, 255, 255, 255]);
+        atlas.clear();
+        draw(&mut atlas, 7, 16);
+        assert_eq!(calls.get(), 3, "a reset drops the shape with the glyphs");
     }
 
     #[test]
