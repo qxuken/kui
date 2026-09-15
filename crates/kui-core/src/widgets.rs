@@ -4,6 +4,7 @@
 
 use crate::access::Role;
 use crate::color::Color;
+use crate::cursor::CursorShape;
 use crate::edit::EditOptions;
 use crate::geom::{Edges, Vec2};
 use crate::key::Key;
@@ -556,6 +557,9 @@ pub const BUTTON_DISABLED_OPACITY: f32 = 0.5;
 /// A push button showing `text`, keyed by it. A label that changes re-keys
 /// the node — a new node, so it loses keyboard focus and a screen reader's
 /// cursor; declare such a button with [`button_with`] and a key of its own.
+/// The pointer over it is the hand (`CursorShape::Pointer`): the core
+/// implies no shape from an `on_click`, and the stock button is the one
+/// place the hand is declared for you.
 pub fn button(ui: &mut Ui<'_>, text: &str, payload: impl Into<Value>) {
     let (theme, m) = (ui.theme(), ui.metrics());
     button_with(
@@ -619,6 +623,15 @@ fn button_body(ui: &mut Ui<'_>, ident: Ident<'_>, text: &str, spec: NodeSpec, hi
     let spec = if spec.disabled {
         let o = spec.style.opacity * theme.disabled_opacity;
         spec.opacity(o)
+    } else {
+        spec
+    };
+    // The hand is declared, never derived from the `on_click`
+    // (`crate::cursor`), and the stock button is where it is declared: a
+    // caller's own `cursor` stands, and an inert button is the arrow — the
+    // click it refuses is not one to point at.
+    let spec = if spec.cursor.is_none() && !spec.disabled {
+        spec.cursor(CursorShape::Pointer)
     } else {
         spec
     };

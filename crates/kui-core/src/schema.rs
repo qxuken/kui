@@ -855,7 +855,7 @@ pub const PROPS: &[PropDef] = &[
         id: P_CURSOR,
         kind: Kind::Enum(CURSORS),
         apply: Apply::SpecEnum(|s, i| s.cursor(cursor_idx(i))),
-        doc: "Overrides the pointer shape over this node. Unset, the core derives one from what the node does — an editor is `text`, an `onClick` or `focusable` node `pointer`, an `onDrag` node `grab` (`grabbing` while dragging), window chrome and a plain box `default` — so this is for what that cannot know: a splitter (`ewResize` / `nsResize`), a `disabled` control that says `notAllowed`.",
+        doc: "The pointer shape over this node. Unset, the pointer is `text` over an editor or a `selectable` scope and `default` over everything else — an `onClick`, `focusable` or `onDrag` node included, as a native button is — so a hand (`pointer`) over a control, a `grab` over a handle (and `grabbing` while its drag runs, which the view declares as its drag state changes), a splitter's `ewResize` / `nsResize` and a `disabled` control's `notAllowed` are all declared. The stock `button` declares `pointer` itself. A captured drag keeps the dragged node's shape wherever the pointer goes.",
     },
     PropDef {
         name: "transition",

@@ -631,13 +631,16 @@ typedef struct KuiSpec {
      * the one asked. Borrowed: cloned while the node opens, so you keep
      * ownership; kui_value_null() asks for the behaviour without a tag. */
     const KuiValue *on_context_menu;
-    /* KUI_CURSOR_* (0 = unset: the core derives one). Overrides the
-     * pointer shape while the pointer is over this node — the core
-     * otherwise makes an editor a caret, an on_click / focusable node a
-     * hand, an on_drag node a grab, and everything else the arrow. For
-     * what that cannot know: a splitter (KUI_CURSOR_EW_RESIZE), a
-     * disabled control that says KUI_CURSOR_NOT_ALLOWED. A node with
-     * nothing but a cursor is hover-tracked so it can be found. */
+    /* KUI_CURSOR_* (0 = unset). The pointer shape while the pointer is
+     * over this node. Unset, the pointer is the I-beam over an editor or
+     * a selection scope and the arrow over everything else — an on_click,
+     * focusable or on_drag node included, as a native button is — so a
+     * hand (KUI_CURSOR_POINTER) over a control, a KUI_CURSOR_GRAB over a
+     * handle (KUI_CURSOR_GRABBING while its drag runs, declared by the
+     * view as its drag state changes), a splitter's KUI_CURSOR_EW_RESIZE
+     * and a disabled control's KUI_CURSOR_NOT_ALLOWED are all declared.
+     * kui_button / kui_button_with declare the hand themselves. A node
+     * with nothing but a cursor is hover-tracked so it can be found. */
     uint32_t cursor;
     /* Selection and disclosure. selected: non-zero when this node is the
      * current one of its set - the shown tab, the picked row, the link for
@@ -2019,9 +2022,10 @@ bool kui_ctx_window_name(KuiCtx *ctx, KuiStr *out);
  * happens for KUI_WINDOW_MAIN or for a window already closed by the diff. */
 void kui_window_closed(KuiCtx *ctx, uint32_t id);
 /* The pointer shape for where the pointer is now (KUI_CURSOR_*, 0 only on a
- * bad context): derived from the topmost node under it, or its `cursor`
- * override. A state, not a queue — read after each input dispatch and each
- * frame, and set the real cursor when the answer changes. */
+ * bad context): the `cursor` the topmost node under it declared, the
+ * I-beam over text, the arrow otherwise; a captured drag holds the
+ * dragged node's. A state, not a queue — read after each input dispatch
+ * and each frame, and set the real cursor when the answer changes. */
 uint32_t kui_cursor_shape(KuiCtx *ctx);
 /* Declares this frame's window title (cleared each kui_frame_begin). */
 void kui_window_title(KuiCtx *ctx, KuiStr title);

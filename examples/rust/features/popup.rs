@@ -129,9 +129,9 @@ impl App for Combo {
                         // that already opened the list.
                         .on_drag(Value::Null)
                         .on_click(Value::map([("kind", Value::str("open"))]))
-                        // A draggable node derives `grab`, and this one is
-                        // not a thing being dragged — it is a field being
-                        // pressed. The `cursor` row exists for exactly this.
+                        // The hand is declared, never derived: a field
+                        // that can be pressed says so with `cursor`, and
+                        // nothing about its `on_drag` makes it a grab.
                         .cursor(CursorShape::Pointer),
                     |ui| {
                         ui.text(ITEMS[self.chosen], TextStyle::new(14.0).color(t.fg));
@@ -246,6 +246,8 @@ impl Combo {
                             .hover_bg(t.raised.mix(t.accent, 0.10))
                             .radius(4.0)
                             .selected(i == self.chosen)
+                            // The rows are a hand too, each for itself.
+                            .cursor(CursorShape::Pointer)
                             .on_click(Value::map([
                                 ("kind", Value::str("choose")),
                                 ("i", Value::Int(i as i64)),

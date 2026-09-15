@@ -1,10 +1,15 @@
-//! Pointer shape as derived data. Nothing declares a cursor for the common
-//! cases: the core resolves one per frame from whatever the pointer is
-//! over ([`crate::runtime::Core::cursor_shape`]) — an editor is a caret, a
-//! button is a hand, a drag source is a grab — and the frame driver hands
-//! that to the real window. A view can still override it with the `cursor`
-//! prop where the derivation cannot know (a splitter that resizes, a
-//! disabled node that wants to say so).
+//! Pointer shape as declared data. A view says what the pointer is over
+//! a node with the `cursor` prop — a button is a hand because it declared
+//! one, a handle a grab because it declared one — and the core resolves
+//! which declaration is under the pointer per frame
+//! ([`crate::runtime::Core::cursor_shape`]), which the frame driver hands
+//! to the real window. Nothing is inferred from what a node *does*: an
+//! `on_click` node with no `cursor` is the plain arrow, as a native
+//! button is, and so is an `on_drag` node. The one shape the core implies
+//! is the I-beam over an editor or a selection scope, the way every
+//! desktop marks text that can be taken. The stock button declares
+//! `Pointer` for itself, so `<button>` is a hand in every binding without
+//! the app saying so.
 //!
 //! The core never touches a device: headless drivers simply never read.
 
@@ -25,8 +30,7 @@ pub enum CursorShape {
     /// Closed hand: a drag is in flight (the pointer is captured).
     Grabbing,
     /// Refused: an inert control that wants to say why the click did
-    /// nothing. Only ever declared — the core never derives it, because a
-    /// `disabled` node is far more often just quiet.
+    /// nothing.
     NotAllowed,
     /// Horizontal resize (a vertical splitter, the left/right window edge).
     EwResize,

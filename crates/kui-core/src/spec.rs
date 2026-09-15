@@ -573,12 +573,13 @@ pub struct NodeSpec {
     /// focus background, no place in the Tab ring; the access tree
     /// reports it disabled.
     pub disabled: bool,
-    /// Overrides the pointer shape over this node (see
-    /// [`crate::cursor`]). Unset, the core derives one from what the node
-    /// does — an editor is a caret, a clickable or focusable node a hand,
-    /// an `on_drag` node a grab — so this is only for what the derivation
-    /// cannot know: a splitter that resizes rather than moves, a disabled
-    /// control that wants to say `notAllowed`.
+    /// The pointer shape over this node (see [`crate::cursor`]). Unset,
+    /// the pointer is the I-beam over an editor or a selection scope and
+    /// the plain arrow over everything else — a clickable or draggable
+    /// node included — so a hand over a button, a grab over a handle
+    /// (`grabbing` while its drag runs), a splitter's resize arrows and a
+    /// disabled control's `notAllowed` are all the view's to declare. The
+    /// stock button declares `Pointer` itself.
     pub cursor: Option<CursorShape>,
 
     /// See [`EventSpec`]. `None` when the node declares none of it.
@@ -1686,7 +1687,7 @@ impl NodeSpec {
         self
     }
 
-    /// Overrides the pointer shape over this node (see the `cursor` field).
+    /// The pointer shape over this node (see the `cursor` field).
     pub fn cursor(mut self, shape: CursorShape) -> Self {
         self.cursor = Some(shape);
         self

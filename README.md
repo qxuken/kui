@@ -1377,11 +1377,14 @@ other press, chords included, walks up to the nearest enclosing sink
 how an app shell keeps its shortcuts while the Tab ring works underneath
 it.
 
-The pointer shape is derived, not declared: the core resolves one per frame
-from whatever is under the pointer, and the `cursor` prop overrides it — but
-only from this list (`text`, `pointer`, `grab`, `grabbing`, `notAllowed`, the
-four resize arrows and the default), so there are no custom bitmap cursors and
-no hiding the pointer (C3).
+The pointer shape is declared, not derived: the `cursor` prop says what the
+pointer is over a node, the core resolves whichever declaration is under it
+per frame, and a node that declared nothing is the arrow whatever it does — a
+clickable or draggable box included, as a native control is. The one shape
+the core implies is the I-beam over an editor or a `selectable` scope; the
+stock `button` declares its own hand. The list is closed (`text`, `pointer`,
+`grab`, `grabbing`, `notAllowed`, the four resize arrows and the default), so
+there are no custom bitmap cursors and no hiding the pointer (C3).
 
 **Focus and accessibility.** Accessibility, keyboard focus and modality are
 data ([ADR 0001](docs/adr/0001-accessibility-as-data.md),

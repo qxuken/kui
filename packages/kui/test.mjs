@@ -2779,27 +2779,34 @@ test('onHover emits enter and leave with the tag', () => {
   assert.deepEqual(ctx.pollEvents(), []);
 });
 
-// The pointer shape is derived, not declared: `cursorShape()` reads what the
-// core resolved for the node under the pointer, in the `cursor` prop's own
-// words, so a driver applies it and a test asserts it. The bands and the
-// expectations mirror crates/kui-core/tests/cursor.rs so both suites agree
-// on the vocabulary.
-test('cursorShape derives from what the node under the pointer does', () => {
+// The pointer shape is declared, not derived: `cursorShape()` reads which
+// node's `cursor` the core resolved under the pointer, in the prop's own
+// words, so a driver applies it and a test asserts it — the I-beam over
+// text is the one shape the core implies, and a node that declared nothing
+// is the arrow whatever it does. The bands and the expectations mirror
+// crates/kui-core/tests/cursor.rs so both suites agree on the vocabulary.
+test('cursorShape is what the node under the pointer declared', () => {
   const ctx = new Ctx();
   const BAND = 40;
-  const band = (props, key) => box({ width: 'grow', height: BAND, ...props }, [], key);
+  const band = (props, key, children = []) => box({ width: 'grow', height: BAND, ...props }, children, key);
   // One full-width band per thing a cursor can be over, stacked, so a y
   // picks one.
   const tree = box({ dir: 'column', width: 'grow', height: 'grow' }, [
     el('edit', { initial: 'hello', width: 'grow', height: BAND }, [], 'doc'), // 0
-    band({ onClick: { kind: 'go' } }, 'button'), // 1
+    band({ onClick: { kind: 'go' }, cursor: 'pointer' }, 'button'), // 1: says it is a hand
     band({}, 'plain'), // 2: no hit region at all
-    band({ onDrag: { kind: 'h' } }, 'handle'), // 3
+    band({ onDrag: { kind: 'h' }, cursor: 'grab' }, 'handle'), // 3: says it is a grab
     band({ onDrag: { kind: 's' }, cursor: 'ewResize' }, 'splitter'), // 4: resizes rather than moves
     band({ onClick: { kind: 'nope' }, disabled: true, cursor: 'notAllowed' }, 'refused'), // 5
     band({ onClick: { kind: 'nope' }, disabled: true }, 'quiet'), // 6
     band({ focusable: true }, 'row'), // 7: opens on Enter, no click payload
     band({ hoverable: true }, 'badge'), // 8: hover-only
+    band({ onClick: { kind: 'go' } }, 'silent'), // 9: clickable, said nothing
+    band({ onDrag: { kind: 'm' } }, 'mute'), // 10: draggable, said nothing
+    // 11: the stock button, centred in a band so the middle lands on it.
+    band({ dir: 'column', mainAlign: 'center', crossAlign: 'center' }, 'stock', [
+      el('button', { onClick: { kind: 'go' } }, ['Go']),
+    ]),
   ]);
   ctx.frame(400, 400, 1, tree);
   const over = (i) => {
@@ -2809,30 +2816,34 @@ test('cursorShape derives from what the node under the pointer does', () => {
 
   assert.equal(ctx.cursorShape(), 'default', 'before any input');
   assert.equal(over(0), 'text', 'an editor is a caret');
-  assert.equal(over(1), 'pointer', 'a button is a hand');
+  assert.equal(over(1), 'pointer', 'a declared hand is a hand');
   assert.equal(over(2), 'default', 'a plain box is the arrow');
-  assert.equal(over(7), 'pointer', 'a focusable node is a hand');
-  assert.equal(over(8), 'default', 'a hover-only node is not');
+  assert.equal(over(9), 'default', 'an onClick that declared nothing is the arrow');
+  assert.equal(over(7), 'default', 'so is a focusable node');
+  assert.equal(over(10), 'default', 'and an onDrag');
+  assert.equal(over(8), 'default', 'and a hover-only node');
+  assert.equal(over(11), 'pointer', 'the stock <button> declares the hand itself');
 
-  // A drag source grabs, and the captured drag holds the shape off the node.
+  // A declared grab holds through the captured drag, off the node too; the
+  // core promotes nothing to grabbing — the view declares that as its drag
+  // state changes.
   assert.equal(over(3), 'grab', 'resting');
   ctx.mouse(true);
-  assert.equal(ctx.cursorShape(), 'grabbing', 'pressed');
+  assert.equal(ctx.cursorShape(), 'grab', 'pressed: as declared');
   ctx.cursor(200, 2 * BAND + BAND / 2);
-  assert.equal(ctx.cursorShape(), 'grabbing', 'off the node, still captured');
+  assert.equal(ctx.cursorShape(), 'grab', 'off the node, still captured');
   ctx.mouse(false);
   assert.equal(ctx.cursorShape(), 'default', 'over the plain box now');
   assert.equal(over(3), 'grab', 'back to rest');
 
-  // A declared cursor overrides the derivation, through the drag too.
-  assert.equal(over(4), 'ewResize', 'the splitter would derive grab');
+  // A splitter's own arrows, through the drag too.
+  assert.equal(over(4), 'ewResize', 'resting');
   ctx.mouse(true);
   ctx.cursor(200, 2 * BAND + BAND / 2);
-  assert.equal(ctx.cursorShape(), 'ewResize', 'the captured drag keeps the declared shape, not grabbing');
+  assert.equal(ctx.cursorShape(), 'ewResize', 'the captured drag keeps the declared shape');
   ctx.mouse(false);
 
-  // Disabled strips the click payload, so there is nothing to derive a hand
-  // from: a disabled control is the arrow unless it declares otherwise.
+  // A disabled control is the arrow unless it declares otherwise.
   assert.equal(over(5), 'notAllowed', 'declared');
   assert.equal(over(6), 'default', 'quiet');
 
@@ -2844,7 +2855,7 @@ test('cursorShape derives from what the node under the pointer does', () => {
 test('cursorShape answers for the topmost node, as a click would', () => {
   const ctx = new Ctx();
   const tree = box({ width: 'grow', height: 'grow', pad: 20, hoverable: true }, [
-    box({ width: 100, height: 30, onClick: { kind: 'go' } }, [], 'button'),
+    box({ width: 100, height: 30, onClick: { kind: 'go' }, cursor: 'pointer' }, [], 'button'),
   ]);
   ctx.frame(400, 400, 1, tree);
   ctx.cursor(50, 30);

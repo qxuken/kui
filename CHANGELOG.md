@@ -33,6 +33,19 @@ was the first bare bump to break an app in five releases).
   laid something out against the metric under the strip reads
   `widgets::titlebar_height(ui)` instead, which is the metric everywhere
   the OS keeps no controls over the strip.
+- **The pointer shape is declared, not derived.** An `onClick` /
+  `on_click`, `focusable` or `onDrag` / `on_drag` node with no `cursor`
+  is now the plain arrow, where it was a hand (`pointer`) or an open hand
+  (`grab`, `grabbing` while captured). The I-beam over an editor or a
+  `selectable` scope is the one shape the core still implies, and the
+  stock `button` (`widgets::button` / `button_with`, `<button>`, `button
+  { }`, `kui_button_with`) declares `pointer` for itself, so a stock
+  button looks as it did. Every other control that wants a hand says
+  `cursor: "pointer"`; a handle says `grab`, and `grabbing` while its
+  drag runs, from the drag state the model already keeps. A captured drag
+  holds the dragged node's declared shape (or the arrow) wherever the
+  pointer goes; nothing is promoted to `grabbing`. `Core::cursor_shape`,
+  `ctx.cursorShape()` and `kui_cursor_shape` answer the new rule.
 - A `cells` node draws **box drawing, block elements and the Powerline
   arrows from the cell box, not the font** (backlog F66): U+2500–U+259F
   and U+E0B0–U+E0B3 in every `cells` node — JSX, Lua, C and Rust — now
@@ -41,6 +54,34 @@ was the first bare bump to break an app in five releases).
   against alpha.13's dashed frames needs re-taking. Bold no longer
   thickens a light line (the set has its heavy variants), italic is
   ignored, and a font's own box-drawing glyphs are never consulted.
+
+### Changed
+
+- **The cursor is what the view declares** (above). The C3 derivation
+  made every clickable box a hand and every draggable one a grab, which
+  is not what a desktop does: a native button, a tab, a list row, a menu
+  item and a titlebar are all the arrow, and the hand is the Web's
+  convention for a link. Deriving it meant a plain `onClick` card, a
+  `focusable` list row and a resizable pane all pointed, and an app that
+  wanted the arrow back had to declare `cursor: "default"` on each. Now
+  `Interaction::implied_shape` reads only `edit_origin` and
+  `select_scope` — the I-beam, which every toolkit derives because the
+  text itself is what says it can be taken — and the hand is where it is
+  written: on the stock button, on the devtools dock's own buttons, on
+  the `popup` example's field and rows, and wherever an app puts it. The
+  `drag` example declares `grab` on its track and card and `grabbing`
+  while `dragging` names one, which is how a handle says it is held: the
+  core does not promote a declared `grab` when the drag captures, since
+  the closed hand is a state the view has already, and a shape the view
+  did not write would be the derivation coming back one shape at a time.
+  The core test, the Node test and the drag example's headless drive
+  pin the new answers: an `on_click`, `focusable` or `on_drag` band that
+  declared nothing is `default`, a captured drag on it stays `default`
+  over the editor below, and the stock button in every binding is
+  `pointer` — unless the caller declared its own cursor, or it is
+  `disabled`, when it is the arrow like any inert control.
+  **What you can delete:** `cursor: "default"` on a clickable or
+  focusable node that wanted the arrow.
 
 ### Fixed
 

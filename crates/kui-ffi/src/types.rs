@@ -430,9 +430,10 @@ pub struct KuiSpec {
     /// caller keeps ownership; `kui_value_null()` asks for the behaviour
     /// without a tag.
     pub on_context_menu: *const KuiValue,
-    /// KUI_CURSOR_* (0 = unset: the core derives one from what the node
-    /// does). Overrides the pointer shape while the pointer is over this
-    /// node; a node with only a cursor is hover-tracked so it can be found.
+    /// KUI_CURSOR_* (0 = unset: the I-beam over text, the arrow otherwise
+    /// — a clickable or draggable node included). The pointer shape while
+    /// the pointer is over this node; a node with only a cursor is
+    /// hover-tracked so it can be found.
     pub cursor: u32,
     /// Non-zero: this node is the current one of its set — the shown tab,
     /// the picked row, the link for the page you are on. A KUI_ROLE_TAB

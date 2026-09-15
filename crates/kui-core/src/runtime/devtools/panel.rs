@@ -465,6 +465,9 @@ pub(super) fn fixed(ui: &mut Ui<'_>, f: impl FnOnce(&mut Ui<'_>)) {
 
 /// One icon in the header's strip: what it controls is in its tooltip,
 /// and its colour says its state. Its fill is a faint wash of the strokes.
+/// It and the three button shapes below declare the hand, as the stock
+/// button does (`crate::cursor`): the dock's tabs and rows do not, since
+/// a native tab strip and list are the arrow.
 pub(super) fn icon(ui: &mut Ui<'_>, t: &Theme, what: &str, glyph: Icon, color: Color, hint: &str) {
     icon_with(ui, t, what, glyph, color, color.with_alpha(0.35), hint);
 }
@@ -492,6 +495,7 @@ fn icon_with(
             .hover_bg(t.hover)
             .pressed_bg(t.pressed)
             .on_click(action(what))
+            .cursor(crate::cursor::CursorShape::Pointer)
             .label(what)
             .apply_tooltip(hint),
         |ui| {
@@ -520,6 +524,7 @@ fn icon_lit(ui: &mut Ui<'_>, t: &Theme, what: &str, glyph: Icon, on: bool, hint:
             .hover_bg(if on { t.accent_soft } else { t.hover })
             .pressed_bg(t.pressed)
             .on_click(action(what))
+            .cursor(crate::cursor::CursorShape::Pointer)
             .role(crate::access::Role::Radio)
             .checked(on)
             .label(hint.split(" · ").next().unwrap_or(what))
@@ -562,6 +567,7 @@ pub(super) fn small_button(
             .pressed_bg(t.pressed)
             .border(1.0, if on { t.accent } else { t.border })
             .on_click(action(what))
+            .cursor(crate::cursor::CursorShape::Pointer)
             .label(text)
             .apply_tooltip(hint),
         |ui| {
@@ -601,6 +607,7 @@ pub(super) fn small_button_iconed(
             .pressed_bg(t.pressed)
             .border(1.0, if on { t.accent } else { t.border })
             .on_click(action(what))
+            .cursor(crate::cursor::CursorShape::Pointer)
             .label(text)
             .apply_tooltip(hint),
         |ui| {

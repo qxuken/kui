@@ -1,5 +1,5 @@
 //! Input in, events out: the pointer, wheel, key, text and preedit entry
-//! points, the event poll, the derived cursor shape, and the editor text
+//! points, the event poll, the cursor shape, and the editor text
 //! a host reads back or replaces.
 
 use super::*;
@@ -295,8 +295,8 @@ pub extern "C" fn kui_poll_event(ptr: *mut KuiCtx, out: *mut KuiEvent) -> bool {
 }
 
 /// The pointer shape for where the pointer is now (KUI_CURSOR_*, never 0):
-/// derived from the topmost node under it, or whatever that node's `cursor`
-/// overrode it with. A query, not a queue — read it after each input and
+/// the `cursor` the topmost node under it declared, the I-beam over text,
+/// the arrow otherwise. A query, not a queue — read it after each input and
 /// each frame and apply it to the real window when it changes. Hosts
 /// without a pointer simply never call.
 #[unsafe(no_mangle)]

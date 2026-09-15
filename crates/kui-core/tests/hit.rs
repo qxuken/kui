@@ -318,8 +318,8 @@ fn a_rounded_corner_is_not_a_hit() {
     );
 }
 
-/// The cursor shape reads the same test: a pointer over a clickable
-/// wedge, the default beside it in the same box.
+/// The cursor shape reads the same test: the hand a clickable wedge
+/// declares over it, the default beside it in the same box.
 #[test]
 fn the_cursor_follows_the_shape() {
     let mut core = Core::new();
@@ -334,7 +334,8 @@ fn the_cursor_follows_the_shape() {
                 &tri,
                 NodeSpec::column()
                     .bg(Color::WHITE)
-                    .on_click(Value::str("tri")),
+                    .on_click(Value::str("tri"))
+                    .cursor(CursorShape::Pointer),
             );
         });
     });

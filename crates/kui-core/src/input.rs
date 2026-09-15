@@ -820,8 +820,8 @@ pub struct HitRegion {
     /// core turns into audio commands.
     pub click_sound: Option<crate::resources::SoundId>,
     pub hover_sound: Option<crate::resources::SoundId>,
-    /// Pointer shape declared by the node (`NodeSpec::cursor`), overriding
-    /// what the rest of this region would derive. None = derive.
+    /// Pointer shape declared by the node (`NodeSpec::cursor`). None = the
+    /// I-beam over text, the arrow otherwise (`Interaction::implied_shape`).
     pub cursor: Option<CursorShape>,
 }
 
@@ -1485,10 +1485,11 @@ impl Interaction {
     }
 
     /// The pointer shape for where the pointer is now (see
-    /// [`crate::cursor`]). Derived from the topmost region under it — the
-    /// same region a click would go to — so nothing declares a cursor for
-    /// the ordinary cases; a region's own `cursor` overrides the
-    /// derivation.
+    /// [`crate::cursor`]): what the topmost region under it — the same
+    /// region a click would go to — declared with `cursor`, the I-beam
+    /// over text, and the arrow otherwise. A clickable or draggable node
+    /// that declared nothing is the arrow: a hand or a grab is the view's
+    /// to say.
     pub fn cursor_shape(&self) -> CursorShape {
         // A captured drag owns the pointer: the shape stays the dragged
         // node's however far the cursor wanders off it.
@@ -1499,7 +1500,7 @@ impl Interaction {
                 .rev()
                 .find(|h| h.key == drag.key)
                 .and_then(|h| h.cursor)
-                .unwrap_or(CursorShape::Grabbing);
+                .unwrap_or(CursorShape::Default);
         }
         // A bar that would take the press takes the shape too — an
         // overlay bar across an editor is not an I-beam — and a float
@@ -1512,28 +1513,25 @@ impl Interaction {
         };
         match self.target_at(p) {
             Some(Target::Hit(region)) => {
-                region.cursor.unwrap_or_else(|| Self::derived_shape(region))
+                region.cursor.unwrap_or_else(|| Self::implied_shape(region))
             }
             Some(Target::Bar(_)) | None => CursorShape::Default,
         }
     }
 
-    /// The shape a region implies when it declares none.
-    fn derived_shape(region: &HitRegion) -> CursorShape {
+    /// The shape a region takes when it declares none: the I-beam over
+    /// text that can be edited or selected — the one shape every desktop
+    /// derives, because the words themselves are what says they can be
+    /// taken — and the arrow over everything else. Nothing here reads
+    /// `payload`, `drag` or `focusable`: a hand over a button and a grab
+    /// over a handle are declared, and the stock button declares its own.
+    fn implied_shape(region: &HitRegion) -> CursorShape {
         match region {
             // Window chrome is the platform's: every desktop points at a
             // titlebar and its buttons with the plain arrow.
             _ if region.window.is_some() => CursorShape::Default,
             _ if region.edit_origin.is_some() => CursorShape::Text,
-            // Draggable before clickable: a node can be both, and the
-            // grab is the gesture that starts on the press.
-            _ if region.drag.is_some() => CursorShape::Grab,
-            _ if region.payload.is_some() || region.focusable => CursorShape::Pointer,
-            // Selectable text says so the way every other text does: the
-            // I-beam is what tells a reader the words can be taken.
             _ if region.select_scope.is_some() => CursorShape::Text,
-            // Hover-only regions (a tooltip badge, a modal's backdrop) and
-            // disabled nodes, whose payloads the frame already stripped.
             _ => CursorShape::Default,
         }
     }

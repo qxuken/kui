@@ -11,13 +11,22 @@
 //! Two things it is for: a **slider** whose value is what it was at the
 //! press plus `dx` over the track, and a **card** whose float offset is
 //! where it was at the press plus the displacement, kept inside the stage
-//! (its own size from `on_layout`, the stage's from the event's `parent`)
-//! — the cursor says `grab` over one and `grabbing` during it. A drag that started on the
-//! card is the card's until it ends, whatever the pointer crosses.
+//! (its own size from `on_layout`, the stage's from the event's `parent`).
+//! A drag that started on the card is the card's until it ends, whatever
+//! the pointer crosses.
+//!
+//! The cursor is declared, not derived: an `on_drag` node with no `cursor`
+//! is the plain arrow, so both declare `grab` at rest and `grabbing`
+//! while their drag runs — the model already knows which drag is on, and
+//! the shape is one more thing the view says from it. The core holds
+//! whichever shape the dragged node declared for as long as the pointer
+//! is captured, wherever it goes.
 //!
 //! Run: cargo run -p kui --example drag [-- --headless]
 
-use kui::{Align, App, Core, FloatConfig, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
+use kui::{
+    Align, App, Core, CursorShape, FloatConfig, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value,
+};
 use kui_devtools::{Drive, Example};
 
 const TRACK_W: f32 = 320.0;
@@ -40,6 +49,15 @@ struct Drag {
 impl App for Drag {
     fn view(&mut self, ui: &mut Ui<'_>) {
         let t = ui.theme();
+        // The open hand over a handle at rest, the closed one while its
+        // drag runs: `dragging` names which.
+        let hand = |tag: &str| {
+            if self.dragging.as_deref() == Some(tag) {
+                CursorShape::Grabbing
+            } else {
+                CursorShape::Grab
+            }
+        };
         ui.with(
             NodeSpec::column()
                 .fill()
@@ -60,7 +78,8 @@ impl App for Drag {
                         .height(Sizing::Fixed(24.0))
                         .bg(t.sunken)
                         .radius(12.0)
-                        .on_drag(Value::str("slider")),
+                        .on_drag(Value::str("slider"))
+                        .cursor(hand("slider")),
                     |ui| {
                         ui.with(
                             NodeSpec::row()
@@ -101,6 +120,7 @@ impl App for Drag {
                                 .radius(8.0)
                                 .border(1.0, if grabbing { t.accent } else { t.border })
                                 .on_drag(Value::str("card"))
+                                .cursor(hand("card"))
                                 .on_layout(Value::str("card")),
                             |ui| {
                                 ui.text("drag me", TextStyle::new(14.0));
@@ -141,7 +161,11 @@ impl App for Drag {
             num("dy")
         );
         match (tag, phase) {
-            ("slider", "start") => self.at_press.0 = self.value,
+            ("slider", "start") => {
+                self.dragging = Some("slider".into());
+                self.at_press.0 = self.value;
+            }
+            ("slider", "end") => self.dragging = None,
             ("slider", _) => {
                 // The value at the press plus the displacement over the
                 // track's width: absolute, so nothing accumulates.
@@ -191,11 +215,20 @@ impl Example for Drag {
         let r = d.rect_of(track).ok_or("no track rect")?;
         let (x0, y0) = (r.x + 10.0, r.y + 12.0);
         d.input(self, kui::InputEvent::CursorMoved(kui::Vec2::new(x0, y0)));
+        d.check(
+            d.core.cursor_shape() == CursorShape::Grab,
+            "the track declares the open hand at rest",
+        )?;
         let evs = d.input(self, kui::InputEvent::mouse_down(1));
         d.check(
             evs.iter()
                 .any(|e| e.payload.get("phase").and_then(Value::as_str) == Some("start")),
             "a press on the track starts a drag",
+        )?;
+        d.frame(self);
+        d.check(
+            d.core.cursor_shape() == CursorShape::Grabbing,
+            "and the frame after the start declares the closed one",
         )?;
         d.input(
             self,
@@ -215,6 +248,10 @@ impl Example for Drag {
         )?;
         d.input(self, kui::InputEvent::mouse_up());
         d.frame(self);
+        d.check(
+            d.core.cursor_shape() == CursorShape::Grab,
+            "the release opens the hand again",
+        )?;
 
         let card = d.key_of("card").ok_or("no card")?;
         let c = d.rect_of(card).ok_or("no card rect")?;

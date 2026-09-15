@@ -96,7 +96,9 @@ fn scroller_and_float(core: &mut Core, modal: bool) {
             );
         }
     });
-    let mut spec = float_at(250.0, RED).on_click(Value::str("menu"));
+    let mut spec = float_at(250.0, RED)
+        .on_click(Value::str("menu"))
+        .cursor(CursorShape::Pointer);
     if modal {
         spec = spec.modal(Value::str("menu"));
     }
