@@ -20,9 +20,11 @@ half was built, fourteen more cut alpha.9 on 2026-09-08, the fourteen of
 the first Windows round — W3, W4–W12 and F32–F35 — went before the alpha.10 tag, F37
 followed it the next day, filed and closed after the tag, AR1–AR6 from
 the architecture review of 2026-09-11 went the same day they were filed,
-and the seventy-four closed between the alpha.11 and alpha.12 tags —
+the seventy-four closed between the alpha.11 and alpha.12 tags —
 F36, F42–F54, T5, B1a, C29–C39, W13–W15 and AR7–AR50 — went with the
-alpha.12 tag on 2026-09-14, the largest move so far. The index
+alpha.12 tag on 2026-09-14, the largest move so far, and the twelve of
+the two rounds of 2026-09-15 — F55–F61 and K1–K4 — with the alpha.13
+tag. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -36,10 +38,10 @@ round after, on 2026-09-11), W16 from the alpha.12 pre-tag round (the
 headless round overwriting `kui_ffi.dll` under the C hosts, filed with
 two fixes to choose between), two of the three editor wishes parked at
 the end of the third editor-and-mux round (the third, the underline, is
-K4 — a view asked, and it is built), the twelve entries of the two rounds of
-2026-09-15 built the day they were filed and waiting for the alpha.13
-tag to move (F55–F61 from the alpha.12 reports, K1–K4 from the kawoosh
-list), and the "theirs, not ours" lists the
+K4 — a view asked, and it is built), the two rounds of 2026-09-15 keeping only their introductions (their
+twelve entries — F55–F61 from the alpha.12 reports, K1–K4 from the
+kawoosh list — were built the day they were filed and went to the
+archive with the alpha.13 tag), and the "theirs, not ours" lists the
 field reports left behind. Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -850,226 +852,11 @@ paint. The headroom guarded a state no user saw. Nothing to build; the
 line in this file's archive and the changelog's stands as written, with
 this paragraph beside it.
 
-Seven entries, **F55–F61, all built or written on 2026-09-15**, with
-their outcomes on top.
-
-### `.` F55 — `KeyMsg` has no `physical`; the message types are a step behind the payloads — **done (2026-09-15)**
-
-**Done (2026-09-15).** `physical` on `KeyMsg`, `scale` on `LayoutMsg`,
-a `ForceClickMsg` in the `CoreMsg` union, and `menu` and `forceclick`
-rows in `schema::EVENTS` — so `docs/props.md`'s event table lists them
-for the first time. The pin is `index.d.ts's message types name exactly
-the fields the event payloads carry (F55)` in `packages/kui/test.mjs`:
-every `{ … }` shape a payload string names is parsed for its top-level
-fields, the type whose `kind` literal it is must declare each, every
-property the type declares must be in some shape (the dismiss payload
-has two), and every `CoreMsg` member's kind must be a row of the table.
-Written before the fixes, it went red on all four; mutation-tested by
-removing `physical` and by removing `ForceClickMsg`. Two traps: a regex
-with `(?:[^}]|\n)*?` over a 4,000-line file backtracks for minutes (the
-suite hung with no output), and the type bodies are found by a line
-scan to the `}` at column 0, since a nested `{ x: number; … }` sits on
-one indented line. CHANGELOG under alpha.13.
-
-**Symptom** (mind map, "two notes from driving it"): `KeyMsg` in
-`index.d.ts` has no `physical` field, and the runtime message carries
-one — "F37's class, a `.d.ts` a step behind the object". Checked: the
-schema's `key` payload string names `physical`, `KeyPress::to_value`
-writes it, the type does not declare it. Reading the other message
-types against their payload strings the same way: `LayoutMsg` lacks
-`scale` (ADR 0025's addition, documented on the `layout` row and in the
-`onLayout` prop's doc), and two kinds the core spells — `menu`
-(`menu_api.rs`, ADR 0017 decision 5) and `forceclick` (`dispatch.rs`,
-the `onForceClick` prop) — have no `EventDef` at all, so the generated
-event table never listed them and `forceclick` has no message type.
-
-**Do:** the fields and the rows, and a static pin in `test.mjs` beside
-AR44's: `protocol().events` gives every payload string, the d.ts gives
-every type, and the two are compared both ways per kind.
-
-### `!` F56 — `KuiWindow.access()` hands the click's sound to the device a frame late, and `env.audio.live` reads 0 on the frame that asked — **done (2026-09-15)**
-
-**Done (2026-09-15).** `access` in `core_methods!` calls `$audio()`
-between `$take` and `$redraw`, the order `Shell::dispatch` has always
-had for a real input. Checked on a real window with a scratch probe
-(`clickSound` on a button, `access('go', 'click')`, `env().audio` read
-after each `frame()`): the unfixed addon reads `{opening, live: 0}` on
-the frame after the click and `live: 1` on the next; the fixed one reads
-`live: 1` on the first. No test in the suite can open a window, so the
-A/B is the record. CHANGELOG under alpha.13.
-
-**Symptom** (pomodoro, "found after the bump", wish 1): "the play that
-opens the device is not in `live` while the device is `opening`" — a
-smoke test that waited on `live === 0` between a click and a finish got
-a 0 that meant "not yet counted", the click's blip was counted ~35 ms
-on, and the "released" reading said 2 whenever the alert's first blink
-fell inside the blip's 120 ms: a failure one run in three.
-
-**The line.** The store counts a play the moment it is queued against an
-opening device (`Audio::apply` → `pending`), so the report's mechanism
-is not the store's. It is the door's: `KuiWindow::access` — the one
-input injector a window has, since pointer and key injection stayed
-`Ctx`-only (D4) — runs `handle_input`, routes the events and requests a
-redraw, and never hands the core's queued audio commands to the store.
-A real press goes through `Shell::dispatch`, which calls `apply_audio()`
-before `request_redraw()`. So on an `access` click the frame is built
-first (`redraw` stamps `sync_env(audio.env())` at its top, reading the
-store before the command reached it), and `apply_audio` runs after the
-paint (`lib.rs`, the "sounds a frame started" drain). `live` lags one
-frame, and the sound starts a paint late. The report's attribution —
-"the chime, counted at once" at 212 ms, "the blip, counted 35 ms late"
-at 235 — is the two swapped: the 1 at 212 is the blip, on the next frame
-drawn; the 2 at 235 is both.
-
-**Do:** `self.$audio()` in `access` before `self.$redraw()`. A `Ctx`'s
-`$audio` is `no_flush`, so headless is unchanged.
-
-### `.` F57 — A frame the loop's own tick draws resets the idle backoff — **done (2026-09-15)**
-
-**Done (2026-09-15).** `createLoop` gained a `[STEP]` door beside
-`[BUDGET]` — `step` answering `{ drew, used }`, `used` when something
-other than the loop's clock asked for the turn (an event the surface
-queued, or a model a foreign `dispatch` changed) — and `step()` is its
-`drew`. `runWindowed` paces on `used`, reads the runner's deadline
-*before* `step` for the "an OS event's redraw is owed" signal (a tick's
-frame requested inside `step` must not count as one) and again after it
-for the sleep (the frame a tick drew is due now). The backoff itself is
-a `pacer` value with `after(used, now)`, reachable as `runWindowed[PACE]`
-for its test. Pinned in `test.mjs` (`a tick's own frame is not the user
-… (F57)`): the four answers of `[STEP]`, and the pacer holding 32 across
-tick frames at 1000 and 2000 and returning to 8 on a click. Measured on
-a real window with a scratch probe counting `pump()` calls through a
-forwarding surface — a stopped app whose once-a-second tick returns a
-model: **67.0 pumps/s under alpha.12, 29.4 with the change**, the same
-window and tick. The `quietMs` doc and the `runWindowed` essay say the
-new rule. CHANGELOG under alpha.13.
-
-**Symptom** (pomodoro, "found after the bump", wish 2): with `every:
-(m) => m.running ? 16 : 1000`, the stopped mid tier read 4.5% of a core
-against 5.6% at 16 ms — "for a change that should have cost sixty times
-less". The driver doc says why: "anything at all — an event, a tick, a
-frame, a transition — resets both" the gap and the quiet clock, so a
-tick that returns a model is a frame, the gap goes back to 8 ms, and
-the next 500 ms are pumped at the busy rate — half of every second. The
-app got out of it by not drawing the digit where nothing shows it; the
-wide tier under reduced motion, which shows it, kept paying.
-
-**The reasoning.** The backoff exists because the driver cannot know
-whether an OS event is waiting, and something happening is its proxy
-for someone being there. A tick is the loop's own clock: it says
-nothing about whether anyone is there, and the frame it draws needs no
-faster pumping — the next tick is a deadline `[BUDGET]` already sleeps
-to. What the busy half-second bought was a click answered within 8 ms
-rather than 32 in the half-second after a digit, which is the trade the
-backoff already makes for every quiet window.
-
-**Do:** `step` says what the turn was for; the driver paces on that and
-on the runner's owed redraw read before `step`.
-
-### `~` F58 — A second `runWindowed` in one process, after the first window closed — **done (2026-09-15)**
-
-**Done (2026-09-15).** `crates/kui/src/lib.rs`: a thread-local
-`PARKED_LOOP`; `Launcher::open` and `run` take it or build one;
-`PumpRunner` holds `Option<EventLoop>` and, when a pump returns false,
-`retire`s — drops its panes (which closes the windows; the main core is
-moved back to `main_core` so `core_mut` keeps answering, the text-input
-facts are detached), and parks the loop; `Drop` retires too. The pump
-path never calls winit's `exit()` any more: `Shell::exit_main` sets
-`exit_requested` and exits the loop only for `run_app` (`pumped`
-false), because an exited loop answers every later pump with `Exit` and
-nothing public clears that. A reused loop delivers no `resumed`, so
-`about_to_wait` opens the main window on the first turn a pumped shell
-gets (`opened` guards it, and a main window the user closed is not
-reopened from there). **What made it work was not in the runner:** the
-second window's view panicked in winit's initialiser at `inputContext()
-.expect("input context")`. AppKit will not *create* an
-`NSTextInputContext` for a view answering `isEditable` NO — an existing
-one is handed back regardless, which is why the first window never
-showed it — and W15's `isEditable` override answered NO for a view it
-had not registered yet; the first window's view was born before the
-class was patched, the second was born patched. It answers YES for an
-unregistered view now (`macos_text_input.rs`). Pinned by the windowed
-smoke round: `examples/node/features/relaunch.tsx` reopens its window
-under the other chrome through the harness's new `after` hook, and
-under `KUI_SMOKE_FRAMES` the round passes only if the second window
-opened; checked by hand too — the first window closed through its close
-button, the second captured with custom chrome. CHANGELOG under
-alpha.13.
-
-**Symptom** (pomodoro, wish 3): "A second `runWindowed` in the same
-process, after the first window has closed, is refused with `EventLoop
-can't be recreated` — winit's, one per process — so `smoke.tsx` spawns
-itself with the flag and folds the exit code in."
-
-**The facts.** winit 0.30's `EventLoopBuilder::build` sets a static
-`EVENT_LOOP_CREATED` and never clears it (except on web); `Launcher::open`
-built a new loop per runner. But `pump_app_events` does not consume the
-loop, and winit's macOS pump has an explicit branch for "we just
-started to re-run the same `EventLoop` again"; Windows and Linux support
-`run_on_demand` on the same terms. So the loop can be kept and reused,
-provided the runner never lets winit *exit* it — after `exit()`,
-`pump_events` returns `Exit` forever and `clear_exit` is `pub(crate)`.
-
-**Do:** park the loop, end the runner on `exit_requested` alone, open
-the window from `about_to_wait` when no `resumed` comes.
-
-### `.` F59 — The cadence on the tick — **done (2026-09-15)**
-
-**Done (2026-09-15).** `tick.msg(now, every)`: `ticksTo` passes the
-cadence in force as the second argument; the type and its doc say so;
-`tick.msg is told the cadence it fired on, beside the time (F59)` in
-`test.mjs` reads `[1000, 1000], [2000, 1000]` and then `[2016, 16],
-[2032, 16]` after the model turns fast. Not a substitute for the
-pomodoro's own fix — a press anchors nothing, the next tick writes the
-anchor from its `now` — which the changelog says. CHANGELOG under
-alpha.13.
-
-**Symptom** (pomodoro, wish 4): "A field on the `tick` message for the
-cadence that fired it … so a model can tell a 16 ms reading from a
-1000 ms one and know how stale `now` may be, rather than the app
-carrying a flag for the one press that cares." The message is the app's
-own (`tick.msg(now)`), so the cadence goes to the function that builds
-it.
-
-### `.` F60 — A shifted letter's spelling is nowhere written, and a headless press can spell one no keyboard produces — **done (2026-09-15)**
-
-**Done (2026-09-15).** The `key` event's doc in `schema::EVENTS` (and
-so `props.md`, the Lua and C docs) says a shifted letter arrives as the
-upper-case letter with `shift` set and `physical` lower — `Z` / `z` for
-⇧⌘Z — and that a keymap binding letters folds a one-character `code`
-under a chord; the Node `press` door's doc says to spell a headless
-press as the OS does, and names `press("z", { shift: true })` as the
-chord no keyboard produces. No door re-spells anything: a test's
-spelling stays the test's, and the trap is now written where both
-readers look. CHANGELOG under alpha.13.
-
-**Symptom** (mind map, "the standard Edit menu, and a bug of this app's
-it found"): Edit ▸ Redo replayed ⇧⌘Z and the app's `handleKey` switched
-on `'z'`; the sink hears `code: "Z"`, `shift: true`, `physical: "z"`.
-"This app's redo has never worked from a keyboard on macOS" — its suite
-pressed `'z'` with `{ shift: true }`, "the headless driver's spelling
-and not the OS's", green since alpha.6. Checked: `KeyPress::from_layout`
-takes the layout's character, which is shifted; ADR 0002 d.11, the
-event doc and the press doors said nothing about case.
-
-### `.` F61 — `{ percent }` was a break the changelog filed under Fixed — **done (2026-09-15)**
-
-**Done (2026-09-15).** alpha.12's **What breaks** list gained the `{
-percent: N }` line after the fact, dated, with what an app that wrote to
-the old behaviour sees; and the file's charter paragraph gained the
-rule: a fix that changes what an existing input draws is a break for
-whoever wrote to the old behaviour, documented or not, and is listed
-under both. CHANGELOG under alpha.12 and its header.
-
-**Symptom** (pomodoro, "what changed in the release" and its
-assessment): "The bare bump broke two things, both the same thing":
-`{ percent: 0.74 }` for a cascade row, written as the fraction the core
-reads, drew 74% under alpha.11 by two wrongs cancelling and 0.74% under
-alpha.12, where AR25 made the object form divide by 100 as `"74%"`
-does. The release's list "did not name it because, from the library's
-side, nothing that was documented changed — the type said N%
-throughout. Which is the lesson: the list is what the release knows it
-broke."
+Seven entries, **F55–F61, all built or written on 2026-09-15** — moved
+whole to
+[`backlog/closed-2026-09.md`](backlog/closed-2026-09.md#from-the-two-alpha12-upgrade-reports-2026-09-15)
+with the alpha.13 tag, their outcomes on top. What did not survive the
+check is below.
 
 ### Theirs, not ours
 
@@ -1105,130 +892,10 @@ paste to a key sink is `InputEvent::Commit` (`Text` is never delivered
 to a sink, by design: the raw press already carried it), which kawoosh's
 M2 tests should know before they wonder why the paste never arrived;
 and R3.8's premise, below. **K1, K2 and K3 built or answered on
-2026-09-15, and K4 built the same day** — the shape it filed, as written.
-
-### `~` K1 — A slot name not known when the extension loaded — **done (2026-09-15)**
-
-**Done (2026-09-15).** `kui_core::ANY_SLOT` (`"*"`): `Extensions::fill`
-matches any declared name under the namespace against it, `root`
-included as one more name (under a wildcard it is not the auto-fill,
-and a wildcard extension with nothing declared draws nowhere), and
-`finish` skips the `unknown-slot` walk for it. The same string in a Lua
-`slots = { "*" }` global, a C `kui_ext_slots` list and a Node
-`extensions` entry, since all three hand the list to the one `fill`.
-ADR 0014 amended (2026-09-15). Pinned in `crates/kui-core/tests/slots.rs`
-(`a_wildcard_extension_fills_whatever_the_host_declares_under_its_namespace`)
-and in `crates/kui-lua/tests/slots.rs` with a script. CHANGELOG under
-alpha.13.
-
-**Symptom** (kawoosh R6.3): "`Extension::slots` is read once at load
-and copied into `Entry::slots`; `Extensions::fill` fills only a listed
-name" — checked, exactly so — and a view registered from `init.lua` at
-runtime has no name to list. Their workaround bypasses the runner's list
-with a `Core::fill` under an origin the runner does not know, "whose
-events `route` hands to the host to forward — it works and it bypasses
-the runner's list". Their proposal was this entry's shape: one branch in
-`fill`, one in `finish`.
-
-### `.` K2 — An event knows which fill it came from — **done (2026-09-15)**
-
-**Done (2026-09-15).** `UiEvent::slot: Option<Key>`, stamped by the
-core in `stamp` beside `window` from `Tree::fills` — a side list of
-`(slot key, first node, end)` that `fill_within` records after the
-fills inside it, so the innermost is found first and a frame with no
-extension records none — resolved through `Tree::index_of` on the
-event's key; a reply in `Extensions::route` keeps the slot of the event
-it answers. Node: `slot` on every `pollEvents()` object, the slot's hex
-key or null (`keyOf(fullName)` answers the same); Lua: `ev.slot`, the
-full name, from a map the extension fills as it is handed each `Slot`;
-C: `uint64_t slot` appended to `KuiEvent` under the [out] rule with no
-bump, 0 for none, checked by `host.c` against `kui_key_of`. Pinned in
-`tests/slots.rs` (host node none, pane 1 and pane 2 their own, the
-reply's kept), in the Lua slots test, in `test.mjs` (the plugin's reply
-names `todos/panel`; a host node reads null and the key set is pinned),
-and in the C round. CHANGELOG under alpha.13.
-
-**Symptom** (kawoosh R6.4): `UiEvent { origin, window, key, payload }`
-— one extension fills a slot per (view, pane), and "the bootstrap walks
-the returned table and stamps `_slot` onto every handler payload — a
-table walk per dirty frame, and a convention every plugin author must
-not break." Their proposal was `UiEvent::slot: Option<Key>` surfaced in
-all three bindings, which is what was built; the one thing decided here
-is the Lua spelling, the name rather than the key, since a script thinks
-in the names it was handed.
-
-### `.` K3 — Trailing and repeated spaces measure reliably in a run — **answered (2026-09-15)**
-
-**Answered (2026-09-15): they already do, unwrapped.** Measured through
-`Core::measure_text` and laid out: `"ab  "` is four cells in the mono
-face, `" ab"` three, `"a  b"` four, and the NBSP spelling of the same
-text is the same width; a proportional face's space has an advance of
-its own and counts too. What drops a trailing space is a *wrap* — the
-line-breaking rule hangs it past the break — which a row of runs never
-meets. `spaces_measure_at_the_advance_unwrapped` in
-`crates/kui-core/tests/measure.rs` pins it, and the `nbsp` mapping in
-`modal_editor` and `syntax_view` (there since alpha.9, its comment
-blaming fonts) is deleted, with the byte arithmetic that mapped a
-pointer's `byte` back through it; both drives pass. No
-`TextStyle::preserve_spaces()`: nothing needs preserving. CHANGELOG
-under alpha.13's "what you can delete".
-
-**Symptom** (kawoosh R3.8): "the examples map ` ` → NBSP; kawoosh does
-the same and maps bytes back. A `TextStyle::preserve_spaces()` (or mono
-runs measuring whitespace by advance) would remove the mapping and the
-2-byte NBSP arithmetic from every consumer." The examples' comment
-("unreliable across fonts") predates C32, which pinned the generic mono
-family to an installed face; whether it was ever true is not on record,
-and it is not true now.
-
-### `.` K4 — An underline of its own colour and style — **done (2026-09-15)**
-
-**Done (2026-09-15), the shape below as written.** `UnderlineStyle`
-(`Solid | Wavy | Dotted`, `NAMES`) in `spec.rs`; `underline_color` and
-`underline_style` on `TextStyle` and `Span` with builders that imply the
-line; `Cell::ul` and `flags::WAVY` / `DOTTED` (`LINES` is what a run of
-cells has to agree on). `crates/kui-core/src/deco.rs` draws the shapes:
-a solid line is the rect it was, a wave is a zigzag of segment quads
-whose round caps soften the corners, dots are zero-length segments —
-the capsule ADR 0010's `line` already draws, so no backend, header or
-protocol learned a kind; the text system's `DecoTemplate` carries a
-style and expands non-solid lines at emission, the cell painter
-coalesces runs on the line bits and both colours. Four bindings: two
-schema rows (`underlineColor`, `underlineStyle`, ids 101–102) for a
-text and the same spellings on `<span>` (Node's span record gains a
-third colour slot and four flag bits, frame v13; a cell a fourth slot,
-the JSX array four or five entries a cell), Lua's span table and a
-run's seventh entry, C's `KuiTextStyle` / `KuiSpan` / `KuiCell` appends
-under ABI 17 with `KUI_UNDERLINE_*` and `KUI_CELL_WAVY` / `DOTTED`.
-Pinned: `deco.rs`'s own tests, the `underlines` corpus scene in four
-adapters (32 segments, one solid, the counts pin the shapes), a Node
-test (K4), a Lua test, a C test, the ABI parity walk and the [in] size
-table. Seen on screen: `syntax_view`'s red wave under `count` and
-`cells`' accent undercurl under `layout`, captured from real windows.
-The `QuadKind` of its own stays the next step, on a profile. CHANGELOG
-under alpha.13.
-
-The wish parked at the end of the third editor-and-mux round, now with
-a view that asks: kawoosh's M6 (a diagnostic's wavy red under
-keyword-coloured text) and M4 (a terminal's SGR 58 / 4:3 undercurl per
-cell). Today `Span::underline` is a bool in the text's colour (C22) and
-`Cell::flags` has one underline; the interim both name — a `line`
-element under the run, its rect from the mono column or `caret_rect` —
-works, and kawoosh says it works until M6.
-
-**The shape**, as kawoosh proposes it and as it fits: `Underline {
-color: Option<Color>, style: Solid | Wavy | Dotted }` on `Span` and
-`TextStyle` (the bool becomes `Solid` in the text's colour, so nothing
-written to it changes), and on `Cell` a colour slot and a style in the
-flags (SGR 58 is the colour, 4:3 the curl). Solid and dotted are
-segments the core already draws (ADR 0010's capsule quad, V2's `dash`
-would give dotted for free); wavy is the one new thing to paint — a
-zigzag of short segments per run is the cheap answer and a `QuadKind`
-of its own the right one if a screenful of diagnostics makes the
-segment count show. Four bindings and a corpus scene, since the
-decorations are corpus-pinned (C22). Not built in this round: the
-milestone that wants it is two away, the interim is real, and the wavy
-kind wants a measurement before it picks a shape.
+2026-09-15, and K4 built the same day** — the shape it filed, as
+written; all four moved whole to
+[`backlog/closed-2026-09.md`](backlog/closed-2026-09.md#from-the-kawoosh-requirements-list-2026-09-15)
+with the alpha.13 tag.
 
 ## After alpha.12
 
@@ -1882,3 +1549,20 @@ move.
 
 - `.` **W14** — [The standard Edit menu's rows never grey](backlog/closed-2026-09.md#-w14--the-standard-edit-menus-rows-never-grey--done-2026-09-14) — done (2026-09-14)
 - `~` **W15** — [AppKit's own Edit rows arrive unchecked](backlog/closed-2026-09.md#-w15--appkits-own-edit-rows-arrive-unchecked--done-2026-09-14) — done (2026-09-14)
+
+**From the two alpha.12 upgrade reports (2026-09-15)** — F55–F61, all built or written the same day
+
+- `.` **F55** — [`KeyMsg` has no `physical`; the message types are a step behind the payloads](backlog/closed-2026-09.md#-f55--keymsg-has-no-physical-the-message-types-are-a-step-behind-the-payloads--done-2026-09-15) — done (2026-09-15)
+- `!` **F56** — [`KuiWindow.access()` hands the click's sound to the device a frame late, and `env.audio.live` reads 0 on the frame that asked](backlog/closed-2026-09.md#-f56--kuiwindowaccess-hands-the-clicks-sound-to-the-device-a-frame-late-and-envaudiolive-reads-0-on-the-frame-that-asked--done-2026-09-15) — done (2026-09-15)
+- `.` **F57** — [A frame the loop's own tick draws resets the idle backoff](backlog/closed-2026-09.md#-f57--a-frame-the-loops-own-tick-draws-resets-the-idle-backoff--done-2026-09-15) — done (2026-09-15)
+- `~` **F58** — [A second `runWindowed` in one process, after the first window closed](backlog/closed-2026-09.md#-f58--a-second-runwindowed-in-one-process-after-the-first-window-closed--done-2026-09-15) — done (2026-09-15)
+- `.` **F59** — [The cadence on the tick](backlog/closed-2026-09.md#-f59--the-cadence-on-the-tick--done-2026-09-15) — done (2026-09-15)
+- `.` **F60** — [A shifted letter's spelling is nowhere written, and a headless press can spell one no keyboard produces](backlog/closed-2026-09.md#-f60--a-shifted-letters-spelling-is-nowhere-written-and-a-headless-press-can-spell-one-no-keyboard-produces--done-2026-09-15) — done (2026-09-15)
+- `.` **F61** — [`{ percent }` was a break the changelog filed under Fixed](backlog/closed-2026-09.md#-f61---percent--was-a-break-the-changelog-filed-under-fixed--done-2026-09-15) — done (2026-09-15)
+
+**From the kawoosh requirements list (2026-09-15)** — K1–K4, the first consumer-written round, all built the same day
+
+- `~` **K1** — [A slot name not known when the extension loaded](backlog/closed-2026-09.md#-k1--a-slot-name-not-known-when-the-extension-loaded--done-2026-09-15) — done (2026-09-15)
+- `.` **K2** — [An event knows which fill it came from](backlog/closed-2026-09.md#-k2--an-event-knows-which-fill-it-came-from--done-2026-09-15) — done (2026-09-15)
+- `.` **K3** — [Trailing and repeated spaces measure reliably in a run](backlog/closed-2026-09.md#-k3--trailing-and-repeated-spaces-measure-reliably-in-a-run--answered-2026-09-15) — answered (2026-09-15)
+- `.` **K4** — [An underline of its own colour and style](backlog/closed-2026-09.md#-k4--an-underline-of-its-own-colour-and-style--done-2026-09-15) — done (2026-09-15)

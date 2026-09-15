@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.13 (unreleased)
+## 0.1.0-alpha.13 (2026-09-15)
 
 **What breaks.**
 
@@ -181,6 +181,65 @@ did not know (K1).
 
 The child process a smoke test spawned to run a second windowed
 configuration (F58).
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), run before this tag on
+2026-09-15 on `main`, on macOS — the platform alpha.12's round did not
+run on. What follows is what executed on what.
+
+**macOS 26.6.2 (arm64, Apple M3 Pro), rustc 1.98.0, Node 26.8.1.**
+`cargo fmt --all --check` and `cargo clippy --workspace --all-targets`
+are clean. `cargo test --workspace`: **1186 tests over 93 suites, 0
+failed** (1 ignored, the devtools' `drive.rs` doc example), from
+alpha.12's 1177. The scene corpus runs in all four adapters against one
+reference report: **37 scenes** — `underlines` new — Rust and Lua
+through `cargo test`, C through `target/debug/conformance` (the header
+at **372 fields, 250 enum members and 213 prototypes**, from 366 / 245
+/ 213), Node through `npm test` (**163 Node tests, 163 passed, 0
+skipped** — the `RTLD_GLOBAL` pin runs here — from 158). The C round,
+`cbuild --run`, passes its **six checks** against **ABI 17**, the C
+host now asserting the slot a reply names. `npm run gen` regenerated
+`props.md`, `jsx-runtime.d.ts` and `index.d.ts` and the tree carries
+the result. `npm run typecheck` on `examples/node` is clean. The
+headless round, `smoke -- --headless`, passes all **26 drives**.
+
+**The windowed round**, `cargo run -p kui-devtools --bin smoke --
+--node`: **32 Rust examples on both bases and the six Node windows, 120
+frames each, every one exiting 0 with nothing on stderr** — 70 windows
+(`relaunch` new, and it opens two). The C and Lua hosts by hand under
+`KUI_SMOKE_FRAMES=120`: `counter`, `host`, `c_panel` and `lua_panel`
+each opened a window and exited 0, warning-free — **74 windows over
+five hosts.** The AX audit against `accessibility`: **106/106**. Two
+things were looked at on screen rather than counted: `syntax_view`'s
+red wave under `count` and `cells`' undercurl under `layout` (K4),
+captured from real windows; and `relaunch`'s second window under
+custom chrome after the first was closed through its close button
+(F58).
+
+**What the round found.** One hang, and it did not repeat.
+
+- The windowed round's first run reported `accessibility/light` as
+  **HUNG (killed at the timeout)** — the first window of the round —
+  and every other of the 69 as ok. Alone, the example drew 120 and 300
+  frames on both bases in ~2–3 s each; the full round rerun passed
+  70/70. A run of the same round earlier in the session, killed by the
+  harness mid-way with its output unread, had left nothing behind that
+  `ps` could see. Not reproduced, not filed: the alpha.10 record has
+  the same shape for a first window (F13's launch stall), and the
+  round's timeout is the guard.
+- **The bench guard**, run alone against the alpha.12 tag on the M3
+  Pro: every guarded row within ±5% — `deep_nesting_64_levels` −4.9%,
+  `frame_10k_rects` −0.8%, `frame_10k_rects_with_access_tree` −2.7%,
+  `frame_10k_rects_with_text_and_hits` −1.2% (the row alpha.12's
+  Windows round could not read; here ±1.3% run to run, and the answer
+  the record deferred to this round is *no regression*),
+  `frame_10k_segments` +1.7%, `frame_1k_typical` +0.7%,
+  `list_10k_rows_virtual` +1.7% — and nothing unguarded past ±5% with a
+  readable spread. The guard was readable (worst guarded spread 2.9%),
+  so **the README's table is refreshed** to this run's medians for the
+  `frame` rows; the `stream`, `long_line` and `cells` rows stay at
+  2026-09-07's.
 
 ## 0.1.0-alpha.12 (2026-09-14)
 

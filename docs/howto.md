@@ -67,6 +67,20 @@ styles do not interrupt them — spans shape as one paragraph.
 
 [`wrap` / `maxLines` / `ellipsis` rows](props.md#text-props)
 
+### How do I underline a diagnostic in red, with a squiggle?
+
+`underlineColor` and `underlineStyle` on a `<span>` (or on a text's style
+rows): `<span underlineColor="#ff0000" underlineStyle="wavy">value</span>`
+draws a red wave under the span alone, following it across a wrap, and
+leaves the glyphs their own colour; either row implies `underline`. The
+shapes are `solid`, `wavy` and `dotted`. A terminal's undercurl is the
+same on a cell — the wave bit (32) in its flags and the underline colour
+as a fifth entry (SGR 4:3 and 58). No `line` float under the run, no rect
+arithmetic; a wave is pieces of the segment primitive a `line` draws.
+
+[`underlineColor` / `underlineStyle` rows](props.md#text-props) ·
+[alpha.13](../CHANGELOG.md#010-alpha13-2026-09-15)
+
 ### How do I show a 100k-character line, or a paragraph that long?
 
 Hand it over as one `text` node. A plain text of 4096 bytes or more with no
@@ -727,10 +741,16 @@ Declare the place: `ui.slot("fs/panel")` is a position among the host's own
 children, filled then and there by the extension the name addresses, with a
 `Value` of parameters in and replies out. The host decides the namespace an
 extension is loaded under (`extension_as("fs", ext)`), so the same plugin
-loaded twice is two namespaces and two sets of slots.
+loaded twice is two namespaces and two sets of slots. An extension whose
+slots are not known when it loads — views registered at runtime, one slot
+per pane — lists `"*"` and fills every name declared under its namespace;
+and every event says which slot's fill drew its node (`ev.slot`), so a
+host with one extension across many panes routes by pane without the
+extension stamping its payloads.
 
 [ADR 0014](adr/0014-slots-an-extension-fills-in-place.md) ·
-[alpha.9](../CHANGELOG.md#010-alpha9-2026-09-08)
+[alpha.9](../CHANGELOG.md#010-alpha9-2026-09-08) ·
+[alpha.13](../CHANGELOG.md#010-alpha13-2026-09-15)
 
 ### How do I redraw when a thread has new data?
 

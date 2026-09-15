@@ -893,10 +893,10 @@ reach it; it takes no pointer input and has no access row.
 
 ## Performance
 
-`cargo bench -p kui-core`, measured 2026-09-11 on an Apple M3 Pro MacBook Pro
+`cargo bench -p kui-core`, measured 2026-09-15 on an Apple M3 Pro MacBook Pro
 (macOS 26.6.2, rustc 1.98.0, release, steady-state warm caches — full frame:
-build + layout + emit) for the `frame` rows, by the alpha.11 pre-tag
-`scripts/bench-check.sh` run; the `stream`, `long_line` and `cells` rows
+build + layout + emit) for the `frame` rows, by the alpha.13 pre-tag
+`scripts/bench-check.sh` run against the alpha.12 tag; the `stream`, `long_line` and `cells` rows
 are from 2026-09-07 and were not re-run. The suite was run twice back to back and the second
 run read; most rows reproduce to within ~3% that way. Two do not:
 `frame_10k_rects_all_transitioning` and `frame_10k_rects_all_declaring_exit`
@@ -913,41 +913,41 @@ that prop costs.
 
 | bench | what it holds | median |
 |---|---|---|
-| `frame_1k_typical` | 32×32 grid, every 8th cell a label, every 4th clickable — a "typical app" frame | ~118 µs |
-| `frame_1k_typical_with_100_floats` | the typical frame with a hundred tooltips floating over it every frame — what a hundred layers on the float stack cost at rest (ADR 0023) | ~148 µs |
-| `frame_10k_rects` | 100×100 plain rects, nothing switched on | ~741 µs |
+| `frame_1k_typical` | 32×32 grid, every 8th cell a label, every 4th clickable — a "typical app" frame | ~121 µs |
+| `frame_1k_typical_with_100_floats` | the typical frame with a hundred tooltips floating over it every frame — what a hundred layers on the float stack cost at rest (ADR 0023) | ~152 µs |
+| `frame_10k_rects` | 100×100 plain rects, nothing switched on | ~740 µs |
 | `frame_10k_rects_with_text_and_hits` | the same grid plus 1.2k texts and 2.5k hit regions | ~1.21 ms |
-| `hover_over_10k_regions` | the cursor moving between two cells of the 10k-region frame, so the hovered node changes every move and the scan runs to its end (ADR 0026) | ~3.62 µs |
+| `hover_over_10k_regions` | the cursor moving between two cells of the 10k-region frame, so the hovered node changes every move and the scan runs to its end (ADR 0026) | ~3.71 µs |
 | `frame_10k_rects_with_access_tree` | that frame with `core.access_tree()` derived after it — what a frame costs while assistive technology is attached | ~1.33 ms |
-| `frame_10k_rects_with_shadows_and_opacity` | the plain grid with only the paint props on: every cell casts a shadow under a faded root | ~802 µs |
-| `frame_10k_rects_square_clip` | the plain grid with every row clipping, so all 10k cells inherit a clip | ~820 µs |
-| `frame_10k_rects_rounded_clip` | the same with a radius on every clipping row, so each cell pays the per-corner intersect | ~853 µs |
-| `frame_10k_segments` | 10k one-segment `line` floats — the same 10k quads as `frame_10k_rects`, so the gap between the two is what a segment costs over a box | ~868 µs |
-| `frame_1k_curves` | 1k curves through eight knots each, re-flattened by chord length every frame — 35 segments a curve | ~252 µs |
-| `frame_1k_polygons` | 1k six-point fills, one fragment quad each (ADR 0025) | ~102 µs |
-| `frame_1k_closed_lines` | the same thousand outlines as closed strokes, six segment quads each | ~97.7 µs |
-| `frame_1k_typical_with_8_textures` | `frame_1k_typical` plus eight texture-backed images, registered once and updated once, so each is its own texture and a side-list entry (ADR 0025) | ~125 µs |
-| `update_image_1080p_and_frame` | replacing a 1080p frame — the `Vec` handoff, the revision bump, then the frame that draws it; the upload is the backend's (`benches/split.rs` in kui-wgpu under `TEX=1`) | ~134 µs |
-| `copy_1080p_frame` | the app's own copy of that 1080p frame, measured beside it so the core's share of `update_image_1080p_and_frame` is the difference | ~135 µs |
-| `frame_10k_rects_all_transitioning` | every cell declares a `transition` — nine retained tween slots each | ~2.39 ms |
-| `frame_10k_rects_all_declaring_exit` | every cell also declares an `exit`, so the whole frame is kept for the next one to diff against | ~2.75 ms |
-| `frame_10k_rects_one_exit` | the same 10k grid with a single cell declaring an `exit` | ~753 µs |
-| `drop_1k_rows_plain` | 1k rows removed from the tree in one frame, no exits declared | ~61.8 µs |
-| `drop_1k_rows_declaring_exit` | the same removal with exits declared — over the 512-node budget, so ADR 0012 refuses it whole: the diff and the count, and no copies | ~156 µs |
-| `drop_500_rows_declaring_exit` | 500 rows with exits declared, under the budget, so all 500 are copied into the store | ~135 µs |
-| `replay_a_full_depart_store` | replaying a saturated depart store (the 512-node budget) for one frame | ~15.7 µs |
-| `frame_10k_chips_unwrapped` | 10k chips in 100 rows, one line per row | ~672 µs |
-| `frame_10k_chips_wrapped` | the same tree with every row breaking onto several lines | ~826 µs |
-| `deep_nesting_64_levels` | 16 chains nested 64 levels deep | ~81.0 µs |
-| `list_10k_rows_naive` | a 10k-row list held at its middle, built row by row | ~4.04 ms |
-| `list_10k_rows_virtual` | the same list through `widgets::virtual_column` | ~17.6 µs |
+| `frame_10k_rects_with_shadows_and_opacity` | the plain grid with only the paint props on: every cell casts a shadow under a faded root | ~815 µs |
+| `frame_10k_rects_square_clip` | the plain grid with every row clipping, so all 10k cells inherit a clip | ~797 µs |
+| `frame_10k_rects_rounded_clip` | the same with a radius on every clipping row, so each cell pays the per-corner intersect | ~836 µs |
+| `frame_10k_segments` | 10k one-segment `line` floats — the same 10k quads as `frame_10k_rects`, so the gap between the two is what a segment costs over a box | ~843 µs |
+| `frame_1k_curves` | 1k curves through eight knots each, re-flattened by chord length every frame — 35 segments a curve | ~248 µs |
+| `frame_1k_polygons` | 1k six-point fills, one fragment quad each (ADR 0025) | ~96.0 µs |
+| `frame_1k_closed_lines` | the same thousand outlines as closed strokes, six segment quads each | ~97.1 µs |
+| `frame_1k_typical_with_8_textures` | `frame_1k_typical` plus eight texture-backed images, registered once and updated once, so each is its own texture and a side-list entry (ADR 0025) | ~128 µs |
+| `update_image_1080p_and_frame` | replacing a 1080p frame — the `Vec` handoff, the revision bump, then the frame that draws it; the upload is the backend's (`benches/split.rs` in kui-wgpu under `TEX=1`) | ~110 µs |
+| `copy_1080p_frame` | the app's own copy of that 1080p frame, measured beside it so the core's share of `update_image_1080p_and_frame` is the difference | ~118 µs |
+| `frame_10k_rects_all_transitioning` | every cell declares a `transition` — nine retained tween slots each | ~1.50 ms |
+| `frame_10k_rects_all_declaring_exit` | every cell also declares an `exit`, so the whole frame is kept for the next one to diff against | ~2.17 ms |
+| `frame_10k_rects_one_exit` | the same 10k grid with a single cell declaring an `exit` | ~755 µs |
+| `drop_1k_rows_plain` | 1k rows removed from the tree in one frame, no exits declared | ~62.9 µs |
+| `drop_1k_rows_declaring_exit` | the same removal with exits declared — over the 512-node budget, so ADR 0012 refuses it whole: the diff and the count, and no copies | ~150 µs |
+| `drop_500_rows_declaring_exit` | 500 rows with exits declared, under the budget, so all 500 are copied into the store | ~136 µs |
+| `replay_a_full_depart_store` | replaying a saturated depart store (the 512-node budget) for one frame | ~15.9 µs |
+| `frame_10k_chips_unwrapped` | 10k chips in 100 rows, one line per row | ~663 µs |
+| `frame_10k_chips_wrapped` | the same tree with every row breaking onto several lines | ~830 µs |
+| `deep_nesting_64_levels` | 16 chains nested 64 levels deep | ~77.9 µs |
+| `list_10k_rows_naive` | a 10k-row list held at its middle, built row by row | ~3.68 ms |
+| `list_10k_rows_virtual` | the same list through `widgets::virtual_column` | ~17.7 µs |
 | `list_100k_rows_virtual` | 100k rows through the same widget | ~17.7 µs |
-| `list_10k_rows_variable` | 10k rows of no fixed height through `widgets::virtual_rows` — two searches and the build; its rows average 32 px against the uniform bench's 24, so fewer are on screen | ~14.2 µs |
+| `list_10k_rows_variable` | 10k rows of no fixed height through `widgets::virtual_rows` — two searches and the build; its rows average 32 px against the uniform bench's 24, so fewer are on screen | ~14.1 µs |
 | `list_10k_rows_variable_at_one_height` | the variable list told, row by row, that every row is the same height — against `list_10k_rows_virtual`, what the stride buys | ~18.2 µs |
-| `list_10k_rows_variable_learning` | a frame that learns a visible row's height — what every frame of a scroll is, and what invalidates the prefix sums | ~13.9 µs |
-| `list_10k_rows_variable_learning_far` | the same frame told about a row nowhere near the window, so everything between it and the window is summed again | ~19.7 µs |
-| `list_100k_rows_variable` | an order of magnitude more variable rows, where an O(n) rebuild would show | ~13.9 µs |
-| `list_100k_rows_variable_learning` | the same 100k list learning a visible row's height | ~13.9 µs |
+| `list_10k_rows_variable_learning` | a frame that learns a visible row's height — what every frame of a scroll is, and what invalidates the prefix sums | ~14.3 µs |
+| `list_10k_rows_variable_learning_far` | the same frame told about a row nowhere near the window, so everything between it and the window is summed again | ~19.6 µs |
+| `list_100k_rows_variable` | an order of magnitude more variable rows, where an O(n) rebuild would show | ~14.1 µs |
+| `list_100k_rows_variable_learning` | the same 100k list learning a visible row's height | ~14.2 µs |
 | `warm_50x200` (`--bench stream`) | fifty 200-column mono lines, the same every frame — a terminal pane at rest | ~85 µs |
 | `stream_50x200_log` | the same pane with every line new each frame, thirty-word log vocabulary plus numbers | ~25 ms |
 | `stream_50x200_random` | every line new and random printable ASCII, nothing for the shape-run cache to hit | ~64 ms |
