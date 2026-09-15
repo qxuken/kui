@@ -21,10 +21,20 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## Unreleased
+## 0.1.0-alpha.14 (2026-09-15)
 
 **What breaks.**
 
+- **C: ABI 17 → 18.** `KuiSpec` gained `on_drop` and `drop_bg` at its
+  end — the first [in] append under the amended rule (ADR 0006, backlog
+  AR50), so it bumps: the library reads the whole struct, and a host
+  that did not recompile would have the two read from past its end.
+  Recompile; a zeroed tail is no zone and no colour. The same version
+  adds `kui_input_drag_files`, `kui_input_drop_files`,
+  `kui_input_drag_cancel`, `kui_is_drop_target` and `kui_drop_target`.
+- The Node binary frame is **version 14**, from 13: `devtoolsTab` is a
+  new op (ADR 0032, below). Encoder and addon ship together, so nothing
+  to do unless you own an encoder.
 - Under macOS custom chrome `widgets::titlebar` / `titlebar_with` (and
   the `titlebar` element in every binding) draw the strip **as tall as
   the OS's own titlebar** — `env.window.native_controls.h`, now measured
@@ -63,14 +73,6 @@ was the first bare bump to break an app in five releases).
   asserting the old pair, or a keymap bound by position that only ever
   passed headless, reads the window's spelling now; a `physical` a
   caller spells is still delivered as spelled.
-
-- **C: ABI 17 → 18.** `KuiSpec` gained `on_drop` and `drop_bg` at its
-  end — the first [in] append under the amended rule (ADR 0006, backlog
-  AR50), so it bumps: the library reads the whole struct, and a host
-  that did not recompile would have the two read from past its end.
-  Recompile; a zeroed tail is no zone and no colour. The same version
-  adds `kui_input_drag_files`, `kui_input_drop_files`,
-  `kui_input_drag_cancel`, `kui_is_drop_target` and `kui_drop_target`.
 
 ### Added
 
@@ -120,6 +122,66 @@ was the first bare bump to break an app in five releases).
   example. On Windows and Linux the runner takes winit's events at the
   pane's last cursor, so a zone is found where the pointer was before
   the drag and `move` never fires (backlog W19).
+- **A tab of the app's own in the devtools panel** (ADR 0032,
+  `docs/adr/0032-a-devtools-tab-mounts-a-slot.md`). Beside facts, events
+  and tree, an app or an extension declares tabs of its own — a
+  tree-sitter inspector is the case that asked — in one of two forms.
+  The *extension form* names a slot: `ui.devtools_tab("syntax",
+  "Tree-sitter", "ts/panel")`, `<devtoolsTab name label slot/>`,
+  `devtools_tab { name=, label=, slot= }`, `kui_devtools_tab`; while the
+  tab is on show the panel declares that slot in the tab's body and the
+  plugin draws there, and otherwise the plugin is not asked (and naming
+  the slot raises no `unknown-slot`). The *host form* is the app's own
+  content, **lazy in every binding**: `ui.devtools_tab_with(name, label,
+  |ui| …)` runs its closure only while the tab is on show; C's `if
+  (kui_devtools_tab_open(ctx, name, label)) { …; kui_close(ctx); }`
+  answers the same rule; Node's `<devtoolsTab name label>{() =>
+  …}</devtoolsTab>` function child is called by the encoder only for the
+  tab `frame` / `setView` read as on show (`devtoolsShownTab()`); Lua's
+  `devtools_tab { name=, label=, view = function() … end }` is called by
+  the converter the same way. What the host builds is its own — its
+  keys, its labels, its events reaching `update` untouched — laid out
+  and painted as a **layer anchored to the tab's body**
+  (`FloatAnchor::Node`, a sixth layout pass that runs only on a frame
+  with one), clipped to it, and in the dock's focus region (Tab walks
+  it after the panel's own stops, never from the app's ring). Both forms
+  are declared every frame, panel on or off; a name declared twice warns
+  `duplicate-tab` and keeps the first; a declaration Node or Lua cannot
+  read as either form is a throw at the encoder and a `bad-devtools-tab`
+  warning at the converter. The panel's facts are the tab's to read and
+  drive: `devtools_selected` / `hovered` / `picked` (`devtoolsSelected()`
+  …, `kui_devtools_selected` …), `set_devtools_selected` (select and
+  reveal in the tree tab from outside it), and `set_devtools_pick` /
+  `devtools_picking` — the picker raised from a tab lands its pick in
+  `selected` and leaves the tab up, where the chord's pick shows the
+  tree. `Ctrl+Shift+N` and the strip walk the declared tabs after the
+  panel's three. `examples/rust/features/devtools_tab.rs` and
+  `examples/node/features/devtools_tab.tsx` are the Inspector. Frame
+  protocol v14 (`devtoolsTab` is a new op). Limits stated in the ADR: a
+  host-form tab is docked-only — in `window` placement its body says so
+  — and an extension-form fill's keys differ between docked and window
+  placement.
+
+- **The devtools chord is the app's to respell.** `Ctrl+Shift+I` — the
+  chord that moves the keyboard into the panel and back out, and brings
+  a hidden panel back — is now one door on every host:
+  `Core::set_devtools_key(Accel)` and `kui::app("x").devtools_key(..)`
+  in Rust, `setDevtoolsKey("f12")` on `Ctx` and `KuiWindow`,
+  `kui_set_devtools_key(ctx, key)` in C, in any spelling a menu item's
+  `accel` takes (`"f12"`, `"mod+shift+d"`, `"⌥⌘I"`), with
+  `devtools_key` / `devtoolsKey()` / `kui_devtools_key` reading it back
+  in the portable spelling `Accel::spelling` now gives
+  (`"ctrl+shift+i"`, `"super+alt+d"`). The default stands; the panel's
+  other chords stay `Ctrl+Shift+<letter>`, since they are reached once
+  the keyboard is in; and a chord the app takes is the app's for good —
+  with `F12` set, `Ctrl+Shift+I` reaches its sinks like any other press.
+  The facts tab's `region` row names whichever chord is in force —
+  handed into the collection, since the main window's build collects
+  with the panel's state taken out of the session and a reader of the
+  door there saw the default (a real window showed `^⇧I` over an `F12`
+  that already answered; the test now reads the painted row). Lua has no
+  cell, for the guest reason the verb table states. The examples harness
+  takes `--key CHORD` in Rust and Node.
 - **`owed()` — what the last frame left owed, by kind** (backlog F64,
   the pomodoro's third wish): `animating()` is one bool over five sources
   and a keyframe `repeat` cycle sets it on every frame, so under one
@@ -189,69 +251,6 @@ was the first bare bump to break an app in five releases).
   `disabled`, when it is the arrow like any inert control.
   **What you can delete:** `cursor: "default"` on a clickable or
   focusable node that wanted the arrow.
-
-### Added
-
-- **A tab of the app's own in the devtools panel** (ADR 0032,
-  `docs/adr/0032-a-devtools-tab-mounts-a-slot.md`). Beside facts, events
-  and tree, an app or an extension declares tabs of its own — a
-  tree-sitter inspector is the case that asked — in one of two forms.
-  The *extension form* names a slot: `ui.devtools_tab("syntax",
-  "Tree-sitter", "ts/panel")`, `<devtoolsTab name label slot/>`,
-  `devtools_tab { name=, label=, slot= }`, `kui_devtools_tab`; while the
-  tab is on show the panel declares that slot in the tab's body and the
-  plugin draws there, and otherwise the plugin is not asked (and naming
-  the slot raises no `unknown-slot`). The *host form* is the app's own
-  content, **lazy in every binding**: `ui.devtools_tab_with(name, label,
-  |ui| …)` runs its closure only while the tab is on show; C's `if
-  (kui_devtools_tab_open(ctx, name, label)) { …; kui_close(ctx); }`
-  answers the same rule; Node's `<devtoolsTab name label>{() =>
-  …}</devtoolsTab>` function child is called by the encoder only for the
-  tab `frame` / `setView` read as on show (`devtoolsShownTab()`); Lua's
-  `devtools_tab { name=, label=, view = function() … end }` is called by
-  the converter the same way. What the host builds is its own — its
-  keys, its labels, its events reaching `update` untouched — laid out
-  and painted as a **layer anchored to the tab's body**
-  (`FloatAnchor::Node`, a sixth layout pass that runs only on a frame
-  with one), clipped to it, and in the dock's focus region (Tab walks
-  it after the panel's own stops, never from the app's ring). Both forms
-  are declared every frame, panel on or off; a name declared twice warns
-  `duplicate-tab` and keeps the first; a declaration Node or Lua cannot
-  read as either form is a throw at the encoder and a `bad-devtools-tab`
-  warning at the converter. The panel's facts are the tab's to read and
-  drive: `devtools_selected` / `hovered` / `picked` (`devtoolsSelected()`
-  …, `kui_devtools_selected` …), `set_devtools_selected` (select and
-  reveal in the tree tab from outside it), and `set_devtools_pick` /
-  `devtools_picking` — the picker raised from a tab lands its pick in
-  `selected` and leaves the tab up, where the chord's pick shows the
-  tree. `Ctrl+Shift+N` and the strip walk the declared tabs after the
-  panel's three. `examples/rust/features/devtools_tab.rs` and
-  `examples/node/features/devtools_tab.tsx` are the Inspector. Frame
-  protocol v14 (`devtoolsTab` is a new op). Limits stated in the ADR: a
-  host-form tab is docked-only — in `window` placement its body says so
-  — and an extension-form fill's keys differ between docked and window
-  placement.
-
-- **The devtools chord is the app's to respell.** `Ctrl+Shift+I` — the
-  chord that moves the keyboard into the panel and back out, and brings
-  a hidden panel back — is now one door on every host:
-  `Core::set_devtools_key(Accel)` and `kui::app("x").devtools_key(..)`
-  in Rust, `setDevtoolsKey("f12")` on `Ctx` and `KuiWindow`,
-  `kui_set_devtools_key(ctx, key)` in C, in any spelling a menu item's
-  `accel` takes (`"f12"`, `"mod+shift+d"`, `"⌥⌘I"`), with
-  `devtools_key` / `devtoolsKey()` / `kui_devtools_key` reading it back
-  in the portable spelling `Accel::spelling` now gives
-  (`"ctrl+shift+i"`, `"super+alt+d"`). The default stands; the panel's
-  other chords stay `Ctrl+Shift+<letter>`, since they are reached once
-  the keyboard is in; and a chord the app takes is the app's for good —
-  with `F12` set, `Ctrl+Shift+I` reaches its sinks like any other press.
-  The facts tab's `region` row names whichever chord is in force —
-  handed into the collection, since the main window's build collects
-  with the panel's state taken out of the session and a reader of the
-  door there saw the default (a real window showed `^⇧I` over an `F12`
-  that already answered; the test now reads the painted row). Lua has no
-  cell, for the guest reason the verb table states. The examples harness
-  takes `--key CHORD` in Rust and Node.
 
 ### Fixed
 
@@ -331,75 +330,109 @@ chrome, measured to sit level with the traffic lights; a delay or a
 second frame you waited before reading the owner as focused after a
 popup pick.
 
-### Native verification (macOS 27, 2026-09-15)
+### Native verification
 
-The by-hand round on the first macOS 27 machine — **macOS 27.0
-(26A428, arm64, Apple M3 Pro), Xcode 26.6 with the 27.0 Command Line
-Tools, rustc 1.98.0, Node 26.8.1** — the day after the alpha.13 tag,
-on `main` at `d1e8bbf` plus this section's fix. `cargo fmt --all
---check` and `cargo clippy --workspace --all-targets -- -D warnings`
-are clean; `cargo test --workspace` passes every suite; the scene
-corpus (37 scenes) runs in all four adapters against one reference
-report; the C round (`cbuild --run`) passes its checks against ABI 17,
-`npm test` passes, `npm run typecheck` on `examples/node` is clean, and
-the headless round passes all 26 drives. The AX audit against
-`accessibility`: **106/106**. The C and Lua hosts under
-`KUI_SMOKE_FRAMES=120` (`counter`, `host`, `c_panel`, `lua_panel`) each
-opened a window and exited 0, warning-free — run *after* the headless
-round, which is the order W16 asked about (its unix half is answered
-in the entry: the overwrite is Windows-only).
+The by-hand round alpha.6 introduced (backlog R4), run before this tag on
+the evening of 2026-09-15 on `main` at `8b2f35b` — thirteen commits after
+the alpha.13 tag, the four rounds above (W17/W18, F62–F66, C40, ADR
+0032) all in. What follows is what executed on what.
 
-**Driven by hand, each through a real `CGEvent` or the AX API, and
-read back from the screen or the OS:** the strip dragged (the window
-moved), double-clicked (maximized, and again restored), the pin (the
-window's level went to 3 and back); a press on the `popup` combobox
-held, dragged into the list window that opened under it and released
-on a row (ADR 0009 — the row was picked), and after W18 the same sequence and a
-keyboard one — Tab, Space, ↓, ↓, Enter — with an `AXObserver` on the
-process reporting no key or main window change at all; the native context menu over
-`context_menu`'s row (the app's rows above the core's, `copyname bravo`
-back); `menu_bar`'s declared bar read through `kAXMenuBarAttribute`,
-its `checked` row pressed and its ✓ read back, and `edit`'s standard
-Edit and Window bars (ADR 0030) with Undo greying by the per-frame
-stamp; in `edit`, a keystroke carrying `🎉` and one carrying `ü` typed,
-Paste through the Edit menu pasted, Cmd+Z undid the run and Cmd+Shift+Z
-put it back, and Emoji & Symbols opened the palette anchored at the
-caret; the audio device opened on the first sound, read `open · 1
-live` with the hum on, closed after its hold and reopened on the next
-input; an idle window at 0.00 % CPU over ten seconds.
+**macOS 27.0 (26A428, arm64, Apple M3 Pro), Xcode 27.0, rustc 1.98.0,
+Node 26.8.1.** `cargo fmt --all --check` and `cargo clippy --workspace
+--all-targets -- -D warnings` are clean. `cargo test --workspace`: **1215
+tests over 95 suites, 0 failed** (1 ignored, the devtools' `drive.rs`
+doc example), from alpha.13's 1186. The scene corpus runs in all four
+adapters against one reference report: **38 scenes** — `drop` new —
+Rust and Lua through `cargo test`, C through `target/debug/conformance`
+(the header at **374 fields, 255 enum members and 229 prototypes**, from
+372 / 250 / 213), Node through `npm test` (**168 Node tests, 168 passed,
+0 skipped**, from 163). The C round, `cbuild --run`, passes its five
+checks and the conformance replay against **ABI 18**. `npm run gen`
+regenerated `props.md`, `jsx-runtime.d.ts` and `index.d.ts` and the tree
+carries the result (a zero-line diff). `npm run typecheck` on
+`examples/node` is clean, and the examples lockfile matches the linked
+package. The headless round, `smoke -- --headless`, passes all **28
+drives** — `drop` and `devtools_tab` new. Xcode 27.0 is on the machine
+now, and `cc` links against the 27.0 SDK with no `DEVELOPER_DIR`
+override: the alpha.13 note about the Command Line Tools was the
+toolchain of that day, and is gone with it.
 
-**The bench guard**, run alone against the alpha.13 code on the M3 Pro
-(macOS 27): every guarded row within its own noise —
-`deep_nesting_64_levels` +4.2% at ±5.7% run to run, `frame_10k_rects`
-+0.4%, `frame_10k_rects_with_access_tree` +1.5%,
-`frame_10k_rects_with_text_and_hits` +1.2%, `frame_10k_segments` +0.6%,
-`frame_1k_typical` +1.3%, `list_10k_rows_virtual` −0.2% — and nothing
-unguarded past ±5% with a readable spread. W17 touches nothing a
-guarded row draws; the README's table is not refreshed for a round
-whose only change is the strip.
+**The windowed round**, `cargo run -p kui-devtools --bin smoke --
+--node`: **34 Rust examples on both bases and the eight Node windows,
+120 frames each, every one exiting 0 with nothing on stderr** — 84
+windows (`drop` and `devtools_tab` new on both sides). The C and Lua
+hosts by hand under `KUI_SMOKE_FRAMES=120`: `counter`, `host`, `c_panel`
+and `lua_panel` each opened a window and exited 0, warning-free — **88
+windows over five hosts.** The AX audit against `accessibility`:
+**106/106**.
 
-**What the round found, besides W17 and W18.**
+**Driven by hand, each through a real `CGEvent` and read back from the
+screen:** a file dragged from a Finder window onto the `drop` example
+(ADR 0031) — over the zone it lit, the banner said `1 file(s) over the
+zone` with the pointer at `220, 168`, and the cursor carried the copy
+badge; dragged off it onto the box that is no zone, the badge left, the
+zone unlit and the counter read the `leave`; dragged back and released,
+`landed:` named the path and nothing was lit after — and the source
+file stayed where it was. In `devtools_tab` (ADR 0032), Ctrl+Shift+N
+walked facts → events → tree → **Inspector** with the source reading
+`Inspector built 0 time(s)` until that tab showed and counting from
+then, which is the laziness; hovering `println` in the source lit the
+token, wrote its path and scrolled the tab to `identifier @macro
+println`; hovering a tree row lit `tree.walk()` in the source; clicking
+a token row read `selected identifier` in the panel; `pick a node`
+raised from the tab and a click on `let` read `selected let` with the
+tab kept up. With `--key f12` on `button`, Ctrl+Shift+I reached the app
+as a plain `modifiers` event in the events stream and opened nothing;
+F12 brought the panel back. The cursor rule read from captures with the
+pointer in them: the hand over `plain`, `+` and the app-palette `sand`,
+the arrow over `disabled` and over a paragraph.
 
-- **`cc` does not link on this machine**, and it is the toolchain, not
-  the repo: `xcode-select` points at Xcode 26.6, whose `ld` (1267)
-  cannot read the 27.0 SDK's `libSystem.tbd` (`unknown architecture
-  arm64e.x1-macos`) that `xcrun` now resolves from the Command Line
-  Tools. A one-line C program fails the same way. `rustc` is unaffected
-  because it pins `SDKROOT` to Xcode's own 26.5 SDK, which is why every
-  Rust build and test above passed; the C round and, through the
-  `c_panel` it needs, the headless round only pass under
-  `DEVELOPER_DIR=/Library/Developer/CommandLineTools` (or after `sudo
-  xcode-select -s /Library/Developer/CommandLineTools`, or an Xcode
-  27). Nothing to change in the repo.
-- **A synthetic keystroke carrying a lone UTF-16 surrogate aborts a
-  debug build**, in winit's `create_key_event` → objc2 0.5's
-  `nsstring_to_str`: `-[NSString UTF8String]` returns NULL for a string
-  UTF-8 cannot encode, and objc2 (0.5 and 0.6 alike) documents the
-  pointer as never NULL and hands it to `slice::from_raw_parts`. A real
-  keyboard never produces one — the driver this round used did, posting
-  an emoji one code unit at a time, and was fixed to post the pair —
-  so this is a note for whoever writes the next such driver, not an
-  entry: theirs (objc2), and only reachable from a poster.
+**The bench guard**, run alone against the alpha.13 tag: every guarded
+row within its own noise — `deep_nesting_64_levels` +4.8% at ±6.4% run
+to run, `frame_10k_rects` −3.4%, `frame_10k_rects_with_access_tree`
+−2.7%, `frame_10k_rects_with_text_and_hits` −0.2%, `frame_10k_segments`
++3.6%, `frame_1k_typical` −3.8%, `list_10k_rows_virtual` −0.2% — and
+the README's table is **not** refreshed: the alpha.13 side of this run
+read `frame_10k_rects` at 805 µs against the 740 µs the table records
+for that same commit, measured under macOS 26.6.2 — the OS moved under
+the machine, so this run's absolute numbers are not the table's and
+only the guard's differences carry (the alpha.7 rule). Three unguarded
+rows read past ±5% with a readable spread; re-run alone, two were
+noise (`list_10k_rows_naive` +3.1% at ±3.4%,
+`drop_500_rows_declaring_exit` +1.5%) and one is not: **`frame_1k_curves`
+255 → 280 µs, +10.0% at ±1.4%**, reproducibly. Four probes of that one row
+(`scripts/bench-check.sh <commit> frame_1k_curves`) bisect it to one
+commit: `cc070bd` (F62–F65) and `db2ff82` (the cursor) read 260 µs
+against HEAD's 280–284, `5e6711e` (ADR 0031, the drop zone) reads 286,
+and nothing after it — ADR 0032, the chord — moves the row. It is not a
+guarded row, so the guard is green; it is filed as **backlog C41** with
+the suspects in that commit's emit path, and the tag carries it, as
+alpha.11 carried C29.
+
+**What the round found, besides the row.**
+
+- **The examples harness sizes its window for the dock at launch
+  only** (backlog E4): `--key f12` on `button` was tried with `--dock
+  off`, and F12 brought the panel back into a window sized without it,
+  so the example's column was 220 px wide with its paragraphs shrunk
+  under the button rows. The default launch — and × then the chord —
+  never shows it, since the window was sized for the dock; filed as a
+  harness nit, not a core one.
+- **Earlier the same day, the W17/W18 round** ran on the alpha.13 tag
+  plus its fix — the strip dragged, double-clicked and pinned, the
+  popup's press-drag-release with an `AXObserver` reporting no key or
+  main change, the native context menu, the declared and standard menu
+  bars through the AX API, an emoji and an accented letter typed, Paste,
+  undo, redo, Emoji & Symbols, the audio device's hold — and its record
+  is the backlog's "From the macOS 27 round". Two things it left for the
+  next driver's author: `cc` did not link under Xcode 26.6 against the
+  27.0 SDK (gone with Xcode 27.0, above), and **a synthetic keystroke
+  carrying a lone UTF-16 surrogate aborts a debug build** in winit's
+  `create_key_event` → objc2's `nsstring_to_str` — `-[NSString
+  UTF8String]` returns NULL for a string UTF-8 cannot encode and objc2
+  hands the pointer to `slice::from_raw_parts`. A real keyboard never
+  produces one; the driver that did was fixed to post the pair. Theirs
+  (objc2), and only reachable from a poster.
 
 ## 0.1.0-alpha.13 (2026-09-15)
 

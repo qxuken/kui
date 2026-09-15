@@ -23,9 +23,10 @@ followed it the next day, filed and closed after the tag, AR1–AR6 from
 the architecture review of 2026-09-11 went the same day they were filed,
 the seventy-four closed between the alpha.11 and alpha.12 tags —
 F36, F42–F54, T5, B1a, C29–C39, W13–W15 and AR7–AR50 — went with the
-alpha.12 tag on 2026-09-14, the largest move so far, and the twelve of
+alpha.12 tag on 2026-09-14, the largest move so far, the twelve of
 the two rounds of 2026-09-15 — F55–F61 and K1–K4 — with the alpha.13
-tag. The index
+tag, and the eight of the four rounds of the same day — W17, W18,
+F62–F66 and C40 — with the alpha.14 tag. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -39,15 +40,18 @@ round after, on 2026-09-11), W16 from the alpha.12 pre-tag round (the
 headless round overwriting `kui_ffi.dll` under the C hosts, filed with
 two fixes to choose between), two of the three editor wishes parked at
 the end of the third editor-and-mux round (the third, the underline, is
-K4 — a view asked, and it is built), the two alpha.13 upgrade reports
-and the kawoosh terminal report of the same day — F62–F65, four small
-ones from the reports, and F66, a `cells` node drawing box-drawing
-glyphs from a font that cannot know the cell's height, the one defect
-filed since the tag — all five **built the same day** — the two rounds of 2026-09-15 keeping only their introductions (their
-twelve entries — F55–F61 from the alpha.12 reports, K1–K4 from the
-kawoosh list — were built the day they were filed and went to the
-archive with the alpha.13 tag), and the "theirs, not ours" lists the
-field reports left behind. Everything else that has been filed has
+K4 — a view asked, and it is built), W19 from the drop-zone round —
+the drag's position on Windows and Linux, which winit does not report,
+waiting for a round on either — the six rounds of 2026-09-15 keeping
+only their introductions (their twenty entries — F55–F61 from the
+alpha.12 reports and K1–K4 from the kawoosh list with the alpha.13 tag;
+W17 and W18 from the macOS 27 round, F62–F65 from the alpha.13 reports,
+F66 from the kawoosh terminal and C40 from the drop-zone ask with the
+alpha.14 tag — were built the day they were filed), C41 and E4 from the
+alpha.14 pre-tag round (a bench row the guard does not watch, 10%
+slower since the drop-zone commit and bisected to it; the harness
+sizing its window for the dock at launch only), and the "theirs, not ours" lists the field reports left
+behind. Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
 they were filed (2026-09-07), F25–F31 from the alpha.8 ones by the day
@@ -61,7 +65,7 @@ architecture review (forty-four entries under ten decisions, every one
 built on 2026-09-14), the standard-menus round, and the pre-tag round's
 own two finds. C26 was the last split entry, and it closed on 2026-09-11.
 
-Ordered by area, not by priority. What to do next is under "After alpha.12".
+Ordered by area, not by priority. What to do next is under "After alpha.13".
 
 **Legend** — `!` a defect that ships today · `~` a gap with no workaround ·
 `.` cost without correctness risk.
@@ -355,7 +359,7 @@ moved whole to
 before the alpha.10 tag, W7 last — the one that wanted a decision rather
 than a patch, settled as: a displacement moves a subtree by whole physical
 pixels, scrolling included. Nothing from the round is open; what it did
-not cover is in "After alpha.12" below.
+not cover is in "After alpha.13" below.
 
 ## From two alpha.9 field reports and a bake-off (2026-09-08)
 
@@ -515,7 +519,6 @@ package has and does not document, which is F33's shape again and became a
 - **`preview.svg` is gitignored**, fourth report running. Theirs, and
   their notes say so.
 
-
 ## From the two alpha.11 upgrade reports (2026-09-12)
 
 Both apps upgraded to alpha.11 the day after it was tagged and reported
@@ -569,7 +572,6 @@ did not survive the check is below.
   comment; not an entry.
 - **The preview baselines and the windowed smoke** (mind map). Theirs,
   and their notes say so, for the sixth report.
-
 
 ## From the two virtual-list examples (2026-09-09)
 
@@ -849,73 +851,10 @@ popup's press-drag-release, the native context menu, the declared and
 the standard menu bars through the AX API, typing an emoji and an
 accented letter, the Edit menu's Paste and Emoji & Symbols, undo and
 redo, the audio device's hold and close. One thing was wrong, and it
-was a number; the user then found a second, watching the popup.
-
-### `.` W17 — The titlebar strip assumed macOS's numbers, and macOS 27 changed them — **done (2026-09-15)**
-
-`env.window.native_controls` was a constant, `kui::MACOS_TRAFFIC_LIGHTS
-= 78×28`: gpui's measured `TRAFFIC_LIGHT_PADDING` under the macOS 26 SDK
-over the 28 px titlebar macOS 26 drew. macOS 27 draws 14 px buttons at
-(9, 9), (32, 9) and (55, 9) in a 32 px titlebar — measured with
-`standardWindowButton` and `contentLayoutRect` on a window like kui's,
-and through the AX API on the running example — so the keep-out's
-height was 4 px short, and `widgets::titlebar` drew its 34 px strip
-(`Metrics::titlebar_h`, "the platform's caption height") beside a 32 px
-one: its content, laid out against 34, sat 2 px under the lights the OS
-had centred at 16, and the strip read as taller than the OS's own. The
-same constant would have been wrong the other way on a machine still on
-macOS 26 had the strip followed it.
-
-**Done:** the runner *measures* it (`crates/kui/src/macos_chrome.rs`):
-once per window, when the pane is created, the frame's height less the
-`contentLayoutRect`'s is the titlebar (32 here), and the close button's
-`x` plus the zoom button's right edge is the width (9 + 69 = 78 — the
-same 78, by the symmetry of the gaps); the old pair is the fallback for
-a window with nothing to ask. And the strip's height follows the
-keep-out where there is one: `widgets::titlebar_height(ui)` is
-`native_controls.h` when the OS keeps controls over the strip and
-`metrics.titlebar_h` otherwise, `titlebar_with` and `latency_hud_at`
-read it, and the metric's row says so in four bindings' docs. The
-corpus keeps 78×28 as its fixture (`CUSTOM_CHROME_INSET`), which now
-also pins the strip at the keep-out's height rather than the metric's.
-Test: `titlebar_is_as_tall_as_the_os_s_where_the_os_keeps_controls_over_it`.
-
-### `.` W18 — Picking from a popup flicked the owner's chrome: the popup became key on every press — **done (2026-09-15)**
-
-Reported by the user on macOS 27: choosing an item in the `popup`
-example, "focus goes to the parent, then to the popup, then to the
-window — a split-second flick". Measured through an `AXObserver` on the
-running example (`AXFocusedWindowChanged` / `AXMainWindowChanged`, in
-ms from the observer's start): at the click that opens it, the popup
-window is created and becomes key and main at 404 ms, and the owner
-gets both back at 450 — the eager hand-back in `open_pane`; at the
-click that picks, the popup becomes key at 1502 and main at 1520, the
-owner has both back at 1521 (`settle_focus`), and the popup is
-destroyed at 1543. Two windows of 46 and 19 ms in which the owner is
-neither key nor main, and AppKit greys a titlebar for exactly that. The
-runner knew — the C11 round found that a press makes a window key
-however `with_active(false)` asked — and asked for the
-keyboard back the moment it noticed — but asking back is a batch late
-by construction, and the frame in between is the flick.
-
-**Done:** the popup **refuses**. `-[NSWindow sendEvent:]` asks
-`canBecomeKeyWindow` before making a pressed window key, and
-`orderFront` asks it before making a shown one key; winit's
-`WinitWindow` answers YES for every window. `crates/kui/src/macos_key.rs`
-replaces `canBecomeKeyWindow` and `canBecomeMainWindow` on the class
-that defines them — once per process, the way `macos_text_input`
-patches the view's — with overrides that answer NO for a window
-registered as non-activating (`refuse_key`, called in `open_pane`
-before the window is shown; `release` on close) and call winit's answer
-for every other. Re-measured: the same sequence produces
-`AXWindowCreated` and `AXUIElementDestroyed` and *nothing else* — the
-owner is key and main throughout. The mouse still reaches the popup
-(events go to the window under the cursor; winit's view accepts the
-first), and its keys come from the owner, which the runner already
-routes (ADR 0004 step 4): Tab, Space, arrows and Enter open, move and
-pick; press-drag-release picks; a press outside dismisses. The
-hand-back code stays as the fallback for a platform that makes the
-window key regardless.
+was a number; the user then found a second, watching the popup. Both
+entries — W17, the keep-out measured from the window, and W18, the
+popup refusing to become key — were built the same day and are in the
+archive since the alpha.14 tag.
 
 ## From the two alpha.12 upgrade reports (2026-09-15)
 
@@ -1017,181 +956,9 @@ mind map recorded and did not file. Nothing here is a defect a user
 sees; the one of those this round produced came from a third app and
 is the section after this one (F66). All four were **built
 2026-09-15**, the day they were filed, each with its outcome on top of
-its entry; the one that changes what an existing input reports (F65) is
-under *What breaks* in the CHANGELOG.
-
-### `.` F62 — `frameStats().frames` is the ring's length, and nothing counts pumps — **done (2026-09-15)**
-
-**Done as written:** `FrameStats::total` (`u64`, beside the ring's
-`push`) and `PumpRunner::pumps()` (incremented in `pump` and
-`pump_until`, starting at 1 for the pump that opened the window), read
-back as `framesTotal` and `pumps` on Node's `frameStats()`; `frames`
-keeps its name and its doc says it saturates at 120. The pin runs
-`runWindowed` over a fake surface on `node:test`'s mocked timers — a
-millisecond at a time, since a mocked `tick(n)` runs only the timers
-pending when it started and every pump schedules the next — and reads
-~12 pumps in the 100 ms after a click against ~31 over the second
-second, asserting the *rate* is lower rather than the count, which is
-what the entry's sentence meant.
-
-**Symptom** (pomodoro, wish 1): the release measured F57 as "67 → 29
-pumps a second" with a scratch probe through a forwarding surface, and
-the app measured it as 2.9% → 1.9% through `top`, "because the runner
-knows how often it pumped and the app cannot ask". A `pumps` beside
-`frames` would let the smoke test assert the backoff — under N pumps
-over the pinned window's first second — where today only a process
-monitor can.
-
-**Checked.** Worse than the report says: `frames` is not a counter
-either. `frame_stats_json` (`crates/kui-node/src/lib.rs`) writes
-`stats.len()`, and `FrameStats` is a 120-sample ring
-(`STATS_CAPACITY`, `crates/kui-core/src/stats.rs`) — `frames` climbs
-to 120 in the first two seconds of a running window and stays there.
-The doc says "over the last 120 frames" for the averages and does not
-say it for `frames`, so a test reading `frames` as a total is reading
-the wrong number after 120 of them. And the pump count lives nowhere:
-`runWindowed`'s `pump()` in `index.js` calls `win.pump()` and counts
-nothing, and the runner beneath it has no counter to read.
-
-**Do:** two monotonic totals on `FrameTiming` — `framesTotal` (or
-rename: the ring length is not a public fact, but `frames` has shipped
-under that name since the HUD and a rename is a break for nothing) and
-`pumps`, the number of `pump()` calls the window has taken. `pumps` is
-a `u64` on the runner incremented where `PumpRunner::pump` runs its
-turn, and `frames_total` a `u64` beside the ring's `push`. The doc on
-`frames` says it saturates at 120. Pin in `test.mjs` beside the F57
-pacer test: a stopped app with a once-a-second tick takes fewer pumps
-in its second second than in its first 100 ms after a click. Then the
-pomodoro's bench can be an assertion rather than a `top` reading.
-
-### `.` F63 — What `env.audio.live` reads for a play that waited on an open the device then refused — **done (2026-09-15)**
-
-**Done as written:** the sentence on the `live` row in `index.d.ts`,
-`kui.h`, `schema::ENV_FIELDS` (so `props.md`) and `AudioEnv::live`;
-`a_device_that_failed_to_open_refuses_a_play` asserts `env().live == 1`
-while the play waits on `Device::Opening` and `0` with `device ==
-Failed` after the apply that refuses it. Nothing changed in behaviour.
-
-**Symptom** (pomodoro, wish 2): the smoke test's assertion on the
-click's frame — `live=1` while `device=opening` — guards on `device
-=== 'failed'` because "this machine cannot show the answer". A
-sentence on the row — counted until the refusal, or never — would let
-the guard be an assertion of its own.
-
-**Checked, and the answer is *counted until the refusal*.** `Audio::env`
-(`crates/kui/src/audio.rs`) reads `live` as `playing.len() +
-pending.len()`, and a play that arrives while `Device::Opening` goes
-to `pending`, so it counts from the frame it was asked. When the open
-answers with an error, `opening()` sets `Device::Failed`, the next
-`apply` flushes `pending` through `manager()`, which is `None` for a
-failed device, and every flushed play lands in `refused` — the core
-hears `{kind:"sound", phase:"refused"}` (AR20) and `live` reads 0 on
-the apply that flushed it (`flush_pending`). So the sequence a machine with no output device shows is
-`device=opening live=1` → `device=failed live=0` with a refusal event
-between, and the pomodoro's guard can assert exactly that. The
-`a_device_that_failed_to_open_refuses_a_play` test already pins the
-refusal half; nothing pins `live` across it.
-
-**Do:** the sentence, on the `live` row of `AudioEnv` in `index.d.ts`
-(and wherever the C and Lua docs repeat it): "a play waiting on the open counts here
-until the open answers; if the device refuses, the play is refused on
-the next apply and leaves the count with it". One assertion in the
-existing test: `env().live` is 1 while the play waits and 0 after the
-apply that refuses it. Nothing changes in behaviour.
-
-### `.` F64 — `settled()` never resolves while a keyframe cycle runs, and nothing separates a transition owed from a cycle running — **done (2026-09-15)**
-
-**Done as written, named `owed`:** `AnimStore` keeps `owes_transition`
-(set by `drive`) and `owes_cycle` (set by `sample`) where it kept
-`active`; `Core::owed()` is `Owed { transition, cycle, depart,
-requested, autoscroll }` with `any()` (what `animating()` answers) and
-`beyond_cycles()`. Doors per binding: Node `owed()` on `Ctx` and
-`KuiWindow`, `quiet(maxMs)` on `WindowLoop` (a waiter with its own
-predicate beside `settled`'s), C `kui_owed` as `KUI_OWED_*` bits
-(pinned in `abi_consts!`, called in `surface.c` — where the check found
-the card's 120 ms entrance owed beside the cycle at 50 ms, which is the
-point: two bits), the doors table row. Tests: the core's
-`what_is_owed_is_readable_by_kind`, Node's `quiet()` over a fake
-surface (resolves once only the cycle is left where `settled(100)` hits
-its cap; waits on a requested frame), and `ctx.owed()` on the looping
-`runOut` fixture reading `{cycle: true}` alone.
-
-**Symptom** (pomodoro, wish 3): the unpinned window never settles
-because a `repeat="alternate"` keyframe cycle never ends, so the smoke
-test waits on `frame()` and cannot use the wait that means "nothing
-owed". A `settled({ ignoreKeyframes: true })`, or a reading that
-separates a transition owed from a cycle running, would let the first
-window assert what the second one does.
-
-**Checked.** `animating()` (`crates/kui-core/src/runtime.rs`) is one
-bool over five sources — the anim store's `active`, `depart`, a
-requested frame, `tree.any_animate`, autoscroll — and the anim store
-sets `active` for a keyframed slot on every frame ("a keyframed slot
-always owes a frame", `keyframes_cycle_in_every_direction` in
-`anim.rs`). A looping keyframe is, to the driver, indistinguishable
-from a transition mid-flight, which is right for the driver — it must
-schedule the frame either way — and useless for a test that wants to
-know whether the *transitions* have run out. `settled` in `index.js`
-resolves on `!animating()` and nothing else, so under a cycle it
-resolves only at `maxMs`, with `animating()` still true, which is what
-`runOut` returning its cap says headless.
-
-**Do:** not an option on `settled` — a wait that ignores something is
-a wait that lies — but a second reading beside `animating()`: what is
-owed, by kind. `AnimStore` knows at `sample` time whether the
-transition it stamped is a `repeat` cycle or a finite tween; keep two
-flags where it keeps `active` — `owes_transition` and `owes_cycle` —
-and expose `Core::animating_why()` (name open) as `{ transition,
-cycle, depart, requested, autoscroll }`, with `animating()` unchanged
-as their `||`. Then `settled` gains no option and `WindowLoop` gains
-`quiet(maxMs)`: resolves when nothing but a cycle is owed. The
-pomodoro's first window asserts `quiet()` where its second asserts
-`settled()`. Small: two bits in the anim store, one door, one wait written like
-`settled`.
-
-### `.` F65 — A headless press's default `physical` is `code` verbatim, and a window's is lower-case — **done (2026-09-15)**
-
-**Done, one level lower than written:** the default lives in
-`KeyPress::new`, which every headless door shares — Node's `key_press`,
-C's `kui_input_key_down` with a NULL `physical`, Lua, `testing::key_down`,
-the corpus's `KeyDown` step — and the window driver bypasses with
-`with_physical`, so the fold went there: an ASCII upper-case `code`
-yields its lower-case as `physical`, everything else its own code. The
-`keyDown` doc says so in Node and C; the corpus fixtures did not move
-(their steps are lower-case letters). Pinned in `test.mjs` beside the
-layout test: `press("Z", { shift: true })` reaches the sink as `code:
-"Z", physical: "z"`, a spelled `"Z"` is delivered as spelled, `$` and
-`left` are their own. Listed under *What breaks* per F61.
-
-**Symptom** (mind map, "one note from the log, not a finding"): under
-headless, `press('Z', { shift: true })` reaches the sink with
-`physical: "Z"`, where the window reported `physical: "z"` beside
-`code: "Z"` for the same ⇧Z (the alpha.12 menu trace). `KeyMsg.physical`'s
-doc (F55) says "as the lower-case one here"; `keyDown`'s says "omit it
-and it equals `code`". Both are true, and they disagree.
-
-**Checked.** The window's `physical` comes from `physical_code`
-(`crates/kui/src/keys.rs`), a table from winit's `PhysicalKey` to the
-US-QWERTY character at that position — letters are their lower-case
-character regardless of shift, because the table never sees the
-modifier. The headless `keyDown` / `press` doors take `physical` as an
-optional fourth argument and default it to `code`, so a shifted letter
-spelled as the OS spells it (`Z`, per F60) gets a `physical` no window
-ever reports. Nothing in this tree binds `physical` from a headless
-test, which is why it took a log to notice; the first app that binds
-WASD by position and drives it headless with shift held will match in
-the window and miss in the test, or the other way round.
-
-**Do:** the default folds: a one-character ASCII letter `code` yields
-its lower-case as `physical` when the argument is omitted, in the
-Node door (`index.js`) and any other headless door that shares the
-default. Not a re-spelling of what a test passes — F60's rule
-stands, a spelled `physical` is delivered as spelled — only the
-default, which was already a guess. The `keyDown` doc says "omit it
-and it is the position's US letter: the lower-case one for a letter,
-`code` for everything else". Pin in `test.mjs`: `press("Z", { shift:
-true })` headless reaches the sink with `physical: "z"`, the same
-pair the window reports.
+its entry in the archive since the alpha.14 tag; the one that changes
+what an existing input reports (F65) is under *What breaks* in the
+CHANGELOG.
 
 ### Theirs, not ours
 
@@ -1222,112 +989,8 @@ lazygit in its terminal pane, every `│` of the panel frames a dashed
 line and the scrollbar thumb a column of separate black dashes. The
 report asked whether it was the wrong font or something kui should do,
 and measured the font before answering: the answer is kui. One entry,
-and the one defect of the day's three rounds.
-
-### `!` F66 — A `cells` node draws box-drawing and block glyphs from the font, and no font's are the cell's height — **done (2026-09-15)**
-
-**Done, as written, all five shape groups:** `crates/kui-core/src/cells/boxdraw.rs`
-behind `shape_cell` — `boxdraw::draws(ch)` decides, `boxdraw::raster(ch,
-w, h)` is the cell-sized mask, and the atlas gained a third map,
-`get_or_insert_synth` keyed on `(char, cell_w, cell_h)`, cleared with the
-glyphs on a reset. The light stroke is `max(1, round(cell_w / 8))`, the
-heavy `3×` (same parity, so both centre on the same pixel), every stroke
-on `(cell − stroke) / 2` from the cell size alone. Two things the entry
-did not decide: the shades are flat alpha (64 / 128 / 192), since a 2 × 2
-dither's phase shifts at every odd-width cell boundary; and a dash
-pattern splits its gap at the cell's edges by construction (`left =
-gap / 2`, the rest to the right edge), not by rounding, so the seam
-between two cells is one gap wide. The double-line rules, since 41
-glyphs share them: a rail ends at the *near* rail of a double on its own
-side (an inner corner), at the *far* rail of a double on the other side
-when nothing continues past the centre (an outer corner), and at the
-centre otherwise (a line running through); a single arm runs to the
-centre when its opposite continues it, to the near rail between two
-doubles (a tee), to the far rail of one (a corner). Tests: the six the
-entry asked for in `tests/cells.rs`, reading the atlas back; the tables
-and the shape rules in the module; the `cells` example's session ends in
-a box-drawn bench table with block bars, captured seamless at 2×.
-CHANGELOG under both *Fixed* and *What breaks*. The `text` wish stays a
-wish: a mono `text` row's line box is not a cell contract.
-
-**Symptom** (kawoosh, 2026-09-15, macOS, lazygit 0.65.1 in a `cells`
-node): kawoosh's terminal style is `size 13`, `line_height 20`, in the
-bundled Iosevka Navcon. Every `│` (U+2502) renders as a dash with a gap
-below it, every row; `▐` (U+2590, lazygit's scrollbar thumb) stacks as
-separate black dashes rather than one bar. Any box-drawn frame in any
-TUI shows it.
-
-**Why, measured.** Iosevka's box-drawing (U+2500–U+257F) and
-block-element (U+2580–U+259F) glyphs span exactly the font's own line
-box: the report read the file — hhea 965/−215, typo 965/−285, and the
-glyph bounds of U+2502, U+2503, U+2588, U+2590 and U+2551 all
-y ∈ [−285, 965] on 1000 upm, advance 500 — so 1.25 em tall, 16.25 px at
-13 px. `cells` makes the cell `line_height × scale` tall
-(`StyleTable::cell_h`, `crates/kui-core/src/cells.rs`), 20 px, and
-`shape_cell` places the glyph where cosmic-text's line puts it; 3.75 px
-of each row is empty under the stroke. No font can know the cell is
-20 px: a font fills *its* line box, and any face shows some gap unless
-its glyphs happen to be 1.54 em tall. A face without these codepoints
-is worse — cosmic-text falls back to another family and the strokes
-change weight and width mid-frame. This is why Alacritty
-(`builtin_box_drawing`), kitty, WezTerm, foot and Ghostty all bypass
-the font for these ranges and draw them from the cell box. kui owns
-the cell box, so kui draws them.
-
-**Where it goes.** `shape_cell` is the one door: `lookup` caches on
-`(ch, variant)` in front of it and every cell of the grid comes through
-it once per table. Before shaping, a `ch` in a synthesized range is
-rasterized procedurally into an alpha mask of exactly `cell_w × cell_h`
-physical pixels (both on the `StyleTable`) and returned as a `CellGlyph`
-at `(0, 0)` of the cell with `w = cell_w`, `h = cell_h`, `GlyphMask`
-kind. The atlas needs a key that is not a font glyph's: `get_or_insert`
-takes a cosmic-text `CacheKey` and `get_or_insert_image` marks its slot
-`color_glyph: true` (so the image path would not tint by the cell's
-foreground) — a third map keyed on `(ch, cell_w, cell_h)` beside the
-two, or a synthesized `CacheKey` with a reserved font id, whichever
-`atlas.rs` finds cleaner; the point is that one cell size and character
-share one slot and a different cell size does not. `text` nodes are
-untouched: a mono `text` row showing a box-drawn table has the same gap,
-but there the line box is not a cell contract — leave it, as a wish
-beside this entry.
-
-**Shapes, in order of value.** (1) Light and heavy lines, corners, tees
-and crosses, U+2500–U+254B: light stroke `max(1, round(cell_w / 8))`
-px, heavy 2–3× that, both snapped to whole physical pixels and centred
-so adjacent cells' strokes meet with no seam — the centreline is
-computed once per cell size from `cell_w`/`cell_h`, not per glyph, so
-every character in a row lands on the same pixel column and every one
-in a column on the same pixel row. (2) Rounded corners, U+256D–U+2570
-(lazygit's): a quarter arc of the light stroke, radius
-`min(cell_w, cell_h) / 2`, joined to straight stubs at the edges. (3)
-Block elements, U+2580–U+259F: exact rectangles covering fractions of
-the cell, edges snapped so `▀` over `▄` fills the cell and `▐` stacked
-is one bar; the shades `░▒▓` as ordered dither at 25/50/75 % (or flat
-alpha; pick one and say which). (4) Dashed and double lines and
-diagonals, U+254C–U+254F, U+2550–U+256C, U+2571–U+2573: the double
-gap ≈ the light stroke, a diagonal one anti-aliased line corner to
-corner. (5) Optional, same mechanism: Powerline PUA U+E0B0–U+E0B3,
-which prompts render in every terminal. `flags::BOLD` does not thicken
-a light line (the set has heavy variants), italic is ignored, and
-`Raster::subpixel` is irrelevant — a plain mask, which the atlas
-already blends.
-
-**Tests**, in `crates/kui-core/tests/cells.rs`: two rows of `│` at
-`size 13`, `line_height 20` — the rendered coverage column is
-continuous across the row boundary, no zero-alpha scanline between
-them; the same for `▐`, `█`, and `─` across two columns. `┌─┐` /
-`│ │` / `└─┘` at 2× scale: the corner strokes meet the edge strokes on
-the same pixel columns and rows. `line_height 16` then `20` produce
-different atlas slots for the same `ch`, and the same size twice one.
-A character outside the set (`a`, `é`, an emoji) still goes through
-`shape_one`, so the fast path is a fast path and not a regression. The
-`terminal` accessibility value and the `cell` click payload are
-unchanged — the change is drawing only.
-
-**Do:** the door, the first three shape groups, and the tests; (4) and
-(5) as the same change or the next. CHANGELOG under alpha.14 as a
-fix, and — since what a `│` draws changes for every `cells` node —
-under *What breaks* too, per F61's rule.
+and the one defect of the day's three rounds — F66, **built
+2026-09-15**, in the archive since the alpha.14 tag.
 
 ## From a feature ask (2026-09-15): a drop zone
 
@@ -1337,28 +1000,9 @@ core hears a file dragged in from the OS, the runner drops winit's three
 file events on the floor, and no binding has a spelling — and winit
 0.30's events carry no position, so even a runner that forwarded them
 could say "the window", never "which box". ADR 0031 is the design; the
-one entry it produced is built, and the one it could not verify from
-here is filed beside it.
-
-### `~` C40 — A drop zone: `onDrop` on any node, the files as an event, `dropBg` while they hover — **done (2026-09-15)**
-
-**Outcome.** Built whole the day the ADR was accepted, as
-[`docs/adr/0031-a-drop-zone-is-a-row-and-the-files-are-an-event.md`](adr/0031-a-drop-zone-is-a-row-and-the-files-are-an-event.md)
-decides: `onDrop` / `on_drop` / `KuiSpec.on_drop` on any node, four
-phases of one `drop` event (`enter`, `move`, `leave`, `drop`, with
-`paths` and the point), `dropBg` in the same pick as `hoverBg` and
-winning over it, the zone resolved as the topmost *zone* under the
-point with a node that is no zone looked past (the HTML `dragleave`
-flicker cannot happen), three `InputEvent`s with doors in Node and C
-and a `drop_target` reader in all four bindings, the `drop` corpus
-scene in four adapters, ABI 18, the `drop` example in Rust and Node.
-On macOS the runner overrides winit's window delegate for the five
-`NSDraggingDestination` selectors (`crates/kui/src/macos_drop.rs`) and
-answers the OS from a stamp; verified by dragging a file from the Finder
-onto the example — the zone lit, `enter`/`move`/`leave`/`drop` in the
-devtools log with the content-relative point, the green badge over the
-zone and none off it, a release off every zone refused and the icon
-slid home, the files leaving the window taking the zone's `leave`.
+one entry it produced — C40 — was **built 2026-09-15** and is in the
+archive since the alpha.14 tag, and the one it could not verify from
+here is filed below.
 
 ### `.` W19 — The drag's position on Windows and Linux is the pane's last cursor, so `move` never fires there
 
@@ -1384,9 +1028,77 @@ winit owns, so this waits for winit's `DragEnter { position }` redesign
 unless a Windows round wants it first. Unverified from here either way
 (W16's rule).
 
-## After alpha.12
+## From the alpha.14 pre-tag round (2026-09-15)
+
+The round that tagged alpha.14, run the evening of the day the four
+rounds above were filed and built. Every check passed and every gesture
+the round drove read back as the entry says (the CHANGELOG's *Native
+verification* has the list); one thing it noticed is the harness's, not
+kui's, and one is a bench row the guard does not watch, bisected to a
+commit before the tag and left for the round after.
+
+### `.` C41 — `frame_1k_curves` is 10% slower since the drop-zone commit, and no guarded row moved
+
+**Found.** The alpha.14 bench guard read every guarded row within its
+noise and three unguarded rows past ±5%; re-run alone, two were noise
+and `frame_1k_curves` was not — 255 → 280 µs, +10.0% at ±1.4% run to
+run. Four probes with `scripts/bench-check.sh <commit> frame_1k_curves`
+(HEAD against each base, one row, ~4 min a probe) put it in one commit:
+`cc070bd` (F62–F65) and `db2ff82` (the cursor) read 260 µs against
+HEAD's 280–284; `5e6711e` (ADR 0031, the drop zone) reads 286 and
+`3179ceb` after it 284 — HEAD is that commit's number. Nothing in ADR
+0032 or the devtools chord moved it. The row is a thousand `polyline`
+floats through eight knots each, flattened to 35 segments a curve every
+frame; it declares no interaction, so the `HitRegion` that grew an
+`Option<DropOwner>` (a `Value` inside) and the per-region `enclosing_drop`
+walk in `emit` should not be on its path — and `frame_10k_segments`
+(+3.6% at ±1.3%), `frame_1k_polygons` (+4.0% at ±1.5%) and
+`frame_1k_closed_lines` (+3.1%) lean the same way while
+`frame_10k_rects` reads −3.4%, so it is the side-list emitters, not
+every node. Twenty-five nanoseconds a curve is one call that stopped
+inlining or one struct that crossed a cache line, which is the shape
+C15's remainder and the architecture review's two inlining
+regressions had.
+
+**Do.** Profile `frame_1k_curves` at `5e6711e` against `db2ff82`
+(`cargo bench -p kui-core --bench frame -- frame_1k_curves` under
+`sample`, or `perf`-style counters on Linux); the suspects in that
+commit's per-frame path are `emit.rs`'s region closure (now building a
+`DropOwner` under `any_drop && interactive`, which grew the closure and
+may have un-inlined the segment emitter around it), `Interaction`'s new
+`DropHover` field, and `Tree::any_drop`. If it is inlining, an
+`#[inline]` or a split of the region build out of the emit loop; if it
+is the region struct, box the `DropOwner`. Add `frame_1k_curves` to the
+guard list if the fix lands, so the segment path has a row that fails.
+
+### `.` E4 — The examples harness sizes the window for the dock at launch only
+
+**Found.** `kui_devtools::main!` adds the dock's extent to the example's
+size when the dock is on at launch (`DOCK_SIDE_W`, `DOCK_BOTTOM_H`), so
+the example's area is what it asked for. A panel brought back at
+runtime — `--dock off`, then the devtools chord (or `--key f12` and
+F12, which is how this round met it) — takes its 340 px from the
+example's area instead: `button` at its own 560 × 352 becomes a 220 px
+column, its wrapped paragraphs shrunk under the button rows. Closing
+the panel with × and bringing it back keeps a window that was sized
+for it, so the default launch never shows this. Not a core defect (the
+column shrinks as a column does; `min_height: "fit"` is the row's
+answer), and the harness is not shipped.
+
+**Do.** Either resize the window by the dock's extent when the panel
+comes back into a window that was not sized for it (a window command the
+runner already answers, or a resize the harness asks for), or lay the harness's example area out with `min_width:
+"fit"` so it is the panel that gives. The first matches what launch
+does; the second is a line. Cheap either way; waits for it to matter.
+
+## After alpha.13
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
+alpha.12" until 2026-09-15, when the four rounds between the alpha.13
+and alpha.14 tags — the macOS 27 round, the two alpha.13 upgrade
+reports, the kawoosh terminal report and the drop-zone ask, eight
+entries, every one built the day it was filed — had all landed and the
+heading moved with the tag; "After
 alpha.11" until 2026-09-14, when the seven rounds between the two tags —
 two upgrade reports, the pomodoro's devtools round, the third
 editor-and-mux round, the second architecture review, the standard
@@ -1410,10 +1122,12 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** W19, when a Windows or Linux round comes (the macOS half
-of ADR 0031 is built and verified; the fallback elsewhere is honest and
-positionless). Nothing else filed is open: the two alpha.13 reports and the
-kawoosh terminal report — F62–F66 — were **built 2026-09-15**, F66 first
+**Build next.** C41 — a profile of `frame_1k_curves` at the drop-zone
+commit against the one before, the bisect already done; then W19, when
+a Windows or Linux round comes (the macOS half of ADR 0031 is built and
+verified; the fallback elsewhere is honest and positionless). Nothing else filed is open: the two alpha.13 reports and the
+kawoosh terminal report — F62–F66, in the archive since the alpha.14
+tag — were **built 2026-09-15**, F66 first
 (the dashed `│` was what every TUI in a `cells` node showed, and the
 entry's shapes, atlas key and tests are what was built), then the four
 small ones, each as its entry says: two counters (F62), a sentence and an assertion (F63), two
@@ -1724,7 +1438,7 @@ Every closed entry, all in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) and all verbatim — one heading
 per id, and `tests/docs.rs` holds every id to one entry across both files.
 This index is here so an id resolves without opening that file: the open items
-above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.12" and
+above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.13" and
 the hygiene note cite C2, C5(b), P3, R4 and R7, and code comments, ADRs and
 commit messages cite ids of their own. All of them are whole in the
 archive. **C11**, **W2** and **C15** were each split for a while — an entry
@@ -2061,3 +1775,23 @@ move.
 - `.` **K2** — [An event knows which fill it came from](backlog/closed-2026-09.md#-k2--an-event-knows-which-fill-it-came-from--done-2026-09-15) — done (2026-09-15)
 - `.` **K3** — [Trailing and repeated spaces measure reliably in a run](backlog/closed-2026-09.md#-k3--trailing-and-repeated-spaces-measure-reliably-in-a-run--answered-2026-09-15) — answered (2026-09-15)
 - `.` **K4** — [An underline of its own colour and style](backlog/closed-2026-09.md#-k4--an-underline-of-its-own-colour-and-style--done-2026-09-15) — done (2026-09-15)
+
+**From the macOS 27 round (2026-09-15)** — W17 and W18, both built the same day
+
+- `.` **W17** — [The titlebar strip assumed macOS's numbers, and macOS 27 changed them](backlog/closed-2026-09.md#-w17--the-titlebar-strip-assumed-macoss-numbers-and-macos-27-changed-them--done-2026-09-15) — done (2026-09-15) — measured from the window, `widgets::titlebar_height`
+- `.` **W18** — [Picking from a popup flicked the owner's chrome: the popup became key on every press](backlog/closed-2026-09.md#-w18--picking-from-a-popup-flicked-the-owners-chrome-the-popup-became-key-on-every-press--done-2026-09-15) — done (2026-09-15) — `canBecomeKeyWindow` NO on the popup's `NSWindow`
+
+**From the two alpha.13 upgrade reports (2026-09-15)** — F62–F65, all built the same day
+
+- `.` **F62** — [`frameStats().frames` is the ring's length, and nothing counts pumps](backlog/closed-2026-09.md#-f62--framestatsframes-is-the-rings-length-and-nothing-counts-pumps--done-2026-09-15) — done (2026-09-15) — `framesTotal` and `pumps`
+- `.` **F63** — [What `env.audio.live` reads for a play that waited on an open the device then refused](backlog/closed-2026-09.md#-f63--what-envaudiolive-reads-for-a-play-that-waited-on-an-open-the-device-then-refused--done-2026-09-15) — done (2026-09-15) — a sentence and an assertion
+- `.` **F64** — [`settled()` never resolves while a keyframe cycle runs, and nothing separates a transition owed from a cycle running](backlog/closed-2026-09.md#-f64--settled-never-resolves-while-a-keyframe-cycle-runs-and-nothing-separates-a-transition-owed-from-a-cycle-running--done-2026-09-15) — done (2026-09-15) — `owed()` by kind, `quiet(maxMs)`
+- `.` **F65** — [A headless press's default `physical` is `code` verbatim, and a window's is lower-case](backlog/closed-2026-09.md#-f65--a-headless-presss-default-physical-is-code-verbatim-and-a-windows-is-lower-case--done-2026-09-15) — done (2026-09-15) — the fold in `KeyPress::new`, under What breaks
+
+**From the kawoosh terminal field report (2026-09-15)** — F66, the one defect of the day, built the same day
+
+- `!` **F66** — [A `cells` node draws box-drawing and block glyphs from the font, and no font's are the cell's height](backlog/closed-2026-09.md#-f66--a-cells-node-draws-box-drawing-and-block-glyphs-from-the-font-and-no-fonts-are-the-cells-height--done-2026-09-15) — done (2026-09-15) — `cells/boxdraw.rs`, drawn from the cell box
+
+**From a feature ask (2026-09-15): a drop zone** — C40, ADR 0031 built whole; W19 stays open
+
+- `~` **C40** — [A drop zone: `onDrop` on any node, the files as an event, `dropBg` while they hover](backlog/closed-2026-09.md#-c40--a-drop-zone-ondrop-on-any-node-the-files-as-an-event-dropbg-while-they-hover--done-2026-09-15) — done (2026-09-15) — ADR 0031, `onDrop` / `dropBg`, three `InputEvent`s, ABI 18
