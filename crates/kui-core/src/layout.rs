@@ -10,6 +10,11 @@
 //! pass reads that grouping (`Tree::line`); the order is why wrapping is
 //! rows-only, and [`wraps`] says so at length.
 //!
+//! A sixth pass, [`anchored`], runs only on a frame with a float anchored
+//! to a node by key (`FloatAnchor::Node`): the five passes above cannot
+//! size such a float, since its anchor may come later in preorder, so
+//! its subtree is laid out again from the anchor's final rect.
+//!
 //! Text measurement goes through `TextMeasure` so the solver is testable with
 //! a deterministic stub and never depends on system fonts.
 
@@ -232,11 +237,125 @@ pub fn compute(
     if tree.is_empty() {
         return;
     }
-    fit_widths(tree, text);
+    fit_widths(tree, text, 0..tree.len());
     grow_widths(tree, viewport);
-    fit_heights(tree, text);
+    fit_heights(tree, text, 0..tree.len());
     grow_heights(tree, viewport);
-    positions(tree, scroll, viewport, scale);
+    positions(tree, scroll, viewport, scale, 0..tree.len());
+    if tree.any_node_float {
+        anchored(tree, text, scroll, viewport, scale);
+    }
+}
+
+/// The sixth pass: every float anchored to a node by key, laid out again
+/// against that node's final rect. A subtree is a contiguous index range
+/// in preorder — every descendant's parent index is at or after the
+/// root's — so the five passes run over the range alone: the float's own
+/// size is resolved against the anchor the way a `Parent` float's is
+/// against its parent, and the rest is what the passes always do. An
+/// anchor the frame does not have leaves the float at zero size, which
+/// paints nothing and takes no input; a caller that built the content
+/// without its body has nothing to show it in.
+fn anchored(
+    tree: &mut Tree,
+    text: &mut dyn TextMeasure,
+    scroll: &mut ScrollStore,
+    viewport: Size,
+    scale: f32,
+) {
+    for (c, end, key) in node_floats(tree) {
+        let Some(a) = tree.index_of(key) else {
+            tree.size[c] = Size::default();
+            continue;
+        };
+        let anchor = Rect::from_pos_size(tree.pos[a], tree.size[a]);
+        let spec = tree.specs[c].layout;
+        fit_widths(tree, text, c..end);
+        tree.size[c].w = spec.clamp_w(match spec.width {
+            Sizing::Grow(_) => anchor.w,
+            Sizing::Percent(p) => anchor.w * p,
+            _ => tree.size[c].w,
+        });
+        for i in c..end {
+            distribute_axis(tree, i as u32, AxisSel::Width, viewport);
+        }
+        fit_heights(tree, text, c..end);
+        tree.size[c].h = spec.clamp_h(match spec.height {
+            Sizing::Grow(_) => anchor.h,
+            Sizing::Percent(p) => anchor.h * p,
+            _ => tree.size[c].h,
+        });
+        for i in c..end {
+            distribute_axis(tree, i as u32, AxisSel::Height, viewport);
+        }
+        place_anchored(tree, c, anchor);
+        positions(tree, scroll, viewport, scale, c..end);
+    }
+}
+
+/// `(root, end, anchor key)` of every node-anchored float, in tree
+/// order, each subtree the index range `root..end`.
+fn node_floats(tree: &Tree) -> Vec<(usize, usize, crate::key::Key)> {
+    let mut out = Vec::new();
+    let mut c = 0usize;
+    while c < tree.len() {
+        if let Some(crate::spec::FloatConfig {
+            anchor: FloatAnchor::Node(key),
+            ..
+        }) = tree.specs[c].layout.float
+        {
+            let mut end = c + 1;
+            while end < tree.len() && (tree.parent[end] as usize) >= c {
+                end += 1;
+            }
+            out.push((c, end, key));
+            c = end;
+        } else {
+            c += 1;
+        }
+    }
+    out
+}
+
+/// Attaches the sized float `c` to `anchor`, its config's points.
+fn place_anchored(tree: &mut Tree, c: usize, anchor: Rect) {
+    let Some(cfg) = tree.specs[c].layout.float else {
+        return;
+    };
+    let cs = tree.size[c];
+    tree.pos[c] = Vec2::new(
+        attach(
+            anchor.x,
+            anchor.w,
+            cs.w,
+            cfg.anchor_point.0,
+            cfg.self_point.0,
+            cfg.offset.x,
+        ),
+        attach(
+            anchor.y,
+            anchor.h,
+            cs.h,
+            cfg.anchor_point.1,
+            cfg.self_point.1,
+            cfg.offset.y,
+        ),
+    );
+}
+
+/// Pass 5 again, with the sizes kept: what a scroll that moved a node
+/// re-runs. The node-anchored floats follow their anchors.
+pub(crate) fn reposition(tree: &mut Tree, scroll: &mut ScrollStore, viewport: Size, scale: f32) {
+    positions(tree, scroll, viewport, scale, 0..tree.len());
+    if tree.any_node_float {
+        for (c, end, key) in node_floats(tree) {
+            if let Some(a) = tree.index_of(key) {
+                let anchor = Rect::from_pos_size(tree.pos[a], tree.size[a]);
+                place_anchored(tree, c, anchor);
+                positions(tree, scroll, viewport, scale, c..end);
+            }
+        }
+    }
 }
 
 /// The fit width of `i`, a non-text node: what its content wants on its
@@ -273,8 +392,8 @@ fn fit_width(tree: &Tree, i: usize, text: &mut dyn TextMeasure) -> f32 {
     }
 }
 
-fn fit_widths(tree: &mut Tree, text: &mut dyn TextMeasure) {
-    for i in (0..tree.len()).rev() {
+fn fit_widths(tree: &mut Tree, text: &mut dyn TextMeasure, range: std::ops::Range<usize>) {
+    for i in range.rev() {
         if let NodeContent::Text(tid) = tree.content[i] {
             tree.size[i].w = text.intrinsic(tid).w;
             continue;
@@ -350,8 +469,8 @@ fn fit_height(tree: &Tree, i: usize, text: &mut dyn TextMeasure, edit: Size) -> 
     }
 }
 
-fn fit_heights(tree: &mut Tree, text: &mut dyn TextMeasure) {
-    for i in (0..tree.len()).rev() {
+fn fit_heights(tree: &mut Tree, text: &mut dyn TextMeasure, range: std::ops::Range<usize>) {
+    for i in range.rev() {
         if let NodeContent::Text(tid) = tree.content[i] {
             // Width is final by now: wrap to it.
             let wrapped = text.wrapped(tid, tree.size[i].w.max(0.0));
@@ -546,6 +665,8 @@ fn distribute_axis(tree: &mut Tree, i: u32, axis: AxisSel, viewport: Size) {
                 (FloatAnchor::Parent, AxisSel::Height) => tree.size[i as usize].h,
                 (FloatAnchor::Viewport, AxisSel::Width) => vp.w,
                 (FloatAnchor::Viewport, AxisSel::Height) => vp.h,
+                // Sized in the sixth pass, once the anchor is placed.
+                (FloatAnchor::Node(_), _) => 0.0,
             };
             match child_sizing(tree, c, axis) {
                 Sizing::Grow(_) => set_axis_clamped(tree, c, axis, anchor_dim),
@@ -770,6 +891,8 @@ fn place_float(
     let anchor = match cfg.anchor {
         FloatAnchor::Parent => parent,
         FloatAnchor::Viewport => vp,
+        // Placed in the sixth pass, once the anchor is.
+        FloatAnchor::Node(_) => return,
     };
     let cs = tree.size[c as usize];
     let mut x = attach(
@@ -826,8 +949,14 @@ fn place_float(
     tree.pos[c as usize] = Vec2::new(x, y);
 }
 
-pub(crate) fn positions(tree: &mut Tree, scroll: &mut ScrollStore, viewport: Size, scale: f32) {
-    for i in 0..tree.len() {
+fn positions(
+    tree: &mut Tree,
+    scroll: &mut ScrollStore,
+    viewport: Size,
+    scale: f32,
+    range: std::ops::Range<usize>,
+) {
+    for i in range {
         if tree.parent[i] == NIL {
             tree.pos[i] = Vec2::ZERO;
         }

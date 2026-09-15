@@ -885,7 +885,19 @@ export type WarningCode =
    *  `{kind:"sound", phase:"refused"}` instead, and this line says why. Stop
    *  what the view no longer needs rather than releasing it, or release shorter
    *  sounds. */
-  | 'playback-refused';
+  | 'playback-refused'
+  /** A devtools tab name declared twice in one frame (ADR 0032, decision 1):
+   *  two `devtools_tab` / `devtools_tab_with` calls, a host form and an
+   *  extension form of one name, or an extension declaring from its fill under
+   *  a name the host took. The first declaration stands and the second is
+   *  ignored; give the second tab its own name. */
+  | 'duplicate-tab'
+  /** A `devtoolsTab` declaration a binding could not read as either form (ADR
+   *  0032, decision 1): a child that is not a function, both a `slot` and a
+   *  child, or a `view` that is not a function in Lua. The tab was not
+   *  declared. A tab names a slot for an extension to fill, or carries a
+   *  function the binding calls only when the tab is shown. */
+  | 'bad-devtools-tab';
 // -- end generated --
 
 /** A silent misconfiguration the core noticed while finishing a frame —
@@ -2298,6 +2310,44 @@ export declare class Ctx {
    */
   devtoolsKey(): string
   /**
+   * The declared devtools tab on show, by name, or `null` for
+   * one of the panel's own, the panel off or popped out (ADR
+   * 0032). What `frame` / `setView` read once before encoding,
+   * so a `<devtoolsTab>`'s function child is called only for
+   * that tab.
+   */
+  devtoolsShownTab(): string | null
+  /**
+   * The node the panel's tree tab has selected, as a hex key,
+   * or `null` (ADR 0032, decision 4) — what an inspector in a
+   * declared tab reads to say which node it is about.
+   */
+  devtoolsSelected(): string | null
+  /** The tree row under the pointer, as a hex key, or `null`. */
+  devtoolsHovered(): string | null
+  /** The node the picker is over while picking, or `null`. */
+  devtoolsPicked(): string | null
+  /**
+   * Raises the panel's picker from outside it — an inspector in
+   * a `<devtoolsTab>` asking "which node?" — or puts it away
+   * (ADR 0032, decision 4). Picking happens over the app in
+   * the main window: `devtoolsPicked()` is the node under the
+   * pointer while it is up, and the press lands it in
+   * `devtoolsSelected()`. Raised while a declared tab is on
+   * show, the pick leaves that tab up; raised otherwise it is
+   * the `Ctrl+Shift+P` pick and shows the tree tab. A hidden
+   * panel comes back docked.
+   */
+  setDevtoolsPick(on: boolean): void
+  /** Whether the panel's picker is up. */
+  devtoolsPicking(): boolean
+  /**
+   * Selects a node in the panel's tree tab from outside it and
+   * reveals it there, as the picker does; `null` clears. `key`
+   * is a hex key an event carried or `keyOf` answered.
+   */
+  setDevtoolsSelected(key?: string | undefined | null): void
+  /**
    * The key legend the panel's facts tab shows: `[keys, what]`
    * pairs.
    */
@@ -3266,6 +3316,44 @@ export declare class KuiWindow {
    * `"super+alt+d"`.
    */
   devtoolsKey(): string
+  /**
+   * The declared devtools tab on show, by name, or `null` for
+   * one of the panel's own, the panel off or popped out (ADR
+   * 0032). What `frame` / `setView` read once before encoding,
+   * so a `<devtoolsTab>`'s function child is called only for
+   * that tab.
+   */
+  devtoolsShownTab(): string | null
+  /**
+   * The node the panel's tree tab has selected, as a hex key,
+   * or `null` (ADR 0032, decision 4) — what an inspector in a
+   * declared tab reads to say which node it is about.
+   */
+  devtoolsSelected(): string | null
+  /** The tree row under the pointer, as a hex key, or `null`. */
+  devtoolsHovered(): string | null
+  /** The node the picker is over while picking, or `null`. */
+  devtoolsPicked(): string | null
+  /**
+   * Raises the panel's picker from outside it — an inspector in
+   * a `<devtoolsTab>` asking "which node?" — or puts it away
+   * (ADR 0032, decision 4). Picking happens over the app in
+   * the main window: `devtoolsPicked()` is the node under the
+   * pointer while it is up, and the press lands it in
+   * `devtoolsSelected()`. Raised while a declared tab is on
+   * show, the pick leaves that tab up; raised otherwise it is
+   * the `Ctrl+Shift+P` pick and shows the tree tab. A hidden
+   * panel comes back docked.
+   */
+  setDevtoolsPick(on: boolean): void
+  /** Whether the panel's picker is up. */
+  devtoolsPicking(): boolean
+  /**
+   * Selects a node in the panel's tree tab from outside it and
+   * reveals it there, as the picker does; `null` clears. `key`
+   * is a hex key an event carried or `keyOf` answered.
+   */
+  setDevtoolsSelected(key?: string | undefined | null): void
   /**
    * The key legend the panel's facts tab shows: `[keys, what]`
    * pairs.

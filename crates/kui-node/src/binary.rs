@@ -71,6 +71,11 @@ use crate::{Result, err, value_of};
 /// entry through `WindowConfig::from_value` (backlog AR43) — the ten-slot
 /// stanza v7 shaped is gone, and with it the encoder's own copy of the
 /// kind list and of what a zero size means.
+/// v14: `devtoolsTab` is a new op (ADR 0032): name, label, slot (or
+/// none), then a flags word whose bit 1 says the content follows to a
+/// CLOSE — the encoder's function child, called only for the tab the
+/// driver read as on show. A new op, so the bump is for an encoder that
+/// emits one to an addon without it.
 /// v13: an underline's own colour and shape (backlog K4). A span carries
 /// a third colour slot, the underline's, with flags bits 256 (has one),
 /// 512 (it is a token index), 1024 (wavy) and 2048 (dotted); a cell
@@ -78,7 +83,7 @@ use crate::{Result, err, value_of};
 /// array may have four or five entries a cell. Slots in the middle of two
 /// ops, which is what the bump is for; `underlineColor` and
 /// `underlineStyle` on a `<text>` are ordinary schema rows.
-pub const VERSION: u32 = 13;
+pub const VERSION: u32 = 14;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a
 /// token index rather than a value (`docs/adr/0027-tokens-beside-the-theme.md`,
@@ -109,6 +114,7 @@ pub const OP_SLOT: u32 = 17;
 pub const OP_MENU_BAR: u32 = 18;
 pub const OP_POLYGON: u32 = 19;
 pub const OP_TOOLTIP: u32 = 20;
+pub const OP_DEVTOOLS_TAB: u32 = 21;
 
 pub fn protocol_json() -> Json {
     let mut o = JsonMap::new();
@@ -138,6 +144,7 @@ pub fn protocol_json() -> Json {
                 ("menuBar", OP_MENU_BAR),
                 ("polygon", OP_POLYGON),
                 ("tooltip", OP_TOOLTIP),
+                ("devtoolsTab", OP_DEVTOOLS_TAB),
             ]
             .into_iter()
             .map(|(k, v)| (k.to_string(), Json::from(v)))
@@ -1108,6 +1115,33 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             } else {
                 widgets::tooltip(ui, value.as_deref().unwrap_or(""));
                 Ok(())
+            }
+        }
+        // A devtools tab (ADR 0032): the extension form names a slot; the
+        // host form's content follows when the encoder called the function
+        // child, which it did only for the tab the driver read as on show —
+        // so the laziness is the encoder's, and the core builds what came.
+        OP_DEVTOOLS_TAB => {
+            let name = r.req_str()?;
+            let label = r.req_str()?;
+            let slot = r.str_ref()?;
+            let flags = r.u()?;
+            match slot {
+                Some(slot) => {
+                    ui.devtools_tab(name, label, slot);
+                    Ok(())
+                }
+                None if flags & 1 != 0 => {
+                    let mut result = Ok(());
+                    ui.devtools_tab_declared(name, label, |ui| {
+                        result = decode_until_close(r, ui);
+                    });
+                    result
+                }
+                None => {
+                    ui.devtools_tab_declare(name, label, None);
+                    Ok(())
+                }
             }
         }
         OP_MENU_BAR => {

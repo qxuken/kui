@@ -65,10 +65,52 @@ impl Core {
     /// the stop only at the item [`Self::composite_entry`] picked. So the
     /// stop sits where that item sits in tree order, and Tab out and back
     /// lands on it again.
+    ///
+    /// A float anchored to a node by key (`FloatAnchor::Node`) is a stop
+    /// of the ring its *anchor* is in, not the one its tree position
+    /// says: skipped whole by the range walk, and walked after the range
+    /// when its anchor's region is the ring's — so a devtools tab's
+    /// content comes after the panel's own stops, and never into the
+    /// app's ring (ADR 0032, decision 2).
     fn focus_ring(&self) -> Vec<(usize, Key)> {
-        use crate::access::Role;
         let mut out = Vec::new();
         let (start, end) = self.ring_range();
+        self.ring_walk(start, end, &mut out);
+        if self.tree.any_node_float && self.modal.is_none() {
+            let mut i = 0;
+            while i < self.tree.len() {
+                if self.anchored_elsewhere(i) {
+                    let sub_end = self.tree.subtree_end(i);
+                    if self.region_of(i) == self.region {
+                        self.ring_walk(i, sub_end, &mut out);
+                    }
+                    i = sub_end;
+                } else {
+                    i += 1;
+                }
+            }
+        }
+        out
+    }
+
+    /// Whether node `i` is a float anchored to a node by key — shown
+    /// somewhere other than where it sits in the tree.
+    fn anchored_elsewhere(&self, i: usize) -> bool {
+        self.tree.any_node_float
+            && matches!(
+                self.tree.specs[i].layout.float,
+                Some(crate::spec::FloatConfig {
+                    anchor: crate::spec::FloatAnchor::Node(_),
+                    ..
+                })
+            )
+    }
+
+    /// The stops of the tree range `start..end`, appended to `out`: what
+    /// `focus_ring` walks once for the ring's range and once per float
+    /// anchored into it.
+    fn ring_walk(&self, start: usize, end: usize, out: &mut Vec<(usize, Key)>) {
+        use crate::access::Role;
         let mut i = start;
         // The composites enclosing `i`, innermost last: how far each runs,
         // which role its items carry, and the one item that is its stop.
@@ -80,6 +122,13 @@ impl Core {
             }
             let role = self.tree.specs[i].access().role;
             if role == Some(Role::None) {
+                i = self.tree.subtree_end(i);
+                continue;
+            }
+            // A float anchored to a node is walked with its anchor's
+            // ring (`focus_ring`), not where it sits — the range's own
+            // root excepted, which is that walk.
+            if i != start && self.anchored_elsewhere(i) {
                 i = self.tree.subtree_end(i);
                 continue;
             }
@@ -116,7 +165,6 @@ impl Core {
             }
             i += 1;
         }
-        out
     }
 
     /// The tree range the ring is made of: the modal's subtree when one is
@@ -149,7 +197,11 @@ impl Core {
     }
 
     /// The region enclosing node `i` — the nearest ancestor-or-self
-    /// declaring `focus_region` — or `None` for the main ring.
+    /// declaring `focus_region` — or `None` for the main ring. A float
+    /// anchored to a node by key belongs where it is *shown*: the walk
+    /// continues from its anchor, not its parent, so a devtools tab's
+    /// content is the dock's to Tab through and never the app's (ADR
+    /// 0032, decision 2).
     pub(crate) fn region_of(&self, i: usize) -> Option<Key> {
         if !self.tree.any_region {
             return None;
@@ -160,7 +212,7 @@ impl Core {
             if self.tree.specs[j].interact().focus_region {
                 return Some(self.tree.keys[j]);
             }
-            n = self.tree.parent[j];
+            n = self.tree.region_parent(j);
         }
         None
     }

@@ -2,7 +2,7 @@
 //! strip and the tab in view, and the small controls every tab shares.
 
 use super::icons::{self, Icon};
-use super::{DEVTOOLS_KEY, Dock, Place, State, Tab, action, stream, tree};
+use super::{DEVTOOLS_KEY, Dock, Place, Shown, State, Tab, action, stream, tree};
 use crate::color::Color;
 use crate::env::Appearance;
 use crate::runtime::inspect::NodeInfo;
@@ -16,7 +16,7 @@ use crate::widgets;
 /// The whole of what the panel declares in this window.
 pub(super) fn build(ui: &mut Ui<'_>, st: &mut State, nodes: &[NodeInfo], place: Place) {
     let t = ink(ui.theme());
-    if st.tab != Tab::Tree {
+    if st.shown() != Shown::Builtin(Tab::Tree) {
         st.hovered_row = None;
     }
     match place {
@@ -133,8 +133,9 @@ fn panel(
     );
     fixed(ui, |ui| header(ui, st, t));
     fixed(ui, |ui| tabs(ui, st, t));
-    match st.tab {
-        Tab::Facts => {
+    match st.shown() {
+        Shown::Custom(i) => tab_body(ui, st, i, place),
+        Shown::Builtin(Tab::Facts) => {
             ui.with(
                 NodeSpec::column()
                     .width(Sizing::Grow(1.0))
@@ -153,8 +154,8 @@ fn panel(
                 },
             );
         }
-        Tab::Events => stream::events_tab(ui, st, t),
-        Tab::Tree => tree::tree_tab(ui, st, nodes, t, place),
+        Shown::Builtin(Tab::Events) => stream::events_tab(ui, st, t),
+        Shown::Builtin(Tab::Tree) => tree::tree_tab(ui, st, nodes, t, place),
     }
     if matches!(place, Place::Main(_)) {
         tree::overlays(ui, st, nodes, t, place);
@@ -162,6 +163,33 @@ fn panel(
     ui.close();
     if docked == Some(Dock::Left) {
         handle(ui, t, Dock::Left);
+    }
+    ui.close();
+}
+
+/// A declared tab's body (ADR 0032, decision 2): an empty node that
+/// takes the tab area, keyed by the tab's name so the content — a layer
+/// built elsewhere, by the host or by an extension's fill — can anchor
+/// to it by key. The host form's content lives in the main window's
+/// tree, so in the panel's own window the body says so instead.
+fn tab_body(ui: &mut Ui<'_>, st: &State, i: usize, place: Place) {
+    let decl = &st.tabs[i];
+    let key = super::tab_body_key(&decl.name);
+    ui.open_with_key(
+        key,
+        &format!("{DEVTOOLS_KEY}/tab/{}", decl.name),
+        NodeSpec::column()
+            .width(Sizing::Grow(1.0))
+            .height(Sizing::Grow(1.0))
+            .clip()
+            .label(decl.label.as_str()),
+    );
+    if place == Place::Window && decl.slot.is_none() {
+        let t = ink(ui.theme());
+        ui.text(
+            "docked only — this tab is drawn from the app's own tree",
+            TextStyle::new(12.0).color(t.muted),
+        );
     }
     ui.close();
 }
@@ -241,23 +269,40 @@ fn tabs(ui: &mut Ui<'_>, st: &State, t: &Theme) {
             .gap(2.0)
             .cross_align(Align::Center),
         |ui| {
-            for tab in Tab::ALL {
-                let on = tab == st.tab;
+            let shown = st.shown();
+            // The panel's three, then every tab the app or an extension
+            // declared, in declaration order (ADR 0032, decision 1).
+            let own = Tab::ALL.iter().map(|tab| {
+                (
+                    tab.name().to_string(),
+                    tab.name().to_string(),
+                    Shown::Builtin(*tab),
+                )
+            });
+            let declared = st.tabs.iter().enumerate().map(|(i, d)| {
+                (
+                    format!("custom:{}", d.name),
+                    d.label.clone(),
+                    Shown::Custom(i),
+                )
+            });
+            for (id, label, which) in own.chain(declared) {
+                let on = which == shown;
                 ui.with_keyed(
-                    &format!("kui-devtools/tab-{}", tab.name()),
+                    &format!("kui-devtools/tab-{id}"),
                     NodeSpec::row()
                         .pad_xy(10.0, 4.0)
                         .radius_top(5.0)
                         .bg(if on { t.sunken } else { t.surface })
                         .hover_bg(if on { t.sunken } else { t.hover })
-                        .on_click(action(format!("tab:{}", tab.name())))
+                        .on_click(action(format!("tab:{id}")))
                         .role(crate::access::Role::Tab)
                         .selected(on)
-                        .label(tab.name())
+                        .label(label.as_str())
                         .apply_tooltip("Ctrl+Shift+N · the next tab"),
                     |ui| {
                         ui.text(
-                            tab.name(),
+                            &label,
                             TextStyle::new(11.0).color(if on { t.fg } else { t.muted }),
                         );
                     },

@@ -786,6 +786,117 @@ pub extern "C" fn kui_devtools_key(ptr: *mut KuiCtx, out: *mut KuiStr) -> bool {
     })
 }
 
+/// Declares a devtools tab an extension fills (ADR 0032, decision 1):
+/// `name` is the tab's identity, `label` what the strip shows, `slot` the
+/// full `namespace/slot` the extension names. While the tab is on show
+/// the panel declares that slot in the tab's body and the fill is drawn
+/// there; otherwise the slot is not declared and the extension is not
+/// asked, though its naming the slot raises no `unknown-slot`. Made every
+/// frame, panel on or off. False for a name already declared this frame
+/// (`duplicate-tab`) or outside a frame.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_devtools_tab(
+    ptr: *mut KuiCtx,
+    name: KuiStr,
+    label: KuiStr,
+    slot: KuiStr,
+) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        c.core()
+            .devtools_tab_declare(&kstr(name), &kstr(label), Some(&kstr(slot)))
+    })
+}
+
+/// Declares a devtools tab the host draws itself, and opens its content
+/// **only while the tab is on show** (ADR 0032, decisions 1 and 3): true
+/// means the content node is open — build inside and `kui_close` — and
+/// false means the tab was declared and nothing was opened, so skip the
+/// body and do not close. What the host builds is its own: its keys, its
+/// events, laid out and painted as a layer over the panel's tab body,
+/// clipped to it, in the dock's focus region. `if (kui_devtools_tab_open(
+/// ctx, KUI_STR("syntax"), KUI_STR("Tree-sitter"))) { ...; kui_close(ctx); }`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_devtools_tab_open(ptr: *mut KuiCtx, name: KuiStr, label: KuiStr) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        let name = kstr(name);
+        let core = c.core();
+        if !core.devtools_tab_declare(&name, &kstr(label), None) || !core.devtools_tab_shown(&name)
+        {
+            return false;
+        }
+        core.devtools_tab_open(&name);
+        true
+    })
+}
+
+/// The node the panel's tree tab has selected, as a key, or 0 for none
+/// (ADR 0032, decision 4) — what an inspector in a declared tab reads.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_devtools_selected(ptr: *mut KuiCtx) -> u64 {
+    guard(0, || {
+        unsafe { ctx(ptr) }.map_or(0, |c| c.core().devtools_selected().map_or(0, |k| k.0))
+    })
+}
+
+/// The tree row under the pointer, as a key, or 0.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_devtools_hovered(ptr: *mut KuiCtx) -> u64 {
+    guard(0, || {
+        unsafe { ctx(ptr) }.map_or(0, |c| c.core().devtools_hovered().map_or(0, |k| k.0))
+    })
+}
+
+/// The node the picker is over while picking, as a key, or 0.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_devtools_picked(ptr: *mut KuiCtx) -> u64 {
+    guard(0, || {
+        unsafe { ctx(ptr) }.map_or(0, |c| c.core().devtools_picked().map_or(0, |k| k.0))
+    })
+}
+
+/// Raises the panel's picker from outside it — an inspector in a declared
+/// tab asking "which node?" — or puts it away (ADR 0032, decision 4).
+/// Picking happens over the host's tree in the main window: the node
+/// under the pointer is `kui_devtools_picked` while it is up, and the
+/// press lands it in `kui_devtools_selected`. Raised while a declared tab
+/// is on show, the pick leaves that tab up; raised otherwise it is the
+/// `Ctrl+Shift+P` pick and shows the tree tab. A hidden panel comes back
+/// docked.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_devtools_pick(ptr: *mut KuiCtx, on: bool) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().set_devtools_pick(on);
+        }
+    });
+}
+
+/// Whether the panel's picker is up.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_devtools_picking(ptr: *mut KuiCtx) -> bool {
+    guard(false, || {
+        unsafe { ctx(ptr) }.is_some_and(|c| c.core().devtools_picking())
+    })
+}
+
+/// Selects a node in the panel's tree tab from outside it and reveals it
+/// there, as the picker does; 0 clears.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_devtools_selected(ptr: *mut KuiCtx, key: u64) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core()
+                .set_devtools_selected((key != 0).then_some(kui_core::Key(key)));
+        }
+    });
+}
+
 /// The key legend the panel's facts tab shows: `count` pairs, the keys in
 /// `keys` and what each does in `what`, index for index.
 #[unsafe(no_mangle)]

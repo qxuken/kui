@@ -5572,6 +5572,95 @@ test('the devtools inspect chord is the app\'s to respell (setDevtoolsKey)', () 
   assert.equal(ctx.devtoolsKey(), process.platform === 'darwin' ? 'super+shift+d' : 'ctrl+shift+d');
 });
 
+// A tab in the devtools panel (ADR 0032): `<devtoolsTab>` with a function
+// child is the app's own content, called by the encoder only while the
+// tab is on show — `frame` reads which tab that is once, before encoding
+// — and drawn over the panel's tab body as the app's own nodes; with a
+// `slot` it is a plugin's, declared for the panel to mount. The facts
+// doors beside it, and the throws for a malformed one.
+test('a devtoolsTab is lazy through its function child, and its content is the app\'s (ADR 0032)', () => {
+  const btn = (key) => box({ width: 60, height: 20, onClick: { kind: key }, label: key }, [], key);
+  const ctx = new Ctx();
+  ctx.setDevtools(true);
+  ctx.setDevtoolsDock('right');
+  ctx.setInspect(true);
+  let calls = 0;
+  const view = () =>
+    box({}, [
+      btn('press'),
+      el('devtoolsTab', { name: 'syntax', label: 'Tree-sitter' }, [
+        () => {
+          calls++;
+          return box({ gap: 4 }, [el('text', {}, ['from js']), btn('jump')]);
+        },
+      ]),
+      el('devtoolsTab', { name: 'plug', label: 'Plugin', slot: 'ts/panel' }),
+    ]);
+  ctx.frame(1040, 720, 1, view());
+  ctx.frame(1040, 720, 1, view());
+  assert.equal(calls, 0, 'the events tab is up: the function child is not called');
+  assert.equal(ctx.devtoolsShownTab(), null);
+  assert.ok(ctx.nodes().some((n) => n.label === 'kui-devtools/tab-custom:syntax'), 'the strip lists the tab');
+  assert.ok(ctx.nodes().some((n) => n.label === 'kui-devtools/tab-custom:plug'), 'and the plugin\'s');
+  // N: tree, then Tree-sitter.
+  ctx.keyDown('n', { ctrl: true, shift: true });
+  ctx.keyDown('n', { ctrl: true, shift: true });
+  assert.equal(ctx.devtoolsShownTab(), 'syntax', 'the reading the encoder takes');
+  ctx.frame(1040, 720, 1, view());
+  assert.equal(calls, 1, 'called once the tab is on show');
+  ctx.frame(1040, 720, 1, view());
+  assert.equal(calls, 2);
+  const body = ctx.nodes().find((n) => n.label === 'kui-devtools/tab/syntax');
+  const jump = ctx.nodes().find((n) => n.label === 'jump');
+  assert.ok(body && jump, 'the body and the content are both in the frame');
+  assert.ok(jump.rect.x >= body.rect.x && jump.rect.x + jump.rect.w <= body.rect.x + body.rect.w, `${JSON.stringify(jump.rect)} in ${JSON.stringify(body.rect)}`);
+  assert.ok(ctx.nodes().some((n) => n.text === 'from js'), 'the content\'s text painted');
+  // The content's click is the app's.
+  ctx.cursor(jump.rect.x + 2, jump.rect.y + 2);
+  ctx.mouse(true, 1);
+  ctx.mouse(false, 1);
+  const evs = ctx.pollEvents();
+  assert.equal(evs.length, 1, `one event, the app's: ${JSON.stringify(evs)}`);
+  assert.deepEqual(evs[0].payload, { kind: 'jump' });
+  // The facts doors: nothing selected until the app selects.
+  assert.equal(ctx.devtoolsSelected(), null);
+  assert.equal(ctx.devtoolsHovered(), null);
+  assert.equal(ctx.devtoolsPicked(), null);
+  ctx.setDevtoolsSelected(ctx.keyOf('press'));
+  assert.equal(ctx.devtoolsSelected(), ctx.keyOf('press'), 'selected from the app\'s side');
+  ctx.setDevtoolsSelected(null);
+  assert.equal(ctx.devtoolsSelected(), null);
+  // The picker, raised from the app's side while the tab is up: the tab
+  // stays, the press lands the node in `devtoolsSelected`.
+  assert.equal(ctx.devtoolsPicking(), false);
+  ctx.setDevtoolsPick(true);
+  assert.equal(ctx.devtoolsPicking(), true);
+  ctx.frame(1040, 720, 1, view());
+  assert.equal(ctx.devtoolsShownTab(), 'syntax', 'the tab stayed up while picking');
+  const press = ctx.nodes().find((n) => n.label === 'press');
+  ctx.cursor(press.rect.x + 2, press.rect.y + 2);
+  ctx.frame(1040, 720, 1, view());
+  assert.equal(ctx.devtoolsPicked(), ctx.keyOf('press'), 'the node under the pointer');
+  ctx.mouse(true, 1);
+  ctx.mouse(false, 1);
+  assert.deepEqual(ctx.pollEvents(), [], 'the press was the picker\'s');
+  assert.equal(ctx.devtoolsPicking(), false);
+  assert.equal(ctx.devtoolsSelected(), ctx.keyOf('press'), 'and landed in selected');
+  ctx.frame(1040, 720, 1, view());
+  assert.equal(ctx.devtoolsShownTab(), 'syntax', 'the tab is still on show');
+  // Off show again: not called, not drawn.
+  ctx.keyDown('n', { ctrl: true, shift: true }); // Plugin
+  assert.equal(ctx.devtoolsShownTab(), 'plug');
+  const before = calls;
+  ctx.frame(1040, 720, 1, view());
+  assert.equal(calls, before, 'another tab: the function child rests');
+  assert.ok(!ctx.nodes().some((n) => n.label === 'jump'));
+  // Malformed declarations throw at the encoder, the app's own error.
+  assert.throws(() => ctx.frame(100, 100, 1, el('devtoolsTab', { name: 'x' }, ['not a function'])), /function child/);
+  assert.throws(() => ctx.frame(100, 100, 1, el('devtoolsTab', { name: 'x', slot: 'a/b' }, [() => null])), /not both/);
+  assert.throws(() => ctx.frame(100, 100, 1, el('devtoolsTab', { label: 'no name' })), /needs a name/);
+});
+
 // `accent` is the one paint row the stock button takes, and the one prop
 // whose colour the environment decides: with no accent pushed it is exactly
 // the stock button, and with one it is that colour, its shades, and a label

@@ -192,6 +192,46 @@ was the first bare bump to break an app in five releases).
 
 ### Added
 
+- **A tab of the app's own in the devtools panel** (ADR 0032,
+  `docs/adr/0032-a-devtools-tab-mounts-a-slot.md`). Beside facts, events
+  and tree, an app or an extension declares tabs of its own — a
+  tree-sitter inspector is the case that asked — in one of two forms.
+  The *extension form* names a slot: `ui.devtools_tab("syntax",
+  "Tree-sitter", "ts/panel")`, `<devtoolsTab name label slot/>`,
+  `devtools_tab { name=, label=, slot= }`, `kui_devtools_tab`; while the
+  tab is on show the panel declares that slot in the tab's body and the
+  plugin draws there, and otherwise the plugin is not asked (and naming
+  the slot raises no `unknown-slot`). The *host form* is the app's own
+  content, **lazy in every binding**: `ui.devtools_tab_with(name, label,
+  |ui| …)` runs its closure only while the tab is on show; C's `if
+  (kui_devtools_tab_open(ctx, name, label)) { …; kui_close(ctx); }`
+  answers the same rule; Node's `<devtoolsTab name label>{() =>
+  …}</devtoolsTab>` function child is called by the encoder only for the
+  tab `frame` / `setView` read as on show (`devtoolsShownTab()`); Lua's
+  `devtools_tab { name=, label=, view = function() … end }` is called by
+  the converter the same way. What the host builds is its own — its
+  keys, its labels, its events reaching `update` untouched — laid out
+  and painted as a **layer anchored to the tab's body**
+  (`FloatAnchor::Node`, a sixth layout pass that runs only on a frame
+  with one), clipped to it, and in the dock's focus region (Tab walks
+  it after the panel's own stops, never from the app's ring). Both forms
+  are declared every frame, panel on or off; a name declared twice warns
+  `duplicate-tab` and keeps the first; a declaration Node or Lua cannot
+  read as either form is a throw at the encoder and a `bad-devtools-tab`
+  warning at the converter. The panel's facts are the tab's to read and
+  drive: `devtools_selected` / `hovered` / `picked` (`devtoolsSelected()`
+  …, `kui_devtools_selected` …), `set_devtools_selected` (select and
+  reveal in the tree tab from outside it), and `set_devtools_pick` /
+  `devtools_picking` — the picker raised from a tab lands its pick in
+  `selected` and leaves the tab up, where the chord's pick shows the
+  tree. `Ctrl+Shift+N` and the strip walk the declared tabs after the
+  panel's three. `examples/rust/features/devtools_tab.rs` and
+  `examples/node/features/devtools_tab.tsx` are the Inspector. Frame
+  protocol v14 (`devtoolsTab` is a new op). Limits stated in the ADR: a
+  host-form tab is docked-only — in `window` placement its body says so
+  — and an extension-form fill's keys differ between docked and window
+  placement.
+
 - **The devtools chord is the app's to respell.** `Ctrl+Shift+I` — the
   chord that moves the keyboard into the panel and back out, and brings
   a hidden panel back — is now one door on every host:

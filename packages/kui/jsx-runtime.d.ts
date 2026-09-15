@@ -591,6 +591,30 @@ export declare namespace JSX {
      *  loaded under that namespace it places an empty node so a view can
      *  declare its layout before it has a plugin to put in it. */
     slot: { name: string; params?: unknown };
+    /** A tab in the core's devtools panel, beside facts, events and tree
+     *  (docs/adr/0032-a-devtools-tab-mounts-a-slot.md). `name` is the tab's
+     *  identity, `label` what the strip shows (the name when left out).
+     *
+     *  Two forms. `slot` names a slot an extension fills, the full
+     *  `namespace/slot` a plugin you loaded names: while the tab is on show
+     *  the panel declares that slot in the tab's body and the plugin draws
+     *  there; otherwise the plugin is not asked, and its naming the slot
+     *  raises no `unknown-slot`. A **function child** is the app's own
+     *  content, `{() => <column>…</column>}`: called only while the tab is
+     *  on show — `frame` / `setView` read which tab that is once before
+     *  encoding — so a tab nobody looks at costs its declaration and
+     *  nothing else. What it returns is the app's: its keys, its events
+     *  reaching `update` untouched, laid out and painted as a layer over
+     *  the panel's tab body, clipped to it, in the dock's focus region.
+     *  Read the panel's facts through `devtoolsSelected()` and its
+     *  siblings; drive its highlight with `setDevtoolsSelected(key)`.
+     *
+     *  Not a node: declare it anywhere in the tree, every frame. A slot and
+     *  a child together, or a child that is not a function, is a throw. A
+     *  name declared twice in a frame is one tab and a `duplicate-tab`
+     *  warning; the first stands. Docked only for the function form: with
+     *  the panel in its own window the body says so. */
+    devtoolsTab: { name: string; label?: string; slot?: string; children?: () => unknown };
     /** A round-capped stroke (docs/adr/0010-a-segment-primitive.md): one
      *  segment from `from` to `to`, a polyline through `points`, or a smooth
      *  curve through them with `curve`. Points are in the parent's box space

@@ -426,6 +426,17 @@ impl Core {
         self.open_content(key, spec, NodeContent::Container);
     }
 
+    /// `open_with_key` with the node named `label` for `key_of`, the way
+    /// `open_keyed` names its node — for a key the caller fixed rather
+    /// than derived (a devtools tab's body, ADR 0032).
+    pub(crate) fn open_with_key_named(&mut self, key: Key, label: &str, spec: NodeSpec) {
+        if self.tree.is_empty() {
+            return;
+        }
+        self.open_with_key(key, spec);
+        self.key_labels.push(key, label, self.origin);
+    }
+
     /// `open_with_key` for a node that is a box in every way but what it
     /// paints: the caller supplies the content and closes the node. What
     /// the node asks of the frame is noted by `Tree::push`, the same for a

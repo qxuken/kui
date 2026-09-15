@@ -2765,6 +2765,46 @@ bool kui_set_devtools_key(KuiCtx *ctx, KuiStr key);
  * "f12", "super+alt+d"); borrowed until the next call. False on a bad
  * context. */
 bool kui_devtools_key(KuiCtx *ctx, KuiStr *out);
+/* A tab in the panel (docs/adr/0032-a-devtools-tab-mounts-a-slot.md), in
+ * one of two forms. kui_devtools_tab declares one an extension fills: name
+ * is the tab's identity, label what the strip shows, slot the full
+ * namespace/slot the extension names - while the tab is on show the panel
+ * declares that slot in the tab's body and the fill is drawn there, and
+ * otherwise the extension is not asked (and naming the slot raises no
+ * unknown-slot). kui_devtools_tab_open declares one the host draws itself
+ * and opens its content ONLY while the tab is on show: true means the
+ * content node is open - build inside and kui_close - and false means the
+ * tab was declared and nothing was opened, so skip the body and do not
+ * close:
+ *
+ *     if (kui_devtools_tab_open(ctx, KUI_STR("syntax"), KUI_STR("Tree-sitter"))) {
+ *         ...
+ *         kui_close(ctx);
+ *     }
+ *
+ * What the host builds is its own - its keys, its events - laid out and
+ * painted as a layer over the panel's tab body, clipped to it, in the
+ * dock's focus region. Both forms are made every frame, panel on or off;
+ * a name declared twice in a frame warns duplicate-tab and keeps the
+ * first, which is what a false from either says. */
+bool kui_devtools_tab(KuiCtx *ctx, KuiStr name, KuiStr label, KuiStr slot);
+bool kui_devtools_tab_open(KuiCtx *ctx, KuiStr name, KuiStr label);
+/* The panel's facts a tab reads (ADR 0032, decision 4): the node the tree
+ * tab has selected, the tree row under the pointer, the node the picker is
+ * over - each as a key, 0 for none. kui_set_devtools_selected selects (and
+ * reveals) a node in the tree tab from outside it; 0 clears. */
+uint64_t kui_devtools_selected(KuiCtx *ctx);
+uint64_t kui_devtools_hovered(KuiCtx *ctx);
+uint64_t kui_devtools_picked(KuiCtx *ctx);
+void kui_set_devtools_selected(KuiCtx *ctx, uint64_t key);
+/* Raises the panel's picker from outside it (an inspector in a declared tab
+ * asking "which node?") or puts it away: the node under the pointer is
+ * kui_devtools_picked while it is up, and the press lands it in
+ * kui_devtools_selected. Raised while a declared tab is on show, the pick
+ * leaves that tab up; raised otherwise it is the Ctrl+Shift+P pick and
+ * shows the tree tab. kui_devtools_picking says whether it is up. */
+void kui_set_devtools_pick(KuiCtx *ctx, bool on);
+bool kui_devtools_picking(KuiCtx *ctx);
 /* The key legend the panel's facts tab shows: count pairs, the keys in
  * keys and what each does in what, index for index. */
 void kui_set_devtools_legend(KuiCtx *ctx, const KuiStr *keys, const KuiStr *what,

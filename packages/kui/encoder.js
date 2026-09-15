@@ -98,6 +98,7 @@ export function createEncoder(P) {
 
   let f = new Float64Array(1 << 14);
   let u = new Uint8Array(1 << 16);
+  let shownTab = null;
   let fi = 0;
   let ui = 0;
   const textEncoder = new TextEncoder();
@@ -651,6 +652,57 @@ export function createEncoder(P) {
         strRef(p.params != null ? JSON.stringify(p.params) : null);
         return;
       }
+      case 'devtoolsTab': {
+        // A tab in the core's devtools panel (ADR 0032). `name` is the
+        // tab's identity, `label` what the strip shows. Two forms: `slot`
+        // names a slot an extension fills (the panel declares it while the
+        // tab is on show); a *function child* is the app's own content,
+        // called only while the tab is on show — the driver reads which
+        // tab that is once a frame (`shownTab`) — so a tab nobody looks at
+        // costs its declaration and nothing else. Both is neither.
+        if (typeof p.name !== 'string' || p.name === '') {
+          throw new Error('<devtoolsTab> needs a name (its identity)');
+        }
+        const label = p.label == null ? p.name : String(p.label);
+        const kids = el.children;
+        const hasKids = kids != null && !(Array.isArray(kids) && kids.length === 0);
+        const fn = Array.isArray(kids) && kids.length === 1 ? kids[0] : kids;
+        for (const k of Object.keys(p)) {
+          if (k !== 'name' && k !== 'label' && k !== 'slot' && k !== 'children') {
+            throw new Error(`<devtoolsTab> takes name, label and slot (or a function child), not ${JSON.stringify(k)}`);
+          }
+        }
+        if (p.slot != null) {
+          if (typeof p.slot !== 'string' || !p.slot.includes('/')) {
+            throw new Error(`bad devtoolsTab slot ${JSON.stringify(p.slot)} (a full "namespace/slot")`);
+          }
+          if (hasKids) throw new Error(`<devtoolsTab name=${JSON.stringify(p.name)}> takes a slot or a function child, not both`);
+          reserve(8);
+          f[fi++] = OP.devtoolsTab;
+          strRef(p.name);
+          strRef(label);
+          strRef(p.slot);
+          f[fi++] = 0;
+          return;
+        }
+        if (!hasKids || typeof fn !== 'function') {
+          throw new Error(`<devtoolsTab name=${JSON.stringify(p.name)}> needs a slot or one function child, {() => …}`);
+        }
+        reserve(8);
+        f[fi++] = OP.devtoolsTab;
+        strRef(p.name);
+        strRef(label);
+        strRef(null);
+        if (shownTab === p.name) {
+          f[fi++] = 1;
+          children(fn());
+          reserve(4);
+          f[fi++] = OP.close;
+        } else {
+          f[fi++] = 0;
+        }
+        return;
+      }
       case 'span':
         throw new Error('<span> only works inside <text>');
       case 'button':
@@ -915,12 +967,17 @@ export function createEncoder(P) {
     // `tokenMap` is the surface's `Map<name, { kind, index }>` from its
     // `setTokens` (`index.js`), or nothing for a surface that declared none
     // — the roles still resolve.
-    encode(tree, tokenMap) {
+    //
+    // `opts.shownTab` is the name of the declared devtools tab on show, or
+    // nothing (ADR 0032): the one reading the driver takes before a
+    // frame, so a `<devtoolsTab>`'s function child is called only then.
+    encode(tree, tokenMap, opts) {
       fi = 0;
       ui = 0;
       unknown = [];
       unknownTokens = [];
       tokens = tokenMap ?? null;
+      shownTab = opts?.shownTab ?? null;
       reserve(96);
       f[fi++] = VERSION;
       f[fi++] = OP.root;

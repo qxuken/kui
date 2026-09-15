@@ -23,7 +23,7 @@ impl Core {
         if self.tree.is_empty() {
             return None;
         }
-        if self.slot_declared(name) {
+        if self.slot_labels.find(name).next().is_some() {
             self.diag.raise(crate::diag::duplicate_slot(name));
             return None;
         }
@@ -33,9 +33,12 @@ impl Core {
         Some(key)
     }
 
-    /// Whether the full name `name` was declared this frame so far.
+    /// Whether the full name `name` was declared this frame so far — or
+    /// is the slot of a devtools tab declared this frame, which counts
+    /// whether or not the panel mounted it, so a plugin whose only slot
+    /// is a tab is quiet with the panel off (ADR 0032, decision 5).
     pub fn slot_declared(&self, name: &str) -> bool {
-        self.slot_labels.find(name).next().is_some()
+        self.slot_labels.find(name).next().is_some() || self.devtools_tab_slot(name)
     }
 
     /// Runs `f` as the fill of `slot` under `origin`: every node it opens

@@ -1025,10 +1025,39 @@ static int surface(void) {
         check(kui_set_devtools_key(ui, KUI_STR("f12")), "kui_set_devtools_key");
         check(!kui_set_devtools_key(ui, KUI_STR("f99")), "a chord kui cannot name is false");
         check(kui_devtools_key(ui, &chord) && has(chord, "f12"), "the respelled chord reads back");
+        check(kui_devtools_selected(ui) == 0 && kui_devtools_hovered(ui) == 0 && kui_devtools_picked(ui) == 0,
+              "nothing selected, hovered or picked yet");
+        kui_set_devtools_selected(ui, 0);
+        kui_set_devtools_pick(ui, true);
+        check(kui_devtools_picking(ui), "kui_set_devtools_pick raises the picker");
+        kui_set_devtools_pick(ui, false);
+        check(!kui_devtools_picking(ui), "and puts it away");
         kui_set_inspect(ui, true);
         kui_frame_begin(ui, 800, 600, 2.0f);
         surface_view(&k, ui);
+        /* A declared tab of each form (ADR 0032): the extension form names a
+         * slot nobody loaded (harmless: not on show, and a tab's slot raises
+         * no unknown-slot); the host form's open answers false with the
+         * panel on the events tab, so its body is skipped. A second
+         * declaration of a name is refused. */
+        check(kui_devtools_tab(ui, KUI_STR("plug"), KUI_STR("Plugin"), KUI_STR("ts/panel")), "kui_devtools_tab");
+        check(!kui_devtools_tab(ui, KUI_STR("plug"), KUI_STR("Again"), KUI_STR("ts/again")), "a name twice is refused");
+        if (kui_devtools_tab_open(ui, KUI_STR("mine"), KUI_STR("Mine"))) {
+            check(false, "kui_devtools_tab_open: not on show, so nothing opens");
+            kui_close(ui);
+        } else {
+            check(true, "kui_devtools_tab_open answers false off show");
+        }
         kui_frame_finish(ui);
+        {
+            KuiWarning dup[8];
+            size_t n = kui_take_warnings(ui, dup, sizeof dup / sizeof dup[0]);
+            int seen = 0;
+            for (size_t i = 0; i < n; i++) {
+                if (dup[i].code.len == 13 && memcmp(dup[i].code.ptr, "duplicate-tab", 13) == 0) seen++;
+            }
+            check(seen == 1 && n == 1, "the second declaration is the duplicate-tab diagnostic, and nothing else");
+        }
         const KuiValue *nodes_list = kui_nodes(ui);
         check(nodes_list && kui_value_len(nodes_list) > 1, "kui_nodes: the frame's nodes, as data");
         const KuiValue *first_node = kui_value_at(nodes_list, 0);

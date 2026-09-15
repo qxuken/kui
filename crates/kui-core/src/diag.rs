@@ -383,6 +383,41 @@ warnings! {
     /// Stop what the view no longer needs rather than releasing it, or
     /// release shorter sounds.
     pub const PLAYBACK_REFUSED: &str = "playback-refused";
+    /// A devtools tab name declared twice in one frame (ADR 0032,
+    /// decision 1): two `devtools_tab` / `devtools_tab_with` calls, a host
+    /// form and an extension form of one name, or an extension declaring
+    /// from its fill under a name the host took. The first declaration
+    /// stands and the second is ignored; give the second tab its own name.
+    pub const DUPLICATE_TAB: &str = "duplicate-tab";
+    /// A `devtoolsTab` declaration a binding could not read as either
+    /// form (ADR 0032, decision 1): a child that is not a function, both a
+    /// `slot` and a child, or a `view` that is not a function in Lua. The
+    /// tab was not declared. A tab names a slot for an extension to fill,
+    /// or carries a function the binding calls only when the tab is shown.
+    pub const BAD_DEVTOOLS_TAB: &str = "bad-devtools-tab";
+}
+
+/// The [`DUPLICATE_TAB`] warning for one name. Keyed by the name, the way
+/// `duplicate_slot` is: a tab is not a node.
+pub fn duplicate_tab(name: &str) -> Warning {
+    Warning {
+        code: DUPLICATE_TAB,
+        key: Key::ROOT.str(DUPLICATE_TAB).str(name),
+        message: format!(
+            "devtools tab {name:?} was declared twice in one frame; the second was ignored — \
+             give it its own name"
+        ),
+    }
+}
+
+/// The [`BAD_DEVTOOLS_TAB`] warning for one declaration, with what was
+/// wrong with it.
+pub fn bad_devtools_tab(name: &str, why: &str) -> Warning {
+    Warning {
+        code: BAD_DEVTOOLS_TAB,
+        key: Key::ROOT.str(BAD_DEVTOOLS_TAB).str(name),
+        message: format!("devtools tab {name:?} was not declared: {why}"),
+    }
 }
 
 /// The [`TEXT_BEYOND_LINE`] warning for one text node under `line`

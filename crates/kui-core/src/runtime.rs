@@ -230,6 +230,11 @@ pub struct Core {
     /// The panel was built at `begin_frame` (a left dock precedes the
     /// app's container in tree order), so `finish` must not build again.
     dt_built: bool,
+    /// The devtools tabs declared this frame, in order (ADR 0032): what
+    /// the panel's strip lists, moved into the session's state at the
+    /// end of the main window's frame. Empty on a frame nobody declares
+    /// one, which is what every other frame pays.
+    dt_tabs: Vec<devtools::TabDecl>,
     /// The host's viewport in window coordinates: the whole window, or
     /// what the dock leaves of it while the panel is docked (ADR 0024).
     /// What `Core::viewport` reports, what a `resize` is measured on,
@@ -795,6 +800,7 @@ impl Core {
             dt_window: false,
             dt_theme: None,
             dt_built: false,
+            dt_tabs: Vec::new(),
             dt_area: Rect::new(0.0, 0.0, 0.0, 0.0),
             building: false,
             declared_windows: Vec::new(),

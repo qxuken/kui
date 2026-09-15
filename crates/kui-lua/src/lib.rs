@@ -1311,10 +1311,78 @@ fn build_fill(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
     Ok(())
 }
 
+/// `devtools_tab { name = , label = , slot = }` or `devtools_tab { name = ,
+/// label = , view = function() … end }` (ADR 0032): a tab in the core's
+/// devtools panel, an extension's through the slot it names, or the
+/// script's own through `view`, which is called only while the tab is on
+/// show — the same rule the Rust closure and the C open answer — and
+/// whose returned tree is the tab's content. Not a node and not a schema
+/// element, like `fill`. A declaration the converter cannot read as
+/// either form warns `bad-devtools-tab` and declares nothing.
+fn build_devtools_tab(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
+    let name: String = t.get::<Option<String>>("name")?.unwrap_or_default();
+    let refuse = |ui: &mut Ui<'_>, why: &str| {
+        ui.core().warn(kui_core::diag::bad_devtools_tab(&name, why));
+        Ok(())
+    };
+    if name.is_empty() {
+        return refuse(ui, "it needs a name (its identity)");
+    }
+    let label: String = t
+        .get::<Option<String>>("label")?
+        .unwrap_or_else(|| name.clone());
+    for pair in t.pairs::<mlua::Value, mlua::Value>() {
+        let (k, _) = pair?;
+        let mlua::Value::String(k) = k else { continue };
+        let k = k.to_str()?;
+        if !matches!(k.as_ref(), "type" | "name" | "label" | "slot" | "view") {
+            return refuse(
+                ui,
+                &format!(
+                    "it takes name, label and slot or view, not {:?}",
+                    k.as_ref()
+                ),
+            );
+        }
+    }
+    let slot = t.get::<Option<String>>("slot")?;
+    let view = t.get::<mlua::Value>("view")?;
+    match (slot, view) {
+        (Some(slot), mlua::Value::Nil) => {
+            if !slot.contains(kui_core::NAMESPACE_SEPARATOR) {
+                return refuse(
+                    ui,
+                    &format!("bad slot {slot:?} (a full \"namespace/slot\")"),
+                );
+            }
+            ui.devtools_tab(&name, &label, &slot);
+            Ok(())
+        }
+        (None, mlua::Value::Function(view)) => {
+            let mut result = Ok(());
+            ui.devtools_tab_with(&name, &label, |ui| {
+                result = view
+                    .call::<Table>(())
+                    .and_then(|tree| build_node(ui, &tree));
+            });
+            result
+        }
+        (Some(_), mlua::Value::Function(_)) => refuse(ui, "it takes a slot or a view, not both"),
+        (None, mlua::Value::Nil) => refuse(ui, "it needs a slot or a view function"),
+        (_, other) => refuse(
+            ui,
+            &format!("view is a {}, not a function", other.type_name()),
+        ),
+    }
+}
+
 fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
     let ty: String = t.get("type")?;
     if ty == "fill" {
         return build_fill(ui, t);
+    }
+    if ty == "devtools_tab" {
+        return build_devtools_tab(ui, t);
     }
     check_props(ui, t, element_of(&ty))?;
     match ty.as_str() {
@@ -2644,6 +2712,97 @@ mod tests {
         });
         let count: i64 = ext.lua.globals().get("count").unwrap();
         assert_eq!(count, 42);
+    }
+
+    /// `devtools_tab` (ADR 0032): the script's `view` is called only while
+    /// its tab is on show, the tree it returns lands over the panel's tab
+    /// body as the script's own nodes, the slot form declares without
+    /// calling anything, and a declaration of neither form is the
+    /// `bad-devtools-tab` warning rather than a build error.
+    #[test]
+    fn a_devtools_tab_calls_its_view_only_while_on_show() {
+        let mut ext = LuaExtension::from_source(
+            "test",
+            r#"
+                calls = 0
+                function view(env)
+                  return column { gap = 8,
+                    text("app"),
+                    devtools_tab { name = "syntax", label = "Tree-sitter", view = function()
+                      calls = calls + 1
+                      return column { text("from lua"),
+                        button { label = "jump", on_click = { kind = "jump" } } }
+                    end },
+                    devtools_tab { name = "plug", label = "Plugin", slot = "ts/panel" },
+                    devtools_tab { name = "bad", label = "Bad" },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        core.set_devtools(true);
+        core.set_devtools_dock(kui_core::DevtoolsDock::Right);
+        core.set_inspect(true);
+        frame(&mut core, &mut ext);
+        frame(&mut core, &mut ext);
+        let calls: i64 = ext.lua.globals().get("calls").unwrap();
+        assert_eq!(calls, 0, "not on show: the view was not called");
+        let ws = core.take_warnings();
+        assert_eq!(
+            ws.iter()
+                .filter(|w| w.code == kui_core::diag::BAD_DEVTOOLS_TAB)
+                .count(),
+            1,
+            "the tab with neither form warns once: {ws:?}"
+        );
+        // Ctrl+Shift+N three times: tree, then Tree-sitter (the first
+        // declared tab).
+        let chord = || {
+            kui_core::InputEvent::KeyDown(kui_core::KeyPress::new(
+                kui_core::KeyCode::Char('N'),
+                kui_core::KeyMods {
+                    ctrl: true,
+                    shift: true,
+                    ..Default::default()
+                },
+            ))
+        };
+        core.handle_input(chord());
+        core.handle_input(chord());
+        frame(&mut core, &mut ext);
+        let calls: i64 = ext.lua.globals().get("calls").unwrap();
+        assert_eq!(calls, 1, "on show: called once a frame");
+        frame(&mut core, &mut ext);
+        let body = core
+            .nodes()
+            .iter()
+            .find(|n| n.label.as_deref() == Some("kui-devtools/tab/syntax"))
+            .map(|n| n.rect)
+            .expect("the body");
+        let jump = core
+            .nodes()
+            .iter()
+            .find(|n| n.label.as_deref() == Some("jump"))
+            .map(|n| n.rect)
+            .expect("the script's button");
+        assert!(
+            jump.x >= body.x && jump.x + jump.w <= body.x + body.w,
+            "{jump:?} in {body:?}"
+        );
+        assert!(
+            core.nodes()
+                .iter()
+                .any(|n| n.text.as_deref() == Some("from lua")),
+            "the script's text painted"
+        );
+        let evs = kui_core::testing::click_at(&mut core, jump.x + 2.0, jump.y + 2.0);
+        assert_eq!(evs.len(), 1);
+        assert_eq!(evs[0].origin, OriginId(1), "the script's own event");
+        assert_eq!(
+            evs[0].payload.get("kind").and_then(Value::as_str),
+            Some("jump")
+        );
     }
 
     /// The root table's `windows` list is `Ui::window` per entry: a name

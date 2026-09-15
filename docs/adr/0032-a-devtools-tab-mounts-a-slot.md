@@ -1,11 +1,13 @@
 ---
-status: proposed
+status: accepted
 date: 2026-09-15
 ---
 
 # A devtools tab: a slot for an extension, a lazy subtree for the host
 
-> **Proposed (2026-09-15), revised the same day.** Raised by wanting a
+> **Accepted and built (2026-09-15), the same day it was proposed** —
+> what the building changed is at the end, under [*What the building
+> changed*](#what-the-building-changed). Raised by wanting a
 > tree-sitter inspector beside the panel's three tabs: a tab that shows
 > the syntax tree under the editor's cursor, highlights the node the
 > panel's picker has, and scrolls the editor when a row is clicked.
@@ -359,26 +361,95 @@ date: 2026-09-15
 
 ## Action items
 
-- [ ] `FloatAnchor::Node(Key)` — layout against a named node's rect,
-  positioned over it, clipped to it, focus region of the anchor;
-  corpus `layers` scene gains a case.
-- [ ] `devtools_tab` (extension form) and `devtools_tab_with` / the
+- [x] `FloatAnchor::Node(Key)` — layout against a named node's rect,
+  positioned over it, clipped to it, focus region of the anchor. (No
+  corpus case: a corpus scene cannot turn the panel on, and nothing but
+  the panel builds one; `tests/devtools_tab.rs` reads the painted frame.)
+- [x] `devtools_tab` (extension form) and `devtools_tab_with` / the
   function child / `view` / `kui_devtools_tab_open` (host form) in four
   bindings; the strip, `N`, `duplicate-tab`, `bad-devtools-tab`.
-- [ ] The tab body; recorded mounts filled at `finish` as layers;
-  `Ui::finish` order; the *known* and *replies* rules.
-- [ ] The encoder: the function child, the per-frame reading from the
+- [x] The tab body; the mount filled from `Ui::finish` as a layer; the
+  *known* and *replies* rules.
+- [x] The encoder: the function child, the per-frame reading from the
   driver (`KuiWindow` and `Ctx.frame`), the refusal of a non-function
   child. The Lua converter: `view`, the same refusal.
-- [ ] The devtools window's frame `with_filler`; "docked only" in the
-  body for a host form there.
-- [ ] The four doors (`devtools_selected` / `hovered` / `picked`,
-  `set_devtools_selected`, with reveal) in four bindings;
+- [ ] The devtools window's frame `with_filler` (the runner's pane; the
+  core's half — `devtools_fill_mount` after the panel's build in that
+  window — is in). "Docked only" in the body for a host form there: in.
+- [x] The doors (`devtools_selected` / `hovered` / `picked`,
+  `set_devtools_selected` with reveal, and — added while building —
+  `set_devtools_pick` / `devtools_picking`) in four bindings;
   `schema::DOORS` rows.
-- [ ] An example: `examples/rust/features/devtools_tab.rs` — a host
-  form that lists the tree under the picker's node, and the same tab
-  from `examples/c/features/slots/panel.c` as an extension's fill, so
-  both forms are exercised by the smoke round; the Node example in
-  `examples/node` with the function child.
-- [ ] `CHANGELOG`, `README` (the devtools paragraph), a line in ADR
-  0014's amendment history pointing here.
+- [x] `examples/rust/features/devtools_tab.rs` and
+  `examples/node/features/devtools_tab.tsx`, the Inspector in both;
+  the extension form is exercised by `tests/devtools_tab.rs` and the C
+  surface walk rather than the C panel plugin.
+- [x] `CHANGELOG`, `README`, ADR 0014's pointer.
+
+## What the building changed
+
+Built 2026-09-15, the day it was written, in the core, the three
+bindings, the harness and two examples. What differs from the text above:
+
+1. **The picker is a door too** (decision 4 gained `set_devtools_pick`
+   / `devtools_picking`). The tree-sitter case wants to *ask* "which
+   node?" from its tab, not only read what the panel has. Raised while
+   a declared tab is on show, the pick lands in `selected` and the tab
+   stays up (`State::pick_keep_tab`); raised otherwise it is the chord's
+   pick and shows the tree tab, as before. A press while picking is the
+   picker's whichever way it was raised.
+
+2. **The mount is filled before the filler's `finish`, not after the
+   panel's build.** Decision 5 said "devtools before the filler's
+   finish"; that would have put the `ns/root` fills after the dock in
+   the root row, to the right of a right dock. The order stands as it
+   was — the host's tree, the root fills, then the panel — and the
+   extension form's slot is declared and filled *first*, from `Ui::finish`,
+   as a float anchored by key to a body the panel builds afterwards.
+   That is what the layer was for, and it also answers the *known* rule
+   for the current tab by declaring it for real; `slot_declared` counts
+   a tab's slot for the tabs not on show.
+
+3. **The strip's tab keys, the body's label.** A declared tab's strip
+   entry is keyed `kui-devtools/tab-custom:<name>` and posts
+   `tab:custom:<name>`; the body is `kui-devtools/tab/<name>` for
+   `key_of`, with the declaration's label as its accessible name. The
+   `Shown` enum (`Builtin(Tab)` / `Custom(index)`) is what the strip, the
+   body and `dt_inspect` read; `State::custom` holds the name, so a tab
+   gone from the list falls back to `tab`.
+
+4. **The laziness rule is one function.** `Core::devtools_tab_shown`
+   (on, docked, main window, `custom == name`) is what the Rust closure,
+   the C open, and — through `devtools_shown_tab` — the Node driver and
+   the Lua converter ask. Node and Lua decide on their side and hand the
+   core the content through `Ui::devtools_tab_declared`, which builds
+   whether or not the core agrees (a content whose body was not built
+   anchors to nothing and paints nothing; a duplicate name builds into a
+   node of no size), so a stream or a table stays in step with what the
+   binding decided a moment earlier.
+
+5. **The ring.** `focus_ring` skips a node-anchored float's subtree in
+   its range walk and walks it after the range when the float's region
+   (through `Tree::region_parent`, which jumps from such a float to its
+   anchor) is the ring's — so the content comes after the panel's own
+   stops, and never into the app's ring. `region_of` uses the same jump.
+
+6. **`nodes()` and the declaration's label.** The Lua `view` function
+   takes no arguments and closes over the script's `env` (decision 1
+   said "with the same env the view got"; threading it through the
+   converter bought nothing). Node's function child takes none either,
+   and reads `win.devtoolsSelected()` from its closure.
+
+7. **Not built.** The runner's pane for the panel's own window does
+   not yet build that frame `with_filler`, so an extension-form tab
+   shows its body empty there; the core's half is in place and the
+   pane's is a follow-up. No `layers` corpus case, for the reason the
+   action item states.
+
+Traps met: the *fit* passes needed a range parameter to run over a
+subtree, and `positions` too, which the scroll-into-view relayout also
+calls (`layout::reposition` keeps the anchored floats with their
+anchors); `open_with_key` registers no label, so the body needed
+`open_with_key_named` to be found by `key_of`; a Node example's tab
+content below a 360 px window's fold cannot be clicked, which is
+scrolling working, not the tab.

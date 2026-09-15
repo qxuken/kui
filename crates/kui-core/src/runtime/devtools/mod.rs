@@ -186,6 +186,25 @@ pub enum Tab {
     Tree,
 }
 
+/// One tab an app or an extension declared this frame (ADR 0032,
+/// decision 1): its name (the identity), the label the strip shows, and
+/// the slot an extension fills it through — `None` for the host form,
+/// whose content is the host's own subtree, anchored to the body.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct TabDecl {
+    pub(crate) name: String,
+    pub(crate) label: String,
+    pub(crate) slot: Option<String>,
+}
+
+/// Which tab the panel shows: one of its own three, or a declared one by
+/// index into this frame's list.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Shown {
+    Builtin(Tab),
+    Custom(usize),
+}
+
 impl Tab {
     const ALL: [Tab; 3] = [Tab::Facts, Tab::Events, Tab::Tree];
 
@@ -320,6 +339,11 @@ pub(crate) struct State {
     tree_filter: String,
     /// The picker is up (decision 9).
     pick: bool,
+    /// The picker was raised from a declared tab (`Core::set_devtools_pick`
+    /// while one was on show, ADR 0032): the pick lands in `selected` for
+    /// that tab to read, and the tab stays up rather than the tree tab
+    /// taking over.
+    pick_keep_tab: bool,
     /// The node the picker last saw under the pointer.
     pick_hover: Option<Key>,
     /// Scroll the tree to this node's row on the next build, with the
@@ -346,6 +370,14 @@ pub(crate) struct State {
     /// The chord that moves the keyboard into the panel and back out —
     /// `Ctrl+Shift+I` unless the app respelled it.
     inspect_key: Accel,
+    /// The tabs declared in the main window's last finished frame (ADR
+    /// 0032): what the strip lists after its own three. Set by the main
+    /// window at the end of its frame; a left dock and the panel's own
+    /// window read it a frame late, as they read the facts.
+    tabs: Vec<TabDecl>,
+    /// The declared tab the panel shows, by name — over `tab` while the
+    /// name is in `tabs`; a name that is gone falls back to `tab`.
+    custom: Option<String>,
     /// The inspect chord waiting for the next main-window build.
     toggle_region: bool,
     /// The picker was left by a raw `Escape` press: the editor channel's
@@ -390,6 +422,7 @@ impl Default for State {
             collapsed: FxHashSet::default(),
             tree_filter: String::new(),
             pick: false,
+            pick_keep_tab: false,
             pick_hover: None,
             reveal: None,
             fold_all: false,
@@ -404,6 +437,8 @@ impl Default for State {
             warnings_seen: 0,
             legend: Vec::new(),
             inspect_key: DEFAULT_INSPECT_KEY,
+            tabs: Vec::new(),
+            custom: None,
             toggle_region: false,
             escape_owed: false,
             focus_window: false,
@@ -579,13 +614,18 @@ impl State {
                 self.stream_grew |= self.follow;
             }
             "tab" => {
-                let i = Tab::ALL.iter().position(|t| *t == self.tab).unwrap_or(0);
-                self.tab = Tab::ALL[(i + 1) % Tab::ALL.len()];
+                // The panel's three, then the declared ones, then round.
+                let n = Tab::ALL.len() + self.tabs.len();
+                let i = match self.shown() {
+                    Shown::Builtin(t) => Tab::ALL.iter().position(|x| *x == t).unwrap_or(0),
+                    Shown::Custom(i) => Tab::ALL.len() + i,
+                };
+                self.select_tab((i + 1) % n);
             }
             "pick" => {
                 self.pick = !self.pick;
                 if self.pick {
-                    self.tab = Tab::Tree;
+                    self.show(Tab::Tree);
                     if self.dock == Dock::Off {
                         self.dock = Dock::Right;
                     }
@@ -602,8 +642,13 @@ impl State {
                 self.fold_all = false;
             }
             other => {
-                if let Some(tab) = other.strip_prefix("tab:").and_then(Tab::parse) {
+                if let Some(name) = other.strip_prefix("tab:custom:") {
+                    if let Some(i) = self.tabs.iter().position(|t| t.name == name) {
+                        self.select_tab(Tab::ALL.len() + i);
+                    }
+                } else if let Some(tab) = other.strip_prefix("tab:").and_then(Tab::parse) {
                     self.tab = tab;
+                    self.custom = None;
                 } else if let Some(dock) = other.strip_prefix("dock:").and_then(Dock::parse) {
                     // One of the header's placement buttons.
                     if dock != self.dock {
@@ -648,8 +693,35 @@ impl State {
     /// links do. The build has the nodes; this has only the key.
     fn select(&mut self, key: Key) {
         self.selected = Some(key);
-        self.tab = Tab::Tree;
+        self.show(Tab::Tree);
         self.reveal = Some(key);
+    }
+
+    /// Shows one of the panel's own tabs.
+    fn show(&mut self, tab: Tab) {
+        self.tab = tab;
+        self.custom = None;
+    }
+
+    /// The tab on show: `custom` while it names a declared tab, else
+    /// `tab` (ADR 0032, decision 1).
+    pub(crate) fn shown(&self) -> Shown {
+        match self.custom.as_deref() {
+            Some(name) => match self.tabs.iter().position(|t| t.name == name) {
+                Some(i) => Shown::Custom(i),
+                None => Shown::Builtin(self.tab),
+            },
+            None => Shown::Builtin(self.tab),
+        }
+    }
+
+    /// Selects the `i`th tab of the strip: the three, then the declared.
+    fn select_tab(&mut self, i: usize) {
+        if i < Tab::ALL.len() {
+            self.show(Tab::ALL[i]);
+        } else if let Some(t) = self.tabs.get(i - Tab::ALL.len()) {
+            self.custom = Some(t.name.clone());
+        }
     }
 }
 
@@ -716,6 +788,162 @@ fn chord(press: &crate::input::KeyPress, inspect: Accel) -> Option<&'static str>
         // chord is: respelled to `F12`, `Ctrl+Shift+I` is the app's again.
         'p' => Some("pick"),
         _ => None,
+    }
+}
+
+/// The key of a declared tab's body (ADR 0032, decision 2): fixed by the
+/// tab's name alone, so the content can anchor to it before it exists —
+/// the host form is built before a right dock's body, after a left one's.
+pub(crate) fn tab_body_key(name: &str) -> Key {
+    Key::ROOT.str(DEVTOOLS_KEY).str("tab").str(name)
+}
+
+impl Core {
+    /// Declares a devtools tab this frame (ADR 0032, decision 1). A name
+    /// declared already this frame warns `duplicate-tab` and keeps the
+    /// first; returns whether this one stood. The bare door under
+    /// `Ui::devtools_tab` / `devtools_tab_with`, for a binding that
+    /// opens the content itself.
+    pub fn devtools_tab_declare(&mut self, name: &str, label: &str, slot: Option<&str>) -> bool {
+        if !cfg!(feature = "devtools") || self.tree.is_empty() {
+            return false;
+        }
+        if self.dt_tabs.iter().any(|t| t.name == name) {
+            self.diag.raise(crate::diag::duplicate_tab(name));
+            return false;
+        }
+        self.dt_tabs.push(TabDecl {
+            name: name.to_string(),
+            label: label.to_string(),
+            slot: slot.map(str::to_string),
+        });
+        true
+    }
+
+    /// Whether the host form of tab `name` is shown this frame — the
+    /// panel is on, docked in this (the main) window, and `name` is the
+    /// tab on show (ADR 0032, decision 3). Read before the content is
+    /// built, from the session's state, which is in place while the
+    /// host's view runs.
+    pub fn devtools_tab_shown(&self, name: &str) -> bool {
+        if !cfg!(feature = "devtools") || self.dt_window || self.env.window.id != WindowId::MAIN {
+            return false;
+        }
+        let s = self.session.state();
+        let d = &s.devtools;
+        d.on && d.dock.docked() && d.custom.as_deref() == Some(name)
+    }
+
+    /// The tab on show, by name, when it is a declared one — what the
+    /// Node and Lua drivers read once a frame to call a tab's function
+    /// child (ADR 0032, decision 3). `None` for one of the panel's own,
+    /// for the panel off, popped out, or another window's frame.
+    pub fn devtools_shown_tab(&self) -> Option<String> {
+        if !cfg!(feature = "devtools") || self.dt_window || self.env.window.id != WindowId::MAIN {
+            return None;
+        }
+        let s = self.session.state();
+        let d = &s.devtools;
+        if !(d.on && d.dock.docked()) {
+            return None;
+        }
+        d.custom.clone()
+    }
+
+    /// Opens the host form's content node: a float anchored to the tab's
+    /// body by key, the body's size, clipped, keyed as the host's own
+    /// child (ADR 0032, decisions 2 and 7). The caller builds inside and
+    /// closes. The bare door under `Ui::devtools_tab_with`; it does not
+    /// declare, and it does not ask whether the tab is on show.
+    pub fn devtools_tab_open(&mut self, name: &str) {
+        let spec = NodeSpec::column()
+            .float(crate::spec::FloatConfig {
+                anchor: crate::spec::FloatAnchor::Node(tab_body_key(name)),
+                ..Default::default()
+            })
+            .width(Sizing::Grow(1.0))
+            .height(Sizing::Grow(1.0))
+            .clip();
+        self.open_keyed(&format!("devtools-tab:{name}"), spec);
+    }
+
+    /// Whether `name` is a slot a declared tab names this frame — what
+    /// counts as *declared* for the `unknown-slot` check whether or not
+    /// the panel mounted it (ADR 0032, decision 5).
+    pub(crate) fn devtools_tab_slot(&self, name: &str) -> bool {
+        self.dt_tabs.iter().any(|t| t.slot.as_deref() == Some(name))
+    }
+
+    /// Mounts the extension form of the tab on show, if it has one: the
+    /// slot is declared at the cursor under the host's origin — so the
+    /// fill's replies reach the host, as ADR 0014's rule reads with the
+    /// panel for declarer — and filled inside a float anchored to the
+    /// tab's body, the panel's facts as params (ADR 0032, decisions 2,
+    /// 4 and 5). Called with the filler in hand: from `Ui::finish` in the
+    /// main window before the filler's own finish, and in the panel's
+    /// window after its build. Nothing to do when the tab on show is the
+    /// panel's own or a host form.
+    pub(crate) fn devtools_fill_mount(&mut self, filler: &mut dyn crate::slot::Fill) {
+        if !cfg!(feature = "devtools") || self.tree.is_empty() {
+            return;
+        }
+        let (name, slot, params) = {
+            let s = self.session.state();
+            let d = &s.devtools;
+            if !d.on || !(d.dock.docked() || self.dt_window) {
+                return;
+            }
+            let tabs = if self.dt_window {
+                &d.tabs
+            } else {
+                &self.dt_tabs
+            };
+            let Some(name) = d.custom.as_deref() else {
+                return;
+            };
+            let Some(decl) = tabs.iter().find(|t| t.name == name) else {
+                return;
+            };
+            let Some(slot) = decl.slot.clone() else {
+                return;
+            };
+            (decl.name.clone(), slot, d.facts_params())
+        };
+        let saved = self.origin;
+        self.origin = OriginId::HOST;
+        if let Some(key) = self.begin_slot(&slot) {
+            self.devtools_tab_open(&name);
+            filler.fill(&slot, key, &params, &mut crate::ui::Ui::new(self));
+            self.close();
+        }
+        self.origin = saved;
+    }
+}
+
+impl State {
+    /// The panel's facts as a slot's params (ADR 0032, decision 4): the
+    /// selected, hovered and picked nodes as hex keys (`null` for none),
+    /// the region and the focus by label from the facts rows.
+    fn facts_params(&self) -> Value {
+        let key = |k: Option<Key>| match k {
+            Some(k) => Value::str(format!("{:016x}", k.0)),
+            None => Value::Null,
+        };
+        let row = |name: &str| {
+            self.facts
+                .rows
+                .iter()
+                .find(|(k, _)| *k == name)
+                .map(|(_, v)| Value::str(v.clone()))
+                .unwrap_or(Value::Null)
+        };
+        Value::map([
+            ("selected", key(self.selected)),
+            ("hovered", key(self.hovered_row)),
+            ("picked", key(self.pick_hover)),
+            ("region", row("region")),
+            ("focus", row("focus")),
+        ])
     }
 }
 
@@ -798,6 +1026,82 @@ impl Core {
     /// it defaults.
     pub fn devtools_key(&self) -> Accel {
         self.session.state().devtools.inspect_key
+    }
+
+    /// The node the panel's tree tab has selected (ADR 0032, decision
+    /// 4): what an inspector in a declared tab reads to say which node
+    /// it is about. Answered from the session, so it is right inside the
+    /// host's view and inside an extension's fill alike.
+    pub fn devtools_selected(&self) -> Option<Key> {
+        self.session.state().devtools.selected
+    }
+
+    /// The tree row under the pointer in whichever window draws the
+    /// tree — the node the main window outlines.
+    pub fn devtools_hovered(&self) -> Option<Key> {
+        self.session.state().devtools.hovered_row
+    }
+
+    /// The node the picker last saw under the pointer, while picking.
+    pub fn devtools_picked(&self) -> Option<Key> {
+        self.session.state().devtools.pick_hover
+    }
+
+    /// Selects a node in the panel's tree tab from outside it — an
+    /// inspector driving the highlight from its side — and reveals it
+    /// there, as the picker does; `None` clears. The tab does not move:
+    /// the caller is drawing in one.
+    pub fn set_devtools_selected(&mut self, key: Option<Key>) {
+        let mut s = self.session.state();
+        let d = &mut s.devtools;
+        d.selected = key;
+        d.reveal = key;
+        drop(s);
+        self.devtools_redraw_others();
+    }
+
+    /// Raises the panel's picker from outside it — an inspector in a
+    /// declared tab asking "which node?" — or puts it away (ADR 0032,
+    /// decision 4). Picking happens in the main window, over the app: the
+    /// node under the pointer is `devtools_picked` while it is up, and
+    /// the press lands it in `devtools_selected`. Raised while a declared
+    /// tab is on show, the pick leaves that tab up; raised otherwise it
+    /// is the `Ctrl+Shift+P` pick, which shows the tree tab. A hidden
+    /// panel comes back docked, as the chord's does.
+    pub fn set_devtools_pick(&mut self, on: bool) {
+        if !cfg!(feature = "devtools") {
+            return;
+        }
+        let focus_main = {
+            let mut s = self.session.state();
+            let d = &mut s.devtools;
+            if d.pick == on {
+                return;
+            }
+            d.pick = on;
+            d.pick_hover = None;
+            d.pick_keep_tab = on && d.custom.is_some();
+            if on {
+                if d.custom.is_none() {
+                    d.show(Tab::Tree);
+                }
+                if d.dock == Dock::Off {
+                    d.dock = Dock::Right;
+                }
+            }
+            on && d.dock == Dock::Window
+        };
+        if focus_main {
+            self.interaction
+                .window_commands
+                .push(WindowCommand::Focus(WindowId::MAIN));
+        }
+        self.devtools_redraw_others();
+    }
+
+    /// Whether the panel's picker is up.
+    pub fn devtools_picking(&self) -> bool {
+        self.session.state().devtools.pick
     }
 
     /// The key legend the facts tab shows: `(keys, what they do)`.
@@ -989,7 +1293,7 @@ impl Core {
                 // frame rather than latched (backlog AR38): the tree tab
                 // showing, or a pick under way. Off, the O(nodes) copy a
                 // frame stops; the host's own `set_inspect` is apart.
-                d.on && (d.tab == Tab::Tree || d.pick),
+                d.on && (d.shown() == Shown::Builtin(Tab::Tree) || d.pick),
             )
         };
         if !on {
@@ -1173,6 +1477,7 @@ impl Core {
                 // last frame left, as the panel's own window does.
                 if dock != Dock::Left {
                     state.facts = self.collect_facts(state.inspect_key);
+                    state.tabs.clone_from(&self.dt_tabs);
                 } else {
                     // Except the window's size, which is this frame's and
                     // is what the pane's width is clamped by.
@@ -1214,18 +1519,20 @@ impl Core {
         if self.env.window.id != WindowId::MAIN || !self.session.state().devtools.on {
             return;
         }
+        let tabs = std::mem::take(&mut self.dt_tabs);
         let raised = self.warnings_raised();
         let facts = self.collect_facts(self.devtools_key());
         let mut s = self.session.state();
         let d = &mut s.devtools;
         d.frames = self.frame_no;
         d.facts = facts;
+        d.tabs = tabs;
         // The panel's own window draws the tree from a copy; docked, the
         // tab reads this core's list itself and the copy is not kept.
         // The first copy is what the panel's window is waiting for: it
         // drew its tree tab before there was one, so it is asked again.
         let mut wake_panel = false;
-        if d.dock == Dock::Window && d.tab == Tab::Tree {
+        if d.dock == Dock::Window && d.shown() == Shown::Builtin(Tab::Tree) {
             wake_panel = d.nodes.is_empty() && !self.inspected.is_empty();
             d.nodes = self.inspected.clone();
         } else if !d.nodes.is_empty() {
@@ -1413,7 +1720,12 @@ impl Core {
             let d = &mut s.devtools;
             d.pick = false;
             if let Some(k) = d.pick_hover.take() {
-                d.select(k);
+                if std::mem::take(&mut d.pick_keep_tab) {
+                    d.selected = Some(k);
+                    d.reveal = Some(k);
+                } else {
+                    d.select(k);
+                }
             }
             drop(s);
             self.devtools_redraw_others();

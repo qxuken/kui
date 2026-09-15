@@ -202,7 +202,7 @@ impl Core {
                 if delta.x != 0.0 || delta.y != 0.0 {
                     self.scroll.scroll_by(self.tree.keys[a as usize], delta);
                     if relayout {
-                        layout::positions(
+                        layout::reposition(
                             &mut self.tree,
                             &mut self.scroll,
                             self.viewport,

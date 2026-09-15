@@ -29,7 +29,12 @@ type AppMessages =
   | { kind: 'reopen' }
   // features/drop.tsx: the zone's tag, and the button inside it.
   | { kind: 'zone' }
-  | { kind: 'clear' };
+  | { kind: 'clear' }
+  // features/devtools_tab.tsx: a line clicked on the page, a line the
+  // Inspector tab selects in the panel's tree, and the picker it raises.
+  | { kind: 'line'; i: number }
+  | { kind: 'reveal'; i: number }
+  | { kind: 'inspect-pick' };
 
 declare module '@qxuken/kui/jsx-runtime' {
   interface KuiMsg {

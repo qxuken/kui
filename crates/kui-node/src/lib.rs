@@ -2484,6 +2484,69 @@ macro_rules! core_methods {
                 self.$core().devtools_key().spelling()
             }
 
+            /// The declared devtools tab on show, by name, or `null` for
+            /// one of the panel's own, the panel off or popped out (ADR
+            /// 0032). What `frame` / `setView` read once before encoding,
+            /// so a `<devtoolsTab>`'s function child is called only for
+            /// that tab.
+            #[napi]
+            pub fn devtools_shown_tab(&mut self) -> Option<String> {
+                self.$core().devtools_shown_tab()
+            }
+
+            /// The node the panel's tree tab has selected, as a hex key,
+            /// or `null` (ADR 0032, decision 4) — what an inspector in a
+            /// declared tab reads to say which node it is about.
+            #[napi]
+            pub fn devtools_selected(&mut self) -> Option<String> {
+                self.$core().devtools_selected().map(key_str)
+            }
+
+            /// The tree row under the pointer, as a hex key, or `null`.
+            #[napi]
+            pub fn devtools_hovered(&mut self) -> Option<String> {
+                self.$core().devtools_hovered().map(key_str)
+            }
+
+            /// The node the picker is over while picking, or `null`.
+            #[napi]
+            pub fn devtools_picked(&mut self) -> Option<String> {
+                self.$core().devtools_picked().map(key_str)
+            }
+
+            /// Raises the panel's picker from outside it — an inspector in
+            /// a `<devtoolsTab>` asking "which node?" — or puts it away
+            /// (ADR 0032, decision 4). Picking happens over the app in
+            /// the main window: `devtoolsPicked()` is the node under the
+            /// pointer while it is up, and the press lands it in
+            /// `devtoolsSelected()`. Raised while a declared tab is on
+            /// show, the pick leaves that tab up; raised otherwise it is
+            /// the `Ctrl+Shift+P` pick and shows the tree tab. A hidden
+            /// panel comes back docked.
+            #[napi]
+            pub fn set_devtools_pick(&mut self, on: bool) {
+                self.$core().set_devtools_pick(on);
+            }
+
+            /// Whether the panel's picker is up.
+            #[napi]
+            pub fn devtools_picking(&mut self) -> bool {
+                self.$core().devtools_picking()
+            }
+
+            /// Selects a node in the panel's tree tab from outside it and
+            /// reveals it there, as the picker does; `null` clears. `key`
+            /// is a hex key an event carried or `keyOf` answered.
+            #[napi]
+            pub fn set_devtools_selected(&mut self, key: Option<String>) -> Result<()> {
+                let key = match key {
+                    None => None,
+                    Some(k) => Some(parse_key(&k)?),
+                };
+                self.$core().set_devtools_selected(key);
+                Ok(())
+            }
+
             /// The key legend the panel's facts tab shows: `[keys, what]`
             /// pairs.
             #[napi(ts_args_type = "legend: [string, string][]")]

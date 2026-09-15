@@ -114,6 +114,9 @@ pub struct Tree {
     // predicted branch (C15).
     /// Whether any node declares `float`.
     pub any_float: bool,
+    /// Whether any float is anchored to a node by key
+    /// (`FloatAnchor::Node`): the sixth layout pass runs only then.
+    pub any_node_float: bool,
     /// Whether any node declares `wrap_children`.
     pub any_wrap: bool,
     /// Whether any node is text (a `Text` or `Edit` content).
@@ -213,6 +216,23 @@ impl Tree {
         self.keys.iter().position(|k| *k == key)
     }
 
+    /// The parent an ancestor walk that means "where is this shown"
+    /// takes: the node's parent, except for a float anchored to a node by
+    /// key, whose walk continues from the anchor (`FloatAnchor::Node`).
+    /// `NIL` past the root, and for an anchor the frame does not have.
+    #[inline]
+    pub fn region_parent(&self, i: usize) -> u32 {
+        if self.any_node_float
+            && let Some(crate::spec::FloatConfig {
+                anchor: crate::spec::FloatAnchor::Node(key),
+                ..
+            }) = self.specs[i].layout.float
+        {
+            return self.index_of(key).map_or(NIL, |a| a as u32);
+        }
+        self.parent[i]
+    }
+
     /// Clears contents but keeps allocations for the next frame.
     pub fn clear(&mut self) {
         self.keys.clear();
@@ -228,6 +248,7 @@ impl Tree {
         self.scroll_max.clear();
         self.line.clear();
         self.any_float = false;
+        self.any_node_float = false;
         self.any_wrap = false;
         self.any_text = false;
         self.any_line = false;
@@ -270,7 +291,10 @@ impl Tree {
     /// checks (C15).
     #[inline]
     pub fn note(&mut self, spec: &NodeSpec, content: &NodeContent) {
-        self.any_float |= spec.layout.float.is_some();
+        if let Some(f) = spec.layout.float {
+            self.any_float = true;
+            self.any_node_float |= matches!(f.anchor, crate::spec::FloatAnchor::Node(_));
+        }
         self.any_wrap |= spec.layout.wrap;
         self.any_text |= matches!(
             content,

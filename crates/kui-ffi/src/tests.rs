@@ -2202,6 +2202,25 @@ mod follow_headless {
         assert!(!kui_set_devtools_key(ctx, ks("f99")), "not a key");
         assert!(kui_devtools_key(ctx, &mut key));
         assert_eq!(&*kstr(key), "f12", "set, and a bad spelling left it");
+        // The facts a declared tab reads, and the writer (ADR 0032).
+        assert_eq!(kui_devtools_selected(ctx), 0);
+        assert_eq!(kui_devtools_hovered(ctx), 0);
+        assert_eq!(kui_devtools_picked(ctx), 0);
+        let grid_key = kui_key_of(ctx, ks("term"));
+        assert_ne!(grid_key, 0);
+        kui_set_devtools_selected(ctx, grid_key);
+        assert_eq!(
+            kui_devtools_selected(ctx),
+            grid_key,
+            "selected from outside the panel"
+        );
+        kui_set_devtools_selected(ctx, 0);
+        assert_eq!(kui_devtools_selected(ctx), 0, "and cleared");
+        assert!(!kui_devtools_picking(ctx));
+        kui_set_devtools_pick(ctx, true);
+        assert!(kui_devtools_picking(ctx), "the picker raised from outside");
+        kui_set_devtools_pick(ctx, false);
+        assert!(!kui_devtools_picking(ctx));
         kui_set_devtools(ctx, false);
 
         // The node list: empty until asked for, then one map per node

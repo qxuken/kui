@@ -140,6 +140,14 @@ pub enum FloatAnchor {
     Parent,
     /// The whole viewport.
     Viewport,
+    /// The border box of the node `Key` names, wherever it is in the
+    /// tree — even after this one in preorder, which the five passes
+    /// cannot serve, so a float anchored this way is laid out again in
+    /// a sixth, once its anchor is placed (`layout::anchored`). What a
+    /// devtools tab's content is: built in the app's part of the tree,
+    /// shown over the panel's tab body (ADR 0032, decision 2). No
+    /// binding spells it; the core builds it.
+    Node(crate::key::Key),
 }
 
 /// Takes a node out of flex flow: it doesn't consume space in its parent,

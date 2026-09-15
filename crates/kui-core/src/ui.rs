@@ -87,6 +87,99 @@ impl<'a> Ui<'a> {
         self.core.slot_declared(name)
     }
 
+    /// Declares a devtools tab an extension fills (ADR 0032, decision
+    /// 1): `name` is the tab's identity, `label` what the strip shows,
+    /// `slot` the full slot name (`"ts/panel"`) the extension names.
+    /// While the tab is the one on show, the panel declares the slot in
+    /// the tab's body and the fill is drawn there; otherwise the slot is
+    /// not declared and the extension is not asked, though its naming
+    /// the slot raises no `unknown-slot`. Made every frame, panel on or
+    /// off. A name declared twice in a frame warns `duplicate-tab`.
+    pub fn devtools_tab(&mut self, name: &str, label: &str, slot: &str) {
+        self.core.devtools_tab_declare(name, label, Some(slot));
+    }
+
+    /// Declares a devtools tab the host draws itself, and draws it
+    /// **only when it is shown** (ADR 0032, decisions 1 and 3): `f` runs
+    /// when the panel is on, docked in this window, and `name` is the
+    /// tab on show — otherwise this declares and returns, and the tab
+    /// costs nothing. What `f` builds is the host's: its keys, labels
+    /// and origin, its events reaching the host untouched — laid out
+    /// and painted as a layer over the panel's tab body, clipped to it,
+    /// in the dock's focus region. The panel's facts are read through
+    /// `devtools_selected` and its siblings.
+    pub fn devtools_tab_with(&mut self, name: &str, label: &str, f: impl FnOnce(&mut Ui<'_>)) {
+        if !self.core.devtools_tab_declare(name, label, None) {
+            return;
+        }
+        if !self.core.devtools_tab_shown(name) {
+            return;
+        }
+        self.core.devtools_tab_open(name);
+        f(self);
+        self.core.close();
+    }
+
+    /// Whether the host form of tab `name` is shown this frame — what
+    /// `devtools_tab_with` asks before running its closure, for a caller
+    /// that builds the content some other way.
+    pub fn devtools_tab_shown(&self, name: &str) -> bool {
+        self.core.devtools_tab_shown(name)
+    }
+
+    /// The bare declaration either form makes (ADR 0032, decision 1):
+    /// `slot` for the extension form, `None` for a host form whose
+    /// content is built some other way or not at all this frame. Whether
+    /// the declaration stood — false for a name already declared this
+    /// frame (`duplicate-tab`) or outside a frame.
+    pub fn devtools_tab_declare(&mut self, name: &str, label: &str, slot: Option<&str>) -> bool {
+        self.core.devtools_tab_declare(name, label, slot)
+    }
+
+    /// The host form for a binding that decided the laziness on its own
+    /// side (a Node encoder or a Lua converter that already read which
+    /// tab is on show, ADR 0032 decision 3): declares the tab and builds
+    /// `f` as its content **whether or not** the tab is shown here — a
+    /// content whose body the panel did not build anchors to nothing
+    /// and paints nothing, and a name already declared this frame
+    /// (`duplicate-tab`) builds into a node of no size, so the caller's
+    /// stream stays in step either way. `devtools_tab_with` is the door
+    /// for a caller that can skip the work.
+    pub fn devtools_tab_declared(&mut self, name: &str, label: &str, f: impl FnOnce(&mut Ui<'_>)) {
+        if self.core.devtools_tab_declare(name, label, None) {
+            self.core.devtools_tab_open(name);
+        } else {
+            self.core.open(
+                NodeSpec::column()
+                    .width(crate::spec::Sizing::Fixed(0.0))
+                    .height(crate::spec::Sizing::Fixed(0.0))
+                    .clip(),
+            );
+        }
+        f(self);
+        self.core.close();
+    }
+
+    /// The panel's selected node (`Core::devtools_selected`).
+    pub fn devtools_selected(&self) -> Option<Key> {
+        self.core.devtools_selected()
+    }
+
+    /// The panel's hovered tree row (`Core::devtools_hovered`).
+    pub fn devtools_hovered(&self) -> Option<Key> {
+        self.core.devtools_hovered()
+    }
+
+    /// The node the picker is over (`Core::devtools_picked`).
+    pub fn devtools_picked(&self) -> Option<Key> {
+        self.core.devtools_picked()
+    }
+
+    /// Whether the panel's picker is up (`Core::devtools_picking`).
+    pub fn devtools_picking(&self) -> bool {
+        self.core.devtools_picking()
+    }
+
     /// Loads `ext` under `namespace` into the list filling this frame's
     /// slots, and answers with the origin it got. This is how an
     /// extension hosts an extension of its own: the guest asks mid-frame,
@@ -447,6 +540,13 @@ impl<'a> Ui<'a> {
     #[inline]
     pub fn open_keyed(&mut self, label: &str, spec: NodeSpec) -> Key {
         self.core.open_keyed(label, spec)
+    }
+
+    /// `open` under a key the caller chose — the panel's own nodes, whose
+    /// keys another node anchors to by name before they exist.
+    #[inline]
+    pub(crate) fn open_with_key(&mut self, key: Key, label: &str, spec: NodeSpec) {
+        self.core.open_with_key_named(key, label, spec)
     }
 
     /// `open_keyed` by sibling index: the key auto-keying would have given
@@ -865,14 +965,26 @@ impl<'a> Ui<'a> {
         let Ui { core, filler } = self;
         // Not in the devtools' own window: nothing the host or an
         // extension declares there is built (ADR 0024, decision 6).
-        if let Some(filler) = filler
-            && !core.devtools_window()
-        {
-            filler.finish(&mut Ui::new(core));
+        if let Some(filler) = filler {
+            if !core.devtools_window() {
+                // A declared tab's extension fill first — a layer
+                // anchored to a body the panel builds below, so the
+                // filler's own `unknown-slot` check sees the slot
+                // declared (ADR 0032, decision 5) — then the root fills.
+                core.devtools_fill_mount(filler);
+                filler.finish(&mut Ui::new(core));
+            }
+            // The panel, after the fills and before the menu: the menu is
+            // the last thing declared and so the topmost float.
+            core.devtools_finish();
+            if core.devtools_window() {
+                // The panel's own window: the extension form's fill lands
+                // here too, when the pane gave the frame a filler.
+                core.devtools_fill_mount(filler);
+            }
+        } else {
+            core.devtools_finish();
         }
-        // The panel, after the fills and before the menu: the menu is
-        // the last thing declared and so the topmost float.
-        core.devtools_finish();
         Core::build_menu(&mut Ui::new(core));
         core.finish_frame();
     }

@@ -178,6 +178,24 @@ function fill(t)
   return t
 end
 
+-- devtools_tab { name = "syntax", label = "Tree-sitter", slot = "ts/panel" }
+-- devtools_tab { name = "syntax", label = "Tree-sitter", view = function()
+--   return column { text("identifier 12:4") }
+-- end }
+--
+-- A tab in the core's devtools panel (ADR 0032), beside facts, events and
+-- tree. The first form names a slot a plugin fills: the panel declares it
+-- in the tab's body while the tab is on show. The second is the script's
+-- own content: `view` is called only while the tab is on show -- so a tab
+-- nobody looks at costs its declaration and nothing else -- and the tree
+-- it returns is drawn over the tab's body, the script's to hear as any of
+-- its nodes. `view` takes no arguments; close over the `env` the script's
+-- view received. Not a node: declare it anywhere in the tree, every frame.
+function devtools_tab(t)
+  t.type = "devtools_tab"
+  return t
+end
+
 -- virtual_column(env, { key = "log", rows = 10000, row_h = 28, ... }, function(i)
 --   return column { fill = true, on_click = { kind = "pick", row = i }, text("line " .. i) }
 -- end)

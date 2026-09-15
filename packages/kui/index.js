@@ -164,7 +164,10 @@ export const roles = Object.freeze(
 );
 
 Ctx.prototype.frame = function frame(width, height, scale, tree) {
-  const { stream, strings, unknown, unknownTokens } = encoder.encode(tree, this[TOKENS]);
+  // The declared devtools tab on show, read once before the encode so a
+  // `<devtoolsTab>`'s function child is called only for it (ADR 0032).
+  const shownTab = this.devtoolsShownTab();
+  const { stream, strings, unknown, unknownTokens } = encoder.encode(tree, this[TOKENS], { shownTab });
   this.frameBinary(width, height, scale, stream, strings);
   reportUnknown(this, unknown, unknownTokens);
 };
@@ -172,7 +175,10 @@ Ctx.prototype.frame = function frame(width, height, scale, tree) {
 // `window` names which window the tree is for: 'main' when left out, else
 // one of the names `windows()` lists.
 KuiWindow.prototype.setView = function setView(tree, window) {
-  const { stream, strings, unknown, unknownTokens } = encoder.encode(tree, this[TOKENS]);
+  // The tab's content lives in the main window's tree (ADR 0032,
+  // decision 6): another window's tree calls no function child.
+  const shownTab = window == null || window === 'main' ? this.devtoolsShownTab() : null;
+  const { stream, strings, unknown, unknownTokens } = encoder.encode(tree, this[TOKENS], { shownTab });
   this.setViewBinary(stream, strings, window);
   reportUnknown(this, unknown, unknownTokens);
 };

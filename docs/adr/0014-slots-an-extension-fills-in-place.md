@@ -5,6 +5,15 @@ date: 2026-09-07
 
 # Slots: an extension fills a place the host declares, with parameters in and replies out
 
+> **Read beside 2026-09-15.** [ADR 0032](0032-a-devtools-tab-mounts-a-slot.md)
+> makes the devtools panel one more declarer of ordinary slots — a
+> declared tab's body — and adds two rules without amending anything
+> here: a slot a `devtools_tab` names counts as *declared* for the
+> `unknown-slot` check whether or not the panel mounted it, and a slot
+> the panel declared is host-declared for where replies go. The fill of
+> such a slot is a layer anchored to the body rather than in place,
+> which is the panel's affair, not the slot's.
+>
 > **Amended 2026-09-08.** The open question below — "an extension cannot
 > declare slots for other extensions, which is a decision for the day one
 > asks" — is answered: an extension may load extensions and declare their

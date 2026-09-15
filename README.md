@@ -96,7 +96,16 @@ app's keys do not move for it, and off it costs one bool per frame.
 a hidden one back); an app that wants that chord for itself respells it —
 `.devtools_key(Accel::parse("f12").unwrap())`, `win.setDevtoolsKey('f12')`,
 `kui_set_devtools_key(ctx, KUI_STR("f12"))` — and the old one is its own
-again.
+again. An app can add **tabs of its own** beside the three
+([ADR 0032](docs/adr/0032-a-devtools-tab-mounts-a-slot.md)): a slot a
+plugin fills (`ui.devtools_tab("syntax", "Tree-sitter", "ts/panel")`), or
+the app's own content, built only while the tab is on show —
+`ui.devtools_tab_with(name, label, |ui| …)`, `<devtoolsTab name label>{()
+=> …}</devtoolsTab>`, `if (kui_devtools_tab_open(ctx, name, label)) { …
+kui_close(ctx); }` — drawn over the panel's tab body as the app's own
+nodes, reading the panel's selection through `devtools_selected` and
+raising its picker with `set_devtools_pick`; the inspector a tree-sitter
+app wants is `examples/rust/features/devtools_tab.rs`.
 
 ## Examples
 

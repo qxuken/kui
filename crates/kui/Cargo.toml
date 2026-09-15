@@ -147,6 +147,7 @@ headless = [
     "fragment",
     "metrics",
     "modal",
+    "devtools_tab",
     "modal_editor",
     "splitmux",
     "syntax_view",
@@ -236,6 +237,10 @@ path = "../../examples/rust/features/metrics.rs"
 [[example]]
 name = "modal"
 path = "../../examples/rust/features/modal.rs"
+
+[[example]]
+name = "devtools_tab"
+path = "../../examples/rust/features/devtools_tab.rs"
 
 [[example]]
 name = "accessibility"

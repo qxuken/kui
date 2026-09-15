@@ -24,6 +24,9 @@ pub extern "C" fn kui_spec_float_preset(spec: *mut KuiSpec, name: KuiStr) -> boo
         s.float_mode = match cfg.anchor {
             kui_core::FloatAnchor::Parent => KUI_FLOAT_PARENT,
             kui_core::FloatAnchor::Viewport => KUI_FLOAT_VIEWPORT,
+            // Never crosses: a node-anchored float is the core's own
+            // (a devtools tab's content, ADR 0032).
+            kui_core::FloatAnchor::Node(_) => KUI_FLOAT_PARENT,
         };
         s.float_anchor_x = align_code(cfg.anchor_point.0);
         s.float_anchor_y = align_code(cfg.anchor_point.1);
