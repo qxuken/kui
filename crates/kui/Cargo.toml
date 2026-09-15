@@ -128,6 +128,7 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
 headless = [
     "transition",
     "hover",
+    "drop",
     "focus",
     "drag",
     "tooltip",
@@ -263,6 +264,10 @@ path = "../../examples/rust/features/transition.rs"
 [[example]]
 name = "hover"
 path = "../../examples/rust/features/hover.rs"
+
+[[example]]
+name = "drop"
+path = "../../examples/rust/features/drop.rs"
 
 [[example]]
 name = "focus"

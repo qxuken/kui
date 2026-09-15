@@ -581,6 +581,17 @@ pub struct KuiSpec {
     /// ABI 15 without a bump, under the [in] rule as it then stood — the
     /// last append that rule covered.
     pub on_scroll: *const KuiValue,
+    /// Drop-zone tag (`on_drop`, ADR 0031): files dragged in from the OS
+    /// over this node emit `{kind:"drop", phase, paths, x, y, tag}` on it
+    /// — `enter`, `move`, `leave`, `drop`. A node inside a zone is the
+    /// zone's; a node that is no zone is looked past. Borrowed while the
+    /// node opens, like every other tag. ABI 18 (the first append under
+    /// the amended rule).
+    pub on_drop: *const KuiValue,
+    /// Background while dragged files are over this node, `0xRRGGBBAA`;
+    /// 0 for none. Wins over `pressed_bg`, `focus_bg` and `hover_bg`;
+    /// eases with `transition`. ABI 18.
+    pub drop_bg: u32,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a

@@ -1329,6 +1329,61 @@ unchanged — the change is drawing only.
 fix, and — since what a `│` draws changes for every `cells` node —
 under *What breaks* too, per F61's rule.
 
+## From a feature ask (2026-09-15): a drop zone
+
+"You declare a drop zone on a box and you get events once it happens."
+Checked against the tree before it became an entry: nothing in the
+core hears a file dragged in from the OS, the runner drops winit's three
+file events on the floor, and no binding has a spelling — and winit
+0.30's events carry no position, so even a runner that forwarded them
+could say "the window", never "which box". ADR 0031 is the design; the
+one entry it produced is built, and the one it could not verify from
+here is filed beside it.
+
+### `~` C40 — A drop zone: `onDrop` on any node, the files as an event, `dropBg` while they hover — **done (2026-09-15)**
+
+**Outcome.** Built whole the day the ADR was accepted, as
+[`docs/adr/0031-a-drop-zone-is-a-row-and-the-files-are-an-event.md`](adr/0031-a-drop-zone-is-a-row-and-the-files-are-an-event.md)
+decides: `onDrop` / `on_drop` / `KuiSpec.on_drop` on any node, four
+phases of one `drop` event (`enter`, `move`, `leave`, `drop`, with
+`paths` and the point), `dropBg` in the same pick as `hoverBg` and
+winning over it, the zone resolved as the topmost *zone* under the
+point with a node that is no zone looked past (the HTML `dragleave`
+flicker cannot happen), three `InputEvent`s with doors in Node and C
+and a `drop_target` reader in all four bindings, the `drop` corpus
+scene in four adapters, ABI 18, the `drop` example in Rust and Node.
+On macOS the runner overrides winit's window delegate for the five
+`NSDraggingDestination` selectors (`crates/kui/src/macos_drop.rs`) and
+answers the OS from a stamp; verified by dragging a file from the Finder
+onto the example — the zone lit, `enter`/`move`/`leave`/`drop` in the
+devtools log with the content-relative point, the green badge over the
+zone and none off it, a release off every zone refused and the icon
+slid home, the files leaving the window taking the zone's `leave`.
+
+### `.` W19 — The drag's position on Windows and Linux is the pane's last cursor, so `move` never fires there
+
+**Found.** winit 0.30's `IDropTarget` (`drop_handler.rs`) discards the
+`POINTL` every method is handed, and X11's XDnD discards
+`XdndPosition`'s coordinates the same way; no `CursorMoved` arrives
+during an OLE or XDnD drag. The runner's fallback for both takes
+winit's per-file events, batches them per turn and dispatches at the
+pane's last reported cursor — which is where the pointer was *before*
+the user picked the files up, possibly in another window (ADR 0031,
+decision 5). So on those platforms a zone is found only when the
+pointer happened to be over it before the drag, and nothing lights or
+moves while the files are over the window.
+
+**Do.** Windows: `RevokeDragDrop` winit's target and register the
+runner's own `IDropTarget` whose `DragEnter` / `DragOver` / `Drop`
+convert the `POINTL` through `ScreenToClient` and dispatch as macOS's
+override does, `DragLeave` the cancel, the return `DROPEFFECT` from the
+same stamp. Linux: X11's `XdndPosition` carries the root coordinates in
+its `data.l[2]`; Wayland's `wl_data_device` `motion` event carries
+surface-local ones — both reachable only by owning the protocol
+winit owns, so this waits for winit's `DragEnter { position }` redesign
+unless a Windows round wants it first. Unverified from here either way
+(W16's rule).
+
 ## After alpha.12
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -1355,7 +1410,9 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** Nothing filed is open: the two alpha.13 reports and the
+**Build next.** W19, when a Windows or Linux round comes (the macOS half
+of ADR 0031 is built and verified; the fallback elsewhere is honest and
+positionless). Nothing else filed is open: the two alpha.13 reports and the
 kawoosh terminal report — F62–F66 — were **built 2026-09-15**, F66 first
 (the dashed `│` was what every TUI in a `cells` node showed, and the
 entry's shapes, atlas key and tests are what was built), then the four
@@ -1620,7 +1677,7 @@ the alpha.12 tag on 2026-09-14, the four sections that partly stayed —
 Core capability, the alpha.9 reports, the alpha.11 reports and the third
 editor-and-mux round — each keeping a paragraph that says what went
 where. This file is now three parked entries, C27 with its measurements,
-V2–V8, W16, W17 and W18 (the macOS 27 round's two finds, built the same day), the editor wishes, the "theirs, not ours" lists, and this
+V2–V8, W16, W17 and W18 (the macOS 27 round's two finds, built the same day), C40 and W19 (the drop zone of ADR 0031, built the day it was asked for, and the Windows/Linux position it could not verify from here), the editor wishes, the "theirs, not ours" lists, and this
 section.
 Still open, both waiting on something outside the repo: enable `SMOKE_MACOS`
 / `SMOKE_WINDOWS` the day a runner exists (P8) — which has two jobs waiting

@@ -91,6 +91,28 @@ pub enum InputEvent {
     /// macOS-only in practice: no other platform winit supports reports
     /// pressure at all, and there a user can switch it off.
     ForceClick(Vec2),
+    /// Files dragged in from the OS are over the window at `at` (logical
+    /// viewport coordinates) — entering and moving alike: the core tells
+    /// the two apart by whether the zone under the point changed, and a
+    /// change is the old zone's `leave` then the new one's `enter`
+    /// (`docs/adr/0031-a-drop-zone-is-a-row-and-the-files-are-an-event.md`,
+    /// decision 4). `paths` are the OS paths as the driver reported them.
+    /// A repeat at the same point emits nothing.
+    DragFiles {
+        paths: Vec<String>,
+        at: Vec2,
+    },
+    /// The dragged files were released at `at`: the zone there hears
+    /// `{kind="drop", phase="drop"}` and nothing hears a `leave`; with no
+    /// zone there, nothing is emitted and whatever was lit hears its
+    /// `leave`.
+    DropFiles {
+        paths: Vec<String>,
+        at: Vec2,
+    },
+    /// The dragged files left the window, or the OS ended the drag
+    /// elsewhere: the lit zone hears its `leave`.
+    DragCancel,
 }
 
 /// Which button a press came from — driver-facing rather than shaped after
@@ -732,6 +754,11 @@ pub struct MenuOwner {
     pub tag: Value,
 }
 
+/// The zone files dragged over a region land on: the region's own node
+/// or an ancestor's (see `HitRegion::drop`, ADR 0031, decision 2). The
+/// same three fields as [`MenuOwner`], resolved by the same walk.
+pub type DropOwner = MenuOwner;
+
 /// The shape inside a region's rect that a point has to be in to hit it
 /// (`docs/adr/0026-hit-testing-by-shape.md`). The rect is always tested
 /// first, so a shape is evaluated only for the few regions under the
@@ -813,6 +840,11 @@ pub struct HitRegion {
     /// None when nothing encloses this region offers one, and the press
     /// is swallowed here.
     pub context_menu: Option<MenuOwner>,
+    /// The drop zone this region belongs to — its own `on_drop` or the
+    /// nearest enclosing declaration's — resolved at emission (ADR 0031,
+    /// decision 2). None where no zone encloses it: files dragged over
+    /// such a region look past it to the topmost zone beneath.
+    pub drop: Option<DropOwner>,
     /// A press on this node moves keyboard focus to it (an editor, a
     /// sink, a control, a `focusable` node — never a disabled one).
     pub focusable: bool,
@@ -832,6 +864,18 @@ pub struct HitRegion {
     /// Pointer shape declared by the node (`NodeSpec::cursor`). None = the
     /// I-beam over text, the arrow otherwise (`Interaction::implied_shape`).
     pub cursor: Option<CursorShape>,
+}
+
+/// An OS file drag over a zone (ADR 0031): what `dropBg` reads and what
+/// the next `DragFiles` compares against.
+#[derive(Clone, Debug)]
+struct DropHover {
+    owner: DropOwner,
+    /// Where the last `DragFiles` put the pointer: a repeat at the same
+    /// point is not a `move`.
+    last: Vec2,
+    /// The `leave`, built at `enter` with the paths of that moment.
+    leave: UiEvent,
 }
 
 /// The points a frame's stroke and fill shapes index, built beside its
@@ -1082,6 +1126,10 @@ pub struct Interaction {
     pressed_group: Option<u64>,
     /// The `on_hover` leave event for the hovered node, prepared on enter.
     hovered_leave: Option<UiEvent>,
+    /// The zone files dragged in from the OS are over, with the `leave`
+    /// prepared at `enter` — the region may be gone from the next
+    /// frame's hits (ADR 0031, decision 2).
+    drop: Option<DropHover>,
     /// Hover enter/leave events raised outside `handle` — a new frame's hit
     /// regions changing what sits under a still cursor. Drained by the next
     /// `handle` or by `take_pending`.
@@ -1411,6 +1459,9 @@ impl Interaction {
             // node it lands on it finds by hit test the way a secondary
             // press does.
             | InputEvent::ForceClick(_) => {}
+            InputEvent::DragFiles { paths, at } => self.drag_files(&paths, at, out),
+            InputEvent::DropFiles { paths, at } => self.drop_files(&paths, at, out),
+            InputEvent::DragCancel => self.drag_cancel(out),
             InputEvent::MouseUp { button } if button != MouseButton::Primary => {}
             InputEvent::MouseUp { .. } => {
                 let dragged = self.drag.take().inspect(|drag| {
@@ -1454,6 +1505,97 @@ impl Interaction {
 
     pub fn is_hovered(&self, key: Key) -> bool {
         self.hovered == Some(key)
+    }
+
+    /// Whether files dragged in from the OS are over `key` (ADR 0031):
+    /// what `drop_bg` reads when the node opens.
+    pub fn is_drop_target(&self, key: Key) -> bool {
+        self.drop.as_ref().is_some_and(|d| d.owner.key == key)
+    }
+
+    /// The zone the dragged files are over, if any — what a driver
+    /// answers the OS with (a copy cursor over a zone, not-allowed
+    /// elsewhere) and what a test reads to say a zone was found.
+    pub fn drop_target(&self) -> Option<Key> {
+        self.drop.as_ref().map(|d| d.owner.key)
+    }
+
+    /// The topmost zone under `p` (ADR 0031, decision 2): the topmost
+    /// region there whose resolved `drop` is some. A region resolving to
+    /// no zone — an overlay the app showed on `enter` — is looked past.
+    fn zone_at(&self, p: Vec2) -> Option<&DropOwner> {
+        self.hits
+            .iter()
+            .rev()
+            .find(|h| h.drop.is_some() && self.contains(h, p))
+            .and_then(|h| h.drop.as_ref())
+    }
+
+    fn drop_event(owner: &DropOwner, phase: &str, paths: &[String], at: Option<Vec2>) -> UiEvent {
+        let mut fields = vec![
+            ("kind", Value::str("drop")),
+            ("phase", Value::str(phase)),
+            (
+                "paths",
+                Value::list(
+                    paths
+                        .iter()
+                        .map(|p| Value::str(p.as_str()))
+                        .collect::<Vec<_>>(),
+                ),
+            ),
+        ];
+        if let Some(p) = at {
+            fields.push(("x", Value::Float(p.x as f64)));
+            fields.push(("y", Value::Float(p.y as f64)));
+        }
+        UiEvent::on(owner.origin, owner.key, Value::map(fields)).tagged(Some(&owner.tag))
+    }
+
+    fn drag_files(&mut self, paths: &[String], at: Vec2, out: &mut Vec<UiEvent>) {
+        let zone = self.zone_at(at).cloned();
+        if let (Some(cur), Some(z)) = (&mut self.drop, &zone)
+            && cur.owner.key == z.key
+            && cur.owner.origin == z.origin
+        {
+            if cur.last != at {
+                cur.last = at;
+                out.push(Self::drop_event(z, "move", paths, Some(at)));
+            }
+            return;
+        }
+        out.extend(self.drop.take().map(|d| d.leave));
+        if let Some(owner) = zone {
+            out.push(Self::drop_event(&owner, "enter", paths, Some(at)));
+            let leave = Self::drop_event(&owner, "leave", paths, None);
+            self.drop = Some(DropHover {
+                owner,
+                last: at,
+                leave,
+            });
+        }
+    }
+
+    fn drop_files(&mut self, paths: &[String], at: Vec2, out: &mut Vec<UiEvent>) {
+        let zone = self.zone_at(at).cloned();
+        // The lit zone is not the one under the point (a headless drive
+        // that never sent `DragFiles`, a frame that moved the zone): it
+        // hears its leave first. The zone that takes the drop hears no
+        // leave — the drop ends the hover (decision 1).
+        if let Some(cur) = self.drop.take()
+            && !zone
+                .as_ref()
+                .is_some_and(|z| z.key == cur.owner.key && z.origin == cur.owner.origin)
+        {
+            out.push(cur.leave);
+        }
+        if let Some(owner) = zone {
+            out.push(Self::drop_event(&owner, "drop", paths, Some(at)));
+        }
+    }
+
+    fn drag_cancel(&mut self, out: &mut Vec<UiEvent>) {
+        out.extend(self.drop.take().map(|d| d.leave));
     }
 
     pub fn is_pressed(&self, key: Key) -> bool {
@@ -1577,6 +1719,7 @@ mod tests {
             key_sink: None,
             key_up: false,
             context_menu: None,
+            drop: None,
             focusable: true,
             window: None,
             hover: None,
@@ -1723,6 +1866,136 @@ mod tests {
             Some("panel-menu")
         );
         assert!(!it.is_pressed(k));
+    }
+
+    /// ADR 0031, decisions 1, 2 and 4: a button inside a zone is the
+    /// zone, an overlay that is no zone is looked past, a drop ends the
+    /// hover without a leave, a cancel leaves.
+    #[test]
+    fn dragged_files_find_the_topmost_zone_and_look_past_what_is_none() {
+        let mut it = Interaction::default();
+        let zone = Key::ROOT.str("zone");
+        let button = Key::ROOT.str("button");
+        let overlay = Key::ROOT.str("overlay");
+        let other = Key::ROOT.str("other");
+        let owner = |k: Key, tag: &str| {
+            Some(DropOwner {
+                key: k,
+                origin: OriginId::HOST,
+                tag: Value::str(tag),
+            })
+        };
+        let mut z = region(zone, 0, 0.0, 0.0, 100.0, 100.0, "z");
+        z.drop = owner(zone, "files");
+        // The button is inside the zone: its region resolved to the zone.
+        let mut b = region(button, 0, 10.0, 10.0, 30.0, 30.0, "press");
+        b.drop = owner(zone, "files");
+        // The overlay is painted over everything and belongs to no zone.
+        let o = region(overlay, 0, 0.0, 0.0, 100.0, 100.0, "overlay");
+        let mut second = region(other, 0, 100.0, 0.0, 100.0, 100.0, "o");
+        second.drop = owner(other, "other-files");
+        it.set_hits(vec![z, b, second, o]);
+        let paths = vec!["/drop/1.txt".to_string()];
+        let phases = |evs: &[UiEvent]| {
+            evs.iter()
+                .map(|e| {
+                    (
+                        e.key,
+                        e.payload
+                            .get("phase")
+                            .unwrap()
+                            .as_str()
+                            .unwrap()
+                            .to_string(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        // Over the button, through the overlay: the zone's enter.
+        let evs = drive(
+            &mut it,
+            &[InputEvent::DragFiles {
+                paths: paths.clone(),
+                at: Vec2::new(20.0, 20.0),
+            }],
+        );
+        assert_eq!(phases(&evs), vec![(zone, "enter".to_string())]);
+        assert_eq!(evs[0].payload.get("tag").unwrap().as_str(), Some("files"));
+        assert_eq!(evs[0].payload.get("x").unwrap().as_float(), Some(20.0));
+        assert_eq!(it.drop_target(), Some(zone));
+        assert!(it.is_drop_target(zone));
+        // The same point again is nothing; a new one is a move.
+        let evs = drive(
+            &mut it,
+            &[
+                InputEvent::DragFiles {
+                    paths: paths.clone(),
+                    at: Vec2::new(20.0, 20.0),
+                },
+                InputEvent::DragFiles {
+                    paths: paths.clone(),
+                    at: Vec2::new(60.0, 60.0),
+                },
+            ],
+        );
+        assert_eq!(phases(&evs), vec![(zone, "move".to_string())]);
+        // Into the other zone: leave, then enter, in that order.
+        let evs = drive(
+            &mut it,
+            &[InputEvent::DragFiles {
+                paths: paths.clone(),
+                at: Vec2::new(150.0, 50.0),
+            }],
+        );
+        assert_eq!(
+            phases(&evs),
+            vec![(zone, "leave".to_string()), (other, "enter".to_string())]
+        );
+        assert!(evs[0].payload.get("x").is_none());
+        // Dropped there: the drop and nothing after it.
+        let evs = drive(
+            &mut it,
+            &[InputEvent::DropFiles {
+                paths: paths.clone(),
+                at: Vec2::new(150.0, 50.0),
+            }],
+        );
+        assert_eq!(phases(&evs), vec![(other, "drop".to_string())]);
+        assert_eq!(it.drop_target(), None);
+        // Over the first zone, then out of the window: its leave.
+        let evs = drive(
+            &mut it,
+            &[
+                InputEvent::DragFiles {
+                    paths: paths.clone(),
+                    at: Vec2::new(50.0, 50.0),
+                },
+                InputEvent::DragCancel,
+            ],
+        );
+        assert_eq!(
+            phases(&evs),
+            vec![(zone, "enter".to_string()), (zone, "leave".to_string())]
+        );
+        // A drop off every zone with one lit: the lit one's leave, no drop.
+        let evs = drive(
+            &mut it,
+            &[
+                InputEvent::DragFiles {
+                    paths: paths.clone(),
+                    at: Vec2::new(50.0, 50.0),
+                },
+                InputEvent::DropFiles {
+                    paths: paths.clone(),
+                    at: Vec2::new(250.0, 50.0),
+                },
+            ],
+        );
+        assert_eq!(
+            phases(&evs),
+            vec![(zone, "enter".to_string()), (zone, "leave".to_string())]
+        );
+        assert_eq!(it.drop_target(), None);
     }
 
     #[test]

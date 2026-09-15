@@ -368,6 +368,21 @@ pub enum Step {
     /// unknown, 1 light, 2 dark. What flips a themed token's half and the
     /// theme's base without the view changing (ADR 0019, ADR 0027).
     Appearance(u32),
+    /// Files dragged in from the OS over the window at a point
+    /// (`InputEvent::DragFiles`, ADR 0031): `n` files, spelled
+    /// `/drop/1.txt` … `/drop/n.txt` by every adapter (see [`drop_paths`])
+    /// so the argument stays an integer. Entering and moving alike.
+    DragFiles(u32, i32, i32),
+    /// The same files released at a point (`InputEvent::DropFiles`).
+    DropFiles(u32, i32, i32),
+    /// The files left the window (`InputEvent::DragCancel`).
+    DragCancel,
+}
+
+/// The paths a [`Step::DragFiles`] / [`Step::DropFiles`] with `n` files
+/// carries: `/drop/1.txt` … `/drop/n.txt`. Every adapter spells them so.
+pub fn drop_paths(n: u32) -> Vec<String> {
+    (1..=n).map(|k| format!("/drop/{k}.txt")).collect()
 }
 
 impl Step {
@@ -426,6 +441,13 @@ impl Step {
             Step::Appearance(n) => {
                 let _ = writeln!(out, "step appearance {n}");
             }
+            Step::DragFiles(n, x, y) => {
+                let _ = writeln!(out, "step dragfiles {n} {x} {y}");
+            }
+            Step::DropFiles(n, x, y) => {
+                let _ = writeln!(out, "step dropfiles {n} {x} {y}");
+            }
+            Step::DragCancel => out.push_str("step dragcancel\n"),
         }
     }
 
@@ -492,6 +514,15 @@ impl Step {
                     .expect("a printable step character")
                     .to_string(),
             ),
+            Step::DragFiles(n, x, y) => InputEvent::DragFiles {
+                paths: drop_paths(n),
+                at: Vec2::new(x as f32, y as f32),
+            },
+            Step::DropFiles(n, x, y) => InputEvent::DropFiles {
+                paths: drop_paths(n),
+                at: Vec2::new(x as f32, y as f32),
+            },
+            Step::DragCancel => InputEvent::DragCancel,
         })
     }
 }
@@ -2294,6 +2325,71 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "drop",
+        doc: "Files dragged in from the OS \
+              (`docs/adr/0031-a-drop-zone-is-a-row-and-the-files-are-an-event.md`): \
+              two zones side by side, a button inside the first, and \
+              across the phases the two things decision 2 looks past or \
+              stops at — a float over the first zone that is no zone \
+              (phase 1), and a modal over it (phase 2). The files enter \
+              the first zone, move over its button (the button is the \
+              zone's), move over the overlay (looked past), leave for \
+              the second zone and land there with no leave after; under \
+              the modal the first zone is no target and a cancel with \
+              nothing lit is nothing. The first zone's `dropBg` lights \
+              while they are over it, which the digest carries. The \
+              `leave` carries the paths of the `enter` it was prepared \
+              at (one file), not the two the last move reported: it is \
+              built once, so a zone the view stops declaring still gets \
+              it, and the paths cannot change within one OS drag.",
+        custom: &["float", "key"],
+        elements: &["box"],
+        build: build_drop,
+        env: NATIVE_CHROME,
+        steps: &[
+            Step::DragFiles(1, 50, 50),
+            // Over the button inside the zone: a move on the zone.
+            Step::DragFiles(1, 30, 30),
+            Step::Phase(1),
+            // Over the overlay, with two files now: still the zone's.
+            Step::DragFiles(2, 60, 60),
+            // The same point again: nothing.
+            Step::DragFiles(2, 60, 60),
+            // Into the second zone: leave, then enter.
+            Step::DragFiles(1, 250, 50),
+            Step::DropFiles(1, 250, 50),
+            Step::Phase(2),
+            // Under the modal the first zone is no target.
+            Step::DragFiles(1, 50, 50),
+            Step::DragCancel,
+        ],
+        expect: Expect {
+            // The two zones, the button, the modal.
+            solid: 4,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 0,
+            access: &["0 window ||", "1 button Pick||", "1 dialog ||"],
+            events: &[
+                "drop files enter 1",
+                "drop files move 1",
+                "drop files move 2",
+                "drop files leave 1",
+                "drop other enter 1",
+                "drop other drop 1",
+            ],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+        },
+    },
+    Scene {
         name: "underlines",
         doc: "An underline's own colour and shape (backlog K4): a rich text \
               whose span is underlined in red by a wave, a text underlined \
@@ -3400,6 +3496,79 @@ fn build_polygon(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 /// Points are in the canvas's box space, the way a floated card's offset
 /// is. The curve's chords are 44.7, 50 and 82.5, which
 /// `line::flatten_curve` cuts into 8, 9 and 14 pieces at `CURVE_STEP` 6.
+fn build_drop(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
+    ui.with(
+        NodeSpec::row()
+            .width(Sizing::Grow(1.0))
+            .height(Sizing::Grow(1.0)),
+        |ui| {
+            ui.with_keyed(
+                "files",
+                NodeSpec::column()
+                    .width(Sizing::Fixed(200.0))
+                    .height(Sizing::Grow(1.0))
+                    .pad(10.0)
+                    .bg(Color::hex(0x22242cff))
+                    .drop_bg(Color::hex(0x2b3350ff))
+                    .on_drop(Value::map([("kind", Value::str("files"))])),
+                |ui| {
+                    // Inside the zone: files over it are the zone's.
+                    ui.with_keyed(
+                        "pick",
+                        NodeSpec::row()
+                            .width(Sizing::Fixed(60.0))
+                            .height(Sizing::Fixed(40.0))
+                            .bg(Color::hex(0x3b5bd4ff))
+                            .on_click(Value::map([("kind", Value::str("pick"))]))
+                            .label("Pick"),
+                        |_| {},
+                    );
+                },
+            );
+            ui.with_keyed(
+                "other",
+                NodeSpec::column()
+                    .width(Sizing::Grow(1.0))
+                    .height(Sizing::Grow(1.0))
+                    .bg(Color::hex(0x30344aff))
+                    .on_drop(Value::map([("kind", Value::str("other"))])),
+                |_| {},
+            );
+            let over = FloatConfig::viewport()
+                .at(Align::Start, Align::Start)
+                .self_at(Align::Start, Align::Start)
+                .offset(20.0, 20.0);
+            // What an app shows in answer to `enter`: a hoverable float
+            // over the zone that takes no files, and is looked past.
+            if phase == 1 {
+                ui.with_keyed(
+                    "overlay",
+                    NodeSpec::column()
+                        .float(over)
+                        .width(Sizing::Fixed(160.0))
+                        .height(Sizing::Fixed(160.0))
+                        .hoverable(),
+                    |_| {},
+                );
+            }
+            // A modal over the zone: the zone's region is not emitted, so
+            // the files find nothing there.
+            if phase == 2 {
+                ui.with_keyed(
+                    "confirm",
+                    NodeSpec::column()
+                        .float(over)
+                        .width(Sizing::Fixed(160.0))
+                        .height(Sizing::Fixed(160.0))
+                        .bg(Color::hex(0x101018ff))
+                        .modal(Value::map([("kind", Value::str("dismiss"))])),
+                    |_| {},
+                );
+            }
+        },
+    );
+}
+
 fn build_underlines(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     use crate::cells::{Cell, CellGrid, flags};
     use crate::spec::UnderlineStyle;
@@ -4430,6 +4599,18 @@ fn event_row(payload: &Value) -> (String, String) {
             }
             None => tag.push_str(" -"),
         }
+    }
+    // A drop's phase and how many paths reached it ride the same way
+    // (`drop files enter 2`): the phase is the contract (ADR 0031,
+    // decision 1), and a binding that dropped the list on the wire would
+    // agree on the kind and disagree here.
+    if kind == "drop" {
+        let phase = payload.get("phase").and_then(Value::as_str).unwrap_or("-");
+        let n = payload
+            .get("paths")
+            .and_then(Value::as_list)
+            .map_or(0, <[Value]>::len);
+        let _ = write!(tag, " {phase} {n}");
     }
     (kind, tag)
 }

@@ -211,8 +211,21 @@ extern "C" {
  * rule change above (backlog AR50): an [in] append bumps from here on. Recompile: kui_run is unchanged, and
  * kui_run_with(ctx, title, NULL, view, on_event, user) is what the five-
  * argument call was.
+ *
+ * ABI 17 appends the underline's own colour and shape to KuiTextStyle and
+ * KuiSpan (underline_color, underline_style) and `ul` to KuiCell - three
+ * [in] appends under the withdrawn rule, two of them array elements whose
+ * stride moved. Recompile; a zeroed field is what the struct meant before.
+ *
+ * ABI 18 appends on_drop and drop_bg to KuiSpec for the drop zone (ADR
+ * 0031) - the first [in] append under the amended rule: the library reads
+ * the whole struct, so a host that did not recompile would have the two
+ * read from past its end. Recompile; a zeroed tail is no zone and no
+ * colour. The same version adds kui_input_drag_files, kui_input_drop_files,
+ * kui_input_drag_cancel, kui_is_drop_target and kui_drop_target - five
+ * functions, nothing the library writes moved.
  */
-#define KUI_ABI_VERSION 17u
+#define KUI_ABI_VERSION 18u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -836,6 +849,20 @@ typedef struct KuiSpec {
      * Borrowed while the node opens; appended after ABI 15 without a
      * bump, under the [in] rule as it then stood (see the ABI block). */
     const KuiValue *on_scroll;
+    /* Drop-zone tag (docs/adr/0031-a-drop-zone-is-a-row-and-the-files-are-
+     * an-event.md): files dragged in from the OS over this node emit
+     * {kind:"drop", phase:"enter"|"move"|"leave"|"drop", paths, x, y, tag}
+     * on it - paths the OS paths as strings, x/y the pointer in logical
+     * viewport coordinates (absent on leave). The zone under the files is
+     * the topmost zone by paint order: a node inside a zone is the zone's,
+     * and a node that is no zone and has none enclosing it is looked past,
+     * so an overlay shown on enter cannot make the zone lose the files. No
+     * leave follows a drop. Borrowed while the node opens. ABI 18. */
+    const KuiValue *on_drop;
+    /* Background while dragged files are over this node, 0xRRGGBBAA (0 =
+     * none): wins over pressed_bg, focus_bg and hover_bg, clears when they
+     * leave, land or the drag is cancelled; eases with transition. ABI 18. */
+    uint32_t drop_bg;
 } KuiSpec;
 
 /* When a scrolling node's bars are drawn (KuiSpec.scrollbar): the schema
@@ -1564,6 +1591,24 @@ void kui_input_key_down(KuiCtx *ctx, KuiStr code, KuiStr physical,
                         uint32_t kmods, KuiStr text, bool repeat);
 void kui_input_key_up(KuiCtx *ctx, KuiStr code, KuiStr physical,
                       uint32_t kmods);
+/* Files dragged in from the OS (docs/adr/0031-a-drop-zone-is-a-row-and-
+ * the-files-are-an-event.md): `paths` are `count` OS paths, x/y the
+ * pointer in logical viewport coordinates. kui_input_drag_files is entering
+ * and moving alike - the zone under the point hears {kind:"drop",
+ * phase:"enter"|"move"}, a zone it left hears "leave", a repeat at the
+ * same point is nothing. kui_input_drop_files is the release: the zone
+ * there hears phase "drop" and no leave after it; with no zone there,
+ * nothing but the lit zone's leave. kui_input_drag_cancel is the files
+ * leaving the window or the OS ending the drag elsewhere. The host answers
+ * the OS from kui_drop_target after each report: a copy operation over a
+ * zone, not-allowed elsewhere, a release off every zone refused. winit's
+ * own three file events carry no position; the Rust runner reads it from
+ * the platform (see the ADR, decision 5). */
+void kui_input_drag_files(KuiCtx *ctx, const KuiStr *paths, size_t count,
+                          float x, float y);
+void kui_input_drop_files(KuiCtx *ctx, const KuiStr *paths, size_t count,
+                          float x, float y);
+void kui_input_drag_cancel(KuiCtx *ctx);
 /* A whole key going down, the way a window sends it - the call a host
  * driving kui from its own event loop wants, and the one a headless test
  * wants. Spelled exactly as kui_input_key_down, and it sends that press
@@ -2497,6 +2542,12 @@ void kui_cells(KuiCtx *ctx, KuiStr label, uint32_t rows, uint32_t cols,
 uint64_t kui_child_key(KuiCtx *ctx, KuiStr label);
 bool kui_is_hovered(KuiCtx *ctx, uint64_t key);
 bool kui_is_pressed(KuiCtx *ctx, uint64_t key);
+/* Whether dragged files are over `key` (ADR 0031), for drop-dependent
+ * layout; the colour is KuiSpec.drop_bg. */
+bool kui_is_drop_target(KuiCtx *ctx, uint64_t key);
+/* The drop zone the dragged files are over, or 0 - what the host answers
+ * the OS with after each kui_input_drag_files. */
+uint64_t kui_drop_target(KuiCtx *ctx);
 /* -- Measurement ---------------------------------------------------------- */
 /* Measures text the way layout would, without adding a node: unwrapped with
  * max_w <= 0, else wrapped to max_w logical px; the style's wrap /

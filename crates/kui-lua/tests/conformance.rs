@@ -692,6 +692,31 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         "#,
             rows = conformance::LAYERS_ROWS,
         ),
+        // ADR 0031: two zones, a button inside the first, and across the
+        // phases a hoverable float over the first zone that is no zone
+        // (phase 1) and a modal over it (phase 2).
+        "drop" => r#"
+            local over = { anchor = "viewport", at = { "start", "start" },
+                           self_at = { "start", "start" }, dx = 20, dy = 20 }
+            local t = { width = { grow = 1 }, height = { grow = 1 },
+              column { key = "files", width = 200, height = { grow = 1 }, pad = 10,
+                       bg = 0x22242cff, drop_bg = 0x2b3350ff, on_drop = { kind = "files" },
+                       row { key = "pick", width = 60, height = 40, bg = 0x3b5bd4ff,
+                             on_click = { kind = "pick" }, label = "Pick" } },
+              column { key = "other", width = { grow = 1 }, height = { grow = 1 },
+                       bg = 0x30344aff, on_drop = { kind = "other" } },
+            }
+            if phase == 1 then
+              t[#t + 1] = column { key = "overlay", float = over, width = 160, height = 160,
+                                   hoverable = true }
+            end
+            if phase == 2 then
+              t[#t + 1] = column { key = "confirm", float = over, width = 160, height = 160,
+                                   bg = 0x101018ff, modal = { kind = "dismiss" } }
+            end
+            return row(t)
+        "#
+        .to_string(),
         // ADR 0027: the table is the `tokens` global, declared once at
         // load; every value below is a `$name` the parser resolves,
         // `$surface` and `$radius` being the roles, `$nothing` the one

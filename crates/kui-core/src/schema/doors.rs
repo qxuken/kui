@@ -384,6 +384,20 @@ pub const DOORS: &[Door] = &[
         doc: "Whether a press started on a node and the pointer is still over it.",
     },
     Door {
+        rust: "Ui::is_drop_target",
+        c: Is("kui_is_drop_target"),
+        node: Is("isDropTarget"),
+        lua: Is("is_drop_target"),
+        doc: "Whether files dragged in from the OS are over a node (ADR 0031) — for drop-dependent layout; the colour is `drop_bg`.",
+    },
+    Door {
+        rust: "Core::drop_target",
+        c: Is("kui_drop_target"),
+        node: Is("dropTarget"),
+        lua: Is("drop_target"),
+        doc: "The drop zone the dragged files are over, if any — what a driver answers the OS with, and what a test reads to say a zone was found (ADR 0031, decision 5).",
+    },
+    Door {
         rust: "Ui::is_group_hovered",
         c: As(
             "`hoverBg` / `pressedBg` on a `hoverGroup` member paint it; the reader is what the Rust widgets ask when they paint by hand",
@@ -989,7 +1003,7 @@ pub const DOORS: &[Door] = &[
             "`Ctx.cursor` … `Ctx.access`, one per `InputEvent`; a `KuiWindow` refuses injection",
         ),
         lua: No(GUEST),
-        doc: "Pointer, wheel, key, text, IME and assistive input; `press` / `release` are a click by label (`kui_input_press`, `Ctx.press`).",
+        doc: "Pointer, wheel, key, text, IME, assistive and OS file-drag input; `press` / `release` are a click by label (`kui_input_press`, `Ctx.press`); the file drag is `drag_files` / `drop_files` / `drag_cancel` (ADR 0031).",
     },
     Door {
         rust: "Core::modifiers",

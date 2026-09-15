@@ -64,6 +64,74 @@ pub extern "C" fn kui_input_text(ptr: *mut KuiCtx, text: KuiStr) {
     });
 }
 
+/// The paths a file-drag door carries: `count` borrowed `KuiStr`s, read
+/// once and owned by the event.
+fn paths_of(paths: *const KuiStr, count: usize) -> Vec<String> {
+    if paths.is_null() || count == 0 {
+        return Vec::new();
+    }
+    // SAFETY: the host promises `count` strings at `paths` for the call.
+    unsafe { std::slice::from_raw_parts(paths, count) }
+        .iter()
+        .map(|s| kstr(*s).into_owned())
+        .collect()
+}
+
+/// Files dragged in from the OS are over the window at (`x`, `y`) —
+/// entering and moving alike (ADR 0031, decision 4): the zone under the
+/// point hears `{kind:"drop", phase:"enter"|"move"}`, a zone it left
+/// hears `leave`. `paths` are `count` OS paths. The driver's answer to
+/// the OS (copy over a zone, not-allowed elsewhere) is `kui_drop_target`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_input_drag_files(
+    ptr: *mut KuiCtx,
+    paths: *const KuiStr,
+    count: usize,
+    x: f32,
+    y: f32,
+) {
+    guard((), || {
+        let paths = paths_of(paths, count);
+        push_input(
+            ptr,
+            InputEvent::DragFiles {
+                paths,
+                at: Vec2::new(x, y),
+            },
+        );
+    });
+}
+
+/// The dragged files were released at (`x`, `y`): the zone there hears
+/// `{kind:"drop", phase:"drop", paths, x, y, tag}` and no `leave` after;
+/// with no zone there, nothing but the lit zone's `leave`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_input_drop_files(
+    ptr: *mut KuiCtx,
+    paths: *const KuiStr,
+    count: usize,
+    x: f32,
+    y: f32,
+) {
+    guard((), || {
+        let paths = paths_of(paths, count);
+        push_input(
+            ptr,
+            InputEvent::DropFiles {
+                paths,
+                at: Vec2::new(x, y),
+            },
+        );
+    });
+}
+
+/// The dragged files left the window, or the OS ended the drag
+/// elsewhere: the lit zone hears its `leave`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_input_drag_cancel(ptr: *mut KuiCtx) {
+    push_input(ptr, InputEvent::DragCancel);
+}
+
 fn edit_key_of(key: u32) -> Option<EditKey> {
     KUI_EDIT_KEYS.get(key as usize).map(|(_, k)| *k)
 }

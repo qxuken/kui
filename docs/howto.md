@@ -328,6 +328,26 @@ the same palette from the keyboard and types the same way.
 [ADR 0030](adr/0030-the-standard-menus-the-runner-keeps.md) ·
 [examples/rust/widgets/menu_bar.rs](../examples/rust/widgets/menu_bar.rs)
 
+### How do I take files dropped from the Finder?
+
+Declare `onDrop` (Rust and Lua `on_drop`, C `KuiSpec.on_drop`) on the box
+that takes them, and it hears `{kind:"drop", phase, paths, x, y, tag}` in
+four phases — `enter`, `move`, `leave`, `drop`, with the OS paths as
+strings and the pointer in viewport coordinates. Add `dropBg` and the box
+lights while the files hover, the way `hoverBg` does, with nothing kept in
+your model. A button or field inside the box is the box's; the banner you
+float over it in answer to `enter` is looked past, so the zone does not
+flicker between `leave` and `enter` the way an HTML drop target does. A
+release over no zone is refused by the runner — the icon slides home — and
+no `leave` follows a `drop`. Headless, `dragFiles(paths, x, y)`,
+`dropFiles` and `dragCancel` on the `Ctx` (or their C spellings) are the
+drive, and `dropTarget()` is what a driver answers the OS with.
+
+[ADR 0031](adr/0031-a-drop-zone-is-a-row-and-the-files-are-an-event.md) ·
+[`onDrop` row](props.md#container-props) ·
+[`drop` payload](props.md#events) ·
+[`examples/rust/features/drop.rs`](../examples/rust/features/drop.rs)
+
 ### How do I have global shortcuts and a Tab ring at once?
 
 Put the keymap on an `onKey` sink that encloses the controls: a focused

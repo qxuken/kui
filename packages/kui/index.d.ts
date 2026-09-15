@@ -164,6 +164,25 @@ export type HoverMsg<T = AppMsg> = {
   tag?: T;
 };
 
+/** Files dragged in from the OS over an `onDrop` node
+ *  (`docs/adr/0031-a-drop-zone-is-a-row-and-the-files-are-an-event.md`):
+ *  `enter` when they come over the zone, `move` while they move over it
+ *  (never twice for one point), `leave` when they go to another zone, to
+ *  no zone or out of the window, `drop` when they land — and no `leave`
+ *  after a `drop`. `paths` are the OS paths; `x`/`y` the pointer in
+ *  logical viewport coordinates, absent on `leave`. The zone is the
+ *  topmost one under the pointer by paint order: a node inside it is its,
+ *  and a node that is no zone is looked past, so an overlay shown on
+ *  `enter` does not end the hover. */
+export type DropMsg<T = AppMsg> = {
+  kind: 'drop';
+  phase: 'enter' | 'move' | 'leave' | 'drop';
+  paths: string[];
+  x?: number;
+  y?: number;
+  tag?: T;
+};
+
 /** The rect layout gave an `onLayout` node — logical px, viewport
  *  coordinates, after scrolling and position easing — on its first frame
  *  and whenever it changes, never on a frame that left it alone (a
@@ -360,6 +379,7 @@ export type CoreMsg =
   | MenuMsg
   | SelectionRangeMsg
   | HoverMsg
+  | DropMsg
   | LayoutMsg
   | ForceClickMsg
   | DismissMsg
@@ -1738,6 +1758,26 @@ export declare class Ctx {
   cursor(x: number, y: number): void
   cursorLeft(): void
   /**
+   * Files dragged in from the OS are over the window at (`x`, `y`) —
+   * entering and moving alike (ADR 0031): the `onDrop` zone under the
+   * point hears `{kind:"drop", phase:"enter"|"move", paths, x, y,
+   * tag}`, a zone it left hears `leave`, a repeat at the same point is
+   * nothing. `dropTarget()` afterwards is what a driver answers the OS
+   * with.
+   */
+  dragFiles(paths: Array<string>, x: number, y: number): void
+  /**
+   * The dragged files released at (`x`, `y`): the zone there hears
+   * `{kind:"drop", phase:"drop", paths, x, y, tag}` and no `leave`
+   * after it; with no zone there, nothing but the lit zone's `leave`.
+   */
+  dropFiles(paths: Array<string>, x: number, y: number): void
+  /**
+   * The dragged files left the window, or the OS ended the drag
+   * elsewhere: the lit zone hears its `leave`.
+   */
+  dragCancel(): void
+  /**
    * A button press or release. `clicks`: 1 single, 2 double (word
    * select), 3 triple (line select) — the grain everywhere text can be
    * selected: an editor, a `selectable` scope, and a `cells` grid,
@@ -2293,6 +2333,19 @@ export declare class Ctx {
    * as for `isHovered`.
    */
   isPressed(key: string): boolean
+  /**
+   * Whether files dragged in from the OS are over `key` (ADR
+   * 0031) — for drop-dependent layout; the colour swap is the
+   * `dropBg` prop. `key` is either spelling, as for `isHovered`.
+   */
+  isDropTarget(key: string): boolean
+  /**
+   * The `onDrop` zone the dragged files are over, as the hex key
+   * an event carries, or null — what a driver answers the OS
+   * with after each `dragFiles`, and what a test reads to say a
+   * zone was found.
+   */
+  dropTarget(): string | null
   /**
    * The pointer shape for where the pointer is now, in the `cursor`
    * prop's own vocabulary: derived from the topmost node under it
@@ -3232,6 +3285,19 @@ export declare class KuiWindow {
    * as for `isHovered`.
    */
   isPressed(key: string): boolean
+  /**
+   * Whether files dragged in from the OS are over `key` (ADR
+   * 0031) — for drop-dependent layout; the colour swap is the
+   * `dropBg` prop. `key` is either spelling, as for `isHovered`.
+   */
+  isDropTarget(key: string): boolean
+  /**
+   * The `onDrop` zone the dragged files are over, as the hex key
+   * an event carries, or null — what a driver answers the OS
+   * with after each `dragFiles`, and what a test reads to say a
+   * zone was found.
+   */
+  dropTarget(): string | null
   /**
    * The pointer shape for where the pointer is now, in the `cursor`
    * prop's own vocabulary: derived from the topmost node under it

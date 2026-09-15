@@ -9,14 +9,15 @@
     "relaunch": "npm run build && node dist/features/relaunch.mjs",
     "slide": "npm run build && node dist/features/slide.mjs",
     "clipboard": "npm run build && node dist/features/clipboard.mjs",
+    "drop": "npm run build && node dist/features/drop.mjs",
     "virtual_list": "npm run build && node dist/widgets/virtual_list.mjs",
     "typecheck": "tsc --noEmit",
     "smoke": "npm run build && node tools/smoke.mjs",
     "bench": "node tools/bench.mjs"
   },
   "kui": {
-    "windowed": ["apps/counter", "features/window", "features/relaunch", "features/slide", "features/clipboard", "widgets/virtual_list"],
-    "headless": ["apps/counter", "features/slide", "features/clipboard", "widgets/virtual_list", "tools/types"]
+    "windowed": ["apps/counter", "features/window", "features/relaunch", "features/slide", "features/clipboard", "features/drop", "widgets/virtual_list"],
+    "headless": ["apps/counter", "features/slide", "features/clipboard", "features/drop", "widgets/virtual_list", "tools/types"]
   },
   "dependencies": {
     "@qxuken/kui": "file:../../packages/kui"

@@ -2871,6 +2871,53 @@ test('hoverBg, pressedBg and hoverGroup resolve in the core', () => {
   near(b, '#405060');
 });
 
+test('onDrop hears every phase of an OS file drag, and dropBg lights the zone (ADR 0031)', () => {
+  const ctx = new Ctx();
+  const tree = (lit) => box({ dir: 'row' }, [
+    box(
+      { width: 100, height: 100, bg: '#102030', dropBg: '#405060', onDrop: { kind: 'files', zone: 'a' } },
+      // A button inside the zone is the zone's.
+      [box({ width: 30, height: 30, onClick: { kind: 'pick' } }, [], 'pick')],
+      'a',
+    ),
+    box({ width: 100, height: 100, onDrop: { kind: 'files', zone: 'b' } }, [], 'b'),
+    // What an app shows on enter: a hoverable float that is no zone, and
+    // is looked past.
+    lit && box({ float: { anchor: 'viewport', at: ['start', 'start'], self: ['start', 'start'], dx: 0, dy: 0 }, width: 200, height: 100, hoverable: true }, [], 'overlay'),
+  ].filter(Boolean));
+  ctx.frame(320, 240, 1, tree(false));
+  const paths = ['/tmp/one.txt', '/tmp/two.png'];
+  ctx.dragFiles(paths, 10, 10);
+  let evs = ctx.pollEvents();
+  assert.deepEqual(evs.map((e) => e.payload), [
+    { kind: 'drop', phase: 'enter', paths, x: 10, y: 10, tag: { kind: 'files', zone: 'a' } },
+  ]);
+  const aKey = evs[0].key;
+  assert.equal(ctx.dropTarget(), aKey);
+  assert.ok(ctx.isDropTarget('a'));
+  // The zone lights up, in the frame the view builds in answer.
+  ctx.frame(320, 240, 1, tree(true));
+  const zone = decodeQuads(ctx.quads()).find((q) => q.kind === 0 && q.w === 100 && q.h === 100);
+  assert.ok(zone && Math.abs(zone.color[0] - 0x40 / 255) < 0.01, 'dropBg painted');
+  // Over the overlay, at a new point: a move on the zone, not a leave.
+  ctx.dragFiles(paths, 50, 50);
+  assert.deepEqual(ctx.pollEvents().map((e) => e.payload.phase), ['move']);
+  // Into the other zone: leave (no point), then enter.
+  ctx.dragFiles(paths, 150, 50);
+  evs = ctx.pollEvents();
+  assert.deepEqual(evs.map((e) => `${e.payload.phase}:${e.payload.tag.zone}`), ['leave:a', 'enter:b']);
+  assert.equal(evs[0].payload.x, undefined);
+  // Landed: the drop, no leave after it, nothing lit.
+  ctx.dropFiles(paths, 150, 50);
+  evs = ctx.pollEvents();
+  assert.deepEqual(evs.map((e) => `${e.payload.phase}:${e.payload.tag.zone}`), ['drop:b']);
+  assert.equal(ctx.dropTarget(), null);
+  // Out of the window: the lit zone's leave.
+  ctx.dragFiles(paths, 10, 10);
+  ctx.dragCancel();
+  assert.deepEqual(ctx.pollEvents().map((e) => e.payload.phase), ['enter', 'leave']);
+});
+
 test('onHover emits enter and leave with the tag', () => {
   const ctx = new Ctx();
   const tree = box({ dir: 'row' }, [
@@ -3931,6 +3978,23 @@ SCENE_TREES.layers = (_fx, phase) => {
   ].filter(Boolean))]);
 };
 
+// `conformance::build_drop` (ADR 0031): two zones, a button inside the
+// first, and across the phases a hoverable float over the first zone that
+// is no zone (phase 1) and a modal over it (phase 2).
+SCENE_TREES.drop = (_fx, phase) => {
+  const over = { anchor: 'viewport', at: ['start', 'start'], self: ['start', 'start'], dx: 20, dy: 20 };
+  return root({}, [box({ dir: 'row', width: 'grow', height: 'grow' }, [
+    box(
+      { width: 200, height: 'grow', pad: 10, bg: '#22242c', dropBg: '#2b3350', onDrop: { kind: 'files' } },
+      [box({ dir: 'row', width: 60, height: 40, bg: '#3b5bd4', onClick: { kind: 'pick' }, label: 'Pick' }, [], 'pick')],
+      'files',
+    ),
+    box({ width: 'grow', height: 'grow', bg: '#30344a', onDrop: { kind: 'other' } }, [], 'other'),
+    phase === 1 && box({ float: over, width: 160, height: 160, hoverable: true }, [], 'overlay'),
+    phase === 2 && box({ float: over, width: 160, height: 160, bg: '#101018', modal: { kind: 'dismiss' } }, [], 'confirm'),
+  ].filter(Boolean))]);
+};
+
 // `conformance::build_selection`: a `selectable` card the pointer drags
 // across, so the frame carries the three highlight quads under its glyphs
 // (ADR 0017). One row on the container is the whole declaration — the
@@ -4285,6 +4349,13 @@ function driveScene(env, steps, build) {
       const s = step[1] ? String.fromCodePoint(step[1]) : '';
       ctx.preedit(s, s ? [0, Buffer.byteLength(s)] : null);
     } else if (step[0] === 'commit') ctx.commit(String.fromCodePoint(step[1]));
+    // Files dragged in from the OS (ADR 0031): `n` files spelled
+    // `/drop/1.txt` … `/drop/n.txt` (`conformance::drop_paths`), at a point.
+    else if (step[0] === 'dragfiles' || step[0] === 'dropfiles') {
+      const paths = Array.from({ length: step[1] }, (_, i) => `/drop/${i + 1}.txt`);
+      if (step[0] === 'dragfiles') ctx.dragFiles(paths, step[2], step[3]);
+      else ctx.dropFiles(paths, step[2], step[3]);
+    } else if (step[0] === 'dragcancel') ctx.dragCancel();
     else throw new Error(`unknown conformance step ${step[0]}`);
     events.push(...ctx.pollEvents());
     commands.push(...ctx.windowCommands());
@@ -4395,6 +4466,8 @@ function sceneReport(name, env, steps, { ctx, events, commands, audio }) {
     // A scroll's lines ride the same way — the whole lines a grid's notch
     // covers, `-` off a grid — so a lost carry disagrees here (ADR 0029).
     if (p?.kind === 'scroll') tag += ` ${p.lines ?? '-'}`;
+    // A drop's phase and its path count ride the same way (ADR 0031).
+    if (p?.kind === 'drop') tag += ` ${p.phase} ${p.paths.length}`;
     lines.push(`event ${p?.kind ?? '-'} ${tag}`);
   }
   for (const c of commands) lines.push(commandLine(c));
@@ -6180,7 +6253,7 @@ test('the two classes are the verb table\'s Node column, both ways (B1a)', () =>
     'warnUnknownProps', 'warnUnknownTokens', 'clips', 'fragmentDraws', 'textureDraws', 'stats',
     // The input injection, one per `InputEvent` (the table's `handle_input` row).
     'cursor', 'cursorLeft', 'mouse', 'scroll', 'text', 'commit', 'preedit', 'key', 'keyDown', 'keyUp',
-    'press', 'release', 'access',
+    'press', 'release', 'access', 'dragFiles', 'dropFiles', 'dragCancel',
     // The two-class mechanics: the window's own loop and its lifetime.
     'useWindow', 'pump', 'pumpUntil', 'nextDeadlineMs', 'size', 'frameStats', 'close',
   ]);

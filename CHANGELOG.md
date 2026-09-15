@@ -64,8 +64,62 @@ was the first bare bump to break an app in five releases).
   passed headless, reads the window's spelling now; a `physical` a
   caller spells is still delivered as spelled.
 
+- **C: ABI 17 → 18.** `KuiSpec` gained `on_drop` and `drop_bg` at its
+  end — the first [in] append under the amended rule (ADR 0006, backlog
+  AR50), so it bumps: the library reads the whole struct, and a host
+  that did not recompile would have the two read from past its end.
+  Recompile; a zeroed tail is no zone and no colour. The same version
+  adds `kui_input_drag_files`, `kui_input_drop_files`,
+  `kui_input_drag_cancel`, `kui_is_drop_target` and `kui_drop_target`.
+
 ### Added
 
+- **A drop zone: `onDrop` on any node, the files as an event, `dropBg`
+  while they hover**
+  ([ADR 0031](docs/adr/0031-a-drop-zone-is-a-row-and-the-files-are-an-event.md),
+  backlog C40). A node declaring `onDrop` (JSX), `on_drop` (Rust, Lua)
+  or `KuiSpec.on_drop` (C) is a zone: files dragged in from the OS over
+  it emit `{kind:"drop", phase:"enter"|"move"|"leave"|"drop", paths, x,
+  y, tag}` — the OS paths as strings, the pointer in logical viewport
+  coordinates (absent on `leave`), and no `leave` after a `drop`. The
+  zone under the files is the topmost *zone* by paint order: a button
+  or a field inside a zone is the zone's, and a node that is no zone
+  and has none enclosing it is looked past — so the banner an app
+  floats over the zone in answer to `enter` cannot make the zone lose
+  the files, the flicker HTML's `dragleave` is known for. `dropBg` /
+  `drop_bg` lights the zone while they hover, resolved in the same pick
+  as `hoverBg` and winning over it, eased by `transition`, cleared on
+  leave, drop and cancel. Nothing is re-resolved when a frame lands:
+  only the driver's next report moves the files, and a zone the view
+  stops declaring mid-drag hears its prepared `leave` then. Three
+  `InputEvent`s for a driver (`DragFiles { paths, at }` — entering and
+  moving alike, `DropFiles`, `DragCancel`; `Ctx.dragFiles` /
+  `dropFiles` / `dragCancel` in Node, `kui_input_drag_files` /
+  `drop_files` / `drag_cancel` in C), and one reader in every binding
+  (`Core::drop_target` / `Ui::is_drop_target`, `dropTarget()` /
+  `isDropTarget`, `env.drop_target()` / `is_drop_target`,
+  `kui_drop_target` / `kui_is_drop_target`) — what a driver answers the
+  OS with. The `drop` corpus scene pins the resolver's three cases in
+  four adapters (`Step::DragFiles` / `DropFiles` / `DragCancel`, `n`
+  files spelled `/drop/1.txt` …). `examples/rust/features/drop.rs` and
+  `examples/node/features/drop.tsx` are the subject, headless and by
+  hand. No access row: assistive technology has no drag protocol, and a
+  screen-reader user's way in is a button beside the zone.
+- **The Rust runner answers a file drag with where it is, on macOS.**
+  winit 0.30's `HoveredFile` / `DroppedFile` / `HoveredFileCancelled`
+  carry no position and winit never implements `draggingUpdated:`, so
+  the runner overrides the five `NSDraggingDestination` selectors on
+  winit's window delegate (`crates/kui/src/macos_drop.rs`, the
+  mechanism `macos_text_input` uses) — replaced, not wrapped, since
+  winit's would queue every file a second time — reads
+  `draggingLocation` and the pasteboard's file names, and answers
+  `draggingUpdated:` from a stamp the runner writes after each dispatch
+  (`drop_target().is_some()`): the copy badge over a zone, none off it,
+  and a release off every zone refused so the icon slides home, one
+  update late. Verified with a file dragged from the Finder onto the
+  example. On Windows and Linux the runner takes winit's events at the
+  pane's last cursor, so a zone is found where the pointer was before
+  the drag and `move` never fires (backlog W19).
 - **`owed()` — what the last frame left owed, by kind** (backlog F64,
   the pomodoro's third wish): `animating()` is one bool over five sources
   and a keyframe `repeat` cycle sets it on every frame, so under one

@@ -520,6 +520,15 @@ that are hard to reverse and would look arbitrary without their context.
   frame moves a node under a still cursor (`Core::take_pending_events`,
   routed by every driver after a frame). `is_hovered` / `is_pressed` stay
   as queries for Rust and Lua views and are mirrored on `KuiWindow`.
+  Files dragged in from the OS are the same shape one row over
+  ([ADR 0031](docs/adr/0031-a-drop-zone-is-a-row-and-the-files-are-an-event.md)):
+  `on_drop` (JSX `onDrop`, `KuiSpec.on_drop`) makes a node a drop zone
+  that hears `{kind="drop", phase="enter"|"move"|"leave"|"drop", paths,
+  x, y, tag}`, and `drop_bg` lights it while they hover. The zone is the
+  topmost zone under the pointer — a button inside it is its, a banner
+  the view floats over it on `enter` is looked past — and the driver
+  reports the position (the macOS runner reads it from AppKit, which
+  winit does not surface).
 - **Measurement and layout are data, in that order.** "Declare it, the
   core resolves it" is a strategy of enumeration, and the first behaviour
   nobody enumerated needs a way out that is not an imperative hook. The

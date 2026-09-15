@@ -26,7 +26,10 @@ type AppMessages =
   // features/clipboard.tsx: the register's key-sink tag.
   | { kind: 'register' }
   // features/relaunch.tsx: the button that closes the window for the next.
-  | { kind: 'reopen' };
+  | { kind: 'reopen' }
+  // features/drop.tsx: the zone's tag, and the button inside it.
+  | { kind: 'zone' }
+  | { kind: 'clear' };
 
 declare module '@qxuken/kui/jsx-runtime' {
   interface KuiMsg {

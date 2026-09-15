@@ -282,6 +282,17 @@ impl<'a> Ui<'a> {
         self.core.is_pressed(key)
     }
 
+    /// Whether files dragged in from the OS are over `key` (ADR 0031) —
+    /// for drop-dependent *layout*; a colour swap is `drop_bg`.
+    pub fn is_drop_target(&self, key: Key) -> bool {
+        self.core.is_drop_target(key)
+    }
+
+    /// The zone the dragged files are over, if any.
+    pub fn drop_target(&self) -> Option<Key> {
+        self.core.drop_target()
+    }
+
     /// Whether any member of a hover group (`NodeSpec::hover_group`) is
     /// hovered; the id comes from `NodeSpec::hover_group_id`.
     pub fn is_group_hovered(&self, group: u64) -> bool {

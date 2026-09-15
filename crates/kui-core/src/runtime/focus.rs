@@ -564,6 +564,31 @@ impl Core {
         None
     }
 
+    /// The zone node `i` belongs to: itself when it declares `on_drop`,
+    /// else the nearest enclosing declaration (ADR 0031, decision 2) —
+    /// the same walk as `enclosing_menu`, stopping at the modal boundary
+    /// and skipping a disabled node's own.
+    pub(crate) fn enclosing_drop(&self, i: usize) -> Option<usize> {
+        let declares = |j: usize| {
+            self.tree.specs[j].events().on_drop.is_some() && !self.tree.specs[j].disabled
+        };
+        if declares(i) {
+            return Some(i);
+        }
+        let mut n = self.tree.parent[i];
+        while n != crate::tree::NIL {
+            let j = n as usize;
+            if !self.interactive(j) {
+                return None;
+            }
+            if declares(j) {
+                return Some(j);
+            }
+            n = self.tree.parent[j];
+        }
+        None
+    }
+
     /// The focused node's index in the last frame, if it is there.
     pub(crate) fn focus_index(&self) -> Option<usize> {
         self.tree.index_of(self.focus?)

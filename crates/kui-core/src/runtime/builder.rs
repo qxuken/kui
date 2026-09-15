@@ -194,6 +194,17 @@ impl Core {
         self.interaction.is_hovered(key)
     }
 
+    /// Whether files dragged in from the OS are over `key` (ADR 0031).
+    pub fn is_drop_target(&self, key: Key) -> bool {
+        self.interaction.is_drop_target(key)
+    }
+
+    /// The zone the dragged files are over, if any — what a driver
+    /// answers the OS with (ADR 0031, decision 5).
+    pub fn drop_target(&self) -> Option<Key> {
+        self.interaction.drop_target()
+    }
+
     pub fn is_pressed(&self, key: Key) -> bool {
         self.interaction.is_pressed(key)
     }
@@ -247,13 +258,28 @@ impl Core {
         let Some(interact) = spec.interact.as_deref() else {
             return;
         };
-        let (hover_bg, pressed_bg, focus_bg, group) = (
+        let (hover_bg, pressed_bg, focus_bg, drop_bg, group) = (
             interact.hover_bg,
             interact.pressed_bg,
             interact.focus_bg,
+            interact.drop_bg,
             interact.hover_group,
         );
-        if spec.disabled || (hover_bg.is_none() && pressed_bg.is_none() && focus_bg.is_none()) {
+        if spec.disabled
+            || (hover_bg.is_none()
+                && pressed_bg.is_none()
+                && focus_bg.is_none()
+                && drop_bg.is_none())
+        {
+            return;
+        }
+        // Dragged files over the zone win over every pointer state: a
+        // press cannot be held while the OS holds a drag (ADR 0031,
+        // decision 3).
+        if let Some(c) = drop_bg
+            && self.interaction.is_drop_target(key)
+        {
+            spec.style.bg = c;
             return;
         }
         let pressed = self.interaction.is_pressed(key)

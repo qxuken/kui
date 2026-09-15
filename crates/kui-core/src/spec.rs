@@ -671,6 +671,17 @@ pub struct EventSpec {
     /// `tag` — for hover-dependent *layout* (a close button that appears)
     /// where a color swap isn't enough. Implies hover tracking.
     pub on_hover: Option<Value>,
+    /// Drop-zone events (`docs/adr/0031-a-drop-zone-is-a-row-and-the-files-are-an-event.md`):
+    /// files dragged in from the OS over this node emit
+    /// `{kind="drop", phase="enter"|"move"|"leave"|"drop", paths, x, y,
+    /// tag}` with this payload under `tag` — `paths` the OS paths as
+    /// strings, `x`/`y` the pointer in viewport coordinates (absent on
+    /// `leave`). The zone under the files is the topmost *zone* by paint
+    /// order: a node inside a zone resolves to it, and a node that is no
+    /// zone and has none enclosing it is looked past, so an overlay shown
+    /// on `enter` cannot make the zone lose the files. No `leave` follows
+    /// a `drop`. Implies hover tracking.
+    pub on_drop: Option<Value>,
     /// Layout events: the rect layout gave this node arrives as
     /// `{kind="layout", x, y, w, h, parent: {x, y, w, h}, tag}` (logical px,
     /// viewport coordinates, after scrolling and position easing) — on the
@@ -701,6 +712,7 @@ impl EventSpec {
         on_force_click: None,
         on_scroll: None,
         on_hover: None,
+        on_drop: None,
         on_layout: None,
         modal: None,
     };
@@ -852,6 +864,12 @@ pub struct InteractSpec {
     /// Declaring one replaces the ring the core draws by default. Pressed
     /// wins over focus wins over hover; eases with `transition`.
     pub focus_bg: Option<Color>,
+    /// Background while files dragged in from the OS are over this node
+    /// (ADR 0031, decision 3). Wins over pressed, focus and hover — a press
+    /// cannot be held while the OS holds a drag — and eases with
+    /// `transition`; clears when the files leave, land or the drag is
+    /// cancelled. Implies hover tracking.
+    pub drop_bg: Option<Color>,
     /// Makes this node a *selection scope*: the text of every node inside
     /// it is one selectable run of text, in tree order, and a press-drag
     /// inside it selects across all of them (see
@@ -951,6 +969,7 @@ impl InteractSpec {
         click_sound: None,
         hover_sound: None,
         focus_bg: None,
+        drop_bg: None,
         selectable: false,
         focus_region: false,
         scrollbar: Scrollbar::DEFAULT,
@@ -1041,10 +1060,12 @@ impl NodeSpec {
                     || e.on_context_menu.is_some()
                     || e.on_force_click.is_some()
                     || e.on_hover.is_some()
+                    || e.on_drop.is_some()
             })
             || self.interact.as_deref().is_some_and(|i| {
                 i.hover_bg.is_some()
                     || i.pressed_bg.is_some()
+                    || i.drop_bg.is_some()
                     || i.hover_group.is_some()
                     || i.click_sound.is_some()
                     || i.hover_sound.is_some()
@@ -1362,6 +1383,13 @@ impl NodeSpec {
         self
     }
 
+    /// Background while dragged files are over this node (see the
+    /// `drop_bg` field, ADR 0031).
+    pub fn drop_bg(mut self, c: Color) -> Self {
+        self.interact_mut().drop_bg = Some(c);
+        self
+    }
+
     /// Makes this node a selection scope (see the `selectable` field):
     /// the text inside it becomes one selectable run.
     pub fn selectable(mut self) -> Self {
@@ -1451,6 +1479,13 @@ impl NodeSpec {
     /// is identification enough.
     pub fn on_hover(mut self, tag: impl Into<Value>) -> Self {
         self.events_mut().on_hover = Some(tag.into());
+        self
+    }
+
+    /// Makes this node a drop zone for files dragged in from the OS (see
+    /// the `on_drop` field, ADR 0031).
+    pub fn on_drop(mut self, tag: impl Into<Value>) -> Self {
+        self.events_mut().on_drop = Some(tag.into());
         self
     }
 

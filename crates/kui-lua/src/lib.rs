@@ -603,6 +603,27 @@ fn env_table<'scope, 'env: 'scope>(
             Ok(ui.is_pressed(key))
         })?,
     )?;
+    // Files dragged in from the OS are over this node (ADR 0031): for
+    // drop-dependent *layout*; the colour swap is the `drop_bg` prop.
+    t.set(
+        "is_drop_target",
+        scope.create_function(move |_, key: mlua::Value| {
+            let mut ui = ui.borrow_mut();
+            let Some(key) = key_query(&mut ui, key)? else {
+                return Ok(false);
+            };
+            Ok(ui.is_drop_target(key))
+        })?,
+    )?;
+    // The `on_drop` zone the dragged files are over — its key, nil for
+    // none.
+    t.set(
+        "drop_target",
+        scope.create_function(move |_, ()| {
+            let ui = ui.borrow();
+            Ok(ui.drop_target().map(|k| k.0 as i64))
+        })?,
+    )?;
     // Moving focus from the script, the imperative half of `key_focus`.
     // `set_focus`, not `focus`: `env.focus` is already the reading above
     // and alpha.5 shipped it, so the verb takes the longer name rather
@@ -3805,6 +3826,70 @@ mod tests {
         });
         frame(&mut core, &mut ext);
         assert!(!pressed(&ext), "released");
+    }
+
+    /// `env.is_drop_target(key)` and `env.drop_target()` beside the trio
+    /// (ADR 0031): a script that shows an insertion mark while files
+    /// hover reads them; the colour alone is `drop_bg`, resolved in the
+    /// core.
+    #[test]
+    fn scripts_read_the_drop_target() {
+        let mut ext = LuaExtension::from_source(
+            "drop",
+            r#"
+                function view(env)
+                  over = env.is_drop_target(zone_key)
+                  target = env.drop_target()
+                  return column { key = "root", pad = 10,
+                    row { key = "zone", width = 100, height = 40,
+                          bg = 0x333333ff, drop_bg = 0x335533ff, on_drop = "files" },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let zone = Key::ROOT.str("root").str("zone");
+        ext.lua.globals().set("zone_key", zone.0 as i64).unwrap();
+        let mut core = Core::new();
+        let over = |ext: &LuaExtension| ext.lua.globals().get::<bool>("over").unwrap();
+        let target = |ext: &LuaExtension| ext.lua.globals().get::<Option<i64>>("target").unwrap();
+
+        frame(&mut core, &mut ext);
+        assert!(!over(&ext) && target(&ext).is_none(), "idle");
+
+        let paths = vec!["/drop/1.txt".to_string()];
+        let evs = core.handle_input(InputEvent::DragFiles {
+            paths: paths.clone(),
+            at: Vec2::new(50.0, 30.0),
+        });
+        assert_eq!(
+            evs[0].payload.get("tag").and_then(Value::as_str),
+            Some("files")
+        );
+        frame(&mut core, &mut ext);
+        assert!(over(&ext), "the files are over the zone");
+        assert_eq!(target(&ext), Some(zone.0 as i64));
+        let (dl, _) = core.output();
+        let lit = dl
+            .quads
+            .iter()
+            .find(|q| q.rect.w == 100.0)
+            .map(|q| q.color)
+            .expect("zone quad");
+        assert!(
+            (lit.g - 0x55 as f32 / 255.0).abs() < 0.01,
+            "drop_bg painted"
+        );
+
+        core.handle_input(InputEvent::DropFiles {
+            paths,
+            at: Vec2::new(50.0, 30.0),
+        });
+        frame(&mut core, &mut ext);
+        assert!(
+            !over(&ext) && target(&ext).is_none(),
+            "a drop ends the hover"
+        );
     }
 
     /// The focus verbs: `env.set_focus(key)` moves focus now,

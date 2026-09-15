@@ -76,6 +76,22 @@ impl Core {
         let interactive = self.interactive(i);
         let spec = &self.tree.specs[i];
         let style = spec.style;
+        // The zone this node's regions belong to — its own `on_drop` or
+        // an ancestor's — by the context menu's walk (ADR 0031, decision
+        // 2); skipped wholesale on a frame with no zone.
+        let drop = if self.tree.any_drop && interactive {
+            self.enclosing_drop(i).map(|j| crate::input::DropOwner {
+                key: self.tree.keys[j],
+                origin: self.tree.origins[j],
+                tag: self.tree.specs[j]
+                    .events()
+                    .on_drop
+                    .clone()
+                    .expect("enclosing_drop returns a node that declares one"),
+            })
+        } else {
+            None
+        };
         // A stroke emits no hit region: it takes no input (ADR 0010,
         // decision 7).
         if spec.hover_tracked() && interactive {
@@ -137,6 +153,7 @@ impl Core {
                 key_sink: spec.events().on_key.clone().filter(|_| live),
                 key_up: spec.events().key_up,
                 context_menu,
+                drop: drop.clone(),
                 focusable: crate::access::focusable(&self.tree, i),
                 edit_origin: None,
                 select_scope: self.scope_of(i).filter(|_| live),
@@ -204,6 +221,9 @@ impl Core {
                 key_sink: None,
                 key_up: false,
                 context_menu: None,
+                // A field inside a zone is the zone's: files dropped on
+                // it land there.
+                drop,
                 focusable: !spec.disabled,
                 window: None,
                 hover: None,

@@ -24,6 +24,9 @@ mod keys;
 /// (backlog W17).
 #[cfg(target_os = "macos")]
 mod macos_chrome;
+/// Files dragged in from the Finder, with where they are (ADR 0031).
+#[cfg(target_os = "macos")]
+mod macos_drop;
 #[cfg(target_os = "macos")]
 mod macos_force;
 /// A non-activating window that refuses to become key (the popup flick).
@@ -487,6 +490,9 @@ impl Launcher {
         // dictation: no winit event carries it.
         #[cfg(target_os = "macos")]
         macos_text_input::set_waker(Waker(event_loop.create_proxy()));
+        // And a file drag's position (ADR 0031), which winit's do not.
+        #[cfg(target_os = "macos")]
+        macos_drop::set_waker(Waker(event_loop.create_proxy()));
         event_loop.run_app(&mut shell)?;
         Ok(())
     }
@@ -518,6 +524,8 @@ impl Launcher {
         // dictation: no winit event carries it.
         #[cfg(target_os = "macos")]
         macos_text_input::set_waker(Waker(event_loop.create_proxy()));
+        #[cfg(target_os = "macos")]
+        macos_drop::set_waker(Waker(event_loop.create_proxy()));
         // First pump delivers `resumed`, creating the window + renderer —
         // or, on a loop taken back from an earlier runner, `about_to_wait`
         // does, since winit's init events came and went with the first.
@@ -606,12 +614,17 @@ fn input_completes(ev: &InputEvent) -> bool {
         | InputEvent::KeyUp(_)
         | InputEvent::Text(_)
         | InputEvent::Commit(_)
-        | InputEvent::Access(_) => true,
+        | InputEvent::Access(_)
+        // A drop is a release; a cancel ends the drag the same way.
+        | InputEvent::DropFiles { .. }
+        | InputEvent::DragCancel => true,
         InputEvent::CursorMoved(_)
         | InputEvent::CursorLeft
         | InputEvent::Scroll(_)
         | InputEvent::Preedit(..)
-        | InputEvent::Modifiers(_) => false,
+        | InputEvent::Modifiers(_)
+        // Files moving over the window is the pointer moving.
+        | InputEvent::DragFiles { .. } => false,
     }
 }
 
@@ -707,6 +720,7 @@ impl<A: App> PumpRunner<A> {
         #[cfg(target_os = "macos")]
         for pane in &panes {
             macos_text_input::detach(&pane.window);
+            macos_drop::detach(&pane.window);
         }
         if !panes.is_empty() {
             self.shell.main_core = Some(panes.remove(0).core);
@@ -1140,6 +1154,70 @@ impl<A: App> Shell<A> {
         self.exit_requested = true;
         if !self.pumped {
             event_loop.exit();
+        }
+    }
+
+    /// Whether the platform's own drag callbacks are answering for every
+    /// window, so winit's positionless file events are the duplicates.
+    fn file_drag_is_overridden(&self) -> bool {
+        #[cfg(target_os = "macos")]
+        {
+            macos_drop::installed()
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            false
+        }
+    }
+
+    /// The file drags the platform reported since the last turn (ADR
+    /// 0031): on macOS the delegate override's messages, each with the
+    /// position AppKit gave it, dispatched to the pane whose delegate
+    /// spoke and followed by the stamp that delegate answers the OS from;
+    /// elsewhere the batch winit's per-file events built, at the pane's
+    /// last cursor.
+    fn pump_file_drag(&mut self, event_loop: &ActiveEventLoop) {
+        #[cfg(target_os = "macos")]
+        for (delegate, msg) in macos_drop::take_messages() {
+            let Some(i) = self
+                .panes
+                .iter()
+                .position(|p| macos_drop::delegate_ptr(&p.window) == Some(delegate))
+            else {
+                continue;
+            };
+            let ev = match msg {
+                macos_drop::DragMsg::Over(paths, at) => InputEvent::DragFiles { paths, at },
+                macos_drop::DragMsg::Drop(paths, at) => InputEvent::DropFiles { paths, at },
+                macos_drop::DragMsg::Cancel => InputEvent::DragCancel,
+            };
+            if let Some(i) = self.dispatch(event_loop, i, ev) {
+                let pane = &self.panes[i];
+                macos_drop::stamp(&pane.window, pane.core.drop_target().is_some());
+            }
+        }
+        // Collected first, then dispatched by window id: a drop's handler
+        // may close its window, and a pane's index is not its identity
+        // (backlog AR39).
+        let batches: Vec<(WindowId, InputEvent)> = self
+            .panes
+            .iter_mut()
+            .filter_map(|pane| {
+                let dropped = pane.file_drag_pending.take()?;
+                let paths = std::mem::take(&mut pane.file_drag);
+                let at = pane.cursor;
+                let ev = if dropped {
+                    InputEvent::DropFiles { paths, at }
+                } else {
+                    InputEvent::DragFiles { paths, at }
+                };
+                Some((pane.id, ev))
+            })
+            .collect();
+        for (id, ev) in batches {
+            if let Some(i) = self.pane_of(id) {
+                self.dispatch(event_loop, i, ev);
+            }
         }
     }
 
@@ -1585,6 +1663,40 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
             WindowEvent::CursorLeft { .. } => {
                 self.dispatch(event_loop, i, InputEvent::CursorLeft);
             }
+            // Files dragged in from the OS, as winit reports them: one
+            // event per file and no position (ADR 0031, decision 5). On
+            // macOS the delegate override supersedes all three with the
+            // position AppKit has (`mod macos_drop`); elsewhere the files
+            // are collected per batch and dispatched at its end, at the
+            // pane's last reported cursor — the point at enter and at
+            // release, since no platform here reports the drag moving.
+            WindowEvent::HoveredFile(path) => {
+                if !self.file_drag_is_overridden() {
+                    let pane = &mut self.panes[i];
+                    pane.file_drag.push(path.to_string_lossy().into_owned());
+                    pane.file_drag_pending = Some(false);
+                }
+            }
+            WindowEvent::DroppedFile(path) => {
+                if !self.file_drag_is_overridden() {
+                    let pane = &mut self.panes[i];
+                    // A hover batch still waiting in the same turn is the
+                    // same files: the drop's list starts over.
+                    if pane.file_drag_pending != Some(true) {
+                        pane.file_drag.clear();
+                    }
+                    pane.file_drag.push(path.to_string_lossy().into_owned());
+                    pane.file_drag_pending = Some(true);
+                }
+            }
+            WindowEvent::HoveredFileCancelled => {
+                if !self.file_drag_is_overridden() {
+                    let pane = &mut self.panes[i];
+                    pane.file_drag.clear();
+                    pane.file_drag_pending = None;
+                    self.dispatch(event_loop, i, InputEvent::DragCancel);
+                }
+            }
             // Recorded, not acted on: what a view reads is derived from
             // every window's copy at the end of the batch (`settle_focus`),
             // because focus *moving* is two events and neither alone is the
@@ -1960,6 +2072,7 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
         self.pump_native_menu(event_loop);
         self.pump_menu_bar(event_loop);
         self.pump_text_input(event_loop);
+        self.pump_file_drag(event_loop);
         self.settle_focus();
         self.dismiss_popups_if_deactivated();
         self.poll_audio();

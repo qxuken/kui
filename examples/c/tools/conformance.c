@@ -1374,6 +1374,68 @@ static void conf_layers(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* conformance::build_drop (ADR 0031): two zones, a button inside the
+ * first, and across the phases a hoverable float over the first zone that
+ * is no zone (phase 1) and a modal over it (phase 2). The tags are
+ * borrowed for the open call, like `modal`. */
+static void conf_drop(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    KuiSpec outer = {.dir = KUI_ROW, .width = {KUI_GROW, 1}, .height = {KUI_GROW, 1}};
+    kui_open(ui, &outer, NULL);
+    KuiValue *files = kui_value_map();
+    kui_value_map_set(files, KUI_STR("kind"), kui_value_str(KUI_STR("files")));
+    KuiSpec zone = {
+        .width = {KUI_FIXED, 200}, .height = {KUI_GROW, 1},
+        .pad_l = 10, .pad_r = 10, .pad_t = 10, .pad_b = 10,
+        .bg = 0x22242cff, .drop_bg = 0x2b3350ff, .on_drop = files,
+    };
+    kui_open_keyed(ui, KUI_STR("files"), &zone, NULL);
+    {
+        KuiValue *pick = kui_value_map();
+        kui_value_map_set(pick, KUI_STR("kind"), kui_value_str(KUI_STR("pick")));
+        KuiSpec button = {.dir = KUI_ROW, .width = {KUI_FIXED, 60}, .height = {KUI_FIXED, 40},
+                          .bg = 0x3b5bd4ff, .label = KUI_STR("Pick")};
+        kui_open_keyed(ui, KUI_STR("pick"), &button, pick);
+        kui_close(ui);
+    }
+    kui_close(ui);
+    kui_value_free(files);
+    KuiValue *other = kui_value_map();
+    kui_value_map_set(other, KUI_STR("kind"), kui_value_str(KUI_STR("other")));
+    KuiSpec second = {.width = {KUI_GROW, 1}, .height = {KUI_GROW, 1},
+                      .bg = 0x30344aff, .on_drop = other};
+    kui_open_keyed(ui, KUI_STR("other"), &second, NULL);
+    kui_close(ui);
+    kui_value_free(other);
+    if (phase == 1) {
+        KuiSpec overlay = {
+            .float_mode = KUI_FLOAT_VIEWPORT,
+            .float_anchor_x = KUI_START, .float_anchor_y = KUI_START,
+            .float_self_x = KUI_START, .float_self_y = KUI_START,
+            .float_dx = 20, .float_dy = 20,
+            .width = {KUI_FIXED, 160}, .height = {KUI_FIXED, 160}, .hoverable = 1,
+        };
+        kui_open_keyed(ui, KUI_STR("overlay"), &overlay, NULL);
+        kui_close(ui);
+    }
+    if (phase == 2) {
+        KuiValue *modal = kui_value_map();
+        kui_value_map_set(modal, KUI_STR("kind"), kui_value_str(KUI_STR("dismiss")));
+        KuiSpec confirm = {
+            .float_mode = KUI_FLOAT_VIEWPORT,
+            .float_anchor_x = KUI_START, .float_anchor_y = KUI_START,
+            .float_self_x = KUI_START, .float_self_y = KUI_START,
+            .float_dx = 20, .float_dy = 20,
+            .width = {KUI_FIXED, 160}, .height = {KUI_FIXED, 160},
+            .bg = 0x101018ff, .modal = modal,
+        };
+        kui_open_keyed(ui, KUI_STR("confirm"), &confirm, NULL);
+        kui_close(ui);
+        kui_value_free(modal);
+    }
+    kui_close(ui);
+}
+
 /* conformance::build_sampler (backlog AR47): the generic rows no other
  * scene declares, on four nodes. `center` is both alignments at
  * KUI_CENTER here, as the Rust builder's center() is; the per-corner
@@ -1529,6 +1591,7 @@ static const ConfScene CONF_SCENES[] = {
     {"menubar", conf_menu_bar},
     {"virtual", conf_virtual},
     {"layers", conf_layers},
+    {"drop", conf_drop},
     {"anchor", conf_anchor},
     {"scrollbar", conf_scrollbar},
     {"tokens", conf_tokens},
@@ -1543,9 +1606,10 @@ static const ConfScene CONF_SCENES[] = {
 #define CONF_MAX_STEPS 32
 typedef struct ConfStep {
     char kind[16];
-    int a, b;
+    int a, b, c;
     /* How many numbers followed the kind: "phase" and "time" carry one,
-     * "cursor" and "scroll" two, the rest none. */
+     * "cursor" and "scroll" two, "dragfiles" and "dropfiles" three, the
+     * rest none. */
     int args;
 } ConfStep;
 
@@ -1670,6 +1734,20 @@ static void conf_apply(KuiCtx *ctx, const ConfStep *s) {
         size_t n = conf_utf8((uint32_t)s->a, b);
         kui_input_commit(ctx, (KuiStr){b, n});
     }
+    /* Files dragged in from the OS (ADR 0031): `a` files spelled
+     * /drop/1.txt ... /drop/a.txt (conformance::drop_paths), at (b, c). */
+    else if (strcmp(s->kind, "dragfiles") == 0 || strcmp(s->kind, "dropfiles") == 0) {
+        char names[8][16];
+        KuiStr paths[8];
+        size_t n = s->a > 8 ? 8 : (size_t)s->a;
+        for (size_t i = 0; i < n; i++) {
+            snprintf(names[i], sizeof names[i], "/drop/%zu.txt", i + 1);
+            paths[i] = (KuiStr){(const uint8_t *)names[i], strlen(names[i])};
+        }
+        if (s->kind[2] == 'a') kui_input_drag_files(ctx, paths, n, (float)s->b, (float)s->c);
+        else kui_input_drop_files(ctx, paths, n, (float)s->b, (float)s->c);
+    }
+    else if (strcmp(s->kind, "dragcancel") == 0) kui_input_drag_cancel(ctx);
     else {
         fprintf(stderr, "conformance: unknown step '%s'\n", s->kind);
         exit(1);
@@ -1718,6 +1796,14 @@ static void conf_drain(KuiCtx *ctx, Rep *events) {
             int64_t n = 0;
             if (l && kui_value_as_int(l, &n)) repf(events, " %lld", (long long)n);
             else repf(events, " -");
+        }
+        /* A drop's phase and its path count ride the same way (ADR 0031). */
+        if (kind.len == 4 && memcmp(kind.ptr, "drop", 4) == 0) {
+            KuiStr phase = KUI_STR("-");
+            const KuiValue *p = kui_value_get(ev.payload, KUI_STR("phase"));
+            if (p) kui_value_as_str(p, &phase);
+            const KuiValue *l = kui_value_get(ev.payload, KUI_STR("paths"));
+            repf(events, " %.*s %zu", (int)phase.len, phase.ptr, l ? kui_value_len(l) : (size_t)0);
         }
         repf(events, "\n");
     }
@@ -1788,7 +1874,9 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
              env->fullscreen, env->controls_w, env->controls_h);
     }
     for (int i = 0; i < nsteps; i++) {
-        if (steps[i].args >= 2) repf(out, "step %s %d %d\n", steps[i].kind, steps[i].a, steps[i].b);
+        if (steps[i].args >= 3)
+            repf(out, "step %s %d %d %d\n", steps[i].kind, steps[i].a, steps[i].b, steps[i].c);
+        else if (steps[i].args == 2) repf(out, "step %s %d %d\n", steps[i].kind, steps[i].a, steps[i].b);
         else if (steps[i].args == 1) repf(out, "step %s %d\n", steps[i].kind, steps[i].a);
         else repf(out, "step %s\n", steps[i].kind);
     }
@@ -2004,8 +2092,8 @@ static int conformance(const char *path) {
                     exit(1);
                 }
                 ConfStep *s = &steps[nsteps++];
-                s->a = s->b = 0;
-                s->args = sscanf(line, "step %15s %d %d", s->kind, &s->a, &s->b) - 1;
+                s->a = s->b = s->c = 0;
+                s->args = sscanf(line, "step %15s %d %d %d", s->kind, &s->a, &s->b, &s->c) - 1;
             }
             line = next ? next + 1 : NULL;
         }

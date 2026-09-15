@@ -198,7 +198,16 @@
 /// and the underline colour `ul` to `KuiCell` — three [in] appends under
 /// the withdrawn rule, two of them array elements whose stride moved.
 /// Recompile; a zeroed field is what the struct meant before.
-pub const KUI_ABI_VERSION: u32 = 17;
+///
+/// ABI 18 appends `on_drop` and `drop_bg` to `KuiSpec` for the drop zone
+/// (ADR 0031, backlog C40) — the first [in] append under the amended
+/// rule, bumping because the library reads the whole struct and a host
+/// that did not recompile would have the two read from past its end.
+/// Recompile; a zeroed tail is no zone and no colour, which is what every
+/// node was. The same version adds `kui_input_drag_files`,
+/// `kui_input_drop_files`, `kui_input_drag_cancel` and `kui_drop_target`
+/// — four functions, nothing the library writes moved.
+pub const KUI_ABI_VERSION: u32 = 18;
 
 /// The ABI version this library implements, for a host to compare against
 /// the `KUI_ABI_VERSION` of the header it compiled against, before its

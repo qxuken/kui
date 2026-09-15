@@ -147,6 +147,9 @@ pub struct Tree {
     /// Some node declared `on_scroll`; emission reads the row per node
     /// only then (ADR 0029, decision 4).
     pub any_scroll_handler: bool,
+    /// Some node declared `on_drop` (ADR 0031): a hit region's walk for
+    /// the zone it inherits is skipped wholesale on a frame with none.
+    pub any_drop: bool,
     /// Whether any node declares a workable `exit` (one under a
     /// transition). Gates the tree swap and the key diff.
     pub any_exit: bool,
@@ -238,6 +241,7 @@ impl Tree {
         self.any_layout = false;
         self.any_context_menu = false;
         self.any_scroll_handler = false;
+        self.any_drop = false;
         self.any_exit = false;
         self.any_animate = false;
         self.indexed.clear();
@@ -293,6 +297,7 @@ impl Tree {
             self.any_layout |= events.on_layout.is_some();
             self.any_context_menu |= events.on_context_menu.is_some();
             self.any_scroll_handler |= events.on_scroll.is_some();
+            self.any_drop |= events.on_drop.is_some();
         }
         if spec.transition.is_some() {
             match spec.anim.as_deref() {

@@ -684,6 +684,8 @@ fn asserts() -> (String, Vec<&'static str>) {
         scrollbar_active_color: u32 => "uint32_t",
         anchor: u32 => "uint32_t",
         on_scroll: *const KuiValue => "const KuiValue *",
+        on_drop: *const KuiValue => "const KuiValue *",
+        drop_bg: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiAccessNode {
@@ -1323,7 +1325,7 @@ fn an_in_struct_s_size_is_the_abi_s() {
     use std::collections::BTreeMap;
     // (name, size in bytes, the ABI the size is from)
     const IN_LAYOUTS: &[(&str, usize, u32)] = &[
-        ("KuiSpec", 560, 16),
+        ("KuiSpec", 576, 18),
         ("KuiSizing", 8, 16),
         ("KuiKeyframe", 36, 16),
         ("KuiEnter", 40, 16),

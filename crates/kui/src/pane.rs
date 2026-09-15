@@ -245,6 +245,12 @@ pub(crate) struct Pane {
     /// press, 2 a force click). Kept so only the *edge* into 2 counts:
     /// AppKit reports the whole ramp, many events a press.
     pub(crate) pressure_stage: i64,
+    /// The paths winit's per-file drag events built this batch, and
+    /// whether the batch was a drop (`Some(true)`), a hover
+    /// (`Some(false)`) or nothing (`None`) — dispatched at the batch's
+    /// end (ADR 0031). Unused where the platform override answers.
+    pub(crate) file_drag: Vec<String>,
+    pub(crate) file_drag_pending: Option<bool>,
     /// Last primary press: time, position, and its click count.
     pub(crate) last_click: Option<(std::time::Instant, Vec2, u8)>,
     /// Caret blink phase mirror + next toggle time; the clock lives here,

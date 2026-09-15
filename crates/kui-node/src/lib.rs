@@ -608,6 +608,38 @@ impl Ctx {
         self.input(InputEvent::CursorLeft);
     }
 
+    /// Files dragged in from the OS are over the window at (`x`, `y`) —
+    /// entering and moving alike (ADR 0031): the `onDrop` zone under the
+    /// point hears `{kind:"drop", phase:"enter"|"move", paths, x, y,
+    /// tag}`, a zone it left hears `leave`, a repeat at the same point is
+    /// nothing. `dropTarget()` afterwards is what a driver answers the OS
+    /// with.
+    #[napi]
+    pub fn drag_files(&mut self, paths: Vec<String>, x: f64, y: f64) {
+        self.input(InputEvent::DragFiles {
+            paths,
+            at: Vec2::new(x as f32, y as f32),
+        });
+    }
+
+    /// The dragged files released at (`x`, `y`): the zone there hears
+    /// `{kind:"drop", phase:"drop", paths, x, y, tag}` and no `leave`
+    /// after it; with no zone there, nothing but the lit zone's `leave`.
+    #[napi]
+    pub fn drop_files(&mut self, paths: Vec<String>, x: f64, y: f64) {
+        self.input(InputEvent::DropFiles {
+            paths,
+            at: Vec2::new(x as f32, y as f32),
+        });
+    }
+
+    /// The dragged files left the window, or the OS ended the drag
+    /// elsewhere: the lit zone hears its `leave`.
+    #[napi]
+    pub fn drag_cancel(&mut self) {
+        self.input(InputEvent::DragCancel);
+    }
+
     /// A button press or release. `clicks`: 1 single, 2 double (word
     /// select), 3 triple (line select) — the grain everywhere text can be
     /// selected: an editor, a `selectable` scope, and a `cells` grid,
@@ -2529,6 +2561,26 @@ macro_rules! core_methods {
                     return Ok(false);
                 };
                 Ok(self.$core().is_pressed(key))
+            }
+
+            /// Whether files dragged in from the OS are over `key` (ADR
+            /// 0031) — for drop-dependent layout; the colour swap is the
+            /// `dropBg` prop. `key` is either spelling, as for `isHovered`.
+            #[napi]
+            pub fn is_drop_target(&mut self, key: String) -> Result<bool> {
+                let Some(key) = resolve_query(self.$core(), &key) else {
+                    return Ok(false);
+                };
+                Ok(self.$core().is_drop_target(key))
+            }
+
+            /// The `onDrop` zone the dragged files are over, as the hex key
+            /// an event carries, or null — what a driver answers the OS
+            /// with after each `dragFiles`, and what a test reads to say a
+            /// zone was found.
+            #[napi]
+            pub fn drop_target(&mut self) -> Option<String> {
+                self.$core().drop_target().map(key_str)
             }
 
             // -- Pointer ----------------------------------------------------

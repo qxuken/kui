@@ -837,6 +837,27 @@ pub extern "C" fn kui_is_hovered(ptr: *mut KuiCtx, key: u64) -> bool {
     })
 }
 
+/// Whether files dragged in from the OS are over `key` (ADR 0031) — for
+/// drop-dependent layout; the colour is `KuiSpec.drop_bg`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_is_drop_target(ptr: *mut KuiCtx, key: u64) -> bool {
+    guard(false, || {
+        unsafe { ctx(ptr) }.is_some_and(|c| c.core().is_drop_target(Key(key)))
+    })
+}
+
+/// The drop zone the dragged files are over, or 0: what a driver answers
+/// the OS with after every `kui_input_drag_files` (a copy cursor over a
+/// zone, not-allowed elsewhere, and a release off every zone refused).
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_drop_target(ptr: *mut KuiCtx) -> u64 {
+    guard(0, || {
+        unsafe { ctx(ptr) }
+            .and_then(|c| c.core().drop_target())
+            .map_or(0, |k| k.0)
+    })
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_is_pressed(ptr: *mut KuiCtx, key: u64) -> bool {
     guard(false, || {

@@ -65,6 +65,9 @@ static void surface_view(void *user, KuiCtx *ui) {
          .bg = 0x1b1e28ff, .radius = 10},
     };
     KuiValue *layout_tag = kui_value_str(KUI_STR("card"));
+    /* And a drop zone (ADR 0031): the tag every phase of a file drag over
+     * the card carries, and the colour the card takes while it lasts. */
+    KuiValue *drop_tag = kui_value_str(KUI_STR("files"));
     KuiSpec card = {
         .dir = KUI_COLUMN, .gap = 8, .cross_align = KUI_START,
         .pad_l = 12, .pad_r = 12, .pad_t = 12, .pad_b = 12,
@@ -81,9 +84,11 @@ static void surface_view(void *user, KuiCtx *ui) {
         .on_layout = layout_tag,
         .role = KUI_ROLE_GROUP, .label = KUI_STR("surface card"),
         .focusable = 1, .focus_bg = 0x2b3350ff,
+        .on_drop = drop_tag, .drop_bg = 0x2b4a50ff,
     };
     k->card = kui_open_keyed(ui, KUI_STR("card"), &card, NULL);
     kui_value_free(layout_tag); /* on_layout is cloned, not adopted */
+    kui_value_free(drop_tag);   /* and so is on_drop */
     {
         k->child = kui_child_key(ui, KUI_STR("slot"));
 
@@ -324,6 +329,28 @@ static int surface(void) {
     kui_input_cursor_left(ui);
     kui_input_modifiers(ui, KUI_KMOD_SHIFT | KUI_KMOD_CTRL);
 
+    /* Files dragged in from the OS (ADR 0031): over the card, which is a
+     * zone, then released there. The zone under the point is what the host
+     * would answer the OS with; the events land below with the rest. */
+    {
+        KuiLayoutRect card_rect = {.size = sizeof card_rect};
+        check(kui_layout_of(ui, k.card, &card_rect), "the card has a rect");
+        float cx = card_rect.x + 4, cy = card_rect.y + 4;
+        KuiStr paths[2] = {KUI_STR("/drop/1.txt"), KUI_STR("/drop/2.txt")};
+        kui_input_drag_files(ui, paths, 2, cx, cy);
+        check(kui_drop_target(ui) == k.card, "the files are over the card");
+        check(kui_is_drop_target(ui, k.card), "and the card says so");
+        kui_input_drag_files(ui, paths, 2, cx + 8, cy + 8);
+        kui_input_drag_files(ui, paths, 2, -50, -50);
+        check(kui_drop_target(ui) == 0, "off every zone: nothing lit");
+        kui_input_drag_files(ui, paths, 2, cx, cy);
+        kui_input_drop_files(ui, paths, 2, cx, cy);
+        check(kui_drop_target(ui) == 0, "a drop ends the hover");
+        kui_input_drag_files(ui, paths, 2, cx, cy);
+        kui_input_drag_cancel(ui);
+        check(kui_drop_target(ui) == 0, "a cancel ends it too");
+    }
+
     /* Keyboard focus: Tab walks the ring, and the ring is visible. */
     kui_focus(ui, 0);
     check(kui_focused(ui) == 0, "kui_focus(0) blurs");
@@ -545,6 +572,7 @@ static int surface(void) {
     KuiEvent ev = KUI_EVENT_INIT;
     int events = 0, layouts = 0, access = 0, downs = 0, ups = 0;
     int latin = 0, physical = 0, preedits = 0, commits = 0;
+    int drops = 0, drop_paths = 0;
     while (kui_poll_event(ui, &ev)) {
         events++;
         check(ev.size == sizeof ev, "a current host is filled all the way");
@@ -557,6 +585,11 @@ static int surface(void) {
         if (s.len == 6 && memcmp(s.ptr, "access", 6) == 0) access++;
         if (s.len == 7 && memcmp(s.ptr, "preedit", 7) == 0) preedits++;
         if (s.len == 4 && memcmp(s.ptr, "text", 4) == 0) commits++;
+        if (s.len == 4 && memcmp(s.ptr, "drop", 4) == 0) {
+            drops++;
+            const KuiValue *paths = kui_value_get(ev.payload, KUI_STR("paths"));
+            if (paths && kui_value_len(paths) == 2) drop_paths++;
+        }
         if (s.len == 3 && memcmp(s.ptr, "key", 3) == 0) {
             KuiStr phase;
             const KuiValue *p = kui_value_get(ev.payload, KUI_STR("phase"));
@@ -589,6 +622,9 @@ static int surface(void) {
     check(physical == downs + ups, "and every one carries its position");
     check(preedits == 1 && commits == 1,
           "the sink heard the composition and its commit as data");
+    /* enter, move, leave, enter, drop (no leave after it), enter, leave. */
+    check(drops == 7, "every phase of the file drag landed as data");
+    check(drop_paths == drops, "each carrying both paths");
 
     /* Values round-trip, including the ones the counter never builds. */
     KuiValue *map = kui_value_map();

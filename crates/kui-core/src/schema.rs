@@ -164,6 +164,8 @@ pub const P_ON_SCROLL: u32 = 99;
 pub const P_ROW_COUNT: u32 = 100;
 pub const P_UNDERLINE_COLOR: u32 = 101;
 pub const P_UNDERLINE_STYLE: u32 = 102;
+pub const P_ON_DROP: u32 = 103;
+pub const P_DROP_BG: u32 = 104;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -740,6 +742,13 @@ pub const PROPS: &[PropDef] = &[
         doc: "Background while hovered (or while any node in its hoverGroup is); implies hover tracking, eases with `transition`.",
     },
     PropDef {
+        name: "dropBg",
+        id: P_DROP_BG,
+        kind: Kind::Color,
+        apply: Apply::SpecColor(|s, c| s.drop_bg(c)),
+        doc: "Background while files dragged in from the OS are over this node (ADR 0031); wins over pressedBg, focusBg and hoverBg, clears when they leave, land or the drag is cancelled. Implies hover tracking, eases with `transition`.",
+    },
+    PropDef {
         name: "pressedBg",
         id: P_PRESSED_BG,
         kind: Kind::Color,
@@ -780,6 +789,13 @@ pub const PROPS: &[PropDef] = &[
         kind: Kind::Tag,
         apply: Apply::SpecMsg(|s, v| s.on_hover(v)),
         doc: "Hover tag: the pointer entering/leaving emits {kind:\"hover\", phase:\"enter\"|\"leave\", tag} events.",
+    },
+    PropDef {
+        name: "onDrop",
+        id: P_ON_DROP,
+        kind: Kind::Tag,
+        apply: Apply::SpecMsg(|s, v| s.on_drop(v)),
+        doc: "Drop-zone tag (`docs/adr/0031-a-drop-zone-is-a-row-and-the-files-are-an-event.md`): files dragged in from the OS over this node emit {kind:\"drop\", phase:\"enter\"|\"move\"|\"leave\"|\"drop\", paths, x, y, tag} — `paths` the OS paths as strings, `x`/`y` the pointer in logical viewport coordinates (absent on `leave`). The zone under the files is the topmost zone by paint order: a node inside a zone is the zone's (a button in it, a field in it), and a node that is no zone and has none enclosing it is looked past, so an overlay shown on `enter` cannot make the zone lose the files. No `leave` follows a `drop`; a drop off every zone is refused by the driver. Implies hover tracking. No access row — a screen-reader user's way in is a button beside the zone. On Windows and Linux the position is the OS cursor at enter and release only, so `move` never fires there.",
     },
     PropDef {
         name: "onLayout",
@@ -1344,6 +1360,10 @@ pub const C_FIELDS: &[(&str, &str)] = &[
     ),
     ("onHover", "`on_hover` argument of `kui_open_with`"),
     (
+        "onDrop",
+        "`on_drop` (a borrowed `KuiValue*`, cloned while the node opens)",
+    ),
+    (
         "onLayout",
         "`on_layout` (a borrowed `KuiValue*`, cloned while the node opens)",
     ),
@@ -1735,6 +1755,11 @@ pub const EVENTS: &[EventDef] = &[
         kind: "hover",
         payload: "`{ kind: \"hover\", phase: \"enter\" | \"leave\", tag }`",
         doc: "The pointer entered or left an `onHover` node — also when a new frame moved it under a still cursor.",
+    },
+    EventDef {
+        kind: "drop",
+        payload: "`{ kind: \"drop\", phase: \"enter\" | \"move\" | \"leave\" | \"drop\", paths: string[], x, y, tag }`",
+        doc: "Files dragged in from the OS over an `onDrop` node (`docs/adr/0031-a-drop-zone-is-a-row-and-the-files-are-an-event.md`): `enter` when they come over the zone, `move` while they move over it (never twice for one point), `leave` when they go to another zone, to no zone or out of the window, `drop` when they land — and no `leave` after a `drop`. `paths` are the OS paths as strings; `x`/`y` the pointer in logical viewport coordinates, absent on `leave`. The zone is the topmost one under the pointer by paint order; a node inside it is its, and a node that is no zone is looked past (an overlay shown on `enter` does not end the hover). Nothing is re-resolved when a frame lands: only the driver's next report moves the files, so a zone the view stops declaring hears its `leave` then.",
     },
     EventDef {
         kind: "layout",

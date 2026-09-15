@@ -374,6 +374,11 @@ impl<A: App> Shell<A> {
         // (W15); the class is patched once, the view registered per window.
         #[cfg(target_os = "macos")]
         macos_text_input::attach(&window);
+        // And answer a file drag with where it is, which winit's delegate
+        // does not (ADR 0031); patched once, the delegate registered per
+        // window.
+        #[cfg(target_os = "macos")]
+        macos_drop::attach(&window);
         window.request_redraw();
         let appearance = appearance_of(&window);
         // Where the OS's own controls are, now that there is a window to
@@ -409,6 +414,8 @@ impl<A: App> Shell<A> {
             caret_stamp_seen: 0,
             resize_edge: None,
             pressure_stage: 0,
+            file_drag: Vec::new(),
+            file_drag_pending: None,
             cursor_icon: CursorIcon::Default,
             os_focused: false,
             appearance,
@@ -513,6 +520,7 @@ impl<A: App> Shell<A> {
         #[cfg(target_os = "macos")]
         {
             macos_text_input::detach(&self.panes[i].window);
+            macos_drop::detach(&self.panes[i].window);
             macos_key::release(&self.panes[i].window);
         }
         self.panes.remove(i);

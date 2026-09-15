@@ -288,6 +288,9 @@ impl Core {
             if ev.on_hover.is_some() {
                 flags.push("hover");
             }
+            if ev.on_drop.is_some() {
+                flags.push("drop");
+            }
             if ev.on_context_menu.is_some() {
                 flags.push("context-menu");
             }
@@ -320,6 +323,7 @@ impl Core {
                 ("drag", &ev.on_drag),
                 ("key", &ev.on_key),
                 ("hover", &ev.on_hover),
+                ("drop", &ev.on_drop),
                 ("context-menu", &ev.on_context_menu),
                 ("force-click", &ev.on_force_click),
                 ("layout", &ev.on_layout),
