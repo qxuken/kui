@@ -2071,7 +2071,7 @@ pub const ENV_FIELDS: &[EnvField] = &[
         node: &["audio.live"],
         lua: &["audio.live"],
         c: "`kui_env_set_audio(live)`",
-        doc: "Playbacks started and not yet ended, plus any waiting on the device to open. Zero with the device still `\"open\"` is the idle stream the row above is about.",
+        doc: "Playbacks started and not yet ended, plus any waiting on the device to open. Zero with the device still `\"open\"` is the idle stream the row above is about. A play that arrives while the device is `\"opening\"` counts here from the frame it was asked, until the open answers: if the device refuses, the play is refused on the next apply — `{kind:\"sound\", phase:\"refused\"}` for a tagged one — and leaves the count with it, so what a machine with no output device shows is `opening`/1 then `failed`/0 with the refusal between (backlog F63).",
     },
     EnvField {
         name: "viewport.w",

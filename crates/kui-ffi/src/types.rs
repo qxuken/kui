@@ -2101,6 +2101,14 @@ pub const KUI_MENU_ACTION_SET_CLIPBOARD: u32 = 0;
 pub const KUI_MENU_ACTION_PASTE: u32 = 1;
 pub const KUI_MENU_ACTION_LOOK_UP: u32 = 2;
 
+/// `KUI_OWED_*`: the bits of what `kui_owed` returns — `kui_animating`
+/// by kind (backlog F64).
+pub const KUI_OWED_TRANSITION: u32 = 1 << 0;
+pub const KUI_OWED_CYCLE: u32 = 1 << 1;
+pub const KUI_OWED_DEPART: u32 = 1 << 2;
+pub const KUI_OWED_REQUESTED: u32 = 1 << 3;
+pub const KUI_OWED_AUTOSCROLL: u32 = 1 << 4;
+
 /// `KUI_COPY_*`: what `kui_request_copy` returns.
 pub const KUI_COPY_READY: u32 = 0;
 pub const KUI_COPY_ASKED: u32 = 1;

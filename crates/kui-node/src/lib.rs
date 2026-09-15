@@ -691,10 +691,13 @@ impl Ctx {
     /// OS auto-repeated. The sink hears `{kind:"key", phase:"down", ...}`.
     ///
     /// `physical` is the US-QWERTY key at that *position*, spelled the same
-    /// way; omit it and it equals `code`. Passing both is how a driver
-    /// reports a non-US layout, and it is what makes the reported `code`
-    /// portable: a layout producing something outside ASCII would leave a
-    /// Latin keymap matching nothing, so the position's US letter stands in.
+    /// way; omit it and it is the position's US key: the lower-case letter
+    /// for a letter, `code` for everything else — the pair a window
+    /// reports for ⇧Z is `code: "Z", physical: "z"`, and so is this door's
+    /// (backlog F65). Passing both is how a driver reports a non-US
+    /// layout, and it is what makes the reported `code` portable: a
+    /// layout producing something outside ASCII would leave a Latin
+    /// keymap matching nothing, so the position's US letter stands in.
     #[napi(ts_args_type = "code: string, mods?: KeySinkMods, repeat?: boolean, physical?: string")]
     pub fn key_down(
         &mut self,
@@ -806,9 +809,10 @@ impl Ctx {
             super_key: bool_prop(m, "super"),
         };
         let layout = keycode_of(code)?;
-        // No `physical` means "the key I just named", so the two agree and
-        // `code` passes through; with one, the core applies the same
-        // non-Latin fallback every driver gets.
+        // No `physical` means "the key I just named" — the core folds a
+        // letter to its lower-case position (F65) — so `code` passes
+        // through; with one, the core applies the same non-Latin fallback
+        // every driver gets.
         let press = match physical {
             None => KeyPress::new(layout, kmods),
             Some(p) => KeyPress::from_layout(layout, keycode_of(p)?, kmods),
@@ -1358,12 +1362,26 @@ fn sample_json(s: FrameSample) -> Json {
     Json::Object(o)
 }
 
-/// The runner's frame-timing ring as `{frames, last, avgTotalMs,
-/// maxTotalMs, avgWorkMs, maxWorkMs}`; `last` is null before the first
-/// frame. The same numbers the latency HUD draws.
-fn frame_stats_json(stats: &FrameStats) -> Json {
+/// `Core::owed` as `{transition, cycle, depart, requested, autoscroll}`.
+fn owed_json(o: kui_core::Owed) -> Json {
+    let mut m = JsonMap::new();
+    m.insert("transition".into(), Json::from(o.transition));
+    m.insert("cycle".into(), Json::from(o.cycle));
+    m.insert("depart".into(), Json::from(o.depart));
+    m.insert("requested".into(), Json::from(o.requested));
+    m.insert("autoscroll".into(), Json::from(o.autoscroll));
+    Json::Object(m)
+}
+
+/// The runner's frame-timing ring as `{frames, framesTotal, pumps, last,
+/// avgTotalMs, maxTotalMs, avgWorkMs, maxWorkMs}`; `last` is null before
+/// the first frame. The same numbers the latency HUD draws, plus the two
+/// monotonic counts a bench asserts a rate from (backlog F62).
+fn frame_stats_json(stats: &FrameStats, pumps: u64) -> Json {
     let mut o = JsonMap::new();
     o.insert("frames".into(), Json::from(stats.len()));
+    o.insert("framesTotal".into(), Json::from(stats.total));
+    o.insert("pumps".into(), Json::from(pumps));
     o.insert("last".into(), stats.last().map_or(Json::Null, sample_json));
     o.insert("avgTotalMs".into(), Json::from(stats.avg_total() as f64));
     o.insert("maxTotalMs".into(), Json::from(stats.max_total() as f64));
@@ -1696,13 +1714,19 @@ impl KuiWindow {
     }
 
     /// Frame timing measured by the runner — what the latency HUD draws,
-    /// as data: `{frames, last: {inputMs, viewMs, layoutMs, renderMs,
-    /// waitMs, totalMs, workMs} | null, avgTotalMs, maxTotalMs, avgWorkMs,
-    /// maxWorkMs}` over the last 120 frames. `waitMs` is vsync
-    /// backpressure; `workMs` is everything else.
+    /// as data: `{frames, framesTotal, pumps, last: {inputMs, viewMs,
+    /// layoutMs, renderMs, waitMs, totalMs, workMs} | null, avgTotalMs,
+    /// maxTotalMs, avgWorkMs, maxWorkMs}`. The averages and maxima are
+    /// over the last 120 frames and `frames` is how many of those the
+    /// ring holds — it climbs to 120 in the first two seconds and stays
+    /// there. `framesTotal` and `pumps` are the monotonic counts of every
+    /// frame painted and every `pump()` taken (backlog F62), so two
+    /// readings a second apart are that second's frame and pump rates.
+    /// `waitMs` is vsync backpressure; `workMs` is everything else.
     #[napi(ts_return_type = "FrameTiming")]
     pub fn frame_stats(&mut self) -> Json {
-        frame_stats_json(&self.runner.core_mut().stats)
+        let pumps = self.runner.pumps();
+        frame_stats_json(&self.runner.core_mut().stats, pumps)
     }
 
     /// Asks the window to close; the next pump returns false.
@@ -2005,6 +2029,18 @@ macro_rules! core_methods {
             #[napi]
             pub fn animating(&mut self) -> bool {
                 self.$core().animating()
+            }
+
+            /// What the last frame left owed, by kind — `animating()`
+            /// taken apart: `{transition, cycle, depart, requested,
+            /// autoscroll}`. To the window they are one, and it redraws
+            /// for any of them; to a test they differ, since a keyframe
+            /// `repeat` cycle never ends and `settled()` never resolves
+            /// under one. `quiet()` on the loop waits on everything but
+            /// `cycle` (backlog F64).
+            #[napi(ts_return_type = "Owed")]
+            pub fn owed(&mut self) -> Json {
+                owed_json(self.$core().owed())
             }
 
             /// Byte budget for the shaped-text cache: every text a frame
@@ -3618,8 +3654,10 @@ mod frame_stats_tests {
     #[test]
     fn frame_stats_shape_before_and_after_frames() {
         let mut st = FrameStats::default();
-        let empty = frame_stats_json(&st);
+        let empty = frame_stats_json(&st, 0);
         assert_eq!(empty["frames"], Json::from(0));
+        assert_eq!(empty["framesTotal"], Json::from(0));
+        assert_eq!(empty["pumps"], Json::from(0));
         assert_eq!(empty["last"], Json::Null);
         assert_eq!(empty["avgTotalMs"], Json::from(0.0));
 
@@ -3634,13 +3672,23 @@ mod frame_stats_tests {
             view_ms: 3.0,
             ..Default::default()
         });
-        let o = frame_stats_json(&st);
+        let o = frame_stats_json(&st, 7);
         assert_eq!(o["frames"], Json::from(2));
+        assert_eq!(o["framesTotal"], Json::from(2));
+        assert_eq!(o["pumps"], Json::from(7));
         assert_eq!(o["last"]["viewMs"], Json::from(3.0));
         assert_eq!(o["last"]["totalMs"], Json::from(3.0));
         assert_eq!(o["maxTotalMs"], Json::from(10.5));
         assert_eq!(o["maxWorkMs"], Json::from(6.5));
         assert_eq!(o["avgTotalMs"], Json::from(6.75));
+        // F62: the ring saturates at 120 and `frames` with it; the total
+        // is what a test counting frames reads.
+        for _ in 0..200 {
+            st.push(FrameSample::default());
+        }
+        let o = frame_stats_json(&st, 7);
+        assert_eq!(o["frames"], Json::from(120));
+        assert_eq!(o["framesTotal"], Json::from(202));
     }
 }
 

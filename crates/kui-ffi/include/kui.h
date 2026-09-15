@@ -1540,7 +1540,10 @@ void kui_input_key(KuiCtx *ctx, uint32_t key, uint32_t mods); /* KUI_KEY_* + KUI
  * above). `code` is a single character as the layout produced it ("W", "$")
  * or a name ("left", "enter", "escape", "f5", ...); `physical` is the
  * US-QWERTY key at that *position*, spelled the same way, or {NULL, 0} when
- * the host does not track positions (then it equals `code`); `kmods` is
+ * the host does not track positions (then it is the position's US key: the
+ * lower-case letter for a letter, `code` for everything else - the pair a
+ * window reports for shift-Z is code "Z", physical "z"; backlog F65);
+ * `kmods` is
  * KUI_KMOD_* bits; `text` is what the press inserts, or {NULL, 0} to derive
  * it from `code`; `repeat` marks an auto-repeat. The focused sink polls
  * {kind="key", phase="down", code, physical, ctrl, alt, shift, super, text,
@@ -1556,7 +1559,7 @@ void kui_input_key(KuiCtx *ctx, uint32_t key, uint32_t mods); /* KUI_KEY_* + KUI
  * Latin keymap matching nothing at all, so kui reports the position's US
  * letter as `code` instead; `physical` is there either way for a keymap that
  * would rather bind the finger than the label (WASD). A host passing
- * {NULL, 0} keeps the old behaviour exactly. */
+ * {NULL, 0} gets the default above. */
 void kui_input_key_down(KuiCtx *ctx, KuiStr code, KuiStr physical,
                         uint32_t kmods, KuiStr text, bool repeat);
 void kui_input_key_up(KuiCtx *ctx, KuiStr code, KuiStr physical,
@@ -1700,7 +1703,10 @@ enum {
 };
 /* What the host's output device is doing, for views to read: a
  * KUI_AUDIO_DEVICE_*, and how many playbacks are started or waiting on the
- * open. A fact, not a verb - nothing here closes the device; the host that
+ * open - a play that waits counts from the frame it was asked until the
+ * open answers, and one the device then refuses leaves the count on the
+ * apply that refuses it (backlog F63). A fact, not a verb - nothing here
+ * closes the device; the host that
  * opened it does that once it has been idle a while. Worth pushing because
  * an open stream is a real-time thread whether or not anything plays,
  * which is the whole of an idle app's CPU once it has held a sound: a
@@ -1923,6 +1929,19 @@ void kui_set_time(KuiCtx *ctx, double now_secs);
 /* True when the last frame left a transition mid-flight: draw another frame
  * without waiting for input. */
 bool kui_animating(KuiCtx *ctx);
+/* The same by kind (backlog F64): the KUI_OWED_* bits of what the last
+ * frame left owed. A host draws another frame for any of them, so
+ * kui_animating is `kui_owed(ctx) != 0`; a test masks KUI_OWED_CYCLE off to
+ * wait for the transitions to run out under a keyframe `repeat` cycle,
+ * which never ends and so never lets kui_animating clear. */
+enum {
+    KUI_OWED_TRANSITION = 1,  /* a finite transition (a leg, a spring) mid-flight */
+    KUI_OWED_CYCLE = 2,       /* a keyframe cycle running: always, while its node is drawn */
+    KUI_OWED_DEPART = 4,      /* an exit animation still departing */
+    KUI_OWED_REQUESTED = 8,   /* an `animate` node: a frame the view asked for */
+    KUI_OWED_AUTOSCROLL = 16, /* a held drag scrolling its container */
+};
+uint32_t kui_owed(KuiCtx *ctx);
 /* Rasterize outline glyphs as LCD subpixel coverage (KUI_QUAD_GLYPH_SUBPIXEL)
  * instead of alpha masks. Only turn it on if your renderer blends per
  * channel. Flipping it re-rasterizes every glyph. */

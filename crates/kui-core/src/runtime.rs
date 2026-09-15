@@ -520,6 +520,36 @@ fn step(at: usize, delta: isize, len: usize, wrap: bool) -> Option<usize> {
     wrap.then(|| (((p % n) + n) % n) as usize)
 }
 
+/// What a frame left owed, by kind: [`Core::owed`]. `any()` is what
+/// [`Core::animating`] answers; `beyond_cycles()` is the same with a
+/// keyframe cycle — which never ends — left out (backlog F64).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Owed {
+    /// A finite transition — a leg or a spring — still mid-flight.
+    pub transition: bool,
+    /// A keyframe cycle running; it always is, while its node is drawn.
+    pub cycle: bool,
+    /// An exit animation (a ghost) still departing.
+    pub depart: bool,
+    /// A frame a view asked for: `request_frame`, or an `animate` row.
+    pub requested: bool,
+    /// A held drag scrolling its container (ADR 0029).
+    pub autoscroll: bool,
+}
+
+impl Owed {
+    /// Anything at all: the driver's reading.
+    pub fn any(self) -> bool {
+        self.transition || self.cycle || self.depart || self.requested || self.autoscroll
+    }
+
+    /// Anything but a cycle: what a test waits on when the view has a
+    /// cycle that will never let `any()` clear.
+    pub fn beyond_cycles(self) -> bool {
+        self.transition || self.depart || self.requested || self.autoscroll
+    }
+}
+
 impl Core {
     /// This window's palette, as of this frame
     /// (`docs/adr/0019-a-theme-derived-from-appearance-and-accent.md`).
@@ -1075,13 +1105,26 @@ impl Core {
 
     /// True when the last frame left a transition mid-flight, or a view
     /// asked for another frame — drivers schedule one without waiting for
-    /// input.
+    /// input. One bool over every source; [`owed`](Self::owed) is the
+    /// same reading by kind.
     pub fn animating(&self) -> bool {
-        self.anim.animating()
-            || self.depart.animating()
-            || self.frame_requested
-            || self.tree.any_animate
-            || self.autoscrolling()
+        self.owed().any()
+    }
+
+    /// What the last frame left owed, by kind (backlog F64). To a driver
+    /// the kinds are one — it schedules the frame either way — but a
+    /// test that wants to know whether the *transitions* have run out
+    /// under a keyframe cycle that never will reads `cycle` apart from
+    /// the rest: [`Owed::beyond_cycles`] is that wait's predicate.
+    pub fn owed(&self) -> Owed {
+        let (transition, cycle) = self.anim.owes();
+        Owed {
+            transition,
+            cycle,
+            depart: self.depart.animating(),
+            requested: self.frame_requested || self.tree.any_animate,
+            autoscroll: self.autoscrolling(),
+        }
     }
 
     /// Asks the driver for one more frame right after this one. A view

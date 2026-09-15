@@ -317,6 +317,64 @@ fn a_slot_the_keyframes_skip_still_tweens() {
     );
 }
 
+/// F64: `animating()` is one bool, and under a keyframe cycle it never
+/// clears — right for the driver, useless for a test that wants to know
+/// whether the *transitions* have run out. `owed()` is the same reading
+/// by kind: the cycle on its own bit, a transition on its own, and
+/// `beyond_cycles()` the wait's predicate.
+#[test]
+fn what_is_owed_is_readable_by_kind() {
+    let mut core = Core::new();
+    let frame = |core: &mut Core, now: f64, bg: Color| {
+        core.set_time(now);
+        let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+        ui.configure_root(NodeSpec::row().fill());
+        let spec = NodeSpec::column()
+            .width(Sizing::Fixed(100.0))
+            .height(Sizing::Grow(1.0))
+            .bg(bg)
+            .transition_with(
+                Transition::ms(1000.0)
+                    .easing(Easing::Linear)
+                    .repeat(Repeat::Alternate),
+            )
+            .keyframes(vec![Keyframe::default().width(Sizing::Fixed(200.0))]);
+        ui.with_keyed("k", spec, |_| {});
+        ui.finish();
+        core.owed()
+    };
+    let o = frame(&mut core, 0.0, Color::BLACK);
+    assert!(
+        o.cycle && !o.transition,
+        "{o:?}: the cycle, and nothing else"
+    );
+    assert!(core.animating() && !o.beyond_cycles());
+    // A retarget under the cycle: a transition is owed beside it.
+    let o = frame(&mut core, 0.5, Color::WHITE);
+    assert!(o.cycle && o.transition, "{o:?}");
+    assert!(o.beyond_cycles());
+    // A second later the leg is done and only the cycle is left — what
+    // `quiet()` resolves on where `settled()` never would.
+    let o = frame(&mut core, 2.0, Color::WHITE);
+    assert!(o.cycle && !o.transition, "{o:?}");
+    assert!(!o.beyond_cycles() && core.animating());
+    // The other bits: a requested frame.
+    core.set_time(3.0);
+    let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+    ui.configure_root(NodeSpec::row().fill());
+    ui.request_frame();
+    ui.finish();
+    let o = core.owed();
+    assert_eq!(
+        o,
+        kui_core::Owed {
+            requested: true,
+            ..Default::default()
+        }
+    );
+    assert!(o.beyond_cycles());
+}
+
 /// A viewport float at `dx`; returns its drawn x (its background is the
 /// first quad).
 fn float_x(core: &mut Core, dx: f32, spec: NodeSpec) -> f32 {

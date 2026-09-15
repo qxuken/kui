@@ -563,6 +563,24 @@ pub extern "C" fn kui_animating(ptr: *mut KuiCtx) -> bool {
     })
 }
 
+/// What the last frame left owed, by kind: `kui_animating` taken apart
+/// into `KUI_OWED_*` bits. A host draws another frame for any of them; a
+/// test masks `KUI_OWED_CYCLE` off to wait for the transitions to run out
+/// under a keyframe cycle that never will (backlog F64).
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_owed(ptr: *mut KuiCtx) -> u32 {
+    guard(0, || {
+        unsafe { ctx(ptr) }.map_or(0, |c| {
+            let o = c.core().owed();
+            (o.transition as u32 * KUI_OWED_TRANSITION)
+                | (o.cycle as u32 * KUI_OWED_CYCLE)
+                | (o.depart as u32 * KUI_OWED_DEPART)
+                | (o.requested as u32 * KUI_OWED_REQUESTED)
+                | (o.autoscroll as u32 * KUI_OWED_AUTOSCROLL)
+        })
+    })
+}
+
 /// Rasterize outline glyphs as LCD subpixel coverage (`KUI_QUAD_GLYPH_SUBPIXEL`,
 /// atlas rgb = per-channel coverage) instead of alpha masks. Only for
 /// renderers that blend per channel; flipping it re-rasterizes every glyph.

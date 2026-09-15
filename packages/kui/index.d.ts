@@ -967,9 +967,37 @@ export interface FrameSample {
   workMs: number;
 }
 
-/** The window's frame-timing ring: the last 120 frames. */
+/** What the last frame left owed, by kind: `animating()` taken apart. The
+ *  window redraws for any of them; a test reads `cycle` apart from the
+ *  rest, since a keyframe `repeat` cycle never ends (backlog F64). */
+export interface Owed {
+  /** A finite transition — a leg or a spring — still mid-flight. */
+  transition: boolean;
+  /** A keyframe cycle running; it always is, while its node is drawn. */
+  cycle: boolean;
+  /** An exit animation (a ghost) still departing. */
+  depart: boolean;
+  /** A frame a view asked for: `requestFrame`, or an `animate` node. */
+  requested: boolean;
+  /** A held drag scrolling its container. */
+  autoscroll: boolean;
+}
+
+/** The window's frame timing: the averages and maxima over the last 120
+ *  frames, and two monotonic counts. */
 export interface FrameTiming {
+  /** How many frames the ring holds: climbs to 120 in the window's first
+   *  two seconds and stays there. Not a count of frames — that is
+   *  `framesTotal`. */
   frames: number;
+  /** Every frame the window has painted, since it opened (backlog F62).
+   *  Two readings a second apart are that second's frame rate. */
+  framesTotal: number;
+  /** Every `pump()` the window has taken, the one that opened it
+   *  included — what the driver's backoff is measured in: a stopped app
+   *  with a once-a-second tick takes ~30 pumps a second at the default
+   *  `idlePumpMs`, ~60 in the half-second after a click. */
+  pumps: number;
   /** Null before the first frame. */
   last: FrameSample | null;
   avgTotalMs: number;
@@ -1085,7 +1113,13 @@ export interface AudioEnv {
   /** `'closed'` (the default), `'opening'` (the ~90 ms open, off-thread),
    *  `'open'`, or `'failed'` (it refused; commands are dropped). */
   device: 'closed' | 'opening' | 'open' | 'failed';
-  /** Playbacks started and not yet ended, plus any waiting on the open. */
+  /** Playbacks started and not yet ended, plus any waiting on the open. A
+   *  play that arrives while the device is `'opening'` counts here from
+   *  the frame it was asked until the open answers; if the device
+   *  refuses, the play is refused on the next apply — a `SoundMsg` with
+   *  `phase: 'refused'` for a tagged one — and leaves the count with it,
+   *  so a machine with no output device shows `opening`/1, then
+   *  `failed`/0 with the refusal between (backlog F63). */
   live: number;
 }
 
@@ -1744,10 +1778,13 @@ export declare class Ctx {
    * OS auto-repeated. The sink hears `{kind:"key", phase:"down", ...}`.
    *
    * `physical` is the US-QWERTY key at that *position*, spelled the same
-   * way; omit it and it equals `code`. Passing both is how a driver
-   * reports a non-US layout, and it is what makes the reported `code`
-   * portable: a layout producing something outside ASCII would leave a
-   * Latin keymap matching nothing, so the position's US letter stands in.
+   * way; omit it and it is the position's US key: the lower-case letter
+   * for a letter, `code` for everything else — the pair a window
+   * reports for ⇧Z is `code: "Z", physical: "z"`, and so is this door's
+   * (backlog F65). Passing both is how a driver reports a non-US
+   * layout, and it is what makes the reported `code` portable: a
+   * layout producing something outside ASCII would leave a Latin
+   * keymap matching nothing, so the position's US letter stands in.
    */
   keyDown(code: string, mods?: KeySinkMods, repeat?: boolean, physical?: string): void
   /**
@@ -1981,6 +2018,16 @@ export declare class Ctx {
    * drivers that want to know when motion has settled.
    */
   animating(): boolean
+  /**
+   * What the last frame left owed, by kind — `animating()`
+   * taken apart: `{transition, cycle, depart, requested,
+   * autoscroll}`. To the window they are one, and it redraws
+   * for any of them; to a test they differ, since a keyframe
+   * `repeat` cycle never ends and `settled()` never resolves
+   * under one. `quiet()` on the loop waits on everything but
+   * `cycle` (backlog F64).
+   */
+  owed(): Owed
   /**
    * Byte budget for the shaped-text cache: every text a frame
    * draws is shaped once and kept, and past this many
@@ -2796,10 +2843,15 @@ export declare class KuiWindow {
   size(): WindowSize
   /**
    * Frame timing measured by the runner — what the latency HUD draws,
-   * as data: `{frames, last: {inputMs, viewMs, layoutMs, renderMs,
-   * waitMs, totalMs, workMs} | null, avgTotalMs, maxTotalMs, avgWorkMs,
-   * maxWorkMs}` over the last 120 frames. `waitMs` is vsync
-   * backpressure; `workMs` is everything else.
+   * as data: `{frames, framesTotal, pumps, last: {inputMs, viewMs,
+   * layoutMs, renderMs, waitMs, totalMs, workMs} | null, avgTotalMs,
+   * maxTotalMs, avgWorkMs, maxWorkMs}`. The averages and maxima are
+   * over the last 120 frames and `frames` is how many of those the
+   * ring holds — it climbs to 120 in the first two seconds and stays
+   * there. `framesTotal` and `pumps` are the monotonic counts of every
+   * frame painted and every `pump()` taken (backlog F62), so two
+   * readings a second apart are that second's frame and pump rates.
+   * `waitMs` is vsync backpressure; `workMs` is everything else.
    */
   frameStats(): FrameTiming
   /** Asks the window to close; the next pump returns false. */
@@ -2905,6 +2957,16 @@ export declare class KuiWindow {
    * drivers that want to know when motion has settled.
    */
   animating(): boolean
+  /**
+   * What the last frame left owed, by kind — `animating()`
+   * taken apart: `{transition, cycle, depart, requested,
+   * autoscroll}`. To the window they are one, and it redraws
+   * for any of them; to a test they differ, since a keyframe
+   * `repeat` cycle never ends and `settled()` never resolves
+   * under one. `quiet()` on the loop waits on everything but
+   * `cycle` (backlog F64).
+   */
+  owed(): Owed
   /**
    * Byte budget for the shaped-text cache: every text a frame
    * draws is shaped once and kept, and past this many
@@ -4000,6 +4062,16 @@ export interface WindowLoop<M, A = AppMsg | CoreMsg, E = never> extends Loop<M, 
    *  is `setTimeout(400)` and hope (backlog F30). Rejects if the pump
    *  throws, or if the window closes while it waits. */
   settled(maxMs?: number): Promise<number>;
+  /** `settled` with a keyframe cycle allowed: resolves the first time a
+   *  pump leaves nothing owed but a `repeat` cycle (`owed()` with only
+   *  `cycle` set, or nothing) and no effect unflushed, with the
+   *  milliseconds it waited — and at `maxMs` anyway, as `settled` does.
+   *  For the window whose view has a looping keyframe, where `settled()`
+   *  can only ever hit its cap: the transitions have run out, and what is
+   *  still moving is moving by design (backlog F64). Not an option on
+   *  `settled`, since a wait that ignores something should say so in its
+   *  name. */
+  quiet(maxMs?: number): Promise<number>;
   /** Resolves after the next pump has painted — the cheap half of
    *  `settled`, for a test that only needs the window to have drawn, not to
    *  have stopped moving. A promise for the same reason: the pump runs on a

@@ -43,7 +43,7 @@ K4 — a view asked, and it is built), the two alpha.13 upgrade reports
 and the kawoosh terminal report of the same day — F62–F65, four small
 ones from the reports, and F66, a `cells` node drawing box-drawing
 glyphs from a font that cannot know the cell's height, the one defect
-filed since the tag, **built the same day** — the two rounds of 2026-09-15 keeping only their introductions (their
+filed since the tag — all five **built the same day** — the two rounds of 2026-09-15 keeping only their introductions (their
 twelve entries — F55–F61 from the alpha.12 reports, K1–K4 from the
 kawoosh list — were built the day they were filed and went to the
 archive with the alpha.13 tag), and the "theirs, not ours" lists the
@@ -1015,9 +1015,24 @@ Every claim below was checked against this tree before it became an
 entry. Four are small: three wishes the pomodoro wrote and one note the
 mind map recorded and did not file. Nothing here is a defect a user
 sees; the one of those this round produced came from a third app and
-is the section after this one (F66).
+is the section after this one (F66). All four were **built
+2026-09-15**, the day they were filed, each with its outcome on top of
+its entry; the one that changes what an existing input reports (F65) is
+under *What breaks* in the CHANGELOG.
 
-### `.` F62 — `frameStats().frames` is the ring's length, and nothing counts pumps
+### `.` F62 — `frameStats().frames` is the ring's length, and nothing counts pumps — **done (2026-09-15)**
+
+**Done as written:** `FrameStats::total` (`u64`, beside the ring's
+`push`) and `PumpRunner::pumps()` (incremented in `pump` and
+`pump_until`, starting at 1 for the pump that opened the window), read
+back as `framesTotal` and `pumps` on Node's `frameStats()`; `frames`
+keeps its name and its doc says it saturates at 120. The pin runs
+`runWindowed` over a fake surface on `node:test`'s mocked timers — a
+millisecond at a time, since a mocked `tick(n)` runs only the timers
+pending when it started and every pump schedules the next — and reads
+~12 pumps in the 100 ms after a click against ~31 over the second
+second, asserting the *rate* is lower rather than the count, which is
+what the entry's sentence meant.
 
 **Symptom** (pomodoro, wish 1): the release measured F57 as "67 → 29
 pumps a second" with a scratch probe through a forwarding surface, and
@@ -1049,7 +1064,13 @@ pacer test: a stopped app with a once-a-second tick takes fewer pumps
 in its second second than in its first 100 ms after a click. Then the
 pomodoro's bench can be an assertion rather than a `top` reading.
 
-### `.` F63 — What `env.audio.live` reads for a play that waited on an open the device then refused
+### `.` F63 — What `env.audio.live` reads for a play that waited on an open the device then refused — **done (2026-09-15)**
+
+**Done as written:** the sentence on the `live` row in `index.d.ts`,
+`kui.h`, `schema::ENV_FIELDS` (so `props.md`) and `AudioEnv::live`;
+`a_device_that_failed_to_open_refuses_a_play` asserts `env().live == 1`
+while the play waits on `Device::Opening` and `0` with `device ==
+Failed` after the apply that refuses it. Nothing changed in behaviour.
 
 **Symptom** (pomodoro, wish 2): the smoke test's assertion on the
 click's frame — `live=1` while `device=opening` — guards on `device
@@ -1078,7 +1099,22 @@ the next apply and leaves the count with it". One assertion in the
 existing test: `env().live` is 1 while the play waits and 0 after the
 apply that refuses it. Nothing changes in behaviour.
 
-### `.` F64 — `settled()` never resolves while a keyframe cycle runs, and nothing separates a transition owed from a cycle running
+### `.` F64 — `settled()` never resolves while a keyframe cycle runs, and nothing separates a transition owed from a cycle running — **done (2026-09-15)**
+
+**Done as written, named `owed`:** `AnimStore` keeps `owes_transition`
+(set by `drive`) and `owes_cycle` (set by `sample`) where it kept
+`active`; `Core::owed()` is `Owed { transition, cycle, depart,
+requested, autoscroll }` with `any()` (what `animating()` answers) and
+`beyond_cycles()`. Doors per binding: Node `owed()` on `Ctx` and
+`KuiWindow`, `quiet(maxMs)` on `WindowLoop` (a waiter with its own
+predicate beside `settled`'s), C `kui_owed` as `KUI_OWED_*` bits
+(pinned in `abi_consts!`, called in `surface.c` — where the check found
+the card's 120 ms entrance owed beside the cycle at 50 ms, which is the
+point: two bits), the doors table row. Tests: the core's
+`what_is_owed_is_readable_by_kind`, Node's `quiet()` over a fake
+surface (resolves once only the cycle is left where `settled(100)` hits
+its cap; waits on a requested frame), and `ctx.owed()` on the looping
+`runOut` fixture reading `{cycle: true}` alone.
 
 **Symptom** (pomodoro, wish 3): the unpinned window never settles
 because a `repeat="alternate"` keyframe cycle never ends, so the smoke
@@ -1113,7 +1149,19 @@ pomodoro's first window asserts `quiet()` where its second asserts
 `settled()`. Small: two bits in the anim store, one door, one wait written like
 `settled`.
 
-### `.` F65 — A headless press's default `physical` is `code` verbatim, and a window's is lower-case
+### `.` F65 — A headless press's default `physical` is `code` verbatim, and a window's is lower-case — **done (2026-09-15)**
+
+**Done, one level lower than written:** the default lives in
+`KeyPress::new`, which every headless door shares — Node's `key_press`,
+C's `kui_input_key_down` with a NULL `physical`, Lua, `testing::key_down`,
+the corpus's `KeyDown` step — and the window driver bypasses with
+`with_physical`, so the fold went there: an ASCII upper-case `code`
+yields its lower-case as `physical`, everything else its own code. The
+`keyDown` doc says so in Node and C; the corpus fixtures did not move
+(their steps are lower-case letters). Pinned in `test.mjs` beside the
+layout test: `press("Z", { shift: true })` reaches the sink as `code:
+"Z", physical: "z"`, a spelled `"Z"` is delivered as spelled, `$` and
+`left` are their own. Listed under *What breaks* per F61.
 
 **Symptom** (mind map, "one note from the log, not a finding"): under
 headless, `press('Z', { shift: true })` reaches the sink with
@@ -1307,10 +1355,11 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** F62–F65 from the alpha.13 reports, each a
-morning (F66 went first, **built 2026-09-15** — the dashed `│` was what
-every TUI in a `cells` node showed, and the entry's shapes, atlas key
-and tests are what was built): two counters (F62), a sentence and an assertion (F63), two
+**Build next.** Nothing filed is open: the two alpha.13 reports and the
+kawoosh terminal report — F62–F66 — were **built 2026-09-15**, F66 first
+(the dashed `│` was what every TUI in a `cells` node showed, and the
+entry's shapes, atlas key and tests are what was built), then the four
+small ones, each as its entry says: two counters (F62), a sentence and an assertion (F63), two
 bits and a wait (F64), a default that folds (F65). Before them,
 everything filed had shipped: K4 was
 **built on 2026-09-15** too, the same day as the rest of its round. The two rounds of 2026-09-15 — the

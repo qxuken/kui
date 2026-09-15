@@ -365,8 +365,14 @@ pub struct AnimStore {
     now: Option<f64>,
     /// The core's frame counter as of `begin_frame`.
     frame_no: u64,
-    /// Whether any tween driven this frame is still mid-flight.
-    active: bool,
+    /// Whether any tween driven this frame is still mid-flight — a
+    /// finite leg, or a spring not yet at rest.
+    owes_transition: bool,
+    /// Whether a keyframed slot was sampled this frame. A cycle has no
+    /// end, so this is set on every frame the node is drawn; kept apart
+    /// from the flag above so a test can wait for the transitions to run
+    /// out under a cycle that never will (backlog F64).
+    owes_cycle: bool,
 }
 
 impl AnimStore {
@@ -380,10 +386,17 @@ impl AnimStore {
         self.now
     }
 
-    /// True when the last frame left a transition mid-flight, i.e. the
-    /// driver should schedule another frame without waiting for input.
+    /// True when the last frame left a transition mid-flight or a cycle
+    /// running, i.e. the driver should schedule another frame without
+    /// waiting for input.
     pub fn animating(&self) -> bool {
-        self.active
+        self.owes_transition || self.owes_cycle
+    }
+
+    /// The two halves of [`animating`](Self::animating): a finite
+    /// transition still mid-flight, and a keyframe cycle running.
+    pub fn owes(&self) -> (bool, bool) {
+        (self.owes_transition, self.owes_cycle)
     }
 
     /// Starts a frame: `frame_no` is the core's counter (backlog AR45 —
@@ -392,7 +405,8 @@ impl AnimStore {
     /// frame drives.
     pub(crate) fn begin_frame(&mut self, frame_no: u64) {
         self.frame_no = frame_no;
-        self.active = false;
+        self.owes_transition = false;
+        self.owes_cycle = false;
         // Tweens nothing has driven for a while go (`retain::sweep_cutoff`).
         if !self.tweens.is_empty()
             && let Some(cutoff) = crate::retain::sweep_cutoff(self.frame_no)
@@ -432,21 +446,21 @@ impl AnimStore {
     /// which on a frame where every node transitions was the largest single
     /// entry in the profile. The lookup happens here instead and the borrow
     /// serves every slot. `sample` rides along because a keyframed slot is
-    /// reached from the same walk and needs the same `active` flag, not
+    /// reached from the same walk and sets a flag beside `active`'s, not
     /// because it needs the slots: a sampled track is not retained.
     pub(crate) fn node(&mut self, key: Key) -> NodeAnim<'_> {
         NodeAnim {
             slots: self.tweens.entry(key).or_default(),
             now: self.now,
             frame_no: self.frame_no,
-            active: &mut self.active,
+            active: &mut self.owes_transition,
+            cycling: &mut self.owes_cycle,
         }
     }
 }
 
 /// Where `now` lands in `track`'s cycle, shaped by `transition`'s easing.
-/// The walk behind [`AnimStore::sample`] and [`NodeAnim::sample`], which
-/// differ only in whose `active` flag they set. None without a clock or a
+/// The walk behind [`NodeAnim::sample`]. None without a clock or a
 /// duration.
 fn sample_track(track: &Track, transition: Transition, now: Option<f64>) -> Option<[f32; 4]> {
     let dur = transition.duration_ms as f64 / 1000.0;
@@ -480,7 +494,10 @@ pub(crate) struct NodeAnim<'a> {
     /// Driver time in seconds; None until the driver first sets it.
     now: Option<f64>,
     frame_no: u64,
+    /// The store's "a transition is mid-flight" flag.
     active: &'a mut bool,
+    /// The store's "a cycle is running" flag (F64).
+    cycling: &'a mut bool,
 }
 
 impl NodeAnim<'_> {
@@ -498,12 +515,15 @@ impl NodeAnim<'_> {
     ///
     /// It is reached from a node borrow only because the caller holds one
     /// (`Core::ease_transitioning` walks a node's slots and its keyframed
-    /// ones together) and because the `active` flag it sets lives behind
-    /// that borrow. The walk itself is [`sample_track`] and takes no key.
+    /// ones together) and because the flag it sets lives behind that
+    /// borrow — the *cycle* flag, not the transition one: a cycle never
+    /// ends, and a wait for the transitions to run out must not wait on
+    /// it (backlog F64). The walk itself is [`sample_track`] and takes no
+    /// key.
     pub(crate) fn sample(&mut self, track: &Track, transition: Transition) -> Option<[f32; 4]> {
         let v = sample_track(track, transition, self.now);
         if v.is_some() {
-            *self.active = true;
+            *self.cycling = true;
         }
         v
     }

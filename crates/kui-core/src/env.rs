@@ -298,7 +298,9 @@ pub struct AudioEnv {
     /// Whether the output device is open, and so costing something.
     pub device: AudioDevice,
     /// Playbacks started and not yet ended, plus the ones waiting on the
-    /// device to open.
+    /// device to open. A play that waits counts from the frame it was
+    /// asked until the open answers; if the device refuses, the play is
+    /// refused on the next apply and leaves the count with it (F63).
     pub live: u32,
 }
 

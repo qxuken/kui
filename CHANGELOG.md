@@ -54,6 +54,59 @@ was the first bare bump to break an app in five releases).
   against alpha.13's dashed frames needs re-taking. Bold no longer
   thickens a light line (the set has its heavy variants), italic is
   ignored, and a font's own box-drawing glyphs are never consulted.
+- A headless press's default `physical` **folds a letter to lower case**
+  (backlog F65): `press("Z", { shift: true })` with no fourth argument
+  now reaches the sink with `physical: "z"`, the pair a window reports
+  for ⇧Z, where alpha.13 delivered `"Z"`. In `KeyPress::new`, so Node's
+  `keyDown` / `press` / `release`, C's `kui_input_key_down` with a NULL
+  `physical`, Lua's and the Rust `testing` helpers all fold alike. A test
+  asserting the old pair, or a keymap bound by position that only ever
+  passed headless, reads the window's spelling now; a `physical` a
+  caller spells is still delivered as spelled.
+
+### Added
+
+- **`owed()` — what the last frame left owed, by kind** (backlog F64,
+  the pomodoro's third wish): `animating()` is one bool over five sources
+  and a keyframe `repeat` cycle sets it on every frame, so under one
+  `settled()` could only ever hit its cap — right for the driver, which
+  must schedule the frame either way, and useless for a test asking
+  whether the *transitions* have run out. `Core::owed()` returns `Owed
+  { transition, cycle, depart, requested, autoscroll }` (`animating()`
+  is its `any()`, `beyond_cycles()` the wait's predicate); the anim
+  store keeps the two bits apart where it kept one. Doors: `owed()` on
+  Node's `Ctx` and `KuiWindow` as `{transition, cycle, depart,
+  requested, autoscroll}`, and `quiet(maxMs)` on the window loop —
+  `settled` with a cycle allowed, resolving the first time a pump
+  leaves nothing owed but a cycle and no effect unflushed; its own name
+  rather than an option, since a wait that ignores something should
+  say so. C: `kui_owed` returning `KUI_OWED_*` bits (`kui_animating` is
+  `kui_owed != 0`). Not a new frame version or ABI: one function and
+  five plain constants, pinned like the rest.
+- **`env.audio.live` says what a play that waited on a refused open
+  reads** (backlog F63, the pomodoro's second wish): counted from the
+  frame it was asked until the open answers; if the device refuses, the
+  play is refused on the next apply — `phase: "refused"` for a tagged
+  one — and leaves the count with it, so a machine with no output device
+  shows `opening`/1 then `failed`/0 with the refusal between. The
+  behaviour was already this; the sentence is on the row in `index.d.ts`,
+  `kui.h`, `props.md` and `AudioEnv`, and the existing refusal test now
+  asserts `live` on both sides of the flush, so the pomodoro's guard can
+  be an assertion.
+
+- **`frameStats().framesTotal` and `.pumps`** (backlog F62, the
+  pomodoro's first alpha.13 wish): two monotonic counts beside the ring —
+  every frame the window has painted, and every `pump()` it has taken,
+  the one that opened it included — so two readings a second apart are
+  that second's frame and pump rates, and a smoke test can assert the
+  driver's backoff (F57) where before only a process monitor could. The
+  entry found `frames` was no counter either: it is the 120-sample
+  ring's fill, climbs to 120 in the first two seconds and stays there,
+  which its doc now says; it keeps its name, since a rename is a break
+  for nothing. In Rust, `FrameStats::total` and `PumpRunner::pumps()`.
+  Pinned over a fake surface on mocked timers: a stopped app with a
+  once-a-second tick takes ~12 pumps in the 100 ms after a click and ~31
+  over its second second — a lower rate, and the count to read it from.
 
 ### Changed
 

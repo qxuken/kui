@@ -276,6 +276,12 @@ static int surface(void) {
     check(k.card && k.slider && k.sink && k.editor && k.input && k.drag && k.child,
           "every node got a key");
     check(kui_animating(ui), "the keyframes keep animating");
+    /* And by kind (backlog F64): at 50 ms the card's 120 ms entrance is
+     * mid-flight beside the cycle, and the two are separate bits — a wait
+     * that masks the cycle off resolves once the entrance is done, where
+     * kui_animating never clears. */
+    check((kui_owed(ui) & (KUI_OWED_CYCLE | KUI_OWED_TRANSITION)) == (KUI_OWED_CYCLE | KUI_OWED_TRANSITION),
+          "kui_owed: the cycle and the entrance, each its own bit");
     KuiStr title = {0};
     check(kui_window_title_get(ui, &title) && has(title, "surface"), "kui_window_title_get");
     /* The level: the frame asked, the host says what it did, and the two
