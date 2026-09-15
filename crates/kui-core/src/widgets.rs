@@ -28,7 +28,7 @@ pub fn latency_hud_at(ui: &mut Ui<'_>, x: Align, y: Align) {
     // Under custom chrome the top of the viewport is the app's titlebar;
     // keep the HUD below it.
     let top_inset = if ui.env().window.custom_chrome {
-        ui.metrics().titlebar_h
+        titlebar_height(ui)
     } else {
         0.0
     };
@@ -306,13 +306,32 @@ pub fn text_input(ui: &mut Ui<'_>, label: &str, initial: &str) -> Key {
     )
 }
 
-/// Default titlebar height, logical px. Follows platform conventions (as
-/// measured by gpui): 32 on Windows (the native caption height), 34
-/// elsewhere. The stock [`Metrics`] carries the same number as
-/// `titlebar_h`, and the titlebar draws from *that*, so an app that set
-/// its own metrics lays out against `ui.metrics().titlebar_h` rather
-/// than this constant.
+/// Default titlebar height, logical px, where the strip is the app's
+/// alone. Follows platform conventions (as measured by gpui): 32 on
+/// Windows (the native caption height), 34 elsewhere. The stock
+/// [`Metrics`] carries the same number as `titlebar_h`, and the titlebar
+/// draws from *that*, so an app that set its own metrics lays out against
+/// `ui.metrics().titlebar_h` rather than this constant — and where the OS
+/// keeps controls of its own over the strip, against [`titlebar_height`].
 pub const TITLEBAR_H: f32 = Metrics::comfortable().titlebar_h;
+
+/// The height the titlebar strip draws at — what an app laying out its
+/// own strip, or something under it, should read instead of
+/// `ui.metrics().titlebar_h`. Where the OS keeps controls of its own over
+/// the strip (`env.window.native_controls`: the macOS traffic lights under
+/// custom chrome) the strip is the OS's own titlebar, as tall as the
+/// keep-out rect says that titlebar is, so the strip's content centres on
+/// the buttons the OS centred in it; a strip 34 px tall beside a 32 px
+/// titlebar put its content 2 px under the lights, and looked taller than
+/// it was (backlog W17). Everywhere else the strip is the app's alone and
+/// `Metrics::titlebar_h` is its height. A keep-out with no height (a host
+/// that reported a width only) falls back to the metric.
+pub fn titlebar_height(ui: &Ui<'_>) -> f32 {
+    match ui.env().window.native_controls {
+        Some(r) if r.h > 0.0 => r.h,
+        _ => ui.metrics().titlebar_h,
+    }
+}
 
 /// A cross-platform titlebar: a full-width drag strip with the window title
 /// left-aligned next to the window controls. Reads `env.window` and adapts
@@ -347,7 +366,7 @@ pub fn titlebar(ui: &mut Ui<'_>, title: &str) {
 /// hit-testing, so buttons in a titlebar just work.
 pub fn titlebar_with(ui: &mut Ui<'_>, content: impl FnOnce(&mut Ui<'_>)) {
     let win = ui.env().window;
-    let h = ui.metrics().titlebar_h;
+    let h = titlebar_height(ui);
     ui.with_keyed(
         "kui:titlebar",
         NodeSpec::row()

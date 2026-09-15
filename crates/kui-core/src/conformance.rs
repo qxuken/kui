@@ -109,13 +109,16 @@ pub const CUSTOM_CHROME: WindowEnv = WindowEnv {
 };
 
 /// Custom chrome *and* controls the OS keeps drawing over our content: the
-/// macOS traffic lights, at the rect `kui::MACOS_TRAFFIC_LIGHTS` reports
-/// (78x28 logical px at the window origin, gpui's measured
-/// `TRAFFIC_LIGHT_PADDING` under the macOS 26 SDK). The same tree that
-/// builds two button clusters under [`CUSTOM_CHROME`] builds none under
-/// this one, and its titlebar starts at 78 instead of the bare 12pt
-/// margin — which is the whole of what `widgets::titlebar` adapting "per
-/// platform by itself" means.
+/// macOS traffic lights, at the rect the runner reported before it
+/// measured (78x28 logical px at the window origin — gpui's measured
+/// `TRAFFIC_LIGHT_PADDING` under the macOS 26 SDK over the 28 px titlebar
+/// macOS 26 drew; macOS 27 measures 78x32, and `kui::macos_chrome` now
+/// asks the window). The corpus keeps the older pair as its fixture: the
+/// same tree that builds two button clusters under [`CUSTOM_CHROME`]
+/// builds none under this one, its titlebar starts at 78 instead of the
+/// bare 12pt margin, and the strip is the keep-out's 28 tall rather than
+/// the metric's 34 — which is the whole of what `widgets::titlebar`
+/// adapting "per platform by itself" means.
 pub const CUSTOM_CHROME_INSET: WindowEnv = WindowEnv {
     id: WindowId::MAIN,
     custom_chrome: true,

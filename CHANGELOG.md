@@ -21,6 +21,122 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## Unreleased
+
+**What breaks.**
+
+- Under macOS custom chrome `widgets::titlebar` / `titlebar_with` (and
+  the `titlebar` element in every binding) draw the strip **as tall as
+  the OS's own titlebar** — `env.window.native_controls.h`, now measured
+  from the window — instead of `Metrics::titlebar_h` (backlog W17). On
+  macOS 27 that is 32 px where it was 34; on macOS 26, 28. A view that
+  laid something out against the metric under the strip reads
+  `widgets::titlebar_height(ui)` instead, which is the metric everywhere
+  the OS keeps no controls over the strip.
+
+### Fixed
+
+- **The macOS keep-out rect is measured, not assumed** (backlog W17,
+  found on the first macOS 27 machine). `env.window.native_controls`
+  was `78×28` — gpui's traffic-light padding under the macOS 26 SDK over
+  the 28 px titlebar macOS 26 drew — and macOS 27 draws 14 px buttons at
+  (9, 9) in a 32 px titlebar, so the strip's 34 px sat 2 px under
+  buttons centred at 16 and read as taller than the OS's own. The runner
+  now asks the window when the pane is created — the frame's height less
+  `contentLayoutRect`'s is the titlebar, the close button's `x` plus the
+  zoom button's right edge the width (78, the same number by the symmetry
+  of the gaps) — and the old pair is the fallback for a window with
+  nothing to ask. The strip follows it (`widgets::titlebar_height`), the
+  metric's doc says which of the two a strip is drawn from, and the
+  corpus keeps `78×28` as the fixture that pins the rule.
+
+- **A non-activating popup no longer becomes key or main on macOS**
+  (backlog W18). Every press on a `WindowKind::Popup` window made it
+  the key window — AppKit's `sendEvent:` does that for any window whose
+  `canBecomeKeyWindow` says YES, which winit's does — and the runner
+  asked for the keyboard back a batch later, so the owner's titlebar
+  greyed for 20–50 ms on every open and every pick (measured with an
+  `AXObserver`). The popup's `NSWindow` now answers NO to both
+  (`macos_key.rs`, an override on winit's window class with a per-window
+  registry, the way the text-input one works): the owner stays key and
+  main throughout, the mouse still reaches the popup, and its keys come
+  from the owner as they always did.
+
+**What you can delete:** a strip height of your own under macOS custom
+chrome, measured to sit level with the traffic lights; a delay or a
+second frame you waited before reading the owner as focused after a
+popup pick.
+
+### Native verification (macOS 27, 2026-09-15)
+
+The by-hand round on the first macOS 27 machine — **macOS 27.0
+(26A428, arm64, Apple M3 Pro), Xcode 26.6 with the 27.0 Command Line
+Tools, rustc 1.98.0, Node 26.8.1** — the day after the alpha.13 tag,
+on `main` at `d1e8bbf` plus this section's fix. `cargo fmt --all
+--check` and `cargo clippy --workspace --all-targets -- -D warnings`
+are clean; `cargo test --workspace` passes every suite; the scene
+corpus (37 scenes) runs in all four adapters against one reference
+report; the C round (`cbuild --run`) passes its checks against ABI 17,
+`npm test` passes, `npm run typecheck` on `examples/node` is clean, and
+the headless round passes all 26 drives. The AX audit against
+`accessibility`: **106/106**. The C and Lua hosts under
+`KUI_SMOKE_FRAMES=120` (`counter`, `host`, `c_panel`, `lua_panel`) each
+opened a window and exited 0, warning-free — run *after* the headless
+round, which is the order W16 asked about (its unix half is answered
+in the entry: the overwrite is Windows-only).
+
+**Driven by hand, each through a real `CGEvent` or the AX API, and
+read back from the screen or the OS:** the strip dragged (the window
+moved), double-clicked (maximized, and again restored), the pin (the
+window's level went to 3 and back); a press on the `popup` combobox
+held, dragged into the list window that opened under it and released
+on a row (ADR 0009 — the row was picked), and after W18 the same sequence and a
+keyboard one — Tab, Space, ↓, ↓, Enter — with an `AXObserver` on the
+process reporting no key or main window change at all; the native context menu over
+`context_menu`'s row (the app's rows above the core's, `copyname bravo`
+back); `menu_bar`'s declared bar read through `kAXMenuBarAttribute`,
+its `checked` row pressed and its ✓ read back, and `edit`'s standard
+Edit and Window bars (ADR 0030) with Undo greying by the per-frame
+stamp; in `edit`, a keystroke carrying `🎉` and one carrying `ü` typed,
+Paste through the Edit menu pasted, Cmd+Z undid the run and Cmd+Shift+Z
+put it back, and Emoji & Symbols opened the palette anchored at the
+caret; the audio device opened on the first sound, read `open · 1
+live` with the hum on, closed after its hold and reopened on the next
+input; an idle window at 0.00 % CPU over ten seconds.
+
+**The bench guard**, run alone against the alpha.13 code on the M3 Pro
+(macOS 27): every guarded row within its own noise —
+`deep_nesting_64_levels` +4.2% at ±5.7% run to run, `frame_10k_rects`
++0.4%, `frame_10k_rects_with_access_tree` +1.5%,
+`frame_10k_rects_with_text_and_hits` +1.2%, `frame_10k_segments` +0.6%,
+`frame_1k_typical` +1.3%, `list_10k_rows_virtual` −0.2% — and nothing
+unguarded past ±5% with a readable spread. W17 touches nothing a
+guarded row draws; the README's table is not refreshed for a round
+whose only change is the strip.
+
+**What the round found, besides W17 and W18.**
+
+- **`cc` does not link on this machine**, and it is the toolchain, not
+  the repo: `xcode-select` points at Xcode 26.6, whose `ld` (1267)
+  cannot read the 27.0 SDK's `libSystem.tbd` (`unknown architecture
+  arm64e.x1-macos`) that `xcrun` now resolves from the Command Line
+  Tools. A one-line C program fails the same way. `rustc` is unaffected
+  because it pins `SDKROOT` to Xcode's own 26.5 SDK, which is why every
+  Rust build and test above passed; the C round and, through the
+  `c_panel` it needs, the headless round only pass under
+  `DEVELOPER_DIR=/Library/Developer/CommandLineTools` (or after `sudo
+  xcode-select -s /Library/Developer/CommandLineTools`, or an Xcode
+  27). Nothing to change in the repo.
+- **A synthetic keystroke carrying a lone UTF-16 surrogate aborts a
+  debug build**, in winit's `create_key_event` → objc2 0.5's
+  `nsstring_to_str`: `-[NSString UTF8String]` returns NULL for a string
+  UTF-8 cannot encode, and objc2 (0.5 and 0.6 alike) documents the
+  pointer as never NULL and hands it to `slice::from_raw_parts`. A real
+  keyboard never produces one — the driver this round used did, posting
+  an emoji one code unit at a time, and was fixed to post the pair —
+  so this is a note for whoever writes the next such driver, not an
+  entry: theirs (objc2), and only reachable from a poster.
+
 ## 0.1.0-alpha.13 (2026-09-15)
 
 **What breaks.**

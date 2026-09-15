@@ -1803,7 +1803,8 @@ typedef struct KuiMetrics {
     float menu_pad_y;
     float menu_width;     /* a menu panel's width */
     float menu_bar_h;     /* the drawn menu bar's height */
-    float titlebar_h;     /* the platform's caption height: 32 on Windows, 34 elsewhere */
+    float titlebar_h;     /* the strip where it is the app's alone: 32 on Windows, 34 elsewhere;
+                             under macOS custom chrome the strip is window.controls_h tall */
 } KuiMetrics;
 #define KUI_METRICS_INIT ((KuiMetrics){ .size = sizeof(KuiMetrics) })
 

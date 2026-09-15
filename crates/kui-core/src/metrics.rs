@@ -81,8 +81,13 @@ pub struct Metrics {
     pub menu_width: f32,
     /// The drawn menu bar's height.
     pub menu_bar_h: f32,
-    /// The titlebar's height: the platform's caption height (32 on
-    /// Windows, 34 elsewhere), which [`Metrics::compact`] leaves alone.
+    /// The titlebar's height where the strip is the app's alone: the
+    /// platform's caption height (32 on Windows, 34 elsewhere), which
+    /// [`Metrics::compact`] leaves alone. Where the OS keeps controls of
+    /// its own over the strip — the macOS traffic lights under custom
+    /// chrome — the strip is as tall as the OS's titlebar, which the
+    /// driver measures into `env.window.native_controls`, and this row
+    /// is not read (`widgets::titlebar_height`).
     pub titlebar_h: f32,
 }
 

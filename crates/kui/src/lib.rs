@@ -20,9 +20,16 @@ mod access_bridge;
 pub mod audio;
 /// ADR 0009's arithmetic: where a pointer in one window is in another.
 mod keys;
-/// The platform's own context menu, where there is one (ADR 0017 step 3).
+/// The traffic lights' keep-out and the OS titlebar's height, measured
+/// (backlog W17).
+#[cfg(target_os = "macos")]
+mod macos_chrome;
 #[cfg(target_os = "macos")]
 mod macos_force;
+/// A non-activating window that refuses to become key (the popup flick).
+#[cfg(target_os = "macos")]
+mod macos_key;
+/// The platform's own context menu, where there is one (ADR 0017 step 3).
 #[cfg(target_os = "macos")]
 mod macos_menu;
 /// The palette's and dictation's inserts, which winit's view drops (W15).
@@ -872,17 +879,6 @@ fn clamp_size(size: (f64, f64), min: Option<(f64, f64)>, max: Option<(f64, f64)>
     (w, h)
 }
 
-/// Traffic-light keep-out rect under macOS custom chrome (logical px,
-/// window coords); content starts at its right edge. AppKit gives no stable
-/// public metric, so this uses gpui's measured TRAFFIC_LIGHT_PADDING: 78
-/// with the macOS 26 SDK (71 on older SDKs — the extra pixel on the left is
-/// the window border). We assume a current SDK.
-const MACOS_TRAFFIC_LIGHTS: Rect = Rect {
-    x: 0.0,
-    y: 0.0,
-    w: 78.0,
-    h: 28.0,
-};
 /// Width of the invisible resize band synthesized on undecorated windows.
 const RESIZE_BAND: f32 = 6.0;
 /// A second titlebar press within this window toggles maximize.

@@ -260,6 +260,50 @@ fn titlebar_insets_past_the_native_controls() {
     assert_eq!(title_x(Some(Rect::new(4.0, 0.0, 78.0, 28.0))), 82.0);
 }
 
+/// The other half of the keep-out rect (backlog W17): where the OS keeps
+/// controls of its own over the strip, the strip is the OS's titlebar, as
+/// tall as the rect says — its content then centres on buttons the OS
+/// centred in *its* bar, which a 34 px strip beside macOS 27's 32 px one
+/// did not. Without such controls the strip is the app's alone and the
+/// metric's, and `titlebar_height` says the same number the strip drew.
+#[test]
+fn titlebar_is_as_tall_as_the_os_s_where_the_os_keeps_controls_over_it() {
+    use kui_core::{Key, Metrics, Rect, WindowEnv, widgets};
+    let strip_h = |controls: Option<Rect>| {
+        let mut core = Core::new();
+        core.set_inspect(true);
+        core.env.window = WindowEnv {
+            custom_chrome: true,
+            native_controls: controls,
+            ..Default::default()
+        };
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        let read = widgets::titlebar_height(&ui);
+        widgets::titlebar(&mut ui, "app");
+        ui.finish();
+        let strip = Key::ROOT.str("kui:titlebar");
+        let drawn = core
+            .nodes()
+            .iter()
+            .find(|n| n.key == strip)
+            .expect("the strip is laid out under its own key")
+            .rect
+            .h;
+        assert_eq!(read, drawn, "titlebar_height is what the strip drew");
+        drawn
+    };
+    assert_eq!(strip_h(None), Metrics::default().titlebar_h);
+    assert_eq!(strip_h(Some(Rect::new(0.0, 0.0, 78.0, 32.0))), 32.0);
+    assert_eq!(strip_h(Some(Rect::new(0.0, 0.0, 78.0, 28.0))), 28.0);
+    // A host that reported a width and no height (C's two numbers with
+    // the second left 0) gets the metric, not a strip of nothing.
+    assert_eq!(
+        strip_h(Some(Rect::new(0.0, 0.0, 78.0, 0.0))),
+        Metrics::default().titlebar_h
+    );
+}
+
 /// ADR 0004's step 2: every event a core hands out says which window it came
 /// from, and the answer is the id the driver put on `env.window` — the same
 /// place `maximized` and the rest of the window facts arrive.

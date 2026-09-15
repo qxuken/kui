@@ -823,6 +823,95 @@ use; decide when the round is next run on a unix host, where the same
 overwrite happens and nothing has yet opened the hosts in that order.
 Until then the recipe's order is the guard.
 
+*Run in that order on macOS 27 on 2026-09-15 (the round below): the
+four hosts opened fine after the headless round.* There the runner-less
+build lands in `target/debug/deps/libkui_ffi.dylib` only (13 MB, 211
+exports) and the copy `cbuild`'s build uplifted to
+`target/debug/libkui_ffi.dylib` (24 MB, with `kui_run`) is a separate
+file that the second build does not touch — the hosts load the uplifted
+one through `@rpath`. So the overwrite is Windows-only, where the
+uplifted DLL is the one both builds write, and the choice between the
+two fixes is still Windows' to make.
+
+## From the macOS 27 round (2026-09-15)
+
+The by-hand round run the day after the alpha.13 tag on the first
+macOS 27 machine (27.0 / 26A428, arm64, Xcode 26.6 with the 27.0
+Command Line Tools): the workspace tests, the four adapters, the C
+round, the Node suite, the headless drives, the AX audit (106/106),
+and the gestures — the strip dragged and double-clicked, the pin, the
+popup's press-drag-release, the native context menu, the declared and
+the standard menu bars through the AX API, typing an emoji and an
+accented letter, the Edit menu's Paste and Emoji & Symbols, undo and
+redo, the audio device's hold and close. One thing was wrong, and it
+was a number; the user then found a second, watching the popup.
+
+### `.` W17 — The titlebar strip assumed macOS's numbers, and macOS 27 changed them — **done (2026-09-15)**
+
+`env.window.native_controls` was a constant, `kui::MACOS_TRAFFIC_LIGHTS
+= 78×28`: gpui's measured `TRAFFIC_LIGHT_PADDING` under the macOS 26 SDK
+over the 28 px titlebar macOS 26 drew. macOS 27 draws 14 px buttons at
+(9, 9), (32, 9) and (55, 9) in a 32 px titlebar — measured with
+`standardWindowButton` and `contentLayoutRect` on a window like kui's,
+and through the AX API on the running example — so the keep-out's
+height was 4 px short, and `widgets::titlebar` drew its 34 px strip
+(`Metrics::titlebar_h`, "the platform's caption height") beside a 32 px
+one: its content, laid out against 34, sat 2 px under the lights the OS
+had centred at 16, and the strip read as taller than the OS's own. The
+same constant would have been wrong the other way on a machine still on
+macOS 26 had the strip followed it.
+
+**Done:** the runner *measures* it (`crates/kui/src/macos_chrome.rs`):
+once per window, when the pane is created, the frame's height less the
+`contentLayoutRect`'s is the titlebar (32 here), and the close button's
+`x` plus the zoom button's right edge is the width (9 + 69 = 78 — the
+same 78, by the symmetry of the gaps); the old pair is the fallback for
+a window with nothing to ask. And the strip's height follows the
+keep-out where there is one: `widgets::titlebar_height(ui)` is
+`native_controls.h` when the OS keeps controls over the strip and
+`metrics.titlebar_h` otherwise, `titlebar_with` and `latency_hud_at`
+read it, and the metric's row says so in four bindings' docs. The
+corpus keeps 78×28 as its fixture (`CUSTOM_CHROME_INSET`), which now
+also pins the strip at the keep-out's height rather than the metric's.
+Test: `titlebar_is_as_tall_as_the_os_s_where_the_os_keeps_controls_over_it`.
+
+### `.` W18 — Picking from a popup flicked the owner's chrome: the popup became key on every press — **done (2026-09-15)**
+
+Reported by the user on macOS 27: choosing an item in the `popup`
+example, "focus goes to the parent, then to the popup, then to the
+window — a split-second flick". Measured through an `AXObserver` on the
+running example (`AXFocusedWindowChanged` / `AXMainWindowChanged`, in
+ms from the observer's start): at the click that opens it, the popup
+window is created and becomes key and main at 404 ms, and the owner
+gets both back at 450 — the eager hand-back in `open_pane`; at the
+click that picks, the popup becomes key at 1502 and main at 1520, the
+owner has both back at 1521 (`settle_focus`), and the popup is
+destroyed at 1543. Two windows of 46 and 19 ms in which the owner is
+neither key nor main, and AppKit greys a titlebar for exactly that. The
+runner knew — the C11 round found that a press makes a window key
+however `with_active(false)` asked — and asked for the
+keyboard back the moment it noticed — but asking back is a batch late
+by construction, and the frame in between is the flick.
+
+**Done:** the popup **refuses**. `-[NSWindow sendEvent:]` asks
+`canBecomeKeyWindow` before making a pressed window key, and
+`orderFront` asks it before making a shown one key; winit's
+`WinitWindow` answers YES for every window. `crates/kui/src/macos_key.rs`
+replaces `canBecomeKeyWindow` and `canBecomeMainWindow` on the class
+that defines them — once per process, the way `macos_text_input`
+patches the view's — with overrides that answer NO for a window
+registered as non-activating (`refuse_key`, called in `open_pane`
+before the window is shown; `release` on close) and call winit's answer
+for every other. Re-measured: the same sequence produces
+`AXWindowCreated` and `AXUIElementDestroyed` and *nothing else* — the
+owner is key and main throughout. The mouse still reaches the popup
+(events go to the window under the cursor; winit's view accepts the
+first), and its keys come from the owner, which the runner already
+routes (ADR 0004 step 4): Tab, Space, arrows and Enter open, move and
+pick; press-drag-release picks; a press outside dismisses. The
+hand-back code stays as the fallback for a platform that makes the
+window key regardless.
+
 ## From the two alpha.12 upgrade reports (2026-09-15)
 
 Both apps upgraded to alpha.12 the day it was tagged and reported: the
@@ -1182,7 +1271,7 @@ the alpha.12 tag on 2026-09-14, the four sections that partly stayed —
 Core capability, the alpha.9 reports, the alpha.11 reports and the third
 editor-and-mux round — each keeping a paragraph that says what went
 where. This file is now three parked entries, C27 with its measurements,
-V2–V8, W16, the editor wishes, the "theirs, not ours" lists, and this
+V2–V8, W16, W17 and W18 (the macOS 27 round's two finds, built the same day), the editor wishes, the "theirs, not ours" lists, and this
 section.
 Still open, both waiting on something outside the repo: enable `SMOKE_MACOS`
 / `SMOKE_WINDOWS` the day a runner exists (P8) — which has two jobs waiting

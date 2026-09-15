@@ -200,6 +200,16 @@ impl<A: App> Shell<A> {
                 return;
             }
         };
+        // Before it is shown: AppKit makes a window key on ordering it
+        // front and on every press, and asks `canBecomeKeyWindow` first —
+        // so a non-activating window answers NO (`macos_key`), and its
+        // owner's chrome never greys for the batch the hand-back below
+        // used to take (backlog W18). The hand-back stays for a platform
+        // that makes it key anyway.
+        #[cfg(target_os = "macos")]
+        if !config.activates {
+            macos_key::refuse_key(&window);
+        }
         let mut core = Core::new_in(&self.session);
         core.set_diagnostics(self.diagnostics);
         core.set_subpixel_text(self.subpixel);
@@ -366,12 +376,21 @@ impl<A: App> Shell<A> {
         macos_text_input::attach(&window);
         window.request_redraw();
         let appearance = appearance_of(&window);
+        // Where the OS's own controls are, now that there is a window to
+        // ask: winit has no getter, and the numbers moved between macOS
+        // releases (backlog W17).
+        #[cfg(target_os = "macos")]
+        let native_controls =
+            (chrome == Chrome::Custom).then(|| macos_chrome::native_controls(&window));
+        #[cfg(not(target_os = "macos"))]
+        let native_controls = None;
         self.panes.push(Pane {
             id,
             kind: config.kind,
             owner,
             activates: config.activates,
             chrome,
+            native_controls,
             applied_min: None,
             anchor: config.anchor,
             // A popup opened on top (see above); everything else opens Normal.
@@ -492,7 +511,10 @@ impl<A: App> Shell<A> {
         let events = self.panes[i].core.take_pending_events();
         let cmds = self.panes[i].core.take_window_commands();
         #[cfg(target_os = "macos")]
-        macos_text_input::detach(&self.panes[i].window);
+        {
+            macos_text_input::detach(&self.panes[i].window);
+            macos_key::release(&self.panes[i].window);
+        }
         self.panes.remove(i);
         if let Some(j) = hand_back.and_then(|o| self.pane_of(o)) {
             self.panes[j].os_focused = true;

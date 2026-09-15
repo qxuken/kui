@@ -86,6 +86,10 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
     # The standard bar (ADR 0030): a popup asks its `NSWindow` to stay out
     # of the Window menu's list.
     "NSWindow",
+    # The traffic lights' keep-out (`mod macos_chrome`): the standard window
+    # buttons are `NSButton`s, asked for their frames.
+    "NSButton",
+    "NSControl",
     "NSResponder",
     "NSView",
     "NSEvent",

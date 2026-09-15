@@ -62,8 +62,7 @@ pub(crate) fn sync_env(
         // AR49) — and false on a platform without a level whatever was
         // asked of it.
         always_on_top: pane.applied_on_top && pane.level_supported,
-        native_controls: (cfg!(target_os = "macos") && chrome == Chrome::Custom)
-            .then_some(MACOS_TRAFFIC_LIGHTS),
+        native_controls: pane.native_controls,
     };
     // One device per app, so every pane reads the same state; per-frame
     // because the driver opens it off-thread and closes it when idle, and
@@ -188,6 +187,11 @@ pub(crate) struct Pane {
     /// app's windows, [`Chrome::Native`] for the devtools' own — which
     /// the core declares and nothing in the app draws a titlebar for.
     pub(crate) chrome: Chrome,
+    /// The keep-out rect `env.window.native_controls` reports: measured
+    /// from the window once it exists (`macos_chrome`), on the one
+    /// platform whose custom chrome keeps controls of the OS's over the
+    /// content. `None` everywhere else, and under native chrome.
+    pub(crate) native_controls: Option<Rect>,
     /// The main window only: the minimum inner size last handed to the
     /// OS — the launcher's, plus what a docked devtools pane takes
     /// (`Core::devtools_inset`), re-applied when either changes.

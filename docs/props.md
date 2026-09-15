@@ -399,7 +399,7 @@ everywhere else — and `compact` leaves it alone.
 | `menu_pad_y` | `menuPadY` | 5 | 3 | A menu row's vertical padding; a menu-bar title's is two px less. |
 | `menu_width` | `menuWidth` | 200 | 180 | A menu panel's width. |
 | `menu_bar_h` | `menuBarH` | 26 | 22 | The drawn menu bar's height. |
-| `titlebar_h` | `titlebarH` | 32 / 34 | 32 / 34 | The titlebar's height: the platform's caption height, 32 on Windows and 34 elsewhere. |
+| `titlebar_h` | `titlebarH` | 32 / 34 | 32 / 34 | The titlebar's height where the strip is the app's alone: the platform's caption height, 32 on Windows and 34 elsewhere. Under macOS custom chrome the strip is the OS's own titlebar, as tall as `window.native_controls` measures it (32 on macOS 27, 28 before), and this row is not read (`widgets::titlebar_height`). |
 
 ## Doors
 
