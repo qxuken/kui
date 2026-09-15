@@ -50,7 +50,12 @@ F66 from the kawoosh terminal and C40 from the drop-zone ask with the
 alpha.14 tag — were built the day they were filed), C41 and E4 from the
 alpha.14 pre-tag round (a bench row the guard does not watch, 10%
 slower since the drop-zone commit and bisected to it; the harness
-sizing its window for the dock at launch only), and the "theirs, not ours" lists the field reports left
+sizing its window for the dock at launch only), the kawoosh binary-file
+report of 2026-09-16 keeping only its introduction and measurements (its
+two entries, C42 and C43 — `rich_text` shaped whole past the long-line
+threshold, and a long line's key hashed a byte at a time every frame —
+were built the day they were filed; the "thousands of spans" the report
+blamed measured as a factor of 1.5 and not the cause), and the "theirs, not ours" lists the field reports left
 behind. Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -1091,6 +1096,56 @@ runner already answers, or a resize the harness asks for), or lay the harness's 
 "fit"` so it is the panel that gives. The first matches what launch
 does; the second is a line. Cheap either way; waits for it to matter.
 
+## From the kawoosh binary-file report (2026-09-16)
+
+kawoosh opened a `.ttf` — a binary, so a "line" is tens of KB between
+the rare newlines — and the framerate HUD read 17.9 ms a frame average,
+229 ms at the worst, in release. The editor draws each of its ~34
+visible rows as one `rich_text` of the whole line, and the report's
+first pass had already escaped the control characters (a NUL laid out
+at infinite width) and capped the dim-escape spans, blaming "thousands
+of spans, looks quadratic" for what was left. Measured here before
+filing (a scratch probe over `Core::frame`, release, 1200 × 800 at
+2×, one row of a 34-row column under `scroll_x`):
+
+| case | cold | steady |
+|---|---|---|
+| `text`, 50 KB, one row (chunked, C19) | 0.16 ms | 0.09 ms |
+| `rich_text`, 50 KB, **one span** | 331 ms | 0.13 ms |
+| `text`, 34 rows × 50 KB | 656 ms | 2.9 ms |
+| `rich_text`, 34 rows × 50 KB, one span each | 13.5 s | 9.4 ms, then **56 ms** |
+| `rich_text`, 16 KB in 250 / 1000 / 8000 spans | 161 / 198 / 275 ms | 0.04 / 0.07 / 0.18 ms |
+| `rich_text`, 2000 spans over 8 / 16 / 32 KB | 111 / 234 / 421 ms | — |
+| `text` vs `rich_text` below the threshold, 4000 bytes | 36 vs 35 ms | — |
+
+So: shaping is ~9 µs a byte whole-line, plain or rich alike (four-byte
+spans ~1.5× that — a factor, not a power); what makes the rich row a
+thousand times the plain one is that it is shaped whole where the plain
+one is chunked; and a screenful of them thrashes the cache. The span
+count was never the story. Two entries, C42 and C43, both **built
+2026-09-16**, the day they were filed, and in the archive; what kawoosh
+itself can do is under "theirs".
+
+### Theirs, not ours
+
+- kawoosh draws every row through `rich_text` even when it has one
+  span and no decoration, which forgoes C19 until C42 lands: a row
+  whose segments fold to one plain look should go through `text`. Its
+  caret row can stay plain on a long line by drawing the block caret,
+  the selection and the hits as floats measured to their byte the way
+  its bar caret already is (`measure_text` of a long prefix takes the
+  long path — the prefix's chunks share keys with the line's — and
+  answers the estimate, exact under monospace); or it can slice to the
+  viewport's columns with a spacer either side, the app-side
+  `virtual_column` C19's outcome allows a monospace grid editor. With
+  C42 built the `rich_text` rows are chunked as they are, so the first
+  is moot and the second is a choice; its own per-row work is O(line)
+  a frame either way — the line text cloned, the escapes expanded, a
+  `Vec` of every grapheme boundary built to snap the span cuts — which
+  the slice bounds and C42 does not touch.
+- A syntax-run cap on long lines (vim's `synmaxcol`, VS Code's 20k
+  tokenisation cap) is the editor's policy, not the toolkit's.
+
 ## After alpha.13
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -1795,3 +1850,8 @@ move.
 **From a feature ask (2026-09-15): a drop zone** — C40, ADR 0031 built whole; W19 stays open
 
 - `~` **C40** — [A drop zone: `onDrop` on any node, the files as an event, `dropBg` while they hover](backlog/closed-2026-09.md#-c40--a-drop-zone-ondrop-on-any-node-the-files-as-an-event-dropbg-while-they-hover--done-2026-09-15) — done (2026-09-15) — ADR 0031, `onDrop` / `dropBg`, three `InputEvent`s, ABI 18
+
+**From the kawoosh binary-file report (2026-09-16)** — C42 and C43, both built the same day; the report's span-count diagnosis measured and recorded as not the cause
+
+- `~` **C42** — [`rich_text` never takes the long-line path: a 50 KB line with one styled span is shaped whole, and a screenful of them thrashes the cache](backlog/closed-2026-09.md#-c42--rich_text-never-takes-the-long-line-path-a-50-kb-line-with-one-styled-span-is-shaped-whole-and-a-screenful-of-them-thrashes-the-cache--done-2026-09-16) — done (2026-09-16) — rich chunks of the sliced spans, decorations on the wrapped rows
+- `.` **C43** — [A long line's cache key is a byte-serial FNV of its whole content, every frame](backlog/closed-2026-09.md#-c43--a-long-lines-cache-key-is-a-byte-serial-fnv-of-its-whole-content-every-frame--done-2026-09-16) — done (2026-09-16) — `key::hash_bulk`, the newline scan only on a miss; the app-supplied key not built

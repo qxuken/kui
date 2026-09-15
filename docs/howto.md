@@ -83,12 +83,15 @@ arithmetic; a wave is pieces of the segment primitive a `line` draws.
 
 ### How do I show a 100k-character line, or a paragraph that long?
 
-Hand it over as one `text` node. A plain text of 4096 bytes or more with no
-line breaks is shaped in ~1 KB chunks as they come on screen, so it costs
-the screenful it shows and a keystroke into it costs the chunk it lands in;
-under `wrap: word` the rows are broken from the chunks' positions, so a
+Hand it over as one `text` node, plain or as spans. A text of 4096 bytes or
+more with no line breaks is shaped in ~1 KB chunks as they come on screen,
+so it costs the screenful it shows and a keystroke into it costs the chunk
+it lands in — and so does a span moving along it, which is what an editor's
+caret row is (a background under one character, the syntax colours around
+it); under `wrap: word` the rows are broken from the chunks' positions, so a
 paragraph costs the rows it shows. Its size is an estimate until the chunks
 shape (exact under monospace), so a scrollbar can move a little as they do.
+Do not slice the line yourself to spare the toolkit: the chunk is the slice.
 
 [`text` row](props.md#elements) ·
 [alpha.9](../CHANGELOG.md#010-alpha9-2026-09-08)

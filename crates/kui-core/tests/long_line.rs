@@ -4,7 +4,8 @@
 //! it lands in; and the two text queries answer through the chunks.
 
 use kui_core::{
-    Color, Core, Key, LONG_LINE_BYTES, NodeSpec, QuadKind, Size, Sizing, TextStyle, TextWrap, Vec2,
+    Color, Core, Key, LONG_LINE_BYTES, NodeSpec, QuadKind, Size, Sizing, Span, TextStyle, TextWrap,
+    Vec2,
 };
 
 const LH: f32 = 18.0;
@@ -404,4 +405,206 @@ fn measurement_matches_layout_for_a_long_line() {
     assert_eq!(m.lines, 1);
     let clamped = core.measure_text(&text, &mono(), Some(300.0));
     assert_eq!(clamped.width, 300.0);
+}
+
+// ---- rich (C42) ------------------------------------------------------
+
+fn red() -> Color {
+    Color::rgb8(200, 40, 40)
+}
+fn blue() -> Color {
+    Color::rgb8(0, 0, 80)
+}
+
+/// `text` as three spans: a red run at `at..at + 20`, a blue background
+/// under `at + 20..at + 40`, plain either side.
+fn spans(text: &str, at: usize) -> Vec<Span<'_>> {
+    vec![
+        Span::new(&text[..at]),
+        Span::new(&text[at..at + 20]).color(red()),
+        Span::new(&text[at + 20..at + 40]).bg(blue()),
+        Span::new(&text[at + 40..]),
+    ]
+}
+
+/// The spans in the horizontally scrolling view of [`frame`]; returns the
+/// view's key, the node's, the glyph quads drawn, and the quads of the
+/// two marks: red glyphs and blue solids.
+fn rich_frame(
+    core: &mut Core,
+    spans: &[Span<'_>],
+    scroll_x: Option<f32>,
+) -> (Key, Key, usize, usize, Vec<kui_core::Rect>) {
+    let view = Key::ROOT.str("view");
+    if let Some(x) = scroll_x {
+        core.set_scroll(view, Vec2::new(x, 0.0));
+    }
+    let mut ui = core.frame(Size::new(VIEW_W, 200.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill().bg(Color::rgb8(0, 0, 0)));
+    ui.with_keyed(
+        "view",
+        NodeSpec::column()
+            .width(Sizing::Grow(1.0))
+            .height(Sizing::Fixed(100.0))
+            .scroll_x(),
+        |ui| {
+            ui.with_keyed("row", NodeSpec::row().height(Sizing::Fixed(LH)), |ui| {
+                ui.rich_text(spans, mono())
+            });
+        },
+    );
+    ui.finish();
+    let (dl, _) = core.output();
+    let glyphs = dl
+        .quads
+        .iter()
+        .filter(|q| q.kind == QuadKind::GlyphMask)
+        .count();
+    let red = dl
+        .quads
+        .iter()
+        .filter(|q| q.kind == QuadKind::GlyphMask && q.color == red())
+        .count();
+    let blue = dl
+        .quads
+        .iter()
+        .filter(|q| q.kind == QuadKind::Solid && q.color == blue())
+        .map(|q| q.rect)
+        .collect();
+    (view, view.str("row").index(0), glyphs, red, blue)
+}
+
+#[test]
+fn a_rich_line_past_the_threshold_is_chunked_too() {
+    let mut core = Core::new();
+    let text = line(50_000);
+    let w = cell(&mut core);
+    let marked = spans(&text, 50);
+    let (view, _, glyphs, red, blue) = rich_frame(&mut core, &marked, None);
+    // One long line, a few chunks, the screenful of glyphs — and the
+    // marks where the spans put them: twenty red glyphs at cell 50 (two
+    // are spaces), one blue rect twenty cells wide after them.
+    assert_eq!(core.long_lines(), 1);
+    assert!(
+        core.text_cache_len() <= 6,
+        "{} entries shaped",
+        core.text_cache_len()
+    );
+    let visible = (VIEW_W / w).ceil() as usize;
+    assert!(glyphs <= visible + 4, "{glyphs} glyphs for {visible} cells");
+    assert!((17..=20).contains(&red), "{red} red glyphs");
+    assert_eq!(blue.len(), 1, "{blue:?}");
+    assert!((blue[0].x - 70.0 * w).abs() < 1.0, "{} vs {}", blue[0].x, 70.0 * w);
+    assert!((blue[0].w - 20.0 * w).abs() < 1.0, "{} vs {}", blue[0].w, 20.0 * w);
+    assert!(
+        core.text_cache_bytes() < 2 << 20,
+        "{} bytes",
+        core.text_cache_bytes()
+    );
+    // The line's width is the content's, as a plain long line's is.
+    let g = core.scroll_geometry(view).unwrap();
+    assert!((g.content.w - text.len() as f32 * w).abs() < 2.0, "{}", g.content.w);
+
+    // A span in a chunk that never showed draws when it scrolls in, at
+    // its place, and the cache grew by the chunks that came in.
+    let before = core.text_cache_len();
+    let (_, _, _, _, blue) = rich_frame(&mut core, &spans(&text, 30_000), Some(30_000.0 * w));
+    assert_eq!(blue.len(), 1, "{blue:?}");
+    assert!((blue[0].x - 20.0 * w).abs() < 2.0, "{}", blue[0].x);
+    assert_eq!(core.long_lines(), 2);
+    assert!(core.text_cache_len() <= before + 6, "{}", core.text_cache_len());
+}
+
+#[test]
+fn a_caret_span_moving_along_a_rich_line_reshapes_one_chunk() {
+    let mut core = Core::new();
+    let text = line(50_000);
+    let w = cell(&mut core);
+    rich_frame(&mut core, &spans(&text, 30_000), Some(30_000.0 * w));
+    rich_frame(&mut core, &spans(&text, 30_000), Some(30_000.0 * w));
+    let before = core.text_cache_len();
+    rich_frame(&mut core, &spans(&text, 30_001), Some(30_000.0 * w));
+    // A new long line (its spans are its key), whose chunks all hit but
+    // the one the span moved in — and the first, which every line shapes
+    // for its metrics.
+    assert_eq!(core.long_lines(), 2);
+    assert!(
+        core.text_cache_len() <= before + 3,
+        "{before} -> {}: more than the moved chunk reshaped",
+        core.text_cache_len()
+    );
+}
+
+#[test]
+fn a_short_rich_text_takes_the_path_it_always_took() {
+    let mut core = Core::new();
+    let text = line(LONG_LINE_BYTES - 1);
+    rich_frame(&mut core, &spans(&text, 50), None);
+    assert_eq!(core.long_lines(), 0);
+    assert_eq!(core.text_cache_len(), 1);
+    // A span with a line break of its own keeps the whole path too.
+    let text = format!("{}\n{}", line(3000), line(3000));
+    rich_frame(&mut core, &[Span::new(&text)], None);
+    assert_eq!(core.long_lines(), 0);
+}
+
+#[test]
+fn a_wrapped_rich_line_draws_a_background_on_every_row_it_covers() {
+    let mut core = Core::new();
+    let text = line(20_000);
+    let w = cell(&mut core);
+    let per_row = (VIEW_W / w).floor() as usize;
+    // A background over a little more than two rows' worth of text,
+    // starting on the first row: three rects, one a row, each on its
+    // own row, together as wide as the span.
+    let end = per_row * 2 + per_row / 2;
+    let spans = [
+        Span::new(&text[..10]),
+        Span::new(&text[10..end]).bg(blue()),
+        Span::new(&text[end..]),
+    ];
+    let view = Key::ROOT.str("view");
+    let mut ui = core.frame(Size::new(VIEW_W, 200.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill().bg(Color::rgb8(0, 0, 0)));
+    ui.with_keyed(
+        "view",
+        NodeSpec::column()
+            .width(Sizing::Fixed(VIEW_W))
+            .height(Sizing::Fixed(100.0))
+            .scroll_y(),
+        |ui| {
+            ui.with_keyed(
+                "row",
+                NodeSpec::column().width(Sizing::Fixed(VIEW_W)),
+                |ui| ui.rich_text(&spans, wrapped(TextWrap::Word)),
+            );
+        },
+    );
+    ui.finish();
+    assert_eq!(core.long_lines(), 1);
+    let (dl, _) = core.output();
+    let mut blue: Vec<_> = dl
+        .quads
+        .iter()
+        .filter(|q| q.kind == QuadKind::Solid && q.color == blue())
+        .map(|q| q.rect)
+        .collect();
+    blue.sort_by(|a, b| a.y.total_cmp(&b.y));
+    assert_eq!(blue.len(), 3, "{blue:?}");
+    for (i, r) in blue.iter().enumerate() {
+        assert!((r.y - i as f32 * LH).abs() < 1.0, "{blue:?}");
+        // A row's trailing space hangs past the edge, and the background
+        // follows it there, as it does on the whole path.
+        assert!(r.x >= -1.0 && r.x + r.w <= VIEW_W + w + 1.0, "{blue:?}");
+    }
+    assert!((blue[0].x - 10.0 * w).abs() < 1.0, "{blue:?}");
+    assert!(blue[1].x < 1.0, "{blue:?}");
+    let total: f32 = blue.iter().map(|r| r.w).sum();
+    let expect = (end - 10) as f32 * w;
+    assert!(
+        (total - expect).abs() < expect * 0.05,
+        "{total} vs {expect} for {blue:?}"
+    );
+    let g = core.scroll_geometry(view).unwrap();
+    assert!(g.content.h > 10.0 * LH, "{}", g.content.h);
 }

@@ -340,14 +340,14 @@ that are hard to reverse and would look arbitrary without their context.
   or a background per span — paint built beside the glyphs, one rect per
   line the span covers, so a background follows it across a wrap) shaped as
   one paragraph flow, so wrapping crosses style boundaries and emoji share
-  baselines. A plain
+  baselines. A
   line of 4096 bytes or more — a minified bundle, a log line with a blob in
-  it — is shaped in ~1 KB chunks as they come on screen, so it costs the
-  screenful it shows and a keystroke into it costs the chunk it lands in;
-  wrapped, its chunks stay shaped as they are and the rows are broken from
-  their positions, each chunk's first row starting where the last one's
-  ended, so a 100k-character paragraph costs the rows it shows (backlog
-  C19). Line breaking
+  it, plain or in spans — is shaped in ~1 KB chunks as they come on screen,
+  so it costs the screenful it shows and a keystroke into it (or a span
+  moving along it) costs the chunk it lands in; wrapped, its chunks stay
+  shaped as they are and the rows are broken from their positions, each
+  chunk's first row starting where the last one's ended, so a 100k-character
+  paragraph costs the rows it shows (backlog C19, C42). Line breaking
   is a style choice: `wrap` (word / glyph / none), `max_lines`, and
   `ellipsis` (a single "…"-terminated line unless `max_lines` says
   otherwise); unwrapped text takes its box's width and clips to it.
@@ -978,7 +978,10 @@ that prop costs.
 | `long_line_100k_scroll` | a viewport's width of scrolling through it per frame | ~160 µs, a few ms when a chunk first shows |
 | `long_line_100k_wrapped_first_frame` | the same line as a `wrap: word` paragraph in a vertically scrolling view — rows broken from the chunks' positions | ~36 ms (a screenful of rows is seventeen times the text) |
 | `long_line_100k_wrapped_scroll` | a viewport's height of scrolling through it per frame | ~180 µs, ~9 ms on a frame that brings a chunk in |
-| `long_line_100k_edit` | one character inserted in the middle, the view held there | ~160 µs (was 102 ms) |
+| `long_line_100k_edit` | two characters inserted in the middle, different every frame, the view held there — the chunk they land in reshaped | ~1.3 ms (was 102 ms; the row read ~160 µs until 2026-09-16, when its alternating two letters were found to hit the text cache from the third frame on) |
+| `long_line_100k_rich_first_frame` | the same line as three spans — an editor's caret row — opened at its start | ~18 ms (was ~660 ms shaped whole, before C42) |
+| `long_line_100k_rich_caret` | the caret span moved one character a frame along it | ~1.3 ms — the chunk it moves in, the same as a keystroke |
+| `long_rows_34x500k_steady` | thirty-four rows of 500k characters each, every chunk shaped, nothing changing — what a screenful of a binary costs when it draws none of it | ~3 ms (was ~27 ms: the key hashed a byte at a time and scanned for a newline every frame, C43) |
 | `cells_200x50_warm` (`--bench cells`) | a terminal's screen as one `ui.cells` node, unchanged | ~58 µs |
 | `cells_200x50_streaming` | the same grid with every character new each frame | ~60 µs |
 | `cells_200x50_as_text_nodes` | the same 10k cells as one text node each — the path an app had | ~2.2 ms |

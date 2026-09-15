@@ -21,6 +21,104 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.15 (unreleased)
+
+**What breaks.**
+
+- **A rich text past the long-line threshold is chunked** (backlog C42):
+  a `rich_text` / `<text>` with `<span>` children / `text({ … })` /
+  `kui_rich_text` of 4096 bytes or more with no line break (and no
+  `maxLines` or `ellipsis`) now takes the path a plain text of that
+  length has taken since alpha.9 — shaped in ~1 KB chunks as they come
+  on screen. What that changes for such a paragraph, as it did for a
+  plain one: the access tree carries its **value without its runs**
+  (a screen reader reads the text, not word by word); `measureText` /
+  `measure_rich_text` / `kui_measure_rich_text` answer an **estimate**
+  for the chunks that never showed, exact under monospace; a **kern
+  pair or ligature at a chunk cut** is lost, one per KB at most; and the
+  width a `scrollX` container sees can move a little as chunks fill in.
+  A rich paragraph shorter than that, or one with a line break of its
+  own, draws exactly as before.
+
+### Added
+
+- **A long line in spans costs what a plain one does** (backlog C42,
+  from kawoosh opening a `.ttf`: 17.9 ms a frame average, 229 ms at the
+  worst, drawing thirty-four rows of a binary's newline-less "lines" as
+  one `rich_text` each). `intern_rich` never asked `is_long`, so a 50 KB
+  line with **one** styled span was shaped whole — 331 ms the frame it
+  scrolled in, 24 MB of glyph templates kept, three such rows filling the
+  64 MB text-cache budget so that a screenful reshaped what the last
+  frame evicted (56 ms steady, measured) — and an editor's caret row,
+  whose spans change with every caret move, was that again per
+  keystroke. Now the rich paragraph is a `LongLine` like the plain one:
+  the content concatenated once, the spans kept as byte ranges with their
+  attributes beside it, and each chunk shaped as a rich run of **the
+  spans that intersect it, sliced** — keyed by its content and its
+  spans' attributes, so a caret span moving along the line re-keys one
+  chunk and every other hits. The chunk's span backgrounds, underlines
+  and strikethroughs are built with its glyphs as any rich run's are;
+  under `wrap: word` / `glyph` they are drawn on the rows too, a rect a
+  row break falls inside cut at the break, which the plain path never
+  needed. Highlight, hit-test, caret and the wrapped rows were already
+  per chunk. Measured: the 50 KB one-span line 331 → 20 ms cold and 0.13
+  → 0.024 ms steady; thirty-four such rows 13.5 s → 0.66 s cold and 9.4 /
+  56 ms → 0.40 ms steady; the caret span moving one character a frame
+  along a 100k-character line, **1.29 ms, the same number as a plain
+  keystroke into it**. Two bench rows, `long_line_100k_rich_first_frame`
+  and `long_line_100k_rich_caret`, and four tests in `tests/long_line.rs`
+  (a chunked rich line draws its marks where the spans put them and
+  shapes the screenful; a moving span reshapes one chunk; a short rich
+  text and one with a line break keep the whole path; a wrapped rich
+  line draws a background on every row it covers). No API moved: the
+  same calls, in four bindings, take the new path by length.
+- The kawoosh report's own diagnosis — "thousands of spans, looks
+  quadratic" — was measured before anything was built and is **not
+  it**: at a fixed 16 KB, 250 → 8000 spans move the cold shape 161 →
+  275 ms (four-byte spans cost ~1.5× — a factor, not a power), and at a
+  fixed 2000 spans doubling the bytes doubles the time. Shaping is ~9 µs
+  a byte whole-line, plain or rich alike; what made the rich row a
+  thousand times the plain one was that it was shaped whole where the
+  plain one was chunked. The backlog section records the table so the
+  next round does not chase it.
+
+### Changed
+
+- **A text's cache key hashes its content eight bytes a round** (backlog
+  C43). `style_key` and the rich key mixed the content through
+  `key::fnv`, a byte a round with a multiply on the chain — a nanosecond
+  a byte, so a long line's lookup cost its length every frame: thirty-four
+  chunked rows of 500k characters, every chunk shaped and nothing
+  changing, read 26.8 ms a frame drawing none of it; and the long-line
+  decision scanned the content for a newline every frame besides, through
+  a `str` pattern search that is per character. Content past 32 bytes now
+  goes through `key::hash_bulk` — Fx's rotate-xor-multiply round over
+  words, the length mixed first and murmur's finalizer after, so a zero
+  tail and a shorter text differ and every bit reaches the key — and the
+  eight bytes it returns are mixed by `fnv` as before; below 32 bytes the
+  bytes are mixed as they were. And a text that could be long by its
+  length and style is **looked up under both keys before its bytes are
+  scanned**: the newline scan runs once, when the cache has not seen the
+  text, and is a byte scan when it does (`intern_any`, `intern_rich_any`).
+  The same screenful reads **3.0 ms**. `key::fnv` itself is untouched —
+  keys, the access digest and the corpus digest are bit-stable as they
+  were; a text cache key is not something anything keeps across versions,
+  and nothing pinned one. A bench row, `long_rows_34x500k_steady`, and a
+  unit test on the hash's tails and lengths. The entry's other line — a
+  `key` the app supplies on the style, so an editor hands over `(rev,
+  line)` instead of the content — is **not built**: the hash is the fix,
+  and the door waits for a host with lines the hash is still too slow
+  for.
+- **`long_line_100k_edit` measured a cache hit.** The row alternated two
+  letters at one byte, so from the third frame on both edited contents
+  were in the text cache and the row read a lookup: ~160 µs, which the
+  README's table and C19's outcome cited as the cost of a keystroke into
+  a long line. The row now inserts two characters different every frame,
+  and reads **~1.3 ms** — the chunk the keystroke lands in, reshaped, with
+  cosmic-text's shape-run cache warm for every word but the edited one.
+  The table says so; the alpha.9 outcome is left as written, with its
+  number, since the archive is what was measured then.
+
 ## 0.1.0-alpha.14 (2026-09-15)
 
 **What breaks.**

@@ -358,6 +358,21 @@ impl<'a> Span<'a> {
         self
     }
 
+    /// The span without its text: what a long line keeps per span so a
+    /// chunk can be rebuilt from the content and the ranges (backlog C42).
+    fn attrs_only(&self) -> SpanAttrs {
+        SpanAttrs {
+            color: self.color,
+            bold: self.bold,
+            italic: self.italic,
+            underline: self.underline,
+            underline_color: self.underline_color,
+            underline_style: self.underline_style,
+            strikethrough: self.strikethrough,
+            bg: self.bg,
+        }
+    }
+
     fn attrs(&self, family: cosmic_text::Family<'a>) -> Attrs<'a> {
         // Pin the family (the paragraph base's) so weight/style variants
         // stay in one typeface instead of falling back to whatever face
@@ -379,6 +394,66 @@ impl<'a> Span<'a> {
         }
         attrs
     }
+}
+
+/// A [`Span`]'s attributes with its byte range in the paragraph, owned:
+/// a long rich line keeps these beside its content and hands each chunk
+/// the spans that intersect it, sliced (backlog C42).
+#[derive(Clone, Copy)]
+struct SpanAttrs {
+    color: Option<Color>,
+    bold: bool,
+    italic: bool,
+    underline: bool,
+    underline_color: Option<Color>,
+    underline_style: UnderlineStyle,
+    strikethrough: bool,
+    bg: Option<Color>,
+}
+
+impl SpanAttrs {
+    fn span<'a>(&self, text: &'a str) -> Span<'a> {
+        Span {
+            text,
+            color: self.color,
+            bold: self.bold,
+            italic: self.italic,
+            underline: self.underline,
+            underline_color: self.underline_color,
+            underline_style: self.underline_style,
+            strikethrough: self.strikethrough,
+            bg: self.bg,
+        }
+    }
+}
+
+/// One span of a long rich line: its byte range in the content and its
+/// attributes. The ranges are contiguous and cover the content.
+struct OwnedSpan {
+    start: usize,
+    end: usize,
+    attrs: SpanAttrs,
+}
+
+/// The spans of `spans` that intersect `start..end` of `content`, sliced
+/// to it and with the empty dropped: what a chunk of a long rich line is
+/// shaped from. A span cut by the chunk boundary becomes two, one a
+/// side, with the same attributes — its background rects meet at the cut.
+fn chunk_spans<'a>(
+    content: &'a str,
+    spans: &[OwnedSpan],
+    start: usize,
+    end: usize,
+) -> Vec<Span<'a>> {
+    let first = spans.partition_point(|s| s.end <= start);
+    spans[first..]
+        .iter()
+        .take_while(|s| s.start < end)
+        .filter_map(|s| {
+            let (a, b) = (s.start.max(start), s.end.min(end));
+            (a < b).then(|| s.attrs.span(&content[a..b]))
+        })
+        .collect()
 }
 
 struct FrameText {
@@ -489,6 +564,10 @@ struct RowStart {
 /// a little as chunks fill in, exact under monospace.
 pub(crate) struct LongLine {
     content: String,
+    /// The spans, for a rich line (backlog C42): each chunk is shaped as a
+    /// rich run of the spans that intersect it, sliced. Empty for a plain
+    /// line, whose chunks are plain runs.
+    spans: Vec<OwnedSpan>,
     /// The chunks' style: the text's with `wrap` set to `None`, since a
     /// chunk is always shaped as one run and the line breaks it itself.
     style: TextStyle,
@@ -1035,10 +1114,10 @@ impl TextSystem {
     }
 
     pub(crate) fn style_key(content: &str, style: &TextStyle, scale: f32) -> u64 {
-        // FNV over content + shaping-relevant style bits (color excluded).
-        let mut h = crate::key::FNV_OFFSET;
+        // The content (word-wide past a few bytes, backlog C43) and the
+        // shaping-relevant style bits (color excluded).
+        let mut h = crate::key::mix_content(crate::key::FNV_OFFSET, content.as_bytes());
         let mut mix = |bytes: &[u8]| h = crate::key::fnv(h, bytes);
-        mix(content.as_bytes());
         mix(&style.size.to_bits().to_le_bytes());
         mix(&style.line_height.to_bits().to_le_bytes());
         mix(&scale.to_bits().to_le_bytes());
@@ -1082,6 +1161,18 @@ impl TextSystem {
         fs: &mut FontSystem,
     ) -> u64 {
         let key = Self::style_key(content, style, self.scale);
+        self.intern_keyed(key, content, style, res, fs)
+    }
+
+    /// [`Self::intern`] under a key already computed.
+    fn intern_keyed(
+        &mut self,
+        key: u64,
+        content: &str,
+        style: &TextStyle,
+        res: &Resources,
+        fs: &mut FontSystem,
+    ) -> u64 {
         let frame_no = self.frame_no;
         let scale = self.scale;
         if !self.entries.contains_key(&key) {
@@ -1160,11 +1251,7 @@ impl TextSystem {
     ) -> TextId {
         // The one place the long/short decision is made: the entry's
         // variant carries it from here.
-        let key = if is_long(content, style) {
-            self.intern_long(content, style, res, fs)
-        } else {
-            self.intern(content, style, res, fs)
-        };
+        let key = self.intern_any(content, style, res, fs);
         self.frame.push(FrameText {
             cache_key: key,
             color: style.color_or_default(),
@@ -1172,33 +1259,112 @@ impl TextSystem {
         TextId((self.frame.len() - 1) as u32)
     }
 
-    /// Registers (or touches) the long line `content` is, shaping its
-    /// first chunk for the line height and the advance the rest are
-    /// estimated from; see [`LongLine`].
-    fn intern_long(
+    /// Interns `content` as the long line it is or the run it is, one
+    /// hash either way: a text that could be long by its length and style
+    /// is looked up under both keys before its bytes are scanned for a
+    /// line break, so the steady state of a megabyte line is its hash and
+    /// two lookups (backlog C43).
+    fn intern_any(
         &mut self,
         content: &str,
         style: &TextStyle,
         res: &Resources,
         fs: &mut FontSystem,
     ) -> u64 {
-        let key = Self::style_key(content, style, self.scale) ^ LONG_SALT;
+        if !could_be_long(content.len(), style) {
+            return self.intern(content, style, res, fs);
+        }
+        let key = Self::style_key(content, style, self.scale);
+        let long_key = key ^ LONG_SALT;
         let frame_no = self.frame_no;
-        if let Some(line) = self.long_mut(key) {
-            line.last_used = frame_no;
+        if let Some(e) = self.entries.get_mut(&long_key) {
+            e.touch(frame_no);
+            return long_key;
+        }
+        if let Some(e) = self.entries.get_mut(&key) {
+            e.touch(frame_no);
             return key;
         }
+        if has_line_break(content) {
+            self.intern_keyed(key, content, style, res, fs)
+        } else {
+            self.build_long(long_key, content.to_string(), Vec::new(), style, res, fs)
+        }
+    }
+
+    /// The rich counterpart of [`Self::intern_any`]: a paragraph past the
+    /// threshold with no line break is a long line whose chunks are rich
+    /// runs (backlog C42); its content is concatenated only when the line
+    /// is built.
+    fn intern_rich_any(
+        &mut self,
+        spans: &[Span<'_>],
+        base: &TextStyle,
+        res: &Resources,
+        fs: &mut FontSystem,
+    ) -> u64 {
+        let len: usize = spans.iter().map(|s| s.text.len()).sum();
+        if !could_be_long(len, base) {
+            return self.intern_rich(spans, base, res, fs);
+        }
+        let key = Self::rich_key(spans, base, self.scale);
+        let long_key = key ^ LONG_SALT;
+        let frame_no = self.frame_no;
+        if let Some(e) = self.entries.get_mut(&long_key) {
+            e.touch(frame_no);
+            return long_key;
+        }
+        if let Some(e) = self.entries.get_mut(&key) {
+            e.touch(frame_no);
+            return key;
+        }
+        if spans.iter().any(|s| has_line_break(s.text)) {
+            return self.intern_rich_keyed(key, spans, base, res, fs);
+        }
+        let mut content = String::with_capacity(len);
+        let mut owned = Vec::with_capacity(spans.len());
+        for s in spans {
+            let start = content.len();
+            content.push_str(s.text);
+            owned.push(OwnedSpan {
+                start,
+                end: content.len(),
+                attrs: s.attrs_only(),
+            });
+        }
+        self.build_long(long_key, content, owned, base, res, fs)
+    }
+
+    /// Builds the long line `content` is under `key` — plain, or rich
+    /// with `spans` (backlog C42) — shaping its first chunk for the line
+    /// height and the advance the rest are estimated from; see
+    /// [`LongLine`]. The callers have looked `key` up already.
+    fn build_long(
+        &mut self,
+        key: u64,
+        content: String,
+        spans: Vec<OwnedSpan>,
+        style: &TextStyle,
+        res: &Resources,
+        fs: &mut FontSystem,
+    ) -> u64 {
+        let frame_no = self.frame_no;
         let wrap = style.wrap;
         let style = &TextStyle {
             wrap: TextWrap::None,
             ..*style
         };
-        let chunks: Vec<Chunk> = chunk_ranges(content)
+        let scale = self.scale;
+        let chunks: Vec<Chunk> = chunk_ranges(&content)
             .into_iter()
             .map(|(start, end)| Chunk {
                 start,
                 end,
-                key: Self::style_key(&content[start..end], style, self.scale),
+                key: if spans.is_empty() {
+                    Self::style_key(&content[start..end], style, scale)
+                } else {
+                    Self::rich_key(&chunk_spans(&content, &spans, start, end), style, scale)
+                },
                 width: None,
                 rows: Vec::new(),
             })
@@ -1207,7 +1373,7 @@ impl TextSystem {
         // advance the estimates need come from it.
         let (w0, line_h) = match chunks.first() {
             Some(c) => {
-                let k = self.intern(&content[c.start..c.end], style, res, fs);
+                let k = self.shape_chunk(&content, &spans, c.start, c.end, style, res, fs);
                 let e = self.run(k).expect("just interned");
                 (e.intrinsic.w, e.buffer.metrics().line_height)
             }
@@ -1217,7 +1383,8 @@ impl TextSystem {
             .first()
             .map_or(0.0, |c| w0 / (c.end - c.start).max(1) as f32);
         let mut line = LongLine {
-            content: content.to_string(),
+            content,
+            spans,
             style: *style,
             wrap,
             wrap_w: None,
@@ -1233,20 +1400,58 @@ impl TextSystem {
             c.width = Some(w0);
         }
         line.reprefix();
-        line.bytes = ENTRY_BASE_BYTES + line.content.len() + line.chunks.len() * 48;
+        line.bytes = ENTRY_BASE_BYTES
+            + line.content.len()
+            + line.chunks.len() * 48
+            + line.spans.len() * std::mem::size_of::<OwnedSpan>();
         self.insert(key, Entry::Long(line));
         key
+    }
+
+    /// Shapes (or touches) the run for `start..end` of a long line's
+    /// content: a plain run, or a rich one of the spans that intersect
+    /// the range (backlog C42). Returns its key.
+    #[allow(clippy::too_many_arguments)]
+    fn shape_chunk(
+        &mut self,
+        content: &str,
+        spans: &[OwnedSpan],
+        start: usize,
+        end: usize,
+        style: &TextStyle,
+        res: &Resources,
+        fs: &mut FontSystem,
+    ) -> u64 {
+        if spans.is_empty() {
+            self.intern(&content[start..end], style, res, fs)
+        } else {
+            let spans = chunk_spans(content, spans, start, end);
+            self.intern_rich(&spans, style, res, fs)
+        }
     }
 
     /// Makes sure chunk `i` of the long line `key` is shaped, and moves
     /// the prefix sums if its width was an estimate. Returns whether it
     /// shaped now — what tells a wrapped line its rows need breaking.
     fn ensure_chunk(&mut self, key: u64, i: usize, res: &Resources, fs: &mut FontSystem) -> bool {
-        let (text, style, chunk_key, known) = {
+        let (text, spans, style, chunk_key, known) = {
             let line = self.long(key).expect("a long line");
             let c = &line.chunks[i];
+            // The chunk's spans, rebased to the slice: what `shape_chunk`
+            // is handed, the line itself staying in the map meanwhile.
+            let first = line.spans.partition_point(|s| s.end <= c.start);
+            let spans: Vec<OwnedSpan> = line.spans[first..]
+                .iter()
+                .take_while(|s| s.start < c.end)
+                .map(|s| OwnedSpan {
+                    start: s.start.max(c.start) - c.start,
+                    end: s.end.min(c.end) - c.start,
+                    attrs: s.attrs,
+                })
+                .collect();
             (
                 line.content[c.start..c.end].to_string(),
+                spans,
                 line.style,
                 c.key,
                 c.width,
@@ -1259,7 +1464,7 @@ impl TextSystem {
             e.last_used = frame_no;
             return false;
         }
-        let k = self.intern(&text, &style, res, fs);
+        let k = self.shape_chunk(&text, &spans, 0, text.len(), &style, res, fs);
         let w = self.run(k).expect("just interned").intrinsic.w;
         let line = self.long_mut(key).expect("just read");
         line.chunks[i].key = k;
@@ -1371,15 +1576,20 @@ impl TextSystem {
         fs: &mut FontSystem,
         max_w: Option<f32>,
     ) -> TextMetrics {
-        if is_long(content, style) {
-            let key = self.intern_long(content, style, res, fs);
+        let key = self.intern_any(content, style, res, fs);
+        self.measure_any(key, fs, max_w)
+    }
+
+    /// `measure` for the entry under `key`, a long line or a run.
+    fn measure_any(&mut self, key: u64, fs: &mut FontSystem, max_w: Option<f32>) -> TextMetrics {
+        if self.long(key).is_some() {
             let scale = self.scale;
             // Without a width nothing is broken, and the layout the frame
             // holds is left as it is.
             let (size, lines) = match max_w {
                 Some(m) => self.long_size(key, Some(m * scale)),
                 None => {
-                    let line = self.long(key).expect("just interned");
+                    let line = self.long(key).expect("checked");
                     (Size::new(line.width(), line.line_h), 1)
                 }
             };
@@ -1389,7 +1599,6 @@ impl TextSystem {
                 lines,
             };
         }
-        let key = self.intern(content, style, res, fs);
         self.measure_key(key, fs, max_w)
     }
 
@@ -1402,8 +1611,8 @@ impl TextSystem {
         fs: &mut FontSystem,
         max_w: Option<f32>,
     ) -> TextMetrics {
-        let key = self.intern_rich(spans, base, res, fs);
-        self.measure_key(key, fs, max_w)
+        let key = self.intern_rich_any(spans, base, res, fs);
+        self.measure_any(key, fs, max_w)
     }
 
     fn measure_key(&mut self, key: u64, fs: &mut FontSystem, max_w: Option<f32>) -> TextMetrics {
@@ -1425,7 +1634,9 @@ impl TextSystem {
     }
 
     /// Registers a rich-text paragraph for this frame. Spans shape as one
-    /// flow, so wrapping crosses style boundaries correctly.
+    /// flow, so wrapping crosses style boundaries correctly; past the
+    /// long-line threshold the flow is chunked like a plain line's
+    /// (backlog C42).
     pub fn add_rich(
         &mut self,
         spans: &[Span<'_>],
@@ -1433,7 +1644,7 @@ impl TextSystem {
         res: &Resources,
         fs: &mut FontSystem,
     ) -> TextId {
-        let key = self.intern_rich(spans, base, res, fs);
+        let key = self.intern_rich_any(spans, base, res, fs);
         self.frame.push(FrameText {
             cache_key: key,
             color: base.color_or_default(),
@@ -1448,10 +1659,18 @@ impl TextSystem {
         res: &Resources,
         fs: &mut FontSystem,
     ) -> u64 {
-        let mut key = Self::style_key("", base, self.scale) ^ 0x9e37_79b9_7f4a_7c15;
+        let key = Self::rich_key(spans, base, self.scale);
+        self.intern_rich_keyed(key, spans, base, res, fs)
+    }
+
+    /// The cache key of a rich paragraph: the base style's, then every
+    /// span's text and attributes in order. Never a plain text's key for
+    /// the same content.
+    fn rich_key(spans: &[Span<'_>], base: &TextStyle, scale: f32) -> u64 {
+        let mut key = Self::style_key("", base, scale) ^ 0x9e37_79b9_7f4a_7c15;
         for s in spans {
+            key = crate::key::mix_content(key, s.text.as_bytes());
             let mut mix = |bytes: &[u8]| key = crate::key::fnv(key, bytes);
-            mix(s.text.as_bytes());
             mix(&[
                 s.bold as u8,
                 s.italic as u8,
@@ -1469,6 +1688,18 @@ impl TextSystem {
                 mix(&c.a.to_bits().to_le_bytes());
             }
         }
+        key
+    }
+
+    /// [`Self::intern_rich`] under a key already computed.
+    fn intern_rich_keyed(
+        &mut self,
+        key: u64,
+        spans: &[Span<'_>],
+        base: &TextStyle,
+        res: &Resources,
+        fs: &mut FontSystem,
+    ) -> u64 {
         let frame_no = self.frame_no;
         let scale = self.scale;
         if !self.entries.contains_key(&key) {
@@ -1761,6 +1992,60 @@ fn emit_entry_rows(
     out: &mut Vec<Quad>,
 ) {
     build_templates(entry, raster, fs, atlas);
+    // A decoration rect spans glyphs of the unwrapped run; the row a
+    // glyph is on is decided by its byte, and a rect by its x — row `r`
+    // covers `rows[r].x..rows[r + 1].x` of the run — so a rect a row
+    // break falls inside is cut there, one piece a row, each shifted as
+    // the row's glyphs are (backlog C42: a rich chunk's spans).
+    let row_pieces = |d: &DecoTemplate, out: &mut Vec<Quad>| {
+        let (x0, x1) = (d.x, d.x + d.w);
+        for r in 0..rows.len() {
+            let ra = rows[r].x;
+            let rb = rows.get(r + 1).map_or(f32::INFINITY, |n| n.x);
+            let (a, b) = (x0.max(ra), x1.min(rb));
+            if b <= a {
+                continue;
+            }
+            let dx = if r == 0 { head_x } else { 0.0 } - ra;
+            let x = ox + a + dx;
+            let y = oy + d.y + r as f32 * line_h;
+            if y >= clip.rect.y + clip.rect.h {
+                break;
+            }
+            if y + d.h <= clip.rect.y || x >= clip.rect.x + clip.rect.w || x + (b - a) <= clip.rect.x
+            {
+                continue;
+            }
+            let quad = Quad {
+                rect: Rect::new(x, y, b - a, d.h),
+                color: d.color.unwrap_or(color),
+                border_color: Color::TRANSPARENT,
+                radius: [0.0; 4],
+                border_w: 0.0,
+                blur: 0.0,
+                kind: QuadKind::Solid,
+                clip: clip_id,
+                uv: [0; 4],
+            };
+            match d.style {
+                _ if d.under => out.push(quad),
+                UnderlineStyle::Solid => out.push(quad),
+                style => crate::deco::push_line(
+                    out,
+                    style,
+                    x,
+                    y,
+                    b - a,
+                    d.h,
+                    d.color.unwrap_or(color),
+                    clip_id,
+                ),
+            }
+        }
+    };
+    for d in entry.deco.iter().filter(|d| d.under) {
+        row_pieces(d, out);
+    }
     let mut r = 0usize;
     for g in &entry.glyphs {
         while r + 1 < rows.len() && g.byte >= rows[r + 1].byte {
@@ -1792,6 +2077,9 @@ fn emit_entry_rows(
             clip: clip_id,
             uv: g.uv,
         });
+    }
+    for d in entry.deco.iter().filter(|d| !d.under) {
+        row_pieces(d, out);
     }
 }
 
@@ -2024,16 +2312,21 @@ fn emit_entry(
     }
 }
 
-/// Whether `content` in `style` is shaped in chunks: a plain text past
-/// `LONG_LINE_BYTES` with no line breaks of its own, whatever its `wrap`
-/// — a wrapped one breaks its chunks into rows ([`LongLine::starts`]).
-/// `max_lines` and `ellipsis` keep the whole path, since a line budget
-/// is a property of the whole.
-fn is_long(content: &str, style: &TextStyle) -> bool {
-    content.len() >= LONG_LINE_BYTES
-        && style.max_lines == 0
-        && !style.ellipsis
-        && !content.contains(['\n', '\r'])
+/// Whether a text of `len` bytes in `style` is shaped in chunks, by what
+/// costs nothing to ask: past `LONG_LINE_BYTES`, with no `max_lines` or
+/// `ellipsis`, since a line budget is a property of the whole. The
+/// other half is [`has_line_break`], asked only when the cache has not
+/// seen the text — a wrapped one breaks its chunks into rows
+/// ([`LongLine::starts`]), whatever its `wrap`. Plain or rich alike
+/// (backlog C42).
+fn could_be_long(len: usize, style: &TextStyle) -> bool {
+    len >= LONG_LINE_BYTES && style.max_lines == 0 && !style.ellipsis
+}
+
+/// Whether the content breaks lines of its own — a byte scan, since the
+/// `str` pattern search is per character (backlog C43).
+fn has_line_break(content: &str) -> bool {
+    content.bytes().any(|b| b == b'\n' || b == b'\r')
 }
 
 /// The decoration rects for one laid-out line: consecutive glyphs of one

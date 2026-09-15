@@ -12,9 +12,12 @@ pub const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
 pub const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 
 /// FNV-1a over `bytes`, continuing from `h`. The one spelling of the
-/// mixer: a digest that must stay bit-stable across versions (the text
-/// cache key, the access tree's change detector) is stable because it is
-/// this function and nothing else.
+/// mixer: a digest that must stay bit-stable across versions (a key, the
+/// access tree's change detector, the corpus digest) is stable because
+/// it is this function and nothing else. A byte a round with a multiply
+/// on the chain — a nanosecond a byte — which is the right cost for a
+/// label and the wrong one for a megabyte of text: that goes through
+/// [`hash_bulk`] first.
 #[inline]
 pub fn fnv(mut h: u64, bytes: &[u8]) -> u64 {
     for &b in bytes {
@@ -22,6 +25,48 @@ pub fn fnv(mut h: u64, bytes: &[u8]) -> u64 {
         h = h.wrapping_mul(FNV_PRIME);
     }
     h
+}
+
+/// Below this many bytes the content is mixed by [`fnv`] as it is: the
+/// word hash's set-up costs more than the bytes.
+const BULK_MIN: usize = 32;
+
+/// A word-wide hash of `bytes` — eight a round where [`fnv`] takes one —
+/// for the bulk a text cache key is made of (backlog C43): a long line's
+/// content used to cost its length every frame, at a nanosecond a byte,
+/// in a lookup that drew none of it. Fx's round (rotate, xor, multiply)
+/// with the length mixed first and murmur's finalizer after, so a tail
+/// of zero bytes and a shorter text differ and every input bit reaches
+/// every output bit. Not a digest anything keeps across versions.
+#[inline]
+pub fn hash_bulk(bytes: &[u8]) -> u64 {
+    const K: u64 = 0x517c_c1b7_2722_0a95;
+    let mut h = FNV_OFFSET ^ (bytes.len() as u64).wrapping_mul(K);
+    let (words, tail) = bytes.as_chunks::<8>();
+    for w in words {
+        h = (h.rotate_left(5) ^ u64::from_le_bytes(*w)).wrapping_mul(K);
+    }
+    if !tail.is_empty() {
+        let mut t = [0u8; 8];
+        t[..tail.len()].copy_from_slice(tail);
+        h = (h.rotate_left(5) ^ u64::from_le_bytes(t)).wrapping_mul(K);
+    }
+    h ^= h >> 33;
+    h = h.wrapping_mul(0xff51_afd7_ed55_8ccd);
+    h ^= h >> 33;
+    h = h.wrapping_mul(0xc4ce_b9fe_1a85_ec53);
+    h ^ (h >> 33)
+}
+
+/// Mixes content into a key: short content by the byte, long content
+/// through [`hash_bulk`] and its eight bytes by the byte.
+#[inline]
+pub fn mix_content(h: u64, bytes: &[u8]) -> u64 {
+    if bytes.len() < BULK_MIN {
+        fnv(h, bytes)
+    } else {
+        fnv(h, &hash_bulk(bytes).to_le_bytes())
+    }
 }
 
 impl Key {
@@ -130,6 +175,36 @@ impl LabelIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The word hash tells apart what a word-at-a-time reading could
+    /// confuse: a text and the same with a zero byte after it, a change
+    /// in the tail, a change on a word boundary, and the two sides of
+    /// `mix_content`'s threshold (backlog C43).
+    #[test]
+    fn the_bulk_hash_separates_tails_and_lengths() {
+        let a = b"0123456789abcdef0123456789abcdef0123456789abcdef";
+        let mut with_zero = a.to_vec();
+        with_zero.push(0);
+        assert_ne!(hash_bulk(a), hash_bulk(&with_zero));
+        let mut tail = a.to_vec();
+        tail[47] ^= 1;
+        assert_ne!(hash_bulk(a), hash_bulk(&tail));
+        let mut word = a.to_vec();
+        word[8] ^= 1;
+        assert_ne!(hash_bulk(a), hash_bulk(&word));
+        assert_eq!(hash_bulk(a), hash_bulk(a.as_ref()));
+        assert_ne!(hash_bulk(b""), hash_bulk(b"\0"));
+        assert_ne!(hash_bulk(b"abcdefg"), hash_bulk(b"abcdefg\0"));
+        // Either side of the threshold is a function of the bytes.
+        let short = b"0123456789abcdef0123456789abcde";
+        let long = b"0123456789abcdef0123456789abcdef";
+        assert_eq!(mix_content(FNV_OFFSET, short), fnv(FNV_OFFSET, short));
+        assert_eq!(
+            mix_content(FNV_OFFSET, long),
+            fnv(FNV_OFFSET, &hash_bulk(long).to_le_bytes())
+        );
+        assert_ne!(mix_content(FNV_OFFSET, short), mix_content(FNV_OFFSET, long));
+    }
 
     #[test]
     fn label_index_finds_in_tree_order_and_clears() {
