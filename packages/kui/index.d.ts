@@ -2281,6 +2281,23 @@ export declare class Ctx {
    */
   setDevtoolsTheme(base: 'light' | 'dark' | null, accent: string | null): void
   /**
+   * Respells the chord that moves the keyboard into the panel
+   * and back out — and brings a hidden panel back — from its
+   * default `"ctrl+shift+i"`: `"f12"`, `"mod+shift+d"` (`mod`
+   * is Command on macOS, Control elsewhere), `"⌥⌘I"`, any
+   * spelling a menu item's `accel` takes. The panel's other
+   * chords stay `Ctrl+Shift+<letter>`. With another chord set,
+   * `Ctrl+Shift+I` reaches the app like any other press. Throws
+   * on a spelling kui cannot name.
+   */
+  setDevtoolsKey(key: string): void
+  /**
+   * The chord `setDevtoolsKey` set, or the default, in its
+   * portable spelling: `"ctrl+shift+i"`, `"f12"`,
+   * `"super+alt+d"`.
+   */
+  devtoolsKey(): string
+  /**
    * The key legend the panel's facts tab shows: `[keys, what]`
    * pairs.
    */
@@ -3232,6 +3249,23 @@ export declare class KuiWindow {
    * for the app's own; `accent` an `#rrggbb` string or `null`.
    */
   setDevtoolsTheme(base: 'light' | 'dark' | null, accent: string | null): void
+  /**
+   * Respells the chord that moves the keyboard into the panel
+   * and back out — and brings a hidden panel back — from its
+   * default `"ctrl+shift+i"`: `"f12"`, `"mod+shift+d"` (`mod`
+   * is Command on macOS, Control elsewhere), `"⌥⌘I"`, any
+   * spelling a menu item's `accel` takes. The panel's other
+   * chords stay `Ctrl+Shift+<letter>`. With another chord set,
+   * `Ctrl+Shift+I` reaches the app like any other press. Throws
+   * on a spelling kui cannot name.
+   */
+  setDevtoolsKey(key: string): void
+  /**
+   * The chord `setDevtoolsKey` set, or the default, in its
+   * portable spelling: `"ctrl+shift+i"`, `"f12"`,
+   * `"super+alt+d"`.
+   */
+  devtoolsKey(): string
   /**
    * The key legend the panel's facts tab shows: `[keys, what]`
    * pairs.

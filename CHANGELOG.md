@@ -190,6 +190,29 @@ was the first bare bump to break an app in five releases).
   **What you can delete:** `cursor: "default"` on a clickable or
   focusable node that wanted the arrow.
 
+### Added
+
+- **The devtools chord is the app's to respell.** `Ctrl+Shift+I` — the
+  chord that moves the keyboard into the panel and back out, and brings
+  a hidden panel back — is now one door on every host:
+  `Core::set_devtools_key(Accel)` and `kui::app("x").devtools_key(..)`
+  in Rust, `setDevtoolsKey("f12")` on `Ctx` and `KuiWindow`,
+  `kui_set_devtools_key(ctx, key)` in C, in any spelling a menu item's
+  `accel` takes (`"f12"`, `"mod+shift+d"`, `"⌥⌘I"`), with
+  `devtools_key` / `devtoolsKey()` / `kui_devtools_key` reading it back
+  in the portable spelling `Accel::spelling` now gives
+  (`"ctrl+shift+i"`, `"super+alt+d"`). The default stands; the panel's
+  other chords stay `Ctrl+Shift+<letter>`, since they are reached once
+  the keyboard is in; and a chord the app takes is the app's for good —
+  with `F12` set, `Ctrl+Shift+I` reaches its sinks like any other press.
+  The facts tab's `region` row names whichever chord is in force —
+  handed into the collection, since the main window's build collects
+  with the panel's state taken out of the session and a reader of the
+  door there saw the default (a real window showed `^⇧I` over an `F12`
+  that already answered; the test now reads the painted row). Lua has no
+  cell, for the guest reason the verb table states. The examples harness
+  takes `--key CHORD` in Rust and Node.
+
 ### Fixed
 
 - **A `cells` node's `│` was a dash with a gap under it, every row**

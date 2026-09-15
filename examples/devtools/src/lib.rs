@@ -11,7 +11,7 @@
 //! way to the example, and can dock beside it or open a window of its own.
 //! The harness asks for it with the launcher's [`kui::Launcher::devtools`]
 //! and seeds it from the command line — `--dock`, `--light`, `--dark`,
-//! `--accent` — and from the example's [`Example::KEYS`] legend.
+//! `--accent`, `--key` — and from the example's [`Example::KEYS`] legend.
 //!
 //! The example's root is wrapped by the core while the panel is docked
 //! (ADR 0024, decision 2), and its keys do not move for it: an example
@@ -22,7 +22,8 @@
 //! One `main` per example: `kui_devtools::main!(Counter::default())`.
 
 use kui::{
-    App, Appearance, Chrome, Color, Core, Extensions, MotionPref, SystemEnv, Ui, UiEvent, Waker,
+    Accel, App, Appearance, Chrome, Color, Core, Extensions, MotionPref, SystemEnv, Ui, UiEvent,
+    Waker,
 };
 
 mod drive;
@@ -146,6 +147,10 @@ pub struct Cli {
     /// `--motion`: pins `env.system.motion` over the OS's (backlog F47),
     /// to see what the example draws for a user who asked for less.
     pub motion: Option<MotionPref>,
+    /// `--key`: respells the chord that moves the keyboard into the
+    /// panel (`Core::set_devtools_key`), for an example whose own keymap
+    /// wants `Ctrl+Shift+I`.
+    pub key: Option<Accel>,
 }
 
 impl Cli {
@@ -195,6 +200,13 @@ impl Cli {
                             .ok_or_else(|| format!("--motion: {v:?} is not full or reduced"))?,
                     );
                 }
+                "--key" => {
+                    let v = value("a chord, like f12 or mod+shift+d")?;
+                    cli.key = Some(
+                        Accel::parse(&v)
+                            .ok_or_else(|| format!("--key: {v:?} is not a chord kui can name"))?,
+                    );
+                }
                 "--size" => {
                     let v = value("WxH")?;
                     let (w, h) = v
@@ -217,7 +229,7 @@ impl Cli {
 
 fn usage(name: &str, flags: &[(&str, &str)]) -> String {
     let mut s = format!(
-        "usage: {name} [--headless] [--dock side|bottom|off] [--light|--dark] [--accent #rrggbb] [--motion full|reduced] [--size WxH]"
+        "usage: {name} [--headless] [--dock side|bottom|off] [--light|--dark] [--accent #rrggbb] [--motion full|reduced] [--key CHORD] [--size WxH]"
     );
     for (f, doc) in flags {
         s.push_str(&format!(" [{f}]"));
@@ -228,6 +240,9 @@ fn usage(name: &str, flags: &[(&str, &str)]) -> String {
     s.push_str("  --light, --dark  pin the theme base instead of following the OS\n");
     s.push_str("  --accent COLOUR  the accent, instead of the OS's\n");
     s.push_str("  --motion PREF    what env.system.motion reads, instead of the OS's\n");
+    s.push_str(
+        "  --key CHORD      the chord into the dock, instead of Ctrl+Shift+I (f12, mod+shift+d)\n",
+    );
     s.push_str("  --size WxH       the example's area, logical px (the dock is added)\n");
     if !flags.is_empty() {
         s.push('\n');
@@ -318,6 +333,9 @@ pub fn run_with<E: Example>(name: &str, mut example: E, cli: Cli) -> i32 {
         .setup_core(move |core| {
             Harness::<E>::setup_core(core, dock, base, accent, native_menus, &legend);
         });
+    if let Some(key) = cli.key {
+        launcher = launcher.devtools_key(key);
+    }
     if let Some((mw, mh)) = window.min_size {
         launcher = launcher.min_size(mw, mh);
     }
@@ -449,6 +467,8 @@ mod tests {
                 "--size",
                 "300x200",
                 "--motion=reduced",
+                "--key",
+                "f12",
                 "--mine",
             ]
             .map(String::from),
@@ -461,6 +481,8 @@ mod tests {
         assert_eq!(cli.accent.map(|c| c.to_hex()), Some(0xff0000ff));
         assert_eq!(cli.size, Some((300.0, 200.0)));
         assert_eq!(cli.motion, Some(MotionPref::Reduced));
+        assert_eq!(cli.key.map(|k| k.spelling()), Some("f12".into()));
+        assert!(Cli::parse("x", ["--key", "f99"].map(String::from), &[]).is_err());
         // `unknown` is a reading, not a pin: the flag takes the two answers.
         assert!(Cli::parse("x", ["--motion", "unknown"].map(String::from), &[]).is_err());
         assert_eq!(

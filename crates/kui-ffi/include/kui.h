@@ -2753,6 +2753,18 @@ bool kui_devtools_dock(KuiCtx *ctx, KuiStr *out);
  * base is "light", "dark" or empty for the app's own; accent a 0xRRGGBBAA
  * colour, or 0 for none. False for any other base word. */
 bool kui_set_devtools_theme(KuiCtx *ctx, KuiStr base, uint32_t accent);
+/* Respells the chord that moves the keyboard into the panel and back out
+ * (and brings a hidden panel back) from its default "ctrl+shift+i":
+ * "f12", "mod+shift+d" (mod is Command on macOS, Control elsewhere),
+ * "⌥⌘I", any spelling a KuiMenuItem's accel takes. The panel's other
+ * chords stay Ctrl+Shift+<letter>; with another chord set, Ctrl+Shift+I
+ * reaches the host like any other press. False for a spelling kui cannot
+ * name, which leaves the chord as it was. */
+bool kui_set_devtools_key(KuiCtx *ctx, KuiStr key);
+/* That chord, or the default, in its portable spelling ("ctrl+shift+i",
+ * "f12", "super+alt+d"); borrowed until the next call. False on a bad
+ * context. */
+bool kui_devtools_key(KuiCtx *ctx, KuiStr *out);
 /* The key legend the panel's facts tab shows: count pairs, the keys in
  * keys and what each does in what, index for index. */
 void kui_set_devtools_legend(KuiCtx *ctx, const KuiStr *keys, const KuiStr *what,

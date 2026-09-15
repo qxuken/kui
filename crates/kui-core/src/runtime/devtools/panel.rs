@@ -101,8 +101,8 @@ fn panel(
         DEVTOOLS_KEY,
         spec.bg(t.surface).border(1.0, t.border).clip(),
     );
-    // Ctrl+Shift+I: into the dock, or back out to where the app had the
-    // keyboard. Resolved when this frame finishes, so the frame that
+    // The inspect chord (Ctrl+Shift+I, or what the app respelled it to):
+    // into the dock, or back out to where the app had the keyboard. Resolved when this frame finishes, so the frame that
     // brought the dock back enters it.
     if std::mem::take(&mut st.toggle_region) && matches!(place, Place::Main(_)) {
         ui.focus_region(if ui.region() == Some(dock) {

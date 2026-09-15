@@ -5520,6 +5520,58 @@ test('env().viewport is the window less the devtools dock (F43)', () => {
   assert.deepEqual(ctx.env().viewport, { width: 1040, height: 720, scale: 1 });
 });
 
+// The chord that moves the keyboard into the devtools dock is the app's
+// to respell: `Ctrl+Shift+I` unless `setDevtoolsKey` says otherwise, in
+// any spelling a menu item's `accel` takes. With `F12` set, `F12` enters
+// and leaves the dock and `Ctrl+Shift+I` reaches the app's sink like any
+// other press; the panel's other chords stay where they were.
+test('the devtools inspect chord is the app\'s to respell (setDevtoolsKey)', () => {
+  const ctx = new Ctx();
+  ctx.setDevtools(true);
+  ctx.setDevtoolsDock('right');
+  const view = () => box({}, [box({ onKey: null, keyFocus: true, width: 100, height: 50 }, [], 'sink')]);
+  ctx.frame(1040, 720, 1, view());
+  ctx.frame(1040, 720, 1, view());
+  const dock = ctx.keyOf('kui-devtools');
+  assert.ok(dock, 'the dock is in the frame');
+  assert.equal(ctx.devtoolsKey(), 'ctrl+shift+i', 'the default, in the portable spelling');
+  assert.throws(() => ctx.setDevtoolsKey('f99'), /not a chord kui can name/);
+  assert.equal(ctx.devtoolsKey(), 'ctrl+shift+i', 'a bad spelling leaves it');
+
+  // The default: the chord is the panel's, nothing reaches the sink.
+  ctx.keyDown('i', { ctrl: true, shift: true });
+  assert.deepEqual(ctx.pollEvents(), [], 'Ctrl+Shift+I is the panel\'s');
+  ctx.frame(1040, 720, 1, view());
+  assert.equal(ctx.region(), dock, 'and it enters the dock');
+  ctx.keyDown('i', { ctrl: true, shift: true });
+  ctx.frame(1040, 720, 1, view());
+  assert.equal(ctx.region(), null, 'and leaves');
+
+  ctx.setDevtoolsKey('F12');
+  assert.equal(ctx.devtoolsKey(), 'f12');
+  ctx.keyDown('i', { ctrl: true, shift: true });
+  const evs = ctx.pollEvents();
+  assert.equal(evs.length, 1, 'Ctrl+Shift+I is the app\'s now');
+  assert.equal(evs[0].payload.code, 'i');
+  ctx.frame(1040, 720, 1, view());
+  assert.equal(ctx.region(), null, 'and the panel did nothing with it');
+  ctx.keyDown('f12');
+  assert.deepEqual(ctx.pollEvents(), [], 'F12 is the panel\'s');
+  ctx.frame(1040, 720, 1, view());
+  assert.equal(ctx.region(), dock, 'F12 enters the dock');
+  ctx.keyDown('f12');
+  ctx.frame(1040, 720, 1, view());
+  assert.equal(ctx.region(), null, 'F12 leaves');
+  // The rest of the family did not move.
+  ctx.keyDown('d', { ctrl: true, shift: true });
+  assert.equal(ctx.devtoolsDock(), 'bottom', 'Ctrl+Shift+D still walks the dock');
+  // Every spelling a menu accel takes, read back portably.
+  ctx.setDevtoolsKey('⌥⌘I');
+  assert.equal(ctx.devtoolsKey(), 'super+alt+i');
+  ctx.setDevtoolsKey('mod+shift+d');
+  assert.equal(ctx.devtoolsKey(), process.platform === 'darwin' ? 'super+shift+d' : 'ctrl+shift+d');
+});
+
 // `accent` is the one paint row the stock button takes, and the one prop
 // whose colour the environment decides: with no accent pushed it is exactly
 // the stock button, and with one it is that colour, its shades, and a label

@@ -1005,8 +1005,8 @@ static int surface(void) {
         kui_set_native_menu_bar(ui, false);
     }
 
-    /* The devtools doors (ADR 0024): the panel, its dock, its theme and
-     * legend, and the node snapshot a tree view reads. */
+    /* The devtools doors (ADR 0024): the panel, its dock, its theme,
+     * legend and inspect chord, and the node snapshot a tree view reads. */
     {
         check(!kui_devtools(ui), "the panel is off until asked");
         kui_set_devtools(ui, true);
@@ -1020,6 +1020,11 @@ static int surface(void) {
         KuiStr keys[] = {KUI_STR("Space")};
         KuiStr what[] = {KUI_STR("play")};
         kui_set_devtools_legend(ui, keys, what, 1);
+        KuiStr chord = {0};
+        check(kui_devtools_key(ui, &chord) && has(chord, "ctrl+shift+i"), "kui_devtools_key: the default");
+        check(kui_set_devtools_key(ui, KUI_STR("f12")), "kui_set_devtools_key");
+        check(!kui_set_devtools_key(ui, KUI_STR("f99")), "a chord kui cannot name is false");
+        check(kui_devtools_key(ui, &chord) && has(chord, "f12"), "the respelled chord reads back");
         kui_set_inspect(ui, true);
         kui_frame_begin(ui, 800, 600, 2.0f);
         surface_view(&k, ui);

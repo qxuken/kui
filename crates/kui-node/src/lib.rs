@@ -2459,6 +2459,31 @@ macro_rules! core_methods {
                 Ok(())
             }
 
+            /// Respells the chord that moves the keyboard into the panel
+            /// and back out — and brings a hidden panel back — from its
+            /// default `"ctrl+shift+i"`: `"f12"`, `"mod+shift+d"` (`mod`
+            /// is Command on macOS, Control elsewhere), `"⌥⌘I"`, any
+            /// spelling a menu item's `accel` takes. The panel's other
+            /// chords stay `Ctrl+Shift+<letter>`. With another chord set,
+            /// `Ctrl+Shift+I` reaches the app like any other press. Throws
+            /// on a spelling kui cannot name.
+            #[napi]
+            pub fn set_devtools_key(&mut self, key: String) -> Result<()> {
+                let accel = kui_core::Accel::parse(&key).ok_or_else(|| {
+                    err(format!("setDevtoolsKey(): {key:?} is not a chord kui can name"))
+                })?;
+                self.$core().set_devtools_key(accel);
+                Ok(())
+            }
+
+            /// The chord `setDevtoolsKey` set, or the default, in its
+            /// portable spelling: `"ctrl+shift+i"`, `"f12"`,
+            /// `"super+alt+d"`.
+            #[napi]
+            pub fn devtools_key(&mut self) -> String {
+                self.$core().devtools_key().spelling()
+            }
+
             /// The key legend the panel's facts tab shows: `[keys, what]`
             /// pairs.
             #[napi(ts_args_type = "legend: [string, string][]")]

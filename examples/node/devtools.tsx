@@ -12,12 +12,14 @@
 //   --dock left|right|bottom|window|off  where the panel sits
 //   --light, --dark                pin the theme base
 //   --accent #rrggbb               the accent, instead of the OS's
+//   --key CHORD                    the chord into the dock, instead of Ctrl+Shift+I
 //   --motion full|reduced          what env.system.motion reads, instead of the OS's
 //
 // Chords (the core's): Ctrl+Shift+T cycles the base, +A the accent, +M
 // toggles native menus, +D moves the panel (the header has a button per
 // placement too, and a docked pane's inner edge resizes it), +C clears the stream, +N the
-// next tab, +I moves the keyboard into the panel and back out, +P picks a
+// next tab, +I moves the keyboard into the panel and back out (or what `--key`
+// respelled it to), +P picks a
 // node from the example.
 //
 // The example's root is wrapped by the core while the panel is docked
@@ -72,12 +74,12 @@ const DOCK_BOTTOM_H = 280;
 const DOCK_SIDE_MIN_H = 600;
 const DOCK_BOTTOM_MIN_W = 640;
 
-type Cli = { headless: boolean; dock?: Dock; base?: 'light' | 'dark'; accent?: string; motion?: 'full' | 'reduced' };
+type Cli = { headless: boolean; dock?: Dock; base?: 'light' | 'dark'; accent?: string; motion?: 'full' | 'reduced'; key?: string };
 
 function usage(name: string, flags: [string, string][]): string {
   const own = flags.map(([f, d]) => `  ${f.padEnd(16)} ${d}`).join('\n');
   return (
-    `usage: ${name} [--headless] [--dock left|right|bottom|window|off] [--light|--dark] [--accent #rrggbb] [--motion full|reduced]` +
+    `usage: ${name} [--headless] [--dock left|right|bottom|window|off] [--light|--dark] [--accent #rrggbb] [--motion full|reduced] [--key CHORD]` +
     (flags.length ? ' ' + flags.map(([f]) => `[${f}]`).join(' ') : '') +
     '\n' +
     (own ? '\n' + own + '\n' : '')
@@ -113,6 +115,13 @@ export function parseCli(name: string, argv: string[], flags: [string, string][]
         const v = value();
         if (v !== 'full' && v !== 'reduced') throw new Error(`--motion: ${v} is not full or reduced`);
         cli.motion = v; break;
+      }
+      case '--key': {
+        // The chord into the dock instead of Ctrl+Shift+I; the core
+        // parses it (`setDevtoolsKey` throws on one it cannot name).
+        const v = value();
+        if (!v) throw new Error('--key takes a chord, like f12 or mod+shift+d');
+        cli.key = v; break;
       }
       case '-h': case '--help': throw new Error(usage(name, flags));
       default:
@@ -227,6 +236,7 @@ async function open<M, A extends { kind: string }>(example: Example<M, A>, cli: 
       win.setDevtools(true);
       win.setDevtoolsDock(dock);
       win.setDevtoolsTheme(cli.base ?? null, cli.accent ?? null);
+      if (cli.key) win.setDevtoolsKey(cli.key);
       if (example.keys?.length) win.setDevtoolsLegend(example.keys);
       if (example.nativeMenus !== undefined) {
         win.setNativeMenus(example.nativeMenus);

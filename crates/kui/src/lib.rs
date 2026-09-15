@@ -207,6 +207,16 @@ impl Launcher {
         self.setup_core(move |core| core.set_devtools(on))
     }
 
+    /// Respells the chord that moves the keyboard into the devtools panel
+    /// and back out — and brings a hidden panel back — from its default
+    /// `Ctrl+Shift+I`: `Accel::parse("f12")`, `"mod+shift+d"`, any
+    /// spelling a menu item takes. The panel's other chords stay
+    /// `Ctrl+Shift+<letter>`; with another chord set, `Ctrl+Shift+I` is
+    /// the app's again. Sugar for `setup_core(|c| c.set_devtools_key(key))`.
+    pub fn devtools_key(self, key: Accel) -> Self {
+        self.setup_core(move |core| core.set_devtools_key(key))
+    }
+
     /// Runs `f` on the main window's core before its first frame — the
     /// place for what a core is *told* rather than declared: the devtools
     /// doors, a pinned theme, `set_native_menus`. Every call adds one;
@@ -2309,6 +2319,20 @@ mod tests {
             .setup_core(|c| c.set_devtools(false))
             .shell(Empty);
         assert!(!shell.core_mut().devtools());
+    }
+
+    /// `Launcher::devtools_key` is the `set_devtools_key` door in builder
+    /// form: the chord lands on the main window's core before its first
+    /// frame, and the default stands for an app that never asked.
+    #[test]
+    fn the_devtools_chord_is_the_launcher_s_to_respell() {
+        let mut shell = app("t").diagnostics(false).shell(Empty);
+        assert_eq!(shell.core_mut().devtools_key().spelling(), "ctrl+shift+i");
+        let mut shell = app("t")
+            .diagnostics(false)
+            .devtools_key(Accel::parse("f12").unwrap())
+            .shell(Empty);
+        assert_eq!(shell.core_mut().devtools_key().spelling(), "f12");
     }
 
     #[test]

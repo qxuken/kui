@@ -560,6 +560,31 @@ impl Accel {
         }
     }
 
+    /// The portable spelling, the one [`Accel::parse`] reads back to the
+    /// same chord on every platform: the modifiers held as `ctrl`,
+    /// `super`, `alt`, `shift` in that order, then the key by its wire
+    /// name (`"ctrl+shift+i"`, `"super+alt+f12"`). What a binding hands
+    /// out when it reads a chord back; [`Accel::display`] is what a
+    /// person reads.
+    pub fn spelling(&self) -> String {
+        let mut parts = Vec::new();
+        for (on, name) in [
+            (self.mods.ctrl, "ctrl"),
+            (self.mods.super_key, "super"),
+            (self.mods.alt, "alt"),
+            (self.mods.shift, "shift"),
+        ] {
+            if on {
+                parts.push(name.to_string());
+            }
+        }
+        parts.push(match self.code {
+            crate::input::KeyCode::Char(c) => c.to_ascii_lowercase().to_string(),
+            code => code.name(),
+        });
+        parts.join("+")
+    }
+
     /// The key equivalent an `NSMenuItem` takes: the character, lowercased
     /// (AppKit reads an uppercase one as Shift being held), or `None` for a
     /// key AppKit spells with a function-key code this does not carry.
@@ -691,6 +716,34 @@ mod tests {
             "Page Up"
         };
         assert!(a.display().ends_with(expect), "{}", a.display());
+    }
+
+    /// `spelling` is the readback a binding hands out, so it must parse
+    /// to the chord it came from on every platform — including the one
+    /// modifier `parse` names five ways.
+    #[test]
+    fn the_portable_spelling_parses_back_to_the_same_chord() {
+        for s in [
+            "ctrl+shift+i",
+            "f12",
+            "cmd+alt+d",
+            "⌃⌥⇧⌘s",
+            "mod+pageup",
+            "shift+/",
+        ] {
+            let a = Accel::parse(s).unwrap();
+            assert_eq!(
+                Accel::parse(&a.spelling()),
+                Some(a),
+                "{s} -> {}",
+                a.spelling()
+            );
+        }
+        assert_eq!(
+            Accel::parse("shift+ctrl+I").unwrap().spelling(),
+            "ctrl+shift+i"
+        );
+        assert_eq!(Accel::parse("win+f12").unwrap().spelling(), "super+f12");
     }
 
     #[test]

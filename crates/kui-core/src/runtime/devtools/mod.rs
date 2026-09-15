@@ -29,7 +29,10 @@
 //! (left → right → bottom → window → off; the header has a button per
 //! placement too), `N` the tab, `C` clears the stream, `I`
 //! moves the keyboard into the panel and back out, `P` picks a node, and
-//! `Escape` leaves the picker.
+//! `Escape` leaves the picker. The `I` chord alone is the app's to
+//! respell ([`Core::set_devtools_key`]: `f12`, `mod+shift+d`, any
+//! [`Accel`] spelling), since it is the one an app names in its own
+//! help — the others are the panel's, reached once the keyboard is in.
 //!
 //! **How it is in the frame** (ADR 0024, decisions 2–4). Docked, the main
 //! window's `begin_frame` opens an *app container* under the root, keyed
@@ -51,6 +54,7 @@ use crate::color::Color;
 use crate::env::{Appearance, SystemEnv};
 use crate::geom::{Rect, Size, Vec2};
 use crate::key::Key;
+use crate::menu::Accel;
 use crate::runtime::inspect::NodeInfo;
 use crate::spec::{NodeSpec, Sizing};
 use crate::theme::{Theme, ThemeSource};
@@ -339,7 +343,10 @@ pub(crate) struct State {
     smoke_frames: Option<u64>,
     warnings_seen: usize,
     legend: Vec<(String, String)>,
-    /// `Ctrl+Shift+I` waiting for the next main-window build.
+    /// The chord that moves the keyboard into the panel and back out —
+    /// `Ctrl+Shift+I` unless the app respelled it.
+    inspect_key: Accel,
+    /// The inspect chord waiting for the next main-window build.
     toggle_region: bool,
     /// The picker was left by a raw `Escape` press: the editor channel's
     /// half of the same press, still to come, is the panel's too.
@@ -396,6 +403,7 @@ impl Default for State {
                 .and_then(|s| s.parse().ok()),
             warnings_seen: 0,
             legend: Vec::new(),
+            inspect_key: DEFAULT_INSPECT_KEY,
             toggle_region: false,
             escape_owed: false,
             focus_window: false,
@@ -654,10 +662,41 @@ fn action(what: impl Into<String>) -> Value {
     Value::map([("dt", Value::str(what.into()))])
 }
 
-/// The panel's chord for a key press, if it is one: `Ctrl+Shift` and a
-/// letter, by the layout's character first and the physical position
-/// second (ADR 0002, decision 11).
-fn chord(press: &crate::input::KeyPress) -> Option<&'static str> {
+/// What `Ctrl+Shift+I` parses to: the inspect chord until an app
+/// respells it.
+const DEFAULT_INSPECT_KEY: Accel = Accel {
+    code: KeyCode::Char('i'),
+    mods: crate::input::KeyMods {
+        shift: true,
+        ctrl: true,
+        alt: false,
+        super_key: false,
+    },
+};
+
+/// Whether a press is this chord: the modifiers exactly, and the key by
+/// the layout's character first and the physical position second (ADR
+/// 0002, decision 11) — case-blind for a character, since Shift is part
+/// of the chord and the layout has already applied it.
+fn hits(accel: Accel, press: &crate::input::KeyPress) -> bool {
+    if press.mods != accel.mods {
+        return false;
+    }
+    let same = |code: KeyCode| match (accel.code, code) {
+        (KeyCode::Char(a), KeyCode::Char(b)) => a.eq_ignore_ascii_case(&b),
+        (a, b) => a == b,
+    };
+    same(press.code) || same(press.physical)
+}
+
+/// The panel's chord for a key press, if it is one: the inspect chord
+/// (`Ctrl+Shift+I`, or what the app respelled it to), else `Ctrl+Shift`
+/// and a letter, by the layout's character first and the physical
+/// position second (ADR 0002, decision 11).
+fn chord(press: &crate::input::KeyPress, inspect: Accel) -> Option<&'static str> {
+    if hits(inspect, press) {
+        return Some("inspect");
+    }
     let m = press.mods;
     if !m.ctrl || !m.shift || m.alt {
         return None;
@@ -673,7 +712,8 @@ fn chord(press: &crate::input::KeyPress) -> Option<&'static str> {
         'd' => Some("dock"),
         'c' => Some("clear"),
         'n' => Some("tab"),
-        'i' => Some("inspect"),
+        // `I` is the inspect chord's letter only while that is what the
+        // chord is: respelled to `F12`, `Ctrl+Shift+I` is the app's again.
         'p' => Some("pick"),
         _ => None,
     }
@@ -740,6 +780,24 @@ impl Core {
         s.devtools.base = base;
         s.devtools.accent = None;
         s.devtools.custom_accent = accent;
+    }
+
+    /// Respells the chord that moves the keyboard into the panel and
+    /// back out — and brings the panel back when it is `off` — from its
+    /// default `Ctrl+Shift+I`: any [`Accel`] spelling (`"f12"`,
+    /// `"mod+shift+d"`, `"⌥⌘I"`). The other chords stay `Ctrl+Shift+
+    /// <letter>`; this is the one an app puts in its own help, and the
+    /// one whose default an app's keymap may want for itself. A chord
+    /// the app takes is the app's for good: with `F12` set,
+    /// `Ctrl+Shift+I` reaches the app's sinks like any other press.
+    pub fn set_devtools_key(&mut self, key: Accel) {
+        self.session.state().devtools.inspect_key = key;
+    }
+
+    /// The chord that moves the keyboard into the panel, as set or as
+    /// it defaults.
+    pub fn devtools_key(&self) -> Accel {
+        self.session.state().devtools.inspect_key
     }
 
     /// The key legend the facts tab shows: `(keys, what they do)`.
@@ -1114,7 +1172,7 @@ impl Core {
                 // has declared this frame's title: it reads the facts the
                 // last frame left, as the panel's own window does.
                 if dock != Dock::Left {
-                    state.facts = self.collect_facts();
+                    state.facts = self.collect_facts(state.inspect_key);
                 } else {
                     // Except the window's size, which is this frame's and
                     // is what the pane's width is clamped by.
@@ -1157,7 +1215,7 @@ impl Core {
             return;
         }
         let raised = self.warnings_raised();
-        let facts = self.collect_facts();
+        let facts = self.collect_facts(self.devtools_key());
         let mut s = self.session.state();
         let d = &mut s.devtools;
         d.frames = self.frame_no;
@@ -1238,8 +1296,12 @@ impl Core {
         }
         // Any other press settles the owed half: a driver that never
         // sends the editor channel owes nothing.
-        self.session.state().devtools.escape_owed = false;
-        let Some(what) = chord(press) else {
+        let inspect = {
+            let mut s = self.session.state();
+            s.devtools.escape_owed = false;
+            s.devtools.inspect_key
+        };
+        let Some(what) = chord(press, inspect) else {
             return false;
         };
         self.devtools_act(what);
@@ -1430,8 +1492,11 @@ impl Core {
         }
     }
 
-    /// The status block, read from the doors it comes from.
-    fn collect_facts(&self) -> Facts {
+    /// The status block, read from the doors it comes from. `inspect` is
+    /// the chord into the dock, handed in because the main window's build
+    /// collects with the panel's state taken out of the session (and
+    /// `devtools_key` would read the default).
+    fn collect_facts(&self, inspect: Accel) -> Facts {
         let env = &self.env;
         let vp = self.viewport;
         let scale = self.scale;
@@ -1443,6 +1508,7 @@ impl Core {
         let focus = self.focus;
         let focus_visible = self.focus_visible;
         let region = self.region();
+        let inspect = inspect.display();
         let mods = self.modifiers();
         let windows: Vec<String> = self
             .windows()
@@ -1534,8 +1600,8 @@ impl Core {
             (
                 "region",
                 match region.map(name) {
-                    Some(l) => format!("{l} · Ctrl+Shift+I leaves"),
-                    None => "main · Ctrl+Shift+I enters the dock".into(),
+                    Some(l) => format!("{l} · {inspect} leaves"),
+                    None => format!("main · {inspect} enters the dock"),
                 },
             ),
             ("modifiers", {

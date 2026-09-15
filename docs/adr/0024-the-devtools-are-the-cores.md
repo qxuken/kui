@@ -393,6 +393,17 @@ date: 2026-09-11
     the dock came out of the app's share. `Core::devtools_inset()` is
     what a docked pane takes, in its axis, and the runner adds it to the
     floor after every main-window frame, on change.
+22. **The inspect chord is the app's to respell** (2026-09-15). Decision
+    4's family is `Ctrl+Shift+<letter>`, and an app whose keymap wants
+    `Ctrl+Shift+I` had no way to move the panel off it. The one chord an
+    app names in its own help — the way in — is a door now:
+    `Core::set_devtools_key(Accel)` (`Launcher::devtools_key`,
+    `setDevtoolsKey`, `kui_set_devtools_key`), read back by
+    `devtools_key` in `Accel::spelling`'s portable form. The other seven
+    stay where they are: they are reached once the keyboard is in, so
+    they collide with nothing. A chord the app takes is the app's for
+    good — `chord()` asks the configured `Accel` first and no longer
+    knows the letter `I` — and the facts row names the chord in force.
 
 ## Action items — all done 2026-09-11
 

@@ -2192,6 +2192,16 @@ mod follow_headless {
         let keys = [ks("⌘K"), ks("Esc")];
         let what = [ks("palette"), ks("close")];
         kui_set_devtools_legend(ctx, keys.as_ptr(), what.as_ptr(), 2);
+        let mut key = KuiStr {
+            ptr: std::ptr::null(),
+            len: 0,
+        };
+        assert!(kui_devtools_key(ctx, &mut key));
+        assert_eq!(&*kstr(key), "ctrl+shift+i", "the default");
+        assert!(kui_set_devtools_key(ctx, ks("F12")));
+        assert!(!kui_set_devtools_key(ctx, ks("f99")), "not a key");
+        assert!(kui_devtools_key(ctx, &mut key));
+        assert_eq!(&*kstr(key), "f12", "set, and a bad spelling left it");
         kui_set_devtools(ctx, false);
 
         // The node list: empty until asked for, then one map per node

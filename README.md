@@ -92,6 +92,11 @@ the node under the pointer over the app and an inspector for the one
 selected). The panel's own clicks and its `Ctrl+Shift+<letter>` chords are
 handled inside the core: nothing of it reaches `on_event` / `update`, the
 app's keys do not move for it, and off it costs one bool per frame.
+`Ctrl+Shift+I` moves the keyboard into the panel and back out (and brings
+a hidden one back); an app that wants that chord for itself respells it —
+`.devtools_key(Accel::parse("f12").unwrap())`, `win.setDevtoolsKey('f12')`,
+`kui_set_devtools_key(ctx, KUI_STR("f12"))` — and the old one is its own
+again.
 
 ## Examples
 

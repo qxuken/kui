@@ -916,6 +916,20 @@ pub const DOORS: &[Door] = &[
         doc: "Seeds the panel's theme override.",
     },
     Door {
+        rust: "Core::set_devtools_key",
+        c: Is("kui_set_devtools_key"),
+        node: Is("setDevtoolsKey"),
+        lua: No(GUEST),
+        doc: "Respells the chord that moves the keyboard into the panel (`Ctrl+Shift+I` by default).",
+    },
+    Door {
+        rust: "Core::devtools_key",
+        c: Is("kui_devtools_key"),
+        node: Is("devtoolsKey"),
+        lua: No(GUEST),
+        doc: "That chord, read back in its portable spelling.",
+    },
+    Door {
         rust: "Core::set_devtools_legend",
         c: Is("kui_set_devtools_legend"),
         node: Is("setDevtoolsLegend"),

@@ -218,6 +218,106 @@ fn the_dock_is_out_of_the_app_s_ring_and_entered_by_the_chord() {
     assert_eq!(core.region(), Some(core.key_of(DEVTOOLS_KEY).unwrap()));
 }
 
+/// The inspect chord is the app's to respell: with `F12` set, `F12` does
+/// what `Ctrl+Shift+I` did — enters the dock, leaves it, brings a hidden
+/// panel back — and `Ctrl+Shift+I` is no longer the panel's, so it
+/// reaches the app like any other press. The other chords do not move.
+#[test]
+fn the_inspect_chord_is_the_app_s_to_respell() {
+    let mut core = on();
+    let dock = core.key_of(DEVTOOLS_KEY).unwrap();
+    assert_eq!(
+        core.devtools_key().spelling(),
+        "ctrl+shift+i",
+        "the default"
+    );
+    core.set_devtools_key(Accel::parse("f12").unwrap());
+    assert_eq!(core.devtools_key().spelling(), "f12");
+    let f12 = || InputEvent::KeyDown(KeyPress::new(KeyCode::F(12), KeyMods::default()));
+
+    // The old chord goes through to the app now (the app has no sink for
+    // it, so nothing comes out — but nothing happens in the panel either).
+    core.handle_input(chord('I'));
+    frame(&mut core);
+    assert_eq!(core.region(), None, "Ctrl+Shift+I is the app's");
+
+    assert!(core.handle_input(f12()).is_empty(), "the chord is nobody's");
+    frame(&mut core);
+    assert_eq!(core.region(), Some(dock), "F12 enters the dock");
+    core.handle_input(f12());
+    frame(&mut core);
+    assert_eq!(core.region(), None, "F12 leaves");
+
+    // A modifier held that the chord does not name is another chord.
+    core.handle_input(InputEvent::KeyDown(KeyPress::new(
+        KeyCode::F(12),
+        KeyMods {
+            shift: true,
+            ..Default::default()
+        },
+    )));
+    frame(&mut core);
+    assert_eq!(core.region(), None, "Shift+F12 is not F12");
+
+    // The facts row names the chord in force, the way a person reads it
+    // — as *painted*, since the main window's build collects the facts
+    // with the panel's state taken out of the session, where a reader of
+    // the door would see the default (a real window showed `^⇧I` over
+    // an `F12` the chord already answered to).
+    core.set_inspect(true);
+    core.handle_input(chord('N'));
+    core.handle_input(chord('N'));
+    frame(&mut core);
+    frame(&mut core);
+    assert_eq!(state(&core, |s| s.tab), Tab::Facts);
+    let painted: Vec<String> = core.nodes().iter().filter_map(|n| n.text.clone()).collect();
+    assert!(
+        painted.iter().any(|s| s == "main · F12 enters the dock"),
+        "{painted:?}"
+    );
+    core.set_inspect(false);
+
+    // Hidden, the respelled chord brings the dock back too.
+    core.set_devtools_dock(Dock::Off);
+    frame(&mut core);
+    core.handle_input(f12());
+    frame(&mut core);
+    assert_eq!(core.devtools_dock(), Dock::Right);
+    assert_eq!(core.region(), Some(core.key_of(DEVTOOLS_KEY).unwrap()));
+
+    // The rest of the family is where it was.
+    core.handle_input(chord('D'));
+    assert_eq!(
+        core.devtools_dock(),
+        Dock::Bottom,
+        "Ctrl+Shift+D still walks the dock"
+    );
+
+    // A chord spelled with a letter matches the layout's character
+    // case-blind and the physical position as a fallback, like the
+    // family's own.
+    core.set_devtools_key(Accel::parse("mod+shift+d").unwrap());
+    let mods = KeyMods {
+        shift: true,
+        ctrl: !cfg!(target_os = "macos"),
+        super_key: cfg!(target_os = "macos"),
+        ..Default::default()
+    };
+    // The keyboard is still in the dock from the F12 above: this leaves.
+    core.handle_input(InputEvent::KeyDown(KeyPress::new(KeyCode::Char('D'), mods)));
+    frame(&mut core);
+    assert_eq!(core.region(), None, "D for d");
+    let mut cyrillic = KeyPress::new(KeyCode::Char('в'), mods);
+    cyrillic.physical = KeyCode::Char('d');
+    core.handle_input(InputEvent::KeyDown(cyrillic));
+    frame(&mut core);
+    assert_eq!(
+        core.region(),
+        Some(core.key_of(DEVTOOLS_KEY).unwrap()),
+        "the physical position when the layout's character is not it"
+    );
+}
+
 /// A press on the app's dead space focuses nothing — the panel declares
 /// no root sink — so the Tab after it walks the app's ring; a press in
 /// the dock's dead space settles the region there, and Tab enters it.

@@ -107,6 +107,7 @@ pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
             menu_text: String::new(),
             menu_accel: String::new(),
             menu_html: String::new(),
+            devtools_key: String::new(),
             selection_text: String::new(),
             selection_html: String::new(),
             font_families: Vec::new(),
@@ -740,6 +741,47 @@ pub extern "C" fn kui_set_devtools_theme(ptr: *mut KuiCtx, base: KuiStr, accent:
         };
         let accent = (accent != 0).then(|| color_of(accent));
         c.core().set_devtools_theme(base, accent);
+        true
+    })
+}
+
+/// Respells the chord that moves the keyboard into the panel and back out
+/// — and brings a hidden panel back — from its default `"ctrl+shift+i"`:
+/// `"f12"`, `"mod+shift+d"` (`mod` is Command on macOS, Control
+/// elsewhere), `"⌥⌘I"`, any spelling a `KuiMenuItem`'s accel takes. The
+/// panel's other chords stay `Ctrl+Shift+<letter>`; with another chord
+/// set, `Ctrl+Shift+I` reaches the host like any other press. False for a
+/// spelling kui cannot name, which leaves the chord as it was.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_devtools_key(ptr: *mut KuiCtx, key: KuiStr) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        let Some(accel) = kui_core::Accel::parse(&kstr(key)) else {
+            return false;
+        };
+        c.core().set_devtools_key(accel);
+        true
+    })
+}
+
+/// The chord `kui_set_devtools_key` set, or the default, in its portable
+/// spelling (`"ctrl+shift+i"`, `"f12"`, `"super+alt+d"`); borrowed until
+/// the next call. False on a bad context.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_devtools_key(ptr: *mut KuiCtx, out: *mut KuiStr) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        c.devtools_key = c.core().devtools_key().spelling();
+        if let Some(out) = unsafe { out.as_mut() } {
+            *out = KuiStr {
+                ptr: c.devtools_key.as_ptr(),
+                len: c.devtools_key.len(),
+            };
+        }
         true
     })
 }
