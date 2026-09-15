@@ -624,6 +624,9 @@ impl State {
             }
             "pick" => {
                 self.pick = !self.pick;
+                // The chord's pick shows the tree tab and lands there;
+                // a tab's earlier, cancelled pick must not decide otherwise.
+                self.pick_keep_tab = false;
                 if self.pick {
                     self.show(Tab::Tree);
                     if self.dock == Dock::Off {
@@ -713,6 +716,14 @@ impl State {
             },
             None => Shown::Builtin(self.tab),
         }
+    }
+
+    /// Whether `name` is a declared tab the panel lists — what `shown`
+    /// falls back on when it is not, and what the laziness rule asks so
+    /// a stale `custom` (a tab the app stopped declaring) shows nothing
+    /// and builds nothing.
+    fn lists(&self, name: &str) -> bool {
+        self.tabs.iter().any(|t| t.name == name)
     }
 
     /// Selects the `i`th tab of the strip: the three, then the declared.
@@ -831,7 +842,7 @@ impl Core {
         }
         let s = self.session.state();
         let d = &s.devtools;
-        d.on && d.dock.docked() && d.custom.as_deref() == Some(name)
+        d.on && d.dock.docked() && d.custom.as_deref() == Some(name) && d.lists(name)
     }
 
     /// The tab on show, by name, when it is a declared one — what the
@@ -847,7 +858,7 @@ impl Core {
         if !(d.on && d.dock.docked()) {
             return None;
         }
-        d.custom.clone()
+        d.custom.clone().filter(|name| d.lists(name))
     }
 
     /// Opens the host form's content node: a float anchored to the tab's
@@ -969,6 +980,7 @@ impl Core {
         s.devtools.on = on;
         if !on {
             s.devtools.pick = false;
+            s.devtools.pick_keep_tab = false;
         }
     }
 
@@ -1266,6 +1278,12 @@ impl Core {
         self.dt_app = None;
         self.dt_window = false;
         self.dt_built = false;
+        // This frame's declarations start empty whatever the panel's state
+        // and whichever window this is: `after_frame` moves the main
+        // window's into the session only while the panel is on, and a
+        // declaration made every frame must not pile up into
+        // `duplicate-tab` on the second one.
+        self.dt_tabs.clear();
         let main = self.env.window.id == WindowId::MAIN;
         let this = if main {
             false
@@ -1594,6 +1612,7 @@ impl Core {
             if s.devtools.pick {
                 s.devtools.pick = false;
                 s.devtools.pick_hover = None;
+                s.devtools.pick_keep_tab = false;
                 s.devtools.escape_owed = true;
                 drop(s);
                 self.devtools_redraw_others();

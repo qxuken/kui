@@ -272,6 +272,110 @@ fn a_pick_raised_from_a_tab_lands_in_selected_and_keeps_the_tab() {
     );
 }
 
+/// A declaration is made every frame, panel on or off: it must not pile
+/// up across frames into a `duplicate-tab` on the second one, and a
+/// window that is not the main one declares into nothing.
+#[test]
+fn a_declaration_every_frame_is_one_declaration_a_frame() {
+    let built = Rc::new(RefCell::new(0u32));
+    let mut core = Core::new();
+    for _ in 0..3 {
+        frame(&mut core, &built);
+    }
+    let ws = core.take_warnings();
+    assert!(
+        !codes(&ws).contains(&DUPLICATE_TAB),
+        "the panel off, three frames, no duplicate: {ws:?}"
+    );
+    core.set_devtools(true);
+    for _ in 0..3 {
+        frame(&mut core, &built);
+    }
+    let ws = core.take_warnings();
+    assert!(
+        !codes(&ws).contains(&DUPLICATE_TAB),
+        "the panel on, three frames, no duplicate: {ws:?}"
+    );
+}
+
+/// A tab pick cancelled by Escape leaves nothing behind: the next chord
+/// pick is the chord's, shown and revealed in the tree tab. And a
+/// `custom` the app stopped declaring shows nothing and builds nothing —
+/// the laziness rule and `shown()` agree on what the panel lists.
+#[test]
+fn a_cancelled_tab_pick_and_a_stale_tab_leave_nothing_behind() {
+    let built = Rc::new(RefCell::new(0u32));
+    let mut core = Core::new();
+    core.set_devtools(true);
+    core.set_devtools_dock(DevtoolsDock::Right);
+    core.set_inspect(true);
+    frame(&mut core, &built);
+    frame(&mut core, &built);
+    core.handle_input(chord('N'));
+    core.handle_input(chord('N'));
+    frame(&mut core, &built);
+    core.set_devtools_pick(true);
+    frame(&mut core, &built);
+    let escape = InputEvent::KeyDown(KeyPress::new(KeyCode::Escape, KeyMods::default()));
+    core.handle_input(escape);
+    assert!(!core.devtools_picking(), "Escape put the tab's pick away");
+    // The chord's pick: shows the tree tab, and the press lands there.
+    core.handle_input(chord('P'));
+    frame(&mut core, &built);
+    assert!(
+        core.key_of("kui-devtools/tab/syntax").is_none(),
+        "the chord's pick shows the tree tab"
+    );
+    let press = core.key_of("press").unwrap();
+    let b = rect_of(&core, "press").unwrap();
+    core.handle_input(InputEvent::CursorMoved(kui_core::Vec2::new(
+        b.x + b.w / 2.0,
+        b.y + b.h / 2.0,
+    )));
+    frame(&mut core, &built);
+    click_at(&mut core, b.x + b.w / 2.0, b.y + b.h / 2.0);
+    frame(&mut core, &built);
+    assert_eq!(core.devtools_selected(), Some(press));
+    assert!(
+        core.key_of("kui-devtools/outline-selected").is_some(),
+        "and the tree tab outlines the pick, as before the tab feature"
+    );
+
+    // Back to the declared tab, then stop declaring it: the panel falls
+    // back to the tree tab, and the app's closure is not run for the
+    // name the panel still remembers.
+    core.handle_input(chord('N'));
+    frame(&mut core, &built);
+    assert!(core.key_of("kui-devtools/tab/syntax").is_some());
+    let runs = *built.borrow();
+    let plain = |core: &mut Core| {
+        let mut ui = core.frame(VIEWPORT, 1.0);
+        ui.with(NodeSpec::column().width(Sizing::Grow(1.0)), |ui| {
+            widgets::button(ui, "press", Value::map([("kind", Value::str("pressed"))]));
+        });
+        ui.finish();
+    };
+    plain(&mut core);
+    plain(&mut core);
+    assert!(
+        core.key_of("kui-devtools/tab/syntax").is_none(),
+        "no body for a tab nobody declares"
+    );
+    assert!(
+        !core.devtools_tab_shown("syntax"),
+        "and the laziness rule says not shown, though the name is still remembered"
+    );
+    assert_eq!(core.devtools_shown_tab(), None);
+    frame(&mut core, &built);
+    assert_eq!(
+        *built.borrow(),
+        runs,
+        "declared again: still not built, the panel lists it a frame later"
+    );
+    frame(&mut core, &built);
+    assert_eq!(*built.borrow(), runs + 1, "listed now, so shown again");
+}
+
 /// A left dock is built before the host's view, so the body precedes the
 /// content in tree order; the layer does not care which came first.
 #[test]

@@ -446,6 +446,16 @@ bindings, the harness and two examples. What differs from the text above:
    pane's is a follow-up. No `layers` corpus case, for the reason the
    action item states.
 
+8. **From the review after the build.** `dt_tabs` is cleared at
+   `begin_frame` (it was drained only by the main window's `after_frame`,
+   which returns early with the panel off, so a per-frame declaration
+   piled up into `duplicate-tab` from the second frame); a cancelled tab
+   pick clears `pick_keep_tab`, so the next chord pick reveals in the
+   tree tab as before; and the laziness rule (`devtools_tab_shown`,
+   `devtools_shown_tab`) checks `custom` names a tab the panel *lists*,
+   the way `shown()` does, so a name the app stopped declaring builds
+   nothing while the panel remembers it.
+
 Traps met: the *fit* passes needed a range parameter to run over a
 subtree, and `positions` too, which the scroll-into-view relayout also
 calls (`layout::reposition` keeps the anchored floats with their

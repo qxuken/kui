@@ -139,10 +139,13 @@ function update(model: Model, msg: Msg, _ev: UiEvent<Msg>, win: KuiWindow): Mode
       return model[field] === tag.id ? { ...model, [field]: null } : undefined;
     }
     case 'tok':
-    case 'row':
-      // A click on a row or a token: select it in the panel's tree.
-      win.setDevtoolsSelected(win.keyOf(`tok:${msg.id}`));
+    case 'row': {
+      // A click on a row or a token: select it in the panel's tree. An
+      // inner node has no token to select, and clears nothing.
+      const key = win.keyOf(`tok:${msg.id}`);
+      if (key != null) win.setDevtoolsSelected(key);
       return undefined;
+    }
     case 'inspect-pick':
       win.setDevtoolsPick(true);
       return undefined;
