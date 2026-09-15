@@ -494,8 +494,18 @@ fn a_rich_line_past_the_threshold_is_chunked_too() {
     assert!(glyphs <= visible + 4, "{glyphs} glyphs for {visible} cells");
     assert!((17..=20).contains(&red), "{red} red glyphs");
     assert_eq!(blue.len(), 1, "{blue:?}");
-    assert!((blue[0].x - 70.0 * w).abs() < 1.0, "{} vs {}", blue[0].x, 70.0 * w);
-    assert!((blue[0].w - 20.0 * w).abs() < 1.0, "{} vs {}", blue[0].w, 20.0 * w);
+    assert!(
+        (blue[0].x - 70.0 * w).abs() < 1.0,
+        "{} vs {}",
+        blue[0].x,
+        70.0 * w
+    );
+    assert!(
+        (blue[0].w - 20.0 * w).abs() < 1.0,
+        "{} vs {}",
+        blue[0].w,
+        20.0 * w
+    );
     assert!(
         core.text_cache_bytes() < 2 << 20,
         "{} bytes",
@@ -503,7 +513,11 @@ fn a_rich_line_past_the_threshold_is_chunked_too() {
     );
     // The line's width is the content's, as a plain long line's is.
     let g = core.scroll_geometry(view).unwrap();
-    assert!((g.content.w - text.len() as f32 * w).abs() < 2.0, "{}", g.content.w);
+    assert!(
+        (g.content.w - text.len() as f32 * w).abs() < 2.0,
+        "{}",
+        g.content.w
+    );
 
     // A span in a chunk that never showed draws when it scrolls in, at
     // its place, and the cache grew by the chunks that came in.
@@ -512,7 +526,11 @@ fn a_rich_line_past_the_threshold_is_chunked_too() {
     assert_eq!(blue.len(), 1, "{blue:?}");
     assert!((blue[0].x - 20.0 * w).abs() < 2.0, "{}", blue[0].x);
     assert_eq!(core.long_lines(), 2);
-    assert!(core.text_cache_len() <= before + 6, "{}", core.text_cache_len());
+    assert!(
+        core.text_cache_len() <= before + 6,
+        "{}",
+        core.text_cache_len()
+    );
 }
 
 #[test]

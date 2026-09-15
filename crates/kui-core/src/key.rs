@@ -203,7 +203,10 @@ mod tests {
             mix_content(FNV_OFFSET, long),
             fnv(FNV_OFFSET, &hash_bulk(long).to_le_bytes())
         );
-        assert_ne!(mix_content(FNV_OFFSET, short), mix_content(FNV_OFFSET, long));
+        assert_ne!(
+            mix_content(FNV_OFFSET, short),
+            mix_content(FNV_OFFSET, long)
+        );
     }
 
     #[test]

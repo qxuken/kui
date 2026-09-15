@@ -2010,7 +2010,9 @@ fn emit_entry_rows(
             if y >= clip.rect.y + clip.rect.h {
                 break;
             }
-            if y + d.h <= clip.rect.y || x >= clip.rect.x + clip.rect.w || x + (b - a) <= clip.rect.x
+            if y + d.h <= clip.rect.y
+                || x >= clip.rect.x + clip.rect.w
+                || x + (b - a) <= clip.rect.x
             {
                 continue;
             }
