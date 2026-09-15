@@ -678,10 +678,10 @@ impl<A: App> PumpRunner<A> {
         // has ended (`core_mut`), and the Node driver does so for the
         // pump that returned false.
         let mut panes = std::mem::take(&mut self.shell.panes);
+        // The facts the platform's text input reads are keyed by the
+        // view's address, which the next window's view may get.
+        #[cfg(target_os = "macos")]
         for pane in &panes {
-            // The facts the platform's text input reads are keyed by the
-            // view's address, which the next window's view may get.
-            #[cfg(target_os = "macos")]
             macos_text_input::detach(&pane.window);
         }
         if !panes.is_empty() {
