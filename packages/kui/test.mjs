@@ -569,6 +569,32 @@ test('a keymap written in Latin survives the layout under it', () => {
   ctx.keyUp('ц', {}, 'w');
   const [up] = ctx.pollEvents().map((e) => e.payload);
   assert.deepEqual([up.phase, up.code, up.physical], ['up', 'w', 'w']);
+  // The default folds a letter (F65): ⇧Z is spelled `Z` (F60), and a
+  // window reports its position as `z` — its table never sees Shift — so
+  // the omitted `physical` is `z` here too, the same pair, and not the
+  // `Z` no window ever sends. A spelled one is delivered as spelled.
+  ctx.press('Z', { shift: true });
+  ctx.release('Z', { shift: true });
+  ctx.press('Z', { shift: true }, false, 'Z');
+  const shifted = ctx.pollEvents().map((e) => e.payload);
+  assert.deepEqual(
+    shifted.map((p) => [p.phase, p.code, p.physical, p.shift]),
+    [
+      ['down', 'Z', 'z', true],
+      ['up', 'Z', 'z', true],
+      ['down', 'Z', 'Z', true],
+    ],
+  );
+  // Names and non-letters are their own position.
+  ctx.press('$', { shift: true });
+  ctx.press('left');
+  assert.deepEqual(
+    ctx.pollEvents().map((e) => [e.payload.code, e.payload.physical]),
+    [
+      ['$', '$'],
+      ['left', 'left'],
+    ],
+  );
 });
 
 test('focus moving releases the keys the old sink held', () => {
@@ -1902,6 +1928,9 @@ test('runOut advances until nothing animates and says how long it took (F22)', (
   );
   assert.equal(looping.runOut(160), 160);
   assert.equal(looping.ctx.animating(), true);
+  // What is owed, by kind (F64): the cycle alone, once its node's own
+  // 100 ms entrance leg has run — `animating()` cannot say which.
+  assert.deepEqual(looping.ctx.owed(), { transition: false, cycle: true, depart: false, requested: false, autoscroll: false });
 });
 
 // The windowed half of the same question, which cannot be a loop: a window
@@ -1956,6 +1985,42 @@ test('settled() resolves from inside the pump, with the milliseconds it waited (
   assert.deepEqual(await outcome(again), ['pending']);
   pump(8);
   assert.equal(await again, 8);
+});
+
+test('quiet() resolves under a keyframe cycle, where settled() can only hit its cap (F64)', async () => {
+  // The pomodoro's unpinned window has a `repeat="alternate"` cycle, so
+  // its transitions running out is a fact `settled()` could never report.
+  // `owed()` says what is owed by kind and `quiet()` waits on everything
+  // but the cycle.
+  const state = { animating: true, events: [], owed: { transition: true, cycle: true, depart: false, requested: false, autoscroll: false } };
+  let t = 0;
+  const app = createApp(
+    { init: 0, update: (m) => m, view: () => box({ pad: 4 }) },
+    { surface: { ...fakeWindow(state), owed: () => state.owed }, clock: () => t },
+  );
+  app.render();
+  const pump = (ms) => {
+    t += ms;
+    app.step();
+  };
+  const q = app.quiet();
+  const s = app.settled(100);
+  pump(16);
+  assert.deepEqual(await outcome(q), ['pending'], 'a transition is still owed');
+  state.owed = { ...state.owed, transition: false };
+  pump(16);
+  assert.deepEqual(await outcome(q), ['done', 32], 'only the cycle is left: quiet');
+  assert.deepEqual(await outcome(s), ['pending'], 'settled still waits on it');
+  pump(80);
+  assert.equal(await s, 112, 'and gives up at its cap, as before');
+  // A requested frame or a departing ghost is not a cycle: quiet waits.
+  state.owed = { ...state.owed, requested: true };
+  const again = app.quiet();
+  pump(16);
+  assert.deepEqual(await outcome(again), ['pending']);
+  state.owed = { ...state.owed, requested: false };
+  pump(16);
+  assert.deepEqual(await outcome(again), ['done', 32]);
 });
 
 test('settled() gives up at its cap the way runOut returns one (F30)', async () => {
@@ -2403,6 +2468,60 @@ test("a tick's own frame is not the user, so the windowed driver keeps idling th
   assert.equal(pace.after(true, (now = 2016)), 8, 'a click is use');
   assert.equal(quiet(496), 8, 'and the quiet counts from it');
   assert.equal(quiet(40), 32);
+});
+
+test('a stopped app pumps at a lower rate in its second second than in the 100 ms after a click, and the count is readable (F62)', async (t) => {
+  // The pomodoro measured F57 through `top`, "because the runner knows
+  // how often it pumped and the app cannot ask" — and `frameStats().frames`
+  // was no counter either, being the 120-sample ring's fill. `pumps` and
+  // `framesTotal` are the monotonic counts now; here the driver runs over
+  // a fake surface that counts its own pumps, on mocked timers so the
+  // backoff's whole second passes in no time.
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+  const state = { animating: false, events: [] };
+  let pumps = 0;
+  let alive = true;
+  const win = {
+    ...fakeWindow(state),
+    pump: () => {
+      pumps += 1;
+      return alive;
+    },
+    nextDeadlineMs: () => null,
+  };
+  const done = runWindowed(
+    {
+      init: { n: 0 },
+      update: (m, msg) => (msg === 'tick' ? { n: m.n + 1 } : m),
+      view: () => box({ pad: 4 }),
+      tick: { every: 1000, msg: 'tick' },
+    },
+    { surface: win, warnings: false },
+  );
+  // A millisecond at a time: a mocked `tick(n)` runs only the timers
+  // that were pending when it started, and every pump schedules the next.
+  const pass = (ms) => {
+    for (let i = 0; i < ms; i++) t.mock.timers.tick(1);
+  };
+  // A click at 0: the driver stays at the busy cadence for the half
+  // second after it.
+  state.events.push({ origin: 0, key: '', payload: 'click' });
+  const before = pumps;
+  pass(100);
+  const first = pumps - before;
+  // Through the rest of the first second and the whole of the second:
+  // one tick at 2000, otherwise nothing, so the backoff sits at its
+  // ceiling and the tick's own frame does not bring it down (F57).
+  pass(900);
+  const mid = pumps;
+  pass(1000);
+  const second = pumps - mid;
+  assert.ok(first >= 10 && first <= 14, `~12 pumps at 8 ms in the first 100 ms: ${first}`);
+  assert.ok(second >= 28 && second <= 36, `~31 pumps at 32 ms over the second second: ${second}`);
+  assert.ok(second / 1000 < first / 100, 'a lower rate, not a lower count');
+  alive = false;
+  pass(100);
+  await done;
 });
 
 test('tick.msg is told the cadence it fired on, beside the time (F59)', () => {

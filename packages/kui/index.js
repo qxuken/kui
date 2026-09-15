@@ -489,22 +489,35 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
   // and no effect the handler has not been handed. The second half matters
   // because an effect that dispatches is a model change the next turn owes
   // a frame to — a frame "settled" would otherwise promise had happened.
-  function quiet() {
+  function nothingOwed() {
     return !surface.animating() && pending.length === 0;
   }
 
-  // The pump has painted: every `frame` waiter is answered, and a `settled`
-  // one when this frame left nothing moving — or when its cap has passed,
-  // which resolves with `animating()` still true, the way `runOut` returns
-  // `maxMs` headless rather than throwing.
+  // The same with a keyframe cycle allowed (`quiet()`, backlog F64): the
+  // core says what is owed by kind, and a cycle never ends.
+  function nothingOwedButCycles() {
+    const o = surface.owed();
+    return !(o.transition || o.depart || o.requested || o.autoscroll) && pending.length === 0;
+  }
+
+  // The pump has painted: every `frame` waiter is answered, a `settled`
+  // one when this frame left nothing moving, a `quiet` one when it left
+  // nothing but a cycle — or when its cap has passed, which resolves with
+  // `animating()` still true, the way `runOut` returns `maxMs` headless
+  // rather than throwing.
   function drainWaiters() {
     if (waiters.length === 0) return;
-    const still = quiet();
+    let still = null;
+    let quietNow = null;
     const t = at();
     const keep = [];
     for (const w of waiters) {
-      if (w.frame) w.resolve();
-      else if (still || t - w.started >= w.maxMs) w.resolve(t - w.started);
+      if (w.frame) {
+        w.resolve();
+        continue;
+      }
+      const done = w.cycles ? (quietNow ??= nothingOwedButCycles()) : (still ??= nothingOwed());
+      if (done || t - w.started >= w.maxMs) w.resolve(t - w.started);
       else keep.push(w);
     }
     waiters = keep;
@@ -649,7 +662,21 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
       must('animating');
       const started = at();
       return new Promise((resolve, reject) => {
-        waiters.push({ frame: false, started, maxMs, resolve, reject });
+        waiters.push({ frame: false, cycles: false, started, maxMs, resolve, reject });
+      });
+    },
+    /** `settled` with a keyframe cycle allowed: the first pump that leaves
+     *  nothing owed but a `repeat` cycle. The pomodoro's first window has a
+     *  looping keyframe and could only ever wait on `frame()`; this is the
+     *  wait that means "the transitions have run out" there (backlog F64).
+     *  Its own name rather than an option, since a wait that ignores
+     *  something should say so. */
+    quiet(maxMs = 10_000) {
+      mustPump('quiet');
+      must('owed');
+      const started = at();
+      return new Promise((resolve, reject) => {
+        waiters.push({ frame: false, cycles: true, started, maxMs, resolve, reject });
       });
     },
     /** How long the windowed driver may wait before the next pump, in ms —

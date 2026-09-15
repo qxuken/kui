@@ -516,12 +516,20 @@ mod backend {
             let p2 = core.play(s, PlayOptions::default());
             let answered = audio.apply(core.take_audio_commands(), &core.resources);
             assert!(answered.refused.is_empty(), "still opening: the play waits");
+            // And it counts while it waits (F63): `env.audio.live` is 1
+            // beside `device: opening`, which is what the pomodoro's
+            // smoke test asserts on the click's frame.
+            assert_eq!(audio.env().live, 1, "a play waiting on the open counts");
             drop(_tx); // the open thread "died"
             // The poll is what flushes what waited; the next apply hands
             // the answer back.
             assert!(audio.poll_ended().is_empty());
             let answered = audio.apply(Vec::new(), &core.resources);
             assert_eq!(answered.refused, vec![p2], "{answered:?}");
+            // ... and the refused play leaves the count with the apply
+            // that refused it: `failed` / 0.
+            assert_eq!(audio.env().device, kui_core::AudioDevice::Failed);
+            assert_eq!(audio.env().live, 0, "refused, so no longer counted");
         }
 
         /// The decoder needs no device: a synthesized WAV round-trips.

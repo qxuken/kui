@@ -489,11 +489,20 @@ pub struct KeyPress {
 impl KeyPress {
     /// A press whose position is its own code — what a layout that agrees
     /// with US-QWERTY produces, and the sane reading of an injected press:
-    /// naming a key is saying which key was pressed.
+    /// naming a key is saying which key was pressed. The one fold: an
+    /// ASCII letter's position is its lower-case letter, since a window
+    /// reports `physical` from a table that never sees Shift (`Z` beside
+    /// `code: "Z"` for ⇧Z would be a pair no window ever sends; backlog
+    /// F65). A `physical` a caller spells is delivered as spelled — this
+    /// is only the default, which was already a guess.
     pub fn new(code: KeyCode, mods: KeyMods) -> Self {
+        let physical = match code {
+            KeyCode::Char(c) if c.is_ascii_uppercase() => KeyCode::Char(c.to_ascii_lowercase()),
+            other => other,
+        };
         Self {
             code,
-            physical: code,
+            physical,
             mods,
             text: None,
             repeat: false,

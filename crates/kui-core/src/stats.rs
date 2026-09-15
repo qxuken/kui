@@ -31,19 +31,26 @@ impl FrameSample {
 
 pub const STATS_CAPACITY: usize = 120;
 
-/// Fixed-size ring of recent frame samples.
+/// Fixed-size ring of recent frame samples, and the count of every frame
+/// ever pushed through it.
 #[derive(Default)]
 pub struct FrameStats {
     samples: Vec<FrameSample>,
     head: usize,
     /// Input time accumulated since the last push (events between frames).
     pub pending_input_ms: f32,
+    /// Every frame pushed since the core was made — monotonic, where
+    /// [`len`](Self::len) is the ring's fill and saturates at
+    /// [`STATS_CAPACITY`] (backlog F62: a test reading the ring's length
+    /// as a total was reading the wrong number after 120 frames).
+    pub total: u64,
 }
 
 impl FrameStats {
     pub fn push(&mut self, mut sample: FrameSample) {
         sample.input_ms += self.pending_input_ms;
         self.pending_input_ms = 0.0;
+        self.total += 1;
         if self.samples.len() < STATS_CAPACITY {
             self.samples.push(sample);
         } else {
@@ -52,6 +59,8 @@ impl FrameStats {
         self.head = (self.head + 1) % STATS_CAPACITY;
     }
 
+    /// How many samples the ring holds: climbs to [`STATS_CAPACITY`] and
+    /// stays there. The count of frames is [`total`](Self::total).
     pub fn len(&self) -> usize {
         self.samples.len()
     }
@@ -126,6 +135,8 @@ mod tests {
             s.push(sample(i as f32));
         }
         assert_eq!(s.len(), STATS_CAPACITY);
+        // The ring saturates; the total does not (F62).
+        assert_eq!(s.total, (STATS_CAPACITY + 10) as u64);
         let v: Vec<f32> = s.iter().map(|f| f.view_ms).collect();
         assert_eq!(v.first().copied(), Some(10.0)); // oldest surviving
         assert_eq!(v.last().copied(), Some((STATS_CAPACITY + 9) as f32));

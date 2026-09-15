@@ -526,6 +526,7 @@ impl Launcher {
             event_loop: Some(event_loop),
             shell,
             alive,
+            pumps: 1,
         };
         if !alive {
             runner.retire();
@@ -657,6 +658,12 @@ pub struct PumpRunner<A: App> {
     event_loop: Option<EventLoop<access_bridge::UserEvent>>,
     shell: Shell<A>,
     alive: bool,
+    /// Every turn this runner has taken — [`pump`](Self::pump) and
+    /// [`pump_until`](Self::pump_until) alike, the first one that opened
+    /// the window included. What a driver's backoff is measured in
+    /// (backlog F62): the runner knows how often it pumped where the app
+    /// could only read a process monitor.
+    pumps: u64,
 }
 
 impl<A: App> PumpRunner<A> {
@@ -668,11 +675,21 @@ impl<A: App> PumpRunner<A> {
         let Some(event_loop) = &mut self.event_loop else {
             return false;
         };
+        self.pumps += 1;
         self.alive = pump_once(event_loop, &mut self.shell);
         if !self.alive {
             self.retire();
         }
         self.alive
+    }
+
+    /// How many turns this runner has taken, the one that opened the
+    /// window included — every `pump` and `pump_until` that ran, not the
+    /// no-ops after it retired. Monotonic, so two readings a second apart
+    /// are the pump rate over that second, which is what a driver's
+    /// backoff promises and what `frame_stats` cannot say (backlog F62).
+    pub fn pumps(&self) -> u64 {
+        self.pumps
     }
 
     /// The end of this runner: every window closed (dropping the panes
@@ -709,6 +726,7 @@ impl<A: App> PumpRunner<A> {
             return false;
         };
         let timeout = deadline.saturating_duration_since(std::time::Instant::now());
+        self.pumps += 1;
         self.alive = match event_loop.pump_app_events(Some(timeout), &mut self.shell) {
             PumpStatus::Continue => !self.shell.exit_requested,
             PumpStatus::Exit(_) => false,

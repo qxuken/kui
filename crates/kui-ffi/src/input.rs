@@ -102,7 +102,8 @@ fn key_press_of(
     let mods = kui_core::KeyMods::from_bits(kmods);
     // A NULL `physical` means "the key I just named": a host that does not
     // track positions says so by omission, and gets `code` through unchanged
-    // because the two agree. A host that does track them hands both over and
+    // because the two agree (a letter's position is its lower-case letter,
+    // as a window reports it; backlog F65). A host that does track them hands both over and
     // `from_layout` applies the same non-Latin fallback the winit driver
     // does — the rule lives in the core so no host reimplements it.
     let press = match physical.ptr.is_null() {

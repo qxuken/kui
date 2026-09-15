@@ -505,6 +505,13 @@ pub const DOORS: &[Door] = &[
         doc: "Whether the last frame left a transition mid-flight, so the host draws another without waiting for input.",
     },
     Door {
+        rust: "Core::owed",
+        c: Is("kui_owed"),
+        node: Is("owed"),
+        lua: No(GUEST),
+        doc: "The same by kind — a finite transition, a keyframe cycle, a departing ghost, a requested frame, an autoscroll — so a test can wait for the transitions to run out under a cycle that never ends; Node's loop has `quiet()` for that wait (backlog F64).",
+    },
+    Door {
         rust: "Ui::request_frame",
         c: As("`animate` on a node, and `kui_animating` for the driver to read"),
         node: As("the same form as C's"),
