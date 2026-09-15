@@ -17,10 +17,8 @@
     "bench": "node tools/bench.mjs"
   },
   "kui": {
-    "windowed": ["apps/counter", "features/window", "features/relaunch", "features/slide", "features/clipboard", "features/drop", "widgets/virtual_list"],
-    "headless": ["apps/counter", "features/slide", "features/clipboard", "features/drop", "widgets/virtual_list", "tools/types"]
-    "windowed": ["apps/counter", "features/window", "features/relaunch", "features/slide", "features/clipboard", "features/devtools_tab", "widgets/virtual_list"],
-    "headless": ["apps/counter", "features/slide", "features/clipboard", "features/devtools_tab", "widgets/virtual_list", "tools/types"]
+    "windowed": ["apps/counter", "features/window", "features/relaunch", "features/slide", "features/clipboard", "features/drop", "features/devtools_tab", "widgets/virtual_list"],
+    "headless": ["apps/counter", "features/slide", "features/clipboard", "features/drop", "features/devtools_tab", "widgets/virtual_list", "tools/types"]
   },
   "dependencies": {
     "@qxuken/kui": "file:../../packages/kui"
