@@ -225,6 +225,11 @@ pub struct Core {
     /// source the host had before it, beside the override applied, so a
     /// source the host sets *under* the override is told from it.
     dt_app: Option<usize>,
+    /// The dock the frame was wrapped for at `begin_frame`, `None` when
+    /// it was not: a panel turned on or re-docked mid-frame (an app's
+    /// `set_devtools` from its `view`) is built next frame, which is
+    /// asked for, rather than into a root laid out for something else.
+    dt_dock: Option<devtools::Dock>,
     dt_window: bool,
     dt_theme: Option<(ThemeSource, ThemeSource)>,
     /// The panel was built at `begin_frame` (a left dock precedes the
@@ -802,6 +807,7 @@ impl Core {
             ns_depth: usize::MAX,
             ns_key: Key::ROOT,
             dt_app: None,
+            dt_dock: None,
             dt_window: false,
             dt_theme: None,
             dt_built: false,

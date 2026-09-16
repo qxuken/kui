@@ -84,6 +84,19 @@ and the frame at v14.
   every devtools verb. Both `devtools_tab` examples gained a page button
   that jumps to the Inspector and print which tab the panel is on.
 
+### Fixed
+
+- **A devtools panel turned on from inside a frame sat in the bottom-left
+  corner** (backlog F70, from kawoosh's `:kui_debugger` and
+  `:syntax_tree`, which call `set_devtools(true)` from `view`): the root
+  is wrapped for a dock at `begin_frame`, when the panel was still off,
+  so `finish` built the dock into the plain column root — 340 wide, half
+  the height, at the left — and it stayed there until something else
+  drew a frame (with the blink clock gone quiet since F68, indefinitely).
+  A panel turned on, or moved to another dock, since the frame began now
+  waits for the next frame, which the frame asks for; nothing draws in
+  between. The same for `set_devtools_dock` mid-frame.
+
 ### Changed
 
 - **The panel's own tabs are labelled `Facts`, `Events`, `Tree`** in the

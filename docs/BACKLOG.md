@@ -28,9 +28,9 @@ the two rounds of 2026-09-15 — F55–F61 and K1–K4 — with the alpha.13
 tag, the eight of the four rounds of the same day — W17, W18,
 F62–F66 and C40 — with the alpha.14 tag, and the three of 2026-09-16 — C42 and C43 from the kawoosh
 binary-file report, C44 from the pre-tag round that followed — the day
-they were filed, before the alpha.15 tag, and F67, F68 and F69 from the
-kawoosh syntax-tab, idle-frame and second-Mac reports the same day, after
-it. The index
+they were filed, before the alpha.15 tag, and F67–F70 from the kawoosh
+syntax-tab, idle-frame, second-Mac and mid-frame-dock reports the same
+day, after it. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -1187,6 +1187,16 @@ press — off on the first machine, which is why nothing had shown it.
 kui had no door for it, and a modal editor cannot live with it. One
 entry, **built 2026-09-16**, the day it was filed, and in the archive.
 
+## From the kawoosh mid-frame-dock report (2026-09-16)
+
+kawoosh's `:kui_debugger` opened the panel in the bottom-left corner of
+the window, 340 wide and half the height, and it jumped to its right
+dock on the next frame — once there was one: with the idle loop quiet
+since F68 there was not, and it stayed. The panel is turned on from the
+app's `view`, after `begin_frame` had already laid the root out without
+it. One entry, **built 2026-09-16**, the day it was filed, and in the
+archive.
+
 ## After alpha.14
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -1915,3 +1925,7 @@ move.
 **From the kawoosh second-Mac report (2026-09-16)** — F69, filed and built the same day, after the alpha.15 tag
 
 - `!` **F69** — [A held key does not repeat on a Mac with press-and-hold on: the accent picker, or nothing, where a modal editor wanted a motion](backlog/closed-2026-09.md#-f69--a-held-key-does-not-repeat-on-a-mac-with-press-and-hold-on-the-accent-picker-or-nothing-where-a-modal-editor-wanted-a-motion--done-2026-09-16) — done (2026-09-16) — `Launcher::press_and_hold` / `pressAndHold` / `kui_press_and_hold`, pinned in the argument domain
+
+**From the kawoosh mid-frame-dock report (2026-09-16)** — F70, filed and built the same day, after the alpha.15 tag
+
+- `!` **F70** — [A panel turned on mid-frame is built into a root not laid out for it: the dock in the bottom-left corner until the next frame](backlog/closed-2026-09.md#-f70--a-panel-turned-on-mid-frame-is-built-into-a-root-not-laid-out-for-it-the-dock-in-the-bottom-left-corner-until-the-next-frame--done-2026-09-16) — done (2026-09-16) — a mid-frame `set_devtools` / `set_devtools_dock` waits for the next frame, and asks for it

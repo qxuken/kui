@@ -114,6 +114,55 @@ fn the_app_s_keys_do_not_move_when_the_panel_comes() {
     assert_eq!(b.origin, OriginId::HOST);
 }
 
+/// A panel turned on mid-frame — an app's `set_devtools(true)` from its
+/// `view`, kawoosh's `:kui_debugger` — is built from the next frame,
+/// which the frame asks for: `begin_frame` did not wrap the root for
+/// it, and built into that column the panel sat in the bottom-left
+/// corner, 340 wide and half the height, until something else drew a
+/// frame (kawoosh's idle-frame report, 2026-09-16). Moving the dock
+/// mid-frame waits the same way.
+#[test]
+fn a_panel_turned_on_mid_frame_is_built_from_the_next_frame() {
+    let mut core = Core::new();
+    core.set_inspect(true);
+    frame(&mut core);
+    // On, from inside the frame.
+    let mut ui = core.frame(VIEWPORT, 1.0);
+    ui.core().set_devtools(true);
+    view(&mut ui, None);
+    ui.finish();
+    assert!(
+        core.key_of(DEVTOOLS_KEY).is_none(),
+        "not built into a root laid out without it"
+    );
+    assert!(
+        core.owed().requested,
+        "the frame it is built in is asked for"
+    );
+    frame(&mut core);
+    let key = core.key_of(DEVTOOLS_KEY).unwrap();
+    let dock = node(&core, key);
+    assert_eq!((dock.rect.x, dock.rect.y), (VIEWPORT.w - DOCK_SIDE_W, 0.0));
+    assert_eq!(dock.rect.h, VIEWPORT.h);
+    assert!(!core.owed().requested);
+    // Re-docked mid-frame: the row root this frame began with is the
+    // right dock's, so the bottom one waits a frame too.
+    let mut ui = core.frame(VIEWPORT, 1.0);
+    ui.core().set_devtools_dock(Dock::Bottom);
+    view(&mut ui, None);
+    ui.finish();
+    assert!(core.key_of(DEVTOOLS_KEY).is_none());
+    assert!(core.owed().requested);
+    frame(&mut core);
+    let key = core.key_of(DEVTOOLS_KEY).unwrap();
+    let dock = node(&core, key);
+    assert_eq!(
+        (dock.rect.x, dock.rect.y),
+        (0.0, VIEWPORT.h - DOCK_BOTTOM_H)
+    );
+    assert_eq!(dock.rect.w, VIEWPORT.w);
+}
+
 /// The host's `configure_root` is split: layout and paint on the
 /// container, what is addressed on the root (decision 2).
 #[test]

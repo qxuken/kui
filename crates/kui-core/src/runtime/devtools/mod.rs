@@ -1339,6 +1339,7 @@ impl Core {
     /// deferred root in the panel's own (decision 6).
     pub(crate) fn devtools_begin_frame(&mut self) {
         self.dt_app = None;
+        self.dt_dock = None;
         self.dt_window = false;
         self.dt_built = false;
         // This frame's declarations start empty whatever the panel's state
@@ -1418,6 +1419,7 @@ impl Core {
         }
         self.dt_inspect = want_inspect;
         if dock.docked() {
+            self.dt_dock = Some(dock);
             self.tree.specs[0] = match dock {
                 Dock::Bottom => NodeSpec::column(),
                 _ => NodeSpec::row(),
@@ -1533,8 +1535,21 @@ impl Core {
             );
             self.origin = saved;
         }
-        if !self.dt_built {
+        if self.dt_built {
+            return;
+        }
+        // A docked panel is built into the root this frame began with:
+        // wrapped for this dock, it goes beside the app container. Turned
+        // on, or moved to this dock, since `begin_frame` — an app's
+        // `set_devtools` from its `view` — the root is not laid out for it
+        // (a column, or a row for another side), and a panel built into it
+        // anyway sat in the bottom-left corner, 340 wide and half the
+        // height, until the next frame; so it waits for that frame, and
+        // asks for it. Undocked, there is nothing to lay out around.
+        if !dock.docked() || self.dt_dock == Some(dock) {
             self.build_panel(Place::Main(dock));
+        } else {
+            self.frame_requested = true;
         }
     }
 
