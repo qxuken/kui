@@ -23,10 +23,29 @@ was the first bare bump to break an app in five releases).
 
 ## 0.1.0-alpha.16 (unreleased)
 
-**What breaks.** Nothing: three doors and a prop added, the ABI at 18
-and the frame at v14.
+**What breaks.** Nothing: three doors, a prop and a widget added, the
+ABI at 18 and the frame at v14. One layout result moves — a grow child
+beside a sibling whose `max` held it short now takes that room (backlog
+F71 under Fixed) — which a view that padded the hole by hand will see.
 
 ### Added
+
+- **A select** (backlog F72, from kawoosh's Facts tab: three toggles that
+  cycled a base, an accent and a menu mode with a click each, off in the
+  tab strip and away from the facts they changed). `widgets::select(ui,
+  label, &options, current)` is a field showing the choice in force that,
+  clicked, drops the core's own menu of the choices with the current one
+  checked — the same menu a right-click opens: drawn in the frame, or the
+  platform's where the host shows menus itself; dismissed by Escape or a
+  press outside; its rows walked by the arrows and read as a menu. The
+  app holds no open state; what it hears is the choice, as the `menu`
+  event a menu row posts, on the field's key: `{kind: "menu", role:
+  "custom", item: <the option>}`. `select_items` is the same field over
+  `MenuItem`s, whose choice posts each item's `id`; `select_with` takes
+  the field's spec and text style, and `select_spec` is the stock one.
+  A reader hears a button named by the field, described by its choice,
+  expanded while the menu is open. Rust only for now: the Node, Lua and
+  C forms are backlog F73. `examples/rust/widgets/select.rs`.
 
 - **A held key repeats on a Mac** (backlog F69, from kawoosh on a second
   Mac: `j` held moved one line, `e` held opened the accent picker — the
@@ -86,6 +105,24 @@ and the frame at v14.
 
 ### Fixed
 
+- **A grow child's `max` left a hole its siblings could have filled**
+  (backlog F71, from the devtools Tree tab: the node list and the
+  inspector both `Grow(1)`, the inspector capped at 300, and a third of
+  the panel empty under them). A grow child whose own `min` or `max`
+  held it off its share kept its share's worth of the container anyway;
+  the run now freezes such a child at its clamp and shares what is left
+  among the others, as flexbox does, until a pass freezes nothing. A
+  view that put a grow spacer or a fixed height where the hole was can
+  take it out.
+
+- **A host's menu answered a devtools select to the app** — found
+  building F72: `activate_menu_item` is not an input, and its events
+  skipped the pass an input's take on the way out, so a row chosen from
+  the platform's menu reached the app as a `menu` event on the panel's
+  own node instead of acting. Every batch now leaves through the one
+  `outbound` pass: the panel's controls taken back, the rest translated,
+  stamped with their window and logged.
+
 - **A devtools panel turned on from inside a frame sat in the bottom-left
   corner** (backlog F70, from kawoosh's `:kui_debugger` and
   `:syntax_tree`, which call `set_devtools(true)` from `view`): the root
@@ -98,6 +135,18 @@ and the frame at v14.
   between. The same for `set_devtools_dock` mid-frame.
 
 ### Changed
+
+- **The devtools tab strip wraps, and the overrides sit on the facts
+  they change** (backlog F72). With five tabs in a narrow dock the strip
+  broke *labels* — `Synta / x`, `Event / s` — where ADR 0032 said it
+  wrapped tabs; a tab is now one unbreakable unit and the row wraps
+  whole tabs onto another line. The base, accent and menu toggles are
+  gone from the strip's end: the Facts tab's `theme`, `accent` and
+  `menus` rows each carry a select of the choices beside the fact — the
+  fact is what the app has, the select what the panel holds it to,
+  `app` (or `platform`) leaving the app's own. `Ctrl+Shift+T` / `A` /
+  `M` still cycle the same choices. The `kui-devtools/base`, `accent`
+  and `menus` keys are the selects now, in the Facts tab only.
 
 - **The panel's own tabs are labelled `Facts`, `Events`, `Tree`** in the
   strip and the access tree, as a declared tab's label is written

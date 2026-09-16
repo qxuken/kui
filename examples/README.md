@@ -136,6 +136,7 @@ table says so.
 | [`cells.rs`](rust/widgets/cells.rs) | The `cells` element: a terminal grid with a cursor and an `origin_line`, selecting in cells, copy trimming blanks, the screen scrolled under a selection, a box-drawn table drawn from the cell box | ✓ | |
 | [`virtual_list.rs`](rust/widgets/virtual_list.rs) | `widgets::virtual_column`, the same list by hand (`--by-hand`), and `virtual_rows` for rows of no fixed height (`--variable`) | ✓ every mode | |
 | [`context_menu.rs`](rust/widgets/context_menu.rs) | Who gets a context menu: the stock one over a selectable scope, the app's own over a row, the editor's four, nothing over a plain box | ✓ | |
+| [`select.rs`](rust/widgets/select.rs) | `widgets::select` over labels and `select_items` over `MenuItem`s: the field opens the core's own menu under itself, a choice is one `menu` event on the field, the app holds no open state | ✓ | |
 | [`menu_bar.rs`](rust/widgets/menu_bar.rs) | The application menu bar the frame declares (ADR 0018): a `checked` row, an `enabled` one, and the same `menu` event whoever showed it | ✓ | |
 | [`tooltip.rs`](rust/widgets/tooltip.rs) | The tooltip three ways: the view's float under `is_hovered`, the `apply_tooltip` prop that is also the accessible description, `tooltip_with` around a legend; `fit` near the edge | ✓ | |
 | [`titlebar.rs`](rust/widgets/titlebar.rs) | Custom chrome: `titlebar`, `titlebar_with` (tabs in the strip), `window_buttons`, the inset past the OS's own controls, the window facts read back | | drag the strip, double-click it |

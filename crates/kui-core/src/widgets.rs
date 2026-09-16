@@ -307,6 +307,118 @@ pub fn text_input(ui: &mut Ui<'_>, label: &str, initial: &str) -> Key {
     )
 }
 
+/// What a select's trigger posts when it is clicked; the core takes it
+/// back and opens the menu (`Core::consume_select_events`).
+pub(crate) fn select_tag() -> Value {
+    Value::map([("select", Value::Bool(true))])
+}
+
+/// A choice among a few named options: a field that shows the one in
+/// force and, clicked, drops a menu of them all with the current one
+/// checked. `options` are the labels, `current` the index in force (or
+/// none). Keyed by `label`, which is the accessible name too.
+///
+/// The menu is the core's own — the same one a right-click opens
+/// (`Core::open_menu`): drawn in the frame, or the platform's where the
+/// host shows menus itself, dismissed by Escape or a press outside, its
+/// rows walked by the arrows. So the app holds no open state; what it
+/// hears is the choice, as the `menu` event a menu row posts, on this
+/// key: `{kind: "menu", role: "custom", item: <the option>}`. A view
+/// that then draws the select with the new `current` is the whole loop.
+///
+/// [`select_items`] is the same field over [`MenuItem`]s, for an option
+/// that posts an `id` of its own rather than its label.
+pub fn select(ui: &mut Ui<'_>, label: &str, options: &[&str], current: Option<usize>) -> Key {
+    let items: Vec<MenuItem> = options.iter().map(|o| MenuItem::new(*o)).collect();
+    select_items(ui, label, &items, current)
+}
+
+/// [`select`] over items the caller built: their labels are the rows,
+/// their `id`s what a choice posts, and the `current`th is drawn checked
+/// whatever the item said. A separator is a separator here too.
+pub fn select_items(
+    ui: &mut Ui<'_>,
+    label: &str,
+    items: &[MenuItem],
+    current: Option<usize>,
+) -> Key {
+    let t = ui.theme();
+    let m = ui.metrics();
+    select_with(
+        ui,
+        label,
+        items,
+        current,
+        select_spec(&t, &m),
+        TextStyle::new(m.chrome_text),
+    )
+}
+
+/// The stock select field's spec: a sunken field with the stock radius
+/// and padding, as [`button_spec`] is the stock button's. What
+/// [`select_with`] is handed by [`select_items`]; a caller with a spec
+/// of its own starts here and adds to it.
+pub fn select_spec(theme: &Theme, m: &Metrics) -> NodeSpec {
+    NodeSpec::row()
+        .pad_xy(m.field_pad_x, m.field_pad_y)
+        .gap(8.0)
+        .cross_align(Align::Center)
+        .bg(theme.sunken)
+        .hover_bg(theme.hover)
+        .radius(m.radius)
+}
+
+/// [`select_items`] with its spec and text style in the caller's hands —
+/// a compact field in a dense panel — the way [`button_with`] takes the
+/// button's. The border, the click, the role and the disclosure are
+/// added here whatever `spec` said.
+pub fn select_with(
+    ui: &mut Ui<'_>,
+    label: &str,
+    items: &[MenuItem],
+    current: Option<usize>,
+    spec: NodeSpec,
+    text: TextStyle,
+) -> Key {
+    let key = ui.child_key(label);
+    let t = ui.theme();
+    let shown = current
+        .and_then(|i| items.get(i))
+        .map_or("", |i| i.text())
+        .to_string();
+    let open = ui.core().menu().is_some_and(|menu| menu.target == key);
+    let border = if open || ui.is_focused(key) {
+        t.accent
+    } else {
+        t.border
+    };
+    let menu: Vec<MenuItem> = items
+        .iter()
+        .enumerate()
+        .map(|(i, item)| item.clone().checked(current == Some(i)))
+        .collect();
+    ui.core().declare_select(key, menu);
+    ui.with_keyed(
+        label,
+        spec.border(1.0, border)
+            .cursor(CursorShape::Pointer)
+            .on_click(select_tag())
+            // A button named by the field, described by the choice: what
+            // a reader says of a pop-up button, in the two slots a button
+            // has (`value` is a slider's and an editor's).
+            .role(Role::Button)
+            .label(label)
+            .description(shown.as_str())
+            .expanded(open),
+        |ui| {
+            ui.text(&shown, text.color(t.fg).nowrap());
+            // The disclosure: a small triangle, the mark every platform's
+            // pop-up field carries.
+            ui.text("\u{25BE}", text.color(t.muted));
+        },
+    )
+}
+
 /// Default titlebar height, logical px, where the strip is the app's
 /// alone. Follows platform conventions (as measured by gpui): 32 on
 /// Windows (the native caption height), 34 elsewhere. The stock

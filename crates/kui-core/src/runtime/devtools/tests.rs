@@ -403,6 +403,26 @@ fn a_tab_after_a_dead_space_click_walks_the_ring_under_the_pointer() {
     assert_ne!(inside, button);
 }
 
+/// The same select answered by a host's own menu: `activate_menu_item`
+/// is not an input, and its events take the same way out, so the row
+/// is the panel's action there too and the app hears nothing.
+#[test]
+fn a_select_chosen_from_a_native_menu_is_the_panels_action_too() {
+    let mut core = on();
+    core.set_native_menus(true);
+    let facts = core.key_of("kui-devtools/tab-facts").unwrap();
+    access_click(&mut core, facts);
+    frame(&mut core);
+    let base = core.key_of("kui-devtools/base").unwrap();
+    assert!(access_click(&mut core, base).is_empty());
+    assert!(core.menu().is_some(), "held as state for the host to show");
+    frame(&mut core);
+    let evs = core.activate_menu_item(2);
+    assert!(evs.is_empty(), "{evs:?}");
+    assert_eq!(state(&core, |s| s.base), Some(Appearance::Dark));
+    assert!(core.menu().is_none());
+}
+
 /// A click on the app reaches the host and lands in the stream; a click
 /// on a panel control is the core's and does not; a chord is the core's
 /// whatever has focus, and a named key under the same modifiers is not
@@ -411,11 +431,35 @@ fn a_tab_after_a_dead_space_click_walks_the_ring_under_the_pointer() {
 fn events_flow_to_the_host_and_into_the_stream_and_the_panel_s_do_not() {
     let mut core = on();
     let press = core.key_of("press").unwrap();
+    // The overrides are selects on the Facts rows they change, off the
+    // tab strip: the base's opens the panel's menu of three, and the
+    // row chosen is the panel's action, not the app's event.
+    assert!(core.key_of("kui-devtools/base").is_none());
+    let facts = core.key_of("kui-devtools/tab-facts").unwrap();
+    access_click(&mut core, facts);
+    frame(&mut core);
     let base = core.key_of("kui-devtools/base").unwrap();
     assert_eq!(state(&core, |s| s.base), None);
     let evs = access_click(&mut core, base);
     assert!(evs.is_empty(), "the panel's click never leaves the core");
+    let menu = core.menu().expect("the select's menu");
+    assert_eq!(menu.target, base);
+    assert_eq!(menu.items.len(), 3);
+    assert!(menu.items[0].checked, "the app's own is in force");
+    frame(&mut core);
+    let light = core
+        .access_tree()
+        .nodes
+        .iter()
+        .find(|n| n.role == crate::access::Role::MenuItem && n.name.as_deref() == Some("light"))
+        .map(|n| n.key)
+        .expect("the row is drawn");
+    let evs = access_click(&mut core, light);
+    assert!(evs.is_empty(), "nor the row's: {evs:?}");
     assert_eq!(state(&core, |s| s.base), Some(Appearance::Light));
+    assert!(core.menu().is_none());
+    // The frame the input owes, without the menu's modal over the app.
+    frame(&mut core);
     let evs = access_click(&mut core, press);
     assert_eq!(evs.len(), 1);
     assert_eq!(evs[0].key, press);

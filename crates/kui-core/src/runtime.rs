@@ -325,6 +325,9 @@ pub struct Core {
     /// by their origin (`OriginId::MENU_BAR`), not by key.
     menu_bar_open: Option<usize>,
     menu_bar_root: Option<Key>,
+    /// The select fields this frame built, each with its menu's rows
+    /// (`widgets::select`); a click on one opens that menu.
+    selects: Vec<(Key, Vec<crate::menu::MenuItem>)>,
     /// Whether the platform owns the menu bar (`set_native_menu_bar`), in
     /// which case the drawn one draws nothing and the driver hands the
     /// declaration over instead.
@@ -852,6 +855,7 @@ impl Core {
             menu_bar_origin: OriginId::HOST,
             menu_bar_open: None,
             menu_bar_root: None,
+            selects: Vec::new(),
             native_menu_bar: false,
             lookup_available: false,
             selection: None,
@@ -1311,6 +1315,8 @@ impl Core {
         // calling `widgets::menu_bar` leaves nothing behind for the next
         // event to land on. Re-recorded while the widget builds.
         self.menu_bar_root = None;
+        // And the select fields, re-declared by the ones the view builds.
+        self.selects.clear();
         // Last frame's focus declarations are what this frame's are
         // compared against (see `set_key_focus`).
         std::mem::swap(&mut self.declared_focus, &mut self.declared_focus_last);

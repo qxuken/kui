@@ -83,6 +83,9 @@ impl Core {
         } else {
             self.close_menu();
         }
+        // The same way out an input's events take: a row of the devtools'
+        // own select is the panel's whichever menu showed it.
+        self.outbound(&mut out);
         out
     }
 
@@ -157,6 +160,53 @@ impl Core {
         // lives with its focus.
         self.menu_editor = self.edit.focused();
         self.menu = Some(menu);
+    }
+
+    /// A select field built this frame (`widgets::select`): its key and
+    /// the rows its menu will have. Read back by
+    /// [`Self::consume_select_events`] when the field is clicked.
+    pub(crate) fn declare_select(&mut self, key: Key, items: Vec<MenuItem>) {
+        self.selects.push((key, items));
+    }
+
+    /// A click on a select field is not the app's: taken back here and
+    /// answered with the field's menu, opened under its bottom-left
+    /// corner — the core's own menu, so what follows (the rows, a choice,
+    /// a dismissal) is `consume_menu_events`' as for any other. The
+    /// field's node is the target, so the choice is posted on it.
+    pub(crate) fn consume_select_events(&mut self, out: &mut Vec<UiEvent>) {
+        if self.selects.is_empty() {
+            return;
+        }
+        let mut clicked: Option<Key> = None;
+        out.retain(|ev| {
+            let is = ev.payload.get("select").and_then(Value::as_bool) == Some(true)
+                && self.selects.iter().any(|(k, _)| *k == ev.key);
+            if is {
+                clicked = Some(ev.key);
+            }
+            !is
+        });
+        let Some(key) = clicked else {
+            return;
+        };
+        let Some((_, items)) = self.selects.iter().find(|(k, _)| *k == key) else {
+            return;
+        };
+        let items = items.clone();
+        // Under the field, in window coordinates: the last frame laid the
+        // field out, which is the frame the click was made against.
+        let at = self
+            .tree
+            .keys
+            .iter()
+            .position(|k| *k == key)
+            .map(|i| {
+                let (p, s) = (self.tree.pos[i], self.tree.size[i]);
+                Vec2::new(p.x, p.y + s.h)
+            })
+            .unwrap_or_default();
+        self.open_menu_raw(Menu::new(key, at, items));
     }
 
     /// Closes it. Returns whether one was open.

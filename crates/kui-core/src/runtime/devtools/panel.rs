@@ -5,6 +5,7 @@ use super::icons::{self, Icon};
 use super::{DEVTOOLS_KEY, Dock, Place, Shown, State, Tab, action, stream, tree};
 use crate::color::Color;
 use crate::env::Appearance;
+use crate::menu::MenuItem;
 use crate::runtime::inspect::NodeInfo;
 use crate::spec::TextStyle;
 use crate::spec::{Align, Min, NodeSpec, Sizing};
@@ -221,7 +222,7 @@ fn handle(ui: &mut Ui<'_>, t: &Theme, dock: Dock) {
 
 /// The title, the frame counter, and the placement buttons — one per
 /// place the panel can sit, the current one lit. The app-state toggles
-/// are at the end of the tab row.
+/// sit on the Facts rows they change.
 fn header(ui: &mut Ui<'_>, st: &State, t: &Theme) {
     ui.with(
         NodeSpec::row()
@@ -262,11 +263,17 @@ fn header(ui: &mut Ui<'_>, st: &State, t: &Theme) {
     );
 }
 
+/// The tab strip. A tab is one unbreakable unit — its label never
+/// wraps inside it — and the row wraps whole tabs onto another line when
+/// a narrow dock cannot hold them all in one (ADR 0032, decision 1), so
+/// every tab stays in view and none is cut to "Synta / x".
 fn tabs(ui: &mut Ui<'_>, st: &State, t: &Theme) {
     ui.with(
         NodeSpec::row()
             .width(Sizing::Grow(1.0))
             .gap(2.0)
+            .cross_gap(2.0)
+            .wrap()
             .cross_align(Align::Center),
         |ui| {
             let shown = st.shown();
@@ -303,70 +310,23 @@ fn tabs(ui: &mut Ui<'_>, st: &State, t: &Theme) {
                     |ui| {
                         ui.text(
                             &label,
-                            TextStyle::new(11.0).color(if on { t.fg } else { t.muted }),
+                            TextStyle::new(11.0)
+                                .color(if on { t.fg } else { t.muted })
+                                .nowrap(),
                         );
                     },
                 );
             }
-            // The app-state toggles — the theme base, the accent, native
-            // menus — at the end of the tab row.
-            ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
-            let base = match st.base {
-                None => Icon::BaseAuto,
-                Some(Appearance::Light) => Icon::BaseLight,
-                Some(_) => Icon::BaseDark,
-            };
-            // "The app's own" names the base it resolves to, since an
-            // app that pinned one is not on the OS's.
-            let own = match st.base {
-                None => format!("app ({})", st.facts.app_appearance.name()),
-                Some(_) => st.base_name().to_string(),
-            };
-            icon(
-                ui,
-                t,
-                "base",
-                base,
-                t.fg,
-                &format!("base: {own} · Ctrl+Shift+T cycles the app's own → light → dark"),
-            );
-            // The swatch is the accent in force — the core's, not the
-            // panel's readable ink — inside a hairline in the panel's
-            // muted, so it reads as a sample whatever colour it is.
-            icon_with(
-                ui,
-                t,
-                "accent",
-                Icon::Accent,
-                t.muted,
-                ui.theme().accent,
-                &format!(
-                    "accent: {} · Ctrl+Shift+A cycles the app's, kui's, four the OS might report",
-                    st.accent_name()
-                ),
-            );
-            let menus = match st.native_menus {
-                Some(true) => "native",
-                Some(false) => "drawn",
-                None => "the platform's default",
-            };
-            icon(
-                ui,
-                t,
-                "menus",
-                Icon::Menus,
-                if st.native_menus == Some(false) {
-                    t.accent
-                } else {
-                    t.fg
-                },
-                &format!("menus: {menus} · Ctrl+Shift+M toggles native and drawn"),
-            );
         },
     );
 }
 
-/// The status block: the rows the main window's core wrote.
+/// The status block: the rows the main window's core wrote. Three of
+/// them — `theme`, `accent`, `menus` — are what the panel can override,
+/// and each carries its select beside the fact it changes: the fact is
+/// what the app has, the select what the panel holds it to (`app` leaves
+/// the app's own). The chords (`Ctrl+Shift+T` / `A` / `M`) cycle the
+/// same choices.
 fn facts(ui: &mut Ui<'_>, st: &State, t: &Theme) {
     ui.with(
         NodeSpec::column()
@@ -385,10 +345,78 @@ fn facts(ui: &mut Ui<'_>, st: &State, t: &Theme) {
                             ui.text(k, TextStyle::new(11.0).color(t.muted));
                         });
                         ui.text(v, TextStyle::new(11.0).color(t.fg).mono().nowrap());
+                        match *k {
+                            "theme" => override_select(ui, st, "base"),
+                            "accent" => override_select(ui, st, "accent"),
+                            "menus" => override_select(ui, st, "menus"),
+                            _ => {}
+                        }
                     },
                 );
             }
         },
+    );
+}
+
+/// One override as a select: its choices, the one in force, and the
+/// action each posts (`base:light`, `accent:2`, `menus:drawn`).
+fn override_select(ui: &mut Ui<'_>, st: &State, what: &str) {
+    let (items, current): (Vec<MenuItem>, usize) = match what {
+        "base" => {
+            let own = format!("app ({})", st.facts.app_appearance.name());
+            let items = vec![
+                MenuItem::new(own).id(action("base:app")),
+                MenuItem::new("light").id(action("base:light")),
+                MenuItem::new("dark").id(action("base:dark")),
+            ];
+            let current = match st.base {
+                None => 0,
+                Some(Appearance::Light) => 1,
+                Some(_) => 2,
+            };
+            (items, current)
+        }
+        "accent" => {
+            let mut items = vec![MenuItem::new("app").id(action("accent:app"))];
+            items.extend(
+                super::ACCENTS
+                    .iter()
+                    .enumerate()
+                    .map(|(i, (name, _))| MenuItem::new(*name).id(action(format!("accent:{i}")))),
+            );
+            (items, st.accent.map_or(0, |i| i + 1))
+        }
+        _ => {
+            let items = vec![
+                MenuItem::new("platform").id(action("menus:default")),
+                MenuItem::new("native").id(action("menus:native")),
+                MenuItem::new("drawn").id(action("menus:drawn")),
+            ];
+            let current = match st.native_menus {
+                None => 0,
+                Some(true) => 1,
+                Some(false) => 2,
+            };
+            (items, current)
+        }
+    };
+    // A grow spacer keeps the field at the row's right edge, off the
+    // value, whatever the value's length.
+    ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
+    let t = ink(ui.theme());
+    widgets::select_with(
+        ui,
+        &format!("kui-devtools/{what}"),
+        &items,
+        Some(current),
+        NodeSpec::row()
+            .pad_xy(6.0, 1.0)
+            .gap(4.0)
+            .cross_align(Align::Center)
+            .bg(t.sunken)
+            .hover_bg(t.hover)
+            .radius(4.0),
+        TextStyle::new(11.0),
     );
 }
 
@@ -508,53 +536,13 @@ pub(super) fn fixed(ui: &mut Ui<'_>, f: impl FnOnce(&mut Ui<'_>)) {
     );
 }
 
-/// One icon in the header's strip: what it controls is in its tooltip,
-/// and its colour says its state. Its fill is a faint wash of the strokes.
-/// It and the three button shapes below declare the hand, as the stock
-/// button does (`crate::cursor`): the dock's tabs and rows do not, since
-/// a native tab strip and list are the arrow.
-pub(super) fn icon(ui: &mut Ui<'_>, t: &Theme, what: &str, glyph: Icon, color: Color, hint: &str) {
-    icon_with(ui, t, what, glyph, color, color.with_alpha(0.35), hint);
-}
-
-/// [`icon`] with the fill named apart from the strokes: the accent
-/// swatch, whose disc is one colour and whose hairline is another.
-fn icon_with(
-    ui: &mut Ui<'_>,
-    t: &Theme,
-    what: &str,
-    glyph: Icon,
-    color: Color,
-    fill: Color,
-    hint: &str,
-) {
-    let label = format!("kui-devtools/{what}");
-    let key = ui.child_key(&label);
-    ui.with_keyed(
-        &label,
-        NodeSpec::row()
-            .width(Sizing::Fixed(22.0))
-            .height(Sizing::Fixed(22.0))
-            .center()
-            .radius(4.0)
-            .hover_bg(t.hover)
-            .pressed_bg(t.pressed)
-            .on_click(action(what))
-            .cursor(crate::cursor::CursorShape::Pointer)
-            .label(what)
-            .apply_tooltip(hint),
-        |ui| {
-            icons::draw(ui, glyph, color, fill);
-            if ui.is_hovered(key) {
-                widgets::tooltip(ui, hint);
-            }
-        },
-    );
-}
-
-/// [`icon`] for a choice among several: `on` paints it as the one chosen
+/// One of the header's placement buttons, a choice among several: `on`
+/// paints it as the one chosen
 /// — the strokes in the accent and the pane filled with it, against the
-/// muted outline and a faint pane of the others.
+/// muted outline and a faint pane of the others. It and the button shapes
+/// below declare the hand, as the stock button does (`crate::cursor`):
+/// the dock's tabs and rows do not, since a native tab strip and list are
+/// the arrow.
 fn icon_lit(ui: &mut Ui<'_>, t: &Theme, what: &str, glyph: Icon, on: bool, hint: &str) {
     let label = format!("kui-devtools/{what}");
     let key = ui.child_key(&label);

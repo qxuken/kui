@@ -24,6 +24,10 @@ impl Core {
         // releases a focus move forces — belongs to this batch, not to the
         // next frame's drain.
         out.append(&mut self.pending);
+        // A click on a select field opens its menu and is nobody's
+        // (`widgets::select`); before the menu's own consumer, since the
+        // menu it opens is that one's from here on.
+        self.consume_select_events(&mut out);
         // A row of the core's own context menu is not the app's click, and
         // neither is that menu's dismissal: taken back here, acted on, and
         // reported as one `menu` event on the node the menu was about (ADR
@@ -35,20 +39,29 @@ impl Core {
         // titles and rows post ordinary clicks, and none of them is the
         // app's (`docs/adr/0018-a-menu-bar-the-app-declares.md`).
         self.consume_menu_bar_events(&mut out);
-        // And the devtools panel's own controls, which are nobody's but
-        // the core's; then everything that is left is logged on its way
-        // out, stamped with its window first (ADR 0024, decision 4).
-        self.devtools_consume(&mut out);
-        self.devtools_translate(&mut out);
-        self.stamp(&mut out);
-        self.devtools_log(&out);
+        self.outbound(&mut out);
+        out
+    }
+
+    /// The way out for every batch of events the app is about to hear,
+    /// whichever door made them — an input, or a host's own menu
+    /// answering (`activate_menu_item`), which is not an input and used
+    /// to skip this: a devtools select chosen from a native menu posted
+    /// its action to the app instead of the panel. The devtools panel's
+    /// own controls are taken back (nobody's but the core's); what is
+    /// left is translated, stamped with its window and logged on its way
+    /// out (ADR 0024, decision 4).
+    pub(crate) fn outbound(&mut self, out: &mut Vec<UiEvent>) {
+        self.devtools_consume(out);
+        self.devtools_translate(out);
+        self.stamp(out);
+        self.devtools_log(out);
         // An event the app was handed is "the user did something": what
         // separates a message repeated on purpose from a view announcing
         // every frame (`announce`).
         if !out.is_empty() {
             self.events_answered += 1;
         }
-        out
     }
 
     /// A click or drag says where it landed, in the terms of the node it

@@ -662,6 +662,25 @@ impl State {
                 } else if let Some(tab) = other.strip_prefix("tab:").and_then(Tab::parse) {
                     self.tab = tab;
                     self.custom = None;
+                } else if let Some(base) = other.strip_prefix("base:") {
+                    // The Facts tab's select: one choice, not the next.
+                    self.base = match base {
+                        "light" => Some(Appearance::Light),
+                        "dark" => Some(Appearance::Dark),
+                        _ => None,
+                    };
+                    self.note(format!("theme base: {}", self.base_name()));
+                } else if let Some(accent) = other.strip_prefix("accent:") {
+                    self.custom_accent = None;
+                    self.accent = accent.parse().ok().filter(|i| *i < ACCENTS.len());
+                    self.note(format!("accent: {}", self.accent_name()));
+                } else if let Some(menus) = other.strip_prefix("menus:") {
+                    self.native_menus = match menus {
+                        "native" => Some(true),
+                        "drawn" => Some(false),
+                        _ => None,
+                    };
+                    self.note(format!("menus: {menus}"));
                 } else if let Some(dock) = other.strip_prefix("dock:").and_then(Dock::parse) {
                     // One of the header's placement buttons.
                     if dock != self.dock {
@@ -1748,11 +1767,13 @@ impl Core {
         out.retain(|ev| {
             if ev.origin == OriginId::DEVTOOLS {
                 // A click carries its payload flat; a drag's or a sink's
-                // rides in `tag`.
+                // rides in `tag`; a select's choice is the menu row's
+                // `item` (`widgets::select`).
                 let what = ev
                     .payload
                     .get("dt")
                     .or_else(|| ev.payload.get("tag").and_then(|t| t.get("dt")))
+                    .or_else(|| ev.payload.get("item").and_then(|t| t.get("dt")))
                     .and_then(Value::as_str);
                 match what {
                     Some("picked") => picks += 1,

@@ -722,14 +722,47 @@ fn distribute_run(
     }
     let mut total = used;
     if grow_total > 0.0 {
-        let remain = (content - used).max(0.0);
+        // Flexbox's freeze loop. A grow child's share is `remain` split
+        // by factor; one whose own min or max holds it off that share is
+        // frozen at the clamp, its size moved into `used`, and the rest
+        // share what is left, until a pass freezes nothing. A max on one
+        // child is room for its siblings, not a hole at the end of the
+        // run (a devtools inspector capped at 300 left the node list
+        // above it short of the panel by the same 300). At most one pass
+        // per grow child, since each pass past the first froze one.
+        let mut frozen: Vec<u32> = Vec::new();
+        loop {
+            let remain = (content - used).max(0.0);
+            let mut froze = false;
+            let mut c = start;
+            while c != end && c != NIL {
+                if !is_float(tree, c)
+                    && !frozen.contains(&c)
+                    && let Sizing::Grow(f) = child_sizing(tree, c, axis)
+                {
+                    let share = remain * f.max(0.0) / grow_total;
+                    set_axis_clamped(tree, c, axis, share);
+                    let got = get_axis(tree, c, axis);
+                    if (got - share).abs() > 0.01 {
+                        frozen.push(c);
+                        used += got;
+                        grow_total -= f.max(0.0);
+                        froze = true;
+                    }
+                }
+                c = tree.next_sibling[c as usize];
+            }
+            if !froze || grow_total <= 0.0 {
+                break;
+            }
+        }
+        total = used;
         let mut c = start;
         while c != end && c != NIL {
             if !is_float(tree, c)
-                && let Sizing::Grow(f) = child_sizing(tree, c, axis)
+                && !frozen.contains(&c)
+                && matches!(child_sizing(tree, c, axis), Sizing::Grow(_))
             {
-                set_axis_clamped(tree, c, axis, remain * f.max(0.0) / grow_total);
-                // Clamps can push a grow child past its share.
                 total += get_axis(tree, c, axis);
             }
             c = tree.next_sibling[c as usize];
@@ -1256,6 +1289,33 @@ mod tests {
 
     fn px(v: f32) -> Sizing {
         Sizing::Fixed(v)
+    }
+
+    /// Two grow children in a 600 column, one capped at 100: the cap is
+    /// the other's room, not a hole. A min that holds a child past its
+    /// share takes from its siblings the same way, and a run of clamps
+    /// resolves in one layout.
+    #[test]
+    fn a_grow_childs_clamp_is_its_siblings_room() {
+        let mut t = T::new(NodeSpec::column().width(px(100.0)).height(px(600.0)));
+        let a = t.node(0, NodeSpec::row().height(Sizing::Grow(1.0)));
+        let b = t.node(
+            0,
+            NodeSpec::row().height(Sizing::Grow(1.0)).max_height(100.0),
+        );
+        t.run(1000.0, 1000.0);
+        assert_eq!(t.size(b).h, 100.0);
+        assert_eq!(t.size(a).h, 500.0);
+
+        let mut t = T::new(NodeSpec::row().width(px(300.0)).height(px(50.0)));
+        let a = t.node(0, NodeSpec::row().width(Sizing::Grow(1.0)));
+        let b = t.node(0, NodeSpec::row().width(Sizing::Grow(1.0)).min_width(200.0));
+        let c = t.node(0, NodeSpec::row().width(Sizing::Grow(1.0)).max_width(20.0));
+        t.run(1000.0, 1000.0);
+        assert_eq!(t.size(b).w, 200.0);
+        assert_eq!(t.size(c).w, 20.0);
+        assert_eq!(t.size(a).w, 80.0);
+        assert_eq!(t.pos(c).x, 280.0);
     }
 
     #[test]

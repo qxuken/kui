@@ -116,8 +116,9 @@ date: 2026-09-15
    converter (`extension-view-error`'s sibling, `bad-devtools-tab`).
    The tab's identity is `name`; `label` is what the strip shows.
    Declared tabs follow `facts`, `events`, `tree` in declaration order;
-   `Ctrl+Shift+N` cycles through them; the strip wraps as the tab row
-   already does. **A tab declared twice in a frame warns
+   `Ctrl+Shift+N` cycles through them; the strip wraps whole tabs onto
+   another line (a tab's label never breaks inside it — backlog F72,
+   which found the row breaking labels instead). **A tab declared twice in a frame warns
    `duplicate-tab`, keyed by the name the way `duplicate-slot` is, and
    keeps the first** — including a host form and an extension form of
    the same name, and a tab an extension declares from inside its fill

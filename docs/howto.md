@@ -297,6 +297,24 @@ beside the app — because a popup is an OS surface where a `fit` float plus a
 [ADR 0003](adr/0003-modal-surfaces.md) ·
 [ADR 0004](adr/0004-multi-window.md)
 
+### How do I offer a choice among a few options?
+
+`widgets::select(ui, "language", &["English", "Deutsch"], Some(i))`: a
+field that shows the choice in force and, clicked, drops the core's own
+menu of the options with the current one checked — the menu a right-click
+opens, drawn in the frame or the platform's where the host shows menus
+itself, dismissed by Escape or a press outside, walked by the arrows. You
+hold no open state. The choice arrives as the `menu` event a menu row
+posts, on the field's key — `{kind:"menu", role:"custom", item:"Deutsch"}`
+— and drawing the field again with the new index is the whole loop.
+`select_items` takes `MenuItem`s, so a choice can post an `id` of its own
+(a size in points, an enum's tag) instead of its label; `select_with`
+takes the field's spec and text style for a dense panel. Rust only in
+this release — the Node, Lua and C forms are backlog F73.
+
+[examples/rust/widgets/select.rs](../examples/rust/widgets/select.rs) ·
+[the context menu](#how-do-i-open-a-popup-and-when-is-a-modal-enough)
+
 ### How do I give my app a menu bar?
 
 One call, in the view, wherever the strip belongs: `<menuBar menu={[…]}/>`,

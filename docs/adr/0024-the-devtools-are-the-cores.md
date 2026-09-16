@@ -360,7 +360,10 @@ date: 2026-09-11
     `Launcher::shell` calls before the first frame, and Node's and C's
     windowed paths go through the same launcher.
 16. **The header holds the placements; the tab row the toggles; the
-    picker sits before the find field**, as `⊕ pick`. Real icons for all
+    picker sits before the find field**, as `⊕ pick`. *Amended
+    2026-09-16 (backlog F72): the toggles left the tab row for the Facts
+    rows they change — `theme`, `accent`, `menus` each carry a
+    `widgets::select` of the choices — and the strip wraps whole tabs.* Real icons for all
     of them were backlog D2a, built 2026-09-11: `runtime/devtools/icons.rs`
     draws each from the core's own vocabulary — a `line` per stroke, a
     `polygon` per fill, a zero-length segment for a dot — in a 16-px box

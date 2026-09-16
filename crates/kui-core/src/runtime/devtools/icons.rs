@@ -28,16 +28,6 @@ pub(super) enum Icon {
     DockWindow,
     /// A cross.
     Close,
-    /// A disc split in two: the base follows the app's own setting.
-    BaseAuto,
-    /// A sun.
-    BaseLight,
-    /// A crescent.
-    BaseDark,
-    /// A filled disc in the accent itself (`fill`), ringed by a hairline.
-    Accent,
-    /// Three bars.
-    Menus,
     /// A crosshair: pick a node from the app.
     Pick,
 }
@@ -86,62 +76,6 @@ pub(super) fn draw(ui: &mut Ui<'_>, icon: Icon, color: Color, fill: Color) {
             Icon::Close => {
                 ui.line(v(4.0, 4.0), v(12.0, 12.0), stroke, spec());
                 ui.line(v(12.0, 4.0), v(4.0, 12.0), stroke, spec());
-            }
-            Icon::BaseAuto => {
-                // A ring, its left half filled: eight points down the left
-                // arc from the top to the bottom, closed up the middle.
-                ui.polyline(&circle(8.0, 8.0, 5.5), stroke, spec());
-                let mut half = [Vec2::ZERO; 8];
-                for (i, p) in half.iter_mut().enumerate() {
-                    let a = std::f32::consts::PI * (0.5 + i as f32 / 7.0);
-                    *p = v(8.0 + 5.5 * a.cos(), 8.0 - 5.5 * a.sin());
-                }
-                ui.polygon(&half, spec().bg(color));
-            }
-            Icon::BaseLight => {
-                // A disc and eight rays.
-                ui.line(v(8.0, 8.0), v(8.0, 8.0), Stroke::new(6.0, color), spec());
-                for i in 0..8 {
-                    let a = std::f32::consts::TAU * i as f32 / 8.0;
-                    let (c, s) = (a.cos(), a.sin());
-                    ui.line(
-                        v(8.0 + 5.0 * c, 8.0 + 5.0 * s),
-                        v(8.0 + 7.0 * c, 8.0 + 7.0 * s),
-                        hair,
-                        spec(),
-                    );
-                }
-            }
-            Icon::BaseDark => {
-                // A crescent as one eight-point fill: five points down the
-                // outer arc, three back up the inner one, the horns where
-                // the two meet.
-                ui.polygon(
-                    &[
-                        v(11.0, 2.8),
-                        v(5.0, 2.8),
-                        v(2.0, 8.0),
-                        v(5.0, 13.2),
-                        v(11.0, 13.2),
-                        v(8.0, 12.3),
-                        v(5.5, 8.0),
-                        v(8.0, 3.7),
-                    ],
-                    spec().bg(color),
-                );
-            }
-            Icon::Accent => {
-                // A swatch: the disc is the accent *as it is* (`fill`),
-                // and the hairline round it is what keeps a sample near
-                // the panel's own surface reading as one — the same
-                // hairline the tokens list gives its swatches.
-                ui.line(v(8.0, 8.0), v(8.0, 8.0), Stroke::new(9.0, fill), spec());
-                ui.polyline(&circle(8.0, 8.0, 5.5), hair, spec());
-            }
-            Icon::Menus => {
-                for y in [4.0, 8.0, 12.0] {
-                    ui.line(v(2.5, y), v(13.5, y), stroke, spec());
-                }
             }
             Icon::Pick => {
                 ui.polyline(&circle(8.0, 8.0, 4.5), hair, spec());

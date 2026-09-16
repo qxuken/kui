@@ -543,10 +543,16 @@ mod tests {
                 kui::AccessAction::Click,
             )))
         };
+        let facts = core.key_of("kui-devtools/tab-facts").unwrap();
+        for ev in click(&mut core, facts) {
+            h.on_event(ev);
+        }
+        frame(&mut h, &mut core);
         let base = core.key_of("kui-devtools/base").unwrap();
         for ev in click(&mut core, base) {
             h.on_event(ev);
         }
+        assert!(core.menu().is_some(), "the base select's menu is open");
         assert!(h.example.events.is_empty());
         for ev in click(&mut core, press) {
             h.on_event(ev);
