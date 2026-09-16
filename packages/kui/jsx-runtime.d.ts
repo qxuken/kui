@@ -535,6 +535,19 @@ export declare namespace JSX {
      *  with `editText(label)`; a field that needs any other row is an
      *  `<edit>` in a box of its own. */
     input: { key?: string | number; label?: string; initial?: string };
+    /** The stock select (`widgets::select_items`): a field showing the
+     *  choice in force that, clicked, opens the core's own menu of the
+     *  options under it with the current one checked — drawn, or the
+     *  platform's where the host shows menus itself; Escape or a press
+     *  outside closes it. `label` is the key and the accessible name;
+     *  `options` are strings (posting the label) or the menu items
+     *  `openMenu` takes (posting `id`); `current` is the index in force,
+     *  from 0. You hold no open state: the choice arrives as a `MenuMsg`
+     *  on the field's key — `{kind: 'menu', item}` — and drawing the
+     *  field again with the new `current` is the whole loop. Nothing else
+     *  is read; a field that needs any other row is a `<box role="button">`
+     *  and `openMenu`. Lua spells it `dropdown { }`, C `kui_select`. */
+    select: { key?: string | number; label?: string; options: (string | MenuItemInput)[]; current?: number };
     /** The node form of a tooltip (`widgets::tooltip`): a float hanging
      *  below the parent, always drawn — where the `tooltip` prop is
      *  hover-gated — for a hint the view gates itself

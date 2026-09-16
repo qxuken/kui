@@ -35,7 +35,7 @@ pub struct KuiMenuItem {
 impl KuiMenuItem {
     /// Reads one item. `None` for a role this build does not know, which
     /// is a host built against a newer header.
-    fn to_core(self) -> Option<kui_core::MenuItem> {
+    pub(crate) fn to_core(self) -> Option<kui_core::MenuItem> {
         let role = *kui_core::MenuRole::ALL.get(self.role as usize)?;
         Some(kui_core::MenuItem {
             label: kstr(self.label).into_owned(),

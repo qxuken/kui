@@ -1205,6 +1205,7 @@ fn element_of(ty: &str) -> &str {
     match ty {
         "row" | "column" => "box",
         "input" => "edit",
+        "dropdown" => "select",
         "window_buttons" => "windowButtons",
         "menu_bar" => "menuBar",
         "latency_graph" | "latency_hud" => "latencyGraph",
@@ -1629,6 +1630,32 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             let label: String = t.get("label")?;
             let initial: String = t.get::<Option<String>>("initial")?.unwrap_or_default();
             widgets::text_input(ui, &label, &initial);
+            Ok(())
+        }
+        "dropdown" => {
+            // The stock select (`widgets::select_items`): the options are
+            // strings or the row tables `env.open_menu` takes, read by the
+            // core's one reader; `current` counts from 1.
+            let label: String = t.get("label")?;
+            let Some(options) = t.get::<Option<Table>>("options")? else {
+                return Err(bad(
+                    "dropdown needs options, a list of strings or menu rows",
+                ));
+            };
+            let mut rows = lua_list_to_value(&options)?;
+            if let Value::List(rows) = &mut rows {
+                rows.iter_mut().for_each(alias_menu_role);
+            }
+            let items =
+                kui_core::MenuItem::options_from_value(&rows).map_err(mlua::Error::runtime)?;
+            let current = match t.get::<Option<i64>>("current")? {
+                None => None,
+                Some(i) if i >= 1 => Some(i as usize - 1),
+                Some(i) => {
+                    return Err(bad(format!("dropdown current is an index from 1, not {i}")));
+                }
+            };
+            widgets::select_items(ui, &label, &items, current);
             Ok(())
         }
         "edit" => {
@@ -3006,6 +3033,7 @@ mod tests {
                     edit { key = "note", initial = "hello", size = 14, width = 200,
                            multiline = true },
                     input { label = "name", initial = "" },
+                    dropdown { label = "language", options = { "English", "Deutsch" }, current = 1 },
                     row { tooltip = "hover hint", pad = 4, text("badge") },
                     row { hoverable = true, text("legend"), tooltip("always shown") },
                     row { text("rich tip"), tooltip { text("a"), text("b") } },
@@ -3471,6 +3499,101 @@ mod tests {
         // `env.window.id` reads: the main one here.
         let window: Option<i64> = ext.lua.globals().get("window").unwrap();
         assert_eq!(window, Some(0));
+    }
+
+    /// `dropdown { }` is the stock select (backlog F73): the click opens
+    /// the core's menu under the field and reaches the script as nothing;
+    /// a row chosen is one `menu` event on the field, its `item` the
+    /// option's label or id, which the script draws back as `current`.
+    #[test]
+    fn a_dropdown_opens_the_cores_menu_and_hears_the_choice() {
+        let mut ext = LuaExtension::from_source(
+            "dd",
+            r#"
+                current = 1
+                heard = {}
+                function view(env)
+                  return column { pad = 10,
+                    dropdown { label = "language",
+                               options = { "English", "Deutsch", { label = "Latin", id = "la" } },
+                               current = current },
+                  }
+                end
+                function on_event(ev)
+                  heard[#heard + 1] = ev.kind
+                  if ev.kind == "menu" then
+                    if ev.item == "Deutsch" then current = 2 end
+                    if ev.item == "la" then current = 3 end
+                  end
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        let field = core
+            .key_of("language")
+            .expect("the field is keyed by its label");
+        let node = |core: &mut Core| {
+            core.access_tree()
+                .nodes
+                .iter()
+                .find(|n| n.key == field)
+                .cloned()
+                .unwrap()
+        };
+        assert_eq!(node(&mut core).description.as_deref(), Some("English"));
+        let events = core.handle_input(InputEvent::Access(kui_core::AccessRequest::new(
+            field,
+            kui_core::AccessAction::Click,
+        )));
+        assert!(
+            events.is_empty(),
+            "the field's click is the core's: {events:?}"
+        );
+        let menu = core.menu().expect("the menu opened");
+        assert_eq!(menu.target, field);
+        assert_eq!(menu.items.len(), 3);
+        assert!(menu.items[0].checked);
+        frame(&mut core, &mut ext);
+        // The row, as a host's menu would answer it.
+        let events = core.activate_menu_item(2);
+        assert_eq!(events.len(), 1);
+        for ev in &events {
+            ext.on_event(ev);
+        }
+        frame(&mut core, &mut ext);
+        assert_eq!(node(&mut core).description.as_deref(), Some("Latin"));
+        let heard: Vec<String> = ext
+            .lua
+            .globals()
+            .get::<Table>("heard")
+            .unwrap()
+            .sequence_values()
+            .collect::<mlua::Result<_>>()
+            .unwrap();
+        assert_eq!(heard, vec!["menu".to_string()]);
+        assert!(core.menu().is_none());
+        // What the table refuses: no options, a current from 0.
+        let mut ext = LuaExtension::from_source(
+            "bad",
+            r#"function view(env) return dropdown { label = "x" } end"#,
+        )
+        .unwrap();
+        let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
+        ui.set_origin(OriginId(1));
+        let err = ext.view(&Slot::root(), &mut ui).unwrap_err().to_string();
+        assert!(err.contains("needs options"), "{err}");
+        ui.finish();
+        let mut ext = LuaExtension::from_source(
+            "bad",
+            r#"function view(env) return dropdown { label = "x", options = { "a" }, current = 0 } end"#,
+        )
+        .unwrap();
+        let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
+        ui.set_origin(OriginId(1));
+        let err = ext.view(&Slot::root(), &mut ui).unwrap_err().to_string();
+        assert!(err.contains("index from 1"), "{err}");
     }
 
     /// `env.set_edit_text` by the label the view declares: the spelling a

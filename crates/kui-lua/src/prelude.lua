@@ -42,6 +42,18 @@ function input(t)
   return t
 end
 
+-- The stock select: dropdown { label = "language", options = { "English",
+-- "Deutsch", { label = "Latin", id = "la", enabled = false } }, current = 2 }.
+-- A field showing the choice in force that, clicked, opens the core's own
+-- menu of the options under it; the choice arrives as the {kind = "menu"}
+-- event a menu row posts, on the field's key, its `item` the option's label
+-- or id. `current` counts from 1, as a Lua list does; nil for none. Named
+-- `dropdown` here because `select` is Lua's own.
+function dropdown(t)
+  t.type = "dropdown"
+  return t
+end
+
 -- Bare editor: edit { key = "note", initial = "", multiline = true,
 -- autofocus = true, size = 14, ...spec props }. Read it back in view(env)
 -- with env.edit_text(key) after a {kind = "changed"} event (ev.node_key).

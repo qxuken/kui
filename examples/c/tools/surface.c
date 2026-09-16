@@ -31,7 +31,7 @@ typedef struct Keys {
     uint64_t image;    /* in: a registered image handle */
     uint64_t sound;    /* in: a registered sound handle */
     bool claim_focus;  /* in: declare the editor focused this frame */
-    uint64_t card, slider, sink, editor, input, drag, child; /* out: node keys */
+    uint64_t card, slider, sink, editor, input, select, drag, child; /* out: node keys */
     uint64_t hitline, region; /* out: the selectable row, the focus region */
 } Keys;
 
@@ -144,6 +144,13 @@ static void surface_view(void *user, KuiCtx *ui) {
 
         /* Editors: the styled single-line widget and a raw multiline node. */
         k->input = kui_text_input(ui, KUI_STR("name"), KUI_STR("ada"));
+        /* The stock select: the rows a context menu takes, the second in
+         * force; the choice comes back as a menu event on this key. */
+        KuiMenuItem langs[] = {
+            {.label = KUI_STR("English"), .role = KUI_MENU_CUSTOM, .enabled = 1},
+            {.label = KUI_STR("Deutsch"), .role = KUI_MENU_CUSTOM, .enabled = 1},
+        };
+        k->select = kui_select(ui, KUI_STR("language"), langs, 2, 1);
         KuiTextStyle mono = {.size = 13, .family = KUI_FONT_MONO, .wrap = KUI_WRAP_GLYPH};
         KuiSpec editor = {
             .width = {KUI_PERCENT, 0.5f}, .height = {KUI_FIXED, 48},
@@ -278,7 +285,7 @@ static int surface(void) {
     surface_view(&k, ui);
     kui_frame_finish(ui);
 
-    check(k.card && k.slider && k.sink && k.editor && k.input && k.drag && k.child,
+    check(k.card && k.slider && k.sink && k.editor && k.input && k.select && k.drag && k.child,
           "every node got a key");
     check(kui_animating(ui), "the keyframes keep animating");
     /* And by kind (backlog F64): at 50 ms the card's 120 ms entrance is

@@ -28,9 +28,10 @@ the two rounds of 2026-09-15 — F55–F61 and K1–K4 — with the alpha.13
 tag, the eight of the four rounds of the same day — W17, W18,
 F62–F66 and C40 — with the alpha.14 tag, and the three of 2026-09-16 — C42 and C43 from the kawoosh
 binary-file report, C44 from the pre-tag round that followed — the day
-they were filed, before the alpha.15 tag, and F67–F72 from the kawoosh
+they were filed, before the alpha.15 tag, F67–F72 from the kawoosh
 syntax-tab, idle-frame, second-Mac, mid-frame-dock and devtools-strip
-reports the same day, after it. The index
+reports the same day, after it, and F73 — the select in the other three
+bindings — the day after. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -1205,30 +1206,8 @@ theme, accent and menu toggles sat at the strip's end away from the
 facts they change, and the Tree tab left a third of the panel empty
 under its inspector. Three things, two entries — F71 the layout, F72
 the panel and the widget it wanted — both **built 2026-09-16**, the day
-they were filed, and in the archive; F73, the select in the other three
-bindings, stays open here.
-
-### `.` F73 — `select` is a Rust widget only: no `<select>`, no Lua `select {}`, no `kui_select`
-
-**Found.** F72 built `widgets::select` / `select_items` / `select_with`
-for the devtools' Facts rows and for a Rust app. A Node, Lua or C view
-that wants the same field today builds a button and answers its click
-with `openMenu` — which works, and is the one thing the widget saves an
-app from writing. The stock field, the text input and the button each
-have their three forms (`schema::BUTTON_ROWS_JSX`, the `input` op, the
-`kui_text_input` door), and the select should have the same, lowering
-to the one Rust widget so no binding grows a select of its own.
-
-**Do.** An `op` in the Node binary protocol beside the field's
-(`widgets::select_items` with the options as `MenuItem`s the encoder
-already knows how to send for a menu), Lua `select { label =, options =,
-current = }` in the same shape, `kui_select(ctx, label, items, count,
-current)` in C with an ABI bump to 19 for the new export — or a
-`KuiRunConfig`-free free function, as F69 did for one bool. The choice
-arrives as the `menu` event every binding already reads. Docs: the
-`select` element row in props.md, the DOORS row, the conformance scene
-in four adapters. A round's work; waits for a view in one of the three
-that asks.
+they were filed; F73, the select in the other three bindings, was asked
+for and built the next day. All three are in the archive.
 
 ## After alpha.14
 
@@ -1963,7 +1942,8 @@ move.
 
 - `!` **F70** — [A panel turned on mid-frame is built into a root not laid out for it: the dock in the bottom-left corner until the next frame](backlog/closed-2026-09.md#-f70--a-panel-turned-on-mid-frame-is-built-into-a-root-not-laid-out-for-it-the-dock-in-the-bottom-left-corner-until-the-next-frame--done-2026-09-16) — done (2026-09-16) — a mid-frame `set_devtools` / `set_devtools_dock` waits for the next frame, and asks for it
 
-**From the kawoosh devtools-strip report (2026-09-16)** — F71 and F72, filed and built the same day, after the alpha.15 tag; F73 stays open
+**From the kawoosh devtools-strip report (2026-09-16)** — F71 and F72, filed and built the same day, after the alpha.15 tag; F73 the day after
 
 - `!` **F71** — [A grow child's `min` or `max` keeps its share of the run: the room a clamp gives back is a hole, not its siblings'](backlog/closed-2026-09.md#-f71--a-grow-childs-min-or-max-keeps-its-share-of-the-run-the-room-a-clamp-gives-back-is-a-hole-not-its-siblings--done-2026-09-16) — done (2026-09-16) — `distribute_run` freezes a clamped child and shares the rest, as flexbox does
 - `~` **F72** — [The devtools strip breaks tab labels, and the theme, accent and menu toggles are icons away from the facts they change](backlog/closed-2026-09.md#-f72--the-devtools-strip-breaks-tab-labels-and-the-theme-accent-and-menu-toggles-are-icons-away-from-the-facts-they-change--done-2026-09-16) — done (2026-09-16) — the strip wraps whole tabs; `widgets::select`, on the Facts rows
+- `.` **F73** — [`select` is a Rust widget only: no `<select>`, no Lua `select {}`, no `kui_select`](backlog/closed-2026-09.md#-f73--select-is-a-rust-widget-only-no-select-no-lua-select--no-kui_select--done-2026-09-17) — done (2026-09-17) — `<select>`, `dropdown { }`, `kui_select`, one corpus scene in four adapters, frame v15

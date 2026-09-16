@@ -966,6 +966,63 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "select",
+        doc: "The stock select (backlog F72, F73): a field over four options \
+              — three by label and one a menu-item object posting an `id` of \
+              its own, disabled — with the second in force. The steps click \
+              the field, which opens the core's menu under it and reaches \
+              the app as nothing; choose the first row, which is the one \
+              event the app hears — the row's label, on the field's key — \
+              and closes the menu; then click the field again, so the frame \
+              the report keeps has the field *and* the menu: the current \
+              row checked, the dead one dimmed. Three clicks, one event.",
+        custom: &["key", "pad", "size"],
+        elements: &["select", "box", "text"],
+        build: build_select,
+        env: NATIVE_CHROME,
+        steps: &[
+            Step::Cursor(60, 22),
+            Step::MouseDown,
+            Step::MouseUp,
+            Step::Cursor(60, 62),
+            Step::MouseDown,
+            Step::MouseUp,
+            Step::Cursor(60, 22),
+            Step::MouseDown,
+            Step::MouseUp,
+        ],
+        expect: Expect {
+            // The field's box and the menu's panel; the rows are washes
+            // only while hovered or focused, and the checkmark is a glyph.
+            solid: 2,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 30,
+            access: &[
+                "0 window ||",
+                "1 button language|Deutsch|",
+                "1 staticText body||",
+                "1 menu Menu||",
+                "2 menuItem English||",
+                "2 menuItem Deutsch||",
+                "2 menuItem Français||",
+                "2 menuItem Latin||",
+            ],
+            // The field's two clicks are the core's; the row's choice is
+            // the app's one event, a `menu` on the field.
+            events: &["menu -"],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+        },
+    },
+    Scene {
         name: "menubar",
         doc: "The application menu bar (ADR 0018): the `menuBar` element \
               declares one and draws it, because this is a machine \
@@ -3097,6 +3154,19 @@ fn build_float(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 /// a scene of its own so the two are read side by side: the same string
 /// arrives in the same column of the access dump, and only the tooltip
 /// draws anything for it.
+fn build_select(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    let options = [
+        MenuItem::new("English"),
+        MenuItem::new("Deutsch"),
+        MenuItem::new("Français"),
+        MenuItem::new("Latin").id(Value::str("la")).enabled(false),
+    ];
+    ui.with(NodeSpec::column().pad(10.0).gap(6.0), |ui| {
+        widgets::select_items(ui, "language", &options, Some(1));
+        ui.text("body", TextStyle::new(12.0));
+    });
+}
+
 fn build_tooltip(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     ui.with(NodeSpec::column().pad(10.0), |ui| {
         let key = ui.child_key("tip");
@@ -4287,6 +4357,17 @@ fn observe(core: &Core, cov: &mut Coverage) {
             && spec.interact().pressed_bg.is_some()
         {
             cov.elements.insert("button");
+        }
+        // The stock select is the node whose click carries the `select`
+        // tag the core takes back (`widgets::select_tag`); nothing else
+        // declares that payload.
+        if spec
+            .events()
+            .on_click
+            .as_ref()
+            .is_some_and(|v| v.get("select").and_then(Value::as_bool) == Some(true))
+        {
+            cov.elements.insert("select");
         }
         match spec.window {
             Some(WindowRole::Drag) => {

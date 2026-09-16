@@ -299,6 +299,10 @@ beside the app — because a popup is an OS surface where a `fit` float plus a
 
 ### How do I offer a choice among a few options?
 
+`<select label="language" options={["English", "Deutsch"]} current={i}/>`,
+`dropdown { label = "language", options = { "English", "Deutsch" }, current = i }`
+(Lua's `select` is its own, so the table is `dropdown`, and `current`
+counts from 1), `kui_select(ctx, label, items, count, current)`,
 `widgets::select(ui, "language", &["English", "Deutsch"], Some(i))`: a
 field that shows the choice in force and, clicked, drops the core's own
 menu of the options with the current one checked — the menu a right-click
@@ -306,13 +310,17 @@ opens, drawn in the frame or the platform's where the host shows menus
 itself, dismissed by Escape or a press outside, walked by the arrows. You
 hold no open state. The choice arrives as the `menu` event a menu row
 posts, on the field's key — `{kind:"menu", role:"custom", item:"Deutsch"}`
-— and drawing the field again with the new index is the whole loop.
-`select_items` takes `MenuItem`s, so a choice can post an `id` of its own
-(a size in points, an enum's tag) instead of its label; `select_with`
-takes the field's spec and text style for a dense panel. Rust only in
-this release — the Node, Lua and C forms are backlog F73.
+— and drawing the field again with the new index is the whole loop. An
+option may be a menu item instead of a string — `{ label: "18 pt", id: 18 }`,
+`enabled: false` for a dead row — so a choice can post an `id` of its own
+(a size in points, an enum's tag) instead of its label; in Rust that is
+`select_items`, and `select_with` takes the field's spec and text style
+for a dense panel. The field reads no other row; one that needs any is a
+`role="button"` box and `openMenu`.
 
+[`select` element](props.md#elements) ·
 [examples/rust/widgets/select.rs](../examples/rust/widgets/select.rs) ·
+[examples/node/widgets/select.tsx](../examples/node/widgets/select.tsx) ·
 [the context menu](#how-do-i-open-a-popup-and-when-is-a-modal-enough)
 
 ### How do I give my app a menu bar?

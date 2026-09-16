@@ -501,6 +501,19 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
+        // The stock select (backlog F73): `dropdown`, since `select` is
+        // Lua's own; the options are strings or the row tables
+        // `env.open_menu` takes, and `current` counts from 1.
+        "select" => r#"
+            return column { pad = 10, gap = 6,
+              dropdown { label = "language",
+                         options = { "English", "Deutsch", "Français",
+                                     { label = "Latin", id = "la", enabled = false } },
+                         current = 2 },
+              text("body", { size = 12 }),
+            }
+        "#
+        .to_string(),
         // The application menu bar (ADR 0018): one element that declares
         // the menu and draws it. The item tables are the ones
         // `env.open_menu` takes, one level down.

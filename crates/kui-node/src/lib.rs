@@ -218,6 +218,13 @@ pub(crate) fn menu_bar_of(json: &str) -> Result<kui_core::MenuBar> {
     kui_core::MenuBar::from_value(&value_of(&parsed)).map_err(err)
 }
 
+/// A `<select>`'s `options` prop, as the JSON the encoder writes: strings
+/// and the item objects `openMenu` takes, read by the core's one reader.
+pub(crate) fn select_options_of(json: &str) -> Result<Vec<kui_core::MenuItem>> {
+    let parsed: Json = serde_json::from_str(json).map_err(|e| err(format!("options: {e}")))?;
+    kui_core::MenuItem::options_from_value(&value_of(&parsed)).map_err(err)
+}
+
 fn keycode_of(s: &str) -> Result<KeyCode> {
     KeyCode::from_name(s).ok_or_else(|| err(format!("unknown key code {s:?}")))
 }

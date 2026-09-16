@@ -3914,6 +3914,22 @@ SCENE_TREES.popup = (_fx, phase) =>
     [box({ pad: 8, bg: '#14161e' }, [text(phase === 0 ? 'menu' : 'closed', { size: 12 })])],
   );
 
+// `conformance::build_select`: the stock select over four options, the
+// fourth a menu-item object posting an `id` and disabled, the second in
+// force. The steps open its menu, choose a row and open it again; the
+// report keeps the field and the menu.
+SCENE_TREES.select = () =>
+  root({}, [
+    box({ pad: 10, gap: 6 }, [
+      el('select', {
+        label: 'language',
+        options: ['English', 'Deutsch', 'Français', { label: 'Latin', id: 'la', enabled: false }],
+        current: 1,
+      }),
+      text('body', { size: 12 }),
+    ]),
+  ]);
+
 // `conformance::build_menu_bar`: the application menu bar (ADR 0018). The
 // declaration rides on the root box the way `windows` does, and the
 // `<menuBar/>` element draws it — on a machine with no bar of its own,
@@ -6527,6 +6543,51 @@ test('<input> is the stock field and <tooltip> the node form, the doors Lua and 
   assert.ok(ctx.accessTree().nodes.some((n) => n.name === 'legend'), 'children are the float\'s content');
   assert.deepEqual(ctx.warnings(), []);
   assert.throws(() => ctx.frame(300, 200, 1, box({}, [el('tooltip', {})])), /needs a value or children/);
+});
+
+test('<select> is the stock select: the click opens the menu under it, a row is one menu message on the field (F73)', () => {
+  const ctx = new Ctx();
+  ctx.setDiagnostics(true);
+  const view = (current) => box({ pad: 10 }, [
+    el('select', { label: 'language', options: ['English', 'Deutsch', { label: 'Latin', id: 'la' }], current }),
+  ]);
+  ctx.frame(320, 240, 1, view(0));
+  const field = () => ctx.accessTree().nodes.find((n) => n.role === 'button' && n.name === 'language');
+  assert.equal(field().description, 'English', 'described by the choice in force');
+  assert.equal(field().expanded, false);
+  assert.equal(ctx.menu(), null);
+  // The click is the core's: nothing reaches the app, and the menu is open
+  // under the field, about it, with the current row checked.
+  const rect = field().rect;
+  ctx.access('language', 'click');
+  assert.deepEqual(ctx.pollEvents(), [], 'the field\'s click never reaches the app');
+  const menu = ctx.menu();
+  assert.ok(menu, 'the menu opened');
+  assert.equal(menu.x, rect.x);
+  assert.equal(menu.y, rect.y + rect.h);
+  assert.deepEqual(menu.items.map((i) => i.label), ['English', 'Deutsch', 'Latin']);
+  assert.deepEqual(menu.items.map((i) => i.checked), [true, false, false]);
+  ctx.frame(320, 240, 1, view(0));
+  assert.equal(field().expanded, true, 'and the field reads as expanded');
+  // A row chosen — the way a host's own menu answers — is one `menu`
+  // message on the field, naming the option: the label, or the item's id.
+  assert.equal(ctx.activateMenuItem(2), true);
+  const evs = ctx.pollEvents();
+  assert.equal(evs.length, 1);
+  assert.equal(evs[0].payload.kind, 'menu');
+  assert.equal(evs[0].payload.item, 'la');
+  assert.equal(ctx.menu(), null, 'chosen closes it');
+  ctx.frame(320, 240, 1, view(2));
+  assert.equal(field().description, 'Latin');
+  assert.equal(field().expanded, false);
+  assert.deepEqual(ctx.warnings(), []);
+  // What the encoder refuses: no label, no options, a bad option, a bad
+  // index; and a row the field does not read is dropped with the warning
+  // that says it reads none.
+  assert.throws(() => ctx.frame(320, 240, 1, box({}, [el('select', { options: ['a'] })])), /needs a label/);
+  assert.throws(() => ctx.frame(320, 240, 1, box({}, [el('select', { label: 'x' })])), /needs options/);
+  assert.throws(() => ctx.frame(320, 240, 1, box({}, [el('select', { label: 'x', options: [''] })])), /non-empty strings/);
+  assert.throws(() => ctx.frame(320, 240, 1, box({}, [el('select', { label: 'x', options: ['a'], current: -1 })])), /option index/);
 });
 
 test('env() is on both classes and setEnv is only on the headless one', () => {

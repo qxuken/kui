@@ -1514,6 +1514,28 @@ static void conf_sampler(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* conformance::build_select: the stock select over four rows, the fourth
+ * posting an id and disabled, the second in force. The rows are the
+ * KuiMenuItems a context menu takes; `id` is borrowed for the call. */
+static void conf_select(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiValue *la = kui_value_str(KUI_STR("la"));
+    KuiMenuItem langs[] = {
+        {.label = KUI_STR("English"), .role = KUI_MENU_CUSTOM, .enabled = 1},
+        {.label = KUI_STR("Deutsch"), .role = KUI_MENU_CUSTOM, .enabled = 1},
+        {.label = KUI_STR("Fran\xc3\xa7" "ais"), .role = KUI_MENU_CUSTOM, .enabled = 1},
+        {.label = KUI_STR("Latin"), .role = KUI_MENU_CUSTOM, .enabled = 0, .id = la},
+    };
+    KuiSpec outer = {.pad_l = 10, .pad_r = 10, .pad_t = 10, .pad_b = 10, .gap = 6};
+    kui_open(ui, &outer, NULL);
+    kui_select(ui, KUI_STR("language"), langs, 4, 1);
+    kui_value_free(la);
+    KuiTextStyle body = {.size = 12};
+    kui_text(ui, KUI_STR("body"), &body);
+    kui_close(ui);
+}
+
 /* conformance::build_menu_bar: the application menu bar (ADR 0018) - a
  * declaration, and the widget that draws it. The rows are the KuiMenuItems
  * a context menu takes, one level down; `id` values are borrowed for the
@@ -1561,6 +1583,7 @@ static const ConfScene CONF_SCENES[] = {
     {"overflow", conf_overflow},
     {"float", conf_float},
     {"tooltip", conf_tooltip},
+    {"select", conf_select},
     {"chrome", conf_chrome},
     /* Same builder: chrome-inset is the same tree under an env that also
      * reports the OS controls, so the two scenes differ only in the env. */

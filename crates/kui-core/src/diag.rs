@@ -715,14 +715,20 @@ pub fn unknown_prop(element: &str, name: &str, spelling: schema::Spelling) -> Wa
     // warning says which rows the element does read instead.
     let message = match schema::element_rows(element, spelling) {
         Some(rows) if schema::shared_prop(name, spelling) => {
-            let rows = rows
-                .iter()
-                .map(|r| format!("`{r}`"))
-                .collect::<Vec<_>>()
-                .join(", ");
+            let takes = if rows.is_empty() {
+                "none of them".to_string()
+            } else {
+                format!(
+                    "only {}",
+                    rows.iter()
+                        .map(|r| format!("`{r}`"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            };
             format!(
                 "`{name}` is a prop, but not one {element} reads: its look is its own, and it \
-                 takes only {rows}, so this declaration is dropped — a box with `role` set takes \
+                 takes {takes}, so this declaration is dropped — a box with `role` set takes \
                  every row"
             )
         }

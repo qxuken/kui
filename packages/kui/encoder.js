@@ -741,6 +741,30 @@ export function createEncoder(P) {
         props({}, null, false);
         return;
       }
+      case 'select': {
+        // The stock select (`widgets::select_items`, backlog F73): `label`
+        // is the key and the accessible name, `options` the rows — strings,
+        // or the item objects `openMenu` takes — and `current` the index in
+        // force. Nothing else is read: the field's look is its own, as the
+        // button's is, and the prop list is empty. The options ride as one
+        // JSON blob, read by the same item reader `openMenu`'s go through.
+        const label = p.label ?? el.key;
+        if (label == null) throw new Error('<select> needs a label (its key and accessible name)');
+        if (!Array.isArray(p.options)) throw new Error('<select> needs options, an array of strings or menu items');
+        for (const o of p.options) {
+          const ok = (typeof o === 'string' && o.length > 0) || (o !== null && typeof o === 'object' && !Array.isArray(o));
+          if (!ok) throw new Error('<select> options are non-empty strings or menu item objects { label, id, enabled }');
+        }
+        const current = p.current;
+        if (current != null && (!Number.isInteger(current) || current < 0)) {
+          throw new Error('<select> current is an option index, counted from 0, or undefined');
+        }
+        f[fi++] = OP.select;
+        strRef(String(label));
+        strRef(JSON.stringify(p.options));
+        f[fi++] = current == null ? 0 : current + 1;
+        return;
+      }
       case 'tooltip': {
         // The node form of a tooltip (`widgets::tooltip` / `tooltip_with`):
         // always drawn, where the `tooltip` prop is hover-gated — for a

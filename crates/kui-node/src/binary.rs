@@ -76,6 +76,11 @@ use crate::{Result, err, value_of};
 /// CLOSE — the encoder's function child, called only for the tab the
 /// driver read as on show. A new op, so the bump is for an encoder that
 /// emits one to an addon without it.
+/// v15: `select` is a new op (backlog F73): label, the options as one
+/// JSON string read by `MenuItem::options_from_value`, then the current
+/// index plus one (0 = none). No prop list: the field reads no row but
+/// its own. A new op, so the bump is for an encoder that emits one to an
+/// addon without it.
 /// v13: an underline's own colour and shape (backlog K4). A span carries
 /// a third colour slot, the underline's, with flags bits 256 (has one),
 /// 512 (it is a token index), 1024 (wavy) and 2048 (dotted); a cell
@@ -83,7 +88,7 @@ use crate::{Result, err, value_of};
 /// array may have four or five entries a cell. Slots in the middle of two
 /// ops, which is what the bump is for; `underlineColor` and
 /// `underlineStyle` on a `<text>` are ordinary schema rows.
-pub const VERSION: u32 = 14;
+pub const VERSION: u32 = 15;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a
 /// token index rather than a value (`docs/adr/0027-tokens-beside-the-theme.md`,
@@ -115,6 +120,7 @@ pub const OP_MENU_BAR: u32 = 18;
 pub const OP_POLYGON: u32 = 19;
 pub const OP_TOOLTIP: u32 = 20;
 pub const OP_DEVTOOLS_TAB: u32 = 21;
+pub const OP_SELECT: u32 = 22;
 
 pub fn protocol_json() -> Json {
     let mut o = JsonMap::new();
@@ -145,6 +151,7 @@ pub fn protocol_json() -> Json {
                 ("polygon", OP_POLYGON),
                 ("tooltip", OP_TOOLTIP),
                 ("devtoolsTab", OP_DEVTOOLS_TAB),
+                ("select", OP_SELECT),
             ]
             .into_iter()
             .map(|(k, v)| (k.to_string(), Json::from(v)))
@@ -1143,6 +1150,16 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
                     Ok(())
                 }
             }
+        }
+        OP_SELECT => {
+            // Label, the options as one JSON blob (strings, or the item
+            // objects `openMenu` takes), the current index plus one.
+            let label = r.req_str()?;
+            let options = crate::select_options_of(r.req_str()?).map_err(|e| err(e.to_string()))?;
+            let current = r.u()?;
+            let current = (current > 0).then(|| current as usize - 1);
+            widgets::select_items(ui, label, &options, current);
+            Ok(())
         }
         OP_MENU_BAR => {
             // One JSON blob, read by the same parser `openMenu`'s items go

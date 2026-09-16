@@ -88,6 +88,47 @@ pub extern "C" fn kui_text_input(ptr: *mut KuiCtx, label: KuiStr, initial: KuiSt
     })
 }
 
+/// The stock select (`widgets::select_items`, backlog F73): a field
+/// showing the choice in force that, clicked, opens the core's own menu
+/// of `count` options read from `items` — the same rows `kui_open_menu`
+/// takes — under it, the `current`th checked (`-1` for none). The host
+/// holds no open state: the choice arrives as the `{kind:"menu", role,
+/// item}` event a menu row posts, on the key this returns, and drawing
+/// the field again with the new `current` is the whole loop; a host that
+/// shows menus itself sees the menu in `kui_menu` as any other.
+///
+/// Returns the node key, or 0 for no label, no items, or a row with a
+/// role this build does not know.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_select(
+    ptr: *mut KuiCtx,
+    label: KuiStr,
+    items: *const KuiMenuItem,
+    count: usize,
+    current: i64,
+) -> u64 {
+    guard(0, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
+        let label = kstr(label);
+        if label.is_empty() || items.is_null() || count == 0 {
+            return 0;
+        }
+        let rows = unsafe { std::slice::from_raw_parts(items, count) };
+        let mut parsed = Vec::with_capacity(count);
+        for row in rows {
+            let Some(item) = row.to_core() else {
+                return 0;
+            };
+            parsed.push(item);
+        }
+        let current = usize::try_from(current).ok().filter(|i| *i < count);
+        kui_core::widgets::select_items(&mut kui_core::Ui::wrap(c.core()), &label, &parsed, current)
+            .0
+    })
+}
+
 /// Convenience button matching `kui_core::widgets::button`. Consumes payload.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_button(ptr: *mut KuiCtx, label: KuiStr, payload: *mut KuiValue) {

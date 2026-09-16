@@ -196,6 +196,23 @@ impl MenuItem {
         rows.iter().map(Self::from_value).collect()
     }
 
+    /// A select's options from plain data (`widgets::select_items` in the
+    /// bindings): a list whose entries are strings — an option by its
+    /// label, posting it — or [`Self::from_value`] maps, for an option
+    /// that posts an `id` of its own or is disabled.
+    pub fn options_from_value(v: &Value) -> Result<Vec<Self>, String> {
+        let Value::List(rows) = v else {
+            return Err("a select's options are an array".into());
+        };
+        rows.iter()
+            .map(|row| match row {
+                Value::Str(label) if !label.is_empty() => Ok(Self::new(label.as_str())),
+                Value::Str(_) => Err("an option needs a label".into()),
+                other => Self::from_value(other),
+            })
+            .collect()
+    }
+
     /// An item of the app's own, by label.
     pub fn new(label: impl Into<String>) -> Self {
         Self {

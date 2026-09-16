@@ -23,10 +23,13 @@ was the first bare bump to break an app in five releases).
 
 ## 0.1.0-alpha.16 (unreleased)
 
-**What breaks.** Nothing: three doors, a prop and a widget added, the
-ABI at 18 and the frame at v14. One layout result moves — a grow child
-beside a sibling whose `max` held it short now takes that room (backlog
-F71 under Fixed) — which a view that padded the hole by hand will see.
+**What breaks.** Nothing: three doors, a prop, a widget and an element
+added, the ABI at 18 and the frame at v15 (a new op for the element; the
+addon and the JS ship together, and an older addon refuses the newer
+encoder by version rather than misreading it). One layout result moves —
+a grow child beside a sibling whose `max` held it short now takes that
+room (backlog F71 under Fixed) — which a view that padded the hole by
+hand will see.
 
 ### Added
 
@@ -44,8 +47,18 @@ F71 under Fixed) — which a view that padded the hole by hand will see.
   `MenuItem`s, whose choice posts each item's `id`; `select_with` takes
   the field's spec and text style, and `select_spec` is the stock one.
   A reader hears a button named by the field, described by its choice,
-  expanded while the menu is open. Rust only for now: the Node, Lua and
-  C forms are backlog F73. `examples/rust/widgets/select.rs`.
+  expanded while the menu is open. `examples/rust/widgets/select.rs`.
+
+- **The select in every binding** (backlog F73, the day after F72):
+  `<select label options current/>` in JSX — `options` are strings or
+  the `MenuItemInput` objects `openMenu` takes, `current` from 0 —
+  `dropdown { label=, options=, current= }` in Lua (`select` is Lua's
+  own; `current` from 1, as a Lua list counts), and `kui_select(ctx,
+  label, items, count, current)` in C over the `KuiMenuItem`s
+  `kui_open_menu` takes, `-1` for none. All three lower to the one Rust
+  widget, and the choice arrives as the `menu` event each binding already
+  reads. A `select` scene in the conformance corpus, built in all four
+  adapters; a Node example beside the Rust one; the props.md row.
 
 - **A held key repeats on a Mac** (backlog F69, from kawoosh on a second
   Mac: `j` held moved one line, `e` held opened the accent picker — the

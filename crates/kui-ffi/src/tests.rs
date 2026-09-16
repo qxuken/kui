@@ -59,6 +59,77 @@ mod widgets_headless {
         kui_ctx_free(ctx);
     }
 
+    /// `kui_select` (backlog F73): the field is keyed by its label, a
+    /// click on it opens the core's menu of the rows under it — no event
+    /// for the host — and a row chosen, as the host's own menu answers,
+    /// is one `menu` event on the field naming the option.
+    #[test]
+    fn a_select_opens_the_menu_and_posts_the_choice() {
+        let ctx = kui_ctx_new();
+        let la = kui_value_str(ks("la"));
+        let items = [
+            KuiMenuItem {
+                label: ks("English"),
+                role: KUI_MENU_CUSTOM,
+                enabled: 1,
+                id: std::ptr::null(),
+                accel: ks(""),
+                checked: 0,
+            },
+            KuiMenuItem {
+                label: ks("Latin"),
+                role: KUI_MENU_CUSTOM,
+                enabled: 1,
+                id: la,
+                accel: ks(""),
+                checked: 0,
+            },
+        ];
+        let build = |current: i64| {
+            kui_frame_begin(ctx, 320.0, 240.0, 1.0);
+            let mut root: KuiSpec = unsafe { std::mem::zeroed() };
+            root.pad_l = 10.0;
+            root.pad_r = 10.0;
+            root.pad_t = 10.0;
+            root.pad_b = 10.0;
+            kui_root(ctx, &root);
+            let key = kui_select(ctx, ks("language"), items.as_ptr(), items.len(), current);
+            kui_frame_finish(ctx);
+            key
+        };
+        let key = build(0);
+        assert_ne!(key, 0);
+        // A field the frame refused: no label, no rows.
+        kui_frame_begin(ctx, 320.0, 240.0, 1.0);
+        assert_eq!(kui_select(ctx, ks(""), items.as_ptr(), items.len(), 0), 0);
+        assert_eq!(kui_select(ctx, ks("x"), items.as_ptr(), 0, 0), 0);
+        kui_frame_finish(ctx);
+        build(0);
+        kui_input_cursor(ctx, 30.0, 20.0);
+        kui_input_mouse(ctx, true, 1);
+        kui_input_mouse(ctx, false, 1);
+        let mut ev = KuiEvent::default();
+        assert!(
+            !kui_poll_event(ctx, &raw mut ev),
+            "the field's click is the core's"
+        );
+        let (mut target, mut x, mut y) = (0u64, 0.0f32, 0.0f32);
+        assert_eq!(kui_menu_item_count(ctx, &mut target, &mut x, &mut y), 2);
+        assert_eq!(target, key, "the menu is about the field");
+        assert_eq!((x, y), (10.0, 44.0), "under it");
+        build(0);
+        assert!(kui_activate_menu_item(ctx, 1));
+        assert!(kui_poll_event(ctx, &raw mut ev));
+        assert_eq!(ev.key, key);
+        let payload = unsafe { &(*ev.payload).0 };
+        assert_eq!(payload.get("kind").and_then(Value::as_str), Some("menu"));
+        assert_eq!(payload.get("item").and_then(Value::as_str), Some("la"));
+        assert!(!kui_poll_event(ctx, &raw mut ev), "one event, no more");
+        assert_eq!(kui_menu_item_count(ctx, &mut target, &mut x, &mut y), 0);
+        kui_value_free(la);
+        kui_ctx_free(ctx);
+    }
+
     /// The metrics cross the boundary both ways (backlog T2): the stock
     /// set reads back as the constants, a set the host wrote is what the
     /// next button is built from, NULL restores the stock set, and a short

@@ -2911,6 +2911,16 @@ void kui_latency_graph(KuiCtx *ctx);
 void kui_latency_hud(KuiCtx *ctx, uint32_t x, uint32_t y);
 /* Single-line input with chrome; returns the editor key (kui_edit_text). */
 uint64_t kui_text_input(KuiCtx *ctx, KuiStr label, KuiStr initial);
+/* The stock select: a field showing the `current`th of `count` options
+ * (-1 for none) that, clicked, opens the core's own menu of them under
+ * it - the rows are the ones kui_open_menu takes, the current one drawn
+ * checked. The host holds no open state; the choice arrives as the
+ * {kind:"menu", role, item} event a menu row posts, on the key this
+ * returns, and drawing the field again with the new `current` is the
+ * whole loop. 0 for no label, no items, or a role this build does not
+ * know. */
+uint64_t kui_select(KuiCtx *ctx, KuiStr label, const KuiMenuItem *items, size_t count,
+                    int64_t current);
 /* Editable text node (state retained by key). Returns the node key;
  * "changed"/"submit" events arrive via kui_poll_event with that key. */
 uint64_t kui_text_edit(KuiCtx *ctx, KuiStr label, KuiStr initial,
