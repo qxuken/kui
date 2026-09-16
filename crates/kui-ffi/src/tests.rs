@@ -1012,10 +1012,12 @@ mod queries_headless {
     /// A C editor's caret blinks (backlog C35): the `caret` on a
     /// `KUI_ROLE_LINE` under the focused sink is a caret to blink, the
     /// stamp moves with it, and the phase a host's clock sets reads back.
+    /// With KUI_VALUE_CARET_SOLID beside it (F68) it is no caret to
+    /// blink — a block caret in normal mode — while it still anchors.
     #[test]
     fn a_c_sinks_caret_line_arms_the_blink_and_the_phase_reads_back() {
         let ctx = kui_ctx_new();
-        let draw = |ctx: *mut KuiCtx, caret: u32| {
+        let draw = |ctx: *mut KuiCtx, caret: u32, value_set: u32| {
             kui_frame_begin(ctx, 400.0, 200.0, 1.0);
             let mut spec = unsafe { std::mem::zeroed::<KuiSpec>() };
             spec.width = KuiSizing {
@@ -1045,7 +1047,7 @@ mod queries_headless {
             };
             row.role = 22; // KUI_ROLE_LINE
             row.caret = caret;
-            row.value_set = KUI_VALUE_CARET;
+            row.value_set = value_set;
             kui_open(ctx, &row, NONE);
             let mut style: KuiTextStyle = unsafe { std::mem::zeroed() };
             style.size = 14.0;
@@ -1058,21 +1060,34 @@ mod queries_headless {
         };
         assert!(!kui_has_caret(ctx), "nothing drawn, nothing to blink");
         assert!(kui_caret_visible(ctx), "solid until a clock says otherwise");
-        draw(ctx, 3);
+        draw(ctx, 3, KUI_VALUE_CARET);
         assert!(kui_has_caret(ctx), "the caret row under the focused sink");
         let stamp = kui_caret_stamp(ctx);
-        draw(ctx, 3);
+        draw(ctx, 3, KUI_VALUE_CARET);
         assert_eq!(
             kui_caret_stamp(ctx),
             stamp,
             "the same caret again: no restamp"
         );
-        draw(ctx, 5);
+        draw(ctx, 5, KUI_VALUE_CARET);
         assert_ne!(kui_caret_stamp(ctx), stamp, "the caret moved: restamped");
         kui_set_caret_visible(ctx, false);
         assert!(!kui_caret_visible(ctx));
         kui_set_caret_visible(ctx, true);
         assert!(kui_caret_visible(ctx));
+        // Escape to normal mode: the same caret, solid. Not one to blink,
+        // not a move, and still the IME's anchor.
+        let stamp = kui_caret_stamp(ctx);
+        let mut anchor = KuiCaretRect::default();
+        assert!(kui_ime_rect(ctx, &mut anchor));
+        draw(ctx, 5, KUI_VALUE_CARET | KUI_VALUE_CARET_SOLID);
+        assert!(!kui_has_caret(ctx), "a solid caret is not a caret to blink");
+        assert_eq!(kui_caret_stamp(ctx), stamp, "bar to block is not a move");
+        let mut held = anchor;
+        assert!(kui_ime_rect(ctx, &mut held), "the anchor held");
+        assert_eq!((held.x, held.y), (anchor.x, anchor.y));
+        draw(ctx, 5, KUI_VALUE_CARET);
+        assert!(kui_has_caret(ctx), "back in insert mode: a caret to blink");
         kui_ctx_free(ctx);
     }
 

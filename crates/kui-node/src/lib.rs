@@ -2756,6 +2756,17 @@ macro_rules! core_methods {
                 self.$core().caret_visible()
             }
 
+            /// Whether there is a caret to blink: a focused `<edit>`'s, or
+            /// the `caret` a `line` under the focused sink declares — unless
+            /// the line declares it `caretSolid` (backlog F68), which
+            /// anchors and reads but arms no clock. What the window's
+            /// clock is armed on; headless, what a test reads to see that
+            /// an idle view asks for no frame.
+            #[napi]
+            pub fn has_caret(&mut self) -> bool {
+                self.$core().has_caret()
+            }
+
             /// The driver's half of the blink: sets the phase. A window
             /// runs its own clock; headless, a test drives it to see the
             /// off phase drawn.

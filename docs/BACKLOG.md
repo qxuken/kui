@@ -28,8 +28,8 @@ the two rounds of 2026-09-15 — F55–F61 and K1–K4 — with the alpha.13
 tag, the eight of the four rounds of the same day — W17, W18,
 F62–F66 and C40 — with the alpha.14 tag, and the three of 2026-09-16 — C42 and C43 from the kawoosh
 binary-file report, C44 from the pre-tag round that followed — the day
-they were filed, before the alpha.15 tag, and F67 from the kawoosh
-syntax-tab report the same day, after it. The index
+they were filed, before the alpha.15 tag, and F67 and F68 from the
+kawoosh syntax-tab and idle-frame reports the same day, after it. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -1167,6 +1167,16 @@ to *show* the tab — the strip's click and `Ctrl+Shift+N` were the only
 two, and both are the user's. One entry, **built 2026-09-16**, the day
 it was filed, and in the archive.
 
+## From the kawoosh idle-frame report (2026-09-16)
+
+kawoosh, idle in normal mode with the devtools off, drew a frame twice a
+second — the blink clock, armed on the `caret` row its block caret
+declared for the IME and the access tree, toggling a phase the block
+never read. kui's contract said "the `caret` row is what arms the
+clock", and offered no way to declare a caret that anchors and reads
+but does not blink. One entry, **built 2026-09-16**, the day it was
+filed, and in the archive.
+
 ## After alpha.14
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -1887,3 +1897,7 @@ move.
 **From the kawoosh syntax-tab report (2026-09-16)** — F67, filed and built the same day, after the alpha.15 tag
 
 - `~` **F67** — [No door selects a devtools tab from the app: a command that jumps to the app's own tab has only the strip's click and `Ctrl+Shift+N`](backlog/closed-2026-09.md#-f67--no-door-selects-a-devtools-tab-from-the-app-a-command-that-jumps-to-the-apps-own-tab-has-only-the-strips-click-and-ctrlshiftn--done-2026-09-16) — done (2026-09-16) — `set_devtools_tab` / `devtools_current_tab` in three bindings
+
+**From the kawoosh idle-frame report (2026-09-16)** — F68, filed and built the same day, after the alpha.15 tag
+
+- `.` **F68** — [A modal editor's block caret arms the blink clock: an idle app in normal mode draws a frame twice a second](backlog/closed-2026-09.md#-f68--a-modal-editors-block-caret-arms-the-blink-clock-an-idle-app-in-normal-mode-draws-a-frame-twice-a-second--done-2026-09-16) — done (2026-09-16) — `caretSolid` on the line, in four bindings; `hasCaret` reaches Node

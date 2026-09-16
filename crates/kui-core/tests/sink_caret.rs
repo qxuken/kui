@@ -137,6 +137,67 @@ fn a_stock_editor_and_a_sink_share_the_stamp_and_the_phase() {
     assert_ne!(core.caret_stamp(), stamp);
 }
 
+/// A solid caret (backlog F68): a `caret` row declaring `caret_solid` —
+/// a modal editor's block caret in normal mode — still anchors the IME
+/// and is still the access tree's caret, but is no caret to blink, so a
+/// driver's clock is not armed on it and an idle app draws no frame for
+/// it. The phase stays true, so the view draws the block every frame;
+/// the bar of insert mode blinks the moment the line stops declaring it
+/// solid.
+#[test]
+fn a_solid_caret_anchors_and_reads_but_does_not_blink() {
+    let mut core = Core::new();
+    let frame = |core: &mut Core, solid: bool| -> Key {
+        let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        let sink = ui.with_keyed(
+            "editor",
+            NodeSpec::column()
+                .fill()
+                .on_key(Value::Null)
+                .role(Role::MultilineTextInput)
+                .label("buf"),
+            |ui| {
+                let mut row = NodeSpec::row()
+                    .height(Sizing::Fixed(20.0))
+                    .role(Role::Line)
+                    .caret(3);
+                if solid {
+                    row = row.caret_solid();
+                }
+                ui.with(row, |ui| ui.text("first line", mono()));
+            },
+        );
+        ui.take_key_focus(sink);
+        ui.finish();
+        sink
+    };
+    // Insert mode: a bar that blinks.
+    let sink = frame(&mut core, false);
+    assert!(core.has_caret());
+    let anchor = core.ime_rect().expect("the caret line anchors the IME");
+    let stamp = core.caret_stamp();
+    // Escape to normal mode: the same offset, now a solid block. Nothing
+    // to blink — and nothing moved, so the stamp holds too.
+    frame(&mut core, true);
+    assert!(!core.has_caret(), "a solid caret is not a caret to blink");
+    assert_eq!(core.caret_stamp(), stamp, "bar to block is not a move");
+    assert_eq!(core.ime_rect(), Some(anchor), "the anchor held");
+    assert_eq!(
+        core.access_tree().get(sink).unwrap().caret,
+        Some(3),
+        "assistive technology still hears where the caret is"
+    );
+    // The driver, seeing no caret to blink, leaves the phase solid: the
+    // view draws its block every frame.
+    core.set_caret_visible(true);
+    assert!(core.caret_visible());
+    // Back to insert mode: a caret to blink again.
+    frame(&mut core, false);
+    assert!(core.has_caret());
+    assert_eq!(core.caret_stamp(), stamp);
+}
+
 /// The caret follows the keys (backlog AR29): focus on a control inside
 /// the custom editor — a pane button, an AT `Focus`, `set_focus` — still
 /// routes keys and commits to the enclosing sink, and the caret is still

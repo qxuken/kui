@@ -408,6 +408,11 @@ pub struct Core {
     /// (backlog C35). What the blink clock is armed on when no stock
     /// editor is focused; `None` with nothing to blink.
     sink_caret: Option<(Key, u32)>,
+    /// Whether that line declared its caret `caret_solid` — a block caret
+    /// in a modal editor's normal mode: still the IME's anchor and the
+    /// access tree's caret, but not a caret to blink, so `has_caret`
+    /// leaves it out and an idle app draws no frame for it.
+    sink_caret_solid: bool,
     /// Bumped whenever `sink_caret` changes between frames — the caret
     /// moved, or focus came to or left a custom editor — so the driver
     /// re-arms the blink solid, the way `EditStore::caret_stamp` does for
@@ -874,6 +879,7 @@ impl Core {
             pending_region: None,
             ime_rect: None,
             sink_caret: None,
+            sink_caret_solid: false,
             sink_caret_stamp: 0,
             pending: Vec::new(),
             framed: false,

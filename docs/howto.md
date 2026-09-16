@@ -471,7 +471,17 @@ the off phase drawn, and how a C host with its own window drives it
 (`kui_has_caret`, `kui_caret_stamp` are the clock's inputs). Never use
 `keyframes` for this: they ask for a frame every vsync and never stop.
 
+A caret that does not blink — the block of a modal editor's normal mode —
+declares `caretSolid` (Lua `caret_solid = true`, C `KUI_VALUE_CARET_SOLID`
+in `value_set`) beside `caret` on the same line: the row still anchors
+the IME and is still the caret assistive technology hears, but it is no
+caret to blink, so the clock is not armed and an editor idling in normal
+mode asks for no frame at all. Without it the clock runs for as long as
+the `caret` row is declared, whether or not the view reads the phase —
+the one thing that asks an idle app for a frame twice a second.
+
 [`caret_visible`](props.md#env) ·
+[`caretSolid`](props.md#container-props) ·
 [alpha.12](../CHANGELOG.md#010-alpha12-2026-09-14)
 
 ### How do I reset an editor's text?

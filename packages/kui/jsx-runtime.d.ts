@@ -204,6 +204,8 @@ export interface GeneratedSpecProps {
   bg?: ColorProp;
   /** On a `line` of a custom editor (a `textInput` / `multilineTextInput` role drawn by the app): the caret's byte offset into that line's text. */
   caret?: LengthProp;
+  /** On a `line` declaring `caret`: the caret is solid — a block caret in a modal editor's normal mode — so the driver's blink clock is not armed on it and `caretVisible` stays true, while the offset still anchors the IME and reads to assistive technology. Without it a declared `caret` is a caret to blink, and the one thing that asks an idle app for a frame twice a second; an editor whose caret only blinks while typing declares this on every other mode's line. */
+  caretSolid?: boolean;
   /** Center children on both axes. */
   center?: boolean;
   /** The on state of a `checkbox` / `radio` / `switch` role. */

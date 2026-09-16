@@ -604,7 +604,11 @@ typedef struct KuiSpec {
      * KUI_ROLE_TEXT_INPUT / MULTILINE_TEXT_INPUT role that draws its own
      * text): the caret's byte offset into the line's text, and the byte
      * offset of the selection's other end; present when KUI_VALUE_CARET /
-     * KUI_VALUE_ANCHOR are in value_set. */
+     * KUI_VALUE_ANCHOR are in value_set. KUI_VALUE_CARET_SOLID beside
+     * KUI_VALUE_CARET says the caret is solid — a block caret in a modal
+     * editor's normal mode — so kui_has_caret leaves it out and no blink
+     * clock is armed on it, while it still anchors the IME and reads to
+     * assistive technology. */
     uint32_t caret;
     uint32_t selection_anchor;
     /* Keyboard focus (docs/adr/0002-keyboard-focus-as-data.md). focusable:
@@ -947,13 +951,15 @@ enum {
     KUI_ORIENTATION_VERTICAL = 2,
 };
 /* Which of KuiSpec.value_now / value_min / value_max / caret /
- * selection_anchor are set */
+ * selection_anchor are set, and whether the caret is solid (no caret to
+ * blink; see KuiSpec.caret). */
 enum {
     KUI_VALUE_NOW = 1u << 0,
     KUI_VALUE_MIN = 1u << 1,
     KUI_VALUE_MAX = 1u << 2,
     KUI_VALUE_CARET = 1u << 3,
     KUI_VALUE_ANCHOR = 1u << 4,
+    KUI_VALUE_CARET_SOLID = 1u << 5,
 };
 /* Actions assistive technology can request (KuiAccessNode.actions bits,
  * kui_input_access). */

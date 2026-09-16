@@ -627,8 +627,12 @@ fn render_editor(ui: &mut Ui<'_>, pal: &Pal, doc: &Doc, view: &mut View, mode: M
     // below declares (backlog C35). On the off phase the caret node is
     // not drawn — the row stays, which is what keeps the clock armed and
     // the IME anchored — and in a window without the keyboard the runner
-    // parks the phase off, so the caret is not drawn at all.
+    // parks the phase off, so the caret is not drawn at all. Only insert
+    // mode's bar blinks: the block of normal and command mode is solid,
+    // and its row says so (`caret_solid`, backlog F68), so the clock is
+    // not armed and an editor idling in normal mode asks for no frame.
     let blink_on = ui.caret_visible();
+    let solid = mode != Mode::Insert;
     let rows = (((h - STATUS_H - 8.0) / LH).max(1.0)) as usize;
     view.rows = rows;
     // Scroll the caret into view — the app's job, and two lines of it.
@@ -685,16 +689,9 @@ fn render_editor(ui: &mut Ui<'_>, pal: &Pal, doc: &Doc, view: &mut View, mode: M
                     .clip(),
                 |ui| {
                     for ln in view.top..last {
-                        let caret = (ln == view.cur.line && blink_on).then(|| {
-                            (
-                                view.cur.col,
-                                if mode == Mode::Insert {
-                                    Caret::Bar
-                                } else {
-                                    Caret::Block
-                                },
-                            )
-                        });
+                        let kind = if solid { Caret::Block } else { Caret::Bar };
+                        let caret = (ln == view.cur.line && (solid || blink_on))
+                            .then_some((view.cur.col, kind));
                         // Where the caret and the selection's other end
                         // sit on this line, as byte offsets, for the
                         // access tree.
@@ -711,6 +708,7 @@ fn render_editor(ui: &mut Ui<'_>, pal: &Pal, doc: &Doc, view: &mut View, mode: M
                             sel_on_line(view, doc, ln),
                             caret,
                             access,
+                            solid,
                         );
                     }
                 },
@@ -731,6 +729,7 @@ fn emit_line(
     sel: Option<(usize, usize)>,
     caret: Option<(usize, Caret)>,
     access: (Option<u32>, Option<u32>),
+    solid: bool,
 ) {
     let chars: Vec<char> = text.chars().collect();
     let (caret_col, caret_kind) = match caret {
@@ -748,6 +747,9 @@ fn emit_line(
         .role(Role::Line);
     if let Some(c) = access.0 {
         row = row.caret(c);
+        if solid {
+            row = row.caret_solid();
+        }
     }
     if let Some(a) = access.1 {
         row = row.selection_anchor(a);
@@ -1254,12 +1256,20 @@ impl Example for ModalEditor {
             self.view.anchor.is_some() && sel_lines(&self.doc, &self.view) == ["document"],
             "a double click selects the word under it",
         )?;
-        // The caret blinks (backlog C35): on the off phase the caret node
-        // is gone and the `caret` row stays.
+        // Normal mode's block is solid (backlog F68): its row is the
+        // caret — the IME's anchor — but not one to blink, so the clock
+        // is not armed and an idle editor asks for no frame.
+        d.check(
+            self.mode == Mode::Normal && !d.core.has_caret() && d.core.ime_rect().is_some(),
+            "a solid block caret anchors the IME and arms no clock",
+        )?;
+        // Insert mode's bar blinks (backlog C35): on the off phase the
+        // caret node is gone and the `caret` row stays.
+        keys(&mut d, self, "i");
         d.core.set_caret_visible(false);
         d.frame(self);
         d.check(
-            d.core.has_caret(),
+            self.mode == Mode::Insert && d.core.has_caret(),
             "the caret row is declared through the off phase",
         )?;
         d.core.set_caret_visible(true);

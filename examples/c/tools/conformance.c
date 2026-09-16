@@ -1506,7 +1506,7 @@ static void conf_sampler(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_text(ui, KUI_STR("a long line that is cut short"), &cut);
     kui_close(ui);
     KuiSpec line = {.dir = KUI_ROW, .height = {KUI_FIXED, 16}, .role = KUI_ROLE_LINE,
-                    .value_set = KUI_VALUE_CARET | KUI_VALUE_ANCHOR,
+                    .value_set = KUI_VALUE_CARET | KUI_VALUE_ANCHOR | KUI_VALUE_CARET_SOLID,
                     .caret = 2, .selection_anchor = 0};
     kui_open_keyed(ui, KUI_STR("line"), &line, NULL);
     kui_text(ui, KUI_STR("sel"), &s12);

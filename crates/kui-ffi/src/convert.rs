@@ -333,6 +333,9 @@ pub(crate) fn spec_of(
     if s.value_set & KUI_VALUE_ANCHOR != 0 {
         spec = spec.selection_anchor(s.selection_anchor);
     }
+    if s.value_set & KUI_VALUE_CARET_SOLID != 0 {
+        spec = spec.caret_solid();
+    }
     if s.focusable != 0 {
         spec = spec.focusable();
     }

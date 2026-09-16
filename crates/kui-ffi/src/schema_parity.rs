@@ -289,6 +289,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             "valueText" => s.value_text = name,
             "caret" => (s.value_set, s.caret) = (KUI_VALUE_CARET, F as u32),
             "selectionAnchor" => (s.value_set, s.selection_anchor) = (KUI_VALUE_ANCHOR, F as u32),
+            "caretSolid" => s.value_set = KUI_VALUE_CARET_SOLID,
             "lineHeight" => t.line_height = F,
             "color" => t.color = C,
             "family" => t.family = 1,

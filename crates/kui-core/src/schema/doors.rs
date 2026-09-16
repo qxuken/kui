@@ -355,16 +355,16 @@ pub const DOORS: &[Door] = &[
     Door {
         rust: "Core::has_caret",
         c: Is("kui_has_caret"),
-        node: As(
-            "the loop in `index.js` runs the blink from `nextDeadlineMs`; a headless `Ctx` never blinks",
-        ),
+        node: Is("hasCaret"),
         lua: No(GUEST),
-        doc: "Whether anything focused draws a caret, which arms a host's blink clock.",
+        doc: "Whether anything focused draws a caret to blink — a `caretSolid` line's is not one — which arms a host's blink clock.",
     },
     Door {
         rust: "Core::caret_stamp",
         c: Is("kui_caret_stamp"),
-        node: As("as `has_caret`"),
+        node: As(
+            "the loop in `index.js` runs the blink from `nextDeadlineMs`; a headless `Ctx` never blinks",
+        ),
         lua: No(GUEST),
         doc: "Changes when the caret moves or focus does, which re-arms the clock solid.",
     },

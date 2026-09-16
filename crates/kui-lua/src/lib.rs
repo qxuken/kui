@@ -3619,6 +3619,38 @@ mod tests {
         assert!(core.key_of("caret").is_some());
     }
 
+    /// A script's block caret is solid (backlog F68): `caret_solid = true`
+    /// beside `caret` on the line keeps the IME anchor and the access
+    /// tree's caret and arms no clock, so a script idling in normal mode
+    /// draws no frame for it; the line without it blinks again.
+    #[test]
+    fn a_lua_editors_solid_caret_arms_no_clock() {
+        let mut ext = LuaExtension::from_source(
+            "ed",
+            r#"
+                function view(env)
+                  return column { key = "editor", on_key = "ed", key_focus = true,
+                    role = "multilineTextInput", label = "buf",
+                    row { role = "line", caret = 3, caret_solid = true,
+                      text("let value", { family = "mono", size = 14 }) },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        assert!(!core.has_caret(), "a solid caret is not a caret to blink");
+        assert!(core.ime_rect().is_some(), "and still the IME's anchor");
+        let editor = core.key_of("editor").unwrap();
+        assert_eq!(core.access_tree().get(editor).unwrap().caret, Some(3));
+        assert!(
+            core.warnings_raised().is_empty(),
+            "{:?}",
+            core.warnings_raised()
+        );
+    }
+
     /// A script that owns its text has a clipboard (backlog C33) and a
     /// mouse (C34): `y` in its keymap queues `env.set_clipboard` from the
     /// next view and `p` asks `env.request_paste`, whose answer arrives as

@@ -812,6 +812,12 @@ pub struct AccessSpec {
     /// (see [`crate::access`]).
     pub caret: Option<u32>,
     pub selection_anchor: Option<u32>,
+    /// With `caret`: the caret this line declares does not blink — a
+    /// block caret in a modal editor's normal mode — so a driver's blink
+    /// clock is not armed on it (`Core::has_caret` leaves it out) while
+    /// the offset still anchors the IME and reads to assistive
+    /// technology. Without it a declared caret is a caret to blink.
+    pub caret_solid: bool,
     /// When the text inside this node changes, a reader reads the change
     /// without being asked (ARIA's `aria-live`). Off by default; a node
     /// that declares it is semantic, so a plain box marked live is not
@@ -835,6 +841,7 @@ impl AccessSpec {
         value_text: None,
         caret: None,
         selection_anchor: None,
+        caret_solid: false,
         live: Live::Off,
     };
 }
@@ -1603,6 +1610,15 @@ impl NodeSpec {
     /// selection's other end sits (see the `selection_anchor` field).
     pub fn selection_anchor(mut self, offset: u32) -> Self {
         self.access_mut().selection_anchor = Some(offset);
+        self
+    }
+
+    /// On a `Role::Line` declaring `caret`: the caret is solid, not a
+    /// caret to blink (see the `caret_solid` field). A block caret in a
+    /// modal editor's normal mode — the one thing that otherwise asks an
+    /// idle app for a frame twice a second.
+    pub fn caret_solid(mut self) -> Self {
+        self.access_mut().caret_solid = true;
         self
     }
 

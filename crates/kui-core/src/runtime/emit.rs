@@ -1517,14 +1517,15 @@ impl Core {
         // where the caret is — a byte offset into that line's runs, which
         // is the question `caret_rect` answers. This runs after the text
         // pass, so the places it reads are this frame's.
-        let (l, caret) = self.sink_caret_line()?;
+        let (l, caret, _) = self.sink_caret_line()?;
         self.text.caret_at(self.tree.keys[l], caret as usize, false)
     }
 
-    /// The `line` under the focused node that declares `caret`, and the
-    /// offset it declares — a custom editor's caret, in the frame just
-    /// built. None with a stock editor focused, or nothing declaring one.
-    fn sink_caret_line(&self) -> Option<(usize, u32)> {
+    /// The `line` under the focused node that declares `caret`, the
+    /// offset it declares, and whether it declares the caret
+    /// `caret_solid` — a custom editor's caret, in the frame just built.
+    /// None with a stock editor focused, or nothing declaring one.
+    fn sink_caret_line(&self) -> Option<(usize, u32, bool)> {
         if !self.tree.any_line {
             return None;
         }
@@ -1548,22 +1549,29 @@ impl Core {
             .into_iter()
             .rev()
             .find(|&l| self.tree.specs[l].access().caret.is_some())?;
-        Some((l, self.tree.specs[l].access().caret?))
+        let access = self.tree.specs[l].access();
+        Some((l, access.caret?, access.caret_solid))
     }
 
     /// Remembers this frame's custom-editor caret and bumps the stamp when
     /// it is not last frame's (backlog C35): the blink clock reads both.
+    /// Whether it is solid is kept beside it, not in it: a caret going
+    /// from bar to block has not moved, and the clock re-arms on the
+    /// way back from `has_caret` alone.
     fn note_sink_caret(&mut self) {
-        let now = if self.edit.focused().is_some() {
-            None
+        let (now, solid) = if self.edit.focused().is_some() {
+            (None, false)
         } else {
-            self.sink_caret_line()
-                .map(|(l, offset)| (self.tree.keys[l], offset))
+            match self.sink_caret_line() {
+                Some((l, offset, solid)) => (Some((self.tree.keys[l], offset)), solid),
+                None => (None, false),
+            }
         };
         if now != self.sink_caret {
             self.sink_caret = now;
             self.sink_caret_stamp += 1;
         }
+        self.sink_caret_solid = solid;
     }
 
     // -- The caret's blink --------------------------------------------
@@ -1574,11 +1582,13 @@ impl Core {
     // phase, and for a custom one, which reads it (backlog C35).
 
     /// Whether there is a caret to blink: a focused stock editor's, or the
-    /// `caret` a `line` under the focused custom editor declares. A
+    /// `caret` a `line` under the focused custom editor declares — unless
+    /// that line declares it `caret_solid`, which is a caret to anchor
+    /// the IME and read to assistive technology but not one to blink. A
     /// driver arms its blink clock while this is true and leaves the
     /// caret solid otherwise.
     pub fn has_caret(&self) -> bool {
-        self.edit.focused().is_some() || self.sink_caret.is_some()
+        self.edit.focused().is_some() || (self.sink_caret.is_some() && !self.sink_caret_solid)
     }
 
     /// Changes whenever the caret moved or focus changed — the stock

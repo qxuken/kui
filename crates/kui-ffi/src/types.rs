@@ -403,6 +403,10 @@ pub struct KuiSpec {
     /// On a KUI_ROLE_LINE of a custom editor: the caret's byte offset into
     /// the line's text, and the selection's other end (KUI_VALUE_CARET /
     /// KUI_VALUE_ANCHOR in `value_set` say which are present).
+    /// KUI_VALUE_CARET_SOLID beside KUI_VALUE_CARET says the caret is
+    /// solid — a block caret in a modal editor's normal mode — so
+    /// `kui_has_caret` leaves it out and no blink clock is armed on it,
+    /// while it still anchors the IME and reads to assistive technology.
     pub caret: u32,
     pub selection_anchor: u32,
     /// Non-zero: reachable by Tab (and focused by a click) without a click
@@ -635,6 +639,7 @@ pub struct KuiAccessRun {
 
 pub const KUI_VALUE_CARET: u32 = 1 << 3;
 pub const KUI_VALUE_ANCHOR: u32 = 1 << 4;
+pub const KUI_VALUE_CARET_SOLID: u32 = 1 << 5;
 pub const KUI_ACCESS_HAS_TEXT_SELECTION: u32 = 1 << 9;
 
 /// One node of the access tree (`kui_access_tree`): what assistive

@@ -2482,6 +2482,15 @@ export declare class Ctx {
    */
   caretVisible(): boolean
   /**
+   * Whether there is a caret to blink: a focused `<edit>`'s, or
+   * the `caret` a `line` under the focused sink declares — unless
+   * the line declares it `caretSolid` (backlog F68), which
+   * anchors and reads but arms no clock. What the window's
+   * clock is armed on; headless, what a test reads to see that
+   * an idle view asks for no frame.
+   */
+  hasCaret(): boolean
+  /**
    * The driver's half of the blink: sets the phase. A window
    * runs its own clock; headless, a test drives it to see the
    * off phase drawn.
@@ -3508,6 +3517,15 @@ export declare class KuiWindow {
    * while the window has no keyboard. Always `true` headless.
    */
   caretVisible(): boolean
+  /**
+   * Whether there is a caret to blink: a focused `<edit>`'s, or
+   * the `caret` a `line` under the focused sink declares — unless
+   * the line declares it `caretSolid` (backlog F68), which
+   * anchors and reads but arms no clock. What the window's
+   * clock is armed on; headless, what a test reads to see that
+   * an idle view asks for no frame.
+   */
+  hasCaret(): boolean
   /**
    * The driver's half of the blink: sets the phase. A window
    * runs its own clock; headless, a test drives it to see the

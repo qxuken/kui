@@ -5105,7 +5105,8 @@ fn build_sampler(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
                 .height(Sizing::Fixed(16.0))
                 .role(Role::Line)
                 .caret(2)
-                .selection_anchor(0),
+                .selection_anchor(0)
+                .caret_solid(),
             |ui| {
                 ui.text("sel", TextStyle::new(12.0));
             },

@@ -2110,10 +2110,15 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
             }
             // A caret to blink: the stock editor's, or the `caret` a
             // custom editor declares on one of its lines (backlog C35).
+            // None, or a solid one (`caret_solid`, F68): the phase is
+            // parked on. Caught mid-blink — Escape from insert mode on
+            // the off phase — the frame that handled the key read the
+            // phase off, so one more is asked for; once, not a loop.
             if !pane.core.has_caret() {
                 if !pane.blink_visible {
                     pane.blink_visible = true;
                     pane.core.set_caret_visible(true);
+                    pane.window.request_redraw();
                 }
                 pane.blink_deadline = None;
                 continue;

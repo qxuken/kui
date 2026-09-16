@@ -23,10 +23,30 @@ was the first bare bump to break an app in five releases).
 
 ## 0.1.0-alpha.16 (unreleased)
 
-**What breaks.** Nothing: two doors added, the ABI at 18 and the frame
-at v14.
+**What breaks.** Nothing: two doors and a prop added, the ABI at 18 and
+the frame at v14.
 
 ### Added
+
+- **A caret that does not blink** (backlog F68, from kawoosh idling in
+  normal mode: sixteen frames in eight seconds with nothing happening —
+  the blink clock, armed on the `caret` row its block caret declared for
+  the IME and the access tree, toggling a phase the block never read).
+  `caretSolid` / `caret_solid = true` / `KUI_VALUE_CARET_SOLID` in
+  `value_set` / `NodeSpec::caret_solid()` beside `caret` on a `line`
+  says the caret is solid: the row still anchors the IME and is still
+  the caret assistive technology hears, but `has_caret` leaves it out,
+  so the runner's clock is not armed and an editor idling in normal mode
+  asks for no frame at all. The phase stays `true` while it is declared,
+  so a view that reads `caret_visible` draws its block; the bar of
+  insert mode, declared without it, blinks as before. Node gains
+  `hasCaret()` (the reading C had as `kui_has_caret`), so a headless
+  test can see that a view arms no clock. `modal_editor` keeps its
+  normal-mode block solid now, the way a modal editor does.
+
+  *What you can delete:* dropping the `caret` row in the modes whose
+  caret does not blink to keep the window quiet — and the screen-reader
+  caret and the IME anchor that went with it.
 
 - **A devtools tab is selected from the app** (backlog F67, from
   kawoosh's Syntax tab: a `:syntax_tree` command with no way to *show*

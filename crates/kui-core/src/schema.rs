@@ -166,6 +166,7 @@ pub const P_UNDERLINE_COLOR: u32 = 101;
 pub const P_UNDERLINE_STYLE: u32 = 102;
 pub const P_ON_DROP: u32 = 103;
 pub const P_DROP_BG: u32 = 104;
+pub const P_CARET_SOLID: u32 = 105;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -1121,6 +1122,13 @@ pub const PROPS: &[PropDef] = &[
         kind: Kind::F32,
         apply: Apply::SpecF32(|s, v| s.selection_anchor(v.max(0.0) as u32)),
         doc: "On a `line` of a custom editor: the byte offset where the selection's other end sits (the caret is `caret`, possibly on another line).",
+    },
+    PropDef {
+        name: "caretSolid",
+        id: P_CARET_SOLID,
+        kind: Kind::Flag,
+        apply: Apply::SpecFlag(|s| s.caret_solid()),
+        doc: "On a `line` declaring `caret`: the caret is solid — a block caret in a modal editor's normal mode — so the driver's blink clock is not armed on it and `caretVisible` stays true, while the offset still anchors the IME and reads to assistive technology. Without it a declared `caret` is a caret to blink, and the one thing that asks an idle app for a frame twice a second; an editor whose caret only blinks while typing declares this on every other mode's line.",
     },
 ];
 

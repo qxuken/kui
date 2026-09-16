@@ -664,7 +664,7 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                         text("a long line that is cut short", {{ size = 12, max_lines = 1, ellipsis = true,
                               underline = true, strikethrough = true, features = "liga=0" }}) }},
               row {{ key = "line", height = 16, role = "line", caret = 2, selection_anchor = 0,
-                     text("sel", {{ size = 12 }}) }},
+                     caret_solid = true, text("sel", {{ size = 12 }}) }},
             }}
         "#,
             snd = f.sound.to_ffi(),

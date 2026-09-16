@@ -463,6 +463,7 @@ fn asserts() -> (String, Vec<&'static str>) {
             KUI_VALUE_MAX,
             KUI_VALUE_CARET,
             KUI_VALUE_ANCHOR,
+            KUI_VALUE_CARET_SOLID,
             KUI_ACCESS_HAS_VALUE,
             KUI_ACCESS_HAS_SELECTION,
             KUI_ACCESS_FOCUSED,

@@ -1369,6 +1369,36 @@ test('a sink with a caret line reads the blink phase and draws its caret on it',
   ctx.setCaretVisible(true);
 });
 
+// A custom editor's solid caret (backlog F68): `caretSolid` beside `caret`
+// on the line is a block caret in normal mode — still the IME's anchor and
+// the access tree's caret, but not a caret to blink, so an app idling in
+// normal mode draws no frame for it. The plain `caret` row blinks again.
+test('a caret line declaring caretSolid anchors and reads but arms no blink clock', () => {
+  const ctx = new Ctx();
+  const mono = { size: 14, family: 'mono', lineHeight: 20 };
+  const view = (solid) =>
+    box({}, [
+      box({ onKey: { kind: 'ed' }, keyFocus: true, role: 'multilineTextInput', label: 'Buffer' }, [
+        box({ dir: 'row', role: 'line', caret: 3, ...(solid ? { caretSolid: true } : {}) }, [
+          text('let value', mono),
+        ], 'l0'),
+      ], 'editor'),
+    ]);
+  ctx.setInspect(true);
+  ctx.frame(400, 100, 1, view(false));
+  assert.ok(ctx.hasCaret(), 'a plain caret row is a caret to blink');
+  const anchor = ctx.imeRect();
+  assert.ok(anchor !== null);
+  ctx.frame(400, 100, 1, view(true));
+  assert.ok(!ctx.hasCaret(), 'a solid caret is not a caret to blink');
+  assert.deepEqual(ctx.imeRect(), anchor, 'and still the IME anchor');
+  const editor = ctx.accessTree().nodes.find((n) => n.name === 'Buffer');
+  assert.equal(editor.caret, 3, 'and still where assistive technology hears the caret');
+  assert.deepEqual(ctx.warnings(), []);
+  ctx.frame(400, 100, 1, view(false));
+  assert.ok(ctx.hasCaret());
+});
+
 // A custom editor's mouse and clipboard (backlog C34, C33): a press or
 // drag inside an `onKey` sink carries `line`, `byte` and `clicks` the way
 // a grid's carries `cell`, and the sink's own Ctrl-c / Ctrl-v bind to
@@ -4061,7 +4091,7 @@ SCENE_TREES.sampler = (fx) =>
       box({ width: 60 }, [
         text('a long line that is cut short', { size: 12, maxLines: 1, ellipsis: true, underline: true, strikethrough: true, features: 'liga=0' }),
       ]),
-      box({ dir: 'row', height: 16, role: 'line', caret: 2, selectionAnchor: 0 }, [text('sel', { size: 12 })], 'line'),
+      box({ dir: 'row', height: 16, role: 'line', caret: 2, selectionAnchor: 0, caretSolid: true }, [text('sel', { size: 12 })], 'line'),
     ]),
   ]);
 
