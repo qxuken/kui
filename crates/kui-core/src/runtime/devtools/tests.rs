@@ -403,6 +403,34 @@ fn a_tab_after_a_dead_space_click_walks_the_ring_under_the_pointer() {
     assert_ne!(inside, button);
 }
 
+/// The menus override remembers the host's own mode and puts it back:
+/// `platform` after `drawn` is native again where the driver said
+/// native, not whatever was set last.
+#[test]
+fn the_platform_menu_choice_restores_the_hosts_own_mode() {
+    let mut core = Core::new();
+    core.set_native_menus(true);
+    core.set_native_menu_bar(true);
+    core.set_devtools(true);
+    frame(&mut core);
+    core.devtools_act("menus:drawn");
+    frame(&mut core);
+    assert!(!core.native_menus() && !core.native_menu_bar());
+    core.devtools_act("menus:default");
+    frame(&mut core);
+    assert!(
+        core.native_menus() && core.native_menu_bar(),
+        "the host's own again"
+    );
+    core.devtools_act("menus:drawn");
+    frame(&mut core);
+    assert!(!core.native_menus());
+    // The panel off lifts it too.
+    core.set_devtools(false);
+    frame(&mut core);
+    assert!(core.native_menus() && core.native_menu_bar());
+}
+
 /// The same select answered by a host's own menu: `activate_menu_item`
 /// is not an input, and its events take the same way out, so the row
 /// is the panel's action there too and the app hears nothing.
@@ -447,13 +475,30 @@ fn events_flow_to_the_host_and_into_the_stream_and_the_panel_s_do_not() {
     assert_eq!(menu.items.len(), 3);
     assert!(menu.items[0].checked, "the app's own is in force");
     frame(&mut core);
-    let light = core
+    let (light, row) = core
         .access_tree()
         .nodes
         .iter()
         .find(|n| n.role == crate::access::Role::MenuItem && n.name.as_deref() == Some("light"))
-        .map(|n| n.key)
+        .map(|n| (n.key, n.rect))
         .expect("the row is drawn");
+    // Drawn in the dock, under the field — fitted to the window, not
+    // pushed into the app's area by the host viewport's clamp.
+    let rect_of = |core: &mut Core, key: Key| {
+        core.access_tree()
+            .nodes
+            .iter()
+            .find(|n| n.key == key)
+            .map(|n| n.rect)
+            .unwrap()
+    };
+    let field = rect_of(&mut core, base);
+    // The dock's left edge: the window less the side width.
+    let dock_x = core.viewport().w - state(&core, |s| s.side_w);
+    assert!(
+        row.x >= dock_x && row.y >= field.y + field.h,
+        "menu row {row:?} in the dock from {dock_x}, under field {field:?}"
+    );
     let evs = access_click(&mut core, light);
     assert!(evs.is_empty(), "nor the row's: {evs:?}");
     assert_eq!(state(&core, |s| s.base), Some(Appearance::Light));

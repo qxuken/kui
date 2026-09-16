@@ -901,11 +901,16 @@ fn set_axis_clamped(tree: &mut Tree, c: u32, axis: AxisSel, v: f32) {
 }
 
 /// The "viewport" a float of `c` means: the window for the devtools' own
-/// nodes, and for everyone else the host area — the window less the
-/// devtools' dock — when one is set (`Tree::host_area`).
+/// nodes and for the core's menu (a transient the platform's own would
+/// not confine either — and one the panel's select opens *in* the dock,
+/// where the host area would push it into the app), and for everyone
+/// else the host area — the window less the devtools' dock — when one
+/// is set (`Tree::host_area`).
 fn float_viewport(tree: &Tree, c: u32, viewport: Size) -> Rect {
+    use crate::tree::OriginId;
     let window = Rect::new(0.0, 0.0, viewport.w, viewport.h);
-    if tree.host_area.w <= 0.0 || tree.origins[c as usize] == crate::tree::OriginId::DEVTOOLS {
+    let origin = tree.origins[c as usize];
+    if tree.host_area.w <= 0.0 || origin == OriginId::DEVTOOLS || origin == OriginId::MENU {
         window
     } else {
         tree.host_area

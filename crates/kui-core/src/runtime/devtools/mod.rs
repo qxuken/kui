@@ -1356,6 +1356,15 @@ impl Core {
     /// The end of `begin_frame`: the overrides for this window, and the
     /// wrap of the host's tree in the main one (decision 2) or the
     /// deferred root in the panel's own (decision 6).
+    /// Puts the host's own menu mode back after an override (see
+    /// `dt_menus`); nothing to do when there was none.
+    fn restore_menus(&mut self) {
+        if let Some((menus, bar)) = self.dt_menus.take() {
+            self.set_native_menus(menus);
+            self.set_native_menu_bar(bar);
+        }
+    }
+
     pub(crate) fn devtools_begin_frame(&mut self) {
         self.dt_app = None;
         self.dt_dock = None;
@@ -1401,6 +1410,7 @@ impl Core {
             if let Some((app, _)) = self.dt_theme.take() {
                 self.set_theme_source(app);
             }
+            self.restore_menus();
             self.dt_inspect = false;
             return;
         }
@@ -1419,9 +1429,19 @@ impl Core {
                 }
             }
         }
-        if let Some(m) = menus {
-            self.set_native_menus(m);
-            self.set_native_menu_bar(m);
+        // The menus the same way: the host's own mode — what the driver
+        // said at launch — remembered when the override goes on, and put
+        // back when it is lifted (`platform` in the select, or the panel
+        // off), since nothing else would.
+        match menus {
+            Some(m) => {
+                if self.dt_menus.is_none() {
+                    self.dt_menus = Some((self.native_menus, self.native_menu_bar()));
+                }
+                self.set_native_menus(m);
+                self.set_native_menu_bar(m);
+            }
+            None => self.restore_menus(),
         }
         if this {
             // The panel's window: no root until `finish`, so what the host

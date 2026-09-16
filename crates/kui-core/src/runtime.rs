@@ -232,6 +232,10 @@ pub struct Core {
     dt_dock: Option<devtools::Dock>,
     dt_window: bool,
     dt_theme: Option<(ThemeSource, ThemeSource)>,
+    /// The menu mode the host had before the panel's override went on —
+    /// drawn or native, the bar with it — for the override's `platform`
+    /// choice to put back.
+    dt_menus: Option<(bool, bool)>,
     /// The panel was built at `begin_frame` (a left dock precedes the
     /// app's container in tree order), so `finish` must not build again.
     dt_built: bool,
@@ -813,6 +817,7 @@ impl Core {
             dt_dock: None,
             dt_window: false,
             dt_theme: None,
+            dt_menus: None,
             dt_built: false,
             dt_tabs: Vec::new(),
             dt_area: Rect::new(0.0, 0.0, 0.0, 0.0),

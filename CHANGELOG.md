@@ -115,6 +115,20 @@ F71 under Fixed) — which a view that padded the hole by hand will see.
   view that put a grow spacer or a fixed height where the hole was can
   take it out.
 
+- **The drawn menu is fitted to the window, not the app's area** — found
+  building F72: a float of the core's menu took the host viewport (the
+  window less the dock) as every host float does, so a menu opened in
+  the dock — the panel's select — was pushed left into the app. The
+  core's menu now floats against the window, as the devtools' own nodes
+  do and as a platform menu would; a context menu opened near a dock's
+  edge may overlap the dock where it used to be squeezed beside it.
+
+- **`platform` in the devtools' menus select put nothing back** — the
+  override's `None` left the core in whatever mode was set last, so
+  `drawn` then `platform` stayed drawn. The panel remembers the host's
+  own mode (menus and bar) when the override goes on and restores it
+  when it is lifted, or when the panel goes off.
+
 - **A host's menu answered a devtools select to the app** — found
   building F72: `activate_menu_item` is not an input, and its events
   skipped the pass an input's take on the way out, so a row chosen from

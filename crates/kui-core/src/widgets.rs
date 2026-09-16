@@ -813,6 +813,11 @@ pub fn context_menu(ui: &mut Ui<'_>, at: Vec2, items: &[MenuItem]) -> Key {
     // own origin, so the core takes their events back by it.
     let saved = ui.origin();
     ui.set_origin(OriginId::MENU);
+    // The menu floats against the window, not the host area (a menu the
+    // platform showed would not stop at a dock's edge either, and the
+    // devtools' own select opens one inside the dock): the host's point
+    // becomes the window's.
+    let at = at.plus(ui.core().dt_shift());
     let root = menu_panel(
         ui,
         MENU_KEY,
