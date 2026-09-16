@@ -456,6 +456,20 @@ bindings, the harness and two examples. What differs from the text above:
    the way `shown()` does, so a name the app stopped declaring builds
    nothing while the panel remembers it.
 
+9. **The tab is a door too** (backlog F67, 2026-09-16, from kawoosh's
+   Syntax tab). Decision 4 gave a tab every door *in* and none that
+   *shows* it: an app's own command (`:syntax_tree`) had only the
+   strip's click and `Ctrl+Shift+N`, both the user's. `set_devtools_tab
+   (name)` in the core, Node and C makes the strip's two writes —
+   `custom = name` for a declared tab, `show(Tab)` for one of the
+   panel's own — reachable from outside: a declared name the panel does
+   not list yet is kept and shows once a frame declares it (the command
+   works before the first frame; the return says whether the panel
+   lists it now), a hidden dock comes back as the picker's does, `on`
+   stays `set_devtools`'s. `devtools_current_tab()` reads the selection
+   back by the same names — the strip's own reading, where
+   `devtools_shown_tab` is the encoder's. Lua stays a guest.
+
 Traps met: the *fit* passes needed a range parameter to run over a
 subtree, and `positions` too, which the scroll-into-view relayout also
 calls (`layout::reposition` keeps the anchored floats with their

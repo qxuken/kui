@@ -180,6 +180,11 @@ impl<'a> Ui<'a> {
         self.core.devtools_picking()
     }
 
+    /// The tab the panel is on, by name (`Core::devtools_current_tab`).
+    pub fn devtools_current_tab(&self) -> String {
+        self.core.devtools_current_tab()
+    }
+
     /// Loads `ext` under `namespace` into the list filling this frame's
     /// slots, and answers with the origin it got. This is how an
     /// extension hosts an extension of its own: the guest asks mid-frame,

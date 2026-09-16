@@ -2221,6 +2221,25 @@ mod follow_headless {
         assert!(kui_devtools_picking(ctx), "the picker raised from outside");
         kui_set_devtools_pick(ctx, false);
         assert!(!kui_devtools_picking(ctx));
+        // The tab, selected from outside and read back.
+        let mut tab = KuiStr {
+            ptr: std::ptr::null(),
+            len: 0,
+        };
+        assert!(kui_devtools_current_tab(ctx, &mut tab));
+        assert_eq!(&*kstr(tab), "tree", "the pick showed the tree tab");
+        assert!(
+            kui_set_devtools_tab(ctx, ks("facts")),
+            "one of the panel's own"
+        );
+        assert!(kui_devtools_current_tab(ctx, &mut tab));
+        assert_eq!(&*kstr(tab), "facts");
+        assert!(
+            !kui_set_devtools_tab(ctx, ks("nobody")),
+            "a name no frame declared: kept, not listed"
+        );
+        assert!(kui_devtools_current_tab(ctx, &mut tab));
+        assert_eq!(&*kstr(tab), "facts", "the strip falls back");
         kui_set_devtools(ctx, false);
 
         // The node list: empty until asked for, then one map per node

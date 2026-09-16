@@ -275,7 +275,7 @@ fn tabs(ui: &mut Ui<'_>, st: &State, t: &Theme) {
             let own = Tab::ALL.iter().map(|tab| {
                 (
                     tab.name().to_string(),
-                    tab.name().to_string(),
+                    tab.label().to_string(),
                     Shown::Builtin(*tab),
                 )
             });

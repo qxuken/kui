@@ -223,7 +223,9 @@ extern "C" {
  * read from past its end. Recompile; a zeroed tail is no zone and no
  * colour. The same version adds kui_input_drag_files, kui_input_drop_files,
  * kui_input_drag_cancel, kui_is_drop_target and kui_drop_target - five
- * functions, nothing the library writes moved.
+ * functions, nothing the library writes moved. Still at 18:
+ * kui_set_devtools_tab and kui_devtools_current_tab - two functions, no
+ * struct.
  */
 #define KUI_ABI_VERSION 18u
 uint32_t kui_abi_version(void);
@@ -2805,6 +2807,18 @@ void kui_set_devtools_selected(KuiCtx *ctx, uint64_t key);
  * shows the tree tab. kui_devtools_picking says whether it is up. */
 void kui_set_devtools_pick(KuiCtx *ctx, bool on);
 bool kui_devtools_picking(KuiCtx *ctx);
+/* Shows the panel's tab named name from the host's side - what the strip's
+ * click and Ctrl+Shift+N do, for a command that jumps to the host's own
+ * tab: one of the panel's own ("facts", "events", "tree") or a declared
+ * tab's. A declared name the panel does not list yet is kept and shows
+ * once a frame declares it; the return says whether the panel lists it
+ * now. A hidden panel comes back docked; kui_set_devtools is still the
+ * host's to call. Once, not every frame: called each frame it would pin
+ * the strip against the user's own clicks. kui_devtools_current_tab reads
+ * the tab the panel is on, by the same names; borrowed until the next
+ * call. */
+bool kui_set_devtools_tab(KuiCtx *ctx, KuiStr name);
+bool kui_devtools_current_tab(KuiCtx *ctx, KuiStr *out);
 /* The key legend the panel's facts tab shows: count pairs, the keys in
  * keys and what each does in what, index for index. */
 void kui_set_devtools_legend(KuiCtx *ctx, const KuiStr *keys, const KuiStr *what,

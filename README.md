@@ -103,9 +103,10 @@ the app's own content, built only while the tab is on show —
 `ui.devtools_tab_with(name, label, |ui| …)`, `<devtoolsTab name label>{()
 => …}</devtoolsTab>`, `if (kui_devtools_tab_open(ctx, name, label)) { …
 kui_close(ctx); }` — drawn over the panel's tab body as the app's own
-nodes, reading the panel's selection through `devtools_selected` and
-raising its picker with `set_devtools_pick`; the inspector a tree-sitter
-app wants is `examples/rust/features/devtools_tab.rs`.
+nodes, reading the panel's selection through `devtools_selected`,
+raising its picker with `set_devtools_pick` and jumping to the tab from
+a command of its own with `set_devtools_tab("syntax")`; the inspector a
+tree-sitter app wants is `examples/rust/features/devtools_tab.rs`.
 
 ## Examples
 

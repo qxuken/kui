@@ -1032,14 +1032,20 @@ static int surface(void) {
         check(kui_devtools_picking(ui), "kui_set_devtools_pick raises the picker");
         kui_set_devtools_pick(ui, false);
         check(!kui_devtools_picking(ui), "and puts it away");
+        KuiStr tab = {0};
+        check(kui_devtools_current_tab(ui, &tab) && has(tab, "tree"), "kui_devtools_current_tab: the pick showed the tree");
+        check(kui_set_devtools_tab(ui, KUI_STR("events")), "kui_set_devtools_tab: one of the panel's own");
+        check(kui_devtools_current_tab(ui, &tab) && has(tab, "events"), "and it reads back");
+        check(!kui_set_devtools_tab(ui, KUI_STR("mine")), "a declared name is listed from the panel's first frame on, not before");
         kui_set_inspect(ui, true);
         kui_frame_begin(ui, 800, 600, 2.0f);
         surface_view(&k, ui);
         /* A declared tab of each form (ADR 0032): the extension form names a
          * slot nobody loaded (harmless: not on show, and a tab's slot raises
-         * no unknown-slot); the host form's open answers false with the
-         * panel on the events tab, so its body is skipped. A second
-         * declaration of a name is refused. */
+         * no unknown-slot); the host form's open answers false since the
+         * name kui_set_devtools_tab selected above is listed only from the
+         * panel's next frame, so its body is skipped. A second declaration
+         * of a name is refused. */
         check(kui_devtools_tab(ui, KUI_STR("plug"), KUI_STR("Plugin"), KUI_STR("ts/panel")), "kui_devtools_tab");
         check(!kui_devtools_tab(ui, KUI_STR("plug"), KUI_STR("Again"), KUI_STR("ts/again")), "a name twice is refused");
         if (kui_devtools_tab_open(ui, KUI_STR("mine"), KUI_STR("Mine"))) {

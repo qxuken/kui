@@ -5655,6 +5655,27 @@ test('a devtoolsTab is lazy through its function child, and its content is the a
   ctx.frame(1040, 720, 1, view());
   assert.equal(calls, before, 'another tab: the function child rests');
   assert.ok(!ctx.nodes().some((n) => n.label === 'jump'));
+  // The tab selected from the app's side: a declared name, one of the
+  // panel's own, a name nobody declares (kept, the strip falls back), and
+  // the selection read back — the strip's own reading, not the encoder's.
+  assert.equal(ctx.devtoolsCurrentTab(), 'plug');
+  assert.equal(ctx.setDevtoolsTab('syntax'), true, 'listed');
+  assert.equal(ctx.devtoolsCurrentTab(), 'syntax');
+  assert.equal(ctx.devtoolsShownTab(), 'syntax', 'the encoder reads it too');
+  ctx.frame(1040, 720, 1, view());
+  assert.equal(calls, before + 1, 'on show: the function child is called');
+  assert.equal(ctx.setDevtoolsTab('tree'), true);
+  assert.equal(ctx.devtoolsCurrentTab(), 'tree');
+  assert.equal(ctx.devtoolsShownTab(), null, 'one of the panel\'s own: nothing for the encoder');
+  assert.equal(ctx.setDevtoolsTab('nobody'), false, 'a name no frame declared');
+  assert.equal(ctx.devtoolsCurrentTab(), 'tree', 'kept, and the strip falls back');
+  ctx.frame(1040, 720, 1, view());
+  assert.equal(calls, before + 1, 'the syntax tab rests');
+  assert.ok(ctx.nodes().some((n) => n.label === 'kui-devtools/tree-filter'), 'the tree tab is up');
+  // A hidden panel comes back docked.
+  ctx.setDevtoolsDock('off');
+  ctx.setDevtoolsTab('syntax');
+  assert.equal(ctx.devtoolsDock(), 'right');
   // Malformed declarations throw at the encoder, the app's own error.
   assert.throws(() => ctx.frame(100, 100, 1, el('devtoolsTab', { name: 'x' }, ['not a function'])), /function child/);
   assert.throws(() => ctx.frame(100, 100, 1, el('devtoolsTab', { name: 'x', slot: 'a/b' }, [() => null])), /not both/);

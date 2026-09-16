@@ -1128,6 +1128,11 @@ export interface NodeInfo {
  *  hidden with its chords still live. `'side'` is accepted as `'right'`. */
 export type DevtoolsDock = 'left' | 'right' | 'bottom' | 'window' | 'off';
 
+/** The devtools panel's own tabs (`setDevtoolsTab`, `devtoolsCurrentTab`):
+ *  the runtime's facts, the event stream, the node tree. A `<devtoolsTab>`
+ *  the app declares is named by its `name` beside these. */
+export type DevtoolsTab = 'facts' | 'events' | 'tree';
+
 /** The name of the core's devtools window while the panel is popped out
  *  (`setDevtoolsDock('window')`): what `windows()` lists it as, and what
  *  `runWindowed` never asks the app's `view` to draw. */
@@ -2342,6 +2347,26 @@ export declare class Ctx {
   /** Whether the panel's picker is up. */
   devtoolsPicking(): boolean
   /**
+   * Shows the panel's tab named `name` from the app's side —
+   * what the strip's click and `Ctrl+Shift+N` do, for a command
+   * that jumps to the app's own tab (ADR 0032). `name` is one
+   * of the panel's own (`facts`, `events`, `tree`) or a
+   * `<devtoolsTab>`'s. A declared name the panel does not list
+   * yet is kept and shows once a frame declares it; the return
+   * says whether the panel lists it now. A hidden panel comes
+   * back docked; `setDevtools(true)` is still the app's to
+   * call. Call it once, not every frame: it would pin the strip
+   * against the user's own clicks.
+   */
+  setDevtoolsTab(name: DevtoolsTab | (string & {})): boolean
+  /**
+   * The tab the panel is on, by name: one of its own or a
+   * `<devtoolsTab>`'s — the selection itself, panel on or off,
+   * unlike `devtoolsShownTab()`, which is the encoder's reading
+   * of a declared tab on show.
+   */
+  devtoolsCurrentTab(): DevtoolsTab | (string & {})
+  /**
    * Selects a node in the panel's tree tab from outside it and
    * reveals it there, as the picker does; `null` clears. `key`
    * is a hex key an event carried or `keyOf` answered.
@@ -3348,6 +3373,26 @@ export declare class KuiWindow {
   setDevtoolsPick(on: boolean): void
   /** Whether the panel's picker is up. */
   devtoolsPicking(): boolean
+  /**
+   * Shows the panel's tab named `name` from the app's side —
+   * what the strip's click and `Ctrl+Shift+N` do, for a command
+   * that jumps to the app's own tab (ADR 0032). `name` is one
+   * of the panel's own (`facts`, `events`, `tree`) or a
+   * `<devtoolsTab>`'s. A declared name the panel does not list
+   * yet is kept and shows once a frame declares it; the return
+   * says whether the panel lists it now. A hidden panel comes
+   * back docked; `setDevtools(true)` is still the app's to
+   * call. Call it once, not every frame: it would pin the strip
+   * against the user's own clicks.
+   */
+  setDevtoolsTab(name: DevtoolsTab | (string & {})): boolean
+  /**
+   * The tab the panel is on, by name: one of its own or a
+   * `<devtoolsTab>`'s — the selection itself, panel on or off,
+   * unlike `devtoolsShownTab()`, which is the encoder's reading
+   * of a declared tab on show.
+   */
+  devtoolsCurrentTab(): DevtoolsTab | (string & {})
   /**
    * Selects a node in the panel's tree tab from outside it and
    * reveals it there, as the picker does; `null` clears. `key`

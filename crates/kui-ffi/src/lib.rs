@@ -108,6 +108,7 @@ pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
             menu_accel: String::new(),
             menu_html: String::new(),
             devtools_key: String::new(),
+            devtools_tab: String::new(),
             selection_text: String::new(),
             selection_html: String::new(),
             font_families: Vec::new(),
@@ -882,6 +883,42 @@ pub extern "C" fn kui_set_devtools_pick(ptr: *mut KuiCtx, on: bool) {
 pub extern "C" fn kui_devtools_picking(ptr: *mut KuiCtx) -> bool {
     guard(false, || {
         unsafe { ctx(ptr) }.is_some_and(|c| c.core().devtools_picking())
+    })
+}
+
+/// Shows the panel's tab named `name` from the host's side — what the
+/// strip's click and `Ctrl+Shift+N` do, for a command that jumps to the
+/// host's own tab (ADR 0032). `name` is one of the panel's own (`facts`,
+/// `events`, `tree`) or a declared tab's. A declared name the panel does
+/// not list yet is kept and shows once a frame declares it; the return
+/// says whether the panel lists it now (false, too, on a bad context). A
+/// hidden panel comes back docked; `kui_set_devtools` is still the host's
+/// to call. Once, not every frame: it would pin the strip against the
+/// user's own clicks.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_devtools_tab(ptr: *mut KuiCtx, name: KuiStr) -> bool {
+    guard(false, || {
+        unsafe { ctx(ptr) }.is_some_and(|c| c.core().set_devtools_tab(&kstr(name)))
+    })
+}
+
+/// The tab the panel is on, by name: one of its own or a declared tab's —
+/// the selection itself, panel on or off; borrowed until the next call.
+/// False on a bad context.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_devtools_current_tab(ptr: *mut KuiCtx, out: *mut KuiStr) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        c.devtools_tab = c.core().devtools_current_tab();
+        if let Some(out) = unsafe { out.as_mut() } {
+            *out = KuiStr {
+                ptr: c.devtools_tab.as_ptr(),
+                len: c.devtools_tab.len(),
+            };
+        }
+        true
     })
 }
 

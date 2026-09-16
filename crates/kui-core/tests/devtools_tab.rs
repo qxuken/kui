@@ -268,8 +268,107 @@ fn a_pick_raised_from_a_tab_lands_in_selected_and_keeps_the_tab() {
     frame(&mut core, &built);
     assert!(core.key_of("kui-devtools/tab/syntax").is_none());
     assert!(
-        core.key_of("kui-devtools/tree").is_some() || core.key_of("kui-devtools/picker").is_some()
+        core.key_of("kui-devtools/tree-filter").is_some()
+            || core.key_of("kui-devtools/picker").is_some()
     );
+}
+
+/// A tab is selected from the app's side (`set_devtools_tab`): a declared
+/// name by name, one of the panel's own by its name, read back through
+/// `devtools_current_tab`. A name the panel does not list yet is kept
+/// and shows once a frame declares it — so a command that opens the tab
+/// at startup, before any frame, lands — and a hidden panel comes back
+/// docked, as the picker's does.
+#[test]
+fn a_tab_is_selected_from_the_app() {
+    let built = Rc::new(RefCell::new(0u32));
+    let mut core = Core::new();
+    core.set_devtools(true);
+    core.set_devtools_dock(DevtoolsDock::Right);
+    core.set_inspect(true);
+    frame(&mut core, &built);
+    assert_eq!(core.devtools_current_tab(), "events", "the panel's default");
+    assert_eq!(*built.borrow(), 0);
+    assert!(
+        core.set_devtools_tab("syntax"),
+        "declared by the last frame: listed"
+    );
+    assert_eq!(core.devtools_current_tab(), "syntax");
+    frame(&mut core, &built);
+    assert_eq!(*built.borrow(), 1, "on show: the closure ran");
+    assert!(core.key_of("kui-devtools/tab/syntax").is_some());
+    // One of the panel's own, by name.
+    assert!(core.set_devtools_tab("tree"));
+    assert_eq!(core.devtools_current_tab(), "tree");
+    frame(&mut core, &built);
+    assert_eq!(*built.borrow(), 1, "off show: the closure rests");
+    assert!(core.key_of("kui-devtools/tab/syntax").is_none());
+    assert!(core.key_of("kui-devtools/tree-filter").is_some());
+    // A name nobody declares: kept, not listed, the strip falls back.
+    assert!(!core.set_devtools_tab("nope"), "not listed");
+    assert_eq!(core.devtools_current_tab(), "tree", "the fallback");
+    frame(&mut core, &built);
+    assert_eq!(*built.borrow(), 1);
+    assert!(core.key_of("kui-devtools/tree-filter").is_some());
+    // The chord moves on from the fallback as it would from the tab.
+    core.handle_input(chord('N'));
+    assert_eq!(
+        core.devtools_current_tab(),
+        "syntax",
+        "N: tree, then the declared one"
+    );
+    // A hidden panel comes back docked.
+    core.set_devtools_dock(DevtoolsDock::Off);
+    frame(&mut core, &built);
+    let runs = *built.borrow();
+    assert!(core.key_of("kui-devtools/tab/syntax").is_none(), "hidden");
+    assert!(core.set_devtools_tab("syntax"));
+    assert_eq!(core.devtools_dock(), DevtoolsDock::Right);
+    frame(&mut core, &built);
+    assert_eq!(*built.borrow(), runs + 1, "back, on the tab");
+
+    // Before any frame: the name is not listed yet, and shows once it is.
+    let built = Rc::new(RefCell::new(0u32));
+    let mut core = Core::new();
+    core.set_devtools(true);
+    core.set_devtools_dock(DevtoolsDock::Right);
+    assert!(!core.set_devtools_tab("syntax"), "nothing declared yet");
+    assert_eq!(
+        core.devtools_current_tab(),
+        "events",
+        "the fallback until then"
+    );
+    frame(&mut core, &built);
+    assert_eq!(*built.borrow(), 0, "the first frame declares it");
+    assert_eq!(
+        core.devtools_current_tab(),
+        "syntax",
+        "and now it is the one on show"
+    );
+    frame(&mut core, &built);
+    assert_eq!(*built.borrow(), 1, "the second builds it");
+
+    // With the panel off the selection is kept; `set_devtools` shows it.
+    let built = Rc::new(RefCell::new(0u32));
+    let mut core = Core::new();
+    core.set_devtools_dock(DevtoolsDock::Right);
+    frame(&mut core, &built);
+    assert!(
+        !core.set_devtools_tab("syntax"),
+        "off, the panel lists nothing yet — the selection is kept"
+    );
+    frame(&mut core, &built);
+    assert_eq!(*built.borrow(), 0, "off: nothing built");
+    assert!(!core.devtools());
+    core.set_devtools(true);
+    frame(&mut core, &built);
+    assert_eq!(
+        core.devtools_current_tab(),
+        "syntax",
+        "on: listed from its first frame"
+    );
+    frame(&mut core, &built);
+    assert_eq!(*built.borrow(), 1, "and the tab selected earlier is up");
 }
 
 /// A declaration is made every frame, panel on or off: it must not pile

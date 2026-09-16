@@ -31,10 +31,12 @@ type AppMessages =
   | { kind: 'zone' }
   | { kind: 'clear' }
   // features/devtools_tab.tsx: a source token and an Inspector row (each
-  // both a hover tag and a click payload), and the picker the tab raises.
+  // both a hover tag and a click payload), the picker the tab raises, and
+  // the page's button that jumps to the tab.
   | { kind: 'tok'; id: number }
   | { kind: 'row'; id: number }
-  | { kind: 'inspect-pick' };
+  | { kind: 'inspect-pick' }
+  | { kind: 'show-tab' };
 
 declare module '@qxuken/kui/jsx-runtime' {
   interface KuiMsg {

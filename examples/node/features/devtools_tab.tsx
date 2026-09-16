@@ -10,7 +10,10 @@
 // are the app's own `onHover`. A row's click selects the token in the
 // panel's tree tab (`setDevtoolsSelected`), and the tab raises the panel's
 // picker itself (`setDevtoolsPick`): the pick lands in `devtoolsSelected()`,
-// read back as the node it names, with the tab still up.
+// read back as the node it names, with the tab still up. The page has a
+// button of its own that jumps to the tab (`setDevtoolsTab`) — an editor's
+// `:syntax_tree` command — and prints which tab the panel is on
+// (`devtoolsCurrentTab()`).
 //
 // The function is called only while the tab is on show — `frame` reads
 // which tab that is once before encoding — so the counter the page prints
@@ -123,7 +126,7 @@ type Model = {
 // hover reveals its row once and the list stays where the user put it.
 let built = 0;
 let revealed: number | null = null;
-type AppMsg = { kind: 'tok'; id: number } | { kind: 'row'; id: number } | { kind: 'inspect-pick' };
+type AppMsg = { kind: 'tok'; id: number } | { kind: 'row'; id: number } | { kind: 'inspect-pick' } | { kind: 'show-tab' };
 type Msg = AppMsg | CoreMsg;
 
 const init: Model = { hoverRow: null, hoverTok: null };
@@ -148,6 +151,11 @@ function update(model: Model, msg: Msg, _ev: UiEvent<Msg>, win: KuiWindow): Mode
     }
     case 'inspect-pick':
       win.setDevtoolsPick(true);
+      return undefined;
+    case 'show-tab':
+      // The app's own command to the panel: the tab by name, as the
+      // strip's click would select it.
+      win.setDevtoolsTab('inspector');
       return undefined;
     default:
       return undefined;
@@ -205,7 +213,10 @@ const view = (model: Model, win: KuiWindow) => {
         );
       })}
       <text size={12} color={t.muted}>{shown == null ? 'hover a token, or pick one from the Inspector' : `${path(shown)} · @${TREE[shown].group ?? 'none'}`}</text>
-      <text size={11} color={t.faint}>{`Inspector built ${built} time(s) — once a view, only while its tab is on show`}</text>
+      <box dir="row" gap={8} crossAlign="center">
+        <button onClick={{ kind: 'show-tab' }}>open the Inspector</button>
+        <text size={11} color={t.faint}>{`the panel is on \`${win.devtoolsCurrentTab()}\` · Inspector built ${built} time(s) — once a view, only while its tab is on show`}</text>
+      </box>
       <devtoolsTab name="inspector" label="Inspector">
         {() => {
           built++;
@@ -352,6 +363,17 @@ await run<Model, AppMsg>({
     const runs = built;
     app.render();
     check(built === runs, 'another tab up: the function child rests');
+    check(ctx.devtoolsCurrentTab() === 'facts', 'and the panel says which it is on');
+    // The page's own button jumps to the tab: the app's command, not the
+    // strip's click.
+    const open = node('open the Inspector')!;
+    ctx.cursor(open.rect.x + 2, open.rect.y + 2);
+    ctx.mouse(true, 1);
+    ctx.mouse(false, 1);
+    app.settle();
+    check(ctx.devtoolsCurrentTab() === 'inspector', "the button selected the tab from the app's side");
+    check(built === runs + 1, 'and the view that followed built it');
+    check(!!node('kui-devtools/tab/inspector'), "over the panel's body");
     return true;
   },
 });

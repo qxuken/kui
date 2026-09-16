@@ -999,6 +999,20 @@ pub const DOORS: &[Door] = &[
         doc: "Selects and reveals a node in the tree tab from outside the panel.",
     },
     Door {
+        rust: "Core::set_devtools_tab",
+        c: Is("kui_set_devtools_tab"),
+        node: Is("setDevtoolsTab"),
+        lua: No(GUEST),
+        doc: "Shows the panel's tab named — one of its own or a declared one — from outside the panel, as the strip's click does; a hidden panel comes back docked.",
+    },
+    Door {
+        rust: "Core::devtools_current_tab",
+        c: Is("kui_devtools_current_tab"),
+        node: Is("devtoolsCurrentTab"),
+        lua: No(GUEST),
+        doc: "The tab the panel is on, by name.",
+    },
+    Door {
         rust: "Core::set_devtools_legend",
         c: Is("kui_set_devtools_legend"),
         node: Is("setDevtoolsLegend"),

@@ -11,7 +11,10 @@
 //! on a row selects the token in the panel's tree tab
 //! (`set_devtools_selected`), and the tab can raise the panel's picker
 //! (`set_devtools_pick`): the pick lands in `devtools_selected`, which the
-//! tab reads back as the node it names, with the tab still up.
+//! tab reads back as the node it names, with the tab still up. The page
+//! has a button of its own that jumps to the tab (`set_devtools_tab`) —
+//! an editor's `:syntax_tree` command — and prints which tab the panel
+//! is on (`devtools_current_tab`).
 //!
 //! The closure runs only while the tab is on show — `built` counts the
 //! runs, and the page prints it — so a tab nobody looks at costs the
@@ -178,6 +181,8 @@ struct Page {
     reveal: Option<usize>,
     /// The tab asked for the picker, applied the same way.
     pick: bool,
+    /// The page's button asked for the tab, applied the same way.
+    show_tab: bool,
 }
 
 impl Page {
@@ -202,6 +207,10 @@ impl App for Page {
         if std::mem::take(&mut self.pick) {
             ui.core().set_devtools_pick(true);
         }
+        if std::mem::take(&mut self.show_tab) {
+            ui.core().set_devtools_tab("inspector");
+        }
+        let current_tab = ui.devtools_current_tab();
         // What the panel holds, in the tree's terms — read before the
         // page is built, so the tab and the source agree on it.
         let selected = Self::node_of(ui, ui.devtools_selected());
@@ -286,12 +295,22 @@ impl App for Page {
                     },
                     TextStyle::new(12.0).color(t.muted),
                 );
-                ui.text(
-                    &format!(
-                        "Inspector built {} time(s) — only while its tab is on show",
-                        self.built
-                    ),
-                    TextStyle::new(11.0).color(t.faint),
+                ui.with(
+                    NodeSpec::row().gap(8.0).cross_align(Align::Center),
+                    |ui| {
+                        widgets::button(
+                            ui,
+                            "open the Inspector",
+                            Value::map([("kind", Value::str("show-tab"))]),
+                        );
+                        ui.text(
+                            &format!(
+                                "the panel is on `{current_tab}` · Inspector built {} time(s) — only while its tab is on show",
+                                self.built
+                            ),
+                            TextStyle::new(11.0).color(t.faint),
+                        );
+                    },
                 );
             },
         );
@@ -428,6 +447,7 @@ impl App for Page {
             // A click on a row or a token: select it in the panel's tree.
             (Some("row") | Some("tok"), None) => self.reveal = id,
             (Some("pick"), None) => self.pick = true,
+            (Some("show-tab"), None) => self.show_tab = true,
             _ => {}
         }
     }
@@ -453,7 +473,8 @@ impl Example for Page {
     /// is built once a frame, over the panel's body; hovering a row lights
     /// the node's tokens in the source and hovering a token lights its
     /// path in the tab; a row's click selects the token in the panel's
-    /// tree; the tab's picker lands a pick in `selected` with the tab up.
+    /// tree; the tab's picker lands a pick in `selected` with the tab up;
+    /// the page's button jumps to the tab from the app's side.
     fn headless(&mut self, core: &mut Core) -> Result<(), String> {
         // The bare core the drive gets has no panel: on, docked right, as
         // the harness's window would have it.
@@ -584,6 +605,25 @@ impl Example for Page {
         let runs = self.built;
         d.frame(self);
         d.check(self.built == runs, "another tab up: the closure rests")?;
+        d.check(
+            d.core.devtools_current_tab() == "facts",
+            "and the panel says which it is on",
+        )?;
+        // The page's own button jumps to the tab: the app's command, not
+        // the strip's click.
+        let open = d.key_of("open the Inspector").ok_or("no open button")?;
+        d.click_key(self, open);
+        d.frame(self);
+        d.check(
+            d.core.devtools_current_tab() == "inspector",
+            "the button selected the tab from the app's side",
+        )?;
+        d.check(
+            self.built == runs + 1,
+            "and the same view built it, the door being read before the tab",
+        )?;
+        let up = d.key_of("kui-devtools/tab/inspector").is_some();
+        d.check(up, "over the panel's body")?;
         Ok(())
     }
 }

@@ -216,6 +216,16 @@ impl Tab {
         }
     }
 
+    /// What the strip shows and the access tree names: the name with
+    /// its first letter up, as a declared tab's label is written.
+    fn label(self) -> &'static str {
+        match self {
+            Tab::Facts => "Facts",
+            Tab::Events => "Events",
+            Tab::Tree => "Tree",
+        }
+    }
+
     fn parse(s: &str) -> Option<Tab> {
         Self::ALL.into_iter().find(|t| t.name() == s)
     }
@@ -1114,6 +1124,59 @@ impl Core {
     /// Whether the panel's picker is up.
     pub fn devtools_picking(&self) -> bool {
         self.session.state().devtools.pick
+    }
+
+    /// Shows the panel's tab named `name` from outside the panel — what
+    /// the strip's click and `Ctrl+Shift+N` do, for an app with a command
+    /// that jumps to its own tab (ADR 0032). `name` is one of the panel's
+    /// own (`facts`, `events`, `tree`) or a declared tab's. A declared
+    /// name the panel does not list yet is kept and shows once a frame
+    /// declares it, as a strip click on it would; the return says whether
+    /// the panel lists it now (it lists a declared tab from the first
+    /// frame it is on). A hidden panel comes back docked, as the
+    /// picker's does. The panel's `on` is not touched: that is
+    /// [`Self::set_devtools`]'s. Edge-triggered — called once a frame it
+    /// would pin the strip against the user's own clicks.
+    pub fn set_devtools_tab(&mut self, name: &str) -> bool {
+        if !cfg!(feature = "devtools") {
+            return false;
+        }
+        let listed = {
+            let mut s = self.session.state();
+            let d = &mut s.devtools;
+            let listed = match Tab::parse(name) {
+                Some(tab) => {
+                    d.show(tab);
+                    true
+                }
+                None => {
+                    d.custom = Some(name.to_string());
+                    d.lists(name)
+                }
+            };
+            if d.dock == Dock::Off {
+                d.dock = Dock::Right;
+            }
+            listed
+        };
+        self.devtools_redraw_others();
+        listed
+    }
+
+    /// The tab the panel is on, by name: one of its own (`facts`,
+    /// `events`, `tree`) or a declared tab's — what the strip marks,
+    /// panel on or off, in any window. A declared name the panel stopped
+    /// listing answers the panel's own tab the strip falls back to.
+    /// Unlike [`Self::devtools_shown_tab`], which answers only a declared
+    /// tab on show in the main window for a data binding's function
+    /// child, this is the selection itself.
+    pub fn devtools_current_tab(&self) -> String {
+        let s = self.session.state();
+        let d = &s.devtools;
+        match d.shown() {
+            Shown::Builtin(t) => t.name().to_string(),
+            Shown::Custom(i) => d.tabs[i].name.clone(),
+        }
     }
 
     /// The key legend the facts tab shows: `(keys, what they do)`.

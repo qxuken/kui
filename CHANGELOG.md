@@ -21,6 +21,44 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.16 (unreleased)
+
+**What breaks.** Nothing: two doors added, the ABI at 18 and the frame
+at v14.
+
+### Added
+
+- **A devtools tab is selected from the app** (backlog F67, from
+  kawoosh's Syntax tab: a `:syntax_tree` command with no way to *show*
+  the tab it had built — the strip's click and `Ctrl+Shift+N` were the
+  only two, and both the user's). `Core::set_devtools_tab(name)` /
+  `win.setDevtoolsTab(name)` / `kui_set_devtools_tab(ctx, name)` shows
+  the tab named — one of the panel's own by its name (`facts`, `events`,
+  `tree`) or a declared one's — as the strip's click would. A declared
+  name the panel does not list yet is kept and shows once a frame
+  declares it, so the call lands before the first frame; the return says
+  whether the panel lists it now (a declared tab is listed from the
+  panel's first frame on). A hidden dock comes back on the right, as the
+  picker's raise does; `on` is not touched — `set_devtools(true)` is
+  still the app's to call beside it. Once, not every frame: called each
+  frame it would pin the strip against the user's own clicks.
+  `Core::devtools_current_tab()` / `devtoolsCurrentTab()` /
+  `kui_devtools_current_tab(ctx, &out)` reads the selection back by the
+  same names — the strip's own reading, where `devtoolsShownTab()` stays
+  the encoder's (a declared tab on show in the main window, `null` for
+  one of the panel's own). Node gains a `DevtoolsTab` type for the three
+  own names; the verb table has both rows; Lua stays a guest, as for
+  every devtools verb. Both `devtools_tab` examples gained a page button
+  that jumps to the Inspector and print which tab the panel is on.
+
+### Changed
+
+- **The panel's own tabs are labelled `Facts`, `Events`, `Tree`** in the
+  strip and the access tree, as a declared tab's label is written
+  (`Inspector`, `Tree-sitter`) — the strip read as two kinds of tab
+  before. Their *names* — what `set_devtools_tab`, `devtools_current_tab`
+  and the `kui-devtools/tab-tree` keys use — stay lowercase.
+
 ## 0.1.0-alpha.15 (2026-09-16)
 
 **What breaks.**
