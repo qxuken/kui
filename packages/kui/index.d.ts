@@ -1559,6 +1559,15 @@ export interface WindowOptions {
    *  hold. It is an option rather than an environment variable so that a
    *  shipped app's motion is its own code's decision. */
   system?: EnvInput['system'];
+  /** macOS: whether holding a letter key opens the accent picker (the
+   *  platform's press-and-hold, on unless the user turned it off) or
+   *  repeats the key, as every other platform does. With it on, a held `e`
+   *  offers `é è ê` and a held `j` does nothing at all — so an app whose
+   *  keys are commands (a modal editor, where `j` held is a motion) says
+   *  `false`; one that is typed into leaves it, the picker being how its
+   *  users write accents. This process alone, never written to the user's
+   *  preferences; a no-op on every other platform. */
+  pressAndHold?: boolean;
   /** `false` stops the loop printing the core's warnings (see `Warning`);
    *  `win.warnings()` still drains them. */
   warnings?: boolean;

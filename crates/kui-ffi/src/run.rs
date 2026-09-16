@@ -38,6 +38,16 @@ impl kui::App for CApp {
     }
 }
 
+/// macOS: whether holding a letter key opens the accent picker (the
+/// platform's press-and-hold) or repeats the key, as every other platform
+/// does — for this process, before `kui_run` (backlog F69). A host whose
+/// keys are commands says false; one that is typed into leaves it. Never
+/// written to the user's preferences; a no-op elsewhere.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_press_and_hold(on: bool) {
+    guard((), || kui::press_and_hold(on))
+}
+
 /// Runs a windowed app driven by C callbacks. Blocks until the window closes.
 /// Returns false if the event loop could not start.
 #[unsafe(no_mangle)]

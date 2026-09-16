@@ -1144,8 +1144,8 @@ fn every_entry_point_is_pinned() {
             }
         }
     }
-    // The runner's two are pinned only in a build that has them.
-    let runner = ["kui_run", "kui_run_with"];
+    // The runner's three are pinned only in a build that has them.
+    let runner = ["kui_run", "kui_run_with", "kui_press_and_hold"];
     let mut expected = declared.clone();
     if cfg!(not(feature = "runner")) {
         for name in runner {

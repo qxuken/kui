@@ -288,5 +288,8 @@ int main(int argc, char **argv) {
     if (!abi_ok()) return 1;
     if (argc > 1 && strcmp(argv[1], "--headless") == 0) return headless();
     AppState state = {0};
+    /* A held key repeats: the counter's arrows are commands, not letters
+     * to accent. */
+    kui_press_and_hold(false);
     return kui_run(KUI_STR("kui — C counter"), view, on_event, &state) ? 0 : 1;
 }

@@ -1608,6 +1608,17 @@ impl KuiWindow {
         if let Some(sys) = o.get("system") {
             launcher = launcher.system(pinned_system(sys)?);
         }
+        // macOS's press-and-hold, the launcher's `press_and_hold` (F69):
+        // `false` makes a held letter repeat; left out, the user's own.
+        launcher = match o.get("pressAndHold") {
+            None | Some(Json::Null) => launcher,
+            Some(Json::Bool(on)) => launcher.press_and_hold(*on),
+            Some(other) => {
+                return Err(err(format!(
+                    "window options: pressAndHold must be a boolean, not {other}"
+                )));
+            }
+        };
         let runner = launcher
             .open(TreeApp::default())
             .map_err(|e| err(format!("failed to open window: {e}")))?;

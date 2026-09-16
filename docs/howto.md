@@ -484,6 +484,23 @@ the one thing that asks an idle app for a frame twice a second.
 [`caretSolid`](props.md#container-props) ·
 [alpha.12](../CHANGELOG.md#010-alpha12-2026-09-14)
 
+### Why does a held key not repeat on a Mac?
+
+macOS's press-and-hold: holding a letter offers its accents (`e` → `é è
+ê`) instead of repeating it, and a letter with no accents does nothing
+at all — on by default, a user default the process reads, and off only
+on a machine whose owner turned it off, which is why it works on one Mac
+and not the next. Every other platform repeats. An app whose keys are
+commands — a modal editor, where `j` held is a motion — says so at
+launch: `kui::app(..).press_and_hold(false)` (Node `pressAndHold: false`
+in `WindowOptions`, C `kui_press_and_hold(false)` before `kui_run`). It
+is pinned for this process alone, in the argument domain — what
+`-ApplePressAndHoldEnabled NO` on the command line would set — and never
+written to the user's preferences; a no-op elsewhere. An app that is
+typed into leaves it: the picker is how its users write accents.
+
+[`Launcher::press_and_hold` row](props.md#doors)
+
 ### How do I reset an editor's text?
 
 `initial` seeds a *new* editor only — a key declared again keeps the draft

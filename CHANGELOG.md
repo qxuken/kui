@@ -23,10 +23,23 @@ was the first bare bump to break an app in five releases).
 
 ## 0.1.0-alpha.16 (unreleased)
 
-**What breaks.** Nothing: two doors and a prop added, the ABI at 18 and
-the frame at v14.
+**What breaks.** Nothing: three doors and a prop added, the ABI at 18
+and the frame at v14.
 
 ### Added
+
+- **A held key repeats on a Mac** (backlog F69, from kawoosh on a second
+  Mac: `j` held moved one line, `e` held opened the accent picker — the
+  platform's press-and-hold, on by default and off only on the machine it
+  had been developed on). `Launcher::press_and_hold(false)` /
+  `pressAndHold: false` in `WindowOptions` / `kui_press_and_hold(false)`
+  before `kui_run` says a held letter repeats, as it does on every other
+  platform; left alone, the user's own setting stands, which is what an
+  app that is typed into wants. Pinned for this process in the argument
+  domain — what `-ApplePressAndHoldEnabled NO` on the command line sets,
+  read before the app's and the global domain — and never written to the
+  user's preferences; a no-op elsewhere. The C counter says it; the verb
+  table has the row.
 
 - **A caret that does not blink** (backlog F68, from kawoosh idling in
   normal mode: sixteen frames in eight seconds with nothing happening —

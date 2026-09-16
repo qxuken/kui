@@ -170,6 +170,45 @@ pub fn detach(window: &Window) {
     });
 }
 
+/// Whether holding a letter key opens the accent picker (macOS's
+/// press-and-hold, `ApplePressAndHoldEnabled`) or repeats the key, as
+/// every other platform does (backlog F69). AppKit reads the default
+/// through `NSUserDefaults` at each key press, so it is set here in the
+/// *argument domain* — the one `-ApplePressAndHoldEnabled NO` on the
+/// command line fills, searched before the app's and the global domain
+/// and volatile, so nothing is written to the user's preferences and a
+/// setting the user made globally is left as it was. Merged over the
+/// domain's other entries, which are the process's real `-key value`
+/// arguments.
+pub fn set_press_and_hold(on: bool) {
+    use objc2_foundation::{
+        NSArgumentDomain, NSMutableDictionary, NSNumber, NSUserDefaults, ns_string,
+    };
+    let defaults = NSUserDefaults::standardUserDefaults();
+    // SAFETY: `NSArgumentDomain` is Foundation's constant string, read
+    // only; the dictionary is `NSString` keys to `NSNumber` values, the
+    // type the argument domain holds.
+    unsafe {
+        let domain: &NSString = NSArgumentDomain;
+        let merged: Retained<NSMutableDictionary<NSString, AnyObject>> = NSMutableDictionary::new();
+        merged.addEntriesFromDictionary(&defaults.volatileDomainForName(domain));
+        merged.insert(
+            ns_string!("ApplePressAndHoldEnabled"),
+            &*NSNumber::numberWithBool(on),
+        );
+        defaults.setVolatileDomain_forName(&merged, domain);
+    }
+}
+
+/// What the process answers for press-and-hold now — the argument domain
+/// over the app's and the global one, `NSUserDefaults`'s own lookup — so
+/// a test sees the pin land where AppKit reads.
+#[cfg(test)]
+pub fn press_and_hold() -> bool {
+    use objc2_foundation::{NSUserDefaults, ns_string};
+    NSUserDefaults::standardUserDefaults().boolForKey(ns_string!("ApplePressAndHoldEnabled"))
+}
+
 /// Stamps what `window`'s view answers, from the frame `core` just laid
 /// out. Cheap when nothing moved: a compare against what the last count
 /// was computed from.

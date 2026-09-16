@@ -225,7 +225,7 @@ extern "C" {
  * kui_input_drag_cancel, kui_is_drop_target and kui_drop_target - five
  * functions, nothing the library writes moved. Still at 18:
  * kui_set_devtools_tab and kui_devtools_current_tab - two functions, no
- * struct.
+ * struct - and kui_press_and_hold, one more.
  */
 #define KUI_ABI_VERSION 18u
 uint32_t kui_abi_version(void);
@@ -3051,6 +3051,17 @@ typedef struct KuiRunConfig {
  * decision. */
 bool kui_run_with(KuiCtx *ctx, KuiStr title, const KuiRunConfig *config,
                   KuiViewFn view, KuiEventFn on_event, void *user);
+
+/* macOS: whether holding a letter key opens the accent picker (the
+ * platform's press-and-hold, on unless the user turned it off) or repeats
+ * the key, as every other platform does. With it on, a held e offers
+ * "é è ê" and a held j does nothing at all - so a host whose keys are
+ * commands (a modal editor, where j held is a motion) passes false before
+ * kui_run; one that is typed into leaves it, the picker being how its
+ * users write accents. This process alone, never written to the user's
+ * preferences; a no-op on every other platform, where a held key repeats
+ * already. */
+void kui_press_and_hold(bool on);
 
 /* -- Extension ABI: C as the guest rather than the host ------------------
  *
