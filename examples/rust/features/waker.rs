@@ -5,7 +5,10 @@
 //! key press. `setup` hands the app the waker once; the thread clones it
 //! and calls `wake()` after every line, and the loop draws. Under
 //! `KUI_WAKER_LINES=n` the app closes after `n` lines and prints how many
-//! frames it drew for them, which is what the by-hand check reads.
+//! frames it drew for them, which is what the by-hand check reads; and
+//! `teardown` prints once more as the window goes — closed by the app,
+//! by its button or by Quit alike — which is where an app saves what it
+//! would lose (backlog F74).
 //!
 //! Run: cargo run -p kui --example waker
 
@@ -40,6 +43,10 @@ impl App for Feed {
                 }
             }
         });
+    }
+
+    fn teardown(&mut self) {
+        println!("teardown after {} frames", self.frames);
     }
 
     fn view(&mut self, ui: &mut Ui<'_>) {

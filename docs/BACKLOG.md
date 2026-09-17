@@ -30,8 +30,9 @@ F62–F66 and C40 — with the alpha.14 tag, and the three of 2026-09-16 — C42
 binary-file report, C44 from the pre-tag round that followed — the day
 they were filed, before the alpha.15 tag, F67–F72 from the kawoosh
 syntax-tab, idle-frame, second-Mac, mid-frame-dock and devtools-strip
-reports the same day, after it, and F73 — the select in the other three
-bindings — the day after. The index
+reports the same day, after it, F73 — the select in the other three
+bindings — the day after, and F74 — the app hearing its window go — from
+the kawoosh session report of the same day. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -1947,3 +1948,7 @@ move.
 - `!` **F71** — [A grow child's `min` or `max` keeps its share of the run: the room a clamp gives back is a hole, not its siblings'](backlog/closed-2026-09.md#-f71--a-grow-childs-min-or-max-keeps-its-share-of-the-run-the-room-a-clamp-gives-back-is-a-hole-not-its-siblings--done-2026-09-16) — done (2026-09-16) — `distribute_run` freezes a clamped child and shares the rest, as flexbox does
 - `~` **F72** — [The devtools strip breaks tab labels, and the theme, accent and menu toggles are icons away from the facts they change](backlog/closed-2026-09.md#-f72--the-devtools-strip-breaks-tab-labels-and-the-theme-accent-and-menu-toggles-are-icons-away-from-the-facts-they-change--done-2026-09-16) — done (2026-09-16) — the strip wraps whole tabs; `widgets::select`, on the Facts rows
 - `.` **F73** — [`select` is a Rust widget only: no `<select>`, no Lua `select {}`, no `kui_select`](backlog/closed-2026-09.md#-f73--select-is-a-rust-widget-only-no-select-no-lua-select--no-kui_select--done-2026-09-17) — done (2026-09-17) — `<select>`, `dropdown { }`, `kui_select`, one corpus scene in four adapters, frame v15
+
+**From the kawoosh session report (2026-09-17)** — F74, filed and built the same day
+
+- `!` **F74** — [An app never hears its window go: the close button drops it, ⌘Q ends the process, and neither is a key](backlog/closed-2026-09.md#-f74--an-app-never-hears-its-window-go-the-close-button-drops-it-q-ends-the-process-and-neither-is-a-key--done-2026-09-17) — done (2026-09-17) — `App::teardown`, once, from the loop's `exiting` and a pumped runner's retirement

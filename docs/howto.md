@@ -838,6 +838,18 @@ host that owns the loop blocks on the same three things with
 
 [alpha.9](../CHANGELOG.md#010-alpha9-2026-09-08)
 
+### How do I save something as the window goes?
+
+`App::teardown(&mut self)`: called once as the main window goes for good
+— its close button, Quit from the menu or the dock, `WindowCommand::Close`
+on it, a pumped runner ended — before `run` returns or the process exits.
+A `:q` of your own that already saved sets a flag and skips it. There is
+no `Ui` by then and nothing draws; a crash does not reach it. A `Drop` on
+the app is not the same thing: on a Mac, Quit ends the process from
+`applicationWillTerminate` and `run` never returns.
+
+[alpha.16](../CHANGELOG.md#010-alpha16-unreleased)
+
 ## Test it
 
 ### How do I get the settled frame instead of frame 0 of a transition?

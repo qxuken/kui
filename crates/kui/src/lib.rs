@@ -75,6 +75,14 @@ pub trait App {
     /// events (backlog C21). The default keeps it: an app with no other
     /// thread has no use for one.
     fn setup(&mut self, _waker: Waker) {}
+    /// Called once, when the main window is going for good — its close
+    /// button, Quit from the menu or the dock, `WindowCommand::Close` on
+    /// it, a pumped runner ended — before `run` returns or the process
+    /// exits (backlog F74). The place to keep what the app would
+    /// otherwise lose with the window: a session, a draft, a position.
+    /// The frame is over by then: there is no `Ui` and nothing draws.
+    /// Not called for a crash. The default does nothing.
+    fn teardown(&mut self) {}
 }
 
 /// A handle into the event loop that any thread may hold: [`wake`] asks
@@ -461,6 +469,7 @@ impl Launcher {
             smoke_frames: Self::smoke_frames(),
             frames_drawn: 0,
             exit_requested: false,
+            torn_down: false,
             pumped: false,
             opened: false,
             primary_down: None,
@@ -744,6 +753,7 @@ impl<A: App> PumpRunner<A> {
     /// the loop handed back for the next `Launcher::open` on the thread.
     fn retire(&mut self) {
         self.alive = false;
+        self.shell.teardown_once();
         // The main core outlives its window, as it predated it: a host
         // still reads events, warnings and the tree off a runner that
         // has ended (`core_mut`), and the Node driver does so for the
@@ -1117,6 +1127,9 @@ struct Shell<A: App> {
     /// Set by `WindowCommand::Close` on the main window; honored at the end
     /// of the event.
     exit_requested: bool,
+    /// Whether `App::teardown` has run: once, whichever of the loop's
+    /// exit and the runner's retirement comes first.
+    torn_down: bool,
     /// Driven by a `PumpRunner` rather than `run_app`: the main window's
     /// close ends the runner (`exit_requested`) instead of exiting winit's
     /// loop, which the next runner on this thread reuses (backlog F58).
@@ -1190,6 +1203,18 @@ impl<A: App> Shell<A> {
         match self.panes.first() {
             Some(p) => p.size(),
             None => (Size::new(self.size.0 as f32, self.size.1 as f32), 1.0),
+        }
+    }
+
+    /// `App::teardown`, once (backlog F74): from `exiting` — the loop's
+    /// last word, which the OS's Quit reaches too, on macOS through
+    /// `applicationWillTerminate` where the process ends without `run`
+    /// ever returning — and from a pumped runner's retirement, whichever
+    /// comes first.
+    fn teardown_once(&mut self) {
+        if !self.torn_down {
+            self.torn_down = true;
+            self.app.teardown();
         }
     }
 
@@ -2064,6 +2089,13 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
     /// AccessKit's side of the conversation: assistive technology attaching
     /// (send it the tree, and let the view know), detaching, or asking for
     /// an action (input).
+    /// The loop's last event: the app's `teardown`, before the process
+    /// goes (a Quit from the OS) or `run` returns (the main window
+    /// closed).
+    fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
+        self.teardown_once();
+    }
+
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: access_bridge::UserEvent) {
         // A wake is the app saying "what `view` shows has changed": every
         // window draws, as after any input. Coalesced by the platform's

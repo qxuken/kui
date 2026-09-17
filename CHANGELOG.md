@@ -33,6 +33,26 @@ hand will see.
 
 ### Added
 
+- **The app hears the window go** (backlog F74, from kawoosh closed
+  with its red button and with ⌘Q: the session it saves on `:q` was
+  not saved, since neither path is a key the app sees — the first
+  returns from `run` with the app dropped, the second ends the process
+  from `applicationWillTerminate` without `run` ever returning).
+  `App::teardown(&mut self)`, called once as the main window goes for
+  good — its close button, Quit from the menu or the dock,
+  `WindowCommand::Close` on it, a pumped runner ended — before `run`
+  returns or the process exits: from the loop's `exiting`, which the
+  OS's Quit reaches too, and from a pumped runner's retirement,
+  whichever comes first. The place to keep what the app would lose
+  with the window; there is no `Ui` by then and nothing draws. The
+  default does nothing. `kui-devtools`' `Harness` forwards it, so an
+  example's `teardown` runs; `waker` prints once more as it goes.
+  Rust only: the C and Node hosts own their loops and their
+  `pump` returning false is the same moment.
+
+  *What you can delete:* a `Drop` on the app that saved state as it
+  went — which never ran under ⌘Q on a Mac.
+
 - **A select** (backlog F72, from kawoosh's Facts tab: three toggles that
   cycled a base, an accent and a menu mode with a click each, off in the
   tab strip and away from the facts they changed). `widgets::select(ui,

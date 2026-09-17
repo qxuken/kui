@@ -423,6 +423,10 @@ impl<E: Example> App for Harness<E> {
     fn setup(&mut self, waker: Waker) {
         self.example.setup(waker);
     }
+
+    fn teardown(&mut self) {
+        self.example.teardown();
+    }
 }
 
 #[cfg(test)]
