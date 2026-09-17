@@ -58,6 +58,34 @@ wrapping under it.
 [`minWidth` row](props.md#container-props) ·
 [alpha.8](../CHANGELOG.md#010-alpha8-2026-09-07)
 
+### How do I line up the columns of a key/value list, or any table?
+
+`<box dir="table">`, `grid { }` (Lua's `table` is its own), a `KuiSpec`
+with `dir = KUI_TABLE`, `NodeSpec::table()`: a column whose rows'
+children line up in columns — the nth child of every row is column n,
+and a column is as wide as its widest cell — so a label column sits at
+its longest label with no width picked by hand and nothing measured
+([ADR 0033](adr/0033-a-table-is-a-column-whose-cells-align.md)). Put
+the rows in as rows: `<box dir="row" width="grow" gap={8}><text>{k}
+</text><text>{v}</text></box>`, a bare text a cell held to its column.
+A cell's `width` sizes its column — `fit` (the default) and a number are
+content, `grow` makes the whole column grow with the table, a percent
+takes its cut of the row — and its `minWidth` / `maxWidth` clamp the
+column; a `grow` cell in a header row is enough to make its column the
+one that stretches. The rows keep everything a row has: their own `gap`
+between cells, padding, `bg`, `hoverBg`, `onClick` and `label` — so a
+clickable settings row, a hovered inspector row and a header that sorts
+are rows with those props — and a number right-aligns in its column
+with a `mainAlign="end"` row around the text. Everything else is the
+column's: `gap` is between rows, `scrollY` scrolls them. Fit columns
+that overflow the row are compressed largest first, as a row's children
+are, unless the table scrolls x; a row of a table never wraps. The
+devtools' Facts, tokens, legend and inspector lists are tables.
+
+[`table` element](props.md#elements) ·
+[examples/rust/widgets/table.rs](../examples/rust/widgets/table.rs) ·
+[examples/node/widgets/table.tsx](../examples/node/widgets/table.tsx)
+
 ### How do I clamp text to one line, or to three with an ellipsis?
 
 `wrap="none"` breaks nowhere, `maxLines={3}` lays out at most three lines,
@@ -991,10 +1019,11 @@ session they are not in.
 ### How do I size something to its text before the frame exists?
 
 `measureText(content, style, maxWidth)` on the surface returns what layout
-would give the same `<text>`, so a breakpoint assertion or a column sized to
-its widest label is arithmetic rather than a screenshot. It is the same
-object `view`'s third argument is, so a test measures exactly what the view
-measured.
+would give the same `<text>`, so a breakpoint assertion is arithmetic rather
+than a screenshot. It is the same object `view`'s third argument is, so a
+test measures exactly what the view measured. (A column sized to its widest
+label no longer needs it: that is
+[a table](#how-do-i-line-up-the-columns-of-a-keyvalue-list-or-any-table).)
 
 [`text` element](props.md#elements) ·
 [alpha.5](../CHANGELOG.md#010-alpha5-2026-09-03)

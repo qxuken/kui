@@ -381,6 +381,18 @@ pub struct LayoutSpec {
     /// would need its height first. Ignored on a column and on a
     /// `scroll_x` row, both with a warning (`diag::WRAP_IGNORED`).
     pub wrap: bool,
+    /// A column whose rows' children line up in columns (ADR 0033): the
+    /// nth in-flow child of every in-flow row is a cell of column n, and
+    /// a column is as wide as its widest cell — its cells' own `width`s
+    /// say how the column sizes (a `Fixed` or `Fit` cell is content that
+    /// sets the column's fit width, a `Grow` cell makes the column grow,
+    /// a `Percent` one takes its cut of the row) and their `minWidth` /
+    /// `maxWidth` clamp it. The rows are ordinary rows — a row's `gap` is
+    /// the space between its cells, its `padding` its own, and it takes
+    /// its background, its click and its hover as any row does — except
+    /// that a row of a table never wraps (`diag::WRAP_IGNORED`). Set by
+    /// [`NodeSpec::table`], which is a column; `dir` stays `Column`.
+    pub table: bool,
     /// Space between wrap lines, across the main axis. `gap` is still the
     /// space between children along it.
     pub cross_gap: f32,
@@ -417,6 +429,7 @@ impl Default for LayoutSpec {
             padding: Edges::default(),
             gap: 0.0,
             wrap: false,
+            table: false,
             cross_gap: 0.0,
             main_align: Align::Start,
             cross_align: Align::Start,
@@ -1113,6 +1126,33 @@ impl NodeSpec {
         Self {
             layout: LayoutSpec {
                 dir: Dir::Column,
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    /// A table (ADR 0033): a column whose rows' children line up in
+    /// columns. Its in-flow children are the rows and each row's in-flow
+    /// children its cells; the nth cell of every row is column n, and a
+    /// column is as wide as its widest cell — so a label column sits at
+    /// its longest label with nothing measured and no width picked by
+    /// hand. A cell's `width` says how its column sizes: `Fit` (the
+    /// default) and `Fixed` are content the column's fit width is the
+    /// max of, `Grow` makes the whole column grow with the table, and a
+    /// column's `minWidth` / `maxWidth` are the strictest its cells
+    /// declared. The rows are rows — give them `width: grow` for the
+    /// columns to grow into; a `Fit` row sits at the columns' fit width —
+    /// with their own `gap` between cells, their own padding, background,
+    /// click and hover; a row of a table never wraps. A bare text is a
+    /// cell too, kept at its column's width, so `ui.text` straight inside
+    /// a row is a column. Everything else is a column's: `gap` is the
+    /// space between rows, `scrollY` scrolls them.
+    pub fn table() -> Self {
+        Self {
+            layout: LayoutSpec {
+                dir: Dir::Column,
+                table: true,
                 ..Default::default()
             },
             ..Default::default()

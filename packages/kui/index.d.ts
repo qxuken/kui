@@ -736,10 +736,11 @@ export type WarningCode =
    *  did something in between. The announcement still goes through; this names
    *  the builder that is shouting. */
   | 'announcement-repeated'
-  /** `wrapChildren` on a container that cannot break lines: a column, or a row
-   *  whose main axis scrolls. Both lay out exactly as if the flag were absent,
-   *  which reads as "wrapping is broken"; see `LayoutSpec::wrap` for why a
-   *  column cannot have it. */
+  /** `wrapChildren` on a container that cannot break lines: a column, a row
+   *  whose main axis scrolls, or a row of a table, whose children are the
+   *  table's columns. All lay out exactly as if the flag were absent, which
+   *  reads as "wrapping is broken"; see `LayoutSpec::wrap` for why a column
+   *  cannot have it. */
   | 'wrap-ignored'
   /** A text node sits more than four levels below the `line` row above it,
    *  which is as far as a text's place remembers its ancestors — so `textHit` /
@@ -1079,6 +1080,8 @@ export interface NodeInfo {
   label: string | null;
   rect: Rect;
   dir: 'row' | 'column';
+  /** A table (ADR 0033): a column whose rows' cells line up in columns. */
+  table: boolean;
   /** `fit`, `grow(n)`, `<n>px` or `<n>%`, as the spec spelled it. */
   width: string;
   height: string;

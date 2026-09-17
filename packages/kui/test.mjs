@@ -438,7 +438,7 @@ test('a malformed view is rejected, with the offending name in the message', () 
     [() => el('line', { points: [[0, 0]] }), /<line> needs at least two points/],
     [() => el('line', { from: [0, 0], to: [1], }), /bad point \[1\] for <line>/],
     [() => el('line', { from: [0, 0], to: [1, 1], width: 'grow' }), /bad width "grow" for <line>/],
-    [() => box({ dir: 'diagonal' }), /bad dir "diagonal" \(row \| column\)/],
+    [() => box({ dir: 'diagonal' }), /bad dir "diagonal" \(row \| column \| table\)/],
     [() => box({ mainAlign: 'middle' }), /bad value "middle" for mainAlign \(one of start \| center \| end\)/],
     [() => box({ bg: 'blue' }), /bad color "blue"/],
     [() => box({ width: 'huge' }), /bad sizing "huge"/],
@@ -3386,6 +3386,8 @@ const CONFORMANCE =
  *  what leaves the tree below it identical to the reference's. */
 /** `conformance::WRAP_BOXES`, as (width, height). */
 const WRAP_BOXES = [[30, 12], [40, 16], [50, 20], [20, 24]];
+/** `conformance::TABLE_ROWS`, as (label, fixed width, height). */
+const TABLE_ROWS = [['abc', 30, 10], ['abcde', 50, 12], ['ab', 20, 8]];
 /** `conformance::TAB_ROOMY` as (width, height) and `TAB_CROWDED` as widths. */
 const TAB_ROOMY = [[30, 12], [50, 8]];
 const TAB_CROWDED = [60, 70, 80, 90];
@@ -3436,6 +3438,27 @@ const SCENE_TREES = {
       box(
         { dir: 'row', wrapChildren: true, pad: 4, gap: 6, crossGap: 10, width: 100, bg: '#101018' },
         WRAP_BOXES.map(([w, h]) => box({ width: w, height: h, bg: '#30344a' })),
+      ),
+    ]),
+  // `conformance::build_table` (ADR 0033): a fit header row of two bare
+  // texts, then TABLE_ROWS as grow rows of a bare text, a fixed box and a
+  // grow box; the label column is its longest label, the fixed column its
+  // widest cell, the grow column the rest.
+  table: () =>
+    root({}, [
+      box(
+        { dir: 'table', width: 200, pad: 4, gap: 2, bg: '#101018' },
+        [
+          box({ dir: 'row', gap: 6 }, [text('name', { size: 12 }), text('w', { size: 12 })]),
+          ...TABLE_ROWS.map(([label, w, h]) =>
+            box({ dir: 'row', width: 'grow', gap: 6 }, [
+              text(label, { size: 12 }),
+              box({ width: w, height: h, bg: '#30344a' }),
+              box({ width: 'grow', height: h, bg: '#3b5bd4' }),
+            ]),
+          ),
+        ],
+        'table',
       ),
     ]),
   tabs: () =>
@@ -6588,6 +6611,38 @@ test('<select> is the stock select: the click opens the menu under it, a row is 
   assert.throws(() => ctx.frame(320, 240, 1, box({}, [el('select', { label: 'x' })])), /needs options/);
   assert.throws(() => ctx.frame(320, 240, 1, box({}, [el('select', { label: 'x', options: [''] })])), /non-empty strings/);
   assert.throws(() => ctx.frame(320, 240, 1, box({}, [el('select', { label: 'x', options: ['a'], current: -1 })])), /option index/);
+});
+
+test('<box dir="table"> lines its rows\' cells up: a column is its widest cell, a grow cell grows it (ADR 0033)', () => {
+  const ctx = new Ctx();
+  ctx.setDiagnostics(true);
+  ctx.setInspect(true);
+  ctx.frame(300, 200, 1, box({}, [box({ dir: 'table', width: 300 }, [
+    box({ dir: 'row', width: 'grow', gap: 8 }, [
+      text('ab', { size: 12 }),
+      box({ width: 10, height: 10, bg: '#ff0000' }, [], 'b1'),
+      box({ width: 'grow', height: 10, bg: '#00ff00' }, [], 'c1'),
+    ], 'r1'),
+    box({ dir: 'row', width: 'grow', gap: 8 }, [
+      text('abcdef', { size: 12 }),
+      box({ width: 50, height: 10, bg: '#ff0000' }, [], 'b2'),
+      box({ width: 20, height: 10, bg: '#00ff00' }, [], 'c2'),
+    ], 'r2'),
+  ], 't')]));
+  const nodes = ctx.nodes();
+  const rect = (label) => nodes.find((n) => n.label === label).rect;
+  const [b1, b2, c1, c2] = ['b1', 'b2', 'c1', 'c2'].map(rect);
+  assert.equal(b1.x, b2.x, 'the fixed column starts after the longest label');
+  assert.ok(b1.x > 8, `past a label and the gap: ${b1.x}`);
+  assert.deepEqual([b1.w, b2.w], [50, 50], 'the fixed column is its widest cell');
+  assert.equal(c1.x, c2.x);
+  assert.equal(c1.w, c2.w, 'the grow column is one width in both rows');
+  assert.ok(Math.abs(c1.x + c1.w - 300) < 0.01, `and it takes the rest: ${c1.x + c1.w}`);
+  const t = nodes.find((n) => n.label === 't');
+  assert.equal(t.dir, 'column', 'a table is a column');
+  assert.equal(t.table, true, 'that says so');
+  assert.equal(nodes.find((n) => n.label === 'r1').table, false);
+  assert.deepEqual(ctx.warnings(), []);
 });
 
 test('env() is on both classes and setEnv is only on the headless one', () => {

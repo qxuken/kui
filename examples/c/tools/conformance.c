@@ -237,6 +237,47 @@ static void conf_wrap(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* conformance::build_table (ADR 0033): a KUI_TABLE column of a fit header
+ * row and three grow rows, each a bare text, a fixed box and a grow box,
+ * so the label column is its longest label, the fixed column its widest
+ * cell and the grow column takes the rest. Mirrors conformance::TABLE_ROWS. */
+static void conf_table(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    static const char *labels[3] = {"abc", "abcde", "ab"};
+    static const float rows[3][2] = {{30, 10}, {50, 12}, {20, 8}};
+    KuiTextStyle style = {.size = 12};
+    KuiSpec table = {
+        .dir = KUI_TABLE,
+        .pad_l = 4, .pad_r = 4, .pad_t = 4, .pad_b = 4,
+        .gap = 2,
+        .width = {KUI_FIXED, 200}, .bg = 0x101018ff,
+    };
+    kui_open_keyed(ui, KUI_STR("table"), &table, NULL);
+    KuiSpec header = {.dir = KUI_ROW, .gap = 6};
+    kui_open(ui, &header, NULL);
+    kui_text(ui, KUI_STR("name"), &style);
+    kui_text(ui, KUI_STR("w"), &style);
+    kui_close(ui);
+    for (int i = 0; i < 3; i++) {
+        KuiSpec row = {.dir = KUI_ROW, .gap = 6, .width = {KUI_GROW, 1}};
+        kui_open(ui, &row, NULL);
+        kui_text(ui, (KuiStr){labels[i], strlen(labels[i])}, &style);
+        KuiSpec fixed = {.width = {KUI_FIXED, rows[i][0]},
+                         .height = {KUI_FIXED, rows[i][1]},
+                         .bg = 0x30344aff};
+        kui_open(ui, &fixed, NULL);
+        kui_close(ui);
+        KuiSpec grow = {.width = {KUI_GROW, 1},
+                        .height = {KUI_FIXED, rows[i][1]},
+                        .bg = 0x3b5bd4ff};
+        kui_open(ui, &grow, NULL);
+        kui_close(ui);
+        kui_close(ui);
+    }
+    kui_close(ui);
+}
+
 /* An i3-style tab bar twice: grow tabs with KUI_MIN_FIT as their floor,
  * in a bar with room (two split it evenly) and in one without (four sit at
  * their labels' widths and the bar scrolls x). Mirrors conformance::TAB_*. */
@@ -1579,6 +1620,7 @@ static const ConfScene CONF_SCENES[] = {
     {"layout", conf_layout},
     {"sizing", conf_sizing},
     {"wrap", conf_wrap},
+    {"table", conf_table},
     {"tabs", conf_tabs},
     {"overflow", conf_overflow},
     {"float", conf_float},

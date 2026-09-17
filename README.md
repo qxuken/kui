@@ -729,6 +729,19 @@ final before its height is measured) where a column's arrives two passes too
 late; `wrapChildren` on a column, or on a `scroll_x` row, lays out as if it
 were absent and raises a `wrap-ignored` warning.
 
+Tables: `NodeSpec::table()` (`dir="table"` in JSX, `grid { }` in Lua,
+`KUI_TABLE` in C) is a column whose rows' children line up in columns —
+the nth child of every row is column n, and a column is as wide as its
+widest cell — so a key/value list sits at its longest key with no width
+picked by hand ([ADR 0033](docs/adr/0033-a-table-is-a-column-whose-cells-align.md)).
+A cell's sizing is its column's: `Fit` and `Fixed` are content, `Grow`
+grows the column with the table, `Percent` takes its cut, and the cells'
+clamps clamp the column; a bare text is a cell held to its column; the
+rows are rows, with their own gap, padding, background, hover and click.
+Resolved inside the passes above — the fit at the table in pass 1, the
+columns once in pass 2, written into the cells — so it needs no widget
+and costs a frame without one nothing.
+
 Out-of-flow: `.float(FloatConfig)` takes a node out of flex flow — it doesn't
 consume space in its parent, positions by attach points against its parent's
 rect or the viewport (plus an offset), sizes Grow/Percent against that anchor,

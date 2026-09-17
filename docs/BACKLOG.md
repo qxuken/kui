@@ -31,8 +31,9 @@ binary-file report, C44 from the pre-tag round that followed — the day
 they were filed, before the alpha.15 tag, F67–F72 from the kawoosh
 syntax-tab, idle-frame, second-Mac, mid-frame-dock and devtools-strip
 reports the same day, after it, F73 — the select in the other three
-bindings — the day after, and F74 — the app hearing its window go — from
-the kawoosh session report of the same day. The index
+bindings — the day after, F74 — the app hearing its window go — from
+the kawoosh session report of the same day, and F75 — the table — from
+the devtools-tables report of the same day. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -1210,6 +1211,19 @@ the panel and the widget it wanted — both **built 2026-09-16**, the day
 they were filed; F73, the select in the other three bindings, was asked
 for and built the next day. All three are in the archive.
 
+## From the kawoosh devtools-tables report (2026-09-17)
+
+Every key/value list in the devtools — the panel's Facts, tokens,
+legend and inspector groups, kawoosh's Perf and Settings tabs — lined
+its values up behind a label box of a width picked by hand: 70, 90, 52,
+110 and 180 px, six numbers, each the longest label that list had on
+the day it was written and each wrong the day a longer one arrived
+(`syntax rows` past 110 in the Perf tab; a settings path as long as the
+user's dotted key). The report asked for a table in kui, in every
+binding, and for the hand-rolled lists in both devtools to be it. One
+entry, F75, **built 2026-09-17**, the day it was filed, and in the
+archive.
+
 ## After alpha.14
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -1952,3 +1966,7 @@ move.
 **From the kawoosh session report (2026-09-17)** — F74, filed and built the same day
 
 - `!` **F74** — [An app never hears its window go: the close button drops it, ⌘Q ends the process, and neither is a key](backlog/closed-2026-09.md#-f74--an-app-never-hears-its-window-go-the-close-button-drops-it-q-ends-the-process-and-neither-is-a-key--done-2026-09-17) — done (2026-09-17) — `App::teardown`, once, from the loop's `exiting` and a pumped runner's retirement
+
+**From the kawoosh devtools-tables report (2026-09-17)** — F75, filed and built the same day
+
+- `~` **F75** — [Every key/value list in the devtools lines its values up behind a label box of a width picked by hand](backlog/closed-2026-09.md#-f75--every-keyvalue-list-in-the-devtools-lines-its-values-up-behind-a-label-box-of-a-width-picked-by-hand--done-2026-09-17) — done (2026-09-17) — `NodeSpec::table()`, `dir="table"`, `grid { }`, `KUI_TABLE`: a column whose rows' cells align, in the layout passes (ADR 0033); the six lists are tables

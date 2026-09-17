@@ -23,15 +23,46 @@ was the first bare bump to break an app in five releases).
 
 ## 0.1.0-alpha.16 (unreleased)
 
-**What breaks.** Nothing: three doors, a prop, a widget and an element
-added, the ABI at 18 and the frame at v15 (a new op for the element; the
-addon and the JS ship together, and an older addon refuses the newer
-encoder by version rather than misreading it). One layout result moves —
-a grow child beside a sibling whose `max` held it short now takes that
-room (backlog F71 under Fixed) — which a view that padded the hole by
-hand will see.
+**What breaks.** Nothing: three doors, a prop, a widget, an element and
+a `dir` value added, the ABI at 18 and the frame at v15 (a new op for
+the select element; the addon and the JS ship together, and an older
+addon refuses the newer encoder by version rather than misreading it;
+the table is a value of a prop both already carry). One layout result
+moves — a grow child beside a sibling whose `max` held it short now
+takes that room (backlog F71 under Fixed) — which a view that padded the
+hole by hand will see.
 
 ### Added
+
+- **A table** (backlog F75, from the devtools' own tabs and kawoosh's:
+  six key/value lists, each lining its values up behind a label box of
+  a width picked by hand — 70, 90, 52, 110, 180 px — each wrong the day
+  a longer label arrived). `NodeSpec::table()` / `<box dir="table">` /
+  `grid { }` in Lua (`table` is Lua's own) / `dir = KUI_TABLE` in C is
+  a column whose rows' children line up in columns
+  ([ADR 0033](docs/adr/0033-a-table-is-a-column-whose-cells-align.md)):
+  the nth child of every row is column n, and a column is as wide as
+  its widest cell, so a label column sits at its longest label with
+  nothing measured and no width in the view. A cell's `width` sizes its
+  column — `fit` and a number are content, `grow` grows the column with
+  the table, a percent takes its cut — and its `minWidth` / `maxWidth`
+  clamp it; a bare text is a cell held to its column; the rows are rows,
+  with their own `gap`, padding, background, hover, click and label; a
+  row of a table never wraps (`wrap-ignored` says so). Fit columns that
+  overflow the row are compressed largest first, as a row's children
+  are, unless the table scrolls x. Resolved inside the five layout
+  passes — the fit at the table in pass 1, the columns once in pass 2,
+  written into the cells — so it costs a frame without a table nothing
+  and needs no widget, which is why it reaches every binding as one
+  value of `dir`, with the ABI and the frame version unchanged. A
+  `table` scene in the conformance corpus, built in all four adapters;
+  `examples/rust/widgets/table.rs` and `examples/node/widgets/table.tsx`;
+  the `table` element row in props.md; the devtools' Facts, tokens,
+  legend and inspector lists are tables now, and the Tree tab's
+  inspector says `column · table` of one.
+
+  *What you can delete:* the fixed-width box around a label that lines
+  a list's values up, and the `measureText` that picked its width.
 
 - **The app hears the window go** (backlog F74, from kawoosh closed
   with its red button and with ⌘Q: the session it saves on `:q` was
@@ -137,6 +168,18 @@ hand will see.
   that jumps to the Inspector and print which tab the panel is on.
 
 ### Fixed
+
+- **A `minWidth`/`minHeight` of `"fit"` inside a devtools tab's content
+  was the first measurement, not the fit** — found building F75's
+  Settings tab: a toolbar row with `min_height: fit` stood 86 px tall
+  for one line of text. The content of a host's tab is a float anchored
+  to the tab's body by key, laid out twice (the five passes, then the
+  sixth against the anchor), and a fit floor is written back into the
+  spec as the number it resolved to — so the sixth pass read the first
+  run's number, measured before the float had a width, where the text
+  had folded into a column of one word. The floors a frame declared are
+  remembered and declared again before the re-run. Any `"fit"` floor
+  inside a node-anchored float was affected; nothing outside one.
 
 - **A grow child's `max` left a hole its siblings could have filled**
   (backlog F71, from the devtools Tree tab: the node list and the

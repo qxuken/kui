@@ -4095,6 +4095,7 @@ mod readback_pins {
                 "[].mainAlign",
                 "[].crossAlign",
                 "[].wrap",
+                "[].table",
                 "[].minWidth",
                 "[].minHeight",
                 "[].maxWidth",

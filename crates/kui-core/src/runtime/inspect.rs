@@ -86,6 +86,9 @@ pub struct NodeInfo {
     pub main_align: Align,
     pub cross_align: Align,
     pub wrap: bool,
+    /// Whether it is a table (`LayoutSpec::table`): a column whose rows'
+    /// cells line up.
+    pub table: bool,
     /// The size floors and ceilings, as layout left them: a floor is the
     /// declared px, or the number a `fit` floor resolved to in the fit
     /// pass (the pass writes it back into the spec, so a declared `"fit"`
@@ -149,6 +152,7 @@ impl NodeInfo {
             ("main_align", Value::str(self.main_align.name())),
             ("cross_align", Value::str(self.cross_align.name())),
             ("wrap", Value::Bool(self.wrap)),
+            ("table", Value::Bool(self.table)),
             ("min_width", Value::opt_float(self.min_w)),
             ("min_height", Value::opt_float(self.min_h)),
             ("max_width", Value::opt_float(self.max_w)),
@@ -354,6 +358,7 @@ impl Core {
                 main_align: l.main_align,
                 cross_align: l.cross_align,
                 wrap: l.wrap,
+                table: l.table,
                 min_w: floor(l.min_w),
                 min_h: floor(l.min_h),
                 max_w: ceiling(l.max_w),

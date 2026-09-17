@@ -147,6 +147,7 @@ headless = [
     "clipboard",
     "context_menu",
     "select",
+    "table",
     "image",
     "polygon",
     "fragment",
@@ -214,6 +215,10 @@ path = "../../examples/rust/widgets/context_menu.rs"
 [[example]]
 name = "select"
 path = "../../examples/rust/widgets/select.rs"
+
+[[example]]
+name = "table"
+path = "../../examples/rust/widgets/table.rs"
 
 [[example]]
 name = "audio"

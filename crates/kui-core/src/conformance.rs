@@ -708,6 +708,49 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "table",
+        doc: "A table (ADR 0033): three rows of a fixed-width table, the \
+              first a header, in three columns — a bare text label column \
+              (its cells three, five and two characters, so the column is \
+              the widest and the shorter labels are held to it), a fixed \
+              column of boxes whose widths differ per row (30, 50, 20: the \
+              column is 50), and a grow column that takes the rest. The \
+              rows are grow rows with a gap between their cells, so a \
+              cell's x is the same in every row; the header row is a fit \
+              row with two cells, held to the columns like the others.",
+        custom: &["dir", "pad", "key", "size"],
+        elements: &["table", "box", "text"],
+        build: build_table,
+        env: NATIVE_CHROME,
+        steps: &[],
+        expect: Expect {
+            // The table's own background, and a box per cell of the
+            // fixed and grow columns in the three body rows.
+            solid: 7,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 14,
+            access: &[
+                "0 window ||",
+                "1 staticText name||",
+                "1 staticText w||",
+                "1 staticText abc||",
+                "1 staticText abcde||",
+                "1 staticText ab||",
+            ],
+            events: &[],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+        },
+    },
+    Scene {
         name: "tabs",
         doc: "An i3-style tab bar twice: `grow` tabs with a `minWidth` of \
               \"fit\", in a bar with room (two tabs split it evenly, the \
@@ -2732,6 +2775,51 @@ fn build_wrap(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     );
 }
 
+/// The rows of the `table` scene: a label (a bare text cell), the width
+/// of the fixed cell beside it, and the grow cell's height.
+pub const TABLE_ROWS: &[(&str, f32, f32)] = &[
+    ("abc", 30.0, 10.0),
+    ("abcde", 50.0, 12.0),
+    ("ab", 20.0, 8.0),
+];
+
+fn build_table(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    ui.with_keyed(
+        "table",
+        NodeSpec::table()
+            .width(Sizing::Fixed(200.0))
+            .pad(4.0)
+            .gap(2.0)
+            .bg(Color::hex(0x101018ff)),
+        |ui| {
+            // The header: a fit row of two cells, held to the columns.
+            ui.with(NodeSpec::row().gap(6.0), |ui| {
+                ui.text("name", TextStyle::new(12.0));
+                ui.text("w", TextStyle::new(12.0));
+            });
+            for (label, w, h) in TABLE_ROWS {
+                ui.with(NodeSpec::row().width(Sizing::Grow(1.0)).gap(6.0), |ui| {
+                    ui.text(label, TextStyle::new(12.0));
+                    ui.with(
+                        NodeSpec::column()
+                            .width(Sizing::Fixed(*w))
+                            .height(Sizing::Fixed(*h))
+                            .bg(Color::hex(0x30344aff)),
+                        |_| {},
+                    );
+                    ui.with(
+                        NodeSpec::column()
+                            .width(Sizing::Grow(1.0))
+                            .height(Sizing::Fixed(*h))
+                            .bg(Color::hex(0x3b5bd4ff)),
+                        |_| {},
+                    );
+                });
+            }
+        },
+    );
+}
+
 /// A card that scopes one selection over the three runs inside it. Fixed
 /// width so the runs sit where the steps expect whatever the window is,
 /// and one style for all three so a binding cannot pass by getting one
@@ -4321,9 +4409,14 @@ fn observe(core: &Core, cov: &mut Coverage) {
         let spec = &t.specs[i];
         let l = &spec.layout;
 
-        // Column is the default, so a row is the only observable `dir`.
+        // Column is the default, so a row is the only observable `dir` —
+        // and a table, which is `dir="table"` in JSX and the element too.
         if l.dir == Dir::Row {
             cov.custom.insert("dir");
+        }
+        if l.table {
+            cov.custom.insert("dir");
+            cov.elements.insert("table");
         }
         if l.padding != Edges::default() {
             cov.custom.insert("pad");

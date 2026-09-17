@@ -15,6 +15,17 @@
 //! size such a float, since its anchor may come later in preorder, so
 //! its subtree is laid out again from the anchor's final rect.
 //!
+//! A table (`LayoutSpec::table`, ADR 0033) is a column whose rows' cells
+//! line up: pass 1 reaches the table after its rows and cells and sets
+//! every fit cell to its column's widest, so the rows' and the table's
+//! fit widths are the aligned ones; pass 2 reaches it before its rows,
+//! resolves the columns against the widest row once ([`table_columns`])
+//! and writes each column's width into its cells, and a row of a table
+//! then leaves its children alone — the widths are final, and the row is
+//! never shrunk or grown cell by cell. A bare text cell keeps its column's
+//! width through pass 3 (`fit_heights`), where a text elsewhere shrinks
+//! to what it shaped.
+//!
 //! Text measurement goes through `TextMeasure` so the solver is testable with
 //! a deterministic stub and never depends on system fonts.
 
@@ -80,7 +91,271 @@ fn wraps(tree: &Tree, i: u32) -> bool {
         return false;
     }
     let s = &tree.specs[i as usize].layout;
-    s.wrap && s.dir == Dir::Row && !s.scroll_x
+    s.wrap && s.dir == Dir::Row && !s.scroll_x && !is_table_row(tree, i)
+}
+
+/// Whether `i` is a row of a table: an in-flow container child of a
+/// node with `LayoutSpec::table`. A leaf straight under the table — a
+/// heading text beside the rows — has no cells and is left alone. Gated
+/// on the tree-level flag first, as [`is_float`] is.
+#[inline]
+fn is_table_row(tree: &Tree, i: u32) -> bool {
+    if !tree.any_table {
+        return false;
+    }
+    let p = tree.parent[i as usize];
+    p != NIL
+        && tree.specs[p as usize].layout.table
+        && matches!(tree.content[i as usize], NodeContent::Container)
+        && !is_float(tree, i)
+}
+
+/// Whether `i` is a cell of a table: an in-flow child of a table row.
+#[inline]
+fn is_table_cell(tree: &Tree, i: u32) -> bool {
+    if !tree.any_table {
+        return false;
+    }
+    let p = tree.parent[i as usize];
+    p != NIL && is_table_row(tree, p) && !is_float(tree, i)
+}
+
+/// One column of a table, as its cells declared it (ADR 0033).
+#[derive(Clone, Copy, Debug, Default)]
+struct Col {
+    /// The widest cell's fitted width: a `Fixed` cell's px, a `Fit`
+    /// cell's content, a `Grow` or `Percent` cell's floor.
+    fit: f32,
+    /// The largest `Grow` factor among the cells, 0 for none: the column
+    /// grows with the table when any cell asked to.
+    grow: f32,
+    /// The largest `Percent` among the cells, 0 for none; read only when
+    /// nothing grows.
+    pct: f32,
+    /// Whether any cell is `Fixed`: a fixed column is never shrunk.
+    fixed: bool,
+    /// The strictest clamps its cells declared: the largest floor and
+    /// the smallest ceiling.
+    min: f32,
+    max: f32,
+    /// The width resolved for it.
+    w: f32,
+}
+
+impl Col {
+    fn clamp(&self, w: f32) -> f32 {
+        w.clamp(self.min, self.max.max(self.min))
+    }
+}
+
+/// The columns of table `i`, read off its cells' current widths and
+/// specs: the nth in-flow child of each in-flow row is a cell of column
+/// n, and a row with fewer cells fills the first columns. A text cell
+/// has no spec sizing and reads as `Fit`.
+fn table_columns(tree: &Tree, i: u32) -> Vec<Col> {
+    let mut cols: Vec<Col> = Vec::new();
+    for row in tree.children(i) {
+        if !is_table_row(tree, row) {
+            continue;
+        }
+        let mut j = 0usize;
+        for cell in tree.children(row) {
+            if is_float(tree, cell) {
+                continue;
+            }
+            if j == cols.len() {
+                cols.push(Col {
+                    max: f32::INFINITY,
+                    ..Col::default()
+                });
+            }
+            let col = &mut cols[j];
+            let spec = tree.specs[cell as usize].layout;
+            col.fit = col.fit.max(tree.size[cell as usize].w);
+            match child_sizing(tree, cell, AxisSel::Width) {
+                Sizing::Grow(f) => col.grow = col.grow.max(f.max(0.0)),
+                Sizing::Percent(p) => col.pct = col.pct.max(p),
+                Sizing::Fixed(_) => col.fixed = true,
+                Sizing::Fit => {}
+            }
+            if !matches!(tree.content[cell as usize], NodeContent::Text(_)) {
+                col.min = col.min.max(spec.min_w.resolved());
+                col.max = col.max.min(spec.max_w);
+            }
+            j += 1;
+        }
+    }
+    cols
+}
+
+/// The width row `row` needs for `cols` — its cells at the columns'
+/// widths, the gaps between them and its padding — which is what a
+/// `Fit` row of a table is.
+fn table_row_fit(tree: &Tree, row: u32, cols: &[Col]) -> f32 {
+    let spec = tree.specs[row as usize].layout;
+    let mut w = 0.0f32;
+    let mut n = 0u32;
+    for cell in tree.children(row) {
+        if is_float(tree, cell) {
+            continue;
+        }
+        w += cols.get(n as usize).map_or(0.0, |c| c.w);
+        n += 1;
+    }
+    if n > 1 {
+        w += spec.gap * (n - 1) as f32;
+    }
+    w + spec.padding.x()
+}
+
+/// Writes each column's width into its cells and sizes the `Fit` rows to
+/// them. A text cell takes the width too — `fit_heights` keeps it.
+fn table_apply(tree: &mut Tree, i: u32, cols: &[Col]) {
+    let mut row = tree.first_child[i as usize];
+    while row != NIL {
+        if is_table_row(tree, row) {
+            let mut j = 0usize;
+            let mut cell = tree.first_child[row as usize];
+            while cell != NIL {
+                if !is_float(tree, cell) {
+                    tree.size[cell as usize].w = cols[j].w;
+                    j += 1;
+                }
+                cell = tree.next_sibling[cell as usize];
+            }
+            if tree.specs[row as usize].layout.width == Sizing::Fit {
+                let fit = table_row_fit(tree, row, cols);
+                tree.size[row as usize].w = tree.specs[row as usize].layout.clamp_w(fit);
+            }
+        }
+        row = tree.next_sibling[row as usize];
+    }
+}
+
+/// Pass 1's table step: every column at its fit — the widest cell — and
+/// the rows fitted to that, so the table's own fit width (read next, by
+/// the caller) is the aligned one. A growing column sits at its floor
+/// here, as a grow child of any row does.
+fn table_fit(tree: &mut Tree, i: u32) {
+    let mut cols = table_columns(tree, i);
+    for col in &mut cols {
+        col.w = col.clamp(col.fit);
+    }
+    table_apply(tree, i, &cols);
+}
+
+/// Pass 2's table step, at the table node, before its rows: the columns
+/// resolved once against the widest row's content — `Percent` columns
+/// take their cut, `Fixed` and `Fit` ones sit at their fit, `Grow`
+/// columns split what is left in the freeze loop `distribute_run` runs
+/// (a clamped column is frozen and the rest re-share) — and, when the
+/// fits alone overflow the row and the table does not scroll x, the
+/// `Fit` columns compressed toward their floors largest first, as
+/// `shrink_axis` compresses a row's children. Then written into every
+/// cell, so the rows have nothing left to distribute.
+fn table_resolve(tree: &mut Tree, i: u32) {
+    let mut cols = table_columns(tree, i);
+    if cols.is_empty() {
+        return;
+    }
+    // The widest row's content: what the columns are laid across. Rows
+    // are usually `grow`, and then this is the table's content box less
+    // the row's own padding and gaps.
+    let mut avail = 0.0f32;
+    for row in tree.children(i) {
+        if !is_table_row(tree, row) {
+            continue;
+        }
+        let spec = tree.specs[row as usize].layout;
+        let chrome = spec.padding.x() + spec.gap * (cols.len() as f32 - 1.0);
+        avail = avail.max(tree.size[row as usize].w - chrome);
+    }
+    let avail = avail.max(0.0);
+    let mut used = 0.0f32;
+    let mut grow_total = 0.0f32;
+    for col in &mut cols {
+        if col.grow > 0.0 {
+            grow_total += col.grow;
+            col.w = col.clamp(0.0);
+        } else if col.pct > 0.0 {
+            col.w = col.clamp(avail * col.pct);
+            used += col.w;
+        } else {
+            col.w = col.clamp(col.fit);
+            used += col.w;
+        }
+    }
+    if grow_total > 0.0 {
+        let mut frozen = vec![false; cols.len()];
+        loop {
+            let remain = (avail - used).max(0.0);
+            let mut froze = false;
+            for (j, col) in cols.iter_mut().enumerate() {
+                if col.grow <= 0.0 || frozen[j] {
+                    continue;
+                }
+                let share = remain * col.grow / grow_total;
+                col.w = col.clamp(share);
+                if (col.w - share).abs() > 0.01 {
+                    frozen[j] = true;
+                    used += col.w;
+                    grow_total -= col.grow;
+                    froze = true;
+                }
+            }
+            if !froze || grow_total <= 0.0 {
+                break;
+            }
+        }
+    }
+    // The shrink: the fit columns pay the overflow, largest first, down
+    // to their floors — never a fixed, a percent or a growing one.
+    let total: f32 = cols.iter().map(|c| c.w).sum();
+    let mut deficit = total - avail;
+    if deficit > 0.5 && !tree.specs[i as usize].layout.scroll_x {
+        let shrinkable = |c: &Col| !c.fixed && c.grow <= 0.0 && c.pct <= 0.0;
+        let mut guard = 0;
+        while deficit > 0.5 && guard < 128 {
+            guard += 1;
+            let mut largest = f32::NEG_INFINITY;
+            let mut second = 0.0f32;
+            let mut count = 0u32;
+            for c in cols.iter().filter(|c| shrinkable(c) && c.w > c.min + 0.01) {
+                if c.w > largest + 0.01 {
+                    second = if largest.is_finite() {
+                        largest.max(second)
+                    } else {
+                        second
+                    };
+                    largest = c.w;
+                    count = 1;
+                } else if c.w > largest - 0.01 {
+                    count += 1;
+                } else if c.w > second {
+                    second = c.w;
+                }
+            }
+            if count == 0 {
+                break;
+            }
+            let target = (largest - deficit / count as f32).max(second).max(0.0);
+            let mut shrunk_any = false;
+            for c in cols.iter_mut().filter(|c| shrinkable(c)) {
+                if c.w > largest - 0.01 {
+                    let new = target.max(c.min);
+                    if new < c.w {
+                        deficit -= c.w - new;
+                        c.w = new;
+                        shrunk_any = true;
+                    }
+                }
+            }
+            if !shrunk_any {
+                break;
+            }
+        }
+    }
+    table_apply(tree, i, &cols);
 }
 
 /// The first in-flow child of `i` (`NIL` when it has none).
@@ -237,13 +512,30 @@ pub fn compute(
     if tree.is_empty() {
         return;
     }
+    // A `Min::FIT` floor is written back into the spec as the number it
+    // resolved to (`fit_widths`, `fit_heights`), and a node-anchored
+    // float is laid out again in the sixth pass: it would read the
+    // number the first run left — measured before the float had a
+    // width, a paragraph folded into a column of one word — as a
+    // declared floor. Remembered here, put back before the re-run.
+    let floors: Vec<(usize, bool, bool)> = if tree.any_node_float {
+        (0..tree.len())
+            .filter_map(|i| {
+                let l = &tree.specs[i].layout;
+                let (w, h) = (l.min_w.is_fit(), l.min_h.is_fit());
+                (w || h).then_some((i, w, h))
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     fit_widths(tree, text, 0..tree.len());
     grow_widths(tree, viewport);
     fit_heights(tree, text, 0..tree.len());
     grow_heights(tree, viewport);
     positions(tree, scroll, viewport, scale, 0..tree.len());
     if tree.any_node_float {
-        anchored(tree, text, scroll, viewport, scale);
+        anchored(tree, text, scroll, viewport, scale, &floors);
     }
 }
 
@@ -262,6 +554,7 @@ fn anchored(
     scroll: &mut ScrollStore,
     viewport: Size,
     scale: f32,
+    floors: &[(usize, bool, bool)],
 ) {
     for (c, end, key) in node_floats(tree) {
         let Some(a) = tree.index_of(key) else {
@@ -269,6 +562,15 @@ fn anchored(
             continue;
         };
         let anchor = Rect::from_pos_size(tree.pos[a], tree.size[a]);
+        // The fit floors declared in this subtree, as declared again.
+        for &(i, w, h) in floors.iter().filter(|(i, ..)| (c..end).contains(i)) {
+            if w {
+                tree.specs[i].layout.min_w = Min::FIT;
+            }
+            if h {
+                tree.specs[i].layout.min_h = Min::FIT;
+            }
+        }
         let spec = tree.specs[c].layout;
         fit_widths(tree, text, c..end);
         tree.size[c].w = spec.clamp_w(match spec.width {
@@ -398,6 +700,11 @@ fn fit_widths(tree: &mut Tree, text: &mut dyn TextMeasure, range: std::ops::Rang
             tree.size[i].w = text.intrinsic(tid).w;
             continue;
         }
+        // A table's rows and cells are fitted by now (children first):
+        // align them, so the fit read next is the aligned one.
+        if tree.any_table && tree.specs[i].layout.table {
+            table_fit(tree, i as u32);
+        }
         let width = tree.specs[i].layout.width;
         let min_fit = tree.specs[i].layout.min_w.is_fit();
         // Measured once for both uses: the Fit sizing, and the Fit floor.
@@ -475,8 +782,15 @@ fn fit_heights(tree: &mut Tree, text: &mut dyn TextMeasure, range: std::ops::Ran
             // Width is final by now: wrap to it.
             let wrapped = text.wrapped(tid, tree.size[i].w.max(0.0));
             // The wrapped measurement is authoritative for both axes (a long
-            // unbroken word may still exceed the clamp; report it truthfully).
-            tree.size[i] = wrapped;
+            // unbroken word may still exceed the clamp; report it truthfully)
+            // — except that a text which is a table's cell keeps the column
+            // width pass 2 gave it, or the cells after it would close up.
+            if is_table_cell(tree, i as u32) {
+                tree.size[i].h = wrapped.h;
+                tree.size[i].w = tree.size[i].w.max(wrapped.w);
+            } else {
+                tree.size[i] = wrapped;
+            }
             continue;
         }
         // Always wrap an editor to the final content width so emission and
@@ -553,7 +867,10 @@ fn distribute_axis(tree: &mut Tree, i: u32, axis: AxisSel, viewport: Size) {
     let content = (own - pad).max(0.0);
     let is_main = (spec.dir == Dir::Row) == (axis == AxisSel::Width);
 
-    if is_main {
+    if is_main && axis == AxisSel::Width && is_table_row(tree, i) {
+        // The cells were sized by the table (`table_resolve`), the same
+        // in every row: nothing to grow, cut or shrink here.
+    } else if is_main {
         // Percent takes its cut of the content box first: a wrap line
         // breaks on sizes that are already resolved against the container,
         // not against the line it is about to land on.
@@ -646,6 +963,10 @@ fn distribute_axis(tree: &mut Tree, i: u32, axis: AxisSel, viewport: Size) {
                 }
             }
             c = tree.next_sibling[c as usize];
+        }
+        // A table's rows are wide by now: lay its columns across them.
+        if axis == AxisSel::Width && tree.any_table && spec.table {
+            table_resolve(tree, i);
         }
     }
 

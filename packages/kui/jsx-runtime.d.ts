@@ -385,7 +385,15 @@ export interface GeneratedStyleProps {
 /** Composite/constructor props with hand-written handling on both sides of
  *  the boundary (everything else comes from the generated schema types). */
 export interface CustomSpecProps {
-  dir?: 'row' | 'column';
+  /** Main axis; `column` is the default. `table` is a column whose rows'
+   *  children line up in columns (ADR 0033): the nth child of every row
+   *  is column n, and a column is as wide as its widest cell — a cell's
+   *  `width` sizes its column (`fit` and a number are content, `grow`
+   *  grows the column, a percent takes its cut), a bare `<text>` is a
+   *  cell held to its column, and the rows are rows: give them
+   *  `width="grow"` for the columns to grow into, with their own `gap`,
+   *  padding, `bg`, `hoverBg` and `onClick`. */
+  dir?: 'row' | 'column' | 'table';
   pad?: LengthProp;
   padX?: LengthProp;
   padY?: LengthProp;

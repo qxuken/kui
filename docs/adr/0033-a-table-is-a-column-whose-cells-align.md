@@ -1,0 +1,202 @@
+---
+status: accepted
+date: 2026-09-17
+---
+
+# A table is a column whose cells align
+
+> **Accepted and built (2026-09-17), the same day it was proposed** —
+> raised by kawoosh's devtools tabs and by the panel's own. Every
+> key/value list in either was a column of rows whose first cell was a
+> box of a width picked by hand: 70 px for the Facts rows, 90 for the
+> tokens and the legend, 52 for the inspector's groups, 110 for
+> kawoosh's Perf tab, 180 for its Settings tab — six numbers, each the
+> longest label that tab had on the day it was written, each wrong the
+> day a longer one arrived (`syntax rows` overflowed 110 at 11 px mono;
+> a settings path is as long as the user's dotted key). A width picked
+> by hand is a width a longer label breaks, and no view should have to
+> measure its labels to line them up. The answer is **a container the
+> layout sizes as a table** — the nth child of every row is column n,
+> and a column is as wide as its widest cell — in the five passes the
+> solver already has, so it reaches every binding as one value of `dir`
+> and needs no widget, no measurement in the view and no width in it.
+
+## Context
+
+- **What the hand-picked widths were for.** A key/value row is a row of
+  two texts. Left to flex, each row's value starts where its own key
+  ends, and a column of them reads as a ragged list. The fix every tab
+  wrote was a box of a fixed width around the key, which lines the
+  values up — at whatever width the author guessed. The `measure_text`
+  door (`Ui::measure_text`, "sizing a column to its widest label")
+  exists for this and none of the six used it, because measuring every
+  label every frame to pick a box width is more code than the box, and
+  the box works until it does not.
+
+- **What the solver does.** Five passes over the flat preorder tree
+  (`layout.rs`): fit widths, children before parents; grow widths,
+  parents before children; fit heights; grow heights; positions. A
+  row's children are placed one after the other by their sizes, so two
+  rows agree on where a column starts exactly when their children agree
+  on their widths. Alignment is therefore a *sizing* question: make the
+  nth child of every row the same width and the positions follow.
+
+- **When the table knows enough.** A column's fit width is the max of
+  its cells' fit widths, which pass 1 has computed by the time it
+  reaches the table (reverse order: the cells, then the rows, then the
+  table). A column's grown width depends on the row's width, which pass
+  2 has by the time it reaches the table (forward order: the table,
+  then its rows). So each pass has the table's inputs at the table's
+  own index, and the column widths can be resolved there and written
+  down into the cells before the passes reach the rows — no extra pass,
+  no second walk.
+
+- **What a text does in pass 3.** `fit_heights` wraps a text to its
+  final width and takes the wrapped measurement for *both* axes,
+  because a long unbroken word may exceed the width and the truth is
+  worth more than the clamp. A text held to a column wider than itself
+  would shrink back to its intrinsic width there, and every cell after
+  it would close up in `positions`. So a text that is a cell keeps the
+  width it was given.
+
+- **What the bindings spell.** `dir` is a custom prop with two values:
+  `dir="row" | "column"` in JSX, `row { }` / `column { }` in Lua,
+  `KUI_ROW` / `KUI_COLUMN` in C. A third value of an existing word is
+  the smallest door: no new prop id, no new element op on the Node
+  frame, no new field in `KuiSpec` (the ABI stays at 18), no new
+  function in `kui.h`. In Lua, `table` is the standard library's
+  table; the constructor cannot be called that.
+
+## Decisions
+
+1. **`LayoutSpec.table` is a flag on a column.** `NodeSpec::table()` is
+   `column()` with it set; `dir` stays `Column`, so every place that
+   matches on `Dir` keeps its two arms and a table is a column
+   everywhere it is not a table: `gap` is between rows, `scrollY`
+   scrolls them, `padding` is its own, the rows are its Tab-order
+   children, a float in it is a float.
+
+2. **Rows are rows and cells are cells, and both are the app's.** The
+   table's in-flow children are the rows; each row's in-flow children
+   are its cells; the nth cell of every row is column n; a row with
+   fewer cells fills the first columns. A row keeps everything a row
+   has — its `gap` is the space between its cells, its padding, its
+   background, `hover_bg`, `on_click`, `label` — which is what a
+   clickable settings row or a hovered inspector row needs, with no
+   row API to learn. A header is a row. A float in a row is not a cell.
+
+3. **A column's sizing is what its cells declared.** The column's fit
+   width is the max of its cells' fitted widths — a `Fixed` cell's
+   number, a `Fit` cell's content. Any `Grow` cell makes the column
+   grow, with the largest factor; else any `Percent` cell makes it a
+   percent column, with the largest fraction; else it is a fit column,
+   and fixed (never shrunk) if any cell was `Fixed`. `minWidth` and
+   `maxWidth` on a cell clamp the column: the largest floor and the
+   smallest ceiling among its cells. No column spec on the table: the
+   header cell that says `width: grow` says it for the column, and a
+   table read in any binding is the same table.
+
+4. **Pass 1 aligns the fit; pass 2 resolves the columns once.** In
+   `fit_widths`, at the table: every column at its fit, written into
+   every cell, and each `Fit` row re-fitted to the aligned cells, so
+   the table's own fit width — read next — is the aligned one. In
+   `grow_widths`, at the table, after its `Grow` rows have their width:
+   the columns resolved against the widest row's content — percent
+   columns take their cut, fit and fixed columns sit at their fit, grow
+   columns split what is left in the same freeze loop `distribute_run`
+   uses (backlog F71: a clamped column is frozen and the rest
+   re-share), and when the fits alone overflow the row and the table
+   does not scroll x, the fit columns are compressed toward their
+   floors largest first, as `shrink_axis` compresses a row's children
+   — then written into every cell, and each `Fit` row sized to the
+   columns. A row of a table then skips its main-axis distribution
+   entirely: its cells are final, and it neither grows, cuts nor
+   shrinks them.
+
+5. **A bare text is a cell, held to its column.** `fit_heights` keeps
+   the width pass 2 gave a text whose parent is a table row and takes
+   only the height from the wrap, so `ui.text` straight inside a row
+   is a column and the cells after it stay put. A text that needs an
+   alignment inside its column (a right-aligned number) is a row
+   around the text with `main_align: end`, as it would be anywhere.
+
+6. **A row of a table never wraps.** Its children are the columns, one
+   each; `wrap_children` on it lays out as if absent and raises
+   `wrap-ignored` with the reason, as a column's does.
+
+7. **One door per binding, all the `dir` one.** `dir="table"` in JSX
+   (`<box dir="table">`), `grid { }` in Lua — `grid`, since `table` is
+   Lua's own, as `dropdown` is the select — and `KUI_TABLE` as the
+   third `dir` in C, all lowering to `NodeSpec::table()`. A `table`
+   row in `schema::ELEMENTS` for the docs and the corpus, whose
+   `observe` derives it from the flag. One corpus scene, `table`, in
+   the four adapters.
+
+8. **No stock widget.** Every consumer that asked for a table — the
+   panel's four lists, kawoosh's two tabs — needed cells that are not
+   strings: a swatch and a hex, a select, a clickable row, a value in
+   the accent. A `widgets::table(headers, rows_of_strings)` would have
+   served none of them, and the container serves all of them in fewer
+   lines than the boxes it replaces. If a string table is asked for,
+   it is a loop over rows in any binding's own code; the container is
+   the widget.
+
+## Considered options
+
+- **A widget over `measure_text`.** `widgets::key_value(ui, rows)`
+  measuring each key and emitting fixed boxes. Rust only, or a widget
+  op per binding; strings only, or a callback per cell, which Lua and
+  C cannot hand a Rust widget; and the measurement is what the solver
+  already does in pass 1. Declined.
+
+- **A column spec on the table** (`columns: [fit, grow, 80]`). One
+  more `Vec` on `NodeSpec`, a JSON blob on the Node frame, a
+  `KuiSizing` array in `kui.h`. Not needed while a cell can say it
+  (decision 3), and a table whose columns are declared apart from its
+  cells has two places to disagree. Deferred until a table wants a
+  column no cell of it declares — a column of empty cells — which none
+  has.
+
+- **`Dir::Table`.** A third direction reads well in C and the wire,
+  and that is how the bindings spell it; but in the solver every
+  `match dir` would gain an arm that says "as a column", and the
+  cross-axis code that a table shares with a column would have to be
+  reached twice. A flag on a column touches the solver in four places
+  and nothing else.
+
+- **A column that shares widths across rows of *any* column
+  (`align_cells` on every row).** Opting rows in one at a time
+  spreads the declaration over the rows and lets two of them disagree.
+  The table is the unit that has the columns.
+
+- **A grid** (CSS grid: explicit tracks, cells spanning). A different
+  thing, with a different pass order (a cell in two rows sizes both).
+  Not asked for; the name `grid` is taken by the Lua constructor
+  because `table` cannot be, not because this is one.
+
+## Consequences
+
+- The panel's Facts, tokens, legend and inspector lists and kawoosh's
+  Perf and Settings tabs are tables: six hand-picked widths gone, every
+  label column at its longest label, the value columns growing.
+  A longer label widens its column instead of overflowing it.
+
+- Layout cost is gated on `Tree::any_table`: a frame with no table
+  runs the passes as before, one predicted branch per node in the
+  two places the flag is read. A frame with one walks the table's
+  rows and cells twice more (pass 1 and pass 2) and allocates a
+  `Vec<Col>` per table per pass, the size of its column count.
+
+- A virtualised list of rows (`virtual_column`) whose column is a
+  table sizes its columns from the rows built that frame, so a column's
+  width can change as the list scrolls past a wider cell. That is what
+  every virtualised table does; a list that wants stable columns gives
+  the wide column a `Fixed` cell.
+
+- A `Fit` row in a table whose columns grow is as wide as the columns,
+  which is wider than its content: the row's width follows the
+  columns, not the other way round. Rows are usually `grow`, and
+  then this never shows.
+
+- `KUI_ABI_VERSION` stays 18 and the Node frame at v15: a `dir` value
+  is data both already carry.

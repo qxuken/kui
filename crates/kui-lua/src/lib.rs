@@ -1204,6 +1204,7 @@ fn with_children(
 fn element_of(ty: &str) -> &str {
     match ty {
         "row" | "column" => "box",
+        "grid" => "table",
         "input" => "edit",
         "dropdown" => "select",
         "window_buttons" => "windowButtons",
@@ -1387,8 +1388,10 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
     }
     check_props(ui, t, element_of(&ty))?;
     match ty.as_str() {
-        "row" | "column" => {
-            let p = with_refs(ui, |refs| parse_props(t, ty == "row", refs))?;
+        "row" | "column" | "grid" => {
+            let mut p = with_refs(ui, |refs| parse_props(t, ty == "row", refs))?;
+            // A grid is a column whose rows' cells line up (ADR 0033).
+            p.spec.layout.table = ty == "grid";
             ui.core().open_from(p, Content::Box);
             build_children(ui, t)?;
             ui.close();
@@ -3594,6 +3597,60 @@ mod tests {
         ui.set_origin(OriginId(1));
         let err = ext.view(&Slot::root(), &mut ui).unwrap_err().to_string();
         assert!(err.contains("index from 1"), "{err}");
+    }
+
+    /// `grid { }` is a table (ADR 0033): its rows' cells line up, each
+    /// column as wide as its widest cell, a bare text a cell too.
+    #[test]
+    fn a_grid_lines_its_rows_cells_up() {
+        let mut ext = LuaExtension::from_source(
+            "grid",
+            r#"
+                function view(env)
+                  return grid { key = "t", width = 300,
+                    row { key = "r1", width = "grow", gap = 8,
+                      text("ab", { size = 12 }),
+                      column { key = "b1", width = 10, height = 10, bg = 0xff0000ff },
+                      column { key = "c1", width = "grow", height = 10, bg = 0x00ff00ff },
+                    },
+                    row { key = "r2", width = "grow", gap = 8,
+                      text("abcdef", { size = 12 }),
+                      column { key = "b2", width = 50, height = 10, bg = 0xff0000ff },
+                      column { key = "c2", width = 20, height = 10, bg = 0x00ff00ff },
+                    },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        core.set_inspect(true);
+        frame(&mut core, &mut ext);
+        let rect = |core: &mut Core, label: &str| {
+            let key = core.key_of(label).unwrap_or_else(|| panic!("{label}"));
+            core.nodes()
+                .iter()
+                .find(|n| n.key == key)
+                .map(|n| n.rect)
+                .unwrap_or_else(|| panic!("{label}"))
+        };
+        let (b1, b2) = (rect(&mut core, "b1"), rect(&mut core, "b2"));
+        let (c1, c2) = (rect(&mut core, "c1"), rect(&mut core, "c2"));
+        assert_eq!(
+            b1.x, b2.x,
+            "the fixed column starts after the longest label"
+        );
+        assert_eq!(b1.w, 50.0, "the fixed column is its widest cell");
+        assert_eq!(b2.w, 50.0);
+        assert_eq!(c1.x, c2.x);
+        assert_eq!(c1.w, c2.w, "the grow column is one width in both rows");
+        assert_eq!(c1.x + c1.w, 300.0, "and it takes the rest");
+        let t = core.key_of("t").unwrap();
+        assert!(
+            core.nodes().iter().any(|n| n.key == t && n.table),
+            "the grid is a table"
+        );
+        assert!(core.take_warnings().is_empty());
     }
 
     /// `env.set_edit_text` by the label the view declares: the spelling a

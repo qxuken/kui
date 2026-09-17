@@ -119,6 +119,9 @@ pub struct Tree {
     pub any_node_float: bool,
     /// Whether any node declares `wrap_children`.
     pub any_wrap: bool,
+    /// Whether any node is a table (`LayoutSpec::table`): the column
+    /// alignment in the layout passes runs only on a frame that has one.
+    pub any_table: bool,
     /// Whether any node is text (a `Text` or `Edit` content).
     pub any_text: bool,
     /// Whether any node is a `role="line"` row — what a pointer payload
@@ -250,6 +253,7 @@ impl Tree {
         self.any_float = false;
         self.any_node_float = false;
         self.any_wrap = false;
+        self.any_table = false;
         self.any_text = false;
         self.any_line = false;
         self.any_selectable = false;
@@ -296,6 +300,7 @@ impl Tree {
             self.any_node_float |= matches!(f.anchor, crate::spec::FloatAnchor::Node(_));
         }
         self.any_wrap |= spec.layout.wrap;
+        self.any_table |= spec.layout.table;
         self.any_text |= matches!(
             content,
             NodeContent::Text(_) | NodeContent::Edit(_) | NodeContent::Cells(_)

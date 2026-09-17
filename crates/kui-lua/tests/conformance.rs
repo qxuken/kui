@@ -69,6 +69,32 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         "#
             )
         }
+        // A table (ADR 0033): `grid`, since `table` is Lua's own. The
+        // header is a fit row of two bare texts; each body row a grow row
+        // of a bare text, a fixed box and a grow box.
+        "table" => {
+            let rows = conformance::TABLE_ROWS
+                .iter()
+                .map(|(label, w, h)| {
+                    format!(
+                        "row {{ width = \"grow\", gap = 6,
+                text(\"{label}\", {{ size = 12 }}),
+                column {{ width = {w}, height = {h}, bg = 0x30344aff }},
+                column {{ width = \"grow\", height = {h}, bg = 0x3b5bd4ff }},
+              }},"
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n              ");
+            format!(
+                r#"
+            return grid {{ key = "table", width = 200, pad = 4, gap = 2, bg = 0x101018ff,
+              row {{ gap = 6, text("name", {{ size = 12 }}), text("w", {{ size = 12 }}) }},
+              {rows}
+            }}
+        "#
+            )
+        }
         "tabs" => {
             let roomy = conformance::TAB_ROOMY
                 .iter()

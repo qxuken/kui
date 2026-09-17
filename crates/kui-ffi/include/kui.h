@@ -322,8 +322,18 @@ enum { KUI_FIT = 0, KUI_GROW = 1, KUI_FIXED = 2, KUI_PERCENT = 3 };
  * "fit"` elsewhere) - a grow child that never goes below its content. Any
  * negative min means this; the name is the one to write. */
 #define KUI_MIN_FIT (-1.0f)
-/* Directions */
-enum { KUI_COLUMN = 0, KUI_ROW = 1 };
+/* Directions. KUI_TABLE is a column whose rows' children line up in
+ * columns (docs/adr/0033): the nth in-flow child of every row is a cell of
+ * column n, and a column is as wide as its widest cell, so a label column
+ * sits at its longest label with no width picked by hand. A cell's width
+ * sizes its column (KUI_FIT and KUI_FIXED are content, KUI_GROW grows the
+ * column, KUI_PERCENT takes its cut of the row), its min_w / max_w clamp
+ * it, and a bare kui_text in a row is a cell held to its column. The rows
+ * are rows - give them {KUI_GROW, 1} for the columns to grow into - with
+ * their own gap, padding, bg, hover and click; a row of a table never
+ * wraps. Everything else is the column's: gap is between rows, scroll y
+ * scrolls them. */
+enum { KUI_COLUMN = 0, KUI_ROW = 1, KUI_TABLE = 2 };
 /* Alignment */
 enum { KUI_START = 0, KUI_CENTER = 1, KUI_END = 2 };
 /* Quad kinds */
@@ -522,7 +532,7 @@ typedef struct KuiSpec {
     KuiSizing width, height;
     float min_w, max_w, min_h, max_h; /* clamps; max 0 = unconstrained,
                                          min KUI_MIN_FIT = the fit size */
-    uint32_t dir;
+    uint32_t dir; /* KUI_COLUMN / KUI_ROW / KUI_TABLE */
     float pad_l, pad_r, pad_t, pad_b;
     float gap;
     uint32_t main_align, cross_align;

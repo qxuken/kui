@@ -218,10 +218,11 @@ warnings! {
     /// announcement still goes through; this names the builder that is
     /// shouting.
     pub const ANNOUNCEMENT_REPEATED: &str = "announcement-repeated";
-    /// `wrapChildren` on a container that cannot break lines: a column, or a
-    /// row whose main axis scrolls. Both lay out exactly as if the flag were
-    /// absent, which reads as "wrapping is broken"; see `LayoutSpec::wrap` for
-    /// why a column cannot have it.
+    /// `wrapChildren` on a container that cannot break lines: a column, a
+    /// row whose main axis scrolls, or a row of a table, whose children are
+    /// the table's columns. All lay out exactly as if the flag were absent,
+    /// which reads as "wrapping is broken"; see `LayoutSpec::wrap` for why
+    /// a column cannot have it.
     pub const WRAP_IGNORED: &str = "wrap-ignored";
     /// A text node sits more than four levels below the `line` row above
     /// it, which is as far as a text's place remembers its ancestors — so
@@ -1114,6 +1115,12 @@ impl Diagnostics {
             } else if layout.scroll_x {
                 "a scrollX row's main axis is unbounded, and an axis with no bound has nothing \
                  to break against (drop scrollX, or drop wrapChildren and let it scroll)"
+            } else if layout.float.is_none()
+                && tree.parent[i] != NIL
+                && tree.specs[tree.parent[i] as usize].layout.table
+            {
+                "a table's row cannot wrap: its children are the table's columns, one each \
+                 (put the wrapping row inside a cell)"
             } else {
                 continue;
             };

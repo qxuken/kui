@@ -304,7 +304,8 @@ pub struct KuiSpec {
     pub max_w: f32,
     pub min_h: f32,
     pub max_h: f32,
-    /// 0 = column, 1 = row
+    /// 0 = column, 1 = row, 2 = table (`KUI_TABLE`: a column whose rows'
+    /// children line up in columns, ADR 0033)
     pub dir: u32,
     pub pad_l: f32,
     pub pad_r: f32,

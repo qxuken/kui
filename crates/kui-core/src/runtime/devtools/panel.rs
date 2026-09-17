@@ -321,15 +321,16 @@ fn tabs(ui: &mut Ui<'_>, st: &State, t: &Theme) {
     );
 }
 
-/// The status block: the rows the main window's core wrote. Three of
-/// them — `theme`, `accent`, `menus` — are what the panel can override,
-/// and each carries its select beside the fact it changes: the fact is
-/// what the app has, the select what the panel holds it to (`app` leaves
-/// the app's own). The chords (`Ctrl+Shift+T` / `A` / `M`) cycle the
-/// same choices.
+/// The status block: the rows the main window's core wrote, as a table
+/// (ADR 0033) — the name column at its longest name, the value column
+/// growing. Three of the rows — `theme`, `accent`, `menus` — are what
+/// the panel can override, and each carries its select in a third
+/// column beside the fact it changes: the fact is what the app has, the
+/// select what the panel holds it to (`app` leaves the app's own). The
+/// chords (`Ctrl+Shift+T` / `A` / `M`) cycle the same choices.
 fn facts(ui: &mut Ui<'_>, st: &State, t: &Theme) {
     ui.with(
-        NodeSpec::column()
+        NodeSpec::table()
             .width(Sizing::Grow(1.0))
             .min_height(Min::FIT)
             .gap(3.0),
@@ -341,10 +342,10 @@ fn facts(ui: &mut Ui<'_>, st: &State, t: &Theme) {
                         .gap(8.0)
                         .cross_align(Align::Center),
                     |ui| {
-                        ui.with(NodeSpec::row().width(Sizing::Fixed(70.0)), |ui| {
-                            ui.text(k, TextStyle::new(11.0).color(t.muted));
+                        ui.text(k, TextStyle::new(11.0).color(t.muted));
+                        ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |ui| {
+                            ui.text(v, TextStyle::new(11.0).color(t.fg).mono().nowrap());
                         });
-                        ui.text(v, TextStyle::new(11.0).color(t.fg).mono().nowrap());
                         match *k {
                             "theme" => override_select(ui, st, "base"),
                             "accent" => override_select(ui, st, "accent"),
@@ -400,9 +401,8 @@ fn override_select(ui: &mut Ui<'_>, st: &State, what: &str) {
             (items, current)
         }
     };
-    // A grow spacer keeps the field at the row's right edge, off the
-    // value, whatever the value's length.
-    ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
+    // The third column of the facts table: the value column grows, so the
+    // field sits at the row's right edge whatever the value's length.
     let t = ink(ui.theme());
     widgets::select_with(
         ui,
@@ -422,7 +422,9 @@ fn override_select(ui: &mut Ui<'_>, st: &State, what: &str) {
 
 /// The declared tokens (ADR 0027, decision 7): a swatch and the hex for a
 /// colour — both halves when they differ, the one in effect first — the
-/// px for a length, grouped under the origin that declared them.
+/// px for a length, grouped under the origin that declared them. A table
+/// per origin (ADR 0033): the swatches, the name, the value and the
+/// recipe are its four columns, the name column at its longest name.
 fn tokens(ui: &mut Ui<'_>, st: &State, t: &Theme) {
     if st.facts.tokens.is_empty() {
         return;
@@ -430,8 +432,12 @@ fn tokens(ui: &mut Ui<'_>, st: &State, t: &Theme) {
     let dark = t.is_dark();
     ui.with(NodeSpec::column().width(Sizing::Grow(1.0)).gap(2.0), |ui| {
         let mut last_origin = None;
+        let mut open = false;
         for tok in &st.facts.tokens {
             if last_origin != Some(tok.origin) {
+                if open {
+                    ui.close();
+                }
                 last_origin = Some(tok.origin);
                 let who = if tok.origin == OriginId::HOST {
                     "tokens".to_string()
@@ -439,6 +445,8 @@ fn tokens(ui: &mut Ui<'_>, st: &State, t: &Theme) {
                     format!("tokens · origin {}", tok.origin.0)
                 };
                 ui.text(&who, TextStyle::new(11.0).color(t.muted));
+                ui.open(NodeSpec::table().width(Sizing::Grow(1.0)).gap(2.0));
+                open = true;
             }
             ui.with(
                 NodeSpec::row()
@@ -452,24 +460,22 @@ fn tokens(ui: &mut Ui<'_>, st: &State, t: &Theme) {
                         b: 0.0,
                     }),
                 |ui| {
-                    if tok.kind == crate::tokens::TokenKind::Color {
-                        let (first, second) = if dark {
-                            (tok.dark, tok.light)
-                        } else {
-                            (tok.light, tok.dark)
-                        };
-                        swatch(ui, first, t);
-                        if tok.light != tok.dark {
-                            swatch(ui, second, t);
-                        } else {
-                            ui.with(NodeSpec::row().width(Sizing::Fixed(12.0)), |_| {});
+                    // The swatch column: two samples for a colour whose
+                    // halves differ, one for a colour, none for a length.
+                    ui.with(NodeSpec::row().gap(6.0), |ui| {
+                        if tok.kind == crate::tokens::TokenKind::Color {
+                            let (first, second) = if dark {
+                                (tok.dark, tok.light)
+                            } else {
+                                (tok.light, tok.dark)
+                            };
+                            swatch(ui, first, t);
+                            if tok.light != tok.dark {
+                                swatch(ui, second, t);
+                            }
                         }
-                    } else {
-                        ui.with(NodeSpec::row().width(Sizing::Fixed(30.0)), |_| {});
-                    }
-                    ui.with(NodeSpec::row().width(Sizing::Fixed(90.0)), |ui| {
-                        ui.text(&tok.name, TextStyle::new(11.0).color(t.fg).nowrap());
                     });
+                    ui.text(&tok.name, TextStyle::new(11.0).color(t.fg).nowrap());
                     let value = match tok.kind {
                         crate::tokens::TokenKind::Color => {
                             if tok.light != tok.dark {
@@ -493,6 +499,9 @@ fn tokens(ui: &mut Ui<'_>, st: &State, t: &Theme) {
                 },
             );
         }
+        if open {
+            ui.close();
+        }
     });
 }
 
@@ -510,16 +519,16 @@ fn swatch(ui: &mut Ui<'_>, c: Color, t: &Theme) {
     );
 }
 
+/// The chords and what they do: a two-column table (ADR 0033), the keys
+/// column at its longest chord.
 fn legend(ui: &mut Ui<'_>, st: &State, t: &Theme) {
     if st.legend.is_empty() {
         return;
     }
-    ui.with(NodeSpec::column().width(Sizing::Grow(1.0)).gap(2.0), |ui| {
+    ui.with(NodeSpec::table().width(Sizing::Grow(1.0)).gap(2.0), |ui| {
         for (keys, what) in &st.legend {
             ui.with(NodeSpec::row().width(Sizing::Grow(1.0)).gap(8.0), |ui| {
-                ui.with(NodeSpec::row().width(Sizing::Fixed(90.0)), |ui| {
-                    ui.text(keys, TextStyle::new(11.0).color(t.accent));
-                });
+                ui.text(keys, TextStyle::new(11.0).color(t.accent));
                 ui.text(what, TextStyle::new(11.0).color(t.muted));
             });
         }

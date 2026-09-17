@@ -121,10 +121,10 @@ pub(crate) fn spec_of(
     on_key: *mut KuiValue,
     on_hover: *mut KuiValue,
 ) -> NodeSpec {
-    let mut spec = if s.dir == 1 {
-        NodeSpec::row()
-    } else {
-        NodeSpec::column()
+    let mut spec = match s.dir {
+        1 => NodeSpec::row(),
+        2 => NodeSpec::table(),
+        _ => NodeSpec::column(),
     };
     spec = spec
         .width(sizing_of(s.width))

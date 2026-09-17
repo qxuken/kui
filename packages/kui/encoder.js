@@ -232,9 +232,11 @@ export function createEncoder(P) {
     let n = 0;
     // dir and size first: the decoder constructs spec/style from them.
     if (p.dir !== undefined && p.dir !== 'column') {
-      if (p.dir !== 'row') throw new Error(`bad dir ${JSON.stringify(p.dir)} (row | column)`);
+      // `table` is a column whose rows' cells line up (ADR 0033).
+      const dir = p.dir === 'row' ? 1 : p.dir === 'table' ? 2 : undefined;
+      if (dir === undefined) throw new Error(`bad dir ${JSON.stringify(p.dir)} (row | column | table)`);
       f[fi++] = PR.dir.id;
-      f[fi++] = 1;
+      f[fi++] = dir;
       n++;
     }
     if (p.size != null) {

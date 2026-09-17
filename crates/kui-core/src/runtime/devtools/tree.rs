@@ -603,8 +603,9 @@ fn inspector(
                 (
                     "dir",
                     format!(
-                        "{}{}",
+                        "{}{}{}",
                         format!("{:?}", n.dir).to_lowercase(),
+                        if n.table { " · table" } else { "" },
                         if n.wrap { " · wrap" } else { "" }
                     ),
                     None,
@@ -754,6 +755,9 @@ fn inspector(
                     );
                 },
             );
+            // Each group is a table (ADR 0033): its name column at the
+            // longest name in that group, a row that goes somewhere a
+            // clickable row like any other.
             for (group, rows) in groups {
                 ui.with(
                     NodeSpec::column()
@@ -762,31 +766,31 @@ fn inspector(
                         .gap(1.0),
                     |ui| {
                         ui.text(group, TextStyle::new(10.0).color(t.accent));
-                        for (k, v, goto) in rows {
-                            let spec = NodeSpec::row()
-                                .width(Sizing::Grow(1.0))
-                                .gap(8.0)
-                                .pad_xy(2.0, 0.0)
-                                .radius(3.0);
-                            let spec = match goto {
-                                Some(key) => spec
-                                    .hover_bg(t.hover)
-                                    .on_click(action(format!("goto:{:016x}", key.0)))
-                                    .label(format!("{k} {v}").as_str()),
-                                None => spec,
-                            };
-                            ui.with(spec, |ui| {
-                                ui.with(NodeSpec::row().width(Sizing::Fixed(52.0)), |ui| {
+                        ui.with(NodeSpec::table().width(Sizing::Grow(1.0)).gap(1.0), |ui| {
+                            for (k, v, goto) in rows {
+                                let spec = NodeSpec::row()
+                                    .width(Sizing::Grow(1.0))
+                                    .gap(8.0)
+                                    .pad_xy(2.0, 0.0)
+                                    .radius(3.0);
+                                let spec = match goto {
+                                    Some(key) => spec
+                                        .hover_bg(t.hover)
+                                        .on_click(action(format!("goto:{:016x}", key.0)))
+                                        .label(format!("{k} {v}").as_str()),
+                                    None => spec,
+                                };
+                                ui.with(spec, |ui| {
                                     ui.text(k, TextStyle::new(11.0).color(t.muted));
+                                    ui.text(
+                                        &v,
+                                        TextStyle::new(11.0)
+                                            .color(if goto.is_some() { t.accent } else { t.fg })
+                                            .mono(),
+                                    );
                                 });
-                                ui.text(
-                                    &v,
-                                    TextStyle::new(11.0)
-                                        .color(if goto.is_some() { t.accent } else { t.fg })
-                                        .mono(),
-                                );
-                            });
-                        }
+                            }
+                        });
                     },
                 );
             }

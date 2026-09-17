@@ -13,6 +13,21 @@ function column(t)
   return t
 end
 
+-- grid { row { text("name"), text("value") }, row { ... } }: a table
+-- (docs/adr/0033) -- a column whose rows' children line up in columns,
+-- each column as wide as its widest cell, so a label column sits at its
+-- longest label with no width picked by hand. A cell's `width` sizes its
+-- column (fit or a number is content, "grow" grows the column, a percent
+-- takes its cut), a bare text is a cell held to its column, and the rows
+-- are rows -- give them width = "grow" for the columns to grow into, and
+-- their own gap, pad, bg, hover_bg, on_click. Every other key is the
+-- column's. Named `grid` here because `table` is Lua's own.
+function grid(t)
+  t = t or {}
+  t.type = "grid"
+  return t
+end
+
 -- text("plain", opts) or text({ "plain ", { "bold", bold = true, color = 0x.. } }, opts)
 -- The options are copied, not written into: a style table a script hoists
 -- (`local mono = { size = 14 }`) and hands to several texts is several

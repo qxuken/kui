@@ -36,7 +36,11 @@ type AppMessages =
   | { kind: 'tok'; id: number }
   | { kind: 'row'; id: number }
   | { kind: 'inspect-pick' }
-  | { kind: 'show-tab' };
+  | { kind: 'show-tab' }
+  // widgets/table.tsx: the row a click selected, and the column a header's
+  // click sorts by.
+  | { kind: 'select'; row: number }
+  | { kind: 'sort'; by: 'name' | 'size' | 'kind' };
 
 declare module '@qxuken/kui/jsx-runtime' {
   interface KuiMsg {

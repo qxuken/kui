@@ -130,6 +130,90 @@ mod widgets_headless {
         kui_ctx_free(ctx);
     }
 
+    /// `dir = KUI_TABLE` (ADR 0033): the rows' cells line up, each
+    /// column as wide as its widest cell, a grow cell growing its column,
+    /// a bare text a cell too. Read back through `kui_layout_of` on the
+    /// cells that declared `on_layout`.
+    #[test]
+    fn a_table_lines_its_rows_cells_up() {
+        let ctx = kui_ctx_new();
+        let tag = KuiValue(Value::str("cell"));
+        kui_frame_begin(ctx, 300.0, 200.0, 1.0);
+        let root: KuiSpec = unsafe { std::mem::zeroed() };
+        kui_root(ctx, &root);
+        let mut table: KuiSpec = unsafe { std::mem::zeroed() };
+        table.dir = 2; // KUI_TABLE
+        table.width = KuiSizing {
+            tag: 2,
+            value: 300.0,
+        };
+        kui_open(ctx, &table, NONE);
+        let mut keys = Vec::new();
+        for (label, w) in [("ab", 10.0), ("abcdef", 50.0)] {
+            let mut row: KuiSpec = unsafe { std::mem::zeroed() };
+            row.dir = 1;
+            row.width = KuiSizing { tag: 1, value: 1.0 };
+            row.gap = 8.0;
+            kui_open(ctx, &row, NONE);
+            let mut style: KuiTextStyle = unsafe { std::mem::zeroed() };
+            style.size = 12.0;
+            kui_text(ctx, ks(label), &style);
+            let mut fixed: KuiSpec = unsafe { std::mem::zeroed() };
+            fixed.width = KuiSizing { tag: 2, value: w };
+            fixed.height = KuiSizing {
+                tag: 2,
+                value: 10.0,
+            };
+            fixed.on_layout = &tag;
+            let b = kui_open(ctx, &fixed, NONE);
+            kui_close(ctx);
+            let mut grow: KuiSpec = unsafe { std::mem::zeroed() };
+            grow.width = KuiSizing { tag: 1, value: 1.0 };
+            grow.height = KuiSizing {
+                tag: 2,
+                value: 10.0,
+            };
+            grow.on_layout = &tag;
+            let c = kui_open(ctx, &grow, NONE);
+            kui_close(ctx);
+            kui_close(ctx);
+            keys.push((b, c));
+        }
+        kui_close(ctx);
+        kui_frame_finish(ctx);
+        let rect = |key: u64| {
+            let mut r = KuiLayoutRect::default();
+            assert!(kui_layout_of(ctx, key, &mut r));
+            r
+        };
+        let (b1, c1) = (rect(keys[0].0), rect(keys[0].1));
+        let (b2, c2) = (rect(keys[1].0), rect(keys[1].1));
+        assert_eq!(
+            b1.x, b2.x,
+            "the fixed column starts after the longest label"
+        );
+        assert!(b1.x > 8.0, "past a label and the gap: {}", b1.x);
+        assert_eq!(
+            (b1.w, b2.w),
+            (50.0, 50.0),
+            "the fixed column is its widest cell"
+        );
+        assert_eq!(c1.x, c2.x);
+        assert_eq!(c1.w, c2.w, "the grow column is one width in both rows");
+        assert_eq!(c1.x + c1.w, 300.0, "and it takes the rest");
+        let empty = KuiStr {
+            ptr: std::ptr::null(),
+            len: 0,
+        };
+        let mut out = [KuiWarning {
+            code: empty,
+            key: 0,
+            message: empty,
+        }; 4];
+        assert_eq!(kui_take_warnings(ctx, out.as_mut_ptr(), out.len()), 0);
+        kui_ctx_free(ctx);
+    }
+
     /// The metrics cross the boundary both ways (backlog T2): the stock
     /// set reads back as the constants, a set the host wrote is what the
     /// next button is built from, NULL restores the stock set, and a short

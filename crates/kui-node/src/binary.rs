@@ -489,11 +489,12 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut, refs: &mut Refs<'_>) -
         let is_ref = raw & TOKEN_TAG != 0;
         let id = raw & !TOKEN_TAG;
         match id {
-            P_DIR => {
-                if r.u()? == 1 {
-                    out.spec = NodeSpec::row();
-                }
-            }
+            P_DIR => match r.u()? {
+                1 => out.spec = NodeSpec::row(),
+                // A table: a column whose rows' cells line up (ADR 0033).
+                2 => out.spec = NodeSpec::table(),
+                _ => {}
+            },
             P_SIZE if is_ref => {
                 if let Some(px) = refs.length(r.f()?) {
                     out.style = TextStyle::new(px);
