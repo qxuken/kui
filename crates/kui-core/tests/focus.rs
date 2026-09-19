@@ -731,20 +731,22 @@ fn everything_outside_the_modal_is_inert() {
     assert_eq!(out[0].key, m.dialog);
     assert_eq!(core.focus(), Some(m.ok), "focus stays in the modal");
 
-    // Hover, Enter / Space and a reader's click all resolve against the
-    // same hit list, so all three are inert too.
+    // Hover and Enter / Space resolve against the same hit list, so both
+    // are inert too.
     core.handle_input(InputEvent::CursorMoved(Vec2::new(BEHIND.0, BEHIND.1)));
     assert!(!core.is_hovered(m.open));
     core.set_focus(Some(m.open));
     assert!(key(&mut core, EditKey::Enter).is_empty());
     assert!(core.handle_input(InputEvent::Text(" ".into())).is_empty());
-    assert!(
-        core.handle_input(InputEvent::Access(AccessRequest::new(
-            m.behind,
-            AccessAction::Click
-        )))
-        .is_empty()
-    );
+    // A reader's click on the button behind is the press outside: the
+    // modal's dismiss and no `open`, as the pointer's above (backlog
+    // RG13 — it used to be dropped).
+    let out = core.handle_input(InputEvent::Access(AccessRequest::new(
+        m.behind,
+        AccessAction::Click,
+    )));
+    assert_eq!(payloads(&out), ["dismiss:"]);
+    assert_eq!(out[0].key, m.dialog);
 
     // The wheel over the list behind does nothing; the modal's own
     // controls are live.

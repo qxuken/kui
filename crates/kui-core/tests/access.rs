@@ -744,6 +744,126 @@ fn requests_behind_a_modal_or_on_a_disabled_node_do_nothing() {
     assert!(core.access_tree().get(list).unwrap().scroll.unwrap().y > 0.0);
 }
 
+/// A reader's click on a control behind a modal is the press outside it
+/// (ADR 0003 decisions 5 and 6): the control fires nothing, the modal is
+/// asked to go away with `reason: "outside"`, and focus stays where it
+/// is. The tree is not pruned (decision 7), so a reader can name the
+/// control; its click used to be dropped where the pointer's press on
+/// the same spot dismissed (backlog RG13). The modal's own control still
+/// clicks, a window button behind the modal is still the platform's,
+/// and a disabled control behind it is outside like any other.
+#[test]
+fn a_click_behind_a_modal_fires_nothing_and_asks_the_modal_to_go() {
+    let mut core = Core::new();
+    let build = |core: &mut Core| {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        let close = ui.with_keyed(
+            "close",
+            NodeSpec::row()
+                .width(Sizing::Fixed(20.0))
+                .height(Sizing::Fixed(20.0))
+                .window_button(WindowButton::Close)
+                .label("Close"),
+            |_| {},
+        );
+        let save = ui.with_keyed(
+            "save",
+            NodeSpec::row()
+                .width(Sizing::Fixed(100.0))
+                .height(Sizing::Fixed(20.0))
+                .on_click(Value::map([("kind", Value::str("save"))]))
+                .label("Save"),
+            |_| {},
+        );
+        let off = ui.with_keyed(
+            "off",
+            NodeSpec::row()
+                .width(Sizing::Fixed(100.0))
+                .height(Sizing::Fixed(20.0))
+                .on_click(Value::map([("kind", Value::str("off"))]))
+                .disabled(true)
+                .label("Off"),
+            |_| {},
+        );
+        let dialog = ui.with_keyed(
+            "dialog",
+            NodeSpec::column()
+                .width(Sizing::Fixed(120.0))
+                .height(Sizing::Fixed(80.0))
+                .modal(Value::str("dlg"))
+                .label("Settings"),
+            |ui| {
+                ui.with_keyed(
+                    "ok",
+                    NodeSpec::row()
+                        .width(Sizing::Fixed(80.0))
+                        .height(Sizing::Fixed(20.0))
+                        .on_click(Value::map([("kind", Value::str("ok"))]))
+                        .label("OK"),
+                    |_| {},
+                );
+            },
+        );
+        let ok = ui.core().key_of("ok").unwrap();
+        ui.finish();
+        (close, save, off, dialog, ok)
+    };
+    let (close, save, off, dialog, ok) = build(&mut core);
+    assert_eq!(core.focus(), Some(ok), "focus went into the modal");
+    let click = |core: &mut Core, key: Key| {
+        core.handle_input(InputEvent::Access(AccessRequest::new(
+            key,
+            AccessAction::Click,
+        )))
+    };
+
+    // The control behind the dialog: no `save`, a `dismiss` on the
+    // dialog, and focus untouched.
+    let evs = click(&mut core, save);
+    assert_eq!(kinds(&evs), ["dismiss"]);
+    assert_eq!(evs[0].key, dialog);
+    assert_eq!(
+        evs[0].payload.get("reason").and_then(Value::as_str),
+        Some("outside")
+    );
+    assert_eq!(
+        evs[0].payload.get("tag").and_then(Value::as_str),
+        Some("dlg")
+    );
+    assert_eq!(core.focus(), Some(ok));
+    // A disabled one behind it is outside all the same — the pointer's
+    // press there finds no region either.
+    assert_eq!(kinds(&click(&mut core, off)), ["dismiss"]);
+    // The dialog's own control clicks.
+    assert_eq!(kinds(&click(&mut core, ok)), ["ok"]);
+    // Window chrome stays live: the platform's, not a dismissal.
+    assert!(click(&mut core, close).is_empty());
+    assert_eq!(
+        core.take_window_commands(),
+        [WindowCommand::Close(kui_core::WindowId::MAIN)]
+    );
+
+    // The dialog's own background is not outside: nothing is heard.
+    assert!(click(&mut core, dialog).is_empty());
+
+    // Without the dialog the same click is the control's.
+    let mut plain = Core::new();
+    let mut ui = plain.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let save = ui.with_keyed(
+        "save",
+        NodeSpec::row()
+            .width(Sizing::Fixed(100.0))
+            .height(Sizing::Fixed(20.0))
+            .on_click(Value::map([("kind", Value::str("save"))]))
+            .label("Save"),
+        |_| {},
+    );
+    ui.finish();
+    assert_eq!(kinds(&click(&mut plain, save)), ["save"]);
+}
+
 #[test]
 fn missing_names_are_warnings_raised_once() {
     let mut core = Core::new();

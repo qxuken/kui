@@ -558,6 +558,55 @@ fn the_menus_chord_cycles_the_selects_three_choices_from_the_hosts_own_mode() {
     walk(false);
 }
 
+/// A reader's click on the select's field while its menu is open closes
+/// the menu, as the pointer's press there does: the field is behind the
+/// menu's modal, and a click naming a node outside the modal is the
+/// press outside (ADR 0003 decision 6). It used to be dropped, the menu
+/// left open and the reader with no way to close it but Escape (backlog
+/// RG13).
+#[test]
+fn a_readers_second_click_on_an_open_selects_field_closes_its_menu() {
+    let mut core = on();
+    let facts = core.key_of("kui-devtools/tab-facts").unwrap();
+    access_click(&mut core, facts);
+    frame(&mut core);
+    let base = core.key_of("kui-devtools/base").unwrap();
+    assert!(access_click(&mut core, base).is_empty());
+    assert!(core.menu().is_some());
+    frame(&mut core);
+    // The pointer's press on the field: the menu goes, nothing is heard.
+    let mut twin = on();
+    access_click(&mut twin, facts);
+    frame(&mut twin);
+    access_click(&mut twin, base);
+    frame(&mut twin);
+    let r = twin
+        .access_tree()
+        .get(base)
+        .expect("the field is in the tree")
+        .rect;
+    let evs = click_at(&mut twin, r.x + 2.0, r.y + 2.0);
+    assert!(evs.is_empty(), "{evs:?}");
+    assert!(twin.menu().is_none());
+    // The reader's click on it: the same.
+    let evs = access_click(&mut core, base);
+    assert!(evs.is_empty(), "{evs:?}");
+    assert!(core.menu().is_none(), "the menu closed");
+    assert_eq!(state(&core, |s| s.base), None, "no row was chosen");
+    frame(&mut core);
+    assert!(
+        !core
+            .access_tree()
+            .nodes
+            .iter()
+            .any(|n| n.role == crate::access::Role::MenuItem),
+        "no row drawn"
+    );
+    // And a third click opens it again, as the first did.
+    assert!(access_click(&mut core, base).is_empty());
+    assert!(core.menu().is_some());
+}
+
 /// The same select answered by a host's own menu: `activate_menu_item`
 /// is not an input, and its events take the same way out, so the row
 /// is the panel's action there too and the app hears nothing.

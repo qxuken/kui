@@ -298,7 +298,9 @@ impl Orientation {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum AccessAction {
     /// Activate: the node's `on_click` payload is emitted (a window button
-    /// issues its command; an editor or key sink takes focus).
+    /// issues its command; an editor or key sink takes focus). On a node
+    /// behind the frame's modal it is the press outside: a `dismiss` on
+    /// the modal, nothing on the node (ADR 0003, decision 6).
     Click,
     /// Give the node keyboard focus — any focusable node (an editor, a key
     /// sink, a control, a `focusable` box); it shows, as after Tab.

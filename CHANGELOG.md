@@ -425,6 +425,24 @@ hole by hand will see.
   converting Lua nil to String". `openMenu`'s items are not checked for
   unknown keys; only a select's options are.
 
+- **An assistive-technology click on a control behind a modal was
+  dropped where the pointer's press dismisses** (backlog RG13, the same
+  pass). A reader can name a node behind a modal — the access tree is
+  not pruned (ADR 0003 decision 7) — and its `Click` was refused at the
+  gate every other request obeys (AR18) and nothing else happened: a
+  select's field clicked a second time while its own menu was open left
+  the menu open, where the pointer's press on the field — no region
+  under it, the field inert behind the menu's modal — asks the modal to
+  go away and the menu closes. A reader's click on a node outside the
+  modal is now the press outside (decision 6): `{kind: "dismiss",
+  reason: "outside", tag}` on the modal, nothing on the node, focus where
+  it was; the menu it was a select's field closes, and a dialog's app
+  decides as it does for the pointer. Window chrome behind the modal is
+  the platform's as before, a disabled control behind it is outside like
+  any other, and every other request behind a modal still does nothing.
+  The finding read the dropped click as a re-open; it was a refusal, and
+  the pointer's dismissal is what was missing.
+
 ### Changed
 
 - **The devtools tab strip wraps, and the overrides sit on the facts

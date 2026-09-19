@@ -130,7 +130,13 @@ can stop declaring the dialog.
    press that lands on no hit region emits `{kind:"dismiss",
    reason:"outside", tag}` and neither moves nor drops focus. Declaring
    `modal` implies a hit region on the node itself, so its own background
-   is not "outside". The core closes nothing: the app stops declaring the
+   is not "outside". An assistive-technology `Click` naming a node
+   outside the scope is that press: the tree is not pruned (decision 7),
+   so a reader can name one, and its click emits the same `dismiss` on
+   the modal and nothing on the node — window chrome excepted, which is
+   the platform's as under decision 5 (backlog RG13, 2026-09-20: it used
+   to be dropped, and a select's field clicked twice left its own menu
+   open where the pointer closed it). The core closes nothing: the app stops declaring the
    node, on the frame it decides to — which is what makes "Escape asks
    for confirmation" and "a menu closes, a dialog does not" the app's
    call rather than the core's. A focused `onKey` sink still receives

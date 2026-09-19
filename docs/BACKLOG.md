@@ -1243,24 +1243,11 @@ on the table's layout — **built 2026-09-20** the same day, RG4, the
 left dock's deferral, **built 2026-09-20** too, RG5, the freeze
 loop's sign rule, **built 2026-09-20** as well, and RG9 and RG10, the
 select's disabled row through the door and its unchecked options and
-`current`, **built 2026-09-20** likewise; the rest are below.
+`current`, **built 2026-09-20** likewise, and RG13, the reader's click
+behind a modal, **built 2026-09-20** too; the rest are below.
 Two were regressions this round introduced (RG5 and RG6, both now
 built), the rest are gaps the new features opened or holes they made
 reachable. Not verified here: F69 in a window (RG15 says how).
-
-### `~` RG13 — An AX click on a control behind a modal fires: a second click on an open select's field re-opens it instead of dismissing
-
-**Found.** `click_node` (`runtime/dispatch.rs:1235`) finds the region
-by key with no `inert` check, unlike `hit_at`. Probed: open the Facts
-`theme` select through `access_click`, frame, `access_click` the field
-again → no events and the menu still open (replaced), where the
-pointer path — the field inert behind the menu's modal — dismisses. Any
-control behind a modal fires on an AX click, against ADR 0003's rule;
-pre-existing, made easy to reach by the select.
-
-**Do.** `click_node` refuses an inert region as `hit_at` does — a
-modal's own nodes excepted — and the select field's AX click while its
-menu is open dismisses, as the pointer's does. Test from the probe.
 
 ### `.` RG14 — Docs and parity nits from the pass, all one line each
 
@@ -1335,7 +1322,7 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** RG13–RG15 from the regression pass of 2026-09-19 (RG1, the Node and C hosts hearing ⌘Q, was **built 2026-09-19**; RG2 and RG12, the devtools' menus select and its chord, RG3, RG6, RG7, RG8 and RG11, the table's layout and the round's float-floor regression, RG4, the left dock's deferral, RG5, the freeze loop's sign rule and the round's other regression, and RG9 and RG10, the select's disabled row through the door and its unchecked options and `current`, **built 2026-09-20**); after them C41 — a profile of `frame_1k_curves` at the drop-zone
+**Build next.** RG14 and RG15 from the regression pass of 2026-09-19 (RG1, the Node and C hosts hearing ⌘Q, was **built 2026-09-19**; RG2 and RG12, the devtools' menus select and its chord, RG3, RG6, RG7, RG8 and RG11, the table's layout and the round's float-floor regression, RG4, the left dock's deferral, RG5, the freeze loop's sign rule and the round's other regression, RG9 and RG10, the select's disabled row through the door and its unchecked options and `current`, and RG13, the reader's click behind a modal, **built 2026-09-20**); after them C41 — a profile of `frame_1k_curves` at the drop-zone
 commit against the one before, the bisect already done; then W19, when
 a Windows or Linux round comes (the macOS half of ADR 0031 is built and
 verified; the fallback elsewhere is honest and positionless). Nothing else filed is open: the two alpha.13 reports and the
@@ -2044,7 +2031,7 @@ move.
 
 - `!` **F74** — [An app never hears its window go: the close button drops it, ⌘Q ends the process, and neither is a key](backlog/closed-2026-09.md#-f74--an-app-never-hears-its-window-go-the-close-button-drops-it-q-ends-the-process-and-neither-is-a-key--done-2026-09-17) — done (2026-09-17) — `App::teardown`, once, from the loop's `exiting` and a pumped runner's retirement
 
-**From the regression pass of 2026-09-19** — RG1 built the same day, RG2 and RG12 on 2026-09-20, the five table entries RG3, RG6, RG7, RG8 and RG11, the left dock's RG4, the freeze loop's RG5 and the select's RG9 and RG10 the same day; the rest open above
+**From the regression pass of 2026-09-19** — RG1 built the same day, RG2 and RG12 on 2026-09-20, the five table entries RG3, RG6, RG7, RG8 and RG11, the left dock's RG4, the freeze loop's RG5, the select's RG9 and RG10 and the reader's RG13 the same day; the rest open above
 
 - `!` **RG1** — [A Node or C app still never hears ⌘Q: F74's `teardown` is a Rust `App` method, and the loops the other hosts "own" end the same way](backlog/closed-2026-09.md#-rg1--a-node-or-c-app-still-never-hears-q-f74s-teardown-is-a-rust-app-method-and-the-loops-the-other-hosts-own-end-the-same-way--done-2026-09-19) — done (2026-09-19) — `teardown(model)` in `runWindowed`'s / `createApp`'s config over `KuiWindow.onTeardown`, `kui_on_teardown(fn)` before `kui_run` (ABI 18 kept), the verb-table row, the once-across-ends test; both hosts checked under ⌘Q in the window
 - `!` **RG2** — [A devtools select's menu outlives the panel, and its choice reaches the app as a `menu` event from the devtools origin](backlog/closed-2026-09.md#-rg2--a-devtools-selects-menu-outlives-the-panel-and-its-choice-reaches-the-app-as-a-menu-event-from-the-devtools-origin--done-2026-09-20) — done (2026-09-20) — the panel's menu closes when this window stops building the panel; a devtools-origin event is taken back whatever the panel's state
@@ -2058,6 +2045,7 @@ move.
 - `!` **RG5** — [The F71 freeze loop freezes min and max violators in the same pass, and a plain sibling can get nothing](backlog/closed-2026-09.md#-rg5--the-f71-freeze-loop-freezes-min-and-max-violators-in-the-same-pass-and-a-plain-sibling-can-get-nothing--done-2026-09-20) — done (2026-09-20) — flexbox's sign rule: a pass freezes only the violators of the dominant sign and re-shares; a byte per child in `Tree::grow_scratch` for the frozen set; the `frame_1k_grow_rows_capped` row; the regression of the round
 - `!` **RG9** — [`activate_menu_item` posts a disabled option's choice](backlog/closed-2026-09.md#-rg9--activate_menu_item-posts-a-disabled-options-choice--done-2026-09-20) — done (2026-09-20) — a row that cannot be chosen (disabled, a separator) is refused in the core: `Option<Vec<UiEvent>>`, `false` at both doors, nothing posted, the menu still open
 - `~` **RG10** — [A select's `options` and `current` are checked by C and not by Node or Lua: an empty menu, a blank field, a check on a separator](backlog/closed-2026-09.md#-rg10--a-selects-options-and-current-are-checked-by-c-and-not-by-node-or-lua-an-empty-menu-a-blank-field-a-check-on-a-separator--done-2026-09-20) — done (2026-09-20) — the reader refuses `[]`; `select-current-ignored` from `select_with` for every binding; an option object's unknown key is `unknown-prop` with the row's wording (`MenuItem::KEYS`); Lua's missing label named; C's `count == 0` stays, its rows never pass the reader
+- `~` **RG13** — [An AX click on a control behind a modal fires: a second click on an open select's field re-opens it instead of dismissing](backlog/closed-2026-09.md#-rg13--an-ax-click-on-a-control-behind-a-modal-fires-a-second-click-on-an-open-selects-field-re-opens-it-instead-of-dismissing--done-2026-09-20) — done (2026-09-20) — it was dropped, not fired: a reader's `Click` outside the modal is now the press outside, a `dismiss` on the modal and nothing on the node; the select's menu closes
 
 **From the kawoosh devtools-tables report (2026-09-17)** — F75, filed and built the same day
 

@@ -785,14 +785,33 @@ impl Core {
         let idx = self.tree.index_of(key);
         // The gates every other channel obeys (AR18): a node outside the
         // modal is inert (ADR 0003 decision 5) and a disabled one takes no
-        // action — which is what the access tree refuses to advertise, so
-        // a request naming one is a reader working from a stale tree, or
-        // a headless test. Only `Click` resolved against the hit list
-        // before; a reader edited, nudged and scrolled the page behind a
-        // dialog, and `Focus` on an editor there routed typing to it
-        // until the next frame's containment.
+        // action. Only `Click` resolved against the hit list before; a
+        // reader edited, nudged and scrolled the page behind a dialog,
+        // and `Focus` on an editor there routed typing to it until the
+        // next frame's containment.
         if let Some(i) = idx
-            && (!self.interactive(i) || self.tree.specs[i].disabled)
+            && !self.interactive(i)
+        {
+            // The access tree is not pruned (ADR 0003 decision 7), so a
+            // reader can name a node behind the modal, and its click is
+            // the press outside: the modal is asked to go away, and the
+            // node hears nothing (decision 6). Dropped on the floor, a
+            // select's field clicked a second time left its own menu
+            // open where the pointer closes it (backlog RG13). Every
+            // other request behind a modal does nothing — nothing a
+            // pointer does to the page behind a dialog moves its text.
+            if req.action == AccessAction::Click
+                && let Some(modal) = self.modal()
+            {
+                self.dismiss(modal, "outside", out);
+            }
+            return;
+        }
+        // Disabled: what the access tree refuses to advertise, so a
+        // request naming one is a reader working from a stale tree, or a
+        // headless test.
+        if let Some(i) = idx
+            && self.tree.specs[i].disabled
         {
             return;
         }
