@@ -1098,51 +1098,93 @@ fn distribute_run(
     }
     let mut total = used;
     if grow_total > 0.0 {
-        // Flexbox's freeze loop. A grow child's share is `remain` split
-        // by factor; one whose own min or max holds it off that share is
-        // frozen at the clamp, its size moved into `used`, and the rest
-        // share what is left, until a pass freezes nothing. A max on one
-        // child is room for its siblings, not a hole at the end of the
-        // run (a devtools inspector capped at 300 left the node list
-        // above it short of the panel by the same 300). At most one pass
-        // per grow child, since each pass past the first froze one.
-        let mut frozen: Vec<u32> = Vec::new();
+        // Flexbox's freeze loop (CSS Flexible Box §9.7, step 6). A grow
+        // child's share is `remain` split by factor; one whose own min or
+        // max holds it off that share is a violator, min or max by the
+        // sign of the difference. A pass sums its violations and freezes
+        // only the violators of the dominant sign — the min ones when the
+        // sum is positive, the max ones when negative — each at its
+        // clamp, its size moved into `used`; the rest, the other sign's
+        // violators included, share what is left in the next pass, until
+        // a pass's violations sum to nothing. A max on one child is room
+        // for its siblings, not a hole at the end of the run (a devtools
+        // inspector capped at 300 left the node list above it short of
+        // the panel by the same 300); and a min on one is not the cue to
+        // freeze a capped sibling at its cap while a plain one gets
+        // nothing (RG5: 600 over A max 100, B min 500, C — 50 / 500 / 50,
+        // not 100 / 500 / 0). At most one pass per grow child, since each
+        // pass past the first froze one. The per-child state is a byte in
+        // `grow_scratch`, indexed by the child's place in the run, so a
+        // pass over n children costs n whichever way the earlier ones
+        // went.
+        const FROZEN: u8 = 1;
+        const MIN_VIOLATOR: u8 = 2;
+        const MAX_VIOLATOR: u8 = 4;
+        let mut scratch = std::mem::take(&mut tree.grow_scratch);
+        scratch.clear();
+        scratch.resize(n as usize, 0);
         loop {
             let remain = (content - used).max(0.0);
-            let mut froze = false;
+            let mut violation = 0.0f32;
+            let mut unfrozen = 0.0f32;
+            let mut k = 0usize;
             let mut c = start;
             while c != end && c != NIL {
-                if !is_float(tree, c)
-                    && !frozen.contains(&c)
-                    && let Sizing::Grow(f) = child_sizing(tree, c, axis)
-                {
-                    let share = remain * f.max(0.0) / grow_total;
-                    set_axis_clamped(tree, c, axis, share);
-                    let got = get_axis(tree, c, axis);
-                    if (got - share).abs() > 0.01 {
-                        frozen.push(c);
-                        used += got;
-                        grow_total -= f.max(0.0);
-                        froze = true;
+                if !is_float(tree, c) {
+                    if scratch[k] & FROZEN == 0
+                        && let Sizing::Grow(f) = child_sizing(tree, c, axis)
+                    {
+                        let share = remain * f.max(0.0) / grow_total;
+                        set_axis_clamped(tree, c, axis, share);
+                        let got = get_axis(tree, c, axis);
+                        unfrozen += got;
+                        let off = got - share;
+                        scratch[k] = if off > 0.01 {
+                            violation += off;
+                            MIN_VIOLATOR
+                        } else if off < -0.01 {
+                            violation += off;
+                            MAX_VIOLATOR
+                        } else {
+                            0
+                        };
                     }
+                    k += 1;
                 }
                 c = tree.next_sibling[c as usize];
             }
-            if !froze || grow_total <= 0.0 {
+            if violation.abs() <= 0.01 {
+                // Nothing to freeze: every unfrozen child is at its
+                // share, or the clamps cancel and the run adds up.
+                total = used + unfrozen;
+                break;
+            }
+            let freeze = if violation > 0.0 {
+                MIN_VIOLATOR
+            } else {
+                MAX_VIOLATOR
+            };
+            let mut k = 0usize;
+            let mut c = start;
+            while c != end && c != NIL {
+                if !is_float(tree, c) {
+                    if scratch[k] & freeze != 0
+                        && let Sizing::Grow(f) = child_sizing(tree, c, axis)
+                    {
+                        scratch[k] = FROZEN;
+                        used += get_axis(tree, c, axis);
+                        grow_total -= f.max(0.0);
+                    }
+                    k += 1;
+                }
+                c = tree.next_sibling[c as usize];
+            }
+            if grow_total <= 0.0 {
+                total = used;
                 break;
             }
         }
-        total = used;
-        let mut c = start;
-        while c != end && c != NIL {
-            if !is_float(tree, c)
-                && !frozen.contains(&c)
-                && matches!(child_sizing(tree, c, axis), Sizing::Grow(_))
-            {
-                total += get_axis(tree, c, axis);
-            }
-            c = tree.next_sibling[c as usize];
-        }
+        tree.grow_scratch = scratch;
     }
     total
 }
@@ -1697,6 +1739,53 @@ mod tests {
         assert_eq!(t.size(c).w, 20.0);
         assert_eq!(t.size(a).w, 80.0);
         assert_eq!(t.pos(c).x, 280.0);
+    }
+
+    /// Flexbox's sign rule (CSS Flexible Box §9.7, step 6): a pass sums
+    /// its violations and freezes only the violators of the dominant
+    /// sign, then re-shares. A 600 column of three grow rows, A capped
+    /// at 100, B held to 500, C plain: the first pass shares 200, A's
+    /// −100 and B's +300 sum positive, so only B is frozen and A shares
+    /// the remaining 100 with C — 50 / 500 / 50, not A at its cap and C
+    /// empty (RG5). Mirrored: A capped at 100, B held to 210, the sum
+    /// −90 is negative, so only A is frozen, and B's re-share of 250
+    /// clears its min on its own — 100 / 250 / 250, not 100 / 210 / 290.
+    #[test]
+    fn a_pass_freezes_only_the_violators_of_the_dominant_sign() {
+        let mut t = T::new(NodeSpec::column().width(px(100.0)).height(px(600.0)));
+        let a = t.node(
+            0,
+            NodeSpec::row().height(Sizing::Grow(1.0)).max_height(100.0),
+        );
+        let b = t.node(
+            0,
+            NodeSpec::row()
+                .height(Sizing::Grow(1.0))
+                .min_height(Min::px(500.0)),
+        );
+        let c = t.node(0, NodeSpec::row().height(Sizing::Grow(1.0)));
+        t.run(1000.0, 1000.0);
+        assert_eq!(t.size(a).h, 50.0);
+        assert_eq!(t.size(b).h, 500.0);
+        assert_eq!(t.size(c).h, 50.0);
+        assert_eq!(t.pos(c).y, 550.0);
+
+        let mut t = T::new(NodeSpec::column().width(px(100.0)).height(px(600.0)));
+        let a = t.node(
+            0,
+            NodeSpec::row().height(Sizing::Grow(1.0)).max_height(100.0),
+        );
+        let b = t.node(
+            0,
+            NodeSpec::row()
+                .height(Sizing::Grow(1.0))
+                .min_height(Min::px(210.0)),
+        );
+        let c = t.node(0, NodeSpec::row().height(Sizing::Grow(1.0)));
+        t.run(1000.0, 1000.0);
+        assert_eq!(t.size(a).h, 100.0);
+        assert_eq!(t.size(b).h, 250.0);
+        assert_eq!(t.size(c).h, 250.0);
     }
 
     #[test]

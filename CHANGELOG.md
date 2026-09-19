@@ -224,6 +224,30 @@ hole by hand will see.
   view that put a grow spacer or a fixed height where the hole was can
   take it out.
 
+- **F71's freeze loop froze a `min` and a `max` violator in the same
+  pass, so a plain sibling could get nothing** (backlog RG5, a
+  regression of this cycle). A 600 px column of three grow rows, one
+  capped at 100, one held to 500 and one plain, came out 100 / 500 / 0
+  — the capped row at its cap and the plain one empty, where flexbox
+  (CSS Flexible Box §9.7, step 6) gives 50 / 500 / 50. A pass now sums
+  its violations and freezes only the violators of the dominant sign —
+  the `min` ones when the sum is positive, the `max` ones when negative
+  — and re-shares the rest, the other sign's violators included, until
+  a pass's violations cancel. The layout result that moves: a run with
+  a `min` violator and a `max` violator in the same pass. When the
+  `min` side dominates, a capped sibling now takes a share of what the
+  re-share leaves instead of sitting at its cap (the 100 above is 50);
+  when the `max` side dominates, a `min` sibling whose re-share clears
+  its floor gets that share instead of its floor (600 over `max 100`,
+  `min 210` and a plain row is 100 / 250 / 250, was 100 / 210 / 290).
+  A run with violators of one sign only — the F71 case, one capped
+  child — lays out as it did, and no corpus scene moves. The frozen
+  set is a byte per child of the run in a scratch the tree keeps,
+  where it was a list searched per child per pass — quadratic in the
+  frozen count; the new `frame_1k_grow_rows_capped` row (a column of
+  1k grow rows under a staircase of `max_height`s, four passes, 348
+  frozen) reads 80 µs against 115 µs before.
+
 - **The drawn menu is fitted to the window, not the app's area** — found
   building F72: a float of the core's menu took the host viewport (the
   window less the dock) as every host float does, so a menu opened in

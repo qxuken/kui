@@ -740,6 +740,35 @@ fn deep_nesting_64_levels(bencher: divan::Bencher) {
     });
 }
 
+/// A column of 1k grow rows under a staircase of `max_height`s (0.5 px to
+/// 2.5 px, in 1080): the freeze loop of `distribute_run` (F71, RG5) runs
+/// four passes here and freezes 348 rows on the way, so the row watches
+/// what a pass costs over children the earlier passes already froze —
+/// the shape that was quadratic in the frozen count before RG5.
+#[divan::bench]
+fn frame_1k_grow_rows_capped(bencher: divan::Bencher) {
+    fn build(core: &mut Core) -> usize {
+        let mut ui = core.frame(Size::new(1920.0, 1080.0), 2.0);
+        ui.configure_root(NodeSpec::column().fill());
+        for i in 0..1000 {
+            ui.with(
+                NodeSpec::row()
+                    .width(Sizing::Grow(1.0))
+                    .height(Sizing::Grow(1.0))
+                    .max_height(0.5 + i as f32 * 0.002)
+                    .bg(Color::rgb8(20, 20, 30)),
+                |_| {},
+            );
+        }
+        ui.finish();
+        let (dl, _) = core.output();
+        dl.quads.len()
+    }
+    let mut core = Core::new();
+    build(&mut core);
+    bencher.bench_local(|| build(&mut core));
+}
+
 // -- Long scrolled lists ----------------------------------------------------
 // The case C5 is about: a log viewer or data table whose content is far
 // taller than its window. `list_naive` is what a view costs today — every row

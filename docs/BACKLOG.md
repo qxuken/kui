@@ -1239,29 +1239,12 @@ ran nothing after `runWindowed`, not even `process.on('exit')`, so
 kawoosh's own defect was still open for every app that is not Rust.
 RG1 is **built 2026-09-19** and in the archive, RG2 and RG12 **built
 2026-09-20** and there too, RG3, RG6, RG7, RG8 and RG11 — the five
-on the table's layout — **built 2026-09-20** the same day, and RG4,
-the left dock's deferral, **built 2026-09-20** too; the rest are
-below. Two were regressions this round introduced (RG5, and RG6,
-now built), the rest are gaps the new features opened or holes they
-made reachable. Not verified here: F69 in a window (RG15 says how).
-
-### `!` RG5 — The F71 freeze loop freezes min and max violators in the same pass, and a plain sibling can get nothing
-
-**Found.** `distribute_run` (`layout.rs:1052`) freezes every clamped
-child in a pass, whichever way it was clamped; flexbox freezes only
-the dominant sign (min violators when the sum of violations is
-positive, max when negative) and re-shares. Probed: a 600 px column
-of three `Grow(1)` rows, A `max 100`, B `min 500`, C plain → A 100,
-B 500, C **0**; flexbox gives 50 / 500 / 50. No overflow, but C is
-empty while A sits at a cap. Also `frozen: Vec` + `contains` per child
-per pass is quadratic in the frozen count; a staircase of `max`es
-freezes one per pass.
-
-**Do.** The sign rule: sum the violations of the pass, freeze only
-the violators of that sign, re-share; a `frozen` bitset or a flag in a
-scratch `Vec<u8>` indexed by child. Add the probe as a test beside
-`a_grow_childs_clamp_is_its_siblings_room`, and a bench row (a column
-of 1k grow rows with `max_height`) for the guard.
+on the table's layout — **built 2026-09-20** the same day, RG4, the
+left dock's deferral, **built 2026-09-20** too, and RG5, the freeze
+loop's sign rule, **built 2026-09-20** as well; the rest are below.
+Two were regressions this round introduced (RG5 and RG6, both now
+built), the rest are gaps the new features opened or holes they made
+reachable. Not verified here: F69 in a window (RG15 says how).
 
 ### `!` RG9 — `activate_menu_item` posts a disabled option's choice
 
@@ -1390,7 +1373,7 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** RG5, RG9, RG10 and RG13–RG15 from the regression pass of 2026-09-19 (RG1, the Node and C hosts hearing ⌘Q, was **built 2026-09-19**; RG2 and RG12, the devtools' menus select and its chord, RG3, RG6, RG7, RG8 and RG11, the table's layout and the round's float-floor regression, and RG4, the left dock's deferral, **built 2026-09-20**), the remaining regression of the round first, RG5; after them C41 — a profile of `frame_1k_curves` at the drop-zone
+**Build next.** RG9, RG10 and RG13–RG15 from the regression pass of 2026-09-19 (RG1, the Node and C hosts hearing ⌘Q, was **built 2026-09-19**; RG2 and RG12, the devtools' menus select and its chord, RG3, RG6, RG7, RG8 and RG11, the table's layout and the round's float-floor regression, RG4, the left dock's deferral, and RG5, the freeze loop's sign rule and the round's other regression, **built 2026-09-20**); after them C41 — a profile of `frame_1k_curves` at the drop-zone
 commit against the one before, the bisect already done; then W19, when
 a Windows or Linux round comes (the macOS half of ADR 0031 is built and
 verified; the fallback elsewhere is honest and positionless). Nothing else filed is open: the two alpha.13 reports and the
@@ -2099,7 +2082,7 @@ move.
 
 - `!` **F74** — [An app never hears its window go: the close button drops it, ⌘Q ends the process, and neither is a key](backlog/closed-2026-09.md#-f74--an-app-never-hears-its-window-go-the-close-button-drops-it-q-ends-the-process-and-neither-is-a-key--done-2026-09-17) — done (2026-09-17) — `App::teardown`, once, from the loop's `exiting` and a pumped runner's retirement
 
-**From the regression pass of 2026-09-19** — RG1 built the same day, RG2 and RG12 on 2026-09-20, the five table entries RG3, RG6, RG7, RG8 and RG11 and the left dock's RG4 the same day; the rest open above
+**From the regression pass of 2026-09-19** — RG1 built the same day, RG2 and RG12 on 2026-09-20, the five table entries RG3, RG6, RG7, RG8 and RG11, the left dock's RG4 and the freeze loop's RG5 the same day; the rest open above
 
 - `!` **RG1** — [A Node or C app still never hears ⌘Q: F74's `teardown` is a Rust `App` method, and the loops the other hosts "own" end the same way](backlog/closed-2026-09.md#-rg1--a-node-or-c-app-still-never-hears-q-f74s-teardown-is-a-rust-app-method-and-the-loops-the-other-hosts-own-end-the-same-way--done-2026-09-19) — done (2026-09-19) — `teardown(model)` in `runWindowed`'s / `createApp`'s config over `KuiWindow.onTeardown`, `kui_on_teardown(fn)` before `kui_run` (ABI 18 kept), the verb-table row, the once-across-ends test; both hosts checked under ⌘Q in the window
 - `!` **RG2** — [A devtools select's menu outlives the panel, and its choice reaches the app as a `menu` event from the devtools origin](backlog/closed-2026-09.md#-rg2--a-devtools-selects-menu-outlives-the-panel-and-its-choice-reaches-the-app-as-a-menu-event-from-the-devtools-origin--done-2026-09-20) — done (2026-09-20) — the panel's menu closes when this window stops building the panel; a devtools-origin event is taken back whatever the panel's state
@@ -2110,6 +2093,7 @@ move.
 - `~` **RG8** — [An image cell is stretched to its column and re-aspected](backlog/closed-2026-09.md#-rg8--an-image-cell-is-stretched-to-its-column-and-re-aspected--done-2026-09-20) — done (2026-09-20) — the box is the column wide and the image's own aspect tall; the pixels meet it by `fit`; box an icon
 - `~` **RG11** — [A `Fit` table of grow rows collapses to 0, and the howto's only snippet builds exactly that](backlog/closed-2026-09.md#-rg11--a-fit-table-of-grow-rows-collapses-to-0-and-the-howtos-only-snippet-builds-exactly-that--done-2026-09-20) — done (2026-09-20) — a table's fit is its columns' whatever the rows' sizing: pass 1 sizes the grow rows to them too
 - `!` **RG4** — [F70's deferral is defeated by a left dock: the panel is built at `begin_frame`, so a mid-frame dock move or panel-off draws the stale panel and asks for no frame](backlog/closed-2026-09.md#-rg4--f70s-deferral-is-defeated-by-a-left-dock-the-panel-is-built-at-begin_frame-so-a-mid-frame-dock-move-or-panel-off-draws-the-stale-panel-and-asks-for-no-frame--done-2026-09-20) — done (2026-09-20) — `finish` compares `on`, the dock and the tab against what `begin_frame` built the left panel from, and a change since asks for the next frame
+- `!` **RG5** — [The F71 freeze loop freezes min and max violators in the same pass, and a plain sibling can get nothing](backlog/closed-2026-09.md#-rg5--the-f71-freeze-loop-freezes-min-and-max-violators-in-the-same-pass-and-a-plain-sibling-can-get-nothing--done-2026-09-20) — done (2026-09-20) — flexbox's sign rule: a pass freezes only the violators of the dominant sign and re-shares; a byte per child in `Tree::grow_scratch` for the frozen set; the `frame_1k_grow_rows_capped` row; the regression of the round
 
 **From the kawoosh devtools-tables report (2026-09-17)** — F75, filed and built the same day
 

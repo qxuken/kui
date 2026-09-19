@@ -128,6 +128,12 @@ pub struct Tree {
     /// inside a key sink is resolved against (backlog C34), so a frame
     /// without a custom editor never walks a sink's subtree for one.
     pub any_line: bool,
+
+    /// Scratch for the layout pass's freeze loop (`distribute_run`): one
+    /// byte per in-flow child of the run being resolved, in child order.
+    /// Sized per run and never cleared, so the allocation is made once
+    /// and reused by every run of every frame.
+    pub grow_scratch: Vec<u8>,
     /// Whether any node clips (`clip`, or an overflow that scrolls).
     pub any_clip: bool,
     /// Whether any node clips *and* has a radius, so the clip its

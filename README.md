@@ -980,6 +980,7 @@ that prop costs.
 | `frame_10k_chips_unwrapped` | 10k chips in 100 rows, one line per row | ~687 µs |
 | `frame_10k_chips_wrapped` | the same tree with every row breaking onto several lines | ~838 µs |
 | `deep_nesting_64_levels` | 16 chains nested 64 levels deep | ~82.9 µs |
+| `frame_1k_grow_rows_capped` | a column of 1k grow rows under a staircase of `max_height`s — four passes of the freeze loop with 348 rows frozen, what a pass costs over children the earlier passes settled (RG5) | ~79.9 µs |
 | `list_10k_rows_naive` | a 10k-row list held at its middle, built row by row | ~4.60 ms |
 | `list_10k_rows_virtual` | the same list through `widgets::virtual_column` | ~18.0 µs |
 | `list_100k_rows_virtual` | 100k rows through the same widget | ~18.2 µs |
