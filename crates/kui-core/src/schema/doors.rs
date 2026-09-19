@@ -1168,7 +1168,7 @@ pub const DOORS: &[Door] = &[
         c: Is("kui_press_and_hold"),
         node: As("`pressAndHold` in `WindowOptions`"),
         lua: No(GUEST),
-        doc: "macOS: whether holding a letter key opens the accent picker (the platform's press-and-hold, on unless the user turned it off) or repeats the key, as every other platform does — `false` for an app whose keys are commands, a modal editor where `j` held is a motion; left alone for one that is typed into. This process alone, never written to the user's preferences; a no-op elsewhere. C's is a free function called before `kui_run`, since it is a process setting and not a struct's field.",
+        doc: "macOS: whether holding a letter key opens the accent picker (the platform's press-and-hold, on unless the user turned it off) or repeats the key, as every other platform does — `false` for an app whose keys are commands, a modal editor where `j` held is a motion; left alone for one that is typed into. This process alone, never written to the user's preferences; a no-op elsewhere. C's is a free function called before `kui_run`, since it is a process setting and not a struct's field. **Inert on macOS 27** (backlog RG15): HIToolbox reads the user's global domain by name, which no per-process default reaches; `defaults write -g ApplePressAndHoldEnabled -bool false` is what works today, and what the door does instead is RG16's decision.",
     },
     Door {
         rust: "App::teardown",

@@ -51,6 +51,9 @@ pub struct Window {
     pub min_size: Option<(f64, f64)>,
     pub max_size: Option<(f64, f64)>,
     pub chrome: Chrome,
+    /// macOS press-and-hold, [`kui::Launcher::press_and_hold`]: `None`
+    /// leaves the user's setting.
+    pub press_and_hold: Option<bool>,
 }
 
 impl Default for Window {
@@ -60,6 +63,7 @@ impl Default for Window {
             min_size: None,
             max_size: None,
             chrome: Chrome::Native,
+            press_and_hold: None,
         }
     }
 }
@@ -88,6 +92,14 @@ impl Window {
     /// Shorthand for `.chrome(Chrome::Custom)`.
     pub fn custom_titlebar(self) -> Self {
         self.chrome(Chrome::Custom)
+    }
+
+    /// macOS: whether a held letter opens the accent picker or repeats
+    /// ([`kui::Launcher::press_and_hold`], backlog F69). An example whose
+    /// keys are commands says `false`; one typed into leaves it.
+    pub fn press_and_hold(mut self, on: bool) -> Self {
+        self.press_and_hold = Some(on);
+        self
     }
 }
 
@@ -341,6 +353,9 @@ pub fn run_with<E: Example>(name: &str, mut example: E, cli: Cli) -> i32 {
     }
     if let Some((mw, mh)) = window.max_size {
         launcher = launcher.max_size(mw, mh);
+    }
+    if let Some(on) = window.press_and_hold {
+        launcher = launcher.press_and_hold(on);
     }
     if let Some(motion) = cli.motion {
         launcher = launcher.system(SystemEnv {

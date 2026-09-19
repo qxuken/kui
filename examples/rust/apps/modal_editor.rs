@@ -1158,10 +1158,13 @@ impl Example for ModalEditor {
         (":help", "the rest, in the minibuffer"),
     ];
 
+    /// `press_and_hold(false)`: on a Mac, a held `j` is a motion, not the
+    /// accent picker (backlog F69) — the case the door was made for.
     fn window(&self) -> kui_devtools::Window {
         kui_devtools::Window::default()
             .size(900.0, 700.0)
             .custom_titlebar()
+            .press_and_hold(false)
     }
 
     fn dock(&self) -> kui_devtools::Dock {

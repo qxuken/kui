@@ -144,18 +144,26 @@ hole by hand will see.
   reads. A `select` scene in the conformance corpus, built in all four
   adapters; a Node example beside the Rust one; the props.md row.
 
-- **A held key repeats on a Mac** (backlog F69, from kawoosh on a second
-  Mac: `j` held moved one line, `e` held opened the accent picker — the
-  platform's press-and-hold, on by default and off only on the machine it
-  had been developed on). `Launcher::press_and_hold(false)` /
-  `pressAndHold: false` in `WindowOptions` / `kui_press_and_hold(false)`
-  before `kui_run` says a held letter repeats, as it does on every other
+- **A press-and-hold door — inert on macOS 27** (backlog F69, from
+  kawoosh on a second Mac: `j` held moved one line, `e` held opened the
+  accent picker — the platform's press-and-hold, on by default and off
+  only on the machine it had been developed on; and backlog RG15, which
+  checked it). `Launcher::press_and_hold(false)` / `pressAndHold: false`
+  in `WindowOptions` / `kui_press_and_hold(false)` before `kui_run` is
+  the app saying a held letter should repeat, as it does on every other
   platform; left alone, the user's own setting stands, which is what an
-  app that is typed into wants. Pinned for this process in the argument
-  domain — what `-ApplePressAndHoldEnabled NO` on the command line sets,
-  read before the app's and the global domain — and never written to the
-  user's preferences; a no-op elsewhere. The C counter says it; the verb
-  table has the row.
+  app that is typed into wants. It pins the process's argument domain —
+  what `-ApplePressAndHoldEnabled NO` on the command line sets — and
+  writes nothing to the user's preferences; a no-op elsewhere. **It does
+  not take effect**: the read that decides is HIToolbox's, of the user's
+  global domain by name (`CFPreferencesCopyValue` with
+  `kCFPreferencesAnyApplication`), which no per-process default reaches
+  — not this pin, not a registered default, not the app's own domain —
+  so on a Mac with press-and-hold on, a held `j` still moves once. What
+  works today is the user's `defaults write -g ApplePressAndHoldEnabled
+  -bool false`; the door's mechanism, if any, is RG16's decision, and
+  the door's test says both halves. The C counter and the modal editor
+  say it; the verb table has the row.
 
 - **A caret that does not blink** (backlog F68, from kawoosh idling in
   normal mode: sixteen frames in eight seconds with nothing happening —

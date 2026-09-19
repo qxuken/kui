@@ -172,14 +172,26 @@ pub fn detach(window: &Window) {
 
 /// Whether holding a letter key opens the accent picker (macOS's
 /// press-and-hold, `ApplePressAndHoldEnabled`) or repeats the key, as
-/// every other platform does (backlog F69). AppKit reads the default
-/// through `NSUserDefaults` at each key press, so it is set here in the
-/// *argument domain* — the one `-ApplePressAndHoldEnabled NO` on the
-/// command line fills, searched before the app's and the global domain
-/// and volatile, so nothing is written to the user's preferences and a
-/// setting the user made globally is left as it was. Merged over the
-/// domain's other entries, which are the process's real `-key value`
-/// arguments.
+/// every other platform does (backlog F69). Set in the *argument domain*
+/// — the one `-ApplePressAndHoldEnabled NO` on the command line fills,
+/// first in `NSUserDefaults`'s search and volatile, so nothing is written
+/// to the user's preferences and a setting the user made globally is left
+/// as it was. Merged over the domain's other entries, which are the
+/// process's real `-key value` arguments.
+///
+/// **Inert on macOS 27** (backlog RG15, checked 2026-09-20): the read
+/// that decides is HIToolbox's, in `AreTSMAndEventOKForPressAndHold`
+/// under `TSMProcessRawKeyEvent`, and it is
+/// `CFPreferencesCopyValue(key, kCFPreferencesAnyApplication,
+/// kCFPreferencesCurrentUser, kCFPreferencesAnyHost)` — the global
+/// domain by name, through the one CFPreferences call that consults no
+/// volatile domain. `NSUserDefaults` and even `CFPreferencesCopyAppValue`
+/// in this process answer the pinned value; that read does not. Nor is
+/// the app's own domain read (pre-written or written at launch, bare or
+/// bundled), nor the registration domain (GLFW's `registerDefaults`):
+/// what reaches it is the user's `defaults write -g` and a list of five
+/// bundle ids compiled into HIToolbox. Kept as the door's mechanism until
+/// RG16 decides what replaces it.
 pub fn set_press_and_hold(on: bool) {
     use objc2_foundation::{
         NSArgumentDomain, NSMutableDictionary, NSNumber, NSUserDefaults, ns_string,
@@ -200,13 +212,50 @@ pub fn set_press_and_hold(on: bool) {
     }
 }
 
-/// What the process answers for press-and-hold now — the argument domain
-/// over the app's and the global one, `NSUserDefaults`'s own lookup — so
-/// a test sees the pin land where AppKit reads.
+/// What the process answers for press-and-hold now through
+/// `NSUserDefaults`'s own lookup — the argument domain over the app's and
+/// the global one — so a test sees the pin land there. Not where HIToolbox
+/// reads (RG15): [`global_press_and_hold`] is that.
 #[cfg(test)]
 pub fn press_and_hold() -> bool {
     use objc2_foundation::{NSUserDefaults, ns_string};
     NSUserDefaults::standardUserDefaults().boolForKey(ns_string!("ApplePressAndHoldEnabled"))
+}
+
+/// The read HIToolbox makes for press-and-hold (RG15) —
+/// `CFPreferencesCopyValue` of the key in the global domain, current user,
+/// any host — as the description of what it answers (`None` when the user
+/// never set it), so a test can see the pin not reach it. Bridged: a
+/// CFString, CFBoolean or CFNumber is an `NSObject` (the user's own value
+/// may be any of the three; `defaults write -g … -bool` writes a boolean,
+/// an older `-string 0` a string).
+#[cfg(test)]
+pub fn global_press_and_hold() -> Option<String> {
+    use objc2_foundation::{NSObject, ns_string};
+    #[link(name = "CoreFoundation", kind = "framework")]
+    unsafe extern "C" {
+        static kCFPreferencesAnyApplication: &'static NSString;
+        static kCFPreferencesCurrentUser: &'static NSString;
+        static kCFPreferencesAnyHost: &'static NSString;
+        fn CFPreferencesCopyValue(
+            key: &NSString,
+            application: &NSString,
+            user: &NSString,
+            host: &NSString,
+        ) -> *mut NSObject;
+    }
+    // SAFETY: the three are CoreFoundation's constant strings, read only;
+    // the key is a literal; the value comes back at +1 and is released by
+    // the `Retained` it becomes, a toll-free bridged NSObject.
+    unsafe {
+        let value = CFPreferencesCopyValue(
+            ns_string!("ApplePressAndHoldEnabled"),
+            kCFPreferencesAnyApplication,
+            kCFPreferencesCurrentUser,
+            kCFPreferencesAnyHost,
+        );
+        Retained::from_raw(value).map(|v| format!("{v:?}"))
+    }
 }
 
 /// Stamps what `window`'s view answers, from the frame `core` just laid

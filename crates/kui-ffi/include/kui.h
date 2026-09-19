@@ -3097,7 +3097,13 @@ bool kui_run_with(KuiCtx *ctx, KuiStr title, const KuiRunConfig *config,
  * kui_run; one that is typed into leaves it, the picker being how its
  * users write accents. This process alone, never written to the user's
  * preferences; a no-op on every other platform, where a held key repeats
- * already. */
+ * already.
+ *
+ * Inert on macOS 27 (backlog RG15): the pin is a per-process default,
+ * and HIToolbox reads the user's global domain by name, which no
+ * per-process default reaches. The user's `defaults write -g
+ * ApplePressAndHoldEnabled -bool false` is what works today; what the
+ * door does instead is RG16's decision. */
 void kui_press_and_hold(bool on);
 
 /* -- Extension ABI: C as the guest rather than the host ------------------

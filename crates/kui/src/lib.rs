@@ -325,6 +325,13 @@ impl Launcher {
     /// never written to the user's preferences (`press_and_hold`, the
     /// free function, is the same thing for a host running its own
     /// window). Nothing elsewhere: every other platform repeats already.
+    ///
+    /// **Does not take effect on macOS 27** (backlog RG15): the pin is a
+    /// per-process default, and the read HIToolbox makes is of the user's
+    /// global domain by name, which no per-process default reaches — see
+    /// [`press_and_hold`]. The user's `defaults write -g
+    /// ApplePressAndHoldEnabled -bool false` is what works today; what
+    /// the door does instead is RG16's decision.
     pub fn press_and_hold(mut self, on: bool) -> Self {
         self.press_and_hold = Some(on);
         self
@@ -953,6 +960,17 @@ pub fn run<A: App>(
 /// this at launch. A host that runs its own window (the C runner, a pumped
 /// loop) calls it before the first key press; a no-op elsewhere, where a
 /// held key repeats already (backlog F69).
+///
+/// Inert on macOS 27 (backlog RG15, checked 2026-09-20 with the read
+/// caught by an interposed `CFPreferencesCopyValue`): HIToolbox decides
+/// per key event by reading `ApplePressAndHoldEnabled` from the *global*
+/// domain by name — `kCFPreferencesAnyApplication`, current user, any
+/// host — which sees neither this pin (the argument domain), nor a
+/// registered default, nor the app's own domain, written before launch or
+/// at it. Only the user's `defaults write -g` and five bundle ids
+/// compiled into HIToolbox (MacVim, Vico, Aquamacs, Emacs, Terminal)
+/// reach it. Left in place, with its test saying both halves, until RG16
+/// decides between the two mechanisms that remain.
 pub fn press_and_hold(on: bool) {
     #[cfg(target_os = "macos")]
     macos_text_input::set_press_and_hold(on);
@@ -2278,10 +2296,14 @@ pub use kui_wgpu::{RenderError, Renderer, wgpu};
 mod tests {
     use super::*;
 
-    /// The press-and-hold pin (F69) lands where AppKit reads it —
-    /// `NSUserDefaults`'s own lookup, with the argument domain first — in
-    /// both directions, whatever this machine's global default says, and
-    /// the domain's other entries survive the merge.
+    /// The press-and-hold pin (F69) lands in `NSUserDefaults`'s own lookup
+    /// — the argument domain first — in both directions, whatever this
+    /// machine's global default says, and the domain's other entries
+    /// survive the merge. And it does *not* reach the read HIToolbox makes
+    /// (RG15): `CFPreferencesCopyValue` of the global domain by name
+    /// answers the user's value, unchanged by the pin either way — which
+    /// is why the door is inert on macOS 27, and what this test would
+    /// stop saying if a macOS ever consulted the volatile domains there.
     #[cfg(target_os = "macos")]
     #[test]
     fn press_and_hold_is_pinned_over_the_users_default_and_read_back() {
@@ -2301,10 +2323,17 @@ mod tests {
                 defaults.boolForKey(ns_string!("ApplePressAndHoldEnabled")),
             )
         };
+        let global = macos_text_input::global_press_and_hold();
         press_and_hold(!before);
         assert_eq!(macos_text_input::press_and_hold(), !before);
+        assert_eq!(
+            macos_text_input::global_press_and_hold(),
+            global,
+            "the global-domain read HIToolbox makes does not see the pin (RG15)"
+        );
         press_and_hold(before);
         assert_eq!(macos_text_input::press_and_hold(), before);
+        assert_eq!(macos_text_input::global_press_and_hold(), global);
         let kept = defaults
             .volatileDomainForName(domain)
             .objectForKey(ns_string!("KuiTestArgument"))
