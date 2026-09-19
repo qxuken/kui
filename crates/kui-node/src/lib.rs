@@ -1472,6 +1472,12 @@ struct TreeApp {
     /// by the collector retires without one, and its `teardown` is not
     /// run (nothing could be: a finalizer may not call into JS).
     env: Option<napi::sys::napi_env>,
+    /// What the `teardown` callback threw, if it did: napi clears the
+    /// pending exception and hands it back as the call's `Err`, so it is
+    /// kept here for the pump in flight to return — the original JS
+    /// value, since the error holds a reference to it — rather than
+    /// dropped on the floor with the session it failed to save.
+    teardown_error: Option<napi::Error>,
 }
 
 impl kui::App for TreeApp {
@@ -1479,15 +1485,16 @@ impl kui::App for TreeApp {
     /// inside the pump it happened in — the close button's, a `close()`'s,
     /// or the one an OS Quit ends the process inside of, where nothing
     /// after `await runWindowed(...)` ever runs. A throw out of the
-    /// callback is left pending on the env, so it comes out of `pump()` as
-    /// the throw it is.
+    /// callback comes out of that `pump()` as the throw it is
+    /// (`teardown_error`).
     fn teardown(&mut self) {
         let (Some(f), Some(env)) = (&self.teardown, self.env) else {
             return;
         };
         let env = napi::Env::from_raw(env);
-        if let Ok(f) = f.borrow_back(&env) {
-            let _ = f.call(());
+        match f.borrow_back(&env).and_then(|f| f.call(())) {
+            Ok(Null) => {}
+            Err(e) => self.teardown_error = Some(e),
         }
     }
 
@@ -1710,8 +1717,19 @@ impl KuiWindow {
     pub fn pump(&mut self, env: Env) -> Result<bool> {
         self.runner.app_mut().env = Some(env.raw());
         let alive = self.runner.pump();
-        self.runner.app_mut().env = None;
-        if let Some(e) = self.runner.app_mut().error.take() {
+        self.after_pump(alive)
+    }
+
+    /// What both pumps do on the way out: the env lent to the app for the
+    /// pump is taken back, and a throw the pump gathered — the teardown
+    /// callback's, or a view that would not lower — is the pump's own.
+    fn after_pump(&mut self, alive: bool) -> Result<bool> {
+        let app = self.runner.app_mut();
+        app.env = None;
+        if let Some(e) = app.teardown_error.take() {
+            return Err(e);
+        }
+        if let Some(e) = app.error.take() {
             return Err(err(format!("view lowering failed: {e}")));
         }
         Ok(alive)
@@ -1770,11 +1788,7 @@ impl KuiWindow {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs_f64(ms / 1e3);
         self.runner.app_mut().env = Some(env.raw());
         let alive = self.runner.pump_until(deadline);
-        self.runner.app_mut().env = None;
-        if let Some(e) = self.runner.app_mut().error.take() {
-            return Err(err(format!("view lowering failed: {e}")));
-        }
-        Ok(alive)
+        self.after_pump(alive)
     }
 
     /// How long until the window next needs a pump, in ms — `null` when

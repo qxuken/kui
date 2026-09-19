@@ -921,8 +921,9 @@ export function runWindowed(config, opts = {}) {
         return;
       }
       if (!alive) {
-        // The window already ran `teardown` from inside that pump; a
-        // surface without the door has it run here, once either way.
+        // The window already ran `teardown` from inside that pump (and a
+        // throw out of it came out of `win.pump()` above, into the catch);
+        // a surface without the door has it run here, once either way.
         try {
           app.teardown();
         } catch (e) {
