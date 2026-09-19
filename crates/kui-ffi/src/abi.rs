@@ -206,7 +206,11 @@
 /// Recompile; a zeroed tail is no zone and no colour, which is what every
 /// node was. The same version adds `kui_input_drag_files`,
 /// `kui_input_drop_files`, `kui_input_drag_cancel` and `kui_drop_target`
-/// — four functions, nothing the library writes moved.
+/// — four functions, nothing the library writes moved. Still at 18:
+/// `kui_set_devtools_tab`, `kui_devtools_current_tab`,
+/// `kui_press_and_hold` and `kui_on_teardown` — functions, no struct
+/// (backlog RG1 chose the setter over a `KuiRunConfig` append for the
+/// last: the config is the window and `kui_run` takes none).
 pub const KUI_ABI_VERSION: u32 = 18;
 
 /// The ABI version this library implements, for a host to compare against

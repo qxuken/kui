@@ -225,7 +225,7 @@ extern "C" {
  * kui_input_drag_cancel, kui_is_drop_target and kui_drop_target - five
  * functions, nothing the library writes moved. Still at 18:
  * kui_set_devtools_tab and kui_devtools_current_tab - two functions, no
- * struct - and kui_press_and_hold, one more.
+ * struct - and kui_press_and_hold and kui_on_teardown, two more.
  */
 #define KUI_ABI_VERSION 18u
 uint32_t kui_abi_version(void);
@@ -3008,6 +3008,20 @@ void kui_value_free(KuiValue *v);
  * that fails at run time. Everything else in this header is always there. */
 typedef void (*KuiEventFn)(void *user, const KuiEvent *ev);
 bool kui_run(KuiStr title, KuiViewFn view, KuiEventFn on_event, void *user);
+
+/* What the next kui_run / kui_run_with calls as its window goes for good -
+ * the close button, Quit from the menu or the dock, a KUI_WINDOW_CLOSE on
+ * it - once, with the `user` the run's view and on_event get, before
+ * kui_run returns or the process exits. On macOS a Quit ends the process
+ * from inside the run: kui_run never returns and nothing after it runs,
+ * so this is the only thing a host runs on Cmd-Q - save here what you
+ * would lose with the window (a session, a draft, a position). Nothing
+ * draws by then. The last call before the run wins, and the run takes it,
+ * so the next run starts with none. A free function, like
+ * kui_press_and_hold: kui_run's app is three arguments and not a struct,
+ * and KuiRunConfig is the window. */
+typedef void (*KuiTeardownFn)(void *user);
+void kui_on_teardown(KuiTeardownFn teardown);
 
 /* What kui_run's window opens as: the chrome, the antialiasing and the
  * diagnostics words KuiRunConfig takes. Zero is the default of each. */

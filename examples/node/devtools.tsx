@@ -39,6 +39,12 @@ export type Example<M, A extends { kind: string }> = {
   view: (model: M, win: KuiWindow) => KuiNode;
   /** Runs before the first frame, with the window: register resources here. */
   setup?: (win: KuiWindow) => void;
+  /** Runs once as the window goes for good — closed, or quit from the
+   *  menu or the dock, which on a Mac ends the process from inside the
+   *  pump — with the model it went on: where an example saves what it
+   *  would lose (backlog F74 / RG1). The headless drive runs it after the
+   *  self-check, as the Rust harness forwards `teardown`. */
+  teardown?: (model: M) => void;
   /** The windowed loop's time source, handed to `runWindowed` as its
    *  `clock` (backlog F45). Left out, the window runs on `Date.now`; an
    *  example whose ticks should run ahead of the wall — a countdown watched
@@ -170,6 +176,7 @@ export async function run<M, A extends { kind: string }>(example: Example<M, A>)
         update: (m: M, msg: A | CoreMsg, ev: UiEvent<A | CoreMsg>): M | undefined =>
           example.update(m, msg, ev, surface!) ?? undefined,
         view: (m: M): KuiNode => example.view(m, surface!),
+        teardown: example.teardown,
       },
       { width: w, height: h },
     );
@@ -177,6 +184,7 @@ export async function run<M, A extends { kind: string }>(example: Example<M, A>)
     let ok = false;
     try {
       ok = await example.headless(app);
+      app.teardown();
     } catch (e) {
       console.error(`${example.name}: FAILED: ${(e as Error).message ?? e}`);
       process.exit(1);
@@ -219,6 +227,7 @@ async function open<M, A extends { kind: string }>(example: Example<M, A>, cli: 
         </box>
       );
     },
+    teardown: example.teardown,
   };
 
   return runWindowed(config as never, {

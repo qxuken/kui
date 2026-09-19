@@ -9,7 +9,15 @@ struct CApp {
     user: *mut c_void,
     view: ViewFn,
     on_event: Option<EventFn>,
+    /// What `kui_on_teardown` set before the run, taken as the run began.
+    teardown: Option<TeardownFn>,
 }
+
+/// The teardown callback `kui_on_teardown` set, for the next `kui_run` /
+/// `kui_run_with` on any thread to take: a process setting like the
+/// press-and-hold pin, since `kui_run`'s app is three arguments and not
+/// a struct (backlog RG1).
+static ON_TEARDOWN: std::sync::Mutex<Option<TeardownFn>> = std::sync::Mutex::new(None);
 
 impl kui::App for CApp {
     fn view(&mut self, ui: &mut kui::Ui<'_>) {
@@ -19,6 +27,16 @@ impl kui::App for CApp {
         // from the callback fills in place the way a Rust host's does.
         let mut shim = KuiCtx::borrowing_in(ui);
         (self.view)(self.user, &mut shim);
+    }
+
+    /// The window going for good (backlog F74), to the C host: once, with
+    /// the `user` its `view` and `on_event` get, before `kui_run` returns
+    /// or the process exits — which on macOS a Quit does without
+    /// `kui_run` ever returning, so nothing after the call runs.
+    fn teardown(&mut self) {
+        if let Some(cb) = self.teardown {
+            cb(self.user);
+        }
     }
 
     fn on_event(&mut self, ev: kui::UiEvent) {
@@ -46,6 +64,27 @@ impl kui::App for CApp {
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_press_and_hold(on: bool) {
     guard((), || kui::press_and_hold(on))
+}
+
+/// What the next `kui_run` / `kui_run_with` calls as its window goes for
+/// good — the close button, Quit from the menu or the dock, a
+/// `KUI_WINDOW_CLOSE` command on it — once, with the `user` the run's
+/// `view` and `on_event` get, before `kui_run` returns or the process
+/// exits (backlog RG1; the Rust `App::teardown` of F74). On macOS a Quit
+/// ends the process from inside the run, so this is the only thing a
+/// host runs on ⌘Q: nothing after `kui_run` does. The last call before
+/// the run wins; a run takes it, so the next run starts with none.
+/// Nothing draws by then, and the context the callback might reach is
+/// the window's, not the host's: save, and return. A free function
+/// rather than a field, as `kui_press_and_hold` is: `kui_run`'s app is
+/// three arguments and not a struct, and `KuiRunConfig` is the window,
+/// so a field there would reach `kui_run_with` alone and cost the [in]
+/// bump AR50 asks for.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_on_teardown(teardown: TeardownFn) {
+    guard((), || {
+        *ON_TEARDOWN.lock().unwrap_or_else(|e| e.into_inner()) = Some(teardown);
+    })
 }
 
 /// Runs a windowed app driven by C callbacks. Blocks until the window closes.
@@ -137,6 +176,7 @@ pub extern "C" fn kui_run_with(
             user,
             view,
             on_event: Some(on_event),
+            teardown: ON_TEARDOWN.lock().unwrap_or_else(|e| e.into_inner()).take(),
         };
         launcher.run(app).is_ok()
     })

@@ -266,10 +266,14 @@ function withWindows(tree, windows) {
  * makes a ticking app drivable headless. Passing a fake one is how the
  * windowed half of the tick bookkeeping gets tested without a display.
  */
-function createLoop({ init, update, view, tick, windows }, opts, surface, clock) {
+function createLoop({ init, update, view, tick, windows, teardown }, opts, surface, clock) {
   surface.setDiagnostics(opts.diagnostics ?? diagnosticsByDefault());
   const { show, open } = transport(surface, opts);
   let model;
+  // Whether `teardown` has run: once, whichever end reaches it first — the
+  // window's own (from inside the pump that saw it), the driver noticing
+  // the pump that returned false, or a headless drive calling it.
+  let tornDown = false;
 
   // ADR 0013: what `update` returned besides the model. `pending` is what
   // the handler has not been handed yet, flushed after the next frame — so
@@ -573,6 +577,18 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
     dispatch(msg, event) {
       apply(updateFrom(msg, event));
     },
+    /** The end: the config's `teardown(model)`, once, with the model as it
+     *  stands. `runWindowed` hands this to the window (`win.onTeardown`),
+     *  which calls it from inside the pump that saw the window go — and on
+     *  a Mac's ⌘Q that pump is the last thing the process runs, so this is
+     *  where a session is saved (backlog RG1). Headless, a drive calls it
+     *  itself to assert on what the app would have kept. A second call is
+     *  nothing. */
+    teardown() {
+      if (tornDown) return;
+      tornDown = true;
+      teardown?.(model);
+    },
     /** What `update` (and `init`) returned besides the model since the
      *  last drain — every effect, whether or not a handler ran. Headless
      *  this is the assertion point; a window drains it every frame. */
@@ -868,6 +884,13 @@ export function runWindowed(config, opts = {}) {
   // display; the mirror of `createApp`'s.
   const win = opts.surface ?? new KuiWindow(opts.title ?? 'kui', windowOptions(opts));
   const app = createLoop(config, opts, win, opts.clock ?? Date.now);
+  // The window calls this from inside the pump that saw it go — the close
+  // button, `close()`, Quit from the menu or the dock — before that pump
+  // returns; under ⌘Q on a Mac it never does, and nothing after this
+  // function's promise runs, not even `process.on('exit')`. A stand-in
+  // surface without the door is covered below, at the pump that returned
+  // false.
+  if (typeof win.onTeardown === 'function') win.onTeardown(() => app.teardown());
   const busyMs = opts.pumpMs ?? 8;
   const at = opts.clock ?? Date.now;
   const pace = pacer({ busyMs, idleMs: Math.max(opts.idlePumpMs ?? 32, busyMs), quietMs: opts.quietMs ?? 500 });
@@ -898,6 +921,15 @@ export function runWindowed(config, opts = {}) {
         return;
       }
       if (!alive) {
+        // The window already ran `teardown` from inside that pump; a
+        // surface without the door has it run here, once either way.
+        try {
+          app.teardown();
+        } catch (e) {
+          app[FAILED](e);
+          reject(e);
+          return;
+        }
         // No further frames will be painted, so an awaited one is told
         // rather than left waiting for a pump that has stopped.
         app[FAILED](new Error('kui: the window closed while a frame was awaited'));

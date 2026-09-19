@@ -16,7 +16,10 @@ use kui_core::{
     MouseButton, PlayOptions, PlaybackId, Rect, Size, SoundId, SystemEnv, Tokens, UiEvent, Value,
     Vec2, schema::color_hex_str,
 };
-use napi::bindgen_prelude::{Buffer, Either, Float64Array, Uint8Array};
+use napi::Env;
+use napi::bindgen_prelude::{
+    Buffer, Either, Float64Array, Function, FunctionRef, Null, Uint8Array,
+};
 use napi_derive::napi;
 use serde_json::{Map as JsonMap, Value as Json};
 
@@ -1458,9 +1461,36 @@ struct TreeApp {
     trees: std::collections::HashMap<String, (Vec<f64>, Vec<u8>)>,
     events: Vec<UiEvent>,
     error: Option<String>,
+    /// What `onTeardown` registered: the one call JS *does* get from
+    /// inside winit (backlog RG1), since the moment it is for — the
+    /// window going for good — is on macOS the process going too, with
+    /// no pump after it for JS to drain anything from.
+    teardown: Option<FunctionRef<(), Null>>,
+    /// The `Env` of the `pump` / `pumpUntil` in flight, so `teardown` can
+    /// call back into JS from the runner's end inside it; `None` between
+    /// pumps, where there is no JS frame to call from — a runner dropped
+    /// by the collector retires without one, and its `teardown` is not
+    /// run (nothing could be: a finalizer may not call into JS).
+    env: Option<napi::sys::napi_env>,
 }
 
 impl kui::App for TreeApp {
+    /// The window going for good, to JS (backlog RG1): once, synchronously,
+    /// inside the pump it happened in — the close button's, a `close()`'s,
+    /// or the one an OS Quit ends the process inside of, where nothing
+    /// after `await runWindowed(...)` ever runs. A throw out of the
+    /// callback is left pending on the env, so it comes out of `pump()` as
+    /// the throw it is.
+    fn teardown(&mut self) {
+        let (Some(f), Some(env)) = (&self.teardown, self.env) else {
+            return;
+        };
+        let env = napi::Env::from_raw(env);
+        if let Ok(f) = f.borrow_back(&env) {
+            let _ = f.call(());
+        }
+    }
+
     fn view(&mut self, ui: &mut kui::Ui<'_>) {
         let name = ui.window_name();
         let Some((stream, strings)) = self.trees.get(&*name) else {
@@ -1677,12 +1707,30 @@ impl KuiWindow {
     /// Processes pending OS events without blocking. Returns false once the
     /// window has closed.
     #[napi]
-    pub fn pump(&mut self) -> Result<bool> {
+    pub fn pump(&mut self, env: Env) -> Result<bool> {
+        self.runner.app_mut().env = Some(env.raw());
         let alive = self.runner.pump();
+        self.runner.app_mut().env = None;
         if let Some(e) = self.runner.app_mut().error.take() {
             return Err(err(format!("view lowering failed: {e}")));
         }
         Ok(alive)
+    }
+
+    /// Registers what the window calls as it goes for good — its close
+    /// button, `close()`, Quit from the menu or the dock — once, from
+    /// inside the `pump()` that saw it and before that pump returns
+    /// (backlog RG1). On macOS a Quit ends the process inside that pump:
+    /// `pump()` never returns, `runWindowed` never resolves and nothing
+    /// after it runs, not even `process.on('exit')` — so this is the only
+    /// thing an app runs on ⌘Q. `runWindowed` registers its config's
+    /// `teardown(model)` here; a driver of its own does the same. The
+    /// window is gone by then: the callback saves and returns, and does
+    /// not call the window's doors. The last registration wins.
+    #[napi(ts_args_type = "callback: () => void")]
+    pub fn on_teardown(&mut self, callback: Function<'_, (), Null>) -> Result<()> {
+        self.runner.app_mut().teardown = Some(callback.create_ref()?);
+        Ok(())
     }
 
     /// `pump`, but parked for up to `timeoutMs` — returning the moment an
@@ -1709,7 +1757,7 @@ impl KuiWindow {
     /// no async I/O, and wants the latency. Otherwise `pump()` on a timer
     /// is both cheaper and safer — which is what `runWindowed` does.
     #[napi]
-    pub fn pump_until(&mut self, timeout_ms: f64) -> Result<bool> {
+    pub fn pump_until(&mut self, env: Env, timeout_ms: f64) -> Result<bool> {
         // Clamped, not just checked: `Duration::from_secs_f64` panics on a
         // large finite value rather than saturating, so a caller spelling
         // "forever" as `Number.MAX_VALUE` would take the process with it.
@@ -1720,7 +1768,9 @@ impl KuiWindow {
             0.0
         };
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs_f64(ms / 1e3);
+        self.runner.app_mut().env = Some(env.raw());
         let alive = self.runner.pump_until(deadline);
+        self.runner.app_mut().env = None;
         if let Some(e) = self.runner.app_mut().error.take() {
             return Err(err(format!("view lowering failed: {e}")));
         }

@@ -81,7 +81,10 @@ pub trait App {
     /// exits (backlog F74). The place to keep what the app would
     /// otherwise lose with the window: a session, a draft, a position.
     /// The frame is over by then: there is no `Ui` and nothing draws.
-    /// Not called for a crash. The default does nothing.
+    /// A crash under `run` does not reach it; under a pumped runner a
+    /// panic unwinding through the host drops the runner, and the drop
+    /// retires it, so it does (backlog RG1) — and a `teardown` that panics
+    /// there aborts. The default does nothing.
     fn teardown(&mut self) {}
 }
 
@@ -917,6 +920,9 @@ impl<A: App> Drop for PumpRunner<A> {
     /// pumping to the end — parks the loop too, so the next `open` on the
     /// thread is not refused for its sake.
     fn drop(&mut self) {
+        // `retire` reaches `App::teardown` too, so a runner a panic unwinds
+        // through hears the window go (backlog RG1); a second panic out of
+        // that `teardown` is an abort, as any panic in a drop is.
         self.retire();
     }
 }
@@ -2310,6 +2316,58 @@ mod tests {
     struct Empty;
     impl App for Empty {
         fn view(&mut self, _ui: &mut Ui<'_>) {}
+    }
+
+    /// `App::teardown` runs once, whichever of the runner's ends comes
+    /// first and however many come after (backlog F74, tested under RG1):
+    /// `retire` — what a pump returning false, `request_exit` and the
+    /// runner's drop all reach — and `teardown_once` itself, which is what
+    /// the loop's `exiting` calls. The runner is built without a loop
+    /// here: winit builds its loop on the main thread only, and a test
+    /// runs on a worker.
+    #[test]
+    fn teardown_runs_once_across_retire_and_drop() {
+        use std::cell::Cell;
+        use std::rc::Rc;
+        struct Counting(Rc<Cell<u32>>);
+        impl App for Counting {
+            fn view(&mut self, _ui: &mut Ui<'_>) {}
+            fn teardown(&mut self) {
+                self.0.set(self.0.get() + 1);
+            }
+        }
+        let count = Rc::new(Cell::new(0));
+        let mut runner = PumpRunner {
+            event_loop: None,
+            shell: app("t").diagnostics(false).shell(Counting(count.clone())),
+            alive: true,
+            pumps: 0,
+        };
+        assert_eq!(count.get(), 0, "nothing before the end");
+        runner.request_exit();
+        assert_eq!(count.get(), 0, "asking is not the end");
+        runner.retire();
+        assert_eq!(count.get(), 1, "retiring is");
+        assert!(!runner.alive);
+        runner.retire();
+        runner.shell.teardown_once();
+        assert_eq!(count.get(), 1, "once, however many ends come after");
+        drop(runner);
+        assert_eq!(
+            count.get(),
+            1,
+            "the drop retires again, and it is still once"
+        );
+
+        // The drop alone — a runner let go of while alive — is an end too.
+        let count = Rc::new(Cell::new(0));
+        drop(PumpRunner {
+            event_loop: None,
+            shell: app("t").diagnostics(false).shell(Counting(count.clone())),
+            alive: true,
+            pumps: 0,
+        });
+        assert_eq!(count.get(), 1);
     }
 
     /// A frame waits only for an answer that is actually owed, and never

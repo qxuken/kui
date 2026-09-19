@@ -170,6 +170,15 @@ static void on_event(void *user, const KuiEvent *ev) {
     apply_event((AppState *)user, ev);
 }
 
+/* The window going for good - its close button, Quit from the menu or
+ * the dock - before kui_run returns or, on a Mac's Quit, the process
+ * ends without it returning: the place an app saves what it would lose.
+ * This one only says the count it went with. */
+static void teardown(void *user) {
+    printf("teardown at count %lld\n", ((AppState *)user)->count);
+    fflush(stdout);
+}
+
 /* -- headless self-test: full loop without a window ---------------------- */
 
 static int headless(void) {
@@ -291,5 +300,7 @@ int main(int argc, char **argv) {
     /* A held key repeats: the counter's arrows are commands, not letters
      * to accent. */
     kui_press_and_hold(false);
+    /* And the count is printed as the window goes, whichever way it goes. */
+    kui_on_teardown(teardown);
     return kui_run(KUI_STR("kui — C counter"), view, on_event, &state) ? 0 : 1;
 }

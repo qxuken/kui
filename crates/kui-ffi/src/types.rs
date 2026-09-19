@@ -13,6 +13,10 @@ pub(crate) type ViewFn = extern "C" fn(user: *mut c_void, ctx: *mut KuiCtx);
 /// unlike `ViewFn` it is not here in a build without the runner.
 #[cfg(feature = "runner")]
 pub(crate) type EventFn = extern "C" fn(user: *mut c_void, ev: *const KuiEvent);
+/// A C callback that hears the window go: `kui_on_teardown`'s, with
+/// `kui_run`'s `user` (backlog RG1). Runner-only, as `EventFn` is.
+#[cfg(feature = "runner")]
+pub(crate) type TeardownFn = extern "C" fn(user: *mut c_void);
 
 // ---------------------------------------------------------------------------
 // Opaque + repr(C) types

@@ -1989,6 +1989,107 @@ const outcome = (p) =>
     new Promise((r) => setImmediate(() => r(['pending']))),
   ]);
 
+// -- teardown (RG1) ----------------------------------------------------------
+// The window calls the loop's `teardown` from inside the pump that saw it
+// go, before that pump returns: on a Mac's ⌘Q that pump is the process's
+// last, so nothing after `await runWindowed(...)` — not `process.on('exit')`
+// either — ever runs. These drive the loop over a stand-in window whose
+// `pump` does what the runner does: run the callback, then return false.
+
+test('teardown runs once with the model, from the window inside the pump that saw it go, before runWindowed resolves', async () => {
+  const state = { animating: false, events: [] };
+  let onTeardown = null;
+  const seen = [];
+  let pumps = 0;
+  const win = {
+    ...fakeWindow(state),
+    onTeardown: (cb) => {
+      onTeardown = cb;
+    },
+    pump: () => {
+      pumps += 1;
+      if (pumps < 3) return true;
+      // The runner's end: `App::teardown` runs inside this pump, and the
+      // pump then says the window is gone.
+      onTeardown();
+      seen.push('pump-returned-false');
+      return false;
+    },
+    nextDeadlineMs: () => null,
+  };
+  // A click before the end, so the model the callback gets is the one
+  // `update` made and not `init`'s.
+  state.events.push({ origin: 0, key: '', payload: 'bump' });
+  const model = await runWindowed(
+    {
+      init: { n: 0 },
+      update: (m, msg) => (msg === 'bump' ? { n: m.n + 1 } : m),
+      view: () => box({ pad: 4 }),
+      teardown: (m) => seen.push(['teardown', m]),
+    },
+    { surface: win, warnings: false },
+  );
+  assert.ok(onTeardown, 'the driver registered the loop with the window before the first pump');
+  assert.deepEqual(model, { n: 1 });
+  assert.deepEqual(seen, [['teardown', { n: 1 }], 'pump-returned-false'], 'once, with the model, and before the pump came back');
+});
+
+test('a stand-in window without the door still tears down once, at the pump that returned false', async () => {
+  const state = { animating: false, events: [] };
+  let pumps = 0;
+  const win = {
+    ...fakeWindow(state),
+    pump: () => {
+      pumps += 1;
+      return pumps < 2;
+    },
+    nextDeadlineMs: () => null,
+  };
+  const seen = [];
+  const model = await runWindowed(
+    { init: 'm', update: (m) => m, view: () => box({ pad: 4 }), teardown: (m) => seen.push(m) },
+    { surface: win, warnings: false },
+  );
+  assert.equal(model, 'm');
+  assert.deepEqual(seen, ['m']);
+});
+
+test('a teardown that throws rejects runWindowed with the throw', async () => {
+  const state = { animating: false, events: [] };
+  const win = { ...fakeWindow(state), pump: () => false, nextDeadlineMs: () => null };
+  await assert.rejects(
+    runWindowed(
+      {
+        init: 0,
+        update: (m) => m,
+        view: () => box({ pad: 4 }),
+        teardown: () => {
+          throw new Error('could not save');
+        },
+      },
+      { surface: win, warnings: false },
+    ),
+    /could not save/,
+  );
+});
+
+test('headless, app.teardown() runs the config teardown once with the model, and a loop without one has nothing to run', () => {
+  const seen = [];
+  const app = createApp({
+    init: { n: 0 },
+    update: (m, msg) => (msg === 'bump' ? { n: m.n + 1 } : m),
+    view: () => box({ pad: 4 }),
+    teardown: (m) => seen.push(m),
+  });
+  app.dispatch('bump');
+  app.teardown();
+  app.dispatch('bump');
+  app.teardown();
+  assert.deepEqual(seen, [{ n: 1 }], 'once, with the model as it stood');
+  const bare = createApp({ init: 0, update: (m) => m, view: () => box({ pad: 4 }) });
+  bare.teardown();
+});
+
 test('settled() resolves from inside the pump, with the milliseconds it waited (F30)', async () => {
   const state = { animating: true, events: [] };
   let t = 0;

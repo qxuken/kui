@@ -23,7 +23,7 @@ was the first bare bump to break an app in five releases).
 
 ## 0.1.0-alpha.16 (unreleased)
 
-**What breaks.** Nothing: three doors, a prop, a widget, an element and
+**What breaks.** Nothing: five doors, a prop, a widget, an element and
 a `dir` value added, the ABI at 18 and the frame at v15 (a new op for
 the select element; the addon and the JS ship together, and an older
 addon refuses the newer encoder by version rather than misreading it;
@@ -78,11 +78,44 @@ hole by hand will see.
   with the window; there is no `Ui` by then and nothing draws. The
   default does nothing. `kui-devtools`' `Harness` forwards it, so an
   example's `teardown` runs; `waker` prints once more as it goes.
-  Rust only: the C and Node hosts own their loops and their
-  `pump` returning false is the same moment.
+  Rust first; the C and Node doors came two days later (backlog RG1,
+  below) — this entry said the other hosts "own their loops and their
+  `pump` returning false is the same moment", which was wrong: on a Mac
+  a Quit ends the process inside the pump, and no pump returns.
 
   *What you can delete:* a `Drop` on the app that saved state as it
   went — which never ran under ⌘Q on a Mac.
+
+- **The C and Node apps hear the window go too** (backlog RG1, from the
+  regression pass over F74: a Node app quit with ⌘Q ran nothing after
+  `await runWindowed(...)`, not even `process.on('exit')`, and a C host
+  nothing after `kui_run` — `applicationWillTerminate` runs the loop's
+  `exiting`, which reached a `teardown` neither host had, and the
+  process ends there). Node: `teardown(model)` in `runWindowed`'s
+  config beside `init`/`update`/`view`, run once with the model as it
+  stands, from inside the pump that saw the window go and before
+  `runWindowed` resolves — which under ⌘Q it never does, so this is the
+  only thing a Node app runs on ⌘Q; `createApp` takes the same field
+  and `app.teardown()` runs it, so a headless drive asserts on what the
+  app would have kept; under the hood `KuiWindow.onTeardown(cb)` is the
+  addon's door, for a driver of its own. C: `kui_on_teardown(fn)` before
+  `kui_run` / `kui_run_with`, called once with the run's `user` — a free
+  function like `kui_press_and_hold`, since `kui_run`'s app is three
+  arguments and not a struct and `KuiRunConfig` is the window, so ABI
+  stays 18. The verb table has the row (`App::teardown`); the C counter
+  prints its count as it goes, and the Node harness forwards an
+  example's `teardown` as the Rust one does. Both checked in the window
+  on macOS: ⌘Q through System Events prints the teardown line and
+  nothing after; the close button prints it once and then the line
+  after the call. Also written down: on the pumped path a panic
+  unwinding through the host drops the runner, and the drop retires it,
+  so `teardown` *does* run for that crash (the F74 text said a crash
+  does not reach it, which holds for `run`) — and a `teardown` that
+  panics there is an abort, as any panic in a drop is.
+
+  *What you can delete:* a `process.on('exit')` or `SIGTERM` handler
+  meant to save on quit — the first never ran under ⌘Q, and the second
+  is not what ⌘Q sends.
 
 - **A select** (backlog F72, from kawoosh's Facts tab: three toggles that
   cycled a base, an accent and a menu mode with a click each, off in the

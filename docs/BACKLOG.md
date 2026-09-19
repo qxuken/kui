@@ -1232,48 +1232,15 @@ clippy, the corpus in four adapters, `npm run gen`, the headless and
 windowed smoke, all green: 1257 tests over 97 suites, 40 scenes, 171
 Node tests, 72 + 22 windows, gen diff 0) and then read for what the
 suite cannot see, each claim probed against this tree before it was
-filed. Fifteen entries, RG1–RG15, none built yet. The headline is
-RG1: F74's fix reaches Rust only, and the changelog's reason why the
-other two hosts did not need it is wrong — a Node app quit with ⌘Q
-runs nothing after `runWindowed`, not even `process.on('exit')`, so
-kawoosh's own defect is still open for every app that is not Rust.
+filed. Fifteen entries, RG1–RG15. The headline was
+RG1: F74's fix reached Rust only, and the changelog's reason why the
+other two hosts did not need it was wrong — a Node app quit with ⌘Q
+ran nothing after `runWindowed`, not even `process.on('exit')`, so
+kawoosh's own defect was still open for every app that is not Rust.
+RG1 is **built 2026-09-19** and in the archive; RG2–RG15 are below.
 Two are regressions this round introduced (RG5, RG6), the rest are
 gaps the new features opened or holes they made reachable. Not
 verified here: F69 in a window (RG15 says how).
-
-### `!` RG1 — A Node or C app still never hears ⌘Q: F74's `teardown` is a Rust `App` method, and the loops the other hosts "own" end the same way
-
-**Found.** The F74 changelog says "Rust only: the C and Node hosts own
-their loops and their `pump` returning false is the same moment." It
-is not. `kui_run` is `Launcher::run` (`crates/kui-ffi/src/run.rs:141`),
-kui's blocking loop over a `CApp` whose `impl App` has no `teardown`;
-Node's `TreeApp` (`crates/kui-node/src/lib.rs:1463`) has none either,
-and its pumped loop is never exited (F58). On ⌘Q winit's delegate has no
-`applicationShouldTerminate`, so `applicationWillTerminate` runs
-`Shell::exiting` — which calls `teardown_once` on an app with nothing
-to run — and the process ends there. Probed on this tree: a Node
-script with `console.log` after `await runWindowed(...)` and a
-`process.on('exit')` hook, quit with ⌘Q through System Events — the
-process is gone, the log holds only the line before the call, and
-neither the line after nor the exit hook printed. A C host on
-`kui_run` gets the same by reading: nothing after `kui_run` runs.
-
-**Do.** Give the two hosts the door F74 gave Rust. Node: a `teardown`
-(or `onExit`) function in `runWindowed`'s config beside `init`/
-`update`/`view`, called from `TreeApp::teardown` on the JS thread with
-the model, synchronously, before the process goes — the pumped path's
-`retire` reaches it too; `createApp` gets the same field so a headless
-drive can assert it ran. C: `kui_run_with` takes a `KuiApp` already —
-a `teardown` callback is an [in] struct append (ABI 19 by AR50), or a
-free `kui_on_teardown(fn, userdata)` setter before `kui_run`, as
-`kui_press_and_hold` was, which keeps ABI 18; pick by whether the app
-struct has other pending appends. Correct the changelog sentence and
-the F74 archive outcome, and add the test F74 never got: a counting
-`App` through `Launcher::open` + `request_exit`, once across `exiting`
-and `retire`. Also worth writing down: `impl Drop for PumpRunner`
-calls `retire` → `teardown_once`, so on the pumped path a panic
-unwinding through the host *does* reach `teardown` (the changelog says
-a crash does not) and a `teardown` that panics there aborts.
 
 ### `!` RG2 — A devtools select's menu outlives the panel, and its choice reaches the app as a `menu` event from the devtools origin
 
@@ -1559,7 +1526,7 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** RG1–RG15 from the regression pass of 2026-09-19, RG1 first (a Node or C app still never hears ⌘Q), then the two regressions of the round, RG5 and RG6; after them C41 — a profile of `frame_1k_curves` at the drop-zone
+**Build next.** RG2–RG15 from the regression pass of 2026-09-19 (RG1, the Node and C hosts hearing ⌘Q, was **built 2026-09-19**), the two regressions of the round first, RG5 and RG6; after them C41 — a profile of `frame_1k_curves` at the drop-zone
 commit against the one before, the bisect already done; then W19, when
 a Windows or Linux round comes (the macOS half of ADR 0031 is built and
 verified; the fallback elsewhere is honest and positionless). Nothing else filed is open: the two alpha.13 reports and the
@@ -2267,6 +2234,10 @@ move.
 **From the kawoosh session report (2026-09-17)** — F74, filed and built the same day
 
 - `!` **F74** — [An app never hears its window go: the close button drops it, ⌘Q ends the process, and neither is a key](backlog/closed-2026-09.md#-f74--an-app-never-hears-its-window-go-the-close-button-drops-it-q-ends-the-process-and-neither-is-a-key--done-2026-09-17) — done (2026-09-17) — `App::teardown`, once, from the loop's `exiting` and a pumped runner's retirement
+
+**From the regression pass of 2026-09-19** — RG1 built the same day; RG2–RG15 open above
+
+- `!` **RG1** — [A Node or C app still never hears ⌘Q: F74's `teardown` is a Rust `App` method, and the loops the other hosts "own" end the same way](backlog/closed-2026-09.md#-rg1--a-node-or-c-app-still-never-hears-q-f74s-teardown-is-a-rust-app-method-and-the-loops-the-other-hosts-own-end-the-same-way--done-2026-09-19) — done (2026-09-19) — `teardown(model)` in `runWindowed`'s / `createApp`'s config over `KuiWindow.onTeardown`, `kui_on_teardown(fn)` before `kui_run` (ABI 18 kept), the verb-table row, the once-across-ends test; both hosts checked under ⌘Q in the window
 
 **From the kawoosh devtools-tables report (2026-09-17)** — F75, filed and built the same day
 

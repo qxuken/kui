@@ -1170,6 +1170,13 @@ pub const DOORS: &[Door] = &[
         lua: No(GUEST),
         doc: "macOS: whether holding a letter key opens the accent picker (the platform's press-and-hold, on unless the user turned it off) or repeats the key, as every other platform does — `false` for an app whose keys are commands, a modal editor where `j` held is a motion; left alone for one that is typed into. This process alone, never written to the user's preferences; a no-op elsewhere. C's is a free function called before `kui_run`, since it is a process setting and not a struct's field.",
     },
+    Door {
+        rust: "App::teardown",
+        c: Is("kui_on_teardown"),
+        node: Is("KuiWindow.onTeardown"),
+        lua: No(GUEST),
+        doc: "The window going for good — its close button, Quit from the menu or the dock, a close command on it, a pumped runner ended — heard once, before `run` returns or the process exits, with nothing drawing: the place to keep what the app would lose with the window (backlog F74, the other two hosts under RG1). On macOS a Quit ends the process from inside the loop, so this is the only thing an app runs on ⌘Q — nothing after `run`, `kui_run` or `await runWindowed(...)` does, not even `process.on('exit')`. C's is a free function called before `kui_run`, with the run's `user`, since `kui_run`'s app is three arguments and not a struct. Node's is the window's door, called from inside the pump that saw the window go; `runWindowed` registers its config's `teardown(model)` there, and `createApp`'s `app.teardown()` runs the same one for a headless drive.",
+    },
 ];
 
 #[cfg(test)]
@@ -1179,7 +1186,8 @@ mod tests {
     /// A row's Rust spelling is a `pub fn` in the file its prefix names —
     /// `Ui::` in `ui.rs`, `Core::` under `runtime/`, `SharedResources::`
     /// in `session.rs`, `Tokens::` in `tokens.rs`, `Launcher::` in the
-    /// `kui` crate — so a renamed or
+    /// `kui` crate, and `App::` a method of that crate's `App` trait (a
+    /// trait's `fn` is public without the word) — so a renamed or
     /// removed verb is a red row and not a stale one, which is the pin
     /// Rust's column can have without reflection.
     #[test]
@@ -1199,6 +1207,12 @@ mod tests {
         let session = read(root.join("session.rs"));
         let tokens = read(root.join("tokens.rs"));
         let launcher = read(root.join("../../kui/src/lib.rs"));
+        // The `App` trait's body: a method of it is a callback the app
+        // writes, spelled `fn name(` and public by being the trait's.
+        let app_trait = launcher
+            .split_once("pub trait App {")
+            .map(|(_, rest)| rest.split_once("\n}\n").map_or(rest, |(body, _)| body))
+            .unwrap_or_default();
         for d in DOORS {
             let (ty, name) = d.rust.split_once("::").expect(d.rust);
             let src = match ty {
@@ -1207,9 +1221,13 @@ mod tests {
                 "SharedResources" => &session,
                 "Tokens" => &tokens,
                 "Launcher" => &launcher,
+                "App" => app_trait,
                 other => panic!("{}: {other} is not a prefix the table knows", d.rust),
             };
-            let (public, any) = (format!("pub fn {name}("), format!("fn {name}("));
+            let (public, any) = (
+                format!("{}fn {name}(", if ty == "App" { "" } else { "pub " }),
+                format!("fn {name}("),
+            );
             assert!(
                 src.contains(&public) || (ty == "Core" && name == "env"),
                 "{}: no `{public}` in {ty}'s sources{}",

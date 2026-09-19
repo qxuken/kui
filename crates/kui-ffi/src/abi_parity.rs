@@ -137,7 +137,7 @@ c_type! {
     ViewFn => "KuiViewFn",
 }
 #[cfg(feature = "runner")]
-c_type! { EventFn => "KuiEventFn" }
+c_type! { EventFn => "KuiEventFn", TeardownFn => "KuiTeardownFn" }
 impl<T: CType> CType for *mut T {
     fn c() -> String {
         format!("{} *", T::c())
@@ -1144,8 +1144,13 @@ fn every_entry_point_is_pinned() {
             }
         }
     }
-    // The runner's three are pinned only in a build that has them.
-    let runner = ["kui_run", "kui_run_with", "kui_press_and_hold"];
+    // The runner's four are pinned only in a build that has them.
+    let runner = [
+        "kui_run",
+        "kui_run_with",
+        "kui_press_and_hold",
+        "kui_on_teardown",
+    ];
     let mut expected = declared.clone();
     if cfg!(not(feature = "runner")) {
         for name in runner {

@@ -872,9 +872,19 @@ host that owns the loop blocks on the same three things with
 — its close button, Quit from the menu or the dock, `WindowCommand::Close`
 on it, a pumped runner ended — before `run` returns or the process exits.
 A `:q` of your own that already saved sets a flag and skips it. There is
-no `Ui` by then and nothing draws; a crash does not reach it. A `Drop` on
-the app is not the same thing: on a Mac, Quit ends the process from
-`applicationWillTerminate` and `run` never returns.
+no `Ui` by then and nothing draws. A `Drop` on the app is not the same
+thing: on a Mac, Quit ends the process from `applicationWillTerminate`
+and `run` never returns. A crash under `run` does not reach it; under a
+pumped runner the drop retires the runner, so a panic unwinding through
+the host does.
+
+Node: `teardown(model)` in `runWindowed`'s config, run once with the
+model from inside the pump that saw the window go — under ⌘Q the
+promise never resolves and nothing after `await runWindowed(...)` runs,
+not even `process.on('exit')`, so this is the only place. `createApp`
+takes the same field and `app.teardown()` runs it for a headless
+drive. C: `kui_on_teardown(fn)` before `kui_run`, called once with the
+run's `user`; nothing after `kui_run` runs under ⌘Q either.
 
 [alpha.16](../CHANGELOG.md#010-alpha16-unreleased)
 
