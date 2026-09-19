@@ -431,6 +431,64 @@ fn the_platform_menu_choice_restores_the_hosts_own_mode() {
     assert!(core.native_menus() && core.native_menu_bar());
 }
 
+/// `Ctrl+Shift+M` walks the select's three choices in the select's
+/// order and over the select's state — platform, native, drawn, and
+/// round to the host's own mode again — whatever that mode is: it was a
+/// two-way toggle from a compile-time guess at the host, which on a
+/// drawn-menu host on macOS "toggled" to drawn and could never come back
+/// (backlog RG12).
+#[test]
+fn the_menus_chord_cycles_the_selects_three_choices_from_the_hosts_own_mode() {
+    let walk = |host: bool| {
+        let mut core = Core::new();
+        core.set_native_menus(host);
+        core.set_native_menu_bar(host);
+        core.set_devtools(true);
+        frame(&mut core);
+        assert_eq!(state(&core, |s| s.native_menus), None, "platform to start");
+        assert!(core.handle_input(chord('M')).is_empty());
+        frame(&mut core);
+        assert_eq!(state(&core, |s| s.native_menus), Some(true));
+        assert!(core.native_menus() && core.native_menu_bar(), "native");
+        assert!(core.handle_input(chord('M')).is_empty());
+        frame(&mut core);
+        assert_eq!(state(&core, |s| s.native_menus), Some(false));
+        assert!(!core.native_menus() && !core.native_menu_bar(), "drawn");
+        assert!(core.handle_input(chord('M')).is_empty());
+        frame(&mut core);
+        assert_eq!(state(&core, |s| s.native_menus), None, "round to platform");
+        assert_eq!(core.native_menus(), host, "the host's own again");
+        assert_eq!(core.native_menu_bar(), host);
+        // The select and the chord share the state: a choice made in one
+        // is where the other goes on from.
+        core.devtools_act("menus:drawn");
+        frame(&mut core);
+        assert!(core.handle_input(chord('M')).is_empty());
+        frame(&mut core);
+        assert_eq!(core.native_menus(), host, "drawn, then the chord: platform");
+        state(&core, |s| {
+            let notes: Vec<_> = s
+                .stream
+                .iter()
+                .filter(|e| e.kind == EntryKind::Note)
+                .map(|e| e.payload.as_str().unwrap_or("").to_string())
+                .collect();
+            assert_eq!(
+                notes,
+                [
+                    "menus: native",
+                    "menus: drawn",
+                    "menus: platform",
+                    "menus: drawn",
+                    "menus: platform"
+                ]
+            );
+        });
+    };
+    walk(true);
+    walk(false);
+}
+
 /// The same select answered by a host's own menu: `activate_menu_item`
 /// is not an input, and its events take the same way out, so the row
 /// is the panel's action there too and the app hears nothing.
@@ -449,6 +507,83 @@ fn a_select_chosen_from_a_native_menu_is_the_panels_action_too() {
     assert!(evs.is_empty(), "{evs:?}");
     assert_eq!(state(&core, |s| s.base), Some(Appearance::Dark));
     assert!(core.menu().is_none());
+}
+
+/// The Facts select's menu is the panel's: the panel going off takes it
+/// with it, and a row that was still drawn when the panel went — the
+/// frame the input owes has not been drawn yet — is the panel's action
+/// or nothing, never a `menu` event the app hears from an origin it did
+/// not declare (backlog RG2).
+#[test]
+fn a_selects_menu_goes_with_the_panel_and_its_rows_never_reach_the_app() {
+    let open_base = |core: &mut Core| {
+        let facts = core.key_of("kui-devtools/tab-facts").unwrap();
+        access_click(core, facts);
+        frame(core);
+        let base = core.key_of("kui-devtools/base").unwrap();
+        assert!(access_click(core, base).is_empty());
+        frame(core);
+        core.access_tree()
+            .nodes
+            .iter()
+            .find(|n| n.role == crate::access::Role::MenuItem && n.name.as_deref() == Some("light"))
+            .map(|n| n.key)
+            .expect("the row is drawn")
+    };
+    // The app's door.
+    let mut core = on();
+    let light = open_base(&mut core);
+    assert!(core.menu().is_some());
+    core.set_devtools(false);
+    // The row is still in the tree the input resolves against, and the
+    // click on it is swallowed: no event for the app, no override.
+    let evs = access_click(&mut core, light);
+    assert!(evs.is_empty(), "{evs:?}");
+    assert_eq!(state(&core, |s| s.base), None);
+    frame(&mut core);
+    assert!(core.menu().is_none(), "the menu went with the panel");
+    assert!(
+        !core
+            .access_tree()
+            .nodes
+            .iter()
+            .any(|n| n.role == crate::access::Role::MenuItem),
+        "no row drawn"
+    );
+    // The header's `off` (the chord's too) hides the panel with `on`
+    // still set; the menu goes the same way. The dock going is a
+    // `resize` to the app, drained here so what the row's click returns
+    // is its own.
+    let mut core = on();
+    let light = open_base(&mut core);
+    core.devtools_act("dock:off");
+    frame(&mut core);
+    core.take_pending_events();
+    assert!(core.menu().is_none());
+    let evs = access_click(&mut core, light);
+    assert!(evs.is_empty(), "{evs:?}");
+    // Popped out: the field is in the other window, the main one's menu
+    // has nothing to hang under.
+    let mut core = on();
+    let light = open_base(&mut core);
+    core.devtools_act("dock:window");
+    frame(&mut core);
+    core.take_pending_events();
+    assert!(core.menu().is_none());
+    let evs = access_click(&mut core, light);
+    assert!(evs.is_empty(), "{evs:?}");
+    assert_eq!(state(&core, |s| s.base), None);
+    // The app's own menu is not the panel's to close.
+    let mut core = on();
+    let press = core.key_of("press").unwrap();
+    core.open_menu(crate::menu::Menu::new(
+        press,
+        Vec2::new(10.0, 10.0),
+        vec![crate::menu::MenuItem::new("one")],
+    ));
+    core.set_devtools(false);
+    frame(&mut core);
+    assert!(core.menu().is_some(), "the app's menu stays");
 }
 
 /// A click on the app reaches the host and lands in the stream; a click

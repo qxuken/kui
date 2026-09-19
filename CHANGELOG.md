@@ -246,6 +246,32 @@ hole by hand will see.
   `outbound` pass: the panel's controls taken back, the rest translated,
   stamped with their window and logged.
 
+- **A devtools select's menu outlived the panel, and its rows reached
+  the app** (backlog RG2, from the regression pass of 2026-09-19): with
+  the Facts tab's `theme` menu open, the panel turned off — the app's
+  `set_devtools(false)`, or the header's and `Ctrl+Shift+D`'s `off` —
+  or popped into its own window left the menu open in the main window
+  with nothing to hang under, its rows still drawn and in the access
+  tree, and a click on one handed the app a `menu` event from origin
+  65535 (`{kind: "menu", role: "custom", item: {dt: "base:light"}}`),
+  an origin no app declared, with the override unchanged. The panel's
+  own menu now goes when this window stops building the panel, and an
+  event from the devtools origin is taken back whatever the panel's
+  state — a control still in the tree between the door and the frame
+  it owes is nobody's. An app's own menu is untouched.
+
+- **`Ctrl+Shift+M` was a two-way toggle from a compile-time guess**
+  (backlog RG12, from the same pass): the chord flipped `native_menus`
+  from `cfg!(target_os = "macos")` when no override was set and never
+  set none again, so on a drawn-menu host on macOS the first press
+  "toggled" to drawn — nothing visible changed, the select read `drawn`
+  where it read `platform` — and no number of presses came back to the
+  host's own mode, which the select's `platform` row restores. The
+  chord walks the select's three in the select's order, platform →
+  native → drawn → platform, over the same state and the same restore
+  path, and a choice made in either is where the other goes on from.
+  The stream's note says `menus: platform` for the host's own.
+
 - **A devtools panel turned on from inside a frame sat in the bottom-left
   corner** (backlog F70, from kawoosh's `:kui_debugger` and
   `:syntax_tree`, which call `set_devtools(true)` from `view`): the root
@@ -268,8 +294,9 @@ hole by hand will see.
   `menus` rows each carry a select of the choices beside the fact — the
   fact is what the app has, the select what the panel holds it to,
   `app` (or `platform`) leaving the app's own. `Ctrl+Shift+T` / `A` /
-  `M` still cycle the same choices. The `kui-devtools/base`, `accent`
-  and `menus` keys are the selects now, in the Facts tab only.
+  `M` cycle the same choices, in the select's order (`M`'s was a toggle
+  until RG12, under Fixed). The `kui-devtools/base`, `accent` and
+  `menus` keys are the selects now, in the Facts tab only.
 
 - **The panel's own tabs are labelled `Facts`, `Events`, `Tree`** in the
   strip and the access tree, as a declared tab's label is written

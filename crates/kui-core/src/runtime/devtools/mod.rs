@@ -25,7 +25,8 @@
 //!
 //! The chords are `Ctrl+Shift+<letter>`, a family no app keymap should
 //! use while the panel is on: `T` cycles the base (the app's own → light →
-//! dark), `A` the accent, `M` toggles native menus, `D` moves the panel
+//! dark), `A` the accent, `M` the menus (the platform's own → native →
+//! drawn), `D` moves the panel
 //! (left → right → bottom → window → off; the header has a button per
 //! placement too), `N` the tab, `C` clears the stream, `I`
 //! moves the keyboard into the panel and back out, `P` picks a node, and
@@ -487,6 +488,16 @@ impl State {
         }
     }
 
+    /// The menu override's name, the select's spelling: `platform` is
+    /// the host's own mode, whatever that is.
+    fn menus_name(&self) -> &'static str {
+        match self.native_menus {
+            None => "platform",
+            Some(true) => "native",
+            Some(false) => "drawn",
+        }
+    }
+
     fn accent_name(&self) -> String {
         match (self.accent, self.custom_accent) {
             (Some(i), _) => ACCENTS[i].0.to_string(),
@@ -586,17 +597,16 @@ impl State {
                 self.note(format!("accent: {}", self.accent_name()));
             }
             "menus" => {
-                // Toggled from what the core is doing now, which is the
-                // platform's default until the first press.
-                self.native_menus = Some(!self.native_menus.unwrap_or(cfg!(target_os = "macos")));
-                self.note(format!(
-                    "menus: {}",
-                    if self.native_menus == Some(true) {
-                        "native"
-                    } else {
-                        "drawn"
-                    }
-                ));
+                // The select's three, round: the host's own mode (which
+                // `begin_frame` puts back from `dt_menus`), native, drawn.
+                // Not a toggle from a compile-time guess at the host's
+                // mode, which could never return to it (backlog RG12).
+                self.native_menus = match self.native_menus {
+                    None => Some(true),
+                    Some(true) => Some(false),
+                    Some(false) => None,
+                };
+                self.note(format!("menus: {}", self.menus_name()));
             }
             "dock" => {
                 self.dock = self.dock.next();
@@ -680,7 +690,7 @@ impl State {
                         "drawn" => Some(false),
                         _ => None,
                     };
-                    self.note(format!("menus: {menus}"));
+                    self.note(format!("menus: {}", self.menus_name()));
                 } else if let Some(dock) = other.strip_prefix("dock:").and_then(Dock::parse) {
                     // One of the header's placement buttons.
                     if dock != self.dock {
@@ -1406,6 +1416,21 @@ impl Core {
                 d.on && (d.shown() == Shown::Builtin(Tab::Tree) || d.pick),
             )
         };
+        // A menu of the panel's own — a Facts select's — hangs under a
+        // field this window draws only while it builds the panel: off,
+        // hidden, or popped into its own window while this is the main
+        // one, the field is gone and the menu goes with it, or else the
+        // rows would stay drawn with nobody to answer them (backlog RG2).
+        // An app's menu is not the panel's to close.
+        let builds_panel = on && (this || (main && dock.docked()));
+        if !builds_panel
+            && self
+                .menu
+                .as_ref()
+                .is_some_and(|m| m.origin == OriginId::DEVTOOLS)
+        {
+            self.close_menu();
+        }
         if !on {
             if let Some((app, _)) = self.dt_theme.take() {
                 self.set_theme_source(app);
@@ -1778,6 +1803,12 @@ impl Core {
         }
         let on = self.session.state().devtools.on;
         if !on && !self.dt_window {
+            // Off, a panel control can still be in the tree the input
+            // resolves against — the frame the door owes is not drawn
+            // yet — and its event is nobody's: not the app's, which
+            // never declared the origin, and not an action either, since
+            // the panel it would act on is gone (backlog RG2).
+            out.retain(|ev| ev.origin != OriginId::DEVTOOLS);
             return;
         }
         let mut actions: Vec<String> = Vec::new();

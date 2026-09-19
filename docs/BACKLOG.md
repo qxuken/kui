@@ -1237,29 +1237,11 @@ RG1: F74's fix reached Rust only, and the changelog's reason why the
 other two hosts did not need it was wrong — a Node app quit with ⌘Q
 ran nothing after `runWindowed`, not even `process.on('exit')`, so
 kawoosh's own defect was still open for every app that is not Rust.
-RG1 is **built 2026-09-19** and in the archive; RG2–RG15 are below.
+RG1 is **built 2026-09-19** and in the archive, RG2 and RG12 **built
+2026-09-20** and there too; the rest are below.
 Two are regressions this round introduced (RG5, RG6), the rest are
 gaps the new features opened or holes they made reachable. Not
 verified here: F69 in a window (RG15 says how).
-
-### `!` RG2 — A devtools select's menu outlives the panel, and its choice reaches the app as a `menu` event from the devtools origin
-
-**Found.** Open the Facts tab's `theme` select (its menu drawn), turn
-the panel off — `Ctrl+Shift+D` cycles to `off`, or the app's
-`set_devtools(false)` — and draw a frame: `core.menu()` is still
-`Some`, the `light` row is still in the access tree, and an AX click on
-it returns to the host `{kind: "menu", role: "custom", item: {dt:
-"base:light"}}` with origin `65535`, the base unchanged. Probed on this
-tree through `devtools/tests.rs`' harness. Mechanism:
-`devtools_consume` (`runtime/devtools/mod.rs:1775`) returns early on
-`!on && !dt_window`, nothing closes the menu when `on` flips, `Ui::finish`
-builds any `self.menu`, and `Extensions::route` hands an event of an
-origin nothing answers to the host.
-
-**Do.** `close_menu()` when the panel goes off (and when the dock moves
-to `Window`, where the field it hangs under is gone), and consume
-`OriginId::DEVTOOLS` events unconditionally — the app can never mean
-to hear one. A test in `devtools/tests.rs` from the probe above.
 
 ### `!` RG3 — A `scrollX` table with grow rows cannot scroll: the overflow it keeps is clipped, and `scroll_max.x` is 0
 
@@ -1424,21 +1406,6 @@ already knows the columns), or the howto and props row say the table
 needs a width or a `grow` parent. The first is a line in `table_fit`
 and makes a `Fit` table the aligned key/value list the ADR describes.
 
-### `~` RG12 — `Ctrl+Shift+M` is a two-way toggle from a compile-time default; the select beside it has three choices
-
-**Found.** The changelog says the three chords "still cycle the same
-choices". `act("menus")` (`runtime/devtools/mod.rs:588`) sets
-`native_menus = Some(!current)` from `cfg!(target_os = "macos")` when
-unset, never `None`: on a drawn-menu host on macOS the first press
-sets `Some(false)` (nothing visible changes, the select reads `drawn`
-where it read `platform`), and no number of presses returns to
-`platform`. `T` and `A` do cycle through their `app` choice. It also
-ignores `dt_menus`, the host mode the select remembers.
-
-**Do.** The chord cycles `platform → native → drawn → platform` over
-the same `dt_menus`/`restore_menus` the select uses; a test beside
-`the_platform_menu_choice_restores_the_hosts_own_mode`.
-
 ### `~` RG13 — An AX click on a control behind a modal fires: a second click on an open select's field re-opens it instead of dismissing
 
 **Found.** `click_node` (`runtime/dispatch.rs:1235`) finds the region
@@ -1526,7 +1493,7 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** RG2–RG15 from the regression pass of 2026-09-19 (RG1, the Node and C hosts hearing ⌘Q, was **built 2026-09-19**), the two regressions of the round first, RG5 and RG6; after them C41 — a profile of `frame_1k_curves` at the drop-zone
+**Build next.** RG3–RG11 and RG13–RG15 from the regression pass of 2026-09-19 (RG1, the Node and C hosts hearing ⌘Q, was **built 2026-09-19**; RG2 and RG12, the devtools' menus select and its chord, **built 2026-09-20**), the two regressions of the round first, RG5 and RG6; after them C41 — a profile of `frame_1k_curves` at the drop-zone
 commit against the one before, the bisect already done; then W19, when
 a Windows or Linux round comes (the macOS half of ADR 0031 is built and
 verified; the fallback elsewhere is honest and positionless). Nothing else filed is open: the two alpha.13 reports and the
@@ -2235,9 +2202,11 @@ move.
 
 - `!` **F74** — [An app never hears its window go: the close button drops it, ⌘Q ends the process, and neither is a key](backlog/closed-2026-09.md#-f74--an-app-never-hears-its-window-go-the-close-button-drops-it-q-ends-the-process-and-neither-is-a-key--done-2026-09-17) — done (2026-09-17) — `App::teardown`, once, from the loop's `exiting` and a pumped runner's retirement
 
-**From the regression pass of 2026-09-19** — RG1 built the same day; RG2–RG15 open above
+**From the regression pass of 2026-09-19** — RG1 built the same day, RG2 and RG12 on 2026-09-20; the rest open above
 
 - `!` **RG1** — [A Node or C app still never hears ⌘Q: F74's `teardown` is a Rust `App` method, and the loops the other hosts "own" end the same way](backlog/closed-2026-09.md#-rg1--a-node-or-c-app-still-never-hears-q-f74s-teardown-is-a-rust-app-method-and-the-loops-the-other-hosts-own-end-the-same-way--done-2026-09-19) — done (2026-09-19) — `teardown(model)` in `runWindowed`'s / `createApp`'s config over `KuiWindow.onTeardown`, `kui_on_teardown(fn)` before `kui_run` (ABI 18 kept), the verb-table row, the once-across-ends test; both hosts checked under ⌘Q in the window
+- `!` **RG2** — [A devtools select's menu outlives the panel, and its choice reaches the app as a `menu` event from the devtools origin](backlog/closed-2026-09.md#-rg2--a-devtools-selects-menu-outlives-the-panel-and-its-choice-reaches-the-app-as-a-menu-event-from-the-devtools-origin--done-2026-09-20) — done (2026-09-20) — the panel's menu closes when this window stops building the panel; a devtools-origin event is taken back whatever the panel's state
+- `~` **RG12** — [`Ctrl+Shift+M` is a two-way toggle from a compile-time default; the select beside it has three choices](backlog/closed-2026-09.md#-rg12--ctrlshiftm-is-a-two-way-toggle-from-a-compile-time-default-the-select-beside-it-has-three-choices--done-2026-09-20) — done (2026-09-20) — the chord walks platform → native → drawn over the select's state and restore path
 
 **From the kawoosh devtools-tables report (2026-09-17)** — F75, filed and built the same day
 
