@@ -669,7 +669,7 @@ pub const DOORS: &[Door] = &[
         c: Is("kui_activate_menu_item"),
         node: Is("activateMenuItem"),
         lua: No(GUEST),
-        doc: "Reports that the host's own menu chose a row.",
+        doc: "Reports that the host's own menu chose a row; a row that cannot be chosen (disabled, a separator) is refused and the menu stays open.",
     },
     Door {
         rust: "Core::menu_bar",

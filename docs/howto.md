@@ -355,7 +355,13 @@ option may be a menu item instead of a string — `{ label: "18 pt", id: 18 }`,
 (a size in points, an enum's tag) instead of its label; in Rust that is
 `select_items`, and `select_with` takes the field's spec and text style
 for a dense panel. The field reads no other row; one that needs any is a
-`role="button"` box and `openMenu`.
+`role="button"` box and `openMenu`. What is checked: the options may not
+be empty (refused where they are written), a `current` past them or on a
+separator is none with a `select-current-ignored` warning on the field,
+a key of an option object no row reads (`disabled` for `enabled: false`)
+is an `unknown-prop` warning, and a dead row reported chosen through
+`activateMenuItem` / `kui_activate_menu_item` is refused — false, nothing
+posted, the menu still open — as the pointer never reaches it.
 
 [`select` element](props.md#elements) ·
 [examples/rust/widgets/select.rs](../examples/rust/widgets/select.rs) ·

@@ -50,13 +50,17 @@ impl<A: App> Shell<A> {
                 return;
             }
             self.menu_shown = false;
-            let events = match native.take_chosen() {
-                Some(row) => self.panes[i].core.activate_menu_item(row),
-                None => {
+            // The platform's menu is gone either way, so a row the core
+            // refuses — one it could not choose, which the platform never
+            // reports — closes the core's rather than leaving it to be
+            // presented again.
+            let events = native
+                .take_chosen()
+                .and_then(|row| self.panes[i].core.activate_menu_item(row))
+                .unwrap_or_else(|| {
                     self.panes[i].core.close_menu();
                     Vec::new()
-                }
-            };
+                });
             self.route_events(events);
             self.apply_menu_actions(event_loop, i);
             self.apply_window_commands(event_loop);

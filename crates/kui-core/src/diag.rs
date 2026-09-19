@@ -245,7 +245,10 @@ warnings! {
     /// declaration away — `hoverBg` in a Lua table, `onclick` in JSX — so unlike
     /// every other code here this one is raised by the frontend that saw it,
     /// through `Core::warn`: by the time a frame is a tree the name is
-    /// gone. The message names the likely spelling.
+    /// gone. The message names the likely spelling. Also raised for a key
+    /// a menu row map carried that no row reads — `disabled` on a select's
+    /// option, where the key is `enabled` — by the binding that read the
+    /// row (backlog RG10).
     pub const UNKNOWN_PROP: &str = "unknown-prop";
     /// One name declared with two different window configs on the frame it
     /// opened. The config is read on the opening edge only, and on that edge
@@ -396,6 +399,14 @@ warnings! {
     /// tab was not declared. A tab names a slot for an extension to fill,
     /// or carries a function the binding calls only when the tab is shown.
     pub const BAD_DEVTOOLS_TAB: &str = "bad-devtools-tab";
+    /// A select's `current` names no option the field can show: an index
+    /// past its options, or a separator's. The field is drawn as if none
+    /// were in force — an empty description, no row checked — rather than
+    /// blank with a check on a divider; the options are drawn as declared.
+    /// A `current` the view computes from a list it also filters is how
+    /// this happens; the index is into the options as passed, separators
+    /// counted (backlog RG10). Raised once per field.
+    pub const SELECT_CURRENT_IGNORED: &str = "select-current-ignored";
 }
 
 /// The [`DUPLICATE_TAB`] warning for one name. Keyed by the name, the way
@@ -706,11 +717,82 @@ pub fn ambiguous_key(label: &str, first: Key, count: usize) -> Warning {
     }
 }
 
+/// The [`SELECT_CURRENT_IGNORED`] warning for one field: `current` was
+/// `index` over `count` options and `separator` says whether it landed on
+/// one rather than past the end. Keyed by the field, so a view that draws
+/// it that way every frame costs one line.
+pub fn select_current_ignored(
+    key: Key,
+    label: &str,
+    index: usize,
+    count: usize,
+    separator: bool,
+) -> Warning {
+    let why = if separator {
+        "which is a separator".to_string()
+    } else {
+        format!(
+            "and the field has {count} option{}",
+            if count == 1 { "" } else { "s" }
+        )
+    };
+    Warning {
+        code: SELECT_CURRENT_IGNORED,
+        key,
+        message: format!(
+            "`current` of select {label:?} names option {index} counted from 0, {why}, so the \
+             field shows no choice and no row is checked — pass an index of an option, or none"
+        ),
+    }
+}
+
+/// The [`UNKNOWN_PROP`] warning for a key a menu row map carried that
+/// [`crate::MenuItem::from_value`] does not read — `disabled` for
+/// `enabled: false` — so the row was built without it (backlog RG10).
+/// Keyed by the name, as [`unknown_prop`]'s are: one line per spelling.
+pub fn unknown_menu_item_key(name: &str) -> Warning {
+    let keys = crate::MenuItem::KEYS
+        .iter()
+        .map(|k| format!("`{k}`"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    // The one misspelling with a meaning of its own gets the value it was
+    // after; the rest the nearest key by letters, as `schema::suggest` does.
+    let squash = |s: &str| s.replace('_', "").to_ascii_lowercase();
+    let hint = if name == "disabled" {
+        " (did you mean `enabled: false`?)".to_string()
+    } else {
+        match crate::MenuItem::KEYS
+            .iter()
+            .find(|k| squash(k) == squash(name))
+        {
+            Some(near) => format!(" (did you mean `{near}`?)"),
+            None => String::new(),
+        }
+    };
+    Warning {
+        code: UNKNOWN_PROP,
+        key: Key::ROOT
+            .str(UNKNOWN_PROP)
+            .str(crate::MenuItem::NAME)
+            .str(name),
+        message: format!(
+            "`{name}` is not a key of a menu item: a row takes {keys}, so this declaration is \
+             dropped{hint}"
+        ),
+    }
+}
+
 /// The [`UNKNOWN_PROP`] warning for one dropped name, with the nearest
 /// legitimate spelling when there is an obvious one. The key is derived from
 /// the element and the name rather than from a node, so a misspelling costs
 /// one line however many nodes carry it and however many frames draw them.
+/// `element` [`crate::MenuItem::NAME`] is a menu row's key rather than a
+/// node's prop, and takes [`unknown_menu_item_key`]'s wording.
 pub fn unknown_prop(element: &str, name: &str, spelling: schema::Spelling) -> Warning {
+    if element == crate::MenuItem::NAME {
+        return unknown_menu_item_key(name);
+    }
     // A real row on an element that reads only some of them is not a
     // misspelling, and the nearest spelling would be the row itself; the
     // warning says which rows the element does read instead.
@@ -1241,6 +1323,39 @@ mod tests {
                 "{code}: codes are kebab-case"
             );
         }
+    }
+
+    /// A menu row's dropped key takes the row's wording, whichever door
+    /// raises it: `unknown_prop` under `MENU_ITEM` is `unknown_menu_item_key`
+    /// (backlog RG10). One hint for the key with a meaning of its own, the
+    /// letters' nearest for the rest, none for anything fuzzier.
+    #[test]
+    fn a_menu_rows_unknown_key_is_named_as_one() {
+        let name = crate::MenuItem::NAME;
+        let w = unknown_prop(name, "disabled", schema::Spelling::Camel);
+        assert_eq!(w, unknown_menu_item_key("disabled"));
+        assert_eq!(w.code, UNKNOWN_PROP);
+        assert_eq!(w.key, Key::ROOT.str(UNKNOWN_PROP).str(name).str("disabled"));
+        assert!(
+            w.message.contains("`disabled` is not a key of a menu item")
+                && w.message
+                    .contains("`label`, `role`, `enabled`, `checked`, `id`, `accel`")
+                && w.message.ends_with("(did you mean `enabled: false`?)"),
+            "{}",
+            w.message
+        );
+        assert!(
+            unknown_menu_item_key("Label")
+                .message
+                .ends_with("(did you mean `label`?)")
+        );
+        assert!(unknown_menu_item_key("lable").message.ends_with("dropped"));
+        assert!(
+            unknown_prop("box", "disabled", schema::Spelling::Camel)
+                .message
+                .starts_with("`disabled` is"),
+            "an element's is the element's"
+        );
     }
 
     #[test]

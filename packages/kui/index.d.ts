@@ -763,7 +763,9 @@ export type WarningCode =
    *  declaration away — `hoverBg` in a Lua table, `onclick` in JSX — so unlike
    *  every other code here this one is raised by the frontend that saw it,
    *  through `Core::warn`: by the time a frame is a tree the name is gone. The
-   *  message names the likely spelling. */
+   *  message names the likely spelling. Also raised for a key a menu row map
+   *  carried that no row reads — `disabled` on a select's option, where the key
+   *  is `enabled` — by the binding that read the row (backlog RG10). */
   | 'unknown-prop'
   /** One name declared with two different window configs on the frame it
    *  opened. The config is read on the opening edge only, and on that edge the
@@ -898,7 +900,15 @@ export type WarningCode =
    *  child, or a `view` that is not a function in Lua. The tab was not
    *  declared. A tab names a slot for an extension to fill, or carries a
    *  function the binding calls only when the tab is shown. */
-  | 'bad-devtools-tab';
+  | 'bad-devtools-tab'
+  /** A select's `current` names no option the field can show: an index past its
+   *  options, or a separator's. The field is drawn as if none were in force —
+   *  an empty description, no row checked — rather than blank with a check on a
+   *  divider; the options are drawn as declared. A `current` the view computes
+   *  from a list it also filters is how this happens; the index is into the
+   *  options as passed, separators counted (backlog RG10). Raised once per
+   *  field. */
+  | 'select-current-ignored';
 // -- end generated --
 
 /** A silent misconfiguration the core noticed while finishing a frame —
@@ -2404,7 +2414,9 @@ export declare class Ctx {
    * (see `Warning`). A name outside the schema never reaches the
    * binary stream, so the encoder is the only side that sees it;
    * `frame` / `setView` report what they dropped through here.
-   * Behind the same `setDiagnostics` gate, and once per name.
+   * Behind the same `setDiagnostics` gate, and once per name. A
+   * pair under `protocol().menuItem.name` is a key a `<select>`
+   * option object carried that no menu row reads (backlog RG10).
    */
   warnUnknownProps(props: [string, string][]): void
   /**
@@ -2742,7 +2754,9 @@ export declare class Ctx {
    * Reports that the host's own menu chose row `index` — the
    * same path a press on the drawn menu's row takes. An index
    * past the end closes the menu and posts nothing. False when
-   * no menu was open.
+   * nothing was taken: no menu was open, or the row cannot be
+   * chosen — disabled, or a separator — in which case the menu
+   * stays open and nothing is posted (backlog RG9).
    */
   activateMenuItem(index: number): boolean
   /** Closes whatever menu is open; true when there was one. */
@@ -3453,7 +3467,9 @@ export declare class KuiWindow {
    * (see `Warning`). A name outside the schema never reaches the
    * binary stream, so the encoder is the only side that sees it;
    * `frame` / `setView` report what they dropped through here.
-   * Behind the same `setDiagnostics` gate, and once per name.
+   * Behind the same `setDiagnostics` gate, and once per name. A
+   * pair under `protocol().menuItem.name` is a key a `<select>`
+   * option object carried that no menu row reads (backlog RG10).
    */
   warnUnknownProps(props: [string, string][]): void
   /**
@@ -3791,7 +3807,9 @@ export declare class KuiWindow {
    * Reports that the host's own menu chose row `index` — the
    * same path a press on the drawn menu's row takes. An index
    * past the end closes the menu and posts nothing. False when
-   * no menu was open.
+   * nothing was taken: no menu was open, or the row cannot be
+   * chosen — disabled, or a separator — in which case the menu
+   * stays open and nothing is posted (backlog RG9).
    */
   activateMenuItem(index: number): boolean
   /** Closes whatever menu is open; true when there was one. */

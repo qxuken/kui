@@ -572,7 +572,7 @@ fn a_select_chosen_from_a_native_menu_is_the_panels_action_too() {
     assert!(access_click(&mut core, base).is_empty());
     assert!(core.menu().is_some(), "held as state for the host to show");
     frame(&mut core);
-    let evs = core.activate_menu_item(2);
+    let evs = core.activate_menu_item(2).expect("the row is enabled");
     assert!(evs.is_empty(), "{evs:?}");
     assert_eq!(state(&core, |s| s.base), Some(Appearance::Dark));
     assert!(core.menu().is_none());

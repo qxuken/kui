@@ -121,17 +121,18 @@ pub extern "C" fn kui_set_native_menus(ptr: *mut KuiCtx, on: bool) {
 
 /// Reports that the host's menu chose row `index`: the same path a press
 /// on the drawn menu's row takes. An index past the end closes the menu
-/// and posts nothing. Returns false when no menu was open.
+/// and posts nothing. Returns false when nothing was taken: no menu was
+/// open, or the row cannot be chosen — disabled, or a separator — in
+/// which case the menu stays open and nothing is posted (backlog RG9).
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_activate_menu_item(ptr: *mut KuiCtx, index: usize) -> bool {
     guard(false, || {
         let Some(c) = (unsafe { ctx(ptr) }) else {
             return false;
         };
-        if c.core().menu().is_none() {
+        let Some(events) = c.core().activate_menu_item(index) else {
             return false;
-        }
-        let events = c.core().activate_menu_item(index);
+        };
         c.absorb(events);
         true
     })

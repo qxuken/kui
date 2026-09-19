@@ -2721,7 +2721,9 @@ bool kui_menu_item(KuiCtx *ctx, size_t item, KuiStr *label, KuiStr *accel,
                    uint32_t *role, uint32_t *flags);
 /* Reports that the host's own menu chose row `index` - the same path a
  * press on the drawn menu's row takes; an index past the end closes the
- * menu and posts nothing. False when no menu was open. */
+ * menu and posts nothing. False when nothing was taken: no menu was
+ * open, or the row cannot be chosen (disabled, a separator), in which
+ * case the menu stays open and nothing is posted. */
 bool kui_activate_menu_item(KuiCtx *ctx, size_t index);
 /* Tells the core this host can show the platform's definition panel
  * (macOS's Look Up). The standard Look Up row is then offered where it
@@ -2928,7 +2930,8 @@ uint64_t kui_text_input(KuiCtx *ctx, KuiStr label, KuiStr initial);
  * {kind:"menu", role, item} event a menu row posts, on the key this
  * returns, and drawing the field again with the new `current` is the
  * whole loop. 0 for no label, no items, or a role this build does not
- * know. */
+ * know; a `current` past the end or on a separator is none, with a
+ * select-current-ignored warning on the field. */
 uint64_t kui_select(KuiCtx *ctx, KuiStr label, const KuiMenuItem *items, size_t count,
                     int64_t current);
 /* Editable text node (state retained by key). Returns the node key;

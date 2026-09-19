@@ -53,6 +53,12 @@ export function createEncoder(P) {
   // `<input>` is the stock field around an `edit` (`widgets::text_input`),
   // the same two fields Lua's `input { }` takes (backlog B1a).
   const ELEMENT_OF = { span: 'text', latencyHud: 'latencyGraph', input: 'edit' };
+  // A menu row's keys (`MenuItem::KEYS`), for the option objects a
+  // `<select>` takes: a key outside them is dropped by the core's reader,
+  // so it is reported like an unknown prop, under the row's own name
+  // (backlog RG10: `disabled` for `enabled: false`).
+  const MENU_ITEM = P.menuItem?.name ?? 'menuItem';
+  const MENU_ITEM_KEYS = new Set(P.menuItem?.keys ?? []);
   let unknown = [];
   // A `$name` in a colour or length slot rides as the prop's id with this
   // bit set and the token's index in the value slot (ADR 0027, decision
@@ -756,6 +762,7 @@ export function createEncoder(P) {
         for (const o of p.options) {
           const ok = (typeof o === 'string' && o.length > 0) || (o !== null && typeof o === 'object' && !Array.isArray(o));
           if (!ok) throw new Error('<select> options are non-empty strings or menu item objects { label, id, enabled }');
+          if (typeof o === 'object') for (const k in o) if (!MENU_ITEM_KEYS.has(k)) unknown.push([MENU_ITEM, k]);
         }
         const current = p.current;
         if (current != null && (!Number.isInteger(current) || current < 0)) {

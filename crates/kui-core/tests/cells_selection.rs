@@ -229,7 +229,7 @@ fn the_stock_menu_over_a_grid_copies_cells() {
 
     // And choosing it puts the cells on the clipboard — the row was lit
     // from the cell selection, so acting on it has to read the same one.
-    core.activate_menu_item(at);
+    core.activate_menu_item(at).expect("the row is enabled");
     let acts = core.take_menu_actions();
     assert!(
         matches!(

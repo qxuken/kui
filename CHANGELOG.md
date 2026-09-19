@@ -382,6 +382,49 @@ hole by hand will see.
   for the next frame, which is right. The right and bottom docks were
   never affected, since theirs is built at `finish`.
 
+- **A host's menu report could choose a row the menu had disabled**
+  (backlog RG9, from the regression pass of 2026-09-19). The pointer
+  never reaches a disabled row — it has no click — but
+  `activateMenuItem(i)`, `kui_activate_menu_item` and
+  `Core::activate_menu_item` performed whatever row `i` named: a select
+  over `['English', {label: 'Latin', id: 'la', enabled: false}]` answered
+  `activateMenuItem(1)` with `true` and the app heard `{kind: "menu",
+  item: "la"}`, a choice it had disabled. A row that cannot be chosen —
+  disabled, or a separator — is refused in the core, so every door
+  agrees: `false`, nothing posted, the menu still open, as a native menu
+  that never sends such a row leaves it. `Core::activate_menu_item`
+  returns `Option<Vec<UiEvent>>` now — `None` for nothing taken, no menu
+  open included — where it returned the events; an index past the end
+  still closes the menu and posts nothing (`Some` and empty). The Rust
+  runner closes the core's menu on a refusal, since the platform's is
+  gone either way.
+
+- **A select's options and `current` were checked by C's door and by
+  nobody else's** (backlog RG10, the same pass). `options: []` framed a
+  field whose click opened a menu of no rows that only Escape leaves;
+  `current: 9` over two options described the field as `""`; `current`
+  on a `{role: "separator"}` described it as `""` and checked the
+  divider, so every row grew a check gutter for a mark never drawn; and
+  `{label, disabled: true}` on an option was silently an enabled row —
+  the key is `enabled` — which is how RG9 was first missed. Now the one
+  reader every binding's options go through, `MenuItem::options_from_value`,
+  refuses an empty list (Node's `frame` and Lua's `dropdown` throw "a
+  select needs at least one option"; C's `count == 0` is refused at its
+  door as before, since its rows never pass the reader); a `current`
+  past the options or on a separator is none — described by nothing, no
+  row checked — with a `select-current-ignored` warning on the field,
+  once per field, raised in `widgets::select_with` so Rust, C, Lua and
+  Node all get it (C's door used to clamp it to none before the core
+  could see it); a key of an option object that no row reads is an
+  `unknown-prop` warning naming the six a row takes (`label`, `role`,
+  `enabled`, `checked`, `id`, `accel`), with "did you mean `enabled:
+  false`?" for `disabled`, raised by the Node encoder and by Lua's
+  `dropdown` (`MenuItem::KEYS` and `MenuItem::NAME` pin the list, and
+  `protocol().menuItem` carries it to the encoder); and Lua's `dropdown`
+  without a `label` says "dropdown needs a label" where mlua said "error
+  converting Lua nil to String". `openMenu`'s items are not checked for
+  unknown keys; only a select's options are.
+
 ### Changed
 
 - **The devtools tab strip wraps, and the overrides sit on the facts

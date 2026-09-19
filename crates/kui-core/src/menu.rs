@@ -196,14 +196,32 @@ impl MenuItem {
         rows.iter().map(Self::from_value).collect()
     }
 
+    /// The keys a row map may carry — everything [`Self::from_value`]
+    /// reads. A binding that drops the rest of a map on the floor checks
+    /// against this first and raises [`crate::diag::unknown_menu_item_key`]
+    /// for what it dropped, so `{label, disabled: true}` is not silently a
+    /// row that is enabled (backlog RG10).
+    pub const KEYS: [&'static str; 6] = ["label", "role", "enabled", "checked", "id", "accel"];
+
+    /// The name a binding reports a row's dropped keys under
+    /// (`diag::unknown_prop` routes it to `diag::unknown_menu_item_key`):
+    /// a row is not an element, so it is not in `schema::ELEMENTS`, and
+    /// the spelling is the type's in JSX (`MenuItemInput`).
+    pub const NAME: &'static str = "menuItem";
+
     /// A select's options from plain data (`widgets::select_items` in the
     /// bindings): a list whose entries are strings — an option by its
     /// label, posting it — or [`Self::from_value`] maps, for an option
-    /// that posts an `id` of its own or is disabled.
+    /// that posts an `id` of its own or is disabled. An empty list is
+    /// refused: a select with nothing to choose from is a field that opens
+    /// a menu of no rows, which only Escape leaves (backlog RG10).
     pub fn options_from_value(v: &Value) -> Result<Vec<Self>, String> {
         let Value::List(rows) = v else {
             return Err("a select's options are an array".into());
         };
+        if rows.is_empty() {
+            return Err("a select needs at least one option".into());
+        }
         rows.iter()
             .map(|row| match row {
                 Value::Str(label) if !label.is_empty() => Ok(Self::new(label.as_str())),

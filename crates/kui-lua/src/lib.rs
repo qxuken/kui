@@ -1639,7 +1639,9 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             // The stock select (`widgets::select_items`): the options are
             // strings or the row tables `env.open_menu` takes, read by the
             // core's one reader; `current` counts from 1.
-            let label: String = t.get("label")?;
+            let Some(label) = t.get::<Option<String>>("label")?.filter(|l| !l.is_empty()) else {
+                return Err(bad("dropdown needs a label (its key and accessible name)"));
+            };
             let Some(options) = t.get::<Option<Table>>("options")? else {
                 return Err(bad(
                     "dropdown needs options, a list of strings or menu rows",
@@ -1648,6 +1650,19 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             let mut rows = lua_list_to_value(&options)?;
             if let Value::List(rows) = &mut rows {
                 rows.iter_mut().for_each(alias_menu_role);
+                // A key of a row table no row reads — `disabled` for
+                // `enabled = false` — is dropped by the reader, so it is
+                // reported as an unknown prop is (backlog RG10).
+                if ui.core().diagnostics() {
+                    for row in rows.iter() {
+                        let Value::Map(fields) = row else { continue };
+                        for (k, _) in fields.iter() {
+                            if !kui_core::MenuItem::KEYS.contains(&k.as_str()) {
+                                ui.core().warn(kui_core::diag::unknown_menu_item_key(k));
+                            }
+                        }
+                    }
+                }
             }
             let items =
                 kui_core::MenuItem::options_from_value(&rows).map_err(mlua::Error::runtime)?;
@@ -3560,7 +3575,7 @@ mod tests {
         assert!(menu.items[0].checked);
         frame(&mut core, &mut ext);
         // The row, as a host's menu would answer it.
-        let events = core.activate_menu_item(2);
+        let events = core.activate_menu_item(2).expect("the row is enabled");
         assert_eq!(events.len(), 1);
         for ev in &events {
             ext.on_event(ev);
@@ -3597,6 +3612,132 @@ mod tests {
         ui.set_origin(OriginId(1));
         let err = ext.view(&Slot::root(), &mut ui).unwrap_err().to_string();
         assert!(err.contains("index from 1"), "{err}");
+        ui.finish();
+        // And, by name (backlog RG10): no label, and no options at all —
+        // the core's one reader refusing the empty list.
+        let refused = |core: &mut Core, src: &str| {
+            let mut ext = LuaExtension::from_source("bad", src).unwrap();
+            let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
+            ui.set_origin(OriginId(1));
+            let err = ext.view(&Slot::root(), &mut ui).unwrap_err().to_string();
+            ui.finish();
+            err
+        };
+        let err = refused(
+            &mut core,
+            r#"function view(env) return dropdown { options = { "a" } } end"#,
+        );
+        assert!(err.contains("dropdown needs a label"), "{err}");
+        let err = refused(
+            &mut core,
+            r#"function view(env) return dropdown { label = "x", options = {} } end"#,
+        );
+        assert!(err.contains("at least one option"), "{err}");
+    }
+
+    /// The select's checks the core makes for every binding, seen from
+    /// Lua (backlog RG9, RG10): a row's key no row reads warns as an
+    /// unknown prop does, `current` past the end or on a separator warns
+    /// and is none, and a disabled option reported chosen is refused with
+    /// the menu still open.
+    #[test]
+    fn a_dropdowns_bad_rows_and_current_are_warned_and_a_disabled_option_is_refused() {
+        let mut ext = LuaExtension::from_source(
+            "dd",
+            r#"
+                current = 4
+                function view(env)
+                  return column { pad = 10,
+                    dropdown { label = "language",
+                               options = { "English", { role = "separator" },
+                                           { label = "Latin", id = "la", disabled = true } },
+                               current = current },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        let field = core.key_of("language").unwrap();
+        let node = |core: &mut Core| {
+            core.access_tree()
+                .nodes
+                .iter()
+                .find(|n| n.key == field)
+                .cloned()
+                .unwrap()
+        };
+        assert_eq!(node(&mut core).description.as_deref(), Some(""));
+        let warned = core.take_warnings();
+        let codes: Vec<&str> = warned.iter().map(|w| w.code).collect();
+        assert_eq!(
+            codes,
+            [
+                kui_core::diag::UNKNOWN_PROP,
+                kui_core::diag::SELECT_CURRENT_IGNORED
+            ],
+            "{warned:?}"
+        );
+        assert!(
+            warned[0]
+                .message
+                .contains("`disabled` is not a key of a menu item")
+                && warned[0].message.contains("`enabled: false`"),
+            "{}",
+            warned[0].message
+        );
+        assert_eq!(warned[1].key, field);
+        assert!(
+            warned[1].message.contains("names option 3 counted from 0")
+                && warned[1].message.contains("the field has 3 options"),
+            "{}",
+            warned[1].message
+        );
+        // The separator in force: the core's index, so `current = 2`.
+        ext.lua.globals().set("current", 2).unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        let warned = core.take_warnings();
+        assert!(
+            warned
+                .iter()
+                .any(|w| w.code == kui_core::diag::SELECT_CURRENT_IGNORED
+                    && w.message
+                        .contains("option 1 counted from 0, which is a separator")),
+            "{warned:?}"
+        );
+        // `disabled` was dropped, so Latin is enabled and can be chosen:
+        // spell it as the row reads it and the door refuses it.
+        let mut ext = LuaExtension::from_source(
+            "dd",
+            r#"
+                function view(env)
+                  return column { pad = 10,
+                    dropdown { label = "language",
+                               options = { "English", { label = "Latin", id = "la", enabled = false } },
+                               current = 1 },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        let field = core.key_of("language").unwrap();
+        core.handle_input(InputEvent::Access(kui_core::AccessRequest::new(
+            field,
+            kui_core::AccessAction::Click,
+        )));
+        assert!(core.menu().is_some());
+        assert_eq!(core.activate_menu_item(1), None, "refused");
+        assert!(core.menu().is_some(), "the menu stays open");
+        let events = core
+            .activate_menu_item(0)
+            .expect("the enabled row is taken");
+        assert_eq!(events.len(), 1);
+        assert!(core.menu().is_none());
+        assert!(core.take_warnings().is_empty());
     }
 
     /// `grid { }` is a table (ADR 0033): its rows' cells line up, each

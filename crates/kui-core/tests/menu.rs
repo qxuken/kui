@@ -501,7 +501,7 @@ fn the_host_reports_the_row_it_chose() {
     core.select_all_in(scope);
     right_click(&mut core, Vec2::new(20.0, 8.0));
     // Copy is item 0 of a scope's default menu.
-    let events = core.activate_menu_item(0);
+    let events = core.activate_menu_item(0).expect("Copy is enabled");
     assert_eq!(
         core.take_menu_actions(),
         vec![MenuAction::SetClipboard {
@@ -524,8 +524,41 @@ fn a_row_the_host_invented_closes_the_menu_and_posts_nothing() {
     core.set_native_menus(true);
     let scope = frame(&mut core);
     core.open_menu(Menu::new(scope, Vec2::new(0.0, 0.0), items()));
-    let events = core.activate_menu_item(99);
+    let events = core.activate_menu_item(99).expect("taken: the menu closes");
     assert!(events.is_empty(), "{events:?}");
+    assert!(core.menu().is_none());
+    assert_eq!(
+        core.activate_menu_item(0),
+        None,
+        "and with no menu open there is nothing to take"
+    );
+}
+
+/// A row the menu cannot choose — disabled, or a separator — is refused
+/// from the door as it is from the pointer: nothing is posted and the
+/// menu stays open, since a native menu never reports one and the drawn
+/// row has no click (backlog RG9).
+#[test]
+fn a_disabled_row_or_a_separator_is_refused_and_the_menu_stays_open() {
+    let mut core = Core::new();
+    core.set_native_menus(true);
+    let scope = frame(&mut core);
+    let items = vec![
+        MenuItem::new("Archive"),
+        MenuItem::separator(),
+        MenuItem::new("Delete").id("rm").enabled(false),
+    ];
+    core.open_menu(Menu::new(scope, Vec2::new(0.0, 0.0), items));
+    assert_eq!(core.activate_menu_item(2), None, "disabled");
+    assert!(core.menu().is_some(), "the menu is still open");
+    assert_eq!(core.activate_menu_item(1), None, "a separator");
+    assert!(core.menu().is_some());
+    let events = core.activate_menu_item(0).expect("an enabled row is taken");
+    assert_eq!(events.len(), 1);
+    assert_eq!(
+        events[0].payload.get("item").and_then(Value::as_str),
+        Some("Archive")
+    );
     assert!(core.menu().is_none());
 }
 

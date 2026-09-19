@@ -6714,6 +6714,61 @@ test('<select> is the stock select: the click opens the menu under it, a row is 
   assert.throws(() => ctx.frame(320, 240, 1, box({}, [el('select', { label: 'x', options: ['a'], current: -1 })])), /option index/);
 });
 
+test('a disabled option is refused by activateMenuItem, and a select\'s options and current are checked (RG9, RG10)', () => {
+  const ctx = new Ctx();
+  ctx.setDiagnostics(true);
+  const view = (options, current) => box({ pad: 10 }, [el('select', { label: 'language', options, current })]);
+  // RG9, the probe as filed: the row is disabled, so the door answers as
+  // the pointer would — false, nothing posted, the menu still open.
+  ctx.frame(320, 240, 1, view(['English', { label: 'Latin', id: 'la', enabled: false }], 0));
+  ctx.access('language', 'click');
+  assert.ok(ctx.menu());
+  assert.equal(ctx.activateMenuItem(1), false, 'a disabled row is refused');
+  assert.deepEqual(ctx.pollEvents(), [], 'and posts nothing');
+  assert.equal(ctx.menu().items.length, 2, 'the menu stays open');
+  assert.equal(ctx.activateMenuItem(0), true);
+  assert.equal(ctx.pollEvents()[0].payload.item, 'English');
+  assert.equal(ctx.menu(), null);
+  assert.equal(ctx.activateMenuItem(0), false, 'no menu open');
+  assert.deepEqual(ctx.warnings(), []);
+  // RG10: the one shared reader refuses an empty list.
+  assert.throws(() => ctx.frame(320, 240, 1, view([])), /at least one option/);
+  // `current` past the end is none, with one warning on the field.
+  ctx.frame(320, 240, 1, view(['a', 'b'], 9));
+  const field = () => ctx.accessTree().nodes.find((n) => n.role === 'button' && n.name === 'language');
+  assert.equal(field().description, '');
+  let warned = ctx.warnings();
+  assert.equal(warned.length, 1, JSON.stringify(warned));
+  assert.equal(warned[0].code, 'select-current-ignored');
+  assert.equal(warned[0].key, ctx.keyOf('language'));
+  assert.match(warned[0].message, /names option 9 counted from 0, and the field has 2 options/);
+  ctx.frame(320, 240, 1, view(['a', 'b'], 9));
+  assert.deepEqual(ctx.warnings(), [], 'once per field');
+  // On a separator: none, and the divider is not checked — every row used
+  // to grow a check gutter for a mark never drawn. A fresh context, since
+  // the line is once per field and this is the same field.
+  const ctx2 = new Ctx();
+  ctx2.setDiagnostics(true);
+  ctx2.frame(320, 240, 1, view(['a', { role: 'separator' }, 'b'], 1));
+  assert.equal(ctx2.accessTree().nodes.find((n) => n.name === 'language').description, '');
+  warned = ctx2.warnings();
+  assert.equal(warned.length, 1, JSON.stringify(warned));
+  assert.match(warned[0].message, /option 1 counted from 0, which is a separator/);
+  ctx2.access('language', 'click');
+  assert.deepEqual(ctx2.menu().items.map((i) => i.checked), [false, false, false]);
+  // An unknown key on an option object warns as an unknown prop does,
+  // under the row's name, with the value `disabled` was after — the row
+  // reads `enabled`, so `disabled: true` was silently an enabled row.
+  ctx.frame(320, 240, 1, view(['a', { label: 'b', disabled: true, Label: 'c' }], 0));
+  warned = ctx.warnings();
+  assert.deepEqual(warned.map((w) => w.code), ['unknown-prop', 'unknown-prop'], JSON.stringify(warned));
+  assert.match(warned[0].message, /`disabled` is not a key of a menu item: a row takes `label`, `role`, `enabled`, `checked`, `id`, `accel`.*did you mean `enabled: false`/);
+  assert.match(warned[1].message, /`Label` is not a key of a menu item.*did you mean `label`/);
+  assert.deepEqual(protocol().menuItem, { name: 'menuItem', keys: ['label', 'role', 'enabled', 'checked', 'id', 'accel'] });
+  ctx.frame(320, 240, 1, view(['a', { label: 'b', disabled: true }], 0));
+  assert.deepEqual(ctx.warnings(), [], 'once per key');
+});
+
 test('<box dir="table"> lines its rows\' cells up: a column is its widest cell, a grow cell grows it (ADR 0033)', () => {
   const ctx = new Ctx();
   ctx.setDiagnostics(true);

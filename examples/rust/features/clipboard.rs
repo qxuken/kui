@@ -402,7 +402,7 @@ impl Example for Clipboard {
             .iter()
             .position(|i| i.role == kui::MenuRole::Copy)
             .ok_or("no Copy row")?;
-        d.core.activate_menu_item(copy);
+        d.core.activate_menu_item(copy).ok_or("Copy refused")?;
         let queued = d.core.take_menu_actions();
         d.check(
             matches!(&queued[..], [MenuAction::SetClipboard { text, html: Some(h) }] if text.contains("bold") && h.contains("<b>")),

@@ -74,19 +74,30 @@ impl Core {
     /// can, queues what the host must do, and returns the events the app
     /// hears (one `menu` event on the node the menu was about).
     ///
-    /// An index past the end closes the menu and posts nothing, which is
-    /// what a host reporting a row this build does not know should do.
-    pub fn activate_menu_item(&mut self, i: usize) -> Vec<UiEvent> {
+    /// `None` when nothing was taken: no menu is open, or row `i` cannot
+    /// be chosen — a disabled row, a separator — in which case the menu
+    /// stays open and nothing is posted, since a native menu never reports
+    /// such a row and the drawn one has no click on it, so a door that
+    /// names one (`activateMenuItem(1)` over a select whose second option
+    /// is disabled) should be answered the way the pointer would be,
+    /// rather than handing the app a choice it disabled (backlog RG9).
+    /// An index past the end closes the menu and posts nothing
+    /// (`Some` and empty), which is what a host reporting a row this build
+    /// does not know should do.
+    pub fn activate_menu_item(&mut self, i: usize) -> Option<Vec<UiEvent>> {
+        let menu = self.menu.as_ref()?;
         let mut out = Vec::new();
-        if self.menu.as_ref().is_some_and(|m| i < m.items.len()) {
-            self.choose_menu_item(i, &mut out);
-        } else {
-            self.close_menu();
+        match menu.items.get(i) {
+            Some(item) if !item.selectable() => return None,
+            Some(_) => self.choose_menu_item(i, &mut out),
+            None => {
+                self.close_menu();
+            }
         }
         // The same way out an input's events take: a row of the devtools'
         // own select is the panel's whichever menu showed it.
         self.outbound(&mut out);
-        out
+        Some(out)
     }
 
     /// What the selection would be looked *up* as, or `None` when it is

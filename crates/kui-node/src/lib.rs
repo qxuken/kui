@@ -2680,7 +2680,9 @@ macro_rules! core_methods {
             /// (see `Warning`). A name outside the schema never reaches the
             /// binary stream, so the encoder is the only side that sees it;
             /// `frame` / `setView` report what they dropped through here.
-            /// Behind the same `setDiagnostics` gate, and once per name.
+            /// Behind the same `setDiagnostics` gate, and once per name. A
+            /// pair under `protocol().menuItem.name` is a key a `<select>`
+            /// option object carried that no menu row reads (backlog RG10).
             #[napi(ts_args_type = "props: [string, string][]")]
             pub fn warn_unknown_props(&mut self, props: Vec<Vec<String>>) {
                 for pair in &props {
@@ -3251,13 +3253,14 @@ macro_rules! core_methods {
             /// Reports that the host's own menu chose row `index` — the
             /// same path a press on the drawn menu's row takes. An index
             /// past the end closes the menu and posts nothing. False when
-            /// no menu was open.
+            /// nothing was taken: no menu was open, or the row cannot be
+            /// chosen — disabled, or a separator — in which case the menu
+            /// stays open and nothing is posted (backlog RG9).
             #[napi]
             pub fn activate_menu_item(&mut self, index: u32) -> Result<bool> {
-                if self.$core().menu().is_none() {
+                let Some(events) = self.$core().activate_menu_item(index as usize) else {
                     return Ok(false);
-                }
-                let events = self.$core().activate_menu_item(index as usize);
+                };
                 self.$take(events);
                 self.$redraw();
                 Ok(true)

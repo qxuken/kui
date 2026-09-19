@@ -130,6 +130,103 @@ mod widgets_headless {
         kui_ctx_free(ctx);
     }
 
+    /// The select's checks the core makes for every binding, through C
+    /// (backlog RG9, RG10): a disabled option reported chosen is refused —
+    /// false, nothing posted, the menu still open — and a `current` past
+    /// the end or on a separator is none, with one warning on the field.
+    /// `count == 0` is refused at the door as it was: C's rows never pass
+    /// the shared reader, so the check is the door's own.
+    #[test]
+    fn a_selects_disabled_option_is_refused_and_a_bad_current_is_warned() {
+        let ctx = kui_ctx_new();
+        kui_set_diagnostics(ctx, true);
+        let la = kui_value_str(ks("la"));
+        let row = |label: &'static str, role: u32, enabled: u32, id: *const KuiValue| KuiMenuItem {
+            label: ks(label),
+            role,
+            enabled,
+            id,
+            accel: ks(""),
+            checked: 0,
+        };
+        let items = [
+            row("English", KUI_MENU_CUSTOM, 1, std::ptr::null()),
+            row("", KUI_MENU_SEPARATOR, 1, std::ptr::null()),
+            row("Latin", KUI_MENU_CUSTOM, 0, la),
+        ];
+        let build = |current: i64| {
+            kui_frame_begin(ctx, 320.0, 240.0, 1.0);
+            let mut root: KuiSpec = unsafe { std::mem::zeroed() };
+            root.pad_l = 10.0;
+            root.pad_t = 10.0;
+            kui_root(ctx, &root);
+            let key = kui_select(ctx, ks("language"), items.as_ptr(), items.len(), current);
+            kui_frame_finish(ctx);
+            key
+        };
+        let mut out = [KuiWarning {
+            code: KuiStr {
+                ptr: std::ptr::null(),
+                len: 0,
+            },
+            key: 0,
+            message: KuiStr {
+                ptr: std::ptr::null(),
+                len: 0,
+            },
+        }; 8];
+        // Past the end, then on the separator: one line each, on the field.
+        let key = build(9);
+        let n = kui_take_warnings(ctx, out.as_mut_ptr(), out.len());
+        assert_eq!(n, 1, "{:?}", kstr(out[0].message));
+        assert_eq!(kstr(out[0].code), "select-current-ignored");
+        assert_eq!(out[0].key, key);
+        assert!(kstr(out[0].message).contains("the field has 3 options"));
+        build(9);
+        assert_eq!(
+            kui_take_warnings(ctx, out.as_mut_ptr(), out.len()),
+            0,
+            "once"
+        );
+        let ctx2 = kui_ctx_new();
+        kui_set_diagnostics(ctx2, true);
+        kui_frame_begin(ctx2, 320.0, 240.0, 1.0);
+        let root: KuiSpec = unsafe { std::mem::zeroed() };
+        kui_root(ctx2, &root);
+        kui_select(ctx2, ks("language"), items.as_ptr(), items.len(), 1);
+        kui_frame_finish(ctx2);
+        let n = kui_take_warnings(ctx2, out.as_mut_ptr(), out.len());
+        assert_eq!(n, 1);
+        assert!(kstr(out[0].message).contains("which is a separator"));
+        kui_ctx_free(ctx2);
+        // A disabled row through the door: refused, the menu still open;
+        // the enabled one taken, and `-1` past the end taken as a close.
+        build(0);
+        kui_input_cursor(ctx, 30.0, 20.0);
+        kui_input_mouse(ctx, true, 1);
+        kui_input_mouse(ctx, false, 1);
+        let (mut target, mut x, mut y) = (0u64, 0.0f32, 0.0f32);
+        assert_eq!(kui_menu_item_count(ctx, &mut target, &mut x, &mut y), 3);
+        build(0);
+        assert!(!kui_activate_menu_item(ctx, 2), "disabled");
+        assert!(!kui_activate_menu_item(ctx, 1), "a separator");
+        let mut ev = KuiEvent::default();
+        assert!(!kui_poll_event(ctx, &raw mut ev), "nothing posted");
+        assert_eq!(
+            kui_menu_item_count(ctx, &mut target, &mut x, &mut y),
+            3,
+            "still open"
+        );
+        assert!(kui_activate_menu_item(ctx, 0));
+        assert!(kui_poll_event(ctx, &raw mut ev));
+        assert_eq!(ev.key, key);
+        assert_eq!(kui_menu_item_count(ctx, &mut target, &mut x, &mut y), 0);
+        assert!(!kui_activate_menu_item(ctx, 0), "no menu open");
+        assert_eq!(kui_take_warnings(ctx, out.as_mut_ptr(), out.len()), 0);
+        kui_value_free(la);
+        kui_ctx_free(ctx);
+    }
+
     /// `dir = KUI_TABLE` (ADR 0033): the rows' cells line up, each
     /// column as wide as its widest cell, a grow cell growing its column,
     /// a bare text a cell too. Read back through `kui_layout_of` on the

@@ -340,7 +340,7 @@ impl Example for Demo {
             .iter()
             .position(|i| i.label == "Archive")
             .unwrap();
-        for ev in d.core.activate_menu_item(archive) {
+        for ev in d.core.activate_menu_item(archive).unwrap_or_default() {
             self.on_event(ev);
         }
         d.check(

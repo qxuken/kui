@@ -222,6 +222,33 @@ pub fn protocol_tables() -> Vec<(&'static str, Json)> {
                     .collect(),
             ),
         ),
+        // A menu row's keys and the name its dropped ones are reported
+        // under (backlog RG10): the encoder checks a select's option
+        // objects against `keys` and hands the rest to `warnUnknownProps`
+        // as `[name, key]` pairs, which `diag::unknown_prop` routes to the
+        // row's own wording.
+        (
+            "menuItem",
+            Json::Object(
+                [
+                    (
+                        "name".to_string(),
+                        Json::String(kui_core::MenuItem::NAME.into()),
+                    ),
+                    (
+                        "keys".to_string(),
+                        Json::Array(
+                            kui_core::MenuItem::KEYS
+                                .iter()
+                                .map(|k| Json::String((*k).into()))
+                                .collect(),
+                        ),
+                    ),
+                ]
+                .into_iter()
+                .collect(),
+            ),
+        ),
         // And the two `ctx.key` / `ctx.mouse` spellings, for the same
         // reason: `EditKeyName` was the last hand-written union.
         (

@@ -372,6 +372,11 @@ pub fn select_spec(theme: &Theme, m: &Metrics) -> NodeSpec {
 /// a compact field in a dense panel — the way [`button_with`] takes the
 /// button's. The border, the click, the role and the disclosure are
 /// added here whatever `spec` said.
+///
+/// A `current` that names no option — past the end, or a separator — is
+/// none, with a `select-current-ignored` warning on the field (backlog
+/// RG10): the field is described by nothing and no row is checked, where
+/// it used to check the divider.
 pub fn select_with(
     ui: &mut Ui<'_>,
     label: &str,
@@ -381,6 +386,22 @@ pub fn select_with(
     text: TextStyle,
 ) -> Key {
     let key = ui.child_key(label);
+    let current = current.filter(|&i| {
+        let separator = items
+            .get(i)
+            .is_some_and(|it| it.role == MenuRole::Separator);
+        let names_one = i < items.len() && !separator;
+        if !names_one {
+            ui.core().warn(crate::diag::select_current_ignored(
+                key,
+                label,
+                i,
+                items.len(),
+                separator,
+            ));
+        }
+        names_one
+    });
     let t = ui.theme();
     let shown = current
         .and_then(|i| items.get(i))

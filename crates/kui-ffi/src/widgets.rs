@@ -98,7 +98,10 @@ pub extern "C" fn kui_text_input(ptr: *mut KuiCtx, label: KuiStr, initial: KuiSt
 /// shows menus itself sees the menu in `kui_menu` as any other.
 ///
 /// Returns the node key, or 0 for no label, no items, or a row with a
-/// role this build does not know.
+/// role this build does not know. A `current` past the end, or on a
+/// separator, is the core's `select-current-ignored` warning and none
+/// (backlog RG10), as it is in every binding; `count == 0` is refused
+/// here since C's rows never pass the shared reader.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_select(
     ptr: *mut KuiCtx,
@@ -123,7 +126,7 @@ pub extern "C" fn kui_select(
             };
             parsed.push(item);
         }
-        let current = usize::try_from(current).ok().filter(|i| *i < count);
+        let current = usize::try_from(current).ok();
         kui_core::widgets::select_items(&mut kui_core::Ui::wrap(c.core()), &label, &parsed, current)
             .0
     })
