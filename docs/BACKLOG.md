@@ -1224,6 +1224,307 @@ binding, and for the hand-rolled lists in both devtools to be it. One
 entry, F75, **built 2026-09-17**, the day it was filed, and in the
 archive.
 
+## From the regression pass of 2026-09-19
+
+A review of everything since the alpha.15 tag — F67–F75, nine features
+in 71 files — run the way the pre-tag rounds are (the workspace suite,
+clippy, the corpus in four adapters, `npm run gen`, the headless and
+windowed smoke, all green: 1257 tests over 97 suites, 40 scenes, 171
+Node tests, 72 + 22 windows, gen diff 0) and then read for what the
+suite cannot see, each claim probed against this tree before it was
+filed. Fifteen entries, RG1–RG15, none built yet. The headline is
+RG1: F74's fix reaches Rust only, and the changelog's reason why the
+other two hosts did not need it is wrong — a Node app quit with ⌘Q
+runs nothing after `runWindowed`, not even `process.on('exit')`, so
+kawoosh's own defect is still open for every app that is not Rust.
+Two are regressions this round introduced (RG5, RG6), the rest are
+gaps the new features opened or holes they made reachable. Not
+verified here: F69 in a window (RG15 says how).
+
+### `!` RG1 — A Node or C app still never hears ⌘Q: F74's `teardown` is a Rust `App` method, and the loops the other hosts "own" end the same way
+
+**Found.** The F74 changelog says "Rust only: the C and Node hosts own
+their loops and their `pump` returning false is the same moment." It
+is not. `kui_run` is `Launcher::run` (`crates/kui-ffi/src/run.rs:141`),
+kui's blocking loop over a `CApp` whose `impl App` has no `teardown`;
+Node's `TreeApp` (`crates/kui-node/src/lib.rs:1463`) has none either,
+and its pumped loop is never exited (F58). On ⌘Q winit's delegate has no
+`applicationShouldTerminate`, so `applicationWillTerminate` runs
+`Shell::exiting` — which calls `teardown_once` on an app with nothing
+to run — and the process ends there. Probed on this tree: a Node
+script with `console.log` after `await runWindowed(...)` and a
+`process.on('exit')` hook, quit with ⌘Q through System Events — the
+process is gone, the log holds only the line before the call, and
+neither the line after nor the exit hook printed. A C host on
+`kui_run` gets the same by reading: nothing after `kui_run` runs.
+
+**Do.** Give the two hosts the door F74 gave Rust. Node: a `teardown`
+(or `onExit`) function in `runWindowed`'s config beside `init`/
+`update`/`view`, called from `TreeApp::teardown` on the JS thread with
+the model, synchronously, before the process goes — the pumped path's
+`retire` reaches it too; `createApp` gets the same field so a headless
+drive can assert it ran. C: `kui_run_with` takes a `KuiApp` already —
+a `teardown` callback is an [in] struct append (ABI 19 by AR50), or a
+free `kui_on_teardown(fn, userdata)` setter before `kui_run`, as
+`kui_press_and_hold` was, which keeps ABI 18; pick by whether the app
+struct has other pending appends. Correct the changelog sentence and
+the F74 archive outcome, and add the test F74 never got: a counting
+`App` through `Launcher::open` + `request_exit`, once across `exiting`
+and `retire`. Also worth writing down: `impl Drop for PumpRunner`
+calls `retire` → `teardown_once`, so on the pumped path a panic
+unwinding through the host *does* reach `teardown` (the changelog says
+a crash does not) and a `teardown` that panics there aborts.
+
+### `!` RG2 — A devtools select's menu outlives the panel, and its choice reaches the app as a `menu` event from the devtools origin
+
+**Found.** Open the Facts tab's `theme` select (its menu drawn), turn
+the panel off — `Ctrl+Shift+D` cycles to `off`, or the app's
+`set_devtools(false)` — and draw a frame: `core.menu()` is still
+`Some`, the `light` row is still in the access tree, and an AX click on
+it returns to the host `{kind: "menu", role: "custom", item: {dt:
+"base:light"}}` with origin `65535`, the base unchanged. Probed on this
+tree through `devtools/tests.rs`' harness. Mechanism:
+`devtools_consume` (`runtime/devtools/mod.rs:1775`) returns early on
+`!on && !dt_window`, nothing closes the menu when `on` flips, `Ui::finish`
+builds any `self.menu`, and `Extensions::route` hands an event of an
+origin nothing answers to the host.
+
+**Do.** `close_menu()` when the panel goes off (and when the dock moves
+to `Window`, where the field it hangs under is gone), and consume
+`OriginId::DEVTOOLS` events unconditionally — the app can never mean
+to hear one. A test in `devtools/tests.rs` from the probe above.
+
+### `!` RG3 — A `scrollX` table with grow rows cannot scroll: the overflow it keeps is clipped, and `scroll_max.x` is 0
+
+**Found.** `table_resolve` skips the largest-first compression when
+the table scrolls x (`layout.rs:315`) so the cells overflow the row —
+but the rows the howto and both examples give are `width: grow`, so
+`row.w == table content`, and `positions` sizes the table's content
+from its widest *row*, not the row's cells: `scroll_max.x = 0`, and
+`scroll_x` also clips. Probed: `NodeSpec::table().width(100).scroll_x()`
+over a grow row of fit cells 80 + 40 → `scroll_max.x = 0`; the same
+with a `Fit` row → 20. So the documented escape from compression
+works only for rows nobody writes.
+
+**Do.** A table's content width is its columns' resolved sum plus the
+row chrome (the widest row's padding and gaps), written where the
+column widths are; a test beside `a_scrolling_table_overflows_instead`
+asserting `scroll_max[table].x` for grow rows.
+
+### `!` RG4 — F70's deferral is defeated by a left dock: the panel is built at `begin_frame`, so a mid-frame dock move or panel-off draws the stale panel and asks for no frame
+
+**Found.** `devtools_begin_frame` builds a `Dock::Left` panel at once
+and sets `dt_built` (`runtime/devtools/mod.rs:1466`), and
+`devtools_finish` returns on `dt_built` (`:1577`) before the branch
+that defers and requests (`:1588`). Probed: with a left dock,
+`set_devtools_dock(Right)` from inside a frame leaves the left panel
+drawn and `owed().requested == false`; `set_devtools(false)` from
+inside a frame draws the panel although it is off, and requests
+nothing. With the idle loop quiet since F68 each stays until the next
+input. `set_devtools_tab` mid-frame with a left dock leaves the strip
+stale the same way.
+
+**Do.** In `finish`, check `on` and `dock` against what `begin_frame`
+built before honouring `dt_built`: a change since the frame began
+requests the next frame as the right/bottom path does (the left panel
+already in the tree is this frame's; the next frame is right). Extend
+`a_panel_turned_on_mid_frame_is_built_from_the_next_frame` with the
+left-dock leg.
+
+### `!` RG5 — The F71 freeze loop freezes min and max violators in the same pass, and a plain sibling can get nothing
+
+**Found.** `distribute_run` (`layout.rs:1052`) freezes every clamped
+child in a pass, whichever way it was clamped; flexbox freezes only
+the dominant sign (min violators when the sum of violations is
+positive, max when negative) and re-shares. Probed: a 600 px column
+of three `Grow(1)` rows, A `max 100`, B `min 500`, C plain → A 100,
+B 500, C **0**; flexbox gives 50 / 500 / 50. No overflow, but C is
+empty while A sits at a cap. Also `frozen: Vec` + `contains` per child
+per pass is quadratic in the frozen count; a staircase of `max`es
+freezes one per pass.
+
+**Do.** The sign rule: sum the violations of the pass, freeze only
+the violators of that sign, re-share; a `frozen` bitset or a flag in a
+scratch `Vec<u8>` indexed by child. Add the probe as a test beside
+`a_grow_childs_clamp_is_its_siblings_room`, and a bench row (a column
+of 1k grow rows with `max_height`) for the guard.
+
+### `!` RG6 — F75's floor fix drops a node-anchored float root's own `min: fit`: the sixth pass clamps it with a floor of 0
+
+**Found.** `anchored` re-declares the floors, copies the root's spec
+(`layout.rs:574`), and runs `fit_widths` over the float — which
+resolves `tree.specs[c].layout.min_w` to its number — but the copy
+still holds `Min::FIT` (−1), and `spec.clamp_w`/`clamp_h` (`:576`,
+`:585`) read `resolved()` = 0. Before F75 the copy carried the first
+run's number. Probed: a `FloatAnchor::Node` float with `width: grow`
++ `min_width: fit` around a 400 px box, anchored to a 300 px node →
+300, was 400. The devtools' own tab float declares no floor, so only
+a Rust app's own node-anchored float sees it — but it is a regression
+of this round.
+
+**Do.** Read `tree.specs[c].layout` again after `fit_widths` (and after
+`fit_heights` for the height) before clamping; the probe as a test in
+`table_layout.rs` beside the floor test.
+
+### `!` RG7 — Any in-flow container straight under a table is a row: a column wrapper's stacked children become cells and widen the columns
+
+**Found.** `is_table_row` (`layout.rs:102`) asks for a container that
+is in flow under a `table`; it never asks for `dir == Row`. A
+`column` section under the table — a heading text over a row, the
+natural shape for a grouped settings list — has its heading and its
+inner row taken as cells 0 and 1: probed, `table(300)` over
+`column{ text(80 wide); row{ box 100 } }` and `row{ box 30, box 20 }`
+puts the second row's cells at 80 and 100. A table straight under a
+table has its rows taken as the outer's cells. A leaf under the table
+is left alone by design; a container was not thought of. Also
+`LayoutSpec.table` on a `Dir::Row` (reachable from Rust's pub fields
+only) runs pass 1 and never pass 2, its grow cells at 0.
+
+**Do.** `is_table_row` requires `dir == Row` (a `column` under a table
+is then what a text is: a child with its own width), and the table
+flag requires `dir == Column` or warns. A `table-child-not-a-row`
+diagnostic is the cheaper half if a section wrapper is meant to be
+refused instead. Tests for both shapes.
+
+### `~` RG8 — An image cell is stretched to its column and re-aspected
+
+**Found.** `table_apply` writes the column width into every cell, and
+`fit_height`'s image branch (`layout.rs:748`) derives a `Fit` height
+from `tree.size[i].w` — so a 16 px icon in a column whose widest cell
+is 200 becomes 200 × 200. A box cell just has room beside its content;
+an image scales. By reading; the stub measurer has no images, so a
+test needs `image_size` on the stub.
+
+**Do.** A cell holds its column's width the way a `Fit` box does —
+the column is the cell's *outer* width and an image keeps its
+intrinsic width inside it (aligned by the row's `cross_align`), or the
+cell of an image column is the image's own width and the column is
+its max. Test with an image stub.
+
+### `!` RG9 — `activate_menu_item` posts a disabled option's choice
+
+**Found.** `perform_menu_item` never reads `item.enabled`
+(`runtime/menu_api.rs:79`); the drawn row has no `on_click` so the
+pointer cannot reach it, but a host's native menu report, Node's
+`ctx.activateMenuItem(i)`, Lua's `env.activate_menu_item` and the C door
+can. Probed in Node: a select over `['English', {label: 'Latin', id:
+'la', enabled: false}]`, `activateMenuItem(1)` returns `true` and
+`pollEvents()` holds `{kind: "menu", item: "la"}`. Pre-existing for
+`openMenu`; F73 ships disabled options as a feature (the corpus scene's
+`Latin`), so an app now hears a row it disabled.
+
+**Do.** `activate_menu_item` on a disabled row returns false, posts
+nothing and leaves the menu open (a native menu never sends it; the
+door should match). A Node test from the probe, and the Lua/C twins.
+
+### `~` RG10 — A select's `options` and `current` are checked by C and not by Node or Lua: an empty menu, a blank field, a check on a separator
+
+**Found.** Probed in Node with diagnostics on, no warning in any case:
+`options: []` frames, and the click opens a modal menu of zero rows
+(`ctx.menu().items.length === 0`) that only Escape or an outside press
+leaves; `current: 9` over two options frames with the field's
+description `""` and nothing checked; `current` on a `{role:
+"separator"}` describes `""` and lands the check on the separator
+(`checked = [false, true, false]`) so every row grows a check gutter
+for a mark that is never drawn. Lua accepts the same (`lib.rs:1305`,
+`:1316`); C returns 0 for `count == 0` and treats an out-of-range
+`current` as none (`widgets.rs:126`). Also: `{label, disabled: true}`
+in a `MenuItemInput` is silently ignored — the field is `enabled` —
+with no unknown-key warning, which is how the probe first missed RG9.
+And Lua's `dropdown` without `label` fails with mlua's "error
+converting Lua nil to String" where `options` gets a named refusal.
+
+**Do.** Refuse `[]` in the one shared reader, `MenuItem::options_from_value`
+(then C's check is redundant and can go); `current` past the end or on
+a separator is an `unknown-prop`-style warning and none; an unknown
+key on a `MenuItemInput` warns in the encoder as an unknown prop does.
+Lua's missing label gets the message its options have. Tests per
+binding.
+
+### `~` RG11 — A `Fit` table of grow rows collapses to 0, and the howto's only snippet builds exactly that
+
+**Found.** `NodeSpec::table()` and `<box dir="table">` are `Fit` wide,
+a `Fit` column counts a `Grow` child as 0 (the rule since C10), and
+the howto's snippet (`docs/howto.md:69`) gives the rows `width="grow"`
+and the table nothing: probed, `table()` over `row(grow){ text(50),
+text(30) }` → table 0 wide, both texts folded to one glyph a line.
+Every shipped example gives the table a width, so only a reader of the
+howto meets it.
+
+**Do.** Either the table's fit is its columns' fit regardless of the
+rows' `Grow` (the rows are the table's, not the app's, and `table_fit`
+already knows the columns), or the howto and props row say the table
+needs a width or a `grow` parent. The first is a line in `table_fit`
+and makes a `Fit` table the aligned key/value list the ADR describes.
+
+### `~` RG12 — `Ctrl+Shift+M` is a two-way toggle from a compile-time default; the select beside it has three choices
+
+**Found.** The changelog says the three chords "still cycle the same
+choices". `act("menus")` (`runtime/devtools/mod.rs:588`) sets
+`native_menus = Some(!current)` from `cfg!(target_os = "macos")` when
+unset, never `None`: on a drawn-menu host on macOS the first press
+sets `Some(false)` (nothing visible changes, the select reads `drawn`
+where it read `platform`), and no number of presses returns to
+`platform`. `T` and `A` do cycle through their `app` choice. It also
+ignores `dt_menus`, the host mode the select remembers.
+
+**Do.** The chord cycles `platform → native → drawn → platform` over
+the same `dt_menus`/`restore_menus` the select uses; a test beside
+`the_platform_menu_choice_restores_the_hosts_own_mode`.
+
+### `~` RG13 — An AX click on a control behind a modal fires: a second click on an open select's field re-opens it instead of dismissing
+
+**Found.** `click_node` (`runtime/dispatch.rs:1235`) finds the region
+by key with no `inert` check, unlike `hit_at`. Probed: open the Facts
+`theme` select through `access_click`, frame, `access_click` the field
+again → no events and the menu still open (replaced), where the
+pointer path — the field inert behind the menu's modal — dismisses. Any
+control behind a modal fires on an AX click, against ADR 0003's rule;
+pre-existing, made easy to reach by the select.
+
+**Do.** `click_node` refuses an inert region as `hit_at` does — a
+modal's own nodes excepted — and the select field's AX click while its
+menu is open dismisses, as the pointer's does. Test from the probe.
+
+### `.` RG14 — Docs and parity nits from the pass, all one line each
+
+**Found.** (a) `kui.h`'s ABI-history comment (`:226`) lists the ABI 18
+additions without `kui_select`, `KUI_TABLE` and `KUI_VALUE_CARET_SOLID`.
+(b) The F73 archive outcome and commit say the encoder "refuses a
+missing label"; `encoder.js:751` falls back to `key`, and the type
+agrees. (c) The changelog's "three doors" undercounts (`teardown`,
+Node's `hasCaret`). (d) ADR 0033 says the flag is read "in the two
+places"; it is five. (e) The changelog, README, howto and JSX type say
+"the nth child of every row"; the rule is the nth *in-flow* child.
+(f) `NodeInfo.table` reaches Node and Lua; `KuiNodeInfo` has no field
+for it, so C's `kui_nodes` shows a table as a column. (g) A percent
+column's basis subtracts the row's gaps (`layout.rs:270`); a percent
+child of a plain row does not (`:882`). (h) The "Build next" paragraph
+under "After alpha.14" stops at F62–F66. (i) F74's "a crash does not
+reach it" — see RG1. (j) A solid caret stays `caret_visible` in an
+unfocused window where a blinking one hides (`lib.rs:2185`); if by
+design, say so in the F68 entry.
+
+**Do.** Each as written; (f) waits for the next ABI bump or takes a
+reader (`kui_node_is_table`), (g) is a decision to record in ADR 0033
+either way.
+
+### `.` RG15 — F69 was not checked in a window: the pin is proven against `NSUserDefaults`, not against AppKit's read
+
+**Found.** `set_press_and_hold` writes `NSArgumentDomain`
+(`macos_text_input.rs:183`) and the test reads it back through
+`-[NSUserDefaults boolForKey:]`. The commit reports no window check.
+If AppKit's press-and-hold path reads through `CFPreferences`, which
+does not consult the argument domain, the pin is invisible to it.
+
+**Do.** On a Mac where `defaults read -g ApplePressAndHoldEnabled` is
+1 or absent: run `examples/rust/apps/modal_editor`, hold `j`, count
+the motions; then `defaults write -g ApplePressAndHoldEnabled -bool
+false` as the control, and put it back. Write the result into the F69
+archive entry; if the pin does not hold, `CFPreferencesSetAppValue`
+on the app's own domain at launch is the fallback (it persists, so it
+needs a matching reset on exit, or the changelog sentence changes).
+
 ## After alpha.14
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -1258,7 +1559,7 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** C41 — a profile of `frame_1k_curves` at the drop-zone
+**Build next.** RG1–RG15 from the regression pass of 2026-09-19, RG1 first (a Node or C app still never hears ⌘Q), then the two regressions of the round, RG5 and RG6; after them C41 — a profile of `frame_1k_curves` at the drop-zone
 commit against the one before, the bisect already done; then W19, when
 a Windows or Linux round comes (the macOS half of ADR 0031 is built and
 verified; the fallback elsewhere is honest and positionless). Nothing else filed is open: the two alpha.13 reports and the
