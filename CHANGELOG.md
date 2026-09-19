@@ -272,6 +272,67 @@ hole by hand will see.
   path, and a choice made in either is where the other goes on from.
   The stream's note says `menus: platform` for the host's own.
 
+- **A `Fit` table of `grow` rows was 0 wide** (backlog RG11, from the
+  regression pass of 2026-09-19): `NodeSpec::table()` and `<box
+  dir="table">` are `fit` wide, a `fit` parent counts a `grow` child
+  as nothing, and the rows every example — and the howto's own
+  snippet, which gives the table no width — writes are `grow`, so the
+  table laid out 0 wide with every text in it folded to a glyph a
+  line. A table's fit width is its columns' now, whatever its rows'
+  sizing: the rows are the table's, and their `grow` says how the
+  columns share the table, not that the table is nothing. A `min:
+  fit` floor on a `grow` table reads the same number. A view that
+  gave a key/value table a width or a `grow` parent it did not want
+  can take it back.
+
+- **A `scrollX` table of `grow` rows could not scroll** (backlog RG3,
+  from the same pass): the table skips compressing its fit columns
+  when it scrolls x, as documented — but a `grow` row is exactly the
+  table's width, and a scroll container's content is measured from its
+  children's boxes, so the overflow the table kept was clipped and
+  `scroll_max.x` was 0; only a `fit` row, which nobody writes, could
+  scroll. A row of a table that scrolls x is at least as wide as its
+  columns now, its own padding and gaps counted, and the table scrolls
+  to them; a table that does not scroll leaves its rows' boxes alone,
+  as any row is left when fixed children overflow it.
+
+- **A `column` straight under a table was a row, and its stacked
+  children were cells** (backlog RG7, from the same pass): a row of a
+  table was any in-flow container under it, so a `column` section — a
+  heading text over a row, the natural shape for a grouped settings
+  list — had its heading taken as cell 0 and its inner row as cell 1,
+  widening the table's real columns to them (probed: 80 and 100 where
+  the rows' cells were 30 and 20), and a table straight under a table
+  had its rows taken as the outer's cells. Only a `row` is a row now;
+  a `column`, a text or a nested table under the table is a child with
+  its own width and its own children ([ADR 0033](docs/adr/0033-a-table-is-a-column-whose-cells-align.md)
+  decisions 2 and 9). The flag itself is read on a column only, so a
+  `LayoutSpec { dir: Row, table: true }` — buildable from Rust's public
+  fields alone — is the row it says it is, to the solver, `NodeInfo`
+  and the corpus alike.
+
+- **An image cell was stretched to its column and re-aspected**
+  (backlog RG8, from the same pass): a cell takes its column's width,
+  and an image's `fit` height follows its width, so a 16 px icon in a
+  column whose widest cell was 200 became a 200 × 200 box and its row
+  200 tall. An image cell's height is its aspect at its *own* width
+  now — the number a fixed image declared, the intrinsic one of a
+  `fit` image — so the box is 200 × 16; how the pixels meet the wider
+  box is the image's `fit` row (`fill` stretches, `contain` draws them
+  at their size, centred), and an icon that must keep its width sits
+  in a box, which holds the column with the icon at its size inside.
+
+- **A node-anchored float lost its own `min: fit` floor** (backlog RG6,
+  from the same pass — a regression of this round, from the `"fit"`
+  floor fix at the top of this list): the sixth pass hands the float's subtree its `fit`
+  floors again and then clamped the float's own size with a spec copied
+  *before* the re-run resolved them, so a `width: grow` + `min_width:
+  fit` float anchored to a 300 px node was 300 wide around 400 px of
+  content, where alpha.15 gave 400. The spec is read after each fit
+  pass now, where its floor is a number. The devtools' own tab float
+  declares no floor, so only a Rust app's own node-anchored float saw
+  it.
+
 - **A devtools panel turned on from inside a frame sat in the bottom-left
   corner** (backlog F70, from kawoosh's `:kui_debugger` and
   `:syntax_tree`, which call `set_devtools(true)` from `view`): the root

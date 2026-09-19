@@ -300,7 +300,7 @@ impl Tree {
             self.any_node_float |= matches!(f.anchor, crate::spec::FloatAnchor::Node(_));
         }
         self.any_wrap |= spec.layout.wrap;
-        self.any_table |= spec.layout.table;
+        self.any_table |= spec.layout.is_table();
         self.any_text |= matches!(
             content,
             NodeContent::Text(_) | NodeContent::Edit(_) | NodeContent::Cells(_)

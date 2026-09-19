@@ -1,9 +1,22 @@
 ---
 status: accepted
 date: 2026-09-17
+amended: 2026-09-20
 ---
 
 # A table is a column whose cells align
+
+> **Amended 2026-09-20** by the regression pass (backlog RG3, RG7, RG8,
+> RG11): decisions 2, 4 and 5 gained the sentences marked *amended*,
+> and decision 9 is new. A row of a table is a `Row` child of it and
+> nothing else is (a `column` section under the table had its stacked
+> children taken as cells); a `Fit` table's width is its columns'
+> whatever its rows' sizing (a `Fit` table of `grow` rows — the howto's
+> own snippet — laid out 0 wide); a `scrollX` table's rows are at least
+> as wide as its columns (a `grow` row was the table's width, so the
+> overflow the table kept was clipped and `scroll_max.x` was 0); and an
+> image cell's height is its aspect at its own width (a 16 px icon in a
+> 200 px column was a 200 × 200 box).
 
 > **Accepted and built (2026-09-17), the same day it was proposed** —
 > raised by kawoosh's devtools tabs and by the panel's own. Every
@@ -77,13 +90,25 @@ date: 2026-09-17
    children, a float in it is a float.
 
 2. **Rows are rows and cells are cells, and both are the app's.** The
-   table's in-flow children are the rows; each row's in-flow children
-   are its cells; the nth cell of every row is column n; a row with
-   fewer cells fills the first columns. A row keeps everything a row
-   has — its `gap` is the space between its cells, its padding, its
+   table's in-flow `Row` children are the rows; each row's in-flow
+   children are its cells; the nth cell of every row is column n; a row
+   with fewer cells fills the first columns. A row keeps everything a
+   row has — its `gap` is the space between its cells, its padding, its
    background, `hover_bg`, `on_click`, `label` — which is what a
    clickable settings row or a hovered inspector row needs, with no
    row API to learn. A header is a row. A float in a row is not a cell.
+   *Amended (RG7):* only a `Row` is a row. Anything else straight
+   under the table — a heading text, a `column` section wrapping a
+   heading over its own rows, a nested table — is a child with its own
+   width and no cells, and its children are its own; before, any
+   in-flow container was a row, and a `column` section's heading and
+   inner row were taken as cells 0 and 1 of the table. The rule is not
+   a warning: a section under a table is a natural shape for a grouped
+   settings list, and it lays out as the author meant. And
+   `LayoutSpec.table` is read on a `Dir::Column` only, through
+   `LayoutSpec::is_table` — a `Row` carrying the flag, which only
+   Rust's public fields can build, is the row it says it is, to the
+   solver, the diagnostics, `NodeInfo` and the corpus alike.
 
 3. **A column's sizing is what its cells declared.** The column's fit
    width is the max of its cells' fitted widths — a `Fixed` cell's
@@ -111,7 +136,27 @@ date: 2026-09-17
    — then written into every cell, and each `Fit` row sized to the
    columns. A row of a table then skips its main-axis distribution
    entirely: its cells are final, and it neither grows, cuts nor
-   shrinks them.
+   shrinks them. *Amended (RG11):* in pass 1 every row but a `Fixed`
+   one is sized to the aligned columns — the `grow` and percent rows
+   included, whose own pass-1 width is 0 by the rule since C10 that a
+   `Fit` parent counts a `Grow` child as nothing — so the table's own
+   fit width, read next, is its columns'. The rows are the table's, and
+   their `grow` says how the columns share the table, not that the
+   table is nothing: a `Fit` table (the constructor's default, and
+   `<box dir="table">` with no width) over `grow` rows is the aligned
+   key/value list the howto shows, as wide as its longest key and
+   value, where before it was 0 wide with every text folded to a glyph
+   a line; and a `min: fit` floor on a `grow` table reads the same
+   number. Pass 2 sizes the `grow` rows for good, as before.
+   *Amended (RG3):* in pass 2, when the table scrolls x, every row is
+   widened to its columns if they overflow it. A `grow` row is exactly
+   the table's width, and `positions` measures a scroll container's
+   content from its children's boxes — so the overflow the table kept
+   (the compression it skipped) was clipped and `scroll_max.x` was 0
+   for the rows every example writes, and 20 only for a `Fit` row. A
+   table that does not scroll leaves its rows' boxes alone: fixed
+   columns that overflow it overflow the row, as fixed children
+   overflow any row.
 
 5. **A bare text is a cell, held to its column.** `fit_heights` keeps
    the width pass 2 gave a text whose parent is a table row and takes
@@ -119,6 +164,22 @@ date: 2026-09-17
    is a column and the cells after it stay put. A text that needs an
    alignment inside its column (a right-aligned number) is a row
    around the text with `main_align: end`, as it would be anywhere.
+   *Amended (RG8):* an image straight in a row is a cell the same way
+   — its box is the column wide, since `positions` advances by the
+   cell's box and a narrower one would close the cells after it up —
+   and its `Fit` height is its aspect at its *own* width: the number a
+   `Fixed` image declared, the intrinsic one of a `Fit` image, the
+   column's only for a `Grow` or percent image that asked for it.
+   Before, the height followed the column, and a 16 px icon in a 200 px
+   column was a 200 × 200 box. How the pixels meet the wider box is
+   the image's own `fit` row (ADR 0025): `fill`, the default,
+   stretches them across the column; `contain` draws them at their
+   size, centred. An icon that must keep its width and sit at the
+   column's start is a box around the image, which holds the column
+   as any `Fit` box does with the icon at its own size inside. The
+   painter is not taught which image is a cell: the box is the cell,
+   as it is for every other leaf, and the hit region and access rect
+   are the box.
 
 6. **A row of a table never wraps.** Its children are the columns, one
    each; `wrap_children` on it lays out as if absent and raises
@@ -140,6 +201,14 @@ date: 2026-09-17
    lines than the boxes it replaces. If a string table is asked for,
    it is a loop over rows in any binding's own code; the container is
    the widget.
+
+9. **What is not a row and what is not a cell is left alone.** Under
+   the table: a text, an image, a `column`, a nested table, a float —
+   each a child with its own width, laid out as it would be under any
+   column. In a row: a float. The table never warns about them; the
+   one diagnostic a table raises is `wrap-ignored` on a row that asked
+   to wrap. (Decision 2 says why a section wrapper is allowed rather
+   than refused.)
 
 ## Considered options
 
@@ -197,6 +266,14 @@ date: 2026-09-17
   which is wider than its content: the row's width follows the
   columns, not the other way round. Rows are usually `grow`, and
   then this never shows.
+
+- A `Fit` table is as wide as its columns whatever its rows' sizing —
+  the one place a `Fit` parent's width counts a `Grow` child, because
+  the child is the table's own row and the columns are what it holds
+  (RG11). A `scrollX` table's `grow` rows are wider than the table
+  when the columns overflow it, and the row's background spans the
+  scrolled content (RG3). An image cell's box is column × own aspect,
+  and `fit: fill` stretches the pixels across it (RG8).
 
 - `KUI_ABI_VERSION` stays 18 and the Node frame at v15: a `dir` value
   is data both already carry.

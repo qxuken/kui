@@ -391,7 +391,12 @@ pub struct LayoutSpec {
     /// the space between its cells, its `padding` its own, and it takes
     /// its background, its click and its hover as any row does — except
     /// that a row of a table never wraps (`diag::WRAP_IGNORED`). Set by
-    /// [`NodeSpec::table`], which is a column; `dir` stays `Column`.
+    /// [`NodeSpec::table`], which is a column; `dir` stays `Column`, and
+    /// the flag is read on a column only ([`LayoutSpec::is_table`]): a
+    /// `Row` carrying it — a shape only these public fields can build —
+    /// is the row it says it is. The rows are the in-flow `Row` children;
+    /// a column, a table or a leaf straight under the table is a child
+    /// with its own width and no cells.
     pub table: bool,
     /// Space between wrap lines, across the main axis. `gap` is still the
     /// space between children along it.
@@ -446,6 +451,14 @@ impl LayoutSpec {
     /// Whether this node clips its children.
     pub fn clips(&self) -> bool {
         self.clip || self.scroll_x || self.scroll_y
+    }
+
+    /// Whether this node is a table (ADR 0033): the flag, on a column.
+    /// Every reader — the solver, the diagnostics, `NodeInfo`, the
+    /// corpus — asks this and not the field, so a `Row` with the field
+    /// set is a row everywhere.
+    pub fn is_table(&self) -> bool {
+        self.table && self.dir == Dir::Column
     }
 }
 
@@ -1141,13 +1154,19 @@ impl NodeSpec {
     /// default) and `Fixed` are content the column's fit width is the
     /// max of, `Grow` makes the whole column grow with the table, and a
     /// column's `minWidth` / `maxWidth` are the strictest its cells
-    /// declared. The rows are rows — give them `width: grow` for the
-    /// columns to grow into; a `Fit` row sits at the columns' fit width —
-    /// with their own `gap` between cells, their own padding, background,
-    /// click and hover; a row of a table never wraps. A bare text is a
-    /// cell too, kept at its column's width, so `ui.text` straight inside
-    /// a row is a column. Everything else is a column's: `gap` is the
-    /// space between rows, `scrollY` scrolls them.
+    /// declared. The rows are the `Row` children — give them `width:
+    /// grow` for the columns to grow into; a `Fit` row sits at the
+    /// columns' fit width — with their own `gap` between cells, their own
+    /// padding, background, click and hover; a row of a table never
+    /// wraps. A bare text is a cell too, kept at its column's width, so
+    /// `ui.text` straight inside a row is a column; an image straight in
+    /// a row is a cell the same way, its box the column wide and its own
+    /// aspect tall. A text, a column or a table straight under the table
+    /// is a child with its own width and no cells. The table's own `Fit`
+    /// width is its columns', whatever the rows' sizing, and a `scroll_x`
+    /// table's rows are at least as wide as its columns. Everything else
+    /// is a column's: `gap` is the space between rows, `scrollY` scrolls
+    /// them.
     pub fn table() -> Self {
         Self {
             layout: LayoutSpec {

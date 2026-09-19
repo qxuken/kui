@@ -358,7 +358,7 @@ impl Core {
                 main_align: l.main_align,
                 cross_align: l.cross_align,
                 wrap: l.wrap,
-                table: l.table,
+                table: l.is_table(),
                 min_w: floor(l.min_w),
                 min_h: floor(l.min_h),
                 max_w: ceiling(l.max_w),

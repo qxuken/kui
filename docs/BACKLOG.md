@@ -1238,27 +1238,11 @@ other two hosts did not need it was wrong — a Node app quit with ⌘Q
 ran nothing after `runWindowed`, not even `process.on('exit')`, so
 kawoosh's own defect was still open for every app that is not Rust.
 RG1 is **built 2026-09-19** and in the archive, RG2 and RG12 **built
-2026-09-20** and there too; the rest are below.
-Two are regressions this round introduced (RG5, RG6), the rest are
-gaps the new features opened or holes they made reachable. Not
-verified here: F69 in a window (RG15 says how).
-
-### `!` RG3 — A `scrollX` table with grow rows cannot scroll: the overflow it keeps is clipped, and `scroll_max.x` is 0
-
-**Found.** `table_resolve` skips the largest-first compression when
-the table scrolls x (`layout.rs:315`) so the cells overflow the row —
-but the rows the howto and both examples give are `width: grow`, so
-`row.w == table content`, and `positions` sizes the table's content
-from its widest *row*, not the row's cells: `scroll_max.x = 0`, and
-`scroll_x` also clips. Probed: `NodeSpec::table().width(100).scroll_x()`
-over a grow row of fit cells 80 + 40 → `scroll_max.x = 0`; the same
-with a `Fit` row → 20. So the documented escape from compression
-works only for rows nobody writes.
-
-**Do.** A table's content width is its columns' resolved sum plus the
-row chrome (the widest row's padding and gaps), written where the
-column widths are; a test beside `a_scrolling_table_overflows_instead`
-asserting `scroll_max[table].x` for grow rows.
+2026-09-20** and there too, and RG3, RG6, RG7, RG8 and RG11 — the five
+on the table's layout — **built 2026-09-20** the same day; the rest
+are below. Two were regressions this round introduced (RG5, and RG6,
+now built), the rest are gaps the new features opened or holes they
+made reachable. Not verified here: F69 in a window (RG15 says how).
 
 ### `!` RG4 — F70's deferral is defeated by a left dock: the panel is built at `begin_frame`, so a mid-frame dock move or panel-off draws the stale panel and asks for no frame
 
@@ -1297,58 +1281,6 @@ the violators of that sign, re-share; a `frozen` bitset or a flag in a
 scratch `Vec<u8>` indexed by child. Add the probe as a test beside
 `a_grow_childs_clamp_is_its_siblings_room`, and a bench row (a column
 of 1k grow rows with `max_height`) for the guard.
-
-### `!` RG6 — F75's floor fix drops a node-anchored float root's own `min: fit`: the sixth pass clamps it with a floor of 0
-
-**Found.** `anchored` re-declares the floors, copies the root's spec
-(`layout.rs:574`), and runs `fit_widths` over the float — which
-resolves `tree.specs[c].layout.min_w` to its number — but the copy
-still holds `Min::FIT` (−1), and `spec.clamp_w`/`clamp_h` (`:576`,
-`:585`) read `resolved()` = 0. Before F75 the copy carried the first
-run's number. Probed: a `FloatAnchor::Node` float with `width: grow`
-+ `min_width: fit` around a 400 px box, anchored to a 300 px node →
-300, was 400. The devtools' own tab float declares no floor, so only
-a Rust app's own node-anchored float sees it — but it is a regression
-of this round.
-
-**Do.** Read `tree.specs[c].layout` again after `fit_widths` (and after
-`fit_heights` for the height) before clamping; the probe as a test in
-`table_layout.rs` beside the floor test.
-
-### `!` RG7 — Any in-flow container straight under a table is a row: a column wrapper's stacked children become cells and widen the columns
-
-**Found.** `is_table_row` (`layout.rs:102`) asks for a container that
-is in flow under a `table`; it never asks for `dir == Row`. A
-`column` section under the table — a heading text over a row, the
-natural shape for a grouped settings list — has its heading and its
-inner row taken as cells 0 and 1: probed, `table(300)` over
-`column{ text(80 wide); row{ box 100 } }` and `row{ box 30, box 20 }`
-puts the second row's cells at 80 and 100. A table straight under a
-table has its rows taken as the outer's cells. A leaf under the table
-is left alone by design; a container was not thought of. Also
-`LayoutSpec.table` on a `Dir::Row` (reachable from Rust's pub fields
-only) runs pass 1 and never pass 2, its grow cells at 0.
-
-**Do.** `is_table_row` requires `dir == Row` (a `column` under a table
-is then what a text is: a child with its own width), and the table
-flag requires `dir == Column` or warns. A `table-child-not-a-row`
-diagnostic is the cheaper half if a section wrapper is meant to be
-refused instead. Tests for both shapes.
-
-### `~` RG8 — An image cell is stretched to its column and re-aspected
-
-**Found.** `table_apply` writes the column width into every cell, and
-`fit_height`'s image branch (`layout.rs:748`) derives a `Fit` height
-from `tree.size[i].w` — so a 16 px icon in a column whose widest cell
-is 200 becomes 200 × 200. A box cell just has room beside its content;
-an image scales. By reading; the stub measurer has no images, so a
-test needs `image_size` on the stub.
-
-**Do.** A cell holds its column's width the way a `Fit` box does —
-the column is the cell's *outer* width and an image keeps its
-intrinsic width inside it (aligned by the row's `cross_align`), or the
-cell of an image column is the image's own width and the column is
-its max. Test with an image stub.
 
 ### `!` RG9 — `activate_menu_item` posts a disabled option's choice
 
@@ -1389,22 +1321,6 @@ a separator is an `unknown-prop`-style warning and none; an unknown
 key on a `MenuItemInput` warns in the encoder as an unknown prop does.
 Lua's missing label gets the message its options have. Tests per
 binding.
-
-### `~` RG11 — A `Fit` table of grow rows collapses to 0, and the howto's only snippet builds exactly that
-
-**Found.** `NodeSpec::table()` and `<box dir="table">` are `Fit` wide,
-a `Fit` column counts a `Grow` child as 0 (the rule since C10), and
-the howto's snippet (`docs/howto.md:69`) gives the rows `width="grow"`
-and the table nothing: probed, `table()` over `row(grow){ text(50),
-text(30) }` → table 0 wide, both texts folded to one glyph a line.
-Every shipped example gives the table a width, so only a reader of the
-howto meets it.
-
-**Do.** Either the table's fit is its columns' fit regardless of the
-rows' `Grow` (the rows are the table's, not the app's, and `table_fit`
-already knows the columns), or the howto and props row say the table
-needs a width or a `grow` parent. The first is a line in `table_fit`
-and makes a `Fit` table the aligned key/value list the ADR describes.
 
 ### `~` RG13 — An AX click on a control behind a modal fires: a second click on an open select's field re-opens it instead of dismissing
 
@@ -1493,7 +1409,7 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** RG3–RG11 and RG13–RG15 from the regression pass of 2026-09-19 (RG1, the Node and C hosts hearing ⌘Q, was **built 2026-09-19**; RG2 and RG12, the devtools' menus select and its chord, **built 2026-09-20**), the two regressions of the round first, RG5 and RG6; after them C41 — a profile of `frame_1k_curves` at the drop-zone
+**Build next.** RG4, RG5, RG9, RG10 and RG13–RG15 from the regression pass of 2026-09-19 (RG1, the Node and C hosts hearing ⌘Q, was **built 2026-09-19**; RG2 and RG12, the devtools' menus select and its chord, and RG3, RG6, RG7, RG8 and RG11, the table's layout and the round's float-floor regression, **built 2026-09-20**), the remaining regression of the round first, RG5; after them C41 — a profile of `frame_1k_curves` at the drop-zone
 commit against the one before, the bisect already done; then W19, when
 a Windows or Linux round comes (the macOS half of ADR 0031 is built and
 verified; the fallback elsewhere is honest and positionless). Nothing else filed is open: the two alpha.13 reports and the
@@ -2202,11 +2118,16 @@ move.
 
 - `!` **F74** — [An app never hears its window go: the close button drops it, ⌘Q ends the process, and neither is a key](backlog/closed-2026-09.md#-f74--an-app-never-hears-its-window-go-the-close-button-drops-it-q-ends-the-process-and-neither-is-a-key--done-2026-09-17) — done (2026-09-17) — `App::teardown`, once, from the loop's `exiting` and a pumped runner's retirement
 
-**From the regression pass of 2026-09-19** — RG1 built the same day, RG2 and RG12 on 2026-09-20; the rest open above
+**From the regression pass of 2026-09-19** — RG1 built the same day, RG2 and RG12 on 2026-09-20, the five table entries RG3, RG6, RG7, RG8 and RG11 the same day; the rest open above
 
 - `!` **RG1** — [A Node or C app still never hears ⌘Q: F74's `teardown` is a Rust `App` method, and the loops the other hosts "own" end the same way](backlog/closed-2026-09.md#-rg1--a-node-or-c-app-still-never-hears-q-f74s-teardown-is-a-rust-app-method-and-the-loops-the-other-hosts-own-end-the-same-way--done-2026-09-19) — done (2026-09-19) — `teardown(model)` in `runWindowed`'s / `createApp`'s config over `KuiWindow.onTeardown`, `kui_on_teardown(fn)` before `kui_run` (ABI 18 kept), the verb-table row, the once-across-ends test; both hosts checked under ⌘Q in the window
 - `!` **RG2** — [A devtools select's menu outlives the panel, and its choice reaches the app as a `menu` event from the devtools origin](backlog/closed-2026-09.md#-rg2--a-devtools-selects-menu-outlives-the-panel-and-its-choice-reaches-the-app-as-a-menu-event-from-the-devtools-origin--done-2026-09-20) — done (2026-09-20) — the panel's menu closes when this window stops building the panel; a devtools-origin event is taken back whatever the panel's state
 - `~` **RG12** — [`Ctrl+Shift+M` is a two-way toggle from a compile-time default; the select beside it has three choices](backlog/closed-2026-09.md#-rg12--ctrlshiftm-is-a-two-way-toggle-from-a-compile-time-default-the-select-beside-it-has-three-choices--done-2026-09-20) — done (2026-09-20) — the chord walks platform → native → drawn over the select's state and restore path
+- `!` **RG3** — [A `scrollX` table with grow rows cannot scroll: the overflow it keeps is clipped, and `scroll_max.x` is 0](backlog/closed-2026-09.md#-rg3--a-scrollx-table-with-grow-rows-cannot-scroll-the-overflow-it-keeps-is-clipped-and-scroll_maxx-is-0--done-2026-09-20) — done (2026-09-20) — a row of a `scrollX` table is at least as wide as its columns, chrome counted; `scroll_max.x` sees them
+- `!` **RG6** — [F75's floor fix drops a node-anchored float root's own `min: fit`: the sixth pass clamps it with a floor of 0](backlog/closed-2026-09.md#-rg6--f75s-floor-fix-drops-a-node-anchored-float-roots-own-min-fit-the-sixth-pass-clamps-it-with-a-floor-of-0--done-2026-09-20) — done (2026-09-20) — `anchored` reads the root's spec after each fit pass; the regression of the round
+- `!` **RG7** — [Any in-flow container straight under a table is a row: a column wrapper's stacked children become cells and widen the columns](backlog/closed-2026-09.md#-rg7--any-in-flow-container-straight-under-a-table-is-a-row-a-column-wrappers-stacked-children-become-cells-and-widen-the-columns--done-2026-09-20) — done (2026-09-20) — only a `Row` is a row; `LayoutSpec::is_table()` for every reader; ADR 0033 decisions 2 and 9
+- `~` **RG8** — [An image cell is stretched to its column and re-aspected](backlog/closed-2026-09.md#-rg8--an-image-cell-is-stretched-to-its-column-and-re-aspected--done-2026-09-20) — done (2026-09-20) — the box is the column wide and the image's own aspect tall; the pixels meet it by `fit`; box an icon
+- `~` **RG11** — [A `Fit` table of grow rows collapses to 0, and the howto's only snippet builds exactly that](backlog/closed-2026-09.md#-rg11--a-fit-table-of-grow-rows-collapses-to-0-and-the-howtos-only-snippet-builds-exactly-that--done-2026-09-20) — done (2026-09-20) — a table's fit is its columns' whatever the rows' sizing: pass 1 sizes the grow rows to them too
 
 **From the kawoosh devtools-tables report (2026-09-17)** — F75, filed and built the same day
 

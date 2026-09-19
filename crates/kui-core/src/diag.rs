@@ -1117,7 +1117,7 @@ impl Diagnostics {
                  to break against (drop scrollX, or drop wrapChildren and let it scroll)"
             } else if layout.float.is_none()
                 && tree.parent[i] != NIL
-                && tree.specs[tree.parent[i] as usize].layout.table
+                && tree.specs[tree.parent[i] as usize].layout.is_table()
             {
                 "a table's row cannot wrap: its children are the table's columns, one each \
                  (put the wrapping row inside a cell)"

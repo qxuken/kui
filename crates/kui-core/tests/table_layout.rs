@@ -8,6 +8,7 @@
 use kui_core::diag::WRAP_IGNORED;
 use kui_core::key::Key;
 use kui_core::layout::{TextMeasure, compute};
+use kui_core::resources::ImageId;
 use kui_core::scroll::ScrollStore;
 use kui_core::spec::{Min, NodeSpec, Sizing};
 use kui_core::testing::codes;
@@ -33,6 +34,16 @@ impl TextMeasure for Stub {
         }
         Size::new(max_w, (full / max_w).ceil() * 20.0)
     }
+    fn image_size(&mut self, id: ImageId) -> Size {
+        let w = (id.to_ffi() & 0xffff_ffff) as f32;
+        Size::new(w, w)
+    }
+}
+
+/// An image handle whose low bits are its width: the stub answers every
+/// image as a square of that size.
+fn image_id(w: f32) -> ImageId {
+    ImageId::from_ffi((1u64 << 32) | w as u64)
 }
 
 struct T {
@@ -77,6 +88,18 @@ impl T {
             OriginId::HOST,
             NodeSpec::default(),
             NodeContent::Text(TextId(chars)),
+        )
+    }
+
+    /// A `Fit` image `w` px square.
+    fn image(&mut self, parent: u32, w: f32) -> u32 {
+        let key = Key::ROOT.index(self.tree.len() as u64);
+        self.tree.push(
+            parent,
+            key,
+            OriginId::HOST,
+            NodeSpec::default(),
+            NodeContent::Image(image_id(w), Default::default()),
         )
     }
 
@@ -563,4 +586,215 @@ fn a_floating_row_under_a_table_wraps_and_is_not_warned_about() {
         ui.finish();
     }
     assert!(core.take_warnings().is_empty());
+}
+
+// ---------------------------------------- the regression pass (RG3–RG11) --
+
+/// RG3. A `scrollX` table's content is its columns, not its rows: a
+/// `grow` row is exactly the table's width, and the overflow it keeps
+/// past that must still be scrollable — so a row of a scrolling table
+/// is at least as wide as its columns, and `scroll_max.x` sees them.
+#[test]
+fn a_scrolling_table_of_grow_rows_can_scroll_to_its_columns() {
+    let mut t = T::new(NodeSpec::table().width(px(100.0)).scroll_x());
+    let r = t.row(0, row_spec());
+    let a = t.fit(r, 80.0, 10.0);
+    let b = t.fit(r, 40.0, 10.0);
+    t.run();
+    assert_eq!(t.size(a).w, 80.0);
+    assert_eq!(t.size(b).w, 40.0);
+    assert_eq!(t.size(r).w, 120.0, "the row spans its cells");
+    assert_eq!(
+        t.tree.scroll_max[0].x, 20.0,
+        "and the table can scroll to them"
+    );
+    // With the row's own chrome counted.
+    let mut t = T::new(NodeSpec::table().width(px(100.0)).scroll_x());
+    let r = t.row(0, row_spec().pad_xy(5.0, 0.0).gap(10.0));
+    t.fit(r, 80.0, 10.0);
+    t.fit(r, 40.0, 10.0);
+    t.run();
+    assert_eq!(t.size(r).w, 140.0, "80 + 10 + 40 + 2 * 5");
+    assert_eq!(t.tree.scroll_max[0].x, 40.0);
+}
+
+#[test]
+fn a_table_that_does_not_scroll_keeps_its_grow_rows_at_its_width() {
+    // The fixed columns overflow the row as fixed children overflow any
+    // row; the row's box is not widened for them.
+    let mut t = T::new(NodeSpec::table().width(px(100.0)));
+    let r = t.row(0, row_spec());
+    t.boxed(r, 80.0, 10.0);
+    t.boxed(r, 40.0, 10.0);
+    t.run();
+    assert_eq!(t.size(r).w, 100.0);
+}
+
+/// RG6. The floor fix (F75) handed the sixth pass the `Min::FIT`
+/// declarations again, and then clamped the float's own size with a
+/// spec copied *before* the re-run resolved them: a `fit` floor read
+/// as 0, and the float lost its own floor. Its width comes from the
+/// anchor, its floor from its content, and the floor wins.
+#[test]
+fn a_node_anchored_floats_own_fit_floor_holds_against_its_anchor() {
+    let mut t = T::new(NodeSpec::column().width(px(400.0)).height(px(300.0)));
+    let float = t.node(
+        0,
+        NodeSpec::column()
+            .width(grow())
+            .min_width(Min::FIT)
+            .height(grow())
+            .min_height(Min::FIT)
+            .float(kui_core::spec::FloatConfig {
+                anchor: kui_core::spec::FloatAnchor::Node(Key::ROOT.str("body")),
+                ..Default::default()
+            }),
+    );
+    t.boxed(float, 400.0, 250.0);
+    let body = t.tree.push(
+        0,
+        Key::ROOT.str("body"),
+        OriginId::HOST,
+        NodeSpec::column().width(px(300.0)).height(px(200.0)),
+        NodeContent::Container,
+    );
+    t.run();
+    assert_eq!(t.size(body), Size::new(300.0, 200.0));
+    assert_eq!(
+        t.size(float),
+        Size::new(400.0, 250.0),
+        "the anchor is 300 x 200; the float's content floors it at 400 x 250"
+    );
+}
+
+/// RG7. A row of a table is a *row*: a column straight under the table
+/// is a child with its own width, as a text there is, and its stacked
+/// children are not cells.
+#[test]
+fn a_column_under_a_table_is_not_a_row_and_its_children_are_not_cells() {
+    let mut t = T::new(NodeSpec::table().width(px(300.0)));
+    let section = t.node(0, NodeSpec::column());
+    let heading = t.text(section, 8); // 80 wide
+    let inner = t.node(section, NodeSpec::row());
+    let wide = t.boxed(inner, 100.0, 10.0);
+    let r = t.row(0, row_spec());
+    let a = t.boxed(r, 30.0, 10.0);
+    let b = t.boxed(r, 20.0, 10.0);
+    t.run();
+    assert_eq!(t.size(a).w, 30.0, "column 0 is the one row's cell");
+    assert_eq!(t.size(b).w, 20.0);
+    assert_eq!(t.pos(b).x, 30.0);
+    assert_eq!(t.size(heading).w, 80.0, "the section's own children");
+    assert_eq!(t.size(wide).w, 100.0);
+    assert_eq!(t.size(section).w, 100.0, "fit: the wider of its two");
+}
+
+#[test]
+fn a_table_straight_under_a_table_keeps_its_own_rows() {
+    let mut t = T::new(NodeSpec::table().width(px(300.0)));
+    let inner = t.node(0, NodeSpec::table());
+    let ir = t.row(inner, NodeSpec::row());
+    let ia = t.boxed(ir, 10.0, 5.0);
+    let ib = t.boxed(ir, 10.0, 5.0);
+    let ir2 = t.row(inner, NodeSpec::row());
+    t.boxed(ir2, 40.0, 5.0);
+    let r = t.row(0, row_spec());
+    let a = t.boxed(r, 60.0, 10.0);
+    t.run();
+    assert_eq!(t.size(ia).w, 40.0, "the inner table's column 0");
+    assert_eq!(t.pos(ib).x, 40.0);
+    assert_eq!(t.size(inner).w, 50.0);
+    assert_eq!(t.size(a).w, 60.0, "not widened by the inner rows");
+}
+
+#[test]
+fn the_table_flag_on_a_row_is_a_row() {
+    // Reachable from Rust's public fields only: the flag is read on a
+    // column, and a row carrying it lays out as the row it is.
+    let mut spec = NodeSpec::row().width(px(300.0));
+    spec.layout.table = true;
+    let mut t = T::new(spec);
+    let a = t.node(0, NodeSpec::row().width(grow()).height(px(10.0)));
+    let b = t.boxed(0, 100.0, 10.0);
+    t.run();
+    assert_eq!(t.size(a).w, 200.0, "grows as a row's child does");
+    assert_eq!(t.pos(b).x, 200.0);
+}
+
+/// RG8. An image straight in a row is a cell held to its column, and
+/// its height is its own aspect at its *own* width — a 16 px icon in a
+/// 200 px column is a 200 x 16 box (the pixels meet it by the image's
+/// `fit` row), not a 200 x 200 one.
+#[test]
+fn an_image_cell_keeps_its_own_height() {
+    let mut t = T::new(NodeSpec::table().width(px(300.0)));
+    let r1 = t.row(0, row_spec());
+    let icon = t.image(r1, 16.0); // 16 x 16
+    t.boxed(r1, 30.0, 10.0);
+    let r2 = t.row(0, row_spec());
+    t.boxed(r2, 200.0, 10.0);
+    let r3 = t.row(0, row_spec());
+    let fixed = t.tree.push(
+        r3,
+        Key::ROOT.str("fixed"),
+        OriginId::HOST,
+        NodeSpec::default().width(px(32.0)),
+        NodeContent::Image(image_id(16.0), Default::default()),
+    );
+    t.run();
+    assert_eq!(
+        t.size(icon),
+        Size::new(200.0, 16.0),
+        "the column, its own height"
+    );
+    assert_eq!(t.size(r1).h, 16.0);
+    assert_eq!(
+        t.size(fixed),
+        Size::new(200.0, 32.0),
+        "a fixed-width image's height is its aspect at that width"
+    );
+}
+
+/// RG11. A `Fit` table's width is its columns' — the rows are the
+/// table's, and their `grow` says how the columns share the table, not
+/// that the table is nothing. The howto's key/value snippet is exactly
+/// this shape.
+#[test]
+fn a_fit_table_of_grow_rows_is_as_wide_as_its_columns() {
+    let mut t = T::new(NodeSpec::table());
+    let r1 = t.row(0, row_spec().gap(8.0));
+    let k1 = t.text(r1, 5);
+    let v1 = t.text(r1, 3);
+    let r2 = t.row(0, row_spec().gap(8.0));
+    let k2 = t.text(r2, 2);
+    let v2 = t.text(r2, 7);
+    t.run();
+    assert_eq!(t.size(0).w, 50.0 + 8.0 + 70.0, "the aligned columns");
+    assert_eq!(t.size(r1).w, 128.0);
+    assert_eq!(t.size(r2).w, 128.0);
+    assert_eq!(t.size(k1), Size::new(50.0, 20.0), "one line");
+    assert_eq!(t.size(k2).w, 50.0);
+    assert_eq!(t.pos(v1).x, 58.0);
+    assert_eq!(t.pos(v2).x, 58.0);
+    assert_eq!(t.size(v2), Size::new(70.0, 20.0));
+    // A `min: fit` floor on the table reads the same width.
+    let mut t = T::new(NodeSpec::table().width(grow()).min_width(Min::FIT));
+    let r = t.row(0, row_spec());
+    t.boxed(r, 40.0, 10.0);
+    t.boxed(r, 60.0, 10.0);
+    t.run();
+    assert_eq!(t.size(0).w, 1000.0, "grows to the viewport");
+}
+
+#[test]
+fn a_fit_table_in_a_narrow_parent_holds_its_columns_floor() {
+    let mut t = T::new(NodeSpec::row().width(px(50.0)));
+    let table = t.node(0, NodeSpec::table().width(grow()).min_width(Min::FIT));
+    let r = t.row(table, row_spec());
+    let a = t.boxed(r, 40.0, 10.0);
+    let b = t.boxed(r, 60.0, 10.0);
+    t.run();
+    assert_eq!(t.size(table).w, 100.0, "the floor is the columns");
+    assert_eq!(t.size(a).w, 40.0);
+    assert_eq!(t.pos(b).x, 40.0);
 }

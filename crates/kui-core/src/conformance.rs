@@ -4414,7 +4414,7 @@ fn observe(core: &Core, cov: &mut Coverage) {
         if l.dir == Dir::Row {
             cov.custom.insert("dir");
         }
-        if l.table {
+        if l.is_table() {
             cov.custom.insert("dir");
             cov.elements.insert("table");
         }

@@ -17,14 +17,18 @@
 //!
 //! A table (`LayoutSpec::table`, ADR 0033) is a column whose rows' cells
 //! line up: pass 1 reaches the table after its rows and cells and sets
-//! every fit cell to its column's widest, so the rows' and the table's
-//! fit widths are the aligned ones; pass 2 reaches it before its rows,
+//! every fit cell to its column's widest and every row — the `grow` ones
+//! too — to the columns' width, so the table's own fit width is the
+//! aligned columns and not 0; pass 2 reaches it before its rows,
 //! resolves the columns against the widest row once ([`table_columns`])
 //! and writes each column's width into its cells, and a row of a table
 //! then leaves its children alone — the widths are final, and the row is
-//! never shrunk or grown cell by cell. A bare text cell keeps its column's
-//! width through pass 3 (`fit_heights`), where a text elsewhere shrinks
-//! to what it shaped.
+//! never shrunk or grown cell by cell. A row is a `Row` child of the
+//! table; a column, a table or a leaf straight under it has no cells. A
+//! bare text cell keeps its column's width through pass 3
+//! (`fit_heights`), where a text elsewhere shrinks to what it shaped, and
+//! an image cell's fit height is its aspect at its *own* width there,
+//! not at the column's.
 //!
 //! Text measurement goes through `TextMeasure` so the solver is testable with
 //! a deterministic stub and never depends on system fonts.
@@ -94,10 +98,13 @@ fn wraps(tree: &Tree, i: u32) -> bool {
     s.wrap && s.dir == Dir::Row && !s.scroll_x && !is_table_row(tree, i)
 }
 
-/// Whether `i` is a row of a table: an in-flow container child of a
-/// node with `LayoutSpec::table`. A leaf straight under the table — a
-/// heading text beside the rows — has no cells and is left alone. Gated
-/// on the tree-level flag first, as [`is_float`] is.
+/// Whether `i` is a row of a table: an in-flow `Row` container child of
+/// a table. Anything else straight under the table — a heading text
+/// beside the rows, a `column` section wrapping a heading over a row, a
+/// nested table — has no cells and keeps its own width, and its children
+/// are its own (backlog RG7: a column there had its stacked children
+/// taken as cells 0 and 1). Gated on the tree-level flag first, as
+/// [`is_float`] is.
 #[inline]
 fn is_table_row(tree: &Tree, i: u32) -> bool {
     if !tree.any_table {
@@ -105,7 +112,8 @@ fn is_table_row(tree: &Tree, i: u32) -> bool {
     }
     let p = tree.parent[i as usize];
     p != NIL
-        && tree.specs[p as usize].layout.table
+        && tree.specs[p as usize].layout.is_table()
+        && tree.specs[i as usize].layout.dir == Dir::Row
         && matches!(tree.content[i as usize], NodeContent::Container)
         && !is_float(tree, i)
 }
@@ -208,9 +216,24 @@ fn table_row_fit(tree: &Tree, row: u32, cols: &[Col]) -> f32 {
     w + spec.padding.x()
 }
 
-/// Writes each column's width into its cells and sizes the `Fit` rows to
-/// them. A text cell takes the width too — `fit_heights` keeps it.
-fn table_apply(tree: &mut Tree, i: u32, cols: &[Col]) {
+/// Writes each column's width into its cells and sizes the rows to them.
+/// A text cell takes the width too — `fit_heights` keeps it.
+///
+/// Which rows: in pass 1 (`fitting`) every row but a `Fixed` one — the
+/// `grow` and percent rows included, whose own pass-1 width is 0 — so
+/// the table's fit width, read next, is its columns' and a `Fit` table
+/// of `grow` rows is the aligned list and not nothing (backlog RG11: the
+/// howto's key/value snippet was that shape, and laid out 0 wide). Pass
+/// 2 sizes them for good, and the fit is only the number the table reads.
+/// In pass 2 the `Fit` rows, and — when the table scrolls x — every row
+/// widened to its columns if they overflow it, since a `grow` row is the
+/// table's own width and `positions` measures a scroll container's
+/// content from its children's boxes: without this the overflow the
+/// table kept was clipped and `scroll_max.x` was 0 (backlog RG3). A
+/// table that does not scroll leaves its rows' boxes alone, as any row
+/// is left when fixed children overflow it.
+fn table_apply(tree: &mut Tree, i: u32, cols: &[Col], fitting: bool) {
+    let scrolls = tree.specs[i as usize].layout.scroll_x;
     let mut row = tree.first_child[i as usize];
     while row != NIL {
         if is_table_row(tree, row) {
@@ -223,9 +246,23 @@ fn table_apply(tree: &mut Tree, i: u32, cols: &[Col]) {
                 }
                 cell = tree.next_sibling[cell as usize];
             }
-            if tree.specs[row as usize].layout.width == Sizing::Fit {
+            let spec = tree.specs[row as usize].layout;
+            match spec.width {
+                Sizing::Fit => {
+                    let fit = table_row_fit(tree, row, cols);
+                    tree.size[row as usize].w = spec.clamp_w(fit);
+                }
+                Sizing::Fixed(_) => {}
+                Sizing::Grow(_) | Sizing::Percent(_) if fitting => {
+                    let fit = table_row_fit(tree, row, cols);
+                    tree.size[row as usize].w = spec.clamp_w(fit);
+                }
+                Sizing::Grow(_) | Sizing::Percent(_) => {}
+            }
+            if scrolls && !fitting {
                 let fit = table_row_fit(tree, row, cols);
-                tree.size[row as usize].w = tree.specs[row as usize].layout.clamp_w(fit);
+                let w = &mut tree.size[row as usize].w;
+                *w = w.max(fit);
             }
         }
         row = tree.next_sibling[row as usize];
@@ -241,7 +278,7 @@ fn table_fit(tree: &mut Tree, i: u32) {
     for col in &mut cols {
         col.w = col.clamp(col.fit);
     }
-    table_apply(tree, i, &cols);
+    table_apply(tree, i, &cols, true);
 }
 
 /// Pass 2's table step, at the table node, before its rows: the columns
@@ -355,7 +392,7 @@ fn table_resolve(tree: &mut Tree, i: u32) {
             }
         }
     }
-    table_apply(tree, i, &cols);
+    table_apply(tree, i, &cols, false);
 }
 
 /// The first in-flow child of `i` (`NIL` when it has none).
@@ -571,8 +608,12 @@ fn anchored(
                 tree.specs[i].layout.min_h = Min::FIT;
             }
         }
-        let spec = tree.specs[c].layout;
+        // The root's spec is read *after* each fit pass, which is where
+        // a `Min::FIT` floor of its own — just declared again above —
+        // resolves to its number; a copy taken before it clamped with a
+        // floor of 0 and the float lost its own floor (backlog RG6).
         fit_widths(tree, text, c..end);
+        let spec = tree.specs[c].layout;
         tree.size[c].w = spec.clamp_w(match spec.width {
             Sizing::Grow(_) => anchor.w,
             Sizing::Percent(p) => anchor.w * p,
@@ -582,6 +623,7 @@ fn anchored(
             distribute_axis(tree, i as u32, AxisSel::Width, viewport);
         }
         fit_heights(tree, text, c..end);
+        let spec = tree.specs[c].layout;
         tree.size[c].h = spec.clamp_h(match spec.height {
             Sizing::Grow(_) => anchor.h,
             Sizing::Percent(p) => anchor.h * p,
@@ -702,7 +744,7 @@ fn fit_widths(tree: &mut Tree, text: &mut dyn TextMeasure, range: std::ops::Rang
         }
         // A table's rows and cells are fitted by now (children first):
         // align them, so the fit read next is the aligned one.
-        if tree.any_table && tree.specs[i].layout.table {
+        if tree.any_table && tree.specs[i].layout.is_table() {
             table_fit(tree, i as u32);
         }
         let width = tree.specs[i].layout.width;
@@ -741,14 +783,27 @@ fn fit_height(tree: &Tree, i: usize, text: &mut dyn TextMeasure, edit: Size) -> 
     match tree.content[i] {
         NodeContent::Edit(_) => edit.h + spec.padding.y(),
         NodeContent::Cells(id) => text.cells_size(id).h + spec.padding.y(),
-        // Width is final by now: a Fit height preserves the aspect.
+        // Width is final by now: a Fit height preserves the aspect. A
+        // cell's width is its column's, which the image did not ask for:
+        // its height is its aspect at the width its own sizing gave it —
+        // a 16 px icon in a 200 px column is a 200 x 16 box, not a 200 x
+        // 200 one (backlog RG8) — and how the pixels meet the wider box
+        // is the image's `fit` row.
         NodeContent::Image(id, _) => {
             let intrinsic = text.image_size(id);
-            if intrinsic.w > 0.0 {
-                intrinsic.h * tree.size[i].w / intrinsic.w
-            } else {
-                0.0
+            if intrinsic.w <= 0.0 {
+                return 0.0;
             }
+            let w = if is_table_cell(tree, i as u32) {
+                match spec.width {
+                    Sizing::Fixed(px) => spec.clamp_w(px),
+                    Sizing::Fit => spec.clamp_w(intrinsic.w),
+                    Sizing::Grow(_) | Sizing::Percent(_) => tree.size[i].w,
+                }
+            } else {
+                tree.size[i].w
+            };
+            intrinsic.h * w / intrinsic.w
         }
         // A wrapping row is as tall as its lines stacked: the lines were
         // chosen in pass 2, against a width that is already final.
@@ -965,7 +1020,7 @@ fn distribute_axis(tree: &mut Tree, i: u32, axis: AxisSel, viewport: Size) {
             c = tree.next_sibling[c as usize];
         }
         // A table's rows are wide by now: lay its columns across them.
-        if axis == AxisSel::Width && tree.any_table && spec.table {
+        if axis == AxisSel::Width && tree.any_table && spec.is_table() {
             table_resolve(tree, i);
         }
     }

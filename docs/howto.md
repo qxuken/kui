@@ -68,7 +68,10 @@ its longest label with no width picked by hand and nothing measured
 ([ADR 0033](adr/0033-a-table-is-a-column-whose-cells-align.md)). Put
 the rows in as rows: `<box dir="row" width="grow" gap={8}><text>{k}
 </text><text>{v}</text></box>`, a bare text a cell held to its column.
-A cell's `width` sizes its column — `fit` (the default) and a number are
+The table itself needs no width — its `fit` is its columns', whatever
+the rows' sizing, so that snippet with no width on the table is the
+aligned list, as wide as its longest key and its longest value. A
+cell's `width` sizes its column — `fit` (the default) and a number are
 content, `grow` makes the whole column grow with the table, a percent
 takes its cut of the row — and its `minWidth` / `maxWidth` clamp the
 column; a `grow` cell in a header row is enough to make its column the
@@ -76,11 +79,19 @@ one that stretches. The rows keep everything a row has: their own `gap`
 between cells, padding, `bg`, `hoverBg`, `onClick` and `label` — so a
 clickable settings row, a hovered inspector row and a header that sorts
 are rows with those props — and a number right-aligns in its column
-with a `mainAlign="end"` row around the text. Everything else is the
+with a `mainAlign="end"` row around the text. Only a `row` straight
+under the table is a row: a `column` there (a section heading over its
+own rows), a text or a nested table is a child with its own width, and
+its children are not cells. An image straight in a row is a cell held
+to its column like a text is — its box the column wide and its own
+aspect tall, the pixels meeting it by the image's `fit` — so an icon
+that must keep its width sits in a box. Everything else is the
 column's: `gap` is between rows, `scrollY` scrolls them. Fit columns
 that overflow the row are compressed largest first, as a row's children
-are, unless the table scrolls x; a row of a table never wraps. The
-devtools' Facts, tokens, legend and inspector lists are tables.
+are, unless the table scrolls x, where the rows are at least as wide as
+the columns and the table scrolls to them; a row of a table never
+wraps. The devtools' Facts, tokens, legend and inspector lists are
+tables.
 
 [`table` element](props.md#elements) ·
 [examples/rust/widgets/table.rs](../examples/rust/widgets/table.rs) ·
