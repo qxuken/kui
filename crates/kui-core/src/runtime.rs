@@ -237,8 +237,11 @@ pub struct Core {
     /// choice to put back.
     dt_menus: Option<(bool, bool)>,
     /// The panel was built at `begin_frame` (a left dock precedes the
-    /// app's container in tree order), so `finish` must not build again.
-    dt_built: bool,
+    /// app's container in tree order), on this tab, so `finish` must not
+    /// build again — and a door that moved the panel, turned it off or
+    /// changed its tab since is the next frame's, which `finish` asks
+    /// for (backlog RG4).
+    dt_built: Option<devtools::Shown>,
     /// The devtools tabs declared this frame, in order (ADR 0032): what
     /// the panel's strip lists, moved into the session's state at the
     /// end of the main window's frame. Empty on a frame nobody declares
@@ -818,7 +821,7 @@ impl Core {
             dt_window: false,
             dt_theme: None,
             dt_menus: None,
-            dt_built: false,
+            dt_built: None,
             dt_tabs: Vec::new(),
             dt_area: Rect::new(0.0, 0.0, 0.0, 0.0),
             building: false,

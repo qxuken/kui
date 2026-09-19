@@ -120,7 +120,10 @@ fn the_app_s_keys_do_not_move_when_the_panel_comes() {
 /// it, and built into that column the panel sat in the bottom-left
 /// corner, 340 wide and half the height, until something else drew a
 /// frame (kawoosh's idle-frame report, 2026-09-16). Moving the dock
-/// mid-frame waits the same way.
+/// mid-frame waits the same way. A left dock is built at `begin_frame`,
+/// so the panel a door moves, turns off or puts on another tab
+/// mid-frame is already in the tree, as it was: that frame draws it and
+/// asks for the next one, which is right (backlog RG4).
 #[test]
 fn a_panel_turned_on_mid_frame_is_built_from_the_next_frame() {
     let mut core = Core::new();
@@ -161,6 +164,72 @@ fn a_panel_turned_on_mid_frame_is_built_from_the_next_frame() {
         (0.0, VIEWPORT.h - DOCK_BOTTOM_H)
     );
     assert_eq!(dock.rect.w, VIEWPORT.w);
+
+    // The left dock, built before the app: a settled frame owes nothing.
+    core.set_devtools_dock(Dock::Left);
+    frame(&mut core);
+    frame(&mut core);
+    let key = core.key_of(DEVTOOLS_KEY).unwrap();
+    let left = node(&core, key);
+    assert_eq!((left.rect.x, left.rect.w), (0.0, DOCK_SIDE_W));
+    assert!(!core.owed().requested);
+    // Moved mid-frame: this frame's panel is the left one `begin_frame`
+    // built, and the frame that moves it is asked for.
+    let mut ui = core.frame(VIEWPORT, 1.0);
+    ui.core().set_devtools_dock(Dock::Right);
+    view(&mut ui, None);
+    ui.finish();
+    let key = core.key_of(DEVTOOLS_KEY).unwrap();
+    let stale = node(&core, key);
+    assert_eq!(stale.rect.x, 0.0, "this frame's panel is the one built");
+    assert!(
+        core.owed().requested,
+        "the frame that moves it is asked for"
+    );
+    frame(&mut core);
+    let key = core.key_of(DEVTOOLS_KEY).unwrap();
+    let right = node(&core, key);
+    assert_eq!(right.rect.x, VIEWPORT.w - DOCK_SIDE_W);
+    assert!(!core.owed().requested);
+    // Another tab mid-frame: the strip built at `begin_frame` marks the
+    // old one, so the frame that marks the new one is asked for.
+    core.set_devtools_dock(Dock::Left);
+    frame(&mut core);
+    frame(&mut core);
+    assert!(!core.owed().requested);
+    let mut ui = core.frame(VIEWPORT, 1.0);
+    ui.core().set_devtools_tab("tree");
+    view(&mut ui, None);
+    ui.finish();
+    assert!(core.key_of(DEVTOOLS_KEY).is_some());
+    assert!(
+        core.owed().requested,
+        "the frame that marks the tab is asked for"
+    );
+    frame(&mut core);
+    // The tree tab's list asks for one more on its own first frame.
+    frame(&mut core);
+    assert!(!core.owed().requested);
+    // The same tab again mid-frame changes nothing and owes nothing.
+    let mut ui = core.frame(VIEWPORT, 1.0);
+    ui.core().set_devtools_tab("tree");
+    view(&mut ui, None);
+    ui.finish();
+    assert!(!core.owed().requested);
+    // Off mid-frame: the panel built before the app is drawn once more,
+    // and the frame without it is asked for.
+    let mut ui = core.frame(VIEWPORT, 1.0);
+    ui.core().set_devtools(false);
+    view(&mut ui, None);
+    ui.finish();
+    assert!(
+        core.key_of(DEVTOOLS_KEY).is_some(),
+        "built before it went off"
+    );
+    assert!(core.owed().requested, "the frame without it is asked for");
+    frame(&mut core);
+    assert!(core.key_of(DEVTOOLS_KEY).is_none());
+    assert!(!core.owed().requested);
 }
 
 /// The host's `configure_root` is split: layout and paint on the

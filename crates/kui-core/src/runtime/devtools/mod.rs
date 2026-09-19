@@ -1379,7 +1379,7 @@ impl Core {
         self.dt_app = None;
         self.dt_dock = None;
         self.dt_window = false;
-        self.dt_built = false;
+        self.dt_built = None;
         // This frame's declarations start empty whatever the panel's state
         // and whichever window this is: `after_frame` moves the main
         // window's into the session only while the panel is on, and a
@@ -1392,7 +1392,7 @@ impl Core {
         } else {
             &*self.window_name() == DEVTOOLS_WINDOW
         };
-        let (on, dock, theme, menus, mirror, want_inspect) = {
+        let (on, dock, shown, theme, menus, mirror, want_inspect) = {
             let s = self.session.state();
             let d = &s.devtools;
             // The app's own source, for the override to keep the half it
@@ -1406,6 +1406,7 @@ impl Core {
             (
                 d.on,
                 d.dock,
+                d.shown(),
                 d.theme_override(app, &self.env.system),
                 d.native_menus,
                 app,
@@ -1491,10 +1492,11 @@ impl Core {
             .width(Sizing::Grow(1.0))
             .height(Sizing::Grow(1.0));
             // A left dock precedes the app in the root row, so it is built
-            // now, from the last frame's facts, and `finish` skips it.
+            // now, from the last frame's facts and the tab on show, and
+            // `finish` skips it.
             if dock == Dock::Left {
                 self.build_panel(Place::Main(dock));
-                self.dt_built = true;
+                self.dt_built = Some(shown);
             }
             // By key and not by label: the container is not the host's
             // to find through `key_of`.
@@ -1577,15 +1579,26 @@ impl Core {
         if self.env.window.id != WindowId::MAIN {
             return;
         }
-        let (on, dock) = {
+        let (on, dock, shown) = {
             let s = self.session.state();
-            (s.devtools.on, s.devtools.dock)
+            (s.devtools.on, s.devtools.dock, s.devtools.shown())
         };
         if let Some(_app) = self.dt_app.take() {
             // The host's last node closed for it, as `finish_frame` does.
             self.stack.truncate(1);
             self.counters.truncate(1);
             self.ns_depth = usize::MAX;
+        }
+        // A left panel is built at `begin_frame`, from the state then, and
+        // is in the tree for good this frame: turned off, moved or put on
+        // another tab since — an app's door from its `view` — it is drawn
+        // as it was, so the next frame is asked for, as the right and
+        // bottom docks' deferral below asks (backlog RG4). With the idle
+        // loop quiet, nothing else would draw it.
+        if let Some(built) = self.dt_built
+            && (!on || self.dt_dock != Some(dock) || built != shown)
+        {
+            self.frame_requested = true;
         }
         if !on {
             return;
@@ -1599,7 +1612,7 @@ impl Core {
             );
             self.origin = saved;
         }
-        if self.dt_built {
+        if self.dt_built.is_some() {
             return;
         }
         // A docked panel is built into the root this frame began with:

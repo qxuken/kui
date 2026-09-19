@@ -1238,31 +1238,12 @@ other two hosts did not need it was wrong — a Node app quit with ⌘Q
 ran nothing after `runWindowed`, not even `process.on('exit')`, so
 kawoosh's own defect was still open for every app that is not Rust.
 RG1 is **built 2026-09-19** and in the archive, RG2 and RG12 **built
-2026-09-20** and there too, and RG3, RG6, RG7, RG8 and RG11 — the five
-on the table's layout — **built 2026-09-20** the same day; the rest
-are below. Two were regressions this round introduced (RG5, and RG6,
+2026-09-20** and there too, RG3, RG6, RG7, RG8 and RG11 — the five
+on the table's layout — **built 2026-09-20** the same day, and RG4,
+the left dock's deferral, **built 2026-09-20** too; the rest are
+below. Two were regressions this round introduced (RG5, and RG6,
 now built), the rest are gaps the new features opened or holes they
 made reachable. Not verified here: F69 in a window (RG15 says how).
-
-### `!` RG4 — F70's deferral is defeated by a left dock: the panel is built at `begin_frame`, so a mid-frame dock move or panel-off draws the stale panel and asks for no frame
-
-**Found.** `devtools_begin_frame` builds a `Dock::Left` panel at once
-and sets `dt_built` (`runtime/devtools/mod.rs:1466`), and
-`devtools_finish` returns on `dt_built` (`:1577`) before the branch
-that defers and requests (`:1588`). Probed: with a left dock,
-`set_devtools_dock(Right)` from inside a frame leaves the left panel
-drawn and `owed().requested == false`; `set_devtools(false)` from
-inside a frame draws the panel although it is off, and requests
-nothing. With the idle loop quiet since F68 each stays until the next
-input. `set_devtools_tab` mid-frame with a left dock leaves the strip
-stale the same way.
-
-**Do.** In `finish`, check `on` and `dock` against what `begin_frame`
-built before honouring `dt_built`: a change since the frame began
-requests the next frame as the right/bottom path does (the left panel
-already in the tree is this frame's; the next frame is right). Extend
-`a_panel_turned_on_mid_frame_is_built_from_the_next_frame` with the
-left-dock leg.
 
 ### `!` RG5 — The F71 freeze loop freezes min and max violators in the same pass, and a plain sibling can get nothing
 
@@ -1409,7 +1390,7 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** RG4, RG5, RG9, RG10 and RG13–RG15 from the regression pass of 2026-09-19 (RG1, the Node and C hosts hearing ⌘Q, was **built 2026-09-19**; RG2 and RG12, the devtools' menus select and its chord, and RG3, RG6, RG7, RG8 and RG11, the table's layout and the round's float-floor regression, **built 2026-09-20**), the remaining regression of the round first, RG5; after them C41 — a profile of `frame_1k_curves` at the drop-zone
+**Build next.** RG5, RG9, RG10 and RG13–RG15 from the regression pass of 2026-09-19 (RG1, the Node and C hosts hearing ⌘Q, was **built 2026-09-19**; RG2 and RG12, the devtools' menus select and its chord, RG3, RG6, RG7, RG8 and RG11, the table's layout and the round's float-floor regression, and RG4, the left dock's deferral, **built 2026-09-20**), the remaining regression of the round first, RG5; after them C41 — a profile of `frame_1k_curves` at the drop-zone
 commit against the one before, the bisect already done; then W19, when
 a Windows or Linux round comes (the macOS half of ADR 0031 is built and
 verified; the fallback elsewhere is honest and positionless). Nothing else filed is open: the two alpha.13 reports and the
@@ -2118,7 +2099,7 @@ move.
 
 - `!` **F74** — [An app never hears its window go: the close button drops it, ⌘Q ends the process, and neither is a key](backlog/closed-2026-09.md#-f74--an-app-never-hears-its-window-go-the-close-button-drops-it-q-ends-the-process-and-neither-is-a-key--done-2026-09-17) — done (2026-09-17) — `App::teardown`, once, from the loop's `exiting` and a pumped runner's retirement
 
-**From the regression pass of 2026-09-19** — RG1 built the same day, RG2 and RG12 on 2026-09-20, the five table entries RG3, RG6, RG7, RG8 and RG11 the same day; the rest open above
+**From the regression pass of 2026-09-19** — RG1 built the same day, RG2 and RG12 on 2026-09-20, the five table entries RG3, RG6, RG7, RG8 and RG11 and the left dock's RG4 the same day; the rest open above
 
 - `!` **RG1** — [A Node or C app still never hears ⌘Q: F74's `teardown` is a Rust `App` method, and the loops the other hosts "own" end the same way](backlog/closed-2026-09.md#-rg1--a-node-or-c-app-still-never-hears-q-f74s-teardown-is-a-rust-app-method-and-the-loops-the-other-hosts-own-end-the-same-way--done-2026-09-19) — done (2026-09-19) — `teardown(model)` in `runWindowed`'s / `createApp`'s config over `KuiWindow.onTeardown`, `kui_on_teardown(fn)` before `kui_run` (ABI 18 kept), the verb-table row, the once-across-ends test; both hosts checked under ⌘Q in the window
 - `!` **RG2** — [A devtools select's menu outlives the panel, and its choice reaches the app as a `menu` event from the devtools origin](backlog/closed-2026-09.md#-rg2--a-devtools-selects-menu-outlives-the-panel-and-its-choice-reaches-the-app-as-a-menu-event-from-the-devtools-origin--done-2026-09-20) — done (2026-09-20) — the panel's menu closes when this window stops building the panel; a devtools-origin event is taken back whatever the panel's state
@@ -2128,6 +2109,7 @@ move.
 - `!` **RG7** — [Any in-flow container straight under a table is a row: a column wrapper's stacked children become cells and widen the columns](backlog/closed-2026-09.md#-rg7--any-in-flow-container-straight-under-a-table-is-a-row-a-column-wrappers-stacked-children-become-cells-and-widen-the-columns--done-2026-09-20) — done (2026-09-20) — only a `Row` is a row; `LayoutSpec::is_table()` for every reader; ADR 0033 decisions 2 and 9
 - `~` **RG8** — [An image cell is stretched to its column and re-aspected](backlog/closed-2026-09.md#-rg8--an-image-cell-is-stretched-to-its-column-and-re-aspected--done-2026-09-20) — done (2026-09-20) — the box is the column wide and the image's own aspect tall; the pixels meet it by `fit`; box an icon
 - `~` **RG11** — [A `Fit` table of grow rows collapses to 0, and the howto's only snippet builds exactly that](backlog/closed-2026-09.md#-rg11--a-fit-table-of-grow-rows-collapses-to-0-and-the-howtos-only-snippet-builds-exactly-that--done-2026-09-20) — done (2026-09-20) — a table's fit is its columns' whatever the rows' sizing: pass 1 sizes the grow rows to them too
+- `!` **RG4** — [F70's deferral is defeated by a left dock: the panel is built at `begin_frame`, so a mid-frame dock move or panel-off draws the stale panel and asks for no frame](backlog/closed-2026-09.md#-rg4--f70s-deferral-is-defeated-by-a-left-dock-the-panel-is-built-at-begin_frame-so-a-mid-frame-dock-move-or-panel-off-draws-the-stale-panel-and-asks-for-no-frame--done-2026-09-20) — done (2026-09-20) — `finish` compares `on`, the dock and the tab against what `begin_frame` built the left panel from, and a change since asks for the next frame
 
 **From the kawoosh devtools-tables report (2026-09-17)** — F75, filed and built the same day
 

@@ -344,6 +344,20 @@ hole by hand will see.
   waits for the next frame, which the frame asks for; nothing draws in
   between. The same for `set_devtools_dock` mid-frame.
 
+- **A left-docked panel moved, turned off or put on another tab from
+  inside a frame stayed as it was** (backlog RG4, from the regression
+  pass of 2026-09-19): F70's deferral lived in `finish`, and a left dock
+  is built at `begin_frame` — it precedes the app in the root row — so
+  `finish` skipped it before the check. `set_devtools_dock(Right)` from
+  `view` left the left panel drawn and asked for no frame;
+  `set_devtools(false)` drew the panel although it was off, and asked
+  for nothing; `set_devtools_tab` left the strip on the old tab. With
+  the idle loop quiet, each stayed until the next input. The panel
+  built before the app is this frame's, as it was; a door that moved
+  it, turned it off or changed its tab since the frame began now asks
+  for the next frame, which is right. The right and bottom docks were
+  never affected, since theirs is built at `finish`.
+
 ### Changed
 
 - **The devtools tab strip wraps, and the overrides sit on the facts
