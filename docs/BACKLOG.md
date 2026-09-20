@@ -1245,57 +1245,13 @@ loop's sign rule, **built 2026-09-20** as well, and RG9 and RG10, the
 select's disabled row through the door and its unchecked options and
 `current`, **built 2026-09-20** likewise, RG13, the reader's click
 behind a modal, **built 2026-09-20** too, and RG15, F69 checked in a
-window, **done 2026-09-20** — the pin does not hold, and RG16 below
-carries the decision it leaves; RG14, the ten nits and the two small
-devtools defects, **done 2026-09-20** too, so RG16 is the one left
-below.
+window, **done 2026-09-20** — the pin does not hold — RG14, the ten
+nits and the two small devtools defects, **done 2026-09-20** too, and
+RG16, the decision RG15 left, **done 2026-09-20** as well: the door is
+removed. Nothing of the pass is left open.
 Two were regressions this round introduced (RG5 and RG6, both now
 built), the rest are gaps the new features opened or holes they made
 reachable.
-
-### `!` RG16 — F69's door is inert: HIToolbox reads the user's global domain by name, and which mechanism replaces the pin, if any, is a decision
-
-**Found.** RG15's check (2026-09-20, in F69's archive entry): the read
-that decides press-and-hold is `CFPreferencesCopyValue("ApplePressAndHoldEnabled",
-kCFPreferencesAnyApplication, kCFPreferencesCurrentUser,
-kCFPreferencesAnyHost)` in HIToolbox's `AreTSMAndEventOKForPressAndHold`,
-per key event. No per-process default reaches it — not the argument
-domain the door pins, not a registered default, not the app's own
-domain, which is never read. `Launcher::press_and_hold(false)` /
-`pressAndHold` / `kui_press_and_hold` therefore do nothing on macOS 27,
-and the docs say so since RG15. What reaches the read: the user's
-`defaults write -g` (the global domain, persisted, every app), and five
-bundle ids compiled into HIToolbox.
-
-**Do.** Decide, then build or remove:
-
-(a) *Write the global domain for the app's lifetime* —
-`CFPreferencesSetValue` on `kCFPreferencesAnyApplication` at launch,
-the user's prior value (or its absence) restored in `teardown`. Works
-for a real key (the only knob that does); but it is the user's own
-preference changed under every app while a kui app runs, a crash or
-SIGKILL leaves it changed, two kui apps race on the "prior" value, and
-F69 chose "never written to the user's preferences" on purpose. If
-chosen, the door's contract sentence changes to say exactly this.
-
-(b) *Repeat in the app* — the runner arms a timer on a `KeyDown` while
-the door says `false` (`InitialKeyRepeat` / `KeyRepeat` from the user's
-defaults, 15 ms ticks) and posts repeat `KeyDown`s until the `KeyUp` or
-a real repeat arrives. Honest for `j`; for `e` the accent picker still
-opens (AppKit's, out of the app's hands) over the repeats, so half of
-F69's report stays. Needs a real-key session to settle whether a held
-key's repeats are absent or merely swallowed when press-and-hold is on
-— RG15 could only drive synthetic ones.
-
-(c) *Remove the door* — alpha.16 is unreleased, so `kui_press_and_hold`,
-`pressAndHold` and `Launcher::press_and_hold` can go without a
-compatibility note; the howto entry then says what the user does
-(`defaults write -g`), which is what kawoosh's author did.
-
-Either way, the physical-key check RG15 could not do: with the global
-written on, run `modal_editor`, hold `j`, count — one motion is the
-prediction — then `defaults write -g ApplePressAndHoldEnabled -string 0`
-back on this machine.
 
 ## After alpha.14
 
@@ -1331,14 +1287,14 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** RG16 — the press-and-hold decision RG15's check left, a choice before a build — the one entry of the regression pass of 2026-09-19 still open (RG1, the Node and C hosts hearing ⌘Q, was **built 2026-09-19**; RG2 and RG12, the devtools' menus select and its chord, RG3, RG6, RG7, RG8 and RG11, the table's layout and the round's float-floor regression, RG4, the left dock's deferral, RG5, the freeze loop's sign rule and the round's other regression, RG9 and RG10, the select's disabled row through the door and its unchecked options and `current`, RG13, the reader's click behind a modal, RG15, F69 checked in a window and found inert, and RG14, the ten nits and the two devtools defects taken with them, **built 2026-09-20**); after it C41 — a profile of `frame_1k_curves` at the drop-zone
+**Build next.** Nothing of the regression pass of 2026-09-19 is open (RG1, the Node and C hosts hearing ⌘Q, was **built 2026-09-19**; RG2 and RG12, the devtools' menus select and its chord, RG3, RG6, RG7, RG8 and RG11, the table's layout and the round's float-floor regression, RG4, the left dock's deferral, RG5, the freeze loop's sign rule and the round's other regression, RG9 and RG10, the select's disabled row through the door and its unchecked options and `current`, RG13, the reader's click behind a modal, RG15, F69 checked in a window and found inert, RG14, the ten nits and the two devtools defects taken with them, and RG16, the door removed on RG15's finding, **built 2026-09-20**); next is C41 — a profile of `frame_1k_curves` at the drop-zone
 commit against the one before, the bisect already done; then W19, when
 a Windows or Linux round comes (the macOS half of ADR 0031 is built and
 verified; the fallback elsewhere is honest and positionless). Nothing else filed is open. The rounds since the alpha.14 tag, newest first:
-the regression pass of 2026-09-19 over F67–F75 (RG1–RG16 — fifteen
-built or done between 2026-09-19 and 2026-09-20, RG14's ten nits
-**done 2026-09-20**, RG16 the one open, a decision) is what the
-paragraph opens with. Before it, alpha.16's own nine: F75 — the table
+the regression pass of 2026-09-19 over F67–F75 (RG1–RG16 — all
+sixteen built or done between 2026-09-19 and 2026-09-20, RG14's ten
+nits and RG16's removal of the press-and-hold door **done
+2026-09-20** last) is what the paragraph opens with. Before it, alpha.16's own nine: F75 — the table
 — from the kawoosh devtools-tables report, **built 2026-09-17**; F74 —
 the app hearing its window go — from the kawoosh session report of
 the same day, **built 2026-09-17** (Rust only, as RG1 found and
@@ -2055,7 +2011,7 @@ move.
 
 - `!` **F74** — [An app never hears its window go: the close button drops it, ⌘Q ends the process, and neither is a key](backlog/closed-2026-09.md#-f74--an-app-never-hears-its-window-go-the-close-button-drops-it-q-ends-the-process-and-neither-is-a-key--done-2026-09-17) — done (2026-09-17) — `App::teardown`, once, from the loop's `exiting` and a pumped runner's retirement
 
-**From the regression pass of 2026-09-19** — RG1 built the same day, RG2 and RG12 on 2026-09-20, the five table entries RG3, RG6, RG7, RG8 and RG11, the left dock's RG4, the freeze loop's RG5, the select's RG9 and RG10, the reader's RG13, F69's check RG15 and the nits RG14 the same day; RG16 open above
+**From the regression pass of 2026-09-19** — RG1 built the same day, RG2 and RG12 on 2026-09-20, the five table entries RG3, RG6, RG7, RG8 and RG11, the left dock's RG4, the freeze loop's RG5, the select's RG9 and RG10, the reader's RG13, F69's check RG15, the nits RG14 and the removal RG16 the same day; none open
 
 - `!` **RG1** — [A Node or C app still never hears ⌘Q: F74's `teardown` is a Rust `App` method, and the loops the other hosts "own" end the same way](backlog/closed-2026-09.md#-rg1--a-node-or-c-app-still-never-hears-q-f74s-teardown-is-a-rust-app-method-and-the-loops-the-other-hosts-own-end-the-same-way--done-2026-09-19) — done (2026-09-19) — `teardown(model)` in `runWindowed`'s / `createApp`'s config over `KuiWindow.onTeardown`, `kui_on_teardown(fn)` before `kui_run` (ABI 18 kept), the verb-table row, the once-across-ends test; both hosts checked under ⌘Q in the window
 - `!` **RG2** — [A devtools select's menu outlives the panel, and its choice reaches the app as a `menu` event from the devtools origin](backlog/closed-2026-09.md#-rg2--a-devtools-selects-menu-outlives-the-panel-and-its-choice-reaches-the-app-as-a-menu-event-from-the-devtools-origin--done-2026-09-20) — done (2026-09-20) — the panel's menu closes when this window stops building the panel; a devtools-origin event is taken back whatever the panel's state
@@ -2073,6 +2029,7 @@ move.
 
 - `.` **RG14** — [Docs and parity nits from the pass, all one line each](backlog/closed-2026-09.md#-rg14--docs-and-parity-nits-from-the-pass-all-one-line-each--done-2026-09-20) — done (2026-09-20) — nine of ten as written, (c) already RG1's, (f) wrong as filed (C's `kui_nodes` carries `table`; pinned); ADR 0033 decision 10 (a percent column's basis), the solid caret's unfocused phase is the view's (F68 amended, `modal_editor` hollow); plus the pick over a pending tab name and case-folded own tab names
 - `.` **RG15** — [F69 was not checked in a window: the pin is proven against `NSUserDefaults`, not against AppKit's read](backlog/closed-2026-09.md#-rg15--f69-was-not-checked-in-a-window-the-pin-is-proven-against-nsuserdefaults-not-against-appkits-read--done-2026-09-20) — done (2026-09-20) — checked: HIToolbox reads the global domain by name and no per-process default reaches it, the named fallback included; the door is inert on macOS 27 and says so; RG16 holds the decision
+- `!` **RG16** — [F69's door is inert: HIToolbox reads the user's global domain by name, and which mechanism replaces the pin, if any, is a decision](backlog/closed-2026-09.md#-rg16--f69s-door-is-inert-hitoolbox-reads-the-users-global-domain-by-name-and-which-mechanism-replaces-the-pin-if-any-is-a-decision--done-2026-09-20) — done (2026-09-20) — option (c), the user chose: the door removed from all three bindings while alpha.16 is unreleased; the howto says it is the user's setting
 
 **From the kawoosh devtools-tables report (2026-09-17)** — F75, filed and built the same day
 

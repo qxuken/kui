@@ -207,13 +207,13 @@
 /// node was. The same version adds `kui_input_drag_files`,
 /// `kui_input_drop_files`, `kui_input_drag_cancel`, `kui_is_drop_target`
 /// and `kui_drop_target` — five functions, nothing the library writes
-/// moved. Still at 18: `kui_set_devtools_tab`, `kui_devtools_current_tab`,
-/// `kui_press_and_hold` and `kui_on_teardown` — functions, no struct
-/// (backlog RG1 chose the setter over a `KuiRunConfig` append for the
-/// last: the config is the window and `kui_run` takes none) — and
-/// `kui_select` (backlog F73, a widget function), `KUI_TABLE` (F75, a
-/// value of `KuiSpec.dir`) and `KUI_VALUE_CARET_SOLID` (F68, a bit in
-/// `value_set`): nothing a host had laid out moved for any of the three.
+/// moved. Still at 18: `kui_set_devtools_tab`, `kui_devtools_current_tab`
+/// and `kui_on_teardown` — functions, no struct (backlog RG1 chose the
+/// setter over a `KuiRunConfig` append for the last: the config is the
+/// window and `kui_run` takes none) — and `kui_select` (backlog F73, a
+/// widget function), `KUI_TABLE` (F75, a value of `KuiSpec.dir`) and
+/// `KUI_VALUE_CARET_SOLID` (F68, a bit in `value_set`): nothing a host
+/// had laid out moved for any of the three.
 pub const KUI_ABI_VERSION: u32 = 18;
 
 /// The ABI version this library implements, for a host to compare against

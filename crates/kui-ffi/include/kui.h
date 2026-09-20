@@ -225,10 +225,10 @@ extern "C" {
  * kui_input_drag_cancel, kui_is_drop_target and kui_drop_target - five
  * functions, nothing the library writes moved. Still at 18:
  * kui_set_devtools_tab and kui_devtools_current_tab - two functions, no
- * struct - kui_press_and_hold and kui_on_teardown, two more, kui_select
- * (a widget function), KUI_TABLE (a value of a field KuiSpec already
- * had) and KUI_VALUE_CARET_SOLID (a bit in value_set) - nothing a host
- * had laid out moved for any of the three (backlog F73, F75, F68).
+ * struct - kui_on_teardown, one more, kui_select (a widget function),
+ * KUI_TABLE (a value of a field KuiSpec already had) and
+ * KUI_VALUE_CARET_SOLID (a bit in value_set) - nothing a host had laid
+ * out moved for any of the three (backlog F73, F75, F68).
  */
 #define KUI_ABI_VERSION 18u
 uint32_t kui_abi_version(void);
@@ -3025,9 +3025,8 @@ bool kui_run(KuiStr title, KuiViewFn view, KuiEventFn on_event, void *user);
  * so this is the only thing a host runs on Cmd-Q - save here what you
  * would lose with the window (a session, a draft, a position). Nothing
  * draws by then. The last call before the run wins, and the run takes it,
- * so the next run starts with none. A free function, like
- * kui_press_and_hold: kui_run's app is three arguments and not a struct,
- * and KuiRunConfig is the window. */
+ * so the next run starts with none. A free function: kui_run's app is
+ * three arguments and not a struct, and KuiRunConfig is the window. */
 typedef void (*KuiTeardownFn)(void *user);
 void kui_on_teardown(KuiTeardownFn teardown);
 
@@ -3093,23 +3092,6 @@ typedef struct KuiRunConfig {
  * decision. */
 bool kui_run_with(KuiCtx *ctx, KuiStr title, const KuiRunConfig *config,
                   KuiViewFn view, KuiEventFn on_event, void *user);
-
-/* macOS: whether holding a letter key opens the accent picker (the
- * platform's press-and-hold, on unless the user turned it off) or repeats
- * the key, as every other platform does. With it on, a held e offers
- * "é è ê" and a held j does nothing at all - so a host whose keys are
- * commands (a modal editor, where j held is a motion) passes false before
- * kui_run; one that is typed into leaves it, the picker being how its
- * users write accents. This process alone, never written to the user's
- * preferences; a no-op on every other platform, where a held key repeats
- * already.
- *
- * Inert on macOS 27 (backlog RG15): the pin is a per-process default,
- * and HIToolbox reads the user's global domain by name, which no
- * per-process default reaches. The user's `defaults write -g
- * ApplePressAndHoldEnabled -bool false` is what works today; what the
- * door does instead is RG16's decision. */
-void kui_press_and_hold(bool on);
 
 /* -- Extension ABI: C as the guest rather than the host ------------------
  *

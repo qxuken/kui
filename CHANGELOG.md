@@ -23,7 +23,7 @@ was the first bare bump to break an app in five releases).
 
 ## 0.1.0-alpha.16 (unreleased)
 
-**What breaks.** Nothing: five doors, a prop, a widget, an element and
+**What breaks.** Nothing: four doors, a prop, a widget, an element and
 a `dir` value added, the ABI at 18 and the frame at v15 (a new op for
 the select element; the addon and the JS ship together, and an older
 addon refuses the newer encoder by version rather than misreading it;
@@ -101,9 +101,8 @@ hole by hand will see.
   app would have kept; under the hood `KuiWindow.onTeardown(cb)` is the
   addon's door, for a driver of its own. C: `kui_on_teardown(fn)` before
   `kui_run` / `kui_run_with`, called once with the run's `user` — a free
-  function like `kui_press_and_hold`, since `kui_run`'s app is three
-  arguments and not a struct and `KuiRunConfig` is the window, so ABI
-  stays 18. The verb table has the row (`App::teardown`); the C counter
+  function, since `kui_run`'s app is three arguments and not a struct
+  and `KuiRunConfig` is the window, so ABI stays 18. The verb table has the row (`App::teardown`); the C counter
   prints its count as it goes, and the Node harness forwards an
   example's `teardown` as the Rust one does. Both checked in the window
   on macOS: ⌘Q through System Events prints the teardown line and
@@ -144,27 +143,6 @@ hole by hand will see.
   widget, and the choice arrives as the `menu` event each binding already
   reads. A `select` scene in the conformance corpus, built in all four
   adapters; a Node example beside the Rust one; the props.md row.
-
-- **A press-and-hold door — inert on macOS 27** (backlog F69, from
-  kawoosh on a second Mac: `j` held moved one line, `e` held opened the
-  accent picker — the platform's press-and-hold, on by default and off
-  only on the machine it had been developed on; and backlog RG15, which
-  checked it). `Launcher::press_and_hold(false)` / `pressAndHold: false`
-  in `WindowOptions` / `kui_press_and_hold(false)` before `kui_run` is
-  the app saying a held letter should repeat, as it does on every other
-  platform; left alone, the user's own setting stands, which is what an
-  app that is typed into wants. It pins the process's argument domain —
-  what `-ApplePressAndHoldEnabled NO` on the command line sets — and
-  writes nothing to the user's preferences; a no-op elsewhere. **It does
-  not take effect**: the read that decides is HIToolbox's, of the user's
-  global domain by name (`CFPreferencesCopyValue` with
-  `kCFPreferencesAnyApplication`), which no per-process default reaches
-  — not this pin, not a registered default, not the app's own domain —
-  so on a Mac with press-and-hold on, a held `j` still moves once. What
-  works today is the user's `defaults write -g ApplePressAndHoldEnabled
-  -bool false`; the door's mechanism, if any, is RG16's decision, and
-  the door's test says both halves. The C counter and the modal editor
-  say it; the verb table has the row.
 
 - **A caret that does not blink** (backlog F68, from kawoosh idling in
   normal mode: sixteen frames in eight seconds with nothing happening —

@@ -14,9 +14,8 @@ struct CApp {
 }
 
 /// The teardown callback `kui_on_teardown` set, for the next `kui_run` /
-/// `kui_run_with` on any thread to take: a process setting like the
-/// press-and-hold pin, since `kui_run`'s app is three arguments and not
-/// a struct (backlog RG1).
+/// `kui_run_with` on any thread to take: a process setting, since
+/// `kui_run`'s app is three arguments and not a struct (backlog RG1).
 static ON_TEARDOWN: std::sync::Mutex<Option<TeardownFn>> = std::sync::Mutex::new(None);
 
 impl kui::App for CApp {
@@ -56,16 +55,6 @@ impl kui::App for CApp {
     }
 }
 
-/// macOS: whether holding a letter key opens the accent picker (the
-/// platform's press-and-hold) or repeats the key, as every other platform
-/// does — for this process, before `kui_run` (backlog F69). A host whose
-/// keys are commands says false; one that is typed into leaves it. Never
-/// written to the user's preferences; a no-op elsewhere.
-#[unsafe(no_mangle)]
-pub extern "C" fn kui_press_and_hold(on: bool) {
-    guard((), || kui::press_and_hold(on))
-}
-
 /// What the next `kui_run` / `kui_run_with` calls as its window goes for
 /// good — the close button, Quit from the menu or the dock, a
 /// `KUI_WINDOW_CLOSE` command on it — once, with the `user` the run's
@@ -76,8 +65,8 @@ pub extern "C" fn kui_press_and_hold(on: bool) {
 /// the run wins; a run takes it, so the next run starts with none.
 /// Nothing draws by then, and the context the callback might reach is
 /// the window's, not the host's: save, and return. A free function
-/// rather than a field, as `kui_press_and_hold` is: `kui_run`'s app is
-/// three arguments and not a struct, and `KuiRunConfig` is the window,
+/// rather than a field: `kui_run`'s app is three arguments and not a
+/// struct, and `KuiRunConfig` is the window,
 /// so a field there would reach `kui_run_with` alone and cost the [in]
 /// bump AR50 asks for.
 #[unsafe(no_mangle)]

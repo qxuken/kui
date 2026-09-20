@@ -5425,12 +5425,6 @@ test("a cells cursor's shapes are the addon's list, and a window's size and chro
   // refused the same way.
   assert.equal(windowOptions({ textAa: 'gray' }).textAa, 'gray');
   assert.throws(() => new KuiWindow('t', { textAa: 'lcd' }), /textAa must be "auto", "gray" or "subpixel"/);
-  // `pressAndHold` is the launcher's `press_and_hold`, C's
-  // `kui_press_and_hold` (F69): a boolean through `windowOptions`, left
-  // out is the user's own, and anything else is refused.
-  assert.equal(windowOptions({ pressAndHold: false }).pressAndHold, false);
-  assert.equal(windowOptions().pressAndHold, undefined);
-  assert.throws(() => new KuiWindow('t', { pressAndHold: 'no' }), /pressAndHold must be a boolean/);
 });
 
 test('an index is a row number, and anything else is refused', () => {

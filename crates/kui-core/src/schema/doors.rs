@@ -1164,13 +1164,6 @@ pub const DOORS: &[Door] = &[
         doc: "The window's opening size; `min_size` / `max_size` / `chrome` / `text_aa` / `diagnostics` are the rest of the set, and each binding's form carries them all (`min_w`, `chrome`, `text_aa`, `diagnostics` in C; `minWidth`, `chrome`, `textAa`, `diagnostics` in Node). `Launcher::devtools` and `Launcher::core` are the two the others reach another way: `kui_set_devtools` / `setDevtools` on the context, and the context handed to `kui_run_with` *is* the core.",
     },
     Door {
-        rust: "Launcher::press_and_hold",
-        c: Is("kui_press_and_hold"),
-        node: As("`pressAndHold` in `WindowOptions`"),
-        lua: No(GUEST),
-        doc: "macOS: whether holding a letter key opens the accent picker (the platform's press-and-hold, on unless the user turned it off) or repeats the key, as every other platform does — `false` for an app whose keys are commands, a modal editor where `j` held is a motion; left alone for one that is typed into. This process alone, never written to the user's preferences; a no-op elsewhere. C's is a free function called before `kui_run`, since it is a process setting and not a struct's field. **Inert on macOS 27** (backlog RG15): HIToolbox reads the user's global domain by name, which no per-process default reaches; `defaults write -g ApplePressAndHoldEnabled -bool false` is what works today, and what the door does instead is RG16's decision.",
-    },
-    Door {
         rust: "App::teardown",
         c: Is("kui_on_teardown"),
         node: Is("KuiWindow.onTeardown"),

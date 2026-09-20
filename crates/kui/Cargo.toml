@@ -104,10 +104,6 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
     # The Look Up panel takes an attributed string (ADR 0017 step 5).
     "NSAttributedString",
     "NSGeometry",
-    # Press-and-hold is a user default the process reads (F69).
-    "NSUserDefaults",
-    "NSDictionary",
-    "NSValue",
 ] }
 
 # Every example in the repo lives under examples/ at the root, one directory

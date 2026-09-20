@@ -562,23 +562,20 @@ macOS's press-and-hold: holding a letter offers its accents (`e` → `é è
 ê`) instead of repeating it, and a letter with no accents does nothing
 at all — on by default, and off only on a machine whose owner turned it
 off, which is why it works on one Mac and not the next. Every other
-platform repeats. An app whose keys are commands — a modal editor, where
-`j` held is a motion — says so at launch:
-`kui::app(..).press_and_hold(false)` (Node `pressAndHold: false` in
-`WindowOptions`, C `kui_press_and_hold(false)` before `kui_run`), and an
-app that is typed into leaves it: the picker is how its users write
-accents.
+platform repeats. It is the **user's setting, not the app's**: the read
+that decides is HIToolbox's, of the user's global preference by name,
+and no per-process default reaches it — not the argument domain, not a
+registered default, not the app's own domain (F69 built a door that
+pinned one; RG15 found it inert and RG16 removed it — the backlog
+archive has the measurements). What works is
 
-Today the door **does nothing on macOS 27**: it pins a per-process
-default (the argument domain, what `-ApplePressAndHoldEnabled NO` on the
-command line sets), and the read that decides is HIToolbox's, of the
-user's *global* domain by name — which no per-process default reaches,
-not this one, not a registered default, not the app's own domain. What
-works is the user's own setting, `defaults write -g
-ApplePressAndHoldEnabled -bool false` (and a relaunch); the door's next
-mechanism, if any, is backlog RG16.
+```
+defaults write -g ApplePressAndHoldEnabled -bool false
+```
 
-[`Launcher::press_and_hold` row](props.md#doors)
+and a relaunch — what the owner of a modal editor, where `j` held is a
+motion, has usually done already. An app whose keys are commands can say
+so in its README; kui has nothing to offer it beyond that.
 
 ### How do I reset an editor's text?
 

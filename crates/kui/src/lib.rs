@@ -154,7 +154,6 @@ pub fn app(title: &str) -> Launcher {
         setup_core: Vec::new(),
         deferred_events: false,
         system: SystemEnv::default(),
-        press_and_hold: None,
     }
 }
 
@@ -187,10 +186,6 @@ pub struct Launcher {
     /// The OS settings the app pinned ([`Launcher::system`]); unknown is
     /// not pinned.
     system: SystemEnv,
-    /// Whether holding a letter key opens macOS's accent picker or repeats
-    /// the key ([`Launcher::press_and_hold`]); `None` leaves the user's
-    /// setting.
-    press_and_hold: Option<bool>,
 }
 
 impl Launcher {
@@ -315,28 +310,6 @@ impl Launcher {
         self
     }
 
-    /// macOS: whether holding a letter key opens the accent picker (the
-    /// platform's press-and-hold, on unless the user turned it off) or
-    /// repeats the key, as every other platform does. With it on, a held
-    /// `e` offers `é è ê` and a held `j` does nothing at all — so an app
-    /// whose keys are commands, a modal editor where `j` held is a motion,
-    /// says `false`; one that is typed into leaves it, the picker being
-    /// how its users write accents. Applied to this process alone and
-    /// never written to the user's preferences (`press_and_hold`, the
-    /// free function, is the same thing for a host running its own
-    /// window). Nothing elsewhere: every other platform repeats already.
-    ///
-    /// **Does not take effect on macOS 27** (backlog RG15): the pin is a
-    /// per-process default, and the read HIToolbox makes is of the user's
-    /// global domain by name, which no per-process default reaches — see
-    /// [`press_and_hold`]. The user's `defaults write -g
-    /// ApplePressAndHoldEnabled -bool false` is what works today; what
-    /// the door does instead is RG16's decision.
-    pub fn press_and_hold(mut self, on: bool) -> Self {
-        self.press_and_hold = Some(on);
-        self
-    }
-
     /// Shorthand for `.chrome(Chrome::Custom)`.
     pub fn custom_titlebar(self) -> Self {
         self.chrome(Chrome::Custom)
@@ -426,10 +399,6 @@ impl Launcher {
         // Diagnostics are a development aid: on in debug builds unless the
         // launcher says otherwise, so a shipped app pays and prints nothing.
         let diagnostics = self.diagnostics.unwrap_or(cfg!(debug_assertions));
-        // Before the first key press, which is all the timing it needs.
-        if let Some(on) = self.press_and_hold {
-            press_and_hold(on);
-        }
         // A handed core brings its session; a made one gets a fresh one.
         let (session, mut core) = match self.core {
             Some(core) => (core.session().clone(), core),
@@ -955,29 +924,6 @@ pub fn run<A: App>(
 /// OS clamps a resize once the window exists — so a host reading
 /// `PumpRunner::window_size` before the first frame sees the real size.
 /// `min` wins where the two bounds cross, matching the platforms.
-/// macOS: whether holding a letter key opens the accent picker or repeats
-/// the key, for this process — see [`Launcher::press_and_hold`], which is
-/// this at launch. A host that runs its own window (the C runner, a pumped
-/// loop) calls it before the first key press; a no-op elsewhere, where a
-/// held key repeats already (backlog F69).
-///
-/// Inert on macOS 27 (backlog RG15, checked 2026-09-20 with the read
-/// caught by an interposed `CFPreferencesCopyValue`): HIToolbox decides
-/// per key event by reading `ApplePressAndHoldEnabled` from the *global*
-/// domain by name — `kCFPreferencesAnyApplication`, current user, any
-/// host — which sees neither this pin (the argument domain), nor a
-/// registered default, nor the app's own domain, written before launch or
-/// at it. Only the user's `defaults write -g` and five bundle ids
-/// compiled into HIToolbox (MacVim, Vico, Aquamacs, Emacs, Terminal)
-/// reach it. Left in place, with its test saying both halves, until RG16
-/// decides between the two mechanisms that remain.
-pub fn press_and_hold(on: bool) {
-    #[cfg(target_os = "macos")]
-    macos_text_input::set_press_and_hold(on);
-    #[cfg(not(target_os = "macos"))]
-    let _ = on;
-}
-
 fn clamp_size(size: (f64, f64), min: Option<(f64, f64)>, max: Option<(f64, f64)>) -> (f64, f64) {
     let (mut w, mut h) = size;
     if let Some((mw, mh)) = max {
@@ -2301,52 +2247,6 @@ pub use kui_wgpu::{RenderError, Renderer, wgpu};
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// The press-and-hold pin (F69) lands in `NSUserDefaults`'s own lookup
-    /// — the argument domain first — in both directions, whatever this
-    /// machine's global default says, and the domain's other entries
-    /// survive the merge. And it does *not* reach the read HIToolbox makes
-    /// (RG15): `CFPreferencesCopyValue` of the global domain by name
-    /// answers the user's value, unchanged by the pin either way — which
-    /// is why the door is inert on macOS 27, and what this test would
-    /// stop saying if a macOS ever consulted the volatile domains there.
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn press_and_hold_is_pinned_over_the_users_default_and_read_back() {
-        use objc2_foundation::{NSArgumentDomain, NSUserDefaults, ns_string};
-        let defaults = NSUserDefaults::standardUserDefaults();
-        // SAFETY: a read of Foundation's constant; the domain set is
-        // strings to strings, what `-key value` arguments are.
-        let (domain, before) = unsafe {
-            let domain: &objc2_foundation::NSString = NSArgumentDomain;
-            let other = objc2_foundation::NSDictionary::from_slices::<objc2_foundation::NSString>(
-                &[ns_string!("KuiTestArgument")],
-                &[&**ns_string!("kept") as &objc2::runtime::AnyObject],
-            );
-            defaults.setVolatileDomain_forName(&other, domain);
-            (
-                domain,
-                defaults.boolForKey(ns_string!("ApplePressAndHoldEnabled")),
-            )
-        };
-        let global = macos_text_input::global_press_and_hold();
-        press_and_hold(!before);
-        assert_eq!(macos_text_input::press_and_hold(), !before);
-        assert_eq!(
-            macos_text_input::global_press_and_hold(),
-            global,
-            "the global-domain read HIToolbox makes does not see the pin (RG15)"
-        );
-        press_and_hold(before);
-        assert_eq!(macos_text_input::press_and_hold(), before);
-        assert_eq!(macos_text_input::global_press_and_hold(), global);
-        let kept = defaults
-            .volatileDomainForName(domain)
-            .objectForKey(ns_string!("KuiTestArgument"))
-            .is_some();
-        assert!(kept, "the argument domain's other entries survived");
-        defaults.removeVolatileDomainForName(domain);
-    }
 
     struct Empty;
     impl App for Empty {
