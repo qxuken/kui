@@ -208,9 +208,9 @@ fn key_press_of(
 ///
 /// Passing both is what makes a keymap portable: a layout that produces
 /// something outside ASCII (Cyrillic, Greek, Hebrew, Arabic) would leave a
-/// Latin keymap matching nothing, so kui reports the position's US letter
-/// as `code` instead, exactly as the winit runner does. A host that passes
-/// NULL keeps the old behaviour.
+/// Latin keymap matching nothing, so kui reports the position's US key
+/// as `code` instead, as Shift prints it — exactly as the winit runner
+/// does. A host that passes NULL keeps the old behaviour.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_input_key_down(
     ptr: *mut KuiCtx,

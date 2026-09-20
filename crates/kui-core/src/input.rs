@@ -484,6 +484,37 @@ impl KeyMods {
     }
 }
 
+/// What US-QWERTY prints on a key under Shift: the upper-case letter, the
+/// symbol above a digit, the pair on a punctuation key. Anything else —
+/// already shifted, or not a US key at all — is itself.
+fn us_shifted(c: char) -> char {
+    match c {
+        'a'..='z' => c.to_ascii_uppercase(),
+        '1' => '!',
+        '2' => '@',
+        '3' => '#',
+        '4' => '$',
+        '5' => '%',
+        '6' => '^',
+        '7' => '&',
+        '8' => '*',
+        '9' => '(',
+        '0' => ')',
+        '`' => '~',
+        '-' => '_',
+        '=' => '+',
+        '[' => '{',
+        ']' => '}',
+        '\\' => '|',
+        ';' => ':',
+        '\'' => '"',
+        ',' => '<',
+        '.' => '>',
+        '/' => '?',
+        other => other,
+    }
+}
+
 /// One key press, delivered to whatever holds key focus. Carries both the
 /// binding view (`code` + `mods`) and the typing view (`text`), so an app can
 /// serve a modal keymap and an insert mode from the same event.
@@ -551,12 +582,22 @@ impl KeyPress {
     /// browsers use to keep `⌘C` copying on a Russian layout. A layout key
     /// this vocabulary cannot name falls back the same way.
     ///
+    /// The stand-in is what US-QWERTY would have produced for the *same
+    /// press*, Shift included: a window reports `physical` from a table
+    /// that never sees Shift (backlog F65), so ⇧ on the key printed J is
+    /// `J`, not `j`, and ⇧ on the key printed `;` is `:` — the key a vim
+    /// hand on a Russian layout reaches for, and gets `;` from otherwise.
+    ///
     /// `physical` is reported either way, for a keymap that would rather
     /// bind the finger than the label. See `docs/adr/0002` decision 11.
     pub fn from_layout(layout: KeyCode, physical: KeyCode, mods: KeyMods) -> Self {
+        let stand_in = || match (mods.shift, physical) {
+            (true, KeyCode::Char(c)) => KeyCode::Char(us_shifted(c)),
+            _ => physical,
+        };
         let code = match layout {
-            KeyCode::Char(c) if !c.is_ascii() => physical,
-            KeyCode::Unknown => physical,
+            KeyCode::Char(c) if !c.is_ascii() => stand_in(),
+            KeyCode::Unknown => stand_in(),
             named_or_ascii => named_or_ascii,
         };
         Self {

@@ -23,10 +23,14 @@ was the first bare bump to break an app in five releases).
 
 ## 0.1.0-alpha.17 (unreleased)
 
-**What breaks.** Nothing: no door, the ABI at 18 and the frame at v15.
+**What breaks.** No door, the ABI at 18 and the frame at v15.
 A windowed app on Windows that prints, launched from a shell, prints
 there now where it printed nowhere (under Added) — an app that wrote
-its own `AttachConsole` for that can delete it.
+its own `AttachConsole` for that can delete it. `code` under Shift on a
+layout that does not speak ASCII is the shifted US-QWERTY key — `J`,
+`:`, `~` — where it was the unshifted one (under Fixed); a keymap that
+matched `j` and read `shift` beside it to tell the two apart reads
+`code` alone now.
 
 ### Added
 
@@ -57,6 +61,28 @@ its own `AttachConsole` for that can delete it.
   "How do I stop the console window on Windows?" has the line.
 
 ### Fixed
+
+- **Shift was lost under the layout fallback: `J` on a Russian layout
+  was `j`, and Shift on the key printed `;` was `;`** (backlog F76,
+  from kawoosh's Russian-layout report). `KeyPress::from_layout` stands
+  in the US-QWERTY key at the position when the layout's key is not
+  ASCII, and a window reports that position from a table that never
+  sees Shift (F65), so every shifted press on such a layout arrived as
+  its unshifted key — a modal editor's `J`, `:`, `>`, `~` and `{` were
+  `j`, `;`, `.`, `` ` `` and `[`, and the one key a vim hand on a
+  Russian layout reaches for most, `:` on the `;` key, was the repeat
+  of a find. The stand-in is now what US-QWERTY prints for the same
+  press, Shift included: the upper-case letter, the symbol above the
+  digit, the pair on the punctuation key. The layout's own ASCII was
+  never touched and still is not (Russian's `:` on Shift+6 arrives as
+  itself), and `physical` stays the unshifted position it always was.
+  The winit runner's Alt path takes the logical key with every
+  modifier stripped, Shift included, and now resolves the fallback the
+  same way, so ⌥⇧ on the key printed J is `j` on a Russian layout as
+  it is on a US one; a C or Node host that passes `physical` gets the
+  fold from the core. ADR 0002 decision 11 says so. `crates/kui-core/
+  tests/keys.rs` pins seven shifted keys of a Russian layout, a dead
+  key under Shift, and the two that must not move.
 
 - **A lost GPU device is opened again, and the loss is a real one.** A
   driver update or a GPU reset removes the device under a running app;

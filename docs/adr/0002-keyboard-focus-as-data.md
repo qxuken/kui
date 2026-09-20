@@ -237,8 +237,10 @@ So both, with a stated default:
     ASCII it wins, so a chord lands on the key the user can see (Dvorak's
     ⌥v on the key printed V, AZERTY's ⌘a on the one printed A, QWERTZ's ⌘z
     on the one printed Z). When it is not — or names nothing this
-    vocabulary knows, as a dead key does — the US-QWERTY letter at that
-    position stands in, so a Latin keymap keeps matching. This is the rule
+    vocabulary knows, as a dead key does — the US-QWERTY key at that
+    position stands in, so a Latin keymap keeps matching; as Shift prints
+    it, since the position is reported unshifted (`J`, `:` and `~` on a
+    Russian layout, not `j`, `;` and `` ` ``; F76, 2026-09-21). This is the rule
     browsers use to keep ⌘C copying on a Russian layout, and it is the
     reason an app can stay ignorant that layouts exist. `text` is
     untouched: the typing view is always the layout's own character.

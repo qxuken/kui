@@ -33,7 +33,9 @@ syntax-tab, idle-frame, second-Mac, mid-frame-dock and devtools-strip
 reports the same day, after it, F73 — the select in the other three
 bindings — the day after, F74 — the app hearing its window go — from
 the kawoosh session report of the same day, and F75 — the table — from
-the devtools-tables report of the same day. The index
+the devtools-tables report of the same day, and F76 — Shift under the
+layout fallback — from the kawoosh Russian-layout report of 2026-09-21,
+the day it was filed. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -1224,6 +1226,16 @@ binding, and for the hand-rolled lists in both devtools to be it. One
 entry, F75, **built 2026-09-17**, the day it was filed, and in the
 archive.
 
+## From the kawoosh Russian-layout report (2026-09-21)
+
+kawoosh's roadmap had "`:` in a Russian layout" as its first open
+correctness gap, and checking it against the code found the hybrid
+rule of ADR 0002 decision 11 built and pinned — and Shift missing from
+it: the stand-in for a non-ASCII layout key was the position's
+*unshifted* US key, so `J` was `j`, `~` was `` ` `` and Shift on the
+key printed `;` was `;`. One entry, F76, **built 2026-09-21**, the day
+it was filed, and in the archive.
+
 ## From the regression pass of 2026-09-19
 
 A review of everything since the alpha.15 tag — F67–F75, nine features
@@ -2038,3 +2050,7 @@ move.
 **From the kawoosh devtools-tables report (2026-09-17)** — F75, filed and built the same day
 
 - `~` **F75** — [Every key/value list in the devtools lines its values up behind a label box of a width picked by hand](backlog/closed-2026-09.md#-f75--every-keyvalue-list-in-the-devtools-lines-its-values-up-behind-a-label-box-of-a-width-picked-by-hand--done-2026-09-17) — done (2026-09-17) — `NodeSpec::table()`, `dir="table"`, `grid { }`, `KUI_TABLE`: a column whose rows' cells align, in the layout passes (ADR 0033); the six lists are tables
+
+**From the kawoosh Russian-layout report (2026-09-21)** — F76, filed and built the same day
+
+- `!` **F76** — [Shift is lost under the layout fallback: `J` on a Russian layout is `j`, and Shift on the key printed `;` is `;`](backlog/closed-2026-09.md#-f76--shift-is-lost-under-the-layout-fallback-j-on-a-russian-layout-is-j-and-shift-on-the-key-printed--is---done-2026-09-21) — done (2026-09-21) — `from_layout` stands in the US-QWERTY key as Shift prints it; the winit runner's Alt path resolves shift-less, as it reads the key; ADR 0002 decision 11 amended

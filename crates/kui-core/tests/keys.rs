@@ -742,6 +742,52 @@ fn a_non_latin_layout_reports_the_position_as_code() {
     }
 }
 
+/// Shift under the fallback: a window reports `physical` from a table that
+/// never sees Shift, so the letter that stands in has to be shifted here,
+/// or `J` on a Russian layout is `j` and the `:` a vim hand reaches for on
+/// the `;` key is `;`. The code is what US-QWERTY would have produced for
+/// the same press — the upper-case letter, the shifted symbol.
+#[test]
+fn shift_under_the_fallback_is_the_us_shifted_symbol() {
+    let shift = KeyMods {
+        shift: true,
+        ..KeyMods::default()
+    };
+    for (layout, physical, want) in [
+        ('О', 'j', 'J'),
+        ('Ж', ';', ':'),
+        ('Ё', '`', '~'),
+        ('Б', ',', '<'),
+        ('Ю', '.', '>'),
+        ('Х', '[', '{'),
+        ('№', '3', '#'),
+    ] {
+        let kp = KeyPress::from_layout(KeyCode::Char(layout), KeyCode::Char(physical), shift);
+        assert_eq!(
+            kp.code,
+            KeyCode::Char(want),
+            "shift-{physical} on a Russian layout"
+        );
+        assert_eq!(
+            kp.physical,
+            KeyCode::Char(physical),
+            "the position stays unshifted"
+        );
+    }
+    // A dead key under Shift names its slot's shifted symbol.
+    let kp = KeyPress::from_layout(KeyCode::Unknown, KeyCode::Char('/'), shift);
+    assert_eq!(kp.code, KeyCode::Char('?'));
+    // Without Shift the fallback is the plain key, as before.
+    let kp = KeyPress::from_layout(KeyCode::Char('ж'), KeyCode::Char(';'), KeyMods::default());
+    assert_eq!(kp.code, KeyCode::Char(';'));
+    // A layout that speaks ASCII under Shift is not touched: Russian's own
+    // `:` on Shift+6, and a Latin layout's upper-case letter.
+    let kp = KeyPress::from_layout(KeyCode::Char(':'), KeyCode::Char('6'), shift);
+    assert_eq!(kp.code, KeyCode::Char(':'));
+    let kp = KeyPress::from_layout(KeyCode::Char('J'), KeyCode::Char('j'), shift);
+    assert_eq!(kp.code, KeyCode::Char('J'));
+}
+
 /// The other half: a Latin layout keeps its own key, so a chord lands on the
 /// key the user can *see* rather than wherever QWERTY would have put it.
 #[test]

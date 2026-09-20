@@ -197,8 +197,17 @@ impl<A: App> Shell<A> {
         // US-QWERTY letter at that position when it does not. Every driver
         // goes through it, so a C host with its own windowing gets the same
         // rule as this one.
-        let kp = KeyPress::from_layout(logical_code, physical, kmods);
+        // The Alt branch above took the logical key with every modifier
+        // stripped, Shift included, so its fallback is resolved the same
+        // way: ⌥⇧ on the key printed J is `j` on a US layout and stays
+        // `j` on a Russian one, rather than `J` on the second alone.
+        let resolve_mods = KeyMods {
+            shift: kmods.shift && !kmods.alt,
+            ..kmods
+        };
+        let kp = KeyPress::from_layout(logical_code, physical, resolve_mods);
         let kp = KeyPress {
+            mods: kmods,
             text: ktext,
             repeat: event.repeat,
             ..kp
