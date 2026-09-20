@@ -519,8 +519,9 @@ that are hard to reverse and would look arbitrary without their context.
   cannot have; where the two bounds cross, the minimum wins. The Rust
   runner also reads `KUI_WINDOW=WxH` from the environment as the opening
   size — over `.size(..)`, inside the bounds — for driving an example at a
-  size without editing it (`KUI_DEVTOOLS` and `KUI_TEXT_AA` are its other
-  two variables).
+  size without editing it (`KUI_DEVTOOLS`, `KUI_TEXT_AA` and
+  `KUI_LOSE_DEVICE=SECS` — the device treated as lost that long after
+  launch, to watch the runner open a new one — are its other variables).
 - **Pointer state is declared, not queried.** A node says what it looks
   like while hovered or pressed (`hover_bg` / `pressed_bg`; JSX `hoverBg`,
   Lua `hover_bg`, `KuiSpec.hover_bg`) and the core swaps the color in when

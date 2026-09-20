@@ -431,6 +431,8 @@ impl Launcher {
             main_core: Some(core),
             panes: Vec::new(),
             gpu: None,
+            reopened: None,
+            pretended_loss: false,
             epoch: std::time::Instant::now(),
             system: system_env::query(),
             pinned_system: self.system,
@@ -1040,6 +1042,12 @@ struct Shell<A: App> {
     panes: Vec<Pane>,
     /// The device every window renders with, from the first renderer.
     gpu: Option<kui_wgpu::Gpu>,
+    /// When the device was last opened again after being lost
+    /// (`reopen_device`), so a device that will not open is tried once a
+    /// second rather than once a frame.
+    reopened: Option<std::time::Instant>,
+    /// Whether `KUI_LOSE_DEVICE` has had its one loss.
+    pretended_loss: bool,
     /// Origin of the frame clock handed to the cores for transitions.
     epoch: std::time::Instant,
     /// What the OS was asked for at startup — the accent colour, the
@@ -1432,6 +1440,7 @@ impl<A: App> Shell<A> {
             system,
             pinned_system,
             audio,
+            pretended_loss,
             ..
         } = self;
         let pane = &mut panes[i];
@@ -1531,6 +1540,17 @@ impl<A: App> Shell<A> {
         macos_text_input::stamp(window, &pane.core);
 
         let t_render = std::time::Instant::now();
+        // KUI_LOSE_DEVICE=SECS marks the device lost that long after
+        // launch, once, to see the reopening below happen without a
+        // driver update to cause it.
+        if let Some(secs) = lose_device_at()
+            && !*pretended_loss
+            && epoch.elapsed().as_secs_f64() >= secs
+            && let Some(r) = pane.renderer.as_ref()
+        {
+            *pretended_loss = true;
+            r.gpu().mark_lost();
+        }
         // The ground under the frame is a theme role like any other
         // (ADR 0019). Without this a view that paints no root background
         // — every example that lets the window show through — would show
@@ -1540,7 +1560,7 @@ impl<A: App> Shell<A> {
         // surface, so a clear component is the byte it lands as, the same
         // way a quad's colour is.
         let ground = pane.core.theme().bg;
-        pane.renderer.clear_color = kui_wgpu::wgpu::Color {
+        let clear = kui_wgpu::wgpu::Color {
             r: ground.r as f64,
             g: ground.g as f64,
             b: ground.b as f64,
@@ -1548,16 +1568,39 @@ impl<A: App> Shell<A> {
         };
         let (dl, atlas) = pane.core.output();
         let mut wait_ms = 0.0;
-        match pane.renderer.render(dl, atlas) {
-            Ok(report) => {
+        let mut reopen = false;
+        let drawn = pane.renderer.as_mut().map(|r| {
+            r.clear_color = clear;
+            r.render(dl, atlas)
+        });
+        match drawn {
+            Some(Ok(report)) => {
                 wait_ms = report.vsync_wait_ms;
                 pane.first_frame = None;
+                pane.surface_tries = 0;
             }
-            Err(kui_wgpu::RenderError::Reconfigure) => {
-                pane.renderer.resize(size.width, size.height);
+            Some(Err(kui_wgpu::RenderError::Reconfigure)) => {
+                if let Some(r) = pane.renderer.as_mut() {
+                    r.resize(size.width, size.height);
+                }
                 window.request_redraw();
             }
-            // Occluded or timed out: nothing to present, try next frame.
+            // The surface is configured wrong for the window — a size the
+            // platform never told us, a swapchain a driver update left
+            // behind: configure it to the window's size and draw again;
+            // a surface that stays wrong is given up with its device.
+            Some(Err(kui_wgpu::RenderError::Validation)) => {
+                pane.surface_tries += 1;
+                if pane.surface_tries <= 3 {
+                    if let Some(r) = pane.renderer.as_mut() {
+                        r.resize(size.width, size.height);
+                    }
+                } else {
+                    eprintln!("kui: the surface stays invalid; reopening the device");
+                    reopen = true;
+                }
+                window.request_redraw();
+            }
             // Occluded or timed out: nothing to present, try next frame —
             // and, until a window has managed one, *schedule* that next
             // frame. A window ordered front reports itself occluded for a
@@ -1566,8 +1609,10 @@ impl<A: App> Shell<A> {
             // it sat blank until a stray mouse move woke it. Only until it
             // has presented once, and only for a bounded number of tries,
             // so a window that really is hidden does not spin.
-            Err(kui_wgpu::RenderError::Skip) => {}
-            Err(err) => eprintln!("kui: render error: {err}"),
+            Some(Err(kui_wgpu::RenderError::Skip)) => {}
+            // The device is gone (a driver update, a GPU reset), or a
+            // frame ago it was and no new one could be opened: open one.
+            Some(Err(kui_wgpu::RenderError::DeviceLost)) | None => reopen = true,
         }
         let render_ms = (t_render.elapsed().as_secs_f32() * 1e3 - wait_ms).max(0.0);
 
@@ -1578,6 +1623,60 @@ impl<A: App> Shell<A> {
             render_ms,
             wait_ms,
         });
+        if reopen {
+            self.reopen_device();
+        }
+    }
+
+    /// The device is gone — a driver update or a GPU reset took it, and
+    /// every swapchain with it — so one new device is opened, and a
+    /// renderer on it for every window, each window's old one dropped
+    /// before its new surface is made (DXGI gives a window one flip-model
+    /// swapchain). The windows keep their cores: the next frame draws
+    /// what the last one would have. A window whose renderer cannot be
+    /// made has none until its next frame tries again; a device that
+    /// cannot be opened is said once a second, not once a frame.
+    fn reopen_device(&mut self) {
+        let now = std::time::Instant::now();
+        if self
+            .reopened
+            .is_some_and(|t| now.duration_since(t) < std::time::Duration::from_secs(1))
+        {
+            return;
+        }
+        self.reopened = Some(now);
+        for pane in &mut self.panes {
+            pane.renderer = None;
+            pane.surface_tries = 0;
+        }
+        self.gpu = None;
+        let mut gpu: Option<kui_wgpu::Gpu> = None;
+        for pane in &mut self.panes {
+            let px = pane.window.inner_size();
+            let made = match &gpu {
+                None => pollster::block_on(kui_wgpu::Renderer::new(
+                    pane.window.clone(),
+                    px.width,
+                    px.height,
+                )),
+                Some(gpu) => {
+                    kui_wgpu::Renderer::new_in(gpu, pane.window.clone(), px.width, px.height)
+                }
+            };
+            match made {
+                Ok(r) => {
+                    let opened = gpu.is_none();
+                    gpu.get_or_insert_with(|| r.gpu().clone());
+                    if opened {
+                        eprintln!("kui: device reopened");
+                    }
+                    pane.renderer = Some(r);
+                    pane.window.request_redraw();
+                }
+                Err(err) => eprintln!("kui: cannot reopen window {}: {err}", pane.id.0),
+            }
+        }
+        self.gpu = gpu;
     }
 }
 
@@ -1681,7 +1780,9 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
             }
             WindowEvent::Resized(size) => {
                 let pane = &mut self.panes[i];
-                pane.renderer.resize(size.width, size.height);
+                if let Some(r) = pane.renderer.as_mut() {
+                    r.resize(size.width, size.height);
+                }
                 pane.window.request_redraw();
             }
             WindowEvent::ScaleFactorChanged { .. } => {
@@ -2243,6 +2344,13 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
 
 // Re-exported so apps can reach the renderer without depending on kui-wgpu.
 pub use kui_wgpu::{RenderError, Renderer, wgpu};
+
+/// `KUI_LOSE_DEVICE=SECS`, read once: when after launch to pretend the
+/// device was lost (`Shell::redraw`), or never.
+fn lose_device_at() -> Option<f64> {
+    static AT: std::sync::OnceLock<Option<f64>> = std::sync::OnceLock::new();
+    *AT.get_or_init(|| std::env::var("KUI_LOSE_DEVICE").ok()?.parse().ok())
+}
 
 #[cfg(test)]
 mod tests {

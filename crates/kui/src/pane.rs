@@ -220,7 +220,14 @@ pub(crate) struct Pane {
     pub(crate) appearance: Appearance,
     pub(crate) core: Core,
     pub(crate) window: Arc<Window>,
-    pub(crate) renderer: kui_wgpu::Renderer,
+    /// What draws into the window — `None` while the device is gone (a
+    /// driver update, a GPU reset) and the next frame is to open a new
+    /// one (`Shell::reopen_device`).
+    pub(crate) renderer: Option<kui_wgpu::Renderer>,
+    /// Frames in a row the surface refused for being configured wrong,
+    /// each answered by configuring it to the window's size again; past
+    /// a few, the device is reopened instead.
+    pub(crate) surface_tries: u8,
     /// Last title actually set on the window; views declare per frame and
     /// we only touch the window on change.
     pub(crate) applied_title: String,

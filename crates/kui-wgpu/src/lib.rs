@@ -141,6 +141,10 @@ struct GpuInner {
     /// shared by every window like the pipelines above, dropped when the
     /// core says the handle is gone (ADR 0025, decisions 2 and 3).
     textures: std::sync::Mutex<std::collections::HashMap<u64, std::sync::Arc<ImageTexture>>>,
+    /// Set by the device's lost callback: a driver update, a GPU reset, a
+    /// hang the OS answered by removing the device. Nothing on it works
+    /// again; a shell opens a new one ([`Gpu::lost`]).
+    lost: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 /// A texture-backed image on the device: the texture, and what was
@@ -187,6 +191,20 @@ impl Gpu {
                 ..Default::default()
             })
             .await?;
+        // What goes wrong on the device is said, not swallowed: an error
+        // outside a scope, and the loss of the device itself — remembered
+        // too, so a frame can tell a dead device from a stale swapchain.
+        device.on_uncaptured_error(std::sync::Arc::new(|e| eprintln!("kui: wgpu: {e}")));
+        let lost = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        device.set_device_lost_callback({
+            let lost = lost.clone();
+            move |reason, message| {
+                if reason == wgpu::DeviceLostReason::Unknown {
+                    eprintln!("kui: device lost: {message}");
+                    lost.store(true, std::sync::atomic::Ordering::Release);
+                }
+            }
+        });
         let gpu = Self(std::sync::Arc::new(GpuInner {
             instance,
             adapter,
@@ -195,8 +213,24 @@ impl Gpu {
             dual_source,
             fragment_pipelines: Default::default(),
             textures: Default::default(),
+            lost,
         }));
         Ok((gpu, surface))
+    }
+
+    /// Whether the device is gone — a driver update or a GPU reset took
+    /// it — so every renderer on it is to be opened again on a new one
+    /// ([`Renderer::render`] says so with [`RenderError::DeviceLost`]).
+    pub fn lost(&self) -> bool {
+        self.0.lost.load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    /// Treats the device as lost from here on, as a driver update would
+    /// — for a shell to see its reopening happen without one.
+    pub fn mark_lost(&self) {
+        self.0
+            .lost
+            .store(true, std::sync::atomic::Ordering::Release);
     }
 
     /// A surface for another window on the same instance — what
@@ -858,6 +892,11 @@ impl Renderer {
         dl: &DisplayList,
         atlas: &mut GlyphAtlas,
     ) -> Result<RenderReport, RenderError> {
+        // A dead device takes no work: everything below would only add
+        // errors to the one that lost it.
+        if self.gpu.lost() {
+            return Err(RenderError::DeviceLost);
+        }
         self.sync_atlas(atlas);
 
         self.instances.clear();
@@ -1017,7 +1056,15 @@ impl Renderer {
             wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
                 return Err(RenderError::Reconfigure);
             }
-            wgpu::CurrentSurfaceTexture::Validation => return Err(RenderError::Validation),
+            // The acquire's error went to the device's error handler; if
+            // it was the device itself, the lost callback has run by now.
+            wgpu::CurrentSurfaceTexture::Validation => {
+                return Err(if self.gpu.lost() {
+                    RenderError::DeviceLost
+                } else {
+                    RenderError::Validation
+                });
+            }
         };
         let vsync_wait_ms = t_wait.elapsed().as_secs_f32() * 1e3;
         let view = frame
@@ -1161,8 +1208,12 @@ pub enum RenderError {
     Reconfigure,
     /// Nothing to present right now (occluded/timeout): try next frame.
     Skip,
-    /// Validation error acquiring the surface texture.
+    /// Validation error acquiring the surface texture: the surface is
+    /// configured wrong for the window — `resize` to its size and redraw.
     Validation,
+    /// The device is gone ([`Gpu::lost`]): open a new one, and a renderer
+    /// on it for every window.
+    DeviceLost,
 }
 
 impl std::fmt::Display for RenderError {
@@ -1171,6 +1222,7 @@ impl std::fmt::Display for RenderError {
             Self::Reconfigure => write!(f, "surface outdated or lost; reconfigure"),
             Self::Skip => write!(f, "no frame available; skip"),
             Self::Validation => write!(f, "surface texture validation error"),
+            Self::DeviceLost => write!(f, "device lost; reopen"),
         }
     }
 }
