@@ -15,7 +15,12 @@ pollster.workspace = true
 
 # `Gpu::remove_device`: D3D12's own way to lose a device on purpose.
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62", features = ["Win32_Graphics_Direct3D12"] }
+windows = { version = "0.62", features = [
+    "Win32_Graphics_Direct3D12",
+    # `report_faults`: which module a crash is in.
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_LibraryLoader",
+] }
 
 [dev-dependencies]
 
