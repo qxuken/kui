@@ -50,6 +50,10 @@ use pane::{Pane, appearance_of, level_change, level_supported, sync_env, theme_a
 mod system_env;
 #[cfg(target_os = "windows")]
 mod windows_anim;
+/// The terminal a `windows_subsystem = "windows"` app was launched from,
+/// given back to it (`attach_parent`).
+#[cfg(target_os = "windows")]
+mod windows_console;
 #[cfg(target_os = "windows")]
 mod windows_nc;
 
@@ -396,6 +400,12 @@ impl Launcher {
     }
 
     fn shell<A: App>(self, app: A) -> Shell<A> {
+        // Before anything prints: a windows-subsystem app started from a
+        // shell has no stdout until it takes its parent's, and the
+        // diagnostics, the panics and `report_faults` are all worth
+        // reading there (`mod windows_console`).
+        #[cfg(target_os = "windows")]
+        windows_console::attach_parent();
         // Diagnostics are a development aid: on in debug builds unless the
         // launcher says otherwise, so a shipped app pays and prints nothing.
         let diagnostics = self.diagnostics.unwrap_or(cfg!(debug_assertions));

@@ -21,6 +21,59 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.17 (unreleased)
+
+**What breaks.** Nothing: no door, the ABI at 18 and the frame at v15.
+A windowed app on Windows that prints, launched from a shell, prints
+there now where it printed nowhere (under Added) — an app that wrote
+its own `AttachConsole` for that can delete it.
+
+### Added
+
+- **A Windows app with no console window, and its terminal back.**
+  A console-subsystem binary — what Rust builds unless told otherwise —
+  gets a black console window beside its own the moment it is opened
+  from the Explorer, made by the loader before a line of the app has
+  run; nothing at runtime can prevent it, only close it after it has
+  been seen. The one way not to have it is the app's own line,
+  `#![cfg_attr(windows, windows_subsystem = "windows")]` at the top of
+  its binary crate (or `/SUBSYSTEM:WINDOWS` on a C host's link), and
+  its cost was the terminal: a windows-subsystem process started from a
+  shell has no standard handles at all, so its `println!`, its panics,
+  the runner's `kui:` lines and `kui_wgpu::report_faults` all went
+  nowhere. The runner now attaches such a process to the console of the
+  shell that launched it (`AttachConsole`, once, before anything
+  prints) when the process has no output handle of its own; from the
+  Explorer there is no parent console and nothing is shown, and a
+  process whose launcher piped or redirected its output — cargo, the
+  smoke round, `> log.txt` — keeps what it was given. The prompt is back
+  before the app's first line, since a shell does not wait for a
+  windowed process. Checked with a windows-subsystem probe on kui: from
+  a console, its report on the console; through a pipe, in the pipe; from
+  a parent with no console, no window and no handles. The how-to's
+  "How do I stop the console window on Windows?" has the line.
+
+### Fixed
+
+- **A lost GPU device is opened again, and the loss is a real one.** A
+  driver update or a GPU reset removes the device under a running app;
+  every frame after acquired nothing, the shell printed one validation
+  error a frame and the window kept what the compositor last had. The
+  device says what happened now (`on_uncaptured_error`, the lost
+  callback), `Renderer::render` answers `RenderError::DeviceLost` for a
+  dead device, and the shell drops every renderer, opens one new device
+  and a renderer for each window on it — the cores stay, the next frame
+  draws what the last would have. `KUI_LOSE_DEVICE=SECS` pretends the
+  loss, and on Windows it is one: the D3D12 device itself is removed. A
+  surface that will not configure is an error the shell retries a
+  second later, not a panic. On Windows `Gpu::new` asks for D3D12 alone
+  unless `WGPU_BACKEND` names another — with every backend enumerated
+  the process held an OpenGL context and a Vulkan instance it never
+  drew with, and under a driver update the driver faulted in present
+  rather than report the loss — and `kui_wgpu::report_faults` names the
+  code and the module of a fault that would otherwise end the process
+  with nothing but `0xC000041D`.
+
 ## 0.1.0-alpha.16 (2026-09-20)
 
 **What breaks.** Nothing: four doors, a prop, a widget, an element and

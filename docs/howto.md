@@ -1062,6 +1062,33 @@ label no longer needs it: that is
 
 ## Ship and upgrade
 
+### How do I stop the console window on Windows?
+
+A Windows binary is built for one of two subsystems, and Rust picks
+*console* unless told otherwise: the app gets a console the moment it
+starts — the black window that pops up beside its own when it is opened
+from the Explorer — made by the loader before a line of the app has run,
+so nothing the app does at runtime can prevent it, only close it after
+it has been seen. The one way not to have it is to say so in the binary
+crate, at the top of `main.rs`:
+
+```rust
+#![cfg_attr(windows, windows_subsystem = "windows")]
+```
+
+(A C host says the same to its linker, `/SUBSYSTEM:WINDOWS`; a Node or
+Lua app runs inside `node.exe` or `lua.exe`, whose console it is.) What
+that used to cost is the terminal: a windows-subsystem process started
+from a shell has no standard output at all, so `println!`, a panic and
+the runner's own `kui:` lines went nowhere. The runner attaches such a
+process to the console of the shell that launched it, once, before
+anything prints, so they land there — after the prompt, since a shell
+does not wait for a windowed process. From the Explorer there is no
+parent console and nothing is shown; `cargo run`, the smoke round and
+`> log.txt` hand the process its output and it keeps what it was given.
+
+[alpha.17 `### Added`](../CHANGELOG.md#010-alpha17-unreleased)
+
 ### How do I pin the version I tested?
 
 Write the exact version: `^0.1.0-alpha.7` and `~0.1.0-alpha.7` both admit any
