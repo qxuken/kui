@@ -1429,6 +1429,7 @@ pub fn report_faults() {
 
 #[cfg(not(windows))]
 pub fn report_faults() {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
