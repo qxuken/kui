@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.16 (unreleased)
+## 0.1.0-alpha.16 (2026-09-20)
 
 **What breaks.** Nothing: four doors, a prop, a widget, an element and
 a `dir` value added, the ABI at 18 and the frame at v15 (a new op for
@@ -29,8 +29,15 @@ the select element; the addon and the JS ship together, and an older
 addon refuses the newer encoder by version rather than misreading it;
 the table is a value of a prop both already carry). One layout result
 moves — a grow child beside a sibling whose `max` held it short now
-takes that room (backlog F71 under Fixed) — which a view that padded the
-hole by hand will see.
+takes that room (backlog F71 and RG5 under Fixed) — which a view that
+padded the hole by hand will see. Two inputs answer differently: an
+assistive-technology click naming a node behind a modal is the press
+outside now — one `dismiss` with `reason: "outside"` on the modal,
+nothing on the node — where it was dropped (RG13), so an app that
+closes on any `dismiss` closes on it; and `activate_menu_item` /
+`activateMenuItem` / `kui_activate_menu_item` on a row the menu
+disabled returns false and posts nothing, where it posted the choice
+(RG9).
 
 ### Added
 
@@ -488,6 +495,75 @@ hole by hand will see.
   (`Inspector`, `Tree-sitter`) — the strip read as two kinds of tab
   before. Their *names* — what `set_devtools_tab`, `devtools_current_tab`
   and the `kui-devtools/tab-tree` keys use — stay lowercase.
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), run on `main` at
+`a2db30b` on 2026-09-20 — the F67–F75 round, the regression pass over
+it (RG1–RG16, every entry built the day after it was filed) and the
+verify round's own fix, 22 commits after the alpha.15 tag. What follows
+is what executed on what.
+
+**macOS 27.0 (26A428, arm64, Apple M3 Pro), Xcode 27.0, rustc 1.98.0,
+Node 26.8.1.** `cargo fmt --all --check` and `cargo clippy --workspace
+--all-targets -- -D warnings` are clean. `cargo test --workspace`:
+**1283 tests over 97 suites, 0 failed** (1 ignored, the devtools'
+`drive.rs` doc example), from alpha.15's 1221 — the table's twenty-one
+through `layout::compute`, the select's per binding, the freeze loop's,
+the teardown's, RG13's two, RG10's per binding among them. The scene
+corpus runs in all four adapters against one reference report: **40
+scenes** (`table` and `select` new), Rust and Lua through `cargo test`,
+C through `target/debug/conformance` (the header at **374 fields, 256
+enum members and 233 prototypes** — `kui_select`, `kui_on_teardown`,
+`kui_set_devtools_tab` and `kui_devtools_current_tab` added, `KUI_TABLE`
+and `KUI_VALUE_CARET_SOLID` as values of fields the header had, the ABI
+still **18** since nothing a host lays out moved), Node through `npm
+test` (**176 Node tests, 176 passed, 0 skipped**, the frame at **version
+15** for the select's op). The C round, `cbuild --run`, passes its five
+checks and the conformance replay. `npm run gen` regenerated `props.md`,
+`jsx-runtime.d.ts` and `index.d.ts` and the tree carries the result (a
+zero-line diff). `npm run typecheck` on `examples/node` is clean, and
+the examples lockfile matches the linked package. The headless round,
+`smoke -- --headless`, passes all **31 drives** (`select`, `table` and
+the Node `select`/`table` new) — after the one thing the verify round
+found: the `modal` drive still asserted alpha.15's silence for a
+reader's click behind the dialog, which RG13 made the press outside,
+and the drives run through the smoke binary only; it asserts the
+amended rule now.
+
+**The windowed round**, `cargo run -p kui-devtools --bin smoke --
+--node`: **36 Rust examples and the ten Node examples, each on both
+bases, 120 frames each, every one exiting 0 with nothing on stderr** —
+92 windows. The C and Lua hosts by hand under `KUI_SMOKE_FRAMES=120`:
+`counter`, `host`, `c_panel` and `lua_panel` each opened a window and
+exited 0, warning-free — **96 windows over five hosts.** The AX audit
+against `accessibility`: **106/106**.
+
+**Driven by hand, the finding that headed the round.** RG1 — F74's
+`teardown` reached Rust only — was checked the way it was found: a Node
+window and the C counter, each quit with ⌘Q posted through System
+Events. Both are gone afterwards, and both printed from their teardown
+on the way — Node's `teardown(model)` with the model, the counter's
+`kui_on_teardown` callback with its count — where on alpha.15 neither
+ran a line after the loop. RG15 checked F69's press-and-hold pin in a
+window and found it inert (HIToolbox reads the user's global domain
+through the one CFPreferences call no volatile domain reaches), so
+RG16 removed the door before it shipped; the howto says what does work.
+
+**The bench guard**, run alone against the alpha.15 tag on a quiet
+machine (worst guarded spread 3.5%): every guarded row within its own
+noise — `deep_nesting_64_levels` +2.3%, `frame_10k_rects` +1.3%,
+`frame_10k_rects_with_access_tree` +0.8%,
+`frame_10k_rects_with_text_and_hits` −0.2%, `frame_10k_segments` +0.6%,
+`frame_1k_typical` +1.6%, `list_10k_rows_virtual` +0.6% — and every
+unguarded row "same" (`drop_1k_rows_plain` +8.6% at ±5.7% is the
+widest, an unguarded row whose two runs disagree by more than the
+change); `frame_1k_curves` reads 277 → 267 µs, so **C41** (alpha.14's
++10% on that row, bisected to the drop-zone commit) is neither worse
+nor addressed and the tag carries it as alpha.15 did. RG5's
+`frame_1k_grow_rows_capped` is new and only at HEAD, so it has no
+column yet. The README's table is refreshed from this run; its
+`long_line`, `stream` and `cells` rows are not re-run.
 
 ## 0.1.0-alpha.15 (2026-09-16)
 

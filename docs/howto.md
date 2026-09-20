@@ -908,7 +908,7 @@ takes the same field and `app.teardown()` runs it for a headless
 drive. C: `kui_on_teardown(fn)` before `kui_run`, called once with the
 run's `user`; nothing after `kui_run` runs under ⌘Q either.
 
-[alpha.16](../CHANGELOG.md#010-alpha16-unreleased)
+[alpha.16](../CHANGELOG.md#010-alpha16-2026-09-20)
 
 ## Test it
 

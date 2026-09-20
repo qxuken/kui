@@ -77,7 +77,7 @@ architecture review (forty-four entries under ten decisions, every one
 built on 2026-09-14), the standard-menus round, and the pre-tag round's
 own two finds. C26 was the last split entry, and it closed on 2026-09-11.
 
-Ordered by area, not by priority. What to do next is under "After alpha.14".
+Ordered by area, not by priority. What to do next is under "After alpha.15".
 
 **Legend** — `!` a defect that ships today · `~` a gap with no workaround ·
 `.` cost without correctness risk.
@@ -371,7 +371,7 @@ moved whole to
 before the alpha.10 tag, W7 last — the one that wanted a decision rather
 than a patch, settled as: a displacement moves a subtree by whole physical
 pixels, scrolling included. Nothing from the round is open; what it did
-not cover is in "After alpha.14" below.
+not cover is in "After alpha.15" below.
 
 ## From two alpha.9 field reports and a bake-off (2026-09-08)
 
@@ -1253,10 +1253,14 @@ Two were regressions this round introduced (RG5 and RG6, both now
 built), the rest are gaps the new features opened or holes they made
 reachable.
 
-## After alpha.14
+## After alpha.15
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
-alpha.13" until 2026-09-16, when the two rounds between the alpha.14 and
+alpha.14" until 2026-09-20, when the ten rounds between the alpha.15 and
+alpha.16 tags — the kawoosh reports of 2026-09-16 and 17 (F67–F75, nine
+entries) and the regression pass over them (RG1–RG16, sixteen), every
+one built the day after it was filed at the latest — had landed and the
+heading moved with the tag; "After alpha.13" until 2026-09-16, when the two rounds between the alpha.14 and
 alpha.15 tags — the kawoosh binary-file report and the pre-tag round's
 own find, three entries, every one built the day it was filed — had
 landed and the heading moved with the tag; "After alpha.12" until 2026-09-15, when the four rounds between the alpha.13
@@ -1618,7 +1622,7 @@ Every closed entry, all in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) and all verbatim — one heading
 per id, and `tests/docs.rs` holds every id to one entry across both files.
 This index is here so an id resolves without opening that file: the open items
-above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.14" and
+above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.15" and
 the hygiene note cite C2, C5(b), P3, R4 and R7, and code comments, ADRs and
 commit messages cite ids of their own. All of them are whole in the
 archive. **C11**, **W2** and **C15** were each split for a while — an entry
