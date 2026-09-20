@@ -1347,6 +1347,88 @@ fn create_fragment_bind_group(
     })
 }
 
+/// Says where a crash is. A fault in a driver — a GPU whose driver is
+/// being replaced under the app — ends the process with no line from
+/// anyone: not a panic, so nothing of ours prints, and Windows reports
+/// only `0xC000041D` for an exception in a window callback. This handler
+/// sees the exception first and prints its code and the module the
+/// faulting address is in, then lets it go on as it would have; a
+/// diagnostic, not a recovery. Only the faults that end a process, once
+/// per kind, so a driver's own caught exceptions stay quiet.
+#[cfg(windows)]
+pub fn report_faults() {
+    use windows::Win32::Foundation::{
+        EXCEPTION_ACCESS_VIOLATION, EXCEPTION_ILLEGAL_INSTRUCTION, EXCEPTION_IN_PAGE_ERROR,
+        EXCEPTION_STACK_OVERFLOW,
+    };
+    use windows::Win32::System::Diagnostics::Debug::{
+        AddVectoredExceptionHandler, EXCEPTION_POINTERS,
+    };
+    use windows::Win32::System::LibraryLoader::{
+        GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+        GetModuleFileNameW, GetModuleHandleExW,
+    };
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    static SAID: std::sync::Mutex<Vec<i32>> = std::sync::Mutex::new(Vec::new());
+
+    unsafe extern "system" fn handler(info: *mut EXCEPTION_POINTERS) -> i32 {
+        const CONTINUE_SEARCH: i32 = 0;
+        // SAFETY: the system hands a valid record for the exception.
+        let Some(record) =
+            (unsafe { info.as_ref() }).and_then(|i| unsafe { i.ExceptionRecord.as_ref() })
+        else {
+            return CONTINUE_SEARCH;
+        };
+        let code = record.ExceptionCode;
+        if ![
+            EXCEPTION_ACCESS_VIOLATION,
+            EXCEPTION_ILLEGAL_INSTRUCTION,
+            EXCEPTION_IN_PAGE_ERROR,
+            EXCEPTION_STACK_OVERFLOW,
+        ]
+        .contains(&code)
+        {
+            return CONTINUE_SEARCH;
+        }
+        if let Ok(mut said) = SAID.try_lock() {
+            if said.contains(&code.0) {
+                return CONTINUE_SEARCH;
+            }
+            said.push(code.0);
+        }
+        let at = record.ExceptionAddress;
+        let mut module = windows::Win32::Foundation::HMODULE::default();
+        let mut name = [0u16; 512];
+        // SAFETY: `at` is only looked up, never read; the buffers are ours.
+        let module = unsafe {
+            GetModuleHandleExW(
+                GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS
+                    | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                windows::core::PCWSTR(at.cast()),
+                &mut module,
+            )
+            .ok()
+            .map(|_| {
+                let n = GetModuleFileNameW(Some(module), &mut name) as usize;
+                String::from_utf16_lossy(&name[..n])
+            })
+        };
+        eprintln!(
+            "kui: fault {:#010x} at {at:?} in {}",
+            code.0 as u32,
+            module.as_deref().unwrap_or("no module (jit or freed code)")
+        );
+        CONTINUE_SEARCH
+    }
+
+    ONCE.call_once(|| {
+        // SAFETY: the handler reads only what the system gives it.
+        unsafe { AddVectoredExceptionHandler(1, Some(handler)) };
+    });
+}
+
+#[cfg(not(windows))]
+pub fn report_faults() {}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1451,86 +1533,3 @@ mod tests {
         }
     }
 }
-
-/// Says where a crash is. A fault in a driver — a GPU whose driver is
-/// being replaced under the app — ends the process with no line from
-/// anyone: not a panic, so nothing of ours prints, and Windows reports
-/// only `0xC000041D` for an exception in a window callback. This handler
-/// sees the exception first and prints its code and the module the
-/// faulting address is in, then lets it go on as it would have; a
-/// diagnostic, not a recovery. Only the faults that end a process, once
-/// per kind, so a driver's own caught exceptions stay quiet.
-#[cfg(windows)]
-pub fn report_faults() {
-    use windows::Win32::Foundation::{
-        EXCEPTION_ACCESS_VIOLATION, EXCEPTION_ILLEGAL_INSTRUCTION, EXCEPTION_IN_PAGE_ERROR,
-        EXCEPTION_STACK_OVERFLOW,
-    };
-    use windows::Win32::System::Diagnostics::Debug::{
-        AddVectoredExceptionHandler, EXCEPTION_POINTERS,
-    };
-    use windows::Win32::System::LibraryLoader::{
-        GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-        GetModuleFileNameW, GetModuleHandleExW,
-    };
-    static ONCE: std::sync::Once = std::sync::Once::new();
-    static SAID: std::sync::Mutex<Vec<i32>> = std::sync::Mutex::new(Vec::new());
-
-    unsafe extern "system" fn handler(info: *mut EXCEPTION_POINTERS) -> i32 {
-        const CONTINUE_SEARCH: i32 = 0;
-        // SAFETY: the system hands a valid record for the exception.
-        let Some(record) =
-            (unsafe { info.as_ref() }).and_then(|i| unsafe { i.ExceptionRecord.as_ref() })
-        else {
-            return CONTINUE_SEARCH;
-        };
-        let code = record.ExceptionCode;
-        if ![
-            EXCEPTION_ACCESS_VIOLATION,
-            EXCEPTION_ILLEGAL_INSTRUCTION,
-            EXCEPTION_IN_PAGE_ERROR,
-            EXCEPTION_STACK_OVERFLOW,
-        ]
-        .contains(&code)
-        {
-            return CONTINUE_SEARCH;
-        }
-        if let Ok(mut said) = SAID.try_lock() {
-            if said.contains(&code.0) {
-                return CONTINUE_SEARCH;
-            }
-            said.push(code.0);
-        }
-        let at = record.ExceptionAddress;
-        let mut module = windows::Win32::Foundation::HMODULE::default();
-        let mut name = [0u16; 512];
-        // SAFETY: `at` is only looked up, never read; the buffers are ours.
-        let module = unsafe {
-            GetModuleHandleExW(
-                GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS
-                    | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                windows::core::PCWSTR(at.cast()),
-                &mut module,
-            )
-            .ok()
-            .map(|_| {
-                let n = GetModuleFileNameW(Some(module), &mut name) as usize;
-                String::from_utf16_lossy(&name[..n])
-            })
-        };
-        eprintln!(
-            "kui: fault {:#010x} at {at:?} in {}",
-            code.0 as u32,
-            module.as_deref().unwrap_or("no module (jit or freed code)")
-        );
-        CONTINUE_SEARCH
-    }
-
-    ONCE.call_once(|| {
-        // SAFETY: the handler reads only what the system gives it.
-        unsafe { AddVectoredExceptionHandler(1, Some(handler)) };
-    });
-}
-
-#[cfg(not(windows))]
-pub fn report_faults() {}
