@@ -1083,9 +1083,14 @@ from a shell has no standard output at all, so `println!`, a panic and
 the runner's own `kui:` lines went nowhere. The runner attaches such a
 process to the console of the shell that launched it, once, before
 anything prints, so they land there — after the prompt, since a shell
-does not wait for a windowed process. From the Explorer there is no
-parent console and nothing is shown; `cargo run`, the smoke round and
-`> log.txt` hand the process its output and it keeps what it was given.
+does not wait for a windowed process. A Ctrl+C typed at that prompt is
+the shell's and the app ignores it; closing that terminal ends the app,
+as it ends a console build — Windows terminates every process on a
+console it closes, and nothing an app does prevents it — so a session
+meant to outlive the terminal is opened from the Explorer or a launcher.
+From the Explorer there is no parent console and nothing is shown;
+`cargo run`, the smoke round and `> log.txt` hand the process its output
+and it keeps what it was given.
 
 [alpha.17 `### Added`](../CHANGELOG.md#010-alpha17-unreleased)
 

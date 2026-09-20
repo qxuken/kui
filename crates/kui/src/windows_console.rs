@@ -25,8 +25,11 @@
 //!
 //! What it does not change: the shell does not wait for a windowed
 //! process, so the prompt is back before the app's first line, which
-//! lands after it; and Ctrl+C in that terminal reaches the app as it
-//! would a console one.
+//! lands after it; a Ctrl+C or Ctrl+Break typed there is ignored by the
+//! app, since the prompt is back and the keystroke is the shell's; and
+//! closing that terminal ends the app, as it ends a console build — the
+//! system terminates every process on a console it closes, and no
+//! handler prevents it.
 
 use std::sync::Once;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -40,6 +43,7 @@ pub(super) fn attach_parent() -> bool {
     use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
     use windows_sys::Win32::System::Console::{
         ATTACH_PARENT_PROCESS, AttachConsole, GetStdHandle, STD_ERROR_HANDLE, STD_OUTPUT_HANDLE,
+        SetConsoleCtrlHandler,
     };
     static ONCE: Once = Once::new();
     static ATTACHED: AtomicBool = AtomicBool::new(false);
@@ -59,9 +63,27 @@ pub(super) fn attach_parent() -> bool {
         // the next `println!` lands there. On failure (no parent console)
         // the handles stay null and every write is the no-op it was.
         let ok = unsafe { AttachConsole(ATTACH_PARENT_PROCESS) } != 0;
+        if ok {
+            // Attached, the process gets the console's Ctrl+C and Ctrl+Break
+            // like every process on it, and the default handler exits. In
+            // a console build that is the user ending the app; here the
+            // prompt is back and the keystroke is aimed at whatever the
+            // shell is running, so both are swallowed. The console closing
+            // (`CTRL_CLOSE_EVENT`) is not: the system ends the process
+            // once the handler returns, and no handler prevents it.
+            unsafe { SetConsoleCtrlHandler(Some(swallow_interrupts), 1) };
+        }
         ATTACHED.store(ok, Ordering::Relaxed);
     });
     ATTACHED.load(Ordering::Relaxed)
+}
+
+/// The console control handler of an attached process: Ctrl+C and
+/// Ctrl+Break are handled (and ignored); everything else — the console
+/// closing, a logoff, a shutdown — is left to the default.
+unsafe extern "system" fn swallow_interrupts(event: u32) -> windows_sys::Win32::Foundation::BOOL {
+    use windows_sys::Win32::System::Console::{CTRL_BREAK_EVENT, CTRL_C_EVENT};
+    (event == CTRL_C_EVENT || event == CTRL_BREAK_EVENT) as _
 }
 
 #[cfg(test)]

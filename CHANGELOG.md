@@ -48,7 +48,10 @@ its own `AttachConsole` for that can delete it.
   process whose launcher piped or redirected its output — cargo, the
   smoke round, `> log.txt` — keeps what it was given. The prompt is back
   before the app's first line, since a shell does not wait for a
-  windowed process. Checked with a windows-subsystem probe on kui: from
+  windowed process; a Ctrl+C typed at it is the shell's and the app
+  ignores it; and closing that terminal ends the app, as it ends a
+  console build — Windows terminates every process on a console it
+  closes, and no handler prevents it. Checked with a windows-subsystem probe on kui: from
   a console, its report on the console; through a pipe, in the pipe; from
   a parent with no console, no window and no handles. The how-to's
   "How do I stop the console window on Windows?" has the line.
