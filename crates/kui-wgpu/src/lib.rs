@@ -169,8 +169,21 @@ impl Gpu {
         target: impl Into<wgpu::SurfaceTarget<'static>>,
     ) -> Result<(Self, wgpu::Surface<'static>), Box<dyn std::error::Error>> {
         report_faults();
-        let instance =
-            wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
+        // Every backend the build has, as wgpu defaults — but on Windows
+        // D3D12 alone unless `WGPU_BACKEND` names another. An instance
+        // keeps every backend it enumerated alive for as long as it lives,
+        // so with all of them the process holds an OpenGL context and a
+        // Vulkan instance it never draws with, both in the driver's
+        // `nvoglv64.dll`; and wgpu, left to choose, took Vulkan over D3D12
+        // here. Under a driver update that DLL faulted in present rather
+        // than answer `DEVICE_LOST`, which ended the process; D3D12's
+        // `nvwgf2umx.dll` reports the removal, and the shell reopens the
+        // device (`Gpu::lost`).
+        let mut desc = wgpu::InstanceDescriptor::new_without_display_handle_from_env();
+        if cfg!(windows) && std::env::var_os("WGPU_BACKEND").is_none() {
+            desc.backends = wgpu::Backends::DX12;
+        }
+        let instance = wgpu::Instance::new(desc);
         let surface = instance.create_surface(target)?;
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
