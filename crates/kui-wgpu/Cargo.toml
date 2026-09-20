@@ -11,9 +11,13 @@ publish = ["forgejo"]
 kui-core.workspace = true
 wgpu.workspace = true
 bytemuck.workspace = true
+pollster.workspace = true
+
+# `Gpu::remove_device`: D3D12's own way to lose a device on purpose.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Win32_Graphics_Direct3D12"] }
 
 [dev-dependencies]
-pollster.workspace = true
 
 # Not a divan bench: it drives a GPU and prints a table. See its module doc
 # and `docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`.

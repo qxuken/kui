@@ -1578,6 +1578,7 @@ dependencies = [
  "kui-core",
  "pollster",
  "wgpu",
+ "windows",
 ]
 
 [[package]]

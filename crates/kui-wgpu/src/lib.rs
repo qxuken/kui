@@ -225,9 +225,31 @@ impl Gpu {
         self.0.lost.load(std::sync::atomic::Ordering::Acquire)
     }
 
-    /// Treats the device as lost from here on, as a driver update would
-    /// — for a shell to see its reopening happen without one.
+    /// Loses the device on purpose, as a driver update or a GPU reset
+    /// would — for a shell to see its reopening happen without one. On
+    /// D3D12 the device is really removed (`ID3D12Device5::RemoveDevice`),
+    /// so every resource on it dies as it does then and the lost callback
+    /// runs as it does then; elsewhere the device is only treated as lost.
     pub fn mark_lost(&self) {
+        #[cfg(windows)]
+        {
+            use windows::Win32::Graphics::Direct3D12::ID3D12Device5;
+            use windows::core::Interface;
+            // SAFETY: the hal device is only read for its raw handle, and
+            // `RemoveDevice` is what D3D12 offers for exactly this.
+            let removed = unsafe {
+                self.0
+                    .device
+                    .as_hal::<wgpu::hal::api::Dx12>()
+                    .and_then(|d| d.raw_device().cast::<ID3D12Device5>().ok())
+                    .map(|d| d.RemoveDevice())
+            };
+            if removed.is_some() {
+                // The loss lands on the device's next use, through the
+                // lost callback, as a real one does.
+                return;
+            }
+        }
         self.0
             .lost
             .store(true, std::sync::atomic::Ordering::Release);
@@ -617,7 +639,15 @@ impl Renderer {
             // the cost of less slack for slow frames.
             desired_maximum_frame_latency: 1,
         };
+        // A configure that fails only reports to the device's error
+        // handler, and the first acquire on the unconfigured surface is a
+        // panic inside wgpu; caught here, it is this constructor's error
+        // — a window DXGI will not give a second swapchain, say.
+        let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
         surface.configure(device, &config);
+        if let Some(err) = pollster::block_on(scope.pop()) {
+            return Err(format!("configuring the surface: {err}").into());
+        }
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("kui"),

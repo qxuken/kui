@@ -1645,6 +1645,9 @@ impl<A: App> Shell<A> {
             return;
         }
         self.reopened = Some(now);
+        // Dropped, not leaked: the old swapchain has to be released for
+        // DXGI to allow the window a new one (leaked, the new surface's
+        // configure fails with "invalid surface").
         for pane in &mut self.panes {
             pane.renderer = None;
             pane.surface_tries = 0;
