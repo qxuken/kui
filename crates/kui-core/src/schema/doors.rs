@@ -1003,7 +1003,7 @@ pub const DOORS: &[Door] = &[
         c: Is("kui_set_devtools_tab"),
         node: Is("setDevtoolsTab"),
         lua: No(GUEST),
-        doc: "Shows the panel's tab named — one of its own or a declared one — from outside the panel, as the strip's click does; a hidden panel comes back docked.",
+        doc: "Shows the panel's tab named — one of its own, in any case, or a declared one, as declared — from outside the panel, as the strip's click does; a hidden panel comes back docked.",
     },
     Door {
         rust: "Core::devtools_current_tab",

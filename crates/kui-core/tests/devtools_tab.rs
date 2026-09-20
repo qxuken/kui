@@ -271,6 +271,42 @@ fn a_pick_raised_from_a_tab_lands_in_selected_and_keeps_the_tab() {
         core.key_of("kui-devtools/tree-filter").is_some()
             || core.key_of("kui-devtools/picker").is_some()
     );
+
+    // A name kept for a tab no frame has declared yet (F67) is not a tab
+    // up: a pick raised then is the chord's too, and shows the tree —
+    // where keying "keep the tab" on the name being set showed the pick
+    // in no tab at all (backlog RG14).
+    let built = Rc::new(RefCell::new(0u32));
+    let mut core = Core::new();
+    core.set_devtools(true);
+    core.set_devtools_dock(DevtoolsDock::Right);
+    core.set_inspect(true);
+    assert!(!core.set_devtools_tab("syntax"), "nothing declared yet");
+    core.set_devtools_pick(true);
+    assert_eq!(core.devtools_current_tab(), "tree", "the chord's pick");
+    frame(&mut core, &built);
+    assert!(
+        core.key_of("kui-devtools/picker").is_some(),
+        "the overlay is up"
+    );
+    assert!(
+        core.key_of("kui-devtools/tree-filter").is_some(),
+        "on the tree tab, not on the events tab the strip fell back to"
+    );
+    assert!(
+        core.key_of("kui-devtools/tab/syntax").is_none(),
+        "the pending name gave way, as it does to the chord"
+    );
+    let press = core.key_of("press").unwrap();
+    let b = rect_of(&core, "press").unwrap();
+    core.handle_input(InputEvent::CursorMoved(kui_core::Vec2::new(
+        b.x + b.w / 2.0,
+        b.y + b.h / 2.0,
+    )));
+    frame(&mut core, &built);
+    click_at(&mut core, b.x + b.w / 2.0, b.y + b.h / 2.0);
+    assert_eq!(core.devtools_selected(), Some(press));
+    assert_eq!(core.devtools_current_tab(), "tree", "and lands in the tree");
 }
 
 /// A tab is selected from the app's side (`set_devtools_tab`): a declared
@@ -297,13 +333,25 @@ fn a_tab_is_selected_from_the_app() {
     frame(&mut core, &built);
     assert_eq!(*built.borrow(), 1, "on show: the closure ran");
     assert!(core.key_of("kui-devtools/tab/syntax").is_some());
-    // One of the panel's own, by name.
+    // One of the panel's own, by name — in any case, since the strip
+    // labels them `Facts`, `Events`, `Tree` and a caller writes what it
+    // reads there; before RG14 "Tree" was refused and kept as a declared
+    // name nobody would ever list.
     assert!(core.set_devtools_tab("tree"));
     assert_eq!(core.devtools_current_tab(), "tree");
     frame(&mut core, &built);
     assert_eq!(*built.borrow(), 1, "off show: the closure rests");
     assert!(core.key_of("kui-devtools/tab/syntax").is_none());
     assert!(core.key_of("kui-devtools/tree-filter").is_some());
+    assert!(core.set_devtools_tab("Facts"), "the strip's own spelling");
+    assert_eq!(core.devtools_current_tab(), "facts");
+    assert!(core.set_devtools_tab("TREE"));
+    assert_eq!(core.devtools_current_tab(), "tree");
+    assert!(
+        !core.set_devtools_tab("Syntax"),
+        "a declared name is the app's spelling, matched exactly"
+    );
+    assert!(core.set_devtools_tab("tree"));
     // A name nobody declares: kept, not listed, the strip falls back.
     assert!(!core.set_devtools_tab("nope"), "not listed");
     assert_eq!(core.devtools_current_tab(), "tree", "the fallback");

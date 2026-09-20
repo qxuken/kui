@@ -731,7 +731,8 @@ were absent and raises a `wrap-ignored` warning.
 
 Tables: `NodeSpec::table()` (`dir="table"` in JSX, `grid { }` in Lua,
 `KUI_TABLE` in C) is a column whose rows' children line up in columns —
-the nth child of every row is column n, and a column is as wide as its
+the nth in-flow child of every row is column n (a float in a row is not
+a cell), and a column is as wide as its
 widest cell — so a key/value list sits at its longest key with no width
 picked by hand ([ADR 0033](docs/adr/0033-a-table-is-a-column-whose-cells-align.md)).
 A cell's sizing is its column's: `Fit` and `Fixed` are content, `Grow`

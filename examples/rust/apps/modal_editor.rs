@@ -620,6 +620,8 @@ fn caret_bar(ui: &mut Ui<'_>, color: Color) {
 enum Caret {
     Bar,
     Block,
+    /// The block without the keyboard: an outline over the cell.
+    Hollow,
 }
 
 fn render_editor(ui: &mut Ui<'_>, pal: &Pal, doc: &Doc, view: &mut View, mode: Mode, h: f32) {
@@ -627,12 +629,17 @@ fn render_editor(ui: &mut Ui<'_>, pal: &Pal, doc: &Doc, view: &mut View, mode: M
     // below declares (backlog C35). On the off phase the caret node is
     // not drawn — the row stays, which is what keeps the clock armed and
     // the IME anchored — and in a window without the keyboard the runner
-    // parks the phase off, so the caret is not drawn at all. Only insert
+    // parks the phase off, so the bar is not drawn at all. Only insert
     // mode's bar blinks: the block of normal and command mode is solid,
     // and its row says so (`caret_solid`, backlog F68), so the clock is
     // not armed and an editor idling in normal mode asks for no frame.
+    // A solid caret's phase stays on without the keyboard too — the
+    // clock touches only what it blinks — so the block's unfocused look
+    // is this view's: hollow, the way a GUI editor's block goes when the
+    // window loses the keyboard (`env.focused`; backlog RG14).
     let blink_on = ui.caret_visible();
     let solid = mode != Mode::Insert;
+    let hollow = solid && !ui.env().focused;
     let rows = (((h - STATUS_H - 8.0) / LH).max(1.0)) as usize;
     view.rows = rows;
     // Scroll the caret into view — the app's job, and two lines of it.
@@ -689,7 +696,11 @@ fn render_editor(ui: &mut Ui<'_>, pal: &Pal, doc: &Doc, view: &mut View, mode: M
                     .clip(),
                 |ui| {
                     for ln in view.top..last {
-                        let kind = if solid { Caret::Block } else { Caret::Bar };
+                        let kind = match (solid, hollow) {
+                            (false, _) => Caret::Bar,
+                            (true, false) => Caret::Block,
+                            (true, true) => Caret::Hollow,
+                        };
                         let caret = (ln == view.cur.line && (solid || blink_on))
                             .then_some((view.cur.col, kind));
                         // Where the caret and the selection's other end
@@ -774,6 +785,19 @@ fn emit_line(
                 i += 1;
                 continue;
             }
+            if caret_col == Some(i) && caret_kind == Some(Caret::Hollow) {
+                // The block without the keyboard: the cell outlined, its
+                // glyph as it is.
+                ui.with(
+                    NodeSpec::row()
+                        .height(Sizing::Fixed(LH))
+                        .cross_align(Align::Center)
+                        .border(1.0, pal.accent),
+                    |ui| ui.text(&chars[i].to_string(), mono(pal)),
+                );
+                i += 1;
+                continue;
+            }
             // Extend a run of chars sharing selection state, breaking at
             // the caret cell so it can be emitted inline.
             let selected = at_sel(i);
@@ -805,6 +829,15 @@ fn emit_line(
                             .width(Sizing::Fixed(8.0))
                             .height(Sizing::Fixed(LH - 4.0))
                             .bg(pal.accent),
+                        |_| {},
+                    );
+                }
+                Some(Caret::Hollow) => {
+                    ui.with(
+                        NodeSpec::column()
+                            .width(Sizing::Fixed(8.0))
+                            .height(Sizing::Fixed(LH - 4.0))
+                            .border(1.0, pal.accent),
                         |_| {},
                     );
                 }
@@ -1266,6 +1299,30 @@ impl Example for ModalEditor {
             self.mode == Mode::Normal && !d.core.has_caret() && d.core.ime_rect().is_some(),
             "a solid block caret anchors the IME and arms no clock",
         )?;
+        // Without the keyboard the solid caret is still declared and its
+        // phase still on — the runner hides only what it blinks — and
+        // the block is this view's to draw hollow (backlog RG14, in F68).
+        let outlined = |d: &Drive<'_>| d.core.nodes().iter().filter(|n| n.border_w == 1.0).count();
+        d.core.set_inspect(true);
+        d.frame(self);
+        let focused_outlines = outlined(&d);
+        d.core.env.focused = false;
+        d.frame(self);
+        d.check(
+            !d.core.has_caret() && d.core.ime_rect().is_some() && d.core.caret_visible(),
+            "unfocused: the solid caret is still the IME's anchor, its phase on",
+        )?;
+        d.check(
+            outlined(&d) == focused_outlines + 1,
+            "and the block is drawn hollow — one outlined cell",
+        )?;
+        d.core.env.focused = true;
+        d.frame(self);
+        d.check(
+            outlined(&d) == focused_outlines,
+            "focused again: the block is filled",
+        )?;
+        d.core.set_inspect(false);
         // Insert mode's bar blinks (backlog C35): on the off phase the
         // caret node is gone and the `caret` row stays.
         keys(&mut d, self, "i");

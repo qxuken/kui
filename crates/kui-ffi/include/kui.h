@@ -225,7 +225,10 @@ extern "C" {
  * kui_input_drag_cancel, kui_is_drop_target and kui_drop_target - five
  * functions, nothing the library writes moved. Still at 18:
  * kui_set_devtools_tab and kui_devtools_current_tab - two functions, no
- * struct - and kui_press_and_hold and kui_on_teardown, two more.
+ * struct - kui_press_and_hold and kui_on_teardown, two more, kui_select
+ * (a widget function), KUI_TABLE (a value of a field KuiSpec already
+ * had) and KUI_VALUE_CARET_SOLID (a bit in value_set) - nothing a host
+ * had laid out moved for any of the three (backlog F73, F75, F68).
  */
 #define KUI_ABI_VERSION 18u
 uint32_t kui_abi_version(void);
@@ -2821,14 +2824,16 @@ void kui_set_devtools_selected(KuiCtx *ctx, uint64_t key);
  * asking "which node?") or puts it away: the node under the pointer is
  * kui_devtools_picked while it is up, and the press lands it in
  * kui_devtools_selected. Raised while a declared tab is on show, the pick
- * leaves that tab up; raised otherwise it is the Ctrl+Shift+P pick and
- * shows the tree tab. kui_devtools_picking says whether it is up. */
+ * leaves that tab up; raised otherwise - a tab named but not declared
+ * yet included - it is the Ctrl+Shift+P pick and shows the tree tab.
+ * kui_devtools_picking says whether it is up. */
 void kui_set_devtools_pick(KuiCtx *ctx, bool on);
 bool kui_devtools_picking(KuiCtx *ctx);
 /* Shows the panel's tab named name from the host's side - what the strip's
  * click and Ctrl+Shift+N do, for a command that jumps to the host's own
- * tab: one of the panel's own ("facts", "events", "tree") or a declared
- * tab's. A declared name the panel does not list yet is kept and shows
+ * tab: one of the panel's own ("facts", "events", "tree", in any case)
+ * or a declared tab's, exactly as declared. A declared name the panel
+ * does not list yet is kept and shows
  * once a frame declares it; the return says whether the panel lists it
  * now. A hidden panel comes back docked; kui_set_devtools is still the
  * host's to call. Once, not every frame: called each frame it would pin

@@ -1246,33 +1246,12 @@ select's disabled row through the door and its unchecked options and
 `current`, **built 2026-09-20** likewise, RG13, the reader's click
 behind a modal, **built 2026-09-20** too, and RG15, F69 checked in a
 window, **done 2026-09-20** — the pin does not hold, and RG16 below
-carries the decision it leaves; RG14 is the other one below.
+carries the decision it leaves; RG14, the ten nits and the two small
+devtools defects, **done 2026-09-20** too, so RG16 is the one left
+below.
 Two were regressions this round introduced (RG5 and RG6, both now
 built), the rest are gaps the new features opened or holes they made
 reachable.
-
-### `.` RG14 — Docs and parity nits from the pass, all one line each
-
-**Found.** (a) `kui.h`'s ABI-history comment (`:226`) lists the ABI 18
-additions without `kui_select`, `KUI_TABLE` and `KUI_VALUE_CARET_SOLID`.
-(b) The F73 archive outcome and commit say the encoder "refuses a
-missing label"; `encoder.js:751` falls back to `key`, and the type
-agrees. (c) The changelog's "three doors" undercounts (`teardown`,
-Node's `hasCaret`). (d) ADR 0033 says the flag is read "in the two
-places"; it is five. (e) The changelog, README, howto and JSX type say
-"the nth child of every row"; the rule is the nth *in-flow* child.
-(f) `NodeInfo.table` reaches Node and Lua; `KuiNodeInfo` has no field
-for it, so C's `kui_nodes` shows a table as a column. (g) A percent
-column's basis subtracts the row's gaps (`layout.rs:270`); a percent
-child of a plain row does not (`:882`). (h) The "Build next" paragraph
-under "After alpha.14" stops at F62–F66. (i) F74's "a crash does not
-reach it" — see RG1. (j) A solid caret stays `caret_visible` in an
-unfocused window where a blinking one hides (`lib.rs:2185`); if by
-design, say so in the F68 entry.
-
-**Do.** Each as written; (f) waits for the next ABI bump or takes a
-reader (`kui_node_is_table`), (g) is a decision to record in ADR 0033
-either way.
 
 ### `!` RG16 — F69's door is inert: HIToolbox reads the user's global domain by name, and which mechanism replaces the pin, if any, is a decision
 
@@ -1352,10 +1331,25 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** RG16 — the press-and-hold decision RG15's check left, a choice before a build — and RG14 from the regression pass of 2026-09-19 (RG1, the Node and C hosts hearing ⌘Q, was **built 2026-09-19**; RG2 and RG12, the devtools' menus select and its chord, RG3, RG6, RG7, RG8 and RG11, the table's layout and the round's float-floor regression, RG4, the left dock's deferral, RG5, the freeze loop's sign rule and the round's other regression, RG9 and RG10, the select's disabled row through the door and its unchecked options and `current`, RG13, the reader's click behind a modal, and RG15, F69 checked in a window and found inert, **built 2026-09-20**); after them C41 — a profile of `frame_1k_curves` at the drop-zone
+**Build next.** RG16 — the press-and-hold decision RG15's check left, a choice before a build — the one entry of the regression pass of 2026-09-19 still open (RG1, the Node and C hosts hearing ⌘Q, was **built 2026-09-19**; RG2 and RG12, the devtools' menus select and its chord, RG3, RG6, RG7, RG8 and RG11, the table's layout and the round's float-floor regression, RG4, the left dock's deferral, RG5, the freeze loop's sign rule and the round's other regression, RG9 and RG10, the select's disabled row through the door and its unchecked options and `current`, RG13, the reader's click behind a modal, RG15, F69 checked in a window and found inert, and RG14, the ten nits and the two devtools defects taken with them, **built 2026-09-20**); after it C41 — a profile of `frame_1k_curves` at the drop-zone
 commit against the one before, the bisect already done; then W19, when
 a Windows or Linux round comes (the macOS half of ADR 0031 is built and
-verified; the fallback elsewhere is honest and positionless). Nothing else filed is open: the two alpha.13 reports and the
+verified; the fallback elsewhere is honest and positionless). Nothing else filed is open. The rounds since the alpha.14 tag, newest first:
+the regression pass of 2026-09-19 over F67–F75 (RG1–RG16 — fifteen
+built or done between 2026-09-19 and 2026-09-20, RG14's ten nits
+**done 2026-09-20**, RG16 the one open, a decision) is what the
+paragraph opens with. Before it, alpha.16's own nine: F75 — the table
+— from the kawoosh devtools-tables report, **built 2026-09-17**; F74 —
+the app hearing its window go — from the kawoosh session report of
+the same day, **built 2026-09-17** (Rust only, as RG1 found and
+finished); F73 — the select in the other three bindings — **built
+2026-09-17**, the day after F72; and F67–F72 — the devtools tab
+selected from the app, the solid caret, the press-and-hold door (inert,
+as RG15 found), the mid-frame dock, the strip's wrap and the select —
+from the five kawoosh reports of 2026-09-16, **built the day they were
+filed**, after the alpha.15 tag. Before the tag, the three of the same
+day — C42 and C43 from the kawoosh binary-file report, C44 from the
+pre-tag round's own find — **built 2026-09-16**. Before them: the two alpha.13 reports and the
 kawoosh terminal report — F62–F66, in the archive since the alpha.14
 tag — were **built 2026-09-15**, F66 first
 (the dashed `│` was what every TUI in a `cells` node showed, and the
@@ -2061,7 +2055,7 @@ move.
 
 - `!` **F74** — [An app never hears its window go: the close button drops it, ⌘Q ends the process, and neither is a key](backlog/closed-2026-09.md#-f74--an-app-never-hears-its-window-go-the-close-button-drops-it-q-ends-the-process-and-neither-is-a-key--done-2026-09-17) — done (2026-09-17) — `App::teardown`, once, from the loop's `exiting` and a pumped runner's retirement
 
-**From the regression pass of 2026-09-19** — RG1 built the same day, RG2 and RG12 on 2026-09-20, the five table entries RG3, RG6, RG7, RG8 and RG11, the left dock's RG4, the freeze loop's RG5, the select's RG9 and RG10, the reader's RG13 and F69's check RG15 the same day; RG14 and RG16 open above
+**From the regression pass of 2026-09-19** — RG1 built the same day, RG2 and RG12 on 2026-09-20, the five table entries RG3, RG6, RG7, RG8 and RG11, the left dock's RG4, the freeze loop's RG5, the select's RG9 and RG10, the reader's RG13, F69's check RG15 and the nits RG14 the same day; RG16 open above
 
 - `!` **RG1** — [A Node or C app still never hears ⌘Q: F74's `teardown` is a Rust `App` method, and the loops the other hosts "own" end the same way](backlog/closed-2026-09.md#-rg1--a-node-or-c-app-still-never-hears-q-f74s-teardown-is-a-rust-app-method-and-the-loops-the-other-hosts-own-end-the-same-way--done-2026-09-19) — done (2026-09-19) — `teardown(model)` in `runWindowed`'s / `createApp`'s config over `KuiWindow.onTeardown`, `kui_on_teardown(fn)` before `kui_run` (ABI 18 kept), the verb-table row, the once-across-ends test; both hosts checked under ⌘Q in the window
 - `!` **RG2** — [A devtools select's menu outlives the panel, and its choice reaches the app as a `menu` event from the devtools origin](backlog/closed-2026-09.md#-rg2--a-devtools-selects-menu-outlives-the-panel-and-its-choice-reaches-the-app-as-a-menu-event-from-the-devtools-origin--done-2026-09-20) — done (2026-09-20) — the panel's menu closes when this window stops building the panel; a devtools-origin event is taken back whatever the panel's state
@@ -2077,6 +2071,7 @@ move.
 - `~` **RG10** — [A select's `options` and `current` are checked by C and not by Node or Lua: an empty menu, a blank field, a check on a separator](backlog/closed-2026-09.md#-rg10--a-selects-options-and-current-are-checked-by-c-and-not-by-node-or-lua-an-empty-menu-a-blank-field-a-check-on-a-separator--done-2026-09-20) — done (2026-09-20) — the reader refuses `[]`; `select-current-ignored` from `select_with` for every binding; an option object's unknown key is `unknown-prop` with the row's wording (`MenuItem::KEYS`); Lua's missing label named; C's `count == 0` stays, its rows never pass the reader
 - `~` **RG13** — [An AX click on a control behind a modal fires: a second click on an open select's field re-opens it instead of dismissing](backlog/closed-2026-09.md#-rg13--an-ax-click-on-a-control-behind-a-modal-fires-a-second-click-on-an-open-selects-field-re-opens-it-instead-of-dismissing--done-2026-09-20) — done (2026-09-20) — it was dropped, not fired: a reader's `Click` outside the modal is now the press outside, a `dismiss` on the modal and nothing on the node; the select's menu closes
 
+- `.` **RG14** — [Docs and parity nits from the pass, all one line each](backlog/closed-2026-09.md#-rg14--docs-and-parity-nits-from-the-pass-all-one-line-each--done-2026-09-20) — done (2026-09-20) — nine of ten as written, (c) already RG1's, (f) wrong as filed (C's `kui_nodes` carries `table`; pinned); ADR 0033 decision 10 (a percent column's basis), the solid caret's unfocused phase is the view's (F68 amended, `modal_editor` hollow); plus the pick over a pending tab name and case-folded own tab names
 - `.` **RG15** — [F69 was not checked in a window: the pin is proven against `NSUserDefaults`, not against AppKit's read](backlog/closed-2026-09.md#-rg15--f69-was-not-checked-in-a-window-the-pin-is-proven-against-nsuserdefaults-not-against-appkits-read--done-2026-09-20) — done (2026-09-20) — checked: HIToolbox reads the global domain by name and no per-process default reaches it, the named fallback included; the door is inert on macOS 27 and says so; RG16 holds the decision
 
 **From the kawoosh devtools-tables report (2026-09-17)** — F75, filed and built the same day

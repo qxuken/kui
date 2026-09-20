@@ -41,7 +41,8 @@ hole by hand will see.
   `grid { }` in Lua (`table` is Lua's own) / `dir = KUI_TABLE` in C is
   a column whose rows' children line up in columns
   ([ADR 0033](docs/adr/0033-a-table-is-a-column-whose-cells-align.md)):
-  the nth child of every row is column n, and a column is as wide as
+  the nth in-flow child of every row is column n (a float in a row is
+  not a cell), and a column is as wide as
   its widest cell, so a label column sits at its longest label with
   nothing measured and no width in the view. A cell's `width` sizes its
   column — `fit` and a number are content, `grow` grows the column with
@@ -174,9 +175,13 @@ hole by hand will see.
   says the caret is solid: the row still anchors the IME and is still
   the caret assistive technology hears, but `has_caret` leaves it out,
   so the runner's clock is not armed and an editor idling in normal mode
-  asks for no frame at all. The phase stays `true` while it is declared,
-  so a view that reads `caret_visible` draws its block; the bar of
-  insert mode, declared without it, blinks as before. Node gains
+  asks for no frame at all. The phase stays `true` while it is declared
+  — in a window without the keyboard too, where the runner hides a
+  blinking caret: the clock owns only what it blinks, and a solid
+  caret's unfocused look (hollow, as `modal_editor` now draws it;
+  dimmed; gone) is the view's from `env.focused` (backlog RG14) — so a
+  view that reads `caret_visible` draws its block; the bar of insert
+  mode, declared without it, blinks as before. Node gains
   `hasCaret()` (the reading C had as `kui_has_caret`), so a headless
   test can see that a view arms no clock. `modal_editor` keeps its
   normal-mode block solid now, the way a modal editor does.
@@ -450,6 +455,40 @@ hole by hand will see.
   any other, and every other request behind a modal still does nothing.
   The finding read the dropped click as a re-open; it was a refusal, and
   the pointer's dismissal is what was missing.
+
+- **A pick raised over a tab named but not declared yet showed in no
+  tab, and `setDevtoolsTab("Tree")` was refused and kept as a declared
+  name for good** (backlog RG14, the same pass; both in the devtools).
+  `set_devtools_pick(true)` decided "keep the tab up" on a name being
+  *set*, and since F67 a name no frame has declared yet is kept there
+  with the strip falling back to the panel's own tab — so
+  `set_devtools_tab("syntax")` before the first frame and then the pick
+  left the panel on the events tab with the picker's landing meant for
+  a tab that was not up. It decides on a name the panel *lists* now: a
+  pending name is no tab up, the pick is the chord's and shows the
+  tree, as `Ctrl+Shift+P` does. And the panel's own names are taken in
+  any case — `tree`, `Tree`, `TREE` — since the strip labels them with a
+  capital and a caller writes what it reads there; a declared tab's
+  name is the app's spelling and is matched exactly, as before.
+
+- **Ten doc and parity nits from the regression pass** (backlog RG14):
+  `kui.h`'s ABI history names `kui_select`, `KUI_TABLE` and
+  `KUI_VALUE_CARET_SOLID` among ABI 18's additions (and the drop zone's
+  five functions, where `abi.rs` said four); the F73 archive says the
+  encoder takes `key` for a missing `<select>` label, as `<input>` does,
+  and refuses only both absent; ADR 0033 counts the five solver reads of
+  the table flag by name, says "the nth *in-flow* child of every row"
+  with the changelog, README, howto, JSX type and the `table` element
+  row (a float in a row is not a cell), and records as decision 10 that
+  a percent column's basis is the row's content less its gaps — what the
+  columns are laid across, so two `50%` columns with a gap fill the row
+  — where a percent child of a plain row is its cut of the content box
+  with the gap on top, as CSS has it (a test pins both); the F74 archive
+  carries RG1's correction that a crash on the pumped path does reach
+  `teardown`; and the solid caret's unfocused phase is written down as
+  the view's (F68, above). `NodeInfo.table` was never missing from C:
+  `kui_nodes` serialises the same map Node and Lua read, and a test now
+  pins `table: true` on a `dir: "column"` row there.
 
 ### Changed
 

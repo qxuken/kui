@@ -29,8 +29,8 @@ amended: 2026-09-20
 > a settings path is as long as the user's dotted key). A width picked
 > by hand is a width a longer label breaks, and no view should have to
 > measure its labels to line them up. The answer is **a container the
-> layout sizes as a table** — the nth child of every row is column n,
-> and a column is as wide as its widest cell — in the five passes the
+> layout sizes as a table** — the nth in-flow child of every row is
+> column n, and a column is as wide as its widest cell — in the five passes the
 > solver already has, so it reaches every binding as one value of `dir`
 > and needs no widget, no measurement in the view and no width in it.
 
@@ -52,7 +52,8 @@ amended: 2026-09-20
   row's children are placed one after the other by their sizes, so two
   rows agree on where a column starts exactly when their children agree
   on their widths. Alignment is therefore a *sizing* question: make the
-  nth child of every row the same width and the positions follow.
+  nth in-flow child of every row the same width and the positions
+  follow.
 
 - **When the table knows enough.** A column's fit width is the max of
   its cells' fit widths, which pass 1 has computed by the time it
@@ -210,6 +211,26 @@ amended: 2026-09-20
    to wrap. (Decision 2 says why a section wrapper is allowed rather
    than refused.)
 
+10. **A percent column's basis is the room the columns are laid across:
+    the widest row's content box less that row's gaps.** `table_resolve`
+    lays every column across one number — the widest row's width less
+    its padding and `gap × (columns − 1)` — and a percent column takes
+    its cut of that, the same number the grow columns share what is
+    left of, so two `50%` columns with a gap between them fill the row
+    exactly, with the gap. A percent child of a *plain* row takes its
+    cut of the row's content box with the gap on top (`distribute_axis`:
+    `content * p`, as CSS resolves a flex item's percentage against the
+    container's content box), so two `50%` children of a plain row with
+    a gap overflow it by the gap — which is CSS's answer too, and a
+    plain row is left as CSS lays it. The two differ on purpose
+    (recorded under backlog RG14): the table's columns are one shared
+    allocation whose parts must sum to the row, and a percent that
+    could overflow the row would push its grow siblings to zero and
+    the last fit column out; a plain row's percent child is its own
+    box, the author's to size. `a_percent_column_takes_its_cut_of_the_row`
+    in `tests/table_layout.rs` pins the table's number beside the plain
+    row's.
+
 ## Considered options
 
 - **A widget over `measure_text`.** `widgets::key_value(ui, rows)`
@@ -230,8 +251,8 @@ amended: 2026-09-20
   and that is how the bindings spell it; but in the solver every
   `match dir` would gain an arm that says "as a column", and the
   cross-axis code that a table shares with a column would have to be
-  reached twice. A flag on a column touches the solver in four places
-  and nothing else.
+  reached twice. A flag on a column touches the solver in five places
+  (below) and nothing else.
 
 - **A column that shares widths across rows of *any* column
   (`align_cells` on every row).** Opting rows in one at a time
@@ -252,7 +273,12 @@ amended: 2026-09-20
 
 - Layout cost is gated on `Tree::any_table`: a frame with no table
   runs the passes as before, one predicted branch per node in the
-  two places the flag is read. A frame with one walks the table's
+  five places the flag is read — `wraps` (a table row never wraps),
+  `fit_widths` (the table step of pass 1), `distribute_axis` twice (a
+  table row's cells are final; the table step of pass 2) and
+  `fit_heights` (a text cell keeps its column's width) — every one
+  behind the `any_table` test first; `check_wrap` in `diag.rs` reads it
+  too, off the solver's path. A frame with one walks the table's
   rows and cells twice more (pass 1 and pass 2) and allocates a
   `Vec<Col>` per table per pass, the size of its column count.
 

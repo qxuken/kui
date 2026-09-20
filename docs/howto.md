@@ -62,8 +62,9 @@ wrapping under it.
 
 `<box dir="table">`, `grid { }` (Lua's `table` is its own), a `KuiSpec`
 with `dir = KUI_TABLE`, `NodeSpec::table()`: a column whose rows'
-children line up in columns — the nth child of every row is column n,
-and a column is as wide as its widest cell — so a label column sits at
+children line up in columns — the nth in-flow child of every row is
+column n (a float in a row is not a cell), and a column is as wide as
+its widest cell — so a label column sits at
 its longest label with no width picked by hand and nothing measured
 ([ADR 0033](adr/0033-a-table-is-a-column-whose-cells-align.md)). Put
 the rows in as rows: `<box dir="row" width="grow" gap={8}><text>{k}

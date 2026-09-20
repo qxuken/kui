@@ -2602,8 +2602,9 @@ macro_rules! core_methods {
             /// the main window: `devtoolsPicked()` is the node under the
             /// pointer while it is up, and the press lands it in
             /// `devtoolsSelected()`. Raised while a declared tab is on
-            /// show, the pick leaves that tab up; raised otherwise it is
-            /// the `Ctrl+Shift+P` pick and shows the tree tab. A hidden
+            /// show, the pick leaves that tab up; raised otherwise — a
+            /// tab named but not declared yet included — it is the
+            /// `Ctrl+Shift+P` pick and shows the tree tab. A hidden
             /// panel comes back docked.
             #[napi]
             pub fn set_devtools_pick(&mut self, on: bool) {
@@ -2619,8 +2620,9 @@ macro_rules! core_methods {
             /// Shows the panel's tab named `name` from the app's side —
             /// what the strip's click and `Ctrl+Shift+N` do, for a command
             /// that jumps to the app's own tab (ADR 0032). `name` is one
-            /// of the panel's own (`facts`, `events`, `tree`) or a
-            /// `<devtoolsTab>`'s. A declared name the panel does not list
+            /// of the panel's own (`facts`, `events`, `tree`, in any case)
+            /// or a `<devtoolsTab>`'s, exactly as declared. A declared
+            /// name the panel does not list
             /// yet is kept and shows once a frame declares it; the return
             /// says whether the panel lists it now. A hidden panel comes
             /// back docked; `setDevtools(true)` is still the app's to

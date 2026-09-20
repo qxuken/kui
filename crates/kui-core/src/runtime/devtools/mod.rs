@@ -227,8 +227,14 @@ impl Tab {
         }
     }
 
+    /// One of the three by its name in any case — `tree`, `Tree`, `TREE`
+    /// — since the strip labels them with a capital and a caller writes
+    /// what it reads there (backlog RG14). A declared tab's name is the
+    /// app's own spelling and is matched exactly.
     fn parse(s: &str) -> Option<Tab> {
-        Self::ALL.into_iter().find(|t| t.name() == s)
+        Self::ALL
+            .into_iter()
+            .find(|t| t.name().eq_ignore_ascii_case(s))
     }
 }
 
@@ -1116,9 +1122,10 @@ impl Core {
     /// decision 4). Picking happens in the main window, over the app: the
     /// node under the pointer is `devtools_picked` while it is up, and
     /// the press lands it in `devtools_selected`. Raised while a declared
-    /// tab is on show, the pick leaves that tab up; raised otherwise it
-    /// is the `Ctrl+Shift+P` pick, which shows the tree tab. A hidden
-    /// panel comes back docked, as the chord's does.
+    /// tab is on show, the pick leaves that tab up; raised otherwise — a
+    /// tab named through [`Self::set_devtools_tab`] but not declared yet
+    /// included — it is the `Ctrl+Shift+P` pick, which shows the tree
+    /// tab. A hidden panel comes back docked, as the chord's does.
     pub fn set_devtools_pick(&mut self, on: bool) {
         if !cfg!(feature = "devtools") {
             return;
@@ -1131,9 +1138,15 @@ impl Core {
             }
             d.pick = on;
             d.pick_hover = None;
-            d.pick_keep_tab = on && d.custom.is_some();
+            // A declared tab is up when `custom` names one the panel
+            // lists — not merely when it is set: since F67 a name no frame
+            // has declared yet is kept there, and the strip falls back to
+            // the panel's own tab, so a pick raised then is the chord's
+            // and shows the tree (backlog RG14).
+            let on_tab = d.custom.as_deref().is_some_and(|n| d.lists(n));
+            d.pick_keep_tab = on && on_tab;
             if on {
-                if d.custom.is_none() {
+                if !on_tab {
                     d.show(Tab::Tree);
                 }
                 if d.dock == Dock::Off {
@@ -1158,7 +1171,9 @@ impl Core {
     /// Shows the panel's tab named `name` from outside the panel — what
     /// the strip's click and `Ctrl+Shift+N` do, for an app with a command
     /// that jumps to its own tab (ADR 0032). `name` is one of the panel's
-    /// own (`facts`, `events`, `tree`) or a declared tab's. A declared
+    /// own (`facts`, `events`, `tree`, in any case — the strip labels
+    /// them `Facts`, `Events`, `Tree`) or a declared tab's, exactly as
+    /// the app declared it. A declared
     /// name the panel does not list yet is kept and shows once a frame
     /// declares it, as a strip click on it would; the return says whether
     /// the panel lists it now (it lists a declared tab from the first

@@ -230,11 +230,15 @@ mod widgets_headless {
     /// `dir = KUI_TABLE` (ADR 0033): the rows' cells line up, each
     /// column as wide as its widest cell, a grow cell growing its column,
     /// a bare text a cell too. Read back through `kui_layout_of` on the
-    /// cells that declared `on_layout`.
+    /// cells that declared `on_layout`; and `kui_nodes` says which node
+    /// is the table — `table: true` on a `dir: "column"` map, the same
+    /// `NodeInfo` row Node and Lua read (backlog RG14 (f): the map is the
+    /// core's `to_value`, so C needs no reader of its own).
     #[test]
     fn a_table_lines_its_rows_cells_up() {
         let ctx = kui_ctx_new();
         let tag = KuiValue(Value::str("cell"));
+        kui_set_inspect(ctx, true);
         kui_frame_begin(ctx, 300.0, 200.0, 1.0);
         let root: KuiSpec = unsafe { std::mem::zeroed() };
         kui_root(ctx, &root);
@@ -308,6 +312,30 @@ mod widgets_headless {
             message: empty,
         }; 4];
         assert_eq!(kui_take_warnings(ctx, out.as_mut_ptr(), out.len()), 0);
+        // The node list names the table: one map with `table` true, its
+        // `dir` a column's; its rows and cells say false.
+        let list = kui_nodes(ctx);
+        let n = kui_value_len(list);
+        let mut tables = 0;
+        let mut rows = 0;
+        for i in 0..n {
+            let node = kui_value_at(list, i);
+            let mut is_table = false;
+            assert!(
+                kui_value_as_bool(kui_value_get(node, ks("table")), &mut is_table),
+                "every node map carries `table`"
+            );
+            let mut dir = empty;
+            assert!(kui_value_as_str(kui_value_get(node, ks("dir")), &mut dir));
+            if is_table {
+                tables += 1;
+                assert_eq!(&*kstr(dir), "column", "a table is a column");
+            } else if &*kstr(dir) == "row" {
+                rows += 1;
+            }
+        }
+        assert_eq!(tables, 1, "one table among {n} nodes");
+        assert_eq!(rows, 2, "its rows are rows, not tables");
         kui_ctx_free(ctx);
     }
 

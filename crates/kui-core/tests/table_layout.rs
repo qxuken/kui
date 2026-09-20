@@ -255,6 +255,44 @@ fn a_percent_column_takes_its_cut_of_the_row() {
     assert_eq!(t.size(a).w, 50.0);
     assert_eq!(t.size(a2).w, 50.0);
     assert_eq!(t.size(b).w, 150.0);
+
+    // The basis is the room the columns are laid across — the row's
+    // content less its gaps — so two 50% columns with a gap fill the row
+    // exactly; a plain row's percent child is its cut of the content
+    // box with the gap on top, as CSS has it, and overflows (ADR 0033,
+    // decision 10).
+    let mut t = T::new(NodeSpec::table().width(px(200.0)));
+    let r = t.row(0, row_spec().gap(20.0));
+    let a = t.node(
+        r,
+        NodeSpec::row().width(Sizing::Percent(0.5)).height(px(10.0)),
+    );
+    let b = t.node(
+        r,
+        NodeSpec::row().width(Sizing::Percent(0.5)).height(px(10.0)),
+    );
+    t.run();
+    assert_eq!(t.size(a).w, 90.0);
+    assert_eq!(t.size(b).w, 90.0);
+    assert_eq!(t.pos(b).x, 110.0, "the gap between, the row filled");
+    let mut t = T::new(NodeSpec::column().width(px(200.0)));
+    let r = t.node(0, row_spec().gap(20.0));
+    let a = t.node(
+        r,
+        NodeSpec::row().width(Sizing::Percent(0.5)).height(px(10.0)),
+    );
+    let b = t.node(
+        r,
+        NodeSpec::row().width(Sizing::Percent(0.5)).height(px(10.0)),
+    );
+    t.run();
+    assert_eq!(t.size(a).w, 100.0);
+    assert_eq!(t.size(b).w, 100.0);
+    assert_eq!(
+        t.pos(b).x,
+        120.0,
+        "a plain row: the cut of the content box, the gap on top"
+    );
 }
 
 #[test]
