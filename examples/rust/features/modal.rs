@@ -12,7 +12,9 @@
 //! - **Escape is the app's call.** On the confirm it closes the confirm;
 //!   on the dialog it closes the dialog when the field is untouched and
 //!   asks the confirm otherwise (decision 6: the core asks, the app
-//!   decides).
+//!   decides). A press outside — the pointer's, or a reader's click on
+//!   a node behind the modal — is the same `dismiss` with `reason:
+//!   "outside"`, answered the same way.
 //! - **Restore.** When the dialog goes, focus returns to the button that
 //!   opened it (decision 4), so a keyboard user is where they were.
 //!
@@ -202,9 +204,32 @@ impl Example for Page {
             d.core.focus() == Some(save),
             "then save again, never the form",
         )?;
-        // The form is inert: a click on its other button reaches nobody.
+        // The form is inert: a reader's click on its other button is the
+        // press outside (decision 6, backlog RG13) — one `dismiss` on the
+        // dialog with `reason: "outside"`, nothing on the button — which
+        // this app answers as it answers Escape: an untouched dialog
+        // closes, and focus is back on the opener.
         let evs = d.click_key(self, other);
-        d.check(evs.is_empty(), "the form under the dialog is inert")?;
+        let outside = evs.len() == 1
+            && evs[0].key != other
+            && evs[0].payload.get("kind").and_then(Value::as_str) == Some("dismiss")
+            && evs[0].payload.get("tag").and_then(Value::as_str) == Some("dialog")
+            && evs[0].payload.get("reason").and_then(Value::as_str) == Some("outside");
+        d.check(
+            outside,
+            "the form under the dialog is inert: the click is the press outside",
+        )?;
+        d.frame(self);
+        d.check(
+            !self.dialog,
+            "an untouched dialog closes on the press outside",
+        )?;
+        d.check(
+            d.core.focus() == Some(open),
+            "and focus is back on the opener",
+        )?;
+        d.click_key(self, open);
+        d.frame(self);
         // Escape on an untouched dialog closes it, and focus comes back
         // to the button that opened it.
         d.key(self, "escape", Default::default());
@@ -230,10 +255,33 @@ impl Example for Page {
             d.core.focus() == Some(keep),
             "the confirm opens on its first stop, and holds focus",
         )?;
-        // The dialog is now as inert as the form: its save button reaches nobody.
+        // The dialog is now as inert as the form: a reader's click on its
+        // save button is the press outside the *confirm* — the modal in
+        // effect — and nothing on save; this app closes the confirm on
+        // any dismiss, so the dialog stands, dirty, and the field has
+        // focus again. Escape then asks the confirm once more.
         let save = d.key_of("save").unwrap();
-        let inert = d.click_key(self, save).is_empty();
-        d.check(inert, "the dialog under the confirm is inert")?;
+        let evs = d.click_key(self, save);
+        let outside = evs.len() == 1
+            && evs[0].key != save
+            && evs[0].payload.get("kind").and_then(Value::as_str) == Some("dismiss")
+            && evs[0].payload.get("tag").and_then(Value::as_str) == Some("confirm");
+        d.check(
+            outside,
+            "the dialog under the confirm is inert: the click asks the confirm",
+        )?;
+        d.frame(self);
+        d.check(
+            self.dialog && !self.confirm,
+            "the press outside closes the confirm, and the dialog stands",
+        )?;
+        d.check(
+            d.core.focus() == Some(name),
+            "focus returns to the field the confirm displaced",
+        )?;
+        d.key(self, "escape", Default::default());
+        d.frame(self);
+        d.check(self.confirm, "Escape asks the confirm again")?;
         d.key(self, "escape", Default::default());
         d.frame(self);
         d.check(
