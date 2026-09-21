@@ -24,6 +24,10 @@ was the first bare bump to break an app in five releases).
 ## 0.1.0-alpha.17 (unreleased)
 
 **What breaks.** No door, the ABI at 18 and the frame at v15.
+A `line` or `polygon` inside a clipping or scrolling container is cut
+at that container's edge now, where it drew past it (under Fixed,
+F78) — a view that relied on a stroke escaping its scroller anchors it
+`float="viewport"` or declares it outside.
 A windowed app on Windows that prints, launched from a shell, prints
 there now where it printed nowhere (under Added) — an app that wrote
 its own `AttachConsole` for that can delete it. `code` under Shift on a
@@ -62,6 +66,33 @@ matched `j` and read `shift` beside it to tell the two apart reads
 
 ### Fixed
 
+- **A virtual list sliced by a geometry that moved stayed a frame
+  behind until the next event** (backlog F77, from kawoosh's
+  virtual-list report). `virtual_column` slices by the frame before —
+  by design, covered by two rows of overscan — but nothing asked for
+  the frame that would close the lag, so a list whose container came
+  out of layout taller than the slice assumed (a split sliding open, a
+  resize) or scrolled elsewhere (a reveal, a clamp after the rows
+  shrank) kept the stale rows on screen: five rows in a pane twenty
+  tall, a blank band at the edge under the wheel. The core now
+  records what `scroll_geometry` handed each build and, after layout,
+  asks for one more frame when a container so read was placed
+  otherwise (`ScrollStore::resliced`); the frame after builds against
+  what is on screen and owes nothing. Every binding's virtual list gets
+  it. *What you can delete:* a `request_frame` after a virtual list, or
+  a frame requested on every resize, put there so the list would catch
+  up.
+- **A stroke or a polygon inside a scrolled row spilled past the
+  scroller** (backlog F78, the same report). A `line` or `polygon` is a
+  float the core makes (ADR 0010, decision 5), and a float escaped
+  every ancestor's clip — right for a tooltip, wrong for a graph's lane
+  drawn inside a list's row, which stayed on screen over the strip
+  above once the row scrolled away while its text was cut. A stroke or
+  polygon anchored in its parent's box takes the parent's clip now, as
+  a child would, and its hit region with it; a declared float and a
+  viewport-anchored stroke still escape. *What you can delete:* a
+  `clip` node wrapped around a graph, or a check that skips drawing a
+  row's strokes once the row is out of view.
 - **Shift was lost under the layout fallback: `J` on a Russian layout
   was `j`, and Shift on the key printed `;` was `;`** (backlog F76,
   from kawoosh's Russian-layout report). `KeyPress::from_layout` stands

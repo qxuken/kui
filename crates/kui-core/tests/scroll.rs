@@ -457,6 +457,74 @@ fn a_virtual_column_scrolls_like_a_full_one() {
     assert_eq!(core.scroll_offset(list_key()).y, 1_000.0 * ROW_H - VIEW_H);
 }
 
+/// A tall list built through the widget in a window `h` high.
+fn virtual_frame_in(core: &mut Core, rows: usize, h: f32) -> usize {
+    let mut built = 0usize;
+    let mut ui = core.frame(Size::new(400.0, h), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    kui_core::widgets::virtual_column(
+        &mut ui,
+        "list",
+        NodeSpec::column().fill(),
+        rows,
+        ROW_H,
+        |ui, _| {
+            built += 1;
+            ui.with(NodeSpec::row().fill(), |_| {});
+        },
+    );
+    ui.finish();
+    built
+}
+
+/// The slice is one frame behind the layout, so a frame whose container
+/// came out otherwise than the view assumed — taller after a resize, a
+/// split sliding open, scrolled elsewhere by a reveal — owes one more
+/// frame, or the rows built for the old box stay on screen until the
+/// next event, a screenful short. The core asks for it, and the frame
+/// after builds the right rows and asks for nothing.
+#[test]
+fn a_virtual_column_owes_a_frame_when_its_box_moved() {
+    let mut core = Core::new();
+    virtual_frame_in(&mut core, 1_000, VIEW_H);
+    assert!(core.owed().requested, "the first frame sliced blind");
+    let fits = |h: f32| kui_core::widgets::visible_rows(0.0, h, 0.0, ROW_H, 1_000, 2).len();
+    let built = virtual_frame_in(&mut core, 1_000, VIEW_H);
+    assert_eq!(built, fits(VIEW_H), "a screenful and the overscan");
+    assert!(!core.owed().requested, "settled");
+    // The window grows to three times the height: this frame builds for
+    // the old box and must ask for another.
+    let built = virtual_frame_in(&mut core, 1_000, VIEW_H * 3.0);
+    assert_eq!(built, fits(VIEW_H), "still the old box's rows");
+    assert!(core.owed().requested, "the box moved: one more frame");
+    let built = virtual_frame_in(&mut core, 1_000, VIEW_H * 3.0);
+    assert_eq!(built, fits(VIEW_H * 3.0), "the new box's rows");
+    assert!(!core.owed().requested, "settled again");
+    // A wheel between two frames: the geometry a view reads already
+    // carries the new offset, so the frame that lands it builds the
+    // right rows and owes nothing.
+    core.set_scroll(list_key(), Vec2::new(0.0, 10.0 * ROW_H));
+    virtual_frame_in(&mut core, 1_000, VIEW_H * 3.0);
+    assert!(
+        !core.owed().requested,
+        "a scroll slices right the first time"
+    );
+    // The rows themselves shrink under the offset: the clamp lands the
+    // content elsewhere than the slice assumed, so a frame is owed and
+    // the next one settles at the end of the shorter list.
+    core.set_scroll(list_key(), Vec2::new(0.0, 900.0 * ROW_H));
+    virtual_frame_in(&mut core, 1_000, VIEW_H * 3.0);
+    assert!(!core.owed().requested);
+    virtual_frame_in(&mut core, 100, VIEW_H * 3.0);
+    assert!(core.owed().requested, "clamped short: one more frame");
+    virtual_frame_in(&mut core, 100, VIEW_H * 3.0);
+    assert!(!core.owed().requested);
+    assert_eq!(
+        core.scroll_offset(list_key()).y,
+        100.0 * ROW_H - VIEW_H * 3.0
+    );
+}
+
 /// Rows are keyed by data index, not by the slot they land in, so the row
 /// under the pointer keeps its identity as the built range slides. This is
 /// what would have to be re-solved inside the core to virtualize there.
@@ -1041,4 +1109,70 @@ fn hover_over_the_scrollbar_is_not_hover_over_the_row_beneath() {
         Some("enter")
     );
     assert_eq!(hovered_row(&mut core), core.key_of("row1"));
+}
+
+/// A line and a polygon inside a scrolled row are clipped as the row is:
+/// a stroke drawn for a row above the container's top names the
+/// container's clip, not the window's, so a graph beside a virtual list
+/// does not spill over the strip above it.
+#[test]
+fn strokes_in_a_scrolled_row_are_clipped_by_the_container() {
+    let mut core = Core::new();
+    let build = |core: &mut Core| {
+        let mut ui = core.frame(Size::new(400.0, VIEW_H), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.with_keyed(
+            "strip",
+            NodeSpec::row()
+                .width(Sizing::Grow(1.0))
+                .height(Sizing::Fixed(40.0)),
+            |_| {},
+        );
+        ui.with_keyed("list", NodeSpec::column().fill().scroll_y(), |ui| {
+            for i in 0..ROWS {
+                ui.with_keyed(
+                    &format!("row{i}"),
+                    NodeSpec::row()
+                        .width(Sizing::Grow(1.0))
+                        .height(Sizing::Fixed(ROW_H)),
+                    |ui| {
+                        ui.line(
+                            Vec2::new(10.0, 0.0),
+                            Vec2::new(10.0, ROW_H),
+                            kui_core::Stroke::new(2.0, Color::rgb8(200, 200, 200)),
+                            NodeSpec::row(),
+                        );
+                        ui.polygon(
+                            &[
+                                Vec2::new(4.0, ROW_H / 2.0 - 4.0),
+                                Vec2::new(16.0, ROW_H / 2.0 - 4.0),
+                                Vec2::new(16.0, ROW_H / 2.0 + 4.0),
+                                Vec2::new(4.0, ROW_H / 2.0 + 4.0),
+                            ],
+                            NodeSpec::row().bg(Color::rgb8(255, 0, 0)),
+                        );
+                    },
+                );
+            }
+        });
+        ui.finish();
+    };
+    build(&mut core);
+    core.set_scroll(list_key(), Vec2::new(0.0, 3.0 * ROW_H));
+    build(&mut core);
+    let (dl, _) = core.output();
+    // Every quad drawn above the list's top (y < 40) must be clipped to a
+    // rect that starts at the list's top or below — nothing of a row that
+    // scrolled away may show over the strip.
+    let spill: Vec<_> = dl
+        .quads
+        .iter()
+        .filter(|q| q.rect.y < 40.0 - 0.5 && q.rect.h > 0.0)
+        .filter(|q| dl.clips[q.clip as usize].rect.y < 40.0 - 0.5)
+        .map(|q| (q.rect, q.kind, dl.clips[q.clip as usize].rect))
+        .collect();
+    assert!(
+        spill.is_empty(),
+        "drawn over the strip unclipped: {spill:?}"
+    );
 }

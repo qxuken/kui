@@ -337,6 +337,13 @@ impl Core {
         // An explicit `reveal` after the caret nudge: the app asked for
         // this one, so it wins the offset if both want to move it.
         self.apply_pending_reveal();
+        // A container a view sliced its rows by (`scroll_geometry`) that
+        // came out otherwise — taller, scrolled elsewhere — owes a frame
+        // built against this layout, or the slice stays a frame behind
+        // until the next event (`ScrollStore::resliced`).
+        if self.scroll.resliced() {
+            self.frame_requested = true;
+        }
         if self.tree.any_slide {
             self.ease_positions();
         }
@@ -682,11 +689,28 @@ impl Core {
                 self.opacity[i] = o;
                 o
             };
+            // A stroke or a polygon is a float the core made, anchored in
+            // its parent's box space (ADR 0010, decision 5): it belongs to
+            // the parent's content as a child does, so the parent's clip
+            // holds it — a graph beside a scrolled list is cut at the
+            // list's edge like the rows it draws over. A declared float
+            // (a tooltip, a menu) escapes; so does a stroke anchored to
+            // the viewport.
+            let drawn_in_parent = floats_here
+                && parent != NIL
+                && matches!(
+                    self.tree.content[i],
+                    NodeContent::Line(_) | NodeContent::Polygon(_)
+                )
+                && self.tree.specs[i]
+                    .layout
+                    .float
+                    .is_some_and(|f| f.anchor == crate::spec::FloatAnchor::Parent);
             let (clip, clip_id) = if !any_clip {
                 (Clip::NONE, no_clip)
             } else {
                 // Floating nodes escape ancestor clips.
-                let (clip, id) = if parent == NIL || floats_here {
+                let (clip, id) = if parent == NIL || (floats_here && !drawn_in_parent) {
                     (Clip::NONE, no_clip)
                 } else {
                     let p = parent as usize;

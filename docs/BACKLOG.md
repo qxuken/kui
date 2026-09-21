@@ -1236,6 +1236,23 @@ it: the stand-in for a non-ASCII layout key was the position's
 key printed `;` was `;`. One entry, F76, **built 2026-09-21**, the day
 it was filed, and in the archive.
 
+## From the kawoosh virtual-list report (2026-09-22)
+
+kawoosh's memory and undo panes list their rows through
+`virtual_column`, and the report was a five-row window in a pane
+twenty rows tall, and a flicker at the list's edge while the wheel
+turned. The widget slices by the previous frame's geometry — by
+design, one frame of lag covered by two rows of overscan — but nothing
+asked for the frame that would close the lag: a container that came
+out of layout taller than the slice assumed (a split sliding open, a
+resize) or scrolled elsewhere (a reveal, a clamp) kept the stale rows
+until the next event. And the undo pane's graph — a stroke and a dot
+per row, drawn with `line` and `polygon` inside the rows — spilled
+over the strip above the list once it scrolled: a stroke is a float
+(ADR 0010 decision 5), and a float escaped every ancestor's clip, the
+scroller's included. Two entries, F77 and F78, **built 2026-09-22**,
+the day they were filed, and in the archive.
+
 ## From the regression pass of 2026-09-19
 
 A review of everything since the alpha.15 tag — F67–F75, nine features
@@ -2054,3 +2071,8 @@ move.
 **From the kawoosh Russian-layout report (2026-09-21)** — F76, filed and built the same day
 
 - `!` **F76** — [Shift is lost under the layout fallback: `J` on a Russian layout is `j`, and Shift on the key printed `;` is `;`](backlog/closed-2026-09.md#-f76--shift-is-lost-under-the-layout-fallback-j-on-a-russian-layout-is-j-and-shift-on-the-key-printed--is---done-2026-09-21) — done (2026-09-21) — `from_layout` stands in the US-QWERTY key as Shift prints it; the winit runner's Alt path resolves shift-less, as it reads the key; ADR 0002 decision 11 amended
+
+**From the kawoosh virtual-list report (2026-09-22)** — F77 and F78, filed and built the same day
+
+- `!` **F77** — [A virtual list sliced by a geometry that moved stays a frame behind until the next event: five rows in a tall pane, a blank edge under the wheel](backlog/closed-2026-09.md#-f77--a-virtual-list-sliced-by-a-geometry-that-moved-stays-a-frame-behind-until-the-next-event-five-rows-in-a-tall-pane-a-blank-edge-under-the-wheel--done-2026-09-22) — done (2026-09-22) — `ScrollStore` records what `geometry` handed out this build and `resliced` says whether layout placed it otherwise; `layout_frame` asks for the frame that closes the lag
+- `!` **F78** — [A stroke or a polygon in a scrolled row spills past the scroller: a float escapes every ancestor's clip, the one it was drawn inside included](backlog/closed-2026-09.md#-f78--a-stroke-or-a-polygon-in-a-scrolled-row-spills-past-the-scroller-a-float-escapes-every-ancestors-clip-the-one-it-was-drawn-inside-included--done-2026-09-22) — done (2026-09-22) — a `line` or `polygon` anchored in its parent's box takes the parent's clip as a child would; a declared float and a viewport-anchored stroke still escape; ADR 0010 decision 5 amended

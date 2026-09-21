@@ -104,6 +104,13 @@ pub struct ScrollStore {
     entries: FxHashMap<Key, Entry>,
     /// The frame being built, stamped onto every entry touched.
     frame_no: u64,
+    /// The geometries read during this build ([`Self::geometry`]) — what
+    /// a view sliced its rows by — as the box size and the clamped
+    /// offset it was handed, so that after layout the core can tell
+    /// whether the frame came out as the view assumed
+    /// ([`Self::resliced`]). Interior mutability because a read is a
+    /// read.
+    reads: std::cell::RefCell<Vec<(Key, Size, Vec2)>>,
 }
 
 impl ScrollStore {
@@ -126,6 +133,7 @@ impl ScrollStore {
     /// itself.
     pub(crate) fn begin_frame(&mut self, frame_no: u64) {
         self.frame_no = frame_no;
+        self.reads.get_mut().clear();
         if self.entries.len() > MAX_UNDECLARED_SCROLLS {
             self.evict(frame_no.saturating_sub(1));
         }
@@ -162,17 +170,47 @@ impl ScrollStore {
     pub fn geometry(&self, key: Key) -> Option<ScrollGeometry> {
         let e = self.entries.get(&key)?;
         let (rect, content, max_offset) = e.geom?;
+        // Clamped here, not just at layout: a `set_scroll` between two
+        // frames leaves a raw number in the store, and a view slicing
+        // its data by it would index far off the end.
+        let offset = Vec2::new(
+            e.offset.x.clamp(0.0, max_offset.x),
+            e.offset.y.clamp(0.0, max_offset.y),
+        );
+        if let Ok(mut reads) = self.reads.try_borrow_mut() {
+            reads.push((key, Size::new(rect.w, rect.h), offset));
+        }
         Some(ScrollGeometry {
             rect,
             content,
-            // Clamped here, not just at layout: a `set_scroll` between two
-            // frames leaves a raw number in the store, and a view slicing
-            // its data by it would index far off the end.
-            offset: Vec2::new(
-                e.offset.x.clamp(0.0, max_offset.x),
-                e.offset.y.clamp(0.0, max_offset.y),
-            ),
+            offset,
             max_offset,
+        })
+    }
+
+    /// Whether a container whose geometry this build read came out of
+    /// layout with another box size or another placed offset than the
+    /// one it was handed: the view sliced by the frame before, and that
+    /// frame is not this one — a resize, a split sliding open, a reveal
+    /// — so one more frame is owed, built against what is on screen now.
+    /// Without it the rows a virtual list built for the old box stay on
+    /// screen until the next event, a screenful short.
+    pub(crate) fn resliced(&self) -> bool {
+        self.reads.borrow().iter().any(|(key, size, offset)| {
+            match self
+                .entries
+                .get(key)
+                .and_then(|e| e.geom.map(|g| (g, e.laid)))
+            {
+                Some(((rect, _, _), laid)) => {
+                    (rect.w - size.w).abs() > 0.5
+                        || (rect.h - size.h).abs() > 0.5
+                        || (laid.x - offset.x).abs() > 0.5
+                        || (laid.y - offset.y).abs() > 0.5
+                }
+                // Read, and then not laid out as a container at all.
+                None => true,
+            }
         })
     }
 

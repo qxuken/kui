@@ -146,6 +146,9 @@ the rows come from a callback it runs for the ones it slices, and it keys
 each by its data `index`, so a row keeps its hover, focus, edit buffer and
 tweens as the built range slides over it. `setScroll(key, 0, i * rowH)` is
 "scroll to row `i`" — `reveal` finds nothing for a row nobody declared.
+It slices by the frame before, and the core asks for the frame that
+closes the lag when the container came out otherwise (taller after a
+resize, scrolled elsewhere by a reveal), so nothing to request yourself.
 
 In Node it also declares the node that makes `view` run again when the
 container scrolls: the wheel raises no event and a window redraws by

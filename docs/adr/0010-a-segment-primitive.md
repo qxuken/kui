@@ -137,6 +137,12 @@ test — is declined or deferred below, each with the reason.
    its parent's in-flow content and in tree order among the other floats:
    a connector meant to sit under two cards is declared before them.
    `slide`, `enter` and `exit` offsets move it as they move any float.
+   *Amended 2026-09-22 (backlog F78):* it is clipped as a child of its
+   parent is — by the parent's own box when the parent clips or
+   scrolls, else by what the parent inherited — not as a declared float
+   is, which escapes; a stroke drawn in a scrolled row is cut at the
+   scroller's edge with the row. A stroke anchored `float="viewport"`
+   keeps a declared float's escape.
 6. **`on_layout` reports the bounding box.** The rect is the node's — the
    endpoints inflated by half the width plus two — with `parent` beside
    it, exactly like any other node. Nothing inside a line has a rect of
