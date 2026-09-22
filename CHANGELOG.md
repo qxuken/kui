@@ -106,6 +106,18 @@ reveal elsewhere cancelling it drops the first ask instead.
 
 ### Fixed
 
+- **A glyph working set between one atlas page and two corrupted every
+  frame** (backlog F83, from kawoosh's big-font report). The page
+  grew when it filled twice in one frame (AR19), and a set that
+  fills it once a frame — a code view at 66 px on a 2× display, some
+  fifty glyphs to a 1024 page — never filled it twice: every frame
+  reset once mid-emit, the quads emitted before the reset sampled the
+  overwritten page, and the rows drawn first (the caret's, redrawn
+  every frame) showed other glyphs' pixels. A glyph the last reset
+  dropped coming back to a full page is thrash, and the page grows;
+  a set that turns over, all new keys, still resets.
+  *What you can delete:* a cap on the font size an app lets its user
+  pick to keep the glyphs whole.
 - **Two reveals in one frame, into different containers, dropped the
   first** (backlog F82, from kawoosh's tab-strip report). `reveal`
   kept one pending key and the last ask won, which is right inside

@@ -2,7 +2,7 @@
 //! mirror it to a texture; `dirty`/`epoch` tell them when to re-upload.
 
 use cosmic_text::CacheKey;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::resources::ImageId;
 
@@ -65,6 +65,14 @@ pub struct GlyphAtlas {
     /// working set that turned over, twice is one that does not fit the
     /// page, which is when the page grows (AR19).
     resets_this_frame: u32,
+    /// The glyphs the last reset for room dropped, and whether one of
+    /// them has come back since: a page that fills again while holding
+    /// what it just threw out is thrashing — a working set between one
+    /// page and two resets once a frame, never twice in one, and every
+    /// frame's early quads sampled the overwritten page (F83) — and
+    /// grows. A set that turns over (new keys) never sets it.
+    dropped: FxHashSet<CacheKey>,
+    returned: bool,
 }
 
 impl GlyphAtlas {
@@ -84,6 +92,8 @@ impl GlyphAtlas {
             shelves: Vec::new(),
             next_shelf_y: 0,
             resets_this_frame: 0,
+            dropped: FxHashSet::default(),
+            returned: false,
         }
     }
 
@@ -109,11 +119,15 @@ impl GlyphAtlas {
         self.next_shelf_y = 0;
         self.epoch += 1;
         self.dirty = true;
+        self.dropped.clear();
+        self.returned = false;
     }
 
     /// Reset onto a bigger page (used when content outgrows the current
     /// one). Everything cached is dropped and re-inserts on demand.
     fn grow_to(&mut self, size: u32) {
+        self.dropped.clear();
+        self.returned = false;
         self.size = size;
         self.pixels = vec![0; (size * size * 4) as usize];
         self.map.clear();
@@ -143,10 +157,12 @@ impl GlyphAtlas {
         // the frame that rebuilds them — so it self-heals.
         self.resets_this_frame += 1;
         let bigger = (self.size * 2).min(MAX_ATLAS_SIZE);
-        if self.resets_this_frame >= 2 && bigger != self.size {
+        if (self.resets_this_frame >= 2 || self.returned) && bigger != self.size {
             self.grow_to(bigger);
         } else {
+            let dropped: FxHashSet<CacheKey> = self.map.keys().copied().collect();
             self.reset();
+            self.dropped = dropped;
         }
         loop {
             if let Some(pos) = self.alloc(w, h) {
@@ -216,6 +232,9 @@ impl GlyphAtlas {
             self.map.insert(key, None);
             return None;
         };
+        if self.dropped.contains(&key) {
+            self.returned = true;
+        }
         let Some((x, y)) = self.alloc_or_make_room(glyph.w, glyph.h) else {
             self.map.insert(key, None);
             return None;
@@ -459,6 +478,32 @@ mod tests {
             }
         }
         assert_eq!(atlas.size, 64, "one page's worth a frame never grows it");
+    }
+
+    /// F83: a working set between one page and two — the glyphs of a
+    /// big font — resets once a frame, never twice in one, so the
+    /// twice-a-frame rule never grew it and every frame sampled a page
+    /// overwritten under its early quads. A glyph the last reset dropped
+    /// coming back to a full page is that thrash, and the page grows;
+    /// the next frame is still.
+    #[test]
+    fn a_set_between_one_page_and_two_grows_on_its_second_frame() {
+        let mut atlas = GlyphAtlas::with_size(64);
+        // Six 30×30 glyphs; a 64 page holds four.
+        let frame = |atlas: &mut GlyphAtlas| {
+            atlas.begin_frame();
+            for i in 0..6 {
+                atlas.get_or_insert(fake_key(i), || Some(raster(30, 30)));
+            }
+        };
+        frame(&mut atlas);
+        assert_eq!(atlas.size, 64, "one reset in the first frame");
+        frame(&mut atlas);
+        assert!(atlas.size > 64, "the dropped glyphs came back: grown");
+        let epoch = atlas.epoch;
+        frame(&mut atlas);
+        frame(&mut atlas);
+        assert_eq!(atlas.epoch, epoch, "and still from then on");
     }
 
     /// F66: a synthesized shape is one slot per character and cell size —

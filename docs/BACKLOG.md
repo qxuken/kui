@@ -1284,6 +1284,15 @@ never landed: `reveal` held one pending key, and the ribbon's, asked
 later in the build, replaced it. One entry, F82, **built 2026-09-23**,
 the day it was filed, and in the archive.
 
+## From the kawoosh big-font report (2026-09-23)
+
+At a 66 px font on a 2× display the row under the caret drew other
+glyphs' pixels, and rows around it flickered: the atlas page held
+about fifty glyphs of that size, the screen needed more than that and
+fewer than twice as many, and the page reset once a frame without
+ever growing. One entry, F83, **built 2026-09-23**, the day it was
+filed, and in the archive.
+
 ## From the regression pass of 2026-09-19
 
 A review of everything since the alpha.15 tag — F67–F75, nine features
@@ -2120,3 +2129,7 @@ move.
 **From the kawoosh tab-strip report (2026-09-23)** — F82, filed and built the same day
 
 - `!` **F82** — [Two reveals in one frame into different scroll containers: the first is dropped](backlog/closed-2026-09.md#-f82--two-reveals-in-one-frame-into-different-scroll-containers-the-first-is-dropped--done-2026-09-23) — done (2026-09-23) — the pending reveals are a list, kept last-per-container (the nearest scrolling ancestor) and all resolved after layout
+
+**From the kawoosh big-font report (2026-09-23)** — F83, filed and built the same day
+
+- `!` **F83** — [A glyph working set between one atlas page and two resets once a frame and never grows: every frame samples an overwritten page](backlog/closed-2026-09.md#-f83--a-glyph-working-set-between-one-atlas-page-and-two-resets-once-a-frame-and-never-grows-every-frame-samples-an-overwritten-page--done-2026-09-23) — done (2026-09-23) — a glyph the last reset dropped coming back to a full page grows it; a turned-over set still resets
