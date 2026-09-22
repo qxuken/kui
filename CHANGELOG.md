@@ -42,6 +42,21 @@ matched `j` and read `shift` beside it to tell the two apart reads
 
 ### Added
 
+- **The Lua DSL described for lua-language-server** (backlog F81,
+  from kawoosh's Lua-types report). `kui_lua::luals_meta()` returns a
+  `---@meta` file of every prelude constructor — `row`, `column`,
+  `grid`, `text`, `edit`, `image`, `virtual_column`, the rest — each
+  with the comment above it in the prelude and its parameters typed by
+  its element, and a `kui.Props` class of every prop a node table
+  takes: the schema's rows by their Lua spelling, each typed by its
+  kind (an enum as its names, a sizing as `kui.Sizing`) with its doc,
+  the composites (`pad`, `border`, `scroll_x`, …) and each element's
+  own props. It is generated from kui-core's schema, the same tables
+  `npm run gen` writes `index.d.ts` from, so it cannot fall behind a
+  prop. A host writes it into a directory and puts that on the
+  server's `workspace.library`. No ABI change.
+  *What you can delete:* a hand-kept `---@meta` file of the prelude,
+  and the `diagnostics.globals` list that silenced `row` and `text`.
 - **A scroll container eases where a `reveal` or a `set_scroll` takes
   it** (backlog F80, from kawoosh's scrolling-tab report). Declare a
   `transition` on the container and a programmatic scroll glides over

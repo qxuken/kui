@@ -1266,6 +1266,15 @@ offset moves the content outside that, so the columns eased while the
 ribbon jumped. Two entries, F79 and F80, **built 2026-09-22**, the day
 they were filed, and in the archive.
 
+## From the kawoosh Lua-types report (2026-09-22)
+
+kawoosh's plugins and settings are Lua, edited in kawoosh with
+lua-language-server attached, and every `row`, `column` and `text` in
+a view was an undefined global: nothing described the prelude to the
+server, where `index.d.ts` has described the JSX half since alpha.1.
+One entry, F81, **built 2026-09-22**, the day it was filed, and in the
+archive.
+
 ## From the regression pass of 2026-09-19
 
 A review of everything since the alpha.15 tag — F67–F75, nine features
@@ -2094,3 +2103,7 @@ move.
 
 - `!` **F77** — [A virtual list sliced by a geometry that moved stays a frame behind until the next event: five rows in a tall pane, a blank edge under the wheel](backlog/closed-2026-09.md#-f77--a-virtual-list-sliced-by-a-geometry-that-moved-stays-a-frame-behind-until-the-next-event-five-rows-in-a-tall-pane-a-blank-edge-under-the-wheel--done-2026-09-22) — done (2026-09-22) — `ScrollStore` records what `geometry` handed out this build and `resliced` says whether layout placed it otherwise; `layout_frame` asks for the frame that closes the lag
 - `!` **F78** — [A stroke or a polygon in a scrolled row spills past the scroller: a float escapes every ancestor's clip, the one it was drawn inside included](backlog/closed-2026-09.md#-f78--a-stroke-or-a-polygon-in-a-scrolled-row-spills-past-the-scroller-a-float-escapes-every-ancestors-clip-the-one-it-was-drawn-inside-included--done-2026-09-22) — done (2026-09-22) — a `line` or `polygon` anchored in its parent's box takes the parent's clip as a child would; a declared float and a viewport-anchored stroke still escape; ADR 0010 decision 5 amended
+
+**From the kawoosh Lua-types report (2026-09-22)** — F81, filed and built the same day
+
+- `~` **F81** — [Nothing describes the Lua DSL to lua-language-server: `row`, `text` and every prop are undefined to it](backlog/closed-2026-09.md#-f81--nothing-describes-the-lua-dsl-to-lua-language-server-row-text-and-every-prop-are-undefined-to-it--done-2026-09-22) — done (2026-09-22) — `kui_lua::luals_meta()`: a `---@meta` file of the prelude's constructors and a `kui.Props` class, generated from the schema

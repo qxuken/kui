@@ -88,6 +88,9 @@ use kui_core::{
 };
 use mlua::{Lua, Table};
 
+mod meta;
+pub use meta::luals_meta;
+
 const PRELUDE: &str = include_str!("prelude.lua");
 
 pub struct LuaExtension {

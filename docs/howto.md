@@ -1096,6 +1096,18 @@ label no longer needs it: that is
 
 ## Ship and upgrade
 
+### How do I get completion for the Lua views in my editor?
+
+Write `kui_lua::luals_meta()` into a directory and put the directory on
+lua-language-server's `workspace.library`. The file declares every
+prelude constructor with its doc and a `kui.Props` class of every prop,
+typed and documented from the schema, so `row {` completes its props
+and `row`, `text` and the rest are no longer undefined globals. Write
+it again after an upgrade; it is generated, never edited.
+
+[`props.md`](props.md) ·
+[alpha.17](../CHANGELOG.md#010-alpha17-unreleased)
+
 ### How do I stop the console window on Windows?
 
 A Windows binary is built for one of two subsystems, and Rust picks
