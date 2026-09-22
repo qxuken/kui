@@ -468,10 +468,11 @@ pub struct Core {
     last_announcement: Option<(String, u64, u64)>,
     /// How many times `handle_input` handed the app at least one event.
     events_answered: u64,
-    /// A `reveal(key)` waiting for a layout to resolve against: the next
-    /// `finish_frame` scrolls the node's scrolling ancestor to show it,
-    /// then clears this. Last writer wins.
-    pending_reveal: Option<Key>,
+    /// The `reveal(key)`s waiting for a layout to resolve against, in the
+    /// order asked: the next `finish_frame` scrolls each node's scrolling
+    /// ancestor to show it, then clears them. Within one container the
+    /// last ask wins; asks aimed at different containers all land (F82).
+    pending_reveal: Vec<Key>,
     /// Type-ahead inside a composite (`docs/adr/0007`, decision 9): the
     /// characters typed so far, and the frame clock reading of the last
     /// keystroke. The buffer is cleared at the start of the first frame
@@ -898,7 +899,7 @@ impl Core {
             ghost_rect: Vec::new(),
             frame_requested: false,
             atlas_epoch_seen: 0,
-            pending_reveal: None,
+            pending_reveal: Vec::new(),
             pending_focus_step: None,
             region: None,
             region_held: false,

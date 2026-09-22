@@ -39,6 +39,10 @@ layout that does not speak ASCII is the shifted US-QWERTY key — `J`,
 `:`, `~` — where it was the unshifted one (under Fixed); a keymap that
 matched `j` and read `shift` beside it to tell the two apart reads
 `code` alone now.
+Two `reveal`s asked before one frame, into different scroll
+containers, both land now, where only the last did (under Fixed,
+F82) — a view that revealed into one container and relied on a later
+reveal elsewhere cancelling it drops the first ask instead.
 
 ### Added
 
@@ -102,6 +106,17 @@ matched `j` and read `shift` beside it to tell the two apart reads
 
 ### Fixed
 
+- **Two reveals in one frame, into different containers, dropped the
+  first** (backlog F82, from kawoosh's tab-strip report). `reveal`
+  kept one pending key and the last ask won, which is right inside
+  one container — two asks there contradict — and wrong across two: a
+  window whose tab strip and pane ribbon each reveal their selection on
+  the frame a key changes both lost the strip's. The pending reveals
+  are a list now, resolved after layout by the container each would
+  move (its nearest scrolling ancestor): the last ask per container
+  stands, and every container asked about moves.
+  *What you can delete:* a reveal asked again on the next frame so it
+  survives another one asked later in the same frame.
 - **A focused key sink drawn outside its container's clip heard
   nothing** (backlog F79, from kawoosh's scrolling-tab report). A key
   reaches a node by holding focus; a hit region is where a *point*

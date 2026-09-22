@@ -1275,6 +1275,15 @@ server, where `index.d.ts` has described the JSX half since alpha.1.
 One entry, F81, **built 2026-09-22**, the day it was filed, and in the
 archive.
 
+## From the kawoosh tab-strip report (2026-09-23)
+
+kawoosh's tabs became a scrolling row that reveals the active tab on
+the frame it changes, and the pane ribbon under it reveals its focused
+column on the same frame — a tab switch changes both. The strip's ask
+never landed: `reveal` held one pending key, and the ribbon's, asked
+later in the build, replaced it. One entry, F82, **built 2026-09-23**,
+the day it was filed, and in the archive.
+
 ## From the regression pass of 2026-09-19
 
 A review of everything since the alpha.15 tag — F67–F75, nine features
@@ -2107,3 +2116,7 @@ move.
 **From the kawoosh Lua-types report (2026-09-22)** — F81, filed and built the same day
 
 - `~` **F81** — [Nothing describes the Lua DSL to lua-language-server: `row`, `text` and every prop are undefined to it](backlog/closed-2026-09.md#-f81--nothing-describes-the-lua-dsl-to-lua-language-server-row-text-and-every-prop-are-undefined-to-it--done-2026-09-22) — done (2026-09-22) — `kui_lua::luals_meta()`: a `---@meta` file of the prelude's constructors and a `kui.Props` class, generated from the schema
+
+**From the kawoosh tab-strip report (2026-09-23)** — F82, filed and built the same day
+
+- `!` **F82** — [Two reveals in one frame into different scroll containers: the first is dropped](backlog/closed-2026-09.md#-f82--two-reveals-in-one-frame-into-different-scroll-containers-the-first-is-dropped--done-2026-09-23) — done (2026-09-23) — the pending reveals are a list, kept last-per-container (the nearest scrolling ancestor) and all resolved after layout

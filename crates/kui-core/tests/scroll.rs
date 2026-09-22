@@ -254,6 +254,51 @@ fn reveal_reaches_a_row_the_frame_declares_for_the_first_time() {
     assert_eq!(core.scroll_offset(list_key()).y, 1000.0);
 }
 
+/// Two lists side by side, each 20 rows of 30 in 200 (F82).
+fn two_lists(core: &mut Core) {
+    let mut ui = core.frame(Size::new(400.0, VIEW_H), 1.0);
+    ui.configure_root(NodeSpec::row().fill());
+    for list in ["left", "right"] {
+        ui.with_keyed(list, NodeSpec::column().fill().scroll_y(), |ui| {
+            for i in 0..ROWS {
+                ui.with_keyed(
+                    &format!("row{i}"),
+                    NodeSpec::row()
+                        .width(Sizing::Grow(1.0))
+                        .height(Sizing::Fixed(ROW_H)),
+                    |_| {},
+                );
+            }
+        });
+    }
+    ui.finish();
+}
+
+#[test]
+fn reveals_into_two_containers_in_one_frame_both_land() {
+    // A tab strip and the pane list under it, each revealing its own
+    // selection on the frame a key changes both: the asks are not
+    // contradictory, so neither may drop the other (F82).
+    let left = kui_core::Key::ROOT.str("left");
+    let right = kui_core::Key::ROOT.str("right");
+    let mut core = Core::new();
+    two_lists(&mut core);
+    core.reveal(left.str("row15"));
+    core.reveal(right.str("row18"));
+    two_lists(&mut core);
+    // Row 15 at 450..480 shows at the bottom of 200 with 4 of slack:
+    // 284; row 18 at 540..570: 374.
+    assert_eq!(core.scroll_offset(left).y, 284.0);
+    assert_eq!(core.scroll_offset(right).y, 374.0);
+
+    // Into one container, the last ask is the one that stands: row 0
+    // after row 19 leaves the list at the top.
+    core.reveal(left.str("row19"));
+    core.reveal(left.str("row0"));
+    two_lists(&mut core);
+    assert_eq!(core.scroll_offset(left).y, 0.0);
+}
+
 #[test]
 fn set_scroll_and_scroll_offset_round_trip_through_a_model() {
     let mut core = Core::new();

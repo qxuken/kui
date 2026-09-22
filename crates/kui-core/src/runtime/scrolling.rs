@@ -34,9 +34,11 @@ impl Core {
     /// is declaring for the first time. If that frame does not declare
     /// `key`, or nothing above it scrolls, it is a no-op — the request is
     /// spent, not held for the frame that might. Two reveals before one
-    /// frame are contradictory, so the last wins.
+    /// frame into the *same* container are contradictory, so the last one
+    /// wins there; reveals into different containers — a tab strip and
+    /// the pane list under it — are not, and each lands (F82).
     pub fn reveal(&mut self, key: Key) {
-        self.pending_reveal = Some(key);
+        self.pending_reveal.push(key);
         self.request_frame();
     }
 
@@ -163,14 +165,36 @@ impl Core {
     /// declares it. Like the caret, the positions pass re-runs, so this
     /// frame already draws the node in view.
     pub(crate) fn apply_pending_reveal(&mut self) {
-        let Some(key) = self.pending_reveal.take() else {
+        let asks = std::mem::take(&mut self.pending_reveal);
+        if asks.is_empty() {
             return;
-        };
-        let Some(i) = (0..self.tree.len()).find(|&i| self.tree.keys[i] == key) else {
-            return;
-        };
-        let rect = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
-        self.scroll_rect_into_view_smooth(i, rect, true);
+        }
+        // Each ask by the container it would move — its nearest
+        // scrolling ancestor, which is the only one a reveal nudges —
+        // the last ask per container kept, in the order asked.
+        let mut kept: Vec<(u32, usize)> = Vec::new();
+        for key in asks {
+            let Some(i) = (0..self.tree.len()).find(|&i| self.tree.keys[i] == key) else {
+                continue;
+            };
+            let mut a = self.tree.parent[i];
+            while a != NIL {
+                let spec = self.tree.specs[a as usize].layout;
+                if spec.scroll_x || spec.scroll_y {
+                    break;
+                }
+                a = self.tree.parent[a as usize];
+            }
+            if a == NIL {
+                continue;
+            }
+            kept.retain(|(c, _)| *c != a);
+            kept.push((a, i));
+        }
+        for (_, i) in kept {
+            let rect = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
+            self.scroll_rect_into_view_smooth(i, rect, true);
+        }
     }
 
     /// Nudges the nearest scrolling ancestor of node `i` so `rect`
