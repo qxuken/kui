@@ -916,3 +916,104 @@ fn a_held_key_on_a_remapped_layout_resolves_its_release() {
     let evs = drive(&mut core, &[InputEvent::KeyUp(v.released())]);
     assert_eq!(keys(&evs), [("up".into(), "v".into())]);
 }
+
+/// A focused sink the frame draws outside its scroller's clip — a column
+/// scrolled off a ribbon, a pane an `enter` or a `slide` has not finished
+/// moving — still hears the keyboard: a key reaches a node by focus, not
+/// by being under a point (F79). Before it, the delivery read the hit
+/// list, which only a node some point could land on is in, so the keys
+/// typed at such a pane fell on the floor.
+#[test]
+fn a_focused_sink_outside_the_clip_still_hears_the_keyboard() {
+    let mut core = Core::new();
+    // A row 400 wide that scrolls, holding two 400-wide sinks: the
+    // second one begins wholly past the right edge.
+    let build = |core: &mut Core, focus_second: bool| {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::row().fill());
+        let mut cols = Vec::new();
+        ui.with_keyed("strip", NodeSpec::row().fill().scroll_x(), |ui| {
+            for i in 0..2 {
+                cols.push(
+                    ui.with_keyed(
+                        &format!("col{i}"),
+                        NodeSpec::column()
+                            .width(Sizing::Fixed(400.0))
+                            .height(Sizing::Grow(1.0))
+                            .on_key(Value::map([("pane", Value::Int(i))])),
+                        |_| {},
+                    ),
+                );
+            }
+        });
+        let (first, second) = (cols[0], cols[1]);
+        ui.take_key_focus(if focus_second { second } else { first });
+        ui.finish();
+        (first, second)
+    };
+    let (first, second) = build(&mut core, false);
+    let evs = drive(&mut core, &[press(KeyCode::Char('a'))]);
+    assert_eq!(evs.len(), 1);
+    assert_eq!(evs[0].key, first, "the sink on screen hears its key");
+    // The focus moves to the sink that is off the viewport, and nothing
+    // scrolls: no reveal, no wheel — the worst case, where the node is
+    // drawn nowhere a pointer could reach it.
+    let (_, second_again) = build(&mut core, true);
+    assert_eq!(second_again, second);
+    let evs = drive(&mut core, &[press(KeyCode::Char('b'))]);
+    assert_eq!(evs.len(), 1, "the key was delivered");
+    assert_eq!(evs[0].key, second);
+    assert_eq!(
+        evs[0]
+            .payload
+            .get("tag")
+            .and_then(|t| t.get("pane"))
+            .and_then(Value::as_int),
+        Some(1),
+        "with the sink's own tag"
+    );
+    // A click out there still finds nothing: the pointer's rule is
+    // unchanged, and only the keyboard's was wrong.
+    let evs = click_at(&mut core, 600.0, 100.0);
+    assert!(evs.is_empty(), "no pointer event past the clip: {evs:?}");
+}
+
+/// The same for a sink a modal shuts out, and a disabled one: neither is
+/// the keyboard's, in the tree or in the hit list.
+#[test]
+fn a_sink_a_modal_shuts_out_hears_nothing_wherever_it_is_drawn() {
+    let mut core = Core::new();
+    let build = |core: &mut Core, modal: bool| {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        let sink = ui.with_keyed(
+            "sink",
+            NodeSpec::column()
+                .width(Sizing::Grow(1.0))
+                .height(Sizing::Grow(1.0))
+                .on_key(Value::map([("pane", Value::Int(0))])),
+            |_| {},
+        );
+        if modal {
+            ui.with_keyed(
+                "dialog",
+                NodeSpec::column()
+                    .width(Sizing::Fixed(100.0))
+                    .height(Sizing::Fixed(50.0))
+                    .float(FloatConfig::parent().at(Align::Center, Align::Center))
+                    .modal(Value::str("dlg")),
+                |_| {},
+            );
+        }
+        ui.take_key_focus(sink);
+        ui.finish();
+        sink
+    };
+    let sink = build(&mut core, false);
+    let evs = drive(&mut core, &[press(KeyCode::Char('a'))]);
+    assert_eq!(evs.len(), 1);
+    assert_eq!(evs[0].key, sink);
+    build(&mut core, true);
+    let evs = drive(&mut core, &[press(KeyCode::Char('b'))]);
+    assert!(keys(&evs).is_empty(), "the modal has the keyboard: {evs:?}");
+}

@@ -1015,30 +1015,48 @@ impl Core {
         // the keymap case, and a keymap handed both halves runs every
         // binding twice. The key is still tracked as held either way, so
         // a sink that opts in mid-hold hears the release it is owed.
-        if phase == KeyPhase::Up && !self.sink_region(target).is_some_and(|h| h.key_up) {
+        if phase == KeyPhase::Up
+            && !self
+                .sink_node(target)
+                .is_some_and(|i| self.tree.specs[i].events().key_up)
+        {
             return false;
         }
         self.deliver_to_sink(target, kp.to_value(phase), out)
     }
 
-    /// The hit region of the sink `key` names — a node with `on_key` that
-    /// the last frame tracked.
-    fn sink_region(&self, key: Key) -> Option<&HitRegion> {
-        self.interaction
-            .hits
-            .iter()
+    /// The node the sink `key` names, in the last frame's tree: one that
+    /// declares `on_key`, is not disabled, and is not shut out by a
+    /// modal.
+    ///
+    /// Asked of the tree and not of the hit list, because a key is not
+    /// pointer input. The hit list is where a *point* finds a node, and
+    /// a node outside its scroller's clip is not under any point, so it
+    /// has no region there (`emit_node` is never reached for it) — while
+    /// the keyboard reaches a node by having focus, which a node keeps
+    /// wherever it is drawn. Before F79 the delivery read the hit list
+    /// like a click, so a focused sink scrolled out of view, or drawn
+    /// part-way to its place by `slide` or an `enter` offset, dropped
+    /// every key typed at it until it came back.
+    fn sink_node(&self, key: Key) -> Option<usize> {
+        let i = (0..self.tree.len())
             .rev()
-            .find(|h| h.key == key && h.key_sink.is_some())
+            .find(|&i| self.tree.keys[i] == key)?;
+        let spec = &self.tree.specs[i];
+        (spec.events().on_key.is_some() && !spec.disabled && self.interactive(i)).then_some(i)
     }
 
     /// Hands `payload` to the sink `target` names with the sink's tag
     /// merged in — the one delivery both key channels end in. False when
-    /// the last frame tracked no such sink.
+    /// the last frame declared no such sink.
     fn deliver_to_sink(&self, target: Key, payload: Value, out: &mut Vec<UiEvent>) -> bool {
-        let Some(h) = self.sink_region(target) else {
+        let Some(i) = self.sink_node(target) else {
             return false;
         };
-        out.push(UiEvent::on(h.origin, h.key, payload).tagged(h.key_sink.as_ref()));
+        out.push(
+            UiEvent::on(self.tree.origins[i], self.tree.keys[i], payload)
+                .tagged(self.tree.specs[i].events().on_key.as_ref()),
+        );
         true
     }
 

@@ -24,6 +24,10 @@ was the first bare bump to break an app in five releases).
 ## 0.1.0-alpha.17 (unreleased)
 
 **What breaks.** No door, the ABI at 18 and the frame at v15.
+A focused `on_key` sink hears the keyboard while it is drawn outside
+its container's clip, where it heard nothing (under Fixed, F79) — an
+app that leaned on the silence to keep keys from an off-screen pane
+now hears them there and decides for itself.
 A `line` or `polygon` inside a clipping or scrolling container is cut
 at that container's edge now, where it drew past it (under Fixed,
 F78) — a view that relied on a stroke escaping its scroller anchors it
@@ -66,6 +70,22 @@ matched `j` and read `shift` beside it to tell the two apart reads
 
 ### Fixed
 
+- **A focused key sink drawn outside its container's clip heard
+  nothing** (backlog F79, from kawoosh's scrolling-tab report). A key
+  reaches a node by holding focus; a hit region is where a *point*
+  finds one. The delivery asked the hit list all the same, and a node
+  the frame drew past its scroller's edge is under no point, so it has
+  no region there — a pane scrolled off a ribbon, or one an `enter`
+  offset or a `slide` had not finished moving, dropped every key typed
+  at it until it came back, silently and with focus plainly on it.
+  `route_key` and `deliver_to_sink` resolve the sink from the frame's
+  tree now (`Core::sink_node`), which is what every other step of the
+  walk already read; `disabled` and the modal boundary still refuse, and
+  the pointer's rule is untouched — a click past the clip finds nothing,
+  as before. ADR 0011 decision 9 says so. *What you can delete:* the
+  reveal-before-you-type dance — a frame requested, or an animation
+  shortened or dropped, so that a pane the keyboard was given would be
+  on screen in time to hear it.
 - **A virtual list sliced by a geometry that moved stayed a frame
   behind until the next event** (backlog F77, from kawoosh's
   virtual-list report). `virtual_column` slices by the frame before —

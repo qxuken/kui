@@ -439,6 +439,22 @@ not leak to the app behind it.
 [`onKey` / `keyUp` rows](props.md#container-props) ·
 [alpha.7](../CHANGELOG.md#010-alpha7-2026-09-06)
 
+### Does a pane off the edge of a scroller still hear its keys?
+
+Yes, since alpha.17. A key reaches a node by holding focus, not by being
+somewhere a pointer could land, so a sink scrolled out of its container,
+or drawn part-way to its place by `slide` or an `enter` offset, hears
+every press with its tag as usual — you can give the keyboard to a
+column on a ribbon and type into it before the reveal has brought it
+back, and animate the ribbon while you do. A `disabled` sink and one a
+modal shut out hear nothing, wherever they are drawn, and the pointer is
+unchanged: a click past the clip finds nothing. Before alpha.17 the
+delivery read the pointer's hit list, so those keys fell silently on the
+floor.
+
+[ADR 0011 decision 9](adr/0011-keys-bubble-to-the-enclosing-sink.md) ·
+[alpha.17](../CHANGELOG.md#010-alpha17-unreleased)
+
 ### How do I get an IME into an editor I own?
 
 An `onKey` sink drawing `line` rows with `caret` hears a composition as

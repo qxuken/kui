@@ -145,6 +145,19 @@ around its content, which is what both reports already wrote.
 8. **No new row, and no new event.** Nothing is added to `PROPS`, to
    `CUSTOM`, to the payloads or to the C ABI. Four bindings get this by
    rebuilding against a core that routes one more press.
+9. **A sink is resolved from the tree, not from the hit list**
+   (amended 2026-09-22, backlog F79). Every step above reads the frame's
+   tree — `key_target`, `enclosing_sink`, the claim, the modal
+   boundary — and only the delivery itself used to look the sink up
+   among the pointer's hit regions, which is a different question: a
+   hit region is where a *point* finds a node, and a node the frame
+   drew outside its scroller's clip is under no point at all, so it
+   has none. A key reaches a node by holding focus, which a node keeps
+   wherever it is drawn, so `deliver_to_sink` and the `key_up` opt-in
+   ask the tree (`Core::sink_node`, which still refuses a `disabled`
+   node and one a modal shut out, as decisions 1 and 6 say). The
+   pointer's rule is untouched: a click past the clip still finds
+   nothing.
 
 ## Considered options
 
