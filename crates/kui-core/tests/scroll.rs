@@ -1176,3 +1176,96 @@ fn strokes_in_a_scrolled_row_are_clipped_by_the_container() {
         "drawn over the strip unclipped: {spill:?}"
     );
 }
+
+/// A container that declares a `transition` eases a *programmatic*
+/// offset change — a `reveal`, a `set_scroll` — instead of jumping
+/// (F80): the ribbon a keyboard walks glides, and the thumb and the
+/// wheel, which are the hand's own, still land whole. `scroll_offset`
+/// answers where it is going, so a view's arithmetic is the same;
+/// `scroll_geometry` answers where the content is drawn, which is what
+/// a virtual list slices by.
+#[test]
+fn a_programmatic_scroll_eases_where_the_container_asks_and_the_wheel_never_does() {
+    use kui_core::{Easing, Transition};
+    // A 100-wide row that scrolls, holding four 100-wide boxes.
+    let build = |core: &mut Core, smooth: bool, reveal: Option<usize>| {
+        let mut ui = core.frame(Size::new(100.0, 50.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        let mut spec = NodeSpec::row().fill().scroll_x();
+        if smooth {
+            spec = spec.transition_with(Transition::ms(100.0).easing(Easing::Linear));
+        }
+        let mut boxes = Vec::new();
+        let row = ui.with_keyed("row", spec, |ui| {
+            for i in 0..4 {
+                boxes.push(
+                    ui.with_keyed(
+                        &format!("b{i}"),
+                        NodeSpec::column()
+                            .width(Sizing::Fixed(100.0))
+                            .height(Sizing::Grow(1.0)),
+                        |_| {},
+                    ),
+                );
+            }
+        });
+        if let Some(i) = reveal {
+            ui.reveal(boxes[i]);
+        }
+        ui.finish();
+        (row, boxes)
+    };
+    // Where the content is drawn: the offset the last layout placed it
+    // at, which is what a virtual list slices by — not the target.
+    let drawn = |core: &Core, row| {
+        core.scroll_geometry(row)
+            .expect("a resolved container")
+            .offset
+            .x
+    };
+
+    let mut core = Core::new();
+    core.set_time(0.0);
+    let (row, _) = build(&mut core, true, None);
+    assert_eq!(drawn(&core, row), 0.0, "the ribbon starts at the left");
+    // A reveal of the box three widths along: the offset is the target
+    // at once, the content is still where it was, and a frame is owed.
+    core.set_time(0.0);
+    build(&mut core, true, Some(3));
+    assert_eq!(core.scroll_offset(row).x, 300.0, "the offset is the target");
+    assert_eq!(drawn(&core, row), 0.0, "the content has not moved yet");
+    assert!(core.owed().scroll, "a frame is owed for the leg");
+    core.set_time(0.05);
+    build(&mut core, true, None);
+    let mid = drawn(&core, row);
+    assert!((mid - 150.0).abs() < 2.0, "halfway along: {mid}");
+    assert!(core.owed().scroll);
+    core.set_time(0.1);
+    build(&mut core, true, None);
+    assert_eq!(drawn(&core, row), 300.0, "landed");
+    assert!(!core.owed().scroll, "nothing owed once it lands");
+
+    // The wheel is the hand's: it moves the content the whole way on
+    // the frame it happens, mid-ease or not.
+    core.set_time(0.2);
+    build(&mut core, true, None);
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(50.0, 25.0)));
+    core.handle_input(InputEvent::Scroll(Vec2::new(40.0, 0.0)));
+    core.set_time(0.2);
+    build(&mut core, true, None);
+    let after = drawn(&core, row);
+    assert!(
+        (after - (300.0 - 40.0)).abs() < 1.0,
+        "the wheel landed whole: {after}"
+    );
+
+    // And a container that asks for no transition jumps, as it always
+    // did.
+    let mut core = Core::new();
+    core.set_time(0.0);
+    let (row, _) = build(&mut core, false, None);
+    core.set_time(0.0);
+    build(&mut core, false, Some(3));
+    assert_eq!(drawn(&core, row), 300.0, "no transition, no easing");
+    assert!(!core.owed().scroll);
+}

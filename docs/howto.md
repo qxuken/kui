@@ -439,6 +439,21 @@ not leak to the app behind it.
 [`onKey` / `keyUp` rows](props.md#container-props) ·
 [alpha.7](../CHANGELOG.md#010-alpha7-2026-09-06)
 
+### How do I make a scroll glide instead of jumping?
+
+Declare a `transition` on the scroll container. A `reveal` or a
+`set_scroll` then eases the offset over it — the ribbon a keyboard
+walks, a list a shortcut jumps to — while the wheel, the scrollbar's
+thumb and a drag past the edge keep landing whole, since none of them
+may lag a finger; any of them interrupts a leg in flight and takes the
+content where it stands. `scroll_offset` is where it is going and
+`scroll_geometry`'s offset is where the content is, which is what a
+virtual list slices by, so a long list glides without drawing the wrong
+rows.
+
+[`transition` row](props.md#container-props) ·
+[alpha.17](../CHANGELOG.md#010-alpha17-unreleased)
+
 ### Does a pane off the edge of a scroller still hear its keys?
 
 Yes, since alpha.17. A key reaches a node by holding focus, not by being

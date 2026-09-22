@@ -1854,8 +1854,7 @@ export declare class Ctx {
    * (backlog F65). Passing both is how a driver reports a non-US
    * layout, and it is what makes the reported `code` portable: a
    * layout producing something outside ASCII would leave a Latin
-   * keymap matching nothing, so the position's US key stands in, as
-   * Shift prints it (`"J"`, `":"`).
+   * keymap matching nothing, so the position's US letter stands in.
    */
   keyDown(code: string, mods?: KeySinkMods, repeat?: boolean, physical?: string): void
   /**

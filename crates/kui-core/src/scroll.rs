@@ -87,6 +87,15 @@ struct Entry {
     /// layout and where its leading edge was in the content, on the main
     /// axis (backlog C26 step 3). What the next layout keeps still.
     anchor: Option<(Key, f32)>,
+    /// A programmatic offset change waiting to be eased — a `set_scroll`
+    /// or a `reveal` since the last layout (F80). The pointer's own
+    /// writes leave it false: a scroll under the thumb or the wheel is
+    /// the hand's, and easing it would lag behind the finger.
+    asked_smooth: bool,
+    /// The leg an eased offset is on: where the content was when it
+    /// started, and when that was. The target is `offset`, and
+    /// `resolve` samples between the two while it runs.
+    smooth: Option<(Vec2, f64)>,
 }
 
 /// How many *undeclared* scroll entries the store keeps before the longest
@@ -102,6 +111,11 @@ pub const MAX_UNDECLARED_SCROLLS: usize = 1024;
 #[derive(Default)]
 pub struct ScrollStore {
     entries: FxHashMap<Key, Entry>,
+    /// The clock an eased offset reads (`Core::set_time`); `None` until
+    /// a driver sets one, which is a driver that shows no animation.
+    now: Option<f64>,
+    /// Whether the last layout left an eased offset mid-flight.
+    owes: bool,
     /// The frame being built, stamped onto every entry touched.
     frame_no: u64,
     /// The geometries read during this build ([`Self::geometry`]) — what
@@ -134,6 +148,7 @@ impl ScrollStore {
     pub(crate) fn begin_frame(&mut self, frame_no: u64) {
         self.frame_no = frame_no;
         self.reads.get_mut().clear();
+        self.owes = false;
         if self.entries.len() > MAX_UNDECLARED_SCROLLS {
             self.evict(frame_no.saturating_sub(1));
         }
@@ -173,10 +188,18 @@ impl ScrollStore {
         // Clamped here, not just at layout: a `set_scroll` between two
         // frames leaves a raw number in the store, and a view slicing
         // its data by it would index far off the end.
-        let offset = Vec2::new(
-            e.offset.x.clamp(0.0, max_offset.x),
-            e.offset.y.clamp(0.0, max_offset.y),
-        );
+        //
+        // While an offset is easing (F80) this is where the content
+        // *is*, not where it is going: the question this answers is
+        // which rows can be seen, and during the leg that is the ones
+        // around the drawn offset. The target is `Core::scroll_offset`.
+        let offset = match e.smooth {
+            Some(_) => e.laid,
+            None => Vec2::new(
+                e.offset.x.clamp(0.0, max_offset.x),
+                e.offset.y.clamp(0.0, max_offset.y),
+            ),
+        };
         if let Ok(mut reads) = self.reads.try_borrow_mut() {
             reads.push((key, Size::new(rect.w, rect.h), offset));
         }
@@ -217,8 +240,25 @@ impl ScrollStore {
     /// Adds a delta (positive = scroll content further down/right).
     /// Clamping happens in the next layout pass.
     pub fn scroll_by(&mut self, key: Key, delta: Vec2) {
+        self.scroll_by_from(key, delta, false);
+    }
+
+    /// The same, from a programmatic source — a `reveal`, an app's
+    /// `set_scroll` — which a container declaring a `transition` eases
+    /// into rather than jumping (F80).
+    pub fn scroll_by_smooth(&mut self, key: Key, delta: Vec2) {
+        self.scroll_by_from(key, delta, true);
+    }
+
+    fn scroll_by_from(&mut self, key: Key, delta: Vec2, smooth: bool) {
         let frame_no = self.frame_no;
         let e = self.entries.entry(key).or_default();
+        e.asked_smooth = smooth;
+        if !smooth {
+            // The hand takes the content where it is now, mid-ease or
+            // not: an ease the pointer interrupts has no leg left to run.
+            e.smooth = None;
+        }
         e.offset.x += delta.x;
         e.offset.y += delta.y;
         // An offset written between two frames counts as a declaration: it
@@ -227,10 +267,36 @@ impl ScrollStore {
     }
 
     pub fn set(&mut self, key: Key, offset: Vec2) {
+        self.set_from(key, offset, false);
+    }
+
+    /// The same, from a programmatic source; see
+    /// [`scroll_by_smooth`](Self::scroll_by_smooth).
+    pub fn set_smooth(&mut self, key: Key, offset: Vec2) {
+        self.set_from(key, offset, true);
+    }
+
+    fn set_from(&mut self, key: Key, offset: Vec2, smooth: bool) {
         let frame_no = self.frame_no;
         let e = self.entries.entry(key).or_default();
+        e.asked_smooth = smooth;
+        if !smooth {
+            e.smooth = None;
+        }
         e.offset = offset;
         e.last_declared = frame_no;
+    }
+
+    /// The clock the eased offsets read, fed by `Core::set_time` beside
+    /// the animation store's.
+    pub(crate) fn set_time(&mut self, now: f64) {
+        self.now = Some(now);
+    }
+
+    /// Whether an eased offset was still mid-flight at the last layout,
+    /// so the driver owes another frame.
+    pub fn animating(&self) -> bool {
+        self.owes
     }
 
     /// How long `key`'s scroll state has been quiet, in seconds of the
@@ -268,15 +334,60 @@ impl ScrollStore {
     /// returns it. `max` is passed rather than derived from `rect` and
     /// `content` because an axis that does not scroll has no travel however
     /// far its content overflows.
-    pub fn resolve(&mut self, key: Key, rect: Rect, content: Size, max: Vec2) -> Vec2 {
+    pub fn resolve(
+        &mut self,
+        key: Key,
+        rect: Rect,
+        content: Size,
+        max: Vec2,
+        smooth: Option<crate::anim::Transition>,
+    ) -> Vec2 {
         let frame_no = self.frame_no;
+        let now = self.now;
         let e = self.entries.entry(key).or_default();
         e.last_declared = frame_no;
         e.geom = Some((rect, content, Vec2::new(max.x.max(0.0), max.y.max(0.0))));
         e.offset.x = e.offset.x.clamp(0.0, max.x.max(0.0));
         e.offset.y = e.offset.y.clamp(0.0, max.y.max(0.0));
-        e.laid = e.offset;
-        e.offset
+        // Where the content is drawn: the offset itself, unless the
+        // container asked for a transition and the move was a
+        // programmatic one — then it starts where the last frame left it
+        // and eases to the offset over the leg (F80).
+        let drawn = match (smooth, now) {
+            (Some(t), Some(now)) if t.duration_ms > 0.0 => {
+                if std::mem::take(&mut e.asked_smooth) && e.laid != e.offset {
+                    // From where the content is *now*, so a second
+                    // reveal mid-flight carries on from what is on
+                    // screen rather than snapping back to start.
+                    e.smooth = Some((e.laid, now));
+                }
+                match e.smooth {
+                    Some((from, start)) => {
+                        let p = (((now - start) / (t.duration_ms as f64 / 1000.0)) as f32)
+                            .clamp(0.0, 1.0);
+                        let k = t.easing.apply(p);
+                        let at = Vec2::new(
+                            from.x + (e.offset.x - from.x) * k,
+                            from.y + (e.offset.y - from.y) * k,
+                        );
+                        if p >= 1.0 {
+                            e.smooth = None;
+                        } else {
+                            self.owes = true;
+                        }
+                        at
+                    }
+                    None => e.offset,
+                }
+            }
+            _ => {
+                e.asked_smooth = false;
+                e.smooth = None;
+                e.offset
+            }
+        };
+        e.laid = drawn;
+        drawn
     }
 }
 
@@ -291,6 +402,7 @@ mod tests {
             Rect::new(0.0, 0.0, 100.0, 300.0),
             Size::new(100.0 + max.x, 300.0 + max.y),
             max,
+            None,
         )
     }
 
@@ -360,6 +472,7 @@ mod tests {
             Rect::new(0.0, 0.0, 100.0, 300.0),
             Size::new(400.0, 1000.0),
             Vec2::new(0.0, 700.0),
+            None,
         );
         let g = s.geometry(k).unwrap();
         assert_eq!(g.max_offset, Vec2::new(0.0, 700.0));

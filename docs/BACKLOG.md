@@ -1260,8 +1260,11 @@ revealing the focused one. The columns carried `slide`, so a column
 that had just taken the keyboard was still drawn where it came from
 for the 200ms of the glide — off the viewport, outside the scroller's
 clip, with no hit region — and the keys typed at it in that window
-went nowhere, focus plainly on it. One entry, F79, **built
-2026-09-22**, the day it was filed, and in the archive.
+went nowhere, focus plainly on it. And the ribbon itself could not be
+made to glide: `slide` eases a node's place in its parent, a scroll
+offset moves the content outside that, so the columns eased while the
+ribbon jumped. Two entries, F79 and F80, **built 2026-09-22**, the day
+they were filed, and in the archive.
 
 ## From the regression pass of 2026-09-19
 
@@ -2082,9 +2085,10 @@ move.
 
 - `!` **F76** — [Shift is lost under the layout fallback: `J` on a Russian layout is `j`, and Shift on the key printed `;` is `;`](backlog/closed-2026-09.md#-f76--shift-is-lost-under-the-layout-fallback-j-on-a-russian-layout-is-j-and-shift-on-the-key-printed--is---done-2026-09-21) — done (2026-09-21) — `from_layout` stands in the US-QWERTY key as Shift prints it; the winit runner's Alt path resolves shift-less, as it reads the key; ADR 0002 decision 11 amended
 
-**From the kawoosh scrolling-tab report (2026-09-22)** — F79, filed and built the same day
+**From the kawoosh scrolling-tab report (2026-09-22)** — F79 and F80, filed and built the same day
 
 - `!` **F79** — [A focused key sink drawn outside its container's clip hears nothing: the keyboard asks the hit list, where only what a point can reach is](backlog/closed-2026-09.md#-f79--a-focused-key-sink-drawn-outside-its-containers-clip-hears-nothing-the-keyboard-asks-the-hit-list-where-only-what-a-point-can-reach-is--done-2026-09-22) — done (2026-09-22) — the delivery and the `key_up` opt-in resolve the sink from the tree (`Core::sink_node`), `disabled` and the modal boundary refusing as before; the pointer's rule untouched; ADR 0011 decision 9
+- `~` **F80** — [A programmatic scroll can only jump: there is no way to ask a container to glide to where a reveal puts it](backlog/closed-2026-09.md#-f80--a-programmatic-scroll-can-only-jump-there-is-no-way-to-ask-a-container-to-glide-to-where-a-reveal-puts-it--done-2026-09-22) — done (2026-09-22) — a `transition` on a scroll container eases the offset a `reveal` or `set_scroll` moves it to; the wheel, the thumb and an edge drag land whole and interrupt a leg; `scroll_geometry` answers the drawn offset, `scroll_offset` the target
 
 **From the kawoosh virtual-list report (2026-09-22)** — F77 and F78, filed and built the same day
 

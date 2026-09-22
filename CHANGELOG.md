@@ -42,6 +42,23 @@ matched `j` and read `shift` beside it to tell the two apart reads
 
 ### Added
 
+- **A scroll container eases where a `reveal` or a `set_scroll` takes
+  it** (backlog F80, from kawoosh's scrolling-tab report). Declare a
+  `transition` on the container and a programmatic scroll glides over
+  it instead of jumping — a ribbon the keyboard walks, a list a
+  shortcut jumps to, a row revealed from a search. The hand's own
+  scrolling is untouched and always lands whole: the wheel, the
+  scrollbar's thumb and a drag held past the edge, none of which may
+  ever lag a finger, and any of which interrupts a leg in flight and
+  takes the content where it stands. `Core::scroll_offset` answers
+  where the container is *going*, so a view's arithmetic is unchanged;
+  `Core::scroll_geometry` answers where the content *is*, which is what
+  a virtual list must slice by, and `Owed::scroll` says a leg is
+  mid-flight so a driver schedules the next frame. No new prop, no ABI
+  change: `transition` gains a meaning on a node that scrolls.
+  *What you can delete:* an app's own offset tween — the frame-by-frame
+  `set_scroll` toward a target, its easing and its clock — and the
+  guard that kept the wheel from fighting it.
 - **A Windows app with no console window, and its terminal back.**
   A console-subsystem binary — what Rust builds unless told otherwise —
   gets a black console window beside its own the moment it is opened

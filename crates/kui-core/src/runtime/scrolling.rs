@@ -105,7 +105,10 @@ impl Core {
     /// would otherwise be a window that never idles (found twice building
     /// ADR 0029: the devtools' events list, `virtual_rows`).
     pub fn set_scroll(&mut self, key: Key, offset: Vec2) {
-        self.scroll.set(key, offset);
+        // Programmatic, so a container with a `transition` eases into it
+        // (F80); the wheel and the thumb go through `scroll_by` and
+        // `set_scroll_axis`, which do not.
+        self.scroll.set_smooth(key, offset);
         if !self.building {
             self.request_frame();
         }
@@ -167,7 +170,7 @@ impl Core {
             return;
         };
         let rect = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
-        self.scroll_rect_into_view(i, rect, true);
+        self.scroll_rect_into_view_smooth(i, rect, true);
     }
 
     /// Nudges the nearest scrolling ancestor of node `i` so `rect`
@@ -176,6 +179,17 @@ impl Core {
     /// (positions is the only pass scroll offsets feed into); without it
     /// the next frame does.
     pub(crate) fn scroll_rect_into_view(&mut self, i: usize, rect: Rect, relayout: bool) {
+        self.scroll_rect_into_view_from(i, rect, relayout, false);
+    }
+
+    /// The same, easing the nudge on a container that declares a
+    /// `transition` (F80): what `reveal` asks for, where a caret nudge
+    /// and a focus move take the content there at once.
+    pub(crate) fn scroll_rect_into_view_smooth(&mut self, i: usize, rect: Rect, relayout: bool) {
+        self.scroll_rect_into_view_from(i, rect, relayout, true);
+    }
+
+    fn scroll_rect_into_view_from(&mut self, i: usize, rect: Rect, relayout: bool, smooth: bool) {
         // Slack so the target isn't glued to the container edge.
         const MARGIN: f32 = 4.0;
         let mut a = self.tree.parent[i];
@@ -200,7 +214,12 @@ impl Core {
                     }
                 }
                 if delta.x != 0.0 || delta.y != 0.0 {
-                    self.scroll.scroll_by(self.tree.keys[a as usize], delta);
+                    let key = self.tree.keys[a as usize];
+                    if smooth {
+                        self.scroll.scroll_by_smooth(key, delta);
+                    } else {
+                        self.scroll.scroll_by(key, delta);
+                    }
                     if relayout {
                         layout::reposition(
                             &mut self.tree,

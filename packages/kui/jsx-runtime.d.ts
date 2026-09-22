@@ -336,7 +336,7 @@ export interface GeneratedSpecProps {
   shadowY?: LengthProp;
   /** With transition: also ease the node's position (reordered siblings slide). While it eases, the node is drawn between where it was and where this frame put it — not at the declared `dx`/`dy`, or its slot in the row — so anything else positioned from those numbers drifts for the transition's length: a canvas of floats eases everything or nothing. */
   slide?: boolean;
-  /** Animate sizing/colors/radius changes over this many ms (needs a stable key). */
+  /** Animate sizing/colors/radius changes over this many ms — and, on a scroll container, the offset a reveal or a set_scroll moves it to (needs a stable key). */
   transition?: LengthProp;
   /** A `slider` role's maximum. */
   valueMax?: LengthProp;

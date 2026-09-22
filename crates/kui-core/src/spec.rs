@@ -1722,6 +1722,10 @@ impl NodeSpec {
     /// over `duration_ms` (cubic ease-out); see [`crate::anim`]. Only the
     /// duration: an easing or repeat already declared survives, so the
     /// transition props compose in any order.
+    ///
+    /// On a scroll container it also eases the offset a `reveal` or a
+    /// `set_scroll` moves it to (backlog F80) — the wheel, the thumb and
+    /// a drag past the edge still land whole, being the hand's own.
     pub fn transition(mut self, duration_ms: f32) -> Self {
         let t = self.transition.get_or_insert(Transition::ms(duration_ms));
         t.duration_ms = duration_ms;

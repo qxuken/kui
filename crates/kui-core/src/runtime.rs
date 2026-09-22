@@ -560,12 +560,21 @@ pub struct Owed {
     pub requested: bool,
     /// A held drag scrolling its container (ADR 0029).
     pub autoscroll: bool,
+    /// A scroll container easing a programmatic offset change — a
+    /// `reveal` or a `set_scroll` on a container with a `transition`
+    /// (F80).
+    pub scroll: bool,
 }
 
 impl Owed {
     /// Anything at all: the driver's reading.
     pub fn any(self) -> bool {
-        self.transition || self.cycle || self.depart || self.requested || self.autoscroll
+        self.transition
+            || self.cycle
+            || self.depart
+            || self.requested
+            || self.autoscroll
+            || self.scroll
     }
 
     /// Anything but a cycle: what a test waits on when the view has a
@@ -1131,6 +1140,7 @@ impl Core {
     /// snapping instead of animation.
     pub fn set_time(&mut self, now_secs: f64) {
         self.anim.set_time(now_secs);
+        self.scroll.set_time(now_secs);
     }
 
     /// True when the last frame left a transition mid-flight, or a view
@@ -1154,6 +1164,7 @@ impl Core {
             depart: self.depart.animating(),
             requested: self.frame_requested || self.tree.any_animate,
             autoscroll: self.autoscrolling(),
+            scroll: self.scroll.animating(),
         }
     }
 

@@ -879,7 +879,7 @@ pub const PROPS: &[PropDef] = &[
         id: P_TRANSITION,
         kind: Kind::F32,
         apply: Apply::SpecF32(|s, v| s.transition(v)),
-        doc: "Animate sizing/colors/radius changes over this many ms (needs a stable key).",
+        doc: "Animate sizing/colors/radius changes over this many ms — and, on a scroll container, the offset a reveal or a set_scroll moves it to (needs a stable key).",
     },
     PropDef {
         name: "easing",

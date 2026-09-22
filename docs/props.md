@@ -84,7 +84,7 @@ where they make sense); text props apply to `<text>` and `<edit>`.
 | `shadowX` | `shadow_x` | `shadow_x` | number, or a `"$length"` token | Drop-shadow horizontal offset (logical px). |
 | `shadowY` | `shadow_y` | `shadow_y` | number, or a `"$length"` token | Drop-shadow vertical offset (logical px); positive casts downward. |
 | `slide` | `slide` | `slide` | boolean | With transition: also ease the node's position (reordered siblings slide). While it eases, the node is drawn between where it was and where this frame put it — not at the declared `dx`/`dy`, or its slot in the row — so anything else positioned from those numbers drifts for the transition's length: a canvas of floats eases everything or nothing. |
-| `transition` | `transition` | `transition_ms` | number, or a `"$length"` token | Animate sizing/colors/radius changes over this many ms (needs a stable key). |
+| `transition` | `transition` | `transition_ms` | number, or a `"$length"` token | Animate sizing/colors/radius changes over this many ms — and, on a scroll container, the offset a reveal or a set_scroll moves it to (needs a stable key). |
 | `valueMax` | `value_max` | `value_max` with `KUI_VALUE_MAX` in `value_set` | number, or a `"$length"` token | A `slider` role's maximum. |
 | `valueMin` | `value_min` | `value_min` with `KUI_VALUE_MIN` in `value_set` | number, or a `"$length"` token | A `slider` role's minimum. |
 | `valueNow` | `value_now` | `value_now` with `KUI_VALUE_NOW` in `value_set` | number, or a `"$length"` token | A `slider` role's current value (the drawing stays yours; this is what assistive technology reads). |

@@ -1542,6 +1542,7 @@ fn positions(
                     Rect::from_pos_size(origin, size),
                     Size::new(content_w, content_h),
                     max,
+                    tree.specs[i].transition,
                 )
                 .snapped(scale);
         }
