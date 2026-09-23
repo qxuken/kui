@@ -1923,6 +1923,28 @@ mod env_headless {
         kui_ctx_free(ctx);
     }
 
+    /// The secure-input ask is frame state (backlog F85): false until a
+    /// frame declares it, false again on the frame that stops, and nothing
+    /// on a bad context.
+    #[test]
+    fn secure_input_is_asked_per_frame() {
+        let ctx = kui_ctx_new();
+        assert!(!kui_secure_input_get(ctx));
+        kui_frame_begin(ctx, 100.0, 100.0, 1.0);
+        kui_set_secure_input(ctx, true);
+        kui_frame_finish(ctx);
+        assert!(kui_secure_input_get(ctx));
+        kui_frame_begin(ctx, 100.0, 100.0, 1.0);
+        kui_frame_finish(ctx);
+        assert!(
+            !kui_secure_input_get(ctx),
+            "a frame that stops asking turns it off"
+        );
+        kui_set_secure_input(std::ptr::null_mut(), true);
+        assert!(!kui_secure_input_get(std::ptr::null_mut()));
+        kui_ctx_free(ctx);
+    }
+
     /// The level is two facts with two doors (backlog C30): the frame's
     /// ask, frame-scoped and false by default, which the host reads after
     /// the frame; and what the host did, which it writes back and the

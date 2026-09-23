@@ -442,6 +442,13 @@ export interface BoxProps extends Keyed, GeneratedSpecProps, CustomSpecProps {
    *  the platform agreed is `env.window.alwaysOnTop`, which is what the
    *  button should draw from. */
   alwaysOnTop?: boolean;
+  /** Root box only: asks for secure keyboard entry while this window has
+   *  the keyboard — what a terminal turns on at a password prompt, so no
+   *  other process can read the keys typed there (macOS; nothing
+   *  elsewhere). Declare it every frame the prompt is up; the frame that
+   *  stops is what turns it off. The runner enables it only while the
+   *  window has the keyboard and keeps the platform's count balanced. */
+  secureInput?: boolean;
   /** Root box only: which windows exist besides the main one (see
    *  `WindowDecl` in `@qxuken/kui`). `runWindowed` / `createApp` write it
    *  from the loop config's `windows(model)`; a view driving a `Ctx` by

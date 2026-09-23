@@ -338,6 +338,14 @@ impl<'a> Ui<'a> {
         self.core.set_always_on_top(on_top);
     }
 
+    /// Declares that this frame wants secure keyboard entry while the
+    /// window has the keyboard — a password prompt (backlog F85); see
+    /// [`crate::Core::set_secure_input`]. Declare it every frame the
+    /// prompt is up: a frame that does not turns it off.
+    pub fn secure_input(&mut self, on: bool) {
+        self.core.set_secure_input(on);
+    }
+
     /// Declares that a window named `name` exists this frame; see
     /// `Core::declare_window`. It opens on the first frame that declares
     /// it (`config` is read then and never again), stays open while any

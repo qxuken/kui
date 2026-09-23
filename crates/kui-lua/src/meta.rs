@@ -49,9 +49,8 @@ pub fn luals_meta() -> String {
                 "border" => "{ w?: kui.Length, color?: kui.Color }".into(),
                 "key" | "index" | "row_count" => "integer|string".into(),
                 "tooltip" | "window_title" => "string".into(),
-                "clip" | "scroll" | "scroll_x" | "scroll_y" | "key_focus" | "always_on_top" => {
-                    "boolean".into()
-                }
+                "clip" | "scroll" | "scroll_x" | "scroll_y" | "key_focus" | "always_on_top"
+                | "secure_input" => "boolean".into(),
                 _ => "any".into(),
             };
             field(&mut out, name, &ty, c.doc);

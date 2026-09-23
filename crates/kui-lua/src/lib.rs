@@ -13,7 +13,7 @@
 //! `env.scroll_geometry(key)`), text queries (`env.text_hit(key, x, y)`,
 //! `env.caret_rect(key, byte)`) and window requests
 //! (`env.set_window_size(window, w, h)`, `env.focus_window(window)`); the
-//! root table may set `window_title` and `always_on_top`. Because the IR is data all the way down, the binding is
+//! root table may set `window_title`, `always_on_top` and `secure_input`. Because the IR is data all the way down, the binding is
 //! just table-to-node conversion — no closures cross the boundary.
 //!
 //! ## The two `focus` names
@@ -242,6 +242,11 @@ impl Extension for LuaExtension {
         }
         if let Ok(Some(true)) = root.get::<Option<bool>>("always_on_top") {
             ui.always_on_top(true);
+        }
+        // Secure keyboard entry, the same shape (backlog F85): a script at
+        // a password prompt declares it on every view the prompt is up.
+        if let Ok(Some(true)) = root.get::<Option<bool>>("secure_input") {
+            ui.secure_input(true);
         }
         declare_windows(ui, &root).map_err(|e| format!("windows: {e}"))?;
         build_node(ui, &root).map_err(|e| format!("view table: {e}"))
@@ -3060,6 +3065,7 @@ mod tests {
             r##"
                 function view(env)
                   return column { gap = 4, window_title = "all nodes", always_on_top = true,
+                    secure_input = true,
                     titlebar { text("custom title"), window_buttons() },
                     titlebar { title = "plain title" },
                     text({ "same IR as ", { "Rust", bold = true, color = "#73d98c" },
@@ -3084,6 +3090,7 @@ mod tests {
         assert!(quads > 60, "got {quads} quads");
         assert_eq!(core.window_title(), Some("all nodes"));
         assert!(core.always_on_top());
+        assert!(core.secure_input());
         // And every key above is one some table claims: this scene is the
         // allow-list's fixture, so a new element prop that nobody adds to
         // `ELEMENTS.lua_own` fails here instead of warning at a user.

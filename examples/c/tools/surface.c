@@ -42,6 +42,7 @@ static void surface_view(void *user, KuiCtx *ui) {
     kui_root(ui, &root);
     kui_window_title(ui, KUI_STR("surface"));
     kui_set_always_on_top(ui, true);
+    kui_set_secure_input(ui, true);
 
     /* Window chrome, each piece in its own keyed slot: two titlebars as
      * siblings would share a key, and per-key state (hover, transitions)
@@ -299,6 +300,8 @@ static int surface(void) {
     /* The level: the frame asked, the host says what it did, and the two
      * are separate facts (backlog C30). */
     check(kui_always_on_top_get(ui), "kui_always_on_top_get");
+    /* Secure keyboard entry is an ask the same way (backlog F85). */
+    check(kui_secure_input_get(ui), "kui_secure_input_get");
     kui_env_set_always_on_top(ui, true);
 
     KuiDrawData dd = KUI_DRAW_DATA_INIT;

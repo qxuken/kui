@@ -173,6 +173,25 @@ impl<A: App> Shell<A> {
         }
     }
 
+    /// Secure keyboard entry, moved to what this batch settled (backlog
+    /// F85): on while a window whose last frame asked for it
+    /// (`Ui::secure_input`) has the keyboard, as its view reads it —
+    /// `env.focused`, which an owner keeps while its popup holds the
+    /// keyboard, the keys still being ours — and off otherwise. After
+    /// `settle_focus`, for the reason that is derived at the end of the
+    /// batch: in the middle of focus moving no window claims the
+    /// keyboard, and acting on that moment would drop the count and take
+    /// it again. A closed window is gone from `panes`, so its ask goes
+    /// with it.
+    pub(super) fn apply_secure_input(&mut self) {
+        let want = super::secure_input::wanted(
+            self.panes
+                .iter()
+                .map(|p| (p.core.secure_input(), p.core.env.focused)),
+        );
+        self.secure_input.set(want);
+    }
+
     /// The app has no window with the keyboard any more, so every popup is
     /// asked to go away: a menu left standing over another application is
     /// the one thing every platform agrees is wrong.

@@ -480,7 +480,12 @@ that are hard to reverse and would look arbitrary without their context.
   true` / `kui_set_always_on_top` asks for the window above every other
   app's, a frame that stops asking lowers it (so a pin button is a
   toggle), and `env.window.always_on_top` reports what the platform did —
-  which can be nothing, on Wayland. Opt in with `kui::app("title").custom_titlebar().run(app)`:
+  which can be nothing, on Wayland. Secure keyboard entry is the same kind
+  of fact: `ui.secure_input(true)` / a root `secureInput` / `secure_input =
+  true` / `kui_set_secure_input` on every frame a password prompt is up,
+  and the runner turns macOS's Secure Keyboard Entry on while that window
+  has the keyboard and off when it loses it, closes or stops asking,
+  keeping the process-wide count balanced. Opt in with `kui::app("title").custom_titlebar().run(app)`:
   macOS keeps native traffic lights over your content; Windows/Linux go
   undecorated with drawn buttons. On Windows the runner also subclasses the
   window and answers `WM_NCHITTEST` from the frame's chrome regions

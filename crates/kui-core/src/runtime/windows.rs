@@ -306,4 +306,30 @@ impl Core {
     pub fn always_on_top(&self) -> bool {
         self.always_on_top
     }
+
+    /// Declares that this frame wants the keyboard to this window kept
+    /// from other processes while the window has it — macOS's Secure
+    /// Keyboard Entry, what a terminal turns on at a password prompt
+    /// (backlog F85). Frame state like `always_on_top`: a frame that stops
+    /// declaring it turns it off, so an app asks on every frame the
+    /// prompt is up and never has to remember to undo it.
+    ///
+    /// The runner owns the platform call and its balance: it enables
+    /// secure input only while a window whose frame asked has the
+    /// keyboard, and disables it when that window loses the keyboard,
+    /// closes, stops asking, or the app exits — Apple's rule for it,
+    /// since while it is on no other process can read the keyboard at
+    /// all (a launcher's hotkey, a text expander, an accessibility tool).
+    /// `EnableSecureEventInput` is process-wide and counted, and the
+    /// runner holds at most one count however many windows ask. Nothing
+    /// happens on other platforms, which have no such switch.
+    pub fn set_secure_input(&mut self, on: bool) {
+        self.secure_input = on;
+    }
+
+    /// Whether this frame asked for secure keyboard entry (for the frame
+    /// driver); false for a frame that never said.
+    pub fn secure_input(&self) -> bool {
+        self.secure_input
+    }
 }

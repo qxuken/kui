@@ -52,6 +52,23 @@ keeps working unchanged, and the ABI stays at 18.
 
 ### Added
 
+- **Secure keyboard entry while a window asks for it** (backlog F85,
+  from kawoosh's secrets report). `ui.secure_input(true)` / a root
+  `secureInput` / `secure_input = true` / `kui_set_secure_input`,
+  declared on every frame a password prompt is up, turns on macOS's
+  Secure Keyboard Entry while that window has the keyboard, so no other
+  process — an event tap, a keylogger — reads the password as it is
+  typed. The runner owns the balance: `EnableSecureEventInput` is
+  process-wide and counted, and it holds one count only while a window
+  whose frame asked has the keyboard, giving it back when the window
+  loses the keyboard, closes or stops asking, and at exit, so a frame
+  that stops declaring it is all it takes to turn it off. Nothing on
+  Windows or Linux, which have no such switch. `Ctx.secureInput()` /
+  `kui_secure_input_get` read the ask back — a C host with its own
+  window makes the call itself. No ABI change, no frame version.
+  *What you can delete:* an app's own `EnableSecureEventInput` /
+  `DisableSecureEventInput` pair and the bookkeeping that kept it
+  balanced across focus changes, window closes and quitting.
 - **A paste says whether the pasteboard marked it a secret, and a
   secret can be copied marked** (backlog F84, from kawoosh's secrets
   report). The answer to `requestPaste()` / `request_paste` /

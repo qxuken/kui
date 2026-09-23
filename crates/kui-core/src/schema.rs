@@ -167,6 +167,7 @@ pub const P_UNDERLINE_STYLE: u32 = 102;
 pub const P_ON_DROP: u32 = 103;
 pub const P_DROP_BG: u32 = 104;
 pub const P_CARET_SOLID: u32 = 105;
+pub const P_SECURE_INPUT: u32 = 106;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -1276,6 +1277,16 @@ pub const CUSTOM: &[CustomProp] = &[
         lua: "`always_on_top = true` (root table)",
         c: "`kui_set_always_on_top`",
         doc: "Declares that this frame wants the window kept above every other app's — a floating palette, a picture-in-picture player, a timer (backlog C30). Frame state the way `title` is, applied by the driver on change and free on the frames it does not change, but with a default of false rather than \"leave as-is\": a frame that stops declaring it lowers the window again, so a pin button is a toggle on the app's own state and nothing has to remember to undo it. Whether the platform has a level to set is `env.window.always_on_top`, which is what the pin button should draw its state from — Wayland has no call for it at all, so there the window never moves and the reading says so; it is the driver's record of what it set, not a query, so a level the OS dropped afterwards (a fullscreen space, a tiling manager) is not reported. A popup keeps its own level whatever its owner declares.",
+    },
+    CustomProp {
+        name: "secureInput",
+        id: P_SECURE_INPUT,
+        jsx_names: &["secureInput"],
+        lua_names: &["secure_input"],
+        jsx: "`secureInput` (root box only)",
+        lua: "`secure_input = true` (root table)",
+        c: "`kui_set_secure_input`",
+        doc: "Declares that this frame wants the keyboard to this window kept from every other process while the window has it — macOS's Secure Keyboard Entry, what a terminal turns on at a password prompt (backlog F85). Frame state the way `alwaysOnTop` is, default false: declare it on every frame the prompt is up, and the frame that stops is what turns it off, so nothing has to remember to undo it. The runner owns the platform call and its balance: `EnableSecureEventInput` is process-wide and counted, and the runner holds one count while a window whose frame asked has the keyboard, giving it back when that window loses the keyboard, closes or stops asking, and at exit — Apple's rule, since while it is on no other process can read the keyboard at all (a launcher's hotkey, a text expander, an accessibility tool). Nothing on Windows or Linux, which have no such switch. A C host with its own loop reads the ask with `kui_secure_input_get` and makes the call itself.",
     },
     CustomProp {
         name: "windows",
@@ -2681,6 +2692,9 @@ pub struct PropsOut {
     /// `alwaysOnTop`: the root asked for the window above every other
     /// app's this frame (`Core::set_always_on_top`, backlog C30).
     pub always_on_top: bool,
+    /// `secureInput`: the root asked for secure keyboard entry while the
+    /// window has the keyboard (`Core::set_secure_input`, backlog F85).
+    pub secure_input: bool,
     pub key_focus: bool,
     /// Hover hint: the element lowering floats `widgets::tooltip` below the
     /// node while it is hovered (the parser also marks the spec hoverable).
@@ -2723,6 +2737,7 @@ impl PropsOut {
             row_count: None,
             title: None,
             always_on_top: false,
+            secure_input: false,
             key_focus: false,
             tooltip: None,
             windows: Vec::new(),

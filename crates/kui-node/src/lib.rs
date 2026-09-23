@@ -1033,6 +1033,16 @@ impl Ctx {
     pub fn always_on_top(&self) -> bool {
         self.core.always_on_top()
     }
+
+    /// Whether the last frame asked for secure keyboard entry (a root
+    /// `<box secureInput>`, backlog F85); false when it did not.
+    /// `runWindowed` turns it on while that window has the keyboard and
+    /// keeps the platform's count balanced; a bare `Ctx` hands the ask
+    /// back so a test can assert on it.
+    #[napi]
+    pub fn secure_input(&self) -> bool {
+        self.core.secure_input()
+    }
 }
 
 /// Window commands as the objects `windowCommands()` hands out.

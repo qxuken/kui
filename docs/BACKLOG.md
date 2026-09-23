@@ -1304,8 +1304,8 @@ runner read the text and dropped the rest, so the editor could not
 tell the one thing it must not remember from everything it should.
 And a terminal pane at a `sudo` prompt had no way to ask for macOS's
 Secure Keyboard Entry, so any process with an event tap could read the
-password as it was typed. F84, **built 2026-09-23**, the day it was
-filed, and in the archive.
+password as it was typed. Two entries, F84 and F85, both **built
+2026-09-23**, the day they were filed, and in the archive.
 
 ## From the regression pass of 2026-09-19
 
@@ -2148,6 +2148,7 @@ move.
 
 - `!` **F83** — [A glyph working set between one atlas page and two resets once a frame and never grows: every frame samples an overwritten page](backlog/closed-2026-09.md#-f83--a-glyph-working-set-between-one-atlas-page-and-two-resets-once-a-frame-and-never-grows-every-frame-samples-an-overwritten-page--done-2026-09-23) — done (2026-09-23) — a glyph the last reset dropped coming back to a full page grows it; a turned-over set still resets
 
-**From the kawoosh secrets report (2026-09-23)** — F84, filed and built the same day
+**From the kawoosh secrets report (2026-09-23)** — F84 and F85, filed and built the same day
 
 - `~` **F84** — [A paste cannot say its pasteboard marked it a secret, and a secret cannot be copied marked](backlog/closed-2026-09.md#-f84--a-paste-cannot-say-its-pasteboard-marked-it-a-secret-and-a-secret-cannot-be-copied-marked--done-2026-09-23) — done (2026-09-23) — `InputEvent::Paste` carries `ClipboardMarks`, the sink's `text` event gains `concealed` / `transient`; `set_clipboard_secret` writes them
+- `~` **F85** — [A window at a password prompt cannot ask for secure keyboard entry](backlog/closed-2026-09.md#-f85--a-window-at-a-password-prompt-cannot-ask-for-secure-keyboard-entry--done-2026-09-23) — done (2026-09-23) — `Ui::secure_input(bool)`, frame state; the runner holds one balanced count while an asking window has the keyboard

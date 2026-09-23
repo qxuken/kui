@@ -268,6 +268,31 @@ pub extern "C" fn kui_always_on_top_get(ptr: *mut KuiCtx) -> bool {
     })
 }
 
+/// Declares that this frame wants secure keyboard entry while the window
+/// has the keyboard — a password prompt (backlog F85). Cleared each
+/// `kui_frame_begin` like `kui_set_always_on_top`: a frame that stops
+/// calling this is what turns it off. Under `kui_run` the runner makes
+/// the platform call and keeps it balanced; a host driving its own window
+/// reads `kui_secure_input_get` and does.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_secure_input(ptr: *mut KuiCtx, on: bool) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().set_secure_input(on);
+        }
+    });
+}
+
+/// Whether the frame that just finished asked for secure keyboard entry —
+/// for hosts driving their own window. False for a frame that never
+/// asked, and on a bad context.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_secure_input_get(ptr: *mut KuiCtx) -> bool {
+    guard(false, || {
+        unsafe { ctx(ptr) }.is_some_and(|c| c.core().secure_input())
+    })
+}
+
 /// The window fact for views to read as `env.window.always_on_top`: what
 /// the host actually did about the ask, so a pin button draws the
 /// platform's answer and not the app's guess. Its own setter rather than

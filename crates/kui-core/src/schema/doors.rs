@@ -752,6 +752,13 @@ pub const DOORS: &[Door] = &[
         doc: "Declares that the window sits above every other app's this frame (backlog C30).",
     },
     Door {
+        rust: "Ui::secure_input",
+        c: Is("kui_set_secure_input"),
+        node: As("the root's `secureInput` prop"),
+        lua: As("the root's `secure_input` field"),
+        doc: "Declares that this frame wants secure keyboard entry while the window has the keyboard — a password prompt (backlog F85).",
+    },
+    Door {
         rust: "Ui::window_command",
         c: As(
             "the chrome roles (`KuiSpec.window_role`) are the door; the verb is what `widgets::window_buttons` lowers to",
@@ -775,6 +782,13 @@ pub const DOORS: &[Door] = &[
         node: Is("Ctx.alwaysOnTop"),
         lua: As("`env.window.always_on_top`, a reading"),
         doc: "The same for the level.",
+    },
+    Door {
+        rust: "Core::secure_input",
+        c: Is("kui_secure_input_get"),
+        node: Is("Ctx.secureInput"),
+        lua: No(GUEST),
+        doc: "The same for the secure-input ask: what a driver with its own loop reads to make the platform call; the runner makes it for a `KuiWindow` and `kui_run`.",
     },
     Door {
         rust: "Core::take_window_commands",

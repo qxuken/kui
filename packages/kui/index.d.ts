@@ -2002,6 +2002,14 @@ export declare class Ctx {
    */
   alwaysOnTop(): boolean
   /**
+   * Whether the last frame asked for secure keyboard entry (a root
+   * `<box secureInput>`, backlog F85); false when it did not.
+   * `runWindowed` turns it on while that window has the keyboard and
+   * keeps the platform's count balanced; a bare `Ctx` hands the ask
+   * back so a test can assert on it.
+   */
+  secureInput(): boolean
+  /**
    * A headless context is one window, the main: this answers whether
    * `window` names it (`"main"`, `0`, or left out) and addresses
    * nothing else — the same door `KuiWindow` has, so a loop or a test

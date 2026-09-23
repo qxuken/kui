@@ -43,6 +43,7 @@ mod menus;
 mod pane;
 mod popups;
 mod retarget;
+mod secure_input;
 mod windows;
 
 use pane::{Pane, appearance_of, level_change, level_supported, sync_env, theme_appearance};
@@ -462,6 +463,7 @@ impl Launcher {
             frames_drawn: 0,
             exit_requested: false,
             torn_down: false,
+            secure_input: secure_input::SecureInput::default(),
             pumped: false,
             opened: false,
             primary_down: None,
@@ -1120,6 +1122,11 @@ struct Shell<A: App> {
     /// Whether `App::teardown` has run: once, whichever of the loop's
     /// exit and the runner's retirement comes first.
     torn_down: bool,
+    /// The one count of secure keyboard entry this runner may hold, moved
+    /// at the end of every batch to whether a window whose frame asked
+    /// (`Ui::secure_input`) has the keyboard, given back at teardown and
+    /// on drop (backlog F85, `mod secure_input`).
+    secure_input: secure_input::SecureInput,
     /// Driven by a `PumpRunner` rather than `run_app`: the main window's
     /// close ends the runner (`exit_requested`) instead of exiting winit's
     /// loop, which the next runner on this thread reuses (backlog F58).
@@ -1202,6 +1209,10 @@ impl<A: App> Shell<A> {
     /// ever returning — and from a pumped runner's retirement, whichever
     /// comes first.
     fn teardown_once(&mut self) {
+        // The keyboard is given back before the app's teardown runs, and
+        // on every path here: a process that ends from `exiting` never
+        // drops the runner (backlog F85).
+        self.secure_input.set(false);
         if !self.torn_down {
             self.torn_down = true;
             self.app.teardown();
@@ -2238,6 +2249,7 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
         self.pump_text_input(event_loop);
         self.pump_file_drag(event_loop);
         self.settle_focus();
+        self.apply_secure_input();
         self.dismiss_popups_if_deactivated();
         self.poll_audio();
         self.apply_audio();

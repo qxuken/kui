@@ -584,6 +584,25 @@ answers a paste with `paste(text, {concealed, transient})`.
 [`text` events](props.md#events) ·
 [alpha.17](../CHANGELOG.md#010-alpha17-unreleased)
 
+### How do I protect a password as it is typed?
+
+Declare `secureInput` on the root (Rust `ui.secure_input(true)`, Lua
+`secure_input = true` on the root table, C `kui_set_secure_input`) on
+every frame the prompt is up — a terminal whose pty turned echo off, a
+password field of your own. The runner turns on macOS's Secure Keyboard
+Entry while that window has the keyboard, so no other process can read
+the keys, and turns it off when the window loses the keyboard, closes,
+or the frame stops declaring it; you never call the platform and never
+balance anything. Keep it to the prompt: while it is on, no other app
+sees the keyboard at all, a launcher's hotkey and a text expander
+included. Other platforms have no such switch and ignore it.
+`Ctx.secureInput()` / `kui_secure_input_get` read the ask back — what a
+test asserts on, and what a C host driving its own window reads to
+make the call itself.
+
+[`secureInput`](props.md#composite-props-hand-written-per-binding) ·
+[alpha.17](../CHANGELOG.md#010-alpha17-unreleased)
+
 ### How do I make the caret I draw blink?
 
 Read `caretVisible()` (Rust `ui.caret_visible()`, Lua `env.caret_visible`,

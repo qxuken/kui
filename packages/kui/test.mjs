@@ -182,6 +182,21 @@ test('alwaysOnTop is asked per frame from the root and read back as the ask', ()
   assert.deepEqual(ctx.warnings(), []);
 });
 
+// `secureInput` is the same shape (backlog F85): a root declaration with
+// no node and a default, so the frame that stops saying it turns it off.
+test('secureInput is asked per frame from the root and read back as the ask', () => {
+  const ctx = new Ctx();
+  assert.equal(ctx.secureInput(), false);
+  ctx.frame(320, 240, 1, box({ secureInput: true }, [text('password:', { size: 12 })]));
+  assert.equal(ctx.secureInput(), true);
+  ctx.frame(320, 240, 1, box({}, [text('$', { size: 12 })]));
+  assert.equal(ctx.secureInput(), false, 'the frame that stops asking turns it off');
+  // `false` and a non-root box both encode nothing, like `alwaysOnTop`.
+  ctx.frame(320, 240, 1, box({ secureInput: false }, [box({ secureInput: true })]));
+  assert.equal(ctx.secureInput(), false);
+  assert.deepEqual(ctx.warnings(), []);
+});
+
 test('the hand-written composites and constructor specials lower', () => {
   const build = () =>
     box({ title: 'frame', pad: 6, gap: 3, bg: '#14161e', keyFocus: true, onKey: 'k' }, [
@@ -3702,7 +3717,7 @@ const SCENE_TREES = {
       ]),
     ]),
   chrome: () =>
-    root({ title: 'kui conformance', alwaysOnTop: true }, [
+    root({ title: 'kui conformance', alwaysOnTop: true, secureInput: true }, [
       box({ gap: 6 }, [
         // `<titlebar>` appends its own cluster; the second one goes through
         // the `<windowButtons>` element, in a strip laid out by hand.
@@ -4599,6 +4614,7 @@ function sceneReport(name, env, steps, { ctx, events, commands, audio }) {
   for (const step of steps) lines.push(`step ${step.join(' ')}`);
   lines.push(`title ${ctx.windowTitle() ?? '-'}`);
   lines.push(`always-on-top ${+ctx.alwaysOnTop()}`);
+  lines.push(`secure-input ${+ctx.secureInput()}`);
   const quads = Buffer.from(ctx.quads());
   const stride = quadStride();
   const count = quads.byteLength / stride;

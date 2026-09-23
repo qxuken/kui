@@ -146,6 +146,10 @@ pub struct Core {
     /// the window again: the pin button an app draws for this is a
     /// toggle, and the fact follows it.
     always_on_top: bool,
+    /// Whether this frame asked for secure keyboard entry while its window
+    /// has the keyboard (backlog F85). `always_on_top`'s shape: cleared each
+    /// `begin_frame`, so a frame that stops asking is what turns it off.
+    secure_input: bool,
     /// Keyboard focus: the one node key input goes to — an editor (the
     /// edit store mirrors it), an `on_key` sink, a control Tab landed on
     /// (see `docs/adr/0002-keyboard-focus-as-data.md`). `set_focus` is
@@ -816,6 +820,7 @@ impl Core {
             metrics: crate::metrics::Metrics::default(),
             window_title: None,
             always_on_top: false,
+            secure_input: false,
             focus: None,
             focus_visible: false,
             declared_focus: Vec::new(),
@@ -1331,6 +1336,7 @@ impl Core {
         self.scale = scale;
         self.window_title = None;
         self.always_on_top = false;
+        self.secure_input = false;
         // The drawn menu bar's root is this frame's: a view that stops
         // calling `widgets::menu_bar` leaves nothing behind for the next
         // event to land on. Re-recorded while the widget builds.

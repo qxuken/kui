@@ -31,8 +31,8 @@ use serde_json::{Map as JsonMap, Value as Json};
 
 use crate::schema::{
     self, Kind, P_ALWAYS_ON_TOP, P_BORDER, P_DIR, P_FLOAT, P_INDEX, P_KEY, P_KEY_FOCUS, P_OVERFLOW,
-    P_PAD, P_ROW_COUNT, P_SIZE, P_TITLE, P_TOOLTIP, P_WINDOWS, Parsed, PropsOut, align_idx,
-    color_num, min_num, sizing_num,
+    P_PAD, P_ROW_COUNT, P_SECURE_INPUT, P_SIZE, P_TITLE, P_TOOLTIP, P_WINDOWS, Parsed, PropsOut,
+    align_idx, color_num, min_num, sizing_num,
 };
 use crate::{Result, err, value_of};
 
@@ -601,6 +601,8 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut, refs: &mut Refs<'_>) -
             P_TITLE => out.title = Some(r.req_str()?.to_string()),
             // Root only, like `title`; a flag, like `keyFocus`.
             P_ALWAYS_ON_TOP => out.always_on_top = true,
+            // The same shape (backlog F85).
+            P_SECURE_INPUT => out.secure_input = true,
             // One JSON blob, the list as the view wrote it, each entry
             // read by `WindowConfig::from_value` — the reader Lua's list
             // goes through, so the two cannot disagree on what a zero
@@ -1358,6 +1360,7 @@ mod tests {
                 }
                 "keyFocus" => expected.key_focus = true,
                 "alwaysOnTop" => expected.always_on_top = true,
+                "secureInput" => expected.secure_input = true,
                 "key" => {
                     s.extend([0.0, 3.0]);
                     strings = b"abc";

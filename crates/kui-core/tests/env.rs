@@ -43,6 +43,27 @@ fn always_on_top_is_frame_scoped_and_defaults_off() {
     assert!(!core.env.window.always_on_top);
 }
 
+/// The secure-input ask is frame state the way the level is (backlog
+/// F85): false until a frame declares it, and false again on the frame
+/// that stops — which is what lets the runner turn it off without the app
+/// remembering to.
+#[test]
+fn secure_input_is_frame_scoped_and_defaults_off() {
+    let mut core = Core::new();
+    assert!(!core.secure_input());
+    let mut ui = core.frame(Size::new(100.0, 100.0), 1.0);
+    ui.secure_input(true);
+    ui.finish();
+    assert!(core.secure_input());
+
+    let ui = core.frame(Size::new(100.0, 100.0), 1.0);
+    ui.finish();
+    assert!(
+        !core.secure_input(),
+        "a frame that stops asking turns it off"
+    );
+}
+
 #[test]
 fn env_defaults_are_headless_safe() {
     let core = Core::new();

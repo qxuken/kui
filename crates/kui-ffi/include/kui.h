@@ -2166,6 +2166,21 @@ bool kui_always_on_top_get(KuiCtx *ctx);
  * the reason kui_env_set_assistive has one: additive, and off
  * KUI_ABI_VERSION. */
 void kui_env_set_always_on_top(KuiCtx *ctx, bool always_on_top);
+/* Declares that this frame wants the keyboard to this window kept from
+ * every other process while the window has it - macOS's Secure Keyboard
+ * Entry, what a terminal turns on at a password prompt (backlog F85).
+ * Cleared each kui_frame_begin, default false: a frame that stops calling
+ * this is what turns it off. Under kui_run the runner owns the balance -
+ * EnableSecureEventInput is process-wide and counted, and it holds one
+ * count only while a window whose frame asked has the keyboard, giving it
+ * back when that window loses the keyboard, closes or stops asking, and at
+ * exit. Nothing on Windows or Linux, which have no such switch. */
+void kui_set_secure_input(KuiCtx *ctx, bool on);
+/* Whether the frame that just finished asked for it - for a host with its
+ * own window, which makes the call itself while that window is key and
+ * balances every enable with one disable. False for a frame that never
+ * asked. */
+bool kui_secure_input_get(KuiCtx *ctx);
 
 /* -- Spec helpers -------------------------------------------------------- */
 /* Fills spec->float_* from a preset name — the same four the JSX and Lua
