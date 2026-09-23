@@ -674,11 +674,24 @@ impl Core {
             });
     }
 
+    /// Puts a secret on the system clipboard the way a password manager
+    /// does (backlog F84) — queued as `MenuAction::SetClipboardSecret`,
+    /// which the runner writes marked concealed and transient, so a
+    /// clipboard manager neither shows nor keeps it. What the marks are on
+    /// each platform is on the action. The text alone: a secret has no
+    /// second flavour to offer.
+    pub fn set_clipboard_secret(&mut self, text: impl Into<String>) {
+        self.menu_actions
+            .push(crate::menu::MenuAction::SetClipboardSecret { text: text.into() });
+    }
+
     /// Asks for what is on the clipboard — queued as the
     /// `MenuAction::Paste` a menu's Paste produces. The host reads the
-    /// clipboard and hands the text back as `InputEvent::Commit`, which
-    /// reaches a focused editor as typing and a focused sink as
-    /// `{kind:"text", text, tag}` (backlog C17) — so the app that asked
+    /// clipboard and hands the text back as `InputEvent::Paste` (or a
+    /// bare `InputEvent::Commit`), which reaches a focused editor as
+    /// typing and a focused sink as `{kind:"text", text, tag}` (backlog
+    /// C17), with `concealed: true` / `transient: true` beside the text
+    /// when the pasteboard marked it so (backlog F84) — so the app that asked
     /// inserts it the way it inserts a committed IME string, and never
     /// sees the clipboard any other way. The read stays on the driver's
     /// side, where the permission lives.
@@ -687,15 +700,15 @@ impl Core {
     /// by the driver and not yet answered — a second ask is dropped, so a
     /// view that asks on every frame until the answer lands asks once
     /// (backlog AR34; both Rust examples carried this guard themselves).
-    /// The answer is the `Commit` the driver sends, an empty one when the
-    /// clipboard held nothing, and [`Core::awaiting_paste`] reads the
-    /// state.
+    /// The answer is the `Paste` (or `Commit`) the driver sends, an empty
+    /// one when the clipboard held nothing, and [`Core::awaiting_paste`]
+    /// reads the state.
     pub fn request_paste(&mut self) {
         self.queue_paste();
     }
 
     /// Whether a paste ask is outstanding: asked and not yet answered
-    /// with a `Commit`.
+    /// with a `Paste` or a `Commit`.
     pub fn awaiting_paste(&self) -> bool {
         self.awaiting_paste
     }

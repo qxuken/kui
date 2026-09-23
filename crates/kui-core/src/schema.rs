@@ -1750,8 +1750,8 @@ pub const EVENTS: &[EventDef] = &[
     },
     EventDef {
         kind: "text",
-        payload: "`{ kind: \"text\", text, tag }`",
-        doc: "Text an IME committed at the end of a composition — or the clipboard's text, when the app asked for a paste with `requestPaste` / `request_paste` / `kui_request_paste` — on the focused `onKey` sink (or the nearest one above the focused control, or the root sink with nothing focused) — the one committed text the platform never reports as a key press carrying `text`, so a custom editor inserts it as it would a key's `text`. Plain typing does not arrive this way: the `key` event already carries what the press would insert, and a sink hearing both would type every character twice. A focused `<edit>` takes the commit itself and reports `changed`.",
+        payload: "`{ kind: \"text\", text, concealed?: true, transient?: true, tag }`",
+        doc: "Text an IME committed at the end of a composition — or the clipboard's text, when the app asked for a paste with `requestPaste` / `request_paste` / `kui_request_paste` — on the focused `onKey` sink (or the nearest one above the focused control, or the root sink with nothing focused) — the one committed text the platform never reports as a key press carrying `text`, so a custom editor inserts it as it would a key's `text`. Plain typing does not arrive this way: the `key` event already carries what the press would insert, and a sink hearing both would type every character twice. A focused `<edit>` takes the commit itself and reports `changed`. A paste's answer says what the pasteboard marked it (backlog F84): `concealed: true` for a secret — a password manager's copy, which a view should not show, log or keep — and `transient: true` for text not to keep in a history, after the nspasteboard.org convention (on Windows the clipboard's exclusion formats); a marker that is not set is absent, never false. The runner reads them on macOS and Windows; on Linux, and from a host that answers with a bare commit, a paste arrives unmarked.",
     },
     EventDef {
         kind: "preedit",

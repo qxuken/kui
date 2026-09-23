@@ -1452,6 +1452,24 @@ test('a press in a sink names the line, the byte and the click count, and the si
   assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [
     { kind: 'text', text: 'from the clipboard', tag: { kind: 'ed' } },
   ]);
+  // A secret goes out as its own kind, for the window to write marked
+  // concealed and transient; a paste the pasteboard marked comes back
+  // with its markers, only those set (backlog F84).
+  ctx.setClipboardSecret('hunter2');
+  ctx.requestPaste();
+  assert.deepEqual(ctx.takeMenuActions(), [
+    { kind: 'setClipboardSecret', text: 'hunter2' },
+    { kind: 'paste' },
+  ]);
+  ctx.paste('s3cret', { concealed: true, transient: true });
+  assert.equal(ctx.awaitingPaste(), false, 'a paste is the answer too');
+  ctx.paste('brief', { transient: true });
+  ctx.paste('plain');
+  assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [
+    { kind: 'text', text: 's3cret', concealed: true, transient: true, tag: { kind: 'ed' } },
+    { kind: 'text', text: 'brief', transient: true, tag: { kind: 'ed' } },
+    { kind: 'text', text: 'plain', tag: { kind: 'ed' } },
+  ]);
 });
 
 // Context menus (ADR 0017, decision 5): a list of items and a point, not
@@ -3739,6 +3757,9 @@ const SCENE_TREES = {
         el('edit', { initial: '', width: 200, size: 13, label: 'Note' }, [], 'note'),
       ]),
     ]),
+  // The ime scene's two editors, answered with pastes the pasteboard
+  // marked (backlog F84).
+  paste: () => SCENE_TREES.ime(),
   cells: () => {
     const screen = new Uint32Array(11 * 4);
     'hello world'.split('').forEach((ch, i) => {
@@ -4519,6 +4540,11 @@ function driveScene(env, steps, build) {
       const s = step[1] ? String.fromCodePoint(step[1]) : '';
       ctx.preedit(s, s ? [0, Buffer.byteLength(s)] : null);
     } else if (step[0] === 'commit') ctx.commit(String.fromCodePoint(step[1]));
+    // A paste's answer: one character and the pasteboard's markers as
+    // `ClipboardMarks::bits` — 1 concealed, 2 transient (backlog F84).
+    else if (step[0] === 'paste') {
+      ctx.paste(String.fromCodePoint(step[1]), { concealed: !!(step[2] & 1), transient: !!(step[2] & 2) });
+    }
     // Files dragged in from the OS (ADR 0031): `n` files spelled
     // `/drop/1.txt` … `/drop/n.txt` (`conformance::drop_paths`), at a point.
     else if (step[0] === 'dragfiles' || step[0] === 'dropfiles') {
@@ -4638,6 +4664,8 @@ function sceneReport(name, env, steps, { ctx, events, commands, audio }) {
     if (p?.kind === 'scroll') tag += ` ${p.lines ?? '-'}`;
     // A drop's phase and its path count ride the same way (ADR 0031).
     if (p?.kind === 'drop') tag += ` ${p.phase} ${p.paths.length}`;
+    // A paste's markers ride the same way, each only when set (backlog F84).
+    if (p?.kind === 'text') for (const m of ['concealed', 'transient']) if (p[m] === true) tag += ` ${m}`;
     lines.push(`event ${p?.kind ?? '-'} ${tag}`);
   }
   for (const c of commands) lines.push(commandLine(c));
@@ -6584,7 +6612,7 @@ test('the two classes are the verb table\'s Node column, both ways (B1a)', () =>
     'frameBinary', 'setViewBinary', 'setView', 'measureTextBinary', 'setTokensRaw',
     'warnUnknownProps', 'warnUnknownTokens', 'clips', 'fragmentDraws', 'textureDraws', 'stats',
     // The input injection, one per `InputEvent` (the table's `handle_input` row).
-    'cursor', 'cursorLeft', 'mouse', 'scroll', 'text', 'commit', 'preedit', 'key', 'keyDown', 'keyUp',
+    'cursor', 'cursorLeft', 'mouse', 'scroll', 'text', 'commit', 'paste', 'preedit', 'key', 'keyDown', 'keyUp',
     'press', 'release', 'access', 'dragFiles', 'dropFiles', 'dragCancel',
     // The two-class mechanics: the window's own loop and its lifetime.
     'useWindow', 'pump', 'pumpUntil', 'nextDeadlineMs', 'size', 'frameStats', 'close',

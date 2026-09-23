@@ -268,6 +268,14 @@ impl Core {
             Some(m) => m.ctrl || m.alt || m.super_key,
             None => mods.is_some_and(|m| m.word || m.doc),
         };
+        // A paste's answer is a commit with the pasteboard's markers beside
+        // it (backlog F84), and a bare commit is one whose pasteboard marked
+        // nothing — the answer an older driver sends — so the two are one
+        // arm below.
+        let (ev, marks) = match ev {
+            InputEvent::Paste { text, marks } => (InputEvent::Commit(text), marks),
+            ev => (ev, crate::input::ClipboardMarks::default()),
+        };
         match ev {
             InputEvent::Scroll(delta) => {
                 // Wheel up (positive y) reveals earlier content: offset decreases.
@@ -331,11 +339,18 @@ impl Core {
                     // A custom editor: the composition's result as data,
                     // on the sink the focused node reports to (backlog
                     // C17). Never reaches the `Text` arm above, so a
-                    // sink hears a commit once and a keystroke once.
-                    self.sink_event(
-                        Value::map([("kind", Value::str("text")), ("text", Value::Str(s))]),
-                        &mut out,
-                    );
+                    // sink hears a commit once and a keystroke once. A
+                    // marker rides along only when it is set, so a sink
+                    // that never heard of them sees the payload it always
+                    // did.
+                    let mut fields = vec![("kind", Value::str("text")), ("text", Value::Str(s))];
+                    if marks.concealed {
+                        fields.push(("concealed", Value::Bool(true)));
+                    }
+                    if marks.transient {
+                        fields.push(("transient", Value::Bool(true)));
+                    }
+                    self.sink_event(Value::map(fields), &mut out);
                 }
             }
             InputEvent::Preedit(s, cursor) => {

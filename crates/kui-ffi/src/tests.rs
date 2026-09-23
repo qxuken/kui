@@ -1414,6 +1414,7 @@ mod queries_headless {
         kui_frame_finish(ctx);
 
         kui_set_clipboard(ctx, ks("yanked"), ks(""));
+        kui_set_clipboard_secret(ctx, ks("hunter2"));
         kui_request_paste(ctx);
         let mut action = KuiMenuAction {
             size: std::mem::size_of::<KuiMenuAction>() as u32,
@@ -1423,12 +1424,22 @@ mod queries_headless {
         assert_eq!(action.kind, KUI_MENU_ACTION_SET_CLIPBOARD);
         assert_eq!(kstr(action.text).as_ref(), "yanked");
         assert_eq!(action.html.len, 0);
+        // A secret is its own kind, for the host to write marked
+        // concealed and transient (backlog F84).
+        assert!(kui_take_menu_action(ctx, &mut action));
+        assert_eq!(action.kind, KUI_MENU_ACTION_SET_CLIPBOARD_SECRET);
+        assert_eq!(kstr(action.text).as_ref(), "hunter2");
+        assert_eq!(action.html.len, 0);
         assert!(kui_take_menu_action(ctx, &mut action));
         assert_eq!(action.kind, KUI_MENU_ACTION_PASTE);
         assert!(!kui_take_menu_action(ctx, &mut action));
 
         // The host answers the paste with a commit; the sink hears it.
         kui_input_commit(ctx, ks("from the clipboard"));
+        // And a paste the pasteboard marked, which the sink hears with
+        // its markers — only those set (backlog F84).
+        kui_input_paste(ctx, ks("s3cret"), KUI_PASTE_CONCEALED | KUI_PASTE_TRANSIENT);
+        kui_input_paste(ctx, ks("brief"), KUI_PASTE_TRANSIENT);
         // A double click on the second line, past its end.
         kui_input_cursor(ctx, 290.0, 30.0);
         kui_input_mouse(ctx, true, 2);
@@ -1450,8 +1461,25 @@ mod queries_headless {
                 kui_value_as_int(kui_value_get(ev.payload, ks(k)), &mut out).then_some(out)
             };
             assert_eq!(ev.key, sink);
+            let get_bool = |k: &str| {
+                let mut out = false;
+                kui_value_as_bool(kui_value_get(ev.payload, ks(k)), &mut out).then_some(out)
+            };
             match get_str("kind").as_deref() {
-                Some("text") => seen.push(format!("text:{}", get_str("text").unwrap())),
+                Some("text") => seen.push(format!(
+                    "text:{}{}{}",
+                    get_str("text").unwrap(),
+                    match get_bool("concealed") {
+                        Some(true) => ":concealed",
+                        Some(false) => ":concealed=false",
+                        None => "",
+                    },
+                    match get_bool("transient") {
+                        Some(true) => ":transient",
+                        Some(false) => ":transient=false",
+                        None => "",
+                    },
+                )),
                 Some("drag") => seen.push(format!(
                     "{}:{}:{}:{}",
                     get_str("phase").unwrap(),
@@ -1464,7 +1492,13 @@ mod queries_headless {
         }
         assert_eq!(
             seen,
-            ["text:from the clipboard", "start:1:6:2", "end:1:6:2"]
+            [
+                "text:from the clipboard",
+                "text:s3cret:concealed:transient",
+                "text:brief:transient",
+                "start:1:6:2",
+                "end:1:6:2"
+            ]
         );
         kui_ctx_free(ctx);
     }

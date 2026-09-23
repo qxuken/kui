@@ -204,8 +204,26 @@ pub extern "C" fn kui_set_clipboard(ptr: *mut KuiCtx, text: KuiStr, html: KuiStr
     });
 }
 
+/// Puts a secret on the system clipboard, as a
+/// `KUI_MENU_ACTION_SET_CLIPBOARD_SECRET` the host drains and writes
+/// marked concealed and transient, the way a password manager does
+/// (backlog F84) — `org.nspasteboard.ConcealedType` and `TransientType`
+/// on macOS, the exclusion formats on Windows — so no clipboard manager
+/// shows or keeps it. Under `kui_run` the runner writes it.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_clipboard_secret(ptr: *mut KuiCtx, text: KuiStr) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            let text = kstr(text).into_owned();
+            c.core().set_clipboard_secret(text);
+        }
+    });
+}
+
 /// Asks for what is on the clipboard, as a `KUI_MENU_ACTION_PASTE` the
-/// host drains and answers with `kui_input_commit`: a focused editor takes
+/// host drains and answers with `kui_input_paste` (the text and the
+/// pasteboard's `KUI_PASTE_*` markers, backlog F84) or
+/// `kui_input_commit`: a focused editor takes
 /// the text as typing, a focused `on_key` sink hears it as
 /// `{kind:"text", text, tag}` — so an app that owns its text inserts a
 /// paste the way it inserts a committed IME string, and the clipboard is
@@ -264,6 +282,9 @@ pub extern "C" fn kui_take_menu_action(ptr: *mut KuiCtx, out: *mut KuiMenuAction
         let (kind, text, html) = match action {
             kui_core::MenuAction::SetClipboard { text, html } => {
                 (KUI_MENU_ACTION_SET_CLIPBOARD, text, html)
+            }
+            kui_core::MenuAction::SetClipboardSecret { text } => {
+                (KUI_MENU_ACTION_SET_CLIPBOARD_SECRET, text, None)
             }
             kui_core::MenuAction::Paste => (KUI_MENU_ACTION_PASTE, String::new(), None),
             // The core only asks for a panel a host said it can show

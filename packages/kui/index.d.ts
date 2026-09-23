@@ -74,10 +74,18 @@ export type KeyMsg<T = AppMsg> = {
  *  `text`, so insert it as you would a key's `text`. Plain typing does not
  *  arrive this way: the `key` event already carries it, and a sink hearing
  *  both would type every character twice. A focused `<edit>` takes the
- *  commit itself and reports `changed`. */
+ *  commit itself and reports `changed`.
+ *
+ *  The answer to a `requestPaste()` arrives the same way, with what the
+ *  pasteboard marked it (backlog F84): `concealed` for a secret a password
+ *  manager copied — show it to no one, keep it nowhere — and `transient`
+ *  for text not to keep in a history. A marker that is not set is absent,
+ *  never `false`. */
 export type TextMsg<T = AppMsg> = {
   kind: 'text';
   text: string;
+  concealed?: true;
+  transient?: true;
   tag?: T;
 };
 
@@ -607,14 +615,19 @@ export interface OpenMenu {
  *
  *  `setClipboard` carries `text` (and `html` where the selection had
  *  formatting to carry — beside the text, never instead of it);
- *  `paste` asks for what is on the clipboard, delivered back with
- *  `Ctx.commit(...)` — a focused editor takes it as typing, a focused
+ *  `setClipboardSecret` carries a secret to write marked concealed and
+ *  transient; `paste` asks for what is on the clipboard, delivered back
+ *  with `Ctx.paste(text, marks)` (or `Ctx.commit(...)`, a paste nothing
+ *  marked) — a focused editor takes it as typing, a focused
  *  `onKey` sink hears it as `{kind:"text"}`; `lookUp` asks for the
  *  platform's definition panel for `text`, anchored at the baseline
  *  origin `x`, `y`. A view queues the first two itself with
  *  `setClipboard` / `requestPaste`. */
 export type MenuAction =
   | { kind: 'setClipboard'; text: string; html: string | null }
+  /** A secret to write marked concealed and transient, the way a password
+   *  manager does (`setClipboardSecret`, backlog F84). */
+  | { kind: 'setClipboardSecret'; text: string }
   | { kind: 'paste' }
   | { kind: 'lookUp'; text: string; x: number; y: number };
 
@@ -1828,6 +1841,14 @@ export declare class Ctx {
    */
   commit(text: string): void
   /**
+   * The clipboard's answer to a paste (`requestPaste()`), with what
+   * the pasteboard marked it (backlog F84): routed as `commit` is, and
+   * a focused `onKey` sink hears `{kind:"text", text, tag}` with
+   * `concealed: true` / `transient: true` for the markers set. No
+   * marks is a paste nothing marked, the same answer `commit` gives.
+   */
+  paste(text: string, marks?: { concealed?: boolean; transient?: boolean } | null): void
+  /**
    * An in-progress IME composition: `text` is the uncommitted string
    * (empty ends the composition without a commit), `cursor` the byte
    * range inside it the IME's caret covers, or null. A focused `<edit>`
@@ -2679,15 +2700,27 @@ export declare class Ctx {
    */
   setClipboard(text: string, html?: string | undefined | null): void
   /**
+   * Puts a secret on the system clipboard the way a password
+   * manager does (backlog F84): a window writes it marked
+   * concealed and transient — `org.nspasteboard.ConcealedType`
+   * and `TransientType` on macOS, the exclusion formats on
+   * Windows — so no clipboard manager shows or keeps it. A
+   * headless `Ctx` hands it out through `takeMenuActions()` as
+   * `{kind:"setClipboardSecret", text}`.
+   */
+  setClipboardSecret(text: string): void
+  /**
    * Asks for what is on the clipboard — the action a menu's
    * Paste queues. A window reads the clipboard and hands the
-   * text back as a commit: a focused `<edit>` takes it as
+   * text back as a paste: a focused `<edit>` takes it as
    * typing, and a focused `onKey` sink hears it as
-   * `{kind:"text", text, tag}`, so an app that owns its text
-   * inserts a paste the way it inserts a committed IME string
-   * and never reads the clipboard itself. Headless, the
-   * request comes out of `takeMenuActions()` as `{kind:"paste"}`
-   * and the test answers it with `commit(...)`.
+   * `{kind:"text", text, tag}` — with `concealed: true` /
+   * `transient: true` where the pasteboard marked it so
+   * (backlog F84) — so an app that owns its text inserts a
+   * paste the way it inserts a committed IME string and never
+   * reads the clipboard itself. Headless, the request comes out
+   * of `takeMenuActions()` as `{kind:"paste"}` and the test
+   * answers it with `paste(text, marks)` or `commit(...)`.
    */
   requestPaste(): void
   /**
@@ -3734,15 +3767,27 @@ export declare class KuiWindow {
    */
   setClipboard(text: string, html?: string | undefined | null): void
   /**
+   * Puts a secret on the system clipboard the way a password
+   * manager does (backlog F84): a window writes it marked
+   * concealed and transient — `org.nspasteboard.ConcealedType`
+   * and `TransientType` on macOS, the exclusion formats on
+   * Windows — so no clipboard manager shows or keeps it. A
+   * headless `Ctx` hands it out through `takeMenuActions()` as
+   * `{kind:"setClipboardSecret", text}`.
+   */
+  setClipboardSecret(text: string): void
+  /**
    * Asks for what is on the clipboard — the action a menu's
    * Paste queues. A window reads the clipboard and hands the
-   * text back as a commit: a focused `<edit>` takes it as
+   * text back as a paste: a focused `<edit>` takes it as
    * typing, and a focused `onKey` sink hears it as
-   * `{kind:"text", text, tag}`, so an app that owns its text
-   * inserts a paste the way it inserts a committed IME string
-   * and never reads the clipboard itself. Headless, the
-   * request comes out of `takeMenuActions()` as `{kind:"paste"}`
-   * and the test answers it with `commit(...)`.
+   * `{kind:"text", text, tag}` — with `concealed: true` /
+   * `transient: true` where the pasteboard marked it so
+   * (backlog F84) — so an app that owns its text inserts a
+   * paste the way it inserts a committed IME string and never
+   * reads the clipboard itself. Headless, the request comes out
+   * of `takeMenuActions()` as `{kind:"paste"}` and the test
+   * answers it with `paste(text, marks)` or `commit(...)`.
    */
   requestPaste(): void
   /**

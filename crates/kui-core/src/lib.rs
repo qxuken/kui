@@ -79,7 +79,8 @@ pub use fragment::{FragmentDrawId, FragmentList, FragmentRef};
 pub use geom::{Edges, Rect, Size, Vec2};
 pub use input::ScrollAxis;
 pub use input::{
-    EditKey, InputEvent, KeyCode, KeyMods, KeyPhase, KeyPress, Mods, MouseButton, UiEvent,
+    ClipboardMarks, EditKey, InputEvent, KeyCode, KeyMods, KeyPhase, KeyPress, Mods, MouseButton,
+    UiEvent,
 };
 pub use key::Key;
 pub use keyframes::Keyframe;

@@ -443,7 +443,10 @@ fn menu_items(t: &mlua::Table) -> mlua::Result<Vec<kui_core::MenuItem>> {
 /// rows a virtual list never built is asked of the app) /
 /// `set_clipboard(text, html?)` + `request_paste()` (a key sink's own
 /// Ctrl-c and Ctrl-v; the paste comes back as a `text` event, one ask at
-/// a time) + `awaiting_paste()` (whether one is unanswered) /
+/// a time, with `concealed = true` / `transient = true` where the
+/// pasteboard marked it so) + `awaiting_paste()` (whether one is
+/// unanswered) + `set_clipboard_secret(text)` (a secret the host writes
+/// marked concealed and transient, backlog F84) /
 /// `select_all_in(key)` / `clear_selection()` (ADR 0017 — one selection
 /// per window, a `selectable` scope's or the focused editor's), the menu
 /// verbs `open_menu(key, x, y, items)` / `close_menu()` (whose chosen row
@@ -852,6 +855,16 @@ fn env_table<'scope, 'env: 'scope>(
         "set_clipboard",
         scope.create_function(move |_, (text, html): (String, Option<String>)| {
             ui.borrow_mut().set_clipboard(text, html);
+            Ok(())
+        })?,
+    )?;
+    // A secret, which the host writes marked concealed and transient the
+    // way a password manager does, so no clipboard manager shows or keeps
+    // it (backlog F84).
+    t.set(
+        "set_clipboard_secret",
+        scope.create_function(move |_, text: String| {
+            ui.borrow_mut().set_clipboard_secret(text);
             Ok(())
         })?,
     )?;
@@ -3992,6 +4005,7 @@ mod tests {
                 log = {}
                 function view(env)
                   if yank then env.set_clipboard(yank, nil); yank = nil end
+                  if secret then env.set_clipboard_secret(secret); secret = nil end
                   -- Asked on every view until the answer lands: the core
                   -- takes one ask at a time (AR34), so this is one paste.
                   if paste then env.request_paste() end
@@ -4004,8 +4018,13 @@ mod tests {
                 end
                 function on_event(ev)
                   if ev.kind == "key" and ev.code == "y" then yank = "hello world" end
+                  if ev.kind == "key" and ev.code == "s" then secret = "hunter2" end
                   if ev.kind == "key" and ev.code == "p" then paste = true end
-                  if ev.kind == "text" then paste = false; log[#log + 1] = "text:" .. ev.text end
+                  if ev.kind == "text" then
+                    paste = false
+                    local marks = (ev.concealed and ":concealed" or "") .. (ev.transient and ":transient" or "")
+                    log[#log + 1] = "text:" .. ev.text .. marks
+                  end
                   if ev.kind == "drag" then
                     log[#log + 1] = ev.phase .. ":" .. ev.line .. ":" .. ev.byte .. ":" .. ev.clicks
                   end
@@ -4030,6 +4049,15 @@ mod tests {
                 html: None
             }]
         );
+        // A secret, for the host to write marked (backlog F84).
+        feed(&mut core, &mut ext, InputEvent::KeyDown(key('s')));
+        frame(&mut core, &mut ext);
+        assert_eq!(
+            core.take_menu_actions(),
+            vec![MenuAction::SetClipboardSecret {
+                text: "hunter2".into()
+            }]
+        );
         feed(&mut core, &mut ext, InputEvent::KeyDown(key('p')));
         frame(&mut core, &mut ext);
         frame(&mut core, &mut ext);
@@ -4051,6 +4079,15 @@ mod tests {
             core.take_menu_actions().is_empty(),
             "answered: the script stopped asking"
         );
+        // A paste the pasteboard marked: the script reads the markers.
+        feed(
+            &mut core,
+            &mut ext,
+            InputEvent::Paste {
+                text: "s3cret".into(),
+                marks: kui_core::ClipboardMarks::SECRET,
+            },
+        );
         // A double click on the second line, past its end.
         for e in press(&mut core, Vec2::new(390.0, 30.0)) {
             ext.on_event(&e);
@@ -4069,6 +4106,7 @@ mod tests {
             log,
             [
                 "text:from the clipboard",
+                "text:s3cret:concealed:transient",
                 "start:1:6:1",
                 "end:1:6:1",
                 "start:1:6:2",

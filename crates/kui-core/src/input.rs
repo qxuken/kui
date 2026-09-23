@@ -43,6 +43,23 @@ pub enum InputEvent {
     /// one a sink has to be told about. Drivers send `Ime::Commit` here and
     /// keep typing on `Text`.
     Commit(String),
+    /// The clipboard's answer to a paste the app asked for
+    /// (`Core::request_paste`, a menu's Paste), with what the pasteboard
+    /// said about it (backlog F84). Routed exactly as [`InputEvent::Commit`]
+    /// is — a focused editor takes it as typing, a focused sink hears
+    /// `{kind:"text", text, tag}` — and the sink's event gains
+    /// `concealed: true` and `transient: true` for the markers that are
+    /// set, and nothing for those that are not.
+    ///
+    /// A variant of its own rather than two fields on `Commit`, so every
+    /// match on a commit still compiles and a driver that answers with a
+    /// bare `Commit` (an older C or Node host) is still an answer: both
+    /// clear the one-ask gate (backlog AR34), and a `Commit` is a paste
+    /// whose pasteboard marked nothing.
+    Paste {
+        text: String,
+        marks: ClipboardMarks,
+    },
     /// In-progress IME composition (text and the caret byte range inside
     /// it), inserted inline at the focused editor's caret as an uncommitted
     /// marked range: following text shifts and the paragraph rewraps.
@@ -113,6 +130,60 @@ pub enum InputEvent {
     /// The dragged files left the window, or the OS ended the drag
     /// elsewhere: the lit zone hears its `leave`.
     DragCancel,
+}
+
+/// What the pasteboard said about the text a paste brought back (backlog
+/// F84): the markers password managers set on a copied secret, after the
+/// convention at nspasteboard.org that 1Password, Bitwarden, KeePassXC and
+/// the macOS clipboard managers follow. Read by the driver, which owns the
+/// clipboard, and handed over with the text as [`InputEvent::Paste`].
+///
+/// Where the runner reads each:
+///
+/// - `concealed`: the macOS pasteboard type `org.nspasteboard.ConcealedType`;
+///   on Windows the registered format
+///   `ExcludeClipboardContentFromMonitorProcessing` being present.
+/// - `transient`: `org.nspasteboard.TransientType`; on Windows the format
+///   `CanIncludeInClipboardHistory` holding 0.
+///
+/// The runner does not read them on Linux yet — KDE's
+/// `x-kde-passwordManagerHint: secret` is a MIME type arboard writes but
+/// cannot list — so there both stay false.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct ClipboardMarks {
+    /// The text is a secret: do not show it, log it or keep it anywhere.
+    pub concealed: bool,
+    /// The text is on the clipboard for a moment: do not keep it in a
+    /// history.
+    pub transient: bool,
+}
+
+impl ClipboardMarks {
+    /// Both markers: what a password manager puts on a secret it copies,
+    /// and what `Core::set_clipboard_secret` writes.
+    pub const SECRET: Self = Self {
+        concealed: true,
+        transient: true,
+    };
+
+    /// Neither marker set.
+    pub fn is_empty(self) -> bool {
+        !self.concealed && !self.transient
+    }
+
+    /// As bits, the C ABI's spelling: `KUI_PASTE_CONCEALED` 1,
+    /// `KUI_PASTE_TRANSIENT` 2.
+    pub fn bits(self) -> u32 {
+        self.concealed as u32 | (self.transient as u32) << 1
+    }
+
+    /// From [`ClipboardMarks::bits`]; unknown bits are ignored.
+    pub fn from_bits(bits: u32) -> Self {
+        Self {
+            concealed: bits & 1 != 0,
+            transient: bits & 2 != 0,
+        }
+    }
 }
 
 /// Which button a press came from — driver-facing rather than shaped after
@@ -1491,6 +1562,7 @@ impl Interaction {
             InputEvent::Scroll(_)
             | InputEvent::Text(_)
             | InputEvent::Commit(_)
+            | InputEvent::Paste { .. }
             | InputEvent::Preedit(..)
             | InputEvent::Key(..)
             | InputEvent::KeyDown(_)

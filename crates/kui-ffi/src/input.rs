@@ -395,6 +395,21 @@ pub extern "C" fn kui_input_commit(ptr: *mut KuiCtx, text: KuiStr) {
     });
 }
 
+/// The clipboard's answer to a paste (`KUI_MENU_ACTION_PASTE`), with the
+/// pasteboard's markers as `KUI_PASTE_*` bits (backlog F84): routed as
+/// `kui_input_commit` is, and a focused `onKey` sink hears
+/// `{kind:"text", text, tag}` with `concealed: true` / `transient: true`
+/// for the bits that are set. A host that cannot read the markers
+/// answers with 0, or with `kui_input_commit`, which is the same answer.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_input_paste(ptr: *mut KuiCtx, text: KuiStr, marks: u32) {
+    guard((), || {
+        let text = kstr(text).into_owned();
+        let marks = kui_core::ClipboardMarks::from_bits(marks);
+        push_input(ptr, InputEvent::Paste { text, marks });
+    });
+}
+
 /// In-progress IME composition, shown at the focused editor's caret, or
 /// with no editor focused delivered to the focused `onKey` sink as
 /// `{kind:"preedit", text, cursor, tag}`. Empty text clears it; the commit

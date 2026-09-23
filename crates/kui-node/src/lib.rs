@@ -695,6 +695,29 @@ impl Ctx {
         self.input(InputEvent::Commit(text));
     }
 
+    /// The clipboard's answer to a paste (`requestPaste()`), with what
+    /// the pasteboard marked it (backlog F84): routed as `commit` is, and
+    /// a focused `onKey` sink hears `{kind:"text", text, tag}` with
+    /// `concealed: true` / `transient: true` for the markers set. No
+    /// marks is a paste nothing marked, the same answer `commit` gives.
+    #[napi(
+        ts_args_type = "text: string, marks?: { concealed?: boolean; transient?: boolean } | null"
+    )]
+    pub fn paste(&mut self, text: String, marks: Option<Json>) {
+        let flag = |k: &str| {
+            marks
+                .as_ref()
+                .and_then(|m| m.get(k))
+                .and_then(Json::as_bool)
+                .unwrap_or(false)
+        };
+        let marks = kui_core::ClipboardMarks {
+            concealed: flag("concealed"),
+            transient: flag("transient"),
+        };
+        self.input(InputEvent::Paste { text, marks });
+    }
+
     /// An in-progress IME composition: `text` is the uncommitted string
     /// (empty ends the composition without a commit), `cursor` the byte
     /// range inside it the IME's caret covers, or null. A focused `<edit>`
@@ -3093,6 +3116,10 @@ macro_rules! core_methods {
                                 o.insert("text".into(), Json::from(text));
                                 o.insert("html".into(), html.map_or(Json::Null, Json::String));
                             }
+                            kui_core::MenuAction::SetClipboardSecret { text } => {
+                                o.insert("kind".into(), Json::from("setClipboardSecret"));
+                                o.insert("text".into(), Json::from(text));
+                            }
                             kui_core::MenuAction::Paste => {
                                 o.insert("kind".into(), Json::from("paste"));
                             }
@@ -3121,15 +3148,29 @@ macro_rules! core_methods {
                 self.$core().set_clipboard(text, html);
             }
 
+            /// Puts a secret on the system clipboard the way a password
+            /// manager does (backlog F84): a window writes it marked
+            /// concealed and transient — `org.nspasteboard.ConcealedType`
+            /// and `TransientType` on macOS, the exclusion formats on
+            /// Windows — so no clipboard manager shows or keeps it. A
+            /// headless `Ctx` hands it out through `takeMenuActions()` as
+            /// `{kind:"setClipboardSecret", text}`.
+            #[napi]
+            pub fn set_clipboard_secret(&mut self, text: String) {
+                self.$core().set_clipboard_secret(text);
+            }
+
             /// Asks for what is on the clipboard — the action a menu's
             /// Paste queues. A window reads the clipboard and hands the
-            /// text back as a commit: a focused `<edit>` takes it as
+            /// text back as a paste: a focused `<edit>` takes it as
             /// typing, and a focused `onKey` sink hears it as
-            /// `{kind:"text", text, tag}`, so an app that owns its text
-            /// inserts a paste the way it inserts a committed IME string
-            /// and never reads the clipboard itself. Headless, the
-            /// request comes out of `takeMenuActions()` as `{kind:"paste"}`
-            /// and the test answers it with `commit(...)`.
+            /// `{kind:"text", text, tag}` — with `concealed: true` /
+            /// `transient: true` where the pasteboard marked it so
+            /// (backlog F84) — so an app that owns its text inserts a
+            /// paste the way it inserts a committed IME string and never
+            /// reads the clipboard itself. Headless, the request comes out
+            /// of `takeMenuActions()` as `{kind:"paste"}` and the test
+            /// answers it with `paste(text, marks)` or `commit(...)`.
             #[napi]
             pub fn request_paste(&mut self) {
                 self.$core().request_paste();

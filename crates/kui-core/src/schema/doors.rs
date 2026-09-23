@@ -606,11 +606,18 @@ pub const DOORS: &[Door] = &[
         doc: "A key sink's own Ctrl-C: posts a clipboard action for the host (backlog C33).",
     },
     Door {
+        rust: "Ui::set_clipboard_secret",
+        c: Is("kui_set_clipboard_secret"),
+        node: Is("setClipboardSecret"),
+        lua: Is("set_clipboard_secret"),
+        doc: "Posts a secret for the clipboard, which the host writes marked concealed and transient the way a password manager does, so no clipboard manager shows or keeps it (backlog F84).",
+    },
+    Door {
         rust: "Ui::request_paste",
         c: Is("kui_request_paste"),
         node: Is("requestPaste"),
         lua: Is("request_paste"),
-        doc: "A key sink's own Ctrl-V: the clipboard comes back as a commit. One ask at a time — a second while one is unanswered is dropped.",
+        doc: "A key sink's own Ctrl-V: the clipboard comes back as a commit, marked `concealed` / `transient` when the pasteboard said so (backlog F84). One ask at a time — a second while one is unanswered is dropped.",
     },
     Door {
         rust: "Ui::awaiting_paste",

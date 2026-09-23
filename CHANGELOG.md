@@ -43,8 +43,43 @@ Two `reveal`s asked before one frame, into different scroll
 containers, both land now, where only the last did (under Fixed,
 F82) — a view that revealed into one container and relied on a later
 reveal elsewhere cancelling it drops the first ask instead.
+The runner answers a paste with `InputEvent::Paste`, where it sent
+`InputEvent::Commit`, and a view can queue
+`MenuAction::SetClipboardSecret` (under Added, F84) — a Rust `match`
+that named every variant of either gains an arm; a host that answers
+pastes itself with `Commit` (`kui_input_commit`, Node's `commit`)
+keeps working unchanged, and the ABI stays at 18.
 
 ### Added
+
+- **A paste says whether the pasteboard marked it a secret, and a
+  secret can be copied marked** (backlog F84, from kawoosh's secrets
+  report). The answer to `requestPaste()` / `request_paste` /
+  `kui_request_paste` — and to a menu's Paste — reaches a focused
+  `onKey` sink as the same `{kind:"text", text, tag}`, now with
+  `concealed: true` when a password manager marked the copy a secret
+  and `transient: true` when it asked that no history keep it, after
+  the nspasteboard.org convention 1Password, Bitwarden and KeePassXC
+  follow (Windows: the clipboard's exclusion formats). A marker that
+  is not set is absent, never false, so a sink that never heard of
+  them is unchanged. The runner reads them on macOS and Windows; on
+  Linux a paste arrives unmarked for now. In Rust the answer is
+  `InputEvent::Paste { text, marks: ClipboardMarks }`, routed exactly
+  as `Commit` is — which is still an answer, one nothing marked. The
+  other way, `setClipboardSecret(text)` / `ui.set_clipboard_secret` /
+  `env.set_clipboard_secret` / `kui_set_clipboard_secret` puts text
+  there the way a password manager does — marked concealed and
+  transient on macOS, excluded from monitoring, history and the cloud
+  clipboard on Windows, KDE's password-manager hint on Linux — as a
+  `setClipboardSecret` action (`KUI_MENU_ACTION_SET_CLIPBOARD_SECRET`);
+  `setClipboard(text, html)` is unchanged. A C host answers with
+  `kui_input_paste(ctx, text, KUI_PASTE_CONCEALED |
+  KUI_PASTE_TRANSIENT)`, a Node test with `ctx.paste(text, {concealed,
+  transient})`. No ABI change.
+  *What you can delete:* a sink's own guess at which pastes were
+  passwords (their length, their alphabet, the app they came from), and
+  any platform code of the app's that read `NSPasteboard` types or
+  wrote a copy through a second clipboard library to mark it.
 
 - **The Lua DSL described for lua-language-server** (backlog F81,
   from kawoosh's Lua-types report). `kui_lua::luals_meta()` returns a

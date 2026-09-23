@@ -497,6 +497,13 @@ impl<'a> Ui<'a> {
         self.core.set_clipboard(text, html);
     }
 
+    /// Puts a secret on the system clipboard marked concealed and
+    /// transient, the way a password manager does (backlog F84); see
+    /// `Core::set_clipboard_secret`.
+    pub fn set_clipboard_secret(&mut self, text: impl Into<String>) {
+        self.core.set_clipboard_secret(text);
+    }
+
     /// Asks for the clipboard's text, delivered as a `text` event on the
     /// focused sink or as typing into the focused editor; see
     /// `Core::request_paste`.

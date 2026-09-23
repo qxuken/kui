@@ -359,12 +359,24 @@ pub enum MenuAction {
     /// only flavour is HTML pastes markup into every plain-text field on
     /// the machine.
     SetClipboard { text: String, html: Option<String> },
-    /// Read the clipboard and deliver it as `InputEvent::Commit`: a
+    /// Put this secret on the system clipboard the way a password manager
+    /// does (backlog F84): the text, marked concealed and transient —
+    /// `org.nspasteboard.ConcealedType` and `TransientType` on macOS,
+    /// excluded from monitoring, history and the cloud clipboard on
+    /// Windows, `x-kde-passwordManagerHint: secret` on Linux — so a
+    /// clipboard manager neither shows nor keeps it. Queued by
+    /// `Core::set_clipboard_secret`, never by a menu row. Plain text only:
+    /// a secret has no formatting to offer.
+    SetClipboardSecret { text: String },
+    /// Read the clipboard and deliver it as `InputEvent::Paste`: a
     /// focused editor takes it as typing, the way it takes Cmd-V, and a
     /// focused key sink hears it as `{kind:"text"}` — which is how an
     /// app that owns its text gets a paste it asked for with
     /// `Core::request_paste` (backlog C33). The core cannot read a
     /// clipboard, so Paste is the one standard item it can only ask for.
+    /// The answer carries the pasteboard's markers
+    /// ([`crate::input::ClipboardMarks`], backlog F84), and an answer that
+    /// is a bare `InputEvent::Commit` is one that marked nothing.
     Paste,
     /// Show the platform's definition panel for `text`, anchored at
     /// `rect` (logical viewport px — the word's own box, which is what

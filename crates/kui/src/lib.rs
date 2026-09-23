@@ -18,6 +18,7 @@ pub use kui_core::*;
 
 mod access_bridge;
 pub mod audio;
+mod clipboard;
 /// ADR 0009's arithmetic: where a pointer in one window is in another.
 mod keys;
 /// The traffic lights' keep-out and the OS titlebar's height, measured
@@ -648,6 +649,7 @@ fn input_completes(ev: &InputEvent) -> bool {
         | InputEvent::KeyUp(_)
         | InputEvent::Text(_)
         | InputEvent::Commit(_)
+        | InputEvent::Paste { .. }
         | InputEvent::Access(_)
         // A drop is a release; a cancel ends the drag the same way.
         | InputEvent::DropFiles { .. }

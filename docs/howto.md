@@ -561,6 +561,29 @@ input and every frame; headless, `takeMenuActions()` hands them out and
 [`drag` and `text` events](props.md#events) ·
 [alpha.12](../CHANGELOG.md#010-alpha12-2026-09-14)
 
+### How do I keep a pasted password out of my editor's history, and copy one?
+
+Read the markers on the paste. A password manager copies a secret with
+the pasteboard marked concealed and transient, and the answer to
+`requestPaste()` says so: the sink's `{kind:"text", text}` carries
+`concealed: true` (a secret — show it to no one, log it nowhere) and
+`transient: true` (keep it in no history), each only when it is set.
+Insert the text as usual and leave it out of whatever you remember —
+a register, an undo you persist, a paste history. The runner reads the
+markers on macOS and Windows; on Linux, and from a host that answers
+with a bare `commit`, a paste arrives unmarked.
+
+To put a secret on the clipboard yourself, call
+`setClipboardSecret(text)` (Rust `ui.set_clipboard_secret`, Lua
+`env.set_clipboard_secret`, C `kui_set_clipboard_secret`) instead of
+`setClipboard`: the runner writes it marked the same way, so clipboard
+managers neither show nor keep it. Headless, it comes out of
+`takeMenuActions()` as `{kind:"setClipboardSecret", text}`, and a test
+answers a paste with `paste(text, {concealed, transient})`.
+
+[`text` events](props.md#events) ·
+[alpha.17](../CHANGELOG.md#010-alpha17-unreleased)
+
 ### How do I make the caret I draw blink?
 
 Read `caretVisible()` (Rust `ui.caret_visible()`, Lua `env.caret_visible`,

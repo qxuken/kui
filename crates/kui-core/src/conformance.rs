@@ -341,6 +341,12 @@ pub enum Step {
     /// stock editor takes as typed text and a sink hears as
     /// `{kind="text"}`.
     Commit(u32),
+    /// The clipboard answering a paste with one character and the
+    /// pasteboard's markers as [`crate::input::ClipboardMarks::bits`] —
+    /// 1 concealed, 2 transient (backlog F84): `InputEvent::Paste`, which
+    /// a stock editor takes as typed text and a sink hears as
+    /// `{kind="text"}` with `concealed` / `transient` beside it.
+    Paste(u32, u32),
     /// Not an input: the view is a function of a phase, and this is the
     /// view changing its mind. Every scene but `exit` builds the same tree
     /// for every phase; a departing node is one the later phases stop
@@ -425,6 +431,9 @@ impl Step {
             }
             Step::Commit(c) => {
                 let _ = writeln!(out, "step commit {c}");
+            }
+            Step::Paste(c, marks) => {
+                let _ = writeln!(out, "step paste {c} {marks}");
             }
             Step::Phase(n) => {
                 let _ = writeln!(out, "step phase {n}");
@@ -514,6 +523,12 @@ impl Step {
                     .expect("a printable step character")
                     .to_string(),
             ),
+            Step::Paste(c, marks) => InputEvent::Paste {
+                text: char::from_u32(c)
+                    .expect("a printable step character")
+                    .to_string(),
+                marks: crate::input::ClipboardMarks::from_bits(marks),
+            },
             Step::DragFiles(n, x, y) => InputEvent::DragFiles {
                 paths: drop_paths(n),
                 at: Vec2::new(x as f32, y as f32),
@@ -1371,6 +1386,61 @@ pub const SCENES: &[Scene] = &[
                 "1 textInput Note||y",
             ],
             events: &["preedit ed", "text ed", "preedit ed", "changed -"],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+        },
+    },
+    Scene {
+        name: "paste",
+        doc: "A paste's answer with the pasteboard's markers (backlog F84), \
+              against the `ime` scene's two editors. The custom editor is \
+              clicked into focus and answered three times: a secret a \
+              password manager copied (concealed and transient), a \
+              transient one, and a bare commit — the answer an older \
+              driver sends — each heard as `text` on its tag with the \
+              markers that were set and no others. Then the stock editor \
+              takes a concealed paste as typed text and reports a change, \
+              the markers being the sink's to read.",
+        custom: &["key", "size"],
+        elements: &["box", "text", "edit"],
+        build: build_ime,
+        env: NATIVE_CHROME,
+        steps: &[
+            Step::Cursor(60, 22),
+            Step::MouseDown,
+            Step::MouseUp,
+            Step::Paste('s' as u32, 3),
+            Step::Paste('t' as u32, 2),
+            Step::Commit('u' as u32),
+            Step::Cursor(60, 48),
+            Step::MouseDown,
+            Step::MouseUp,
+            Step::Paste('v' as u32, 1),
+        ],
+        expect: Expect {
+            // The sink's background and the stock editor's caret.
+            solid: 2,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 3,
+            access: &[
+                "0 window ||",
+                "1 multilineTextInput Buffer||ab",
+                "1 textInput Note||v",
+            ],
+            events: &[
+                "text ed concealed transient",
+                "text ed transient",
+                "text ed",
+                "changed -",
+            ],
             announcements: &[],
             warnings: &[],
             commands: &[],
@@ -4785,6 +4855,18 @@ fn event_row(payload: &Value) -> (String, String) {
             .and_then(Value::as_list)
             .map_or(0, <[Value]>::len);
         let _ = write!(tag, " {phase} {n}");
+    }
+    // A paste's markers ride the same way (`text ed concealed transient`),
+    // each only when it is set, as the payload carries them (backlog
+    // F84): a binding that dropped them on the wire would agree on the
+    // kind and disagree here, and an unmarked commit's line is the one it
+    // always was.
+    if kind == "text" {
+        for marker in ["concealed", "transient"] {
+            if payload.get(marker).and_then(Value::as_bool) == Some(true) {
+                let _ = write!(tag, " {marker}");
+            }
+        }
     }
     (kind, tag)
 }

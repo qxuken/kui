@@ -197,7 +197,8 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
-        "ime" => r#"
+        // The paste scene's tree is the ime scene's (backlog F84).
+        "ime" | "paste" => r#"
             return column { pad = 10, gap = 6,
               column { key = "buffer", width = 200, height = 24, bg = 0x1b1d27ff,
                        on_key = { kind = "ed" }, role = "multilineTextInput", label = "Buffer",

@@ -56,6 +56,10 @@ windows-sys = { version = "0.52", features = [
     "Win32_Graphics_Dwm",
     "Win32_Graphics_Gdi",
     "Win32_System_Console",
+    # A paste's markers (`mod clipboard`, backlog F84): the clipboard's
+    # registered formats, and the history format's value behind its handle.
+    "Win32_System_DataExchange",
+    "Win32_System_Memory",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
@@ -97,6 +101,8 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
     "NSEvent",
     # Force Touch: asking the view for the deep-click stage (step 5).
     "NSPressureConfiguration",
+    # A paste's markers and a secret's copy (`mod clipboard`, backlog F84).
+    "NSPasteboard",
 ] }
 objc2-foundation = { version = "0.3", default-features = false, features = [
     "std",

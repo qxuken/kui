@@ -209,7 +209,8 @@ impl<A: App> Shell<A> {
     /// clipboard, which is this driver's in the same way Cmd-C's is (ADR
     /// 0017, decision 5). Copy and Cut arrive as the text to put there —
     /// the core worked out *what*, which is the half only it can do — and
-    /// Paste as a request for what is there, delivered back as a commit:
+    /// Paste as a request for what is there, delivered back as a paste
+    /// carrying the pasteboard's markers (backlog F84):
     /// a focused editor takes it as typing, the path Cmd-V takes, and a
     /// focused key sink hears it as `{kind:"text"}` — the paste an app
     /// that owns its text asked for with `request_paste` (backlog C33).
@@ -224,17 +225,23 @@ impl<A: App> Shell<A> {
                 MenuAction::SetClipboard { text, html } => {
                     set_clipboard(self.clipboard.as_mut(), text, html);
                 }
+                MenuAction::SetClipboardSecret { text } => {
+                    crate::clipboard::set_secret(self.clipboard.as_mut(), text);
+                }
                 MenuAction::Paste => {
                     // Every ask is answered, an empty clipboard with an
-                    // empty commit: the answer is what clears the core's
+                    // empty paste: the answer is what clears the core's
                     // one-ask gate (backlog AR34), and an editor inserts
-                    // nothing for it.
+                    // nothing for it. The pasteboard's markers go with the
+                    // text (backlog F84), so a sink can tell a password
+                    // manager's secret from a paragraph.
                     let text = self
                         .clipboard
                         .as_mut()
                         .and_then(|cb| cb.get_text().ok())
                         .unwrap_or_default();
-                    self.dispatch(event_loop, i, InputEvent::Commit(text));
+                    let marks = crate::clipboard::marks();
+                    self.dispatch(event_loop, i, InputEvent::Paste { text, marks });
                 }
                 MenuAction::LookUp { text, at } => {
                     // Only macOS has a panel to show. Everywhere else the

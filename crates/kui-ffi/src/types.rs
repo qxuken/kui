@@ -1881,7 +1881,9 @@ pub struct KuiCell {
 /// (`kui_take_menu_action`): the clipboard, which is the host's in this
 /// library. `KUI_MENU_ACTION_SET_CLIPBOARD` carries the text to put there;
 /// `KUI_MENU_ACTION_PASTE` carries nothing and asks for what is there,
-/// which the host delivers back with `kui_input_text`.
+/// which the host delivers back with `kui_input_paste` (or
+/// `kui_input_commit`); `KUI_MENU_ACTION_SET_CLIPBOARD_SECRET` carries a
+/// secret to put there marked concealed and transient.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct KuiMenuAction {
@@ -2129,6 +2131,17 @@ pub const KUI_MENU_ITEM_CHECKED: u32 = 1 << 1;
 pub const KUI_MENU_ACTION_SET_CLIPBOARD: u32 = 0;
 pub const KUI_MENU_ACTION_PASTE: u32 = 1;
 pub const KUI_MENU_ACTION_LOOK_UP: u32 = 2;
+/// A secret for the clipboard, to write marked concealed and transient
+/// (`kui_set_clipboard_secret`, backlog F84). A new kind rather than a
+/// flags field on `KuiMenuAction`, so the struct — and the ABI — stays
+/// as it was; a host that does not know the kind drops the copy, which
+/// for a secret is the safe way to fail.
+pub const KUI_MENU_ACTION_SET_CLIPBOARD_SECRET: u32 = 3;
+
+/// `KUI_PASTE_*`: the pasteboard's markers on a paste's answer
+/// (`kui_input_paste`, backlog F84) — `ClipboardMarks::bits`.
+pub const KUI_PASTE_CONCEALED: u32 = 1 << 0;
+pub const KUI_PASTE_TRANSIENT: u32 = 1 << 1;
 
 /// `KUI_OWED_*`: the bits of what `kui_owed` returns — `kui_animating`
 /// by kind (backlog F64).

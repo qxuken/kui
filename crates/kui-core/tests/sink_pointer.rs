@@ -10,8 +10,8 @@
 
 use kui_core::testing::{press, release};
 use kui_core::{
-    Core, InputEvent, Key, MenuAction, NodeSpec, Role, Size, Sizing, TextStyle, UiEvent, Value,
-    Vec2,
+    ClipboardMarks, Core, InputEvent, Key, MenuAction, NodeSpec, Role, Size, Sizing, TextStyle,
+    UiEvent, Value, Vec2,
 };
 
 const LH: f32 = 20.0;
@@ -407,4 +407,80 @@ fn a_second_paste_ask_is_dropped_until_the_first_is_answered() {
     );
     core.handle_input(InputEvent::Commit("pasted".into()));
     assert!(!core.awaiting_paste());
+}
+
+/// A paste's answer says what the pasteboard marked it (backlog F84): a
+/// password manager's secret reaches the sink with `concealed` and
+/// `transient` beside the text, each only when it is set, so a sink that
+/// never heard of them sees the payload it always did. The answer clears
+/// the one-ask gate the way a bare commit does, and a secret the app puts
+/// on the clipboard itself is its own action for the host to write marked.
+#[test]
+fn a_paste_carries_the_pasteboards_markers_to_the_sink() {
+    let mut core = Core::new();
+    let sink = frame(&mut core, &["hello"]);
+    core.request_paste();
+    assert_eq!(core.take_menu_actions(), vec![MenuAction::Paste]);
+    let evs = core.handle_input(InputEvent::Paste {
+        text: "hunter2".into(),
+        marks: ClipboardMarks::SECRET,
+    });
+    assert!(!core.awaiting_paste(), "a paste is the answer");
+    let text = evs
+        .iter()
+        .find(|e| kind(e).as_deref() == Some("text"))
+        .expect("the paste arrived");
+    assert_eq!(text.key, sink);
+    assert_eq!(field(text, "text"), Some(Value::str("hunter2")));
+    assert_eq!(field(text, "concealed"), Some(Value::Bool(true)));
+    assert_eq!(field(text, "transient"), Some(Value::Bool(true)));
+
+    // One marker: only it rides along.
+    let evs = core.handle_input(InputEvent::Paste {
+        text: "brief".into(),
+        marks: ClipboardMarks {
+            concealed: false,
+            transient: true,
+        },
+    });
+    let text = evs
+        .iter()
+        .find(|e| kind(e).as_deref() == Some("text"))
+        .unwrap();
+    assert_eq!(field(text, "concealed"), None, "absent, never false");
+    assert_eq!(field(text, "transient"), Some(Value::Bool(true)));
+
+    // Unmarked, and a bare commit: the payload it always was.
+    for ev in [
+        InputEvent::Paste {
+            text: "plain".into(),
+            marks: ClipboardMarks::default(),
+        },
+        InputEvent::Commit("plain".into()),
+    ] {
+        let evs = core.handle_input(ev);
+        let text = evs
+            .iter()
+            .find(|e| kind(e).as_deref() == Some("text"))
+            .unwrap();
+        assert_eq!(field(text, "concealed"), None);
+        assert_eq!(field(text, "transient"), None);
+    }
+
+    // The other way: a secret the app copies is its own action.
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.set_clipboard_secret("s3cret");
+    ui.finish();
+    assert_eq!(
+        core.take_menu_actions(),
+        vec![MenuAction::SetClipboardSecret {
+            text: "s3cret".into()
+        }]
+    );
+    // And the bits the C ABI spells them in round-trip.
+    for bits in 0..4 {
+        assert_eq!(ClipboardMarks::from_bits(bits).bits(), bits);
+    }
+    assert_eq!(ClipboardMarks::SECRET.bits(), 3);
+    assert!(ClipboardMarks::default().is_empty());
 }

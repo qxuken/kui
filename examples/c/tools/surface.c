@@ -970,6 +970,17 @@ static int surface(void) {
         check(kui_awaiting_paste(ui), "still out until answered");
         kui_input_commit(ui, KUI_STR("")); /* the clipboard held nothing */
         check(!kui_awaiting_paste(ui), "an empty commit is an answer");
+        /* A secret goes out as its own kind, for the host to write marked
+         * concealed and transient; a marked paste is an answer too
+         * (backlog F84). */
+        kui_set_clipboard_secret(ui, KUI_STR("hunter2"));
+        check(kui_take_menu_action(ui, &act) && act.kind == KUI_MENU_ACTION_SET_CLIPBOARD_SECRET
+                  && has(act.text, "hunter2") && act.html.len == 0,
+              "kui_set_clipboard_secret queues the secret alone");
+        kui_request_paste(ui);
+        check(kui_take_menu_action(ui, &act) && act.kind == KUI_MENU_ACTION_PASTE, "asked again");
+        kui_input_paste(ui, KUI_STR("s3cret"), KUI_PASTE_CONCEALED | KUI_PASTE_TRANSIENT);
+        check(!kui_awaiting_paste(ui), "a marked paste is an answer");
     }
 
     /* A context menu the host shows itself: opened over a node, read row

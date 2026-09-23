@@ -1633,6 +1633,9 @@ static const ConfScene CONF_SCENES[] = {
     {"controls", conf_controls},
     {"keys", conf_keys},
     {"ime", conf_ime},
+    /* The paste scene's tree is the ime scene's: two editors, a paste's
+     * markers heard by one and ignored by the other (backlog F84). */
+    {"paste", conf_ime},
     {"cells", conf_cells},
     {"underlines", conf_underlines},
     {"media", conf_media},
@@ -1799,6 +1802,13 @@ static void conf_apply(KuiCtx *ctx, const ConfStep *s) {
         size_t n = conf_utf8((uint32_t)s->a, b);
         kui_input_commit(ctx, (KuiStr){b, n});
     }
+    /* The clipboard answering a paste with one character and the
+     * pasteboard's markers as KUI_PASTE_* bits (backlog F84). */
+    else if (strcmp(s->kind, "paste") == 0) {
+        uint8_t b[4];
+        size_t n = conf_utf8((uint32_t)s->a, b);
+        kui_input_paste(ctx, (KuiStr){b, n}, (uint32_t)s->b);
+    }
     /* Files dragged in from the OS (ADR 0031): `a` files spelled
      * /drop/1.txt ... /drop/a.txt (conformance::drop_paths), at (b, c). */
     else if (strcmp(s->kind, "dragfiles") == 0 || strcmp(s->kind, "dropfiles") == 0) {
@@ -1869,6 +1879,16 @@ static void conf_drain(KuiCtx *ctx, Rep *events) {
             if (p) kui_value_as_str(p, &phase);
             const KuiValue *l = kui_value_get(ev.payload, KUI_STR("paths"));
             repf(events, " %.*s %zu", (int)phase.len, phase.ptr, l ? kui_value_len(l) : (size_t)0);
+        }
+        /* A paste's markers ride the same way, each only when it is set
+         * (backlog F84). */
+        if (kind.len == 4 && memcmp(kind.ptr, "text", 4) == 0) {
+            static const char *const markers[] = {"concealed", "transient"};
+            for (int m = 0; m < 2; m++) {
+                const KuiValue *v = kui_value_get(ev.payload, (KuiStr){(const uint8_t *)markers[m], strlen(markers[m])});
+                bool on = false;
+                if (v && kui_value_as_bool(v, &on) && on) repf(events, " %s", markers[m]);
+            }
         }
         repf(events, "\n");
     }

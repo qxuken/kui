@@ -1198,6 +1198,23 @@ enum {
     KUI_MENU_ACTION_SET_CLIPBOARD = 0,
     KUI_MENU_ACTION_PASTE = 1,
     KUI_MENU_ACTION_LOOK_UP = 2,
+    /* A secret for the clipboard (kui_set_clipboard_secret): write `text`
+     * marked concealed and transient, the way a password manager does -
+     * on macOS the pasteboard types org.nspasteboard.ConcealedType and
+     * org.nspasteboard.TransientType declared beside the string, on
+     * Windows the formats ExcludeClipboardContentFromMonitorProcessing and
+     * CanIncludeInClipboardHistory = 0, on KDE x-kde-passwordManagerHint:
+     * secret. A host that does not know this kind drops the copy, which
+     * for a secret is the safe way to fail (backlog F84). */
+    KUI_MENU_ACTION_SET_CLIPBOARD_SECRET = 3,
+};
+
+/* kui_input_paste's markers: what the pasteboard said about the text a
+ * paste brought back (backlog F84), read from the same types and formats
+ * KUI_MENU_ACTION_SET_CLIPBOARD_SECRET writes. */
+enum {
+    KUI_PASTE_CONCEALED = 1u << 0,
+    KUI_PASTE_TRANSIENT = 1u << 1,
 };
 
 /* [out] What choosing a row left for the host: the clipboard, which is the
@@ -1575,6 +1592,13 @@ void kui_input_text(KuiCtx *ctx, KuiStr text);   /* typing/paste -> focused edit
  * carries. Typing stays on kui_input_text (a sink already hears it as the
  * key event's text). */
 void kui_input_commit(KuiCtx *ctx, KuiStr text);
+/* The clipboard's answer to a KUI_MENU_ACTION_PASTE, with the pasteboard's
+ * markers as KUI_PASTE_* bits (backlog F84): routed as kui_input_commit
+ * is, and the focused on_key sink hears {kind:"text", text, tag} with
+ * concealed: true / transient: true for the bits that are set - absent,
+ * never false, for those that are not. 0 is a paste nothing marked, the
+ * same answer kui_input_commit gives. */
+void kui_input_paste(KuiCtx *ctx, KuiStr text, uint32_t marks);
 /* In-progress IME composition shown at the focused editor's caret, or with
  * no editor focused delivered to the focused on_key sink as
  * {kind:"preedit", text, cursor, tag}; empty text clears it, the commit
@@ -2698,6 +2722,14 @@ bool kui_answer_selection_range(KuiCtx *ctx, KuiStr text);
  * both after every input and every frame; a host driving its own window
  * drains them with kui_take_menu_action as it does a menu's. */
 void kui_set_clipboard(KuiCtx *ctx, KuiStr text, KuiStr html);
+/* A secret for the clipboard, queued as a
+ * KUI_MENU_ACTION_SET_CLIPBOARD_SECRET: the host writes it marked
+ * concealed and transient, so no clipboard manager shows or keeps it
+ * (backlog F84). Under kui_run the runner does. */
+void kui_set_clipboard_secret(KuiCtx *ctx, KuiStr text);
+/* kui_request_paste's answer is kui_input_paste - the text and the
+ * pasteboard's KUI_PASTE_* markers - or kui_input_commit, a paste nothing
+ * marked. */
 void kui_request_paste(KuiCtx *ctx);
 /* One paste ask at a time: while one is unanswered a second
  * kui_request_paste is dropped, and the kui_input_commit that answers it -
