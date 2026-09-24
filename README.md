@@ -485,8 +485,8 @@ that are hard to reverse and would look arbitrary without their context.
   true` / `kui_set_secure_input` on every frame a password prompt is up,
   and the runner turns macOS's Secure Keyboard Entry on while that window
   has the keyboard and off when it loses it, closes or stops asking,
-  keeping the process-wide count balanced. Opt in with `kui::app("title").custom_titlebar().run(app)`:
-  macOS keeps native traffic lights over your content; Windows/Linux go
+  keeping the process-wide count balanced. Custom chrome is an opt-in:
+  `kui::app("title").custom_titlebar().run(app)` — macOS keeps native traffic lights over your content; Windows/Linux go
   undecorated with drawn buttons. On Windows the runner also subclasses the
   window and answers `WM_NCHITTEST` from the frame's chrome regions
   (HTCAPTION / HTMINBUTTON / HTMAXBUTTON / HTCLOSE + resize borders), so

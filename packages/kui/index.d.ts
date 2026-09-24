@@ -1878,7 +1878,9 @@ export declare class Ctx {
    * (backlog F65). Passing both is how a driver reports a non-US
    * layout, and it is what makes the reported `code` portable: a
    * layout producing something outside ASCII would leave a Latin
-   * keymap matching nothing, so the position's US letter stands in.
+   * keymap matching nothing, so the position's US key stands in, as
+   * Shift prints it (`"J"`, `":"`; unshifted under Alt). What the press
+   * types is still `code` as passed — the layout's own character.
    */
   keyDown(code: string, mods?: KeySinkMods, repeat?: boolean, physical?: string): void
   /**
@@ -2123,7 +2125,7 @@ export declare class Ctx {
   /**
    * What the last frame left owed, by kind — `animating()`
    * taken apart: `{transition, cycle, depart, requested,
-   * autoscroll}`. To the window they are one, and it redraws
+   * autoscroll, scroll}`. To the window they are one, and it redraws
    * for any of them; to a test they differ, since a keyframe
    * `repeat` cycle never ends and `settled()` never resolves
    * under one. `quiet()` on the loop waits on everything but
@@ -3190,7 +3192,7 @@ export declare class KuiWindow {
   /**
    * What the last frame left owed, by kind — `animating()`
    * taken apart: `{transition, cycle, depart, requested,
-   * autoscroll}`. To the window they are one, and it redraws
+   * autoscroll, scroll}`. To the window they are one, and it redraws
    * for any of them; to a test they differ, since a keyframe
    * `repeat` cycle never ends and `settled()` never resolves
    * under one. `quiet()` on the loop waits on everything but

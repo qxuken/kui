@@ -240,7 +240,10 @@ So both, with a stated default:
     vocabulary knows, as a dead key does — the US-QWERTY key at that
     position stands in, so a Latin keymap keeps matching; as Shift prints
     it, since the position is reported unshifted (`J`, `:` and `~` on a
-    Russian layout, not `j`, `;` and `` ` ``; F76, 2026-09-21). This is the rule
+    Russian layout, not `j`, `;` and `` ` ``; F76, 2026-09-21) — except under
+    Alt, where the unshifted position stands in, since ⌥ composes a
+    character (⌥⇧J is `Ô` on a US Mac) and the chord a keymap names is
+    ⌥⇧j, as the winit runner always reported it (RG27, 2026-09-25). This is the rule
     browsers use to keep ⌘C copying on a Russian layout, and it is the
     reason an app can stay ignorant that layouts exist. `text` is
     untouched: the typing view is always the layout's own character.

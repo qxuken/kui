@@ -49,6 +49,26 @@ The runner answers a paste with `InputEvent::Paste`, where it sent
 that named every variant of either gains an arm; a host that answers
 pastes itself with `Commit` (`kui_input_commit`, Node's `commit`)
 keeps working unchanged, and the ABI stays at 18.
+A scroll container that already declared a `transition` — for its
+colours, say — eases a `reveal` or a `set_scroll` now, where it jumped
+(under Added, F80), and while it eases `scroll_geometry`'s offset is
+where the content is drawn, not the target `scroll_offset` answers; a
+view that wants the jump keeps the `transition` off the scroller.
+`kui_owed` gains `KUI_OWED_SCROLL` (32) and Node's `owed()` a `scroll`
+field for that leg — a host that compared `kui_owed` against a fixed
+set of bits sees a new one. The Rust surface gains names a struct
+literal or an exhaustive `match` spells out: `Owed::scroll`,
+`PropsOut::secure_input`, `RenderError::DeviceLost`, and
+`ScrollStore::resolve` takes the container's transition.
+On Windows the device is D3D12 alone unless `WGPU_BACKEND` names
+another (under Fixed), where wgpu enumerated every backend; and on
+every platform a wgpu validation error is printed rather than raised
+as a panic — `on_uncaptured_error` replaces wgpu's default handler —
+so a check that relied on the panic to fail a run reads stderr.
+A C or Node host that hands the core `physical` and no `text` gets the
+layout's character typed, where it got the US stand-in's (under Fixed,
+RG28): Node's `keyDown("Ж", {shift: true}, ";")` types `Ж`, which was
+`;`.
 
 ### Added
 
@@ -92,7 +112,9 @@ keeps working unchanged, and the ABI stays at 18.
   `setClipboard(text, html)` is unchanged. A C host answers with
   `kui_input_paste(ctx, text, KUI_PASTE_CONCEALED |
   KUI_PASTE_TRANSIENT)`, a Node test with `ctx.paste(text, {concealed,
-  transient})`. No ABI change.
+  transient})`. The devtools' events tab keeps a concealed paste's
+  markers and its length, never its text (RG34). The runner needs
+  arboard 3.6 for the writes (RG35). No ABI change.
   *What you can delete:* a sink's own guess at which pastes were
   passwords (their length, their alphabet, the app they came from), and
   any platform code of the app's that read `NSPasteboard` types or
@@ -108,9 +130,16 @@ keeps working unchanged, and the ABI stays at 18.
   kind (an enum as its names, a sizing as `kui.Sizing`) with its doc,
   the composites (`pad`, `border`, `scroll_x`, …) and each element's
   own props. It is generated from kui-core's schema, the same tables
-  `npm run gen` writes `index.d.ts` from, so it cannot fall behind a
-  prop. A host writes it into a directory and puts that on the
-  server's `workspace.library`. No ABI change.
+  `npm run gen` writes `index.d.ts` from, and tests run a value of
+  every annotated type through the Lua parser and every value the
+  parser takes through the annotation, so the two cannot drift apart
+  unnoticed — the regression pass found the first cut offering
+  `{ percent = n }` where the parser reads `{ pct = n }`, `repeat`
+  (a Lua keyword) where a table writes `direction`, `key` as a number,
+  and every constructor's table optional where thirteen index it
+  unchecked (RG33). A table `pad` on `virtual_column` no longer
+  crashes the prelude. A host writes the file into a directory and puts
+  that on the server's `workspace.library`. No ABI change.
   *What you can delete:* a hand-kept `---@meta` file of the prelude,
   and the `diagnostics.globals` list that silenced `row` and `text`.
 - **A scroll container eases where a `reveal` or a `set_scroll` takes
@@ -125,8 +154,15 @@ keeps working unchanged, and the ABI stays at 18.
   where the container is *going*, so a view's arithmetic is unchanged;
   `Core::scroll_geometry` answers where the content *is*, which is what
   a virtual list must slice by, and `Owed::scroll` says a leg is
-  mid-flight so a driver schedules the next frame. No new prop, no ABI
-  change: `transition` gains a meaning on a node that scrolls.
+  mid-flight so a driver schedules the next frame. Mid-leg, a wheel
+  notch and another reveal are measured from where the content stands;
+  the thumb, the access tree and the inspector show the drawn place;
+  `virtual_rows`' own height correction carries the leg with it, so one
+  `set_scroll` to a far row lands on that row; and the leg is owed in
+  every binding — `KUI_OWED_SCROLL`, Node's `owed().scroll`, which
+  `quiet()` waits on (the regression pass, RG17–RG22, found each of
+  these in the first cut). No new prop, no ABI change: `transition`
+  gains a meaning on a node that scrolls.
   *What you can delete:* an app's own offset tween — the frame-by-frame
   `set_scroll` toward a target, its easing and its clock — and the
   guard that kept the wheel from fighting it.
@@ -142,8 +178,11 @@ keeps working unchanged, and the ABI stays at 18.
   shell has no standard handles at all, so its `println!`, its panics,
   the runner's `kui:` lines and `kui_wgpu::report_faults` all went
   nowhere. The runner now attaches such a process to the console of the
-  shell that launched it (`AttachConsole`, once, before anything
-  prints) when the process has no output handle of its own; from the
+  shell that launched it (`AttachConsole`, once, when the shell starts)
+  when the process has no output handle of its own — a Rust app's own
+  `println!` before it calls `run` still has nowhere to go, and a C
+  host's `printf` needs its own `AttachConsole`, since its C runtime
+  set stdio up at startup and does not look again; from the
   Explorer there is no parent console and nothing is shown, and a
   process whose launcher piped or redirected its output — cargo, the
   smoke round, `> log.txt` — keeps what it was given. The prompt is back
@@ -155,6 +194,9 @@ keeps working unchanged, and the ABI stays at 18.
   a console, its report on the console; through a pipe, in the pipe; from
   a parent with no console, no window and no handles. The how-to's
   "How do I stop the console window on Windows?" has the line.
+  *What you can delete:* a hand-written `AttachConsole` at the top of
+  `main`, and a log file written only because a windowed build had
+  nowhere else to print.
 
 ### Fixed
 
@@ -166,8 +208,12 @@ keeps working unchanged, and the ABI stays at 18.
   reset once mid-emit, the quads emitted before the reset sampled the
   overwritten page, and the rows drawn first (the caret's, redrawn
   every frame) showed other glyphs' pixels. A glyph the last reset
-  dropped coming back to a full page is thrash, and the page grows;
-  a set that turns over, all new keys, still resets.
+  dropped coming back to a page that fills again on the very next
+  frame is thrash, and the page grows; a set that turns over, all new
+  keys, still resets, and so does a fill long after the reset that
+  happens to want back a common glyph — which the first cut took for
+  thrash, doubling the page on every later fill and never giving it
+  back (RG23).
   *What you can delete:* a cap on the font size an app lets its user
   pick to keep the glyphs whole.
 - **Two reveals in one frame, into different containers, dropped the
@@ -208,9 +254,13 @@ keeps working unchanged, and the ABI stays at 18.
   tall, a blank band at the edge under the wheel. The core now
   records what `scroll_geometry` handed each build and, after layout,
   asks for one more frame when a container so read was placed
-  otherwise (`ScrollStore::resliced`); the frame after builds against
-  what is on screen and owes nothing. Every binding's virtual list gets
-  it. *What you can delete:* a `request_frame` after a virtual list, or
+  otherwise (`ScrollStore::take_resliced`); the frame after builds
+  against what is on screen and owes nothing. A read made before the
+  frame begins counts for it — Node's view runs between two frames,
+  which the first cut missed, so every binding's virtual list gets it
+  now (RG24) — and a container read but not laid out, a pane in a
+  hidden tab, owes nothing, where it asked for a frame every frame
+  until the tab came back (RG25). *What you can delete:* a `request_frame` after a virtual list, or
   a frame requested on every resize, put there so the list would catch
   up.
 - **A stroke or a polygon inside a scrolled row spilled past the
@@ -221,7 +271,8 @@ keeps working unchanged, and the ABI stays at 18.
   above once the row scrolled away while its text was cut. A stroke or
   polygon anchored in its parent's box takes the parent's clip now, as
   a child would, and its hit region with it; a declared float and a
-  viewport-anchored stroke still escape. *What you can delete:* a
+  viewport-anchored stroke still escape. A departing subtree's strokes
+  follow the same rule while its exit plays (RG26). *What you can delete:* a
   `clip` node wrapped around a graph, or a check that skips drawing a
   row's strokes once the row is out of view.
 - **Shift was lost under the layout fallback: `J` on a Russian layout
@@ -241,10 +292,18 @@ keeps working unchanged, and the ABI stays at 18.
   The winit runner's Alt path takes the logical key with every
   modifier stripped, Shift included, and now resolves the fallback the
   same way, so ⌥⇧ on the key printed J is `j` on a Russian layout as
-  it is on a US one; a C or Node host that passes `physical` gets the
-  fold from the core. ADR 0002 decision 11 says so. `crates/kui-core/
-  tests/keys.rs` pins seven shifted keys of a Russian layout, a dead
-  key under Shift, and the two that must not move.
+  it is on a US one. That Alt rule lives in the core now, not in the
+  runner alone, so a C or Node host that passes `physical` gets the
+  same `j` for ⌥⇧ over `Ô` that the runner does (RG27), and a host that
+  gives no `text` types the layout's character — `Ж`, not the
+  stand-in's `:` (RG28). Caps Lock is not modelled: a Caps-Locked
+  non-Latin key stands in as the lower-case letter. ADR 0002 decision
+  11 says so. `crates/kui-core/tests/keys.rs` pins seven shifted keys
+  of a Russian layout, a dead key under Shift, the Alt rule and the
+  two that must not move.
+  *What you can delete:* a keymap's second table of shifted symbols
+  for non-Latin layouts, and the `shift` check beside a `j` arm that
+  told `J` apart from it.
 
 - **A lost GPU device is opened again, and the loss is a real one.** A
   driver update or a GPU reset removes the device under a running app;
@@ -256,14 +315,22 @@ keeps working unchanged, and the ABI stays at 18.
   and a renderer for each window on it — the cores stay, the next frame
   draws what the last would have. `KUI_LOSE_DEVICE=SECS` pretends the
   loss, and on Windows it is one: the D3D12 device itself is removed. A
-  surface that will not configure is an error the shell retries a
-  second later, not a panic. On Windows `Gpu::new` asks for D3D12 alone
+  surface that will not configure is tried three times and then waits
+  for the device's own retry, and a device that will not open is tried
+  once a second with the loop asleep between tries rather than spinning
+  a core (RG29, RG30); the subpixel decision is taken again for the new
+  device (RG32). A window's first renderer at launch still panics when
+  there is no GPU at all. On Windows `Gpu::new` asks for D3D12 alone
   unless `WGPU_BACKEND` names another — with every backend enumerated
   the process held an OpenGL context and a Vulkan instance it never
   drew with, and under a driver update the driver faulted in present
   rather than report the loss — and `kui_wgpu::report_faults` names the
   code and the module of a fault that would otherwise end the process
-  with nothing but `0xC000041D`.
+  with nothing but `0xC000041D`, from the unhandled-exception filter, so
+  an exception a driver or V8 catches for itself is not reported and a
+  host's own crash reporter is still called (RG31).
+  *What you can delete:* a watchdog that restarted the app when a
+  driver update left its window frozen.
 
 ## 0.1.0-alpha.16 (2026-09-20)
 

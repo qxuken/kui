@@ -35,7 +35,12 @@ bindings — the day after, F74 — the app hearing its window go — from
 the kawoosh session report of the same day, and F75 — the table — from
 the devtools-tables report of the same day, and F76 — Shift under the
 layout fallback — from the kawoosh Russian-layout report of 2026-09-21,
-the day it was filed. The index
+the day it was filed, F77–F85 — the virtual list's owed frame and a
+stroke's clip, the key sink off its clip, the eased scroll, the Lua
+meta file, two reveals, the atlas between one page and two, the secret
+paste and secure keyboard entry — from the kawoosh reports of 2026-09-22
+and 23, each the day it was filed, and RG17–RG36 from the regression
+pass of 2026-09-25 the same day. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -1336,6 +1341,39 @@ Two were regressions this round introduced (RG5 and RG6, both now
 built), the rest are gaps the new features opened or holes they made
 reachable.
 
+## From the regression pass of 2026-09-25
+
+The pre-tag pass over the seventeen commits after the alpha.16 tag —
+F76–F85 from the kawoosh reports of 2026-09-21 to 23 and the Windows
+device-loss round of 2026-09-20 — run the way the 2026-09-19 pass was:
+the mechanical round first (1293 tests over 97 suites, clippy, 41
+scenes, 177 Node, gen diff 0, 31 headless drives, all green), then four
+read-only reviews of the diff and a docs-against-code read, each claim
+probed against this tree before it was filed. Twenty-one entries,
+RG17–RG37. The headline was F80's glide: every delta the store takes
+is measured on screen and was added to the target, so a reveal or a
+wheel notch mid-leg landed somewhere nobody asked (RG17), and the leg
+was owed in Rust alone (RG20). Three of the round's features had a
+defect its own tests could not see — F83's growth that never expired
+(RG23), F77's read cleared before Node made it (RG24), F81's meta file
+disagreeing with the parser it describes (RG33) — and F84's secret was
+shown in the devtools' events tab (RG34). RG17–RG36 were **built
+2026-09-25**, the day they were filed, and are in the archive; the
+Windows half (RG29–RG31) is compiled and linted for
+`x86_64-pc-windows-msvc` and not run.
+
+### `~` RG37 — ⌘V with a selection in a `cells` or `selectable` scope bypasses a focused key sink
+
+**Finding.** Read, not probed. `edit_chord` (`crates/kui/src/keys.rs`)
+takes ⌘V whenever the window has a selection scope, not only when an
+editor is focused, and answers it with `InputEvent::Text` from the
+clipboard — which a focused `on_key` sink does not hear, and which
+carries none of F84's markers. A terminal pane with text selected
+therefore pastes nowhere, where the menu's Paste reaches the sink.
+Older than this round; F84 only made the loss of the markers visible.
+**Fix line.** With no stock editor focused, ⌘V is `request_paste`,
+whose answer is the `Paste` that routes to the sink with its marks.
+
 ## After alpha.15
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -1374,7 +1412,10 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** Nothing of the regression pass of 2026-09-19 is open (RG1, the Node and C hosts hearing ⌘Q, was **built 2026-09-19**; RG2 and RG12, the devtools' menus select and its chord, RG3, RG6, RG7, RG8 and RG11, the table's layout and the round's float-floor regression, RG4, the left dock's deferral, RG5, the freeze loop's sign rule and the round's other regression, RG9 and RG10, the select's disabled row through the door and its unchecked options and `current`, RG13, the reader's click behind a modal, RG15, F69 checked in a window and found inert, RG14, the ten nits and the two devtools defects taken with them, and RG16, the door removed on RG15's finding, **built 2026-09-20**); next is C41 — a profile of `frame_1k_curves` at the drop-zone
+**Build next.** RG37 — ⌘V in a selection scope answered through
+`request_paste`, so a focused sink hears it with its marks — is the one
+entry of the regression pass of 2026-09-25 left open; RG17–RG36 were
+**built 2026-09-25**. Nothing of the regression pass of 2026-09-19 is open (RG1, the Node and C hosts hearing ⌘Q, was **built 2026-09-19**; RG2 and RG12, the devtools' menus select and its chord, RG3, RG6, RG7, RG8 and RG11, the table's layout and the round's float-floor regression, RG4, the left dock's deferral, RG5, the freeze loop's sign rule and the round's other regression, RG9 and RG10, the select's disabled row through the door and its unchecked options and `current`, RG13, the reader's click behind a modal, RG15, F69 checked in a window and found inert, RG14, the ten nits and the two devtools defects taken with them, and RG16, the door removed on RG15's finding, **built 2026-09-20**); next is C41 — a profile of `frame_1k_curves` at the drop-zone
 commit against the one before, the bisect already done; then W19, when
 a Windows or Linux round comes (the macOS half of ADR 0031 is built and
 verified; the fallback elsewhere is honest and positionless). Nothing else filed is open. The rounds since the alpha.14 tag, newest first:
@@ -2152,3 +2193,27 @@ move.
 
 - `~` **F84** — [A paste cannot say its pasteboard marked it a secret, and a secret cannot be copied marked](backlog/closed-2026-09.md#-f84--a-paste-cannot-say-its-pasteboard-marked-it-a-secret-and-a-secret-cannot-be-copied-marked--done-2026-09-23) — done (2026-09-23) — `InputEvent::Paste` carries `ClipboardMarks`, the sink's `text` event gains `concealed` / `transient`; `set_clipboard_secret` writes them
 - `~` **F85** — [A window at a password prompt cannot ask for secure keyboard entry](backlog/closed-2026-09.md#-f85--a-window-at-a-password-prompt-cannot-ask-for-secure-keyboard-entry--done-2026-09-23) — done (2026-09-23) — `Ui::secure_input(bool)`, frame state; the runner holds one balanced count while an asking window has the keyboard
+
+**From the regression pass of 2026-09-25** — RG17–RG36 built the same day; RG37 open
+
+- `!` **RG17** — [A delta mid-glide is measured from the drawn place and added to the target: a reveal overshoots, the wheel jumps forward](backlog/closed-2026-09.md#-rg17--a-delta-mid-glide-is-measured-from-the-drawn-place-and-added-to-the-target-a-reveal-overshoots-the-wheel-jumps-forward--done-2026-09-25) — done (2026-09-25) — `scroll_by_from` rebases a leg in flight onto its drawn place before adding (and ends the leg; a programmatic ask starts a new one there at the next layout)
+- `!` **RG18** — [`virtual_rows`' height correction is a `set_scroll`: eased on a transition container, and a long glide ends a screen along](backlog/closed-2026-09.md#-rg18--virtual_rows-height-correction-is-a-set_scroll-eased-on-a-transition-container-and-a-long-glide-ends-a-screen-along--done-2026-09-25) — done (2026-09-25) — `ScrollStore::shift(key, drawn, target)` (behind `Ui::shift_scroll`, crate-private) moves the drawn place, a leg's start and the target by the content that moved under each, with no ease asked or ended; `virtual_rows` keeps a second anchor for the target, so the row under the target stays the target
+- `~` **RG19** — [Geometry during a glide is the previous frame's place: a long glide slices a band short every frame](backlog/closed-2026-09.md#-rg19--geometry-during-a-glide-is-the-previous-frames-place-a-long-glide-slices-a-band-short-every-frame--done-2026-09-25) — done (2026-09-25) — The leg keeps its transition and `geometry` samples it at the clock the coming layout reads, clamped as `resolve` clamps
+- `!` **RG20** — [`Owed::scroll` reaches neither C, Node nor `beyond_cycles`: a host scheduling on the bits freezes mid-glide](backlog/closed-2026-09.md#-rg20--owedscroll-reaches-neither-c-node-nor-beyond_cycles-a-host-scheduling-on-the-bits-freezes-mid-glide--done-2026-09-25) — done (2026-09-25) — `KUI_OWED_SCROLL = 32` (header, `types.rs`, the parity list), `owed().scroll` and the d.ts field, `quiet()` waits on it, `beyond_cycles` includes it
+- `~` **RG21** — [The thumb, the access tree and the inspector show the glide's target, not the content](backlog/closed-2026-09.md#-rg21--the-thumb-the-access-tree-and-the-inspector-show-the-glides-target-not-the-content--done-2026-09-25) — done (2026-09-25) — `ScrollStore::drawn` for the three readers (and the `auto` bar's quiet clock); `set_scroll_axis` keeps the other axis where it stands (`ScrollStore::standing`)
+- `~` **RG22** — [A leg's start is never clamped: content that shrinks under a glide is drawn past its end](backlog/closed-2026-09.md#-rg22--a-legs-start-is-never-clamped-content-that-shrinks-under-a-glide-is-drawn-past-its-end--done-2026-09-25) — done (2026-09-25) — The start is clamped with the target in `resolve` and in `geometry`
+- `!` **RG23** — [F83's thrash signal never expires: once a dropped glyph comes back, every later fill doubles the page](backlog/closed-2026-09.md#-rg23--f83s-thrash-signal-never-expires-once-a-dropped-glyph-comes-back-every-later-fill-doubles-the-page--done-2026-09-25) — done (2026-09-25) — The dropped set is forgotten once a whole frame has begun without a fill (`frames_since_reset`), so only a page that fills again on the frame after its reset — F83's thrash — grows
+- `!` **RG24** — [F77's reads are cleared at `begin_frame`, after Node's view already read: the owed frame never fires in Node](backlog/closed-2026-09.md#-rg24--f77s-reads-are-cleared-at-begin_frame-after-nodes-view-already-read-the-owed-frame-never-fires-in-node--done-2026-09-25) — done (2026-09-25) — The reads are drained after layout (`take_resliced`), not cleared at the start, so a read between two frames is the coming frame's
+- `~` **RG25** — [A container read but not laid out asks for a frame every frame while its tab is hidden](backlog/closed-2026-09.md#-rg25--a-container-read-but-not-laid-out-asks-for-a-frame-every-frame-while-its-tab-is-hidden--done-2026-09-25) — done (2026-09-25) — An entry is compared only if this frame's layout resolved it (`laid_frame`)
+- `~` **RG26** — [F78's clip is not applied to exit ghosts: a departing row's strokes spill past the scroller](backlog/closed-2026-09.md#-rg26--f78s-clip-is-not-applied-to-exit-ghosts-a-departing-rows-strokes-spill-past-the-scroller--done-2026-09-25) — done (2026-09-25) — The ghost pass applies the same rule: a `line` or `polygon` anchored in its parent's box takes the parent's clip
+- `!` **RG27** — [⌥⇧ folds differently through the C and Node doors than through the runner](backlog/closed-2026-09.md#-rg27---folds-differently-through-the-c-and-node-doors-than-through-the-runner--done-2026-09-25) — done (2026-09-25) — The Alt rule is in `from_layout` and the runner calls it rather than keeping a copy; `mods` still reports Shift, and ⌘⇧/⌃⇧ still shift
+- `~` **RG28** — [The C and Node doors type the US stand-in, not the layout's character, when no text is given](backlog/closed-2026-09.md#-rg28--the-c-and-node-doors-type-the-us-stand-in-not-the-layouts-character-when-no-text-is-given--done-2026-09-25) — done (2026-09-25) — `KeyCode::typed(mods)` on the key the layout named — the character, a space for Space, nothing for named keys or under Ctrl, Alt or Super — in both doors
+- `!` **RG29** — [A failed device reopen is retried only when something else asks for a frame](backlog/closed-2026-09.md#-rg29--a-failed-device-reopen-is-retried-only-when-something-else-asks-for-a-frame--done-2026-09-25) — done (2026-09-25) — `Shell::reopen_owed` remembers the ask and `about_to_wait` runs it when `reopen_due` allows, else sets a wake for that moment merged with its deadline; a window waiting for a device asks for no animation frames (`Pane::awaits_device`)
+- `~` **RG30** — [The surface retry counter overflows, and a surface that never recovers busy-loops](backlog/closed-2026-09.md#-rg30--the-surface-retry-counter-overflows-and-a-surface-that-never-recovers-busy-loops--done-2026-09-25) — done (2026-09-25) — `surface_refused` saturates, gives the surface up after three tries with one line, and asks for no more frames, waiting for the timed reopen
+- `~` **RG31** — [`report_faults` reports first-chance exceptions a driver or V8 handles, and spends its one report on them](backlog/closed-2026-09.md#-rg31--report_faults-reports-first-chance-exceptions-a-driver-or-v8-handles-and-spends-its-one-report-on-them--done-2026-09-25) — done (2026-09-25) — The report comes from the unhandled-exception filter, chaining to any filter installed before it; a vectored handler registered last only records each thread's last fault, which names the fault inside a `0xC000041D`
+- `.` **RG32** — [Subpixel text is decided once, from the first device](backlog/closed-2026-09.md#-rg32--subpixel-text-is-decided-once-from-the-first-device--done-2026-09-25) — done (2026-09-25) — `reopen_device` decides again and applies it to every window's core (`subpixel_on`, `wanted_text_aa`, shared with the first window)
+- `!` **RG33** — [F81's meta file disagrees with the parser: `percent`, `repeat`, `key` as a number, every table optional](backlog/closed-2026-09.md#-rg33--f81s-meta-file-disagrees-with-the-parser-percent-repeat-key-as-a-number-every-table-optional--done-2026-09-25) — done (2026-09-25) — Types from the parser's own kinds, names by `LUA_ALIASES` minus keywords, optional only where the prelude defaults or checks (read from its source), a `kui.VirtualColumn` class, `text(n)` takes a number; the prelude reads `pad` as a number or its `t`/`y`/`all` edge
+- `!` **RG34** — [The devtools' events tab shows a concealed paste's text](backlog/closed-2026-09.md#-rg34--the-devtools-events-tab-shows-a-concealed-pastes-text--done-2026-09-25) — done (2026-09-25) — The stream keeps a concealed paste's markers and its length (`‹concealed, 7 chars›`), never its text
+- `.` **RG35** — [`arboard = "3"` admits versions without F84's `exclude_from_*`](backlog/closed-2026-09.md#-rg35--arboard--3-admits-versions-without-f84s-exclude_from_--done-2026-09-25) — done (2026-09-25) — `arboard = "3.6"`
+- `.` **RG36** — [The docs the round left: the missing breaks and what-you-can-delete lines, stale docs after F76 and F80, the console claims, README's "Opt in"](backlog/closed-2026-09.md#-rg36--the-docs-the-round-left-the-missing-breaks-and-what-you-can-delete-lines-stale-docs-after-f76-and-f80-the-console-claims-readmes-opt-in--done-2026-09-25) — done (2026-09-25) — Each written
+- `~` **RG37** — [⌘V with a selection in a `cells` or `selectable` scope bypasses a focused key sink](#-rg37--v-with-a-selection-in-a-cells-or-selectable-scope-bypasses-a-focused-key-sink) — open

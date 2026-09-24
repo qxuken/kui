@@ -1169,9 +1169,14 @@ Lua app runs inside `node.exe` or `lua.exe`, whose console it is.) What
 that used to cost is the terminal: a windows-subsystem process started
 from a shell has no standard output at all, so `println!`, a panic and
 the runner's own `kui:` lines went nowhere. The runner attaches such a
-process to the console of the shell that launched it, once, before
-anything prints, so they land there — after the prompt, since a shell
-does not wait for a windowed process. A Ctrl+C typed at that prompt is
+process to the console of the shell that launched it, once, when it
+starts the shell — so what prints from then on lands there, after the
+prompt, since a shell does not wait for a windowed process. Two things
+it cannot bring back: a Rust app's own `println!` *before* it calls the
+runner's `run` (there was no console yet), and a C host's own `printf`,
+whose C runtime set its stdio up at startup with no handle and does
+not look again — the runner's `kui:` lines reach the terminal, the
+host's own lines need its own `AttachConsole` and `freopen`. A Ctrl+C typed at that prompt is
 the shell's and the app ignores it; closing that terminal ends the app,
 as it ends a console build — Windows terminates every process on a
 console it closes, and nothing an app does prevents it — so a session
