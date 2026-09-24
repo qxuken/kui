@@ -2028,3 +2028,48 @@ fn the_panel_s_inspect_ask_follows_its_tab_and_stays_apart_from_the_host_s() {
     frame(&mut core);
     assert!(core.nodes().is_empty());
 }
+
+/// RG34: a concealed paste reaches the events tab with its markers and
+/// its length, never its text; an unmarked one is logged as it was.
+#[test]
+fn the_stream_never_keeps_a_concealed_pastes_text() {
+    let mut core = on();
+    let ev = |text: &str, concealed: bool| {
+        let mut fields = vec![("kind", Value::str("text")), ("text", Value::str(text))];
+        if concealed {
+            fields.push(("concealed", Value::Bool(true)));
+        }
+        UiEvent {
+            origin: OriginId::HOST,
+            window: WindowId::MAIN,
+            key: Key::ROOT.str("term"),
+            payload: Value::map(fields),
+            slot: None,
+        }
+    };
+    core.devtools_log(&[ev("hunter2", true), ev("plain", false)]);
+    state(&core, |s| {
+        let texts: Vec<_> = s
+            .stream
+            .iter()
+            .rev()
+            .take(2)
+            .map(|e| {
+                e.payload
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+            .collect();
+        assert_eq!(
+            texts,
+            vec![Some("plain".into()), Some("‹concealed, 7 chars›".into())]
+        );
+        assert!(
+            !s.stream
+                .iter()
+                .any(|e| format!("{:?}", e.payload).contains("hunter2")),
+            "the text is nowhere in the stream"
+        );
+    });
+}

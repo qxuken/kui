@@ -2150,6 +2150,7 @@ pub const KUI_OWED_CYCLE: u32 = 1 << 1;
 pub const KUI_OWED_DEPART: u32 = 1 << 2;
 pub const KUI_OWED_REQUESTED: u32 = 1 << 3;
 pub const KUI_OWED_AUTOSCROLL: u32 = 1 << 4;
+pub const KUI_OWED_SCROLL: u32 = 1 << 5;
 
 /// `KUI_COPY_*`: what `kui_request_copy` returns.
 pub const KUI_COPY_READY: u32 = 0;

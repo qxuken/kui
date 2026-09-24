@@ -579,6 +579,7 @@ pub extern "C" fn kui_owed(ptr: *mut KuiCtx) -> u32 {
                 | (o.depart as u32 * KUI_OWED_DEPART)
                 | (o.requested as u32 * KUI_OWED_REQUESTED)
                 | (o.autoscroll as u32 * KUI_OWED_AUTOSCROLL)
+                | (o.scroll as u32 * KUI_OWED_SCROLL)
         })
     })
 }

@@ -6,9 +6,12 @@
 use super::*;
 
 impl Core {
-    /// Sets one axis of a container's scroll offset, keeping the other.
+    /// Sets one axis of a container's scroll offset, keeping the other
+    /// where it stands — mid-leg, the drawn place and not the target, so
+    /// a thumb dragged on one axis does not jump the other to where an
+    /// eased leg was going (RG21).
     pub(crate) fn set_scroll_axis(&mut self, key: Key, axis: ScrollAxis, value: f32) {
-        let mut off = self.scroll.offset(key);
+        let mut off = self.scroll.standing(key);
         match axis {
             ScrollAxis::X => off.x = value,
             ScrollAxis::Y => off.y = value,
@@ -43,16 +46,21 @@ impl Core {
     }
 
     /// The retained scroll offset of the container `key`, as the last
-    /// layout clamped it (positive = content moved up / left). Zero for a
-    /// node that never scrolled, and for one that is not a container at
-    /// all — the store keeps offsets, not membership.
+    /// layout clamped it (positive = content moved up / left) — the
+    /// target: while a container with a `transition` eases to it (F80) the
+    /// content is drawn short of it, where [`Self::scroll_geometry`]
+    /// says. Zero for a node that never scrolled, and for one that is not
+    /// a container at all — the store keeps offsets, not membership.
     pub fn scroll_offset(&self, key: Key) -> Vec2 {
         self.scroll.offset(key)
     }
 
     /// Everything the last layout resolved for the container `key`: its own
     /// box, its content size, and the clamped offset — `None` for a key no
-    /// layout has ever resolved as a scroll container.
+    /// layout has ever resolved as a scroll container. While an eased
+    /// leg runs (F80) the offset is where the content is drawn rather than
+    /// the target, sampled at the clock the coming frame reads, so a view
+    /// slices the rows that frame shows.
     ///
     /// This is what makes a long list affordable. The core culls glyphs by
     /// viewport but builds every child a view declares, so ten thousand rows

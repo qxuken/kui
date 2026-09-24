@@ -341,7 +341,7 @@ impl Core {
         // came out otherwise — taller, scrolled elsewhere — owes a frame
         // built against this layout, or the slice stays a frame behind
         // until the next event (`ScrollStore::resliced`).
-        if self.scroll.resliced() {
+        if self.scroll.take_resliced() {
             self.frame_requested = true;
         }
         if self.tree.any_slide {
@@ -1076,8 +1076,20 @@ impl Core {
             // inside the picture still bounds what it held (the rows a
             // virtual list built past its edge stay past it), while the
             // ancestors outside the picture, which may be gone, clip
-            // nothing. Same rule as the live pass, from the root down.
-            let (clip, clip_id) = if node.parent == NIL || node.spec.layout.float.is_some() {
+            // nothing. Same rule as the live pass, from the root down —
+            // a stroke or polygon anchored in its parent's box included,
+            // which the parent's clip holds as it does a child's (F78;
+            // the ghost pass kept the old escape, RG26).
+            let drawn_in_parent = matches!(
+                node.content,
+                GhostContent::Line { .. } | GhostContent::Polygon(_)
+            ) && node
+                .spec
+                .layout
+                .float
+                .is_some_and(|f| f.anchor == crate::spec::FloatAnchor::Parent);
+            let escapes = node.spec.layout.float.is_some() && !drawn_in_parent;
+            let (clip, clip_id) = if node.parent == NIL || escapes {
                 (Clip::NONE, NO_CLIP_ID)
             } else {
                 let p = node.parent as usize;
@@ -1271,7 +1283,7 @@ impl Core {
             // thumb and its inset.
             let hit_w = SCROLLBAR_HIT_W.max(active_w + 2.0 * SCROLLBAR_INSET);
             let max = self.tree.scroll_max[i];
-            let offset = self.scroll.offset(r.key);
+            let offset = self.scroll.drawn(r.key);
             let clip_id = self.clip_ids.get(i).copied().unwrap_or(NO_CLIP_ID);
             let mut opacity = self.opacity.get(i).copied().unwrap_or(1.0);
             // The tracks, before either bar: an `auto` bar is held while

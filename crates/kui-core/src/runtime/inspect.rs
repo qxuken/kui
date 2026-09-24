@@ -367,7 +367,7 @@ impl Core {
                 border_w: spec.style.border_w,
                 border_color: spec.style.border_color,
                 opacity: spec.style.opacity,
-                scroll: (l.scroll_x || l.scroll_y).then(|| self.scroll.offset(tree.keys[i])),
+                scroll: (l.scroll_x || l.scroll_y).then(|| self.scroll.drawn(tree.keys[i])),
                 events,
                 key: tree.keys[i],
                 parent,

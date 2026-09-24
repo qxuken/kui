@@ -1569,8 +1569,19 @@ pub fn virtual_rows(
 
     let key = ui.child_key(label);
     let pad = spec.layout.padding;
+    // Where an eased leg (F80) is going, when it is somewhere other than
+    // where the content is drawn: a second anchor, so the row under the
+    // target stays the target however the measurements below move the
+    // rows between the two (RG18).
+    let mut target_y = None;
     let (offset_y, vh, cw, first_frame) = match ui.scroll_geometry(key) {
-        Some(g) => (g.offset.y, g.rect.h, g.rect.w - pad.x(), false),
+        Some(g) => {
+            let t = ui.scroll_offset(key).y.clamp(0.0, g.max_offset.y);
+            if (t - g.offset.y).abs() > 0.5 {
+                target_y = Some(t);
+            }
+            (g.offset.y, g.rect.h, g.rect.w - pad.x(), false)
+        }
         // Nothing laid out yet: a screenful of the viewport is a safe
         // over-build for one frame, and the width is its width.
         None => (
@@ -1597,6 +1608,11 @@ pub fn virtual_rows(
     // list never idled again once it had one row (found building ADR
     // 0029, ~130 frames/s after the first event).
     let top_before = top;
+    let target_anchor = target_y.map(|t| {
+        let t = (t - pad.t).max(0.0);
+        let row = heights.row_at(t);
+        (t, row, t - heights.offset_of(row))
+    });
 
     let mut range = visible_range(heights, top, vh, OVERSCAN);
     for _ in 0..PASSES {
@@ -1624,12 +1640,21 @@ pub fn virtual_rows(
         range = next;
     }
 
-    // `Core::set_scroll` from inside a view lands on the frame being built:
-    // the positions pass reads the store after the view has run. So the
-    // frame that learned the rows are a different size is drawn already
-    // corrected, and the uncorrected one is never seen.
-    if (top - top_before).abs() > 0.01 {
-        ui.set_scroll(key, Vec2::new(0.0, top + pad.t));
+    // A write from inside a view lands on the frame being built: the
+    // positions pass reads the store after the view has run. So the frame
+    // that learned the rows are a different size is drawn already
+    // corrected, and the uncorrected one is never seen. A shift, not a
+    // `set_scroll`: the correction moves the coordinates under the
+    // content, so it is never eased on a container with a `transition`,
+    // and mid-glide it moves the leg with it rather than ending the leg
+    // where the content stands (RG18).
+    let drawn = top - top_before;
+    let target = match target_anchor {
+        Some((t, row, into)) => heights.offset_of(row) + into - t,
+        None => drawn,
+    };
+    if drawn.abs() > 0.01 || target.abs() > 0.01 {
+        ui.shift_scroll(key, Vec2::new(0.0, drawn), Vec2::new(0.0, target));
     }
 
     let lead = heights.offset_of(range.start);

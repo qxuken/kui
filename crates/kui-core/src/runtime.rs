@@ -583,9 +583,10 @@ impl Owed {
     }
 
     /// Anything but a cycle: what a test waits on when the view has a
-    /// cycle that will never let `any()` clear.
+    /// cycle that will never let `any()` clear. An eased scroll is a
+    /// finite leg like a transition, so it is in (RG20).
     pub fn beyond_cycles(self) -> bool {
-        self.transition || self.depart || self.requested || self.autoscroll
+        self.transition || self.depart || self.requested || self.autoscroll || self.scroll
     }
 }
 

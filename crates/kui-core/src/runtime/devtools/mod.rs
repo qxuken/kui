@@ -1966,7 +1966,7 @@ impl Core {
                         self.label_of(ev.key).map(str::to_string)
                     },
                     origin: ev.origin,
-                    payload: ev.payload.clone(),
+                    payload: redact(&ev.payload),
                     lines: 0,
                 })
                 .collect()
@@ -2290,4 +2290,27 @@ enum Place {
     Main(Dock),
     /// The panel's own window: the panel is the whole tree.
     Window,
+}
+
+/// A payload as the stream keeps it: a paste the pasteboard marked
+/// concealed (F84) — a password from a password manager — keeps its
+/// markers and its length and loses its text, which the events tab would
+/// otherwise show in plain view and hold for the stream's lifetime (RG34).
+fn redact(payload: &Value) -> Value {
+    let concealed = payload.get("concealed").and_then(Value::as_bool) == Some(true);
+    match payload {
+        Value::Map(fields) if concealed => Value::Map(
+            fields
+                .iter()
+                .map(|(k, v)| match (k.as_str(), v) {
+                    ("text", Value::Str(t)) => (
+                        k.clone(),
+                        Value::str(format!("‹concealed, {} chars›", t.chars().count())),
+                    ),
+                    _ => (k.clone(), v.clone()),
+                })
+                .collect(),
+        ),
+        _ => payload.clone(),
+    }
 }

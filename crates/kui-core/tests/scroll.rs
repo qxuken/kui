@@ -1314,3 +1314,332 @@ fn a_programmatic_scroll_eases_where_the_container_asks_and_the_wheel_never_does
     assert_eq!(drawn(&core, row), 300.0, "no transition, no easing");
     assert!(!core.owed().scroll);
 }
+
+/// The F80 ribbon with `n` boxes and a 100 ms linear `transition`: a
+/// 100-wide row that scrolls, holding `n` 100-wide boxes.
+fn eased_ribbon(
+    core: &mut Core,
+    n: usize,
+    reveal: Option<usize>,
+) -> (kui_core::Key, Vec<kui_core::Key>) {
+    use kui_core::{Easing, Transition};
+    let mut ui = core.frame(Size::new(100.0, 50.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let spec = NodeSpec::row()
+        .fill()
+        .scroll_x()
+        .transition_with(Transition::ms(100.0).easing(Easing::Linear));
+    let mut boxes = Vec::new();
+    let row = ui.with_keyed("row", spec, |ui| {
+        for i in 0..n {
+            boxes.push(
+                ui.with_keyed(
+                    &format!("b{i}"),
+                    NodeSpec::column()
+                        .width(Sizing::Fixed(100.0))
+                        .height(Sizing::Grow(1.0)),
+                    |_| {},
+                ),
+            );
+        }
+    });
+    if let Some(i) = reveal {
+        ui.reveal(boxes[i]);
+    }
+    ui.finish();
+    (row, boxes)
+}
+
+/// Where the ribbon's content is drawn, as the access tree reports it.
+fn drawn_x(core: &mut Core, row: kui_core::Key) -> f32 {
+    core.access_tree()
+        .nodes
+        .iter()
+        .find(|n| n.key == row)
+        .and_then(|n| n.scroll)
+        .expect("the ribbon is a scroll node")
+        .x
+}
+
+/// A ribbon halfway along a 0 → 300 leg: drawn at 150, going to 300.
+fn ribbon_mid_leg() -> (Core, kui_core::Key) {
+    let mut core = Core::new();
+    core.set_time(0.0);
+    let (row, _) = eased_ribbon(&mut core, 4, None);
+    eased_ribbon(&mut core, 4, Some(3));
+    core.set_time(0.05);
+    eased_ribbon(&mut core, 4, None);
+    assert!((drawn_x(&mut core, row) - 150.0).abs() < 1.0);
+    (core, row)
+}
+
+/// RG17: the wheel mid-leg moves the content from where it is drawn —
+/// the notch is the hand's, measured against what is on screen — not
+/// from the target the leg was going to.
+#[test]
+fn the_wheel_mid_glide_moves_from_the_drawn_place() {
+    let (mut core, row) = ribbon_mid_leg();
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(50.0, 25.0)));
+    core.handle_input(InputEvent::Scroll(Vec2::new(40.0, 0.0)));
+    eased_ribbon(&mut core, 4, None);
+    let at = drawn_x(&mut core, row);
+    assert!((at - 110.0).abs() < 1.0, "150 back by the notch's 40: {at}");
+    assert!(!core.owed().scroll, "the hand ended the leg");
+}
+
+/// RG17: a reveal mid-leg measures its gap from the drawn node, so its
+/// target is the drawn place plus that gap — not the old target plus it.
+#[test]
+fn a_reveal_mid_glide_lands_the_node_it_asked_for() {
+    let (mut core, row) = ribbon_mid_leg();
+    // b2 spans 200..300 of the content, 50..150 of the view at 150.
+    eased_ribbon(&mut core, 4, Some(2));
+    let target = core.scroll_offset(row).x;
+    assert!(
+        (target - 204.0).abs() < 1.0,
+        "b2's right edge in view: {target}"
+    );
+    core.set_time(0.2);
+    eased_ribbon(&mut core, 4, None);
+    assert!((drawn_x(&mut core, row) - 204.0).abs() < 1.0, "and landed");
+}
+
+/// RG19: during a leg the geometry a view slices by is the place the
+/// coming frame will draw — the leg sampled at the clock that frame's
+/// layout reads — not the place the last frame drew.
+#[test]
+fn geometry_mid_glide_is_where_the_coming_frame_draws() {
+    let mut core = Core::new();
+    core.set_time(0.0);
+    let (row, _) = eased_ribbon(&mut core, 4, None);
+    eased_ribbon(&mut core, 4, Some(3));
+    core.set_time(0.05);
+    let read = core.scroll_geometry(row).expect("resolved").offset.x;
+    eased_ribbon(&mut core, 4, None);
+    let drawn = drawn_x(&mut core, row);
+    assert!((read - drawn).abs() < 0.5, "read {read}, drawn {drawn}");
+    assert!((drawn - 150.0).abs() < 1.0);
+    assert!(
+        !core.owed().requested,
+        "the slice was right, nothing re-owed"
+    );
+}
+
+/// RG22: content that shrinks under a leg is never drawn past its new
+/// end — the leg's start is clamped with the target.
+#[test]
+fn a_leg_over_content_that_shrank_stays_inside_it() {
+    let mut core = Core::new();
+    core.set_time(0.0);
+    let (row, _) = eased_ribbon(&mut core, 4, None);
+    eased_ribbon(&mut core, 4, Some(3));
+    core.set_time(0.2);
+    eased_ribbon(&mut core, 4, None);
+    assert_eq!(drawn_x(&mut core, row), 300.0);
+    // Back to the start, and the ribbon loses two boxes mid-way: the
+    // travel is 100 now.
+    eased_ribbon(&mut core, 4, Some(0));
+    core.set_time(0.25);
+    eased_ribbon(&mut core, 2, None);
+    let at = drawn_x(&mut core, row);
+    assert!(at <= 100.0 + 0.5, "drawn past the end: {at}");
+    let read = core.scroll_geometry(row).expect("resolved").offset.x;
+    assert!(read <= 100.0 + 0.5, "sliced past the end: {read}");
+}
+
+/// RG21: mid-leg, the thumb and the access tree show where the content
+/// is, not where it is going.
+#[test]
+fn the_access_tree_mid_glide_reports_the_drawn_offset() {
+    let (mut core, row) = ribbon_mid_leg();
+    assert_eq!(core.scroll_offset(row).x, 300.0, "the target");
+    let at = drawn_x(&mut core, row);
+    assert!((at - 150.0).abs() < 1.0, "reported {at}, drawn at 150");
+}
+
+/// RG24: a geometry read *between* two frames — Node's view runs before
+/// the frame begins — is still the coming frame's read, so a container
+/// that comes out another size owes the frame that re-slices it.
+#[test]
+fn a_geometry_read_before_the_frame_begins_is_that_frames_read() {
+    let build = |core: &mut Core, h: f32| {
+        let mut ui = core.frame(Size::new(100.0, h), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        let k = ui.with_keyed("list", NodeSpec::column().fill().scroll_y(), |ui| {
+            ui.with_keyed(
+                "tall",
+                NodeSpec::column().height(Sizing::Fixed(1000.0)),
+                |_| {},
+            );
+        });
+        ui.finish();
+        k
+    };
+    // Without a read, a taller window owes nothing of the list.
+    let mut core = Core::new();
+    build(&mut core, 100.0);
+    build(&mut core, 100.0);
+    build(&mut core, 300.0);
+    assert!(!core.owed().requested, "no read, nothing owed");
+    // With one, between the frames, it does.
+    let mut core = Core::new();
+    let k = build(&mut core, 100.0);
+    build(&mut core, 100.0);
+    core.scroll_geometry(k).expect("resolved");
+    build(&mut core, 300.0);
+    assert!(core.owed().requested, "the read was sliced by a 100 box");
+}
+
+/// RG25: a container read and then not laid out — a pane in a hidden tab
+/// — owes nothing, however its offset moved since: there is no frame of
+/// it on screen to correct.
+#[test]
+fn a_read_of_a_container_not_laid_out_owes_no_frame() {
+    let build = |core: &mut Core, show: bool| {
+        let mut ui = core.frame(Size::new(100.0, 100.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        // The view reads the pane's geometry whether or not it shows it
+        // — a virtual list sizing its slice before the tab test.
+        ui.scroll_geometry(list_key());
+        if show {
+            ui.with_keyed("list", NodeSpec::column().fill().scroll_y(), |ui| {
+                ui.with_keyed(
+                    "tall",
+                    NodeSpec::column().height(Sizing::Fixed(1000.0)),
+                    |_| {},
+                );
+            });
+        }
+        ui.finish();
+    };
+    let mut core = Core::new();
+    build(&mut core, true);
+    core.set_scroll(list_key(), Vec2::new(0.0, 200.0));
+    build(&mut core, false);
+    for _ in 0..3 {
+        build(&mut core, false);
+        assert!(!core.owed().requested, "a hidden list asked for a frame");
+    }
+}
+
+/// RG18: a variable-height list on a container with a `transition`
+/// glides a long `set_scroll` all the way. Its height correction moved
+/// the target to where the content stood — a `set_scroll` from inside the
+/// view — and the leg ended a screen along instead of at the row asked
+/// for.
+#[test]
+fn a_long_glide_over_variable_rows_reaches_the_row_asked_for() {
+    use kui_core::{Easing, Transition};
+    let frame = |core: &mut Core, h: &mut RowHeights| {
+        let mut ui = core.frame(Size::new(400.0, VIEW_H), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        kui_core::widgets::virtual_rows(
+            &mut ui,
+            "list",
+            NodeSpec::column()
+                .fill()
+                .transition_with(Transition::ms(100.0).easing(Easing::Linear)),
+            h,
+            |_ui, i, _w| var_h(i),
+            |ui, i| {
+                ui.with(
+                    NodeSpec::row()
+                        .fill()
+                        .bg(Color::rgb8(40, 40, 60))
+                        .on_click(Value::Int(i as i64)),
+                    |_| {},
+                );
+            },
+        );
+        ui.finish();
+    };
+    let mut core = Core::new();
+    let mut h = RowHeights::new(VAR_ROWS, 20.0);
+    let mut t = 0.0;
+    core.set_time(t);
+    frame(&mut core, &mut h);
+    frame(&mut core, &mut h);
+    let target = 400usize;
+    core.set_scroll(list_key(), Vec2::new(0.0, h.offset_of(target)));
+    for _ in 0..30 {
+        t += 1.0 / 60.0;
+        core.set_time(t);
+        frame(&mut core, &mut h);
+    }
+    // One ask: the row under the target stays the target while the rows
+    // the leg passes are measured.
+    assert_eq!(row_under(&mut core, 4.0), Some(target as i64));
+}
+
+/// RG26: F78's rule holds for a departing subtree too — a stroke in a
+/// scrolled row of a panel playing its exit is cut at the list's edge,
+/// as the live pass cuts it, rather than drawn over the strip above.
+#[test]
+fn strokes_in_a_departing_scrolled_row_are_clipped_by_the_container() {
+    let mut core = Core::new();
+    let build = |core: &mut Core, now: f64, show: bool| {
+        core.set_time(now);
+        let mut ui = core.frame(Size::new(400.0, VIEW_H), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        if show {
+            let panel = NodeSpec::column()
+                .fill()
+                .transition(100.0)
+                .exit(kui_core::Enter::default().opacity(0.0));
+            ui.with_keyed("panel", panel, |ui| {
+                ui.with_keyed(
+                    "strip",
+                    NodeSpec::row()
+                        .width(Sizing::Grow(1.0))
+                        .height(Sizing::Fixed(40.0)),
+                    |_| {},
+                );
+                ui.with_keyed("list", NodeSpec::column().fill().scroll_y(), |ui| {
+                    for i in 0..ROWS {
+                        ui.with_keyed(
+                            &format!("row{i}"),
+                            NodeSpec::row()
+                                .width(Sizing::Grow(1.0))
+                                .height(Sizing::Fixed(ROW_H)),
+                            |ui| {
+                                ui.line(
+                                    Vec2::new(10.0, 0.0),
+                                    Vec2::new(10.0, ROW_H),
+                                    kui_core::Stroke::new(2.0, Color::rgb8(200, 200, 200)),
+                                    NodeSpec::row(),
+                                );
+                            },
+                        );
+                    }
+                });
+            });
+        }
+        ui.finish();
+    };
+    build(&mut core, 0.0, true);
+    core.set_scroll(
+        Key::ROOT.str("panel").str("list"),
+        Vec2::new(0.0, 3.0 * ROW_H),
+    );
+    build(&mut core, 0.0, true);
+    // Gone: the ghost plays on this frame.
+    build(&mut core, 0.01, false);
+    assert!(core.animating(), "the exit is playing");
+    let (dl, _) = core.output();
+    let segments: Vec<_> = dl
+        .quads
+        .iter()
+        .filter(|q| q.rect.h > 0.0 && q.kind == kui_core::QuadKind::Segment)
+        .collect();
+    assert!(!segments.is_empty(), "the ghost draws its strokes");
+    let spill: Vec<_> = segments
+        .iter()
+        .filter(|q| q.rect.y < 40.0 - 0.5)
+        .filter(|q| dl.clips[q.clip as usize].rect.y < 40.0 - 0.5)
+        .map(|q| (q.rect, dl.clips[q.clip as usize].rect))
+        .collect();
+    assert!(
+        spill.is_empty(),
+        "a ghost's stroke over the strip: {spill:?}"
+    );
+}

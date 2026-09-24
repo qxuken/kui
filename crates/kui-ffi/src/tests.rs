@@ -2751,4 +2751,45 @@ mod run_config_headless {
         assert!(borrowing.take_core().is_none());
         kui_ctx_free(ctx);
     }
+
+    /// RG20: an eased scroll (F80) is owed like any leg — its own
+    /// `KUI_OWED_SCROLL` bit — so `kui_animating` is still `kui_owed !=
+    /// 0` and a host scheduling on the bits does not freeze mid-glide.
+    #[test]
+    fn an_eased_scroll_is_its_own_owed_bit() {
+        use kui_core::{Easing, NodeSpec, Size, Sizing, Transition};
+        let ctx = kui_ctx_new();
+        let c = unsafe { &mut *ctx };
+        let build = |core: &mut kui_core::Core, reveal: bool| {
+            let mut ui = core.frame(Size::new(100.0, 50.0), 1.0);
+            ui.configure_root(NodeSpec::column().fill());
+            let spec = NodeSpec::row()
+                .fill()
+                .scroll_x()
+                .transition_with(Transition::ms(100.0).easing(Easing::Linear));
+            let mut last = None;
+            ui.with_keyed("row", spec, |ui| {
+                for i in 0..4 {
+                    let w = NodeSpec::column()
+                        .width(Sizing::Fixed(100.0))
+                        .height(Sizing::Grow(1.0));
+                    last = Some(ui.with_keyed(&format!("b{i}"), w, |_| {}));
+                }
+            });
+            if reveal {
+                ui.reveal(last.expect("four boxes"));
+            }
+            ui.finish();
+        };
+        c.core().set_time(0.0);
+        build(c.core(), false);
+        build(c.core(), true);
+        let owed = kui_owed(ctx);
+        assert_ne!(owed & KUI_OWED_SCROLL, 0, "the leg has its bit: {owed}");
+        assert!(kui_animating(ctx), "kui_animating is kui_owed != 0");
+        c.core().set_time(0.2);
+        build(c.core(), false);
+        assert_eq!(kui_owed(ctx), 0, "landed");
+        kui_ctx_free(ctx);
+    }
 }

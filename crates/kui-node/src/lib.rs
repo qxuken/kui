@@ -1437,7 +1437,8 @@ fn sample_json(s: FrameSample) -> Json {
     Json::Object(o)
 }
 
-/// `Core::owed` as `{transition, cycle, depart, requested, autoscroll}`.
+/// `Core::owed` as `{transition, cycle, depart, requested, autoscroll,
+/// scroll}`.
 fn owed_json(o: kui_core::Owed) -> Json {
     let mut m = JsonMap::new();
     m.insert("transition".into(), Json::from(o.transition));
@@ -1445,6 +1446,7 @@ fn owed_json(o: kui_core::Owed) -> Json {
     m.insert("depart".into(), Json::from(o.depart));
     m.insert("requested".into(), Json::from(o.requested));
     m.insert("autoscroll".into(), Json::from(o.autoscroll));
+    m.insert("scroll".into(), Json::from(o.scroll));
     Json::Object(m)
 }
 
@@ -2169,7 +2171,7 @@ macro_rules! core_methods {
 
             /// What the last frame left owed, by kind — `animating()`
             /// taken apart: `{transition, cycle, depart, requested,
-            /// autoscroll}`. To the window they are one, and it redraws
+            /// autoscroll, scroll}`. To the window they are one, and it redraws
             /// for any of them; to a test they differ, since a keyframe
             /// `repeat` cycle never ends and `settled()` never resolves
             /// under one. `quiet()` on the loop waits on everything but

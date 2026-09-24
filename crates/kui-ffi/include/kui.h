@@ -2031,6 +2031,7 @@ enum {
     KUI_OWED_DEPART = 4,      /* an exit animation still departing */
     KUI_OWED_REQUESTED = 8,   /* an `animate` node: a frame the view asked for */
     KUI_OWED_AUTOSCROLL = 16, /* a held drag scrolling its container */
+    KUI_OWED_SCROLL = 32,     /* a container easing to a reveal or a set_scroll */
 };
 uint32_t kui_owed(KuiCtx *ctx);
 /* Rasterize outline glyphs as LCD subpixel coverage (KUI_QUAD_GLYPH_SUBPIXEL)

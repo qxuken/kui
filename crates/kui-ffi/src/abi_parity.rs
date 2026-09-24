@@ -420,6 +420,7 @@ fn asserts() -> (String, Vec<&'static str>) {
             KUI_OWED_DEPART,
             KUI_OWED_REQUESTED,
             KUI_OWED_AUTOSCROLL,
+            KUI_OWED_SCROLL,
             KUI_AUDIO_PLAY,
             KUI_AUDIO_STOP,
             KUI_AUDIO_SET_VOLUME,

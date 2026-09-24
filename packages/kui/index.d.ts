@@ -1037,6 +1037,9 @@ export interface Owed {
   requested: boolean;
   /** A held drag scrolling its container. */
   autoscroll: boolean;
+  /** A scroll container easing to where a `reveal` or a `setScroll`
+   *  took it (a `transition` on the container). */
+  scroll: boolean;
 }
 
 /** The window's frame timing: the averages and maxima over the last 120

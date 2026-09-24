@@ -12,7 +12,9 @@ kui-core.workspace = true
 kui-wgpu.workspace = true
 winit.workspace = true
 pollster.workspace = true
-arboard = "3"
+# 3.6: the version F84's `exclude_from_*` writes were built and tested
+# against — a bare "3" let a resolver pick one without them (RG35).
+arboard = "3.6"
 # Platform accessibility (UIA / NSAccessibility / AT-SPI) behind AccessKit;
 # see docs/adr/0001-accessibility-as-data.md.
 accesskit = { version = "0.25", optional = true }

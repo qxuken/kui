@@ -507,7 +507,7 @@ function createLoop({ init, update, view, tick, windows, teardown }, opts, surfa
   // core says what is owed by kind, and a cycle never ends.
   function nothingOwedButCycles() {
     const o = surface.owed();
-    return !(o.transition || o.depart || o.requested || o.autoscroll) && pending.length === 0;
+    return !(o.transition || o.depart || o.requested || o.autoscroll || o.scroll) && pending.length === 0;
   }
 
   // The pump has painted: every `frame` waiter is answered, a `settled`

@@ -1067,7 +1067,7 @@ pub(crate) fn inputs_hash(tree: &Tree, src: &Sources<'_>) -> Option<u64> {
         if spec.layout.scroll_x || spec.layout.scroll_y {
             spec.layout.scroll_x.hash(&mut h);
             spec.layout.scroll_y.hash(&mut h);
-            let off = src.scroll.offset(key);
+            let off = src.scroll.drawn(key);
             let max = tree.scroll_max[i];
             for v in [off.x, off.y, max.x, max.y] {
                 f(&mut h, v);
@@ -1234,7 +1234,7 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
             _ => {}
         }
         if spec.layout.scroll_x || spec.layout.scroll_y {
-            let off = src.scroll.offset(key);
+            let off = src.scroll.drawn(key);
             let max = tree.scroll_max[i];
             node.scroll = Some(ScrollState {
                 x: off.x,

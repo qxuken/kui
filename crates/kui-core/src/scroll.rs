@@ -93,9 +93,16 @@ struct Entry {
     /// the hand's, and easing it would lag behind the finger.
     asked_smooth: bool,
     /// The leg an eased offset is on: where the content was when it
-    /// started, and when that was. The target is `offset`, and
-    /// `resolve` samples between the two while it runs.
-    smooth: Option<(Vec2, f64)>,
+    /// started, when that was, and the container's transition. The
+    /// target is `offset`, and `resolve` samples between the two while
+    /// it runs — as does `geometry`, so a view slicing rows during the
+    /// leg slices by the place this frame will draw (RG19).
+    smooth: Option<(Vec2, f64, crate::anim::Transition)>,
+    /// The frame a layout last resolved this key as a scroll container
+    /// — unlike `last_declared`, which a write also stamps. What
+    /// `take_resliced` asks before it compares a read with a layout
+    /// (RG25).
+    laid_frame: u64,
 }
 
 /// How many *undeclared* scroll entries the store keeps before the longest
@@ -147,7 +154,10 @@ impl ScrollStore {
     /// itself.
     pub(crate) fn begin_frame(&mut self, frame_no: u64) {
         self.frame_no = frame_no;
-        self.reads.get_mut().clear();
+        // Not the reads: a binding that runs its view before the frame
+        // begins — Node's, which calls `scrollGeometry` while the JS
+        // view builds its tree — reads between two frames, and those
+        // reads are this frame's (RG24). `take_resliced` drains them.
         self.owes = false;
         if self.entries.len() > MAX_UNDECLARED_SCROLLS {
             self.evict(frame_no.saturating_sub(1));
@@ -167,6 +177,61 @@ impl ScrollStore {
 
     pub fn offset(&self, key: Key) -> Vec2 {
         self.entries.get(&key).map_or(Vec2::ZERO, |e| e.offset)
+    }
+
+    /// Where `key`'s content is drawn: the offset the last layout placed
+    /// it at, for a key a layout has resolved, else the stored offset.
+    /// What the thumb, the access tree and the inspector show — during
+    /// an eased leg (F80) the target is somewhere the content is not
+    /// yet (RG21).
+    pub(crate) fn drawn(&self, key: Key) -> Vec2 {
+        self.entries.get(&key).map_or(
+            Vec2::ZERO,
+            |e| {
+                if e.geom.is_some() { e.laid } else { e.offset }
+            },
+        )
+    }
+
+    /// Where a write that takes the content "where it stands" starts
+    /// from: the drawn place while a leg is in flight, else the stored
+    /// offset — which between two frames may already hold a wheel
+    /// notch the frame has not drawn, and that notch must add up.
+    pub(crate) fn standing(&self, key: Key) -> Vec2 {
+        self.entries.get(&key).map_or(Vec2::ZERO, |e| {
+            if e.smooth.is_some() { e.laid } else { e.offset }
+        })
+    }
+
+    /// Moves `key`'s scroll state by the content that moved under it —
+    /// `drawn` for the drawn place and a leg's start, `target` for the
+    /// offset — without asking for an ease or ending one: each means the
+    /// same content it did, in a coordinate space that moved under it.
+    /// Two deltas because mid-leg they are two places in the content, and
+    /// rows measured between them move one and not the other. What
+    /// `virtual_rows`' height correction is (RG18): a `set_scroll` there,
+    /// eased on a container with a `transition`, showed the uncorrected
+    /// frame the correction exists to hide, and mid-glide it moved the
+    /// target to where the content stood and ended a long jump a screen
+    /// along.
+    pub(crate) fn shift(&mut self, key: Key, drawn: Vec2, target: Vec2) {
+        let e = self.entries.entry(key).or_default();
+        // From the offset as the last layout clamped it — the number the
+        // view read — or a raw "jump to the end" (`f32::MAX`) plus a
+        // shift would still be the end, and the rows would not hold.
+        if let Some((_, _, max)) = e.geom {
+            e.offset.x = e.offset.x.clamp(0.0, max.x);
+            e.offset.y = e.offset.y.clamp(0.0, max.y);
+        }
+        e.offset.x += target.x;
+        e.offset.y += target.y;
+        e.laid.x += drawn.x;
+        e.laid.y += drawn.y;
+        if let Some((from, _, _)) = &mut e.smooth {
+            from.x += drawn.x;
+            from.y += drawn.y;
+        }
+        e.last_declared = self.frame_no;
     }
 
     /// The last layout's geometry for `key`, or `None` for a key no layout
@@ -193,12 +258,19 @@ impl ScrollStore {
         // *is*, not where it is going: the question this answers is
         // which rows can be seen, and during the leg that is the ones
         // around the drawn offset. The target is `Core::scroll_offset`.
-        let offset = match e.smooth {
-            Some(_) => e.laid,
-            None => Vec2::new(
-                e.offset.x.clamp(0.0, max_offset.x),
-                e.offset.y.clamp(0.0, max_offset.y),
-            ),
+        //
+        // And where it *will be* drawn this frame, not where the last
+        // frame drew it: the leg is sampled at the clock the coming
+        // layout reads, so a view slices the rows that frame shows
+        // rather than a frame behind with a blank band on every frame of
+        // a long glide (RG19).
+        let clamp = |v: Vec2| Vec2::new(v.x.clamp(0.0, max_offset.x), v.y.clamp(0.0, max_offset.y));
+        let offset = match (e.smooth, self.now) {
+            (Some((from, start, t)), Some(now)) => {
+                sample((clamp(from), start, t), clamp(e.offset), now).0
+            }
+            (Some(_), None) => clamp(e.laid),
+            (None, _) => clamp(e.offset),
         };
         if let Ok(mut reads) = self.reads.try_borrow_mut() {
             reads.push((key, Size::new(rect.w, rect.h), offset));
@@ -218,11 +290,21 @@ impl ScrollStore {
     /// — so one more frame is owed, built against what is on screen now.
     /// Without it the rows a virtual list built for the old box stay on
     /// screen until the next event, a screenful short.
-    pub(crate) fn resliced(&self) -> bool {
-        self.reads.borrow().iter().any(|(key, size, offset)| {
+    ///
+    /// Drains the reads: the next frame's are whatever is read from here
+    /// on. A container read and then not laid out this frame — a pane in
+    /// a hidden tab — owes nothing: there is no frame of it on screen to
+    /// correct, and comparing its stale placement with a `set_scroll`
+    /// written since asked for a frame on every frame until the tab came
+    /// back (RG25).
+    pub(crate) fn take_resliced(&mut self) -> bool {
+        let reads = std::mem::take(self.reads.get_mut());
+        let frame_no = self.frame_no;
+        reads.iter().any(|(key, size, offset)| {
             match self
                 .entries
                 .get(key)
+                .filter(|e| e.laid_frame == frame_no)
                 .and_then(|e| e.geom.map(|g| (g, e.laid)))
             {
                 Some(((rect, _, _), laid)) => {
@@ -231,8 +313,7 @@ impl ScrollStore {
                         || (laid.x - offset.x).abs() > 0.5
                         || (laid.y - offset.y).abs() > 0.5
                 }
-                // Read, and then not laid out as a container at all.
-                None => true,
+                None => false,
             }
         })
     }
@@ -254,10 +335,15 @@ impl ScrollStore {
         let frame_no = self.frame_no;
         let e = self.entries.entry(key).or_default();
         e.asked_smooth = smooth;
-        if !smooth {
-            // The hand takes the content where it is now, mid-ease or
-            // not: an ease the pointer interrupts has no leg left to run.
-            e.smooth = None;
+        // A delta is measured against what is on screen — the wheel's
+        // notch, a reveal's gap from the drawn node — so mid-leg it
+        // moves from the drawn place, not from the target: adding it to
+        // the target jumped the content past where the hand or the
+        // reveal meant (RG17). Taking the leg's place ends the leg; a
+        // programmatic ask starts a new one from there at the next
+        // layout, and a second delta before then adds up as it did.
+        if e.smooth.take().is_some() {
+            e.offset = e.laid;
         }
         e.offset.x += delta.x;
         e.offset.y += delta.y;
@@ -307,7 +393,9 @@ impl ScrollStore {
     pub(crate) fn bar_idle(&mut self, key: Key, now: f64, active: bool) -> f64 {
         let e = self.entries.entry(key).or_default();
         let max = e.geom.map_or(Vec2::ZERO, |(_, _, m)| m);
-        let state = (e.offset, max);
+        // The drawn place: an eased leg is the content moving, and a bar
+        // that faded while it moved would be quiet through a scroll.
+        let state = (if e.geom.is_some() { e.laid } else { e.offset }, max);
         match e.bar {
             Some((off, m, at)) if !active && (off, m) == state => (now - at).max(0.0),
             _ => {
@@ -353,26 +441,29 @@ impl ScrollStore {
         // container asked for a transition and the move was a
         // programmatic one — then it starts where the last frame left it
         // and eases to the offset over the leg (F80).
+        e.laid_frame = frame_no;
         let drawn = match (smooth, now) {
             (Some(t), Some(now)) if t.duration_ms > 0.0 => {
                 if std::mem::take(&mut e.asked_smooth) && e.laid != e.offset {
                     // From where the content is *now*, so a second
                     // reveal mid-flight carries on from what is on
                     // screen rather than snapping back to start.
-                    e.smooth = Some((e.laid, now));
+                    e.smooth = Some((e.laid, now, t));
                 }
                 match e.smooth {
-                    Some((from, start)) => {
-                        let p = (((now - start) / (t.duration_ms as f64 / 1000.0)) as f32)
-                            .clamp(0.0, 1.0);
-                        let k = t.easing.apply(p);
-                        let at = Vec2::new(
-                            from.x + (e.offset.x - from.x) * k,
-                            from.y + (e.offset.y - from.y) * k,
+                    Some((from, start, _)) => {
+                        // The start clamped too: content that shrank
+                        // under a leg must not be drawn past its new end
+                        // for the rest of the leg (RG22).
+                        let from = Vec2::new(
+                            from.x.clamp(0.0, max.x.max(0.0)),
+                            from.y.clamp(0.0, max.y.max(0.0)),
                         );
-                        if p >= 1.0 {
+                        let (at, done) = sample((from, start, t), e.offset, now);
+                        if done {
                             e.smooth = None;
                         } else {
+                            e.smooth = Some((from, start, t));
                             self.owes = true;
                         }
                         at
@@ -389,6 +480,20 @@ impl ScrollStore {
         e.laid = drawn;
         drawn
     }
+}
+
+/// A leg sampled at `now`: the drawn place, and whether the leg is over.
+fn sample(
+    (from, start, t): (Vec2, f64, crate::anim::Transition),
+    to: Vec2,
+    now: f64,
+) -> (Vec2, bool) {
+    let p = (((now - start) / (t.duration_ms as f64 / 1000.0)) as f32).clamp(0.0, 1.0);
+    let k = t.easing.apply(p);
+    (
+        Vec2::new(from.x + (to.x - from.x) * k, from.y + (to.y - from.y) * k),
+        p >= 1.0,
+    )
 }
 
 #[cfg(test)]

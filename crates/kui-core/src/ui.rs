@@ -925,6 +925,14 @@ impl<'a> Ui<'a> {
         self.core.set_scroll(key, offset);
     }
 
+    /// Moves a container's scroll state by the content that moved under
+    /// it — `drawn` for the drawn place and an eased leg's start, `target`
+    /// for the offset — with no ease asked or ended.
+    /// `virtual_rows`' height correction (RG18).
+    pub(crate) fn shift_scroll(&mut self, key: Key, drawn: Vec2, target: Vec2) {
+        self.core.scroll.shift(key, drawn, target);
+    }
+
     /// What the last layout resolved for a scroll container — its box, its
     /// content size and the clamped offset — so a view can build only the
     /// rows that fit and two spacers instead of ten thousand rows. `None`

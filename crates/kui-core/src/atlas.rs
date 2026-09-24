@@ -73,6 +73,14 @@ pub struct GlyphAtlas {
     /// grows. A set that turns over (new keys) never sets it.
     dropped: FxHashSet<CacheKey>,
     returned: bool,
+    /// Frames begun since the last reset for room. The thrash `dropped`
+    /// watches for is the page filling again on the frame after the
+    /// reset; a fill a minute later that happens to want back one glyph
+    /// the reset dropped — a chrome letter, a common `e` — is an
+    /// ordinary turnover, and growing on it would double the page on
+    /// every later fill and never give it back (RG23). So the set is
+    /// forgotten once a whole frame has passed without a fill.
+    frames_since_reset: u32,
 }
 
 impl GlyphAtlas {
@@ -94,6 +102,7 @@ impl GlyphAtlas {
             resets_this_frame: 0,
             dropped: FxHashSet::default(),
             returned: false,
+            frames_since_reset: 0,
         }
     }
 
@@ -101,6 +110,11 @@ impl GlyphAtlas {
     /// growth starts over.
     pub fn begin_frame(&mut self) {
         self.resets_this_frame = 0;
+        self.frames_since_reset = self.frames_since_reset.saturating_add(1);
+        if self.frames_since_reset >= 2 && !self.dropped.is_empty() {
+            self.dropped = FxHashSet::default();
+            self.returned = false;
+        }
     }
 
     /// Drops every cached glyph and image (they re-rasterize on demand) and
@@ -163,6 +177,7 @@ impl GlyphAtlas {
             let dropped: FxHashSet<CacheKey> = self.map.keys().copied().collect();
             self.reset();
             self.dropped = dropped;
+            self.frames_since_reset = 0;
         }
         loop {
             if let Some(pos) = self.alloc(w, h) {
@@ -504,6 +519,32 @@ mod tests {
         frame(&mut atlas);
         frame(&mut atlas);
         assert_eq!(atlas.epoch, epoch, "and still from then on");
+    }
+
+    /// RG23: the thrash F83 grows on is a fill on the frame after the
+    /// reset. A fill much later that happens to want back one glyph the
+    /// reset dropped — the chrome's letters are in every set — is an
+    /// ordinary turnover and resets, or every later fill would double
+    /// the page and it would never shrink.
+    #[test]
+    fn a_fill_long_after_a_reset_resets_even_with_a_dropped_glyph_back() {
+        let mut atlas = GlyphAtlas::with_size(64);
+        // 30×30 glyphs; a 64 page holds four.
+        let frame = |atlas: &mut GlyphAtlas, keys: &[u32]| {
+            atlas.begin_frame();
+            for &i in keys {
+                atlas.get_or_insert(fake_key(i), || Some(raster(30, 30)));
+            }
+        };
+        frame(&mut atlas, &[0, 1, 2, 3]);
+        frame(&mut atlas, &[4, 5, 6, 7]);
+        assert_eq!(atlas.size, 64, "one turnover, one reset");
+        for _ in 0..3 {
+            frame(&mut atlas, &[4, 5, 6, 7]);
+        }
+        // Key 0 was dropped by that reset, frames ago.
+        frame(&mut atlas, &[0, 8, 9, 10]);
+        assert_eq!(atlas.size, 64, "a later turnover resets, it does not grow");
     }
 
     /// F66: a synthesized shape is one slot per character and cell size —

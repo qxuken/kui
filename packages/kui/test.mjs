@@ -1993,7 +1993,7 @@ test('runOut advances until nothing animates and says how long it took (F22)', (
   assert.equal(looping.ctx.animating(), true);
   // What is owed, by kind (F64): the cycle alone, once its node's own
   // 100 ms entrance leg has run — `animating()` cannot say which.
-  assert.deepEqual(looping.ctx.owed(), { transition: false, cycle: true, depart: false, requested: false, autoscroll: false });
+  assert.deepEqual(looping.ctx.owed(), { transition: false, cycle: true, depart: false, requested: false, autoscroll: false, scroll: false });
 });
 
 // The windowed half of the same question, which cannot be a loop: a window
@@ -2156,7 +2156,7 @@ test('quiet() resolves under a keyframe cycle, where settled() can only hit its 
   // its transitions running out is a fact `settled()` could never report.
   // `owed()` says what is owed by kind and `quiet()` waits on everything
   // but the cycle.
-  const state = { animating: true, events: [], owed: { transition: true, cycle: true, depart: false, requested: false, autoscroll: false } };
+  const state = { animating: true, events: [], owed: { transition: true, cycle: true, depart: false, requested: false, autoscroll: false, scroll: false } };
   let t = 0;
   const app = createApp(
     { init: 0, update: (m) => m, view: () => box({ pad: 4 }) },
@@ -5424,6 +5424,27 @@ test('a virtualColumn whose list shrank under it lands in one frame', () => {
   app.render();
   assert.deepEqual(seen.range, [0, 10], 'and every row of it is built');
   assert.equal(app.ctx.scrollGeometry('log').offset.y, 0);
+});
+
+test('a virtualColumn read before the frame begins still owes the frame that re-slices it (RG24)', () => {
+  // Node's view runs before the frame begins, so its `scrollGeometry`
+  // read lands between two frames; the core cleared its reads at the
+  // frame's start and the window tripling left five rows on screen until
+  // the next event (F77 fixed for Rust and Lua only).
+  const ctx = new Ctx();
+  const view = () =>
+    box({ width: 'grow', height: 'grow' }, [
+      virtualColumn(ctx, { key: 'log', rows: 1000, rowH: 20, width: 'grow', height: 'grow' }, (i) =>
+        box({ width: 'grow', height: 'grow', label: `row ${i}` }),
+      ),
+    ]);
+  ctx.frame(200, 100, 1, view());
+  ctx.frame(200, 100, 1, view());
+  assert.equal(ctx.owed().requested, false, 'settled');
+  ctx.frame(200, 300, 1, view());
+  assert.equal(ctx.owed().requested, true, 'sliced for a 100 box, laid out 300 tall');
+  ctx.frame(200, 300, 1, view());
+  assert.equal(ctx.owed().requested, false, 'and settled again');
 });
 
 test('a stock button takes an index, as a box does, and the index wins over its text (AR40)', () => {
