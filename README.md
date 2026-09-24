@@ -1181,6 +1181,18 @@ crates in dependency order and finally the npm package. It needs a repository
 secret `PACKAGES_TOKEN` (a personal access token with `write:packages`) and
 nothing but that Linux runner: no Mac or Windows machine is involved.
 
+When the runner cannot publish — alpha.17's tag job hung in checkout, the
+runner unable to reach Forgejo — `nu scripts/release-local.nu` does the same
+from a Mac with the tag on HEAD: the Linux prebuilds in Docker with CI's
+pinned zig, the macOS ones natively, Windows through cargo-xwin, CI's
+verification (`npm test` over the bundled prebuilds, `npm pack --dry-run`,
+`cargo publish --dry-run`), a typed confirmation, then `cargo publish`,
+`npm publish` and the `latest` guard. It reads the token from
+`$env.DRYDOCK9_TOKEN`, skips whatever the registries already hold (so a
+half-finished run can be run again) and takes `--dry-run` to stop before
+publishing. Skip the tag's CI run afterwards; it would fail on "already
+exists".
+
 That last property is also the limit of what CI proves. The Windows non-client
 chrome ([windows_nc.rs](crates/kui/src/windows_nc.rs)), the macOS traffic-light
 inset in `widgets::titlebar_with` and the whole AccessKit bridge
