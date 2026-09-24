@@ -1363,85 +1363,224 @@ fn create_fragment_bind_group(
 /// Says where a crash is. A fault in a driver — a GPU whose driver is
 /// being replaced under the app — ends the process with no line from
 /// anyone: not a panic, so nothing of ours prints, and Windows reports
-/// only `0xC000041D` for an exception in a window callback. This handler
-/// sees the exception first and prints its code and the module the
-/// faulting address is in, then lets it go on as it would have; a
-/// diagnostic, not a recovery. Only the faults that end a process, once
-/// per kind, so a driver's own caught exceptions stay quiet.
+/// only `0xC000041D` for an exception in a window callback. This prints
+/// the code and the module the faulting address is in, then lets the
+/// crash go on as it would have; a diagnostic, not a recovery.
+///
+/// Only a crash: the line is said from the process's unhandled-exception
+/// filter, which runs once every frame handler has declined the
+/// exception — not from a vectored handler, which sees each exception
+/// first, before anyone has had the chance to handle it, and so sees the
+/// faults that are part of normal running: a driver probing memory under
+/// its own `__try`, V8's WebAssembly bounds checks under `node.exe`. Said
+/// from there, those spent the one report each kind had on something
+/// harmless, and the crash that followed was never named. A filter set
+/// before this one is called after it, with its answer returned, so a
+/// crash reporter the host installed first still gets the crash; one set
+/// after replaces this one, as it would any filter.
+///
+/// A vectored handler is still installed, last among them, but it says
+/// nothing: it remembers the last fault each thread saw. An exception
+/// that escapes a window callback reaches the filter as `0xC000041D`, not
+/// as itself, and the fault inside it is found on the record's own chain
+/// or, failing that, in what the thread last remembered.
 #[cfg(windows)]
 pub fn report_faults() {
+    use std::cell::Cell;
     use windows::Win32::Foundation::{
         EXCEPTION_ACCESS_VIOLATION, EXCEPTION_ILLEGAL_INSTRUCTION, EXCEPTION_IN_PAGE_ERROR,
-        EXCEPTION_STACK_OVERFLOW,
+        EXCEPTION_STACK_OVERFLOW, HMODULE, NTSTATUS, STATUS_FATAL_USER_CALLBACK_EXCEPTION,
     };
+    use windows::Win32::Storage::FileSystem::WriteFile;
+    use windows::Win32::System::Console::{GetStdHandle, STD_ERROR_HANDLE};
     use windows::Win32::System::Diagnostics::Debug::{
-        AddVectoredExceptionHandler, EXCEPTION_POINTERS,
+        AddVectoredExceptionHandler, EXCEPTION_POINTERS, EXCEPTION_RECORD,
+        LPTOP_LEVEL_EXCEPTION_FILTER, SetUnhandledExceptionFilter,
     };
     use windows::Win32::System::LibraryLoader::{
         GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
         GetModuleFileNameW, GetModuleHandleExW,
     };
-    static ONCE: std::sync::Once = std::sync::Once::new();
-    static SAID: std::sync::Mutex<Vec<i32>> = std::sync::Mutex::new(Vec::new());
 
-    unsafe extern "system" fn handler(info: *mut EXCEPTION_POINTERS) -> i32 {
-        const CONTINUE_SEARCH: i32 = 0;
+    const CONTINUE_SEARCH: i32 = 0;
+    /// The faults a driver ends a process with: the ones remembered for
+    /// a callback's `0xC000041D` to be read by.
+    const FAULTS: [NTSTATUS; 4] = [
+        EXCEPTION_ACCESS_VIOLATION,
+        EXCEPTION_ILLEGAL_INSTRUCTION,
+        EXCEPTION_IN_PAGE_ERROR,
+        EXCEPTION_STACK_OVERFLOW,
+    ];
+    /// The filter this one replaced, called after it; set once, with the
+    /// two handlers, by the one call that installs them.
+    static PREVIOUS: std::sync::OnceLock<LPTOP_LEVEL_EXCEPTION_FILTER> = std::sync::OnceLock::new();
+    thread_local! {
+        /// The last fault this thread saw, code and address, handled or
+        /// not. A `const` cell with no destructor: a plain thread-local
+        /// slot, read and written without allocating or registering
+        /// anything, from inside an exception.
+        static LAST: Cell<Option<(i32, usize)>> = const { Cell::new(None) };
+    }
+
+    /// Remembers a fault; says nothing and handles nothing.
+    unsafe extern "system" fn remember(info: *mut EXCEPTION_POINTERS) -> i32 {
         // SAFETY: the system hands a valid record for the exception.
-        let Some(record) =
+        if let Some(record) =
             (unsafe { info.as_ref() }).and_then(|i| unsafe { i.ExceptionRecord.as_ref() })
-        else {
-            return CONTINUE_SEARCH;
-        };
-        let code = record.ExceptionCode;
-        if ![
-            EXCEPTION_ACCESS_VIOLATION,
-            EXCEPTION_ILLEGAL_INSTRUCTION,
-            EXCEPTION_IN_PAGE_ERROR,
-            EXCEPTION_STACK_OVERFLOW,
-        ]
-        .contains(&code)
+            && FAULTS.contains(&record.ExceptionCode)
         {
-            return CONTINUE_SEARCH;
+            let seen = (record.ExceptionCode.0, record.ExceptionAddress as usize);
+            let _ = LAST.try_with(|l| l.set(Some(seen)));
         }
-        if let Ok(mut said) = SAID.try_lock() {
-            if said.contains(&code.0) {
-                return CONTINUE_SEARCH;
-            }
-            said.push(code.0);
-        }
-        let at = record.ExceptionAddress;
-        let mut module = windows::Win32::Foundation::HMODULE::default();
-        let mut name = [0u16; 512];
-        // SAFETY: `at` is only looked up, never read; the buffers are ours.
-        let module = unsafe {
-            GetModuleHandleExW(
-                GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS
-                    | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                windows::core::PCWSTR(at.cast()),
-                &mut module,
-            )
-            .ok()
-            .map(|_| {
-                let n = GetModuleFileNameW(Some(module), &mut name) as usize;
-                String::from_utf16_lossy(&name[..n])
-            })
-        };
-        eprintln!(
-            "kui: fault {:#010x} at {at:?} in {}",
-            code.0 as u32,
-            module.as_deref().unwrap_or("no module (jit or freed code)")
-        );
         CONTINUE_SEARCH
     }
 
-    ONCE.call_once(|| {
-        // SAFETY: the handler reads only what the system gives it.
-        unsafe { AddVectoredExceptionHandler(1, Some(handler)) };
+    /// The first fault on a record's chain of nested exceptions, past the
+    /// record itself; a few links, since a chain is one or two long and a
+    /// broken one is not worth following further.
+    fn nested(record: &EXCEPTION_RECORD) -> Option<(i32, usize)> {
+        let mut at = record.ExceptionRecord;
+        for _ in 0..4 {
+            // SAFETY: a nested record the system chained to this one.
+            let inner = unsafe { at.as_ref() }?;
+            if FAULTS.contains(&inner.ExceptionCode) {
+                return Some((inner.ExceptionCode.0, inner.ExceptionAddress as usize));
+            }
+            at = inner.ExceptionRecord;
+        }
+        None
+    }
+
+    /// Writes one crash's line to stderr, straight to the handle: no
+    /// `eprintln!`, which takes a lock and, on a console, converts
+    /// through a stack buffer eight kilobytes deep — more than a stack
+    /// overflow leaves.
+    fn say(code: i32, at: usize, escaped: Option<i32>) {
+        let mut module = HMODULE::default();
+        let mut name = [0u16; 260];
+        // SAFETY: `at` is only looked up, never read; the buffers are ours.
+        let found = unsafe {
+            GetModuleHandleExW(
+                GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS
+                    | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                windows::core::PCWSTR(at as *const u16),
+                &mut module,
+            )
+        }
+        .is_ok();
+        let path = found.then(|| {
+            // SAFETY: the module was just found; the buffer is ours.
+            let n = unsafe { GetModuleFileNameW(Some(module), &mut name) } as usize;
+            &name[..n.min(name.len())]
+        });
+        let line = FaultLine::new(code as u32, at, path, escaped.map(|c| c as u32));
+        // SAFETY: a handle the process was given, written from our buffer.
+        if let Ok(err) = unsafe { GetStdHandle(STD_ERROR_HANDLE) } {
+            let mut written = 0u32;
+            let _ = unsafe { WriteFile(err, Some(line.bytes()), Some(&mut written), None) };
+        }
+    }
+
+    /// The crash: said, then handed to the filter before this one.
+    unsafe extern "system" fn filter(info: *const EXCEPTION_POINTERS) -> i32 {
+        // SAFETY: the system hands a valid record for the exception.
+        if let Some(record) =
+            (unsafe { info.as_ref() }).and_then(|i| unsafe { i.ExceptionRecord.as_ref() })
+        {
+            let (code, at) = (record.ExceptionCode, record.ExceptionAddress as usize);
+            let inner = if code == STATUS_FATAL_USER_CALLBACK_EXCEPTION {
+                nested(record).or_else(|| LAST.try_with(Cell::get).ok().flatten())
+            } else {
+                None
+            };
+            match inner {
+                Some((fault, fault_at)) => say(fault, fault_at, Some(code.0)),
+                None => say(code.0, at, None),
+            }
+        }
+        match PREVIOUS.get().copied().flatten() {
+            // SAFETY: the filter the system held before ours, called as
+            // the system would have called it.
+            Some(previous) => unsafe { previous(info) },
+            None => CONTINUE_SEARCH,
+        }
+    }
+
+    PREVIOUS.get_or_init(|| {
+        // SAFETY: both handlers read only what the system gives them and
+        // write only their own thread-local slot and stderr.
+        unsafe {
+            AddVectoredExceptionHandler(0, Some(remember));
+            SetUnhandledExceptionFilter(Some(filter))
+        }
     });
 }
 
 #[cfg(not(windows))]
 pub fn report_faults() {}
+
+/// One crash's line for `report_faults`, written into a buffer on the
+/// stack: it is said with whatever stack the crash left (a stack
+/// overflow leaves the few pages the thread reserved for its handlers)
+/// and in a process whose heap may be what faulted, so nothing here
+/// allocates. A line too long for it is cut, at a character, and still
+/// ends in a newline. Built on every platform so it is tested on every
+/// platform; only Windows says one.
+#[cfg_attr(not(windows), allow(dead_code))]
+struct FaultLine {
+    buf: [u8; 640],
+    len: usize,
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+impl FaultLine {
+    /// `kui: fault <code> at <address> in <module>`, and for a fault that
+    /// escaped a window callback, the code it escaped as. `module` is the
+    /// UTF-16 path Windows gives; none is a fault outside any module.
+    fn new(code: u32, at: usize, module: Option<&[u16]>, escaped: Option<u32>) -> Self {
+        use std::fmt::Write;
+        let mut line = Self {
+            buf: [0; 640],
+            len: 0,
+        };
+        let _ = write!(line, "kui: fault {code:#010x} at {at:#x} in ");
+        match module {
+            Some(path) => {
+                for c in char::decode_utf16(path.iter().copied()) {
+                    let _ = line.write_char(c.unwrap_or(char::REPLACEMENT_CHARACTER));
+                }
+            }
+            None => {
+                let _ = line.write_str("no module (jit or freed code)");
+            }
+        }
+        if let Some(escaped) = escaped {
+            let _ = write!(line, ", escaped from a window callback as {escaped:#010x}");
+        }
+        // The newline has its byte kept for it (`write_str`).
+        line.buf[line.len] = b'\n';
+        line.len += 1;
+        line
+    }
+
+    fn bytes(&self) -> &[u8] {
+        &self.buf[..self.len]
+    }
+}
+
+impl std::fmt::Write for FaultLine {
+    fn write_str(&mut self, s: &str) -> std::fmt::Result {
+        // One byte short of the buffer, for the newline.
+        let room = self.buf.len() - 1 - self.len;
+        let mut n = s.len().min(room);
+        while !s.is_char_boundary(n) {
+            n -= 1;
+        }
+        self.buf[self.len..self.len + n].copy_from_slice(&s.as_bytes()[..n]);
+        self.len += n;
+        Ok(())
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -1545,5 +1684,42 @@ mod tests {
                 .validate(&module)
                 .unwrap_or_else(|e| panic!("dual={dual}: {e:?}"));
         }
+    }
+
+    /// The line `report_faults` says, built without the heap (RG31): the
+    /// code, the address and the module's UTF-16 path decoded, and for a
+    /// fault that escaped a window callback the code it escaped as.
+    #[test]
+    fn a_fault_line_names_the_code_the_address_and_the_module() {
+        let path: Vec<u16> = r"C:\Windows\System32\nvoglv64.dll".encode_utf16().collect();
+        let line = FaultLine::new(0xC000_0005, 0x7ff6_1234, Some(&path), None);
+        assert_eq!(
+            std::str::from_utf8(line.bytes()).unwrap(),
+            "kui: fault 0xc0000005 at 0x7ff61234 in C:\\Windows\\System32\\nvoglv64.dll\n"
+        );
+        let line = FaultLine::new(0xC000_0005, 0x10, None, Some(0xC000_041D));
+        assert_eq!(
+            std::str::from_utf8(line.bytes()).unwrap(),
+            "kui: fault 0xc0000005 at 0x10 in no module (jit or freed code), \
+             escaped from a window callback as 0xc000041d\n"
+        );
+        // A path that is not UTF-16 is said, not refused.
+        let line = FaultLine::new(0xC000_001D, 0x20, Some(&[0x44, 0xD800, 0x45]), None);
+        assert_eq!(
+            std::str::from_utf8(line.bytes()).unwrap(),
+            "kui: fault 0xc000001d at 0x20 in D\u{FFFD}E\n"
+        );
+    }
+
+    /// A line longer than its stack buffer is cut, between characters,
+    /// and still ends in its newline.
+    #[test]
+    fn a_fault_line_too_long_is_cut_at_a_character() {
+        let path: Vec<u16> = "é".repeat(1000).encode_utf16().collect();
+        let line = FaultLine::new(0xC000_00FD, 0x30, Some(&path), Some(0xC000_041D));
+        let text = std::str::from_utf8(line.bytes()).expect("cut at a character");
+        assert!(text.ends_with("é\n"), "{text:?}");
+        assert!(text.len() <= 640 && text.len() >= 638, "{}", text.len());
+        assert!(text.starts_with("kui: fault 0xc00000fd at 0x30 in é"));
     }
 }

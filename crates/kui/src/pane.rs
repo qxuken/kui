@@ -226,8 +226,16 @@ pub(crate) struct Pane {
     pub(crate) renderer: Option<kui_wgpu::Renderer>,
     /// Frames in a row the surface refused for being configured wrong,
     /// each answered by configuring it to the window's size again; past
-    /// a few, the device is reopened instead.
+    /// `SURFACE_TRIES`, the device is reopened instead. Saturating: while
+    /// that reopen waits out its second, every frame input asks for is
+    /// refused again and counted, and the count has nowhere to go but
+    /// back to zero when a frame lands or a new renderer is made.
     pub(crate) surface_tries: u8,
+    /// This window's last frame asked for a new device (`Shell::
+    /// reopen_owed`) and has not been given a renderer on one since.
+    /// Nothing it draws can land until then, so an animation in it does
+    /// not ask for frames — the reopen asks when it has made one.
+    pub(crate) awaits_device: bool,
     /// Last title actually set on the window; views declare per frame and
     /// we only touch the window on change.
     pub(crate) applied_title: String,

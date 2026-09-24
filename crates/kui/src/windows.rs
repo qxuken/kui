@@ -405,6 +405,7 @@ impl<A: App> Shell<A> {
             window,
             renderer: Some(renderer),
             surface_tries: 0,
+            awaits_device: false,
             applied_title: String::new(),
             modifiers: ModifiersState::empty(),
             last_titlebar_press: None,

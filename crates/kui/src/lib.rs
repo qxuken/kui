@@ -444,6 +444,7 @@ impl Launcher {
             panes: Vec::new(),
             gpu: None,
             reopened: None,
+            reopen_owed: false,
             pretended_loss: false,
             epoch: std::time::Instant::now(),
             system: system_env::query(),
@@ -981,6 +982,76 @@ const AUDIO_IDLE_CLOSE: std::time::Duration = std::time::Duration::from_secs(5);
 /// path (a resize, an expose, any input) is what wakes it.
 const FIRST_FRAME_RETRY: std::time::Duration = std::time::Duration::from_millis(16);
 const FIRST_FRAME_RETRIES: u32 = 60;
+/// How long after one try at opening a new device (`Shell::reopen_device`)
+/// the next may be made. A device that will not open — a driver still
+/// being installed, an adapter gone — is tried once a second, and the
+/// loop sleeps until then rather than asking for frames that could only
+/// ask again.
+const REOPEN_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
+/// Frames in a row a surface may refuse for being configured wrong, each
+/// answered by configuring it again, before it is given up with its device.
+const SURFACE_TRIES: u8 = 3;
+
+/// When a new device asked for at `now` may be opened: at once if none
+/// has been tried, else `REOPEN_INTERVAL` after the last try and never
+/// sooner. A time not after `now` means now; a later one is the wake the
+/// loop sleeps until (`about_to_wait`), since nothing else is bound to ask
+/// — an idle app's windows draw nothing on their own, and an animating
+/// one's frames, with no surface to present to, are not paced by vsync
+/// and would spin the loop until the second was up.
+fn reopen_due(last_try: Option<std::time::Instant>, now: std::time::Instant) -> std::time::Instant {
+    last_try.map_or(now, |t| (t + REOPEN_INTERVAL).max(now))
+}
+
+/// What a frame does with a surface refused for being configured wrong.
+#[derive(Debug, PartialEq, Eq)]
+enum Refused {
+    /// Configure it to the window's size and draw again at once.
+    Retry,
+    /// Give it up with its device (`Shell::reopen_device`); `say` on the
+    /// first frame past the tries, not on each one refused after it while
+    /// the reopen waits out its second.
+    GiveUp { say: bool },
+}
+
+/// Counts one more refusal in `tries` — saturating, since while a reopen
+/// is owed every frame input asks for is refused again and counted, and
+/// a `u8` that wrapped would start the retries over (or, in a debug
+/// build, panic) — and says what the frame does with it: the first
+/// `SURFACE_TRIES` are retried, the rest give the surface up.
+fn surface_refused(tries: &mut u8) -> Refused {
+    *tries = tries.saturating_add(1);
+    if *tries <= SURFACE_TRIES {
+        Refused::Retry
+    } else {
+        Refused::GiveUp {
+            say: *tries == SURFACE_TRIES + 1,
+        }
+    }
+}
+
+/// Whether text is drawn with LCD subpixel masks: what was asked for
+/// (`KUI_TEXT_AA` over the launcher's `text_aa`, `wanted_text_aa`), and
+/// for `Auto` or `Subpixel` only where the device blends per channel —
+/// a mask the blend cannot split draws coloured fringes. Decided with each
+/// device, the first and every one opened after a loss, since a reopen can
+/// land on another adapter.
+fn subpixel_on(wanted: TextAa, dual_source: bool) -> bool {
+    match wanted {
+        TextAa::Grayscale => false,
+        TextAa::Subpixel | TextAa::Auto => dual_source,
+    }
+}
+
+/// The text antialiasing asked for: `KUI_TEXT_AA` if set, for quick A/B
+/// comparisons, else what the launcher was told.
+fn wanted_text_aa(launcher: TextAa) -> TextAa {
+    match std::env::var("KUI_TEXT_AA").ok().as_deref() {
+        Some("gray") | Some("grayscale") => TextAa::Grayscale,
+        Some("subpixel") | Some("lcd") => TextAa::Subpixel,
+        _ => launcher,
+    }
+}
 
 /// The core's derived pointer shape in winit's vocabulary. One-to-one:
 /// `CursorShape` is spelled after the platform names on purpose.
@@ -1039,8 +1110,9 @@ struct Shell<A: App> {
     text_aa: TextAa,
     /// What every core is created with; see `Launcher::diagnostics`.
     diagnostics: bool,
-    /// Whether the GPU blends per channel, decided by the first renderer
-    /// and applied to every core after it.
+    /// Whether the GPU blends per channel, decided by the first renderer,
+    /// again by each device opened after a loss (`reopen_device`), and
+    /// applied to every core.
     subpixel: bool,
     app: A,
     /// Each under the namespace the host gave it; their `Fill` is what fills
@@ -1060,6 +1132,13 @@ struct Shell<A: App> {
     /// (`reopen_device`), so a device that will not open is tried once a
     /// second rather than once a frame.
     reopened: Option<std::time::Instant>,
+    /// A new device was asked for inside the second after the last try,
+    /// or the last try left a window without a renderer: `about_to_wait`
+    /// opens it when `reopen_due` says, and sleeps until then — the ask
+    /// is kept here rather than in a frame asked for again, which in an
+    /// idle app nothing would ask for and in an animating one would be
+    /// asked for every turn with no vsync to pace it.
+    reopen_owed: bool,
     /// Whether `KUI_LOSE_DEVICE` has had its one loss.
     pretended_loss: bool,
     /// Origin of the frame clock handed to the cores for transitions.
@@ -1601,6 +1680,7 @@ impl<A: App> Shell<A> {
                 wait_ms = report.vsync_wait_ms;
                 pane.first_frame = None;
                 pane.surface_tries = 0;
+                pane.awaits_device = false;
             }
             Some(Err(kui_wgpu::RenderError::Reconfigure)) => {
                 if let Some(r) = pane.renderer.as_mut() {
@@ -1612,17 +1692,26 @@ impl<A: App> Shell<A> {
             // platform never told us, a swapchain a driver update left
             // behind: configure it to the window's size and draw again;
             // a surface that stays wrong is given up with its device.
+            // Past the tries the frame asks for no other: the reopen is
+            // what asks for the next one, and if it has to wait out its
+            // second, a frame asked for now would only be refused again —
+            // at once, with no vsync to pace it. Said once per surface
+            // given up, not once per refused frame.
             Some(Err(kui_wgpu::RenderError::Validation)) => {
-                pane.surface_tries += 1;
-                if pane.surface_tries <= 3 {
-                    if let Some(r) = pane.renderer.as_mut() {
-                        r.resize(size.width, size.height);
+                match surface_refused(&mut pane.surface_tries) {
+                    Refused::Retry => {
+                        if let Some(r) = pane.renderer.as_mut() {
+                            r.resize(size.width, size.height);
+                        }
+                        window.request_redraw();
                     }
-                } else {
-                    eprintln!("kui: the surface stays invalid; reopening the device");
-                    reopen = true;
+                    Refused::GiveUp { say } => {
+                        if say {
+                            eprintln!("kui: the surface stays invalid; reopening the device");
+                        }
+                        reopen = true;
+                    }
                 }
-                window.request_redraw();
             }
             // Occluded or timed out: nothing to present, try next frame —
             // and, until a window has managed one, *schedule* that next
@@ -1637,6 +1726,7 @@ impl<A: App> Shell<A> {
             // frame ago it was and no new one could be opened: open one.
             Some(Err(kui_wgpu::RenderError::DeviceLost)) | None => reopen = true,
         }
+        pane.awaits_device |= reopen;
         let render_ms = (t_render.elapsed().as_secs_f32() * 1e3 - wait_ms).max(0.0);
 
         pane.core.stats.push(FrameSample {
@@ -1657,14 +1747,14 @@ impl<A: App> Shell<A> {
     /// before its new surface is made (DXGI gives a window one flip-model
     /// swapchain). The windows keep their cores: the next frame draws
     /// what the last one would have. A window whose renderer cannot be
-    /// made has none until its next frame tries again; a device that
-    /// cannot be opened is said once a second, not once a frame.
+    /// made has none, and the device is tried again a second later; a
+    /// device that cannot be opened is tried, and said, once a second, not
+    /// once a frame. Asked for inside that second, the ask is owed
+    /// (`reopen_owed`) and `about_to_wait` makes it when the second is up.
     fn reopen_device(&mut self) {
         let now = std::time::Instant::now();
-        if self
-            .reopened
-            .is_some_and(|t| now.duration_since(t) < std::time::Duration::from_secs(1))
-        {
+        if reopen_due(self.reopened, now) > now {
+            self.reopen_owed = true;
             return;
         }
         self.reopened = Some(now);
@@ -1700,6 +1790,25 @@ impl<A: App> Shell<A> {
                     pane.window.request_redraw();
                 }
                 Err(err) => eprintln!("kui: cannot reopen window {}: {err}", pane.id.0),
+            }
+            pane.awaits_device = pane.renderer.is_none();
+        }
+        // A window left without a renderer — or every window, when no
+        // device would open — is tried again a second from now, whether
+        // or not anything asks it for a frame.
+        self.reopen_owed = self.panes.iter().any(|p| p.awaits_device);
+        // The new device may be another adapter's, with or without the
+        // per-channel blend LCD masks need: decided again, for every core,
+        // or a core keeps rasterising masks the new pipeline cannot split.
+        // A changed decision empties each core's atlas (`set_subpixel_text`),
+        // which the fresh renderer was going to upload whole anyway.
+        if let Some(gpu) = &gpu {
+            let on = subpixel_on(wanted_text_aa(self.text_aa), gpu.dual_source());
+            if on != self.subpixel {
+                self.subpixel = on;
+                for pane in &mut self.panes {
+                    pane.core.set_subpixel_text(on);
+                }
             }
         }
         self.gpu = gpu;
@@ -1746,15 +1855,7 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
                 .expect("init renderer");
         // Subpixel text only where the renderer blends per channel; the
         // env var wins over the builder for quick A/B comparisons.
-        let wanted = match std::env::var("KUI_TEXT_AA").ok().as_deref() {
-            Some("gray") | Some("grayscale") => TextAa::Grayscale,
-            Some("subpixel") | Some("lcd") => TextAa::Subpixel,
-            _ => self.text_aa,
-        };
-        self.subpixel = match wanted {
-            TextAa::Grayscale => false,
-            TextAa::Subpixel | TextAa::Auto => renderer.subpixel_text(),
-        };
+        self.subpixel = subpixel_on(wanted_text_aa(self.text_aa), renderer.subpixel_text());
         self.gpu = Some(renderer.gpu().clone());
         let mut core = self
             .main_core
@@ -2255,8 +2356,25 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
         self.apply_audio();
         let now = std::time::Instant::now();
         let mut deadline: Option<std::time::Instant> = None;
+        // A new device owed (`reopen_owed`): made now if its second is
+        // up, and otherwise — or when this try left a window without one —
+        // woken for when it is. This deadline is the only thing that
+        // brings the loop back to it: a window waiting for a device asks
+        // for no frames of its own, below.
+        if self.reopen_owed {
+            if reopen_due(self.reopened, now) <= now {
+                self.reopen_device();
+            }
+            if self.reopen_owed {
+                let at = reopen_due(self.reopened, now);
+                deadline = Some(deadline.map_or(at, |d| d.min(at)));
+            }
+        }
         for pane in &mut self.panes {
-            if pane.core.animating() {
+            // Not while the window waits for a device: with nothing to
+            // present to there is no vsync to pace the frame, and each one
+            // would only find the device still owed.
+            if pane.core.animating() && !pane.awaits_device {
                 pane.window.request_redraw();
             }
             // A window still waiting for its first frame asks again — one
@@ -2593,5 +2711,60 @@ mod tests {
             .size(320.0, 240.0)
             .shell(Empty);
         assert_eq!(shell.size, (640.0, 480.0));
+    }
+
+    /// A device that will not open is tried once a second (RG29): the
+    /// first ask runs at once, an ask inside the second after a try waits
+    /// for the second to be up — the instant `about_to_wait` sleeps until,
+    /// not a frame asked for every turn — and one after it runs at once.
+    #[test]
+    fn a_reopen_waits_out_the_second_after_the_last_try() {
+        let now = std::time::Instant::now();
+        assert_eq!(reopen_due(None, now), now, "the first try is at once");
+        let recent = now - std::time::Duration::from_millis(300);
+        assert_eq!(
+            reopen_due(Some(recent), now),
+            recent + REOPEN_INTERVAL,
+            "inside the second: woken when it is up"
+        );
+        assert!(reopen_due(Some(recent), now) > now, "and not before");
+        let old = now - std::time::Duration::from_secs(5);
+        assert_eq!(reopen_due(Some(old), now), now, "past it: at once");
+        let edge = now - REOPEN_INTERVAL;
+        assert_eq!(reopen_due(Some(edge), now), now, "at it: at once");
+    }
+
+    /// A surface refused frame after frame while its reopen waits (RG30):
+    /// retried `SURFACE_TRIES` times, then given up — said once — and the
+    /// count saturates rather than wrapping back into retries or, in a
+    /// debug build, panicking, however many frames input asks for.
+    #[test]
+    fn a_refused_surface_is_retried_then_given_up_once_and_the_count_saturates() {
+        let mut tries = 0u8;
+        let answers: Vec<Refused> = (0..1000).map(|_| surface_refused(&mut tries)).collect();
+        let retries = SURFACE_TRIES as usize;
+        assert!(answers[..retries].iter().all(|a| *a == Refused::Retry));
+        assert_eq!(answers[retries], Refused::GiveUp { say: true });
+        assert!(
+            answers[retries + 1..]
+                .iter()
+                .all(|a| *a == Refused::GiveUp { say: false }),
+            "given up, and said only the once"
+        );
+        assert_eq!(tries, u8::MAX);
+    }
+
+    /// Subpixel text follows the device it is drawn on (RG32): asked for
+    /// or left to `Auto`, it is on only where the device blends per
+    /// channel — so a reopen onto an adapter without dual-source blending
+    /// turns it off — and grayscale asked for is grayscale everywhere.
+    #[test]
+    fn subpixel_text_is_decided_by_each_device() {
+        assert!(subpixel_on(TextAa::Auto, true));
+        assert!(!subpixel_on(TextAa::Auto, false));
+        assert!(subpixel_on(TextAa::Subpixel, true));
+        assert!(!subpixel_on(TextAa::Subpixel, false));
+        assert!(!subpixel_on(TextAa::Grayscale, true));
+        assert!(!subpixel_on(TextAa::Grayscale, false));
     }
 }
