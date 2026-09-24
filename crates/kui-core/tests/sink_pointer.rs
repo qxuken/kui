@@ -10,8 +10,8 @@
 
 use kui_core::testing::{press, release};
 use kui_core::{
-    ClipboardMarks, Core, InputEvent, Key, MenuAction, NodeSpec, Role, Size, Sizing, TextStyle,
-    UiEvent, Value, Vec2,
+    ClipboardMarks, Core, InputEvent, Key, KeyCode, KeyMods, KeyPress, MenuAction, NodeSpec, Role,
+    Size, Sizing, TextStyle, UiEvent, Value, Vec2,
 };
 
 const LH: f32 = 20.0;
@@ -483,4 +483,33 @@ fn a_paste_carries_the_pasteboards_markers_to_the_sink() {
     }
     assert_eq!(ClipboardMarks::SECRET.bits(), 3);
     assert!(ClipboardMarks::default().is_empty());
+}
+
+/// RG37: what the runner leaves to a sink. Over a selection scope the
+/// runner's ⌘V pastes only into a focused editor; a focused sink hears
+/// the raw press — its own binding asks for the paste — and never a bare
+/// `Text`, which is what the runner sent it before, to nobody.
+#[test]
+fn a_sink_hears_the_paste_chord_and_never_a_bare_text() {
+    let mut core = Core::new();
+    let sink = frame(&mut core, &["hello"]);
+    let cmd_v = KeyPress::new(
+        KeyCode::Char('v'),
+        KeyMods {
+            super_key: true,
+            ..KeyMods::default()
+        },
+    );
+    let evs = core.handle_input(InputEvent::KeyDown(cmd_v));
+    assert!(
+        evs.iter()
+            .any(|e| e.key == sink && kind(e).as_deref() == Some("key")),
+        "the sink hears the chord: {evs:?}"
+    );
+    let evs = core.handle_input(InputEvent::Text("hunter2".into()));
+    assert!(
+        !evs.iter()
+            .any(|e| e.key == sink && kind(e).as_deref() == Some("text")),
+        "a bare Text is not the sink's: {evs:?}"
+    );
 }

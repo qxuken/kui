@@ -1358,21 +1358,11 @@ defect its own tests could not see — F83's growth that never expired
 (RG23), F77's read cleared before Node made it (RG24), F81's meta file
 disagreeing with the parser it describes (RG33) — and F84's secret was
 shown in the devtools' events tab (RG34). RG17–RG36 were **built
-2026-09-25**, the day they were filed, and are in the archive; the
+2026-09-25**, the day they were filed, and RG37 — ⌘V over a selection
+scope, the one left open at the alpha.17 tag, whose fix line was half
+wrong — the same day after it; all are in the archive. The
 Windows half (RG29–RG31) is compiled and linted for
 `x86_64-pc-windows-msvc` and not run.
-
-### `~` RG37 — ⌘V with a selection in a `cells` or `selectable` scope bypasses a focused key sink
-
-**Finding.** Read, not probed. `edit_chord` (`crates/kui/src/keys.rs`)
-takes ⌘V whenever the window has a selection scope, not only when an
-editor is focused, and answers it with `InputEvent::Text` from the
-clipboard — which a focused `on_key` sink does not hear, and which
-carries none of F84's markers. A terminal pane with text selected
-therefore pastes nowhere, where the menu's Paste reaches the sink.
-Older than this round; F84 only made the loss of the markers visible.
-**Fix line.** With no stock editor focused, ⌘V is `request_paste`,
-whose answer is the `Paste` that routes to the sink with its marks.
 
 ## After alpha.16
 
@@ -1380,7 +1370,8 @@ Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
 alpha.15" until 2026-09-25, when the rounds between the alpha.16 and
 alpha.17 tags — the Windows device-loss round, the kawoosh reports of
 2026-09-21 to 23 (F76–F85, ten entries) and the regression pass over
-them (RG17–RG36 built, RG37 left open) — had landed and the heading
+them (RG17–RG36 built, RG37 left open and built the same day, after
+the tag) — had landed and the heading
 moved with the tag; "After alpha.14" until 2026-09-20, when the ten rounds between the alpha.15 and
 alpha.16 tags — the kawoosh reports of 2026-09-16 and 17 (F67–F75, nine
 entries) and the regression pass over them (RG1–RG16, sixteen), every
@@ -1416,10 +1407,9 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** RG37 — ⌘V in a selection scope answered through
-`request_paste`, so a focused sink hears it with its marks — is the one
-entry of the regression pass of 2026-09-25 left open; RG17–RG36 were
-**built 2026-09-25**. Nothing of the regression pass of 2026-09-19 is open (RG1, the Node and C hosts hearing ⌘Q, was **built 2026-09-19**; RG2 and RG12, the devtools' menus select and its chord, RG3, RG6, RG7, RG8 and RG11, the table's layout and the round's float-floor regression, RG4, the left dock's deferral, RG5, the freeze loop's sign rule and the round's other regression, RG9 and RG10, the select's disabled row through the door and its unchecked options and `current`, RG13, the reader's click behind a modal, RG15, F69 checked in a window and found inert, RG14, the ten nits and the two devtools defects taken with them, and RG16, the door removed on RG15's finding, **built 2026-09-20**); next is C41 — a profile of `frame_1k_curves` at the drop-zone
+**Build next.** Nothing of the regression pass of 2026-09-25 is open
+(RG17–RG36 **built 2026-09-25** before the alpha.17 tag, RG37 the same
+day after it). Nothing of the regression pass of 2026-09-19 is open (RG1, the Node and C hosts hearing ⌘Q, was **built 2026-09-19**; RG2 and RG12, the devtools' menus select and its chord, RG3, RG6, RG7, RG8 and RG11, the table's layout and the round's float-floor regression, RG4, the left dock's deferral, RG5, the freeze loop's sign rule and the round's other regression, RG9 and RG10, the select's disabled row through the door and its unchecked options and `current`, RG13, the reader's click behind a modal, RG15, F69 checked in a window and found inert, RG14, the ten nits and the two devtools defects taken with them, and RG16, the door removed on RG15's finding, **built 2026-09-20**); next is C41 — a profile of `frame_1k_curves` at the drop-zone
 commit against the one before, the bisect already done; then W19, when
 a Windows or Linux round comes (the macOS half of ADR 0031 is built and
 verified; the fallback elsewhere is honest and positionless). Nothing else filed is open. The rounds since the alpha.14 tag, newest first:
@@ -2198,7 +2188,7 @@ move.
 - `~` **F84** — [A paste cannot say its pasteboard marked it a secret, and a secret cannot be copied marked](backlog/closed-2026-09.md#-f84--a-paste-cannot-say-its-pasteboard-marked-it-a-secret-and-a-secret-cannot-be-copied-marked--done-2026-09-23) — done (2026-09-23) — `InputEvent::Paste` carries `ClipboardMarks`, the sink's `text` event gains `concealed` / `transient`; `set_clipboard_secret` writes them
 - `~` **F85** — [A window at a password prompt cannot ask for secure keyboard entry](backlog/closed-2026-09.md#-f85--a-window-at-a-password-prompt-cannot-ask-for-secure-keyboard-entry--done-2026-09-23) — done (2026-09-23) — `Ui::secure_input(bool)`, frame state; the runner holds one balanced count while an asking window has the keyboard
 
-**From the regression pass of 2026-09-25** — RG17–RG36 built the same day; RG37 open
+**From the regression pass of 2026-09-25** — RG17–RG36 built the same day, before the alpha.17 tag; RG37 the same day, after it
 
 - `!` **RG17** — [A delta mid-glide is measured from the drawn place and added to the target: a reveal overshoots, the wheel jumps forward](backlog/closed-2026-09.md#-rg17--a-delta-mid-glide-is-measured-from-the-drawn-place-and-added-to-the-target-a-reveal-overshoots-the-wheel-jumps-forward--done-2026-09-25) — done (2026-09-25) — `scroll_by_from` rebases a leg in flight onto its drawn place before adding (and ends the leg; a programmatic ask starts a new one there at the next layout)
 - `!` **RG18** — [`virtual_rows`' height correction is a `set_scroll`: eased on a transition container, and a long glide ends a screen along](backlog/closed-2026-09.md#-rg18--virtual_rows-height-correction-is-a-set_scroll-eased-on-a-transition-container-and-a-long-glide-ends-a-screen-along--done-2026-09-25) — done (2026-09-25) — `ScrollStore::shift(key, drawn, target)` (behind `Ui::shift_scroll`, crate-private) moves the drawn place, a leg's start and the target by the content that moved under each, with no ease asked or ended; `virtual_rows` keeps a second anchor for the target, so the row under the target stays the target
@@ -2220,4 +2210,4 @@ move.
 - `!` **RG34** — [The devtools' events tab shows a concealed paste's text](backlog/closed-2026-09.md#-rg34--the-devtools-events-tab-shows-a-concealed-pastes-text--done-2026-09-25) — done (2026-09-25) — The stream keeps a concealed paste's markers and its length (`‹concealed, 7 chars›`), never its text
 - `.` **RG35** — [`arboard = "3"` admits versions without F84's `exclude_from_*`](backlog/closed-2026-09.md#-rg35--arboard--3-admits-versions-without-f84s-exclude_from_--done-2026-09-25) — done (2026-09-25) — `arboard = "3.6"`
 - `.` **RG36** — [The docs the round left: the missing breaks and what-you-can-delete lines, stale docs after F76 and F80, the console claims, README's "Opt in"](backlog/closed-2026-09.md#-rg36--the-docs-the-round-left-the-missing-breaks-and-what-you-can-delete-lines-stale-docs-after-f76-and-f80-the-console-claims-readmes-opt-in--done-2026-09-25) — done (2026-09-25) — Each written
-- `~` **RG37** — [⌘V with a selection in a `cells` or `selectable` scope bypasses a focused key sink](#-rg37--v-with-a-selection-in-a-cells-or-selectable-scope-bypasses-a-focused-key-sink) — open
+- `~` **RG37** — [⌘V with a selection in a `cells` or `selectable` scope bypasses a focused key sink](backlog/closed-2026-09.md#-rg37--v-with-a-selection-in-a-cells-or-selectable-scope-bypasses-a-focused-key-sink--done-2026-09-25) — done (2026-09-25) — half wrong as filed: the sink already heard ⌘V; only a focused editor takes the runner's paste now, through `request_paste`

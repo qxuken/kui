@@ -21,6 +21,31 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.18 (unreleased)
+
+**What breaks.** No door, the ABI at 18 and the frame at v15. ⌘V
+(Ctrl+V) with no editor focused no longer puts the clipboard's text
+into the window as typing when the window holds a selection — a
+`selectable` scope's or a `cells` grid's (under Fixed, RG37); a focused
+list whose type-ahead searched for it no longer does, and a key sink,
+which never heard that text, still hears the chord.
+
+### Fixed
+
+- **⌘V over a selection sent the clipboard nowhere, and gave a stock
+  editor a paste without its markers** (backlog RG37, from the
+  regression pass of 2026-09-25). The runner took ⌘V whenever the
+  window held a selection and answered it by reading the clipboard and
+  sending it as typing: with an editor focused that dropped F84's
+  `concealed` and `transient`, and with none it reached no sink — a
+  focused key sink hears the raw ⌘V first and pastes by its own
+  binding — only a focused list's type-ahead. Now only a focused editor
+  takes the runner's paste, asked through `request_paste`, so the
+  answer is the menu's `Paste` with the pasteboard's markers; with no
+  editor ⌘V is the sink's chord. The fix the backlog first wrote down,
+  a `request_paste` for every ⌘V over a selection, pasted twice into a
+  sink that binds ⌘V — found in a window before it shipped.
+
 ## 0.1.0-alpha.17 (2026-09-25)
 
 **What breaks.** No door, the ABI at 18 and the frame at v15.

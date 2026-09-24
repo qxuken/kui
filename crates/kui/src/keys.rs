@@ -336,8 +336,18 @@ impl<A: App> Shell<A> {
                 }
             }
             'v' => {
-                if let Some(text) = self.clipboard.as_mut().and_then(|cb| cb.get_text().ok()) {
-                    self.dispatch(event_loop, i, InputEvent::Text(text));
+                // Only a focused editor takes the runner's paste: with none,
+                // the window's selection scope holds nothing to paste into,
+                // and a key sink has already heard the raw ⌘V and pastes by
+                // its own binding (`request_paste`) — pasting for it too
+                // pasted twice. Asked rather than read, so the answer is
+                // the `Paste` a menu's Paste row gets, with the
+                // pasteboard's markers (backlog F84); a bare `Text` here
+                // dropped them, and with no editor it went nowhere, or into
+                // a focused list's type-ahead (RG37).
+                if pane.core.edit.focused().is_some() {
+                    pane.core.request_paste();
+                    self.apply_menu_actions(event_loop, i);
                 }
             }
             // Select All inside a selection scope stays in that scope;
