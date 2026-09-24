@@ -265,9 +265,14 @@ function virtual_column(env, opts, row)
   -- frame: a screenful of the viewport is a safe over-build for one.
   local g = env.scroll_geometry(key)
   local vh = g and g.h or env.viewport_h
-  -- Layout puts the flow's origin at pad_t - offset, so the band starts
-  -- there; only the top padding shifts it.
-  local pad_t = opts.pad_t or opts.pad_y or opts.pad or 0
+  -- Layout puts the flow's origin at the top padding - offset, so the
+  -- band starts there; only the top padding shifts it. `pad` is a number
+  -- or a table of edges; a `"$token"` is not resolved here and counts as
+  -- none, which `overscan` covers.
+  local pad = opts.pad
+  local pad_t = 0
+  if type(pad) == "table" then pad = pad.t or pad.y or pad.all end
+  if type(pad) == "number" then pad_t = pad end
   local top = (g and g.offset.y or 0) - pad_t
   -- Both ends are clamped to the list, `first` included: the geometry is the
   -- previous frame's, so a list that shrank under its own scroll offset
