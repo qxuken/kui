@@ -1374,10 +1374,14 @@ Older than this round; F84 only made the loss of the markers visible.
 **Fix line.** With no stock editor focused, ⌘V is `request_paste`,
 whose answer is the `Paste` that routes to the sink with its marks.
 
-## After alpha.15
+## After alpha.16
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
-alpha.14" until 2026-09-20, when the ten rounds between the alpha.15 and
+alpha.15" until 2026-09-25, when the rounds between the alpha.16 and
+alpha.17 tags — the Windows device-loss round, the kawoosh reports of
+2026-09-21 to 23 (F76–F85, ten entries) and the regression pass over
+them (RG17–RG36 built, RG37 left open) — had landed and the heading
+moved with the tag; "After alpha.14" until 2026-09-20, when the ten rounds between the alpha.15 and
 alpha.16 tags — the kawoosh reports of 2026-09-16 and 17 (F67–F75, nine
 entries) and the regression pass over them (RG1–RG16, sixteen), every
 one built the day after it was filed at the latest — had landed and the

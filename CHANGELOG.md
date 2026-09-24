@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.17 (unreleased)
+## 0.1.0-alpha.17 (2026-09-25)
 
 **What breaks.** No door, the ABI at 18 and the frame at v15.
 A focused `on_key` sink hears the keyboard while it is drawn outside
@@ -331,6 +331,67 @@ RG28): Node's `keyDown("Ж", {shift: true}, ";")` types `Ж`, which was
   host's own crash reporter is still called (RG31).
   *What you can delete:* a watchdog that restarted the app when a
   driver update left its window frozen.
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), run on `main` on
+2026-09-25 — the Windows device-loss round, F76–F85 and the regression
+pass over them (RG17–RG36, built the day they were filed; RG37 left
+open), 22 commits after the alpha.16 tag. What follows is what executed
+on what.
+
+**macOS 27.0 (26A428, arm64, Apple M3 Pro), Xcode 27.0, rustc 1.98.0,
+Node 26.8.1.** `cargo fmt --all --check` and `cargo clippy --workspace
+--all-targets -- -D warnings` are clean. `cargo test --workspace`:
+**1319 tests over 97 suites, 0 failed** (1 ignored, the devtools'
+`drive.rs` doc example), from alpha.16's 1283 — the pass's own
+regressions tests among them, each checked to fail on the code before
+its fix. The scene corpus runs in all four adapters against one
+reference report: **41 scenes** (`paste` new), Rust and Lua through
+`cargo test`, C through `target/debug/conformance` (the header at
+**374 fields, 260 enum members and 237 prototypes**, the ABI still
+**18**), Node through `npm test` (**179 Node tests, 179 passed, 0
+skipped**, the frame still at **version 15**). The C round, `cbuild
+--run`, passes its five checks and the conformance replay. `npm run
+gen` leaves a zero-line diff; `npm run typecheck` on `examples/node` is
+clean and the examples lockfile matches. The headless round, `smoke --
+--headless`, passes all **31 drives**. The Windows half of the pass
+(RG29–RG31) is compiled and clippy-clean for `x86_64-pc-windows-msvc`
+through cargo-xwin and **not run**: a device lost on a real machine,
+and whether a `0xC000041D` reaches the unhandled-exception filter
+rather than a fail-fast, are the hand checks left.
+
+**The windowed round**, `cargo run -p kui-devtools --bin smoke --
+--node`: **36 Rust examples and the ten Node examples, each on both
+bases, 120 frames each, every one exiting 0 with nothing on stderr** —
+92 windows. The C and Lua hosts by hand under `KUI_SMOKE_FRAMES=120`:
+`counter`, `host`, `c_panel` and `lua_panel` each opened a window and
+exited 0, warning-free — **96 windows over five hosts.** The AX audit
+against `accessibility`: **106/106**.
+
+**Driven by hand: F85 in a window.** A Node window whose root declared
+`secureInput`, read through `ioreg`'s `kCGSSessionSecureInputPID`:
+held while the window had the keyboard and asked, gone when a click on
+its toggle stopped the ask and back when it asked again, gone on ⌘-Tab
+to another app, and gone after ⌘Q. Two facts of the OS worth knowing:
+while secure input is on, another app cannot take activation
+programmatically (`open -a`, AppleScript's `activate` leave the window
+frontmost; a click or ⌘-Tab does), and the pid the session reports can
+name the app that was frontmost when the count was taken rather than
+the one that took it.
+
+**The bench guard**, run alone against the alpha.16 tag once another
+session's build had finished (the first run, beside it, read a worst
+guarded spread of 138% and was discarded): worst guarded spread 4.9%,
+every guarded row within its tolerance — `deep_nesting_64_levels`
++0.3%, `frame_10k_rects` −0.6%, `frame_10k_rects_with_access_tree`
++0.6%, `frame_10k_rects_with_text_and_hits` −1.3%, `frame_10k_segments`
++6.4% (±4.9%), `frame_1k_typical` −2.5%, `list_10k_rows_virtual` +0.4%
+— and every unguarded row "same"; `frame_1k_curves` reads 273 → 271 µs,
+so **C41** is carried as it was. The README's table is refreshed from
+this run except five rows whose two runs disagreed by more than 5%,
+which keep alpha.16's numbers; its `long_line`, `stream` and `cells`
+rows are not re-run.
 
 ## 0.1.0-alpha.16 (2026-09-20)
 

@@ -452,7 +452,7 @@ virtual list slices by, so a long list glides without drawing the wrong
 rows.
 
 [`transition` row](props.md#container-props) ·
-[alpha.17](../CHANGELOG.md#010-alpha17-unreleased)
+[alpha.17](../CHANGELOG.md#010-alpha17-2026-09-25)
 
 ### Does a pane off the edge of a scroller still hear its keys?
 
@@ -468,7 +468,7 @@ delivery read the pointer's hit list, so those keys fell silently on the
 floor.
 
 [ADR 0011 decision 9](adr/0011-keys-bubble-to-the-enclosing-sink.md) ·
-[alpha.17](../CHANGELOG.md#010-alpha17-unreleased)
+[alpha.17](../CHANGELOG.md#010-alpha17-2026-09-25)
 
 ### How do I get an IME into an editor I own?
 
@@ -582,7 +582,7 @@ managers neither show nor keep it. Headless, it comes out of
 answers a paste with `paste(text, {concealed, transient})`.
 
 [`text` events](props.md#events) ·
-[alpha.17](../CHANGELOG.md#010-alpha17-unreleased)
+[alpha.17](../CHANGELOG.md#010-alpha17-2026-09-25)
 
 ### How do I protect a password as it is typed?
 
@@ -601,7 +601,7 @@ test asserts on, and what a C host driving its own window reads to
 make the call itself.
 
 [`secureInput`](props.md#composite-props-hand-written-per-binding) ·
-[alpha.17](../CHANGELOG.md#010-alpha17-unreleased)
+[alpha.17](../CHANGELOG.md#010-alpha17-2026-09-25)
 
 ### How do I make the caret I draw blink?
 
@@ -1148,7 +1148,7 @@ and `row`, `text` and the rest are no longer undefined globals. Write
 it again after an upgrade; it is generated, never edited.
 
 [`props.md`](props.md) ·
-[alpha.17](../CHANGELOG.md#010-alpha17-unreleased)
+[alpha.17](../CHANGELOG.md#010-alpha17-2026-09-25)
 
 ### How do I stop the console window on Windows?
 
@@ -1185,7 +1185,7 @@ From the Explorer there is no parent console and nothing is shown;
 `cargo run`, the smoke round and `> log.txt` hand the process its output
 and it keeps what it was given.
 
-[alpha.17 `### Added`](../CHANGELOG.md#010-alpha17-unreleased)
+[alpha.17 `### Added`](../CHANGELOG.md#010-alpha17-2026-09-25)
 
 ### How do I pin the version I tested?
 
