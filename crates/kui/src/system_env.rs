@@ -9,7 +9,7 @@
 //!
 //! | | macOS | Windows | other |
 //! |---|---|---|---|
-//! | accent | `NSColor.controlAccentColor` | `DwmGetColorizationColor` | — |
+//! | accent | `NSColor.controlAccentColor` | DWM's `AccentColor` | — |
 //! | motion | `NSWorkspace.accessibilityDisplayShouldReduceMotion` | `SPI_GETCLIENTAREAANIMATION` | — |
 //! | locale | `NSLocale.preferredLanguages` | `GetUserDefaultLocaleName` | `LANG` |
 //!
@@ -93,10 +93,40 @@ fn locale() -> Option<Locale> {
 #[cfg(target_os = "windows")]
 fn accent() -> Option<Color> {
     use windows_sys::Win32::Graphics::Dwm::DwmGetColorizationColor;
-    // The colorization colour DWM composites the titlebars with, which is
-    // what a Win32 app has without reaching into WinRT's `UISettings`. It
-    // is 0xAARRGGBB and the alpha is the glass blend, not the colour's, so
-    // the accent is taken opaque.
+    use windows_sys::Win32::System::Registry::{
+        HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW,
+    };
+    // The accent the user picked in Settings > Personalization > Colors:
+    // DWM keeps it as `AccentColor`, 0xAABBGGRR, the same colour WinRT's
+    // `UISettings` answers `Accent` with. Not `DwmGetColorizationColor`
+    // first, because that is the colour DWM tints title bars with, which
+    // Windows 11 darkens and blends on its own terms — `#0C2231` for a
+    // `#2C79AD` accent — so a selection washed in it came out darker than
+    // the page it was meant to lift.
+    let wide = |s: &str| s.encode_utf16().chain([0]).collect::<Vec<u16>>();
+    let (key, value) = (wide(r"Software\Microsoft\Windows\DWM"), wide("AccentColor"));
+    let (mut abgr, mut size) = (0u32, 4u32);
+    let read = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            key.as_ptr(),
+            value.as_ptr(),
+            RRF_RT_REG_DWORD,
+            std::ptr::null_mut(),
+            (&raw mut abgr).cast(),
+            &raw mut size,
+        )
+    };
+    if read == 0 {
+        return Some(Color::rgb8(
+            abgr as u8,
+            (abgr >> 8) as u8,
+            (abgr >> 16) as u8,
+        ));
+    }
+    // No `AccentColor` (a profile that never set one): the colorization
+    // colour is the next best thing. It is 0xAARRGGBB and the alpha is the
+    // glass blend, not the colour's, so it is taken opaque.
     let (mut argb, mut opaque) = (0u32, 0);
     if unsafe { DwmGetColorizationColor(&raw mut argb, &raw mut opaque) } < 0 {
         return None;
