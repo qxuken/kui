@@ -93,9 +93,7 @@ fn locale() -> Option<Locale> {
 #[cfg(target_os = "windows")]
 fn accent() -> Option<Color> {
     use windows_sys::Win32::Graphics::Dwm::DwmGetColorizationColor;
-    use windows_sys::Win32::System::Registry::{
-        HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW,
-    };
+    use windows_sys::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
     // The accent the user picked in Settings > Personalization > Colors:
     // DWM keeps it as `AccentColor`, 0xAABBGGRR, the same colour WinRT's
     // `UISettings` answers `Accent` with. Not `DwmGetColorizationColor`
