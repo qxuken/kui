@@ -612,6 +612,37 @@ test('a keymap written in Latin survives the layout under it', () => {
   );
 });
 
+// RG27 + RG28: the two things F76's Shift-aware stand-in must leave alone.
+// What the press types is the layout's own key — the stand-in is for the
+// keymap, and an editor handed it typed `:` for Russian ⇧Ж — and under
+// Alt the stand-in is the unshifted position, the `j` the winit runner
+// reads for ⌥⇧J with every modifier stripped, where a door passing the
+// composed `Ô` got `J`.
+test('the stand-in is for the keymap: text is the layout key, and Alt keeps it unshifted', () => {
+  const build = () => box({ onKey: null, keyFocus: true, width: 100, height: 50 }, [], 'a');
+  const { ctx } = run(build);
+  ctx.keyDown('Ж', { shift: true }, false, ';');
+  ctx.keyDown('Ô', { alt: true, shift: true }, false, 'j');
+  ctx.keyDown('О', { alt: true }, false, 'j');
+  assert.deepEqual(
+    ctx.pollEvents().map((e) => [e.payload.code, e.payload.physical, e.payload.text]),
+    [
+      [':', ';', 'Ж'],
+      ['j', 'j', null],
+      ['j', 'j', null],
+    ],
+  );
+
+  const edit = new Ctx();
+  const view = () => box({ pad: 8, width: 200 }, [el('input', { label: 'field', initial: '' })]);
+  edit.frame(300, 200, 1, view());
+  edit.focus('field');
+  edit.frame(300, 200, 1, view());
+  edit.press('Ж', { shift: true }, false, ';');
+  edit.frame(300, 200, 1, view());
+  assert.equal(edit.editText('field'), 'Ж', 'the editor gets what the layout typed');
+});
+
 test('focus moving releases the keys the old sink held', () => {
   const build = () => box({ onKey: { pane: 0 }, keyUp: true, keyFocus: true, width: 100, height: 50 }, [], 'a');
   const { ctx } = run(build);

@@ -181,17 +181,13 @@ fn key_press_of(
             kui_core::KeyPress::from_layout(layout, phys, mods)
         }
     };
-    let code = press.code;
     // A NULL `text` means "whatever this key inserts": the plain
-    // character keys insert themselves, a chord inserts nothing.
+    // character keys insert themselves, a chord inserts nothing. Asked of
+    // the key the layout named, not the US stand-in in `code`: shift on
+    // the key printed `;` on a Russian layout types `Ж`, not `:` (RG28).
     let text = match text.ptr.is_null() {
         false => Some(kstr(text).into_owned()),
-        true if mods.ctrl || mods.alt || mods.super_key => None,
-        true => match code {
-            kui_core::KeyCode::Char(c) => Some(c.to_string()),
-            kui_core::KeyCode::Space => Some(" ".to_string()),
-            _ => None,
-        },
+        true => layout.typed(mods),
     };
     Some(kui_core::KeyPress { text, ..press })
 }
@@ -209,8 +205,9 @@ fn key_press_of(
 /// Passing both is what makes a keymap portable: a layout that produces
 /// something outside ASCII (Cyrillic, Greek, Hebrew, Arabic) would leave a
 /// Latin keymap matching nothing, so kui reports the position's US key
-/// as `code` instead, as Shift prints it — exactly as the winit runner
-/// does. A host that passes NULL keeps the old behaviour.
+/// as `code` instead, as Shift prints it (unshifted under Alt) — exactly
+/// as the winit runner does. A NULL `text` is still the layout's own
+/// character. A host that passes NULL keeps the old behaviour.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_input_key_down(
     ptr: *mut KuiCtx,

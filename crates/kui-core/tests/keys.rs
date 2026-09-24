@@ -788,6 +788,69 @@ fn shift_under_the_fallback_is_the_us_shifted_symbol() {
     assert_eq!(kp.code, KeyCode::Char('J'));
 }
 
+/// Under Alt the stand-in is the unshifted position, whatever the layout
+/// composed: macOS US ⌥⇧J is `Ô`, which is not ASCII, and a door passing
+/// it got `J` where the winit runner — reading the key with every
+/// modifier stripped — got `j` (RG27). The rule is here, so every door
+/// agrees, and `mods` still says Shift was held.
+#[test]
+fn alt_keeps_the_stand_in_unshifted() {
+    let alt_shift = KeyMods {
+        alt: true,
+        shift: true,
+        ..KeyMods::default()
+    };
+    for (layout, physical) in [
+        (KeyCode::Char('Ô'), 'j'),
+        (KeyCode::Char('О'), 'j'),
+        (KeyCode::Char('Ж'), ';'),
+        (KeyCode::Unknown, '/'),
+    ] {
+        let kp = KeyPress::from_layout(layout, KeyCode::Char(physical), alt_shift);
+        assert_eq!(kp.code, KeyCode::Char(physical), "⌥⇧ over {layout:?}");
+        assert_eq!(kp.mods, alt_shift, "the chord keeps its Shift");
+    }
+    // Ctrl and Super do not compose, so Shift still shifts under them.
+    let cmd_shift = KeyMods {
+        super_key: true,
+        shift: true,
+        ..KeyMods::default()
+    };
+    let kp = KeyPress::from_layout(KeyCode::Char('О'), KeyCode::Char('j'), cmd_shift);
+    assert_eq!(kp.code, KeyCode::Char('J'));
+}
+
+/// What a door types for a host that did not say is the layout's key,
+/// never the stand-in: ⇧ on Russian's `Ж` key binds as `:` and types `Ж`
+/// (RG28). Nothing under a chord, a space for Space, nothing for a named
+/// key or one the layout could not name.
+#[test]
+fn a_key_types_what_the_layout_named() {
+    let shift = KeyMods {
+        shift: true,
+        ..KeyMods::default()
+    };
+    let kp = KeyPress::from_layout(KeyCode::Char('Ж'), KeyCode::Char(';'), shift);
+    assert_eq!(kp.code, KeyCode::Char(':'));
+    assert_eq!(KeyCode::Char('Ж').typed(shift).as_deref(), Some("Ж"));
+    assert_eq!(KeyCode::Space.typed(shift).as_deref(), Some(" "));
+    assert_eq!(KeyCode::Enter.typed(KeyMods::default()), None);
+    assert_eq!(KeyCode::Unknown.typed(KeyMods::default()), None);
+    for chord in [
+        KeyMods {
+            ctrl: true,
+            ..shift
+        },
+        KeyMods { alt: true, ..shift },
+        KeyMods {
+            super_key: true,
+            ..shift
+        },
+    ] {
+        assert_eq!(KeyCode::Char('Ж').typed(chord), None, "{chord:?}");
+    }
+}
+
 /// The other half: a Latin layout keeps its own key, so a chord lands on the
 /// key the user can *see* rather than wherever QWERTY would have put it.
 #[test]

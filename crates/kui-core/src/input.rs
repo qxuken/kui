@@ -375,11 +375,13 @@ pub enum KeyCode {
     /// keymaps bind against.
     ///
     /// A layout that produces something outside ASCII does not reach here:
-    /// the driver substitutes the US-QWERTY letter at that position, so a
-    /// keymap written in Latin keeps working on a Cyrillic, Greek, Hebrew
-    /// or Arabic layout instead of matching nothing at all. See
-    /// [`KeyPress::physical`], and `docs/adr/0002` decision 11 for why the
-    /// layout still wins whenever it speaks ASCII.
+    /// the driver substitutes the US-QWERTY key at that position, as Shift
+    /// prints it (`J`, `:`; unshifted under Alt), so a keymap written in
+    /// Latin keeps working on a Cyrillic, Greek, Hebrew or Arabic layout
+    /// instead of matching nothing at all. `text` is still the layout's
+    /// own character. See [`KeyPress::from_layout`], [`KeyPress::physical`],
+    /// and `docs/adr/0002` decision 11 for why the layout still wins
+    /// whenever it speaks ASCII.
     Char(char),
     /// Function key: `F(1)` .. `F(24)`.
     F(u8),
@@ -465,6 +467,26 @@ impl KeyCode {
             "unknown" => KeyCode::Unknown,
             _ => return None,
         })
+    }
+
+    /// What a press of this key types, for a door whose host did not say:
+    /// the character itself, a space for Space, nothing for any other
+    /// named key or under Ctrl, Alt or Super — the rule the winit runner
+    /// reads off the layout's own key.
+    ///
+    /// Asked of the key *as the layout named it*, never of the code
+    /// [`KeyPress::from_layout`] resolved: on a Russian layout ⇧ on the
+    /// key printed `;` binds as `:` and types `Ж`, and asking the stand-in
+    /// typed the `:` into an editor (backlog RG28).
+    pub fn typed(self, mods: KeyMods) -> Option<String> {
+        if mods.ctrl || mods.alt || mods.super_key {
+            return None;
+        }
+        match self {
+            KeyCode::Char(c) => Some(c.to_string()),
+            KeyCode::Space => Some(" ".to_string()),
+            _ => None,
+        }
     }
 }
 
@@ -659,10 +681,23 @@ impl KeyPress {
     /// `J`, not `j`, and ⇧ on the key printed `;` is `:` — the key a vim
     /// hand on a Russian layout reaches for, and gets `;` from otherwise.
     ///
+    /// Except under Alt, where the stand-in is the unshifted position.
+    /// What a layout puts on an ⌥ key is a composed character (macOS US
+    /// ⌥⇧J is `Ô`), so a driver resolving a chord reads the key with
+    /// every modifier stripped — the winit runner's `j` for ⌥⇧J, on a
+    /// US layout and a Russian one alike — and a host that passes the
+    /// composed character lands here instead. Folding Shift here too is
+    /// what makes the two agree; `mods` still says Shift was held.
+    ///
+    /// Caps Lock is not modelled: [`KeyMods`] has no bit for it, so the
+    /// stand-in follows Shift alone and a Caps-Locked non-Latin key stands
+    /// in as the lower-case letter, where US-QWERTY would print the
+    /// upper-case one.
+    ///
     /// `physical` is reported either way, for a keymap that would rather
     /// bind the finger than the label. See `docs/adr/0002` decision 11.
     pub fn from_layout(layout: KeyCode, physical: KeyCode, mods: KeyMods) -> Self {
-        let stand_in = || match (mods.shift, physical) {
+        let stand_in = || match (mods.shift && !mods.alt, physical) {
             (true, KeyCode::Char(c)) => KeyCode::Char(us_shifted(c)),
             _ => physical,
         };

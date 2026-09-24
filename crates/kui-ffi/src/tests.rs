@@ -1201,6 +1201,100 @@ mod queries_headless {
         kui_ctx_free(ctx);
     }
 
+    /// The US stand-in F76 made Shift-aware is for the keymap alone: a
+    /// NULL `text` is what the layout's key types (Russian shift-Ж types
+    /// `Ж`, where it typed the stand-in's `:`; RG28), and under Alt the
+    /// stand-in is the unshifted position — the `j` the winit runner
+    /// reads for alt-shift-J with every modifier stripped, where a host
+    /// passing the composed `Ô` got `J` (RG27).
+    #[test]
+    fn the_stand_in_is_for_the_keymap_and_alt_keeps_it_unshifted() {
+        let ctx = kui_ctx_new();
+        let mut spec = unsafe { std::mem::zeroed::<KuiSpec>() };
+        spec.width = KuiSizing {
+            tag: 2,
+            value: 100.0,
+        };
+        spec.height = KuiSizing {
+            tag: 2,
+            value: 50.0,
+        };
+        kui_frame_begin(ctx, 200.0, 100.0, 1.0);
+        let sink = kui_open_with(
+            ctx,
+            ks("sink"),
+            &spec,
+            NONE,
+            NONE,
+            kui_value_str(ks("keys")),
+            NONE,
+        );
+        kui_close(ctx);
+        kui_set_key_focus(ctx, sink);
+        kui_frame_finish(ctx);
+
+        let null = KuiStr {
+            ptr: std::ptr::null(),
+            len: 0,
+        };
+        kui_input_key_down(ctx, ks("Ж"), ks(";"), KUI_KMOD_SHIFT, null, false);
+        kui_input_key_down(
+            ctx,
+            ks("Ô"),
+            ks("j"),
+            KUI_KMOD_ALT | KUI_KMOD_SHIFT,
+            null,
+            false,
+        );
+        let mut ev = KuiEvent::default();
+        let mut seen = Vec::new();
+        while kui_poll_event(ctx, &mut ev) {
+            let get = |k: &str| {
+                let v = kui_value_get(ev.payload, ks(k));
+                let mut out = KuiStr {
+                    ptr: std::ptr::null(),
+                    len: 0,
+                };
+                kui_value_as_str(v, &mut out).then(|| kstr(out).into_owned())
+            };
+            seen.push((
+                get("code").unwrap_or_default(),
+                get("physical").unwrap_or_default(),
+                get("text"),
+            ));
+        }
+        assert_eq!(
+            seen,
+            [
+                (":".into(), ";".into(), Some("Ж".into())),
+                ("j".into(), "j".into(), None),
+            ]
+        );
+        kui_ctx_free(ctx);
+
+        // The whole press into a focused editor types the layout's key.
+        let ctx = kui_ctx_new();
+        let spec = unsafe { std::mem::zeroed::<KuiSpec>() };
+        kui_frame_begin(ctx, 400.0, 200.0, 1.0);
+        let key = kui_text_edit(
+            ctx,
+            ks("doc"),
+            ks(""),
+            std::ptr::null(),
+            2, // KUI_EDIT_AUTOFOCUS
+            &spec,
+        );
+        kui_frame_finish(ctx);
+        kui_input_press(ctx, ks("Ж"), ks(";"), KUI_KMOD_SHIFT, null, false);
+        let mut text = KuiStr {
+            ptr: std::ptr::null(),
+            len: 0,
+        };
+        assert!(kui_edit_text(ctx, key, &mut text));
+        assert_eq!(kstr(text).as_ref(), "Ж");
+        kui_ctx_free(ctx);
+    }
+
     /// An editor's runs cross as rows with borrowed arrays, and a text
     /// request addresses them: select "world" by run positions, type
     /// over it, read the text back.

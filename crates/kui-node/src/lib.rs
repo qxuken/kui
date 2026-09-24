@@ -762,7 +762,9 @@ impl Ctx {
     /// (backlog F65). Passing both is how a driver reports a non-US
     /// layout, and it is what makes the reported `code` portable: a
     /// layout producing something outside ASCII would leave a Latin
-    /// keymap matching nothing, so the position's US letter stands in.
+    /// keymap matching nothing, so the position's US key stands in, as
+    /// Shift prints it (`"J"`, `":"`; unshifted under Alt). What the press
+    /// types is still `code` as passed — the layout's own character.
     #[napi(ts_args_type = "code: string, mods?: KeySinkMods, repeat?: boolean, physical?: string")]
     pub fn key_down(
         &mut self,
@@ -882,16 +884,13 @@ impl Ctx {
             None => KeyPress::new(layout, kmods),
             Some(p) => KeyPress::from_layout(layout, keycode_of(p)?, kmods),
         };
-        let text = if !kmods.ctrl && !kmods.alt && !kmods.super_key {
-            match press.code {
-                KeyCode::Char(c) => Some(c.to_string()),
-                KeyCode::Space => Some(" ".to_string()),
-                _ => None,
-            }
-        } else {
-            None
-        };
-        Ok(KeyPress { text, ..press })
+        // What the press types is the layout's key, not the US stand-in
+        // in `code`: ⇧ on the key printed `;` on a Russian layout types
+        // `Ж`, not `:` (RG28).
+        Ok(KeyPress {
+            text: layout.typed(kmods),
+            ..press
+        })
     }
 
     /// Physical modifier state changed: `{shift, ctrl, alt, super}`. The

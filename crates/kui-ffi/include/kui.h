@@ -1629,8 +1629,9 @@ void kui_input_key(KuiCtx *ctx, uint32_t key, uint32_t mods); /* KUI_KEY_* + KUI
  * Passing both is what makes a keymap portable. A layout that produces
  * something outside ASCII (Cyrillic, Greek, Hebrew, Arabic) would leave a
  * Latin keymap matching nothing at all, so kui reports the position's US
- * key as `code` instead, as Shift prints it ("J", ":"); `physical` is there
- * either way for a keymap that
+ * key as `code` instead, as Shift prints it ("J", ":"; unshifted under
+ * Alt), while a {NULL, 0} `text` is still the `code` passed, the layout's
+ * own character; `physical` is there either way for a keymap that
  * would rather bind the finger than the label (WASD). A host passing
  * {NULL, 0} gets the default above. */
 void kui_input_key_down(KuiCtx *ctx, KuiStr code, KuiStr physical,
