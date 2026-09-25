@@ -25,16 +25,16 @@
 //! the row the window starts in is put back where it was after each frame
 //! learns something, so the content never slides. `--variable` runs that.
 //!
-//! Run: cargo run -p kui --example virtual_list
-//!      cargo run -p kui --example virtual_list -- --by-hand
-//!      cargo run -p kui --example virtual_list -- --variable
-//!      cargo run -p kui --example virtual_list -- --headless [--variable]
+//! Run: cargo run -p kui-native --example virtual_list
+//!      cargo run -p kui-native --example virtual_list -- --by-hand
+//!      cargo run -p kui-native --example virtual_list -- --variable
+//!      cargo run -p kui-native --example virtual_list -- --headless [--variable]
 
-use kui::{
+use kui_devtools::{Drive, Example};
+use kui_native::{
     Align, App, Color, Core, Key, NodeSpec, Role, Sizing, TextStyle, TextWrap, Theme, Ui, UiEvent,
     Value, widgets,
 };
-use kui_devtools::{Drive, Example};
 
 const ROWS: usize = 10_000;
 const ROW_H: f32 = 28.0;

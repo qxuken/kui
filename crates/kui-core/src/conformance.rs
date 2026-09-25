@@ -112,7 +112,7 @@ pub const CUSTOM_CHROME: WindowEnv = WindowEnv {
 /// macOS traffic lights, at the rect the runner reported before it
 /// measured (78x28 logical px at the window origin — gpui's measured
 /// `TRAFFIC_LIGHT_PADDING` under the macOS 26 SDK over the 28 px titlebar
-/// macOS 26 drew; macOS 27 measures 78x32, and `kui::macos_chrome` now
+/// macOS 26 drew; macOS 27 measures 78x32, and `kui_native::macos_chrome` now
 /// asks the window). The corpus keeps the older pair as its fixture: the
 /// same tree that builds two button clusters under [`CUSTOM_CHROME`]
 /// builds none under this one, its titlebar starts at 78 instead of the

@@ -203,7 +203,7 @@ around its content, which is what both reports already wrote.
 - **Bubble out of a focused editor too.** Deferred, deliberately. An
   editor claims the whole printable keyboard plus the editing keys, so
   what is left is chords — and the clipboard chords are handled *above*
-  the core, in the runner (`crates/kui/src/lib.rs`), which the core cannot
+  the core, in the runner (`crates/kui-native/src/lib.rs`), which the core cannot
   see, so ⌘C in a text field would reach the shell and copy. Neither
   report asked for it: the mind map wants typing while typing. What would
   change it is an app that wants ⌘K from inside its search box, and the

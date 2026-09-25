@@ -9,10 +9,10 @@
 //! Nothing here is selectable: that is `features/selection`, which puts
 //! a scope over exactly this kind of text.
 //!
-//! Run: cargo run -p kui --example text
+//! Run: cargo run -p kui-native --example text
 
-use kui::{Align, App, FontFamily, NodeSpec, Sizing, Span, TextStyle, Theme, Ui};
 use kui_devtools::Example;
+use kui_native::{Align, App, FontFamily, NodeSpec, Sizing, Span, TextStyle, Theme, Ui};
 
 struct Text;
 

@@ -23,7 +23,7 @@ cargo metadata --no-deps --offline --format-version 1 \
         // still checked: kui-lua names two, both with versions.
         if (d.name === p.name) continue;
         // A dev-dependency that names a path and no version is dropped
-        // from the manifest cargo publishes - `cargo package -p kui` ships
+        // from the manifest cargo publishes - `cargo package -p kui-native` ships
         // an empty [dev-dependencies] - so it can never be asked for at
         // the registry and has no version to agree with. That is
         // kui-devtools, the harness the examples run in (publish = false), which

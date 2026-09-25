@@ -10,10 +10,10 @@
 //! column with a `main_align: end` row around the text, as it would
 //! anywhere.
 //!
-//! Run: cargo run -p kui --example table [-- --headless]
+//! Run: cargo run -p kui-native --example table [-- --headless]
 
-use kui::{Align, App, Core, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
 use kui_devtools::{Drive, Example};
+use kui_native::{Align, App, Core, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
 
 /// Name, size in bytes, kind.
 const FILES: [(&str, u64, &str); 6] = [
@@ -207,7 +207,7 @@ impl Example for Table {
         core.set_inspect(true);
         let mut d = Drive::new(core, 560.0, 320.0);
         d.frame(self);
-        let cells = |d: &Drive<'_>, label: &str| -> Vec<kui::Rect> {
+        let cells = |d: &Drive<'_>, label: &str| -> Vec<kui_native::Rect> {
             d.core
                 .nodes()
                 .iter()

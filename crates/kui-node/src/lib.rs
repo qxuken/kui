@@ -1537,7 +1537,7 @@ pub fn clip_stride() -> u32 {
 // ---------------------------------------------------------------------------
 // Windowed runner (winit + wgpu via kui's PumpRunner)
 
-/// The `kui::App` behind a Node window. JS never gets called from inside
+/// The `kui_native::App` behind a Node window. JS never gets called from inside
 /// winit: it stores the next view tree per window between pumps
 /// (`set_view`), and this lowers the stored tree whenever the runner
 /// redraws that window. Events collect here and JS drains them after each
@@ -1570,7 +1570,7 @@ struct TreeApp {
     teardown_error: Option<napi::Error>,
 }
 
-impl kui::App for TreeApp {
+impl kui_native::App for TreeApp {
     /// The window going for good, to JS (backlog RG1): once, synchronously,
     /// inside the pump it happened in — the close button's, a `close()`'s,
     /// or the one an OS Quit ends the process inside of, where nothing
@@ -1588,7 +1588,7 @@ impl kui::App for TreeApp {
         }
     }
 
-    fn view(&mut self, ui: &mut kui::Ui<'_>) {
+    fn view(&mut self, ui: &mut kui_native::Ui<'_>) {
         let name = ui.window_name();
         let Some((stream, strings)) = self.trees.get(&*name) else {
             return;
@@ -1626,7 +1626,7 @@ enum WindowRef {
 /// them, and `setView` takes the name of the one a tree is for.
 #[napi]
 pub struct KuiWindow {
-    runner: kui::PumpRunner<TreeApp>,
+    runner: kui_native::PumpRunner<TreeApp>,
     /// The window every per-window door addresses (`useWindow`): the
     /// main window until `runWindowed` aims the surface at the window
     /// whose view or event it is handing to the app (backlog AR12).
@@ -1651,7 +1651,7 @@ impl KuiWindow {
         // the pump and submits the next view. So an input leaves its frame
         // to that answer, and a click paints once — the button let go and
         // the count moved in one frame, not two.
-        let mut launcher = kui::app(&title).deferred_events();
+        let mut launcher = kui_native::app(&title).deferred_events();
         // A size is both halves or neither: a lone `width` used to be
         // dropped silently, against the encoder's own "refuse, don't drop"
         // (backlog AR40). The min/max pairs below are different — either
@@ -1724,9 +1724,11 @@ impl KuiWindow {
         // in the environment still wins, for an A/B by hand.
         launcher = match o.get("textAa") {
             None | Some(Json::Null) => launcher,
-            Some(Json::String(s)) if s == "auto" => launcher.text_aa(kui::TextAa::Auto),
-            Some(Json::String(s)) if s == "gray" => launcher.text_aa(kui::TextAa::Grayscale),
-            Some(Json::String(s)) if s == "subpixel" => launcher.text_aa(kui::TextAa::Subpixel),
+            Some(Json::String(s)) if s == "auto" => launcher.text_aa(kui_native::TextAa::Auto),
+            Some(Json::String(s)) if s == "gray" => launcher.text_aa(kui_native::TextAa::Grayscale),
+            Some(Json::String(s)) if s == "subpixel" => {
+                launcher.text_aa(kui_native::TextAa::Subpixel)
+            }
             Some(other) => {
                 return Err(err(format!(
                     "window options: textAa must be \"auto\", \"gray\" or \"subpixel\", not {other}"

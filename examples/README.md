@@ -99,7 +99,7 @@ script reads rather than a list somebody keeps:
 
 | Channel | Enrolled by | Run by |
 |---|---|---|
-| **windowed** | being an `[[example]]` of `kui` | `cargo run -p kui-devtools --bin smoke` ([`devtools/src/bin/smoke.rs`](devtools/src/bin/smoke.rs)), on every platform: 120 frames under `KUI_SMOKE_FRAMES`, on both bases; `--node` adds the Node windows |
+| **windowed** | being an `[[example]]` of `kui-native` | `cargo run -p kui-devtools --bin smoke` ([`devtools/src/bin/smoke.rs`](devtools/src/bin/smoke.rs)), on every platform: 120 frames under `KUI_SMOKE_FRAMES`, on both bases; `--node` adds the Node windows |
 | **headless** | `[package.metadata.kui] headless = [...]` in the crate's `Cargo.toml`; `npm run smoke` for Node; the round in `cbuild` | `cargo run -p kui-devtools --bin smoke -- --headless`, which CI runs |
 | **by hand** | the *By hand* column below | the round before a tag; results into `### Native verification` in the CHANGELOG |
 
@@ -110,7 +110,7 @@ from, so the round and its pins cannot drift.
 
 ## Rust — [`rust/`](rust)
 
-Run with `cargo run -p kui --example <name>`; `-- --headless` where the
+Run with `cargo run -p kui-native --example <name>`; `-- --headless` where the
 table says so.
 
 ### `apps/`
@@ -164,7 +164,7 @@ table says so.
 | [`metrics.rs`](rust/features/metrics.rs) | The palette's other axis (T2): the stock set, `compact` and a scaled set switched by a click, the stock widgets rebuilt from each, and a card of the app's own that reads `ui.metrics()` for its radius and padding | ✓ | |
 | [`align.rs`](rust/features/align.rs) | Where the free space goes and what lines up (C13): a track of chips under the six main-axis alignments the buttons pick, the three spreads among them; a reading in three sizes at the top and on its baseline; and a `grow` card that keeps 16:9 beside squares sized from their height (C14) | ✓ the spreads' ends, the baselines, the ratios | resize the window: the card keeps its shape |
 | [`accessibility.rs`](rust/features/accessibility.rs) | Every accessibility prop in one window, the fixture the platform audit drives; `--dock off` by default | | `scripts/ax-audit.swift` (106 checks) |
-| [`waker.rs`](rust/features/waker.rs) | A thread feeds lines and wakes the parked loop through `kui::Waker`; `KUI_WAKER_LINES=n` closes after n | | `KUI_WAKER_LINES` |
+| [`waker.rs`](rust/features/waker.rs) | A thread feeds lines and wakes the parked loop through `kui_native::Waker`; `KUI_WAKER_LINES=n` closes after n | | `KUI_WAKER_LINES` |
 
 ### `tools/`
 

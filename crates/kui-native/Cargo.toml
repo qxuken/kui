@@ -1,5 +1,5 @@
 [package]
-name = "kui"
+name = "kui-native"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -171,7 +171,7 @@ warnings already are.
   buttons named from content, ~3,750 semantic nodes, the other 6,000+
   rects elided) adds ~0.32 ms, paid only on frames a screen reader is
   attached and the tree changed.
-- The `kui` runner takes `accesskit_winit` as a default dependency (an
+- The `kui-native` runner takes `accesskit_winit` as a default dependency (an
   accessibility feature that is off by default does not get tested). On
   Linux this brings an AT-SPI bus connection at startup; on Windows and
   macOS the adapters are lazy until an AT asks. An `accesskit` cargo

@@ -79,7 +79,7 @@ number somebody chose rather than the largest one that happened to work.
 - **`animating()` has one shape of consumer.** `Core::animating()` is
   `anim || depart || frame_requested`. The winit driver calls it once per
   `about_to_wait` and turns it into `request_redraw`
-  (`crates/kui/src/lib.rs:1894`); `kui_animating` hands the same bool to a C
+  (`crates/kui-native/src/lib.rs:1894`); `kui_animating` hands the same bool to a C
   host; Node re-exports it as `ctx.animating()`. Node's `settle()` loops on
   the event queue, not on this, so no headless driver spins on a ghost. Every
   consumer asks the same yes/no question.

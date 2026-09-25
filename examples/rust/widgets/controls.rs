@@ -9,11 +9,13 @@
 //! tenths — whose `change` events carry the value to store. Every change
 //! is one line in the event log at the bottom.
 //!
-//! Run: cargo run -p kui --example controls [-- --headless]
+//! Run: cargo run -p kui-native --example controls [-- --headless]
 
-use kui::widgets;
-use kui::{Align, App, Core, KeyMods, NodeSpec, Role, Sizing, TextStyle, Ui, UiEvent, Value};
 use kui_devtools::{Drive, Example};
+use kui_native::widgets;
+use kui_native::{
+    Align, App, Core, KeyMods, NodeSpec, Role, Sizing, TextStyle, Ui, UiEvent, Value,
+};
 
 const THEMES: [&str; 3] = ["Light", "Dark", "System"];
 const CHANNELS: [&str; 3] = ["Mail", "Calendar", "Chat"];
@@ -82,7 +84,7 @@ impl App for Controls {
                 );
                 ui.with(
                     NodeSpec::column()
-                        .padding(kui::Edges {
+                        .padding(kui_native::Edges {
                             l: 24.0,
                             r: 0.0,
                             t: 0.0,
@@ -231,7 +233,7 @@ impl Example for Controls {
 
         let vol = node(&mut d, "Volume", Role::Slider)?;
         let r = vol.rect;
-        let b = widgets::control_box(&kui::Metrics::default());
+        let b = widgets::control_box(&kui_native::Metrics::default());
         // Three quarters along the track, which is the node less half the
         // thumb at each end.
         let x = r.x + b / 2.0 + (r.w - b) * 0.73;

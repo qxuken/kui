@@ -25,10 +25,12 @@
 //!     the same `exit` would be 1001 nodes and refused: the budget counts
 //!     what is copied, and virtualisation is what keeps that count small.
 //!
-//! Run: cargo run -p kui --example exit_budget
+//! Run: cargo run -p kui-native --example exit_budget
 
-use kui::{Align, App, Color, Enter, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value, widgets};
 use kui_devtools::Example;
+use kui_native::{
+    Align, App, Color, Enter, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value, widgets,
+};
 
 /// Cells per grid. One grid is under the budget; both together are over it.
 const CELLS_PER_ROW: usize = 20;

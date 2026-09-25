@@ -1498,27 +1498,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "kui"
-version = "0.1.0-alpha.18"
-dependencies = [
- "accesskit",
- "accesskit_winit",
- "arboard",
- "kira",
- "kui-core",
- "kui-devtools",
- "kui-wgpu",
- "objc2 0.6.4",
- "objc2-app-kit 0.3.2",
- "objc2-foundation 0.3.2",
- "objc2-quartz-core 0.3.2",
- "pollster 1.0.1",
- "rfd",
- "windows-sys 0.52.0",
- "winit",
-]
-
-[[package]]
 name = "kui-core"
 version = "0.1.0-alpha.18"
 dependencies = [
@@ -1548,36 +1527,57 @@ name = "kui-devtools"
 version = "0.1.0-alpha.18"
 dependencies = [
  "cc",
- "kui",
+ "kui-native",
 ]
 
 [[package]]
 name = "kui-ffi"
 version = "0.1.0-alpha.18"
 dependencies = [
- "kui",
  "kui-core",
  "kui-devtools",
+ "kui-native",
 ]
 
 [[package]]
 name = "kui-lua"
 version = "0.1.0-alpha.18"
 dependencies = [
- "kui",
  "kui-core",
  "kui-devtools",
  "kui-ffi",
+ "kui-native",
  "mlua",
+]
+
+[[package]]
+name = "kui-native"
+version = "0.1.0-alpha.18"
+dependencies = [
+ "accesskit",
+ "accesskit_winit",
+ "arboard",
+ "kira",
+ "kui-core",
+ "kui-devtools",
+ "kui-wgpu",
+ "objc2 0.6.4",
+ "objc2-app-kit 0.3.2",
+ "objc2-foundation 0.3.2",
+ "objc2-quartz-core 0.3.2",
+ "pollster 1.0.1",
+ "rfd",
+ "windows-sys 0.52.0",
+ "winit",
 ]
 
 [[package]]
 name = "kui-node"
 version = "0.1.0-alpha.18"
 dependencies = [
- "kui",
  "kui-core",
  "kui-ffi",
+ "kui-native",
  "napi",
  "napi-build",
  "napi-derive",

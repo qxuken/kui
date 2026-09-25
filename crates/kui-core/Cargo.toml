@@ -27,7 +27,7 @@ default = ["devtools"]
 # stay and do nothing.
 devtools = []
 # `#[derive(Message)]`, a typed Rust message to and from the payload (backlog
-# C50). Off here, since only a Rust app uses it; `kui` turns it on.
+# C50). Off here, since only a Rust app uses it; `kui-native` turns it on.
 derive = ["dep:kui-derive"]
 # The scene corpus (src/conformance.rs): fourteen scene builders, the
 # coverage derivation, the report formatter and the fixture bytes. It is test
@@ -69,7 +69,7 @@ harness = false
 name = "cells"
 harness = false
 
-# See the note in crates/kui/Cargo.toml: examples live under examples/ at the
+# See the note in crates/kui-native/Cargo.toml: examples live under examples/ at the
 # root, so cargo needs the path.
 [[example]]
 name = "conformance-dump"

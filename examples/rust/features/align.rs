@@ -12,11 +12,11 @@
 //!     the window is resized, and a row of squares sized from a fixed
 //!     height alone.
 //!
-//! Run: cargo run -p kui --example align [-- --headless]
+//! Run: cargo run -p kui-native --example align [-- --headless]
 
-use kui::widgets;
-use kui::{Align, App, Color, Core, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
 use kui_devtools::{Drive, Example};
+use kui_native::widgets;
+use kui_native::{Align, App, Color, Core, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
 
 /// The alignments the buttons pick, in `schema::ALIGNS` order; `baseline`
 /// is a cross-axis value and has no button here.

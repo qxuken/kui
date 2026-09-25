@@ -76,7 +76,7 @@ there, not appended to a node that has closed.
   implementations, `LuaExtension` and `CExtension`, that are the point of
   it being one trait. The runner calls the host's `view`, then each
   extension's `view` in turn with the origin set to its index
-  (`crates/kui/src/lib.rs:1777`), and `examples/c/panel.rs::frame` builds
+  (`crates/kui-native/src/lib.rs:1777`), and `examples/c/panel.rs::frame` builds
   the same sequence by hand for the headless check. Nothing moves the
   cursor between the two, so an extension's nodes go wherever the host
   left it, which is the root when the host is balanced.
@@ -118,7 +118,7 @@ there, not appended to a node that has closed.
   A pair of functions is how `Ui` spells an optional extra — `open` /
   `open_keyed`, `line` / `line_keyed`, `audio` / `audio_keyed` — and a
   `NULL` is how C spells the absence (`kui_open(ui, &spec, NULL)`).
-- Who hosts. Extensions are a Rust-host feature: `kui::run` takes them,
+- Who hosts. Extensions are a Rust-host feature: `kui_native::run` takes them,
   `kui_run` (`crates/kui-ffi/src/run.rs:44`) does not, and Node has no
   extension at all — its mentions of "1+ an extension" are in the `origin`
   field's documentation. `Ui` is a borrowed `&mut Core` and nothing else
@@ -303,7 +303,7 @@ there, not appended to a node that has closed.
   builder, `Core::slot` / `slot_with` and the `Slot` type, a `Fill` trait
   the runner implements for its extension list and `Core::frame_with`
   to hand it in, the three warning codes, and `Extension`'s new `slots`
-  and `view(slot, ui)` and `on_event -> Vec<Value>`. `kui`: `Shell::redraw`
+  and `view(slot, ui)` and `on_event -> Vec<Value>`. `kui-native`: `Shell::redraw`
   passes its extensions as the filler and fills `"root"` after the host's
   view unless the host declared it; `route_events` delivers replies.
   `kui-lua`: the `slots` global, `env.slot`, the return of `on_event`.

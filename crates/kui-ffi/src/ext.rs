@@ -81,7 +81,7 @@ type ViewFn = extern "C" fn(*mut c_void, *mut KuiCtx);
 type EventFn = extern "C" fn(*mut c_void, *const KuiEvent);
 
 /// A `dlopen`ed C extension, plugged into a Rust host with
-/// `kui::run(title, app, vec![Box::new(ext)])`.
+/// `kui_native::run(title, app, vec![Box::new(ext)])`.
 pub struct CExtension {
     name: String,
     handle: *mut c_void,

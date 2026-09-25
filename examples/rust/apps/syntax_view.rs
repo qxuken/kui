@@ -11,15 +11,15 @@
 //! backlog K4), the way an editor marks an unused field — no `line` float
 //! under the run, no rect arithmetic.
 //!
-//! Run: cargo run -p kui --example syntax_view
+//! Run: cargo run -p kui-native --example syntax_view
 //!
 //! Keys: j/k or arrows move · pageup/pagedown · g/G ends · tab next buffer.
 
-use kui::widgets;
-use kui::{
+use kui_devtools::Example;
+use kui_native::widgets;
+use kui_native::{
     Align, App, Color, Core, NodeSpec, Sizing, TextStyle, Theme, Ui, UiEvent, UnderlineStyle, Value,
 };
-use kui_devtools::Example;
 
 const FONT: f32 = 13.5;
 const LH: f32 = 20.0;
@@ -462,8 +462,8 @@ const SAMPLE_RS: &str = "\
 //! Minimal Elm-ish counter: view() rebuilds the tree
 //! from state, clicks arrive as data in on_event.
 
-use kui::widgets;
-use kui::{App, NodeSpec, TextStyle, Ui, UiEvent, Value};
+use kui_native::widgets;
+use kui_native::{App, NodeSpec, TextStyle, Ui, UiEvent, Value};
 
 #[derive(Default)]
 struct Counter {
@@ -493,7 +493,7 @@ impl App for Counter {
 }
 
 fn main() {
-    kui::run(\"kui — counter\", Counter::default(), vec![]).unwrap();
+    kui_native::run(\"kui — counter\", Counter::default(), vec![]).unwrap();
 }";
 
 impl Example for SyntaxView {
@@ -517,8 +517,8 @@ impl Example for SyntaxView {
     /// The keys, driven (backlog C36): `j`, `G` and `tab` move the line,
     /// the view and the buffer — and the view keeps the line on screen.
     fn headless(&mut self, core: &mut Core) -> Result<(), String> {
-        use kui::KeyMods;
         use kui_devtools::Drive;
+        use kui_native::KeyMods;
         let mut d = Drive::new(core, 900.0, 700.0);
         d.frame(self);
         d.check(

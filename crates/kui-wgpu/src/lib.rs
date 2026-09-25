@@ -607,7 +607,7 @@ fn preprocess_shader(src: &str, dual: bool) -> String {
 /// of ~1200 vsyncs in every run. Queued behind a frame, though, a frame
 /// built as soon as a drawable frees reaches the screen a vsync later
 /// while frames run back to back — 27.6 ms sampling-to-photon against
-/// 19.3 — so `kui`'s runner starts such frames at the display's vsync
+/// 19.3 — so `kui-native`'s runner starts such frames at the display's vsync
 /// instead (its `pacer`, macOS 14+), where the extra drawable is slack
 /// and not a queue: 17.5–19.2 ms, every vsync delivered. A renderer
 /// driven any other way pays the frame.

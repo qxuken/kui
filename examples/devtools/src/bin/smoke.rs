@@ -13,7 +13,7 @@
 //!     cargo run -p kui-devtools --bin smoke -- --headless      # every headless drive, what CI runs
 //!     cargo run -p kui-devtools --bin smoke -- --headless --list
 //!
-//! **The windowed round.** `KUI_SMOKE_FRAMES=n` (crates/kui/src/lib.rs)
+//! **The windowed round.** `KUI_SMOKE_FRAMES=n` (crates/kui-native/src/lib.rs)
 //! makes the runner quit once the main window has presented n frames, so
 //! an example is a self-terminating check: exit 0 means it drew n frames
 //! and shut down, and anything else — a wgpu validation panic, a device
@@ -308,7 +308,14 @@ fn windowed(opts: &Opts) -> Result<Vec<String>, String> {
     };
     if opts.build {
         println!("building {profile} examples...");
-        let mut args = vec!["build", "--profile", profile, "-p", "kui", "--examples"];
+        let mut args = vec![
+            "build",
+            "--profile",
+            profile,
+            "-p",
+            "kui-native",
+            "--examples",
+        ];
         if opts.release {
             args.extend(["--features", "smoke"]);
         }

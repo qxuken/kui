@@ -390,7 +390,7 @@ since 2026-09-11 (AR4) the `smoke` binary in `examples/devtools` that
 replaced it and its unix twin — wired into `smoke-windows` in
 [`.forgejo/workflows/smoke.yml`](../.forgejo/workflows/smoke.yml)
 after the `cargo test` step. It leans on `KUI_SMOKE_FRAMES=n`, new in
-`crates/kui/src/lib.rs`: the runner quits once the main window has
+`crates/kui-native/src/lib.rs`: the runner quits once the main window has
 presented n frames, which turns every example into a self-terminating check
 with an exit code — a wgpu validation panic is a failure with its stderr,
 a window that never paints runs out the timeout instead of passing quietly.
@@ -467,7 +467,7 @@ Four kui-facing claims were checked against the tree:
 
 - "kui links an audio engine, a clipboard and AccessKit into the default
   runner whether or not you use them" — two-thirds wrong.
-  `crates/kui/Cargo.toml` has `audio` and `accesskit` as default features
+  `crates/kui-native/Cargo.toml` has `audio` and `accesskit` as default features
   a build turns off; only `arboard` is unconditional. A `clipboard`
   feature is a two-line change, and nobody has asked — under "Rows, when
   a view asks".
@@ -1654,7 +1654,7 @@ median sampling-to-photon in ms:
 | latency 2, unpaced (C47 as first built) | 27.5–27.9 | 27.5–27.7 | 27.7 |
 | latency 2, paced | 17.7–18.6 | 17.8–18.7 | 17.5–19.2 |
 
-`kui::pacer` puts a `CADisplayLink` on each window's view
+`kui_native::pacer` puts a `CADisplayLink` on each window's view
 (`-[NSView displayLinkWithTarget:selector:]`, macOS 14+, in common
 modes). A redraw asked for within 20 ms of the last present, at the same
 surface size, is held, and the link's next tick asks for it: the frame is
@@ -1901,7 +1901,7 @@ against this tree, with a round-trip test:
   spelled twice, once to encode and once to decode. That duplication is
   the cost that grows with an app.
 
-syn 2 and 3 were both already built in `kui`'s tree (through
+syn 2 and 3 were both already built in `kui-native`'s tree (through
 zerocopy's and wgpu's derives), so a derive crate costs a cold build
 its own few hundred lines. The user chose the derive, on by default.
 
@@ -1920,7 +1920,7 @@ its own few hundred lines. The user chose the derive, on by default.
   `tag` inside a core event. A drag delivers the app's message nested
   and a click delivers it bare, which a derive alone would have left
   every handler to untangle.
-- **Features:** `kui-core/derive` is off by default, and `kui`'s default
+- **Features:** `kui-core/derive` is off by default, and `kui-native`'s default
   `derive` turns it on.
 - **Publishing:** the publish lists (`ci.yml`, `release-local.nu`) put
   `kui-derive` first.
@@ -1932,7 +1932,7 @@ stayed on `Value`, where the experiment said typing does not pay.
 `NodeSpec::modal` still takes a `Value`. Widening it to `impl
 Into<Value>` like the other tags broke every `.modal("x".into())` by
 inference, so a typed message goes in as `.modal(Msg::X.into())`.
-`crates/kui/tests/message.rs` pins the shapes, the round trips, the
+`crates/kui-native/tests/message.rs` pins the shapes, the round trips, the
 errors and both places a message arrives.
 
 **Found** by both bake-offs ("typed Rust messages: no, a `Value`
@@ -1943,7 +1943,7 @@ for Rust to get that back, because the conversion can live on the Rust
 side of it.
 
 **Do.** A derive in a small proc-macro crate (`kui-derive`, re-exported
-by `kui` behind a default feature): `#[derive(Message)]` on an enum
+by `kui-native` behind a default feature): `#[derive(Message)]` on an enum
 gives `Into<Value>` (a map with a `kind` and the fields) and
 `TryFrom<&Value>`, so `on_click(Msg::Save)` and
 `match Msg::try_from(&ev.payload)` both compile. Before building it,
@@ -1983,7 +1983,7 @@ shape the entry planned, with three changes.
   `kui_take_file_request` with `kui_file_request_filter`, and
   `kui_input_files`.
 
-**Features:** `dialogs` in `kui`, default-on, rfd 0.17 with the XDG
+**Features:** `dialogs` in `kui-native`, default-on, rfd 0.17 with the XDG
 portal on Linux (no GTK). The lock gained only rfd and the pollster it
 pins. Without the feature every ask is answered at once with no paths.
 
@@ -1995,7 +1995,7 @@ pins. Without the feature every ask is answered at once with no paths.
   the next ask through.
 - **Headless drives:** Rust and Node.
 - **Tests:** one each in Lua and Node, and in C's surface walk.
-- **Builds:** clippy over every feature subset of `kui`, and on Windows
+- **Builds:** clippy over every feature subset of `kui-native`, and on Windows
   through xwin.
 
 **Not measured:** how the panel feels while a Node window's pump has
@@ -2344,9 +2344,10 @@ and the npm side has no such problem. Nothing in the tree blocks it: the
 `publish = ["forgejo"]` lines are the only registry-specific thing. The
 second bake-off (2026-09-25) made the same recommendation first of its
 three and re-checked the fact. **Decided the same day** (the user): no
-crates.io until the beta release; then the runner crate is renamed,
-probably to `kui-native`, and every crate publishes together. Until then
-the Forgejo registry and npm are the distribution.
+crates.io until the beta release, and then every crate publishes together.
+Until then the Forgejo registry and npm are the distribution. The runner
+crate was renamed `kui` → `kui-native` on 2026-09-26, ahead of that (the
+name was free on crates.io that day, as was `kui-derive`).
 
 **Parked on their own terms.** C12 (column wrapping), C5(b) (core-side
 virtualisation), rounded clip nesting. C13 (`space-between` and baseline)
@@ -2626,7 +2627,7 @@ move.
 - `~` **C18** — [Nothing maps a point to a byte offset, or an offset to a rect, on text the app owns](backlog/closed-2026-09.md#-c18--nothing-maps-a-point-to-a-byte-offset-or-an-offset-to-a-rect-on-text-the-app-owns--done-2026-09-07) — done (2026-09-07) — `text_hit` and `caret_rect` by the enclosing key, across runs, in every binding
 - `~` **C19** — [A long line is shaped whole, and slicing it from outside costs more than not slicing](backlog/closed-2026-09.md#-c19--a-long-line-is-shaped-whole-and-slicing-it-from-outside-costs-more-than-not-slicing--done-2026-09-08) — done (2026-09-08) — a long line shaped in ~1 KB chunks on demand; step 5, a wrapped one, on 2026-09-08
 - `.` **C20** — [A cell grid inside the core, if it beats per-cell nodes by an order of magnitude](backlog/closed-2026-09.md#-c20--a-cell-grid-inside-the-core-if-it-beats-per-cell-nodes-by-an-order-of-magnitude--done-2026-09-08) — done (2026-09-08) — `cells` — a terminal screen as one node, ~37× cheaper than nodes, the element in every binding on 2026-09-08
-- `~` **C21** — [Nothing outside the main thread can wake `run`, and `pump` never waits](backlog/closed-2026-09.md#-c21--nothing-outside-the-main-thread-can-wake-run-and-pump-never-waits--done-2026-09-07) — done (2026-09-07) — `kui::Waker` and `pump_until`, a thread wakes the parked loop
+- `~` **C21** — [Nothing outside the main thread can wake `run`, and `pump` never waits](backlog/closed-2026-09.md#-c21--nothing-outside-the-main-thread-can-wake-run-and-pump-never-waits--done-2026-09-07) — done (2026-09-07) — `kui_native::Waker` and `pump_until`, a thread wakes the parked loop
 - `.` **C22** — [Underline, strikethrough, and a background per span](backlog/closed-2026-09.md#-c22--underline-strikethrough-and-a-background-per-span--done-2026-09-07) — done (2026-09-07) — underline, strikethrough and a background per span (ABI 8)
 - `~` **C23** — [No way to turn ligatures off, or tabular figures on](backlog/closed-2026-09.md#-c23--no-way-to-turn-ligatures-off-or-tabular-figures-on--done-2026-09-07) — done (2026-09-07) — `features`: ligatures off, tabular figures on
 - `.` **C24** — [`NodeSpec`'s stride is not what the layout passes cost](backlog/closed-2026-09.md#-c24--nodespecs-stride-is-not-what-the-layout-passes-cost--measured-and-declined-2026-09-09) — measured and declined (2026-09-09) — a `layout` column made the passes 14% cheaper and `Tree::push` 38% dearer; the table came out flat

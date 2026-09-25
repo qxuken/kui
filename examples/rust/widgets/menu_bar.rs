@@ -17,14 +17,14 @@
 //! its row is joined by Fill, Center, the tiling submenus and Enter Full
 //! Screen, and their shortcuts work; elsewhere it is one more drawn menu.
 //!
-//! Run: cargo run -p kui --example menu_bar [-- --headless]
+//! Run: cargo run -p kui-native --example menu_bar [-- --headless]
 
-use kui::widgets;
-use kui::{
+use kui_devtools::{Drive, Example};
+use kui_native::widgets;
+use kui_native::{
     Align, App, BarMenu, Core, MenuBar, MenuItem, MenuRole, NodeSpec, Sizing, Span, TextStyle,
     TextWrap, Ui, UiEvent, Value,
 };
-use kui_devtools::{Drive, Example};
 
 #[derive(Default)]
 struct Demo {

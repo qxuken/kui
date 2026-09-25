@@ -1242,7 +1242,7 @@ mod tests {
     /// A row's Rust spelling is a `pub fn` in the file its prefix names —
     /// `Ui::` in `ui.rs`, `Core::` under `runtime/`, `SharedResources::`
     /// in `session.rs`, `Tokens::` in `tokens.rs`, `Launcher::` in the
-    /// `kui` crate, and `App::` a method of that crate's `App` trait (a
+    /// `kui-native` crate, and `App::` a method of that crate's `App` trait (a
     /// trait's `fn` is public without the word) — so a renamed or
     /// removed verb is a red row and not a stale one, which is the pin
     /// Rust's column can have without reflection.
@@ -1262,7 +1262,7 @@ mod tests {
         let ui = read(root.join("ui.rs"));
         let session = read(root.join("session.rs"));
         let tokens = read(root.join("tokens.rs"));
-        let launcher = read(root.join("../../kui/src/lib.rs"));
+        let launcher = read(root.join("../../kui-native/src/lib.rs"));
         // The `App` trait's body: a method of it is a callback the app
         // writes, spelled `fn name(` and public by being the trait's.
         let app_trait = launcher

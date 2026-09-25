@@ -27,13 +27,13 @@
 //! origin on it. A path argument (before or after the flag) loads a
 //! different plugin.
 
-use kui::widgets;
-use kui::{
+use kui_devtools::Example;
+use kui_ffi::CExtension;
+use kui_native::widgets;
+use kui_native::{
     Align, App, Core, Extension, Extensions, InputEvent, NodeSpec, OriginId, Size, Sizing,
     TextStyle, Ui, UiEvent, Value, Vec2,
 };
-use kui_devtools::Example;
-use kui_ffi::CExtension;
 
 #[derive(Default)]
 struct Host {

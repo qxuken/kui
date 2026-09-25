@@ -73,7 +73,7 @@ impl Env {
 ///
 /// Each field defaults to "the host cannot tell", which is what a headless
 /// core reports and what any driver reports for a fact its platform gives
-/// it no way to ask. The `kui` runner asks the OS for all four on macOS and
+/// it no way to ask. The `kui-native` runner asks the OS for all four on macOS and
 /// Windows (the appearance through winit, the rest in its `system_env`);
 /// elsewhere it answers what it can and leaves the rest unknown. The fifth,
 /// [`Assistive`], is not a setting but a fact of the same shape — the
@@ -96,7 +96,7 @@ pub struct SystemEnv {
 impl SystemEnv {
     /// `self` laid over `base`: every field `self` knows wins, every field
     /// it left at "cannot tell" is `base`'s. The merge behind a launcher's
-    /// pinned reading (`kui::Launcher::system`, Node's `runWindowed(..,
+    /// pinned reading (`kui_native::Launcher::system`, Node's `runWindowed(..,
     /// {system})`, the context a C host hands `kui_run_with`): the app's
     /// partial over what the OS answered, applied every frame where the
     /// runner writes the real reading — so a pinned `motion` survives the

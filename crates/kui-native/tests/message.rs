@@ -2,7 +2,9 @@
 //! `{kind, …fields}` payload, and `UiEvent::message` reading one back off a
 //! click or out of a core event's `tag`.
 
-use kui::{Core, InputEvent, Message, MessageError, MessageField, NodeSpec, Size, Value, Vec2};
+use kui_native::{
+    Core, InputEvent, Message, MessageError, MessageField, NodeSpec, Size, Value, Vec2,
+};
 
 #[derive(Message, Clone, Copy, Debug, PartialEq)]
 #[message(string)]
@@ -160,16 +162,16 @@ fn ui_event_message_reads_a_click_and_a_drags_tag() {
         ui.configure_root(NodeSpec::row().fill());
         ui.with(
             NodeSpec::column()
-                .width(kui::Sizing::Fixed(100.0))
-                .height(kui::Sizing::Grow(1.0))
+                .width(kui_native::Sizing::Fixed(100.0))
+                .height(kui_native::Sizing::Grow(1.0))
                 .label("focus")
                 .on_click(Msg::Focus { pane: 4 }),
             |_| {},
         );
         ui.with(
             NodeSpec::column()
-                .width(kui::Sizing::Fixed(100.0))
-                .height(kui::Sizing::Grow(1.0))
+                .width(kui_native::Sizing::Fixed(100.0))
+                .height(kui_native::Sizing::Grow(1.0))
                 .on_drag(Msg::Split {
                     path: "a".into(),
                     dir: Dir::H,

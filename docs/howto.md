@@ -470,7 +470,7 @@ and other messages. An enum of unit variants marked `#[message(string)]`
 is a bare string where it is a field (`dir: SplitDir` as `"h"`).
 
 The payload stays plain data, so Lua, C and JSX read it as they always did.
-`MessageError` says what did not fit. The derive is `kui`'s default
+`MessageError` says what did not fit. The derive is `kui-native`'s default
 `derive` feature; from kui-core alone it is `kui-core/derive` and
 `#[message(crate = "kui_core")]`.
 
@@ -1224,7 +1224,7 @@ A Node window turns its event loop from a timer, where the display cannot
 start the frames, so there the queued frame costs a vsync (27.6 ms against
 19.3). For a view where a drag must track the pointer as closely as
 possible, such as a drawing canvas or a splitter, ask for one:
-`frameLatency: 1` in `WindowOptions`, `kui::app("t").frame_latency(1)`, or
+`frameLatency: 1` in `WindowOptions`, `kui_native::app("t").frame_latency(1)`, or
 `frame_latency = 1` in `KuiRunConfig`. It loses the odd vsync at light load
 (1–6% of them). `KUI_FRAME_LATENCY=1` or `2` and `KUI_FRAME_PACING=0` in the
 environment compare the options on the same build.
@@ -1249,7 +1249,7 @@ await runWindowed(app, {
 });
 ```
 
-Rust is `kui::app("mine").system(SystemEnv { motion: MotionPref::Reduced,
+Rust is `kui_native::app("mine").system(SystemEnv { motion: MotionPref::Reduced,
 ..Default::default() })`; C calls `kui_env_set_system` on the context it
 hands `kui_run_with`. The partial is the one `Ctx.setEnv` takes, so the
 branch you assert headless and the window you then look at read one
@@ -1338,7 +1338,7 @@ it again after an upgrade; it is generated, never edited.
 ### How do I give my windows the app's icon?
 
 Tell the launcher, once, and every window it creates carries it:
-`kui::app("t").icon(rgba, w, h)` with straight RGBA pixels, row by row
+`kui_native::app("t").icon(rgba, w, h)` with straight RGBA pixels, row by row
 — something a taskbar shrinks cleanly, 64 to 256 px, rendered from your
 drawing at build time or decoded from a PNG you ship — and, for a
 Windows program, `.icon_resource(1)` too. A Windows program's icon is a

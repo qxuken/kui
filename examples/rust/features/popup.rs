@@ -34,10 +34,10 @@
 //!
 //! Run: cargo run --example popup
 
-use kui::{
+use kui_devtools::Example;
+use kui_native::{
     App, Color, CursorShape, NodeSpec, Rect, Sizing, TextStyle, Ui, UiEvent, Value, WindowConfig,
 };
-use kui_devtools::Example;
 
 /// The list is twelve rows of 24 plus the panel's padding — deliberately
 /// twice the window's height, so "taller than the window" is not a detail

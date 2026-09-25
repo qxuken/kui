@@ -24,11 +24,11 @@
 //! the flag: a window manager can refuse or drop the level, and on Wayland
 //! there is none to ask for.
 //!
-//! Run: cargo run -p kui --example titlebar
+//! Run: cargo run -p kui-native --example titlebar
 
-use kui::widgets;
-use kui::{Align, App, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
 use kui_devtools::Example;
+use kui_native::widgets;
+use kui_native::{Align, App, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
 
 const TABS: [&str; 3] = ["main.rs", "layout.rs", "README"];
 

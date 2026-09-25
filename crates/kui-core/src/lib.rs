@@ -88,7 +88,7 @@ pub use input::{
 };
 pub use key::Key;
 pub use keyframes::Keyframe;
-/// `#[derive(Message)]` (backlog C50), with the `derive` feature; `kui`
+/// `#[derive(Message)]` (backlog C50), with the `derive` feature; `kui-native`
 /// turns it on. From a crate that depends on kui-core alone, say
 /// `#[message(crate = "kui_core")]` — the generated code reaches `::kui`
 /// unless told otherwise.

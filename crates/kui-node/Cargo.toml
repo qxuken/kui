@@ -12,11 +12,11 @@ crate-type = ["cdylib"]
 
 [dependencies]
 kui-core.workspace = true
-kui.workspace = true
+kui-native.workspace = true
 # For `CExtension` and nothing else: the loader that turns a C shared
 # library into an `Extension` this addon can host (ADR 0014). Without the
 # `runner` default, which is the windowed C entry points — this crate has
-# its own window through `kui`, and would only be compiling a second copy
+# its own window through `kui-native`, and would only be compiling a second copy
 # of the same idea.
 kui-ffi.workspace = true
 napi = { version = "3", default-features = false, features = ["napi8", "serde-json"] }
@@ -28,8 +28,8 @@ serde_json = "1"
 # release one, only when asked — this is the ask, for the addon: the Node
 # windowed examples close themselves under the smoke round's `--node`
 # (examples/devtools/src/bin/smoke.rs), which builds the addon with it. The prebuilds that ship never
-# have it, for the reason `kui`'s own `smoke` feature gives.
-smoke = ["kui/smoke"]
+# have it, for the reason `kui-native`'s own `smoke` feature gives.
+smoke = ["kui-native/smoke"]
 
 [build-dependencies]
 napi-build = "2"

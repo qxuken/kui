@@ -64,7 +64,7 @@ the `u64` form is untouched.
 - The assumption is written down in four places and true in all of them:
   `packages/kui/index.js:40` ("One window per process (winit event loops
   are not recreatable everywhere)"), `crates/kui-node/src/lib.rs:1117`
-  (the same sentence on `KuiWindow`), `crates/kui/src/lib.rs:197` (on
+  (the same sentence on `KuiWindow`), `crates/kui-native/src/lib.rs:197` (on
   `Launcher::open`), and `kui_run` (`crates/kui-ffi/src/lib.rs:2675`),
   which takes one title and one pair of callbacks. Only the first of
   those is a real platform constraint, and it is about the **event
@@ -80,7 +80,7 @@ the `u64` form is untouched.
   capture). Every one of those is singular *per window*, not per app.
 - The platform layers below it are per-window too. `access_bridge::Bridge`
   wraps an `accesskit_winit::Adapter` built from a window
-  (`crates/kui/src/access_bridge.rs:45`), and an `AccessTree`'s root
+  (`crates/kui-native/src/access_bridge.rs:45`), and an `AccessTree`'s root
   *is* the window. `windows_nc::NcHitTest` answers `WM_NCHITTEST` for one
   HWND from one frame's chrome regions.
 - What is **not** per-window is exactly the expensive half.
@@ -351,7 +351,7 @@ the `u64` form is untouched.
     they provably do not fit, and its doc comment gains the sentence
     saying where that limit is and what to reach for past it.
 12. **The four entry points do not change shape.**
-    - **Rust**: `kui::app(title).run(app)` still opens the main window and
+    - **Rust**: `kui_native::app(title).run(app)` still opens the main window and
       runs the loop, and `App::view(&mut self, ui)` still has one
       signature — it is simply called once per live window per frame,
       with `ui.window()` naming which. Extra windows are a declaration

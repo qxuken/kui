@@ -3,7 +3,7 @@
 //! The IR's payloads are [`Value`]s on purpose: Lua, C and JSX share them.
 //! A Rust app gets the exhaustive `match` back on its own side of that
 //! contract: `#[derive(Message)]` (the `kui-derive` crate, re-exported by
-//! `kui` and, behind its `derive` feature, by this crate) turns an enum into
+//! `kui-native` and, behind its `derive` feature, by this crate) turns an enum into
 //! a `{kind, …fields}` map and back, so `on_click(Msg::Save)` builds the
 //! payload and `ev.message::<Msg>()` reads it.
 //!

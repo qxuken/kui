@@ -1,4 +1,4 @@
-//! The token reference: every colour a [`kui::Theme`] names, drawn in the
+//! The token reference: every colour a [`kui_native::Theme`] names, drawn in the
 //! theme that names it, over every stock widget that reads it
 //! (`docs/adr/0019-a-theme-derived-from-appearance-and-accent.md`).
 //!
@@ -15,11 +15,11 @@
 //! one, since on macOS the platform's own would be showing what AppKit
 //! paints instead; the dock's `menus` row switches it back.
 //!
-//! Run: cargo run -p kui --example theme
+//! Run: cargo run -p kui-native --example theme
 
-use kui::widgets;
-use kui::{Align, App, Color, NodeSpec, Sizing, TextStyle, Theme, Ui, UiEvent, Value};
 use kui_devtools::Example;
+use kui_native::widgets;
+use kui_native::{Align, App, Color, NodeSpec, Sizing, TextStyle, Theme, Ui, UiEvent, Value};
 
 /// What the demo buttons post: they are here to be looked at, not to say
 /// anything, and the menu's rows post their own text.
@@ -205,12 +205,12 @@ impl App for Gallery {
         if let Some((x, y)) = self.menu {
             widgets::context_menu(
                 ui,
-                kui::Vec2::new(x, y),
+                kui_native::Vec2::new(x, y),
                 &[
-                    kui::MenuItem::new("Copy").accel("⌘C"),
-                    kui::MenuItem::new("Paste"),
-                    kui::MenuItem::separator(),
-                    kui::MenuItem::new("Nothing doing").enabled(false),
+                    kui_native::MenuItem::new("Copy").accel("⌘C"),
+                    kui_native::MenuItem::new("Paste"),
+                    kui_native::MenuItem::separator(),
+                    kui_native::MenuItem::new("Nothing doing").enabled(false),
                 ],
             );
         }

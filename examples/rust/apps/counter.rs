@@ -9,11 +9,11 @@
 //! view puts a float there — with `+10` and `reset` in it; and a headless
 //! drive that clicks all of it and exits non-zero on a wrong answer.
 //!
-//! Run: cargo run -p kui --example counter [-- --headless]
+//! Run: cargo run -p kui-native --example counter [-- --headless]
 
-use kui::widgets;
-use kui::{Align, App, Core, FloatConfig, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
 use kui_devtools::{Drive, Example};
+use kui_native::widgets;
+use kui_native::{Align, App, Core, FloatConfig, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
 
 #[derive(Default)]
 struct Counter {
@@ -144,19 +144,19 @@ impl Example for Counter {
         // frame that declares the modal, then its +10.
         d.input(
             self,
-            kui::InputEvent::CursorMoved(kui::Vec2::new(40.0, 40.0)),
+            kui_native::InputEvent::CursorMoved(kui_native::Vec2::new(40.0, 40.0)),
         );
         d.input(
             self,
-            kui::InputEvent::MouseDown {
-                button: kui::MouseButton::Secondary,
+            kui_native::InputEvent::MouseDown {
+                button: kui_native::MouseButton::Secondary,
                 clicks: 1,
             },
         );
         d.input(
             self,
-            kui::InputEvent::MouseUp {
-                button: kui::MouseButton::Secondary,
+            kui_native::InputEvent::MouseUp {
+                button: kui_native::MouseButton::Secondary,
             },
         );
         d.check(self.menu.is_some(), "a right-click asks for the menu")?;

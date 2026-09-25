@@ -118,7 +118,7 @@ pub struct KuiCtx {
     /// holds and has no lifetime to carry one.
     ///
     /// It exists because under the windowed runner the extension list is
-    /// the *runner's*, not this context's — `kui::Launcher` owns it, and
+    /// the *runner's*, not this context's — `kui_native::Launcher` owns it, and
     /// the `Ui` it built the frame with is what knows how to fill a slot.
     /// So `kui_slot` hands the declaration to that `Ui` when this is set,
     /// and fills from `extensions` when it is not. Null on every other

@@ -12,7 +12,7 @@ bundled Lua extension support is table-to-node conversion, not FFI gymnastics.
 |---|---|
 | `kui-core` | The bindable contract: flat per-frame tree, clay-style flex solver, core text stack (shaping/wrapping/caching via cosmic-text + glyph atlas), events-as-data, slotmap resources, quad display list |
 | `kui-wgpu` | wgpu backend: one instanced über-pipeline (rounded rects, borders, glyphs), single draw call per frame |
-| `kui` | Batteries-included runner: winit + wgpu around a `Core`, `App` trait, widget sugar |
+| `kui-native` | Batteries-included runner: winit + wgpu around a `Core`, `App` trait, widget sugar |
 | `kui-lua` | Lua extensions via mlua: scripts return table trees, receive events as tables |
 | `kui-ffi` | C API (cdylib/staticlib + [include/kui.h](crates/kui-ffi/include/kui.h)): flat builder calls, opaque `KuiValue` payloads, `repr(C)` draw data, windowed runner via callbacks — and `CExtension`, the same contract inverted: a C shared library as a guest in someone else's frame |
 | `kui-node` | Node.js addon (napi-rs) + the [`packages/kui`](packages/kui) npm package: JSX views (custom jsx-runtime, no React) lowered into the IR in one call per frame, Elm-style messages as data |
@@ -75,7 +75,7 @@ host).
 
 Every app has a devtools panel, drawn by the core into its own frame
 ([ADR 0024](docs/adr/0024-the-devtools-are-the-cores.md)). Ask for it with
-`kui::app("x").devtools(true)` (or `core.set_devtools(true)`),
+`kui_native::app("x").devtools(true)` (or `core.set_devtools(true)`),
 `win.setDevtools(true)` in Node, `kui_set_devtools(ctx, true)` in C — or
 run any of them with `KUI_DEVTOOLS=1` in the environment and it is there
 with no code at all. It docks beside the app's tree (`left`, `right`,
@@ -121,18 +121,18 @@ latency graph, the key legend — and `--headless` is a self-check with an
 exit code, `--light` / `--dark` pin the base.
 
 ```bash
-cargo run -p kui --example counter        # apps/: the Elm loop, the one every binding has
-cargo run -p kui --example splitmux       # apps/: tmux-style splits, tabs, ⌘-drag pane moves
-cargo run -p kui --example button         # widgets/: the stock button in every state
-cargo run -p kui --example controls       # widgets/: checkbox, radio group, switch, slider
-cargo run -p kui --example edit           # widgets/: multiline editing and the single-line field
-cargo run -p kui --example text           # widgets/: spans, decorations, families, wrap
-cargo run -p kui --example cells          # widgets/: a terminal grid that selects in cells
-cargo run -p kui --example focus          # features/: the Tab ring and its verbs
-cargo run -p kui --example transition     # features/: transition, easing, slide, keyframes
-cargo run -p kui --example enter_exit     # features/: toasts that slide in and back out
-cargo run -p kui --example theme          # features/: every Theme role over every stock widget
-cargo run -p kui --example counter -- --headless   # the drive, no window
+cargo run -p kui-native --example counter        # apps/: the Elm loop, the one every binding has
+cargo run -p kui-native --example splitmux       # apps/: tmux-style splits, tabs, ⌘-drag pane moves
+cargo run -p kui-native --example button         # widgets/: the stock button in every state
+cargo run -p kui-native --example controls       # widgets/: checkbox, radio group, switch, slider
+cargo run -p kui-native --example edit           # widgets/: multiline editing and the single-line field
+cargo run -p kui-native --example text           # widgets/: spans, decorations, families, wrap
+cargo run -p kui-native --example cells          # widgets/: a terminal grid that selects in cells
+cargo run -p kui-native --example focus          # features/: the Tab ring and its verbs
+cargo run -p kui-native --example transition     # features/: transition, easing, slide, keyframes
+cargo run -p kui-native --example enter_exit     # features/: toasts that slide in and back out
+cargo run -p kui-native --example theme          # features/: every Theme role over every stock widget
+cargo run -p kui-native --example counter -- --headless   # the drive, no window
 cargo run -p kui-devtools --bin cbuild && ./target/debug/counter   # the same app from C, every platform
 cargo run -p kui-ffi --example c_panel    # a Rust host + a dlopened C panel
 cargo run -p kui-lua --example lua_panel  # a Rust host + a Lua panel sharing one frame
@@ -206,7 +206,7 @@ replies out. The host loads the script under a namespace it chooses — the
 way an importer picks an alias — and names the slot by `namespace/slot`:
 
 ```rust
-kui::app("counter").extension_as("fs", LuaExtension::from_file("panel.lua")?).run(app)
+kui_native::app("counter").extension_as("fs", LuaExtension::from_file("panel.lua")?).run(app)
 // …and in the host's view, wherever the panel should sit:
 ui.slot_with("fs/panel", &Value::map([("title", "notes".into())]));
 ```
@@ -462,7 +462,7 @@ that are hard to reverse and would look arbitrary without their context.
   per channel: the fragment shader outputs premultiplied color plus a
   per-channel coverage, `out = src + dst * (1 - coverage)`. The runner turns
   subpixel rasterization on only when the renderer reports that capability
-  (`kui::app(..).text_aa(TextAa::Grayscale)` or `KUI_TEXT_AA=gray` opt out);
+  (`kui_native::app(..).text_aa(TextAa::Grayscale)` or `KUI_TEXT_AA=gray` opt out);
   headless contexts and C hosts stay grayscale unless they ask
   (`kui_set_subpixel_text`), and a renderer without per-channel blending
   still draws subpixel quads correctly from their union coverage. On a 2×
@@ -487,12 +487,12 @@ that are hard to reverse and would look arbitrary without their context.
   and the runner turns macOS's Secure Keyboard Entry on while that window
   has the keyboard and off when it loses it, closes or stops asking,
   keeping the process-wide count balanced. The windows' icon is a launch
-  option: `kui::app("t").icon(rgba, w, h).icon_resource(1)` — the pixels
+  option: `kui_native::app("t").icon(rgba, w, h).icon_resource(1)` — the pixels
   on X11, the executable's icon resource on Windows, for the title bar,
   Alt-Tab and the taskbar (`icon` in Node's `WindowOptions`,
   `kui_set_icon` in C); macOS and Wayland take the app's icon from the
   bundle and the `.desktop` file instead. Custom chrome is an opt-in:
-  `kui::app("title").custom_titlebar().run(app)` — macOS keeps native traffic lights over your content; Windows/Linux go
+  `kui_native::app("title").custom_titlebar().run(app)` — macOS keeps native traffic lights over your content; Windows/Linux go
   undecorated with drawn buttons. On Windows the runner also subclasses the
   window and answers `WM_NCHITTEST` from the frame's chrome regions
   (HTCAPTION / HTMINBUTTON / HTMAXBUTTON / HTCLOSE + resize borders), so
@@ -521,7 +521,7 @@ that are hard to reverse and would look arbitrary without their context.
   other pending events — `App::on_event` in Rust, `pollEvents` in Node, `kui_poll_event`
   in C. As a query it is `KuiWindow.size()` / `PumpRunner::window_size()`,
   which answer before the first frame too (`Core::viewport()` after it).
-  What the user may resize *to* is a launch option: `kui::app("t").min_size(420.0,
+  What the user may resize *to* is a launch option: `kui_native::app("t").min_size(420.0,
   320.0).max_size(1600.0, 1200.0)` (`minWidth` / `minHeight` / `maxWidth` /
   `maxHeight` in the Node `WindowOptions`, where either half of a pair may
   stand alone). The OS enforces the bounds — including the synthesized edge
@@ -703,7 +703,7 @@ that are hard to reverse and would look arbitrary without their context.
   `{kind="sound", phase="ended", playback, tag}`. The runner plays through
   kira/cpal behind the default-on `audio` feature, opening the device on
   the first sound (no audio thread for silent apps; a missing device logs
-  once and the UI runs on). Volumes are linear amplitude; `kui::audio::blip`
+  once and the UI runs on). Volumes are linear amplitude; `kui_native::audio::blip`
   / `wav_pcm16` synthesize test sounds without asset files.
 - **The C API is translation, not architecture.** Frame building is flat
   calls on one opaque context (`kui_open`/`kui_close`/`kui_text`), payloads
@@ -861,7 +861,7 @@ C host places the window.
 Data from another thread: the windowed loop parks between events, so a
 PTY reader, a file watcher, an LSP client or a socket that changed what
 `view` will show has to say so. `App::setup(waker)` hands the app a
-`kui::Waker` once, before the window opens; it is `Clone + Send`, and
+`kui_native::Waker` once, before the window opens; it is `Clone + Send`, and
 `waker.wake()` from any thread asks every window for a frame — the path a
 key press takes, minus the event, coalesced by the loop's queue so a
 thread waking a thousand times a frame costs one (backlog C21). A host
@@ -915,7 +915,7 @@ and the core draws whatever is left: `widgets::context_menu` and
 has a bar — so the call still says what the menu is, the strip simply is not
 there, and one view is portable. The drawn bar keeps its own open menu, hovers across its
 titles the way a menu bar does, and closes on Escape or a press below it;
-the platform's binds the accelerators its rows declare. `cargo run -p kui
+the platform's binds the accelerators its rows declare. `cargo run -p kui-native
 --example menu_bar` is both, and `--example context_menu` the menus a
 right-click gets.
 
@@ -1160,7 +1160,7 @@ lists per release what was added and, separately, what an app can delete.
 ## Releases
 
 Tagged commits publish to the self-hosted Forgejo: the library crates
-(`kui-core`, `kui-wgpu`, `kui`, `kui-lua`, `kui-ffi`) to its cargo registry
+(`kui-core`, `kui-wgpu`, `kui-native`, `kui-lua`, `kui-ffi`) to its cargo registry
 and [`packages/kui`](packages/kui) to its npm registry as `@qxuken/kui`, with the Node addon
 prebuilt for linux-x64, linux-arm64, darwin-arm64, darwin-x64 and win32-x64 bundled
 under `prebuilds/` (`native.cjs` picks the one matching the running Node;
@@ -1172,7 +1172,7 @@ for development). Consumers point at the registries once:
 [registries.forgejo]
 index = "sparse+https://drydock9.qxuken.dev/api/packages/qxuken/cargo/"
 # Cargo.toml
-kui = { version = "0.1.0-alpha.1", registry = "forgejo" }
+kui-native = { version = "0.1.0-alpha.1", registry = "forgejo" }  # `use kui_native::…`
 ```
 
 ```bash
@@ -1228,9 +1228,9 @@ publishing. Skip the tag's CI run afterwards; it would fail on "already
 exists".
 
 That last property is also the limit of what CI proves. The Windows non-client
-chrome ([windows_nc.rs](crates/kui/src/windows_nc.rs)), the macOS traffic-light
+chrome ([windows_nc.rs](crates/kui-native/src/windows_nc.rs)), the macOS traffic-light
 inset in `widgets::titlebar_with` and the whole AccessKit bridge
-([access_bridge.rs](crates/kui/src/access_bridge.rs)) are compiled and linked by
+([access_bridge.rs](crates/kui-native/src/access_bridge.rs)) are compiled and linked by
 the release build and never executed by it — and neither of those two files
 carries a test, so the headless suite pins the data they hand the platform, not
 the platform's acceptance of it. Two optional jobs, `smoke-macos` and
@@ -1251,7 +1251,7 @@ both theme bases, and fails on a crash or a hang — one program for every
 platform, so the round cannot drift between a unix host and the Windows
 runner; `--node` adds the Node windows. `KUI_SMOKE_FRAMES=n` is what
 makes an example self-terminating, and any dev build honours it —
-`KUI_SMOKE_FRAMES=120 cargo run -p kui --example fragment` is the same check
+`KUI_SMOKE_FRAMES=120 cargo run -p kui-native --example fragment` is the same check
 by hand. A release build ignores it unless built with `--features smoke`, so
 that an app you ship does not close its own window over a variable its author
 never asked about. Run it before a tag, on Windows above all: the first round
@@ -1291,7 +1291,7 @@ or as a three-second `gate` with `check` skipped. Both are the success case.
 Before tagging, run the macOS accessibility audit by hand:
 
 ```bash
-cargo build -p kui --example accessibility
+cargo build -p kui-native --example accessibility
 swiftc -O -o target/ax-audit scripts/ax-audit.swift
 ./target/debug/examples/accessibility &
 target/ax-audit $!

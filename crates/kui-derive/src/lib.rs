@@ -10,8 +10,8 @@
 //!   struct) and whose other keys are the fields — a tuple variant's by
 //!   position, `"0"`, `"1"`, ….
 //! - `TryFrom<&Value>` and `TryFrom<Value> for Msg`, with
-//!   `kui::MessageError` saying what did not fit.
-//! - `kui::MessageField for Msg`, so a message can be a field of another.
+//!   `kui_native::MessageError` saying what did not fit.
+//! - `kui_native::MessageField for Msg`, so a message can be a field of another.
 //!
 //! Attributes, all under `#[message(…)]`:
 //!
@@ -168,7 +168,7 @@ fn expand(input: &DeriveInput) -> syn::Result<Tokens> {
     let top = attrs(&input.attrs)?;
     let k: Tokens = match &top.krate {
         Some(p) => quote!(#p),
-        None => quote!(::kui),
+        None => quote!(::kui_native),
     };
     let name = &input.ident;
     let (imp, ty, wh) = input.generics.split_for_impl();

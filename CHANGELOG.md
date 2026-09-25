@@ -26,6 +26,13 @@ was the first bare bump to break an app in five releases).
 **What breaks.** The ABI at 19 and the frame at v16. Nothing an
 existing input draws changes: a stroke is clipped as it was.
 
+- The runner crate `kui` is `kui-native`, since `kui` on crates.io is
+  another crate's: depend on `kui-native = { version = "…", registry =
+  "forgejo" }` and write `kui_native::` where `kui::` was, or keep every
+  path as it is with `kui = { package = "kui-native", version = "…",
+  registry = "forgejo" }`. Its directory is `crates/kui-native`, and
+  `cargo run -p kui-native --example …` runs an example. The other
+  crates and the npm package keep their names.
 - `KuiSpec` gains `float_clip` at its end (ABI 19). Recompile. A zeroed
   field is the float that escapes, which is what every float was.
 - `FloatConfig::build` takes a seventh argument, `clip`, after `fit`.

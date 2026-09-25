@@ -15,10 +15,10 @@
 //! The pointer leaving the window leaves everything; a hover survives a
 //! rebuild because the node's key does.
 //!
-//! Run: cargo run -p kui --example hover [-- --headless]
+//! Run: cargo run -p kui-native --example hover [-- --headless]
 
-use kui::{Align, App, Core, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
 use kui_devtools::{Drive, Example};
+use kui_native::{Align, App, Core, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
 
 const ROWS: [(&str, &str); 3] = [("◆", "inbox"), ("●", "drafts"), ("▲", "sent")];
 
@@ -61,7 +61,8 @@ impl App for Hover {
                             |ui| {
                                 ui.text(
                                     name,
-                                    TextStyle::new(13.0).color(kui::widgets::readable_on(bg)),
+                                    TextStyle::new(13.0)
+                                        .color(kui_native::widgets::readable_on(bg)),
                                 );
                             },
                         );
@@ -222,7 +223,7 @@ impl Example for Hover {
             d.core.is_group_hovered(NodeSpec::hover_group_id("drafts")),
             "and the group stays lit across the move",
         )?;
-        d.input(self, kui::InputEvent::CursorLeft);
+        d.input(self, kui_native::InputEvent::CursorLeft);
         d.check(
             self.leaves == 2 && self.over.is_none(),
             "the pointer leaving the window leaves the group",

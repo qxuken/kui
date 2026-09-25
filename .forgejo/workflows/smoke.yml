@@ -11,7 +11,7 @@
 # windowed example on the runner's own GPU for 120 frames - the layer
 # `cargo test` never reaches, and where three crashes were found in one
 # round on 2026-09-08.
-# `cargo test --workspace` (not `-p kui`) because the platform crates are
+# `cargo test --workspace` (not `-p kui-native`) because the platform crates are
 # what differ here, and the corpus and text tests are worth re-running on a
 # second set of system fonts.
 #

@@ -3,7 +3,7 @@
 // coverage for the access tree: nothing here talks to kui's own types,
 // it only asks the OS what it can see and change.
 //
-//   cargo build -p kui --example accessibility
+//   cargo build -p kui-native --example accessibility
 //   swiftc -O -o target/ax-audit scripts/ax-audit.swift
 //   ./target/debug/examples/accessibility &
 //   target/ax-audit $!

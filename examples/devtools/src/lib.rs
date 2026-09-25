@@ -9,7 +9,7 @@
 //! once, and what the dock used to be lives in the core: `kui_core::devtools`
 //! draws it, hears its own controls and chords, logs every event on its
 //! way to the example, and can dock beside it or open a window of its own.
-//! The harness asks for it with the launcher's [`kui::Launcher::devtools`]
+//! The harness asks for it with the launcher's [`kui_native::Launcher::devtools`]
 //! and seeds it from the command line — `--dock`, `--light`, `--dark`,
 //! `--accent`, `--key` — and from the example's [`Example::KEYS`] legend.
 //!
@@ -21,7 +21,7 @@
 //!
 //! One `main` per example: `kui_devtools::main!(Counter::default())`.
 
-use kui::{
+use kui_native::{
     Accel, App, Appearance, Chrome, Color, Core, Extensions, MotionPref, SystemEnv, Ui, UiEvent,
     Waker,
 };
@@ -30,9 +30,9 @@ mod drive;
 pub use drive::Drive;
 pub mod manifest;
 /// Where the panel sits: the core's own placement.
-pub use kui::DevtoolsDock as Dock;
+pub use kui_native::DevtoolsDock as Dock;
 /// The dock's extents, for the window the harness sizes around them.
-pub use kui::devtools::{DOCK_BOTTOM_H, DOCK_SIDE_W};
+pub use kui_native::devtools::{DOCK_BOTTOM_H, DOCK_SIDE_W};
 
 /// The window height a side dock needs to show all of itself, and the
 /// width a bottom one does: a smaller example's window is raised to it.
@@ -325,7 +325,7 @@ pub fn run_with<E: Example>(name: &str, mut example: E, cli: Cli) -> i32 {
     let legend: Vec<(&'static str, &'static str)> = E::KEYS.to_vec();
     let (base, accent) = (cli.base, cli.accent);
     let harness = Harness::new(name, example);
-    let mut launcher = kui::app(&format!("kui — {name}"))
+    let mut launcher = kui_native::app(&format!("kui — {name}"))
         .size(w, h)
         .chrome(window.chrome)
         .with_extensions(extensions)
@@ -432,7 +432,7 @@ impl<E: Example> App for Harness<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kui::{Key, NodeSpec, Value, widgets};
+    use kui_native::{Key, NodeSpec, Value, widgets};
 
     #[derive(Default)]
     struct Blank {
@@ -453,7 +453,7 @@ mod tests {
     }
 
     fn frame(h: &mut Harness<Blank>, core: &mut Core) {
-        let mut ui = core.frame(kui::Size::new(800.0, 600.0), 1.0);
+        let mut ui = core.frame(kui_native::Size::new(800.0, 600.0), 1.0);
         h.view(&mut ui);
         ui.finish();
     }
@@ -528,7 +528,7 @@ mod tests {
         frame(&mut h, &mut core);
         assert_eq!(core.window_title(), Some("kui — blank"));
         assert!(core.devtools());
-        assert!(core.key_of(kui::devtools::DEVTOOLS_KEY).is_some());
+        assert!(core.key_of(kui_native::devtools::DEVTOOLS_KEY).is_some());
         let press = core.key_of("press").unwrap();
         assert_eq!(
             press, press_bare,
@@ -542,10 +542,9 @@ mod tests {
         // A click on the example reaches it; a click on the panel's icon
         // is the core's and never arrives.
         let click = |core: &mut Core, key: Key| {
-            core.handle_input(kui::InputEvent::Access(kui::AccessRequest::new(
-                key,
-                kui::AccessAction::Click,
-            )))
+            core.handle_input(kui_native::InputEvent::Access(
+                kui_native::AccessRequest::new(key, kui_native::AccessAction::Click),
+            ))
         };
         let facts = core.key_of("kui-devtools/tab-facts").unwrap();
         for ev in click(&mut core, facts) {

@@ -18,11 +18,11 @@
 //! - **Restore.** When the dialog goes, focus returns to the button that
 //!   opened it (decision 4), so a keyboard user is where they were.
 //!
-//! Run: cargo run -p kui --example modal [-- --headless]
+//! Run: cargo run -p kui-native --example modal [-- --headless]
 
-use kui::widgets;
-use kui::{Align, App, Core, FloatConfig, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
 use kui_devtools::{Drive, Example};
+use kui_native::widgets;
+use kui_native::{Align, App, Core, FloatConfig, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
 
 #[derive(Default)]
 struct Page {
@@ -70,7 +70,7 @@ impl App for Page {
                             .self_at(Align::Center, Align::Center),
                     )
                     .modal(Value::str("dialog"))
-                    .role(kui::Role::Dialog)
+                    .role(kui_native::Role::Dialog)
                     .label("Edit")
                     .width(Sizing::Fixed(320.0))
                     .pad(18.0)
@@ -110,7 +110,7 @@ impl App for Page {
                                         .self_at(Align::Center, Align::Center),
                                 )
                                 .modal(Value::str("confirm"))
-                                .role(kui::Role::Dialog)
+                                .role(kui_native::Role::Dialog)
                                 .label("Discard changes?")
                                 .width(Sizing::Fixed(240.0))
                                 .pad(16.0)

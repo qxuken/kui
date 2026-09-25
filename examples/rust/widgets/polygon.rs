@@ -13,10 +13,12 @@
 //! bounding box but past its arc is over the neighbour, not it. Before
 //! that ADR this example floated a hover box over each wedge's middle.
 //!
-//! Run: cargo run -p kui --example polygon [-- --headless]
+//! Run: cargo run -p kui-native --example polygon [-- --headless]
 
-use kui::{App, Color, Core, FloatConfig, NodeSpec, QuadKind, Sizing, Stroke, TextStyle, Ui, Vec2};
 use kui_devtools::{Drive, Example};
+use kui_native::{
+    App, Color, Core, FloatConfig, NodeSpec, QuadKind, Sizing, Stroke, TextStyle, Ui, Vec2,
+};
 
 /// A wedge of `frac` of the circle starting at `from` turns: the centre,
 /// then the arc flattened into as many points as eight allows. Coarse for
@@ -230,24 +232,26 @@ impl Example for Demo {
         let (min_x, min_y) = pts
             .iter()
             .fold((f32::MAX, f32::MAX), |(x, y), p| (x.min(p.x), y.min(p.y)));
-        let c = kui::Vec2::new(r.x - (min_x - 1.0) + 110.0, r.y - (min_y - 1.0) + 110.0);
+        let c = kui_native::Vec2::new(r.x - (min_x - 1.0) + 110.0, r.y - (min_y - 1.0) + 110.0);
         let mid_angle = (from + frac * 0.5) * std::f32::consts::TAU;
         // Halfway out along the wedge's middle: inside it. Past the rim
         // along the same line, still inside its bounding box: not it.
-        let inside = kui::Vec2::new(c.x + 50.0 * mid_angle.cos(), c.y + 50.0 * mid_angle.sin());
-        let outside = kui::Vec2::new(c.x + 84.0 * mid_angle.cos(), c.y + 84.0 * mid_angle.sin());
-        d.input(self, kui::InputEvent::CursorMoved(inside));
+        let inside =
+            kui_native::Vec2::new(c.x + 50.0 * mid_angle.cos(), c.y + 50.0 * mid_angle.sin());
+        let outside =
+            kui_native::Vec2::new(c.x + 84.0 * mid_angle.cos(), c.y + 84.0 * mid_angle.sin());
+        d.input(self, kui_native::InputEvent::CursorMoved(inside));
         d.check(
             d.core.is_hovered(w1),
             "a pointer inside the wedge hovers it",
         )?;
-        d.input(self, kui::InputEvent::CursorMoved(outside));
+        d.input(self, kui_native::InputEvent::CursorMoved(outside));
         d.check(
             !d.core.is_hovered(w1),
             "a pointer in its box past its arc does not",
         )?;
         // Back inside: the fill eases to the accent, and stays one quad.
-        d.input(self, kui::InputEvent::CursorMoved(inside));
+        d.input(self, kui_native::InputEvent::CursorMoved(inside));
         d.frame(self);
         d.advance(0.5);
         d.frame(self);

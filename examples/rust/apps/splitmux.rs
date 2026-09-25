@@ -6,7 +6,7 @@
 //! `{kind="key"}` events, so the same chord dispatch would work verbatim
 //! from Lua or C.
 //!
-//! Run: cargo run -p kui --example splitmux
+//! Run: cargo run -p kui-native --example splitmux
 //!
 //! Keys — Alt is ⌥ Option on macOS: Alt-v/s split · Alt-o hop panes ·
 //! Alt-w close · Alt-t new tab · Alt-1..9 jump to tab. Click a pane to
@@ -33,12 +33,12 @@
 //! on that side, on the center swaps the two panes. A ghost label follows
 //! the cursor as a viewport-anchored float.
 
-use kui::widgets;
-use kui::{
+use kui_devtools::Example;
+use kui_native::widgets;
+use kui_native::{
     Align, App, Color, Core, Easing, FloatConfig, KeyMods, Message, NodeSpec, Sizing, TextStyle,
     Theme, Ui, UiEvent, Value, WindowCommand,
 };
-use kui_devtools::Example;
 
 const TABBAR_H: f32 = 30.0;
 /// How long a split takes to ease into a new ratio.
@@ -1039,8 +1039,8 @@ impl Example for Splitmux {
     /// The chord keymap, driven (backlog C36): two splits, a tab, and a
     /// jump back — the keys the smoke round once checked by hand.
     fn headless(&mut self, core: &mut Core) -> Result<(), String> {
-        use kui::{InputEvent, Vec2};
         use kui_devtools::Drive;
+        use kui_native::{InputEvent, Vec2};
         let alt = KeyMods {
             alt: true,
             ..KeyMods::default()

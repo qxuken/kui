@@ -1,6 +1,6 @@
 //! The smoke rosters, read from what enrols an example rather than from
 //! a list somebody keeps (ADR 0021, decision 4): a windowed example is an
-//! `[[example]]` of `kui`, a headless one is named in its crate's
+//! `[[example]]` of `kui-native`, a headless one is named in its crate's
 //! `[package.metadata.kui] headless = [...]`, and a Node example is in
 //! `examples/node/package.json`'s `kui.windowed` / `kui.headless`. The
 //! `smoke` binary runs what these answer and the pins in `lib.rs` check
@@ -18,7 +18,7 @@ pub fn root() -> PathBuf {
 }
 
 /// The crates whose manifests can enrol an example.
-pub const CRATES: &[&str] = &["kui", "kui-core", "kui-ffi", "kui-lua"];
+pub const CRATES: &[&str] = &["kui-native", "kui-core", "kui-ffi", "kui-lua"];
 
 /// The `[[example]]` names and the `headless = [...]` list of one
 /// manifest.
@@ -71,12 +71,12 @@ pub fn crate_manifest(krate: &str) -> (Vec<String>, Vec<String>) {
     manifest(&root().join("crates").join(krate).join("Cargo.toml"))
 }
 
-/// The windowed round: every `[[example]]` of `kui`, sorted. All of them
+/// The windowed round: every `[[example]]` of `kui-native`, sorted. All of them
 /// open a window; the other crates' examples are the C and Lua panel
 /// hosts (their rounds are `cbuild`'s) and kui-core's corpus
 /// dump, which opens none.
 pub fn windowed() -> Vec<String> {
-    let (mut examples, _) = crate_manifest("kui");
+    let (mut examples, _) = crate_manifest("kui-native");
     examples.sort();
     examples
 }

@@ -217,7 +217,7 @@ date: 2026-09-11
 
 ## What was declined, and why
 
-- **A `Devtools` struct in the `kui` crate, behind a feature.** The
+- **A `Devtools` struct in the `kui-native` crate, behind a feature.** The
   first answer, and Rust-only: Node, C and Lua could not see it, and
   the TypeScript twin would have stayed. The core is where every
   binding already is.
@@ -413,7 +413,7 @@ date: 2026-09-11
 - [x] `kui-core`: `devtools` module, feature, session state, hooks, the
       `DEVTOOLS` origin, `Core::cursor`, `WindowCommand::Redraw`,
       `NodeInfo` fields, doors.
-- [x] `kui` runner: apply `Redraw`; `Launcher::setup_core` / `devtools`.
+- [x] `kui-native` runner: apply `Redraw`; `Launcher::setup_core` / `devtools`.
 - [x] Node: `setDevtools` / `setDevtoolsDock` / `setDevtoolsTheme` /
       `setDevtoolsLegend` on `Ctx` and `KuiWindow`, the new `nodes()`
       fields, `runWindowed` not asking the app's `view` for the devtools'

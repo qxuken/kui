@@ -1,7 +1,7 @@
 //! Data arriving off the loop's thread: a "PTY" that produces a line every
 //! 40 ms on a thread of its own, and a view that shows the last ten. The
 //! loop parks between events (`ControlFlow::Wait`), so without a
-//! [`kui::Waker`] the window would show whatever it drew at the last
+//! [`kui_native::Waker`] the window would show whatever it drew at the last
 //! key press. `setup` hands the app the waker once; the thread clones it
 //! and calls `wake()` after every line, and the loop draws. Under
 //! `KUI_WAKER_LINES=n` the app closes after `n` lines and prints how many
@@ -10,13 +10,13 @@
 //! by its button or by Quit alike — which is where an app saves what it
 //! would lose (backlog F74).
 //!
-//! Run: cargo run -p kui --example waker
+//! Run: cargo run -p kui-native --example waker
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use kui::{App, NodeSpec, Sizing, TextStyle, Ui, Waker, WindowCommand};
 use kui_devtools::Example;
+use kui_native::{App, NodeSpec, Sizing, TextStyle, Ui, Waker, WindowCommand};
 
 struct Feed {
     lines: Arc<Mutex<Vec<String>>>,

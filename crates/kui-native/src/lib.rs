@@ -148,7 +148,7 @@ pub enum TextAa {
     Subpixel,
 }
 
-/// Entry point: `kui::app("title").custom_titlebar().run(my_app)`.
+/// Entry point: `kui_native::app("title").custom_titlebar().run(my_app)`.
 pub fn app(title: &str) -> Launcher {
     Launcher {
         title: title.to_string(),
@@ -326,8 +326,8 @@ impl Launcher {
     /// those still arrives as the `system` event, carrying the pin with it.
     ///
     /// ```no_run
-    /// # use kui::{SystemEnv, MotionPref};
-    /// kui::app("mine").system(SystemEnv { motion: MotionPref::Reduced, ..Default::default() });
+    /// # use kui_native::{SystemEnv, MotionPref};
+    /// kui_native::app("mine").system(SystemEnv { motion: MotionPref::Reduced, ..Default::default() });
     /// ```
     ///
     /// For looking at the window a user who asked for less motion, or a
@@ -358,7 +358,7 @@ impl Launcher {
     ///
     /// ```no_run
     /// # let rgba = vec![0u8; 64 * 64 * 4];
-    /// kui::app("mine").icon(rgba, 64, 64);
+    /// kui_native::app("mine").icon(rgba, 64, 64);
     /// ```
     ///
     /// A Windows program's own icon is a resource linked into its

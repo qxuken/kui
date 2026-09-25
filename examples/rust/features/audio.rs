@@ -3,7 +3,7 @@
 //! click; a badge declares a `hover_sound` for the pointer's arrival; and a
 //! loop is an `audio` node the view keeps declaring while it is on and
 //! stops declaring to stop — the same way a toast exists while the model
-//! holds it. The sounds are synthesized here (`kui::audio::blip`,
+//! holds it. The sounds are synthesized here (`kui_native::audio::blip`,
 //! `wav_pcm16`) and registered once as resources, since a resource is
 //! long-lived core state and not per-frame data.
 //!
@@ -14,12 +14,12 @@
 //! `open · 0 live` ten seconds after the last click would be a bug
 //! (`env.audio`, ADR 0021).
 //!
-//! Run: cargo run -p kui --example audio [-- --headless]
+//! Run: cargo run -p kui-native --example audio [-- --headless]
 
-use kui::audio::{blip, wav_pcm16};
-use kui::widgets;
-use kui::{Align, App, AudioSpec, Core, NodeSpec, SoundId, TextStyle, Ui, UiEvent, Value};
 use kui_devtools::{Drive, Example};
+use kui_native::audio::{blip, wav_pcm16};
+use kui_native::widgets;
+use kui_native::{Align, App, AudioSpec, Core, NodeSpec, SoundId, TextStyle, Ui, UiEvent, Value};
 
 #[derive(Default)]
 struct Audio {

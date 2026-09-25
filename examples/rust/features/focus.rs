@@ -19,11 +19,11 @@
 //! The dock's `focus` and `region` rows read the same facts this page
 //! draws.
 //!
-//! Run: cargo run -p kui --example focus [-- --headless]
+//! Run: cargo run -p kui-native --example focus [-- --headless]
 
-use kui::widgets;
-use kui::{Align, App, Core, Key, NodeSpec, Role, Sizing, TextStyle, Ui, UiEvent, Value};
 use kui_devtools::{Drive, Example};
+use kui_native::widgets;
+use kui_native::{Align, App, Core, Key, NodeSpec, Role, Sizing, TextStyle, Ui, UiEvent, Value};
 
 #[derive(Default)]
 struct Focus {
@@ -235,9 +235,9 @@ impl Example for Focus {
         let tab = |d: &mut Drive<'_>, app: &mut Focus, back: bool| {
             d.input(
                 app,
-                kui::InputEvent::Key(
-                    kui::EditKey::Tab,
-                    kui::Mods {
+                kui_native::InputEvent::Key(
+                    kui_native::EditKey::Tab,
+                    kui_native::Mods {
                         shift: back,
                         ..Default::default()
                     },

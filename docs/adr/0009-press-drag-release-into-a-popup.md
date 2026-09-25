@@ -167,7 +167,7 @@ it was retargeted; the only headless part is the arithmetic.
    derive. The `move` events it receives during the gesture carry the
    owner's coordinates and are ignored.
 7. **The arithmetic is a pure function, and the only headless part.**
-   `crates/kui/src/retarget.rs`: a `Surface` is a window's client origin
+   `crates/kui-native/src/retarget.rs`: a `Surface` is a window's client origin
    in the platform's common screen frame — **physical** pixels on
    Windows and X11, **points** on macOS, which has no physical screen
    frame (backlog AR33, 2026-09-14: winit's macOS `inner_position` is
@@ -249,12 +249,12 @@ it was retargeted; the only headless part is the arithmetic.
 
 - **Nothing ships to an app from this ADR.** `CHANGELOG.md` is untouched,
   as ADR 0004 left it: the changelog lists what a release adds and what
-  an app can delete, and the only code here is `crates/kui/src/retarget.rs`
+  an app can delete, and the only code here is `crates/kui-native/src/retarget.rs`
   with its tests, which nothing calls yet. Backlog W2 becomes *accepted,
   unbuilt*, whole in `docs/backlog/closed-2026-09.md` and trimmed in
   `docs/BACKLOG.md` to the build — and went whole to the archive on
   2026-09-07, when the driver half was built.
-- **The build is one change in one file**, `crates/kui/src/lib.rs`:
+- **The build is one change in one file**, `crates/kui-native/src/lib.rs`:
   `Shell` gains the armed set and a per-pane "primary held"; `open_pane`
   arms; the `CursorMoved` arm retargets; the `MouseInput` arm classifies
   the release and consumes the dismissing press; `close_pane` disarms.

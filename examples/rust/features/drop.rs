@@ -17,13 +17,13 @@
 //!   `ui.request_files`, answered by one `files` event whose `paths` are
 //!   what a drop's are, so the same list takes both.
 //!
-//! Run: cargo run -p kui --example drop [-- --headless]
+//! Run: cargo run -p kui-native --example drop [-- --headless]
 
-use kui::{
+use kui_devtools::{Drive, Example};
+use kui_native::{
     Align, App, Core, FileDialog, FloatConfig, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value,
     Vec2,
 };
-use kui_devtools::{Drive, Example};
 
 #[derive(Default)]
 struct Drop {
@@ -139,7 +139,7 @@ impl App for Drop {
                                     ui.text(
                                         "release to add",
                                         TextStyle::new(12.0)
-                                            .color(kui::widgets::readable_on(t.accent)),
+                                            .color(kui_native::widgets::readable_on(t.accent)),
                                     );
                                 },
                             );
@@ -261,7 +261,7 @@ impl Example for Drop {
         let inside = Vec2::new(zone_rect.x + 30.0, zone_rect.y + 30.0);
         d.input(
             self,
-            kui::InputEvent::DragFiles {
+            kui_native::InputEvent::DragFiles {
                 paths: paths.clone(),
                 at: inside,
             },
@@ -277,7 +277,7 @@ impl Example for Drop {
         let br = d.rect_of(button).ok_or("the button has no rect")?;
         d.input(
             self,
-            kui::InputEvent::DragFiles {
+            kui_native::InputEvent::DragFiles {
                 paths: paths.clone(),
                 at: Vec2::new(br.x + 4.0, br.y + 4.0),
             },
@@ -292,7 +292,7 @@ impl Example for Drop {
         let bn = d.rect_of(banner).ok_or("the banner has no rect")?;
         d.input(
             self,
-            kui::InputEvent::DragFiles {
+            kui_native::InputEvent::DragFiles {
                 paths: paths.clone(),
                 at: Vec2::new(bn.x + 4.0, bn.y + 4.0),
             },
@@ -306,7 +306,7 @@ impl Example for Drop {
         let nr = d.rect_of(nowhere).ok_or("the second box has no rect")?;
         d.input(
             self,
-            kui::InputEvent::DragFiles {
+            kui_native::InputEvent::DragFiles {
                 paths: paths.clone(),
                 at: Vec2::new(nr.x + 4.0, nr.y + 4.0),
             },
@@ -318,13 +318,16 @@ impl Example for Drop {
         // Back in, and released: landed, no leave after.
         d.input(
             self,
-            kui::InputEvent::DragFiles {
+            kui_native::InputEvent::DragFiles {
                 paths: paths.clone(),
                 at: inside,
             },
         );
         let before = self.events;
-        d.input(self, kui::InputEvent::DropFiles { paths, at: inside });
+        d.input(
+            self,
+            kui_native::InputEvent::DropFiles { paths, at: inside },
+        );
         d.check(
             self.landed.len() == 2 && self.hovering.is_empty() && self.events == before + 1,
             "released over the zone: `drop` with both paths, and no `leave` after it",
@@ -358,7 +361,10 @@ impl Example for Drop {
             again.is_empty(),
             "a second click while it is up asks for nothing more",
         )?;
-        d.input(self, kui::InputEvent::Files(vec!["/tmp/c.md".to_string()]));
+        d.input(
+            self,
+            kui_native::InputEvent::Files(vec!["/tmp/c.md".to_string()]),
+        );
         d.check(
             self.landed == ["/tmp/c.md"] && !d.core.awaiting_files(),
             "the answer lands like a drop, and the ask is spent",
@@ -366,7 +372,7 @@ impl Example for Drop {
         d.click_key(self, open);
         d.frame(self);
         d.core.take_file_requests();
-        d.input(self, kui::InputEvent::Files(Vec::new()));
+        d.input(self, kui_native::InputEvent::Files(Vec::new()));
         d.check(
             self.landed.len() == 1,
             "a cancelled dialog answers with no paths, and nothing lands",

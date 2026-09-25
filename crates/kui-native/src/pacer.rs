@@ -188,7 +188,7 @@ impl Pacer {
     /// asks for frames as soon as they are asked for — how C47's numbers
     /// without it were taken.
     ///
-    /// None either for a `run_loop` that is not `kui::run`'s own — the
+    /// None either for a `run_loop` that is not `kui_native::run`'s own — the
     /// `PumpRunner` a Node window turns from a JavaScript timer. The link
     /// fires only while the run loop runs, which there is only inside a
     /// pump, so a held frame waited for a pump that happened to meet a

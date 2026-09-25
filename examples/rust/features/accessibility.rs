@@ -8,7 +8,7 @@
 //! into a percentage, while `Focus length` also declares a `value_text`
 //! and is read as "25 minutes" (backlog F8).
 //!
-//! Run: cargo run -p kui --example accessibility
+//! Run: cargo run -p kui-native --example accessibility
 //!
 //! With VoiceOver (⌘F5): VO-right walks the controls, VO-space presses
 //! the button, and inside either editor the arrow keys read by character
@@ -55,12 +55,12 @@
 //! a destructive confirm should not be one habitual Enter away from
 //! confirming.
 
-use kui::widgets;
-use kui::{
+use kui_devtools::Example;
+use kui_native::widgets;
+use kui_native::{
     Align, App, EditOptions, FloatConfig, Key, Live, NodeSpec, Role, Sizing, TextStyle, Ui,
     UiEvent, Value,
 };
-use kui_devtools::Example;
 
 const DOC: &str = "hello world\nsecond line";
 
