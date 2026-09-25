@@ -42,8 +42,9 @@ paste and secure keyboard entry — from the kawoosh reports of 2026-09-22
 and 23, each the day it was filed, RG17–RG36 from the regression
 pass of 2026-09-25 the same day, and F86 — every window's icon — from
 the kawoosh window-icon report of the same day, the day it was filed, and
-F90 — a declared float taking its parent's clip — from the alpha.14,
-alpha.16 and alpha.18 upgrade reports of the same day, the day it was
+F88–F92 — a hovered control's name, five docs, a float's clip, a
+headless `Ctx`'s size and the host area as a rect — from the alpha.14,
+alpha.16 and alpha.18 upgrade reports of the same day, the day they were
 filed. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
@@ -73,10 +74,7 @@ two entries, C42 and C43 — `rich_text` shaped whole past the long-line
 threshold, and a long line's key hashed a byte at a time every frame —
 were built the day they were filed; the "thousands of spans" the report
 blamed measured as a factor of 1.5 and not the cause), the "theirs, not ours" lists the field reports left
-behind, and F88, F89, F91 and F92 from the alpha.14, alpha.16 and
-alpha.18 upgrade reports, filed together on 2026-09-25 because none of
-the three had been read (F90 was built the day it was filed).
-Everything else that has been filed has
+behind. Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
 they were filed (2026-09-07), F25–F31 from the alpha.8 ones by the day
@@ -1373,106 +1371,12 @@ doc and the npm README still describe the pointer shape that alpha.14
 stopped deriving, so a Node app that reads its own reference is told
 the hand comes for free (F89).
 
-F90 — a declared float that could not take its parent's clip — was
-**built 2026-09-25**, the day it was filed, and is in the archive.
-
-### `!` F88 — A hovered control's accessible name reads its tooltip
-
-**Found** (pomodoro, alpha.16 wish 4 and carried in alpha.18: "a focused
-control with a `tooltip` reads the tooltip's text inside its `name`,
-`SKIP KEY S`"). The symptom is real, but the trigger is hover, not focus.
-The `tooltip` prop builds its hint as the node's last child while the
-node is hovered (`runtime/builder.rs:507-518`, `is_hovered(key)` alone),
-and a role named from content — a button included — joins every
-`Text` in its subtree (`access.rs:911`, `content_name`), the hint's
-among them. Probed headless on alpha.18 with a box that has `onClick`,
-`tooltip="KEY S"` and the text `SKIP`: idle `SKIP`, pointer over it
-`SKIP KEY S`, clicked `SKIP KEY S`, pointer moved to another control
-with SKIP still focused `SKIP`, Tab-focused with no hover `SKIP`. The
-stock `<button tooltip>` leaks the same way (`widgets.rs:780-786` floats
-its hint inside the body): `Go Starts it`. In a window, every control
-with a tooltip changes its name as the mouse crosses it, and a screen
-reader re-reads the changed name. The `description` is right
-(`spec.rs:1271-1273`).
-
-**Do.** Name-from-content skips the tooltip hint's subtree: either every
-float subtree (a float is a layer of its own, not the control's
-content), or only the hint, marked when `close()` builds it. Skipping
-every float is the simpler rule and the one ARIA's
-name-from-content would pick for a popup. Check that no corpus scene
-names a control from a float's text before choosing it. Test: a hovered
-box with a `tooltip`, and a hovered stock button with one, keep their
-names; the description still carries the hint.
-
-### `.` F89 — Five Node and reference docs a release or more behind the code
-
-All doc sentences, one commit. Each one was checked against its line:
-
-1. **`cursorShape()` describes the derived pointer alpha.14 removed**
-   (mind map, alpha.14 "filed against the release"; and the cause of the
-   pomodoro's wish 1). The doc on `Ctx` and `KuiWindow`
-   (`kui-node/src/lib.rs:2896`, generated to `index.d.ts:2505` and
-   `:3573`) says "an `onClick` or `focusable` node `'pointer'`, an
-   `onDrag` node `'grab'`"; `input.rs:1820` (`implied_shape`) reads none
-   of them, since alpha.14 made both shapes declared. `packages/kui/README.md:183`
-   says "**The pointer shape is derived**, not declared", while the
-   root README says the opposite. Rewrite both to `props.md:27`'s rule.
-2. **`frame()` "resolves after the next pump has painted"**
-   (`index.d.ts:4450`, `index.js:716`, `howto.md:1000` and `:1044`). It
-   resolves after the next pump, drawn or not: `drainWaiters()` answers
-   every `frame` waiter at the end of every `[STEP]()` (`index.js:638`),
-   and a waiter asks for no paint. The pomodoro read it as "the next frame
-   the loop asks for", which is also wrong, and wished for a `nextPaint()`
-   (see *Wishes*). The sentence to write: "after the next pump, whether
-   or not it drew — `frameStats().framesTotal` moving is the paint".
-3. **`FrameTiming.frames` "climbs to 120 in the first two seconds"**
-   (`kui-node/src/lib.rs:1942`, generated to `index.d.ts:1048`; mind
-   map, alpha.14). That holds only for a window that paints every frame.
-   The mind map's idle window read `frames=4` after 3 s. Say it is the
-   ring's fill, one per painted frame up to 120. `stats.rs` has it right.
-4. **The `line` and `polygon` rows still say only "always a float in
-   its parent's box space"** (mind map, alpha.18 "filed against the
-   release": `schema.rs:1615` and `:1667`, so `props.md:144`/`:147`, and
-   `jsx-runtime.d.ts:682`). The float row they point to says a float
-   escapes its ancestors' clips, and F78 made a `parent`-anchored stroke
-   the exception. That is written only in ADR 0010's amendment and the
-   changelog. Add a sentence to each: the parent's clip holds it, as it
-   holds a child.
-5. **Headless text widths are the machine's fonts** (mind map, the
-   alpha.16 commit: 43.35 against 43.68 px on one toolbar label between
-   two machines). Theirs, correctly diagnosed: `text.rs:880-930` takes
-   the first installed family of a per-OS list. `howto.md:1108` says one
-   font per suite, but nothing says why a baseline compared across
-   machines needs it. Add one sentence there: load the font file and
-   name it on every text.
-
-After the edits, rebuild the addon, then `rm -rf target/napi-type-defs && npm run gen`
-(see `kui-generated-files`).
-
-### `~` F91 — A headless `Ctx` does not know its size before its first frame
-
-**Found** (mind map, alpha.18; wrong in the app since at least
-alpha.14). `LoopConfig.init`'s doc (`index.d.ts:4117`) says the function
-form is "how a first model gets the real `size()` … instead of constants
-it corrects on the first `resize`". Under `createApp`, neither is
-available. `Ctx` has no `size()` (only `KuiWindow` does, `index.d.ts:3088`),
-and `createApp`'s `width`/`height` exist only inside `transport()`
-(`index.js:243`), which passes them to `surface.frame(...)`. The first
-frame establishes the viewport rather than reporting it, so no `resize`
-follows. `env().viewport` is 0×0 until then, as its doc says. The mind
-map's suite fitted its map to a 1000×700 fallback and drew it in an
-1100×760 frame for four releases. Nothing caught it because the view and
-the checks read the same wrong numbers. `view`'s doc also offers `size()`
-"to pick the tier", which a headless view cannot call.
-
-**Do.** Give `Ctx` a `size()` that answers what the next `frame()` will
-lay out in: the size of the last frame, and before the first frame the
-`width`/`height`/`scale` that `createApp` hands the surface. `transport()`
-can set these on the `Ctx` it made, since a `Ctx` the app passes in is
-the app's. Keep the `WindowSize` shape so `S` is the same for both
-drivers, and state in the `init` doc which answer a headless loop gets.
-Test: `init: (s) => s.size()` under `createApp({width: 1100, height:
-760})` reads 1100×760.
+All five were **built 2026-09-25**, the day they were filed, each on
+its own branch, and are in the archive: F88 draws the hint under
+`role="none"`, which name-from-content skips; F89 rewrote the five docs;
+F90 is `clip` on a parent-anchored float (ABI 19, frame v16); F91 is
+`Ctx.size()`; F92 is `hostArea()`, `Core::host_rect` and
+`kui_host_rect`.
 
 ### Wishes, not entries
 
@@ -1564,15 +1468,15 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** F88, F89, F91 and F92 from the alpha.14, alpha.16 and
-alpha.18 upgrade reports (2026-09-25; F90 **built 2026-09-25**), F88 first: it is the one a user hears, a
-control's name changing under the mouse. Nothing of the regression pass of 2026-09-25 is open
+**Build next.** Nothing of the alpha.14, alpha.16 and alpha.18 upgrade
+reports is open (F88–F92 **built 2026-09-25**, the day they were filed).
+Nothing of the regression pass of 2026-09-25 is open
 (RG17–RG36 **built 2026-09-25** before the alpha.17 tag, RG37 the same
 day after it). Nothing of the regression pass of 2026-09-19 is open (RG1, the Node and C hosts hearing ⌘Q, was **built 2026-09-19**; RG2 and RG12, the devtools' menus select and its chord, RG3, RG6, RG7, RG8 and RG11, the table's layout and the round's float-floor regression, RG4, the left dock's deferral, RG5, the freeze loop's sign rule and the round's other regression, RG9 and RG10, the select's disabled row through the door and its unchecked options and `current`, RG13, the reader's click behind a modal, RG15, F69 checked in a window and found inert, RG14, the ten nits and the two devtools defects taken with them, and RG16, the door removed on RG15's finding, **built 2026-09-20**); C41 — `frame_1k_curves` 10% slower since the
 drop-zone commit — was **built 2026-09-25**, a register spill in the
 segment loop, and F86, the window icon, the same day. Next is W19, when
 a Windows or Linux round comes (the macOS half of ADR 0031 is built and
-verified; the fallback elsewhere is honest and positionless). Nothing else filed is open besides F88, F89, F91 and F92. The rounds since the alpha.14 tag, newest first:
+verified; the fallback elsewhere is honest and positionless). Nothing else filed is open. The rounds since the alpha.14 tag, newest first:
 the regression pass of 2026-09-19 over F67–F75 (RG1–RG16 — all
 sixteen built or done between 2026-09-19 and 2026-09-20, RG14's ten
 nits and RG16's removal of the press-and-hold door **done
@@ -2380,10 +2284,10 @@ move.
 - `.` **RG36** — [The docs the round left: the missing breaks and what-you-can-delete lines, stale docs after F76 and F80, the console claims, README's "Opt in"](backlog/closed-2026-09.md#-rg36--the-docs-the-round-left-the-missing-breaks-and-what-you-can-delete-lines-stale-docs-after-f76-and-f80-the-console-claims-readmes-opt-in--done-2026-09-25) — done (2026-09-25) — Each written
 - `~` **RG37** — [⌘V with a selection in a `cells` or `selectable` scope bypasses a focused key sink](backlog/closed-2026-09.md#-rg37--v-with-a-selection-in-a-cells-or-selectable-scope-bypasses-a-focused-key-sink--done-2026-09-25) — done (2026-09-25) — half wrong as filed: the sink already heard ⌘V; only a focused editor takes the runner's paste now, through `request_paste`
 
-**From the alpha.14, alpha.16 and alpha.18 upgrade reports (2026-09-25)** — F90 built the same day; F88, F89, F91 and F92 open
+**From the alpha.14, alpha.16 and alpha.18 upgrade reports (2026-09-25)** — F88–F92, filed and built the same day
 
-- `~` **F90** — [A declared float cannot take its parent's clip](backlog/closed-2026-09.md#-f90--a-declared-float-cannot-take-its-parents-clip--done-2026-09-25) — done (2026-09-25) — `clip` on the float (`FloatConfig::clipped`, `float_clip` at ABI 19, `{ clip: true }` in JSX and Lua), read with the parent anchor; F78's stroke rule is the bit set by the core
-- `.` **F92** — [Node cannot tell the app's quads from the dock's](backlog/closed-2026-09.md#-f92--node-cannot-tell-the-apps-quads-from-the-docks--done-2026-09-25) — done (2026-09-25) — `Core::host_rect`, the frame's viewport with its origin; Node's `hostArea()`, C's `kui_host_rect`; the root's `bg` is the one app quad it does not hold
 - `!` **F88** — [A hovered control's accessible name reads its tooltip](backlog/closed-2026-09.md#-f88--a-hovered-controls-accessible-name-reads-its-tooltip--done-2026-09-25) — done (2026-09-25) — the prop's hint (and the stock button's) is drawn under `role="none"`, and name-from-content skips a `role="none"` subtree; the `tooltip` element keeps its text
-- `~` **F91** — [A headless `Ctx` does not know its size before its first frame](backlog/closed-2026-09.md#-f91--a-headless-ctx-does-not-know-its-size-before-its-first-frame--done-2026-09-25) — done (2026-09-25) — `Ctx.size()` in the JS package: `createApp`'s `width`/`height`/`scale` before the first frame, `env().viewport` after
 - `.` **F89** — [Five Node and reference docs a release or more behind the code](backlog/closed-2026-09.md#-f89--five-node-and-reference-docs-a-release-or-more-behind-the-code--done-2026-09-25) — done (2026-09-25) — `cursorShape()` and the npm README declared-not-derived, `frame()` after the next pump drawn or not, `frames` the ring's fill, the `line`/`polygon` rows held by the parent's clip, headless text widths the machine's fonts
+- `~` **F90** — [A declared float cannot take its parent's clip](backlog/closed-2026-09.md#-f90--a-declared-float-cannot-take-its-parents-clip--done-2026-09-25) — done (2026-09-25) — `clip` on the float (`FloatConfig::clipped`, `float_clip` at ABI 19, `{ clip: true }` in JSX and Lua), read with the parent anchor; F78's stroke rule is the bit set by the core
+- `~` **F91** — [A headless `Ctx` does not know its size before its first frame](backlog/closed-2026-09.md#-f91--a-headless-ctx-does-not-know-its-size-before-its-first-frame--done-2026-09-25) — done (2026-09-25) — `Ctx.size()` in the JS package: `createApp`'s `width`/`height`/`scale` before the first frame, `env().viewport` after
+- `.` **F92** — [Node cannot tell the app's quads from the dock's](backlog/closed-2026-09.md#-f92--node-cannot-tell-the-apps-quads-from-the-docks--done-2026-09-25) — done (2026-09-25) — `Core::host_rect`, the frame's viewport with its origin; Node's `hostArea()`, C's `kui_host_rect`; the root's `bg` is the one app quad it does not hold
