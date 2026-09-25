@@ -532,8 +532,8 @@ function createLoop({ init, update, view, tick, windows, teardown }, opts, surfa
     return !(o.transition || o.depart || o.requested || o.autoscroll || o.scroll) && pending.length === 0;
   }
 
-  // The pump has painted: every `frame` waiter is answered, a `settled`
-  // one when this frame left nothing moving, a `quiet` one when it left
+  // The pump is over, drawn or not: every `frame` waiter is answered, a
+  // `settled` one when it left nothing moving, a `quiet` one when it left
   // nothing but a cycle — or when its cap has passed, which resolves with
   // `animating()` still true, the way `runOut` returns `maxMs` headless
   // rather than throwing.
@@ -735,9 +735,10 @@ function createLoop({ init, update, view, tick, windows, teardown }, opts, surfa
       const untilTick = nextTick - at();
       return Math.max(busyMs, Math.min(idleMs, untilTick));
     },
-    /** One more pump has painted. The cheap half of `settled` — what a test
-     *  that only needs the window to have drawn *something* was buying with
-     *  a `setTimeout`. */
+    /** One more pump, whether or not it drew. The cheap half of `settled`
+     *  — what a test that only needs the loop to have turned was buying
+     *  with a `setTimeout`. A waiter asks for no paint:
+     *  `win.frameStats().framesTotal` moving is the paint. */
     frame() {
       mustPump('frame');
       return new Promise((resolve, reject) => {

@@ -132,6 +132,23 @@ existing input draws changes: a stroke is clipped as it was.
   *What you can delete:* a `label` an app set on a control only so a
   hover would not rename it.
 
+- **Five Node and reference docs described what the code stopped doing
+  a release or more ago** (backlog F89, from the alpha.14, alpha.16 and
+  alpha.18 upgrade reports). `cursorShape()` and the npm README said an
+  `onClick` or `focusable` node gets the hand and an `onDrag` node the
+  grab; since alpha.14 only the I-beam is implied, and both now say so
+  as `props.md`'s `cursor` row does. `frame()` said it resolves once
+  the next pump has painted; it resolves after the next pump, drawn or
+  not, and `win.frameStats().framesTotal` moving is the paint (the
+  `index.d.ts` doc, `index.js` and two howto answers). `FrameTiming.frames`
+  said it climbs to 120 in two seconds; it is the ring's fill, one per
+  painted frame, so an idle window stays below it. The `line` and
+  `polygon` rows, and their JSX docs, say a stroke in its parent's box
+  is held by the parent's clip (F78) where they said only "always a
+  float". The howto's one-font answer says why a baseline compared
+  across machines needs it: headless text is shaped against the
+  machine's installed fonts.
+
 ## 0.1.0-alpha.18 (2026-09-25)
 
 **What breaks.** No door, the ABI at 18 and the frame at v15. ⌘V

@@ -180,11 +180,13 @@ pointing into the other three.
   For hover-dependent *layout* use `onHover={tag}` and react to
   `{kind: 'hover', phase: 'enter' | 'leave'}` events; `win.isHovered(key)`
   and `isPressed` answer for keys you got from events.
-- **The pointer shape is derived**, not declared: an editor is `text`, a
-  button or a `focusable` node `pointer`, an `onDrag` node `grab`, a plain
-  box `default`, and `cursor="ewResize"` overrides it where the derivation
-  cannot know (a splitter). A window applies it by itself;
-  `ctx.cursorShape()` reads it back for a test.
+- **The pointer shape is declared**, not derived: `cursor="pointer"` on a
+  control, `cursor="grab"` on a handle (and `'grabbing'` while its drag
+  runs), `cursor="ewResize"` on a splitter. A node that declares nothing is
+  `default` — an `onClick`, `focusable` or `onDrag` box included, as a
+  native button is — except over an editor or a `selectable` scope, where
+  it is `text`. The stock `<button>` declares its own hand. A window applies
+  it by itself; `ctx.cursorShape()` reads it back for a test.
 - **Motion that never settles** is data too: `keyframes` takes CSS-style
   stops for `width` / `height` / `bg` / `radius`, cycled over
   `transition` ms in CSS's `animation-direction` (`repeat="alternate"`)

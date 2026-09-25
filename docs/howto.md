@@ -997,7 +997,8 @@ straight after a dispatch is the *start* of the motion. A window runs on the
 wall clock and cannot be advanced, so the loop `runWindowed` builds answers
 the same question with two promises its own pump resolves: `await
 app.settled(maxMs = 10_000)` is `runOut` for a window, and `await
-app.frame()` is the next painted frame. The cap resolves rather than throws,
+app.frame()` is the next pump, whether or not it drew —
+`win.frameStats().framesTotal` moving is the paint. The cap resolves rather than throws,
 with `animating()` still true and the milliseconds it waited — a view
 holding a `repeat` keyframe never settles, and that number is how a test
 says so.
@@ -1026,7 +1027,7 @@ and `key` are refused on a window, which the OS drives and which says so
 rather than pretending.
 
 To run one in CI it has to close itself. `setup` is handed both the window
-and the loop, so a test counts presented frames and then closes it —
+and the loop, so a test counts pumps and then closes it —
 `runWindowed`'s promise resolves with the final model, and the process
 exits with a code:
 
@@ -1041,8 +1042,10 @@ await runWindowed(app, {
 });
 ```
 
-`loop.frame()` resolves on the next pump that painted; `loop.settled()`
-waits for one that left nothing animating, and returns how long it waited.
+`loop.frame()` resolves after the next pump, whether or not it drew —
+`win.frameStats().framesTotal` moving is the paint, so a test that needs one
+loops on `frame()` until it moves; `loop.settled()` waits for a pump that
+left nothing animating, and returns how long it waited.
 Neither needs an environment variable and neither is a build of kui: the
 app asks, in its own code, which is the only place that knows a window is
 being opened to be looked at rather than used. (`KUI_SMOKE_FRAMES` is the
@@ -1135,6 +1138,14 @@ another one shapes it as sans and raises `foreign-resource`. A helper that
 re-points that global at each core before rendering it is the shape this
 answer replaces — it leaves the cores rendered earlier holding an id from a
 session they are not in.
+
+It is also what makes a baseline portable. Headless text is shaped against
+the machine's installed fonts — a text that names no font gets the first
+family of a per-OS list the machine has — so the same label measures a
+fraction of a pixel apart on two machines, and a width or a quad recorded on
+one fails on the other. A suite that compares against numbers taken
+elsewhere loads its font file (`loadFontFile`, or `loadFontsDir` and
+`addSystemFont`) and names that font on every text.
 
 [Resources](props.md#resources) ·
 [`foreign-resource`](props.md#warnings) ·

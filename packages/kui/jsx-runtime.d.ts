@@ -658,7 +658,11 @@ export declare namespace JSX {
      *  curve through them with `curve`. Points are in the parent's box space
      *  (`float="viewport"` for viewport space). Never in layout: it floats,
      *  sized to its own bounding box, so it takes no room in a row or
-     *  column. `width` is the stroke width in px (default 1), `color` the
+     *  column. Unlike a declared float, which escapes every ancestor's
+     *  clip, a stroke in its parent's box space is held by the parent's
+     *  clip as a child is, its hit region with it — cut at a scroller's
+     *  edge with the row it is drawn in — and a `float="viewport"` one
+     *  escapes (backlog F78). `width` is the stroke width in px (default 1), `color` the
      *  stroke colour (default the foreground); `transition` eases the colour,
      *  and with `slide` beside it the stroke's position too — the points ride
      *  its box, so a stroke whose ends all move together slides with them,
@@ -688,7 +692,9 @@ export declare namespace JSX {
      *  a pie slice, the area under a curve. Placed as a `line` is — always
      *  a float in its parent's box space (`float="viewport"` for viewport
      *  space), sized to its own bounding box a pixel out on each side, so
-     *  it takes no room in a row or column; `transition` eases the fill and,
+     *  it takes no room in a row or column. Like a `line`, it is held by its
+     *  parent's clip, hit region included, unless it is
+     *  `float="viewport"` (backlog F78). `transition` eases the fill and,
      *  with `slide`, its position. The outline may be concave; a
      *  self-intersecting one fills even-odd, its overlaps unfilled. Hit by
      *  its outline

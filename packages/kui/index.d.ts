@@ -1045,8 +1045,9 @@ export interface Owed {
 /** The window's frame timing: the averages and maxima over the last 120
  *  frames, and two monotonic counts. */
 export interface FrameTiming {
-  /** How many frames the ring holds: climbs to 120 in the window's first
-   *  two seconds and stays there. Not a count of frames — that is
+  /** How many frames the ring holds: its fill, one per painted frame up
+   *  to 120, so a window that paints only when something changes stays
+   *  below it for as long as it idles. Not a count of frames — that is
    *  `framesTotal`. */
   frames: number;
   /** Every frame the window has painted, since it opened (backlog F62).
@@ -2518,13 +2519,17 @@ export declare class Ctx {
   dropTarget(): string | null
   /**
    * The pointer shape for where the pointer is now, in the `cursor`
-   * prop's own vocabulary: derived from the topmost node under it
-   * — an editor is `'text'`, an `onClick` or `focusable` node
-   * `'pointer'`, an `onDrag` node `'grab'` (`'grabbing'` while it
-   * drags), a plain box or no pointer at all `'default'` — or
-   * whatever that node's `cursor` overrode it with. A window
-   * applies it to the real cursor by itself and only touches it
-   * when the answer changes; this is for tests and drivers.
+   * prop's own vocabulary: whatever the topmost node under it
+   * declared with `cursor`, and when it declared nothing,
+   * `'text'` over an editor or a `selectable` scope and
+   * `'default'` over everything else — an `onClick`, `focusable`
+   * or `onDrag` node included, as a native button is, so a hand
+   * or a grab is the view's to declare (the stock `button`
+   * declares `'pointer'` itself). A captured drag keeps the
+   * dragged node's shape wherever the pointer goes; no pointer at
+   * all is `'default'`. A window applies it to the real cursor by
+   * itself and only touches it when the answer changes; this is
+   * for tests and drivers.
    */
   cursorShape(): CursorShape
   /**
@@ -3107,9 +3112,10 @@ export declare class KuiWindow {
    * layoutMs, renderMs, waitMs, totalMs, workMs} | null, avgTotalMs,
    * maxTotalMs, avgWorkMs, maxWorkMs}`. The averages and maxima are
    * over the last 120 frames and `frames` is how many of those the
-   * ring holds — it climbs to 120 in the first two seconds and stays
-   * there. `framesTotal` and `pumps` are the monotonic counts of every
-   * frame painted and every `pump()` taken (backlog F62), so two
+   * ring holds — its fill, one per painted frame up to 120, so a window
+   * that paints only when something changes stays below it for as long
+   * as it idles. `framesTotal` and `pumps` are the monotonic counts of
+   * every frame painted and every `pump()` taken (backlog F62), so two
    * readings a second apart are that second's frame and pump rates.
    * `waitMs` is vsync backpressure; `workMs` is everything else.
    */
@@ -3601,13 +3607,17 @@ export declare class KuiWindow {
   dropTarget(): string | null
   /**
    * The pointer shape for where the pointer is now, in the `cursor`
-   * prop's own vocabulary: derived from the topmost node under it
-   * — an editor is `'text'`, an `onClick` or `focusable` node
-   * `'pointer'`, an `onDrag` node `'grab'` (`'grabbing'` while it
-   * drags), a plain box or no pointer at all `'default'` — or
-   * whatever that node's `cursor` overrode it with. A window
-   * applies it to the real cursor by itself and only touches it
-   * when the answer changes; this is for tests and drivers.
+   * prop's own vocabulary: whatever the topmost node under it
+   * declared with `cursor`, and when it declared nothing,
+   * `'text'` over an editor or a `selectable` scope and
+   * `'default'` over everything else — an `onClick`, `focusable`
+   * or `onDrag` node included, as a native button is, so a hand
+   * or a grab is the view's to declare (the stock `button`
+   * declares `'pointer'` itself). A captured drag keeps the
+   * dragged node's shape wherever the pointer goes; no pointer at
+   * all is `'default'`. A window applies it to the real cursor by
+   * itself and only touches it when the answer changes; this is
+   * for tests and drivers.
    */
   cursorShape(): CursorShape
   /**
@@ -4497,10 +4507,13 @@ export interface WindowLoop<M, A = AppMsg | CoreMsg, E = never> extends Loop<M, 
    *  `settled`, since a wait that ignores something should say so in its
    *  name. */
   quiet(maxMs?: number): Promise<number>;
-  /** Resolves after the next pump has painted — the cheap half of
-   *  `settled`, for a test that only needs the window to have drawn, not to
-   *  have stopped moving. A promise for the same reason: the pump runs on a
-   *  timer a test cannot see into. */
+  /** Resolves after the next pump, whether or not it drew — the cheap
+   *  half of `settled`, for a test that only needs one more turn of the
+   *  loop, not for it to have stopped moving. A waiter asks for no paint:
+   *  `win.frameStats().framesTotal` moving is the paint, so a test that
+   *  needs one loops on `frame()` until it moves. A promise for the same
+   *  reason as `settled`: the pump runs on a timer a test cannot see
+   *  into. */
   frame(): Promise<void>;
 }
 
