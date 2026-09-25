@@ -609,6 +609,13 @@ pub struct KuiSpec {
     /// 0 for none. Wins over `pressed_bg`, `focus_bg` and `hover_bg`;
     /// eases with `transition`. ABI 18.
     pub drop_bg: u32,
+    /// Non-zero: a `KUI_FLOAT_PARENT` float takes its parent's clip, as a
+    /// child does, instead of escaping every ancestor's — cut at a `clip`
+    /// canvas's edge and not hit past it (`FloatConfig::clip`, backlog
+    /// F90). Read with the parent anchor only; still painted as a layer
+    /// over its in-flow siblings. Beside `float_fit` in meaning, at the
+    /// end of the struct because that is where an append goes. ABI 19.
+    pub float_clip: u32,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a

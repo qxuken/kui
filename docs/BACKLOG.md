@@ -41,7 +41,10 @@ meta file, two reveals, the atlas between one page and two, the secret
 paste and secure keyboard entry — from the kawoosh reports of 2026-09-22
 and 23, each the day it was filed, RG17–RG36 from the regression
 pass of 2026-09-25 the same day, and F86 — every window's icon — from
-the kawoosh window-icon report of the same day, the day it was filed. The index
+the kawoosh window-icon report of the same day, the day it was filed, and
+F90 — a declared float taking its parent's clip — from the alpha.14,
+alpha.16 and alpha.18 upgrade reports of the same day, the day it was
+filed. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -70,9 +73,10 @@ two entries, C42 and C43 — `rich_text` shaped whole past the long-line
 threshold, and a long line's key hashed a byte at a time every frame —
 were built the day they were filed; the "thousands of spans" the report
 blamed measured as a factor of 1.5 and not the cause), the "theirs, not ours" lists the field reports left
-behind, and F88–F92 from the alpha.14, alpha.16 and alpha.18 upgrade
-reports, filed together on 2026-09-25 because none of the three had been
-read. Everything else that has been filed has
+behind, and F88, F89, F91 and F92 from the alpha.14, alpha.16 and
+alpha.18 upgrade reports, filed together on 2026-09-25 because none of
+the three had been read (F90 was built the day it was filed).
+Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
 they were filed (2026-09-07), F25–F31 from the alpha.8 ones by the day
@@ -1369,6 +1373,9 @@ doc and the npm README still describe the pointer shape that alpha.14
 stopped deriving, so a Node app that reads its own reference is told
 the hand comes for free (F89).
 
+F90 — a declared float that could not take its parent's clip — was
+**built 2026-09-25**, the day it was filed, and is in the archive.
+
 ### `!` F88 — A hovered control's accessible name reads its tooltip
 
 **Found** (pomodoro, alpha.16 wish 4 and carried in alpha.18: "a focused
@@ -1441,32 +1448,6 @@ All doc sentences, one commit. Each one was checked against its line:
 
 After the edits, rebuild the addon, then `rm -rf target/napi-type-defs && npm run gen`
 (see `kui-generated-files`).
-
-### `~` F90 — A declared float cannot take its parent's clip
-
-**Found** (mind map, alpha.18 "asked of kui"). The mind map is the
-"canvas of floats" `props.md` names twice: a `clip` canvas whose nodes
-are `float: 'parent'` and whose connectors are `<line>`s. F78 put the
-connectors inside the canvas's clip; the nodes still escape it. The
-report measured it: panned 60 px under the toolbar, a node draws over
-the toolbar, takes a click at y=2, and has lost its connector. The rule
-is in `runtime/emit.rs:699` (`drawn_in_parent`) and again in the ghost
-pass at `:1083`, gated on the node's content being `Line` or `Polygon`.
-Hit regions already carry the ancestor clip (`input.rs:948`, "a point
-must be inside both to hit"), so a float the rule admitted would be
-clipped for input as well as paint. `FloatProp` has no clip, and there
-is no in-flow way to place a box at a point, so the app has nothing to
-reach for.
-
-**Do.** An opt-in on the float: `float={{ anchor: 'parent', clip: true
-}}` (or a `clipped` bit beside `anchor`), meaningful only with the
-`parent` anchor, which ORs into `drawn_in_parent` in both passes. It
-touches the float row in four bindings, the schema doc, the corpus (one
-scene: a clipped float panned half past its parent's edge, cut and
-unhittable past it), and ADR 0010's amendment, which should record that
-F78's stroke rule is now this bit set by default for strokes. Paint
-order is unchanged: a clipped float is still drawn in the float layer
-above its in-flow siblings, only cut.
 
 ### `~` F91 — A headless `Ctx` does not know its size before its first frame
 
@@ -1602,15 +1583,15 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** F88–F92 from the alpha.14, alpha.16 and alpha.18 upgrade
-reports (2026-09-25), F88 first: it is the one a user hears, a
+**Build next.** F88, F89, F91 and F92 from the alpha.14, alpha.16 and
+alpha.18 upgrade reports (2026-09-25; F90 **built 2026-09-25**), F88 first: it is the one a user hears, a
 control's name changing under the mouse. Nothing of the regression pass of 2026-09-25 is open
 (RG17–RG36 **built 2026-09-25** before the alpha.17 tag, RG37 the same
 day after it). Nothing of the regression pass of 2026-09-19 is open (RG1, the Node and C hosts hearing ⌘Q, was **built 2026-09-19**; RG2 and RG12, the devtools' menus select and its chord, RG3, RG6, RG7, RG8 and RG11, the table's layout and the round's float-floor regression, RG4, the left dock's deferral, RG5, the freeze loop's sign rule and the round's other regression, RG9 and RG10, the select's disabled row through the door and its unchecked options and `current`, RG13, the reader's click behind a modal, RG15, F69 checked in a window and found inert, RG14, the ten nits and the two devtools defects taken with them, and RG16, the door removed on RG15's finding, **built 2026-09-20**); C41 — `frame_1k_curves` 10% slower since the
 drop-zone commit — was **built 2026-09-25**, a register spill in the
 segment loop, and F86, the window icon, the same day. Next is W19, when
 a Windows or Linux round comes (the macOS half of ADR 0031 is built and
-verified; the fallback elsewhere is honest and positionless). Nothing else filed is open besides F88–F92. The rounds since the alpha.14 tag, newest first:
+verified; the fallback elsewhere is honest and positionless). Nothing else filed is open besides F88, F89, F91 and F92. The rounds since the alpha.14 tag, newest first:
 the regression pass of 2026-09-19 over F67–F75 (RG1–RG16 — all
 sixteen built or done between 2026-09-19 and 2026-09-20, RG14's ten
 nits and RG16's removal of the press-and-hold door **done
@@ -2417,3 +2398,7 @@ move.
 - `.` **RG35** — [`arboard = "3"` admits versions without F84's `exclude_from_*`](backlog/closed-2026-09.md#-rg35--arboard--3-admits-versions-without-f84s-exclude_from_--done-2026-09-25) — done (2026-09-25) — `arboard = "3.6"`
 - `.` **RG36** — [The docs the round left: the missing breaks and what-you-can-delete lines, stale docs after F76 and F80, the console claims, README's "Opt in"](backlog/closed-2026-09.md#-rg36--the-docs-the-round-left-the-missing-breaks-and-what-you-can-delete-lines-stale-docs-after-f76-and-f80-the-console-claims-readmes-opt-in--done-2026-09-25) — done (2026-09-25) — Each written
 - `~` **RG37** — [⌘V with a selection in a `cells` or `selectable` scope bypasses a focused key sink](backlog/closed-2026-09.md#-rg37--v-with-a-selection-in-a-cells-or-selectable-scope-bypasses-a-focused-key-sink--done-2026-09-25) — done (2026-09-25) — half wrong as filed: the sink already heard ⌘V; only a focused editor takes the runner's paste now, through `request_paste`
+
+**From the alpha.14, alpha.16 and alpha.18 upgrade reports (2026-09-25)** — F90 built the same day; F88, F89, F91 and F92 open
+
+- `~` **F90** — [A declared float cannot take its parent's clip](backlog/closed-2026-09.md#-f90--a-declared-float-cannot-take-its-parents-clip--done-2026-09-25) — done (2026-09-25) — `clip` on the float (`FloatConfig::clipped`, `float_clip` at ABI 19, `{ clip: true }` in JSX and Lua), read with the parent anchor; F78's stroke rule is the bit set by the core

@@ -81,6 +81,9 @@ use crate::{Result, err, value_of};
 /// index plus one (0 = none). No prop list: the field reads no row but
 /// its own. A new op, so the bump is for an encoder that emits one to an
 /// addon without it.
+/// v16: the float stanza's last slot, `fit` as 0 or 1 until now, is a
+/// flags word — 1 `fit`, 2 `clip` (backlog F90) — so an encoder that
+/// sets 2 to an addon reading `== 1` would lose `fit` with the clip.
 /// v13: an underline's own colour and shape (backlog K4). A span carries
 /// a third colour slot, the underline's, with flags bits 256 (has one),
 /// 512 (it is a token index), 1024 (wavy) and 2048 (dotted); a cell
@@ -88,7 +91,7 @@ use crate::{Result, err, value_of};
 /// array may have four or five entries a cell. Slots in the middle of two
 /// ops, which is what the bump is for; `underlineColor` and
 /// `underlineStyle` on a `<text>` are ordinary schema rows.
-pub const VERSION: u32 = 15;
+pub const VERSION: u32 = 16;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a
 /// token index rather than a value (`docs/adr/0027-tokens-beside-the-theme.md`,
@@ -566,8 +569,11 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut, refs: &mut Refs<'_>) -
                 // dx and dy carry their own flags: `{ anchor: "below", dx }`
                 // moves it sideways and leaves the preset's gap.
                 let (dx, dy) = (opt_f32(r)?, opt_f32(r)?);
-                let fit = r.u()? == 1;
-                let cfg = FloatConfig::build(base, at, self_at, dx, dy, fit);
+                // A flags word: 1 `fit`, 2 `clip` (v16; the slot was a
+                // bare `fit` 0/1 before, which bit 1 still reads as).
+                let flags = r.u()?;
+                let (fit, clip) = (flags & 1 != 0, flags & 2 != 0);
+                let cfg = FloatConfig::build(base, at, self_at, dx, dy, fit, clip);
                 out.spec = std::mem::take(&mut out.spec).float(cfg);
             }
             P_KEY_FOCUS => out.key_focus = true,
@@ -1470,9 +1476,40 @@ mod tests {
                 Some(6.0),
                 None,
                 false,
+                false,
             ))
         });
         assert_eq!(decode(&s, b""), expected);
+    }
+
+    /// The float stanza's last slot is a flags word (v16): 1 `fit`, 2
+    /// `clip`, each read on its own, so `{ anchor: 'parent', clip: true }`
+    /// does not also flip to stay on screen.
+    #[test]
+    fn the_float_flags_word_carries_fit_and_clip() {
+        let float = |flags: f64| {
+            let s = [
+                1.0,
+                P_FLOAT as f64,
+                0.0, // parent
+                0.0,
+                0.0,
+                0.0, // no at
+                0.0,
+                0.0,
+                0.0, // no self
+                0.0,
+                0.0, // no dx
+                0.0,
+                0.0, // no dy
+                flags,
+            ];
+            decode(&s, b"").spec.layout.float.unwrap()
+        };
+        assert!(!float(0.0).fit && !float(0.0).clip);
+        assert!(float(1.0).fit && !float(1.0).clip);
+        assert!(!float(2.0).fit && float(2.0).clipped_by_parent());
+        assert!(float(3.0).fit && float(3.0).clip);
     }
 
     /// A whole frame lowers headlessly, and the version/root guards hold.

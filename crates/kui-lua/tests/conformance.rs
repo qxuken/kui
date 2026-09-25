@@ -163,6 +163,23 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
+        // Backlog F90: two nodes on a `clip` canvas panned half past its
+        // top, the first declaring `clip`.
+        "clip-float" => r#"
+            local function node(key, dx, clip, bg, label)
+              return column { key = key, float = { anchor = "parent", dx = dx, dy = -20, clip = clip },
+                              width = 80, height = 40, bg = bg, on_click = { kind = key }, label = label }
+            end
+            return column { width = { grow = 1 }, height = { grow = 1 },
+              row { key = "toolbar", width = { grow = 1 }, height = 40, bg = 0x3a3f52ff,
+                    on_click = { kind = "toolbar" }, label = "Toolbar" },
+              column { key = "canvas", width = { grow = 1 }, height = { grow = 1 }, clip = true,
+                       bg = 0x101018ff,
+                       node("node", 40, true, 0x3b5bd4ff, "Node"),
+                       node("free", 160, false, 0x73d98cff, "Free") },
+            }
+        "#
+        .to_string(),
         "tooltip" => r#"
             return column { pad = 10,
               row { key = "tip", width = 100, height = 40, bg = 0x333333ff,

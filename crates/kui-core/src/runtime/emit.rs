@@ -689,23 +689,21 @@ impl Core {
                 self.opacity[i] = o;
                 o
             };
-            // A stroke or a polygon is a float the core made, anchored in
-            // its parent's box space (ADR 0010, decision 5): it belongs to
-            // the parent's content as a child does, so the parent's clip
-            // holds it — a graph beside a scrolled list is cut at the
-            // list's edge like the rows it draws over. A declared float
-            // (a tooltip, a menu) escapes; so does a stroke anchored to
-            // the viewport.
+            // A parent-anchored float that declared `clip` belongs to the
+            // parent's content as a child does, so the parent's clip holds
+            // it: a node on a `clip` canvas panned past the canvas's edge
+            // is cut there (F90), and a graph beside a scrolled list at
+            // the list's edge like the rows it draws over, since the core
+            // sets the bit on every stroke and polygon (F78, ADR 0010
+            // decision 5). Any other float (a tooltip, a menu, a stroke
+            // anchored to the viewport) escapes. Only the clip is the
+            // parent's: the node still paints in its float layer.
             let drawn_in_parent = floats_here
                 && parent != NIL
-                && matches!(
-                    self.tree.content[i],
-                    NodeContent::Line(_) | NodeContent::Polygon(_)
-                )
                 && self.tree.specs[i]
                     .layout
                     .float
-                    .is_some_and(|f| f.anchor == crate::spec::FloatAnchor::Parent);
+                    .is_some_and(|f| f.clipped_by_parent());
             let (clip, clip_id) = if !any_clip {
                 (Clip::NONE, no_clip)
             } else {
@@ -1077,18 +1075,14 @@ impl Core {
             // virtual list built past its edge stay past it), while the
             // ancestors outside the picture, which may be gone, clip
             // nothing. Same rule as the live pass, from the root down —
-            // a stroke or polygon anchored in its parent's box included,
-            // which the parent's clip holds as it does a child's (F78;
-            // the ghost pass kept the old escape, RG26).
-            let drawn_in_parent = matches!(
-                node.content,
-                GhostContent::Line { .. } | GhostContent::Polygon(_)
-            ) && node
+            // a parent-anchored float with `clip`, a stroke or polygon
+            // included, is held by the parent's clip as a child is (F78,
+            // F90; the ghost pass kept the old escape, RG26).
+            let escapes = node
                 .spec
                 .layout
                 .float
-                .is_some_and(|f| f.anchor == crate::spec::FloatAnchor::Parent);
-            let escapes = node.spec.layout.float.is_some() && !drawn_in_parent;
+                .is_some_and(|f| !f.clipped_by_parent());
             let (clip, clip_id) = if node.parent == NIL || escapes {
                 (Clip::NONE, NO_CLIP_ID)
             } else {

@@ -399,3 +399,179 @@ fn viewport_fit_clamps_instead_of_mirroring() {
         "clamped to the right edge, same row"
     );
 }
+
+/// The mind map's canvas (backlog F90): a toolbar over a `clip` canvas,
+/// and a node on the canvas, a parent-anchored float, panned 20 px above
+/// the canvas's top edge. `node` is the node's float, so a test can
+/// declare it clipped or not.
+fn canvas_with_a_node(core: &mut Core, node: FloatConfig) {
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    ui.with(
+        NodeSpec::row()
+            .width(Sizing::Grow(1.0))
+            .height(Sizing::Fixed(40.0))
+            .bg(BLUE)
+            .on_click(Value::str("toolbar")),
+        |_| {},
+    );
+    ui.with(NodeSpec::column().fill().clip(), |ui| {
+        ui.with(
+            NodeSpec::column()
+                .width(Sizing::Fixed(80.0))
+                .height(Sizing::Fixed(40.0))
+                .bg(RED)
+                .on_click(Value::str("node"))
+                .float(node.offset(40.0, -20.0)),
+            |_| {},
+        );
+        // In flow, declared after the node and under it: the node is
+        // still a layer over it, clipped or not.
+        ui.with(
+            NodeSpec::column()
+                .width(Sizing::Fixed(200.0))
+                .height(Sizing::Fixed(200.0))
+                .on_click(Value::str("under")),
+            |_| {},
+        );
+    });
+    ui.finish();
+}
+
+fn click_at(core: &mut Core, x: f32, y: f32) -> Option<String> {
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(x, y)));
+    core.handle_input(InputEvent::mouse_down(1));
+    let evs = core.handle_input(InputEvent::mouse_up());
+    evs.first()
+        .and_then(|e| e.payload.as_str())
+        .map(str::to_string)
+}
+
+/// The node's quad and the rect of the clip it names.
+fn node_quad(core: &mut Core) -> (kui_core::Rect, kui_core::Rect, usize) {
+    let (dl, _) = core.output();
+    let i = dl
+        .quads
+        .iter()
+        .position(|q| q.kind == QuadKind::Solid && q.color == RED)
+        .expect("the node draws");
+    let q = &dl.quads[i];
+    (q.rect, dl.clips[q.clip as usize].rect, i)
+}
+
+/// A float that declares `clip` is cut by its parent's clip, as a child
+/// is, and its hit region with it: the half panned past the canvas's top
+/// edge neither draws over the toolbar nor takes the press there. The
+/// half inside is still a layer over the in-flow content it sits on.
+#[test]
+fn a_clipped_float_is_cut_by_its_parent_and_not_hit_past_it() {
+    let mut core = Core::new();
+    canvas_with_a_node(&mut core, FloatConfig::parent().clipped());
+    let (rect, clip, i) = node_quad(&mut core);
+    assert_eq!((rect.y, rect.h), (20.0, 40.0), "placed half past the edge");
+    assert_eq!(
+        (clip.y, clip.h),
+        (40.0, 260.0),
+        "clipped to the canvas, not the window"
+    );
+    // Paint order is the float's: after the in-flow sibling declared
+    // after it (the only other clickable box there, and transparent, so
+    // the toolbar is the one other solid quad).
+    let (dl, _) = core.output();
+    let toolbar = dl
+        .quads
+        .iter()
+        .position(|q| q.kind == QuadKind::Solid && q.color == BLUE)
+        .unwrap();
+    assert!(i > toolbar);
+
+    // Over the toolbar, where the cut half would be: the toolbar.
+    assert_eq!(click_at(&mut core, 60.0, 30.0).as_deref(), Some("toolbar"));
+    // Inside the canvas: the node, over the in-flow box under it.
+    assert_eq!(click_at(&mut core, 60.0, 50.0).as_deref(), Some("node"));
+    // Beside it: the in-flow box.
+    assert_eq!(click_at(&mut core, 150.0, 50.0).as_deref(), Some("under"));
+}
+
+/// Without `clip` the same node escapes as every float did (F90's
+/// report): it draws over the toolbar and takes the press there.
+#[test]
+fn an_unclipped_float_still_escapes_its_parents_clip() {
+    let mut core = Core::new();
+    canvas_with_a_node(&mut core, FloatConfig::parent());
+    let (_, clip, _) = node_quad(&mut core);
+    assert!(clip.y <= 20.0, "escaped: {clip:?}");
+    assert_eq!(click_at(&mut core, 60.0, 30.0).as_deref(), Some("node"));
+}
+
+/// `clip` is read with the parent anchor only: a viewport float is placed
+/// against the window, not the parent, and escapes with the bit set.
+#[test]
+fn clip_is_read_with_the_parent_anchor_only() {
+    let mut core = Core::new();
+    canvas_with_a_node(
+        &mut core,
+        FloatConfig::viewport()
+            .at(Align::Start, Align::Start)
+            .clipped(),
+    );
+    let (rect, clip, _) = node_quad(&mut core);
+    // At (40, -20) in the window: half off its top, and not cut at 40.
+    assert_eq!(rect.y, -20.0);
+    assert!(clip.y <= -20.0, "escaped: {clip:?}");
+    assert_eq!(click_at(&mut core, 60.0, 10.0).as_deref(), Some("node"));
+}
+
+/// The exit ghost reads the same bit (RG26's rule for strokes, now any
+/// clipped float's): a panel playing its exit keeps its node cut at the
+/// canvas's edge rather than drawing it over the toolbar.
+#[test]
+fn a_departing_clipped_float_is_cut_by_its_parent() {
+    let mut core = Core::new();
+    let build = |core: &mut Core, now: f64, show: bool| {
+        core.set_time(now);
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        if show {
+            let panel = NodeSpec::column()
+                .fill()
+                .transition(100.0)
+                .exit(kui_core::Enter::default().opacity(0.0));
+            ui.with_keyed("panel", panel, |ui| {
+                ui.with(
+                    NodeSpec::row()
+                        .width(Sizing::Grow(1.0))
+                        .height(Sizing::Fixed(40.0))
+                        .bg(BLUE),
+                    |_| {},
+                );
+                ui.with(NodeSpec::column().fill().clip(), |ui| {
+                    ui.with(
+                        NodeSpec::column()
+                            .width(Sizing::Fixed(80.0))
+                            .height(Sizing::Fixed(40.0))
+                            .bg(RED)
+                            .float(FloatConfig::parent().clipped().offset(40.0, -20.0)),
+                        |_| {},
+                    );
+                });
+            });
+        }
+        ui.finish();
+    };
+    build(&mut core, 0.0, true);
+    build(&mut core, 0.0, false);
+    build(&mut core, 0.01, false);
+    assert!(core.animating(), "the exit is playing");
+    let (dl, _) = core.output();
+    let node: Vec<_> = dl
+        .quads
+        .iter()
+        .filter(|q| q.kind == QuadKind::Solid && q.rect.w == 80.0 && q.rect.h == 40.0)
+        .map(|q| (q.rect, dl.clips[q.clip as usize].rect))
+        .collect();
+    assert_eq!(node.len(), 1, "the ghost draws the node: {node:?}");
+    let (rect, clip) = node[0];
+    assert_eq!(rect.y, 20.0);
+    assert_eq!(clip.y, 40.0, "the ghost's node over the toolbar: {clip:?}");
+}

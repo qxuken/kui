@@ -36,14 +36,14 @@ fn preset_names_and_wire_indices_agree() {
 #[test]
 fn an_undeclared_override_keeps_the_presets_value() {
     let below = FloatConfig::below();
-    let nudged = FloatConfig::build(below, None, None, Some(4.0), None, false);
+    let nudged = FloatConfig::build(below, None, None, Some(4.0), None, false, false);
     assert_eq!(nudged.offset, Vec2Offset { x: 4.0, y: 6.0 });
     assert_eq!(nudged.anchor_point, below.anchor_point);
     assert_eq!(nudged.self_point, below.self_point);
 
     // Nothing declared at all is the preset, unchanged.
     assert_eq!(
-        FloatConfig::build(below, None, None, None, None, false),
+        FloatConfig::build(below, None, None, None, None, false, false),
         below
     );
 }
@@ -57,12 +57,16 @@ fn declared_overrides_win_over_the_base() {
         Some(-8.0),
         Some(-8.0),
         true,
+        true,
     );
     assert_eq!(cfg.anchor, FloatAnchor::Viewport);
     assert_eq!(cfg.anchor_point, (Align::End, Align::End));
     assert_eq!(cfg.self_point, (Align::Center, Align::Start));
     assert_eq!(cfg.offset, Vec2Offset { x: -8.0, y: -8.0 });
     assert!(cfg.fit);
+    // Declared, and read by no viewport float: the anchor decides.
+    assert!(cfg.clip);
+    assert!(!cfg.clipped_by_parent());
 }
 
 /// An edge falls back to its axis, an axis to the all-round `pad`, and the

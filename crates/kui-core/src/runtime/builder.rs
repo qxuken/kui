@@ -491,6 +491,12 @@ impl Core {
                 x: rect.x,
                 y: rect.y,
             },
+            // A stroke drawn in its parent's box is the parent's content,
+            // so the parent's clip holds it as it holds a child (F78; ADR
+            // 0010 decision 5, as amended by F90): the bit a declared float
+            // opts into, set here for every stroke. A viewport-anchored
+            // one escapes regardless (`FloatConfig::clipped_by_parent`).
+            clip: true,
             ..crate::spec::FloatConfig::default()
         });
         spec.layout.width = Sizing::Fixed(rect.w);

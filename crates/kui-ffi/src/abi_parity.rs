@@ -691,6 +691,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         on_scroll: *const KuiValue => "const KuiValue *",
         on_drop: *const KuiValue => "const KuiValue *",
         drop_bg: u32 => "uint32_t",
+        float_clip: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiAccessNode {

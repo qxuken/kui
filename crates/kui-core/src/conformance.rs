@@ -1002,6 +1002,60 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "clip-float",
+        doc: "A float that takes its parent's clip (backlog F90): a \
+              toolbar over a `clip` canvas, and two nodes on the canvas \
+              anchored to it and panned half past its top edge — one \
+              declaring `clip`, one not. The clipped one is cut at the \
+              canvas's edge and a press over the toolbar where its cut \
+              half would be reaches the toolbar; the other escapes as \
+              every float did, drawn over the toolbar and taking the \
+              press there. A binding that drops the bit sends the first \
+              press to the node.",
+        custom: &["float", "key", "overflow"],
+        elements: &["box"],
+        build: build_clip_float,
+        env: NATIVE_CHROME,
+        steps: &[
+            // Over the toolbar, where the clipped node's cut half is.
+            Step::Cursor(60, 30),
+            Step::MouseDown,
+            Step::MouseUp,
+            // Its half inside the canvas.
+            Step::Cursor(60, 50),
+            Step::MouseDown,
+            Step::MouseUp,
+            // Over the toolbar, on the node that escapes.
+            Step::Cursor(180, 30),
+            Step::MouseDown,
+            Step::MouseUp,
+        ],
+        expect: Expect {
+            // The toolbar, the canvas and the two nodes.
+            solid: 4,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 0,
+            access: &[
+                "0 window ||",
+                "1 button Toolbar||",
+                "1 button Node||",
+                "1 button Free||",
+            ],
+            events: &["toolbar -", "node -", "free -"],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+            secure_input: false,
+        },
+    },
+    Scene {
         name: "tooltip",
         doc: "The tooltip prop: hover tracking, the accessible description \
               it sets, and the hint that floats only while hovered — beside \
@@ -3315,6 +3369,7 @@ fn build_float(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                             Some(6.0),
                             None,
                             false,
+                            false,
                         ))
                         .width(Sizing::Fixed(30.0))
                         .height(Sizing::Fixed(10.0))
@@ -5426,6 +5481,59 @@ fn build_sampler(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
             },
         );
     });
+}
+
+fn build_clip_float(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    ui.with(
+        NodeSpec::column()
+            .width(Sizing::Grow(1.0))
+            .height(Sizing::Grow(1.0)),
+        |ui| {
+            ui.with_keyed(
+                "toolbar",
+                NodeSpec::row()
+                    .width(Sizing::Grow(1.0))
+                    .height(Sizing::Fixed(40.0))
+                    .bg(Color::hex(0x3a3f52ff))
+                    .on_click(Value::map([("kind", Value::str("toolbar"))]))
+                    .label("Toolbar"),
+                |_| {},
+            );
+            ui.with_keyed(
+                "canvas",
+                NodeSpec::column()
+                    .width(Sizing::Grow(1.0))
+                    .height(Sizing::Grow(1.0))
+                    .clip()
+                    .bg(Color::hex(0x101018ff)),
+                |ui| {
+                    // 20 px above the canvas's top: half past its edge.
+                    ui.with_keyed(
+                        "node",
+                        NodeSpec::column()
+                            .float(FloatConfig::parent().offset(40.0, -20.0).clipped())
+                            .width(Sizing::Fixed(80.0))
+                            .height(Sizing::Fixed(40.0))
+                            .bg(Color::hex(0x3b5bd4ff))
+                            .on_click(Value::map([("kind", Value::str("node"))]))
+                            .label("Node"),
+                        |_| {},
+                    );
+                    ui.with_keyed(
+                        "free",
+                        NodeSpec::column()
+                            .float(FloatConfig::parent().offset(160.0, -20.0))
+                            .width(Sizing::Fixed(80.0))
+                            .height(Sizing::Fixed(40.0))
+                            .bg(Color::hex(0x73d98cff))
+                            .on_click(Value::map([("kind", Value::str("free"))]))
+                            .label("Free"),
+                        |_| {},
+                    );
+                },
+            );
+        },
+    );
 }
 
 fn build_layers(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {

@@ -152,7 +152,8 @@ pub enum FloatAnchor {
 
 /// Takes a node out of flex flow: it doesn't consume space in its parent,
 /// sizes Grow/Percent against its anchor, is positioned by attach points,
-/// and escapes ancestor clips. It paints as a layer of its own — above the
+/// and escapes ancestor clips unless [`FloatConfig::clip`] keeps it in its
+/// parent's. It paints as a layer of its own — above the
 /// in-flow tree and every float that opened before it, under every one
 /// that opened after — and takes input in the same order
 /// (`docs/adr/0023-layers-stack-in-the-order-they-open.md`).
@@ -180,6 +181,17 @@ pub struct FloatConfig {
     /// (`docs/adr/0003-modal-surfaces.md`) is not merely the first thing to
     /// reach for today, it is the only thing.
     pub fit: bool,
+    /// Take the parent's clip, as a child does, instead of escaping every
+    /// ancestor's: a node on a `clip` canvas panned past the canvas's edge
+    /// is cut there, and its hit region with it, rather than drawn over
+    /// and clicked through the toolbar beside it (backlog F90). Only a
+    /// [`FloatAnchor::Parent`] float reads it — a viewport or node anchor
+    /// is placed against something other than the parent, and escapes
+    /// with it set or not. Paint order is unchanged: the float is still a
+    /// layer of its own above its in-flow siblings, only cut. A `line` or
+    /// `polygon` anchored in its parent's box has it set by the core (ADR
+    /// 0010, decision 5, as amended).
+    pub clip: bool,
 }
 
 /// Plain offset pair (kept separate from geometry to stay `Copy` + FFI-flat).
@@ -197,6 +209,7 @@ impl Default for FloatConfig {
             self_point: (Align::Start, Align::Start),
             offset: Vec2Offset::default(),
             fit: false,
+            clip: false,
         }
     }
 }
@@ -257,6 +270,20 @@ impl FloatConfig {
         self
     }
 
+    /// Cut by the parent's clip instead of escaping it; see
+    /// [`FloatConfig::clip`] for which anchors read it.
+    pub fn clipped(mut self) -> Self {
+        self.clip = true;
+        self
+    }
+
+    /// Whether this float takes its parent's clip: [`FloatConfig::clip`]
+    /// declared on a parent-anchored float. The one reading both paint
+    /// passes and the hit regions share.
+    pub fn clipped_by_parent(&self) -> bool {
+        self.clip && self.anchor == FloatAnchor::Parent
+    }
+
     /// A preset by its wire index — its position in [`FLOAT_PRESETS`], which
     /// is what the binary protocol carries and what `KUI_FLOAT_*` counts
     /// from. `None` for an index no preset claims.
@@ -282,7 +309,8 @@ impl FloatConfig {
     /// [`FloatConfig::preset_at`]) and the overrides that were actually
     /// declared. `None` leaves the base's own value — that is what lets
     /// `float="below"` keep its 6px gap while `{ anchor: "below", dx: 2 }`
-    /// moves it sideways without flattening the gap to zero.
+    /// moves it sideways without flattening the gap to zero. `fit` and
+    /// `clip` are ORed in: no preset sets either.
     pub fn build(
         base: FloatConfig,
         anchor_at: Option<(Align, Align)>,
@@ -290,6 +318,7 @@ impl FloatConfig {
         dx: Option<f32>,
         dy: Option<f32>,
         fit: bool,
+        clip: bool,
     ) -> Self {
         let mut cfg = base;
         if let Some((x, y)) = anchor_at {
@@ -305,6 +334,7 @@ impl FloatConfig {
             cfg.offset.y = y;
         }
         cfg.fit |= fit;
+        cfg.clip |= clip;
         cfg
     }
 }

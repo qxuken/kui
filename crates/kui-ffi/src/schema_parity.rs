@@ -396,6 +396,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         on_scroll: &menu_tag,
         on_drop: &menu_tag,
         drop_bg: 0x2b_33_50_ff,
+        float_clip: 1,
         window_role: 1,
         transition_ms: 150.0,
         easing: 3,
@@ -494,7 +495,8 @@ fn fully_populated_spec_matches_the_rust_builder() {
                 .at(Align::End, Align::End)
                 .self_at(Align::End, Align::End)
                 .offset(-8.0, -8.0)
-                .fit(),
+                .fit()
+                .clipped(),
         )
         .hoverable()
         .animate()

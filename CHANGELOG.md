@@ -21,6 +21,41 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.19 (unreleased)
+
+**What breaks.** The ABI at 19 and the frame at v16. Nothing an
+existing input draws changes: a stroke is clipped as it was.
+
+- `KuiSpec` gains `float_clip` at its end (ABI 19). Recompile. A zeroed
+  field is the float that escapes, which is what every float was.
+- `FloatConfig::build` takes a seventh argument, `clip`, after `fit`.
+- `FloatConfig` has a new public field, `clip`. A struct literal that
+  names every field and has no `..` stops compiling.
+- The binary frame's float stanza (v16): its last slot, `fit` as 0 or 1,
+  is now a flags word, 1 `fit` and 2 `clip`. Only a hand-written
+  encoder sees this; the package's encoder and addon move together.
+
+### Added
+
+- **A float can take its parent's clip** (backlog F90, from the mind
+  map's alpha.18 report). `float={{ anchor: 'parent', clip: true }}`
+  (Lua `float = { anchor = "parent", clip = true }`, C `float_clip`,
+  Rust `FloatConfig::parent().clipped()`) cuts a parent-anchored float
+  at its parent's clip, as a child is cut, and its hit region with it.
+  The case is a node on a `clip` canvas panned under the toolbar above
+  it: it stops at the canvas's edge instead of drawing over the toolbar
+  and taking the toolbar's clicks. alpha.17 had already cut the `<line>`
+  connectors between the nodes there (F78), and there was no way to ask
+  the same for the nodes. The bit is read only with the parent anchor
+  (`below` and `above` anchor to the parent). A viewport-anchored float
+  escapes whether it is set or not. Paint order does not change: a
+  clipped float is still a layer over its in-flow siblings and is only
+  cut. F78's rule is now this bit, which the core sets on every `line`
+  and `polygon` in its parent's box (ADR 0010, amended).
+  *What you can delete:* a hit test an app ran against its canvas's
+  rect to ignore a press on a node past the edge, and a node hidden,
+  or a pan clamped, so that nothing reached the toolbar.
+
 ## 0.1.0-alpha.18 (2026-09-25)
 
 **What breaks.** No door, the ABI at 18 and the frame at v15. ⌘V

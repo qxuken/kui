@@ -3733,6 +3733,31 @@ const SCENE_TREES = {
         }),
       ]),
     ]),
+  // A float that takes its parent's clip (backlog F90): two nodes on a
+  // `clip` canvas panned half past its top, the first declaring `clip`.
+  'clip-float': () => {
+    const node = (key, dx, clip, bg, label) =>
+      box(
+        {
+          float: { anchor: 'parent', dx, dy: -20, clip },
+          width: 80, height: 40, bg, onClick: { kind: key }, label,
+        },
+        [],
+        key,
+      );
+    return root({}, [box({ width: 'grow', height: 'grow' }, [
+      box(
+        { dir: 'row', width: 'grow', height: 40, bg: '#3a3f52', onClick: { kind: 'toolbar' }, label: 'Toolbar' },
+        [],
+        'toolbar',
+      ),
+      box(
+        { width: 'grow', height: 'grow', clip: true, bg: '#101018' },
+        [node('node', 40, true, '#3b5bd4', 'Node'), node('free', 160, false, '#73d98c', 'Free')],
+        'canvas',
+      ),
+    ])]);
+  },
   tooltip: () =>
     root({}, [
       box({ pad: 10 }, [

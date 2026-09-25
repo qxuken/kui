@@ -215,7 +215,13 @@
 /// widget function), `KUI_TABLE` (F75, a value of `KuiSpec.dir`) and
 /// `KUI_VALUE_CARET_SOLID` (F68, a bit in `value_set`): nothing a host
 /// had laid out moved for any of the three.
-pub const KUI_ABI_VERSION: u32 = 18;
+///
+/// ABI 19 appends `float_clip` to `KuiSpec` (backlog F90): a
+/// parent-anchored float that sets it takes its parent's clip instead of
+/// escaping it. An [in] append under the amended rule, as ABI 18's was.
+/// Recompile; a zeroed field is the float that escapes, which is what
+/// every float was.
+pub const KUI_ABI_VERSION: u32 = 19;
 
 /// The ABI version this library implements, for a host to compare against
 /// the `KUI_ABI_VERSION` of the header it compiled against, before its

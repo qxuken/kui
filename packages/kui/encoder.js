@@ -322,14 +322,15 @@ export function createEncoder(P) {
             attach(null);
             offset(undefined);
             offset(undefined);
-            f[fi++] = 0; // fit
+            f[fi++] = 0; // fit, clip
           } else {
             f[fi++] = v.anchor === undefined ? 0 : presetOf(v.anchor);
             attach(v.at);
             attach(v.self);
             offset(v.dx);
             offset(v.dy);
-            f[fi++] = v.fit ? 1 : 0;
+            // Flags: 1 fit, 2 clip (the parent's clip holds it, F90).
+            f[fi++] = (v.fit ? 1 : 0) | (v.clip ? 2 : 0);
           }
           n++;
           break;

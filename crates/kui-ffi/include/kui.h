@@ -230,8 +230,13 @@ extern "C" {
  * KUI_TABLE (a value of a field KuiSpec already had) and
  * KUI_VALUE_CARET_SOLID (a bit in value_set) - nothing a host had laid
  * out moved for any of the three (backlog F73, F75, F68).
+ *
+ * ABI 19 appends float_clip to KuiSpec (backlog F90): a KUI_FLOAT_PARENT
+ * float that sets it takes its parent's clip instead of escaping it. An
+ * [in] append under the amended rule, as ABI 18's was. Recompile; a
+ * zeroed field is the float that escapes, which is what every float was.
  */
-#define KUI_ABI_VERSION 18u
+#define KUI_ABI_VERSION 19u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -553,6 +558,8 @@ typedef struct KuiSpec {
     uint32_t float_self_x, float_self_y;
     float float_dx, float_dy;
     uint32_t float_fit; /* non-zero: flip across the anchor / clamp to stay in the viewport */
+    /* (float_clip, the parent's clip on a float, is appended at the end:
+     * ABI 19.) */
     uint32_t hoverable; /* non-zero: hover-track without a click payload (kui_is_hovered) */
     uint32_t window_role; /* KUI_WINDOW_*; makes this node window chrome */
     /* > 0: ease sizing/color/radius changes over this many ms (needs a stable
@@ -883,6 +890,15 @@ typedef struct KuiSpec {
      * none): wins over pressed_bg, focus_bg and hover_bg, clears when they
      * leave, land or the drag is cancelled; eases with transition. ABI 18. */
     uint32_t drop_bg;
+    /* Non-zero: a KUI_FLOAT_PARENT float takes its parent's clip, as a
+     * child does, instead of escaping every ancestor's - a node on a
+     * KUI_CLIP canvas panned past the canvas's edge is cut there and not
+     * hit past it (backlog F90). Read with the parent anchor only (a
+     * preset hanging below or above the parent is one); it still paints
+     * as a layer over its in-flow siblings. A kui_line or kui_polygon in
+     * its parent's box is always clipped this way. kui_spec_float_preset
+     * clears it with the other float fields. ABI 19. */
+    uint32_t float_clip;
 } KuiSpec;
 
 /* When a scrolling node's bars are drawn (KuiSpec.scrollbar): the schema

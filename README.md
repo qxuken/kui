@@ -757,7 +757,9 @@ and costs a frame without one nothing.
 Out-of-flow: `.float(FloatConfig)` takes a node out of flex flow — it doesn't
 consume space in its parent, positions by attach points against its parent's
 rect or the viewport (plus an offset), sizes Grow/Percent against that anchor,
-and escapes ancestor clips. It paints as a layer of its own: above the in-flow
+and escapes ancestor clips — unless it is anchored to its parent and says
+`.clipped()`, when the parent's clip cuts it as it cuts a child: the nodes
+of a `clip` canvas stop at the canvas's edge. It paints as a layer of its own: above the in-flow
 tree and every float that opened before it, under every float that opened
 after — a tooltip that appears over an open menu is over it, a menu that opens
 while a tooltip shows is over that — and it hit-tests in the same order, so a

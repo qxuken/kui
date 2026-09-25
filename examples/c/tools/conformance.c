@@ -576,6 +576,46 @@ static void conf_float(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* One of conf_clip_float's two nodes: a parent-anchored float at (dx, -20)
+ * on the canvas that posts `key` when clicked, cut by the canvas's clip
+ * when `clip` is set (float_clip, ABI 19). */
+static void conf_clip_float_node(KuiCtx *ui, const char *key, float dx, uint32_t clip,
+                                 uint32_t bg, const char *label) {
+    KuiValue *tag = kui_value_map();
+    kui_value_map_set(tag, KUI_STR("kind"), kui_value_str(KUI_STR(key)));
+    KuiSpec spec = {
+        .float_mode = KUI_FLOAT_PARENT,
+        .float_dx = dx, .float_dy = -20, .float_clip = clip,
+        .width = {KUI_FIXED, 80}, .height = {KUI_FIXED, 40}, .bg = bg,
+        .label = KUI_STR(label),
+    };
+    kui_open_keyed(ui, KUI_STR(key), &spec, tag);
+    kui_close(ui);
+}
+
+/* conformance::build_clip_float (backlog F90): a toolbar over a clip
+ * canvas, and two nodes on the canvas panned half past its top edge -
+ * the first cut there, the second escaping as every float did. */
+static void conf_clip_float(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiSpec outer = {.width = {KUI_GROW, 1}, .height = {KUI_GROW, 1}};
+    kui_open(ui, &outer, NULL);
+    KuiValue *tag = kui_value_map();
+    kui_value_map_set(tag, KUI_STR("kind"), kui_value_str(KUI_STR("toolbar")));
+    KuiSpec toolbar = {.dir = KUI_ROW, .width = {KUI_GROW, 1}, .height = {KUI_FIXED, 40},
+                       .bg = 0x3a3f52ff, .label = KUI_STR("Toolbar")};
+    kui_open_keyed(ui, KUI_STR("toolbar"), &toolbar, tag);
+    kui_close(ui);
+    KuiSpec canvas = {.width = {KUI_GROW, 1}, .height = {KUI_GROW, 1},
+                      .overflow = KUI_CLIP, .bg = 0x101018ff};
+    kui_open_keyed(ui, KUI_STR("canvas"), &canvas, NULL);
+    conf_clip_float_node(ui, "node", 40, 1, 0x3b5bd4ff, "Node");
+    conf_clip_float_node(ui, "free", 160, 0, 0x73d98cff, "Free");
+    kui_close(ui);
+    kui_close(ui);
+}
+
 static void conf_tooltip(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
     (void)phase;
@@ -1626,6 +1666,7 @@ static const ConfScene CONF_SCENES[] = {
     {"tabs", conf_tabs},
     {"overflow", conf_overflow},
     {"float", conf_float},
+    {"clip-float", conf_clip_float},
     {"tooltip", conf_tooltip},
     {"select", conf_select},
     {"chrome", conf_chrome},

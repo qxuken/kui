@@ -187,6 +187,7 @@ pub(crate) fn spec_of(
             Some(s.float_dx),
             Some(s.float_dy),
             s.float_fit != 0,
+            s.float_clip != 0,
         ));
     }
     if s.hoverable != 0 {

@@ -2448,6 +2448,7 @@ fn parse_float(v: &mlua::Value) -> mlua::Result<FloatConfig> {
         f.get::<Option<f32>>("dx")?,
         f.get::<Option<f32>>("dy")?,
         f.get::<Option<bool>>("fit")?.unwrap_or(false),
+        f.get::<Option<bool>>("clip")?.unwrap_or(false),
     ))
 }
 
@@ -2667,6 +2668,7 @@ mod tests {
                 None,
                 Some(6.0),
                 None,
+                false,
                 false
             ))
         );

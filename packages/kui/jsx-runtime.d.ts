@@ -135,6 +135,13 @@ export interface FloatProp {
   dy?: number;
   /** Flip across the anchor / clamp to stay inside the viewport. */
   fit?: boolean;
+  /** Take the parent's clip instead of escaping it: a node on a `clip`
+   *  canvas panned past the canvas's edge is cut there and cannot be hit
+   *  past it. Read with the `parent` anchor (and `below` / `above`, which
+   *  anchor to the parent) only; still drawn as a layer over its in-flow
+   *  siblings. A `line` or `polygon` in its parent's box is always
+   *  clipped this way. */
+  clip?: boolean;
 }
 
 // -- generated from the core's menu roles; edit MenuRole::ALL in crates/kui-core/src/menu.rs, then `npm run gen` --

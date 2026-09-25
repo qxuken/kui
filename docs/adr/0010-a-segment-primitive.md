@@ -143,6 +143,11 @@ test — is declined or deferred below, each with the reason.
    is, which escapes; a stroke drawn in a scrolled row is cut at the
    scroller's edge with the row. A stroke anchored `float="viewport"`
    keeps a declared float's escape.
+   *Amended again 2026-09-25 (backlog F90):* the rule is no longer a
+   stroke's. A declared float can ask for the same clip with
+   `float={{ anchor: 'parent', clip: true }}`, and F78's rule is now that
+   bit, which the core sets on every stroke and polygon it makes — see
+   the amendment at the end.
 6. **`on_layout` reports the bounding box.** The rect is the node's — the
    endpoints inflated by half the width plus two — with `parent` beside
    it, exactly like any other node. Nothing inside a line has a rect of
@@ -366,3 +371,40 @@ segment count, every `Expect`, and every binding's mirror of it are
 unchanged — the corpus's quad digests shifted only in the point values, and
 all four adapters shifted together, which is what the shared reference
 report is for.
+
+## Amendment: a stroke's clip is a float's `clip` bit
+
+*2026-09-25, backlog F90.* F78 made a stroke or a polygon anchored in its
+parent's box take the parent's clip, and it did so by asking what the node
+*was*: both paint passes (`runtime/emit.rs`, live and ghost) tested the
+content for `Line` or `Polygon`. The mind map that F78 was for then asked
+for the same thing for its nodes. They are `float: 'parent'` boxes on a
+`clip` canvas, and panned under the toolbar they drew over it and took its
+clicks, while F78 had already cut the connectors between them at the
+canvas's edge. Nothing in `FloatConfig` could say "clip me", and there is
+no in-flow way to place a box at a point, so the app had no way to ask.
+
+`FloatConfig` now carries `clip: bool`. It is spelled `clip` in the float
+object in JSX and Lua, `float_clip` at the end of `KuiSpec` (ABI 19) and
+`FloatConfig::clipped()` in Rust. It is read only with the parent anchor
+(`FloatConfig::clipped_by_parent`). A viewport or node anchor places the
+float against something other than the parent, so the float escapes
+whether the bit is set or not. Both passes test that bit and nothing
+else. Hit regions already take the clip a node was emitted under, so a
+clipped float is cut for input as well as paint.
+
+**F78's rule is this bit, set by default for strokes.** `float_box_for`
+builds every `line` and `polygon` node's float with `clip` set, so a
+stroke in a parent's box is clipped exactly as before, and one declared
+`float="viewport"` still escapes. The stroke rows spell only `parent` or
+`viewport`, so no binding can clear the bit on a stroke. Nothing has asked
+for a stroke that escapes its parent.
+
+Paint order does not change. A clipped float is still its own layer, drawn
+above its in-flow siblings in the float pass and hit in the same order
+([ADR 0023](0023-layers-stack-in-the-order-they-open.md)). Only the clip
+comes from the parent. The corpus's `clip-float` scene pins it in every
+binding: two nodes on a clipping canvas are panned half past its top edge,
+one clipped and one not. A press over the toolbar where the clipped node's
+cut half would be reaches the toolbar, and the same press on the other
+node reaches that node.
