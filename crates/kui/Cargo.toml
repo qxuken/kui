@@ -160,6 +160,7 @@ headless = [
     "polygon",
     "fragment",
     "metrics",
+    "align",
     "modal",
     "devtools_tab",
     "modal_editor",
@@ -255,6 +256,10 @@ path = "../../examples/rust/features/theme.rs"
 [[example]]
 name = "metrics"
 path = "../../examples/rust/features/metrics.rs"
+
+[[example]]
+name = "align"
+path = "../../examples/rust/features/align.rs"
 
 [[example]]
 name = "modal"

@@ -1675,6 +1675,14 @@ impl TextMeasure for Measure<'_> {
         self.edit.wrapped(key, max_w, self.fonts)
     }
 
+    fn baseline(&mut self, id: crate::tree::TextId) -> f32 {
+        self.text.baseline(id)
+    }
+
+    fn edit_baseline(&mut self, key: Key) -> f32 {
+        self.edit.baseline(key)
+    }
+
     fn cells_size(&mut self, id: crate::cells::CellsId) -> Size {
         self.cells.size(id, self.resources, self.fonts)
     }

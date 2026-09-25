@@ -237,6 +237,10 @@ extern "C" {
  * zeroed field is the float that escapes, which is what every float was.
  * Also new under 19, and no break of its own: kui_host_rect, one function
  * writing the KuiLayoutRect it already had (backlog F92).
+ * The same bump appends aspect_ratio after it (backlog C14); a zeroed
+ * field is no ratio. KUI_SPACE_BETWEEN,
+ * KUI_SPACE_AROUND, KUI_SPACE_EVENLY and KUI_BASELINE (backlog C13) are
+ * new values of main_align / cross_align, which moved nothing.
  */
 #define KUI_ABI_VERSION 19u
 uint32_t kui_abi_version(void);
@@ -345,8 +349,23 @@ enum { KUI_FIT = 0, KUI_GROW = 1, KUI_FIXED = 2, KUI_PERCENT = 3 };
  * wraps. Everything else is the column's: gap is between rows, scroll y
  * scrolls them. */
 enum { KUI_COLUMN = 0, KUI_ROW = 1, KUI_TABLE = 2 };
-/* Alignment */
-enum { KUI_START = 0, KUI_CENTER = 1, KUI_END = 2 };
+/* Alignment (KuiSpec.main_align / cross_align, a float's attach points).
+ * The first three are every axis's. The spreads deal the main axis's free
+ * space out: BETWEEN between the children (none at the ends), AROUND an
+ * equal share per child split to its two sides, EVENLY equal gaps and
+ * ends - on main_align only. BASELINE lines up the first baselines of a
+ * row's children's text (a child with none by its bottom edge) - on a
+ * row's cross_align only. Anywhere else they lay out as KUI_START (AROUND
+ * and EVENLY as KUI_CENTER) and warn "align-ignored". */
+enum {
+    KUI_START = 0,
+    KUI_CENTER = 1,
+    KUI_END = 2,
+    KUI_SPACE_BETWEEN = 3,
+    KUI_SPACE_AROUND = 4,
+    KUI_SPACE_EVENLY = 5,
+    KUI_BASELINE = 6,
+};
 /* Quad kinds */
 /* KUI_QUAD_GLYPH_SUBPIXEL: atlas rgb are per-channel coverages (needs
  * per-channel / dual-source blending; else use the atlas alpha as a mask).
@@ -901,6 +920,13 @@ typedef struct KuiSpec {
      * its parent's box is always clipped this way. kui_spec_float_preset
      * clears it with the other float fields. ABI 19. */
     uint32_t float_clip;
+    /* Width over height (aspectRatio, CSS's aspect-ratio); 0 = none. It
+     * sizes the axis left fit: a fit height is the final width over the
+     * ratio, a fit width under a fixed height is that height times it.
+     * With both axes declared it has nothing to set ("aspect-ignored").
+     * The derived axis is neither shrunk nor fitted to the children.
+     * ABI 19. */
+    float aspect_ratio;
 } KuiSpec;
 
 /* When a scrolling node's bars are drawn (KuiSpec.scrollbar): the schema

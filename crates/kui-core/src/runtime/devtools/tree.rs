@@ -492,11 +492,7 @@ fn inspector(
     };
     let px = |v: f32| format!("{v:.0}{}", length_names(v));
     let opt_px = |v: Option<f32>| v.map_or("—".to_string(), |v| format!("{v:.0}"));
-    let align = |a: Align| match a {
-        Align::Start => "start",
-        Align::Center => "center",
-        Align::End => "end",
-    };
+    let align = |a: Align| a.name();
     let is = |k: Option<Key>| k == Some(n.key);
     let mut state = Vec::new();
     if is(st.facts.hovered) {

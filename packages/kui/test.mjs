@@ -72,7 +72,9 @@ const SAMPLE = {
 /** Per-prop overrides, where the shared sample for a kind would not survive
  *  the prop's own clamping — `opacity`'s default is the top of its range, so
  *  a sample above 1 clamps straight back to it. */
-const SAMPLE_BY_NAME = { opacity: 0.5 };
+// The align rows' last value is `baseline`, which means nothing on the
+// main axis or a column's cross axis, so they take a value that does.
+const SAMPLE_BY_NAME = { opacity: 0.5, mainAlign: 'spaceEvenly', crossAlign: 'end' };
 
 test('protocol exports a version and the schema rows', () => {
   const p = protocol();
@@ -99,7 +101,7 @@ const READBACK = {
   maxHeight: (n) => n.maxHeight === 12,
   gap: (n) => n.gap === 12,
   wrapChildren: (n) => n.wrap === true,
-  mainAlign: (n) => n.mainAlign === 'end',
+  mainAlign: (n) => n.mainAlign === 'spaceEvenly',
   crossAlign: (n) => n.crossAlign === 'end',
   bg: (n) => n.bg === 0x3b5bd4ff,
   radius: (n) => n.radius.every((r) => r === 12),
@@ -454,7 +456,7 @@ test('a malformed view is rejected, with the offending name in the message', () 
     [() => el('line', { from: [0, 0], to: [1], }), /bad point \[1\] for <line>/],
     [() => el('line', { from: [0, 0], to: [1, 1], width: 'grow' }), /bad width "grow" for <line>/],
     [() => box({ dir: 'diagonal' }), /bad dir "diagonal" \(row \| column \| table\)/],
-    [() => box({ mainAlign: 'middle' }), /bad value "middle" for mainAlign \(one of start \| center \| end\)/],
+    [() => box({ mainAlign: 'middle' }), /bad value "middle" for mainAlign \(one of start \| center \| end \| spaceBetween \| spaceAround \| spaceEvenly \| baseline\)/],
     [() => box({ bg: 'blue' }), /bad color "blue"/],
     [() => box({ width: 'huge' }), /bad sizing "huge"/],
     // Both places a float names a preset answer to the one table, so the
@@ -3605,6 +3607,26 @@ const SCENE_TREES = {
         WRAP_BOXES.map(([w, h]) => box({ width: w, height: h, bg: '#30344a' })),
       ),
     ]),
+  // `conformance::build_align`: the three spreads, a baseline row, and a
+  // ratio sizing each axis.
+  align: () => {
+    const sq = () => box({ width: 10, height: 10, bg: '#30344a' });
+    const spread = (mainAlign) => box({ dir: 'row', width: 120, mainAlign }, [sq(), sq(), sq()]);
+    return root({}, [
+      box({ pad: 4, gap: 6, width: 128, bg: '#101018' }, [
+        spread('spaceBetween'),
+        spread('spaceAround'),
+        spread('spaceEvenly'),
+        box({ dir: 'row', gap: 4, crossAlign: 'baseline' }, [
+          text('ab', { size: 12 }),
+          text('cd', { size: 20 }),
+          sq(),
+        ]),
+        box({ width: 'grow', aspectRatio: 4, bg: '#3b5bd4' }),
+        box({ height: 12, aspectRatio: 2, bg: '#73d98c' }),
+      ]),
+    ]);
+  },
   // `conformance::build_table` (ADR 0033): a fit header row of two bare
   // texts, then TABLE_ROWS as grow rows of a bare text, a fixed box and a
   // grow box; the label column is its longest label, the fixed column its

@@ -58,6 +58,38 @@ wrapping under it.
 [`minWidth` row](props.md#container-props) ·
 [alpha.8](../CHANGELOG.md#010-alpha8-2026-09-07)
 
+### How do I push a toolbar's last button to the far end, or space items evenly?
+
+`mainAlign="spaceBetween"` on the row: the free space goes between the
+children and none at the ends, so the first sits at the start and the last
+at the end. `spaceAround` gives each child an equal share split to its two
+sides, and `spaceEvenly` makes every gap and both ends equal. The spread is
+added to `gap`, and none is dealt when nothing is free — a `grow` child takes
+the space, and a row that overflows keeps its gaps. To push only the last of
+several, a `<box width="grow"/>` spacer before it is still the way.
+
+### How do I set a label and a large number on one line?
+
+`crossAlign="baseline"` on the row: the first baselines of the children's
+text line up, so `Total` in 13 px and `1,284` in 32 px read as one line
+instead of two tops or two bottoms. Each child's baseline is its first
+text's, found down its first-child chain through any wrapper box; a child
+with no text — an icon — aligns by its bottom edge, and a `grow` or percent
+height fills the row from its top. A fit-height row grows to hold the
+aligned children. On a column it is `start`, with a warning.
+
+### How do I keep a box 16:9, or square, whatever width it gets?
+
+`aspectRatio={16/9}` with the height left `fit`: the height is the final
+width over the ratio, so `width="grow"` and a ratio keeps its shape as the
+window resizes (cap it with `maxWidth`). Under a fixed height a fit width is
+that height times the ratio, which is how `height={40} aspectRatio={1}`
+makes a square. The derived axis is not fitted to the children, which
+overflow it — `minHeight="fit"` floors it at them — and with both axes
+declared the ratio has nothing to set and warns (`aspect-ignored`).
+[`examples/rust/features/align.rs`](../examples/rust/features/align.rs)
+shows all three.
+
 ### How do I line up the columns of a key/value list, or any table?
 
 `<box dir="table">`, `grid { }` (Lua's `table` is its own), a `KuiSpec`

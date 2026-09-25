@@ -47,6 +47,58 @@ existing input draws changes: a stroke is clipped as it was.
   `kui.VirtualColumn` is `kui.UniformList`; Node's `virtualColumn` is
   `uniformList` and `VirtualColumnProps` is `UniformListProps`.
 - `widgets::virtual_rows` is `widgets::list`.
+- `KuiSpec` gains `aspect_ratio` after `float_clip`, under the same
+  ABI 19; the struct is 584 bytes on 64-bit targets, where 18's was 576.
+- Rust: `Align` has four more variants (`SpaceBetween`, `SpaceAround`,
+  `SpaceEvenly`, `Baseline`), so a `match` on it without a wildcard arm
+  stops compiling. `LayoutSpec` has an `aspect` field, which a struct
+  literal must now name (`..Default::default()` covers it).
+- A `KuiSpec.main_align` / `cross_align` of 3 to 6, a value past
+  `KUI_END` that used to lay out as `KUI_START`, now means one of the new
+  alignments.
+
+### Added
+
+- **Where the free space goes, and what lines up** (backlog C13, parked
+  since 2026-09-03 and named by both bake-offs against gpui and iced).
+  `mainAlign` takes `spaceBetween`, `spaceAround` and `spaceEvenly`
+  beside start/center/end, CSS's `justify-content`: the main axis's free
+  space is dealt out between the children, around each, or into equal
+  gaps and ends, on top of `gap`, per line in a wrapping row, and not at
+  all when nothing is free (a `grow` child took it, or the run
+  overflows). A lone child starts under `spaceBetween` and centres under
+  the other two. `crossAlign="baseline"` on a row lines up the first
+  baselines of the children's text, so a 13 px label and a 32 px value
+  read as one line: a child's baseline is the first line of the first
+  text down its first-child chain, measured by the text system where the
+  glyphs are drawn; a child with no text aligns by its bottom edge, a
+  `grow` or percent height fills the line from its top, and a fit-height
+  row grows to hold the aligned children. Baselines are measured only on
+  a frame that declares a baseline row. The same values in every
+  binding: the `ALIGNS` rows grew at their tail, so Lua's
+  `main_align = "spaceBetween"`, Node's `mainAlign: 'spaceBetween'` and
+  C's `KUI_SPACE_BETWEEN` .. `KUI_BASELINE` are the next indices. A value
+  on the axis where it means nothing — a spread across, `baseline` along
+  or on a column, either as a float's attach point — lays out as start
+  (the centring spreads as centre) and warns `align-ignored`.
+  *What you can delete:* the `<box width="grow"/>` spacers between
+  children that were standing in for `space-between`, and the padding a
+  view nudged onto a small label to sit it near a large one's baseline.
+- **`aspectRatio`** (backlog C14, CSS's `aspect-ratio`). Width over
+  height on any box, image or fragment, sizing the axis left `fit`: a fit
+  height is the final width over the ratio, so `width="grow"
+  aspectRatio={16/9}` keeps its shape as the window resizes, and a fit
+  width under a fixed height is that height times it. The derived axis
+  is neither shrunk nor fitted to the children (`minHeight="fit"` floors
+  it at them); on an image it wins over the pixels' own aspect. With both
+  axes declared, or a fit width under a `grow` or percent height, it has
+  nothing to set and warns `aspect-ignored`. Lua `aspect_ratio`, C
+  `KuiSpec.aspect_ratio`.
+  *What you can delete:* the `layout` event round trip that read a box's
+  width to set its height a frame later.
+
+Both are in the new `align` corpus scene, run by all four adapters, and
+in `examples/rust/features/align.rs`.
 
 ### Added
 

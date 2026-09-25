@@ -755,6 +755,18 @@ export type WarningCode =
    *  reads as "wrapping is broken"; see `LayoutSpec::wrap` for why a column
    *  cannot have it. */
   | 'wrap-ignored'
+  /** An alignment declared where it means nothing (backlog C13): a spread
+   *  (`spaceBetween` / `spaceAround` / `spaceEvenly`) on `crossAlign`,
+   *  `baseline` on `mainAlign` or on a column's `crossAlign`, or either as a
+   *  float's attach point. Each lays out as `start` — the two centring spreads
+   *  as `center` — which reads as "the value is broken" when it is the axis
+   *  that is wrong. */
+  | 'align-ignored'
+  /** An `aspectRatio` with nothing it can set (backlog C14): both axes are
+   *  declared, or the width is `fit` under a `grow` or percent height, which is
+   *  resolved only after every width is. The ratio sizes a fit height from the
+   *  width, or a fit width from a fixed height. */
+  | 'aspect-ignored'
   /** A text node sits more than four levels below the `line` row above it,
    *  which is as far as a text's place remembers its ancestors — so `textHit` /
    *  `caretRect` asked by that row's key cannot find the run, and a press

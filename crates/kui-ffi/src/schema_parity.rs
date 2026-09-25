@@ -195,6 +195,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             "maxHeight" => s.max_h = F,
             "gap" => s.gap = F,
             "crossGap" => s.cross_gap = F,
+            "aspectRatio" => s.aspect_ratio = F,
             "wrapChildren" => s.wrap_children = 1,
             "radius" => s.radius = F,
             "radiusTL" => (s.per_corner, s.radius_tl) = (1, F),
@@ -397,6 +398,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         on_drop: &menu_tag,
         drop_bg: 0x2b_33_50_ff,
         float_clip: 1,
+        aspect_ratio: 1.5,
         window_role: 1,
         transition_ms: 150.0,
         easing: 3,
@@ -506,6 +508,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .on_scroll(Value::str("cm"))
         .on_drop(Value::str("cm"))
         .drop_bg(Color::hex(0x2b3350ff))
+        .aspect_ratio(1.5)
         .focus_region()
         .scrollbar(kui_core::ScrollbarMode::Auto)
         .scrollbar_width(8.0)

@@ -50,8 +50,9 @@ at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
 
-What is left here: three parked headings — C12, C13 and C14, each waiting
-for a view that wants it — C27 with its measurements (an idle pumped
+What is left here: one parked heading — C12, waiting for a view that
+wants it (C13 and C14 beside it were built on 2026-09-25, asked for by
+the second bake-off) — C27 with its measurements (an idle pumped
 window's cost, where every way out was worse than the cost), V2–V8 from
 the canvas question of 2026-09-11 (five waiting for a view, two declined
 with a condition — V1, the one with an order attached, was built the
@@ -74,7 +75,7 @@ two entries, C42 and C43 — `rich_text` shaped whole past the long-line
 threshold, and a long line's key hashed a byte at a time every frame —
 were built the day they were filed; the "thousands of spans" the report
 blamed measured as a factor of 1.5 and not the cause), the "theirs, not ours" lists the field reports left
-behind. Everything else that has been filed has
+behind, and C45–C51 from the second bake-off of 2026-09-25. Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
 they were filed (2026-09-07), F25–F31 from the alpha.8 ones by the day
@@ -111,7 +112,8 @@ built the day they were filed — C30, always on top, and C31, Node's
 corpus adapter disagreeing with the reference when a scene runs alone —
 and went to
 [the archive](backlog/closed-2026-09.md#core-capability-c30-and-c31-2026-09-12)
-with the alpha.12 tag. What is left is the three parked entries and C27.
+with the alpha.12 tag. What is left is the three parked entries and C27
+(C13 and C14 of the three built on 2026-09-25).
 
 ### `.` C12 — Wrapping a column
 
@@ -127,7 +129,26 @@ column, which is the half that actually needs the extra pass.
 Nobody has asked for it. Wait for a view that wants it, and let that view say
 which of the two is enough.
 
-### `.` C13 — `space-between` / `around` / `evenly`, and baseline alignment
+### `.` C13 — `space-between` / `around` / `evenly`, and baseline alignment — **built 2026-09-25**
+
+**Built 2026-09-25**, asked for by the second bake-off (the user: "close
+the gap"). As the entry said, no new pass. `Align` gained four variants at
+the tail of `schema::ALIGNS` (`spaceBetween`, `spaceAround`,
+`spaceEvenly`, `baseline`; C `KUI_SPACE_BETWEEN` .. `KUI_BASELINE`), so
+every binding reads them through the rows it already had.
+`layout::main_spread` deals the free space out per run — per line in a
+wrapping row — and the anchor walk takes the same spread. For the baseline,
+the entry's "third number out of measurement" is `TextMeasure::baseline`
+and `edit_baseline`, stored per node in `Tree::baseline` by `fit_heights`
+and only on a frame that declares a baseline row (`any_baseline`).
+`first_baseline` then reads a container's baseline down its first-child
+chain from sizes alone, so it answers in the fit pass as well as in
+`positions`. A fit-height row is `above + below`, not its tallest child,
+and a `grow` or percent height fills the line from its top. What the entry
+did not foresee: a column's cross axis has no baseline (CSS lays it out as
+start), and a spread on the cross axis or `baseline` on the main one means
+nothing. Both warn `align-ignored`. Per-child `align-self` and
+`align-content` are still absent; neither has been asked for.
 
 Two `Align` variants, and neither needs a new pass.
 
@@ -146,7 +167,17 @@ child's, and a box with none falls back to its bottom edge, per CSS). Worth it
 for the case it fixes: two text sizes on one row sit on different lines today,
 which is visible in any label-plus-value row.
 
-### `.` C14 — Aspect ratio
+### `.` C14 — Aspect ratio — **built 2026-09-25**
+
+**Built 2026-09-25** with C13, as the separate clamp rather than
+`Sizing::Aspect`: `LayoutSpec::aspect` (`aspectRatio` / `aspect_ratio` /
+`KuiSpec.aspect_ratio`, under C ABI 19 with F90's `float_clip`). It sizes the axis left `Fit`: a fit
+height is read off the final width in `fit_heights`, beside the image's
+own aspect, and a fit width is read off a `Fixed` height in `fit_widths`.
+It composes with `Grow`, which is why the clamp won. The derived axis is
+not shrunk. A fit width under a `grow` or percent height would have to
+wait on a pass that runs after every width, so that case warns
+`aspect-ignored`, as does a ratio with both axes declared.
 
 "Square", or "16:9", without knowing either dimension. `Sizing::Aspect(f32)` on
 one axis (the other resolves first, then this multiplies it) is the smaller
@@ -1420,6 +1451,181 @@ F90 is `clip` on a parent-anchored float (ABI 19, frame v16); F91 is
 - **Help on a non-Latin layout** (mind map, alpha.18): bound to `/`
   and `?`; `physical === '/'` binds the key where it sits.
 
+## From the second bake-off (2026-09-25)
+
+The comparison of round one (2026-09-08, above) was run again
+seventeen days and nine releases later. It rebuilt the same bench code
+against alpha.18, with alpha.9 rebuilt beside it as a control, next to
+iced 0.14 and the same gpui rev, on the same M3 Pro. That machine is now
+on macOS 27 and battery where round one had 25.6 and mains. Its
+kui-facing findings, checked against this tree:
+
+- **Frame cost held while the features came.** alpha.18 is within about
+  6% of alpha.9 on every workload on the same OS the same afternoon.
+  kui is still the cheapest of the three on heavy geometry (1.55× less CPU
+  than iced at 40,000 boxes, 81 fps against 58 at 90,000) and ties iced
+  on warm text. Round one's "1.3× cheaper at 2,500 boxes" does not
+  survive a repeat: two runs of one build differ by more than that.
+- **The batteries table moved.** Select, menus, table layout,
+  variable-height lists, fragments, streamed textures, file drop and the
+  derived theme all landed since round one. What stays "you draw it" is
+  the toggles and the slider (C45). The layout row — no
+  `space-between`, baseline or aspect ratio — was C13 and C14, **built
+  the same day**.
+- **gpui names its virtual lists better.** `uniform_list` and `list`
+  say the one thing a caller chooses on. Renamed the same day
+  (`widgets::uniform_list` / `widgets::list`, `uniformList`,
+  `uniform_list`), an alpha break with no aliases.
+- **Three new measurements are kui's to answer**: missed vsync at light
+  load (C47), 5.6% more CPU than alpha.9 at 40,000 boxes on one OS (C48),
+  and a 31% slower edit-compile loop (C49).
+- **Corrections the report made to round one.** gpui is on crates.io
+  (0.2.2, too old for its current API), and gpui-component gives it 60+
+  widgets on a republished fork. Nothing of kui's changes, and both
+  corrections are gpui's.
+
+Beside the report, reading the tree for this round turned up one gap of
+kui's own: the variable-height list is Rust-only (C46). Two further
+entries came from the comparison's table: typed messages (C50) and file
+dialogs (C51). The distribution recommendation is unchanged (see
+*Distribution* under *After alpha.17*).
+
+### `~` C45 — Checkbox, radio group, switch and slider are roles only; every app draws them
+
+**Found** by both bake-offs ("roles only, you draw"; iced ships all four,
+gpui through gpui-component), and by this repo, which draws them five
+different ways. The accessibility example has a radio group, a switch
+that reads "on"/"off" and two sliders that cannot be dragged. The drag
+example has the one slider that follows the pointer and answers no key.
+The focus example has a switch drawn as a button, and the devtools panel
+has icon toggles as radios. The semantics are all in the core already:
+the roles, `checked`, `valueNow/Min/Max/Text`, Space/Enter as a click,
+a radio group's arrows (ADR 0007), and a slider's nudge event.
+
+**Do.** [ADR 0034](adr/0034-stock-controls-over-the-roles.md) (proposed)
+is the plan. The four are compositions in `widgets.rs` with a
+`*_spec`/`*_with` pair each, like the button and the select, drawn from
+existing theme roles and sizes derived from `Metrics::control_text`.
+Toggles keep the click and the app flips its model. A `mixed` flag
+covers the select-all box. A slider gains `valueStep` and `onChange`, and
+the core turns press, drag, arrows, Page keys, Home/End and AT
+Increment/Decrement into `{kind:"change", value, phase, tag}`, clamped
+and snapped, never written back. A slider without `onChange` keeps
+today's nudge. The doors are elements in four bindings (Node frame v16
+or the next free one), a `stock-controls` corpus scene with a slider
+drive, and `widgets/controls.rs` with its Node twin. Accept the ADR
+first: `onChange` is the first event whose value the core computes.
+
+### `.` C46 — The variable-height `list` has no door in Lua or Node
+
+**Found** renaming the lists for the bake-off. `widgets::list` (was
+`virtual_rows`) is Rust-only. The uniform list has had all four doors
+since C25 (2026-09-09): Node's `uniformList` and Lua's `uniform_list` are
+the arithmetic in each binding over `scroll_geometry` and `row_count`.
+The variable one needs the same port with state: `RowHeights` (heights,
+split prefix sums, the moving estimate), the anchor correction that puts
+the row under the pointer back, and RG18's second anchor for an eased
+leg. It also needs a measure callback, and in Node that is
+`ctx.measureText`. The devtools' events list is the only caller in the
+tree. A chat view or a log of wrapped lines in JSX or Lua has to build it
+by hand, or give every row one height.
+
+**Do.** `list(ctx, { key, rows, heights, estimate }, measure, row)` in
+Node and `list(env, opts, measure, row)` in Lua. A `RowHeights`
+equivalent is owned by the app and handed back each frame, as in Rust,
+since the widgets keep no state. Pin each port with a test that scrolls
+a list whose measured rows move the estimate and checks that the row
+under the pointer stays put, and with the RG18 glide. C is `kui_*`
+calls and composes its own, as it does for the uniform one.
+
+### `.` C47 — kui misses vsync at light load on macOS 27
+
+**Found** by the second bake-off. At 2,500 and 10,000 boxes, and with
+400 static labels, kui runs 105–120 fps with jitter on a 120 Hz panel,
+where gpui holds 120.0. At 40,000 boxes kui locks back to 120. alpha.9
+does the same, and so does iced, which shares winit 0.30.13 but not
+kui's wgpu (27 against 30). That points at the platform stack and away
+from kui's own frame work: a clocked-down GPU or CPU missing the present
+deadline when there is little to do. gpui drives Metal and the display
+link itself. The run cannot separate macOS 27 from battery power. It
+matters for kui more than for most: an editor idles at light load, and a
+cursor blink or a scroll at 112 fps with jitter looks worse than a
+steady 120.
+
+**Do.** Measure before changing anything, in this order: the bake-off's
+2,500-box grid on mains and on battery (one variable), then
+`desired_maximum_frame_latency` 1 against 2
+(`kui-wgpu/src/lib.rs:654`, set to 1 for input latency in the first
+week), then `PresentMode::AutoVsync` against `Fifo`, then the redraw
+request's timing in `about_to_wait`. Record the numbers here. If none of
+those moves it, the remaining lever is a display-link-driven redraw on
+macOS, and that is its own entry.
+
+### `.` C48 — 5.6% more CPU than alpha.9 on 40,000 boxes, on the same OS
+
+**Found** by the second bake-off: 60.0% against 56.8% in both runs, on
+macOS 27, the same afternoon, same bench code. kui's own
+`frame_10k_rects` moved by a similar amount (729 → 778 µs). The
+alpha.17 changelog put that drift on macOS 27; this run holds the OS
+fixed and still sees part of it. At 90,000 boxes alpha.18 is slightly
+faster (81 against 80 fps), so it is small, and C41's register spill
+(`frame_1k_curves`) shows how a change far from the loop can move one.
+
+**Do.** Bisect `frame_10k_rects` between `v0.1.0-alpha.9` and
+`v0.1.0-alpha.18` on one machine and one power state, with the bench
+guard's settle rules, and look for a step rather than a slope. If it is
+a step, profile it as C41 was (Time Profiler, leaf addresses back to the
+binary). If it is a slope, it is `emit_node`'s size, and the entry
+closes with the numbers.
+
+### `.` C49 — The edit-compile loop is 31% slower than alpha.9's
+
+**Found** by the second bake-off: a `touch main.rs` rebuild of the
+counter is 1.57 s against alpha.9's 1.20 s. That is still faster than
+iced's 1.75 s and slower than gpui's 0.98 s. Cold builds rose about 3 s.
+`crates/` doubled in the same span (66k → 136k lines of Rust) and the
+dependency count did not move, so the cost is in the app crate's link
+and in the monomorphised kui code it instantiates, not in new crates.
+
+**Do.** `cargo build --timings` and `-Z self-profile` on the counter
+at both tags, and list what the app crate instantiates from kui that it
+did not before: the `impl FnOnce` builders in `widgets.rs` and `Ui`,
+and the runner's generic `App` plumbing. Move what is large and generic
+behind `&mut dyn FnMut` where the call is not hot. The number to beat is
+alpha.9's 1.20 s.
+
+### `.` C50 — Rust apps match messages on `Value` at run time
+
+**Found** by both bake-offs ("typed Rust messages: no, a `Value`
+payload"). The IR contract is plain data on purpose: Lua, C and JSX
+share it. A Rust app writes `ev.payload.as_str()` and loses the
+exhaustive `match` iced gives it. Nothing in the contract has to change
+for Rust to get that back, because the conversion can live on the Rust
+side of it.
+
+**Do.** A derive in a small proc-macro crate (`kui-derive`, re-exported
+by `kui` behind a default feature): `#[derive(Message)]` on an enum
+gives `Into<Value>` (a map with a `kind` and the fields) and
+`TryFrom<&Value>`, so `on_click(Msg::Save)` and
+`match Msg::try_from(&ev.payload)` both compile. Before building it,
+write the counter and splitmux with it by hand to see whether the
+derive earns its crate. If the hand-written impls are short, a howto
+entry is the answer instead.
+
+### `.` C51 — No file dialogs
+
+**Found** by the bake-off's table: gpui has them, iced and kui do not
+(iced apps use `rfd`). A kui app can call `rfd` itself today, from its
+own thread, but a Node or Lua app cannot. Neither can a C app on the
+runner's thread without blocking the loop.
+
+**Do.** Only when a view asks. The shape is ADR 0013's effects: an
+`OpenFile { filters, multiple }` / `SaveFile` effect the runner performs
+with `rfd` (behind a `dialogs` feature beside `audio`), answered by one
+`{kind:"files", paths, tag}` event, the same payload shape the drop zone
+(ADR 0031) delivers. One door per binding. It stays parked until an app
+on kui wants to open a file it was not handed.
+
 ## After alpha.17
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -1468,7 +1674,11 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** Nothing of the alpha.14, alpha.16 and alpha.18 upgrade
+**Build next.** C45, the stock controls
+([ADR 0034](adr/0034-stock-controls-over-the-roles.md), accepted
+2026-09-25 and being built); C46–C51 from the second bake-off are
+smaller, and C47 is measuring before anything else. Nothing of the
+alpha.14, alpha.16 and alpha.18 upgrade
 reports is open (F88–F92 **built 2026-09-25**, the day they were filed).
 Nothing of the regression pass of 2026-09-25 is open
 (RG17–RG36 **built 2026-09-25** before the alpha.17 tag, RG37 the same
@@ -1476,7 +1686,7 @@ day after it). Nothing of the regression pass of 2026-09-19 is open (RG1, the No
 drop-zone commit — was **built 2026-09-25**, a register spill in the
 segment loop, and F86, the window icon, the same day. Next is W19, when
 a Windows or Linux round comes (the macOS half of ADR 0031 is built and
-verified; the fallback elsewhere is honest and positionless). Nothing else filed is open. The rounds since the alpha.14 tag, newest first:
+verified; the fallback elsewhere is honest and positionless). Nothing else filed is open besides C45–C51. The rounds since the alpha.14 tag, newest first:
 the regression pass of 2026-09-19 over F67–F75 (RG1–RG16 — all
 sixteen built or done between 2026-09-19 and 2026-09-20, RG14's ten
 nits and RG16's removal of the press-and-hold door **done
@@ -1737,11 +1947,15 @@ crate ("WebGL charts", one 0.1.0 from 2023-04-04, no repository), while
 Publishing means asking the owner for the name or shipping the runner
 under another — crates.io does not reassign a name without its owner —
 and the npm side has no such problem. Nothing in the tree blocks it: the
-`publish = ["forgejo"]` lines are the only registry-specific thing.
+`publish = ["forgejo"]` lines are the only registry-specific thing. The
+second bake-off (2026-09-25) made the same recommendation first of its
+three and re-checked the fact. It is still the one decision between kui
+and anyone else trying it.
 
-**Parked on their own terms.** C12 (column wrapping), C13 (`space-between`
-and baseline), C14 (aspect ratio), C5(b) (core-side virtualisation), rounded
-clip nesting. Each says "wait for a view that wants it", and each should keep
+**Parked on their own terms.** C12 (column wrapping), C5(b) (core-side
+virtualisation), rounded clip nesting. C13 (`space-between` and baseline)
+and C14 (aspect ratio) left this list on 2026-09-25, built once the second
+bake-off asked. Each says "wait for a view that wants it", and each should keep
 saying it until one does.
 
 **Hygiene.** Archiving is done six times over: the forty-six of

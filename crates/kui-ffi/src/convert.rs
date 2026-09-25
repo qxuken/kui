@@ -79,20 +79,14 @@ pub(crate) fn keyframe_of(k: &KuiKeyframe) -> Keyframe {
     kf
 }
 
+/// `KUI_START`.. `KUI_BASELINE` are `schema::ALIGNS` indices, as the
+/// Lua and Node wires carry them.
 pub(crate) fn align_of(a: u32) -> Align {
-    match a {
-        1 => Align::Center,
-        2 => Align::End,
-        _ => Align::Start,
-    }
+    kui_core::schema::align_idx(a as usize)
 }
 
 pub(crate) fn align_code(a: Align) -> u32 {
-    match a {
-        Align::Start => 0,
-        Align::Center => 1,
-        Align::End => 2,
-    }
+    a as u32
 }
 
 /// Null-able, consumed message payloads (`KuiValue*` owned by the caller
@@ -290,6 +284,9 @@ pub(crate) fn spec_of(
     }
     if s.drop_bg != 0 {
         spec = spec.drop_bg(Color::hex(s.drop_bg));
+    }
+    if s.aspect_ratio > 0.0 {
+        spec = spec.aspect_ratio(s.aspect_ratio);
     }
     if s.cursor != 0 {
         // KUI_CURSOR_* = schema index + 1, so zero can mean "derive".

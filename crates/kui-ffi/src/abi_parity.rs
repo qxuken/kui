@@ -290,7 +290,8 @@ fn asserts() -> (String, Vec<&'static str>) {
         "KUI_WINDOW_MAXIMIZE",
     ]);
     abi_enum!(o, kui_core::schema::ALIGNS, 0 => [
-        "KUI_START", "KUI_CENTER", "KUI_END",
+        "KUI_START", "KUI_CENTER", "KUI_END", "KUI_SPACE_BETWEEN",
+        "KUI_SPACE_AROUND", "KUI_SPACE_EVENLY", "KUI_BASELINE",
     ]);
     abi_enum!(o, kui_core::schema::FAMILIES, 0 => [
         "KUI_FONT_SANS", "KUI_FONT_SERIF", "KUI_FONT_MONO",
@@ -692,6 +693,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         on_drop: *const KuiValue => "const KuiValue *",
         drop_bg: u32 => "uint32_t",
         float_clip: u32 => "uint32_t",
+        aspect_ratio: f32 => "float",
     });
 
     abi_struct!(o, KuiAccessNode {
@@ -1331,7 +1333,9 @@ fn an_in_struct_s_size_is_the_abi_s() {
     use std::collections::BTreeMap;
     // (name, size in bytes, the ABI the size is from)
     const IN_LAYOUTS: &[(&str, usize, u32)] = &[
-        ("KuiSpec", 576, 18),
+        // ABI 19: `float_clip` took the tail padding after `drop_bg` and
+        // `aspect_ratio` the next four bytes, padded to eight.
+        ("KuiSpec", 584, 19),
         ("KuiSizing", 8, 16),
         ("KuiKeyframe", 36, 16),
         ("KuiEnter", 40, 16),

@@ -1418,14 +1418,17 @@ print a token's name after the value it painted. C declares and reads
 **Layout.** Wrapping is rows only, for the pass-order reason above: a
 **column** that outgrows its height is still one line, so it shrinks its `Fit`
 children toward their `min` (or overflows) rather than moving anything into a
-second column (C12). `Dir` is `Row` or `Column` with no reverse. Beyond that
-the alignment vocabulary is start/center/end and nothing else — no
-`align-content` (a wrapping row's lines always share the leftover cross space
-equally), no `space-between` / `around` / `evenly` on either axis (a `grow`
-spacer node covers the first of the three), and no baseline cross-alignment, so
-two text sizes on one row align by box and sit on different lines (C13). There
-is no aspect ratio either: "square" or "16:9" needs one of the two dimensions
-known (C14).
+second column (C12). `Dir` is `Row` or `Column` with no reverse. The main
+axis takes start/center/end and the three spreads (`spaceBetween`,
+`spaceAround`, `spaceEvenly`, CSS's `justify-content`), and a row's cross axis
+`baseline` besides start/center/end (C13); a column's cross axis has no
+baseline, and there is no `align-content` (a wrapping row's lines always share
+the leftover cross space equally) and no per-child `align-self`. A baseline is
+the first line of the first text down a child's first-child chain; a child with
+no text aligns by its bottom edge. `aspectRatio` (C14) sizes one axis from the
+other — a fit height from the final width, or a fit width from a fixed height —
+and not a fit width from a `grow` or percent height, which is resolved only
+after every width is.
 
 **Input.** Pointer buttons: the secondary one is routed to `on_context_menu`
 and nothing else (C2); the middle button and anything past it (back, forward)

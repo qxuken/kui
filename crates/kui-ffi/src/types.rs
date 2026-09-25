@@ -616,6 +616,10 @@ pub struct KuiSpec {
     /// over its in-flow siblings. Beside `float_fit` in meaning, at the
     /// end of the struct because that is where an append goes. ABI 19.
     pub float_clip: u32,
+    /// Width over height (`aspectRatio`, backlog C14); 0 for none. It
+    /// sizes the axis whose sizing is fit: a fit height from the final
+    /// width, a fit width from a fixed height. ABI 19.
+    pub aspect_ratio: f32,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a

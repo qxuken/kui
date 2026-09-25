@@ -69,6 +69,22 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         "#
             )
         }
+        // `conformance::build_align`: the three spreads, a baseline row,
+        // and a ratio sizing each axis.
+        "align" => r#"
+            local function sq() return column { width = 10, height = 10, bg = 0x30344aff } end
+            local function spread(a)
+              return row { width = 120, main_align = a, sq(), sq(), sq() }
+            end
+            return column { pad = 4, gap = 6, width = 128, bg = 0x101018ff,
+              spread("spaceBetween"), spread("spaceAround"), spread("spaceEvenly"),
+              row { gap = 4, cross_align = "baseline",
+                text("ab", { size = 12 }), text("cd", { size = 20 }), sq() },
+              column { width = { grow = 1 }, aspect_ratio = 4, bg = 0x3b5bd4ff },
+              column { height = 12, aspect_ratio = 2, bg = 0x73d98cff },
+            }
+        "#
+        .to_string(),
         // A table (ADR 0033): `grid`, since `table` is Lua's own. The
         // header is a fit row of two bare texts; each body row a grow row
         // of a bare text, a fixed box and a grow box.

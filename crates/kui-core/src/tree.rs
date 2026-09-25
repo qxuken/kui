@@ -105,6 +105,11 @@ pub struct Tree {
     /// in-flow children of one line are always a contiguous sibling run,
     /// so a line is a range rather than a list.
     pub line: Vec<u32>,
+    /// Each node's first baseline below its top, logical px, where text
+    /// measured one (`NaN` elsewhere). Filled by the fit-height pass, and
+    /// only on a frame with a baseline row (`any_baseline`); empty
+    /// otherwise.
+    pub baseline: Vec<f32>,
 
     // Set by `push`, cleared by `clear`: what this frame declared at all,
     // so a pass whose work exists for one feature can skip it wholesale
@@ -119,6 +124,9 @@ pub struct Tree {
     pub any_node_float: bool,
     /// Whether any node declares `wrap_children`.
     pub any_wrap: bool,
+    /// Whether any node lines its children up by their baselines
+    /// (`cross_align: Baseline`): the layout measures baselines only then.
+    pub any_baseline: bool,
     /// Whether any node is a table (`LayoutSpec::table`): the column
     /// alignment in the layout passes runs only on a frame that has one.
     pub any_table: bool,
@@ -256,7 +264,9 @@ impl Tree {
         self.pos.clear();
         self.scroll_max.clear();
         self.line.clear();
+        self.baseline.clear();
         self.any_float = false;
+        self.any_baseline = false;
         self.any_node_float = false;
         self.any_wrap = false;
         self.any_table = false;
@@ -307,6 +317,7 @@ impl Tree {
         }
         self.any_wrap |= spec.layout.wrap;
         self.any_table |= spec.layout.is_table();
+        self.any_baseline |= spec.layout.cross_align == crate::spec::Align::Baseline;
         self.any_text |= matches!(
             content,
             NodeContent::Text(_) | NodeContent::Edit(_) | NodeContent::Cells(_)

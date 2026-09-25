@@ -33,14 +33,16 @@ pub fn latency_hud_at(ui: &mut Ui<'_>, x: Align, y: Align) {
     } else {
         0.0
     };
+    // The same attach points a float takes, which place the spreads and
+    // `Baseline` as the start or the centre (`layout::align_factor`).
     let dx = match x {
-        Align::Start => 12.0,
-        Align::Center => 0.0,
+        Align::Start | Align::SpaceBetween | Align::Baseline => 12.0,
+        Align::Center | Align::SpaceAround | Align::SpaceEvenly => 0.0,
         Align::End => -12.0,
     };
     let dy = match y {
-        Align::Start => 12.0 + top_inset,
-        Align::Center => 0.0,
+        Align::Start | Align::SpaceBetween | Align::Baseline => 12.0 + top_inset,
+        Align::Center | Align::SpaceAround | Align::SpaceEvenly => 0.0,
         Align::End => -12.0,
     };
     // Translucent over whatever the app is painting, so the panel takes

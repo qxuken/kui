@@ -729,6 +729,40 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "align",
+        doc: "The main axis's free space dealt out and the cross axis's \
+              baselines lined up (backlog C13), and a ratio sizing each \
+              axis (C14): three 120-wide rows of three 10 px boxes under \
+              `spaceBetween`, `spaceAround` and `spaceEvenly`; a baseline \
+              row of a 12 and a 20 px text and a box, so the small text \
+              drops to the large one's baseline and the box sits on it; \
+              and a `grow`-wide box at 4:1 (120 x 30) above a 12-high box \
+              at 2:1 (24 x 12).",
+        custom: &["dir", "pad", "size"],
+        elements: &["box", "text"],
+        build: build_align,
+        env: NATIVE_CHROME,
+        steps: &[],
+        expect: Expect {
+            solid: 13,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 4,
+            access: &["0 window ||", "1 staticText ab||", "1 staticText cd||"],
+            events: &[],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+            secure_input: false,
+        },
+    },
+    Scene {
         name: "table",
         doc: "A table (ADR 0033): three rows of a fixed-width table, the \
               first a header, in three columns — a bare text label column \
@@ -2939,6 +2973,59 @@ fn build_wrap(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                     |_| {},
                 );
             }
+        },
+    );
+}
+
+/// The `align` scene's three spreads, in the order its rows declare them.
+pub const ALIGN_SPREADS: [Align; 3] = [Align::SpaceBetween, Align::SpaceAround, Align::SpaceEvenly];
+
+fn build_align(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    let square = || {
+        NodeSpec::column()
+            .width(Sizing::Fixed(10.0))
+            .height(Sizing::Fixed(10.0))
+            .bg(Color::hex(0x30344aff))
+    };
+    ui.with(
+        NodeSpec::column()
+            .pad(4.0)
+            .gap(6.0)
+            .width(Sizing::Fixed(128.0))
+            .bg(Color::hex(0x101018ff)),
+        |ui| {
+            for a in ALIGN_SPREADS {
+                ui.with(
+                    NodeSpec::row().width(Sizing::Fixed(120.0)).main_align(a),
+                    |ui| {
+                        for _ in 0..3 {
+                            ui.with(square(), |_| {});
+                        }
+                    },
+                );
+            }
+            ui.with(
+                NodeSpec::row().gap(4.0).cross_align(Align::Baseline),
+                |ui| {
+                    ui.text("ab", TextStyle::new(12.0));
+                    ui.text("cd", TextStyle::new(20.0));
+                    ui.with(square(), |_| {});
+                },
+            );
+            ui.with(
+                NodeSpec::column()
+                    .width(Sizing::Grow(1.0))
+                    .aspect_ratio(4.0)
+                    .bg(Color::hex(0x3b5bd4ff)),
+                |_| {},
+            );
+            ui.with(
+                NodeSpec::column()
+                    .height(Sizing::Fixed(12.0))
+                    .aspect_ratio(2.0)
+                    .bg(Color::hex(0x73d98cff)),
+                |_| {},
+            );
         },
     );
 }

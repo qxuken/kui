@@ -1309,6 +1309,22 @@ impl EditStore {
     /// field that asked to fold (`EditOptions::wrap`, backlog F44): it
     /// wraps to its width exactly as a document does, and keeps a field's
     /// keyboard.
+    /// The first line's baseline of editor `key` as `wrapped` last laid it
+    /// out, logical px below the top of its text (backlog C13): what a
+    /// field beside its label lines up by. An empty editor is one line of
+    /// its own metrics. `NaN` for a key no editor holds.
+    pub(crate) fn baseline(&self, key: Key) -> f32 {
+        let Some(s) = self.states.get(&key) else {
+            return f32::NAN;
+        };
+        let b = s.editor.with_buffer(|b| {
+            b.layout_runs()
+                .next()
+                .map_or(b.metrics().line_height * 0.8, |r| r.line_y.round())
+        });
+        b / s.scale
+    }
+
     pub(crate) fn wrapped(&mut self, key: Key, max_w: f32, fs: &mut FontSystem) -> Size {
         let Some(s) = self.states.get_mut(&key) else {
             return Size::ZERO;

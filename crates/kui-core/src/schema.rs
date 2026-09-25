@@ -168,8 +168,21 @@ pub const P_ON_DROP: u32 = 103;
 pub const P_DROP_BG: u32 = 104;
 pub const P_CARET_SOLID: u32 = 105;
 pub const P_SECURE_INPUT: u32 = 106;
+pub const P_ASPECT_RATIO: u32 = 107;
 
-pub const ALIGNS: &[&str] = &["start", "center", "end"];
+/// The `mainAlign` / `crossAlign` rows and a float's attach points, in
+/// `Align`'s order. Append-only: the Lua and Node wires carry the index,
+/// and C's `KUI_ALIGN_*` is it. The spreads mean something on `mainAlign`
+/// and `baseline` on a row's `crossAlign` only (backlog C13).
+pub const ALIGNS: &[&str] = &[
+    "start",
+    "center",
+    "end",
+    "spaceBetween",
+    "spaceAround",
+    "spaceEvenly",
+    "baseline",
+];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
 /// The `scrollbar` row, in `ScrollbarMode::ALL`'s order: the stock
 /// overlay bar, none, or one that fades out when the scroll state has not
@@ -453,6 +466,10 @@ pub fn align_idx(i: usize) -> Align {
     match i {
         1 => Align::Center,
         2 => Align::End,
+        3 => Align::SpaceBetween,
+        4 => Align::SpaceAround,
+        5 => Align::SpaceEvenly,
+        6 => Align::Baseline,
         _ => Align::Start,
     }
 }
@@ -552,14 +569,21 @@ pub const PROPS: &[PropDef] = &[
         id: P_MAIN_ALIGN,
         kind: Kind::Enum(ALIGNS),
         apply: Apply::SpecEnum(|s, i| s.main_align(align_idx(i))),
-        doc: "Child alignment along the main axis.",
+        doc: "Child alignment along the main axis. `start`, `center` and `end` put the children together; `spaceBetween` deals the free space out between them (none at the ends), `spaceAround` gives each child an equal share split to its two sides, and `spaceEvenly` makes every gap and both ends equal — CSS's `justify-content`. The spread is added to `gap`, and there is none when nothing is free: a `grow` child takes it all, and an overflowing run keeps its gaps. `baseline` means nothing here and lays out as `start`, with a warning.",
     },
     PropDef {
         name: "crossAlign",
         id: P_CROSS_ALIGN,
         kind: Kind::Enum(ALIGNS),
         apply: Apply::SpecEnum(|s, i| s.cross_align(align_idx(i))),
-        doc: "Child alignment across the main axis.",
+        doc: "Child alignment across the main axis. On a row, `baseline` lines up the first baselines of the children's text, so a label and a larger value read as one line; a child with no text aligns by its bottom edge, a `grow` or percent height fills the line from its top, and a fit-height row grows to hold the aligned children. A column lays `baseline` out as `start` (as CSS does), and the three spreads mean nothing across an axis — each with a warning.",
+    },
+    PropDef {
+        name: "aspectRatio",
+        id: P_ASPECT_RATIO,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.aspect_ratio(v)),
+        doc: "Width over height — `16/9`, `1` for a square — CSS's `aspect-ratio`. It sizes the axis left `fit`: a fit height is the final width over the ratio (so `width: grow` and a ratio is a box that keeps its shape as the window resizes), and a fit width under a fixed height is that height times it. With both axes declared, or a fit width under a `grow` or percent height, it has nothing it can set and warns. The derived axis is neither shrunk nor fitted to the children, which overflow it; `minHeight: 'fit'` floors it at them. On an image it wins over the pixels' own aspect.",
     },
     PropDef {
         name: "bg",

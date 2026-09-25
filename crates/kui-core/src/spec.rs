@@ -117,12 +117,37 @@ impl Dir {
     }
 }
 
+/// Where children sit along an axis, and where a float attaches.
+///
+/// The first three are every axis's. The rest were appended (backlog C13,
+/// in `schema::ALIGNS` order, so the wire indices and `KUI_ALIGN_*` of the
+/// first three did not move) and each means something on one axis only:
+/// the three spreads on `main_align`, `Baseline` on a row's
+/// `cross_align`. Anywhere else one lays out as `Start`
+/// (`SpaceAround`/`SpaceEvenly` as `Center`), with a warning
+/// (`diag::ALIGN_IGNORED`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Align {
     #[default]
     Start,
     Center,
     End,
+    /// Main axis: the free space goes between the children, none at the
+    /// ends — CSS's `space-between`. One child sits at the start.
+    SpaceBetween,
+    /// Main axis: each child gets an equal share of the free space, half
+    /// on either side, so the ends get half what a gap does — CSS's
+    /// `space-around`. One child is centred.
+    SpaceAround,
+    /// Main axis: the free space splits into equal gaps between the
+    /// children and at both ends — CSS's `space-evenly`. One child is
+    /// centred.
+    SpaceEvenly,
+    /// A row's cross axis: the first baselines of the children's text line
+    /// up, so a label and a larger value on one row read as one line. A
+    /// child with no text inside it aligns by its bottom edge; a `grow` or
+    /// percent height fills the line and sits at its top.
+    Baseline,
 }
 
 impl Align {
@@ -431,10 +456,18 @@ pub struct LayoutSpec {
     /// Space between wrap lines, across the main axis. `gap` is still the
     /// space between children along it.
     pub cross_gap: f32,
-    /// Alignment of children along the main axis.
+    /// Alignment of children along the main axis, the spreads
+    /// (`SpaceBetween` / `SpaceAround` / `SpaceEvenly`) included.
     pub main_align: Align,
-    /// Alignment of children across the main axis.
+    /// Alignment of children across the main axis; `Baseline` on a row.
     pub cross_align: Align,
+    /// Width over height (backlog C14, CSS's `aspect-ratio`); 0 = none.
+    /// It sizes the axis whose sizing is `Fit`: a fit height is the final
+    /// width over the ratio, and a fit width under a `Fixed` height is
+    /// that height times it. With both axes declared it has nothing to set.
+    /// The derived axis is neither shrunk nor fitted to the children,
+    /// which overflow it — `min_h: Min::FIT` floors it at them.
+    pub aspect: f32,
     /// Clip children to this node's rect.
     pub clip: bool,
     /// Overflowing content scrolls (implies clipping). Offsets are retained
@@ -468,6 +501,7 @@ impl Default for LayoutSpec {
             cross_gap: 0.0,
             main_align: Align::Start,
             cross_align: Align::Start,
+            aspect: 0.0,
             clip: false,
             scroll_x: false,
             scroll_y: false,
@@ -493,6 +527,24 @@ impl LayoutSpec {
 }
 
 impl LayoutSpec {
+    /// The width a declared aspect ratio gives a `Fit` width: its `Fixed`
+    /// height times the ratio. `None` when the ratio has no say over the
+    /// width.
+    pub(crate) fn aspect_width(&self) -> Option<f32> {
+        match (self.width, self.height) {
+            (Sizing::Fit, Sizing::Fixed(h)) if self.aspect > 0.0 => {
+                Some(self.clamp_h(h) * self.aspect)
+            }
+            _ => None,
+        }
+    }
+
+    /// Whether a declared aspect ratio sizes the height: a `Fit` height,
+    /// read off the final width. `aspect_width`'s pair.
+    pub(crate) fn aspect_height(&self) -> bool {
+        self.aspect > 0.0 && self.height == Sizing::Fit
+    }
+
     pub(crate) fn clamp_w(&self, w: f32) -> f32 {
         let min = self.min_w.resolved();
         w.clamp(min, self.max_w.max(min))
@@ -1346,6 +1398,18 @@ impl NodeSpec {
 
     pub fn cross_align(mut self, a: Align) -> Self {
         self.layout.cross_align = a;
+        self
+    }
+
+    /// Width over height (CSS's `aspect-ratio`): see
+    /// [`LayoutSpec::aspect`]. `16.0 / 9.0` for a video, `1.0` for a
+    /// square. A ratio that is not positive and finite clears it.
+    pub fn aspect_ratio(mut self, ratio: f32) -> Self {
+        self.layout.aspect = if ratio.is_finite() && ratio > 0.0 {
+            ratio
+        } else {
+            0.0
+        };
         self
     }
 
