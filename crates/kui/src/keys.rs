@@ -144,12 +144,18 @@ impl<A: App> Shell<A> {
         // With Alt held the logical key is the composed character on some
         // layouts (macOS ⌥o → "ø"); chords want the layout key, so report
         // the modifier-stripped one instead.
+        // A page's key event has no modifier-stripped key (F87): there the
+        // composed one goes through, and `from_layout` below reads a
+        // non-ASCII key by where it is, which is the same answer.
+        #[cfg(not(target_arch = "wasm32"))]
         let logical = if kmods.alt {
             use winit::platform::modifier_supplement::KeyEventExtModifierSupplement;
             event.key_without_modifiers()
         } else {
             event.logical_key.clone()
         };
+        #[cfg(target_arch = "wasm32")]
+        let logical = event.logical_key.clone();
         // Where the key *is*, which no layout moves.
         let physical = physical_code(event.physical_key);
         let (logical_code, ktext) = match &logical {

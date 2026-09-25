@@ -125,6 +125,11 @@ struct Shaded {
     coverage: vec3<f32>,
 };
 
+// Every sample is `textureSampleLevel` at level 0: the atlas has one mip
+// level, so it reads what `textureSample` would, and it is the one a
+// browser's WGSL compiler allows inside the branches on `kind` — the
+// implicit-derivative sample must be in uniform control flow, which naga
+// does not check and Tint does (kui F87).
 fn shade(in: VsOut) -> Shaded {
     // frag_pos is framebuffer coords (physical px, y down) — same space as
     // clip. Clip via coverage (not discard) to keep texture sampling in
@@ -152,17 +157,17 @@ fn shade(in: VsOut) -> Shaded {
 
     if kind == 1u {
         // Alpha-mask glyph tinted by color.
-        let a = textureSample(atlas_tex, atlas_smp, in.uv).a;
+        let a = textureSampleLevel(atlas_tex, atlas_smp, in.uv, 0.0).a;
         return Shaded(in.color.rgb, vec3<f32>(in.color.a * a * inside));
     }
     if kind == 2u {
         // Color bitmap glyph (emoji).
-        let t = textureSample(atlas_tex, atlas_smp, in.uv);
+        let t = textureSampleLevel(atlas_tex, atlas_smp, in.uv, 0.0);
         return Shaded(t.rgb, vec3<f32>(t.a * in.color.a * inside));
     }
     if kind == 4u {
         // LCD subpixel glyph: the atlas holds one coverage per channel.
-        let t = textureSample(atlas_tex, atlas_smp, in.uv);
+        let t = textureSampleLevel(atlas_tex, atlas_smp, in.uv, 0.0);
         return Shaded(in.color.rgb, t.rgb * in.color.a * inside);
     }
 
@@ -200,10 +205,9 @@ fn shade(in: VsOut) -> Shaded {
 
     if kind == 3u {
         // Registered image tinted by color (white = as-is). Both samplers
-        // are read so sampling stays in uniform control flow; the flag
-        // picks one.
-        let lin = textureSample(atlas_tex, atlas_smp, in.uv);
-        let near = textureSample(atlas_tex, nearest_smp, in.uv);
+        // are read and the flag picks one.
+        let lin = textureSampleLevel(atlas_tex, atlas_smp, in.uv, 0.0);
+        let near = textureSampleLevel(atlas_tex, nearest_smp, in.uv, 0.0);
         let t = select(lin, near, in.params.y > 0.5);
         return Shaded(t.rgb * in.color.rgb, vec3<f32>(t.a * in.color.a * coverage * inside));
     }

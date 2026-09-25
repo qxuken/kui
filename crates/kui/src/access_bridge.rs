@@ -7,7 +7,7 @@
 //! adapter reports activation through the event loop, and only then does
 //! the shell derive and push trees — on frames whose tree hash changed.
 
-#[cfg(feature = "accesskit")]
+#[cfg(all(feature = "accesskit", not(target_arch = "wasm32")))]
 mod imp {
     use accesskit::{
         Action, ActionData, Affine, Live as AkLive, Node, NodeId, Orientation as AkOrientation,
@@ -425,7 +425,7 @@ mod imp {
     }
 }
 
-#[cfg(not(feature = "accesskit"))]
+#[cfg(any(not(feature = "accesskit"), target_arch = "wasm32"))]
 mod imp {
     use kui_core::{AccessRequest, AccessTree, Announcement, Assistive};
     use winit::event::WindowEvent;

@@ -12,6 +12,9 @@ kui-core.workspace = true
 wgpu.workspace = true
 bytemuck.workspace = true
 pollster.workspace = true
+# The clock the frame timings read: std's on the desktop, the page's in a
+# browser (kui F87).
+web-time.workspace = true
 
 # `Gpu::remove_device`: D3D12's own way to lose a device on purpose.
 [target.'cfg(windows)'.dependencies]

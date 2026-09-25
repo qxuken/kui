@@ -35,7 +35,7 @@ impl<A: App> Shell<A> {
                 WindowCommand::StartDrag(id) => {
                     let Some(i) = self.pane_of(id) else { continue };
                     let pane = &mut self.panes[i];
-                    let now = std::time::Instant::now();
+                    let now = web_time::Instant::now();
                     let double = pane
                         .last_titlebar_press
                         .take()
@@ -422,7 +422,7 @@ impl<A: App> Shell<A> {
             os_focused: false,
             appearance,
             handed_back: false,
-            first_frame: Some((FIRST_FRAME_RETRIES, std::time::Instant::now())),
+            first_frame: Some((FIRST_FRAME_RETRIES, web_time::Instant::now())),
             deferred_frame: false,
             access,
             #[cfg(target_os = "windows")]
@@ -473,6 +473,10 @@ impl<A: App> Shell<A> {
                 }
             }
             Chrome::Borderless => attrs = undecorated(attrs),
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            attrs = crate::web::canvas_attrs(attrs);
         }
         attrs
     }

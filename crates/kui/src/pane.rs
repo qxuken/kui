@@ -253,7 +253,7 @@ pub(crate) struct Pane {
     pub(crate) level_supported: bool,
     pub(crate) modifiers: ModifiersState,
     /// Time of the last titlebar press, for double-click maximize.
-    pub(crate) last_titlebar_press: Option<std::time::Instant>,
+    pub(crate) last_titlebar_press: Option<web_time::Instant>,
     /// Last cursor position (logical px), for multi-click distance checks.
     pub(crate) cursor: Vec2,
     /// The last Force Touch stage this window reported (0 none, 1 a
@@ -267,11 +267,11 @@ pub(crate) struct Pane {
     pub(crate) file_drag: Vec<String>,
     pub(crate) file_drag_pending: Option<bool>,
     /// Last primary press: time, position, and its click count.
-    pub(crate) last_click: Option<(std::time::Instant, Vec2, u8)>,
+    pub(crate) last_click: Option<(web_time::Instant, Vec2, u8)>,
     /// Caret blink phase mirror + next toggle time; the clock lives here,
     /// the core only stores the visible flag.
     pub(crate) blink_visible: bool,
-    pub(crate) blink_deadline: Option<std::time::Instant>,
+    pub(crate) blink_deadline: Option<web_time::Instant>,
     pub(crate) caret_stamp_seen: u64,
     /// Resize edge currently under the cursor (undecorated windows only).
     pub(crate) resize_edge: Option<ResizeDirection>,
@@ -281,7 +281,7 @@ pub(crate) struct Pane {
     /// Tries left at getting this window's *first* frame onto the screen,
     /// and when to make the next one — `None` once a frame has landed. See
     /// the `Skip` arm of [`Shell::redraw`].
-    pub(crate) first_frame: Option<(u32, std::time::Instant)>,
+    pub(crate) first_frame: Option<(u32, web_time::Instant)>,
     /// Whether the last redraw this pane was asked for was let wait for
     /// the host's answer (`Launcher::deferred_events`). It is what bounds
     /// the wait to a single frame: never two in a row, so no stream of

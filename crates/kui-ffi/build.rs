@@ -74,6 +74,11 @@ fn main() {
     let entries = entry_points(&manifest_dir);
     write_abi_rows(&manifest_dir, &entries);
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    // A browser's module (F87) is no shared library a host loads by name,
+    // and has no plugin to export to: neither job applies.
+    if std::env::var("CARGO_CFG_TARGET_FAMILY").is_ok_and(|f| f.split(',').any(|f| f == "wasm")) {
+        return;
+    }
     install_name(&target_os);
     if !std::path::Path::new(&manifest_dir).join(EXAMPLE).is_file() {
         return;

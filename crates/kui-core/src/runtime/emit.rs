@@ -444,7 +444,7 @@ impl Core {
             // rather than at the boundary an unbuilt row would take.
             let mut in_row = built.iter().filter(|(_, r, _)| *r == Some(row));
             if let Some(first_run) = in_row.next() {
-                return Some(if end.byte >= crate::select::ROW_END {
+                return Some(if end.byte == crate::select::ROW_END {
                     let last_run = in_row.next_back().unwrap_or(first_run);
                     (last_run.0, last_run.2)
                 } else {

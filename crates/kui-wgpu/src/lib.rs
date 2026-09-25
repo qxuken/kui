@@ -9,6 +9,11 @@
 //! Otherwise it falls back to ordinary alpha blending and subpixel glyphs
 //! draw from their union coverage (grayscale).
 
+// In a browser (kui F87) wgpu's WebGPU handles are not `Send`: the page has
+// one thread. The device and the image textures are still shared between
+// the windows' renderers, so they are still `Arc`s.
+#![cfg_attr(target_arch = "wasm32", allow(clippy::arc_with_non_send_sync))]
+
 pub use wgpu;
 
 use kui_core::atlas::GlyphAtlas;
@@ -657,11 +662,20 @@ impl Renderer {
         // handler, and the first acquire on the unconfigured surface is a
         // panic inside wgpu; caught here, it is this constructor's error
         // — a window DXGI will not give a second swapchain, say.
-        let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
-        surface.configure(device, &config);
-        if let Some(err) = pollster::block_on(scope.pop()) {
-            return Err(format!("configuring the surface: {err}").into());
+        //
+        // In a browser the scope's answer is a promise this constructor
+        // cannot wait for (kui F87): a failed configure is the device's
+        // error handler's to say there, as it is for everything else.
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+            surface.configure(device, &config);
+            if let Some(err) = pollster::block_on(scope.pop()) {
+                return Err(format!("configuring the surface: {err}").into());
+            }
         }
+        #[cfg(target_arch = "wasm32")]
+        surface.configure(device, &config);
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("kui"),
@@ -1090,7 +1104,7 @@ impl Renderer {
 
         // Acquiring the swapchain image is where vsync backpressure blocks;
         // report it separately so latency graphs show pacing vs work.
-        let t_wait = std::time::Instant::now();
+        let t_wait = web_time::Instant::now();
         let frame = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(f)
             | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,

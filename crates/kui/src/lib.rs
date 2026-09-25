@@ -51,6 +51,11 @@ use pane::{Pane, appearance_of, level_change, level_supported, sync_env, theme_a
 /// The OS settings winit has no call for, asked once and re-asked when the
 /// user has evidently been in a settings app.
 mod system_env;
+#[cfg(target_arch = "wasm32")]
+mod web;
+// The page's clipboard stands where the desktop's crate does (F87).
+#[cfg(target_arch = "wasm32")]
+use web::clipboard as arboard;
 #[cfg(target_os = "windows")]
 mod windows_anim;
 /// The terminal a `windows_subsystem = "windows"` app was launched from,
@@ -503,7 +508,7 @@ impl Launcher {
             reopened: None,
             reopen_owed: false,
             pretended_loss: false,
-            epoch: std::time::Instant::now(),
+            epoch: web_time::Instant::now(),
             system: system_env::query(),
             pinned_system: self.system,
             clipboard: arboard::Clipboard::new().ok(),
@@ -516,7 +521,7 @@ impl Launcher {
             #[cfg(target_os = "macos")]
             applied_menu_bar: None,
             audio: audio::Audio::new(),
-            audio_touch: std::time::Instant::now(),
+            audio_touch: web_time::Instant::now(),
             smoke_frames: Self::smoke_frames(),
             frames_drawn: 0,
             exit_requested: false,
@@ -557,6 +562,8 @@ impl Launcher {
             .and_then(|s| s.parse().ok())
     }
 
+    /// Opens the main window and runs the loop until it closes.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn run<A: App>(self, app: A) -> Result<(), Box<dyn std::error::Error>> {
         // Not a parked loop: a pumped runner leaves winit's loop *running*
         // (it never exits it — see `PARKED_LOOP`), and `run_app` on a
@@ -569,6 +576,29 @@ impl Launcher {
                     .into(),
             );
         }
+        let (event_loop, mut shell) = self.start(app)?;
+        event_loop.run_app(&mut shell)?;
+        Ok(())
+    }
+
+    /// Opens the main window on the page and returns: in a browser the page
+    /// owns the loop (F87), so the shell is handed to it — winit's
+    /// `spawn_app`, where `run_app` would have to throw to leave — and the
+    /// page's events drive it from then on. `'static` for that reason: the
+    /// shell outlives the call.
+    #[cfg(target_arch = "wasm32")]
+    pub fn run<A: App + 'static>(self, app: A) -> Result<(), Box<dyn std::error::Error>> {
+        use winit::platform::web::EventLoopExtWebSys;
+        let (event_loop, shell) = self.start(app)?;
+        event_loop.spawn_app(shell);
+        Ok(())
+    }
+
+    /// The loop and the shell `run` hands it, set up.
+    fn start<A: App>(
+        self,
+        app: A,
+    ) -> Result<(EventLoop<access_bridge::UserEvent>, Shell<A>), Box<dyn std::error::Error>> {
         let event_loop = EventLoop::<access_bridge::UserEvent>::with_user_event().build()?;
         event_loop.set_control_flow(ControlFlow::Wait);
         let mut shell = self.shell(app);
@@ -588,8 +618,7 @@ impl Launcher {
         // And a file drag's position (ADR 0031), which winit's do not.
         #[cfg(target_os = "macos")]
         macos_drop::set_waker(Waker(event_loop.create_proxy()));
-        event_loop.run_app(&mut shell)?;
-        Ok(())
+        Ok((event_loop, shell))
     }
 
     /// Opens the window but keeps the event loop in the caller's hands: the
@@ -601,6 +630,7 @@ impl Launcher {
     /// runners *in turn*: a runner whose main window has closed parks the
     /// loop, and the next `open` on the thread takes it back (backlog
     /// F58), so a process can open a window, close it, and open another.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn open<A: App>(self, app: A) -> Result<PumpRunner<A>, Box<dyn std::error::Error>> {
         let mut event_loop = take_event_loop()?;
         event_loop.set_control_flow(ControlFlow::Wait);
@@ -638,6 +668,7 @@ impl Launcher {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 thread_local! {
     /// The process's one event loop, parked between runners. winit refuses
     /// to build a second (`EventLoopError::RecreationAttempt`, a static
@@ -656,6 +687,7 @@ thread_local! {
 /// The parked loop if an earlier runner left one, else a new one — which
 /// winit allows once per process. For `open` only: `run` builds its own
 /// (above), since a parked loop is a running one.
+#[cfg(not(target_arch = "wasm32"))]
 fn take_event_loop() -> Result<EventLoop<access_bridge::UserEvent>, winit::error::EventLoopError> {
     if let Some(parked) = PARKED_LOOP.with(|p| p.borrow_mut().take()) {
         return Ok(parked);
@@ -747,6 +779,7 @@ fn frame_waits_for_host(owed: bool, deferred_last: bool) -> bool {
     owed && !deferred_last
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn pump_once<A: App>(
     event_loop: &mut EventLoop<access_bridge::UserEvent>,
     shell: &mut Shell<A>,
@@ -761,6 +794,7 @@ fn pump_once<A: App>(
 /// A windowed runner driven from outside: same [`Shell`] as [`Launcher::run`]
 /// (input mapping, IME, clipboard, chrome, caret blink), but the host calls
 /// [`pump`](Self::pump) on its own cadence instead of parking in `run_app`.
+#[cfg(not(target_arch = "wasm32"))]
 pub struct PumpRunner<A: App> {
     /// `None` once the runner has retired: the loop is parked for the next
     /// runner on this thread (see `PARKED_LOOP`).
@@ -775,6 +809,7 @@ pub struct PumpRunner<A: App> {
     pumps: u64,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl<A: App> PumpRunner<A> {
     /// Processes all pending OS events without blocking. Returns false once
     /// the main window has closed — and from that pump on the windows are
@@ -831,12 +866,12 @@ impl<A: App> PumpRunner<A> {
     /// `deadline` — whichever comes first — so a host that owns the loop
     /// blocks on all three instead of polling on a timer (backlog C21).
     /// Returns false once the main window has closed.
-    pub fn pump_until(&mut self, deadline: std::time::Instant) -> bool {
+    pub fn pump_until(&mut self, deadline: web_time::Instant) -> bool {
         use winit::platform::pump_events::{EventLoopExtPumpEvents, PumpStatus};
         let Some(event_loop) = &mut self.event_loop else {
             return false;
         };
-        let timeout = deadline.saturating_duration_since(std::time::Instant::now());
+        let timeout = deadline.saturating_duration_since(web_time::Instant::now());
         self.pumps += 1;
         self.alive = match event_loop.pump_app_events(Some(timeout), &mut self.shell) {
             PumpStatus::Continue => !self.shell.exit_requested,
@@ -862,7 +897,7 @@ impl<A: App> PumpRunner<A> {
     /// What it does *not* say is whether an OS event is waiting — nothing
     /// short of pumping can — so a driver still needs a ceiling of its own.
     /// This only ever tells it to come back sooner.
-    pub fn next_deadline(&self) -> Option<std::time::Instant> {
+    pub fn next_deadline(&self) -> Option<web_time::Instant> {
         self.shell.next_deadline
     }
 
@@ -965,6 +1000,7 @@ impl<A: App> PumpRunner<A> {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl<A: App> Drop for PumpRunner<A> {
     /// A runner dropped while alive — a host that let go of it without
     /// pumping to the end — parks the loop too, so the next `open` on the
@@ -977,6 +1013,7 @@ impl<A: App> Drop for PumpRunner<A> {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl<A: App> PumpRunner<A> {
     /// Hands the core's queued audio commands to the device now, rather
     /// than at the next pump — for hosts that call `Core::play` between
@@ -986,7 +1023,18 @@ impl<A: App> PumpRunner<A> {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn run<A: App>(
+    title: &str,
+    application: A,
+    extensions: Vec<Box<dyn Extension>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    app(title).extensions(extensions).run(application)
+}
+
+/// [`Launcher::run`] on a page (F87): returns once the page has the shell.
+#[cfg(target_arch = "wasm32")]
+pub fn run<A: App + 'static>(
     title: &str,
     application: A,
     extensions: Vec<Box<dyn Extension>>,
@@ -1056,7 +1104,7 @@ const SURFACE_TRIES: u8 = 3;
 /// — an idle app's windows draw nothing on their own, and an animating
 /// one's frames, with no surface to present to, are not paced by vsync
 /// and would spin the loop until the second was up.
-fn reopen_due(last_try: Option<std::time::Instant>, now: std::time::Instant) -> std::time::Instant {
+fn reopen_due(last_try: Option<web_time::Instant>, now: web_time::Instant) -> web_time::Instant {
     last_try.map_or(now, |t| (t + REOPEN_INTERVAL).max(now))
 }
 
@@ -1190,7 +1238,7 @@ struct Shell<A: App> {
     /// When the device was last opened again after being lost
     /// (`reopen_device`), so a device that will not open is tried once a
     /// second rather than once a frame.
-    reopened: Option<std::time::Instant>,
+    reopened: Option<web_time::Instant>,
     /// A new device was asked for inside the second after the last try,
     /// or the last try left a window without a renderer: `about_to_wait`
     /// opens it when `reopen_due` says, and sleeps until then — the ask
@@ -1201,7 +1249,7 @@ struct Shell<A: App> {
     /// Whether `KUI_LOSE_DEVICE` has had its one loss.
     pretended_loss: bool,
     /// Origin of the frame clock handed to the cores for transitions.
-    epoch: std::time::Instant,
+    epoch: web_time::Instant,
     /// What the OS was asked for at startup — the accent colour, the
     /// reduce-motion setting and the language (`mod system_env`) — pushed
     /// into every pane's env each frame and re-asked when the user has
@@ -1240,7 +1288,7 @@ struct Shell<A: App> {
     /// recent and let go once it is not — see `AUDIO_IDLE_CLOSE`. Starts at
     /// launch, so a session holding sounds still opens the device before
     /// its first click the way it always did.
-    audio_touch: std::time::Instant,
+    audio_touch: web_time::Instant,
     /// `KUI_SMOKE_FRAMES=n`: quit after the main window has presented `n`
     /// frames, so an example is a self-terminating check — a real window
     /// on a real GPU, driven by the real loop, that exits 0 when it drew
@@ -1294,7 +1342,7 @@ struct Shell<A: App> {
     /// What the last `about_to_wait` decided the control flow should be, kept
     /// so a host that owns the loop can read it (`PumpRunner::next_deadline`).
     /// `None` is `ControlFlow::Wait`: nothing the shell knows about is due.
-    next_deadline: Option<std::time::Instant>,
+    next_deadline: Option<web_time::Instant>,
     /// Whether this batch carried an OS event the shell acted on. A driver
     /// cannot see most of them — a pointer crossing a window that declares no
     /// hover produces no *app* event at all, and neither does a key nothing
@@ -1334,6 +1382,7 @@ impl<A: App> Shell<A> {
 
     /// Main inner size in logical px plus the scale factor; the launcher's
     /// requested size until the window exists.
+    #[cfg(not(target_arch = "wasm32"))]
     fn window_size(&self) -> (Size, f32) {
         match self.panes.first() {
             Some(p) => p.size(),
@@ -1444,7 +1493,7 @@ impl<A: App> Shell<A> {
         i: usize,
         ev: InputEvent,
     ) -> Option<usize> {
-        let t0 = std::time::Instant::now();
+        let t0 = web_time::Instant::now();
         // Someone is using the app, so a sound may be moments away: keep
         // the device warm (`AUDIO_IDLE_CLOSE`).
         self.audio_touch = t0;
@@ -1476,7 +1525,7 @@ impl<A: App> Shell<A> {
         let cmds = core.take_audio_commands();
         let resources = core.resources.clone();
         if !cmds.is_empty() {
-            self.audio_touch = std::time::Instant::now();
+            self.audio_touch = web_time::Instant::now();
         }
         // Warmed while the app is being used and let go when it is not.
         // Not every frame: a frame is drawn for the caret, for a
@@ -1613,7 +1662,7 @@ impl<A: App> Shell<A> {
         // with the rest of the pending events after this frame.
         let (viewport, scale) = pane.size();
         let size = window.inner_size();
-        let t_view = std::time::Instant::now();
+        let t_view = web_time::Instant::now();
         pane.core.set_time(epoch.elapsed().as_secs_f64());
         // The extensions fill the slots the host's view declares, in place
         // (`Ui::slot`), and `"root"` after it unless the host placed that
@@ -1623,7 +1672,7 @@ impl<A: App> Shell<A> {
         app.view(&mut ui);
         let view_ms = t_view.elapsed().as_secs_f32() * 1e3;
 
-        let t_layout = std::time::Instant::now();
+        let t_layout = web_time::Instant::now();
         ui.finish();
         let layout_ms = t_layout.elapsed().as_secs_f32() * 1e3;
 
@@ -1700,7 +1749,7 @@ impl<A: App> Shell<A> {
         #[cfg(target_os = "macos")]
         macos_text_input::stamp(window, &pane.core);
 
-        let t_render = std::time::Instant::now();
+        let t_render = web_time::Instant::now();
         // KUI_LOSE_DEVICE=SECS marks the device lost that long after
         // launch, once, to see the reopening below happen without a
         // driver update to cause it.
@@ -1811,7 +1860,7 @@ impl<A: App> Shell<A> {
     /// once a frame. Asked for inside that second, the ask is owed
     /// (`reopen_owed`) and `about_to_wait` makes it when the second is up.
     fn reopen_device(&mut self) {
-        let now = std::time::Instant::now();
+        let now = web_time::Instant::now();
         if reopen_due(self.reopened, now) > now {
             self.reopen_owed = true;
             return;
@@ -1885,6 +1934,40 @@ enum AppliedBar {
     Declared(WindowId, u64),
 }
 
+impl<A: App> Shell<A> {
+    /// The main window, now that it has a renderer: the core the launcher
+    /// built goes into it as its pane.
+    fn open_main(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window: Arc<Window>,
+        renderer: kui_wgpu::Renderer,
+    ) {
+        // Subpixel text only where the renderer blends per channel; the
+        // env var wins over the builder for quick A/B comparisons.
+        self.subpixel = subpixel_on(wanted_text_aa(self.text_aa), renderer.subpixel_text());
+        self.gpu = Some(renderer.gpu().clone());
+        let mut core = self
+            .main_core
+            .take()
+            .expect("the main core is built once, by the launcher");
+        core.set_subpixel_text(self.subpixel);
+        core.env.window.id = WindowId::MAIN;
+        self.push_pane(
+            event_loop,
+            WindowId::MAIN,
+            WindowConfig::default(),
+            WindowId::MAIN,
+            self.chrome,
+            core,
+            window,
+            renderer,
+        );
+        self.panes[0].applied_title = self.title.clone();
+        self.panes[0].applied_min = self.min_size;
+    }
+}
+
 impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if !self.panes.is_empty() || self.opened {
@@ -1908,32 +1991,18 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
             attrs = attrs.with_max_inner_size(LogicalSize::new(mw, mh));
         }
         let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
-        let px = window.inner_size();
-        let renderer =
-            pollster::block_on(kui_wgpu::Renderer::new(window.clone(), px.width, px.height))
-                .expect("init renderer");
-        // Subpixel text only where the renderer blends per channel; the
-        // env var wins over the builder for quick A/B comparisons.
-        self.subpixel = subpixel_on(wanted_text_aa(self.text_aa), renderer.subpixel_text());
-        self.gpu = Some(renderer.gpu().clone());
-        let mut core = self
-            .main_core
-            .take()
-            .expect("the main core is built once, by the launcher");
-        core.set_subpixel_text(self.subpixel);
-        core.env.window.id = WindowId::MAIN;
-        self.push_pane(
-            event_loop,
-            WindowId::MAIN,
-            WindowConfig::default(),
-            WindowId::MAIN,
-            self.chrome,
-            core,
-            window,
-            renderer,
-        );
-        self.panes[0].applied_title = self.title.clone();
-        self.panes[0].applied_min = self.min_size;
+        // A page cannot block on the adapter (F87): the renderer is made in
+        // a task, and the window opens when it arrives (`user_event`).
+        #[cfg(target_arch = "wasm32")]
+        web::make_renderer(window, self.proxy.clone());
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let px = window.inner_size();
+            let renderer =
+                pollster::block_on(kui_wgpu::Renderer::new(window.clone(), px.width, px.height))
+                    .expect("init renderer");
+            self.open_main(event_loop, window, renderer);
+        }
     }
 
     fn window_event(
@@ -2239,7 +2308,7 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
                         // press between two left ones does not break the
                         // run, and never counts up one of its own.
                         let clicks = if primary {
-                            let now = std::time::Instant::now();
+                            let now = web_time::Instant::now();
                             let clicks = match pane.last_click {
                                 Some((t, p, n))
                                     if now.duration_since(t).as_millis() < MULTI_CLICK_MS
@@ -2358,6 +2427,20 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
         // window draws, as after any input. Coalesced by the platform's
         // queue, so a thread waking a thousand times a frame costs one.
         self.saw_event = true;
+        #[cfg(target_arch = "wasm32")]
+        if let Some((window, made)) = web::take_renderer() {
+            match made {
+                // Sized to the canvas as it is now: the page's first
+                // resize came while the renderer was being made, when
+                // there was no pane to hear it.
+                Ok(mut renderer) => {
+                    let px = window.inner_size();
+                    renderer.resize(px.width, px.height);
+                    self.open_main(event_loop, window, renderer);
+                }
+                Err(err) => web::say(&format!("kui: no renderer for the page: {err}")),
+            }
+        }
         if matches!(event, access_bridge::UserEvent::Wake) {
             for pane in &self.panes {
                 pane.window.request_redraw();
@@ -2413,8 +2496,8 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
         self.dismiss_popups_if_deactivated();
         self.poll_audio();
         self.apply_audio();
-        let now = std::time::Instant::now();
-        let mut deadline: Option<std::time::Instant> = None;
+        let now = web_time::Instant::now();
+        let mut deadline: Option<web_time::Instant> = None;
         // A new device owed (`reopen_owed`): made now if its second is
         // up, and otherwise — or when this try left a window without one —
         // woken for when it is. This deadline is the only thing that
@@ -2778,7 +2861,7 @@ mod tests {
     /// not a frame asked for every turn — and one after it runs at once.
     #[test]
     fn a_reopen_waits_out_the_second_after_the_last_try() {
-        let now = std::time::Instant::now();
+        let now = web_time::Instant::now();
         assert_eq!(reopen_due(None, now), now, "the first try is at once");
         let recent = now - std::time::Duration::from_millis(300);
         assert_eq!(

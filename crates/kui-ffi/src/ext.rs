@@ -206,7 +206,7 @@ impl CExtension {
 extern "C" fn placeholder_view(_user: *mut c_void, _ctx: *mut KuiCtx) {}
 
 /// The three calls that differ per platform. Everything above is the same
-/// on both.
+/// on each.
 #[cfg(unix)]
 mod sys {
     use super::{CStr, CString, c_char, c_void};
@@ -273,6 +273,39 @@ mod sys {
     /// spelled and is refused here rather than truncated.
     pub fn path_arg(path: &std::path::Path) -> Option<PathArg> {
         CString::new(path.as_os_str().as_encoded_bytes()).ok()
+    }
+}
+
+/// A page (backlog F87): no shared library can be opened there, so every
+/// load fails with that said, and nothing else is ever reached.
+#[cfg(target_arch = "wasm32")]
+mod sys {
+    use super::{CStr, c_void};
+
+    pub type PathArg = std::path::PathBuf;
+
+    /// # Safety
+    /// None: nothing is loaded.
+    pub unsafe fn load(_path: &PathArg) -> *mut c_void {
+        std::ptr::null_mut()
+    }
+
+    /// # Safety
+    /// None: there is no handle to look in.
+    pub unsafe fn symbol(_handle: *mut c_void, _name: &CStr) -> *mut c_void {
+        std::ptr::null_mut()
+    }
+
+    /// # Safety
+    /// None: there is no handle to close.
+    pub unsafe fn unload(_handle: *mut c_void) {}
+
+    pub fn last_error() -> String {
+        "a browser cannot open a native extension".into()
+    }
+
+    pub fn path_arg(path: &std::path::Path) -> Option<PathArg> {
+        Some(path.to_path_buf())
     }
 }
 

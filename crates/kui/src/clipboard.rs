@@ -25,6 +25,9 @@
 
 use kui_core::ClipboardMarks;
 
+#[cfg(target_arch = "wasm32")]
+use crate::arboard;
+
 /// The markers on what the clipboard holds now. Read after the text, in
 /// the same turn of the loop, so the two describe one copy unless another
 /// app copied in the microseconds between.
@@ -206,6 +209,8 @@ mod platform {
     )
 )))]
 mod platform {
+    #[cfg(target_arch = "wasm32")]
+    use crate::arboard;
     use kui_core::ClipboardMarks;
 
     pub(super) fn marks() -> ClipboardMarks {

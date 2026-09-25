@@ -490,7 +490,10 @@ that are hard to reverse and would look arbitrary without their context.
   on X11, the executable's icon resource on Windows, for the title bar,
   Alt-Tab and the taskbar (`icon` in Node's `WindowOptions`,
   `kui_set_icon` in C); macOS and Wayland take the app's icon from the
-  bundle and the `.desktop` file instead. Custom chrome is an opt-in:
+  bundle and the `.desktop` file instead. In a browser — the same app
+  built for `wasm32-unknown-unknown` — the window is a `<canvas>` on
+  WebGPU the page lays out, and `run` hands the shell to the page and
+  returns (howto: *How do I run my app in a browser?*). Custom chrome is an opt-in:
   `kui::app("title").custom_titlebar().run(app)` — macOS keeps native traffic lights over your content; Windows/Linux go
   undecorated with drawn buttons. On Windows the runner also subclasses the
   window and answers `WM_NCHITTEST` from the frame's chrome regions

@@ -1174,6 +1174,25 @@ program).
 
 [alpha.18 `### Added`](../CHANGELOG.md#010-alpha18-unreleased)
 
+### How do I run my app in a browser?
+
+Build it for `wasm32-unknown-unknown` as a `cdylib`, bind it with
+`wasm-bindgen --target web`, and call `kui::app(..).run(app)` from an
+exported function the page awaits — `run` returns once the page has the
+shell, and the page's events drive it from then on. The window is a
+`<canvas>` appended to the body and drawn with WebGPU; size it from the
+page's stylesheet (`canvas { width: 100vw !important; height: 100vh
+!important; display: block }` for the whole page) and the renderer
+follows. A page has no system fonts: fetch the faces you draw with and
+hand them to the core (`setup_core(|c| { c.add_font_data(bytes); })`)
+before `run`. What a page does not have, the runner leaves out: the pump
+runner, audio, AccessKit, native extensions, and IME composition; a
+paste reads what was copied inside the page. C code in the app (Lua
+through kui-lua, say) needs a C library the target does not bring —
+kawoosh's `web/` builds against wasi-libc and says how.
+
+[alpha.18 `### Added`](../CHANGELOG.md#010-alpha18-unreleased)
+
 ### How do I stop the console window on Windows?
 
 A Windows binary is built for one of two subsystems, and Rust picks

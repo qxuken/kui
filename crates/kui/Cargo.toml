@@ -12,6 +12,17 @@ kui-core.workspace = true
 kui-wgpu.workspace = true
 winit.workspace = true
 pollster.workspace = true
+# `std::time::Instant` on the desktop (a re-export) and the page's clock
+# in a browser, where std's panics (F87) — the same type winit's
+# `ControlFlow::WaitUntil` takes on each.
+web-time.workspace = true
+
+# The desktop platforms. In a browser (F87) the page is the platform: no
+# system clipboard to hold synchronously, no AccessKit adapter for a
+# canvas, no audio device before a gesture — so these are the desktop's
+# alone, and `audio`/`accesskit` are inert on wasm32 (their code is gated
+# on the target as well as the feature).
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # 3.6: the version F84's `exclude_from_*` writes were built and tested
 # against — a bare "3" let a resolver pick one without them (RG35).
 arboard = "3.6"
@@ -23,6 +34,14 @@ accesskit_winit = { version = "0.34", optional = true }
 # default). Default features are trimmed: no realtime-priority dbus
 # (libdbus), no streaming formats — decoding covers wav/ogg/mp3/flac.
 kira = { version = "0.12", default-features = false, features = ["cpal", "mp3", "ogg", "vorbis", "flac", "wav", "pcm"], optional = true }
+
+# The browser (F87): winit's web backend drives the loop from the page's
+# events, the renderer is made asynchronously (a page cannot block on the
+# adapter).
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = ["Window", "Navigator", "Clipboard", "console"] }
 
 # The examples' devtools (docs/adr/0021): the dock, the CLI and the
 # headless drive every example under examples/rust runs inside. A

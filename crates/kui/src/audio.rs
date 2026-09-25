@@ -14,7 +14,9 @@
 //! logs once and every later command is dropped — the UI keeps running.
 //! Decoded sounds are cached per `SoundId` and dropped on `Unload`.
 
-use kui_core::{AudioCommand, AudioDevice, AudioEnv, PlaybackId, SharedResources};
+#[cfg(all(feature = "audio", not(target_arch = "wasm32")))]
+use kui_core::AudioDevice;
+use kui_core::{AudioCommand, AudioEnv, PlaybackId, SharedResources};
 
 pub use backend::Audio;
 
@@ -70,7 +72,7 @@ pub fn blip(sample_rate: u32, hz: f32, ms: f32, gain: f32) -> Vec<u8> {
     wav_pcm16(sample_rate, &samples)
 }
 
-#[cfg(feature = "audio")]
+#[cfg(all(feature = "audio", not(target_arch = "wasm32")))]
 mod backend {
     use std::collections::HashMap;
     use std::io::Cursor;
@@ -451,8 +453,8 @@ mod backend {
             // (seventy processes each opening and closing the HAL) the
             // open took over three on a Mac, and a slow open is not a
             // failed one — this test read as red for it (2026-09-14).
-            let deadline = std::time::Instant::now() + Duration::from_secs(10);
-            while matches!(audio.device, Device::Opening(_)) && std::time::Instant::now() < deadline
+            let deadline = web_time::Instant::now() + Duration::from_secs(10);
+            while matches!(audio.device, Device::Opening(_)) && web_time::Instant::now() < deadline
             {
                 std::thread::sleep(Duration::from_millis(20));
                 audio.close();
@@ -475,8 +477,8 @@ mod backend {
             core.play(s, PlayOptions::default());
             let mut audio = Audio::new();
             audio.apply(core.take_audio_commands(), &core.resources);
-            let deadline = std::time::Instant::now() + Duration::from_secs(3);
-            while audio.playing.is_empty() && audio.active() && std::time::Instant::now() < deadline
+            let deadline = web_time::Instant::now() + Duration::from_secs(3);
+            while audio.playing.is_empty() && audio.active() && web_time::Instant::now() < deadline
             {
                 std::thread::sleep(Duration::from_millis(20));
                 audio.poll_ended();
@@ -553,7 +555,7 @@ mod backend {
             let s = core.add_sound(super::super::blip(44_100, 660.0, 30.0, 0.1));
             let p = core.play(s, PlayOptions::default());
             let mut audio = Audio::new();
-            let t = std::time::Instant::now();
+            let t = web_time::Instant::now();
             let answered = audio.apply(core.take_audio_commands(), &core.resources);
             assert!(
                 answered.truncated.is_empty() && answered.refused.is_empty(),
@@ -565,9 +567,9 @@ mod backend {
                 t.elapsed()
             );
             assert!(audio.active(), "the play waits for the device");
-            let deadline = std::time::Instant::now() + Duration::from_secs(3);
+            let deadline = web_time::Instant::now() + Duration::from_secs(3);
             let mut ended = Vec::new();
-            while ended.is_empty() && audio.active() && std::time::Instant::now() < deadline {
+            while ended.is_empty() && audio.active() && web_time::Instant::now() < deadline {
                 std::thread::sleep(Duration::from_millis(20));
                 ended = audio.poll_ended();
             }
@@ -594,8 +596,8 @@ mod backend {
             let mut audio = Audio::new();
             audio.apply(core.take_audio_commands(), &core.resources);
             // Wait for the device to open and the sound to be running.
-            let deadline = std::time::Instant::now() + Duration::from_secs(3);
-            while audio.playing.is_empty() && audio.active() && std::time::Instant::now() < deadline
+            let deadline = web_time::Instant::now() + Duration::from_secs(3);
+            while audio.playing.is_empty() && audio.active() && web_time::Instant::now() < deadline
             {
                 std::thread::sleep(Duration::from_millis(20));
                 audio.poll_ended();
@@ -633,7 +635,7 @@ mod backend {
     }
 }
 
-#[cfg(not(feature = "audio"))]
+#[cfg(any(not(feature = "audio"), target_arch = "wasm32"))]
 mod backend {
     use super::*;
 

@@ -39,6 +39,8 @@ naga = { version = "30", default-features = false, features = ["wgsl-in"] }
 winit = "0.30"
 bytemuck = { version = "1", features = ["derive"] }
 pollster = "1"
+# `Instant` that works in a browser (F87); std's own on every other target.
+web-time = "1"
 mlua = { version = "0.12", features = ["lua55", "vendored"] }
 divan = "0.1"
 

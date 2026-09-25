@@ -32,6 +32,31 @@ which never heard that text, still hears the chord.
 
 ### Added
 
+- **The runner on a page** (backlog F87, from kawoosh's browser
+  experiment). `kui` builds for `wasm32-unknown-unknown`, and a
+  `kui::app(..).run(app)` there opens its window as a `<canvas>`
+  appended to the page's body, drawn with WebGPU: winit's web backend
+  is the loop, `run` hands the shell to the page and returns at once
+  (a page owns its loop; the app is `'static` there for that reason),
+  and the renderer is made in a task, since the adapter and the device
+  are promises a page cannot block on. The page's stylesheet sizes the
+  canvas; the renderer follows it. `Instant` is `web_time`'s — std's
+  own on the desktop, so nothing changes there — because std's panics
+  on the target. The clipboard is kept in the page and written through
+  to `navigator.clipboard`: a paste reads the page's copy, so text
+  copied in another app does not reach it yet. Not on a page: the
+  pump runner (`Launcher::open`; the page owns the loop), AccessKit
+  and audio (both features inert there), a native extension (`CExtension`
+  says a browser cannot open one), and IME composition, which winit's
+  web backend has none of. One fix every platform shares: the atlas is
+  sampled with `textureSampleLevel(…, 0.0)` — one mip level, the same
+  texel — because a browser's WGSL compiler refuses an
+  implicit-derivative sample inside the branches on the draw kind, a
+  rule naga never checked.
+  *What you can delete:* nothing an app could have written — a kui app
+  could not build for the web at all; a second, web-only front end kept
+  beside the desktop one goes.
+
 - **Every window of the app carries its icon** (backlog F86, from
   kawoosh's window-icon report). `kui::app("t").icon(rgba, w, h)` gives
   every window the runner creates — the main one, a declared one, a

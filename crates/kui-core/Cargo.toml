@@ -18,6 +18,12 @@ unicode-segmentation = "1"
 # Break opportunities for a wrapped long line's rows (already in the tree via cosmic-text).
 unicode-linebreak = "0.1"
 
+# In a browser (F87) the locale is the page's (`navigator.languages`):
+# without this cosmic-text asks the system, which a page has none of, and
+# warns every session that it fell back to en-US.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+cosmic-text = { workspace = true, features = ["wasm-web"] }
+
 [features]
 default = ["devtools"]
 # The devtools panel the core draws into any app's frame when asked

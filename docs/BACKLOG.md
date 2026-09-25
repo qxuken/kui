@@ -41,7 +41,9 @@ meta file, two reveals, the atlas between one page and two, the secret
 paste and secure keyboard entry — from the kawoosh reports of 2026-09-22
 and 23, each the day it was filed, RG17–RG36 from the regression
 pass of 2026-09-25 the same day, and F86 — every window's icon — from
-the kawoosh window-icon report of the same day, the day it was filed. The index
+the kawoosh window-icon report of the same day, the day it was filed,
+and F87 — the runner on a page — from kawoosh's browser experiment of
+the same day, the day it was filed. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -1288,6 +1290,15 @@ bar and Alt-Tab: winit registers its window class with no icon, and
 kui created every window without giving it one. One entry, F86,
 **built 2026-09-25**, the day it was filed, and in the archive.
 
+## From the kawoosh browser experiment (2026-09-25)
+
+kawoosh asked whether it and kui could run in a browser for a demo.
+kui-core and kui-wgpu built for `wasm32-unknown-unknown` untouched; the
+runner did not — arboard, the pump runner, the blocking adapter request,
+std's `Instant` — and a browser's WGSL compiler refused the shader. One
+entry, F87, **built 2026-09-25**, the day it was filed, and in the
+archive.
+
 ## From the regression pass of 2026-09-19
 
 A review of everything since the alpha.15 tag — F67–F75, nine features
@@ -2172,6 +2183,10 @@ move.
 **From the kawoosh window-icon report (2026-09-25)** — F86, filed and built the same day
 
 - `~` **F86** — [A window shows the platform's default icon, and the launcher cannot give it the app's](backlog/closed-2026-09.md#-f86--a-window-shows-the-platforms-default-icon-and-the-launcher-cannot-give-it-the-apps--done-2026-09-25) — done (2026-09-25) — `Launcher::icon` (RGBA) and `Launcher::icon_resource` (Windows), given to every window `window_attrs` creates; Node's `WindowOptions.icon`, C's `kui_set_icon`
+
+**From the kawoosh browser experiment (2026-09-25)** — F87, filed and built the same day
+
+- `~` **F87** — [A kui app cannot run in a browser](backlog/closed-2026-09.md#-f87--a-kui-app-cannot-run-in-a-browser--done-2026-09-25) — done (2026-09-25) — the runner builds for `wasm32-unknown-unknown`: `run` hands the shell to the page, the renderer is made in a task, the window is a `<canvas>` on WebGPU; the atlas sampled at level 0 for a browser's WGSL compiler
 
 **From the regression pass of 2026-09-25** — RG17–RG36 built the same day, before the alpha.17 tag; RG37 the same day, after it
 
