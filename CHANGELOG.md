@@ -55,6 +55,13 @@ existing input draws changes: a stroke is clipped as it was.
   `AccessNode` (`mixed`, `step`) and `HitRegion` (`slider`) have new
   public fields, so a struct literal that names every field stops
   compiling. `Core`'s internal `nudge` takes a `SliderMove`.
+- Every window keeps two frames queued ahead of the one on screen where
+  it kept one (under Changed, C47): smoother at light load, and a frame
+  of latency more while frames run back to back. `frame_latency(1)`
+  (`frameLatency: 1`, `KuiRunConfig.frame_latency = 1`,
+  `KUI_FRAME_LATENCY=1`) is the old behaviour.
+- `KuiRunConfig` gains `frame_latency` under the same ABI 19 (40 bytes,
+  was 36).
 - Node: `CoreMsg` gains `ChangeMsg`, so an exhaustive `switch` over it
   wants a `'change'` arm; the access tree's nodes gain `mixed` and
   `valueStep`.
@@ -251,6 +258,31 @@ in `examples/rust/features/align.rs`.
   machine's installed fonts.
 
 ### Changed
+
+- **A window keeps two frames queued, and every vsync gets one**
+  (backlog C47, from the second bake-off: "kui and iced miss vsync when
+  there is little to draw", 105–119 fps where gpui held 120.0).
+  Measured on an M3 Pro under macOS 27 on AC power:
+  - With one queued frame, the old setting, runs of 10 s drew 112.5–118.6
+    fps at 100 and 2,500 boxes (0.8–6.2% of vsyncs missed) and 119.7 at
+    40,000. That is the report's
+    pattern: the frame's work was 0.3–0.9 ms, and a thread that woke a
+    little late after sleeping ~7.9 ms found no free drawable.
+  - With two, every run delivered 1198–1201 of the ~1200 vsyncs, in
+    three rounds and through the new default as well as the override.
+  - gpui gets the same from `maximumDrawableCount(3)` at the rev the
+    bake-off ran. wgpu makes kui's `desired_maximum_frame_latency` the
+    Metal layer's drawable count less one, so 2 is gpui's setting.
+  - The report's other lever, the present mode, does nothing here:
+    wgpu's Metal `AutoVsync` is `Fifo`.
+  - The cost is a frame of latency, 8.3 ms at 120 Hz, while frames run
+    back to back. A frame drawn from idle starts from an empty queue.
+  `Launcher::frame_latency`, `WindowOptions.frameLatency` and
+  `KuiRunConfig.frame_latency` choose per app, and `KUI_FRAME_LATENCY`
+  overrides without a rebuild. The report saw its misses on battery;
+  this change was measured on AC.
+  *What you can delete:* nothing an app could have written; a frame
+  that missed its vsync was the runner's.
 
 - **The two virtual lists are named for what sets them apart** (from
   the second bake-off against gpui and iced, 2026-09-25). gpui calls

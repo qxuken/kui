@@ -596,6 +596,20 @@ fn preprocess_shader(src: &str, dual: bool) -> String {
     out
 }
 
+/// How many frames may be queued ahead of the one on screen, by default:
+/// two, so a drawable to render into is waiting when the previous frame's
+/// is still out (backlog C47). On Metal wgpu makes this the layer's
+/// `maximumDrawableCount` less one, so two is triple buffering — what gpui
+/// runs with. With one, a frame whose thread woke a little late at light
+/// load found no free drawable and missed its vsync: 1–6% of them on an
+/// M3 Pro under macOS 27 at 100 and 2,500 boxes, none under heavy load,
+/// where there is no idle gap to wake late from. Two delivered 1198–1201
+/// of ~1200 vsyncs in every run. The price is a frame of latency while
+/// frames are produced back to back (an animation, a drag, a scroll),
+/// since the CPU then fills the extra slot; a frame drawn from idle — a
+/// keystroke into a still editor — starts from an empty queue either way.
+pub const DEFAULT_FRAME_LATENCY: u32 = 2;
+
 impl Renderer {
     /// A renderer for one window, on a device of its own.
     pub async fn new(
@@ -624,6 +638,22 @@ impl Renderer {
         &self.gpu
     }
 
+    /// How many frames may be queued ahead of the one on screen (at least
+    /// one); see [`DEFAULT_FRAME_LATENCY`]. Reconfigures the surface when
+    /// it changes.
+    pub fn set_frame_latency(&mut self, frames: u32) {
+        let frames = frames.max(1);
+        if self.config.desired_maximum_frame_latency != frames {
+            self.config.desired_maximum_frame_latency = frames;
+            self.surface.configure(self.gpu.device(), &self.config);
+        }
+    }
+
+    /// The frame latency the surface is configured with.
+    pub fn frame_latency(&self) -> u32 {
+        self.config.desired_maximum_frame_latency
+    }
+
     fn with_surface(
         gpu: Gpu,
         surface: wgpu::Surface<'static>,
@@ -649,9 +679,9 @@ impl Renderer {
             alpha_mode: caps.alpha_modes[0],
             color_space: wgpu::SurfaceColorSpace::Auto,
             view_formats: vec![],
-            // One queued frame: measurably lower input-to-photon latency at
-            // the cost of less slack for slow frames.
-            desired_maximum_frame_latency: 1,
+            // See `DEFAULT_FRAME_LATENCY`; a runner that wants another
+            // says so through `set_frame_latency`.
+            desired_maximum_frame_latency: DEFAULT_FRAME_LATENCY,
         };
         // A configure that fails only reports to the device's error
         // handler, and the first acquire on the unconfigured surface is a

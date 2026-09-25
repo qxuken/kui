@@ -241,7 +241,8 @@ extern "C" {
  * field is no ratio. And mixed, value_step (KUI_VALUE_STEP) and on_change
  * after it for the stock controls (docs/adr/0034), with the functions
  * kui_checkbox, kui_radio, kui_switch, kui_radio_group_open and kui_slider
- * and the flag KUI_ACCESS_MIXED. KUI_SPACE_BETWEEN,
+ * and the flag KUI_ACCESS_MIXED. And KuiRunConfig.frame_latency
+ * (backlog C47). KUI_SPACE_BETWEEN,
  * KUI_SPACE_AROUND, KUI_SPACE_EVENLY and KUI_BASELINE (backlog C13) are
  * new values of main_align / cross_align, which moved nothing.
  */
@@ -3228,6 +3229,11 @@ typedef struct KuiRunConfig {
     uint32_t diagnostics;  /* KUI_DIAG_*: the window's, over what
                             * kui_set_diagnostics set on the context; the
                             * default is the build's (debug on, release off) */
+    uint32_t frame_latency; /* frames queued ahead of the one on screen;
+                            * 0 = the default, 2 (every vsync gets a frame
+                            * at light load); 1 is the lowest latency while
+                            * frames run back to back. KUI_FRAME_LATENCY in
+                            * the environment still overrides. ABI 19. */
 } KuiRunConfig;
 #define KUI_RUN_CONFIG_INIT ((KuiRunConfig){0})
 

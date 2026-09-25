@@ -193,7 +193,10 @@ impl<A: App> Shell<A> {
         };
         let px = window.inner_size();
         let renderer = match kui_wgpu::Renderer::new_in(&gpu, window.clone(), px.width, px.height) {
-            Ok(r) => r,
+            Ok(mut r) => {
+                r.set_frame_latency(self.frame_latency);
+                r
+            }
             Err(err) => {
                 eprintln!("kui: cannot open window {}: {err}", id.0);
                 self.refuse_pane(event_loop, id);

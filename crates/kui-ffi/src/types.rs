@@ -1435,6 +1435,10 @@ pub struct KuiRunConfig {
     /// the build's — on in a debug build, off in release — as `kui_run`
     /// always had it.
     pub diagnostics: u32,
+    /// Frames queued ahead of the one on screen (backlog C47); zero is
+    /// the default, two. `KUI_FRAME_LATENCY` in the environment still
+    /// overrides. ABI 19.
+    pub frame_latency: u32,
 }
 
 /// `KUI_CHROME_NATIVE`: the OS's decorations.
@@ -1473,6 +1477,8 @@ pub(crate) struct RunOptions {
     pub text_aa: u32,
     /// `None` is the build's default.
     pub diagnostics: Option<bool>,
+    /// `None` is the launcher's default.
+    pub frame_latency: Option<u32>,
 }
 
 /// A max side left at zero is unbounded: a bound no display reaches, as
@@ -1543,6 +1549,7 @@ pub(crate) fn run_options_of(c: Option<&KuiRunConfig>) -> Result<RunOptions, Str
         chrome: c.chrome,
         text_aa: c.text_aa,
         diagnostics,
+        frame_latency: (c.frame_latency > 0).then_some(c.frame_latency),
     })
 }
 

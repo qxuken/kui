@@ -163,6 +163,7 @@ pub fn app(title: &str) -> Launcher {
         system: SystemEnv::default(),
         icon: None,
         icon_resource: None,
+        frame_latency: kui_wgpu::DEFAULT_FRAME_LATENCY,
     }
 }
 
@@ -200,6 +201,9 @@ pub struct Launcher {
     /// The executable's icon resource on Windows
     /// ([`Launcher::icon_resource`]).
     icon_resource: Option<u16>,
+    /// Frames queued ahead of the one on screen
+    /// ([`Launcher::frame_latency`]).
+    frame_latency: u32,
 }
 
 impl Launcher {
@@ -211,6 +215,20 @@ impl Launcher {
     /// Glyph antialiasing; see [`TextAa`].
     pub fn text_aa(mut self, aa: TextAa) -> Self {
         self.text_aa = aa;
+        self
+    }
+
+    /// How many frames may be queued ahead of the one on screen, for every
+    /// window (backlog C47). Two by default
+    /// ([`kui_wgpu::DEFAULT_FRAME_LATENCY`]): every vsync gets a frame at
+    /// light load, and a frame drawn while frames run back to back (an
+    /// animation, a drag, a scroll) reaches the screen a vsync later than
+    /// with one. One is the lowest latency during those, at the cost of an
+    /// occasional missed vsync when little is drawn. `KUI_FRAME_LATENCY`
+    /// overrides it, for comparing the two without a rebuild. Values below
+    /// one are one.
+    pub fn frame_latency(mut self, frames: u32) -> Self {
+        self.frame_latency = frames.max(1);
         self
     }
 
@@ -492,6 +510,7 @@ impl Launcher {
             min_size: self.min_size,
             max_size: self.max_size,
             text_aa: self.text_aa,
+            frame_latency: wanted_frame_latency(self.frame_latency),
             diagnostics,
             subpixel: false,
             app,
@@ -1100,6 +1119,16 @@ fn subpixel_on(wanted: TextAa, dual_source: bool) -> bool {
     }
 }
 
+/// The frame latency asked for: `KUI_FRAME_LATENCY` if it is a positive
+/// number, for comparing without a rebuild, else the launcher's.
+fn wanted_frame_latency(launcher: u32) -> u32 {
+    std::env::var("KUI_FRAME_LATENCY")
+        .ok()
+        .and_then(|v| v.trim().parse::<u32>().ok())
+        .filter(|n| *n >= 1)
+        .unwrap_or(launcher)
+}
+
 /// The text antialiasing asked for: `KUI_TEXT_AA` if set, for quick A/B
 /// comparisons, else what the launcher was told.
 fn wanted_text_aa(launcher: TextAa) -> TextAa {
@@ -1167,6 +1196,9 @@ struct Shell<A: App> {
     min_size: Option<(f64, f64)>,
     max_size: Option<(f64, f64)>,
     text_aa: TextAa,
+    /// What every renderer is configured with: `Launcher::frame_latency`
+    /// under `KUI_FRAME_LATENCY`.
+    frame_latency: u32,
     /// What every core is created with; see `Launcher::diagnostics`.
     diagnostics: bool,
     /// Whether the GPU blends per channel, decided by the first renderer,
@@ -1839,7 +1871,8 @@ impl<A: App> Shell<A> {
                 }
             };
             match made {
-                Ok(r) => {
+                Ok(mut r) => {
+                    r.set_frame_latency(self.frame_latency);
                     let opened = gpu.is_none();
                     gpu.get_or_insert_with(|| r.gpu().clone());
                     if opened {
@@ -1909,9 +1942,10 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
         }
         let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
         let px = window.inner_size();
-        let renderer =
+        let mut renderer =
             pollster::block_on(kui_wgpu::Renderer::new(window.clone(), px.width, px.height))
                 .expect("init renderer");
+        renderer.set_frame_latency(self.frame_latency);
         // Subpixel text only where the renderer blends per channel; the
         // env var wins over the builder for quick A/B comparisons.
         self.subpixel = subpixel_on(wanted_text_aa(self.text_aa), renderer.subpixel_text());

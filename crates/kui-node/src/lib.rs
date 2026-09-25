@@ -1627,7 +1627,7 @@ pub struct KuiWindow {
 impl KuiWindow {
     /// Options: `{width, height, minWidth, minHeight, maxWidth, maxHeight,
     /// chrome: "native" | "custom" | "borderless", textAa: "auto" | "gray"
-    /// | "subpixel", system, icon}`. The min/max pairs bound what the user can
+    /// | "subpixel", frameLatency, system, icon}`. The min/max pairs bound what the user can
     /// resize the window to; either half may stand alone. `system` pins part of `env.system` over what the OS
     /// says, for the life of the window — `{motion: 'reduced'}` is what a
     /// user who asked for less motion would get, on a machine whose owner
@@ -1723,6 +1723,19 @@ impl KuiWindow {
                 )));
             }
         };
+        // Frames queued ahead of the one on screen (backlog C47), the
+        // launcher's `frame_latency`; `KUI_FRAME_LATENCY` still wins.
+        match o.get("frameLatency") {
+            None | Some(Json::Null) => {}
+            Some(Json::Number(n)) if n.as_u64().is_some_and(|n| (1..=3).contains(&n)) => {
+                launcher = launcher.frame_latency(n.as_u64().unwrap_or(2) as u32);
+            }
+            Some(other) => {
+                return Err(err(format!(
+                    "window options: frameLatency must be 1, 2 or 3, not {other}"
+                )));
+            }
+        }
         // `system: {motion: 'reduced'}` — the same partial `setEnv` takes
         // headless, read the same way, but pinned at the launcher rather
         // than pushed into a core: the runner writes the real reading

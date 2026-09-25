@@ -1139,6 +1139,20 @@ const mine = decodeQuads(win.quads()).filter((q) =>
 [alpha.8](../CHANGELOG.md#010-alpha8-2026-09-07) ·
 [alpha.19 `### Added`](../CHANGELOG.md#010-alpha19-unreleased)
 
+### How do I trade smoothness for latency, or the other way?
+
+The surface keeps two frames queued ahead of the one on screen by default
+(backlog C47), so every vsync gets a frame even when little is drawn. It
+costs a frame of latency while frames run back to back: an animation, a
+drag, a scroll. For a view where a drag has to track the finger as
+closely as possible, such as a drawing canvas or a splitter, ask for one:
+`kui::app("t").frame_latency(1)`, `frameLatency: 1` in `WindowOptions`,
+or `frame_latency = 1` in `KuiRunConfig`. The window then loses the odd
+vsync at light load (1–6% of them on an M3 Pro), and a keystroke into an
+idle editor is equally fast either way. `KUI_FRAME_LATENCY=1` or `2` in
+the environment overrides the app's choice, so you can compare the two
+on the same build.
+
 ### How do I see what a window draws for a user who asked for less motion?
 
 Pin it at the launcher. A window's `env.system` is the OS's — the runner

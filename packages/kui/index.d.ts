@@ -1608,6 +1608,12 @@ export interface WindowOptions {
    *  otherwise. `KUI_TEXT_AA=gray|subpixel` in the environment still
    *  overrides, for an A/B by hand. */
   textAa?: 'auto' | 'gray' | 'subpixel';
+  /** Frames queued ahead of the one on screen (backlog C47). 2 by default:
+   *  every vsync gets a frame at light load. 1 is the lowest latency while
+   *  frames run back to back (an animation, a drag, a scroll), at the cost
+   *  of an occasional missed vsync when little is drawn. `KUI_FRAME_LATENCY`
+   *  in the environment still overrides. */
+  frameLatency?: number;
   /** Pins part of `env.system` for the life of the window, over whatever
    *  the OS says: `{ motion: 'reduced' }` opens the window as a user who
    *  asked for less motion sees it, on a machine whose owner did not. The
@@ -3037,7 +3043,7 @@ export declare class KuiWindow {
   /**
    * Options: `{width, height, minWidth, minHeight, maxWidth, maxHeight,
    * chrome: "native" | "custom" | "borderless", textAa: "auto" | "gray"
-   * | "subpixel", system, icon}`. The min/max pairs bound what the user can
+   * | "subpixel", frameLatency, system, icon}`. The min/max pairs bound what the user can
    * resize the window to; either half may stand alone. `system` pins part of `env.system` over what the OS
    * says, for the life of the window — `{motion: 'reduced'}` is what a
    * user who asked for less motion would get, on a machine whose owner

@@ -1106,6 +1106,18 @@ vsync wait) against the display's frame budget (`env.refresh_hz`, 120 Hz
 fallback), with a red cap on frames whose work exceeds it. The runner feeds
 `core.stats` and `core.env` automatically; all examples show it.
 
+Pacing: the surface keeps two frames queued ahead of the one on screen
+(`Launcher::frame_latency`, 2 by default; C47). On macOS that is triple
+buffering, which gpui also uses, and every vsync gets a frame even when
+little is drawn. With one queued frame, a frame whose thread woke a
+little late at light load found no free drawable and missed its vsync:
+112.5–118.6 fps at 100 and 2,500 boxes on an M3 Pro, against 119.7–120.0
+with two. The price is a frame of latency (8.3 ms at 120 Hz) while frames
+run back to back: an animation, a drag, a scroll. A frame drawn from idle,
+such as a keystroke into a still editor, starts from an empty queue either
+way. `frame_latency(1)` (`frameLatency: 1`, `KuiRunConfig.frame_latency`,
+or `KUI_FRAME_LATENCY=1` without a rebuild) trades back.
+
 Editing latency (`cargo bench -p kui-core --bench editing`, same machine and
 day — one keystroke: applying the edit, then the full frame it causes, warm
 caches). Each cell is the median of four runs, because a single run of the

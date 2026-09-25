@@ -1556,7 +1556,60 @@ a list whose measured rows move the estimate and checks that the row
 under the pointer stays put, and with the RG18 glide. C is `kui_*`
 calls and composes its own, as it does for the uniform one.
 
-### `.` C47 — kui misses vsync at light load on macOS 27
+### `.` C47 — kui misses vsync at light load on macOS 27 — **built 2026-09-25**
+
+**Built 2026-09-25.** The cause is the swapchain's depth, not the
+platform stack and not frame cost. The measuring came first, as the
+entry asked. The harness was the bake-off's own `stress.rs` (an N×N
+grid rebuilt every frame by `request_frame`) against this tree, logging
+every frame's interval and the runner's `work_ms` / `wait_ms`. It ran
+10 s after a 3 s warm-up, each run only once no `rustc` was running and
+the load average was under 4.5, on an M3 Pro, macOS 27.0, AC power,
+120 Hz. Frames delivered out of the ~1200 vsyncs:
+
+| boxes | latency 1 (the old default) | latency 2 |
+| --- | --- | --- |
+| 100 | 1181, 1147, 1151, 1126 | 1198, 1199, 1201, 1200 |
+| 2,500 | 1190, 1183, 1187, 1175, 1147, 1151 (and 1161, 1171 as `Fifo`) | 1201, 1201, 1201, 1200, 1199, 1201 (and 1201, 1201 as `Fifo`) |
+| 40,000 | 1198, 1198 | 1201, 1200 |
+
+The frame's work was 0.3 ms at 100 boxes and 0.9 ms at 2,500. The
+thread slept ~7.9 ms blocked on a drawable, and the main thread's own
+cadence jittered about equally under both settings (1–7% of intervals
+over 12.5 ms). With latency 1, `CAMetalLayer.maximumDrawableCount` is
+2, and a thread that woke late found no free drawable and missed the
+vsync. With latency 2 there is a third drawable, and the late wake was
+absorbed. At 40,000 boxes (4.5 ms of work) there is no idle gap to wake
+late from, which is why the report saw kui lock back to 120 under load.
+
+The entry's four levers, in order:
+- **Power:** only AC was available today, and the misses are already
+  there on AC, so battery is a factor of degree. Battery is still
+  unmeasured.
+- **Frame latency:** this is the lever.
+- **`AutoVsync` against `Fifo`:** the same thing on Metal (wgpu-hal 30
+  maps `AutoVsync` to `Fifo` and offers no `Mailbox`).
+- **The redraw's timing:** unchanged. It is the pacing a display link
+  would give, and that stays unfiled until it is wanted.
+
+gpui at the rev the bake-off ran (`6f73c7d`) sets
+`maximumDrawableCount(3)`, which explains its steady 120.0.
+
+Built: `kui_wgpu::DEFAULT_FRAME_LATENCY = 2` and
+`Renderer::set_frame_latency`, applied to every renderer the runner
+makes (the main window, a declared window, a reopened device).
+`Launcher::frame_latency`, `WindowOptions.frameLatency` and
+`KuiRunConfig.frame_latency` (ABI 19, appended) choose per app, and
+`KUI_FRAME_LATENCY` overrides without a rebuild. The default changed
+from 1 to 2, the user's decision between the two, knowing the cost:
+a frame of latency (8.3 ms at 120 Hz) while frames run back to back.
+A frame drawn from idle starts from an empty queue either way, so a
+keystroke into a still editor is as fast as before. What would win
+that frame back is display-link pacing, the way gpui runs: the next
+frame starts at a vsync rather than as soon as a drawable frees, so
+the third drawable is slack and not a queue. It is not filed; it
+waits for a drag that feels late.
+
 
 **Found** by the second bake-off. At 2,500 and 10,000 boxes, and with
 400 static labels, kui runs 105–120 fps with jitter on a 120 Hz panel,
@@ -1692,8 +1745,8 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** C46–C51 from the second bake-off, C47 (measuring)
-first. C45, the stock controls
+**Build next.** C46 and C48–C51 from the second bake-off; C47 was
+**built 2026-09-25** (two queued frames by default). C45, the stock controls
 ([ADR 0034](adr/0034-stock-controls-over-the-roles.md)), was **built
 2026-09-25**, and the examples that drew their own moved onto it the
 same day. Nothing of the
@@ -1705,7 +1758,7 @@ day after it). Nothing of the regression pass of 2026-09-19 is open (RG1, the No
 drop-zone commit — was **built 2026-09-25**, a register spill in the
 segment loop, and F86, the window icon, the same day. Next is W19, when
 a Windows or Linux round comes (the macOS half of ADR 0031 is built and
-verified; the fallback elsewhere is honest and positionless). Nothing else filed is open besides C46–C51. The rounds since the alpha.14 tag, newest first:
+verified; the fallback elsewhere is honest and positionless). Nothing else filed is open besides C46 and C48–C51. The rounds since the alpha.14 tag, newest first:
 the regression pass of 2026-09-19 over F67–F75 (RG1–RG16 — all
 sixteen built or done between 2026-09-19 and 2026-09-20, RG14's ten
 nits and RG16's removal of the press-and-hold door **done

@@ -924,6 +924,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         chrome: u32 => "uint32_t",
         text_aa: u32 => "uint32_t",
         diagnostics: u32 => "uint32_t",
+        frame_latency: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiWindowCommand {
@@ -1352,7 +1353,7 @@ fn an_in_struct_s_size_is_the_abi_s() {
         ("KuiPlay", 12, 16),
         ("KuiAudio", 24, 16),
         ("KuiWindowConfig", 32, 16),
-        ("KuiRunConfig", 36, 16),
+        ("KuiRunConfig", 40, 19),
         ("KuiColorToken", 24, 16),
         ("KuiLengthToken", 24, 16),
         ("KuiColorOp", 24, 16),

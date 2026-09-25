@@ -293,6 +293,9 @@ fn launcher_for(title: &str, options: RunOptions) -> kui::Launcher {
     if let Some(on) = options.diagnostics {
         l = l.diagnostics(on);
     }
+    if let Some(frames) = options.frame_latency {
+        l = l.frame_latency(frames);
+    }
     l
 }
 
