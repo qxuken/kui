@@ -78,6 +78,36 @@ existing input draws changes: a stroke is clipped as it was.
 
 ### Added
 
+- **The variable-height list in JSX and Lua** (backlog C46). `list(ctx,
+  { key, heights }, measure, row)` in Node and `list(env, { key, heights },
+  measure, row)` in Lua are `widgets::list`: rows of no fixed height (a
+  chat, a log whose lines wrap), built a screenful at a time. The core's
+  own `RowHeights` is the app's: `new RowHeights(rows, estimate)` /
+  `row_heights(rows, estimate)`, kept in the model or a script global,
+  with `setLen`/`set_len`, `clear`, `offsetOf`/`offset_of` and the rest.
+  `measure(i, width)` runs only for the rows a frame builds that have no
+  height yet, typically over `ctx.measureText` / `env.measure_text`.
+
+  The arithmetic is not ported. `widgets::list`'s slicing became a
+  stepping API on `RowHeights` (`slice`, `ListSlice::unmeasured` /
+  `reslice` / `finish`, `ListReading`, `ListPlan`). `widgets::list`
+  drives it in Rust, and each binding's `list` is the same loop around
+  the app's callback. So the prefix sums, the moving estimate, the anchor
+  that keeps the row under the pointer still, and RG18's second anchor
+  for a glide exist once.
+
+  The correction is a new verb in all four bindings: `Ui::shift_scroll`
+  (now public), `Core::shift_scroll`, `shiftScroll`, `env.shift_scroll`
+  and `kui_shift_scroll`. It moves a scroll by content that moved under
+  it, with no ease asked or ended and no frame requested. A list composed
+  by hand calls it too.
+
+  Each port is pinned by the Rust suite's two tests, replayed: the row
+  under the pointer stays put while the estimate moves, and a long glide
+  lands on the row asked for. Both fail with the correction taken out.
+  The Node `virtual_list` example has a `--variable` mode, and its
+  headless drive checks the variable list on every smoke round.
+
 - **Where the free space goes, and what lines up** (backlog C13, parked
   since 2026-09-03 and named by both bake-offs against gpui and iced).
   `mainAlign` takes `spaceBetween`, `spaceAround` and `spaceEvenly`

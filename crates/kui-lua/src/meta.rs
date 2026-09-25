@@ -101,6 +101,44 @@ const UNIFORM_LIST: &[(&str, bool, &str, &str)] = &[
     ),
 ];
 
+/// What `list` reads off its `opts` beyond a container's props, as
+/// [`UNIFORM_LIST`] is for `uniform_list`.
+const LIST: &[(&str, bool, &str, &str)] = &[
+    (
+        "key",
+        true,
+        "string",
+        "The container's key, which its scroll geometry is read back by.",
+    ),
+    (
+        "heights",
+        true,
+        "kui.RowHeights",
+        "The heights the list slices by, made once with `row_heights` and kept.",
+    ),
+    (
+        "overscan",
+        false,
+        "number",
+        "Rows built past each end of the viewport; two when left out.",
+    ),
+];
+
+/// `row_heights`' methods: what a script calls on the heights it keeps.
+/// The three `slice_*` steps are `list`'s and left out.
+const ROW_HEIGHTS: &[(&str, &str, &str)] = &[
+    ("len", "", "integer"),
+    ("set_len", "rows: integer", "nil"),
+    ("clear", "", "nil"),
+    ("set", "i: integer, h: number", "nil"),
+    ("measured", "i: integer", "number?"),
+    ("get", "i: integer", "number"),
+    ("estimate", "", "number"),
+    ("total", "", "number"),
+    ("offset_of", "i: integer", "number"),
+    ("row_at", "y: number", "integer"),
+];
+
 /// The meta file's text.
 pub fn luals_meta() -> String {
     let mut out = String::new();
@@ -153,6 +191,26 @@ pub fn luals_meta() -> String {
     }
     out.push('\n');
 
+    // `list`'s options, and the heights it slices by.
+    out.push_str("---What `list` reads off its options; every other key is the container's.\n---@class kui.List: kui.Props\n");
+    for (name, required, ty, doc) in LIST {
+        let opt = if *required { "" } else { "?" };
+        let _ = writeln!(out, "---@field {name}{opt} {ty} {doc}");
+    }
+    out.push_str(
+        "\n---A variable-height list's row heights: measured where known, the mean of those elsewhere (rows are 0-based).\n---@class kui.RowHeights\n",
+    );
+    for (name, params, ret) in ROW_HEIGHTS {
+        let _ = writeln!(
+            out,
+            "---@field {name} fun(self: kui.RowHeights{}{params}): {ret}",
+            if params.is_empty() { "" } else { ", " }
+        );
+    }
+    out.push_str(
+        "\n---`rows` rows, none measured, each at `estimate` logical px (20 when left out) until measured.\n---@param rows integer\n---@param estimate? number\n---@return kui.RowHeights\nfunction row_heights(rows, estimate) end\n\n",
+    );
+
     // The events a view's `on_event` hears.
     out.push_str(
         "---An event a view hears: its payload's fields beside `kind`.\n---@class kui.Event\n",
@@ -176,6 +234,8 @@ pub fn luals_meta() -> String {
         for p in &f.params {
             let (opt, ty) = match p.as_str() {
                 "opts" if f.name == "uniform_list" => ("", "kui.UniformList".into()),
+                "opts" if f.name == "list" => ("", "kui.List".into()),
+                "measure" => ("", "fun(i: integer, width: number): number".into()),
                 "t" | "opts" => (
                     if tolerates_nil(&f.body, p) { "?" } else { "" },
                     element.as_deref().unwrap_or("kui.Props").to_string(),

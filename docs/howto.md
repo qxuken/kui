@@ -200,8 +200,8 @@ uniformList(ctx, { key: 'log', rows: lines.length, rowH: 28 }, (i) => (
 
 ### How do I do that when the rows are not all the same height?
 
-`widgets::list` (Rust): the same list over prefix sums instead of a
-stride. It calls a `measure(ui, i, width)` for the rows it is about to build
+`list` (JSX, Lua), `widgets::list` (Rust): the same list over prefix sums
+instead of a stride. It calls a `measure(ui, i, width)` for the rows it is about to build
 and nothing else — `ui.measure_text(text, &style, Some(width))` is what
 layout would give that row, wrap included, through the same shaping cache
 its draw will hit — and every row it has not measured stands at the mean of
@@ -216,8 +216,24 @@ window starts in back where it was before it re-slices — the frame that
 learns is drawn already corrected. To stay at the end of a growing log, ask
 for it: one `set_scroll(key, huge)` after the widget, every frame.
 
+In Node and Lua the heights are the core's own `RowHeights` too — `new
+RowHeights(rows, estimate)`, `row_heights(rows, estimate)` — kept in the
+model or a script global, and `measure` is `(i, width) => height` over
+`ctx.measureText` / `env.measure_text`. The slicing and the anchor are the
+core's arithmetic in every binding; the port is the loop around your
+`measure`, and the correction is `shiftScroll` / `shift_scroll`, which a
+list composed by hand (C's `kui_shift_scroll` included) calls the same way.
+
+```jsx
+const heights = new RowHeights(lines.length, 24); // once, kept in the model
+list(ctx, { key: 'log', heights },
+  (i, width) => ctx.measureText(lines[i], { size: 13 }, width - 12).height + 12,
+  (i) => <box pad={6}><text size={13}>{lines[i]}</text></box>)
+```
+
 [`exit_budget.rs`](../examples/rust/features/exit_budget.rs) ·
-[`virtual_list.rs`](../examples/rust/widgets/virtual_list.rs)
+[`virtual_list.rs`](../examples/rust/widgets/virtual_list.rs) ·
+[`virtual_list.tsx`](../examples/node/widgets/virtual_list.tsx) (`--variable`)
 
 ### How do I draw a terminal's screen?
 

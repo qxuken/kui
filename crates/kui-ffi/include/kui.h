@@ -2455,6 +2455,13 @@ void kui_reveal(KuiCtx *ctx, uint64_t key);
  * "jump to the top" and a huge y is "jump to the end" without knowing the
  * content height. Harmless for a key that never scrolls. */
 void kui_set_scroll(KuiCtx *ctx, uint64_t key, float x, float y);
+/* Moves a scroll container by the content that moved under it, on y: drawn
+ * for where its content is drawn (and an eased leg's start), target for the
+ * offset, with no ease asked or ended and no frame asked for. A variable-
+ * height list's correction when the rows it measured came out another
+ * height than their estimate, so the row under the pointer stays put. Call
+ * it from the view, before kui_frame_finish. */
+void kui_shift_scroll(KuiCtx *ctx, uint64_t key, float drawn, float target);
 /* Reads it back as the last layout clamped it — the number to persist and
  * restore. 0,0 for a node that never scrolled; either pointer may be NULL. */
 void kui_scroll_offset(KuiCtx *ctx, uint64_t key, float *x, float *y);

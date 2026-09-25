@@ -13,7 +13,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { constants as osConstants, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Ctx, KuiWindow, clipStride, createApp, createEncoder, decodeQuads, defineTokens, protocol, quadStride, roles, runWindowed, uniformList, windowOptions, withEffects } from './index.js';
+import { Ctx, KuiWindow, RowHeights, clipStride, createApp, createEncoder, decodeQuads, defineTokens, list, protocol, quadStride, roles, runWindowed, uniformList, windowOptions, withEffects } from './index.js';
 
 const box = (props, children = [], key) => ({ type: 'box', key, props, children });
 const text = (children, props = {}) => ({ type: 'text', props, children: [].concat(children) });
@@ -5383,6 +5383,98 @@ test('scrollGeometry reports the container box, its content and the travel', () 
 // keys, and the one thing a retained-tree binding needs that Rust does not —
 // something that makes the view run again when the wheel moves the core's
 // offset and no model changed.
+
+// -- The variable-height list (backlog C46) ----------------------------------
+// `list` is the Rust `widgets::list` from JSX: the core's `RowHeights` and
+// its slicing, driven around the app's `measure`. Rows 0..100 are 20 px and
+// the rest 60, so the estimate the first screenful produces is badly wrong
+// for the middle of the list — which is what makes the anchor observable.
+
+const varH = (i) => (i < 100 ? 20 : 60);
+
+/** A `list` app over a thousand rows that records what it built and
+ *  measured; `box` goes on the container (a `transition`, for RG18). */
+function variableApp(box = {}) {
+  const heights = new RowHeights(1000, 20);
+  const seen = { range: null, measured: 0 };
+  const view = (_model, _window, ctx) =>
+    box_({ width: 'grow', height: 'grow' }, [
+      list(
+        ctx,
+        { key: 'log', heights, width: 'grow', height: 'grow', ...box },
+        (i) => {
+          seen.measured += 1;
+          return varH(i);
+        },
+        (i) => {
+          seen.range = seen.range === null ? [i, i + 1] : [Math.min(seen.range[0], i), i + 1];
+          return box_({ width: 'grow', height: 'grow', label: `row ${i}`, onClick: { kind: 'pick', row: i } });
+        },
+      ),
+    ]);
+  const app = createApp(
+    {
+      init: { picked: -1 },
+      update: (model, msg) => (msg.kind === 'pick' ? { picked: msg.row } : undefined),
+      view,
+    },
+    { width: 400, height: 200, warnings: false },
+  );
+  // The row under the top edge, by a click rather than by arithmetic — the
+  // question "did the content move" asks of the pixels.
+  const rowUnder = () => {
+    app.click(200, 4);
+    return app.model.picked;
+  };
+  return { app, seen, heights, rowUnder };
+}
+const box_ = (props, children = []) => ({ type: 'box', props, children });
+
+test('list builds a screenful of a thousand rows of two heights', () => {
+  const { app, seen, heights } = variableApp();
+  app.render();
+  seen.range = null;
+  app.render();
+  const [first, last] = seen.range;
+  assert.equal(first, 0);
+  assert.ok(last <= 14, `built ${last} rows`);
+  // Only what was built has been measured; the rest stands at the mean.
+  assert.equal(heights.measured(last - 1), 20);
+  assert.equal(heights.measured(last + 50), null);
+  assert.equal(app.ctx.scrollGeometry('log').contentH, 1000 * 20);
+});
+
+test('a list keeps the row under the pointer while the estimate moves (C46)', () => {
+  const { app, heights, rowUnder } = variableApp();
+  app.render();
+  app.render();
+  app.ctx.setScroll('log', 0, 5000);
+  app.render();
+  const settled = rowUnder();
+  assert.ok(settled > 100, `expected to be deep in the list, at ${settled}`);
+  for (let n = 0; n < 4; n++) {
+    app.render();
+    assert.equal(rowUnder(), settled, `the content slid on frame ${n} as the estimate moved`);
+  }
+  assert.ok(heights.total() > 1000 * 20 * 1.5, `the list learned it is longer: ${heights.total()}`);
+});
+
+test('a list glides a long setScroll to the row asked for (RG18)', () => {
+  const { app, heights, rowUnder } = variableApp({ transition: 100 });
+  app.render();
+  app.render();
+  const target = 400;
+  app.ctx.setScroll('log', 0, heights.offsetOf(target));
+  for (let n = 0; n < 30; n++) app.advance(1000 / 60);
+  assert.equal(rowUnder(), target);
+});
+
+test('list says what it is missing', () => {
+  const ctx = new Ctx();
+  assert.throws(() => list(ctx, { key: 'log' }, () => 1, () => []), /RowHeights/);
+  assert.throws(() => list(ctx, { heights: new RowHeights(1, 1) }, () => 1, () => []), /key/);
+  assert.throws(() => list(ctx, { key: 'log', heights: new RowHeights(1, 1) }, null, () => []), /measure/);
+});
 
 /** A `uniformList` app that records the range each frame built. */
 function virtualApp(opts = {}) {

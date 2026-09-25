@@ -927,10 +927,11 @@ impl<'a> Ui<'a> {
 
     /// Moves a container's scroll state by the content that moved under
     /// it — `drawn` for the drawn place and an eased leg's start, `target`
-    /// for the offset — with no ease asked or ended.
-    /// `widgets::list`'s height correction (RG18).
-    pub(crate) fn shift_scroll(&mut self, key: Key, drawn: Vec2, target: Vec2) {
-        self.core.scroll.shift(key, drawn, target);
+    /// for the offset — with no ease asked or ended: a variable-height
+    /// list's height correction (RG18), which the Node and Lua ports ask
+    /// for through their own door (backlog C46). See `Core::shift_scroll`.
+    pub fn shift_scroll(&mut self, key: Key, drawn: Vec2, target: Vec2) {
+        self.core.shift_scroll(key, drawn, target);
     }
 
     /// What the last layout resolved for a scroll container — its box, its

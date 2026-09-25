@@ -923,6 +923,7 @@ static int surface(void) {
         check(!kui_layout_of(ui, k.sink, &rect), "and for no other");
         KuiScrollGeometry geo = KUI_SCROLL_GEOMETRY_INIT;
         check(kui_scroll_geometry(ui, k.card, &geo) && geo.h > 0, "kui_scroll_geometry on the card");
+        kui_shift_scroll(ui, k.card, 0, 0); /* a zero shift moves nothing */
         kui_set_scroll(ui, k.card, 0, 9999);
         kui_reveal(ui, k.slider);
         kui_frame_begin(ui, 800, 600, 2.0f);

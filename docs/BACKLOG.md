@@ -1534,7 +1534,42 @@ or the next free one), a `stock-controls` corpus scene with a slider
 drive, and `widgets/controls.rs` with its Node twin. Accept the ADR
 first: `onChange` is the first event whose value the core computes.
 
-### `.` C46 — The variable-height `list` has no door in Lua or Node
+### `.` C46 — The variable-height `list` has no door in Lua or Node — **built 2026-09-25**
+
+**Built 2026-09-25**, with one change from the plan: the arithmetic
+was not ported. The entry asked for a `RowHeights` equivalent in each
+binding. That would mean three copies of the split prefix sums, the
+moving estimate, the galloping search and the two anchors, which is
+what the rule of shared capability in kui-core with a door per binding
+exists to avoid.
+
+- **The slicing is a stepping API on the core's `RowHeights`:**
+  `slice(ListReading)` → `ListSlice`, then `unmeasured`, `reslice` and
+  `finish` → `ListPlan`. `widgets::list` is now that loop around its
+  `measure` (the 50 scroll tests unchanged).
+- **Node's `RowHeights` is a napi class over the same struct,** and
+  Lua's `row_heights(rows, estimate)` is userdata. Each binding's
+  `list` is the loop around the app's callback: a reading in, the rows
+  to measure out, their heights in, the plan out.
+- **The correction is a verb in all four bindings, with a `DOORS`
+  row:** `Ui::shift_scroll`, now public, and `Core::shift_scroll`,
+  which asks for no frame because it belongs to the frame being built.
+  Node has `shiftScroll`, Lua `env.shift_scroll`, and C
+  `kui_shift_scroll`, so a C app composing its own list can keep the
+  glide too.
+
+Node's view runs before the core's frame begins, where Rust's runs
+inside it. The RG18 glide test is what settles that the shift lands on
+the leg all the same. Each port replays the Rust suite's anchor test
+(the row under the pointer stays put while the estimate moves) and the
+RG18 glide. Both fail with the port's `shift_scroll` call taken out.
+The Node `virtual_list` example has a `--variable` mode, and its
+headless drive checks the variable list on every smoke round.
+
+Not done: Lua's `list`, like its `uniform_list`, cannot ask for the
+frame after the first, since a script has no request-frame door. The
+first frame over-builds a screenful by the viewport, and the next view
+the host runs slices by the real geometry.
 
 **Found** renaming the lists for the bake-off. `widgets::list` (was
 `virtual_rows`) is Rust-only. The uniform list has had all four doors
@@ -1934,8 +1969,9 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** C46, C50 and C51 from the second bake-off; C47 was
-**built 2026-09-25** (two queued frames by default), and C48, the
+**Build next.** C50 and C51 from the second bake-off; C47 was
+**built 2026-09-25** (two queued frames by default), C46, the
+variable-height list in JSX and Lua over the core's `RowHeights`, and C48, the
 geometry drift since alpha.9, and C49, the edit-compile loop, the same
 day (codegen steps, the rare paths out of `emit_node`; the runner
 compiled once in kui, a release rebuild of the counter 1.59 → 0.85 s). C45, the stock controls
@@ -1950,7 +1986,7 @@ day after it). Nothing of the regression pass of 2026-09-19 is open (RG1, the No
 drop-zone commit — was **built 2026-09-25**, a register spill in the
 segment loop, and F86, the window icon, the same day. Next is W19, when
 a Windows or Linux round comes (the macOS half of ADR 0031 is built and
-verified; the fallback elsewhere is honest and positionless). Nothing else filed is open besides C46, C50 and C51. The rounds since the alpha.14 tag, newest first:
+verified; the fallback elsewhere is honest and positionless). Nothing else filed is open besides C50 and C51. The rounds since the alpha.14 tag, newest first:
 the regression pass of 2026-09-19 over F67–F75 (RG1–RG16 — all
 sixteen built or done between 2026-09-19 and 2026-09-20, RG14's ten
 nits and RG16's removal of the press-and-hold door **done

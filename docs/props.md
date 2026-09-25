@@ -497,6 +497,7 @@ binding is a row with its three other cells, or a red test.
 | `Ui::scroll_offset` | `kui_scroll_offset` | `scrollOffset` | `scroll_offset` | A scrolling node's offset. |
 | `Ui::scroll_geometry` | `kui_scroll_geometry` | `scrollGeometry` | `scroll_geometry` | A scrolling node's viewport and content sizes. |
 | `Ui::set_scroll` | `kui_set_scroll` | `setScroll` | `set_scroll` | Scrolls a node to an offset. |
+| `Ui::shift_scroll` | `kui_shift_scroll` | `shiftScroll` | `shift_scroll` | Moves a node's scroll by content that moved under it, with no ease: a variable-height list's anchor (backlog C46). |
 | `Ui::reveal` | `kui_reveal` | `reveal` | `reveal` | Scrolls whatever encloses a node until it is in view. |
 | `Ui::text_hit` | `kui_text_hit` | `textHit` | `text_hit` | The byte and line under a point in a node's text (backlog C18). |
 | `Ui::caret_rect` | `kui_caret_rect` | `caretRect` | `caret_rect` | The caret rect for a byte offset in a node's text. |

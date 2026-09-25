@@ -10,11 +10,14 @@
 //! `env.blur()`, `env.focus_next()`, `env.focus_prev()`),
 //! `env.announce(text, politeness)` and scroll calls
 //! (`env.reveal(key)`, `env.scroll_offset(key)`, `env.set_scroll(key, x, y)`,
-//! `env.scroll_geometry(key)`), text queries (`env.text_hit(key, x, y)`,
+//! `env.shift_scroll(key, drawn, target)`, `env.scroll_geometry(key)`), text queries (`env.text_hit(key, x, y)`,
 //! `env.caret_rect(key, byte)`) and window requests
 //! (`env.set_window_size(window, w, h)`, `env.focus_window(window)`); the
 //! root table may set `window_title`, `always_on_top` and `secure_input`. Because the IR is data all the way down, the binding is
-//! just table-to-node conversion — no closures cross the boundary.
+//! just table-to-node conversion — no closures cross the boundary. One
+//! global is native rather than the prelude's: `row_heights(rows,
+//! estimate)`, the core's `RowHeights` as userdata the script keeps, which
+//! the prelude's `list` slices a variable-height list by (backlog C46).
 //!
 //! ## The two `focus` names
 //!
@@ -89,6 +92,7 @@ use kui_core::{
 use mlua::{Lua, Table};
 
 mod meta;
+mod rows;
 pub use meta::luals_meta;
 
 const PRELUDE: &str = include_str!("prelude.lua");
@@ -129,6 +133,7 @@ struct Loaded {
 impl LuaExtension {
     pub fn from_source(name: impl Into<String>, source: &str) -> mlua::Result<Self> {
         let lua = Lua::new();
+        rows::register(&lua)?;
         lua.load(PRELUDE).set_name("kui:prelude").exec()?;
         let name = name.into();
         lua.load(source).set_name(&name).exec()?;
@@ -438,7 +443,7 @@ fn menu_items(t: &mlua::Table) -> mlua::Result<Vec<kui_core::MenuItem>> {
 /// `measure_text(s, opts, max_w)` (see `measure_from_lua`), the
 /// focus verbs `set_focus(key)` / `blur()` / `focus_next()` / `focus_prev()` / `focus_region(key)`
 /// and the scroll calls `reveal(key)` / `scroll_offset(key)` / `set_scroll(key, x, y)` /
-/// `scroll_geometry(key)`, the text queries `text_hit(key, x, y)` /
+/// `shift_scroll(key, drawn, target)` / `scroll_geometry(key)`, the text queries `text_hit(key, x, y)` /
 /// `caret_rect(key, byte)`, the selection calls `selection_text()` /
 /// `selection_html()` (the same words with the formatting they declared) /
 /// `selection_ends()` (the anchor and the focus as row indices and bytes,
@@ -1014,6 +1019,24 @@ fn env_table<'scope, 'env: 'scope>(
             let mut ui = ui.borrow_mut();
             let key = key_arg(&mut ui, key)?;
             ui.set_scroll(key, kui_core::Vec2::new(x, y));
+            Ok(())
+        })?,
+    )?;
+    // A correction by content that moved under the list, on y, with no
+    // ease: what the prelude's `list` asks for when the rows it measured
+    // came out another height than their estimate (RG18, backlog C46). A
+    // key nothing declared yet is the first frame, with nothing to correct.
+    t.set(
+        "shift_scroll",
+        scope.create_function(move |_, (key, drawn, target): (mlua::Value, f32, f32)| {
+            let mut ui = ui.borrow_mut();
+            if let Some(key) = key_query(&mut ui, key)? {
+                ui.shift_scroll(
+                    key,
+                    kui_core::Vec2::new(0.0, drawn),
+                    kui_core::Vec2::new(0.0, target),
+                );
+            }
             Ok(())
         })?,
     )?;
@@ -5872,6 +5895,130 @@ mod tests {
         let first: i64 = ext.lua.globals().get("first_built").unwrap();
         assert_eq!(first, 0, "and every row of it is built");
         assert_eq!(core.scroll_offset(list).y, 0.0);
+    }
+
+    /// The variable-height list's script (backlog C46): rows 0..100 are 20
+    /// px and the rest 60, so the estimate the first screenful produces is
+    /// badly wrong for the middle of the list — which is what makes the
+    /// anchor observable. `TRANSITION` puts RG18's glide on the container.
+    const VARIABLE_LIST: &str = r#"
+        heights = row_heights(1000, 20)
+        measured = 0
+        function view(env)
+          return list(env,
+            { key = "list", heights = heights, width = "grow", height = "grow",
+              transition = TRANSITION },
+            function(i, width)
+              measured = measured + 1
+              if i < 100 then return 20 else return 60 end
+            end,
+            function(i)
+              return column { width = "grow", height = "grow", bg = 0x282840ff,
+                              label = "row", on_click = i }
+            end)
+        end
+    "#;
+
+    /// One frame of `VARIABLE_LIST` at time `t`, 400 x 200.
+    fn variable_frame(core: &mut Core, ext: &mut LuaExtension, t: f64) {
+        core.set_time(t);
+        let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+        ui.set_origin(OriginId(1));
+        ext.view(&Slot::root(), &mut ui).unwrap();
+        ui.finish();
+    }
+
+    /// Which row is under `y`, by a click rather than by arithmetic — the
+    /// question "did the content move" asks of the pixels.
+    fn row_under(core: &mut Core, y: f32) -> Option<i64> {
+        core.handle_input(InputEvent::CursorMoved(Vec2::new(200.0, y)));
+        core.handle_input(InputEvent::mouse_down(1));
+        let evs = core.handle_input(InputEvent::mouse_up());
+        evs.first()?.payload.as_int()
+    }
+
+    /// The Lua port of `widgets::list`'s crux: measuring the rows a frame
+    /// builds moves the estimate under every row above the window, and the
+    /// row under the top edge stays the row under the top edge.
+    #[test]
+    fn a_lua_list_keeps_the_row_under_the_pointer_while_the_estimate_moves() {
+        let mut ext = LuaExtension::from_source("variable", VARIABLE_LIST).unwrap();
+        let list = Key::ROOT.str("list");
+        let mut core = Core::new();
+        variable_frame(&mut core, &mut ext, 0.0);
+        variable_frame(&mut core, &mut ext, 0.0);
+        let measured: i64 = ext.lua.globals().get("measured").unwrap();
+        assert!(
+            (10..=20).contains(&measured),
+            "a screenful measured, not the list: {measured}"
+        );
+
+        core.set_scroll(list, Vec2::new(0.0, 5_000.0));
+        variable_frame(&mut core, &mut ext, 0.0);
+        let settled = row_under(&mut core, 4.0);
+        assert!(settled.is_some(), "nothing under the top edge");
+        for n in 0..4 {
+            variable_frame(&mut core, &mut ext, 0.0);
+            assert_eq!(
+                row_under(&mut core, 4.0),
+                settled,
+                "the content slid on frame {n} as the estimate moved"
+            );
+        }
+        let g = core.scroll_geometry(list).expect("laid out");
+        assert!(
+            g.content.h > 1000.0 * 20.0 * 1.5,
+            "the list learned it is longer: {}",
+            g.content.h
+        );
+    }
+
+    /// RG18 through the Lua port: a long `set_scroll` on a container with a
+    /// `transition` glides all the way to the row asked for, the heights of
+    /// the rows it passes measured on the way.
+    #[test]
+    fn a_lua_list_glides_to_the_row_asked_for() {
+        let mut ext =
+            LuaExtension::from_source("variable", &format!("TRANSITION = 100\n{VARIABLE_LIST}"))
+                .unwrap();
+        let list = Key::ROOT.str("list");
+        let mut core = Core::new();
+        let mut t = 0.0;
+        variable_frame(&mut core, &mut ext, t);
+        variable_frame(&mut core, &mut ext, t);
+        let target = 400;
+        let offset: f32 = ext
+            .lua
+            .load(format!("return heights:offset_of({target})"))
+            .eval()
+            .unwrap();
+        core.set_scroll(list, Vec2::new(0.0, offset));
+        for _ in 0..30 {
+            t += 1.0 / 60.0;
+            variable_frame(&mut core, &mut ext, t);
+        }
+        assert_eq!(row_under(&mut core, 4.0), Some(target));
+    }
+
+    /// The script is told what it got wrong, not handed a Lua error from
+    /// inside the prelude.
+    #[test]
+    fn a_lua_list_names_what_it_is_missing() {
+        let mut ext = LuaExtension::from_source(
+            "bad",
+            r#"
+                function view(env)
+                  ok, err = pcall(list, env, { key = "list" }, function() return 1 end,
+                    function() return column {} end)
+                  return column {}
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        variable_frame(&mut core, &mut ext, 0.0);
+        let err: String = ext.lua.globals().get("err").unwrap();
+        assert!(err.contains("row_heights"), "{err}");
     }
 
     /// A query answers for a label nothing declared, where a command says it

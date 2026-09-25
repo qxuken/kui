@@ -124,6 +124,19 @@ impl Core {
         }
     }
 
+    /// Moves `key`'s scroll state by the content that moved under it:
+    /// `drawn` for where the content is drawn (and an eased leg's start),
+    /// `target` for the retained offset. No ease is asked or ended, and no
+    /// frame is asked for: it is a correction to the frame about to be
+    /// laid out — the rows above the window were measured and came out
+    /// another height — so it belongs to that frame, whoever calls it. A
+    /// variable-height list's anchor (RG18): `widgets::list` from its view,
+    /// the Node and Lua ports from theirs, just before the tree they
+    /// return is laid out (backlog C46).
+    pub fn shift_scroll(&mut self, key: Key, drawn: Vec2, target: Vec2) {
+        self.scroll.shift(key, drawn, target);
+    }
+
     /// After layout: if the focused edit's caret moved this frame, nudge the
     /// nearest scrollable ancestor so the caret stays visible, then re-run
     /// the positions pass with the adjusted offset (positions is the only

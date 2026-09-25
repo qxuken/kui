@@ -1988,85 +1988,22 @@ pub fn list(
     mut measure: impl FnMut(&mut Ui<'_>, usize, f32) -> f32,
     mut row: impl FnMut(&mut Ui<'_>, usize),
 ) -> Key {
-    const OVERSCAN: usize = 2;
-    // Measuring changes the heights the range was sliced from, which can
-    // widen it; four passes is far more than a screenful ever needs and
-    // bounds the work whatever the measurements do.
-    const PASSES: usize = 4;
-
     let key = ui.child_key(label);
-    let pad = spec.layout.padding;
-    // Where an eased leg (F80) is going, when it is somewhere other than
-    // where the content is drawn: a second anchor, so the row under the
-    // target stays the target however the measurements below move the
-    // rows between the two (RG18).
-    let mut target_y = None;
-    let (offset_y, vh, cw, first_frame) = match ui.scroll_geometry(key) {
-        Some(g) => {
-            let t = ui.scroll_offset(key).y.clamp(0.0, g.max_offset.y);
-            if (t - g.offset.y).abs() > 0.5 {
-                target_y = Some(t);
-            }
-            (g.offset.y, g.rect.h, g.rect.w - pad.x(), false)
-        }
-        // Nothing laid out yet: a screenful of the viewport is a safe
-        // over-build for one frame, and the width is its width.
-        None => (
-            ui.scroll_offset(key).y,
-            ui.viewport().h,
-            ui.viewport().w - pad.x(),
-            true,
-        ),
-    };
-    // A resize rewraps every row, so the cache is void; the frame after it
-    // measures a screenful again.
-    heights.set_width(cw);
-
-    // The row the window starts in and how far into it — the pair the
-    // correction below puts back where it was.
-    let mut top = (offset_y - pad.t).max(0.0);
-    let anchor = heights.row_at(top);
-    let into = top - heights.offset_of(anchor);
-    // What the passes below move `top` away from. The correction is for a
-    // *measurement* moving the numbers — not for the clamp above, which
-    // on a list shorter than its box (offset 0, padding 6) makes
-    // `top + pad.t` differ from the offset every frame, and a `set_scroll`
-    // every frame is a frame requested every frame: the devtools' events
-    // list never idled again once it had one row (found building ADR
-    // 0029, ~130 frames/s after the first event).
-    let top_before = top;
-    let target_anchor = target_y.map(|t| {
-        let t = (t - pad.t).max(0.0);
-        let row = heights.row_at(t);
-        (t, row, t - heights.offset_of(row))
-    });
-
-    let mut range = visible_range(heights, top, vh, OVERSCAN);
-    for _ in 0..PASSES {
-        let mut measured = false;
-        for i in range.clone() {
-            if heights.measured(i).is_none() {
-                let h = measure(ui, i, cw);
-                heights.set(i, h);
-                measured = true;
-            }
-        }
-        if !measured {
+    let mut slice = heights.slice(ListReading::of(ui, key, spec.layout.padding));
+    loop {
+        let pending = slice.unmeasured(heights);
+        if pending.is_empty() {
             break;
         }
-        // Measuring moved the numbers the slice was taken from — this row's
-        // own, the rows above it, and (through the mean) every row nobody
-        // has measured at all. Put the anchor row back where it was before
-        // re-slicing, so what is under the pointer does not slide out from
-        // under it.
-        top = heights.offset_of(anchor) + into;
-        let next = visible_range(heights, top, vh, OVERSCAN);
-        if next == range {
+        for i in pending {
+            let h = measure(ui, i, slice.width());
+            heights.set(i, h);
+        }
+        if !slice.reslice(heights) {
             break;
         }
-        range = next;
     }
-
+    let plan = slice.finish(heights);
     // A write from inside a view lands on the frame being built: the
     // positions pass reads the store after the view has run. So the frame
     // that learned the rows are a different size is drawn already
@@ -2075,34 +2012,218 @@ pub fn list(
     // content, so it is never eased on a container with a `transition`,
     // and mid-glide it moves the leg with it rather than ending the leg
     // where the content stands (RG18).
-    let drawn = top - top_before;
-    let target = match target_anchor {
-        Some((t, row, into)) => heights.offset_of(row) + into - t,
-        None => drawn,
-    };
-    if drawn.abs() > 0.01 || target.abs() > 0.01 {
+    if let Some((drawn, target)) = plan.shift {
         ui.shift_scroll(key, Vec2::new(0.0, drawn), Vec2::new(0.0, target));
     }
 
-    let lead = heights.offset_of(range.start);
-    let tail = heights.total() - heights.offset_of(range.end);
     ui.with_keyed(label, spec.scroll_y().gap(0.0), |ui| {
         ui.row_count(heights.len() as u64);
-        if lead > 0.0 {
-            ui.with_keyed("lead", spacer_spec(lead), |_| {});
+        if plan.lead > 0.0 {
+            ui.with_keyed("lead", spacer_spec(plan.lead), |_| {});
         }
-        for i in range.clone() {
+        for i in plan.range.clone() {
             ui.with_indexed(i as u64, row_spec(heights.get(i)), |ui| row(ui, i));
         }
-        if tail > 0.0 {
-            ui.with_keyed("tail", spacer_spec(tail), |_| {});
+        if plan.tail > 0.0 {
+            ui.with_keyed("tail", spacer_spec(plan.tail), |_| {});
         }
     });
 
-    if first_frame {
+    if plan.first_frame {
         ui.request_frame();
     }
     key
+}
+
+/// What a variable-height list reads before it slices: the container's
+/// last layout, where its scroll is going, the window, and the padding
+/// its rows sit inside. [`list`] takes it from the frame
+/// ([`Self::of`]); a binding builds it from the same readings its view
+/// already has (`scrollGeometry`, `scrollOffset`, the viewport), so the
+/// arithmetic after it is this module's in every language (backlog C46).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ListReading {
+    /// `scroll_geometry` of the container, `None` before a layout has
+    /// resolved it — the first frame.
+    pub geometry: Option<crate::scroll::ScrollGeometry>,
+    /// `scroll_offset(key).y`: the retained offset, which is where an
+    /// eased leg is going when it differs from `geometry.offset`.
+    pub scroll_y: f32,
+    /// The window, logical px: what the first frame slices by.
+    pub viewport: crate::geom::Size,
+    /// The container's top padding and its horizontal padding together.
+    pub pad_t: f32,
+    pub pad_x: f32,
+    /// Rows built past each end of the window; 2 unless a view says.
+    pub overscan: usize,
+}
+
+impl ListReading {
+    /// The reading for the container `key`, with `pad` its padding, from
+    /// the frame being built.
+    pub fn of(ui: &Ui<'_>, key: Key, pad: crate::geom::Edges) -> Self {
+        ListReading {
+            geometry: ui.scroll_geometry(key),
+            scroll_y: ui.scroll_offset(key).y,
+            viewport: ui.viewport(),
+            pad_t: pad.t,
+            pad_x: pad.x(),
+            overscan: 2,
+        }
+    }
+}
+
+/// One frame's slicing of a variable-height list, between the reading and
+/// the rows: which rows to measure, and — once they are — where the window
+/// lands and what to build. Made by [`RowHeights::slice`]; see [`list`]
+/// for the loop that drives it, which every binding's port repeats.
+#[derive(Clone, Debug)]
+pub struct ListSlice {
+    range: std::ops::Range<usize>,
+    /// The row the window starts in, and how far into it: the pair the
+    /// correction puts back where it was.
+    anchor: usize,
+    into: f32,
+    top: f32,
+    /// What the passes move `top` away from. The correction is for a
+    /// *measurement* moving the numbers — not for the clamp to zero, which
+    /// on a list shorter than its box (offset 0, padding 6) makes `top +
+    /// pad_t` differ from the offset every frame, and a correction every
+    /// frame is a frame requested every frame: the devtools' events list
+    /// never idled again once it had one row (found building ADR 0029,
+    /// ~130 frames/s after the first event).
+    top_before: f32,
+    /// Where an eased leg (F80) is going, when that is somewhere other
+    /// than where the content is drawn: a second anchor, so the row under
+    /// the target stays the target however the measurements move the rows
+    /// between the two (RG18). The target, its row, and how far into it.
+    target: Option<(f32, usize, f32)>,
+    vh: f32,
+    width: f32,
+    overscan: usize,
+    passes: usize,
+    first_frame: bool,
+}
+
+/// What a [`ListSlice`] comes to: the rows to build, the two spacers'
+/// heights, and the scroll correction the frame needs (see [`list`]).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ListPlan {
+    pub range: std::ops::Range<usize>,
+    pub lead: f32,
+    pub tail: f32,
+    /// `(drawn, target)` on y, for `Ui::shift_scroll`, when measuring moved
+    /// the rows; `None` when nothing needs correcting.
+    pub shift: Option<(f32, f32)>,
+    /// Sliced by the window, not a layout: the frame after it has to run.
+    pub first_frame: bool,
+}
+
+/// Measuring changes the heights the range was sliced from, which can widen
+/// it; four passes is far more than a screenful ever needs and bounds the
+/// work whatever the measurements do.
+const LIST_PASSES: usize = 4;
+
+impl RowHeights {
+    /// Starts a frame's slicing from `reading`: the content width (a new one
+    /// drops every height, since the rows rewrap), the anchors, and the
+    /// first range.
+    pub fn slice(&mut self, reading: ListReading) -> ListSlice {
+        let mut target_y = None;
+        let (offset_y, vh, cw, first_frame) = match reading.geometry {
+            Some(g) => {
+                let t = reading.scroll_y.clamp(0.0, g.max_offset.y);
+                if (t - g.offset.y).abs() > 0.5 {
+                    target_y = Some(t);
+                }
+                (g.offset.y, g.rect.h, g.rect.w - reading.pad_x, false)
+            }
+            // Nothing laid out yet: a screenful of the viewport is a safe
+            // over-build for one frame, and the width is its width.
+            None => (
+                reading.scroll_y,
+                reading.viewport.h,
+                reading.viewport.w - reading.pad_x,
+                true,
+            ),
+        };
+        // A resize rewraps every row, so the cache is void; the frame after
+        // it measures a screenful again.
+        self.set_width(cw);
+        let top = (offset_y - reading.pad_t).max(0.0);
+        let anchor = self.row_at(top);
+        let into = top - self.offset_of(anchor);
+        let target = target_y.map(|t| {
+            let t = (t - reading.pad_t).max(0.0);
+            let row = self.row_at(t);
+            (t, row, t - self.offset_of(row))
+        });
+        let range = visible_range(self, top, vh, reading.overscan);
+        ListSlice {
+            range,
+            anchor,
+            into,
+            top,
+            top_before: top,
+            target,
+            vh,
+            width: cw,
+            overscan: reading.overscan,
+            passes: 0,
+            first_frame,
+        }
+    }
+}
+
+impl ListSlice {
+    /// The content width the rows are measured at.
+    pub fn width(&self) -> f32 {
+        self.width
+    }
+
+    /// The rows of the current range nothing has measured: measure each,
+    /// [`RowHeights::set`] it, then [`Self::reslice`]. Empty is done.
+    pub fn unmeasured(&self, heights: &RowHeights) -> Vec<usize> {
+        self.range
+            .clone()
+            .filter(|&i| heights.measured(i).is_none())
+            .collect()
+    }
+
+    /// After measuring: puts the anchor row back where it was and slices
+    /// again. Measuring moved the numbers the slice was taken from — this
+    /// row's own, the rows above it, and (through the mean) every row
+    /// nobody has measured at all — so what is under the pointer would
+    /// otherwise slide out from under it. True when the range moved and
+    /// its new rows want measuring, within the pass budget.
+    pub fn reslice(&mut self, heights: &mut RowHeights) -> bool {
+        self.passes += 1;
+        self.top = heights.offset_of(self.anchor) + self.into;
+        let next = visible_range(heights, self.top, self.vh, self.overscan);
+        if next == self.range {
+            return false;
+        }
+        self.range = next;
+        self.passes < LIST_PASSES
+    }
+
+    /// The rows to build, the spacers, and the correction.
+    pub fn finish(self, heights: &mut RowHeights) -> ListPlan {
+        let drawn = self.top - self.top_before;
+        let target = match self.target {
+            Some((t, row, into)) => heights.offset_of(row) + into - t,
+            None => drawn,
+        };
+        let lead = heights.offset_of(self.range.start);
+        let tail = heights.total() - heights.offset_of(self.range.end);
+        ListPlan {
+            range: self.range,
+            lead,
+            tail,
+            shift: (drawn.abs() > 0.01 || target.abs() > 0.01).then_some((drawn, target)),
+            first_frame: self.first_frame,
+        }
+    }
 }
 
 /// The rows crossing `[top, top + vh)` plus `overscan` on each side, by

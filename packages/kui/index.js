@@ -3,7 +3,7 @@
 import native from './native.cjs';
 import { createEncoder } from './encoder.js';
 
-export const { Ctx, KuiWindow, quadStride, clipStride, protocol } = native;
+export const { Ctx, KuiWindow, RowHeights, quadStride, clipStride, protocol } = native;
 export { createEncoder };
 
 // The brand on what `update` (or a function `init`) returns to hand the loop
@@ -1187,6 +1187,109 @@ export function uniformList(ctx, opts, row) {
     // `rowCount` is the whole list's size, built or not: what Select All
     // inside a `selectable` list spans (ADR 0017, tier 3).
     props: { ...box, scrollY: true, gap: 0, rowCount: n },
+    children,
+  };
+}
+
+/** The padding a list's rows sit inside, from its container's props: the
+ *  top shifts where the window starts, the two sides narrow what a row is
+ *  measured at. The shorthands fall back as `PadShorthand` does in the
+ *  core; a `'$token'` is not resolved here and counts as none. */
+function listPadding(box) {
+  const n = (v) => (typeof v === 'number' ? v : undefined);
+  const all = n(box.pad);
+  return {
+    padT: n(box.padT) ?? n(box.padY) ?? all ?? 0,
+    padX: (n(box.padL) ?? n(box.padX) ?? all ?? 0) + (n(box.padR) ?? n(box.padX) ?? all ?? 0),
+  };
+}
+
+/**
+ * A vertically scrolling column of rows of *different* heights that declares
+ * only the visible ones — `uniformList` where no single stride describes the
+ * list: a chat, a log whose lines wrap, cards with and without an image.
+ *
+ *   const heights = new RowHeights(messages.length, 40); // once, in the model
+ *   list(ctx, { key: 'chat', heights },
+ *     (i, width) => ctx.measureText(messages[i], style, width - 16).height + 12,
+ *     (i) => <box pad={6}><text>{messages[i]}</text></box>)
+ *
+ * `heights` is the core's own `RowHeights`, which the app makes once and
+ * keeps: a measured height per row where one is known, the mean of those
+ * for every other row, and the prefix sums over both. `setLen` it when rows
+ * are appended; `clear()` it when rows change under the same indices.
+ *
+ * `measure(i, width)` returns row `i`'s height at that content width, and is
+ * called only for rows this frame builds that `heights` has no number for —
+ * `ctx.measureText(content, style, width)` is layout's own answer for a
+ * text row. What it returns is the height the row *gets*: the widget fixes
+ * each row's node to it. `row(i)` returns row `i`'s contents, as
+ * `uniformList`'s does, keyed by the row's data `index`.
+ *
+ * Measuring moves the estimate, and with it every row above the window, so
+ * the widget puts the row the window starts in back where it was
+ * (`ctx.shiftScroll`) — and mid-glide, on a container with a `transition`,
+ * the row the glide is going to (RG18). That arithmetic is the core's,
+ * `widgets::list`'s in Rust; this is the loop around the app's `measure`.
+ *
+ * `ctx.setScroll(key, 0, heights.offsetOf(i))` puts row `i` at the top.
+ */
+export function list(ctx, opts, measure, row) {
+  const { key, heights, overscan = 2, ...box } = opts ?? {};
+  if (typeof key !== 'string' || key === '') {
+    throw new Error('kui: list needs a string `key` — its geometry is read back by that name');
+  }
+  if (!(heights instanceof RowHeights)) {
+    throw new Error('kui: list needs `heights` — a `new RowHeights(rows, estimate)` the app keeps between views');
+  }
+  if (typeof measure !== 'function') {
+    throw new Error('kui: list needs a measure function — list(ctx, opts, (i, width) => height, row)');
+  }
+  if (typeof row !== 'function') {
+    throw new Error('kui: list needs a row builder — list(ctx, opts, measure, (i) => node)');
+  }
+  const env = ctx.env();
+  const { padT, padX } = listPadding(box);
+  const begun = heights.sliceBegin({
+    geometry: ctx.scrollGeometry(key),
+    scrollY: ctx.scrollOffset(key).y,
+    viewportW: env.viewport.width,
+    viewportH: env.viewport.height,
+    padT,
+    padX,
+    overscan,
+  });
+  let pending = begun.rows;
+  while (pending.length > 0) {
+    pending = heights.sliceMeasured(pending.map((i) => measure(i, begun.width)));
+  }
+  const plan = heights.sliceFinish();
+  if (plan.shift) ctx.shiftScroll(key, plan.shift.drawn, plan.shift.target);
+
+  // The sentinel `uniformList` declares, for the same reason: the wheel
+  // raises no event, and this is what re-runs `view` when the list moves.
+  const children = [
+    {
+      type: 'box',
+      key: 'kui:at',
+      props: { width: 'grow', height: 0, onLayout: { [VIRTUAL_TAG]: key } },
+      children: [],
+    },
+  ];
+  if (plan.lead > 0) children.push(spacer(plan.lead, 'kui:lead'));
+  for (let i = plan.first; i < plan.last; i++) {
+    children.push({
+      type: 'box',
+      props: { index: i, width: 'grow', height: plan.heights[i - plan.first] },
+      children: row(i),
+    });
+  }
+  if (plan.tail > 0) children.push(spacer(plan.tail, 'kui:tail'));
+
+  return {
+    type: 'box',
+    key,
+    props: { ...box, scrollY: true, gap: 0, rowCount: heights.length },
     children,
   };
 }

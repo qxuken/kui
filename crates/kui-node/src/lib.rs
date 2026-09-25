@@ -25,6 +25,7 @@ use napi_derive::napi;
 use serde_json::{Map as JsonMap, Value as Json};
 
 mod binary;
+mod rows;
 mod schema;
 
 type Result<T> = napi::Result<T>;
@@ -3583,6 +3584,26 @@ macro_rules! core_methods {
                 self.$core().set_scroll(key, Vec2::new(x as f32, y as f32));
                 self.$redraw();
                 Ok(())
+            }
+
+            /// Moves the scroll container `key` by the content that moved
+            /// under it — `drawn` for where the content is drawn (and an
+            /// eased leg's start), `target` for the retained offset — with
+            /// no ease asked or ended and no frame asked for: a correction to
+            /// the frame the view is building. What `list()` calls when the
+            /// rows it measured came out another height than the estimate
+            /// they stood at, so the row under the pointer stays put (RG18,
+            /// backlog C46). A label nothing declared yet is the first
+            /// frame, which has nothing to correct.
+            #[napi]
+            pub fn shift_scroll(&mut self, key: String, drawn: f64, target: f64) {
+                if let Some(key) = resolve_query(self.$core(), &key) {
+                    self.$core().shift_scroll(
+                        key,
+                        Vec2::new(0.0, drawn as f32),
+                        Vec2::new(0.0, target as f32),
+                    );
+                }
             }
 
             // -- Windows ----------------------------------------------------

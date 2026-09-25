@@ -449,6 +449,13 @@ pub const DOORS: &[Door] = &[
         doc: "Scrolls a node to an offset.",
     },
     Door {
+        rust: "Ui::shift_scroll",
+        c: Is("kui_shift_scroll"),
+        node: Is("shiftScroll"),
+        lua: Is("shift_scroll"),
+        doc: "Moves a node's scroll by content that moved under it, with no ease: a variable-height list's anchor (backlog C46).",
+    },
+    Door {
         rust: "Ui::reveal",
         c: Is("kui_reveal"),
         node: Is("reveal"),
