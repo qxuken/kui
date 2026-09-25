@@ -5,7 +5,7 @@
 
 use super::*;
 
-impl<A: App> Shell<A> {
+impl DynShell<'_> {
     /// Hands a menu the core opened to the platform, and hands the
     /// platform's answer back (ADR 0017, decision 5, step 3).
     ///

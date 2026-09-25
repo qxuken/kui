@@ -1774,7 +1774,71 @@ a step, profile it as C41 was (Time Profiler, leaf addresses back to the
 binary). If it is a slope, it is `emit_node`'s size, and the entry
 closes with the numbers.
 
-### `.` C49 — The edit-compile loop is 31% slower than alpha.9's
+### `.` C49 — The edit-compile loop is 31% slower than alpha.9's — **built 2026-09-25**
+
+**Built 2026-09-25.** The 31% was the **release** loop, and it came from
+the runner being generic over the app. The bake-off's own `b_kui` and
+`b_kui9` crates were copied with their lockfiles, beside this tree's
+counter. Each crate got a `touch src/main.rs` and a `cargo build`,
+interleaved in shuffled rounds, on an M3 Pro, macOS 27.0 and AC power.
+Medians:
+
+| | alpha.9 | alpha.18 | this tree |
+| --- | --- | --- | --- |
+| release (the report's column) | 1.22 s | 1.57–1.59 s | **0.85 s** |
+| debug | 0.63 s | 0.65 s | **0.54 s** |
+
+The report did not name the profile. Its 1.20 / 1.57 s match the
+release loop within 0.02 s. The debug loop had barely moved (+3%).
+
+**Where it went.** Before the change, `-Z time-passes` on the app crate
+(`RUSTC_BOOTSTRAP=1 cargo rustc --release`) read 1.08 s at alpha.9
+and 1.42 s at alpha.18. Linking was 0.21 s in both. The difference was
+LLVM work on the app crate:
+- ThinLTO: 0.46 → 0.63 s.
+- Optimisation passes: 0.25 → 0.34 s.
+- Mono-item collection: 0.09 → 0.15 s.
+
+The app crate's unoptimised IR grew 26% (107k → 135k lines, 2,555 →
+3,111 mono items). The growth was the runner: `Shell<A>`, its
+`ApplicationHandler`, and `PumpRunner<A>` were all generic over
+`A: App`. So every app crate instantiated and optimised again
+`window_event`, `about_to_wait` and `redraw`, and every runner feature
+since alpha.9, on every edit: `reopen_device`, `pump_menu_bar`,
+`pump_file_drag`, `route`, the edit chords, the native menus and audio.
+The drop glue for all of it came along too (+6.5k lines). The `impl
+FnOnce` builders in `widgets.rs` and `Ui` that the entry suspected were
+not in the diff.
+
+**What changed.** The runner is compiled once, in kui.
+- **`Shell<A: App + ?Sized>`** keeps the app as its last field, and
+  everything is written against `DynShell<'a>` = `Shell<dyn App + 'a>`.
+  Generic only in a lifetime, which is erased, so it compiles once, and
+  an app that borrows is still an app (no `'static` bound was added).
+- **The one generic step is `Launcher::shell`,** which boxes the fields
+  and the app. `run` and `open` hand the box on unsized.
+- **winit wants a sized handler,** so a two-field `Handler` forwards the
+  five callbacks the shell implements.
+- **`PumpRunner<A>` is a typed box and a non-generic `PumpState`:**
+  every method is a one-line delegation, and `app_mut` and
+  `route_events` read the typed field, with no cast. The box sits in a
+  `ManuallyDrop` and is dropped unsized (`drop_shell`), because as a
+  plain field its drop glue (every window, core and store) was
+  generated in the app's crate.
+
+After the change, the app crate's IR is 44.6k lines, 58% under
+alpha.9's. rustc on it takes 0.69 s: ThinLTO 0.22, passes 0.14, link
+0.21. The public API is unchanged. The Node addon, whose `TreeApp` is
+the one pumped runner, compiles the same way.
+
+**Left.** Half the remaining IR is drop glue (22.7k lines). The heavy
+part (`Core`, `Tree`, `Renderer`, `Shell<Counter>`) is reached only
+from the unwind edges of `Launcher::shell::<A>` and its `Box::new`.
+The counter built with `panic = "abort"` rebuilds in 0.70 s, so
+removing those edges is worth at most ~0.15 s. That would mean listing
+the shell's ~50 fields twice more (a non-generic parts struct, then a
+move into an allocation made first), so it was not done. Link time,
+0.21 s, is the app's linker's.
 
 **Found** by the second bake-off: a `touch main.rs` rebuild of the
 counter is 1.57 s against alpha.9's 1.20 s. That is still faster than
@@ -1870,10 +1934,11 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** C46 and C49–C51 from the second bake-off; C47 was
+**Build next.** C46, C50 and C51 from the second bake-off; C47 was
 **built 2026-09-25** (two queued frames by default), and C48, the
-geometry drift since alpha.9, the same day (codegen steps; the rare
-paths out of `emit_node`). C45, the stock controls
+geometry drift since alpha.9, and C49, the edit-compile loop, the same
+day (codegen steps, the rare paths out of `emit_node`; the runner
+compiled once in kui, a release rebuild of the counter 1.59 → 0.85 s). C45, the stock controls
 ([ADR 0034](adr/0034-stock-controls-over-the-roles.md)), was **built
 2026-09-25**, and the examples that drew their own moved onto it the
 same day. Nothing of the
@@ -1885,7 +1950,7 @@ day after it). Nothing of the regression pass of 2026-09-19 is open (RG1, the No
 drop-zone commit — was **built 2026-09-25**, a register spill in the
 segment loop, and F86, the window icon, the same day. Next is W19, when
 a Windows or Linux round comes (the macOS half of ADR 0031 is built and
-verified; the fallback elsewhere is honest and positionless). Nothing else filed is open besides C46 and C49–C51. The rounds since the alpha.14 tag, newest first:
+verified; the fallback elsewhere is honest and positionless). Nothing else filed is open besides C46, C50 and C51. The rounds since the alpha.14 tag, newest first:
 the regression pass of 2026-09-19 over F67–F75 (RG1–RG16 — all
 sixteen built or done between 2026-09-19 and 2026-09-20, RG14's ten
 nits and RG16's removal of the press-and-hold door **done

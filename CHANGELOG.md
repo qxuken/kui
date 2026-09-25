@@ -285,6 +285,23 @@ in `examples/rust/features/align.rs`.
   and the conformance dump is byte-identical. Nothing changes in what a
   frame draws.
 
+- **An app's edit-compile loop paid for the whole runner** (backlog
+  C49, from the second bake-off: a release `touch main.rs` rebuild of
+  the counter was 1.57 s against alpha.9's 1.20 s). The runner was
+  generic over the app, `Shell<A>` and `PumpRunner<A>` alike. So every
+  app crate compiled and optimised again the event loop and every
+  feature added to it, and its drop glue, on every edit: the app
+  crate's IR grew 26% between the two tags.
+
+  The runner is now written against `Shell<dyn App>` and compiled once
+  in kui. The one generic step boxes the app, and a pumped runner keeps
+  its typed `app_mut` without a cast. The counter's release rebuild is
+  0.85 s (alpha.9 1.22 s, alpha.18 1.59 s), and its debug rebuild
+  0.54 s (0.63 / 0.65 s). The app crate's IR is 58% under alpha.9's.
+
+  The public API is unchanged, and no `'static` bound was added: an
+  app that borrows still runs.
+
 ### Changed
 
 - **A window keeps two frames queued, and every vsync gets one**

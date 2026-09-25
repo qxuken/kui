@@ -6,7 +6,7 @@
 
 use super::*;
 
-impl<A: App> Shell<A> {
+impl DynShell<'_> {
     /// Which pane a key event that arrived at pane `i` is for.
     ///
     /// A non-activating popup never takes OS focus — that is the point of

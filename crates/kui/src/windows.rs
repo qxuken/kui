@@ -5,7 +5,7 @@
 
 use super::*;
 
-impl<A: App> Shell<A> {
+impl DynShell<'_> {
     pub(super) fn pane_index(&self, id: WinitWindowId) -> Option<usize> {
         self.panes.iter().position(|p| p.window.id() == id)
     }
