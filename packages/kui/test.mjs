@@ -13,7 +13,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { constants as osConstants, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Ctx, KuiWindow, clipStride, createApp, createEncoder, decodeQuads, defineTokens, protocol, quadStride, roles, runWindowed, virtualColumn, windowOptions, withEffects } from './index.js';
+import { Ctx, KuiWindow, clipStride, createApp, createEncoder, decodeQuads, defineTokens, protocol, quadStride, roles, runWindowed, uniformList, windowOptions, withEffects } from './index.js';
 
 const box = (props, children = [], key) => ({ type: 'box', key, props, children });
 const text = (children, props = {}) => ({ type: 'text', props, children: [].concat(children) });
@@ -5336,19 +5336,19 @@ test('scrollGeometry reports the container box, its content and the travel', () 
 });
 
 // -- Virtual lists (backlog C25) --------------------------------------------
-// `virtualColumn` is the slicing above as a widget: the spacers, the row
+// `uniformList` is the slicing above as a widget: the spacers, the row
 // keys, and the one thing a retained-tree binding needs that Rust does not —
 // something that makes the view run again when the wheel moves the core's
 // offset and no model changed.
 
-/** A `virtualColumn` app that records the range each frame built. */
+/** A `uniformList` app that records the range each frame built. */
 function virtualApp(opts = {}) {
   const ROWS = opts.rows ?? 10_000;
   const ROW_H = opts.rowH ?? 28;
   const seen = { range: null, updates: [] };
   const view = (_model, _window, ctx) =>
     box({ width: 'grow', height: 'grow' }, [
-      virtualColumn(
+      uniformList(
         ctx,
         { key: 'log', rows: ROWS, rowH: ROW_H, width: 'grow', height: 'grow', ...(opts.box ?? {}) },
         (i) => {
@@ -5371,7 +5371,7 @@ function virtualApp(opts = {}) {
   return { app, seen, ROWS, ROW_H };
 }
 
-test('virtualColumn builds a screenful of a ten-thousand-row list', () => {
+test('uniformList builds a screenful of a ten-thousand-row list', () => {
   const { app, seen, ROWS, ROW_H } = virtualApp();
   app.render();
   seen.range = null;
@@ -5387,7 +5387,7 @@ test('virtualColumn builds a screenful of a ten-thousand-row list', () => {
   assert.equal(g.maxOffset.y, ROWS * ROW_H - g.h);
 });
 
-test('a virtualColumn re-slices on the wheel, with no model change anywhere', () => {
+test('a uniformList re-slices on the wheel, with no model change anywhere', () => {
   // The gate: the wheel raises no event of its own and the driver redraws by
   // re-lowering the tree it was handed, so before C25 a JSX list sliced once
   // and froze. One `step()` — what the pump runs after every pump — has to
@@ -5410,7 +5410,7 @@ test('a virtualColumn re-slices on the wheel, with no model change anywhere', ()
   assert.deepEqual(seen.updates, []);
 });
 
-test('a virtualColumn row is keyed by its data index, so a full list agrees', () => {
+test('a uniformList row is keyed by its data index, so a full list agrees', () => {
   const { app, seen } = virtualApp({ rows: 200, rowH: 20 });
   app.render();
   app.render();
@@ -5448,7 +5448,7 @@ test('a virtualColumn row is keyed by its data index, so a full list agrees', ()
   }
 });
 
-test('a virtualColumn whose list shrank under it lands in one frame', () => {
+test('a uniformList whose rows shrank under it lands in one frame', () => {
   // The geometry is the previous frame's, so a list that shrank while
   // scrolled slices past its own new end. Both ends have to be clamped to
   // the row count, not just the far one: an unclamped `first` builds a lead
@@ -5460,7 +5460,7 @@ test('a virtualColumn whose list shrank under it lands in one frame', () => {
   const view = (_m, _w, ctx) => {
     seen.range = null;
     return box({ width: 'grow', height: 'grow' }, [
-      virtualColumn(ctx, { key: 'log', rows, rowH: 20, width: 'grow', height: 'grow' }, (i) => {
+      uniformList(ctx, { key: 'log', rows, rowH: 20, width: 'grow', height: 'grow' }, (i) => {
         seen.range = seen.range === null ? [i, i + 1] : [Math.min(seen.range[0], i), i + 1];
         return box({ width: 'grow', height: 'grow', label: `row ${i}` });
       }),
@@ -5482,7 +5482,7 @@ test('a virtualColumn whose list shrank under it lands in one frame', () => {
   assert.equal(app.ctx.scrollGeometry('log').offset.y, 0);
 });
 
-test('a virtualColumn read before the frame begins still owes the frame that re-slices it (RG24)', () => {
+test('a uniformList read before the frame begins still owes the frame that re-slices it (RG24)', () => {
   // Node's view runs before the frame begins, so its `scrollGeometry`
   // read lands between two frames; the core cleared its reads at the
   // frame's start and the window tripling left five rows on screen until
@@ -5490,7 +5490,7 @@ test('a virtualColumn read before the frame begins still owes the frame that re-
   const ctx = new Ctx();
   const view = () =>
     box({ width: 'grow', height: 'grow' }, [
-      virtualColumn(ctx, { key: 'log', rows: 1000, rowH: 20, width: 'grow', height: 'grow' }, (i) =>
+      uniformList(ctx, { key: 'log', rows: 1000, rowH: 20, width: 'grow', height: 'grow' }, (i) =>
         box({ width: 'grow', height: 'grow', label: `row ${i}` }),
       ),
     ]);
@@ -5563,12 +5563,12 @@ test('an index is a row number, and anything else is refused', () => {
   }
 });
 
-test('virtualColumn says what it needs rather than drawing nothing', () => {
+test('uniformList says what it needs rather than drawing nothing', () => {
   const ctx = new Ctx();
-  assert.throws(() => virtualColumn(ctx, { rows: 10, rowH: 10 }, () => box({})), /string `key`/);
-  assert.throws(() => virtualColumn(ctx, { key: 'l', rows: 10 }, () => box({})), /positive `rowH`/);
-  assert.throws(() => virtualColumn(ctx, { key: 'l', rowH: 10 }, () => box({})), /`rows` count/);
-  assert.throws(() => virtualColumn(ctx, { key: 'l', rows: 10, rowH: 10 }), /row builder/);
+  assert.throws(() => uniformList(ctx, { rows: 10, rowH: 10 }, () => box({})), /string `key`/);
+  assert.throws(() => uniformList(ctx, { key: 'l', rows: 10 }, () => box({})), /positive `rowH`/);
+  assert.throws(() => uniformList(ctx, { key: 'l', rowH: 10 }, () => box({})), /`rows` count/);
+  assert.throws(() => uniformList(ctx, { key: 'l', rows: 10, rowH: 10 }), /row builder/);
 });
 
 test('a query answers for a label no frame declared; a command still throws', () => {

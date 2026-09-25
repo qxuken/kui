@@ -410,7 +410,7 @@ impl Core {
     /// Declares how many indexed rows the *open* node's virtual list has,
     /// built or not (`rowCount`): what Select All inside a `selectable`
     /// virtual list spans, since the built rows are all the core can see
-    /// (ADR 0017, tier 3). `widgets::virtual_column` and `virtual_rows`
+    /// (ADR 0017, tier 3). `widgets::uniform_list` and `widgets::list`
     /// call it on their container; a list composed by hand calls it
     /// inside the container's `with`. Nothing, outside any node.
     pub fn row_count(&mut self, n: u64) {

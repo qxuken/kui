@@ -928,7 +928,7 @@ impl<'a> Ui<'a> {
     /// Moves a container's scroll state by the content that moved under
     /// it — `drawn` for the drawn place and an eased leg's start, `target`
     /// for the offset — with no ease asked or ended.
-    /// `virtual_rows`' height correction (RG18).
+    /// `widgets::list`'s height correction (RG18).
     pub(crate) fn shift_scroll(&mut self, key: Key, drawn: Vec2, target: Vec2) {
         self.core.scroll.shift(key, drawn, target);
     }
@@ -938,7 +938,7 @@ impl<'a> Ui<'a> {
     /// rows that fit and two spacers instead of ten thousand rows. `None`
     /// until a layout has resolved `key` as a container. It describes the
     /// previous frame; see `Core::scroll_geometry`, or
-    /// `widgets::virtual_column` for the uniform-row case.
+    /// `widgets::uniform_list` for the uniform-row case.
     pub fn scroll_geometry(&self, key: Key) -> Option<crate::scroll::ScrollGeometry> {
         self.core.scroll_geometry(key)
     }

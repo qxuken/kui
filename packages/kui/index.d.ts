@@ -4338,9 +4338,9 @@ export interface Clip {
   radii: [number, number, number, number];
 }
 
-/** The container `virtualColumn` declares: every `<box>` prop, plus what it
+/** The container `uniformList` declares: every `<box>` prop, plus what it
  *  needs to slice by. `scrollY` and `gap` are the widget's own. */
-export interface VirtualColumnProps extends Omit<BoxProps, 'children' | 'scrollY' | 'gap'> {
+export interface UniformListProps extends Omit<BoxProps, 'children' | 'scrollY' | 'gap'> {
   /** Names the container. Required: its geometry is read back by this name,
    *  so two lists cannot share one (`ambiguous-key`). */
   key: string;
@@ -4359,7 +4359,7 @@ export interface VirtualColumnProps extends Omit<BoxProps, 'children' | 'scrollY
  * the visible ones, and the two spacers that hold the height of the rest —
  * so the frame costs a screenful however long the list is.
  *
- *     virtualColumn(ctx, { key: 'log', rows: lines.length, rowH: 28 }, (i) => (
+ *     uniformList(ctx, { key: 'log', rows: lines.length, rowH: 28 }, (i) => (
  *       <box width="grow" height="grow" onClick={{ kind: 'pick', row: i }}>
  *         <text>{lines[i]}</text>
  *       </box>
@@ -4380,9 +4380,9 @@ export interface VirtualColumnProps extends Omit<BoxProps, 'children' | 'scrollY
  * reach a row that is not built, since `reveal` of an unbuilt row finds
  * nothing.
  */
-export declare function virtualColumn(
+export declare function uniformList(
   ctx: Pick<Ctx, 'scrollGeometry' | 'env'>,
-  opts: VirtualColumnProps,
+  opts: UniformListProps,
   row: (i: number) => KuiNode,
 ): KuiNode;
 

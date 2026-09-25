@@ -298,7 +298,7 @@ pub(super) fn tree_tab(
     let list_key = ui.child_key("kui-devtools/nodes");
     let list_focused = ui.is_focused(list_key);
     let cursor = st.tree_cursor;
-    let list = widgets::virtual_column(
+    let list = widgets::uniform_list(
         ui,
         "kui-devtools/nodes",
         NodeSpec::column()

@@ -800,7 +800,7 @@ Long lists: culling saves the *drawing*, not the building — a view that
 declares 10k rows lays out 10k rows. `ui.scroll_geometry(key)` hands back
 what the last layout resolved for a container (its box, its content size,
 where it is scrolled to and how far it can go), which is everything a view
-needs to declare only the rows that can be seen. `widgets::virtual_column`
+needs to declare only the rows that can be seen. `widgets::uniform_list`
 is that for uniform rows: visible rows, two of overscan, and two spacers
 holding the space of the rest, so the content height, the scrollbar and
 `set_scroll` behave as if the whole list were there. 10k rows go from
@@ -1003,9 +1003,9 @@ that prop costs.
 | `deep_nesting_64_levels` | 16 chains nested 64 levels deep | ~82.2 µs |
 | `frame_1k_grow_rows_capped` | a column of 1k grow rows under a staircase of `max_height`s — four passes of the freeze loop with 348 rows frozen, what a pass costs over children the earlier passes settled (RG5) | ~77.7 µs |
 | `list_10k_rows_naive` | a 10k-row list held at its middle, built row by row | ~4.19 ms |
-| `list_10k_rows_virtual` | the same list through `widgets::virtual_column` | ~18.4 µs |
+| `list_10k_rows_virtual` | the same list through `widgets::uniform_list` | ~18.4 µs |
 | `list_100k_rows_virtual` | 100k rows through the same widget | ~18.2 µs |
-| `list_10k_rows_variable` | 10k rows of no fixed height through `widgets::virtual_rows` — two searches and the build; its rows average 32 px against the uniform bench's 24, so fewer are on screen | ~14.6 µs |
+| `list_10k_rows_variable` | 10k rows of no fixed height through `widgets::list` — two searches and the build; its rows average 32 px against the uniform bench's 24, so fewer are on screen | ~14.6 µs |
 | `list_10k_rows_variable_at_one_height` | the variable list told, row by row, that every row is the same height — against `list_10k_rows_virtual`, what the stride buys | ~18.6 µs |
 | `list_10k_rows_variable_learning` | a frame that learns a visible row's height — what every frame of a scroll is, and what invalidates the prefix sums | ~14.8 µs |
 | `list_10k_rows_variable_learning_far` | the same frame told about a row nowhere near the window, so everything between it and the window is summed again | ~20.1 µs |

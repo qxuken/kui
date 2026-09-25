@@ -1,4 +1,4 @@
-// The `virtualColumn` widget, from JSX: a ten-thousand-row list that costs
+// The `uniformList` widget, from JSX: a ten-thousand-row list that costs
 // a screenful. The core builds every child a view declares, so the view
 // declares a screenful: the widget reads the container's geometry, slices
 // the rows that can be seen, and holds the height of the rest in two
@@ -15,7 +15,7 @@
 //
 //   npm run virtual_list                          a window to scroll by hand
 //   node dist/widgets/virtual_list.mjs --headless the same slicing, no window
-import { virtualColumn } from '@qxuken/kui';
+import { uniformList } from '@qxuken/kui';
 import type { App, CoreMsg, Ctx, KuiWindow, UiEvent } from '@qxuken/kui';
 import { run } from '../devtools.js';
 
@@ -46,7 +46,7 @@ function mix(a: number, b: number, t: number): number {
 }
 
 // The surface is a `Ctx` headless and a `KuiWindow` in a window; this view
-// asks for the two calls both of them have, which is what `virtualColumn`
+// asks for the two calls both of them have, which is what `uniformList`
 // takes as well.
 type Surface = Pick<Ctx | KuiWindow, 'scrollGeometry' | 'env' | 'theme'>;
 
@@ -67,7 +67,7 @@ function view(model: Model, ctx: Surface) {
           {`${ROWS} rows — row ${model.selected} selected`}
         </text>
       </box>
-      {virtualColumn(
+      {uniformList(
         ctx,
         { key: 'log', rows: ROWS, rowH: ROW_H, width: 'grow', height: 'grow', role: 'list', label: 'log' },
         (i) => (

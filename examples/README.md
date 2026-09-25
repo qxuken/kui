@@ -134,7 +134,7 @@ table says so.
 | [`polygon.rs`](rust/widgets/polygon.rs) | The `polygon` element: a pie whose wedges light under a hover box, arrowheads on a graph's links, the area under a sparkline, a concave star | ✓ | |
 | [`fragment.rs`](rust/widgets/fragment.rs) | The `fragment` element: boxes a WGSL function paints — a gradient, a ring, a shimmer, a card with children; a heatmap reading a data texture the app replaces every frame and a ripple over an atlas-backed icon, the `image` input (V1) | ✓ | |
 | [`cells.rs`](rust/widgets/cells.rs) | The `cells` element: a terminal grid with a cursor and an `origin_line`, selecting in cells, copy trimming blanks, the screen scrolled under a selection, a box-drawn table drawn from the cell box | ✓ | |
-| [`virtual_list.rs`](rust/widgets/virtual_list.rs) | `widgets::virtual_column`, the same list by hand (`--by-hand`), and `virtual_rows` for rows of no fixed height (`--variable`) | ✓ every mode | |
+| [`virtual_list.rs`](rust/widgets/virtual_list.rs) | `widgets::uniform_list`, the same list by hand (`--by-hand`), and `widgets::list` for rows of no fixed height (`--variable`) | ✓ every mode | |
 | [`context_menu.rs`](rust/widgets/context_menu.rs) | Who gets a context menu: the stock one over a selectable scope, the app's own over a row, the editor's four, nothing over a plain box | ✓ | |
 | [`select.rs`](rust/widgets/select.rs) | `widgets::select` over labels and `select_items` over `MenuItem`s: the field opens the core's own menu under itself, a choice is one `menu` event on the field, the app holds no open state | ✓ | |
 | [`table.rs`](rust/widgets/table.rs) | The table (ADR 0033): `NodeSpec::table()` is a column whose rows' cells line up, each column as wide as its widest cell and the `grow` one taking the rest — no width picked by hand, nothing measured; the rows are clickable rows with a hover wash and a selected fill, a number right-aligned in its column, the header's cells sorting by the column pressed | ✓ the alignment, a row's click, a header's sort | |
@@ -221,7 +221,7 @@ Build the addon with `cargo build -p kui-node --release`, then in
 [`node/`](node): `npm install`, `npm run typecheck`, and `npm run <name>`
 opens a window (`npm run smoke` runs every headless drive). A Node example
 exists where Node has a door of its own — the pumped window loop,
-`virtualColumn` and the `index` row, the typed messages — or where a round
+`uniformList` and the `index` row, the typed messages — or where a round
 needs it; the corpus already proves the four bindings lower alike.
 
 | Example | Shows | Headless |
@@ -233,7 +233,7 @@ needs it; the corpus already proves the four bindings lower alike.
 | [`features/drop.tsx`](node/features/drop.tsx) | A drop zone from Node, the twin of `rust/features/drop.rs`: `onDrop` and `dropBg` as props, the `drop` message's four phases in `update`, `ctx.dragFiles` / `dropFiles` / `dragCancel` as the headless drive and `dropTarget()` / `isDropTarget` as what it reads | ✓ every path |
 | [`features/devtools_tab.tsx`](node/features/devtools_tab.tsx) | `<devtoolsTab>` with a function child (ADR 0032), the twin of `rust/features/devtools_tab.rs`: the source coloured by highlight group, the syntax tree as the app's Inspector tab, the function called only while the tab is on show (once a view — a redraw re-lowers the stored stream), hover both ways through `onHover` tags, `setDevtoolsSelected` / `setDevtoolsPick` / `setDevtoolsTab` from `update` | ✓ the laziness, the layout, both hovers, the doors, the pick, the jump |
 | [`features/clipboard.tsx`](node/features/clipboard.tsx) | The clipboard from Node, the twin of `rust/features/clipboard.rs`: `takeMenuActions()` as the queue a host drains, `answerSelectionRange` for a virtual list's ask, `setClipboard` / `requestPaste` from `update` with the surface in hand, the paste as a `text` message | ✓ every path |
-| [`widgets/virtual_list.tsx`](node/widgets/virtual_list.tsx) | `virtualColumn`: 10,000 rows costing a screenful, re-sliced on the wheel with no model change | ✓ |
+| [`widgets/virtual_list.tsx`](node/widgets/virtual_list.tsx) | `uniformList`: 10,000 rows costing a screenful, re-sliced on the wheel with no model change | ✓ |
 | [`widgets/select.tsx`](node/widgets/select.tsx) | `<select>` over labels and over menu items with an `id`: the field opens the core's menu under itself, a choice is one `menu` message, the app holds no open state | ✓ |
 | [`widgets/table.tsx`](node/widgets/table.tsx) | `<box dir="table">` (ADR 0033): rows whose cells line up, each column as wide as its widest cell and the `grow` one taking the rest; clickable rows, a right-aligned number, headers that sort | ✓ |
 | [`tools/types.tsx`](node/tools/types.tsx) | The shipped `.d.ts` exercised: a typed drive over every app-facing type, run as code under `--headless` | ✓ |

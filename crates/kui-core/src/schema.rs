@@ -1256,7 +1256,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`rowCount`",
         lua: "`row_count`",
         c: "`kui_row_count`",
-        doc: "How many `index`ed rows this node's virtual list has, built or not. `virtualColumn` / `virtual_column` / `widgets::virtual_column` and `virtual_rows` declare it on their container; a list composed by hand says it beside `scrollY`. What it buys: Select All (Cmd/Ctrl-A, the menu's row) inside a `selectable` virtual list selects the *data*, rows `0..rowCount`, rather than the rows the frame built, and the copy is a `selectionrange` ask whose `to.byte` is past the last row's length when that row is not built — cut it to the row. Without it Select All is the built rows, which is all the core can see.",
+        doc: "How many `index`ed rows this node's virtual list has, built or not. `uniformList` / `uniform_list` / `widgets::uniform_list` and `widgets::list` declare it on their container; a list composed by hand says it beside `scrollY`. What it buys: Select All (Cmd/Ctrl-A, the menu's row) inside a `selectable` virtual list selects the *data*, rows `0..rowCount`, rather than the rows the frame built, and the copy is a `selectionrange` ask whose `to.byte` is past the last row's length when that row is not built — cut it to the row. Without it Select All is the built rows, which is all the core can see.",
     },
     CustomProp {
         name: "title",

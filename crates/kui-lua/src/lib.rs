@@ -359,7 +359,7 @@ fn key_arg(ui: &mut Ui<'_>, v: mlua::Value) -> mlua::Result<Key> {
 /// rather than an error. Every one of them already has a "no such node"
 /// reply for a key no layout resolved (false, nil, a zero offset), and a
 /// label is the spelling a view uses *before* the node exists: the first
-/// frame of a `virtual_column` asks its own container for geometry that is
+/// frame of a `uniform_list` asks its own container for geometry that is
 /// not there yet. The command verbs ([`key_arg`]) keep throwing, where a
 /// typo is a bug worth naming (backlog C25). What a key may *be* is the
 /// same question for both, so anything that is not an integer or a string
@@ -5649,7 +5649,7 @@ mod tests {
         assert_eq!(built, 7, "still a screenful at the far end");
     }
 
-    /// The same list as one call: `virtual_column` from the prelude owns the
+    /// The same list as one call: `uniform_list` from the prelude owns the
     /// slicing, the two spacers and the row keys, and the script says what a
     /// row looks like. It names its container by label, which is why the
     /// queries had to answer for a name no frame has declared yet — the
@@ -5662,7 +5662,7 @@ mod tests {
                 ROWS, ROW_H, first_built, built = 10000, 30, -1, 0
                 function view(env)
                   built, first_built = 0, -1
-                  return virtual_column(env,
+                  return uniform_list(env,
                     { key = "list", rows = ROWS, row_h = ROW_H,
                       width = "grow", height = "grow" },
                     function(i)
@@ -5715,14 +5715,14 @@ mod tests {
     /// slices past its own new end, and an unclamped `first` builds a lead
     /// spacer taller than the whole list with no rows in it.
     #[test]
-    fn a_virtual_column_whose_list_shrank_lands_in_one_frame() {
+    fn a_uniform_list_that_shrank_lands_in_one_frame() {
         let mut ext = LuaExtension::from_source(
             "virtual",
             r#"
                 ROWS, first_built = 200, -1
                 function view(env)
                   first_built = -1
-                  return virtual_column(env,
+                  return uniform_list(env,
                     { key = "list", rows = ROWS, row_h = 20,
                       width = "grow", height = "grow" },
                     function(i)

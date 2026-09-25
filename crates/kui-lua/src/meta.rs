@@ -71,10 +71,10 @@ const LUA_KEYWORDS: &[&str] = &[
     "local", "nil", "not", "or", "repeat", "return", "then", "true", "until", "while",
 ];
 
-/// What `virtual_column` reads off its `opts` beyond a container's
+/// What `uniform_list` reads off its `opts` beyond a container's
 /// props: each name, whether the prelude refuses to go on without it,
 /// its type and doc.
-const VIRTUAL_COLUMN: &[(&str, bool, &str, &str)] = &[
+const UNIFORM_LIST: &[(&str, bool, &str, &str)] = &[
     (
         "key",
         true,
@@ -145,9 +145,9 @@ pub fn luals_meta() -> String {
         }
     }
 
-    // `virtual_column`'s options: a container's props and its own.
-    out.push_str("---What `virtual_column` reads off its options; every other key is the container's.\n---@class kui.VirtualColumn: kui.Props\n");
-    for (name, required, ty, doc) in VIRTUAL_COLUMN {
+    // `uniform_list`'s options: a container's props and its own.
+    out.push_str("---What `uniform_list` reads off its options; every other key is the container's.\n---@class kui.UniformList: kui.Props\n");
+    for (name, required, ty, doc) in UNIFORM_LIST {
         let opt = if *required { "" } else { "?" };
         let _ = writeln!(out, "---@field {name}{opt} {ty} {doc}");
     }
@@ -175,7 +175,7 @@ pub fn luals_meta() -> String {
         let element = class_of.get(f.name.as_str()).cloned();
         for p in &f.params {
             let (opt, ty) = match p.as_str() {
-                "opts" if f.name == "virtual_column" => ("", "kui.VirtualColumn".into()),
+                "opts" if f.name == "uniform_list" => ("", "kui.UniformList".into()),
                 "t" | "opts" => (
                     if tolerates_nil(&f.body, p) { "?" } else { "" },
                     element.as_deref().unwrap_or("kui.Props").to_string(),
@@ -388,7 +388,7 @@ mod tests {
         }
         assert!(meta.contains("---@param t? kui.Props\n---@return kui.Node\nfunction row(t) end"));
         assert!(meta.contains("---@param t kui.edit\n"), "edit's own props");
-        assert!(meta.contains("---@param opts kui.VirtualColumn\n"));
+        assert!(meta.contains("---@param opts kui.UniformList\n"));
         assert!(meta.contains("---@field initial? any"));
         assert_eq!(constructors("`row { }`, `column { }`"), ["row", "column"]);
         assert_eq!(constructors("`text(\"s\", {…})`"), ["text"]);
@@ -684,14 +684,14 @@ mod tests {
         &meta[start..end]
     }
 
-    /// `kui.VirtualColumn` is what `virtual_column` reads: every field
+    /// `kui.UniformList` is what `uniform_list` reads: every field
     /// is an `opts.` read in its body, every read is a field or a prop,
     /// and a required field is one the prelude refuses to go on without.
     #[test]
-    fn virtual_column_s_class_is_what_it_reads() {
+    fn uniform_list_s_class_is_what_it_reads() {
         let f = prelude_functions()
             .into_iter()
-            .find(|f| f.name == "virtual_column")
+            .find(|f| f.name == "uniform_list")
             .unwrap();
         let reads: Vec<&str> = f
             .body
@@ -705,19 +705,19 @@ mod tests {
             })
             .collect();
         let props: Vec<&str> = props_fields().into_iter().map(|(n, _, _)| n).collect();
-        for (name, _, _, _) in VIRTUAL_COLUMN {
+        for (name, _, _, _) in UNIFORM_LIST {
             assert!(reads.contains(name), "{name} is never read");
         }
         for r in &reads {
             assert!(
-                props.contains(r) || VIRTUAL_COLUMN.iter().any(|(n, ..)| n == r),
+                props.contains(r) || UNIFORM_LIST.iter().any(|(n, ..)| n == r),
                 "opts.{r} is read and typed nowhere"
             );
         }
         let lua = prelude_lua();
         let env = "{ scroll_geometry = function() end, viewport_h = 100 }";
-        for (name, required, _, _) in VIRTUAL_COLUMN {
-            let opts: Vec<String> = VIRTUAL_COLUMN
+        for (name, required, _, _) in UNIFORM_LIST {
+            let opts: Vec<String> = UNIFORM_LIST
                 .iter()
                 .filter(|(n, ..)| n != name)
                 .map(|(n, _, ty, _)| {
@@ -726,13 +726,13 @@ mod tests {
                 })
                 .collect();
             let src = format!(
-                "return virtual_column({env}, {{ {} }}, function(i) return text(i) end)",
+                "return uniform_list({env}, {{ {} }}, function(i) return text(i) end)",
                 opts.join(", ")
             );
             assert_eq!(
                 lua.load(&src).exec().is_err(),
                 *required,
-                "virtual_column without {name}"
+                "uniform_list without {name}"
             );
         }
         // Its `pad` is the prop's every shape: it read `pad_t` and
@@ -740,7 +740,7 @@ mod tests {
         // table `pad`.
         for pad in ["8", "{ t = 8 }", "{ y = 8 }", "{ all = 8 }", "\"$gap\""] {
             let src = format!(
-                "return virtual_column({env}, {{ key = \"log\", row_h = 4, rows = 9, pad = {pad} }}, \
+                "return uniform_list({env}, {{ key = \"log\", row_h = 4, rows = 9, pad = {pad} }}, \
                  function(i) return text(i) end)"
             );
             assert!(lua.load(&src).exec().is_ok(), "pad = {pad}");

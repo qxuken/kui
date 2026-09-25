@@ -66,7 +66,7 @@ impl Core {
     /// viewport but builds every child a view declares, so ten thousand rows
     /// cost ten thousand rows; with the offset and the container's height a
     /// view can declare only the rows that can be seen and two spacers, and
-    /// pay for a screenful. `widgets::virtual_column` is that, done.
+    /// pay for a screenful. `widgets::uniform_list` is that, done.
     ///
     /// Read during a build, it describes the frame before — the tree it came
     /// from is already cleared. That is one frame of lag on the size, so the
@@ -113,7 +113,7 @@ impl Core {
     /// frame being built is that frame — the positions pass reads the
     /// store after the view has run — and a view writing every frame
     /// would otherwise be a window that never idles (found twice building
-    /// ADR 0029: the devtools' events list, `virtual_rows`).
+    /// ADR 0029: the devtools' events list, `widgets::list`).
     pub fn set_scroll(&mut self, key: Key, offset: Vec2) {
         // Programmatic, so a container with a `transition` eases into it
         // (F80); the wheel and the thumb go through `scroll_by` and

@@ -16,7 +16,7 @@ use crate::key::Key;
 /// This is the geometry a view needs to build only the rows that can be seen
 /// — it is read during the *next* frame's build, so it describes the frame
 /// before. See `Core::scroll_geometry` for what that costs and
-/// `widgets::virtual_column` for the uniform-row case done for you.
+/// `widgets::uniform_list` for the uniform-row case done for you.
 ///
 /// The four numbers describe one moment, which is what makes arithmetic on
 /// them safe: `offset` is always within `max_offset`, even immediately after
@@ -209,7 +209,7 @@ impl ScrollStore {
     /// same content it did, in a coordinate space that moved under it.
     /// Two deltas because mid-leg they are two places in the content, and
     /// rows measured between them move one and not the other. What
-    /// `virtual_rows`' height correction is (RG18): a `set_scroll` there,
+    /// `widgets::list`'s height correction is (RG18): a `set_scroll` there,
     /// eased on a container with a `transition`, showed the uncorrected
     /// frame the correction exists to hide, and mid-glide it moved the
     /// target to where the content stood and ended a long jump a screen

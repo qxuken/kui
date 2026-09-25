@@ -1173,7 +1173,7 @@ const MENU_CHECK_W: f32 = 14.0;
 /// logical px tall, has any reason to build — those crossing the visible
 /// band, plus `overscan` on each side — given the geometry of the frame
 /// before. Pure arithmetic, exposed for views that build their own
-/// container instead of using [`virtual_column`].
+/// container instead of using [`uniform_list`].
 ///
 /// `vh` is the container's height, and `pad_t` the padding above the first
 /// row. `None` geometry means no layout has resolved the container yet:
@@ -1221,7 +1221,7 @@ pub fn visible_rows(
 /// for `set_scroll` (`Vec2::new(0.0, i as f32 * row_h)` scrolls row `i` to
 /// the top, which is how you reach a row that is not built — `reveal` of an
 /// unbuilt row finds nothing).
-pub fn virtual_column(
+pub fn uniform_list(
     ui: &mut Ui<'_>,
     label: &str,
     spec: NodeSpec,
@@ -1287,7 +1287,7 @@ fn spacer_spec(h: f32) -> NodeSpec {
 }
 
 // -- Variable-height virtual lists ------------------------------------------
-// `virtual_column` takes one stride and every row must come out that tall,
+// `uniform_list` takes one stride and every row must come out that tall,
 // which is the log viewer, the data table and the chat history whose rows are
 // one line. A row that wraps, a card with an image, a message that is
 // sometimes three lines: none of those have a stride, and the three things
@@ -1304,7 +1304,7 @@ fn spacer_spec(h: f32) -> NodeSpec {
 // it changes the height of every row above the window as well as below.
 // That is what the anchor is for.
 
-/// The heights a [`virtual_rows`] list slices by: a measured number per row
+/// The heights a [`list`] slices by: a measured number per row
 /// where one is known, an estimate everywhere else, and the prefix sums over
 /// both.
 ///
@@ -1447,7 +1447,7 @@ impl RowHeights {
 
     /// Declares the content width the next measurements are for. A width
     /// that differs from the cached one drops every height — the rows wrap
-    /// differently now — and returns true. [`virtual_rows`] calls this from
+    /// differently now — and returns true. [`list`] calls this from
     /// the container's own laid-out box.
     pub fn set_width(&mut self, w: f32) -> bool {
         if !w.is_finite() || w <= 0.0 || (self.width - w).abs() < 0.5 {
@@ -1547,7 +1547,7 @@ impl RowHeights {
 }
 
 /// A vertically scrolling column of rows of *different* heights that builds
-/// only the visible ones — [`virtual_column`] where no single stride
+/// only the visible ones — [`uniform_list`] where no single stride
 /// describes the list.
 ///
 /// `measure(ui, i, width)` returns row `i`'s height at that content width,
@@ -1556,11 +1556,11 @@ impl RowHeights {
 /// answer for a text row, wrap and all, and shapes through the same cache
 /// the row's draw will hit. What it returns is the height the row *gets*:
 /// each row's node is fixed to it, so the arithmetic above and below can
-/// never disagree with the layout, the way `virtual_column`'s stride cannot.
+/// never disagree with the layout, the way `uniform_list`'s stride cannot.
 /// A row that would rather size itself has to say what that size is here.
 ///
 /// `row(ui, i)` declares row `i` inside that node, exactly as
-/// `virtual_column`'s does, and rows are opened with [`Ui::open_indexed`] at
+/// `uniform_list`'s does, and rows are opened with [`Ui::open_indexed`] at
 /// their data index, so a row keeps its hover, focus, edit buffer and tweens
 /// as the built range slides over it.
 ///
@@ -1579,7 +1579,7 @@ impl RowHeights {
 /// Returns the container's key, for `set_scroll` — and "scroll to row `i`"
 /// is `set_scroll(key, Vec2::new(0.0, heights.offset_of(i)))`, exact for a
 /// measured row and converging over a frame or two for one that is not.
-pub fn virtual_rows(
+pub fn list(
     ui: &mut Ui<'_>,
     label: &str,
     spec: NodeSpec,

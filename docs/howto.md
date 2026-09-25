@@ -138,7 +138,7 @@ Do not slice the line yourself to spare the toolkit: the chunk is the slice.
 
 ### How do I show a list of ten thousand rows?
 
-`virtualColumn` (JSX), `virtual_column` (Lua, Rust): declare the rows that
+`uniformList` (JSX), `uniform_list` (Lua, Rust): declare the rows that
 can be seen and two spacers holding the height of the rest, so the frame
 costs a screenful however long the list is — about 16 µs against 3.9 ms
 for ten thousand rows built whole. It takes the row count and one row's height;
@@ -156,7 +156,7 @@ re-lowering the tree it was handed, so nothing else would. Those events
 never reach `update`.
 
 ```jsx
-virtualColumn(ctx, { key: 'log', rows: lines.length, rowH: 28 }, (i) => (
+uniformList(ctx, { key: 'log', rows: lines.length, rowH: 28 }, (i) => (
   <box width="grow" height="grow" onClick={{ kind: 'pick', row: i }}>
     <text>{lines[i]}</text>
   </box>
@@ -168,7 +168,7 @@ virtualColumn(ctx, { key: 'log', rows: lines.length, rowH: 28 }, (i) => (
 
 ### How do I do that when the rows are not all the same height?
 
-`widgets::virtual_rows` (Rust): the same list over prefix sums instead of a
+`widgets::list` (Rust): the same list over prefix sums instead of a
 stride. It calls a `measure(ui, i, width)` for the rows it is about to build
 and nothing else — `ui.measure_text(text, &style, Some(width))` is what
 layout would give that row, wrap included, through the same shaping cache
@@ -506,7 +506,7 @@ input. There are four ways onto it, and they end in one queue:
    `{kind:"selectionrange", from:{index, byte}, to:{index, byte}}`
    message arrives on the scope, and `answerSelectionRange(text)` — the
    rows are yours — queues the `setClipboard`. Select All in such a list
-   spans the whole of it — rows `0..rowCount`, which `virtualColumn` and
+   spans the whole of it — rows `0..rowCount`, which `uniformList` and
    its siblings declare for you (`rowCount` on a list you compose by
    hand) — and asks the same way, `to.byte` past the last row's length
    when that row was never built: cut it to the row.

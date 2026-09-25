@@ -18,7 +18,7 @@
 //!     B animates. The removal you just caused is the one you are looking
 //!     at.
 //!   - **put `exit` on the list, and make the list small.** The right-hand
-//!     column is a `virtual_column` of 1000 rows with the `exit` on the
+//!     column is a `uniform_list` of 1000 rows with the `exit` on the
 //!     container. *clear list* removes a thousand rows and the picture the
 //!     store keeps is the built slice — the dozen rows on screen and two
 //!     spacers — so it slides out whole. A plain thousand-row column with
@@ -84,7 +84,7 @@ impl BulkExit {
             return;
         }
         let t = ui.theme();
-        widgets::virtual_column(
+        widgets::uniform_list(
             ui,
             "list",
             NodeSpec::column()

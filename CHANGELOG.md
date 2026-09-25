@@ -42,6 +42,11 @@ existing input draws changes: a stroke is clipped as it was.
   named from its content no longer takes text from under a `role="none"`
   node inside it. A test that asserted the hovered name, or found the
   hint's text in the tree, reads the name and the description instead.
+- `widgets::virtual_column` is `widgets::uniform_list`; Lua's
+  `virtual_column` is `uniform_list` and its options class
+  `kui.VirtualColumn` is `kui.UniformList`; Node's `virtualColumn` is
+  `uniformList` and `VirtualColumnProps` is `UniformListProps`.
+- `widgets::virtual_rows` is `widgets::list`.
 
 ### Added
 
@@ -148,6 +153,23 @@ existing input draws changes: a stroke is clipped as it was.
   float". The howto's one-font answer says why a baseline compared
   across machines needs it: headless text is shaped against the
   machine's installed fonts.
+
+### Changed
+
+- **The two virtual lists are named for what sets them apart** (from
+  the second bake-off against gpui and iced, 2026-09-25). gpui calls
+  the pair `uniform_list` and `list`, and the names say the one thing
+  a caller has to choose on: every row the same height, or each row
+  its own. `virtual_column` said how the uniform list was built, and
+  `virtual_rows` said nothing that told the two apart. Arguments,
+  behaviour and keys are unchanged, so the rename is a find and
+  replace; the examples keep their file names (`virtual_list.rs`,
+  `virtual_list.tsx`) and the bench rows theirs, so the bench guard
+  still compares against alpha.18. `RowHeights`, which the variable
+  list slices by, keeps its name. No door and nothing of the ABI or
+  the frame: C never had either list, and composes one from
+  `kui_scroll_geometry` and `kui_row_count`.
+  *What you can delete:* nothing; this one only costs a rename.
 
 ## 0.1.0-alpha.18 (2026-09-25)
 

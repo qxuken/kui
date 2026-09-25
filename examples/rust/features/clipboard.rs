@@ -195,7 +195,7 @@ impl App for Clipboard {
                         &t,
                         "a virtual list: select, scroll away, ⌘C — the app answers",
                     );
-                    widgets::virtual_column(
+                    widgets::uniform_list(
                         ui,
                         "log",
                         NodeSpec::column()

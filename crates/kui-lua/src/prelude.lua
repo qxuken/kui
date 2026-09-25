@@ -223,7 +223,7 @@ function devtools_tab(t)
   return t
 end
 
--- virtual_column(env, { key = "log", rows = 10000, row_h = 28, ... }, function(i)
+-- uniform_list(env, { key = "log", rows = 10000, row_h = 28, ... }, function(i)
 --   return column { fill = true, on_click = { kind = "pick", row = i }, text("line " .. i) }
 -- end)
 --
@@ -246,17 +246,17 @@ end
 --
 -- To reach a row that is not built, scroll to it:
 -- `env.set_scroll(key, 0, i * row_h)` puts row i at the top.
-function virtual_column(env, opts, row)
+function uniform_list(env, opts, row)
   local key = opts.key
   if type(key) ~= "string" or key == "" then
-    error("virtual_column needs a string `key` -- its geometry is read back by that name", 2)
+    error("uniform_list needs a string `key` -- its geometry is read back by that name", 2)
   end
   local row_h = opts.row_h
   if type(row_h) ~= "number" or row_h <= 0 then
-    error("virtual_column needs a positive `row_h` -- one row's height is the whole stride", 2)
+    error("uniform_list needs a positive `row_h` -- one row's height is the whole stride", 2)
   end
   if type(row) ~= "function" then
-    error("virtual_column needs a row builder -- virtual_column(env, opts, function(i) ... end)", 2)
+    error("uniform_list needs a row builder -- uniform_list(env, opts, function(i) ... end)", 2)
   end
   local n = math.max(0, math.floor(opts.rows or 0))
   local overscan = opts.overscan or 2

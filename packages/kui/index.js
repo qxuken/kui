@@ -459,7 +459,7 @@ function createLoop({ init, update, view, tick, windows, teardown }, opts, surfa
   // Everything the surface has queued, through `update`. The loop draws once
   // after, not once per event.
   //
-  // All but one kind: a `virtualColumn`'s sentinel says its container
+  // All but one kind: a `uniformList`'s sentinel says its container
   // scrolled, and the widget slices by the geometry the next frame reads for
   // itself. So it is a redraw and nothing else — an app that had to add a
   // `case 'layout'` for a widget to work has not been given a widget.
@@ -1060,7 +1060,7 @@ export function createApp(config, opts = {}) {
 // costs ten thousand rows of build and layout on every frame. A view that
 // knows how tall the container is and how far it is scrolled can declare a
 // screenful and two spacers instead — `ctx.scrollGeometry(key)` is that
-// knowledge, and `widgets::virtual_column` is this same arithmetic in Rust.
+// knowledge, and `widgets::uniform_list` is this same arithmetic in Rust.
 //
 // What Rust does not need and this does: a *reason to run again*. The wheel
 // moves the core's retained offset and raises no event, and a window redraws
@@ -1097,7 +1097,7 @@ const spacer = (h, key) => ({
  * A vertically scrolling column of `rows` uniform rows that declares only
  * the visible ones, in JSX.
  *
- *   virtualColumn(ctx, { key: 'log', rows: lines.length, rowH: 28, bg: '#111' },
+ *   uniformList(ctx, { key: 'log', rows: lines.length, rowH: 28, bg: '#111' },
  *     (i) => <box width="grow" height="grow" onClick={{ kind: 'pick', row: i }}>
  *              <text>{lines[i]}</text>
  *            </box>)
@@ -1125,21 +1125,21 @@ const spacer = (h, key) => ({
  * rowH)` puts row `i` at the top. `ctx.reveal` of an unbuilt row finds
  * nothing, because nothing declared it.
  */
-export function virtualColumn(ctx, opts, row) {
+export function uniformList(ctx, opts, row) {
   const { key, rows, rowH, overscan = 2, ...box } = opts ?? {};
   if (typeof key !== 'string' || key === '') {
-    throw new Error('kui: virtualColumn needs a string `key` — its geometry is read back by that name');
+    throw new Error('kui: uniformList needs a string `key` — its geometry is read back by that name');
   }
   if (typeof rowH !== 'number' || !(rowH > 0)) {
-    throw new Error('kui: virtualColumn needs a positive `rowH` — one row\'s height is the whole stride');
+    throw new Error('kui: uniformList needs a positive `rowH` — one row\'s height is the whole stride');
   }
   // Said rather than coerced: `rows` misspelled draws an empty list, which
   // looks like a broken widget rather than a typo.
   if (typeof rows !== 'number' || !Number.isFinite(rows) || rows < 0) {
-    throw new Error('kui: virtualColumn needs a `rows` count — how many rows the list has, built or not');
+    throw new Error('kui: uniformList needs a `rows` count — how many rows the list has, built or not');
   }
   if (typeof row !== 'function') {
-    throw new Error('kui: virtualColumn needs a row builder — virtualColumn(ctx, opts, (i) => node)');
+    throw new Error('kui: uniformList needs a row builder — uniformList(ctx, opts, (i) => node)');
   }
   const n = Math.floor(rows);
   // Null until a layout has resolved the container, which is the first
