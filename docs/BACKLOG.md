@@ -1949,8 +1949,10 @@ under another — crates.io does not reassign a name without its owner —
 and the npm side has no such problem. Nothing in the tree blocks it: the
 `publish = ["forgejo"]` lines are the only registry-specific thing. The
 second bake-off (2026-09-25) made the same recommendation first of its
-three and re-checked the fact. It is still the one decision between kui
-and anyone else trying it.
+three and re-checked the fact. **Decided the same day** (the user): no
+crates.io until the beta release; then the runner crate is renamed,
+probably to `kui-native`, and every crate publishes together. Until then
+the Forgejo registry and npm are the distribution.
 
 **Parked on their own terms.** C12 (column wrapping), C5(b) (core-side
 virtualisation), rounded clip nesting. C13 (`space-between` and baseline)
