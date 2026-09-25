@@ -84,7 +84,7 @@ architecture review (forty-four entries under ten decisions, every one
 built on 2026-09-14), the standard-menus round, and the pre-tag round's
 own two finds. C26 was the last split entry, and it closed on 2026-09-11.
 
-Ordered by area, not by priority. What to do next is under "After alpha.15".
+Ordered by area, not by priority. What to do next is under "After alpha.17".
 
 **Legend** — `!` a defect that ships today · `~` a gap with no workaround ·
 `.` cost without correctness risk.
@@ -378,7 +378,7 @@ moved whole to
 before the alpha.10 tag, W7 last — the one that wanted a decision rather
 than a patch, settled as: a displacement moves a subtree by whole physical
 pixels, scrolling included. Nothing from the round is open; what it did
-not cover is in "After alpha.15" below.
+not cover is in "After alpha.17" below.
 
 ## From two alpha.9 field reports and a bake-off (2026-09-08)
 
@@ -1340,10 +1340,15 @@ wrong — the same day after it; all are in the archive. The
 Windows half (RG29–RG31) is compiled and linted for
 `x86_64-pc-windows-msvc` and not run.
 
-## After alpha.16
+## After alpha.17
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
-alpha.15" until 2026-09-25, when the rounds between the alpha.16 and
+alpha.16" until 2026-09-25, when the rounds between the alpha.17 and
+alpha.18 tags — RG37 and C41, the two left over from the regression
+pass and alpha.14, the kawoosh window-icon report (F86) and the Windows
+accent fix — had landed, the same day as the alpha.17 tag, and the
+heading moved with the tag; "After
+alpha.15" until earlier that day, when the rounds between the alpha.16 and
 alpha.17 tags — the Windows device-loss round, the kawoosh reports of
 2026-09-21 to 23 (F76–F85, ten entries) and the regression pass over
 them (RG17–RG36 built, RG37 left open and built the same day, after
@@ -1387,7 +1392,7 @@ which the archived entry measures and leaves.
 (RG17–RG36 **built 2026-09-25** before the alpha.17 tag, RG37 the same
 day after it). Nothing of the regression pass of 2026-09-19 is open (RG1, the Node and C hosts hearing ⌘Q, was **built 2026-09-19**; RG2 and RG12, the devtools' menus select and its chord, RG3, RG6, RG7, RG8 and RG11, the table's layout and the round's float-floor regression, RG4, the left dock's deferral, RG5, the freeze loop's sign rule and the round's other regression, RG9 and RG10, the select's disabled row through the door and its unchecked options and `current`, RG13, the reader's click behind a modal, RG15, F69 checked in a window and found inert, RG14, the ten nits and the two devtools defects taken with them, and RG16, the door removed on RG15's finding, **built 2026-09-20**); C41 — `frame_1k_curves` 10% slower since the
 drop-zone commit — was **built 2026-09-25**, a register spill in the
-segment loop. Next is W19, when
+segment loop, and F86, the window icon, the same day. Next is W19, when
 a Windows or Linux round comes (the macOS half of ADR 0031 is built and
 verified; the fallback elsewhere is honest and positionless). Nothing else filed is open. The rounds since the alpha.14 tag, newest first:
 the regression pass of 2026-09-19 over F67–F75 (RG1–RG16 — all
@@ -1717,7 +1722,7 @@ Every closed entry, all in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) and all verbatim — one heading
 per id, and `tests/docs.rs` holds every id to one entry across both files.
 This index is here so an id resolves without opening that file: the open items
-above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.15" and
+above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.17" and
 the hygiene note cite C2, C5(b), P3, R4 and R7, and code comments, ADRs and
 commit messages cite ids of their own. All of them are whole in the
 archive. **C11**, **W2** and **C15** were each split for a while — an entry

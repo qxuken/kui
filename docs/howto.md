@@ -1172,7 +1172,7 @@ resource)` before `kui_run`. Pixels that are not the size are refused
 with the reason (`Launcher::try_icon` for pixels from outside the
 program).
 
-[alpha.18 `### Added`](../CHANGELOG.md#010-alpha18-unreleased)
+[alpha.18 `### Added`](../CHANGELOG.md#010-alpha18-2026-09-25)
 
 ### How do I stop the console window on Windows?
 

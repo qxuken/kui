@@ -949,7 +949,9 @@ build + layout + emit) for the `frame` rows, by the alpha.17 pre-tag
 spread 4.9%; five unguarded rows whose two runs disagreed by more than
 5% — `copy_1080p_frame`, `update_image_1080p_and_frame`,
 `frame_10k_rects_all_transitioning`, `frame_10k_rects_all_declaring_exit`
-and `list_10k_rows_naive` — keep alpha.16's 2026-09-20 numbers; the
+and `list_10k_rows_naive` — keep alpha.16's 2026-09-20 numbers;
+`frame_1k_curves` alone is from the alpha.18 pre-tag run against the
+alpha.17 tag, the row C41's fix moved, 271 → 251 µs; the
 alpha.15 refresh of 2026-09-16 was the
 first since the OS moved from 26.6.2, under which the 2026-09-15 numbers
 were taken — alpha.13's own code read ~9% slower here, so the table's
@@ -981,7 +983,7 @@ that prop costs.
 | `frame_10k_rects_square_clip` | the plain grid with every row clipping, so all 10k cells inherit a clip | ~836 µs |
 | `frame_10k_rects_rounded_clip` | the same with a radius on every clipping row, so each cell pays the per-corner intersect | ~869 µs |
 | `frame_10k_segments` | 10k one-segment `line` floats — the same 10k quads as `frame_10k_rects`, so the gap between the two is what a segment costs over a box | ~934 µs |
-| `frame_1k_curves` | 1k curves through eight knots each, re-flattened by chord length every frame — 35 segments a curve | ~271 µs |
+| `frame_1k_curves` | 1k curves through eight knots each, re-flattened by chord length every frame — 35 segments a curve | ~251 µs |
 | `frame_1k_polygons` | 1k six-point fills, one fragment quad each (ADR 0025) | ~106 µs |
 | `frame_1k_closed_lines` | the same thousand outlines as closed strokes, six segment quads each | ~106 µs |
 | `frame_1k_typical_with_8_textures` | `frame_1k_typical` plus eight texture-backed images, registered once and updated once, so each is its own texture and a side-list entry (ADR 0025) | ~130 µs |

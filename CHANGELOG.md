@@ -21,14 +21,18 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.18 (unreleased)
+## 0.1.0-alpha.18 (2026-09-25)
 
 **What breaks.** No door, the ABI at 18 and the frame at v15. ⌘V
 (Ctrl+V) with no editor focused no longer puts the clipboard's text
 into the window as typing when the window holds a selection — a
 `selectable` scope's or a `cells` grid's (under Fixed, RG37); a focused
 list whose type-ahead searched for it no longer does, and a key sink,
-which never heard that text, still hears the chord.
+which never heard that text, still hears the chord. On Windows the
+system accent, and every role a theme derives from it, is the colour
+the user picked in Settings, where it was the darker one DWM tints
+title bars with (under Fixed) — an app that lightened
+`Env::accent` to make up for it now lightens the right colour.
 
 ### Added
 
@@ -56,6 +60,18 @@ which never heard that text, still hears the chord.
 
 ### Fixed
 
+- **Windows' accent came out near black** (found in kawoosh on
+  Windows 11). `system_env::accent` read `DwmGetColorizationColor`,
+  the colour DWM tints title bars with, which Windows 11 darkens and
+  blends on its own terms — `#0C2231` for a `#2C79AD` accent — so
+  every role derived from it drew near black, and kawoosh's selection,
+  a 40% wash of the accent, drew darker than the page under it. It
+  reads DWM's `AccentColor` now, the colour Settings shows and WinRT's
+  `UISettings` answers `Accent` with, and falls back to the
+  colorization colour only on a profile that never set one. Compiled
+  and linted for `x86_64-pc-windows-msvc`, not run here.
+  *What you can delete:* a lightening or a hard-coded accent an app
+  laid over `Env::accent` on Windows to get the user's colour back.
 - **⌘V over a selection sent the clipboard nowhere, and gave a stock
   editor a paste without its markers** (backlog RG37, from the
   regression pass of 2026-09-25). The runner took ⌘V whenever the
@@ -80,6 +96,50 @@ which never heard that text, still hears the chord.
   `scripts/bench-check.sh`'s guard list, so the segment path has a row
   that fails. The bench guard against `main`: every guarded row within
   its noise (worst spread 3.9%).
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), run on `main` on
+2026-09-25 — the Windows accent fix, RG37, C41 and F86, six commits
+after the alpha.17 tag. What follows is what executed on what.
+
+**macOS 27.0 (26A428, arm64, Apple M3 Pro), Xcode 27.0, rustc 1.98.0,
+Node 26.8.1.** `cargo fmt --all --check` and `cargo clippy --workspace
+--all-targets -- -D warnings` are clean. `cargo test --workspace`:
+**1324 tests over 97 suites, 0 failed** (1 ignored, the devtools'
+`drive.rs` doc example), from alpha.17's 1319. The scene corpus runs
+in all four adapters against one reference report: **41 scenes**, Rust
+and Lua through `cargo test`, C through `target/debug/conformance`
+(the header at **374 fields, 260 enum members and 238 prototypes** —
+`kui_set_icon` new — the ABI still **18**), Node through `npm test`
+(**180 Node tests, 180 passed, 0 skipped**, the frame still at
+**version 15**). The C round, `cbuild --run`, passes its five checks
+and the conformance replay. `npm run gen` leaves a zero-line diff; `npm
+run typecheck` on `examples/node` is clean and the examples lockfile
+matches. The headless round, `smoke -- --headless`, passes all **31
+drives**. The Windows code of the release — the accent read and F86's
+window icon, pixels and resource — is compiled and clippy-clean for
+`x86_64-pc-windows-msvc` through cargo-xwin (`kui`, `kui-node`,
+`kui-ffi`, all targets) and **not run**: the icon in a title bar and
+Alt-Tab, and the accent against Settings, are the hand checks left.
+
+**The windowed round**, `cargo run -p kui-devtools --bin smoke --
+--node`: **36 Rust examples and the ten Node examples, each on both
+bases, 120 frames each, every one exiting 0 with nothing on stderr** —
+92 windows. The C and Lua hosts by hand under `KUI_SMOKE_FRAMES=120`:
+`counter`, `host`, `c_panel` and `lua_panel` each opened a window and
+exited 0, warning-free — **96 windows over five hosts.** The AX audit
+against `accessibility`: **106/106**.
+
+**The bench guard** against the alpha.17 tag: worst guarded spread
+4.7%, every guarded row within its tolerance — `deep_nesting_64_levels`
+−0.6%, `frame_10k_rects` −2.0%, `frame_10k_rects_with_access_tree`
+−4.0%, `frame_10k_rects_with_text_and_hits` −1.9%, `frame_10k_segments`
++2.0%, `frame_1k_curves` **−7.9%** (272 → 251 µs, ±0.8%, C41's fix),
+`frame_1k_typical` +0.8%, `list_10k_rows_virtual` +2.2% — and every
+unguarded row "same". The run opened with the script's load warning,
+so the README's table keeps alpha.17's numbers but for
+`frame_1k_curves`, the row this release moved.
 
 ## 0.1.0-alpha.17 (2026-09-25)
 
