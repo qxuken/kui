@@ -500,7 +500,9 @@ true, filters: [{ name: 'Images', extensions: ['png', 'jpg'] }], tag })`
 (`'save'` with a `fileName`, or `'folder'`). The answer is one `files`
 message — `{kind: 'files', paths, tag}`, the paths a `drop` carries, none
 when the user cancelled — so a list that takes dropped files takes picked
-ones with the same code. One dialog at a time: asking again while one is
+ones with the same code. An Open or folder answer carries only what
+exists: a name typed into Windows' multi-select panel that is not there
+is left out. One dialog at a time: asking again while one is
 up does nothing. The window's runner shows it (a sheet on macOS, through
 rfd); a headless test takes the ask with `takeFileRequests()` and answers
 with `answerFiles(paths)`. Rust asks from its view with
@@ -1228,6 +1230,10 @@ possible, such as a drawing canvas or a splitter, ask for one:
 `frame_latency = 1` in `KuiRunConfig`. It loses the odd vsync at light load
 (1–6% of them). `KUI_FRAME_LATENCY=1` or `2` and `KUI_FRAME_PACING=0` in the
 environment compare the options on the same build.
+
+On Windows a window keeps one frame queued, not two: there
+one already delivers every vsync, light load or heavy, so the second would
+only be a vsync of latency. `frame_latency(2)` asks for it anyway.
 
 ### How do I see what a window draws for a user who asked for less motion?
 

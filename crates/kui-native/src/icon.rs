@@ -1,7 +1,8 @@
 //! The picture the OS shows for the app's windows (backlog F86): the
 //! launcher's [`icon`](crate::Launcher::icon) and
-//! [`icon_resource`](crate::Launcher::icon_resource), made into winit
-//! icons once and handed to every window as it is created.
+//! [`icon_resource`](crate::Launcher::icon_resource), made into icons once
+//! and handed to every window as it is created: the pixels as winit's,
+//! the resource as the executable's own `HICON`s (RG41).
 //!
 //! Where it is seen: on Windows the title bar, Alt-Tab and the taskbar —
 //! a program's icon resource is what Explorer draws for the file, but
@@ -22,6 +23,27 @@ pub(crate) struct AppIcon {
     /// Windows' `ICON_BIG`: Alt-Tab and the taskbar.
     #[cfg(target_os = "windows")]
     taskbar: Option<Icon>,
+    /// The executable's icon resource, loaded from the process's own
+    /// module and sent to each window once it exists ([`AppIcon::set_on`]).
+    /// Not a winit icon: winit loads a resource from the module winit is
+    /// linked into, which is the program only when kui is linked into it
+    /// — under Node it is `kui_node.dll` and for a C host `kui_ffi.dll`,
+    /// neither with a resource section, so their windows fell back to the
+    /// pixels however plainly `node.exe` or the host carried the icon
+    /// (backlog RG41).
+    #[cfg(target_os = "windows")]
+    resource: Option<ResourceIcons>,
+}
+
+/// The small and the large icon loaded from the executable, each at the
+/// size the system draws it — the frame of the `.ico` made for it rather
+/// than one frame scaled. Loaded once and never freed: every window of the
+/// process shows them until it ends.
+#[cfg(target_os = "windows")]
+#[derive(Clone, Copy)]
+struct ResourceIcons {
+    small: windows_sys::Win32::UI::WindowsAndMessaging::HICON,
+    big: windows_sys::Win32::UI::WindowsAndMessaging::HICON,
 }
 
 /// The launcher's pixels as an icon, refused with the reason when they are
@@ -46,10 +68,11 @@ impl AppIcon {
         #[cfg(target_os = "windows")]
         if let Some(id) = resource {
             match from_resource(id) {
-                Ok((window, taskbar)) => {
+                Ok(icons) => {
                     return AppIcon {
-                        window: Some(window),
-                        taskbar: Some(taskbar),
+                        window: None,
+                        taskbar: None,
+                        resource: Some(icons),
                     };
                 }
                 Err(why) => eprintln!(
@@ -67,8 +90,38 @@ impl AppIcon {
         AppIcon {
             #[cfg(target_os = "windows")]
             taskbar: rgba.clone(),
+            #[cfg(target_os = "windows")]
+            resource: None,
             window: rgba,
         }
+    }
+
+    /// Gives `window` the executable's icons, on Windows, when the
+    /// launcher named a resource the executable has; nothing otherwise
+    /// (the pixels went in with [`AppIcon::apply`]). Called by each place
+    /// a window is created, right after it is.
+    pub(crate) fn set_on(&self, window: &winit::window::Window) {
+        #[cfg(target_os = "windows")]
+        if let Some(icons) = self.resource {
+            use windows_sys::Win32::Foundation::HWND;
+            use windows_sys::Win32::UI::WindowsAndMessaging::{
+                ICON_BIG, ICON_SMALL, SendMessageW, WM_SETICON,
+            };
+            use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+            let Some(RawWindowHandle::Win32(h)) = window.window_handle().ok().map(|h| h.as_raw())
+            else {
+                return;
+            };
+            let hwnd = h.hwnd.get() as HWND;
+            // SAFETY: a window this thread made, and icons that live as
+            // long as the process.
+            unsafe {
+                SendMessageW(hwnd, WM_SETICON, ICON_SMALL as usize, icons.small);
+                SendMessageW(hwnd, WM_SETICON, ICON_BIG as usize, icons.big);
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        let _ = window;
     }
 
     /// `attrs` with the icons set, for `Shell::window_attrs`.
@@ -84,22 +137,40 @@ impl AppIcon {
     }
 }
 
-/// The small and the large icon from the executable's resource `id`, each
-/// at the size the system draws it — the frame of the `.ico` made for it
-/// rather than one frame scaled.
+/// The small and the large icon from the executable's resource `id`: the
+/// process's own module (`GetModuleHandleW(NULL)`), whatever module kui is
+/// linked into.
 #[cfg(target_os = "windows")]
-fn from_resource(id: u16) -> Result<(Icon, Icon), winit::window::BadIcon> {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSMICON, SM_CYSMICON};
-    use winit::dpi::PhysicalSize;
-    use winit::platform::windows::IconExtWindows;
-    // SAFETY: a plain query with no pointers.
-    let (w, h) = unsafe { (GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON)) };
-    let small = (w > 0 && h > 0).then(|| PhysicalSize::new(w as u32, h as u32));
-    // `None` is the system's large size (`SM_CXICON`).
-    Ok((
-        Icon::from_resource(id, small)?,
-        Icon::from_resource(id, None)?,
-    ))
+fn from_resource(id: u16) -> Result<ResourceIcons, std::io::Error> {
+    use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetSystemMetrics, IMAGE_ICON, LR_DEFAULTCOLOR, LoadImageW, SM_CXICON, SM_CXSMICON,
+        SM_CYICON, SM_CYSMICON,
+    };
+    // SAFETY: NULL names the executable; the id is `MAKEINTRESOURCEW`'s
+    // integer in a pointer, never read through; the sizes are queries.
+    unsafe {
+        let module = GetModuleHandleW(std::ptr::null());
+        let load = |w: i32, h: i32| {
+            let icon = LoadImageW(
+                module,
+                id as usize as *const u16,
+                IMAGE_ICON,
+                w,
+                h,
+                LR_DEFAULTCOLOR,
+            );
+            if icon == 0 {
+                Err(std::io::Error::last_os_error())
+            } else {
+                Ok(icon)
+            }
+        };
+        Ok(ResourceIcons {
+            small: load(GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON))?,
+            big: load(GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON))?,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -147,6 +218,13 @@ mod tests {
             // A test binary links no icon resource, so id 1 falls back.
             let set = AppIcon::new(Some(icon), Some(1));
             assert!(set.apply(attrs()).window_icon.is_some());
+            assert!(set.resource.is_none());
+            // Looked up in the executable — this test binary — and not in
+            // a module of kui's (RG41): refused with the OS's reason.
+            let why = from_resource(1)
+                .err()
+                .expect("no resource in a test binary");
+            assert!(why.raw_os_error().is_some(), "{why}");
         }
     }
 }

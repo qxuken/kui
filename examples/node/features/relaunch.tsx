@@ -31,21 +31,26 @@ function update(model: Model, msg: Msg, _ev: UiEvent<Msg>, win: KuiWindow): Mode
 const view = (model: Model, win: KuiWindow) => {
   const t = win.theme();
   const other = model.chrome === 'native' ? 'custom' : 'native';
+  // The titlebar is the window's top edge, outside the content's padding,
+  // as `window.tsx` has it: inside the padded box it was a strip 24 px in
+  // from every edge, its buttons in the middle of the window (backlog RG52).
   return (
-    <box pad={24} gap={12} bg={t.bg}>
+    <box bg={t.bg} width="grow" height="grow">
       {model.chrome === 'custom' && <titlebar title={`launch ${model.launch}`} />}
-      <text size={20} color={t.fg}>{`launch ${model.launch}: ${model.chrome} chrome`}</text>
-      <text size={13} color={t.faint}>
-        {model.launch < 2
-          ? `close this window, or press the button, and it reopens with ${other} chrome`
-          : 'the second window of this process; closing it ends the process'}
-      </text>
-      {model.launch < 2 && (
-        <box padX={12} padY={6} radius={6} bg={t.accent} hoverBg={t.accentHover} pressedBg={t.accentPressed}
-             role="button" onClick={{ kind: 'reopen' }}>
-          <text size={14} color={t.onAccent}>reopen with {other} chrome</text>
-        </box>
-      )}
+      <box pad={24} gap={12}>
+        <text size={20} color={t.fg}>{`launch ${model.launch}: ${model.chrome} chrome`}</text>
+        <text size={13} color={t.faint}>
+          {model.launch < 2
+            ? `close this window, or press the button, and it reopens with ${other} chrome`
+            : 'the second window of this process; closing it ends the process'}
+        </text>
+        {model.launch < 2 && (
+          <box padX={12} padY={6} radius={6} bg={t.accent} hoverBg={t.accentHover} pressedBg={t.accentPressed}
+               role="button" onClick={{ kind: 'reopen' }}>
+            <text size={14} color={t.onAccent}>reopen with {other} chrome</text>
+          </box>
+        )}
+      </box>
     </box>
   );
 };
@@ -57,6 +62,9 @@ function launch(model: Model): Example<Model, AppMsg> {
     update,
     view,
     window: { width: 520, height: 200, chrome: model.chrome },
+    // Under custom chrome the dock goes below, so the app's strip spans
+    // the window's top edge and its buttons sit in the window's corner.
+    dock: model.chrome === 'custom' ? 'bottom' : undefined,
     // Once: the second window is the last.
     after: (m) => (m.launch < 2 ? launch({ launch: m.launch + 1, chrome: m.chrome === 'native' ? 'custom' : 'native' }) : undefined),
   };

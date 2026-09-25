@@ -223,11 +223,12 @@ impl Launcher {
     /// How many frames may be queued ahead of the one on screen, for every
     /// window (backlog C47). Two by default
     /// ([`kui_wgpu::DEFAULT_FRAME_LATENCY`]): every vsync gets a frame at
-    /// light load, where one lost 1–6% of them. On macOS 14+ the runner
-    /// starts frames that run back to back at the display's vsync (`mod
-    /// pacer`), so the second queued frame is slack and costs no latency;
-    /// where it cannot — another platform, a pumped runner — such a frame
-    /// reaches the screen a vsync later than with one. `KUI_FRAME_LATENCY`
+    /// light load, where one lost 1–6% of them on macOS. On macOS 14+ the
+    /// runner starts frames that run back to back at the display's vsync
+    /// (`mod pacer`), so the second queued frame is slack and costs no
+    /// latency; where it cannot — Linux, a pumped runner — such a frame
+    /// reaches the screen a vsync later than with one. One on Windows,
+    /// where one already delivered every vsync (RG46). `KUI_FRAME_LATENCY`
     /// overrides it, and `KUI_FRAME_PACING=0` turns the pacing off, for
     /// comparing without a rebuild. Values below one are one.
     pub fn frame_latency(mut self, frames: u32) -> Self {
@@ -519,6 +520,7 @@ impl Launcher {
             smoke_frames: Self::smoke_frames(),
             frames_drawn: 0,
             exit_requested: false,
+            startup_error: None,
             torn_down: false,
             secure_input: secure_input::SecureInput::default(),
             pumped: false,
@@ -621,6 +623,11 @@ impl Launcher {
         if !runner.state.alive {
             runner.retire();
         }
+        // Retired above, so the loop is parked and the next `open` can
+        // try again (backlog RG47).
+        if let Some(why) = runner.shell.startup_error.take() {
+            return Err(why.into());
+        }
         Ok(runner)
     }
 }
@@ -648,10 +655,25 @@ fn run_shell(
     event_loop.set_control_flow(ControlFlow::Wait);
     shell.attach(&event_loop);
     event_loop.run_app(&mut Handler(&mut shell))?;
-    Ok(())
+    match shell.startup_error.take() {
+        Some(why) => Err(why.into()),
+        None => Ok(()),
+    }
 }
 
 impl DynShell<'_> {
+    /// The main window, or its renderer, could not be made: `why` becomes
+    /// the error `run` or `open` returns, and the runner ends. `run`'s
+    /// loop is asked to exit; a pumped one is not — it is parked for the
+    /// next runner, as when a window closes (backlog RG47).
+    fn fail_open(&mut self, event_loop: &ActiveEventLoop, why: String) {
+        self.startup_error = Some(why);
+        self.exit_requested = true;
+        if !self.pumped {
+            event_loop.exit();
+        }
+    }
+
     /// What a shell takes from the loop it runs on before the first
     /// event: the proxy, the app's waker, and the wakers of the platform
     /// paths no winit event carries.
@@ -1388,6 +1410,12 @@ struct Shell<A: App + ?Sized> {
     /// Set by `WindowCommand::Close` on the main window; honored at the end
     /// of the event.
     exit_requested: bool,
+    /// Why the main window or its renderer could not be made, when they
+    /// could not: `run` and `open` return it as their error. It was an
+    /// `expect`, and a panic there aborted a Node process outright — the
+    /// unwind cannot cross the addon's boundary — when a compositor that
+    /// had just gone away refused the window (backlog RG47).
+    startup_error: Option<String>,
     /// Whether `App::teardown` has run: once, whichever of the loop's
     /// exit and the runner's retirement comes first.
     torn_down: bool,
@@ -2079,11 +2107,18 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
         if let Some((mw, mh)) = self.max_size {
             attrs = attrs.with_max_inner_size(LogicalSize::new(mw, mh));
         }
-        let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
+        let window = match event_loop.create_window(attrs) {
+            Ok(w) => Arc::new(w),
+            Err(e) => return self.fail_open(event_loop, format!("cannot open the window: {e}")),
+        };
+        self.icon.set_on(&window);
         let px = window.inner_size();
-        let mut renderer =
-            pollster::block_on(kui_wgpu::Renderer::new(window.clone(), px.width, px.height))
-                .expect("init renderer");
+        let renderer =
+            pollster::block_on(kui_wgpu::Renderer::new(window.clone(), px.width, px.height));
+        let mut renderer = match renderer {
+            Ok(r) => r,
+            Err(e) => return self.fail_open(event_loop, format!("cannot draw in the window: {e}")),
+        };
         renderer.set_frame_latency(self.frame_latency);
         // Subpixel text only where the renderer blends per channel; the
         // env var wins over the builder for quick A/B comparisons.
@@ -2503,10 +2538,15 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                 // (backlog W3). The pane's own timer is what answers that,
                 // and this is where it learns whether there is anything to
                 // animate; `mod windows_anim` is why it is a timer and not
-                // a redraw asked for from right here.
+                // a redraw asked for from right here. Not while the window
+                // waits for a device: `about_to_wait` asks it for no
+                // animation frames then (RG29), and the timer asked for 64
+                // a second, each a view built for no renderer (RG40). The
+                // reopen's own `request_redraw` arms it again. Nor while
+                // it is minimized (RG45); the restore's `Resized` does.
                 #[cfg(target_os = "windows")]
                 if let Some(p) = self.panes.get_mut(i) {
-                    let animating = p.core.animating();
+                    let animating = p.core.animating() && !p.awaits_device && !p.minimized();
                     if let Some(t) = &mut p.anim_timer {
                         t.set(animating);
                     }
@@ -2617,8 +2657,9 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
         for pane in &mut self.panes {
             // Not while the window waits for a device: with nothing to
             // present to there is no vsync to pace the frame, and each one
-            // would only find the device still owed.
-            if pane.core.animating() && !pane.awaits_device {
+            // would only find the device still owed. Nor while it is
+            // minimized, on Windows (`Pane::minimized`).
+            if pane.core.animating() && !pane.awaits_device && !pane.minimized() {
                 pane.window.request_redraw();
             }
             // A frame held for a display that stopped firing is drawn

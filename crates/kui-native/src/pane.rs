@@ -302,6 +302,16 @@ pub(crate) struct Pane {
 }
 
 impl Pane {
+    /// Whether the window is minimized, on Windows: an animation there
+    /// asks for no frames, where it built every one at the display's rate
+    /// into a surface nobody could see (RG45). Restoring the window is a
+    /// `WM_SIZE`, whose `Resized` asks for the frame that picks the
+    /// animation up where its clock has got to. False elsewhere — macOS
+    /// has not been checked to ask for that frame on deminiaturize.
+    pub(crate) fn minimized(&self) -> bool {
+        cfg!(target_os = "windows") && self.window.is_minimized() == Some(true)
+    }
+
     /// Whether a redraw draws now or waits for the display (`mod pacer`).
     pub(crate) fn admit_frame(&mut self) -> bool {
         let px = self.window.inner_size();

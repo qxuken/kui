@@ -244,6 +244,47 @@ fn a_slider_without_on_change_still_nudges() {
     assert_eq!(core.focus(), Some(k));
     assert_eq!(kinds(&key(&mut core, KeyCode::Right)), ["access"]);
     assert!(key(&mut core, KeyCode::End).is_empty());
+
+    // A reader's set value reaches the app with the number (RG42).
+    let evs = core.handle_input(InputEvent::Access(
+        AccessRequest::new(k, AccessAction::SetValue).with_value("7.5"),
+    ));
+    assert_eq!(kinds(&evs), ["access"]);
+    assert_eq!(
+        evs[0].payload.get("action").and_then(Value::as_str),
+        Some("setValue")
+    );
+    assert_eq!(
+        evs[0].payload.get("value").and_then(Value::as_float),
+        Some(7.5)
+    );
+}
+
+/// Windows' UI Automation moves a slider only by setting it — RangeValue
+/// has no increment — and the request was dropped (backlog RG42): a set
+/// value is a proposal, snapped and clamped as the pointer's is.
+#[test]
+fn a_reader_s_set_value_is_proposed_snapped_and_clamped() {
+    let mut core = Core::new();
+    let k = slider(&mut core, 40.0, false);
+    assert!(node(&mut core, k).supports(AccessAction::SetValue));
+    let set = |core: &mut Core, v: &str| {
+        let evs = core.handle_input(InputEvent::Access(
+            AccessRequest::new(k, AccessAction::SetValue).with_value(v),
+        ));
+        evs.iter()
+            .map(value)
+            .map(|(v, p)| (v, p.to_string()))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(set(&mut core, "72"), [(70.0, "end".to_string())]);
+    assert_eq!(set(&mut core, "250"), [(100.0, "end".to_string())]);
+    assert_eq!(set(&mut core, "41"), [], "where it is: nothing");
+    assert_eq!(set(&mut core, "25 minutes"), [], "not a number: nothing");
+
+    let k = slider(&mut core, 40.0, true);
+    assert!(!node(&mut core, k).supports(AccessAction::SetValue));
+    assert_eq!(set(&mut core, "72"), []);
 }
 
 /// A step of a tenth lands on the decimal it names on the wire.

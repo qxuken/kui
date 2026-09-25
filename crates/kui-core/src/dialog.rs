@@ -106,11 +106,16 @@ impl FileDialog {
     }
 
     /// Offers the file type `name`, matching `extensions` (without the
-    /// dot). The first filter added is the one chosen when it opens.
+    /// dot; one written with it is taken without, as Node's, Lua's and
+    /// C's are — Windows matched `*..txt` and listed nothing, backlog
+    /// RG44). The first filter added is the one chosen when it opens.
     pub fn filter(mut self, name: impl Into<String>, extensions: &[&str]) -> Self {
         self.filters.push(FileFilter {
             name: name.into(),
-            extensions: extensions.iter().map(|e| e.to_string()).collect(),
+            extensions: extensions
+                .iter()
+                .map(|e| e.trim_start_matches('.').to_string())
+                .collect(),
         });
         self
     }
@@ -242,5 +247,22 @@ impl FileAsk {
             )
             .tagged(Some(&tag)),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A dot written before an extension is dropped by the builder as it
+    /// is on the way in from Node, Lua and C (backlog RG44).
+    #[test]
+    fn an_extension_is_taken_without_its_dot_by_every_door() {
+        let dotted = FileDialog::open().filter("Text", &[".txt", "md"]);
+        assert_eq!(dotted.filters[0].extensions, ["txt", "md"]);
+        assert_eq!(
+            FileDialog::from_value(&dotted.to_value()).unwrap().filters,
+            FileDialog::open().filter("Text", &["txt", "md"]).filters
+        );
     }
 }

@@ -180,6 +180,7 @@ impl DynShell<'_> {
                 return;
             }
         };
+        self.icon.set_on(&window);
         // The Window menu lists windows the user would switch to, and a
         // popup is not one (ADR 0030).
         #[cfg(target_os = "macos")]
@@ -475,6 +476,16 @@ impl DynShell<'_> {
                 #[cfg(not(target_os = "macos"))]
                 {
                     attrs = attrs.with_decorations(false);
+                }
+                // Windows 11 draws an undecorated window square and flat;
+                // an app window drawing its own titlebar keeps the corners
+                // and the shadow every other window has (backlog RG51).
+                #[cfg(target_os = "windows")]
+                {
+                    use winit::platform::windows::{CornerPreference, WindowAttributesExtWindows};
+                    attrs = attrs
+                        .with_undecorated_shadow(true)
+                        .with_corner_preference(CornerPreference::Round);
                 }
             }
             Chrome::Borderless => attrs = undecorated(attrs),

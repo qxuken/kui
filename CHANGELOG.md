@@ -69,7 +69,15 @@ existing input draws changes: a stroke is clipped as it was.
   frame of latency more while frames run back to back.
   `frame_latency(1)` (`frameLatency: 1`, `KuiRunConfig.frame_latency =
   1`, `KUI_FRAME_LATENCY=1`) with `KUI_FRAME_PACING=0` is the old
-  behaviour.
+  behaviour. On Windows a window keeps one, as it did (RG46): there one
+  already delivers every vsync.
+- A slider's access node supports `setValue` beside `increment` and
+  `decrement` (RG42), and a slider without `onChange` can hear an
+  `access` event whose `action` is `setValue`, with the number as
+  `value`. A handler that matched only the two nudges ignores it, as it
+  ignored the request before.
+- `conformance::Expect` (behind the `conformance` feature) has a new
+  field, `segments_follow_text` (RG38).
 - `KuiRunConfig` gains `frame_latency` under the same ABI 19 (40 bytes,
   was 36).
 - Node: `CoreMsg` gains `ChangeMsg`, so an exhaustive `switch` over it
@@ -395,6 +403,59 @@ in `examples/rust/features/align.rs`.
 
   The public API is unchanged, and no `'static` bound was added: an
   app that borrows still runs.
+
+- **Windows, from the regression round of 2026-09-26** (backlog
+  RG38–RG46: the Windows halves since alpha.16, cross-compiled and
+  linted on a Mac, run on a Windows machine for the first time):
+  - *A Node or C app's windows did not get the executable's icon*
+    (RG41). `icon_resource` was looked up in the module winit is linked
+    into — `kui_node.dll`, `kui_ffi.dll` — which has no resources, so the
+    windows fell back to the pixels however plainly `node.exe` or the
+    host carried the icon. It is loaded from the executable now, for all
+    three.
+  - *A slider ignored UI Automation* (RG42). Windows' RangeValue
+    pattern moves a slider only by setting it — it has no increment —
+    and the request was dropped while the slider read as writable. A
+    set value is now proposed as `change`, snapped and clamped, and a
+    slider without `onChange` hears `{kind: "access", action:
+    "setValue", value}`.
+  - *A multi-select Open answered with a file that is not there* (RG43).
+    rfd's multi-select and folder panels drop the options that make
+    Windows refuse a typed name that does not exist; an Open or folder
+    answer now carries only paths that exist.
+  - *A Rust `FileDialog::filter` with a dotted extension listed nothing*
+    on Windows (`*..txt`, RG44); the dot is dropped, as the other doors
+    drop it.
+  - *A window waiting for a device built 64 views a second* (RG40): the
+    Windows animation timer kept asking while RG29 had stopped every
+    other ask. It is off until the device is back.
+  - *A minimized animating window drew every frame* at the display's
+    rate into a surface nobody saw (RG45); on Windows it asks for none
+    until it is restored, where the animation picks up at its clock.
+  - Two tests that failed on Windows and nowhere else: the `underlines`
+    scene's segment count, which follows the installed fonts and is a
+    lower bound in the checked-in half now (RG38), and the Node F55 test
+    under Git for Windows' CRLF checkout (RG39).
+
+- **A main window that cannot open is an error, not a panic** (backlog
+  RG47, from the Linux round under WSLg). `run` and `open` return why
+  — `cannot open the window: …` or `cannot draw in the window: …` — and
+  a Node window's constructor throws it, where a panic inside the addon
+  aborted the process (`failed to initiate panic`). The loop is parked,
+  so the next window can be tried. README now says what a Linux build
+  and window need, the libraries loaded at run time among them (RG48).
+
+- **`widgets::window_buttons` alone was 0 px tall** (backlog RG50). In
+  a row that fits its content, the cluster's grow row and buttons added
+  nothing to the row's height, and the glyphs hung out of a 12 px pill.
+  The cluster is a titlebar tall where nothing gives it a height, and
+  as tall as the strip inside `titlebar_with`, as before.
+- **A custom-chrome window on Windows 11 is rounded and bordered** like
+  every other window (RG51), where `Chrome::Custom` had drawn it square,
+  flat and shadowless. Maximized, it fills the work area exactly, and
+  the caption hit-testing is unchanged.
+- The Node relaunch example's custom-chrome window draws its titlebar
+  along the window's top edge, with the devtools docked below it (RG52).
 
 ### Changed
 

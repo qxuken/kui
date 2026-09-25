@@ -309,4 +309,54 @@ impl Core {
                 .tagged(self.access_tag(i).as_ref()),
         );
     }
+
+    /// A reader's `SetValue` on slider `i`: `value` as the number it
+    /// asked for (backlog RG42). Windows' UI Automation moves a slider
+    /// only this way — its RangeValue pattern has no increment — and the
+    /// request was dropped, so a UIA client read a writable slider whose
+    /// writes did nothing. With `on_change` the core proposes `value`
+    /// snapped to the step and clamped, as the pointer does; without, the
+    /// app hears `{kind="access", action="setValue", value}` beside the
+    /// increments it already hears. Text that is not a number — the
+    /// Value pattern handing over a `value_text` such as "25 minutes" —
+    /// is nothing.
+    pub(crate) fn set_slider(&mut self, i: usize, value: &str, out: &mut Vec<UiEvent>) {
+        use crate::slider::{SliderRange, change_event};
+        let spec = &self.tree.specs[i];
+        if spec.disabled || spec.access().role != Some(crate::access::Role::Slider) {
+            return;
+        }
+        let Some(asked) = value.trim().parse::<f64>().ok().filter(|v| v.is_finite()) else {
+            return;
+        };
+        if let Some(tag) = spec.events().on_change.as_ref() {
+            let ax = spec.access();
+            let Some(range) = SliderRange::of(ax) else {
+                return;
+            };
+            let value = range.snap(asked);
+            if ax.value_now.map(crate::slider::exact) != Some(value) {
+                out.push(change_event(
+                    self.tree.origins[i],
+                    self.tree.keys[i],
+                    value,
+                    "end",
+                    tag,
+                ));
+            }
+            return;
+        }
+        let payload = Value::map([
+            ("kind", Value::str("access")),
+            (
+                "action",
+                Value::str(crate::access::AccessAction::SetValue.name()),
+            ),
+            ("value", Value::Float(asked)),
+        ]);
+        out.push(
+            UiEvent::on(self.tree.origins[i], self.tree.keys[i], payload)
+                .tagged(self.access_tag(i).as_ref()),
+        );
+    }
 }

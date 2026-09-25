@@ -5101,7 +5101,9 @@ test("index.d.ts's Env and NodeInfo name exactly the keys the objects carry (AR4
 // some shape of the payload — the dismiss payload has two, one per
 // surface, and the type's optional `name` / `id` are the second's.
 test("index.d.ts's message types name exactly the fields the event payloads carry (F55)", () => {
-  const dts = readFileSync(new URL('./index.d.ts', import.meta.url), 'utf8');
+  // As LF: Git for Windows checks the file out with CRLF by default, and a
+  // `\r` left on every line matched no block below (backlog RG39).
+  const dts = readFileSync(new URL('./index.d.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   const { events } = protocol();
   // The fields of every `{ … }` group in a payload string, at depth 0:
   // `a`, `b: …`, `c?: …` and `kind: "x"` each name one; a nested `{ x, y }`

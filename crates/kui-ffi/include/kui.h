@@ -3288,8 +3288,9 @@ typedef struct KuiRunConfig {
                             * 0 = the default, 2 (every vsync gets a frame
                             * at light load; on macOS 14+ back-to-back
                             * frames start at the vsync, so it costs no
-                            * latency). KUI_FRAME_LATENCY in the environment
-                            * still overrides. ABI 19. */
+                            * latency), and 1 on Windows, where one already
+                            * gets every vsync. KUI_FRAME_LATENCY in the
+                            * environment still overrides. ABI 19. */
 } KuiRunConfig;
 #define KUI_RUN_CONFIG_INIT ((KuiRunConfig){0})
 
