@@ -908,11 +908,25 @@ pub(crate) fn live_region_speaks(tree: &Tree, text: &TextSystem, i: usize) -> bo
 
 /// The text inside node `i`, in order, joined by spaces — ARIA's
 /// name-from-content. None when there is none.
+///
+/// A subtree under `role="none"` is not content, as it is not for a
+/// custom editor's lines ([`lines_under`]): it is hidden from assistive
+/// technology, and what it draws is not what the control is called. The
+/// `tooltip` prop's hint is one (`widgets::hover_hint`) — built only while
+/// the pointer is over the node, it made a hovered button's name its label
+/// and its hint both (backlog F88).
 fn content_name(tree: &Tree, text: &TextSystem, i: usize) -> Option<String> {
     let end = tree.subtree_end(i);
     let mut out = String::new();
-    for j in i..end {
-        if let NodeContent::Text(id) = tree.content[j] {
+    let mut j = i;
+    while j < end {
+        if j > i && tree.specs[j].access().role == Some(Role::None) {
+            j = tree.subtree_end(j);
+            continue;
+        }
+        let at = j;
+        j += 1;
+        if let NodeContent::Text(id) = tree.content[at] {
             let s = text.content(id).trim();
             if s.is_empty() {
                 continue;

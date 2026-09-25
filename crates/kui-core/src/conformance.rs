@@ -1078,7 +1078,6 @@ pub const SCENES: &[Scene] = &[
                 "0 window ||",
                 "1 group |a hint|",
                 "2 staticText badge||",
-                "2 staticText a hint||",
                 "1 button Save|Nothing to save yet|",
             ],
             events: &[],
@@ -3404,7 +3403,9 @@ fn build_float(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 
 /// The tooltip prop, spelled out: the bindings' parsers turn `tooltip`
 /// into `hoverable` plus an accessible `description`, and draw
-/// `widgets::tooltip` as the node's last child while it is hovered.
+/// `widgets::hover_hint` as the node's last child while it is hovered —
+/// the stock tooltip's chrome under `role="none"`, so the hint's text is
+/// read once, as the description, and never as the group's content (F88).
 ///
 /// The second node is the `description` prop on its own — the same slot
 /// with neither the hover tracking nor the float, which is what a hint
@@ -3440,7 +3441,7 @@ fn build_tooltip(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             |ui| {
                 ui.text("badge", TextStyle::new(12.0));
                 if ui.is_hovered(key) {
-                    widgets::tooltip(ui, "a hint");
+                    widgets::hover_hint(ui, "a hint");
                 }
             },
         );
@@ -4649,8 +4650,9 @@ fn observe(core: &Core, cov: &mut Coverage) {
         }
         // `widgets::latency_graph` hides its subtree from assistive
         // technology, which is the one thing the graph declares about
-        // itself; nothing else in the corpus asks for `Role::None`.
-        if spec.access().role == Some(Role::None) {
+        // itself. The `tooltip` prop's hint is the corpus's other
+        // `Role::None`, and a float, which the graph is not.
+        if spec.access().role == Some(Role::None) && l.float.is_none() {
             cov.elements.insert("latencyGraph");
         }
 

@@ -258,17 +258,35 @@ pub fn tooltip(ui: &mut Ui<'_>, text: &str) {
 
 /// [`tooltip`] chrome around arbitrary content (legends, shortcut hints, …).
 pub fn tooltip_with(ui: &mut Ui<'_>, content: impl FnOnce(&mut Ui<'_>)) {
+    let spec = tooltip_spec(ui);
+    ui.with(spec, content);
+}
+
+/// The hint the `tooltip` prop floats under a hovered node, and the stock
+/// button under a hovered button: [`tooltip`]'s chrome and text, kept out
+/// of the access tree (`Role::None`). The prop has already set the same
+/// string as the node's description, which is where a reader hears it;
+/// as content it would be read twice under a group and, under a control
+/// named from its content, become part of the *name* whenever the pointer
+/// crossed it (backlog F88). The `tooltip` element keeps its text, since
+/// it is drawn with no description behind it.
+pub(crate) fn hover_hint(ui: &mut Ui<'_>, text: &str) {
+    let size = ui.metrics().hint_text;
+    let spec = tooltip_spec(ui).role(crate::access::Role::None);
+    ui.with(spec, |ui| {
+        ui.text(text, TextStyle::new(size));
+    });
+}
+
+fn tooltip_spec(ui: &Ui<'_>) -> NodeSpec {
     let t = ui.theme();
     let m = ui.metrics();
-    ui.with(
-        NodeSpec::column()
-            .float(crate::spec::FloatConfig::below().fit())
-            .pad_xy(m.hint_pad_x, m.hint_pad_y)
-            .bg(t.raised)
-            .radius(m.radius)
-            .border(1.0, t.border_strong),
-        content,
-    );
+    NodeSpec::column()
+        .float(crate::spec::FloatConfig::below().fit())
+        .pad_xy(m.hint_pad_x, m.hint_pad_y)
+        .bg(t.raised)
+        .radius(m.radius)
+        .border(1.0, t.border_strong)
 }
 
 pub fn label(ui: &mut Ui<'_>, text: &str) {
@@ -768,6 +786,14 @@ fn button_body(ui: &mut Ui<'_>, ident: Ident<'_>, text: &str, spec: NodeSpec, hi
     } else {
         spec
     };
+    // The hint floats out of the access tree (`hover_hint`), so it is
+    // heard only as the description: a caller that passed one without
+    // `apply_tooltip` on the spec still has it said. A declared
+    // description stands, as it does over the prop.
+    let spec = match hint {
+        Some(hint) if spec.access().description.is_none() => spec.apply_tooltip(hint),
+        _ => spec,
+    };
     // Whatever the background ended up being: white on the stock blue as
     // it has always been, black on an accent light enough to need it.
     let label = readable_on(spec.style.bg);
@@ -781,7 +807,7 @@ fn button_body(ui: &mut Ui<'_>, ident: Ident<'_>, text: &str, spec: NodeSpec, hi
         if let Some(hint) = hint
             && ui.is_hovered(node)
         {
-            tooltip(ui, hint);
+            hover_hint(ui, hint);
         }
     };
     match ident {

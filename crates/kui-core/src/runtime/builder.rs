@@ -520,7 +520,7 @@ impl Core {
         {
             let (_, key, hint) = self.hints.pop().unwrap();
             if self.is_hovered(key) {
-                crate::widgets::tooltip(&mut Ui::wrap(self), &hint);
+                crate::widgets::hover_hint(&mut Ui::wrap(self), &hint);
             }
         }
         if self.stack.len() > 1 {
@@ -530,7 +530,7 @@ impl Core {
     }
 
     /// Records the hover hint of the node just opened (the top of the
-    /// stack): `close` floats `widgets::tooltip` below it while it is
+    /// stack): `close` floats `widgets::hover_hint` below it while it is
     /// hovered. The one place that decides *when* a tooltip shows, so a
     /// binding that parsed the string cannot show it some other way.
     pub fn hint(&mut self, key: Key, text: impl Into<String>) {

@@ -34,6 +34,14 @@ existing input draws changes: a stroke is clipped as it was.
 - The binary frame's float stanza (v16): its last slot, `fit` as 0 or 1,
   is now a flags word, 1 `fit` and 2 `clip`. Only a hand-written
   encoder sees this; the package's encoder and addon move together.
+- A control with a `tooltip` — the prop on any node, or the stock
+  button's — keeps its accessible name while the pointer is over it,
+  where the name gained the hint's text (`SKIP` read `SKIP KEY S`), and
+  the hint is no longer a text node of its own in the access tree, where
+  a group read it after its description (under Fixed, F88). A control
+  named from its content no longer takes text from under a `role="none"`
+  node inside it. A test that asserted the hovered name, or found the
+  hint's text in the tree, reads the name and the description instead.
 
 ### Added
 
@@ -79,6 +87,28 @@ existing input draws changes: a stroke is clipped as it was.
   *What you can delete:* the dock's width, hard-coded or worked out
   from `size()` against the window's, wherever a test found where the
   app starts.
+
+### Fixed
+
+- **A hovered control's accessible name read its tooltip** (backlog
+  F88, from the LCARS pomodoro's alpha.16 and alpha.18 reports). The
+  `tooltip` prop floats its hint as the node's last child while the
+  pointer is over it, and a role named from its content — a button, a
+  box with `onClick` — joins every text inside it, the hint's among
+  them: a box reading `SKIP` was `SKIP KEY S` under the mouse, the
+  stock `<button tooltip>` `Go Starts it`, and a screen reader re-read
+  the changed name each time the pointer crossed a control. The report
+  said focus; it was hover, which the headless `click()` leaves on the
+  control. The hint is drawn under `role="none"` now, and a name from
+  content skips what is under `role="none"`, as a custom editor's text
+  already did. The hint's string is where it always was, the
+  description, and nothing else reads it; a stock button handed a hint
+  with no description on its spec takes the hint as one. The `tooltip`
+  *element* (`<tooltip>`, `kui_tooltip`, `widgets::tooltip`) is
+  unchanged: it is drawn with no description behind it, so its text
+  stays content.
+  *What you can delete:* a `label` an app set on a control only so a
+  hover would not rename it.
 
 ## 0.1.0-alpha.18 (2026-09-25)
 

@@ -975,3 +975,100 @@ fn slider_value_outside_its_range_warns() {
     frame(&mut core);
     assert!(core.take_warnings().is_empty(), "each once");
 }
+
+/// The `tooltip` prop floats its hint as the node's last child while the
+/// pointer is over it, and a role named from its content joins every text
+/// inside it: a hovered control was called its label *and* its hint —
+/// `SKIP KEY S`, `Go Starts it` — and a reader re-read the changed name as
+/// the mouse crossed it (backlog F88). The hint is the description, once.
+#[test]
+fn a_hovered_control_keeps_its_name_and_its_hint_is_the_description() {
+    use kui_core::schema::PropsOut;
+    use kui_core::{Content, QuadKind, Vec2, widgets};
+    let mut core = Core::new();
+    let frame = |core: &mut Core| {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().gap(60.0));
+        // A box the way every binding lowers `<box onClick tooltip>`.
+        let mut p = PropsOut::new();
+        p.spec = NodeSpec::row()
+            .width(Sizing::Fixed(100.0))
+            .height(Sizing::Fixed(40.0))
+            .on_click(Value::str("skip"));
+        p.key = Some("skip".into());
+        p.apply_tooltip("KEY S");
+        ui.core().open_from(p, Content::Box);
+        ui.text("SKIP", TextStyle::new(12.0));
+        ui.close();
+        // A group is not named from its content, but it read the hint
+        // there too, as a text of its own after its description.
+        let mut p = PropsOut::new();
+        p.spec = NodeSpec::row()
+            .width(Sizing::Fixed(100.0))
+            .height(Sizing::Fixed(40.0))
+            .role(Role::Group);
+        p.key = Some("badge".into());
+        p.apply_tooltip("a hint");
+        ui.core().open_from(p, Content::Box);
+        ui.text("badge", TextStyle::new(12.0));
+        ui.close();
+        // The stock button, which floats its hint inside its own body —
+        // given only the hint, with no `apply_tooltip` on the spec, and
+        // still describing itself with it.
+        let spec = widgets::button_spec(&ui.theme(), &ui.metrics()).on_click(Value::str("go"));
+        widgets::button_with(&mut ui, "go", "Go", spec, Some("Starts it"));
+        ui.finish();
+    };
+    let at = |core: &mut Core, key: &str| {
+        let r = core.access_tree().get(Key::ROOT.str(key)).unwrap().rect;
+        Vec2::new(r.x + r.w / 2.0, r.y + r.h / 2.0)
+    };
+    let glyphs = |core: &mut Core| {
+        let (dl, _) = core.output();
+        dl.quads
+            .iter()
+            .filter(|q| matches!(q.kind, QuadKind::GlyphMask | QuadKind::GlyphSubpixel))
+            .count()
+    };
+    let read = |core: &mut Core, key: &str| {
+        let n = core.access_tree().get(Key::ROOT.str(key)).unwrap();
+        (n.role, n.name.clone(), n.description.clone())
+    };
+    let texts = |core: &mut Core| {
+        core.access_tree()
+            .nodes
+            .iter()
+            .filter(|n| n.role == Role::StaticText)
+            .filter_map(|n| n.name.clone())
+            .collect::<Vec<_>>()
+    };
+    let named = |role, name: &str, hint: &str| (role, Some(name.into()), Some(hint.into()));
+
+    frame(&mut core);
+    let idle = glyphs(&mut core);
+    let skip = named(Role::Button, "SKIP", "KEY S");
+    let go = named(Role::Button, "Go", "Starts it");
+    let badge = (Role::Group, None, Some("a hint".into()));
+    assert_eq!(read(&mut core, "skip"), skip, "idle");
+    assert_eq!(read(&mut core, "go"), go, "idle");
+    assert_eq!(read(&mut core, "badge"), badge, "idle");
+    assert_eq!(texts(&mut core), ["badge"], "idle");
+
+    for key in ["skip", "badge", "go"] {
+        let p = at(&mut core, key);
+        core.handle_input(InputEvent::CursorMoved(p));
+        frame(&mut core);
+        assert!(
+            glyphs(&mut core) > idle,
+            "the pointer over {key} draws its hint"
+        );
+        assert_eq!(read(&mut core, "skip"), skip, "pointer over {key}");
+        assert_eq!(read(&mut core, "go"), go, "pointer over {key}");
+        assert_eq!(read(&mut core, "badge"), badge, "pointer over {key}");
+        assert_eq!(
+            texts(&mut core),
+            ["badge"],
+            "pointer over {key}: the hint is no text of its own"
+        );
+    }
+}
