@@ -1788,6 +1788,156 @@ fn the_env_reading_and_the_pre_frame_size_are_what_the_dock_leaves() {
     );
 }
 
+/// The host area as a rect (backlog F92): `host_rect` is the frame's
+/// viewport with its origin, and scaled into physical px it splits the
+/// draw list into the app's quads and the dock's. The pomodoro's smoke
+/// test under `KUI_DEVTOOLS=1` could size itself to the host area but not
+/// check that nothing of its own left it, because the origin — the pane's
+/// width under a left dock — reached only the Rust runner.
+#[test]
+fn the_host_rect_places_the_app_and_separates_its_quads_from_the_dock_s() {
+    const WINDOW: Size = Size {
+        w: 1040.0,
+        h: 720.0,
+    };
+    const APP: Color = Color {
+        r: 1.0,
+        g: 0.0,
+        b: 1.0,
+        a: 1.0,
+    };
+    const ROOT: Color = Color {
+        r: 0.0,
+        g: 0.5,
+        b: 0.0,
+        a: 1.0,
+    };
+    // The app fills what it is given, with a card in its top-left and
+    // bottom-right corners, over a root background of its own.
+    let draw = |core: &mut Core, scale: f32| {
+        let card = || {
+            NodeSpec::row()
+                .width(Sizing::Fixed(40.0))
+                .height(Sizing::Fixed(30.0))
+                .bg(APP)
+        };
+        let mut ui = core.frame(WINDOW, scale);
+        ui.configure_root(NodeSpec::column().bg(ROOT));
+        ui.with(
+            NodeSpec::column()
+                .width(Sizing::Grow(1.0))
+                .height(Sizing::Grow(1.0))
+                .bg(APP),
+            |ui| {
+                ui.with(card(), |_| {});
+                ui.with(NodeSpec::column().height(Sizing::Grow(1.0)), |_| {});
+                ui.with(
+                    NodeSpec::row()
+                        .width(Sizing::Grow(1.0))
+                        .main_align(Align::End),
+                    |ui| {
+                        ui.with(card(), |_| {});
+                    },
+                );
+            },
+        );
+        ui.finish();
+    };
+    // Split the list by the rect: fully inside it, or not.
+    let split = |core: &mut Core| {
+        let r = core.host_rect();
+        let s = core.scale();
+        let (x0, y0, x1, y1) = (r.x * s, r.y * s, (r.x + r.w) * s, (r.y + r.h) * s);
+        let (dl, _) = core.output();
+        let (inside, outside): (Vec<crate::display::Quad>, Vec<_>) =
+            dl.quads.iter().partition(|q| {
+                q.rect.x >= x0 - 0.01
+                    && q.rect.y >= y0 - 0.01
+                    && q.rect.x + q.rect.w <= x1 + 0.01
+                    && q.rect.y + q.rect.h <= y1 + 0.01
+            });
+        (inside, outside)
+    };
+
+    let mut core = Core::new();
+    assert_eq!(
+        core.host_rect(),
+        Rect::new(0.0, 0.0, 0.0, 0.0),
+        "no frame yet"
+    );
+    draw(&mut core, 1.0);
+    assert_eq!(
+        core.host_rect(),
+        Rect::new(0.0, 0.0, WINDOW.w, WINDOW.h),
+        "no dock: the window"
+    );
+
+    core.set_devtools(true);
+    for (dock, scale) in [(Dock::Left, 1.0), (Dock::Bottom, 1.0), (Dock::Left, 2.0)] {
+        core.set_devtools_dock(dock);
+        draw(&mut core, scale);
+        draw(&mut core, scale);
+        let r = core.host_rect();
+        let expected = match dock {
+            Dock::Left => Rect::new(DOCK_SIDE_W, 0.0, WINDOW.w - DOCK_SIDE_W, WINDOW.h),
+            _ => Rect::new(0.0, 0.0, WINDOW.w, WINDOW.h - DOCK_BOTTOM_H),
+        };
+        assert_eq!(r, expected, "{dock:?} at {scale}");
+        assert_eq!(
+            Size::new(r.w, r.h),
+            core.viewport(),
+            "viewport() is its size"
+        );
+        assert_eq!(
+            Size::new(r.w, r.h),
+            core.host_area(WINDOW),
+            "and so is host_area"
+        );
+
+        let (inside, outside) = split(&mut core);
+        let app = inside.iter().filter(|q| q.color == APP).count();
+        assert_eq!(app, 3, "{dock:?}: the fill and both cards are in the rect");
+        assert!(
+            outside.iter().all(|q| q.color != APP),
+            "{dock:?}: nothing of the app's is outside it"
+        );
+        assert!(
+            inside.iter().all(|q| q.color == APP || q.color == ROOT),
+            "{dock:?}: and nothing but the app's is inside it: {:?}",
+            inside
+                .iter()
+                .filter(|q| q.color != APP && q.color != ROOT)
+                .collect::<Vec<_>>()
+        );
+        // The root's background paints the app container, inside, and
+        // the window under the dock, outside (ADR 0024's split): the one
+        // quad of the app's that the rect does not hold is the window's
+        // own fill.
+        let root_in: Vec<_> = inside.iter().filter(|q| q.color == ROOT).collect();
+        let root_out: Vec<_> = outside.iter().filter(|q| q.color == ROOT).collect();
+        assert_eq!(root_in.len(), 1, "{dock:?}: the container's background");
+        assert_eq!(root_out.len(), 1, "{dock:?}: and the window's");
+        assert_eq!(
+            root_out[0].rect,
+            Rect::new(0.0, 0.0, WINDOW.w * scale, WINDOW.h * scale)
+        );
+        assert!(outside.len() > 1, "{dock:?}: the dock drew");
+        // The fill is the rect itself, in physical px.
+        let fill = inside
+            .iter()
+            .find(|q| q.color == APP && q.rect.w == r.w * scale)
+            .expect("the fill");
+        assert_eq!(
+            (fill.rect.x, fill.rect.y, fill.rect.h),
+            (r.x * scale, r.y * scale, r.h * scale)
+        );
+    }
+    // Off again: the window, at the window's origin.
+    core.set_devtools(false);
+    draw(&mut core, 1.0);
+    assert_eq!(core.host_rect(), Rect::new(0.0, 0.0, WINDOW.w, WINDOW.h));
+}
+
 /// Moving the panel out of its own window by one of that window's own
 /// buttons closes the window without hiding the panel: the close that
 /// follows is the panel's own doing, not the user's.

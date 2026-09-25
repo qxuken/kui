@@ -1279,6 +1279,24 @@ impl Core {
         Size::new(r.w, r.h)
     }
 
+    /// Where the current frame laid the host out, in the window's logical
+    /// px: [`Core::viewport`] with its origin — `x` the pane's width under
+    /// a left dock, and zero everywhere else, the whole window with the
+    /// panel off, in a window of its own, or in any window but the main
+    /// one. The frame's reading, like `viewport()`, so it is zero before
+    /// the first frame (the pre-frame answer is `host_area`'s size) and it
+    /// is the rect the quads of `output()` were drawn against: scaled by
+    /// `scale()` into their physical px, it is what separates the host's
+    /// quads from the dock's — all but the root's background, which
+    /// `devtools_configure_root` gives the window as well as the app
+    /// container, so it fills the whole window beneath the pane. Backlog
+    /// F92: the origin reached only the Rust
+    /// runner, through `devtools_inset`, so a Node test could size itself
+    /// to the host area but not say that nothing of its own left it.
+    pub fn host_rect(&self) -> Rect {
+        self.dt_area
+    }
+
     /// What a docked pane takes off the main window, in the axis it
     /// takes it: the side column's width as `(w, 0)`, the bottom strip's
     /// height as `(0, h)`, and zero with the panel off, in a window of

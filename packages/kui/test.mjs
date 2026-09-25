@@ -5811,6 +5811,74 @@ test('env().viewport is the window less the devtools dock (F43)', () => {
   assert.deepEqual(ctx.env().viewport, { width: 1040, height: 720, scale: 1 });
 });
 
+// `hostArea()` is where the frame put the app in its window (backlog F92):
+// `env().viewport` with its origin. The pomodoro's smoke test under
+// `KUI_DEVTOOLS=1` sized itself to the host area through F43 but could not
+// check that nothing of its own overflowed it: `quads()` is the whole
+// display list, dock and all, and the origin — the pane's width under a
+// left dock — reached only the Rust runner. The rect, scaled into the
+// quads' physical px, is the filter. Both classes have it; a window needs
+// a display, so the headless one pins it.
+test('hostArea() places the app beside the dock and filters its quads (F92)', () => {
+  const APP = [1, 0, 1, 1];
+  const ROOT = [0, 128 / 255, 0, 1];
+  const card = () => box({ width: 40, height: 30, bg: '#ff00ff' });
+  // The root's background is the window's too: under a dock it paints the
+  // app's container and, beneath the pane, the whole window (ADR 0024's
+  // split), which is the one quad of the app's the rect does not hold.
+  const view = () =>
+    box({ bg: '#008000' }, [
+      box({ width: 'grow', height: 'grow', bg: '#ff00ff' }, [
+        card(),
+        box({ height: 'grow' }),
+        box({ dir: 'row', width: 'grow', mainAlign: 'end' }, [card()]),
+      ]),
+    ]);
+  const ctx = new Ctx();
+  assert.equal(typeof KuiWindow.prototype.hostArea, 'function');
+  assert.deepEqual(ctx.hostArea(), { x: 0, y: 0, w: 0, h: 0 }, 'before any frame, like env().viewport');
+  ctx.frame(1040, 720, 1, view());
+  assert.deepEqual(ctx.hostArea(), { x: 0, y: 0, w: 1040, h: 720 }, 'no dock: the window');
+
+  const inside = (q, r, s) =>
+    q.x >= r.x * s - 0.01 && q.y >= r.y * s - 0.01 && q.x + q.w <= (r.x + r.w) * s + 0.01 && q.y + q.h <= (r.y + r.h) * s + 0.01;
+  const is = (colour) => (q) => q.color.every((c, i) => Math.abs(c - colour[i]) < 1e-3);
+  ctx.setDevtools(true);
+  for (const [dock, scale] of [['left', 1], ['bottom', 1], ['left', 2]]) {
+    const at = `${dock}@${scale}`;
+    ctx.setDevtoolsDock(dock);
+    ctx.frame(1040, 720, scale, view());
+    ctx.frame(1040, 720, scale, view());
+    const r = ctx.hostArea();
+    const vp = ctx.env().viewport;
+    assert.deepEqual([r.w, r.h], [vp.width, vp.height], `${at}: the viewport's size`);
+    if (dock === 'left') {
+      assert.ok(r.x > 0 && r.x + r.w === 1040, `${at}: right of the pane: ${JSON.stringify(r)}`);
+      assert.deepEqual([r.y, r.h], [0, 720]);
+    } else {
+      assert.deepEqual([r.x, r.y, r.w], [0, 0, 1040], `${at}: the top of the window`);
+      assert.ok(r.h < 720, `${at}: above the strip: ${r.h}`);
+    }
+    const quads = decodeQuads(ctx.quads());
+    const mine = quads.filter((q) => inside(q, r, vp.scale));
+    const theirs = quads.filter((q) => !inside(q, r, vp.scale));
+    assert.equal(mine.filter(is(APP)).length, 3, `${at}: the fill and two cards are inside`);
+    assert.equal(mine.filter(is(ROOT)).length, 1, `${at}: and the container's background`);
+    assert.equal(mine.length, 4, `${at}: and nothing else is`);
+    assert.ok(!theirs.some(is(APP)), `${at}: nothing of the app's own is outside`);
+    const windowFill = theirs.filter(is(ROOT));
+    assert.equal(windowFill.length, 1, `${at}: but the root's background, once`);
+    assert.deepEqual(
+      [windowFill[0].x, windowFill[0].y, windowFill[0].w, windowFill[0].h],
+      [0, 0, 1040 * scale, 720 * scale],
+      `${at}: which is the window`,
+    );
+    assert.ok(theirs.length > 1, `${at}: the rest is the dock's`);
+    const fill = mine.find((q) => is(APP)(q) && q.w === r.w * scale);
+    assert.deepEqual([fill.x, fill.y, fill.h], [r.x * scale, r.y * scale, r.h * scale], `${at}: the fill is the rect, physical`);
+  }
+});
+
 // The chord that moves the keyboard into the devtools dock is the app's
 // to respell: `Ctrl+Shift+I` unless `setDevtoolsKey` says otherwise, in
 // any spelling a menu item's `accel` takes. With `F12` set, `F12` enters

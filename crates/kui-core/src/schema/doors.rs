@@ -930,6 +930,13 @@ pub const DOORS: &[Door] = &[
         doc: "Where it sits, read back.",
     },
     Door {
+        rust: "Core::host_rect",
+        c: Is("kui_host_rect"),
+        node: Is("hostArea"),
+        lua: No(GUEST),
+        doc: "Where the frame laid the host out in the window, logical px: the viewport with its origin, which is what tells the app's quads from the dock's (backlog F92).",
+    },
+    Door {
         rust: "Core::set_devtools_theme",
         c: Is("kui_set_devtools_theme"),
         node: Is("setDevtoolsTheme"),

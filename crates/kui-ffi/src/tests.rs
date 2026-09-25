@@ -2715,6 +2715,55 @@ mod follow_headless {
         assert!(labels.iter().any(|l| l == "term"), "{labels:?}");
         kui_ctx_free(ctx);
     }
+
+    /// `kui_host_rect` (backlog F92): the frame's host viewport with its
+    /// origin, which under a left dock starts at the pane's width and
+    /// under a bottom one is the window less the strip; scaled, it is the
+    /// box the host's own quads land in.
+    #[test]
+    fn the_host_rect_is_the_frame_s_viewport_with_its_origin() {
+        let ctx = kui_ctx_new();
+        let frame = |ctx: *mut KuiCtx, scale: f32| {
+            kui_frame_begin(ctx, 1040.0, 720.0, scale);
+            let mut fill = unsafe { std::mem::zeroed::<KuiSpec>() };
+            fill.width = KuiSizing { tag: 1, value: 1.0 };
+            fill.height = KuiSizing { tag: 1, value: 1.0 };
+            fill.bg = 0xff00ffff;
+            kui_open(ctx, &fill, std::ptr::null_mut());
+            kui_close(ctx);
+            kui_frame_finish(ctx);
+        };
+        let read = |ctx: *mut KuiCtx| {
+            let mut r = KuiLayoutRect::default();
+            assert!(kui_host_rect(ctx, &mut r));
+            (r.x, r.y, r.w, r.h)
+        };
+        assert_eq!(read(ctx), (0.0, 0.0, 0.0, 0.0), "before the first frame");
+        frame(ctx, 1.0);
+        assert_eq!(read(ctx), (0.0, 0.0, 1040.0, 720.0), "no dock: the window");
+        kui_set_devtools(ctx, true);
+        assert!(kui_set_devtools_dock(ctx, ks("left")));
+        frame(ctx, 2.0);
+        let (x, y, w, h) = read(ctx);
+        assert_eq!((x, y, w, h), (340.0, 0.0, 700.0, 720.0), "left of the pane");
+        let mut draw = KuiDrawData::default();
+        assert!(kui_draw_data(ctx, &mut draw));
+        let quads = unsafe { std::slice::from_raw_parts(draw.quads, draw.quad_count) };
+        let fill = quads
+            .iter()
+            .find(|q| q.color == [1.0, 0.0, 1.0, 1.0])
+            .expect("the host's fill");
+        assert_eq!(
+            (fill.x, fill.y, fill.w, fill.h),
+            (x * 2.0, y * 2.0, w * 2.0, h * 2.0),
+            "the host's quad is the rect, in physical px"
+        );
+        assert!(kui_set_devtools_dock(ctx, ks("bottom")));
+        frame(ctx, 1.0);
+        assert_eq!(read(ctx), (0.0, 0.0, 1040.0, 440.0), "above the strip");
+        assert!(!kui_host_rect(ctx, std::ptr::null_mut()), "a NULL out");
+        kui_ctx_free(ctx);
+    }
 }
 
 /// `kui_run_with`'s two halves that need no window (backlog AR27): the

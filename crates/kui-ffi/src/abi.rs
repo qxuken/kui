@@ -220,7 +220,9 @@
 /// parent-anchored float that sets it takes its parent's clip instead of
 /// escaping it. An [in] append under the amended rule, as ABI 18's was.
 /// Recompile; a zeroed field is the float that escapes, which is what
-/// every float was.
+/// every float was. Also new under 19, and no break of its own:
+/// `kui_host_rect` (backlog F92), one function writing the
+/// `KuiLayoutRect` it already had.
 pub const KUI_ABI_VERSION: u32 = 19;
 
 /// The ABI version this library implements, for a host to compare against

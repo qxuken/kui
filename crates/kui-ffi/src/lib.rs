@@ -725,6 +725,35 @@ pub extern "C" fn kui_devtools_dock(ptr: *mut KuiCtx, out: *mut KuiStr) -> bool 
     })
 }
 
+/// Where the last frame laid the host out in its window, logical px: the
+/// viewport with its origin — `x` the pane's width under a left dock, the
+/// whole window with the panel off, in its own window or in any window
+/// but the main one, and zeros before the first frame. Scaled by the
+/// frame's scale into physical px it is what separates the host's quads
+/// from the dock's in `kui_draw_data` — all but the root's background,
+/// which under a dock also fills the whole window beneath the pane
+/// (backlog F92). False on a bad context, a NULL `out` or a short
+/// reservation.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_host_rect(ptr: *mut KuiCtx, out: *mut KuiLayoutRect) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        let r = c.core().host_rect();
+        write_out(
+            out,
+            KuiLayoutRect {
+                x: r.x,
+                y: r.y,
+                w: r.w,
+                h: r.h,
+                ..Default::default()
+            },
+        )
+    })
+}
+
 /// Seeds the panel's theme override, what its `T` and `A` chords cycle
 /// from: `base` is `"light"`, `"dark"` or empty for the app's own;
 /// `accent` a `0xRRGGBBAA` colour, or 0 for none. False for any other

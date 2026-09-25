@@ -1076,6 +1076,12 @@ static int surface(void) {
             check(true, "kui_devtools_tab_open answers false off show");
         }
         kui_frame_finish(ui);
+        /* Where the frame put the host: right of the left dock, the rest of
+         * the 800x600 window (backlog F92). */
+        KuiLayoutRect host = KUI_LAYOUT_RECT_INIT;
+        check(kui_host_rect(ui, &host) && host.x > 0 && host.x + host.w == 800 && host.y == 0 && host.h == 600,
+              "kui_host_rect: the host area beside the dock");
+        check(!kui_host_rect(ui, NULL), "and false for a NULL out");
         {
             KuiWarning dup[8];
             size_t n = kui_take_warnings(ui, dup, sizeof dup / sizeof dup[0]);

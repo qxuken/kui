@@ -1474,25 +1474,6 @@ drivers, and state in the `init` doc which answer a headless loop gets.
 Test: `init: (s) => s.size()` under `createApp({width: 1100, height:
 760})` reads 1100×760.
 
-### `.` F92 — Node cannot tell the app's quads from the dock's
-
-**Found** (pomodoro, alpha.16 wish 5, carried in alpha.18). F43 fixed
-half of this: `size()` and `env().viewport` answer what the dock leaves
-(`devtools/mod.rs:1277`, `host_area`). The other half is open.
-`quads()` copies the whole display list (`kui-node/src/lib.rs:2302`),
-no `Quad` field says which layer drew it, and the host area's origin
-(`x` = the pane's width under a left dock, `devtools/mod.rs:1324-1345`)
-reaches only the Rust runner (`crates/kui/src/lib.rs:1683`,
-`devtools_inset`). A test can size itself to the host area but cannot
-say "nothing of mine overflows it". The pomodoro's smoke test, run with
-`KUI_DEVTOOLS=1`, is what hit this.
-
-**Do.** Expose the host area as a rect, for example `win.hostArea()`
-returning `{x, y, w, h}` beside `size()`, or give `env().viewport` an
-origin. That is enough for a test to filter `quads()` by rect. A
-`quads({ app: true })` split by layer is the larger alternative and
-wants a use the rect cannot serve.
-
 ### Wishes, not entries
 
 - **A `cursor` warning for a clickable node with no `cursor`**
@@ -1529,7 +1510,7 @@ wants a use the rect cannot serve.
 - **The window's buttons in the tree on Windows** (pomodoro, alpha.16):
   kui's own chrome, named on purpose (`access.rs:864-876`).
 - **The compact tier under `KUI_DEVTOOLS=1`** (pomodoro, alpha.16): F43
-  working. The overflow check that failed is F92.
+  working. The overflow check that failed is F92, built: `hostArea()`.
 - **An AT click behind a modal arriving as `dismiss` `"outside"`** (mind
   map, alpha.16): RG13, as documented.
 - **Help on a non-Latin layout** (mind map, alpha.18): bound to `/`
@@ -2402,3 +2383,4 @@ move.
 **From the alpha.14, alpha.16 and alpha.18 upgrade reports (2026-09-25)** — F90 built the same day; F88, F89, F91 and F92 open
 
 - `~` **F90** — [A declared float cannot take its parent's clip](backlog/closed-2026-09.md#-f90--a-declared-float-cannot-take-its-parents-clip--done-2026-09-25) — done (2026-09-25) — `clip` on the float (`FloatConfig::clipped`, `float_clip` at ABI 19, `{ clip: true }` in JSX and Lua), read with the parent anchor; F78's stroke rule is the bit set by the core
+- `.` **F92** — [Node cannot tell the app's quads from the dock's](backlog/closed-2026-09.md#-f92--node-cannot-tell-the-apps-quads-from-the-docks--done-2026-09-25) — done (2026-09-25) — `Core::host_rect`, the frame's viewport with its origin; Node's `hostArea()`, C's `kui_host_rect`; the root's `bg` is the one app quad it does not hold

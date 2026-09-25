@@ -1049,8 +1049,24 @@ being opened to be looked at rather than used. (`KUI_SMOKE_FRAMES` is the
 Rust runner's own version of this, live in a dev build — for the examples
 in this repository, which have no test around them to do the asking.)
 
+Run under `KUI_DEVTOOLS=1` and the frame holds the dock's quads too.
+`win.hostArea()` is where the frame put the app, `{x, y, w, h}` in
+logical px — right of the pane under a left dock — and the quads are
+physical px, so a check that nothing of the app's overflows filters by
+the rect times the scale. The one quad of the app's outside it is the
+root's `bg`, which is the window's background too and fills the whole
+window beneath the pane:
+
+```ts
+const r = win.hostArea();
+const s = win.env().viewport.scale;
+const mine = decodeQuads(win.quads()).filter((q) =>
+  q.x >= r.x * s && q.y >= r.y * s && q.x + q.w <= (r.x + r.w) * s && q.y + q.h <= (r.y + r.h) * s);
+```
+
 [`access` event](props.md#events) ·
-[alpha.8](../CHANGELOG.md#010-alpha8-2026-09-07)
+[alpha.8](../CHANGELOG.md#010-alpha8-2026-09-07) ·
+[alpha.19 `### Added`](../CHANGELOG.md#010-alpha19-unreleased)
 
 ### How do I see what a window draws for a user who asked for less motion?
 

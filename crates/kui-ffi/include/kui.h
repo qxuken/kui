@@ -235,6 +235,8 @@ extern "C" {
  * float that sets it takes its parent's clip instead of escaping it. An
  * [in] append under the amended rule, as ABI 18's was. Recompile; a
  * zeroed field is the float that escapes, which is what every float was.
+ * Also new under 19, and no break of its own: kui_host_rect, one function
+ * writing the KuiLayoutRect it already had (backlog F92).
  */
 #define KUI_ABI_VERSION 19u
 uint32_t kui_abi_version(void);
@@ -2839,6 +2841,15 @@ bool kui_devtools(KuiCtx *ctx);
 /* Where it sits, as the word kui_set_devtools_dock takes ("right" for the
  * side); the string is static. False on a bad context. */
 bool kui_devtools_dock(KuiCtx *ctx, KuiStr *out);
+/* Where the last frame laid the host out in its window, logical px: the
+ * viewport with its origin - x is the pane's width under a left dock, the
+ * rect is the whole window with the panel off, in its own window or in any
+ * window but the main one, and zeros before the first frame. Scaled by the
+ * frame's scale into physical px it is what separates the host's quads
+ * from the dock's in kui_draw_data - all but the root's background, which
+ * under a dock also fills the whole window beneath the pane. False on a
+ * bad context, a NULL out or a short reservation. */
+bool kui_host_rect(KuiCtx *ctx, KuiLayoutRect *out);
 /* Seeds the panel's theme override, what its T and A chords cycle from:
  * base is "light", "dark" or empty for the app's own; accent a 0xRRGGBBAA
  * colour, or 0 for none. False for any other base word. */

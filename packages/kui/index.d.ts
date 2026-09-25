@@ -2351,6 +2351,21 @@ export declare class Ctx {
   /** Where the devtools panel sits (see `setDevtoolsDock`). */
   devtoolsDock(): DevtoolsDock
   /**
+   * Where the last frame laid the app out in its window, in
+   * logical px: `{x, y, w, h}`, the viewport `env().viewport`
+   * sizes with its origin — `x` is the pane's width under a
+   * left dock, and the rect is the whole window with the panel
+   * off, in its own window, or anywhere but the main window.
+   * `quads()` are in physical px, so multiply by the scale
+   * (`env().viewport.scale`) to filter them: a quad inside is
+   * the app's, one outside is the dock's — but for the root's
+   * `bg`, which is the window's too and under a dock also fills
+   * the whole window beneath the pane. All zeros before the
+   * first frame, like `env().viewport`; a window's `size()` is
+   * the reading from before it. Backlog F92.
+   */
+  hostArea(): Rect
+  /**
    * Seeds the panel's theme override, what its `T` and `A`
    * chords cycle from: `base` is `"light"`, `"dark"` or `null`
    * for the app's own; `accent` an `#rrggbb` string or `null`.
@@ -3418,6 +3433,21 @@ export declare class KuiWindow {
   setDevtoolsDock(dock: DevtoolsDock): void
   /** Where the devtools panel sits (see `setDevtoolsDock`). */
   devtoolsDock(): DevtoolsDock
+  /**
+   * Where the last frame laid the app out in its window, in
+   * logical px: `{x, y, w, h}`, the viewport `env().viewport`
+   * sizes with its origin — `x` is the pane's width under a
+   * left dock, and the rect is the whole window with the panel
+   * off, in its own window, or anywhere but the main window.
+   * `quads()` are in physical px, so multiply by the scale
+   * (`env().viewport.scale`) to filter them: a quad inside is
+   * the app's, one outside is the dock's — but for the root's
+   * `bg`, which is the window's too and under a dock also fills
+   * the whole window beneath the pane. All zeros before the
+   * first frame, like `env().viewport`; a window's `size()` is
+   * the reading from before it. Backlog F92.
+   */
+  hostArea(): Rect
   /**
    * Seeds the panel's theme override, what its `T` and `A`
    * chords cycle from: `base` is `"light"`, `"dark"` or `null`

@@ -56,6 +56,30 @@ existing input draws changes: a stroke is clipped as it was.
   rect to ignore a press on a node past the edge, and a node hidden,
   or a pan clamped, so that nothing reached the toolbar.
 
+- **Where the app is in its window, as a rect** (backlog F92, from the
+  pomodoro's alpha.16 wish 5, carried in alpha.18). Node's
+  `ctx.hostArea()` / `win.hostArea()`, Rust's `Core::host_rect()` and
+  C's `kui_host_rect` answer `{x, y, w, h}` in logical px: the rect the
+  last frame laid the app out in, which is `env().viewport` with its
+  origin — `x` is the devtools pane's width under a left dock, `h` the
+  window less the strip under a bottom one, and the whole window with
+  the panel off, in its own window, or in any window but the main one.
+  F43 made every size reading what the dock leaves; the origin reached
+  only the Rust runner, through `devtools_inset`, and `quads()` is the
+  whole display list, so a smoke test run with `KUI_DEVTOOLS=1` could
+  fit itself to the host area and not say that nothing of its own left
+  it. The quads are physical px, so the filter is the rect times the
+  scale: a quad inside it is the app's, one outside the dock's — all
+  but the root's `bg`, which is the window's background as well as the
+  app's and under a dock fills the whole window beneath the pane. The
+  frame's reading, like `env().viewport`: zeros before the first frame,
+  where a window's `size()` answers. Lua has none — a script lays out in
+  its own viewport and reads nothing back. A new C function, no break
+  of its own under ABI 19, writing the `KuiLayoutRect` `kui_layout_of` already had.
+  *What you can delete:* the dock's width, hard-coded or worked out
+  from `size()` against the window's, wherever a test found where the
+  app starts.
+
 ## 0.1.0-alpha.18 (2026-09-25)
 
 **What breaks.** No door, the ABI at 18 and the frame at v15. ⌘V

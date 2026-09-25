@@ -261,7 +261,9 @@ pointing into the other three.
   model is built, and any time after. It is the viewport the app lays out
   into: the window's inner size, less the devtools' dock while the panel is
   docked (`KUI_DEVTOOLS=1`), and the same number `env().viewport` reads once
-  a frame has run. Changes
+  a frame has run. `win.hostArea()` gives that viewport's place in the
+  window after a frame, `{x, y, w, h}` — right of the pane under a left
+  dock — which is what tells the app's quads from the dock's. Changes
   arrive as `{kind: 'resize', width, height, scale}` events — a dock coming,
   going or being dragged among them — so a model that
   tracks the size updates in `update` like anything else. Bound what the
