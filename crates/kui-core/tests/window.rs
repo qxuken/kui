@@ -222,6 +222,41 @@ fn titlebar_widget_declares_chrome_from_env() {
         vec![WindowCommand::StartDrag(WindowId::MAIN)]
     );
 }
+/// The cluster alone in a row that fits its content — the titlebar
+/// example's second use of it — is a titlebar tall, and clicks there. A
+/// grow child adds nothing to a fit parent's height, and the cluster's row
+/// and buttons were all `grow`: 0 px tall, the glyphs hanging out of the
+/// row's padding and nothing under them to click (backlog RG50).
+#[test]
+fn the_cluster_alone_in_a_fitted_row_is_a_titlebar_tall() {
+    use kui_core::{WindowEnv, widgets};
+    let mut core = Core::new();
+    core.set_inspect(true);
+    core.env.window = WindowEnv {
+        custom_chrome: true,
+        ..Default::default()
+    };
+    let h = core.metrics().titlebar_h;
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    let wrap = ui.with_keyed("wrap", NodeSpec::row().pad(6.0), |ui| {
+        widgets::window_buttons(ui)
+    });
+    ui.finish();
+    let r = core
+        .nodes()
+        .into_iter()
+        .find(|n| n.key == wrap)
+        .expect("the row is laid out")
+        .rect;
+    assert_eq!(r.h, h + 12.0, "the buttons' height and the padding");
+    // Close is the third 46 px button, past the 6 px pad.
+    click_at(&mut core, 6.0 + 46.0 * 2.0 + 23.0, 6.0 + h / 2.0);
+    assert_eq!(
+        core.take_window_commands(),
+        vec![WindowCommand::Close(WindowId::MAIN)]
+    );
+}
+
 /// The other half of the same env read, and the half the corpus cannot pin:
 /// the conformance report carries no coordinates, so `chrome-inset`'s
 /// checked-in `Expect` can say the buttons went away (a quad count) but not

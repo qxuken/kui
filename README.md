@@ -17,6 +17,17 @@ bundled Lua extension support is table-to-node conversion, not FFI gymnastics.
 | `kui-ffi` | C API (cdylib/staticlib + [include/kui.h](crates/kui-ffi/include/kui.h)): flat builder calls, opaque `KuiValue` payloads, `repr(C)` draw data, windowed runner via callbacks — and `CExtension`, the same contract inverted: a C shared library as a guest in someone else's frame |
 | `kui-node` | Node.js addon (napi-rs) + the [`packages/kui`](packages/kui) npm package: JSX views (custom jsx-runtime, no React) lowered into the IR in one call per frame, Elm-style messages as data |
 
+On Linux the build wants `pkg-config` and ALSA's headers (`libasound2-dev`
+on Debian and Ubuntu), and nothing else. A window loads the rest at run
+time, and a machine without one of these fails when the window opens:
+`libxkbcommon` for the keyboard on both display servers (winit panics
+without it), plus `libxkbcommon-x11` on X11; `libX11`, `libXcursor`,
+`libXrandr` and `libXi` on X11, or `libwayland-client` on Wayland;
+`libvulkan` with a driver, or `libEGL` for OpenGL. File dialogs go
+through the XDG desktop portal. Without one on the session bus, every
+dialog answers as if cancelled. With no system accent colour to read,
+the theme's own accent is used.
+
 ## Testing without a window
 
 The core owns no clock, no window and no device: a frame is a function of
@@ -1128,7 +1139,9 @@ with two queued unpaced. A frame drawn from idle, such as a keystroke into
 a still editor, is drawn at once. A Node window turns its loop from a
 timer and is not paced, so it pays the queued frame: `frameLatency: 1`
 trades back. `KUI_FRAME_LATENCY` and `KUI_FRAME_PACING=0` compare without a
-rebuild.
+rebuild. On Windows one frame is queued (RG46): D3D12 waits on its
+frame-latency object, and one delivered every vsync of 240 Hz at 100 to
+10,000 boxes, so a second would be a vsync of latency for nothing.
 
 Editing latency (`cargo bench -p kui-core --bench editing`, same machine and
 day — one keystroke: applying the edit, then the full frame it causes, warm

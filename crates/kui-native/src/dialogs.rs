@@ -59,17 +59,30 @@ fn show(
         d = d.set_file_name(name);
     }
     let path = |h: &rfd::FileHandle| h.path().to_string_lossy().into_owned();
+    // An Open or folder panel answers only with what is there. Windows'
+    // refuses a typed name that is not in a single-file Open, but rfd's
+    // multi-select and folder panels replace the options that ask it to,
+    // and a name typed there came back as a path (backlog RG43).
+    let file = |h: &rfd::FileHandle| h.path().is_file();
+    let folder = |h: &rfd::FileHandle| h.path().is_dir();
     // Each mode's future is made now, on this thread; only the waiting
     // moves off it.
     let answer: Pin<Box<dyn Future<Output = Vec<String>> + Send>> =
         match (dialog.mode, dialog.multiple) {
             (FileDialogMode::Open, false) => {
                 let f = d.pick_file();
-                Box::pin(async move { f.await.iter().map(path).collect() })
+                Box::pin(async move { f.await.iter().filter(|h| file(h)).map(path).collect() })
             }
             (FileDialogMode::Open, true) => {
                 let f = d.pick_files();
-                Box::pin(async move { f.await.unwrap_or_default().iter().map(path).collect() })
+                Box::pin(async move {
+                    f.await
+                        .unwrap_or_default()
+                        .iter()
+                        .filter(|h| file(h))
+                        .map(path)
+                        .collect()
+                })
             }
             (FileDialogMode::Save, _) => {
                 let f = d.save_file();
@@ -77,11 +90,18 @@ fn show(
             }
             (FileDialogMode::Folder, false) => {
                 let f = d.pick_folder();
-                Box::pin(async move { f.await.iter().map(path).collect() })
+                Box::pin(async move { f.await.iter().filter(|h| folder(h)).map(path).collect() })
             }
             (FileDialogMode::Folder, true) => {
                 let f = d.pick_folders();
-                Box::pin(async move { f.await.unwrap_or_default().iter().map(path).collect() })
+                Box::pin(async move {
+                    f.await
+                        .unwrap_or_default()
+                        .iter()
+                        .filter(|h| folder(h))
+                        .map(path)
+                        .collect()
+                })
             }
         };
     let window = window.id();

@@ -77,7 +77,16 @@ fn check(scene: &Scene) {
     assert_eq!(out.kinds[0], e.solid, "{name}: solid quads");
     assert_eq!(out.kinds[5], e.shadows, "{name}: shadow quads");
     assert_eq!(out.kinds[3], e.images, "{name}: image quads");
-    assert_eq!(out.kinds[6], e.segments, "{name}: segment quads");
+    if e.segments_follow_text {
+        assert!(
+            out.kinds[6] >= e.segments,
+            "{name}: {} segment quads, expected at least {}",
+            out.kinds[6],
+            e.segments
+        );
+    } else {
+        assert_eq!(out.kinds[6], e.segments, "{name}: segment quads");
+    }
     assert_eq!(out.kinds[7], e.fragments, "{name}: fragment quads");
     assert_eq!(out.kinds[8], e.textures, "{name}: texture quads");
     assert_eq!(
@@ -243,9 +252,11 @@ fn the_underived_rows_are_real_and_still_underived() {
             "UNDERIVED names {name:?}, which is neither a schema::CUSTOM nor a \
              schema::ELEMENTS row"
         );
+        // One negation over the pair: the form every clippy since 1.96
+        // accepts (its `nonminimal_bool` flagged the two, RG49).
         assert!(
-            !(is_custom && derived.custom.contains(name))
-                && !(is_element && derived.elements.contains(name)),
+            !((is_custom && derived.custom.contains(name))
+                || (is_element && derived.elements.contains(name))),
             "UNDERIVED still exempts {name:?}, but a scene now exercises it — \
              drop the exemption"
         );

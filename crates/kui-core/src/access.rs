@@ -1255,8 +1255,12 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
                 // carries none of them either, and a role whose numbers
                 // are ignored should not have a reading that is not.
                 node.value = ax.value_text.as_deref().map(str::to_owned);
+                // SetValue too: Windows' UI Automation has no increment,
+                // and moves a slider only by setting it (backlog RG42).
                 if !spec.disabled {
-                    actions |= AccessAction::Increment.bit() | AccessAction::Decrement.bit();
+                    actions |= AccessAction::Increment.bit()
+                        | AccessAction::Decrement.bit()
+                        | AccessAction::SetValue.bit();
                 }
             }
             _ => {}

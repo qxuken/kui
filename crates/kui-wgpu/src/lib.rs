@@ -611,7 +611,14 @@ fn preprocess_shader(src: &str, dual: bool) -> String {
 /// instead (its `pacer`, macOS 14+), where the extra drawable is slack
 /// and not a queue: 17.5–19.2 ms, every vsync delivered. A renderer
 /// driven any other way pays the frame.
-pub const DEFAULT_FRAME_LATENCY: u32 = 2;
+///
+/// One on Windows (backlog RG46), where there is no pacer to win the frame
+/// back and nothing to win it for: D3D12's flip-model swapchain waits on
+/// its frame-latency object, and with one queued frame an RTX 5080 at
+/// 240 Hz delivered 2,400 of 2,400 vsyncs in 10 s at 100, 2,500 and
+/// 10,000 boxes rebuilt every frame, the same as with two — so two was a
+/// vsync of latency, 4.2 ms there, for nothing.
+pub const DEFAULT_FRAME_LATENCY: u32 = if cfg!(target_os = "windows") { 1 } else { 2 };
 
 impl Renderer {
     /// A renderer for one window, on a device of its own.

@@ -2019,13 +2019,13 @@ pub const EVENTS: &[EventDef] = &[
     },
     EventDef {
         kind: "access",
-        payload: "`{ kind: \"access\", action, tag, text?, anchor?: { line, offset }, focus?: { line, offset } }`",
-        doc: "Assistive technology — or the keyboard — asked for what only the app can do: `increment` / `decrement` on a `slider` role that declared no `onChange` (a reader's nudge, or the arrow keys on the focused slider); `setValue` / `replaceSelectedText` (with `text`) / `setTextSelection` (with `anchor` and `focus` as line ordinals and byte offsets) on a custom editor. `tag` is the node's `onClick` payload (or its `onDrag` / `onKey` tag). Every other request resolves in the core and arrives as the events a pointer would have produced.",
+        payload: "`{ kind: \"access\", action, tag, text?, value?, anchor?: { line, offset }, focus?: { line, offset } }`",
+        doc: "Assistive technology — or the keyboard — asked for what only the app can do: `increment` / `decrement` on a `slider` role that declared no `onChange` (a reader's nudge, or the arrow keys on the focused slider), and `setValue` there with the number asked for as `value` (Windows' UI Automation sets a slider rather than nudging it); `setValue` / `replaceSelectedText` (with `text`) / `setTextSelection` (with `anchor` and `focus` as line ordinals and byte offsets) on a custom editor. `tag` is the node's `onClick` payload (or its `onDrag` / `onKey` tag). Every other request resolves in the core and arrives as the events a pointer would have produced.",
     },
     EventDef {
         kind: "change",
         payload: "`{ kind: \"change\", value, phase: \"move\" | \"end\", tag }`",
-        doc: "A `slider` that declared `onChange` (the stock `<slider>`, ADR 0034): the core turned a press into the value under the pointer, a drag into each new step, an arrow or assistive technology's increment / decrement into one `valueStep`, PageUp / PageDown into ten, Home / End into the ends — clamped to `valueMin`..`valueMax` and snapped to the step, the decimal the step names. `phase` is `move` while the pointer holds the slider and `end` when it lets go or a key moved it; a key that lands where the slider is proposes nothing. The value is proposed: declare it as `valueNow`. `tag` is the `onChange` payload.",
+        doc: "A `slider` that declared `onChange` (the stock `<slider>`, ADR 0034): the core turned a press into the value under the pointer, a drag into each new step, an arrow or assistive technology's increment / decrement into one `valueStep` and its set value into that value snapped, PageUp / PageDown into ten, Home / End into the ends — clamped to `valueMin`..`valueMax` and snapped to the step, the decimal the step names. `phase` is `move` while the pointer holds the slider and `end` when it lets go or a key moved it; a key that lands where the slider is proposes nothing. The value is proposed: declare it as `valueNow`. `tag` is the `onChange` payload.",
     },
 ];
 

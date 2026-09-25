@@ -45,6 +45,10 @@ the kawoosh window-icon report of the same day, the day it was filed, and
 F88–F92 — a hovered control's name, five docs, a float's clip, a
 headless `Ctx`'s size and the host area as a rect — from the alpha.14,
 alpha.16 and alpha.18 upgrade reports of the same day, the day they were
+filed, RG38–RG46 — the Windows halves since alpha.16, run on a
+Windows machine — from the Windows regression round of 2026-09-26, and
+RG47–RG49 from the Linux round under WSLg the same day, and
+RG50–RG52 from the custom chrome example after it, each the day it was
 filed. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
@@ -1372,8 +1376,116 @@ shown in the devtools' events tab (RG34). RG17–RG36 were **built
 2026-09-25**, the day they were filed, and RG37 — ⌘V over a selection
 scope, the one left open at the alpha.17 tag, whose fix line was half
 wrong — the same day after it; all are in the archive. The
-Windows half (RG29–RG31) is compiled and linted for
-`x86_64-pc-windows-msvc` and not run.
+Windows half (RG29–RG31) was compiled and linted for
+`x86_64-pc-windows-msvc` and not run; the Windows round below ran it.
+
+## From the Windows regression round of 2026-09-26
+
+Everything Windows since the device-loss round of 2026-09-20 had been
+written on a Mac and checked by `cargo xwin clippy` alone: RG29–RG31,
+F84's clipboard markers, F86's icon, the DWM accent, C45's controls,
+C47's frame queue and C51's dialogs. This round ran them on a Windows
+machine — Windows 11 Pro 26200, rustc 1.98.1 / MSVC, an RTX 5080 at
+3840×2160 and 239.76 Hz, the desktop at 150% — at `0853588`. First the
+mechanical round: 1377 of 1378 tests over 103 suites (RG38 the one),
+native clippy `-D warnings` and fmt clean, the C round 6/6, 32 headless
+drives, the windowed smoke round 38 examples × both bases with the Node
+windows, Node 188 of 190 (RG39; the RTLD test skips on Windows). Then
+two read-only reviews of the Windows code, and a probe for each claim
+— a scratch crate on `kui-native`, driven from PowerShell through
+user32 and UI Automation.
+
+What held, as claimed: the accent is the registry's `AccentColor`
+(`#2C79AD` both); a Rust app's icon resource puts the `.ico`'s 24 px
+frame in the title bar and its 48 px one on the taskbar at 150%, pixels
+alone 32 px in both, a missing id said once; F84 reads all five marker
+combinations right (none, monitor-only, history 0, history 1, all
+three) and a secret leaves `ExcludeClipboardContentFromMonitorProcessing`,
+`CanIncludeInClipboardHistory = 0` and `CanUploadToCloudClipboard = 0`
+and reads back concealed and transient; RG31's hand check — a fault in
+a view is a window callback, and the process ends `0xC000041D` — is
+answered: the filter sees the access violation itself, before it
+escapes, and names it with its module (so the "escaped as" suffix is
+not reached on this path), a stack overflow after std's own line, a
+thread's fault too; `KUI_LOSE_DEVICE` removes the device and it is
+reopened, and one that cannot be (`WGPU_BACKEND=metal` set under the
+running app) is tried once a second and recovers when it can; C51's
+dialog is owned by the window that asked, which is disabled under it
+while the loop draws on at 240 fps, and Cancel, a two-file pick, the
+filter, Save's name and folder all answer as documented; C45's
+radios, switch and checkboxes are the UIA controls they should be, and
+select and toggle through UIA; a still window idles at 0%.
+
+What did not, nine entries, RG38–RG46: two tests that fail only on
+Windows (RG38, RG39); two RG29 missed — the Windows animation timer
+(RG40) — and one it never covered, a minimized window (RG45); F86's
+resource read from the wrong module under Node and C (RG41); a slider
+UIA cannot move (RG42); C51 answering with a file that is not there
+(RG43) and a dotted filter listing nothing (RG44); and C47's second
+queued frame, which on Windows buys no vsync and costs one (RG46).
+All nine were **built 2026-09-26**, the day they were filed, each
+re-probed on the machine after; they are in the archive. Not covered:
+RG27/RG28 (no second keyboard layout was installed), W19 (open work,
+not a claim), and a C host with an icon resource of its own — RG41's
+path is the same module lookup as Node's, which was run.
+
+## From the Linux round under WSLg (2026-09-26)
+
+The same tree with the Windows round's fixes applied, on the machine's
+WSL 2 (Ubuntu 24.04, rustc 1.96.1, WSLg's Weston and XWayland, Mesa's
+llvmpipe — Ubuntu ships no D3D12 Vulkan driver, so every window was
+drawn on the CPU): the Linux windowed code, which CI only ever builds
+and tests headless, run for the first time. The mechanical round: 1378
+tests over 102 suites, fmt, the C round 5/5 (the second plugin shape is
+Windows'), 32 headless drives and Node 190 of 190, all green; clippy
+green once RG49 was fixed. The windowed smoke round passed on X11, 38
+examples × both bases with the Node windows.
+
+What held, as claimed: F86 sets `_NET_WM_ICON` on X11 (32×32, from the
+pixels), and a resource id alone is nothing there, said nowhere; F84's
+secret offers `x-kde-passwordManagerHint` holding `secret` beside the
+text, and a paste arrives unmarked, as the table in `mod clipboard`
+says; C51 with no portal on the session bus answers `paths: []` at once
+and the loop draws on; the accent is `None` and the theme's own is used.
+
+Three entries, RG47–RG49, all **built 2026-09-26**, the day they were
+filed, and in the archive: the main window's failure to open was an
+`expect`, which aborted a Node process (RG47); nothing said what a
+Linux window loads at run time, and a missing `libxkbcommon-x11` is
+winit's panic (RG48); and clippy 1.96 refused a test the newer clippy
+accepts (RG49). Not covered: frame pacing and latency, since WSLg ships
+its frames to Windows over RDP and its vsync is not a display's (Linux
+keeps C47's two queued frames, unmeasured); W19, since a file dragged
+from Windows does not reach a WSLg window; and a GPU driver.
+
+### Theirs, not ours
+
+- **WSLg's Weston segfaults under a window drawing client-side
+  decorations.** On Wayland the smoke round failed 15 of its 76 runs
+  with a broken pipe, and `node:relaunch` aborted (RG47). The client
+  was never told why: WSLg's `stderr.log` has `weston … terminated
+  with signal 11`, and Weston restarts, taking XWayland and every
+  client with it — 26 times in the round. The counter example crashed
+  it on 4 of 4 long runs at about 2.2 s. A plain kui window animating
+  for 4 s never did, 8 of 8. The client's last requests before each
+  crash were winit's decoration subsurfaces moving after a configure
+  (WSLg offers no server-side decorations, so winit draws the title bar
+  as five subsurfaces). A compositor that crashes on valid requests is
+  the compositor's defect; the X11 half of the same round was clean.
+
+## From the custom chrome example (2026-09-26)
+
+Two examples looked wrong to the user during the Windows round's windowed
+smoke runs, each screenshotted on the machine afterwards. The titlebar
+example's standalone `window_buttons` was a 12 px pill with its glyphs
+hanging out of it (RG50: every grow node of the cluster was 0 px tall in
+a fitted row, the same at alpha.16). Every custom-chrome window on
+Windows was square and flat beside its neighbours (RG51). The Node
+relaunch example's second window had its strip mid-window beside the
+dock (RG52). All three were **built 2026-09-26**, the day they were
+filed, and are in the archive. RG51 was checked maximized and by
+`WM_NCHITTEST` over the strip, a tab, the three buttons, two edges, a
+corner and the content.
 
 ## From the alpha.14, alpha.16 and alpha.18 upgrade reports (2026-09-25)
 
@@ -2074,6 +2186,12 @@ compiled once in kui, a release rebuild of the counter 1.59 → 0.85 s). C45, th
 same day. Nothing of the
 alpha.14, alpha.16 and alpha.18 upgrade
 reports is open (F88–F92 **built 2026-09-25**, the day they were filed).
+Nothing of the Windows regression round of 2026-09-26 is open
+(RG38–RG46 **built 2026-09-26**, the day they were filed).
+Nothing of the Linux round under WSLg is open (RG47–RG49 **built
+2026-09-26**, the day they were filed).
+Nothing of the custom chrome example is open (RG50–RG52 **built
+2026-09-26**).
 Nothing of the regression pass of 2026-09-25 is open
 (RG17–RG36 **built 2026-09-25** before the alpha.17 tag, RG37 the same
 day after it). Nothing of the regression pass of 2026-09-19 is open (RG1, the Node and C hosts hearing ⌘Q, was **built 2026-09-19**; RG2 and RG12, the devtools' menus select and its chord, RG3, RG6, RG7, RG8 and RG11, the table's layout and the round's float-floor regression, RG4, the left dock's deferral, RG5, the freeze loop's sign rule and the round's other regression, RG9 and RG10, the select's disabled row through the door and its unchecked options and `current`, RG13, the reader's click behind a modal, RG15, F69 checked in a window and found inert, RG14, the ten nits and the two devtools defects taken with them, and RG16, the door removed on RG15's finding, **built 2026-09-20**); C41 — `frame_1k_curves` 10% slower since the
@@ -2902,3 +3020,27 @@ move.
 - `~` **F90** — [A declared float cannot take its parent's clip](backlog/closed-2026-09.md#-f90--a-declared-float-cannot-take-its-parents-clip--done-2026-09-25) — done (2026-09-25) — `clip` on the float (`FloatConfig::clipped`, `float_clip` at ABI 19, `{ clip: true }` in JSX and Lua), read with the parent anchor; F78's stroke rule is the bit set by the core
 - `~` **F91** — [A headless `Ctx` does not know its size before its first frame](backlog/closed-2026-09.md#-f91--a-headless-ctx-does-not-know-its-size-before-its-first-frame--done-2026-09-25) — done (2026-09-25) — `Ctx.size()` in the JS package: `createApp`'s `width`/`height`/`scale` before the first frame, `env().viewport` after
 - `.` **F92** — [Node cannot tell the app's quads from the dock's](backlog/closed-2026-09.md#-f92--node-cannot-tell-the-apps-quads-from-the-docks--done-2026-09-25) — done (2026-09-25) — `Core::host_rect`, the frame's viewport with its origin; Node's `hostArea()`, C's `kui_host_rect`; the root's `bg` is the one app quad it does not hold
+
+**From the Windows regression round of 2026-09-26** — RG38–RG46, filed and built the same day
+
+- `.` **RG38** — [The `underlines` scene's segment count follows the installed fonts: the corpus fails on Windows](backlog/closed-2026-09.md#-rg38--the-underlines-scenes-segment-count-follows-the-installed-fonts-the-corpus-fails-on-windows--done-2026-09-26) — done (2026-09-26) — `Expect::segments_follow_text` makes `segments` a lower bound where underline pieces follow the face; `underlines` sets it at 3
+- `.` **RG39** — [The Node F55 test finds no message type in a CRLF checkout](backlog/closed-2026-09.md#-rg39--the-node-f55-test-finds-no-message-type-in-a-crlf-checkout--done-2026-09-26) — done (2026-09-26) — The test folds `\r\n` to `\n` before matching `index.d.ts`
+- `.` **RG40** — [The Windows animation timer builds 64 views a second while a window waits for a device](backlog/closed-2026-09.md#-rg40--the-windows-animation-timer-builds-64-views-a-second-while-a-window-waits-for-a-device--done-2026-09-26) — done (2026-09-26) — The Windows animation timer is armed on `animating() && !awaits_device`
+- `!` **RG41** — [An icon resource is looked up in the module kui is linked into: Node and C windows never get the executable's icon](backlog/closed-2026-09.md#-rg41--an-icon-resource-is-looked-up-in-the-module-kui-is-linked-into-node-and-c-windows-never-get-the-executables-icon--done-2026-09-26) — done (2026-09-26) — The resource is loaded from the executable (`GetModuleHandleW(NULL)`) and sent as `WM_SETICON` to each window
+- `!` **RG42** — [A slider reads as writable to UI Automation and drops every value set](backlog/closed-2026-09.md#-rg42--a-slider-reads-as-writable-to-ui-automation-and-drops-every-value-set--done-2026-09-26) — done (2026-09-26) — A slider supports `SetValue`: proposed as `change`, snapped and clamped, or `{kind: "access", action: "setValue", value}` without `onChange`
+- `!` **RG43** — [A multi-select Open answers with a typed name that does not exist](backlog/closed-2026-09.md#-rg43--a-multi-select-open-answers-with-a-typed-name-that-does-not-exist--done-2026-09-26) — done (2026-09-26) — An Open or folder answer keeps only paths that exist
+- `.` **RG44** — [A dotted extension in Rust's `FileDialog::filter` lists nothing on Windows](backlog/closed-2026-09.md#-rg44--a-dotted-extension-in-rusts-filedialogfilter-lists-nothing-on-windows--done-2026-09-26) — done (2026-09-26) — The builder drops a leading dot, as the other doors do
+- `.` **RG45** — [A minimized animating window draws every frame at the display's rate](backlog/closed-2026-09.md#-rg45--a-minimized-animating-window-draws-every-frame-at-the-displays-rate--done-2026-09-26) — done (2026-09-26) — `Pane::minimized` keeps `about_to_wait` and the timer from asking; the restore's `Resized` resumes
+- `.` **RG46** — [Two queued frames on Windows buy no vsync and cost one](backlog/closed-2026-09.md#-rg46--two-queued-frames-on-windows-buy-no-vsync-and-cost-one--done-2026-09-26) — done (2026-09-26) — `DEFAULT_FRAME_LATENCY` is 1 on Windows, 2 elsewhere
+
+**From the Linux round under WSLg (2026-09-26)** — RG47–RG49, filed and built the same day
+
+- `!` **RG47** — [The main window's failure to open is a panic, and aborts a Node process](backlog/closed-2026-09.md#-rg47--the-main-windows-failure-to-open-is-a-panic-and-aborts-a-node-process--done-2026-09-26) — done (2026-09-26) — `resumed` keeps the reason in `startup_error` and ends the runner; `run` and `open` return it, and a Node constructor throws
+- `.` **RG48** — [Nothing says what a Linux window needs, and a missing `libxkbcommon-x11` is a panic](backlog/closed-2026-09.md#-rg48--nothing-says-what-a-linux-window-needs-and-a-missing-libxkbcommon-x11-is-a-panic--done-2026-09-26) — done (2026-09-26) — README says what a Linux build and window need
+- `.` **RG49** — [Clippy 1.96 refuses a conformance test's assertion](backlog/closed-2026-09.md#-rg49--clippy-196-refuses-a-conformance-tests-assertion--done-2026-09-26) — done (2026-09-26) — One negation over the pair, accepted by 1.96 and 1.98
+
+**From the custom chrome example (2026-09-26)** — RG50–RG52, filed and built the same day
+
+- `!` **RG50** — [`window_buttons` alone in a fitted row is 0 px tall, its glyphs hanging out of it](backlog/closed-2026-09.md#-rg50--window_buttons-alone-in-a-fitted-row-is-0-px-tall-its-glyphs-hanging-out-of-it--done-2026-09-26) — done (2026-09-26) — The cluster's row gains `min_height(titlebar_height)`: the strip's height in the strip, a titlebar tall alone
+- `.` **RG51** — [A Windows window with its own titlebar is square and flat](backlog/closed-2026-09.md#-rg51--a-windows-window-with-its-own-titlebar-is-square-and-flat--done-2026-09-26) — done (2026-09-26) — `Chrome::Custom` on Windows keeps the undecorated shadow and rounded corners
+- `.` **RG52** — [The Node relaunch example's custom-chrome window has its titlebar mid-window](backlog/closed-2026-09.md#-rg52--the-node-relaunch-examples-custom-chrome-window-has-its-titlebar-mid-window--done-2026-09-26) — done (2026-09-26) — The strip is the root's first row, outside the padding, and the custom launch docks the devtools at the bottom

@@ -887,6 +887,8 @@ impl Core {
                         UiEvent::on(self.tree.origins[i], key, payload)
                             .tagged(self.access_tag(i).as_ref()),
                     );
+                } else if let Some(i) = idx {
+                    self.set_slider(i, req.value.as_deref().unwrap_or_default(), out);
                 }
             }
             AccessAction::Increment | AccessAction::Decrement => {

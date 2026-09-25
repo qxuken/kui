@@ -450,12 +450,15 @@ export interface ChangeMsg<T = AppMsg> {
  *  core and arrive as the messages a pointer would have produced. */
 export interface AccessMsg<T = AppMsg> {
   kind: 'access';
-  /** `increment` / `decrement` on a `slider` role; `setValue`,
-   *  `replaceSelectedText` (with `text`) and `setTextSelection` (with
-   *  `anchor` / `focus`) on a custom editor — an `onKey` sink declared
-   *  `role="multilineTextInput"` that draws its own `role="line"` rows. */
+  /** `increment` / `decrement` on a `slider` role, and `setValue` there
+   *  with the number asked for in `value` (Windows' UI Automation sets a
+   *  slider rather than nudging it); `setValue`, `replaceSelectedText`
+   *  (with `text`) and `setTextSelection` (with `anchor` / `focus`) on a
+   *  custom editor — an `onKey` sink declared `role="multilineTextInput"`
+   *  that draws its own `role="line"` rows. */
   action: 'increment' | 'decrement' | 'setValue' | 'replaceSelectedText' | 'setTextSelection';
   text?: string;
+  value?: number;
   /** Line ordinals among the drawn `role="line"` rows and byte offsets
    *  into their text. */
   anchor?: { line: number; offset: number };
@@ -1638,7 +1641,8 @@ export interface WindowOptions {
    *  overrides, for an A/B by hand. */
   textAa?: 'auto' | 'gray' | 'subpixel';
   /** Frames queued ahead of the one on screen (backlog C47). 2 by default:
-   *  every vsync gets a frame at light load. A Node window turns its loop
+   *  every vsync gets a frame at light load. 1 on Windows, where one
+   *  already gets every vsync (backlog RG46). A Node window turns its loop
    *  from a timer, where the display cannot start its frames (the Rust and
    *  C runners' pacing), so a frame drawn while frames run back to back (an
    *  animation, a drag, a scroll) reaches the screen a vsync later than
