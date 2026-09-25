@@ -88,6 +88,28 @@ existing input draws changes: a stroke is clipped as it was.
   from `size()` against the window's, wherever a test found where the
   app starts.
 
+- **A headless `Ctx` knows its size before its first frame** (backlog
+  F91, from the mind map's alpha.18 report). `ctx.size()` answers the
+  `WindowSize` `win.size()` does, so the `S` that `init`, `view` and
+  `update` are handed reads the same under `createApp` as under
+  `runWindowed`. Before the first frame it is the `width` / `height` /
+  `scale` `createApp` will frame at, 800×600 at 1 unless its options
+  say otherwise; after a frame it is `env().viewport`, that frame's
+  size less a docked devtools pane. `init`'s doc had promised the
+  function form "the real `size()`" since alpha.14, and under
+  `createApp` there was none: `Ctx` had no `size()`, the options'
+  `width` / `height` reached only the frame call, and
+  `env().viewport` is 0×0 until a frame establishes it, with no
+  `resize` after the first. A `Ctx` the app framed itself before
+  handing it to `createApp` answers that frame's size until the loop's
+  first frame replaces it; a bare one nothing framed answers 0×0, as
+  `env().viewport` does. `init`'s and `view`'s docs now say which
+  answer a headless loop gets.
+  *What you can delete:* a fallback size a headless test's `init` fitted
+  its first model to because `size()` was not there, and the passing of
+  `createApp`'s `width` / `height` into the model by hand to reach
+  `view`.
+
 ### Fixed
 
 - **A hovered control's accessible name read its tooltip** (backlog

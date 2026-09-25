@@ -5879,6 +5879,63 @@ test('hostArea() places the app beside the dock and filters its quads (F92)', ()
   }
 });
 
+// A headless `Ctx` knows its size before its first frame (backlog F91).
+// `init`'s doc promised the function form "the real `size()`", and under
+// `createApp` there was none: `Ctx` had no `size()`, `createApp`'s
+// `width`/`height` lived only inside `transport()`, and `env().viewport` is
+// 0×0 until a frame establishes it, with no `resize` after. The mind map's
+// suite fitted its map to a 1000×700 fallback and drew it in an 1100×760
+// frame for four releases; the view and the checks read the same wrong
+// numbers, so nothing caught it.
+test('a headless Ctx answers size() before its first frame and after (F91)', () => {
+  const seen = { init: null, view: [] };
+  const app = createApp(
+    {
+      init: (s) => (seen.init = s.size()),
+      update: (m) => m,
+      view: (m, _w, s) => {
+        seen.view.push(s.size());
+        return box({ width: 'grow', height: 'grow' });
+      },
+    },
+    { width: 1100, height: 760, warnings: false },
+  );
+  assert.deepEqual(seen.init, { width: 1100, height: 760, scale: 1 }, 'init reads the size createApp will frame at');
+  assert.deepEqual(app.model, seen.init);
+  app.render();
+  assert.deepEqual(seen.view.at(-1), { width: 1100, height: 760, scale: 1 }, 'and view the frame it is building');
+  assert.deepEqual(app.surface.size(), app.surface.env().viewport, 'after a frame, the reading env().viewport gives');
+  // A later frame at another size is what size() answers from then on.
+  app.surface.frame(640, 480, 2, box({}, []));
+  assert.deepEqual(app.surface.size(), { width: 640, height: 480, scale: 2 });
+  // Without options, the size createApp's frames default to.
+  const plain = createApp({ init: (s) => s.size(), update: (m) => m, view: () => box({}) });
+  assert.deepEqual(plain.model, { width: 800, height: 600, scale: 1 });
+  // The answer is a copy: a model that keeps it and changes it does not
+  // change what the surface answers.
+  plain.model.width = 1;
+  assert.equal(plain.surface.size().width, 800);
+
+  // A bare Ctx nobody framed answers what env().viewport does.
+  const bare = new Ctx();
+  assert.deepEqual(bare.size(), { width: 0, height: 0, scale: 1 });
+  // One the app framed before handing it over keeps that frame's answer
+  // until the loop's first frame replaces it.
+  bare.frame(320, 200, 1, box({}, []));
+  const handed = createApp({ init: (s) => s.size(), update: (m) => m, view: () => box({}) }, { surface: bare, width: 900, height: 700 });
+  assert.deepEqual(handed.model, { width: 320, height: 200, scale: 1 });
+  handed.render();
+  assert.deepEqual(bare.size(), { width: 900, height: 700, scale: 1 });
+
+  // Docked devtools come off after a frame, as KuiWindow.size()'s do (F43).
+  const docked = new Ctx();
+  docked.setDevtools(true);
+  docked.setDevtoolsDock('right');
+  docked.frame(1040, 720, 1, box({}, []));
+  assert.ok(docked.size().width < 1040, `the app's width, not the frame's: ${docked.size().width}`);
+  assert.equal(docked.size().height, 720);
+});
+
 // The chord that moves the keyboard into the devtools dock is the app's
 // to respell: `Ctrl+Shift+I` unless `setDevtoolsKey` says otherwise, in
 // any spelling a menu item's `accel` takes. With `F12` set, `F12` enters

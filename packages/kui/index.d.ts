@@ -4067,15 +4067,30 @@ export declare class KuiWindow {
 
 // -- end generated --
 
-// The two calls the JS package adds to those classes: a frame crosses the
+// The calls the JS package adds to those classes: a frame crosses the
 // boundary already encoded, and `encoder.js` is the only thing that encodes
 // one, so `frame` / `setView` live on the prototypes (see index.js) rather
-// than in the addon. Declaration merging puts them on the classes above.
+// than in the addon — and so does a headless `Ctx`'s `size()`, which is the
+// size those frames are given and, before the first, the one only
+// `createApp` knows. Declaration merging puts them on the classes above.
 
 export interface Ctx {
   /** Lowers a JSX tree into one frame: encodes it to the flat binary IR
    *  stream, then one zero-copy boundary crossing lowers it. */
   frame(width: number, height: number, scale: number, tree: KuiNode): void;
+  /** The viewport the app lays out into: `{width, height, scale}`, the
+   *  `WindowSize` `KuiWindow.size()` answers, so `S` reads the same under
+   *  either driver. A headless context has no window; its size is what
+   *  its caller frames at. After a frame this is `env().viewport`, the
+   *  last `frame()`'s size less a docked devtools pane. Before the first
+   *  it is the `width` / `height` / `scale` `createApp` will frame at
+   *  (800×600 at 1 unless its options say otherwise), with nothing taken
+   *  off for a dock, or 0×0 at scale 1 for a bare `Ctx` nothing has
+   *  framed. A `frame()` at another size raises no `resize`: the caller
+   *  chose it. Backlog F91: `Ctx` had no `size()`, and `env().viewport` is
+   *  0×0 until the first frame, so a headless `init` had nothing to build
+   *  from. */
+  size(): WindowSize;
   /** Declare the app's named colours and lengths (ADR 0027): `{ colors:
    *  { peach: '#ffcc99', ink: { light, dark } }, lengths: { sideW: 132 } }`
    *  — the object `defineTokens` typed. Replaces the table whole, so an
@@ -4145,8 +4160,12 @@ export interface LoopConfig<M, A, S, E = never> {
    *  handed the surface — after `setup` has run, so the fonts and images it
    *  registered are there to measure against — which is how a first model
    *  gets the real `size()` and its own `measureText` numbers instead of
-   *  constants it corrects on the first `resize`. It may return
-   *  `withEffects` too, for the effect an app starts with. */
+   *  constants: the first frame establishes the viewport rather than
+   *  reporting it, so no `resize` follows it to correct them. Under
+   *  `runWindowed` `size()` is the window's viewport; under `createApp` it
+   *  is the `width` / `height` / `scale` every frame will be drawn at (see
+   *  `Ctx.size`). It may return `withEffects` too, for the effect an app
+   *  starts with. */
   init: M | ((surface: S) => M | WithEffects<M, E>);
   /** Returns the next model; returning undefined keeps the current one.
    *  `withEffects(model, ...effects)` returns it with the effects the loop
@@ -4159,8 +4178,9 @@ export interface LoopConfig<M, A, S, E = never> {
    *  `windows` declared — so a single-window app ignores the argument. The
    *  surface comes third, for the measurement a tree needs while it is being
    *  built: `surface.measureText(...)` to size a column to its widest label,
-   *  `size()` to pick the tier that fits. Measure, do not mutate — a view
-   *  runs every frame. */
+   *  `size()` to pick the tier that fits — the window's viewport, or
+   *  headless the size this frame is drawn at. Measure, do not mutate — a
+   *  view runs every frame. */
   view: (model: M, window: string, surface: S) => KuiNode;
   /** Which windows exist besides `main`, by name (see `WindowDecl`). A
    *  window opens on the first frame that lists it and closes on the first

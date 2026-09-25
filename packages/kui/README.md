@@ -263,7 +263,10 @@ pointing into the other three.
   docked (`KUI_DEVTOOLS=1`), and the same number `env().viewport` reads once
   a frame has run. `win.hostArea()` gives that viewport's place in the
   window after a frame, `{x, y, w, h}` — right of the pane under a left
-  dock — which is what tells the app's quads from the dock's. Changes
+  dock — which is what tells the app's quads from the dock's.
+  Headless, `ctx.size()` answers the same shape: the size
+  `createApp` frames at (its `width` / `height` / `scale`) before the first
+  frame, and the last frame's after. Changes
   arrive as `{kind: 'resize', width, height, scale}` events — a dock coming,
   going or being dragged among them — so a model that
   tracks the size updates in `update` like anything else. Bound what the

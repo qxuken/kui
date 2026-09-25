@@ -30,6 +30,9 @@ const OWED = Symbol('kui.owed');
 const STEP = Symbol('kui.step');
 // The windowed driver's backoff, as a value — see `pacer`.
 const PACE = Symbol('kui.pace');
+// A headless `Ctx`'s `size()` before its first frame: the size `createApp`
+// will frame at, `null` once a frame has run — see `Ctx.prototype.size`.
+const SIZE = Symbol('kui.size');
 
 /**
  * What `update` returns when it has effects to hand the loop besides the
@@ -169,7 +172,21 @@ Ctx.prototype.frame = function frame(width, height, scale, tree) {
   const shownTab = this.devtoolsShownTab();
   const { stream, strings, unknown, unknownTokens } = encoder.encode(tree, this[TOKENS], { shownTab });
   this.frameBinary(width, height, scale, stream, strings);
+  this[SIZE] = null;
   reportUnknown(this, unknown, unknownTokens);
+};
+
+// The viewport the app lays out into, as `KuiWindow.size()` answers it, so
+// `init`, `view` and `update` read one `S` under either driver (backlog
+// F91). A headless context has no window to ask; its size is whatever its
+// caller frames at. Once a frame has run that is `env().viewport`, the
+// frame's less a docked devtools pane, as F43 made both readings. Before
+// the first it is the size `createApp` will frame at, which only the loop
+// knows — `env().viewport` is 0×0 until a frame establishes it, and no
+// `resize` follows the first frame to correct a model built from that.
+Ctx.prototype.size = function size() {
+  const planned = this[SIZE];
+  return planned ? { ...planned } : this.env().viewport;
 };
 
 // `window` names which window the tree is for: 'main' when left out, else
@@ -243,6 +260,11 @@ function transport(surface, opts) {
   const width = opts.width ?? 800;
   const height = opts.height ?? 600;
   const scale = opts.scale ?? 1;
+  // What `size()` answers before the first frame: the size every frame of
+  // this loop is drawn at. A `Ctx` the app framed itself before handing it
+  // over already has an answer, the frame it drew, until the loop's first
+  // frame replaces it.
+  if (surface[SIZE] === undefined) surface[SIZE] = { width, height, scale };
   return {
     show: (tree) => surface.frame(width, height, scale, tree),
     open: () => ['main'],
@@ -803,8 +825,10 @@ function createLoop({ init, update, view, tick, windows, teardown }, opts, surfa
 
   // Resources before the model: `setup` registers fonts and images so `init`
   // can name their ids. `init` is handed the surface too, so a first model
-  // can be built against the real window size and the fonts just registered
-  // rather than against constants corrected on the first `resize`.
+  // can be built against the real size — the window's, or headless the one
+  // `transport` frames at — and the fonts just registered rather than
+  // against constants corrected on a `resize` that, for the first frame,
+  // never comes.
   opts.setup?.(surface, app);
   // `init` may return `withEffects` too: the effect an app starts with — a
   // file to open, a request to send — has nowhere else to go.
