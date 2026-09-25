@@ -1601,14 +1601,48 @@ makes (the main window, a declared window, a reopened device).
 `Launcher::frame_latency`, `WindowOptions.frameLatency` and
 `KuiRunConfig.frame_latency` (ABI 19, appended) choose per app, and
 `KUI_FRAME_LATENCY` overrides without a rebuild. The default changed
-from 1 to 2, the user's decision between the two, knowing the cost:
-a frame of latency (8.3 ms at 120 Hz) while frames run back to back.
-A frame drawn from idle starts from an empty queue either way, so a
-keystroke into a still editor is as fast as before. What would win
-that frame back is display-link pacing, the way gpui runs: the next
-frame starts at a vsync rather than as soon as a drawable frees, so
-the third drawable is slack and not a queue. It is not filed; it
-waits for a drag that feels late.
+from 1 to 2, the user's decision between the two.
+
+**The frame back: display-link pacing, built the same day** (the user:
+"lets get that frame back"). The two queued frames cost a frame of latency
+while frames ran back to back: the runner asked for the next frame as soon
+as the last was handed over, so it was built at once and waited out a
+vsync in the queue. It was measured from outside, not assumed. A probe
+drew `mach_absolute_time()` into 32 black/white cells, and a
+ScreenCaptureKit capture of its window decoded each frame against the time
+it was on screen. Three consecutive 4 s captures per launch, two launches,
+median sampling-to-photon in ms:
+
+| config | 100 boxes | 2,500 | 40,000 |
+| --- | --- | --- | --- |
+| latency 1, unpaced (the old default) | 19.2–19.5 | 19.2–19.4 | 19.3–19.4 |
+| latency 2, unpaced (C47 as first built) | 27.5–27.9 | 27.5–27.7 | 27.7 |
+| latency 2, paced | 17.7–18.6 | 17.8–18.7 | 17.5–19.2 |
+
+`kui::pacer` puts a `CADisplayLink` on each window's view
+(`-[NSView displayLinkWithTarget:selector:]`, macOS 14+, in common
+modes). A redraw asked for within 20 ms of the last present, at the same
+surface size, is held, and the link's next tick asks for it: the frame is
+built from everything that arrived meanwhile, into a free drawable, and
+presented for the next vsync. A redraw from idle, and one at a new size (a
+live resize wants its frame in AppKit's redraw), draws at once. The link
+pauses three ticks after the last one wanted, and an idle window measured
+at zero CPU time over 8 s, as before. A frame held 50 ms is drawn anyway,
+for a display that stopped firing.
+
+With pacing, every run delivered 1200–1201 of ~1200 vsyncs, the
+drawable wait fell from ~7.9 ms to ~0, and the main thread's own late
+wakes went from 3–7% to 0%. Two of six launches read ~26 ms for their
+first seconds before settling; three captures of one launch showed it
+settling, which is also why single early captures had read anything from
+11 to 25 ms. The tick lands ~3.7 ms after its vsync, and winit hands its
+redraw over in the same turn of the run loop.
+
+A pumped loop is not paced (`Pacer::new`'s `run_loop`). The link fires only
+while the run loop runs, which in Node's `PumpRunner` is only inside a
+pump, so an animating Node window drew 50 frames a second paced against 95
+unpaced. Node keeps the queued frame's cost, and `frameLatency: 1` trades
+back. `KUI_FRAME_PACING=0` turns pacing off anywhere.
 
 
 **Found** by the second bake-off. At 2,500 and 10,000 boxes, and with

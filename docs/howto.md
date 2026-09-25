@@ -1141,17 +1141,22 @@ const mine = decodeQuads(win.quads()).filter((q) =>
 
 ### How do I trade smoothness for latency, or the other way?
 
-The surface keeps two frames queued ahead of the one on screen by default
-(backlog C47), so every vsync gets a frame even when little is drawn. It
-costs a frame of latency while frames run back to back: an animation, a
-drag, a scroll. For a view where a drag has to track the finger as
-closely as possible, such as a drawing canvas or a splitter, ask for one:
-`kui::app("t").frame_latency(1)`, `frameLatency: 1` in `WindowOptions`,
-or `frame_latency = 1` in `KuiRunConfig`. The window then loses the odd
-vsync at light load (1–6% of them on an M3 Pro), and a keystroke into an
-idle editor is equally fast either way. `KUI_FRAME_LATENCY=1` or `2` in
-the environment overrides the app's choice, so you can compare the two
-on the same build.
+You mostly do not have to (backlog C47). A window keeps two frames queued
+ahead of the one on screen, so every vsync gets a frame even when little
+is drawn. On macOS 14+ the Rust and C runners start frames that run back to
+back (an animation, a drag, a scroll) at the display's vsync, so the queued
+slot is slack and not a delay: 17.5–19.2 ms from a frame's state to the
+screen on an M3 Pro, as quick as the old single-frame queue. A frame drawn
+from idle, such as a keystroke, is drawn at once either way.
+
+A Node window turns its event loop from a timer, where the display cannot
+start the frames, so there the queued frame costs a vsync (27.6 ms against
+19.3). For a view where a drag must track the pointer as closely as
+possible, such as a drawing canvas or a splitter, ask for one:
+`frameLatency: 1` in `WindowOptions`, `kui::app("t").frame_latency(1)`, or
+`frame_latency = 1` in `KuiRunConfig`. It loses the odd vsync at light load
+(1–6% of them). `KUI_FRAME_LATENCY=1` or `2` and `KUI_FRAME_PACING=0` in the
+environment compare the options on the same build.
 
 ### How do I see what a window draws for a user who asked for less motion?
 

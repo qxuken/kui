@@ -1609,10 +1609,13 @@ export interface WindowOptions {
    *  overrides, for an A/B by hand. */
   textAa?: 'auto' | 'gray' | 'subpixel';
   /** Frames queued ahead of the one on screen (backlog C47). 2 by default:
-   *  every vsync gets a frame at light load. 1 is the lowest latency while
-   *  frames run back to back (an animation, a drag, a scroll), at the cost
-   *  of an occasional missed vsync when little is drawn. `KUI_FRAME_LATENCY`
-   *  in the environment still overrides. */
+   *  every vsync gets a frame at light load. A Node window turns its loop
+   *  from a timer, where the display cannot start its frames (the Rust and
+   *  C runners' pacing), so a frame drawn while frames run back to back (an
+   *  animation, a drag, a scroll) reaches the screen a vsync later than
+   *  with 1 — the lowest latency during those, at the cost of an occasional
+   *  missed vsync when little is drawn. `KUI_FRAME_LATENCY` in the
+   *  environment still overrides. */
   frameLatency?: number;
   /** Pins part of `env.system` for the life of the window, over whatever
    *  the OS says: `{ motion: 'reduced' }` opens the window as a user who

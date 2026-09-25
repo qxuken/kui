@@ -287,6 +287,8 @@ pub(crate) struct Pane {
     /// the wait to a single frame: never two in a row, so no stream of
     /// input and no platform modal loop can stop this window painting.
     pub(crate) deferred_frame: bool,
+    /// Whether a redraw draws now or waits for the display (`mod pacer`).
+    pub(crate) pacer: crate::pacer::Pacer,
     /// The platform accessibility bridge.
     pub(crate) access: Option<access_bridge::Bridge>,
     /// Windows: the timer that keeps an animation running while the modal
@@ -300,6 +302,13 @@ pub(crate) struct Pane {
 }
 
 impl Pane {
+    /// Whether a redraw draws now or waits for the display (`mod pacer`).
+    pub(crate) fn admit_frame(&mut self) -> bool {
+        let px = self.window.inner_size();
+        self.pacer
+            .admit(std::time::Instant::now(), (px.width, px.height))
+    }
+
     /// Inner size in logical px plus the scale factor.
     pub(crate) fn size(&self) -> (Size, f32) {
         let scale = self.window.scale_factor() as f32;

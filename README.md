@@ -1112,11 +1112,16 @@ buffering, which gpui also uses, and every vsync gets a frame even when
 little is drawn. With one queued frame, a frame whose thread woke a
 little late at light load found no free drawable and missed its vsync:
 112.5–118.6 fps at 100 and 2,500 boxes on an M3 Pro, against 119.7–120.0
-with two. The price is a frame of latency (8.3 ms at 120 Hz) while frames
-run back to back: an animation, a drag, a scroll. A frame drawn from idle,
-such as a keystroke into a still editor, starts from an empty queue either
-way. `frame_latency(1)` (`frameLatency: 1`, `KuiRunConfig.frame_latency`,
-or `KUI_FRAME_LATENCY=1` without a rebuild) trades back.
+with two. Frames that run back to back (an animation, a drag, a scroll)
+start at the display's vsync, from a `CADisplayLink` on the window's view
+(macOS 14+), so the extra drawable is slack and not a queue. Measured from
+the moment a frame sampled its state to the moment it was on screen, it
+takes 17.5–19.2 ms paced, 19.2–19.5 with one queued frame, and 27.5–27.9
+with two queued unpaced. A frame drawn from idle, such as a keystroke into
+a still editor, is drawn at once. A Node window turns its loop from a
+timer and is not paced, so it pays the queued frame: `frameLatency: 1`
+trades back. `KUI_FRAME_LATENCY` and `KUI_FRAME_PACING=0` compare without a
+rebuild.
 
 Editing latency (`cargo bench -p kui-core --bench editing`, same machine and
 day — one keystroke: applying the edit, then the full frame it causes, warm

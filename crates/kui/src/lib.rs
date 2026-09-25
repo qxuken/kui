@@ -41,6 +41,7 @@ mod macos_menu;
 #[cfg(target_os = "macos")]
 mod macos_text_input;
 mod menus;
+mod pacer;
 mod pane;
 mod popups;
 mod retarget;
@@ -221,12 +222,13 @@ impl Launcher {
     /// How many frames may be queued ahead of the one on screen, for every
     /// window (backlog C47). Two by default
     /// ([`kui_wgpu::DEFAULT_FRAME_LATENCY`]): every vsync gets a frame at
-    /// light load, and a frame drawn while frames run back to back (an
-    /// animation, a drag, a scroll) reaches the screen a vsync later than
-    /// with one. One is the lowest latency during those, at the cost of an
-    /// occasional missed vsync when little is drawn. `KUI_FRAME_LATENCY`
-    /// overrides it, for comparing the two without a rebuild. Values below
-    /// one are one.
+    /// light load, where one lost 1–6% of them. On macOS 14+ the runner
+    /// starts frames that run back to back at the display's vsync (`mod
+    /// pacer`), so the second queued frame is slack and costs no latency;
+    /// where it cannot — another platform, a pumped runner — such a frame
+    /// reaches the screen a vsync later than with one. `KUI_FRAME_LATENCY`
+    /// overrides it, and `KUI_FRAME_PACING=0` turns the pacing off, for
+    /// comparing without a rebuild. Values below one are one.
     pub fn frame_latency(mut self, frames: u32) -> Self {
         self.frame_latency = frames.max(1);
         self
@@ -1769,6 +1771,8 @@ impl<A: App> Shell<A> {
         match drawn {
             Some(Ok(report)) => {
                 wait_ms = report.vsync_wait_ms;
+                pane.pacer
+                    .presented(std::time::Instant::now(), (size.width, size.height));
                 pane.first_frame = None;
                 pane.surface_tries = 0;
                 pane.awaits_device = false;
@@ -2307,6 +2311,9 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
                 // can stop a window painting.
                 self.panes[i].deferred_frame = true;
             }
+            // A frame asked for while frames run back to back waits for
+            // the display, which asks again at the vsync (`mod pacer`).
+            WindowEvent::RedrawRequested if !self.panes[i].admit_frame() => {}
             WindowEvent::RedrawRequested => {
                 self.panes[i].deferred_frame = false;
                 self.redraw(i);
@@ -2469,6 +2476,15 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
             // would only find the device still owed.
             if pane.core.animating() && !pane.awaits_device {
                 pane.window.request_redraw();
+            }
+            // A frame held for a display that stopped firing is drawn
+            // anyway once it has waited too long (`mod pacer`).
+            if let Some((at, due)) = pane.pacer.overdue(now) {
+                if due {
+                    pane.window.request_redraw();
+                } else {
+                    deadline = Some(deadline.map_or(at, |d| d.min(at)));
+                }
             }
             // A window still waiting for its first frame asks again — one
             // frame apart, and only so many times. Paced rather than spun:

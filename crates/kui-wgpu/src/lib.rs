@@ -604,10 +604,13 @@ fn preprocess_shader(src: &str, dual: bool) -> String {
 /// load found no free drawable and missed its vsync: 1–6% of them on an
 /// M3 Pro under macOS 27 at 100 and 2,500 boxes, none under heavy load,
 /// where there is no idle gap to wake late from. Two delivered 1198–1201
-/// of ~1200 vsyncs in every run. The price is a frame of latency while
-/// frames are produced back to back (an animation, a drag, a scroll),
-/// since the CPU then fills the extra slot; a frame drawn from idle — a
-/// keystroke into a still editor — starts from an empty queue either way.
+/// of ~1200 vsyncs in every run. Queued behind a frame, though, a frame
+/// built as soon as a drawable frees reaches the screen a vsync later
+/// while frames run back to back — 27.6 ms sampling-to-photon against
+/// 19.3 — so `kui`'s runner starts such frames at the display's vsync
+/// instead (its `pacer`, macOS 14+), where the extra drawable is slack
+/// and not a queue: 17.5–19.2 ms, every vsync delivered. A renderer
+/// driven any other way pays the frame.
 pub const DEFAULT_FRAME_LATENCY: u32 = 2;
 
 impl Renderer {

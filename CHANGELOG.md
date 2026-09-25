@@ -56,10 +56,13 @@ existing input draws changes: a stroke is clipped as it was.
   public fields, so a struct literal that names every field stops
   compiling. `Core`'s internal `nudge` takes a `SliderMove`.
 - Every window keeps two frames queued ahead of the one on screen where
-  it kept one (under Changed, C47): smoother at light load, and a frame
-  of latency more while frames run back to back. `frame_latency(1)`
-  (`frameLatency: 1`, `KuiRunConfig.frame_latency = 1`,
-  `KUI_FRAME_LATENCY=1`) is the old behaviour.
+  it kept one, and on macOS 14+ the Rust and C runners start frames that
+  run back to back at the display's vsync (under Changed, C47): smoother
+  at light load, and no slower. A Node window is not paced, so it has a
+  frame of latency more while frames run back to back.
+  `frame_latency(1)` (`frameLatency: 1`, `KuiRunConfig.frame_latency =
+  1`, `KUI_FRAME_LATENCY=1`) with `KUI_FRAME_PACING=0` is the old
+  behaviour.
 - `KuiRunConfig` gains `frame_latency` under the same ABI 19 (40 bytes,
   was 36).
 - Node: `CoreMsg` gains `ChangeMsg`, so an exhaustive `switch` over it
@@ -275,12 +278,27 @@ in `examples/rust/features/align.rs`.
     Metal layer's drawable count less one, so 2 is gpui's setting.
   - The report's other lever, the present mode, does nothing here:
     wgpu's Metal `AutoVsync` is `Fifo`.
-  - The cost is a frame of latency, 8.3 ms at 120 Hz, while frames run
-    back to back. A frame drawn from idle starts from an empty queue.
+  - The second queued frame alone cost a frame of latency while frames
+    run back to back. A frame built as soon as a drawable freed waited
+    out a vsync in the queue. Measured from the moment a frame sampled
+    its state to the moment it was on screen (a ScreenCaptureKit
+    capture decoding a timestamp the frame drew), that is 27.5–27.9 ms,
+    against 19.2–19.5 with one queued frame.
+  - So on macOS 14+ such frames now start at the display's vsync, from a
+    `CADisplayLink` on the window's view (`kui::pacer`), which is how
+    gpui runs. The queued slot is slack and not a delay: 17.5–19.2 ms
+    once the window has settled, with every vsync delivered. A frame
+    asked for from idle, such as a keystroke, is drawn at once. The link
+    runs only while frames are asked for, so an idle window stays at no
+    CPU.
+  - A Node window turns its loop from a timer, where the link cannot
+    start frames (paced, it drew 50 frames a second against 95), so it
+    is not paced and keeps the queued frame's cost; `frameLatency: 1`
+    trades back.
   `Launcher::frame_latency`, `WindowOptions.frameLatency` and
-  `KuiRunConfig.frame_latency` choose per app, and `KUI_FRAME_LATENCY`
-  overrides without a rebuild. The report saw its misses on battery;
-  this change was measured on AC.
+  `KuiRunConfig.frame_latency` choose per app. `KUI_FRAME_LATENCY` and
+  `KUI_FRAME_PACING=0` override without a rebuild. The report saw its
+  misses on battery; this change was measured on AC.
   *What you can delete:* nothing an app could have written; a frame
   that missed its vsync was the runner's.
 
