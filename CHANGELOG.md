@@ -136,7 +136,9 @@ in `examples/rust/features/align.rs`.
   `unknown-prop` warning. A slider without `onChange` keeps the
   `access` nudge unchanged. The new `stock-controls` corpus scene is
   replayed by all four adapters, and `examples/rust/widgets/controls.rs`
-  and `examples/node/widgets/controls.tsx` show the controls.
+  and `examples/node/widgets/controls.tsx` show the controls. The
+  accessibility and focus examples use them now in place of the ones
+  they drew; the platform audit is unchanged at 106/106.
   *What you can delete:* a hand-drawn checkbox, radio, switch or
   slider; the `drag` arithmetic that turned `x` and the parent rect into
   a value; the increment / decrement handler that stepped, clamped and

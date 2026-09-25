@@ -113,25 +113,10 @@ impl App for Focus {
                     ui.with(NodeSpec::row().width(Sizing::Fixed(160.0)), |ui| {
                         self.field = Some(widgets::text_input(ui, "field", ""));
                     });
+                    // The stock switch: a control role, so in the ring
+                    // with nothing declared, and pressed by Enter or Space.
                     let on = self.pressed.as_deref() == Some("mute");
-                    ui.with_keyed(
-                        "mute",
-                        NodeSpec::row()
-                            .pad_xy(12.0, 8.0)
-                            .radius(8.0)
-                            .bg(if on { t.accent_soft } else { t.raised })
-                            .border(1.0, t.border)
-                            .role(Role::Switch)
-                            .label("mute")
-                            .checked(on)
-                            .on_click(Value::str("mute")),
-                        |ui| {
-                            ui.text(
-                                if on { "mute: on" } else { "mute: off" },
-                                TextStyle::new(13.0),
-                            );
-                        },
-                    );
+                    widgets::switch(ui, "mute", on, Value::str("mute"));
                     // A plain row, in the ring because it says so, with a
                     // `focus_bg` instead of the ring.
                     ui.with_keyed(

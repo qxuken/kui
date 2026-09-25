@@ -178,6 +178,15 @@ date: 2026-09-25
   `value_set`) and `on_change` join `KuiSpec` under the same unreleased
   ABI 19 as `float_clip` and `aspect_ratio`; the frame's three new ops
   (`toggle`, `slider`, `radioGroup`) join the unreleased v16.
-- **Not moved yet.** The accessibility, drag and focus examples and the
-  devtools' icon toggles still draw their own; moving them is a
-  follow-up, and the controls example is where the stock ones are shown.
+- **Who moved** (2026-09-25, the same day). The accessibility example's
+  radio group, switch and two sliders are the stock ones now. Its
+  sliders answer `change` rather than `access`, and the platform audit
+  holds at 106/106 with the same checks, a reader's increment moving
+  Volume 3 → 4 and Focus length 25 → 30 minutes through the core's
+  arithmetic. The focus example's switch moved too. Four stayed, each
+  for a reason. The drag example's slider is the drag's `dx` arithmetic
+  that example teaches, and its doc now points at the stock slider. The
+  devtools' dock buttons are an icon toolbar carrying the radio role, a
+  look a stock radio is not. The Node types tool's `role="slider"` box
+  exists to exercise the typed `access` nudge. C's header walk and the
+  `controls` corpus scene declare roles by hand on purpose.

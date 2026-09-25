@@ -9,7 +9,10 @@
 //! the release lands wherever it lands.
 //!
 //! Two things it is for: a **slider** whose value is what it was at the
-//! press plus `dx` over the track, and a **card** whose float offset is
+//! press plus `dx` over the track — drawn by hand here because the drag
+//! is the subject; an app's slider is the stock one
+//! (`widgets::slider`, ADR 0034), which does this and the keys — and a
+//! **card** whose float offset is
 //! where it was at the press plus the displacement, kept inside the stage
 //! (its own size from `on_layout`, the stage's from the event's `parent`).
 //! A drag that started on the card is the card's until it ends, whatever

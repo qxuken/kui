@@ -1503,9 +1503,11 @@ arithmetic, and the pointer capture lives in `Interaction` beside the
 drag's. The `stock-controls` corpus scene is replayed by all four
 adapters, `widgets/controls.rs` and its Node twin cover the controls,
 and `tests/controls.rs` tests them. The ADR's "What the building
-changed" records the five differences from the plan. The hand-drawn
-controls in the accessibility, drag and focus examples and the
-devtools' icon toggles have not been moved yet.
+changed" records the five differences from the plan. The same day,
+the accessibility and focus examples moved onto the stock controls
+(the platform audit still 106/106). The drag example's slider, the
+devtools' icon toggles and the tools that declare roles by hand stayed,
+each for the reason the ADR gives.
 
 
 **Found** by both bake-offs ("roles only, you draw"; iced ships all four,
@@ -1693,8 +1695,8 @@ which the archived entry measures and leaves.
 **Build next.** C46–C51 from the second bake-off, C47 (measuring)
 first. C45, the stock controls
 ([ADR 0034](adr/0034-stock-controls-over-the-roles.md)), was **built
-2026-09-25**; moving the examples' hand-drawn controls onto it is the
-follow-up its outcome names. Nothing of the
+2026-09-25**, and the examples that drew their own moved onto it the
+same day. Nothing of the
 alpha.14, alpha.16 and alpha.18 upgrade
 reports is open (F88–F92 **built 2026-09-25**, the day they were filed).
 Nothing of the regression pass of 2026-09-25 is open
