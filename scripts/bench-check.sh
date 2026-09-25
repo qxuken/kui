@@ -169,6 +169,11 @@ const GUARDED_BY_BENCH = {
     // the class C29 found regressing was exactly the unguarded rows.
     "frame_10k_rects_with_access_tree",
     "list_10k_rows_virtual",
+    // The segment emitter's inner loop: C41 found it +10% for three
+    // alpha tags, a register spill in `emit_node` that the drop-zone
+    // commit caused without touching the loop, while every row above
+    // read flat.
+    "frame_1k_curves",
   ],
 };
 const GUARDED = GUARDED_BY_BENCH[bench] || [];

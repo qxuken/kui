@@ -45,6 +45,17 @@ which never heard that text, still hears the chord.
   editor ⌘V is the sink's chord. The fix the backlog first wrote down,
   a `request_paste` for every ⌘V over a selection, pasted twice into a
   sink that binds ⌘V — found in a window before it shipped.
+- **A stroke's segments cost 10% more to emit since alpha.14** (backlog
+  C41, carried by three tags). The drop-zone commit grew `emit_node`,
+  and the segment loop inlined into it lost its carried point to a
+  register spill — a store and a reload on the stack for every segment,
+  in a loop the commit never touched. `push_segments` is kept out of
+  line now, where the loop keeps every value in a register:
+  `frame_1k_curves` reads 285 → 254 µs against alpha.17's code, under
+  the 261 µs it read before the drop zone, and the row joins
+  `scripts/bench-check.sh`'s guard list, so the segment path has a row
+  that fails. The bench guard against `main`: every guarded row within
+  its noise (worst spread 3.9%).
 
 ## 0.1.0-alpha.17 (2026-09-25)
 

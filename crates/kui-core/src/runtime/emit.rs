@@ -2072,6 +2072,13 @@ impl PaintOrder {
 /// bounding box padded by half the width plus two logical px, so the
 /// backend's edge ramp is never cut by the quad's own edge, and the
 /// endpoints ride in `uv` (see [`Quad::segment_ends`]).
+///
+/// Kept out of line on purpose (backlog C41): inlined into `emit_node`,
+/// whose size moves with every prop a hit region grows, the loop's carried
+/// point lost its register to the stack once the drop-zone commit tipped
+/// the allocator — a store and a reload on every segment, +10% on
+/// `frame_1k_curves`. On its own the loop keeps every value in a register.
+#[inline(never)]
 fn push_segments(
     quads: &mut Vec<Quad>,
     origin: Vec2,

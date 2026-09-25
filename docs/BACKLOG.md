@@ -61,10 +61,9 @@ only their introductions (their twenty entries — F55–F61 from the
 alpha.12 reports and K1–K4 from the kawoosh list with the alpha.13 tag;
 W17 and W18 from the macOS 27 round, F62–F65 from the alpha.13 reports,
 F66 from the kawoosh terminal and C40 from the drop-zone ask with the
-alpha.14 tag — were built the day they were filed), C41 and E4 from the
-alpha.14 pre-tag round (a bench row the guard does not watch, 10%
-slower since the drop-zone commit and bisected to it; the harness
-sizing its window for the dock at launch only), the kawoosh binary-file
+alpha.14 tag — were built the day they were filed), E4 from the
+alpha.14 pre-tag round (the harness sizing its window for the dock at
+launch only; C41, the bench row beside it, was built 2026-09-25), the kawoosh binary-file
 report of 2026-09-16 keeping only its introduction and measurements (its
 two entries, C42 and C43 — `rich_text` shaped whole past the long-line
 threshold, and a long line's key hashed a byte at a time every frame —
@@ -1054,41 +1053,9 @@ rounds above were filed and built. Every check passed and every gesture
 the round drove read back as the entry says (the CHANGELOG's *Native
 verification* has the list); one thing it noticed is the harness's, not
 kui's, and one is a bench row the guard does not watch, bisected to a
-commit before the tag and left for the round after.
-
-### `.` C41 — `frame_1k_curves` is 10% slower since the drop-zone commit, and no guarded row moved
-
-**Found.** The alpha.14 bench guard read every guarded row within its
-noise and three unguarded rows past ±5%; re-run alone, two were noise
-and `frame_1k_curves` was not — 255 → 280 µs, +10.0% at ±1.4% run to
-run. Four probes with `scripts/bench-check.sh <commit> frame_1k_curves`
-(HEAD against each base, one row, ~4 min a probe) put it in one commit:
-`cc070bd` (F62–F65) and `db2ff82` (the cursor) read 260 µs against
-HEAD's 280–284; `5e6711e` (ADR 0031, the drop zone) reads 286 and
-`3179ceb` after it 284 — HEAD is that commit's number. Nothing in ADR
-0032 or the devtools chord moved it. The row is a thousand `polyline`
-floats through eight knots each, flattened to 35 segments a curve every
-frame; it declares no interaction, so the `HitRegion` that grew an
-`Option<DropOwner>` (a `Value` inside) and the per-region `enclosing_drop`
-walk in `emit` should not be on its path — and `frame_10k_segments`
-(+3.6% at ±1.3%), `frame_1k_polygons` (+4.0% at ±1.5%) and
-`frame_1k_closed_lines` (+3.1%) lean the same way while
-`frame_10k_rects` reads −3.4%, so it is the side-list emitters, not
-every node. Twenty-five nanoseconds a curve is one call that stopped
-inlining or one struct that crossed a cache line, which is the shape
-C15's remainder and the architecture review's two inlining
-regressions had.
-
-**Do.** Profile `frame_1k_curves` at `5e6711e` against `db2ff82`
-(`cargo bench -p kui-core --bench frame -- frame_1k_curves` under
-`sample`, or `perf`-style counters on Linux); the suspects in that
-commit's per-frame path are `emit.rs`'s region closure (now building a
-`DropOwner` under `any_drop && interactive`, which grew the closure and
-may have un-inlined the segment emitter around it), `Interaction`'s new
-`DropHover` field, and `Tree::any_drop`. If it is inlining, an
-`#[inline]` or a split of the region build out of the emit loop; if it
-is the region struct, box the `DropOwner`. Add `frame_1k_curves` to the
-guard list if the fix lands, so the segment path has a row that fails.
+commit before the tag and left for the round after. That one, C41, was
+**built 2026-09-25** — a register spill in the segment loop, fixed by
+keeping the loop out of line — and is in the archive; E4 stays.
 
 ### `.` E4 — The examples harness sizes the window for the dock at launch only
 
@@ -1409,8 +1376,9 @@ which the archived entry measures and leaves.
 
 **Build next.** Nothing of the regression pass of 2026-09-25 is open
 (RG17–RG36 **built 2026-09-25** before the alpha.17 tag, RG37 the same
-day after it). Nothing of the regression pass of 2026-09-19 is open (RG1, the Node and C hosts hearing ⌘Q, was **built 2026-09-19**; RG2 and RG12, the devtools' menus select and its chord, RG3, RG6, RG7, RG8 and RG11, the table's layout and the round's float-floor regression, RG4, the left dock's deferral, RG5, the freeze loop's sign rule and the round's other regression, RG9 and RG10, the select's disabled row through the door and its unchecked options and `current`, RG13, the reader's click behind a modal, RG15, F69 checked in a window and found inert, RG14, the ten nits and the two devtools defects taken with them, and RG16, the door removed on RG15's finding, **built 2026-09-20**); next is C41 — a profile of `frame_1k_curves` at the drop-zone
-commit against the one before, the bisect already done; then W19, when
+day after it). Nothing of the regression pass of 2026-09-19 is open (RG1, the Node and C hosts hearing ⌘Q, was **built 2026-09-19**; RG2 and RG12, the devtools' menus select and its chord, RG3, RG6, RG7, RG8 and RG11, the table's layout and the round's float-floor regression, RG4, the left dock's deferral, RG5, the freeze loop's sign rule and the round's other regression, RG9 and RG10, the select's disabled row through the door and its unchecked options and `current`, RG13, the reader's click behind a modal, RG15, F69 checked in a window and found inert, RG14, the ten nits and the two devtools defects taken with them, and RG16, the door removed on RG15's finding, **built 2026-09-20**); C41 — `frame_1k_curves` 10% slower since the
+drop-zone commit — was **built 2026-09-25**, a register spill in the
+segment loop. Next is W19, when
 a Windows or Linux round comes (the macOS half of ADR 0031 is built and
 verified; the fallback elsewhere is honest and positionless). Nothing else filed is open. The rounds since the alpha.14 tag, newest first:
 the regression pass of 2026-09-19 over F67–F75 (RG1–RG16 — all
@@ -2097,6 +2065,10 @@ move.
 **From a feature ask (2026-09-15): a drop zone** — C40, ADR 0031 built whole; W19 stays open
 
 - `~` **C40** — [A drop zone: `onDrop` on any node, the files as an event, `dropBg` while they hover](backlog/closed-2026-09.md#-c40--a-drop-zone-ondrop-on-any-node-the-files-as-an-event-dropbg-while-they-hover--done-2026-09-15) — done (2026-09-15) — ADR 0031, `onDrop` / `dropBg`, three `InputEvent`s, ABI 18
+
+**From the alpha.14 pre-tag round (2026-09-15)** — C41, built 2026-09-25; E4 stays open
+
+- `.` **C41** — [`frame_1k_curves` is 10% slower since the drop-zone commit, and no guarded row moved](backlog/closed-2026-09.md#-c41--frame_1k_curves-is-10-slower-since-the-drop-zone-commit-and-no-guarded-row-moved--done-2026-09-25) — done (2026-09-25) — a register spill: `push_segments` inlined into the grown `emit_node` lost its carried point to the stack; kept `#[inline(never)]`, the row guarded
 
 **From the kawoosh binary-file report (2026-09-16)** — C42 and C43, both built the same day; the report's span-count diagnosis measured and recorded as not the cause
 
