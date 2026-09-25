@@ -260,6 +260,31 @@ in `examples/rust/features/align.rs`.
   across machines needs it: headless text is shaped against the
   machine's installed fonts.
 
+- **A frame of plain boxes cost 5.8% more than alpha.9's** (backlog
+  C48, from the second bake-off: 60.0% against 56.8% CPU at 40,000
+  boxes, on one OS). Bisected over every tag and then every tenth
+  commit, `frame_10k_rects` rose in steps, 743 µs at alpha.9 to 786 µs at
+  alpha.18 and 807 µs on this branch. Each step was an inlining decision
+  flipped by a change elsewhere:
+  - AR29/AR30's text-only code;
+  - C13's layout additions, after which `shadow_quad` was inlined into
+    `emit_node` and cost every node two more saved registers.
+
+  Rebuilt with every function aligned to 64 bytes, the steps stayed,
+  so it is not code placement.
+
+  Three changes bring the row to 755–761 µs, and
+  `frame_10k_rects_with_text_and_hits` from 1375 µs back to alpha.18's
+  ~1300 µs:
+  - `emit_node` keeps only a plain box's path, and the hit regions,
+    what a leaf draws, and shadows are out-of-line calls;
+  - `layout::wraps` is always inlined;
+  - `set_axis_clamped` is inlined and borrows the spec it used to copy.
+
+  The bench guard against alpha.18 passes on all eight guarded rows,
+  and the conformance dump is byte-identical. Nothing changes in what a
+  frame draws.
+
 ### Changed
 
 - **A window keeps two frames queued, and every vsync gets one**

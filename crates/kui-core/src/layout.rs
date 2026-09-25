@@ -220,8 +220,9 @@ fn overflow(pos: f32, len: f32, limit: f32) -> f32 {
 /// until pass 4, two passes after the cross-axis fit that would have to sum
 /// the lines. `scroll_x` says the same thing a different way — an axis that
 /// scrolls is unbounded, and an unbounded axis has nothing to break
-/// against. `diag::WRAP_IGNORED` reports both.
-#[inline]
+/// against. `diag::WRAP_IGNORED` reports both. Always inlined: asked of
+/// every node in three passes, as a call it cost the 10k grid 2% (C48).
+#[inline(always)]
 fn wraps(tree: &Tree, i: u32) -> bool {
     if !tree.any_wrap {
         return false;
@@ -1492,9 +1493,12 @@ fn set_axis(tree: &mut Tree, c: u32, axis: AxisSel, v: f32) {
     }
 }
 
-/// set_axis clamped by the child's own min/max on that axis.
+/// set_axis clamped by the child's own min/max on that axis. Inlined,
+/// and borrowing the spec rather than copying it: a call per child that
+/// copied the whole layout spec cost the 10k grid 2% (C48).
+#[inline]
 fn set_axis_clamped(tree: &mut Tree, c: u32, axis: AxisSel, v: f32) {
-    let spec = tree.specs[c as usize].layout;
+    let spec = &tree.specs[c as usize].layout;
     let v = match axis {
         AxisSel::Width => spec.clamp_w(v),
         AxisSel::Height => spec.clamp_h(v),

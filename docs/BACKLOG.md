@@ -1666,7 +1666,98 @@ request's timing in `about_to_wait`. Record the numbers here. If none of
 those moves it, the remaining lever is a display-link-driven redraw on
 macOS, and that is its own entry.
 
-### `.` C48 — 5.6% more CPU than alpha.9 on 40,000 boxes, on the same OS
+### `.` C48 — 5.6% more CPU than alpha.9 on 40,000 boxes, on the same OS — **built 2026-09-25**
+
+**Built 2026-09-25.** It was steps, not a slope. Every step was
+codegen: an inlining decision flipped by a change somewhere else, never
+new work on a plain box. The bench's `frame` binary was built at every
+tag from alpha.9 to alpha.18 and then at every tenth commit inside the
+steps. Each binary ran `frame_10k_rects` alone, 300 samples a run, and
+the binaries were interleaved in shuffled order for 5–9 rounds. One M3
+Pro, macOS 27.0, AC power. Medians in µs (the second column is a later
+run):
+
+| ref | `frame_10k_rects` | |
+| --- | --- | --- |
+| alpha.9 | 743 | 747 |
+| alpha.10 | 745 | 736 |
+| alpha.11 | 764 | |
+| alpha.12 | 787 | 783 |
+| alpha.13 – alpha.17 | 779 – 796, flat | |
+| alpha.18 | 786 | 778 |
+| this branch before the fix (`4672d2c`) | 807 | 819 |
+| this branch after it | 755 | 761 |
+
+- **alpha.10 → alpha.11, +20 µs:** two steps of ~12 µs, around
+  `66c108b` and across the canvas and six-entry merges.
+- **alpha.11 → alpha.12, +24 µs:** one commit, `0cd0763` (AR29/AR30:
+  the caret follows the keys, `TextHit.line`). It changes only text and
+  caret code, and the row draws no text. `text_ancestors` was outlined,
+  and `finish_frame` got smaller and slower.
+- **This branch, +23 µs:** C13/C14 (`4c1e610`). It left `NodeSpec` at
+  248 bytes and changed nothing in emission, yet `shadow_quad` was
+  inlined into `emit_node` from then on. Its float arithmetic took two
+  more saved registers (d14/d15) and a larger stack frame for every
+  node, shadow or not. The stock controls then added the slider track
+  to the same function. The branch also cost
+  `frame_10k_rects_with_text_and_hits` +6.6% (1375 against 1290).
+
+**Not code alignment.** Rebuilt with
+`-C llvm-args=-align-all-functions=6`, every step was still there.
+Taking C13's layout additions back out one at a time did not move the
+row either: the spreads, the baseline branches in the fit passes, the
+aspect checks, and a baseline line placed in a cold function of its
+own. Per-function µs, from three 8-second `sample` runs per binary
+scaled to the median frame, put the time in `emit_node`, `positions`,
+and two small helpers that were calls on every node.
+
+**What changed.**
+- **`emit_node` keeps only the plain box's path.** The hit region
+  (`push_hit`) and an editor's region (`push_edit_hit`) are
+  `#[inline(never)]` methods. So are what a leaf draws (`paint_leaf`,
+  split off `paint_box`, which stays `#[inline(always)]` as C15
+  measured) and `shadow_quad`. `emit_node` went from 2,702 instructions
+  to 886, saving d8–d9 where it saved d8–d15.
+- **`layout::wraps` is `#[inline(always)]`.** It had been a call since
+  alpha.12 → alpha.18, asked of every node in three passes, 15 µs a
+  frame.
+- **`set_axis_clamped` is inlined and borrows the spec.** It had been a
+  call since before alpha.9 that copied the whole 104-byte
+  `LayoutSpec`. Borrowing without inlining measured nothing (778
+  against 742–753).
+
+Ablation, each variant against alpha.18 in the same rounds. Removing
+the `emit_node` split costs 17 µs on the grid and 6–15 µs on text with
+hits. Keeping the cold baseline line measured nothing, so it was
+dropped. An `#[inline]` on `hover_tracked` measured nothing, as it did
+in C41, and neither did forcing `Tree::note` inline.
+
+After the fix, run alone, 5 rounds against alpha.18:
+- `frame_10k_rects`: 755 against 784.
+- `frame_10k_rects_with_text_and_hits`: 1305 against 1290.
+- `frame_1k_curves`: 252 against 248.
+- `frame_10k_rects_with_shadows_and_opacity`: 838 against 863.
+
+A last run of the final build read 761 against alpha.9's 746, alpha.18's
+784 and the branch's 819 before the fix.
+
+The bench guard against alpha.18, which runs the whole file in one
+process, passed: `frame_10k_rects` 774 / 789 against 797 / 787, text
+with hits 1.30 / 1.30 ms against 1.31 / 1.30, curves 247 / 253
+against 258 / 250. The conformance dump is byte-identical to
+`4672d2c`'s.
+
+**What is left** is new work, not codegen:
+- `Tree::note` per push: ~30 µs over 10k nodes.
+- The bench's builder: +18 µs, as `NodeSpec` went from 224 to 248
+  bytes between alpha.10 and alpha.12.
+- `hover_tracked` asked per node: ~10 µs.
+
+`emit_node` is now 15 µs *cheaper* than alpha.10's. The lesson is
+C41's, generalised. A per-node function that inlines what only some
+nodes need pays for it on every node. The fix that lasts is keeping
+the rare paths out of line by construction, not pinning whichever
+callee LLVM inlined this time.
 
 **Found** by the second bake-off: 60.0% against 56.8% in both runs, on
 macOS 27, the same afternoon, same bench code. kui's own
@@ -1779,8 +1870,10 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** C46 and C48–C51 from the second bake-off; C47 was
-**built 2026-09-25** (two queued frames by default). C45, the stock controls
+**Build next.** C46 and C49–C51 from the second bake-off; C47 was
+**built 2026-09-25** (two queued frames by default), and C48, the
+geometry drift since alpha.9, the same day (codegen steps; the rare
+paths out of `emit_node`). C45, the stock controls
 ([ADR 0034](adr/0034-stock-controls-over-the-roles.md)), was **built
 2026-09-25**, and the examples that drew their own moved onto it the
 same day. Nothing of the
@@ -1792,7 +1885,7 @@ day after it). Nothing of the regression pass of 2026-09-19 is open (RG1, the No
 drop-zone commit — was **built 2026-09-25**, a register spill in the
 segment loop, and F86, the window icon, the same day. Next is W19, when
 a Windows or Linux round comes (the macOS half of ADR 0031 is built and
-verified; the fallback elsewhere is honest and positionless). Nothing else filed is open besides C46 and C48–C51. The rounds since the alpha.14 tag, newest first:
+verified; the fallback elsewhere is honest and positionless). Nothing else filed is open besides C46 and C49–C51. The rounds since the alpha.14 tag, newest first:
 the regression pass of 2026-09-19 over F67–F75 (RG1–RG16 — all
 sixteen built or done between 2026-09-19 and 2026-09-20, RG14's ten
 nits and RG16's removal of the press-and-hold door **done
