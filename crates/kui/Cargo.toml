@@ -32,10 +32,15 @@ kira = { version = "0.12", default-features = false, features = ["cpal", "mp3", 
 kui-devtools.workspace = true
 
 [features]
-default = ["audio", "accesskit"]
+default = ["audio", "accesskit", "derive"]
 # Play sounds through kira/cpal. Off: audio commands are dropped, the UI
 # runs the same, and the crate links no audio libraries (ALSA on Linux).
 audio = ["dep:kira"]
+# `#[derive(Message)]`: a Rust app's own message enum to and from the
+# plain-data payload, so `on_click(Msg::Save)` and `ev.message::<Msg>()`
+# replace building and picking apart `Value`s by string (backlog C50). On by
+# default: the syn it builds on is already in a windowed app's tree.
+derive = ["kui-core/derive"]
 # Expose the core's access tree to screen readers and other assistive
 # technology through AccessKit. On by default (an accessibility feature that
 # is off by default does not get tested); off for kiosk builds, where the

@@ -1889,7 +1889,51 @@ and the runner's generic `App` plumbing. Move what is large and generic
 behind `&mut dyn FnMut` where the call is not hot. The number to beat is
 alpha.9's 1.20 s.
 
-### `.` C50 — Rust apps match messages on `Value` at run time
+### `.` C50 — Rust apps match messages on `Value` at run time — **built 2026-09-25**
+
+**Built 2026-09-25** as a derive, after the experiment the entry asked
+for. The counter's and splitmux's messages were written by hand first,
+as `From<Msg> for Value` and `TryFrom<&Value>`, in a scratch crate
+against this tree, with a round-trip test:
+- **Counter:** 26 lines for five unit messages. That is longer than
+  the five `Value::map`s and the match it replaces.
+- **splitmux:** 50 lines for six messages, every `kind` and field name
+  spelled twice, once to encode and once to decode. That duplication is
+  the cost that grows with an app.
+
+syn 2 and 3 were both already built in `kui`'s tree (through
+zerocopy's and wgpu's derives), so a derive crate costs a cold build
+its own few hundred lines. The user chose the derive, on by default.
+
+- **`kui-derive`**, `#[derive(Message)]`: `From<T> for Value`,
+  `TryFrom<&Value>`, `TryFrom<Value>` and `MessageField` for an enum or
+  a struct.
+  - The kind is the variant's name in snake_case, and `#[message(kind =
+    "…")]` renames it.
+  - Tuple fields are keyed `"0"`, `"1"`, and so on.
+  - `#[message(string)]` makes an all-unit enum a bare string.
+  - `#[message(crate = "…")]` names the path, `::kui` unless said.
+- **kui-core's `message` module:** `MessageField` for the numbers
+  (range-checked, not wrapped), `bool`, `String`, `Value`, `Option`,
+  `Vec` and `Box`; `MessageError` (`NoKind`, `UnknownKind`, `Field`);
+  and `UiEvent::message::<M>()`, which reads the payload and then the
+  `tag` inside a core event. A drag delivers the app's message nested
+  and a click delivers it bare, which a derive alone would have left
+  every handler to untangle.
+- **Features:** `kui-core/derive` is off by default, and `kui`'s default
+  `derive` turns it on.
+- **Publishing:** the publish lists (`ci.yml`, `release-local.nu`) put
+  `kui-derive` first.
+
+splitmux moved onto a `Msg` enum. Its headless drive gained four checks
+through real input: a pane click, the `+` tab, a tab click, and a
+divider drag whose message comes out of the drag's tag. The counter
+stayed on `Value`, where the experiment said typing does not pay.
+`NodeSpec::modal` still takes a `Value`. Widening it to `impl
+Into<Value>` like the other tags broke every `.modal("x".into())` by
+inference, so a typed message goes in as `.modal(Msg::X.into())`.
+`crates/kui/tests/message.rs` pins the shapes, the round trips, the
+errors and both places a message arrives.
 
 **Found** by both bake-offs ("typed Rust messages: no, a `Value`
 payload"). The IR contract is plain data on purpose: Lua, C and JSX
@@ -1969,7 +2013,9 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** C50 and C51 from the second bake-off; C47 was
+**Build next.** C51 from the second bake-off, parked until a view asks;
+C50, typed Rust messages (`#[derive(Message)]`), was **built
+2026-09-25**; C47 was
 **built 2026-09-25** (two queued frames by default), C46, the
 variable-height list in JSX and Lua over the core's `RowHeights`, and C48, the
 geometry drift since alpha.9, and C49, the edit-compile loop, the same
@@ -1986,7 +2032,7 @@ day after it). Nothing of the regression pass of 2026-09-19 is open (RG1, the No
 drop-zone commit — was **built 2026-09-25**, a register spill in the
 segment loop, and F86, the window icon, the same day. Next is W19, when
 a Windows or Linux round comes (the macOS half of ADR 0031 is built and
-verified; the fallback elsewhere is honest and positionless). Nothing else filed is open besides C50 and C51. The rounds since the alpha.14 tag, newest first:
+verified; the fallback elsewhere is honest and positionless). Nothing else filed is open besides C51, parked. The rounds since the alpha.14 tag, newest first:
 the regression pass of 2026-09-19 over F67–F75 (RG1–RG16 — all
 sixteen built or done between 2026-09-19 and 2026-09-20, RG14's ten
 nits and RG16's removal of the press-and-hold door **done

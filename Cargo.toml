@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/kui-core",
+    "crates/kui-derive",
     "crates/kui-wgpu",
     "crates/kui",
     "crates/kui-lua",
@@ -20,6 +21,7 @@ repository = "https://drydock9.qxuken.dev/qxuken/kui"
 
 [workspace.dependencies]
 kui-core = { path = "crates/kui-core", version = "0.1.0-alpha.18", registry = "forgejo" }
+kui-derive = { path = "crates/kui-derive", version = "0.1.0-alpha.18", registry = "forgejo" }
 kui-wgpu = { path = "crates/kui-wgpu", version = "0.1.0-alpha.18", registry = "forgejo" }
 kui = { path = "crates/kui", version = "0.1.0-alpha.18", registry = "forgejo" }
 # `default-features = false` here so a member asks for the windowed C entry

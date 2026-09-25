@@ -456,6 +456,43 @@ moves them with the stock button.
 [examples/rust/widgets/controls.rs](../examples/rust/widgets/controls.rs) ·
 [examples/node/widgets/controls.tsx](../examples/node/widgets/controls.tsx)
 
+### How do I match my app's messages as types, in Rust?
+
+`#[derive(Message)]` on an enum: each variant becomes a `{kind, …fields}`
+payload (the kind is the variant's name in snake_case, or `#[message(kind
+= "…")]`), so `on_click(Msg::Save)` builds it, and `ev.message::<Msg>()`
+reads it back into an exhaustive `match`. A click delivers the message as
+its payload; a drag, a change, a scroll or a drop delivers it as the `tag`
+inside the core's event, and `message` looks in both places. The event's
+own fields stay on `ev.payload` — a drag's `phase`, a change's `value`.
+Field types are the numbers, `bool`, `String`, `Option`, `Vec`, `Value`
+and other messages. An enum of unit variants marked `#[message(string)]`
+is a bare string where it is a field (`dir: SplitDir` as `"h"`).
+
+The payload stays plain data, so Lua, C and JSX read it as they always did.
+`MessageError` says what did not fit. The derive is `kui`'s default
+`derive` feature; from kui-core alone it is `kui-core/derive` and
+`#[message(crate = "kui_core")]`.
+
+```rust
+#[derive(Message, Clone, Debug)]
+enum Msg { Focus { pane: u64 }, TabNew, Split { path: String, dir: SplitDir } }
+
+ui.with(NodeSpec::column().on_click(Msg::Focus { pane: id }), |ui| { … });
+
+fn on_event(&mut self, ev: UiEvent) {
+    match ev.message::<Msg>() {
+        Some(Msg::Focus { pane }) => self.focused = pane,
+        Some(Msg::Split { path, dir }) => self.drag_divider(&ev, path, dir),
+        Some(Msg::TabNew) => self.new_tab(),
+        None => {} // a core event with no message of ours: a key, a resize
+    }
+}
+```
+
+[`splitmux.rs`](../examples/rust/apps/splitmux.rs) ·
+[backlog C50](BACKLOG.md)
+
 ### How do I give my app a menu bar?
 
 One call, in the view, wherever the strip belongs: `<menuBar menu={[…]}/>`,

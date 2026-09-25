@@ -736,7 +736,7 @@ jobs:
       # One invocation publishes in dependency order: each crate's verify
       # build resolves the earlier ones from the freshly published index.
       - name: cargo publish
-        run: cargo publish -p kui-core -p kui-wgpu -p kui -p kui-lua -p kui-ffi --registry forgejo
+        run: cargo publish -p kui-derive -p kui-core -p kui-wgpu -p kui -p kui-lua -p kui-ffi --registry forgejo
 
       # Prereleases get their identifier as the dist-tag (0.1.0-alpha.1 ->
       # `alpha`, installed with `npm i @qxuken/kui@alpha`); plain versions become

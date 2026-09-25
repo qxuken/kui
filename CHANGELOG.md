@@ -78,6 +78,29 @@ existing input draws changes: a stroke is clipped as it was.
 
 ### Added
 
+- **Typed messages in Rust: `#[derive(Message)]`** (backlog C50, from
+  both bake-offs: "typed Rust messages: no, a `Value` payload"). A new
+  crate, `kui-derive`, re-exported by `kui` behind a default `derive`
+  feature. Derive it on an enum and each variant is a `{kind,
+  …fields}` payload, its kind the variant's name in snake_case
+  (`#[message(kind = "…")]` renames it). `on_click(Msg::Save)` builds
+  the payload, and `ev.message::<Msg>()` reads it back for an exhaustive
+  `match`, from a click's payload or from the `tag` inside a drag,
+  change, scroll or drop event.
+  - Fields may be the numbers, `bool`, `String`, `Option` (absent is
+    `None`), `Vec`, `Value`, or other messages, through the new
+    `MessageField` trait.
+  - An enum of unit variants marked `#[message(string)]` is a bare
+    string (`dir: SplitDir` is `"h"`).
+  - `MessageError` says what did not fit.
+  - The payload is the same plain data, so the other bindings read it
+    unchanged.
+
+  The syn it builds on was already in a windowed app's tree, so the
+  derive adds its own few hundred lines to a cold build and no new crate
+  besides itself. The splitmux example moved onto it, and its headless
+  drive now clicks a pane, a tab and the `+`, and drags a divider.
+
 - **The variable-height list in JSX and Lua** (backlog C46). `list(ctx,
   { key, heights }, measure, row)` in Node and `list(env, { key, heights },
   measure, row)` in Lua are `widgets::list`: rows of no fixed height (a

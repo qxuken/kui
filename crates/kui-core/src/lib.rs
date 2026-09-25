@@ -33,6 +33,7 @@ pub mod keyframes;
 pub mod layout;
 pub mod line;
 pub mod menu;
+pub mod message;
 pub mod metrics;
 pub mod resources;
 pub(crate) mod retain;
@@ -85,8 +86,15 @@ pub use input::{
 };
 pub use key::Key;
 pub use keyframes::Keyframe;
+/// `#[derive(Message)]` (backlog C50), with the `derive` feature; `kui`
+/// turns it on. From a crate that depends on kui-core alone, say
+/// `#[message(crate = "kui_core")]` — the generated code reaches `::kui`
+/// unless told otherwise.
+#[cfg(feature = "derive")]
+pub use kui_derive::Message;
 pub use line::{LineId, LineStore, Stroke};
 pub use menu::{Accel, BarMenu, Menu, MenuAction, MenuBar, MenuItem, MenuRole};
+pub use message::{MessageError, MessageField};
 pub use metrics::Metrics;
 pub use resources::{
     FontId, FragmentId, ImageBacking, ImageFit, ImageId, ImageOpts, Resources, Sampling, SessionId,
