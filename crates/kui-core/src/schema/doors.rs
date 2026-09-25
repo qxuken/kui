@@ -1185,6 +1185,13 @@ pub const DOORS: &[Door] = &[
         doc: "The window's opening size; `min_size` / `max_size` / `chrome` / `text_aa` / `diagnostics` are the rest of the set, and each binding's form carries them all (`min_w`, `chrome`, `text_aa`, `diagnostics` in C; `minWidth`, `chrome`, `textAa`, `diagnostics` in Node). `Launcher::devtools` and `Launcher::core` are the two the others reach another way: `kui_set_devtools` / `setDevtools` on the context, and the context handed to `kui_run_with` *is* the core.",
     },
     Door {
+        rust: "Launcher::icon",
+        c: Is("kui_set_icon"),
+        node: As("`icon` in `WindowOptions`"),
+        lua: No(GUEST),
+        doc: "The icon every window of the app is created with — RGBA pixels and their size — shown by Windows in the title bar, Alt-Tab and the taskbar and by X11's window manager; macOS (the bundle's `.icns`) and Wayland (the `.desktop` file's) have no window icon (backlog F86). `Launcher::icon_resource` is the Windows executable's own icon resource, which wins there — C's `resource` argument, Node's `icon.resource`. C's is a free function called before `kui_run`, for `kui_on_teardown`'s reason.",
+    },
+    Door {
         rust: "App::teardown",
         c: Is("kui_on_teardown"),
         node: Is("KuiWindow.onTeardown"),

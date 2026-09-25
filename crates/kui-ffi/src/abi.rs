@@ -210,7 +210,8 @@
 /// moved. Still at 18: `kui_set_devtools_tab`, `kui_devtools_current_tab`
 /// and `kui_on_teardown` — functions, no struct (backlog RG1 chose the
 /// setter over a `KuiRunConfig` append for the last: the config is the
-/// window and `kui_run` takes none) — and `kui_select` (backlog F73, a
+/// window and `kui_run` takes none) — `kui_set_icon` for the same reason
+/// (backlog F86) — and `kui_select` (backlog F73, a
 /// widget function), `KUI_TABLE` (F75, a value of `KuiSpec.dir`) and
 /// `KUI_VALUE_CARET_SOLID` (F68, a bit in `value_set`): nothing a host
 /// had laid out moved for any of the three.

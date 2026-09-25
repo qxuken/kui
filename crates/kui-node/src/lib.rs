@@ -17,8 +17,9 @@ use kui_core::{
     Vec2, schema::color_hex_str,
 };
 use napi::Env;
+use napi::ValueType;
 use napi::bindgen_prelude::{
-    Buffer, Either, Float64Array, Function, FunctionRef, Null, Uint8Array,
+    Buffer, Either, Float64Array, Function, FunctionRef, Null, Object, Uint8Array, Unknown,
 };
 use napi_derive::napi;
 use serde_json::{Map as JsonMap, Value as Json};
@@ -126,6 +127,51 @@ const HEX: kui_core::Handles = kui_core::Handles::HEX;
 
 fn bool_prop(props: &JsonMap<String, Json>, key: &str) -> bool {
     props.get(key).and_then(Json::as_bool).unwrap_or(false)
+}
+
+/// `icon.rgba`'s bytes, as `window_options` takes them out.
+type IconBytes = Vec<u8>;
+
+/// A window's options as JSON, but for `icon.rgba`, taken out as bytes:
+/// N-API's JSON conversion reads a typed array index by index into a map
+/// of string keys — a quarter of a million of them for a 256 px icon —
+/// where the bytes are one copy.
+fn window_options(options: Option<Object>) -> Result<(JsonMap<String, Json>, Option<IconBytes>)> {
+    let mut map = JsonMap::new();
+    let mut rgba = None;
+    let Some(o) = options else {
+        return Ok((map, rgba));
+    };
+    for key in Object::keys(&o)? {
+        if key != "icon" {
+            if let Some(v) = o.get::<Json>(&key)? {
+                map.insert(key, v);
+            }
+            continue;
+        }
+        let Some(icon) = o.get::<Unknown>(&key)? else {
+            continue;
+        };
+        if icon.get_type()? != ValueType::Object {
+            map.insert(key.clone(), o.get::<Json>(&key)?.unwrap_or(Json::Null));
+            continue;
+        }
+        // SAFETY: checked to be an object just above.
+        let icon: Object = unsafe { icon.cast()? };
+        let mut fields = JsonMap::new();
+        for k in Object::keys(&icon)? {
+            if k == "rgba" {
+                let bytes = icon.get::<Uint8Array>(&k).map_err(|_| {
+                    err("window options: icon's `rgba` must be a Uint8Array of width * height * 4 bytes")
+                })?;
+                rgba = bytes.map(|b| b.to_vec());
+            } else if let Some(v) = icon.get::<Json>(&k)? {
+                fields.insert(k, v);
+            }
+        }
+        map.insert(key, Json::Object(fields));
+    }
+    Ok((map, rgba))
 }
 
 fn empty_props() -> &'static JsonMap<String, Json> {
@@ -1581,17 +1627,16 @@ pub struct KuiWindow {
 impl KuiWindow {
     /// Options: `{width, height, minWidth, minHeight, maxWidth, maxHeight,
     /// chrome: "native" | "custom" | "borderless", textAa: "auto" | "gray"
-    /// | "subpixel", system}`. The min/max pairs bound what the user can
+    /// | "subpixel", system, icon}`. The min/max pairs bound what the user can
     /// resize the window to; either half may stand alone. `system` pins part of `env.system` over what the OS
     /// says, for the life of the window — `{motion: 'reduced'}` is what a
     /// user who asked for less motion would get, on a machine whose owner
-    /// did not; see `WindowOptions`.
+    /// did not; `icon: {rgba, width, height, resource}` is every window's
+    /// icon; see `WindowOptions`.
     #[napi(constructor, ts_args_type = "title: string, options?: WindowOptions")]
-    pub fn new(title: String, options: Option<Json>) -> Result<Self> {
-        let o = options
-            .as_ref()
-            .and_then(Json::as_object)
-            .unwrap_or(empty_props());
+    pub fn new(title: String, options: Option<Object>) -> Result<Self> {
+        let (o, icon_rgba) = window_options(options)?;
+        let o = &o;
         // `TreeApp::on_event` only keeps an event; JS runs `update` after
         // the pump and submits the next view. So an input leaves its frame
         // to that answer, and a click paints once — the button let go and
@@ -1685,6 +1730,46 @@ impl KuiWindow {
         // it (backlog F47). `'unknown'` and null are "not pinned".
         if let Some(sys) = o.get("system") {
             launcher = launcher.system(pinned_system(sys)?);
+        }
+        // `icon: {rgba, width, height}` and/or `{resource}` — the
+        // launcher's `icon` and `icon_resource` (backlog F86); the pixels
+        // were taken out as bytes by `window_options`.
+        match o.get("icon") {
+            None | Some(Json::Null) => {}
+            Some(Json::Object(icon)) => {
+                let dim = |k: &str| {
+                    icon.get(k)
+                        .and_then(Json::as_u64)
+                        .and_then(|v| u32::try_from(v).ok())
+                };
+                match (icon_rgba, dim("width"), dim("height")) {
+                    (Some(rgba), Some(w), Some(h)) => {
+                        launcher = launcher
+                            .try_icon(rgba, w, h)
+                            .map_err(|e| err(format!("window options: {e}")))?;
+                    }
+                    (None, None, None) => {}
+                    _ => {
+                        return Err(err(
+                            "window options: icon's `rgba` (a Uint8Array), `width` and `height` go together",
+                        ));
+                    }
+                }
+                match icon.get("resource") {
+                    None | Some(Json::Null) => {}
+                    Some(r) => {
+                        let id = r.as_u64().and_then(|v| u16::try_from(v).ok()).ok_or_else(|| {
+                            err(format!("window options: icon's `resource` must be a resource id from 0 to 65535, not {r}"))
+                        })?;
+                        launcher = launcher.icon_resource(id);
+                    }
+                }
+            }
+            Some(other) => {
+                return Err(err(format!(
+                    "window options: icon must be {{rgba, width, height}} and/or {{resource}}, not {other}"
+                )));
+            }
         }
         let runner = launcher
             .open(TreeApp::default())

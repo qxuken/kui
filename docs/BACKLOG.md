@@ -39,8 +39,9 @@ the day it was filed, F77–F85 — the virtual list's owed frame and a
 stroke's clip, the key sink off its clip, the eased scroll, the Lua
 meta file, two reveals, the atlas between one page and two, the secret
 paste and secure keyboard entry — from the kawoosh reports of 2026-09-22
-and 23, each the day it was filed, and RG17–RG36 from the regression
-pass of 2026-09-25 the same day. The index
+and 23, each the day it was filed, RG17–RG36 from the regression
+pass of 2026-09-25 the same day, and F86 — every window's icon — from
+the kawoosh window-icon report of the same day, the day it was filed. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -1279,6 +1280,14 @@ Secure Keyboard Entry, so any process with an event tap could read the
 password as it was typed. Two entries, F84 and F85, both **built
 2026-09-23**, the day they were filed, and in the archive.
 
+## From the kawoosh window-icon report (2026-09-25)
+
+kawoosh links its icon into `kawoosh.exe` as a resource, where Explorer
+draws it, and its window still showed Windows' default in the title
+bar and Alt-Tab: winit registers its window class with no icon, and
+kui created every window without giving it one. One entry, F86,
+**built 2026-09-25**, the day it was filed, and in the archive.
+
 ## From the regression pass of 2026-09-19
 
 A review of everything since the alpha.15 tag — F67–F75, nine features
@@ -2159,6 +2168,10 @@ move.
 
 - `~` **F84** — [A paste cannot say its pasteboard marked it a secret, and a secret cannot be copied marked](backlog/closed-2026-09.md#-f84--a-paste-cannot-say-its-pasteboard-marked-it-a-secret-and-a-secret-cannot-be-copied-marked--done-2026-09-23) — done (2026-09-23) — `InputEvent::Paste` carries `ClipboardMarks`, the sink's `text` event gains `concealed` / `transient`; `set_clipboard_secret` writes them
 - `~` **F85** — [A window at a password prompt cannot ask for secure keyboard entry](backlog/closed-2026-09.md#-f85--a-window-at-a-password-prompt-cannot-ask-for-secure-keyboard-entry--done-2026-09-23) — done (2026-09-23) — `Ui::secure_input(bool)`, frame state; the runner holds one balanced count while an asking window has the keyboard
+
+**From the kawoosh window-icon report (2026-09-25)** — F86, filed and built the same day
+
+- `~` **F86** — [A window shows the platform's default icon, and the launcher cannot give it the app's](backlog/closed-2026-09.md#-f86--a-window-shows-the-platforms-default-icon-and-the-launcher-cannot-give-it-the-apps--done-2026-09-25) — done (2026-09-25) — `Launcher::icon` (RGBA) and `Launcher::icon_resource` (Windows), given to every window `window_attrs` creates; Node's `WindowOptions.icon`, C's `kui_set_icon`
 
 **From the regression pass of 2026-09-25** — RG17–RG36 built the same day, before the alpha.17 tag; RG37 the same day, after it
 

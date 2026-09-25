@@ -19,6 +19,7 @@ pub use kui_core::*;
 mod access_bridge;
 pub mod audio;
 mod clipboard;
+mod icon;
 /// ADR 0009's arithmetic: where a pointer in one window is in another.
 mod keys;
 /// The traffic lights' keep-out and the OS titlebar's height, measured
@@ -160,6 +161,8 @@ pub fn app(title: &str) -> Launcher {
         setup_core: Vec::new(),
         deferred_events: false,
         system: SystemEnv::default(),
+        icon: None,
+        icon_resource: None,
     }
 }
 
@@ -192,6 +195,11 @@ pub struct Launcher {
     /// The OS settings the app pinned ([`Launcher::system`]); unknown is
     /// not pinned.
     system: SystemEnv,
+    /// The windows' icon ([`Launcher::icon`]), checked when it was given.
+    icon: Option<winit::window::Icon>,
+    /// The executable's icon resource on Windows
+    /// ([`Launcher::icon_resource`]).
+    icon_resource: Option<u16>,
 }
 
 impl Launcher {
@@ -316,6 +324,54 @@ impl Launcher {
         self
     }
 
+    /// The icon every window of the app is created with: `rgba` is
+    /// `width` × `height` pixels, four bytes each, row by row from the top
+    /// left, alpha not premultiplied. Windows
+    /// shows it in the title bar, Alt-Tab and the taskbar and X11 in the
+    /// window manager's; macOS draws the bundle's `.icns` in the Dock and
+    /// Wayland the `.desktop` file's icon, and neither has a window icon,
+    /// so there it is nothing. Something a taskbar can shrink cleanly —
+    /// 64 to 256 px. Panics when the pixels are not that size, a
+    /// programming error at startup; [`Launcher::try_icon`] says why
+    /// instead.
+    ///
+    /// ```no_run
+    /// # let rgba = vec![0u8; 64 * 64 * 4];
+    /// kui::app("mine").icon(rgba, 64, 64);
+    /// ```
+    ///
+    /// A Windows program's own icon is a resource linked into its
+    /// executable, where Explorer finds it — and winit does not give it to
+    /// the windows; [`Launcher::icon_resource`] does, and wins over the
+    /// pixels there.
+    pub fn icon(self, rgba: Vec<u8>, width: u32, height: u32) -> Self {
+        match self.try_icon(rgba, width, height) {
+            Ok(this) => this,
+            Err(e) => panic!("kui: {e}"),
+        }
+    }
+
+    /// [`Launcher::icon`] for pixels that came from outside the program —
+    /// Node's `icon` option, C's `kui_set_icon` — refused with the reason
+    /// rather than a panic. The launcher is consumed either way, as
+    /// [`Launcher::try_extension_as`]'s is.
+    pub fn try_icon(mut self, rgba: Vec<u8>, width: u32, height: u32) -> Result<Self, String> {
+        self.icon = Some(icon::from_rgba(rgba, width, height)?);
+        Ok(self)
+    }
+
+    /// The executable's icon resource `id` as every window's icon, on
+    /// Windows: the `.ico` a `1 ICON "app.ico"` line in the program's `.rc`
+    /// links in, the one Explorer already draws for the file — each of the
+    /// title bar and the taskbar loads the frame drawn for its own size.
+    /// A resource the executable does not have is said once on stderr, and
+    /// [`Launcher::icon`]'s pixels are used if there are any. Nothing on
+    /// other platforms, so an app passes both and each OS takes its own.
+    pub fn icon_resource(mut self, id: u16) -> Self {
+        self.icon_resource = Some(id);
+        self
+    }
+
     /// Shorthand for `.chrome(Chrome::Custom)`.
     pub fn custom_titlebar(self) -> Self {
         self.chrome(Chrome::Custom)
@@ -430,6 +486,7 @@ impl Launcher {
         }
         Shell {
             title: self.title,
+            icon: icon::AppIcon::new(self.icon, self.icon_resource),
             chrome: self.chrome,
             size: clamp_size(self.size, self.min_size, self.max_size),
             min_size: self.min_size,
@@ -1102,6 +1159,8 @@ struct Armed {
 
 struct Shell<A: App> {
     title: String,
+    /// What every window is created with (`Launcher::icon`).
+    icon: icon::AppIcon,
     chrome: Chrome,
     /// Initial inner size (logical px), already clamped into the bounds.
     size: (f64, f64),

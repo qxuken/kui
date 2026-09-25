@@ -439,9 +439,9 @@ impl<A: App> Shell<A> {
     }
 
     /// The attributes a window of this app is created with: `chrome` —
-    /// the launcher's for the app's own windows — and hidden until the
-    /// accessibility adapter has hooked it (the platform adapters must see
-    /// the window before it is shown).
+    /// the launcher's for the app's own windows — the launcher's icon, and
+    /// hidden until the accessibility adapter has hooked it (the platform
+    /// adapters must see the window before it is shown).
     pub(super) fn window_attrs(
         &self,
         title: &str,
@@ -453,6 +453,7 @@ impl<A: App> Shell<A> {
             .with_title(title)
             .with_inner_size(LogicalSize::new(w, h))
             .with_visible(false);
+        attrs = self.icon.apply(attrs);
         match chrome {
             Chrome::Native => {}
             Chrome::Custom => {

@@ -1588,6 +1588,18 @@ export interface WindowOptions {
    *  hold. It is an option rather than an environment variable so that a
    *  shipped app's motion is its own code's decision. */
   system?: EnvInput['system'];
+  /** The icon every window of the app is created with (the launcher's
+   *  `icon`): `rgba` is `width` × `height` pixels, four bytes each, row
+   *  by row from the top left, alpha not premultiplied — a `Buffer` is a
+   *  `Uint8Array` — and 64 to 256 px is what a taskbar shrinks cleanly.
+   *  Windows shows it in the title bar, Alt-Tab and the taskbar, X11 in
+   *  the window manager's; macOS (the bundle's `.icns`) and Wayland (the
+   *  `.desktop` file's) have no window icon. `resource` is an icon
+   *  resource in the executable, on Windows, and wins there — only a
+   *  packaged app has one of its own: under `node.exe` it is Node's.
+   *  Pixels that are not the size are refused, as the constructor
+   *  refuses every other option. */
+  icon?: { rgba: Uint8Array; width: number; height: number; resource?: number } | { resource: number };
   /** `false` stops the loop printing the core's warnings (see `Warning`);
    *  `win.warnings()` still drains them. */
   warnings?: boolean;
@@ -2974,11 +2986,12 @@ export declare class KuiWindow {
   /**
    * Options: `{width, height, minWidth, minHeight, maxWidth, maxHeight,
    * chrome: "native" | "custom" | "borderless", textAa: "auto" | "gray"
-   * | "subpixel", system}`. The min/max pairs bound what the user can
+   * | "subpixel", system, icon}`. The min/max pairs bound what the user can
    * resize the window to; either half may stand alone. `system` pins part of `env.system` over what the OS
    * says, for the life of the window — `{motion: 'reduced'}` is what a
    * user who asked for less motion would get, on a machine whose owner
-   * did not; see `WindowOptions`.
+   * did not; `icon: {rgba, width, height, resource}` is every window's
+   * icon; see `WindowOptions`.
    */
   constructor(title: string, options?: WindowOptions)
   /**

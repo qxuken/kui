@@ -6900,6 +6900,22 @@ test('env() is on both classes and setEnv is only on the headless one', () => {
   assert.equal(KuiWindow.prototype.setEnv, undefined);
 });
 
+test("a window's icon reaches the constructor, and pixels that are not the size are refused (F86)", () => {
+  // Every window's icon is the launcher's (the title bar, Alt-Tab and the
+  // taskbar on Windows, X11's window manager). A window needs a display,
+  // so a headless run checks the hand-over and the refusals, which come
+  // before anything opens.
+  const icon = { rgba: new Uint8Array(2 * 2 * 4), width: 2, height: 2, resource: 1 };
+  assert.equal(windowOptions({ title: 'x', icon }).icon, icon, 'runWindowed passes it by reference');
+  assert.equal(windowOptions({}).icon, undefined);
+  assert.throws(() => new KuiWindow('t', { icon: { ...icon, rgba: new Uint8Array(15) } }), /icon: .*(divisible by 4|dimensions)/);
+  assert.throws(() => new KuiWindow('t', { icon: { rgba: new Uint8Array(0), width: 0, height: 0 } }), /at least one pixel/);
+  assert.throws(() => new KuiWindow('t', { icon: { rgba: [0, 0, 0, 0], width: 1, height: 1 } }), /`rgba` must be a Uint8Array/);
+  assert.throws(() => new KuiWindow('t', { icon: { rgba: new Uint8Array(4), width: 1 } }), /`rgba` \(a Uint8Array\), `width` and `height` go together/);
+  assert.throws(() => new KuiWindow('t', { icon: { resource: 70000 } }), /resource id from 0 to 65535/);
+  assert.throws(() => new KuiWindow('t', { icon: 'kawoosh.png' }), /icon must be \{rgba, width, height\}/);
+});
+
 test("runWindowed's `system` reaches the KuiWindow constructor (F47)", () => {
   // A window has no `setEnv` — its runner writes the real `env.system`
   // before every frame — so the pomodoro's reduced-motion branch was

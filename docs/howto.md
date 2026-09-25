@@ -1150,6 +1150,30 @@ it again after an upgrade; it is generated, never edited.
 [`props.md`](props.md) ·
 [alpha.17](../CHANGELOG.md#010-alpha17-2026-09-25)
 
+### How do I give my windows the app's icon?
+
+Tell the launcher, once, and every window it creates carries it:
+`kui::app("t").icon(rgba, w, h)` with straight RGBA pixels, row by row
+— something a taskbar shrinks cleanly, 64 to 256 px, rendered from your
+drawing at build time or decoded from a PNG you ship — and, for a
+Windows program, `.icon_resource(1)` too. A Windows program's icon is a
+resource linked into its executable (a `1 ICON "app.ico"` line in its
+`.rc`, compiled by `embed-resource` or the like in `build.rs`), which is
+what Explorer and a shortcut draw; the window gets it only when told,
+since winit registers its window class with none. The resource wins
+there, and the title bar and the taskbar each load the `.ico`'s frame
+for their size; X11 shows the pixels. Pass both and let each platform
+take its own: macOS draws the bundle's `.icns` in the Dock and Wayland
+the `.desktop` file's icon, and neither has a window icon, so both
+calls are nothing there. Node: `icon: {rgba, width, height, resource}`
+in the window's options — under `node.exe` the resource is Node's, so
+only a packaged app has one of its own. C: `kui_set_icon(rgba, w, h,
+resource)` before `kui_run`. Pixels that are not the size are refused
+with the reason (`Launcher::try_icon` for pixels from outside the
+program).
+
+[alpha.18 `### Added`](../CHANGELOG.md#010-alpha18-unreleased)
+
 ### How do I stop the console window on Windows?
 
 A Windows binary is built for one of two subsystems, and Rust picks

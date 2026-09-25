@@ -30,6 +30,30 @@ into the window as typing when the window holds a selection — a
 list whose type-ahead searched for it no longer does, and a key sink,
 which never heard that text, still hears the chord.
 
+### Added
+
+- **Every window of the app carries its icon** (backlog F86, from
+  kawoosh's window-icon report). `kui::app("t").icon(rgba, w, h)` gives
+  every window the runner creates — the main one, a declared one, a
+  popup — that picture, and `.icon_resource(1)` gives them, on Windows,
+  the executable's own icon resource: the `1 ICON "app.ico"` line of
+  its `.rc`, which Explorer already drew for the file while the window
+  showed the default, because winit registers its window class with no
+  icon. The resource wins over the pixels there and each of the title
+  bar and the taskbar loads the `.ico`'s frame for its own size; X11
+  takes the pixels. macOS draws the bundle's `.icns` and Wayland the
+  `.desktop` file's, and neither has a window icon, so an app passes
+  both and each platform takes its own. Node: `icon: {rgba, width,
+  height, resource}` in `WindowOptions`, `rgba` a `Uint8Array` (a
+  `Buffer` is one). C: `kui_set_icon(rgba, w, h, resource)` before
+  `kui_run`, as `kui_on_teardown` is — a new function, ABI still 18.
+  Pixels that are not the size are refused with the reason
+  (`Launcher::try_icon`, the constructor, `false` and stderr).
+  *What you can delete:* nothing an app could have written — kui
+  created the window, so a window icon was out of an app's reach; a
+  platform call reaching for the window's handle after the fact to set
+  `WM_SETICON` or `_NET_WM_ICON` goes.
+
 ### Fixed
 
 - **⌘V over a selection sent the clipboard nowhere, and gave a stock

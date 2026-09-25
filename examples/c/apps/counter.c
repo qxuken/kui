@@ -277,8 +277,39 @@ static int headless(void) {
         fprintf(stderr, "FAIL: expected count 1\n");
         return 1;
     }
+    /* The icon's refusals (backlog F86), which need no window: a size
+     * with no pixels, and a resource id past 16 bits, keeping nothing. */
+    if (kui_set_icon(NULL, 32, 32, 0) || kui_set_icon(NULL, 0, 0, 70000) ||
+        !kui_set_icon(NULL, 0, 0, 0)) {
+        fprintf(stderr, "FAIL: kui_set_icon took what is not an icon\n");
+        return 1;
+    }
+    printf("kui_set_icon refused a size with no pixels and a 17-bit resource\n");
+
     printf("headless self-test OK\n");
     return 0;
+}
+
+/* Every window's icon (backlog F86): a disc in the buttons' blue, drawn
+ * here rather than read from a file. Windows shows it in the title bar,
+ * Alt-Tab and the taskbar, X11 in the window manager's; a Mac has no
+ * window icon (the Dock draws the bundle's). A shipped Windows program
+ * would pass its .rc's icon resource as the last argument instead. */
+static int set_icon(void) {
+    enum { N = 64 };
+    static uint8_t px[N * N * 4];
+    for (int y = 0; y < N; y++) {
+        for (int x = 0; x < N; x++) {
+            /* r - d, near the edge, is (r² - d²) / 2r: one pixel of
+             * antialiasing without libm. */
+            float dx = x + 0.5f - N / 2.0f, dy = y + 0.5f - N / 2.0f, r = N / 2.0f - 2.0f;
+            float edge = (r * r - dx * dx - dy * dy) / (2.0f * r);
+            float a = edge < 0 ? 0 : edge > 1 ? 1 : edge;
+            uint8_t *p = &px[(y * N + x) * 4];
+            p[0] = 0x3b; p[1] = 0x82; p[2] = 0xf6; p[3] = (uint8_t)(a * 255.0f);
+        }
+    }
+    return kui_set_icon(px, N, N, 0);
 }
 
 /* -- surface self-test: the rest of the header --------------------------
@@ -299,5 +330,6 @@ int main(int argc, char **argv) {
     AppState state = {0};
     /* And the count is printed as the window goes, whichever way it goes. */
     kui_on_teardown(teardown);
+    if (!set_icon()) return 1;
     return kui_run(KUI_STR("kui — C counter"), view, on_event, &state) ? 0 : 1;
 }

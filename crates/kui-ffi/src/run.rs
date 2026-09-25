@@ -76,6 +76,87 @@ pub extern "C" fn kui_on_teardown(teardown: TeardownFn) {
     })
 }
 
+/// What `kui_set_icon` asked for, for the next run to take.
+#[derive(Debug, PartialEq)]
+struct IconAsk {
+    pixels: Option<(Vec<u8>, u32, u32)>,
+    resource: Option<u16>,
+}
+
+/// The icon `kui_set_icon` set, for the next `kui_run` / `kui_run_with`
+/// to take — a process setting, as `ON_TEARDOWN` is and for its reason.
+static ICON: std::sync::Mutex<Option<IconAsk>> = std::sync::Mutex::new(None);
+
+/// Reads `kui_set_icon`'s arguments, refusing what is not an icon with the
+/// reason: pixels with a zero side, a side with no pixels, a size whose
+/// byte count overflows, a resource id past 16 bits. `Ok(None)` is every
+/// argument zero — no icon.
+///
+/// # Safety
+/// `rgba`, when not null, points at `width * height * 4` readable bytes.
+unsafe fn icon_ask_of(
+    rgba: *const u8,
+    width: u32,
+    height: u32,
+    resource: u32,
+) -> Result<Option<IconAsk>, String> {
+    let pixels = match (rgba.is_null(), width, height) {
+        (true, 0, 0) => None,
+        (false, w, h) if w > 0 && h > 0 => {
+            let len = (w as usize)
+                .checked_mul(h as usize)
+                .and_then(|n| n.checked_mul(4))
+                .filter(|&n| n <= isize::MAX as usize)
+                .ok_or_else(|| format!("a {w}x{h} icon is too large to address"))?;
+            // SAFETY: the caller's promise, `width * height * 4` bytes.
+            Some((
+                unsafe { std::slice::from_raw_parts(rgba, len) }.to_vec(),
+                w,
+                h,
+            ))
+        }
+        (true, w, h) => return Err(format!("a {w}x{h} icon with NULL pixels")),
+        (false, w, h) => return Err(format!("an icon is at least one pixel, not {w}x{h}")),
+    };
+    let resource = match resource {
+        0 => None,
+        r => Some(
+            u16::try_from(r).map_err(|_| format!("an icon resource id is 1 to 65535, not {r}"))?,
+        ),
+    };
+    Ok((pixels.is_some() || resource.is_some()).then_some(IconAsk { pixels, resource }))
+}
+
+/// The icon every window of the next `kui_run` / `kui_run_with` is
+/// created with (backlog F86; the Rust `Launcher::icon` and
+/// `Launcher::icon_resource`): `rgba` is `width` × `height` pixels, four
+/// bytes each, row by row from the top left, alpha not premultiplied,
+/// copied; `resource`, on Windows, is an icon resource in the executable
+/// — the `1 ICON "app.ico"` of its `.rc` — which wins there. NULL, 0, 0
+/// is no pixels and 0 no resource; all four zero clears it. Windows shows
+/// it in the title bar, Alt-Tab and the taskbar and X11 in the window
+/// manager's; macOS and Wayland have no window icon. Returns false, with
+/// the reason on stderr, for what is not an icon — a zero side with
+/// pixels, a side with none, a resource past 65535 — and keeps what was
+/// set before. The last call before the run wins; a run takes it. A free
+/// function for `kui_on_teardown`'s reason: `kui_run` takes no config.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_icon(rgba: *const u8, width: u32, height: u32, resource: u32) -> bool {
+    guard(false, || {
+        // SAFETY: the header's contract for `rgba`.
+        match unsafe { icon_ask_of(rgba, width, height, resource) } {
+            Ok(ask) => {
+                *ICON.lock().unwrap_or_else(|e| e.into_inner()) = ask;
+                true
+            }
+            Err(why) => {
+                eprintln!("kui: kui_set_icon: {why}");
+                false
+            }
+        }
+    })
+}
+
 /// Runs a windowed app driven by C callbacks. Blocks until the window closes.
 /// Returns false if the event loop could not start.
 #[unsafe(no_mangle)]
@@ -153,6 +234,20 @@ pub extern "C" fn kui_run_with(
             }
         };
         let mut launcher = launcher_for(&kstr(title), options);
+        if let Some(icon) = ICON.lock().unwrap_or_else(|e| e.into_inner()).take() {
+            if let Some((rgba, w, h)) = icon.pixels {
+                launcher = match launcher.try_icon(rgba, w, h) {
+                    Ok(l) => l,
+                    Err(why) => {
+                        eprintln!("kui: kui_run_with: {why}");
+                        return false;
+                    }
+                };
+            }
+            if let Some(id) = icon.resource {
+                launcher = launcher.icon_resource(id);
+            }
+        }
         if let Some(c) = unsafe { ctx(ptr) } {
             launcher = launcher
                 .with_extensions(std::mem::take(&mut c.extensions))
@@ -199,4 +294,45 @@ fn launcher_for(title: &str, options: RunOptions) -> kui::Launcher {
         l = l.diagnostics(on);
     }
     l
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_icon_is_pixels_of_its_size_and_a_16_bit_resource() {
+        let px = [7u8; 2 * 3 * 4];
+        let ask = |rgba: *const u8, w, h, r| unsafe { icon_ask_of(rgba, w, h, r) };
+        assert_eq!(ask(std::ptr::null(), 0, 0, 0), Ok(None), "all zero is none");
+        assert_eq!(
+            ask(px.as_ptr(), 2, 3, 1),
+            Ok(Some(IconAsk {
+                pixels: Some((px.to_vec(), 2, 3)),
+                resource: Some(1)
+            }))
+        );
+        assert_eq!(
+            ask(std::ptr::null(), 0, 0, 65535),
+            Ok(Some(IconAsk {
+                pixels: None,
+                resource: Some(65535)
+            }))
+        );
+        assert!(
+            ask(std::ptr::null(), 2, 3, 0)
+                .unwrap_err()
+                .contains("NULL pixels")
+        );
+        assert!(
+            ask(px.as_ptr(), 0, 3, 0)
+                .unwrap_err()
+                .contains("at least one pixel")
+        );
+        assert!(
+            ask(px.as_ptr(), 2, 3, 65536)
+                .unwrap_err()
+                .contains("1 to 65535")
+        );
+    }
 }

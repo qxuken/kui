@@ -225,7 +225,8 @@ extern "C" {
  * kui_input_drag_cancel, kui_is_drop_target and kui_drop_target - five
  * functions, nothing the library writes moved. Still at 18:
  * kui_set_devtools_tab and kui_devtools_current_tab - two functions, no
- * struct - kui_on_teardown, one more, kui_select (a widget function),
+ * struct - kui_on_teardown and kui_set_icon, two more, kui_select (a
+ * widget function),
  * KUI_TABLE (a value of a field KuiSpec already had) and
  * KUI_VALUE_CARET_SOLID (a bit in value_set) - nothing a host had laid
  * out moved for any of the three (backlog F73, F75, F68).
@@ -3079,6 +3080,24 @@ bool kui_run(KuiStr title, KuiViewFn view, KuiEventFn on_event, void *user);
  * three arguments and not a struct, and KuiRunConfig is the window. */
 typedef void (*KuiTeardownFn)(void *user);
 void kui_on_teardown(KuiTeardownFn teardown);
+
+/* The icon every window of the next kui_run / kui_run_with is created
+ * with (backlog F86): `rgba` is width x height pixels, four bytes each,
+ * row by row from the top left, alpha not premultiplied - copied, so the
+ * buffer is yours again on return. `resource`, on Windows, is an icon
+ * resource in your executable - the `1 ICON "app.ico"` line of its .rc,
+ * the icon Explorer already draws for the file - and wins there, each of
+ * the title bar and the taskbar loading the frame drawn for its size; a
+ * resource the executable lacks is said on stderr and the pixels are used.
+ * NULL, 0, 0 is no pixels and 0 no resource; all four zero clears it.
+ * Windows shows the icon in the title bar, Alt-Tab and the taskbar, X11 in
+ * the window manager's; macOS draws the bundle's .icns and Wayland the
+ * .desktop file's, and neither has a window icon. Returns false with the
+ * reason on stderr - a zero side with pixels, a side with none, a resource
+ * past 65535 - keeping what was set before. The last call before the run
+ * wins, and the run takes it. A free function for kui_on_teardown's
+ * reason: kui_run takes no config (ABI still 18). */
+bool kui_set_icon(const uint8_t *rgba, uint32_t width, uint32_t height, uint32_t resource);
 
 /* What kui_run's window opens as: the chrome, the antialiasing and the
  * diagnostics words KuiRunConfig takes. Zero is the default of each. */
