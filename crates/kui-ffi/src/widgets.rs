@@ -199,6 +199,190 @@ pub extern "C" fn kui_button_with(
     });
 }
 
+/// The rows a stock toggle reads off a `KuiSpec`, over
+/// `widgets::toggle_spec` (`schema::TOGGLE_ROWS_JSX`): the button's access
+/// rows and its state. Every other field is ignored, as `kui_button_with`
+/// ignores them. The tooltip goes first, so an explicit description wins.
+fn toggle(
+    ptr: *mut KuiCtx,
+    kind: kui_core::widgets::Toggle,
+    text: KuiStr,
+    spec: *const KuiSpec,
+    payload: *mut KuiValue,
+) -> u64 {
+    guard(0, || {
+        let value = if payload.is_null() {
+            Value::Null
+        } else {
+            unsafe { Box::from_raw(payload) }.0
+        };
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
+        let text = kstr(text);
+        let metrics = *c.core().metrics();
+        let mut node = kui_core::widgets::toggle_spec(&metrics).on_click(value);
+        let mut hint = None;
+        if let Some(s) = unsafe { spec.as_ref() } {
+            if let Some(h) = opt_str(s.tooltip) {
+                node = node.apply_tooltip(&h);
+                hint = Some(h);
+            }
+            if let Some(l) = opt_str(s.label) {
+                node = node.label(l.as_ref());
+            }
+            if let Some(d) = opt_str(s.description) {
+                node = node.description(d.as_ref());
+            }
+            node = node
+                .disabled(s.disabled != 0)
+                .checked(s.checked != 0)
+                .mixed(s.mixed != 0);
+        }
+        kui_core::widgets::toggle_with(
+            &mut kui_core::Ui::wrap(c.core()),
+            kind,
+            &text,
+            &text,
+            node,
+            hint.as_deref(),
+        )
+        .0
+    })
+}
+
+/// The stock checkbox (ADR 0034): a box drawn from `spec`'s `checked` /
+/// `mixed`, labelled `text` and keyed by it; a press posts `payload`
+/// (consumed). Reads `checked`, `mixed`, `label`, `description`,
+/// `tooltip` and `disabled` off `spec` (NULL = none of them). Its key.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_checkbox(
+    ptr: *mut KuiCtx,
+    text: KuiStr,
+    spec: *const KuiSpec,
+    payload: *mut KuiValue,
+) -> u64 {
+    toggle(
+        ptr,
+        kui_core::widgets::Toggle::Checkbox,
+        text,
+        spec,
+        payload,
+    )
+}
+
+/// The stock radio (ADR 0034); see `kui_checkbox`. Declare radios between
+/// `kui_radio_group_open` and `kui_close`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_radio(
+    ptr: *mut KuiCtx,
+    text: KuiStr,
+    spec: *const KuiSpec,
+    payload: *mut KuiValue,
+) -> u64 {
+    toggle(ptr, kui_core::widgets::Toggle::Radio, text, spec, payload)
+}
+
+/// The stock switch (ADR 0034); see `kui_checkbox`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_switch(
+    ptr: *mut KuiCtx,
+    text: KuiStr,
+    spec: *const KuiSpec,
+    payload: *mut KuiValue,
+) -> u64 {
+    toggle(ptr, kui_core::widgets::Toggle::Switch, text, spec, payload)
+}
+
+/// Opens a radio group named `label` (ADR 0034): `spec`'s box rows (NULL =
+/// a column), the group's role and name, and the stock gap where `spec`
+/// has none. Declare its radios, then `kui_close`. Its key.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_radio_group_open(
+    ptr: *mut KuiCtx,
+    label: KuiStr,
+    spec: *const KuiSpec,
+) -> u64 {
+    guard(0, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
+        let label = kstr(label);
+        let base = unsafe { spec.as_ref() }
+            .map_or_else(NodeSpec::column, |s| spec_of(s, NONE, NONE, NONE, NONE));
+        let metrics = *c.core().metrics();
+        let node = kui_core::widgets::radio_group_open_spec(&metrics, &label, base);
+        c.core().open_keyed(&label, node).0
+    })
+}
+
+/// The stock slider (ADR 0034), named and keyed by `label`. Reads the
+/// value fields (`value_now` / `value_min` / `value_max` / `value_step` by
+/// their `KUI_VALUE_*` bits, `value_text`), `on_change`, `width` /
+/// `min_w` / `max_w` where set, `label` (a name other than the key),
+/// `description`, `tooltip` and `disabled` off `spec`; every other field
+/// is its look's. With `on_change` the core proposes values as
+/// `{kind:"change", value, phase, tag}`. Its key.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_slider(ptr: *mut KuiCtx, label: KuiStr, spec: *const KuiSpec) -> u64 {
+    guard(0, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
+        let label = kstr(label);
+        let metrics = *c.core().metrics();
+        let mut node = kui_core::widgets::slider_spec(&metrics);
+        let mut hint = None;
+        if let Some(s) = unsafe { spec.as_ref() } {
+            if let Some(h) = opt_str(s.tooltip) {
+                node = node.apply_tooltip(&h);
+                hint = Some(h);
+            }
+            if let Some(l) = opt_str(s.label) {
+                node = node.label(l.as_ref());
+            }
+            if let Some(d) = opt_str(s.description) {
+                node = node.description(d.as_ref());
+            }
+            if s.width.tag != 0 {
+                node = node.width(sizing_of(s.width));
+            }
+            if s.min_w != 0.0 {
+                node = node.min_width(min_of(s.min_w));
+            }
+            if s.max_w > 0.0 {
+                node = node.max_width(s.max_w);
+            }
+            if s.value_set & KUI_VALUE_NOW != 0 {
+                node = node.value_now(s.value_now);
+            }
+            if s.value_set & KUI_VALUE_MIN != 0 {
+                node = node.value_min(s.value_min);
+            }
+            if s.value_set & KUI_VALUE_MAX != 0 {
+                node = node.value_max(s.value_max);
+            }
+            if s.value_set & KUI_VALUE_STEP != 0 {
+                node = node.value_step(s.value_step);
+            }
+            if let Some(t) = opt_str(s.value_text) {
+                node = node.value_text(t.into_owned());
+            }
+            if let Some(tag) = unsafe { s.on_change.as_ref() } {
+                node = node.on_change(tag.0.clone());
+            }
+            node = node.disabled(s.disabled != 0);
+        }
+        kui_core::widgets::slider_with(
+            &mut kui_core::Ui::wrap(c.core()),
+            &label,
+            node,
+            hint.as_deref(),
+        )
+        .0
+    })
+}
+
 /// Editable text node; flags: `KUI_EDIT_MULTILINE`, `KUI_EDIT_AUTOFOCUS`,
 /// `KUI_EDIT_WRAP`. Returns its key.
 #[unsafe(no_mangle)]

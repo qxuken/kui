@@ -1490,7 +1490,23 @@ entries came from the comparison's table: typed messages (C50) and file
 dialogs (C51). The distribution recommendation is unchanged (see
 *Distribution* under *After alpha.17*).
 
-### `~` C45 — Checkbox, radio group, switch and slider are roles only; every app draws them
+### `~` C45 — Checkbox, radio group, switch and slider are roles only; every app draws them — **built 2026-09-25**
+
+**Built 2026-09-25**, the day ADR 0034 was accepted. Rust has
+`widgets::checkbox`, `radio`, `switch`, `toggle_with`, `radio_group` and
+`radio_group_with`, `slider` and `slider_with`. The elements are
+`<checkbox>`, `<radio>`, `<radioGroup>`, `<switch>` and `<slider>`; Lua
+has `checkbox { }` and the others; C has `kui_checkbox`, `kui_radio`,
+`kui_switch`, `kui_radio_group_open` and `kui_slider`. Three rows were
+added: `mixed`, `valueStep` and `onChange`. `slider.rs` holds the
+arithmetic, and the pointer capture lives in `Interaction` beside the
+drag's. The `stock-controls` corpus scene is replayed by all four
+adapters, `widgets/controls.rs` and its Node twin cover the controls,
+and `tests/controls.rs` tests them. The ADR's "What the building
+changed" records the five differences from the plan. The hand-drawn
+controls in the accessibility, drag and focus examples and the
+devtools' icon toggles have not been moved yet.
+
 
 **Found** by both bake-offs ("roles only, you draw"; iced ships all four,
 gpui through gpui-component), and by this repo, which draws them five
@@ -1674,10 +1690,11 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** C45, the stock controls
-([ADR 0034](adr/0034-stock-controls-over-the-roles.md), accepted
-2026-09-25 and being built); C46–C51 from the second bake-off are
-smaller, and C47 is measuring before anything else. Nothing of the
+**Build next.** C46–C51 from the second bake-off, C47 (measuring)
+first. C45, the stock controls
+([ADR 0034](adr/0034-stock-controls-over-the-roles.md)), was **built
+2026-09-25**; moving the examples' hand-drawn controls onto it is the
+follow-up its outcome names. Nothing of the
 alpha.14, alpha.16 and alpha.18 upgrade
 reports is open (F88–F92 **built 2026-09-25**, the day they were filed).
 Nothing of the regression pass of 2026-09-25 is open
@@ -1686,7 +1703,7 @@ day after it). Nothing of the regression pass of 2026-09-19 is open (RG1, the No
 drop-zone commit — was **built 2026-09-25**, a register spill in the
 segment loop, and F86, the window icon, the same day. Next is W19, when
 a Windows or Linux round comes (the macOS half of ADR 0031 is built and
-verified; the fallback elsewhere is honest and positionless). Nothing else filed is open besides C45–C51. The rounds since the alpha.14 tag, newest first:
+verified; the fallback elsewhere is honest and positionless). Nothing else filed is open besides C46–C51. The rounds since the alpha.14 tag, newest first:
 the regression pass of 2026-09-19 over F67–F75 (RG1–RG16 — all
 sixteen built or done between 2026-09-19 and 2026-09-20, RG14's ten
 nits and RG16's removal of the press-and-hold door **done

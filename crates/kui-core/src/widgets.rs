@@ -822,6 +822,405 @@ fn button_body(ui: &mut Ui<'_>, ident: Ident<'_>, text: &str, spec: NodeSpec, hi
     }
 }
 
+// -- Stock controls ---------------------------------------------------------
+// `docs/adr/0034-stock-controls-over-the-roles.md`: checkbox, radio, switch
+// and slider, composed over the roles the core already reads. The state is
+// the app's and rides on the spec — `checked`, `mixed`, `value_now` — so a
+// control is drawn from what the view declared this frame, and a toggle's
+// press is its `on_click` like any button's. One definition per control:
+// every binding's element lowers to the `*_with` here.
+
+/// The side of a stock control's box — a checkbox, a radio's circle, a
+/// switch's height, a slider's thumb — from the metrics' control text, so
+/// `compact` and `scaled` move it with the stock button: 16 px at the
+/// comfortable density, 14 at the compact one.
+pub fn control_box(m: &Metrics) -> f32 {
+    (m.control_text + 1.0).round()
+}
+
+/// Which toggle a [`toggle_with`] draws.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Toggle {
+    Checkbox,
+    Radio,
+    Switch,
+}
+
+impl Toggle {
+    /// The role it declares, whatever the spec said.
+    pub fn role(self) -> Role {
+        match self {
+            Toggle::Checkbox => Role::Checkbox,
+            Toggle::Radio => Role::Radio,
+            Toggle::Switch => Role::Switch,
+        }
+    }
+
+    /// The element's name in every binding.
+    pub fn name(self) -> &'static str {
+        match self {
+            Toggle::Checkbox => "checkbox",
+            Toggle::Radio => "radio",
+            Toggle::Switch => "switch",
+        }
+    }
+}
+
+/// A stock toggle's spec — the row its indicator and label sit in — as
+/// [`button_spec`] is the button's. A caller with a spec of its own starts
+/// here and adds the state (`checked`, `mixed`), the `on_click` and the
+/// access rows to it.
+pub fn toggle_spec(m: &Metrics) -> NodeSpec {
+    NodeSpec::row()
+        .gap((control_box(m) / 2.0).round())
+        .cross_align(Align::Center)
+}
+
+/// A checkbox labelled `text`, keyed by it, drawn from `checked`; a press
+/// — pointer, Space, Enter or assistive technology — posts `payload`,
+/// and the view flips its model and draws it again.
+pub fn checkbox(ui: &mut Ui<'_>, text: &str, checked: bool, payload: impl Into<Value>) -> Key {
+    let m = ui.metrics();
+    toggle_with(
+        ui,
+        Toggle::Checkbox,
+        text,
+        text,
+        toggle_spec(&m).checked(checked).on_click(payload.into()),
+        None,
+    )
+}
+
+/// A radio labelled `text`, keyed by it; see [`checkbox`]. Radios belong in
+/// a [`radio_group_with`], whose arrows move the choice.
+pub fn radio(ui: &mut Ui<'_>, text: &str, checked: bool, payload: impl Into<Value>) -> Key {
+    let m = ui.metrics();
+    toggle_with(
+        ui,
+        Toggle::Radio,
+        text,
+        text,
+        toggle_spec(&m).checked(checked).on_click(payload.into()),
+        None,
+    )
+}
+
+/// A switch labelled `text`, keyed by it; see [`checkbox`].
+pub fn switch(ui: &mut Ui<'_>, text: &str, on: bool, payload: impl Into<Value>) -> Key {
+    let m = ui.metrics();
+    toggle_with(
+        ui,
+        Toggle::Switch,
+        text,
+        text,
+        toggle_spec(&m).checked(on).on_click(payload.into()),
+        None,
+    )
+}
+
+/// A toggle with its spec in the caller's hands, the way [`button_with`]
+/// takes the button's: `spec` is [`toggle_spec`] plus the state and the
+/// rows the element admits — `checked`, `mixed` (a checkbox's third
+/// state), `on_click`, `label`, `description`, `disabled`, and `hint`, the
+/// tooltip drawn while it is hovered. The role is `kind`'s whatever the
+/// spec said. Keyed by `key`; an empty `text` draws the indicator alone,
+/// which then wants a `label`. A disabled toggle is dimmed as well as
+/// inert. This is what `<checkbox>`, `<radio>`, `<switch>` and their Lua
+/// and C doors lower to.
+pub fn toggle_with(
+    ui: &mut Ui<'_>,
+    kind: Toggle,
+    key: &str,
+    text: &str,
+    spec: NodeSpec,
+    hint: Option<&str>,
+) -> Key {
+    let t = ui.theme();
+    let m = ui.metrics();
+    let node = ui.child_key(key);
+    let ax = spec.access();
+    let mixed = ax.mixed && kind == Toggle::Checkbox;
+    let on = ax.checked || mixed;
+    let disabled = spec.disabled;
+    let hovered = !disabled && ui.is_hovered(node);
+    let mut spec = spec.role(kind.role());
+    if disabled {
+        let o = spec.style.opacity * t.disabled_opacity;
+        spec = spec.opacity(o);
+    } else if spec.cursor.is_none() {
+        spec = spec.cursor(CursorShape::Pointer);
+    }
+    let b = control_box(&m);
+    ui.with_keyed(key, spec, |ui| {
+        let edge = if on || hovered {
+            t.accent
+        } else {
+            t.border_strong
+        };
+        match kind {
+            Toggle::Checkbox | Toggle::Radio => {
+                let radius = if kind == Toggle::Radio {
+                    b / 2.0
+                } else {
+                    m.radius_inner.min(b / 4.0)
+                };
+                let face = NodeSpec::row()
+                    .width(Sizing::Fixed(b))
+                    .height(Sizing::Fixed(b))
+                    .radius(radius)
+                    .border(1.0, edge)
+                    .bg(if on { t.accent } else { t.sunken })
+                    .center();
+                ui.with(face, |ui| {
+                    if !on {
+                        return;
+                    }
+                    if kind == Toggle::Radio {
+                        let d = (b * 0.4).round();
+                        ui.with(
+                            NodeSpec::row()
+                                .width(Sizing::Fixed(d))
+                                .height(Sizing::Fixed(d))
+                                .radius(d / 2.0)
+                                .bg(t.on_accent),
+                            |_| {},
+                        );
+                    } else if mixed {
+                        ui.with(
+                            NodeSpec::row()
+                                .width(Sizing::Fixed((b * 0.5).round()))
+                                .height(Sizing::Fixed(2.0))
+                                .radius(1.0)
+                                .bg(t.on_accent),
+                            |_| {},
+                        );
+                    } else {
+                        // Drawn, not a glyph: the same mark at every size
+                        // and in every font.
+                        ui.polyline(
+                            &[
+                                Vec2::new(b * 0.26, b * 0.52),
+                                Vec2::new(b * 0.43, b * 0.69),
+                                Vec2::new(b * 0.75, b * 0.33),
+                            ],
+                            crate::line::Stroke::new((b / 8.0).max(1.5), t.on_accent),
+                            NodeSpec::default(),
+                        );
+                    }
+                });
+            }
+            Toggle::Switch => {
+                let track = NodeSpec::row()
+                    .width(Sizing::Fixed((b * 1.75).round()))
+                    .height(Sizing::Fixed(b))
+                    .pad(2.0)
+                    .radius(b / 2.0)
+                    .bg(if on { t.accent } else { t.border_strong })
+                    .main_align(if on { Align::End } else { Align::Start })
+                    .cross_align(Align::Center)
+                    .transition(120.0);
+                ui.with_keyed("track", track, |ui| {
+                    let k = b - 4.0;
+                    ui.with_keyed(
+                        "knob",
+                        NodeSpec::row()
+                            .width(Sizing::Fixed(k))
+                            .height(Sizing::Fixed(k))
+                            .radius(k / 2.0)
+                            .bg(t.on_accent)
+                            .transition(120.0)
+                            .slide(),
+                        |_| {},
+                    );
+                });
+            }
+        }
+        if !text.is_empty() {
+            ui.text(text, TextStyle::new(m.control_text).color(t.fg));
+        }
+        if let Some(hint) = hint
+            && ui.is_hovered(node)
+        {
+            tooltip(ui, hint);
+        }
+    })
+}
+
+/// The stock radio group's spec: a column of radios. What
+/// [`radio_group_with`] is handed by [`radio_group`].
+pub fn radio_group_spec(m: &Metrics) -> NodeSpec {
+    NodeSpec::column().gap((control_box(m) / 2.0).round())
+}
+
+/// A radio group named `label`: one Tab stop whose arrows, Home and End
+/// move the choice among the radios `f` declares and press the one they
+/// land on (ADR 0007, decisions 8 and 11), so a group of radios whose
+/// payloads each set the choice answers the keyboard with no more code.
+/// The role and the name are the group's whatever `spec` said; a `row`
+/// spec lays the radios out across, and its arrows run across with it. A
+/// spec with no gap takes [`radio_group_spec`]'s, so a binding that built
+/// the spec from its rows — where `dir="row"` starts one from nothing —
+/// gets the stock spacing without restating it.
+pub fn radio_group_with(
+    ui: &mut Ui<'_>,
+    label: &str,
+    spec: NodeSpec,
+    f: impl FnOnce(&mut Ui<'_>),
+) -> Key {
+    let spec = radio_group_open_spec(&ui.metrics(), label, spec);
+    ui.with_keyed(label, spec, f)
+}
+
+/// The spec a radio group named `label` opens with: `spec` with the
+/// group's role and name, and the stock gap where it has none. What
+/// [`radio_group_with`] opens, and what C's `kui_radio_group_open` does,
+/// whose radios are declared between it and `kui_close`.
+pub fn radio_group_open_spec(m: &Metrics, label: &str, spec: NodeSpec) -> NodeSpec {
+    let mut spec = spec.role(Role::RadioGroup).label(label);
+    if spec.layout.gap == 0.0 {
+        spec.layout.gap = radio_group_spec(m).layout.gap;
+    }
+    spec
+}
+
+/// A radio group over named options: `current` is the one in force, and a
+/// choice posts `payload(i)`. Each radio is keyed by its index, so two
+/// options with one label are two radios.
+pub fn radio_group(
+    ui: &mut Ui<'_>,
+    label: &str,
+    options: &[&str],
+    current: Option<usize>,
+    payload: impl Fn(usize) -> Value,
+) -> Key {
+    let m = ui.metrics();
+    radio_group_with(ui, label, radio_group_spec(&m), |ui| {
+        for (i, option) in options.iter().enumerate() {
+            let key = format!("{i}");
+            toggle_with(
+                ui,
+                Toggle::Radio,
+                &key,
+                option,
+                toggle_spec(&m)
+                    .checked(current == Some(i))
+                    .on_click(payload(i)),
+                None,
+            );
+        }
+    })
+}
+
+/// The stock slider's spec: a row as wide as a menu and as tall as its
+/// thumb, padded by half the thumb on either side so the thumb's centre
+/// is under the pointer at both ends — the content box is the track the
+/// core reads a press along (ADR 0034, decision 4). A caller sizing its
+/// own slider changes the width and keeps the padding.
+pub fn slider_spec(m: &Metrics) -> NodeSpec {
+    let b = control_box(m);
+    NodeSpec::row()
+        .width(Sizing::Fixed(m.menu_width))
+        .height(Sizing::Fixed(b))
+        .pad_xy(b / 2.0, 0.0)
+        .cross_align(Align::Center)
+}
+
+/// A slider named `label` over `min..=max`, at `value`, moving by `step`.
+/// Its changes arrive as `{kind: "change", value, phase, tag}` with `tag`
+/// — from the pointer, the arrows, the Page keys, Home / End and
+/// assistive technology alike — and the view stores `value` and draws the
+/// slider again at it.
+pub fn slider(
+    ui: &mut Ui<'_>,
+    label: &str,
+    value: f32,
+    min: f32,
+    max: f32,
+    step: f32,
+    tag: impl Into<Value>,
+) -> Key {
+    let m = ui.metrics();
+    slider_with(
+        ui,
+        label,
+        slider_spec(&m)
+            .value_now(value)
+            .value_min(min)
+            .value_max(max)
+            .value_step(step)
+            .on_change(tag.into()),
+        None,
+    )
+}
+
+/// A slider with its spec in the caller's hands: [`slider_spec`] plus the
+/// value rows (`value_now`, `value_min`, `value_max`, `value_step`,
+/// `value_text`), `on_change`, `description`, `disabled`, a width, and
+/// `hint`, the tooltip drawn while it is hovered. Keyed by `label`, which
+/// is its accessible name unless the spec carries a `label` of its own.
+/// The role is the slider's whatever the spec said. What `<slider>` and
+/// its Lua and C doors lower to.
+pub fn slider_with(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, hint: Option<&str>) -> Key {
+    let t = ui.theme();
+    let m = ui.metrics();
+    let node = ui.child_key(label);
+    let ax = spec.access();
+    let fraction = crate::slider::SliderRange::of(ax).map_or(0.0, |r| {
+        let now = ax.value_now.map_or(r.min, crate::slider::exact);
+        ((now - r.min) / (r.max - r.min)).clamp(0.0, 1.0) as f32
+    });
+    let named = ax.label.is_some();
+    let disabled = spec.disabled;
+    let mut spec = spec.role(Role::Slider);
+    if !named {
+        spec = spec.label(label);
+    }
+    if disabled {
+        let o = spec.style.opacity * t.disabled_opacity;
+        spec = spec.opacity(o);
+    } else if spec.cursor.is_none() {
+        spec = spec.cursor(CursorShape::Pointer);
+    }
+    let b = control_box(&m);
+    ui.with_keyed(label, spec, |ui| {
+        let track = NodeSpec::row()
+            .width(Sizing::Grow(1.0))
+            .height(Sizing::Fixed(4.0))
+            .radius(2.0)
+            .bg(t.border_strong);
+        ui.with(track, |ui| {
+            let fill = NodeSpec::row()
+                .width(Sizing::Percent(fraction))
+                .height(Sizing::Grow(1.0))
+                .radius(2.0)
+                .bg(t.accent);
+            ui.with(fill, |ui| {
+                // Hung off the fill's end, so it sits where the value is
+                // with no arithmetic of the view's.
+                ui.with(
+                    NodeSpec::row()
+                        .width(Sizing::Fixed(b))
+                        .height(Sizing::Fixed(b))
+                        .radius(b / 2.0)
+                        .bg(t.on_accent)
+                        .border(1.0, t.border_strong)
+                        .float(
+                            FloatConfig::parent()
+                                .at(Align::End, Align::Center)
+                                .self_at(Align::Center, Align::Center),
+                        ),
+                    |_| {},
+                );
+            });
+        });
+        if let Some(hint) = hint
+            && ui.is_hovered(node)
+        {
+            tooltip(ui, hint);
+        }
+    })
+}
+
 // -- Context menus ----------------------------------------------------------
 // The menu every app was writing for itself (ADR 0017, decision 5). It is
 // exported rather than hidden inside the core's automatic path, and the

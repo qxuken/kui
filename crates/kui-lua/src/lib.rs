@@ -1228,6 +1228,7 @@ fn element_of(ty: &str) -> &str {
         "grid" => "table",
         "input" => "edit",
         "dropdown" => "select",
+        "radio_group" => "radioGroup",
         "window_buttons" => "windowButtons",
         "menu_bar" => "menuBar",
         "latency_graph" | "latency_hud" => "latencyGraph",
@@ -1804,8 +1805,115 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             }
             Ok(())
         }
+        "checkbox" | "radio" | "switch" => {
+            // The button's shape (docs/adr/0034): `label` is the name and
+            // the text unless `text` says otherwise, and the rows the
+            // toggle admits (`schema::TOGGLE_ROWS_LUA`) are read by name
+            // over `widgets::toggle_spec`.
+            let kind = match ty.as_str() {
+                "checkbox" => widgets::Toggle::Checkbox,
+                "radio" => widgets::Toggle::Radio,
+                _ => widgets::Toggle::Switch,
+            };
+            let label: String = t.get("label")?;
+            let text: String = t
+                .get::<Option<String>>("text")?
+                .unwrap_or_else(|| label.clone());
+            let key: String = t
+                .get::<Option<String>>("key")?
+                .unwrap_or_else(|| label.clone());
+            let payload = match t.get::<Option<mlua::Value>>("on_click")? {
+                Some(v) => lua_to_value(&v)?,
+                None => Value::Null,
+            };
+            let mut out = PropsOut::new();
+            out.spec = widgets::toggle_spec(&ui.metrics())
+                .on_click(payload)
+                .label(label.as_str());
+            if let Some(hint) = t.get::<Option<String>>("tooltip")? {
+                out.apply_tooltip(&hint);
+            }
+            apply_named_rows(
+                ui,
+                t,
+                &["description", "disabled", "checked", "mixed"],
+                &mut out,
+            )?;
+            widgets::toggle_with(ui, kind, &key, &text, out.spec, out.tooltip.as_deref());
+            Ok(())
+        }
+        "slider" => {
+            // Keyed by `label`, which is its name too; the value rows, its
+            // change tag and its width are read by name over
+            // `widgets::slider_spec` (`schema::SLIDER_ROWS_LUA`).
+            let label: String = t.get("label")?;
+            let key: String = t
+                .get::<Option<String>>("key")?
+                .unwrap_or_else(|| label.clone());
+            let mut out = PropsOut::new();
+            out.spec = widgets::slider_spec(&ui.metrics()).label(label.as_str());
+            if let Some(hint) = t.get::<Option<String>>("tooltip")? {
+                out.apply_tooltip(&hint);
+            }
+            apply_named_rows(
+                ui,
+                t,
+                &[
+                    "description",
+                    "disabled",
+                    "value_now",
+                    "value_min",
+                    "value_max",
+                    "value_step",
+                    "value_text",
+                    "on_change",
+                    "width",
+                    "min_width",
+                    "max_width",
+                ],
+                &mut out,
+            )?;
+            widgets::slider_with(ui, &key, out.spec, out.tooltip.as_deref());
+            Ok(())
+        }
+        "radio_group" => {
+            // Every box row; the role, the name and, with no `gap`, the
+            // stock spacing are the group's (`widgets::radio_group_with`).
+            let label: String = t.get("label")?;
+            let p = with_refs(ui, |refs| parse_props(t, false, refs))?;
+            let mut result = Ok(());
+            widgets::radio_group_with(ui, &label, p.spec, |ui| result = build_children(ui, t));
+            result
+        }
         other => Err(mlua::Error::runtime(format!("unknown node type '{other}'"))),
     }
+}
+
+/// Reads the rows `names` off `t` by their Lua names and applies them over
+/// `out` through the schema, the way the stock button reads its rows: a
+/// widget whose look is its spec takes a closed list of rows, never the
+/// whole prop list.
+fn apply_named_rows(
+    ui: &mut Ui<'_>,
+    t: &Table,
+    names: &[&str],
+    out: &mut PropsOut,
+) -> mlua::Result<()> {
+    with_refs(ui, |refs| {
+        for name in names {
+            let v = t.get::<mlua::Value>(*name)?;
+            if v.is_nil() {
+                continue;
+            }
+            let def = schema::by_snake_name(name).expect("a schema row");
+            if let Some(parsed) =
+                parse_value(&def.kind, &v, refs).map_err(|e| bad(format!("{name}: {e}")))?
+            {
+                schema::apply(def, parsed, out).map_err(bad)?;
+            }
+        }
+        Ok(())
+    })
 }
 
 struct SpanPart {

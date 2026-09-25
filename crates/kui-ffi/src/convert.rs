@@ -104,7 +104,7 @@ pub(crate) fn opt_str<'a>(s: KuiStr) -> Option<std::borrow::Cow<'a, str>> {
 }
 
 /// `KuiSpec.min_w` / `min_h`: a negative (`KUI_MIN_FIT`) is the fit floor.
-fn min_of(v: f32) -> Min {
+pub(crate) fn min_of(v: f32) -> Min {
     if v < 0.0 { Min::FIT } else { Min::px(v) }
 }
 
@@ -287,6 +287,15 @@ pub(crate) fn spec_of(
     }
     if s.aspect_ratio > 0.0 {
         spec = spec.aspect_ratio(s.aspect_ratio);
+    }
+    if s.mixed != 0 {
+        spec = spec.mixed(true);
+    }
+    if s.value_set & KUI_VALUE_STEP != 0 {
+        spec = spec.value_step(s.value_step);
+    }
+    if let Some(tag) = unsafe { s.on_change.as_ref() } {
+        spec = spec.on_change(tag.0.clone());
     }
     if s.cursor != 0 {
         // KUI_CURSOR_* = schema index + 1, so zero can mean "derive".

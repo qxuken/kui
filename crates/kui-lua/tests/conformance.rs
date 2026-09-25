@@ -85,6 +85,25 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
+        // `conformance::build_stock_controls` (ADR 0034).
+        "stock-controls" => r#"
+            return column { pad = 8, gap = 8,
+              slider { label = "Volume", width = 216, value_now = 30,
+                       value_min = 0, value_max = 100, value_step = 10,
+                       on_change = { kind = "vol" } },
+              checkbox { label = "Mute", on_click = { kind = "mute" } },
+              checkbox { label = "Sync", checked = true, on_click = { kind = "sync" } },
+              checkbox { label = "All", mixed = true,
+                         on_click = { kind = "all" } },
+              radio_group { label = "Theme",
+                radio { label = "Light", on_click = { kind = "light" } },
+                radio { label = "Dark", checked = true,
+                        on_click = { kind = "dark" } },
+              },
+              switch { label = "Wi-Fi", checked = true, on_click = { kind = "wifi" } },
+            }
+        "#
+        .to_string(),
         // A table (ADR 0033): `grid`, since `table` is Lua's own. The
         // header is a fit row of two bare texts; each body row a grow row
         // of a bare text, a fixed box and a grow box.

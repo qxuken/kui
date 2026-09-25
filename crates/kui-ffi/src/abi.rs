@@ -224,7 +224,11 @@
 /// `kui_host_rect` (backlog F92), one function writing the
 /// `KuiLayoutRect` it already had.
 /// The same bump appends `aspect_ratio` after it (backlog C14); a zeroed
-/// field is no ratio. `KUI_SPACE_BETWEEN`, `KUI_SPACE_AROUND`,
+/// field is no ratio. And `mixed`, `value_step` (`KUI_VALUE_STEP`) and
+/// `on_change` after it for the stock controls (ADR 0034), with the
+/// functions `kui_checkbox`, `kui_radio`, `kui_switch`,
+/// `kui_radio_group_open` and `kui_slider` and the flag
+/// `KUI_ACCESS_MIXED`. `KUI_SPACE_BETWEEN`, `KUI_SPACE_AROUND`,
 /// `KUI_SPACE_EVENLY` and `KUI_BASELINE` (backlog C13) are new values of
 /// `main_align` / `cross_align`, which moved nothing.
 pub const KUI_ABI_VERSION: u32 = 19;

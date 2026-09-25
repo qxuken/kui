@@ -155,6 +155,7 @@ headless = [
     "clipboard",
     "context_menu",
     "select",
+    "controls",
     "table",
     "image",
     "polygon",
@@ -220,6 +221,10 @@ path = "../../examples/rust/widgets/virtual_list.rs"
 [[example]]
 name = "context_menu"
 path = "../../examples/rust/widgets/context_menu.rs"
+
+[[example]]
+name = "controls"
+path = "../../examples/rust/widgets/controls.rs"
 
 [[example]]
 name = "select"

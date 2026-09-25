@@ -51,6 +51,43 @@ function button(t)
   return t
 end
 
+-- The stock toggles (docs/adr/0034): checkbox { label = "Mute", checked =
+-- muted, on_click = "mute" }, radio { ... }, switch { ... }. The state is
+-- the model's: a press posts on_click and the view flips it. A checkbox
+-- also takes mixed = true, the select-all box over a partial selection.
+-- `label` is the name and the text both unless `text` says otherwise.
+function checkbox(t)
+  t.type = "checkbox"
+  return t
+end
+
+function radio(t)
+  t.type = "radio"
+  return t
+end
+
+function switch(t)
+  t.type = "switch"
+  return t
+end
+
+-- radio_group { label = "Theme", radio { ... }, radio { ... } }: one Tab
+-- stop whose arrows move the choice and press the radio they land on.
+-- Takes every box row; a column by default.
+function radio_group(t)
+  t.type = "radio_group"
+  return t
+end
+
+-- slider { label = "Volume", value_now = v, value_min = 0, value_max = 100,
+-- value_step = 5, on_change = "vol" }: the core turns the pointer and the
+-- keys into {kind = "change", value, phase, tag} events; store `value` and
+-- draw the slider at it.
+function slider(t)
+  t.type = "slider"
+  return t
+end
+
 -- Single-line input with chrome: input { label = "name", initial = "" }
 function input(t)
   t.type = "input"

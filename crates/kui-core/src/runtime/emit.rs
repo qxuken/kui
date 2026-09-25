@@ -120,6 +120,23 @@ impl Core {
             } else {
                 None
             };
+            // A slider that asked for its changes reads the pointer along
+            // its content box (ADR 0034, decision 4); a disabled one, or a
+            // range that is not one, reads nothing.
+            let slider = match spec.events().on_change.as_ref() {
+                Some(tag) if live && spec.access().role == Some(crate::access::Role::Slider) => {
+                    crate::slider::SliderRange::of(spec.access()).map(|range| {
+                        Box::new(crate::slider::SliderTrack::new(
+                            rect,
+                            spec.layout.padding,
+                            spec.layout.dir == crate::spec::Dir::Column,
+                            range,
+                            tag.clone(),
+                        ))
+                    })
+                }
+                _ => None,
+            };
             // The shape past the rect (ADR 0026): a stroke's pieces, a
             // fill's outline, a rounded box's corners; a plain box none.
             let shape = match self.tree.content[i] {
@@ -163,6 +180,7 @@ impl Core {
                 click_sound: spec.interact().click_sound.filter(|_| live),
                 hover_sound: spec.interact().hover_sound,
                 cursor: spec.cursor,
+                slider,
             });
         }
         // An `on_scroll` node takes the wheel the way a container does —
@@ -232,6 +250,7 @@ impl Core {
                 hover_sound: None,
                 // The editor's own node carries any override.
                 cursor: spec.cursor,
+                slider: None,
             });
         }
         // The content, resolved to what the painter needs — a text node's

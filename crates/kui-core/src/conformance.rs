@@ -763,6 +763,74 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "stock-controls",
+        doc: "The stock controls (ADR 0034): a slider over 0..100 by 10 at \
+              30, 216 wide at the origin so its track — the content box \
+              the pointer reads — runs from x 16 to 216; under it a \
+              checkbox, a checked one, a mixed one, a radio group of two with the \
+              second checked and a switch that is on; the checked box's mark is \
+              a drawn stroke. The pointer presses \
+              the track at 70, drags to 90 and lets go — two `move` rows \
+              and an `end` — then the keys move the slider from the 30 \
+              the view still declares: Right to 40, Home to 0, End to \
+              100; then the checkbox is clicked. The event rows carry each \
+              change's phase and value, which is the arithmetic the core \
+              took on; the access rows carry the checked, mixed and slider \
+              states.",
+        custom: &["key"],
+        elements: &["checkbox", "radio", "radioGroup", "switch", "slider"],
+        build: build_stock_controls,
+        env: NATIVE_CHROME,
+        steps: &[
+            Step::Cursor(156, 16),
+            Step::MouseDown,
+            Step::Cursor(196, 16),
+            Step::MouseUp,
+            Step::Arrow(1),
+            Step::Home,
+            Step::End,
+            Step::Cursor(16, 40),
+            Step::MouseDown,
+            Step::MouseUp,
+        ],
+        expect: Expect {
+            solid: 12,
+            shadows: 0,
+            images: 0,
+            segments: 2,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 20,
+            access: &[
+                "0 window ||",
+                "1 slider Volume||",
+                "1 checkbox Mute||",
+                "1 checkbox Sync||",
+                "1 checkbox All||",
+                "1 radioGroup Theme||",
+                "2 radio Light||",
+                "2 radio Dark||",
+                "1 switch Wi-Fi||",
+            ],
+            events: &[
+                "change vol move 70",
+                "change vol move 90",
+                "change vol end 90",
+                "change vol end 40",
+                "change vol end 0",
+                "change vol end 100",
+                "mute -",
+            ],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+            secure_input: false,
+        },
+    },
+    Scene {
         name: "table",
         doc: "A table (ADR 0033): three rows of a fixed-width table, the \
               first a header, in three columns — a bare text label column \
@@ -3030,6 +3098,40 @@ fn build_align(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     );
 }
 
+fn build_stock_controls(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    let m = ui.metrics();
+    let tag = |k: &str| Value::map([("kind", Value::str(k))]);
+    ui.with(NodeSpec::column().pad(8.0).gap(8.0), |ui| {
+        widgets::slider_with(
+            ui,
+            "Volume",
+            widgets::slider_spec(&m)
+                .width(Sizing::Fixed(216.0))
+                .value_now(30.0)
+                .value_min(0.0)
+                .value_max(100.0)
+                .value_step(10.0)
+                .on_change(tag("vol")),
+            None,
+        );
+        widgets::checkbox(ui, "Mute", false, tag("mute"));
+        widgets::checkbox(ui, "Sync", true, tag("sync"));
+        widgets::toggle_with(
+            ui,
+            widgets::Toggle::Checkbox,
+            "All",
+            "All",
+            widgets::toggle_spec(&m).mixed(true).on_click(tag("all")),
+            None,
+        );
+        widgets::radio_group_with(ui, "Theme", widgets::radio_group_spec(&m), |ui| {
+            widgets::radio(ui, "Light", false, tag("light"));
+            widgets::radio(ui, "Dark", true, tag("dark"));
+        });
+        widgets::switch(ui, "Wi-Fi", true, tag("wifi"));
+    });
+}
+
 /// The rows of the `table` scene: a label (a bare text cell), the width
 /// of the fixed cell beside it, and the grow cell's height.
 pub const TABLE_ROWS: &[(&str, f32, f32)] = &[
@@ -4715,6 +4817,27 @@ fn observe(core: &Core, cov: &mut Coverage) {
         {
             cov.elements.insert("button");
         }
+        // The stock controls (ADR 0034) are the roles they declare; a
+        // slider is the stock one when it asked the core for its changes,
+        // since a hand-drawn slider (the `controls` scene's) nudges.
+        match spec.access().role {
+            Some(Role::Checkbox) => {
+                cov.elements.insert("checkbox");
+            }
+            Some(Role::Radio) => {
+                cov.elements.insert("radio");
+            }
+            Some(Role::RadioGroup) => {
+                cov.elements.insert("radioGroup");
+            }
+            Some(Role::Switch) => {
+                cov.elements.insert("switch");
+            }
+            Some(Role::Slider) if spec.events().on_change.is_some() => {
+                cov.elements.insert("slider");
+            }
+            _ => {}
+        }
         // The stock select is the node whose click carries the `select`
         // tag the core takes back (`widgets::select_tag`); nothing else
         // declares that payload.
@@ -4859,8 +4982,9 @@ pub struct NodeRow {
     pub role: &'static str,
     pub focused: bool,
     pub disabled: bool,
-    /// `-` / `0` / `1`.
+    /// `-` / `0` / `1`, or `m` for a mixed checkbox (ADR 0034).
     pub checked: Option<bool>,
+    pub mixed: bool,
     /// `-` / `0` / `1`. In the report because the core moving focus inside
     /// a composite must be visible *not* to have moved this
     /// (`docs/adr/0007-composite-keyboard-patterns.md`, decision 10).
@@ -4971,6 +5095,7 @@ fn rows(tree: &AccessTree) -> Vec<NodeRow> {
                 focused: n.focused,
                 disabled: n.disabled,
                 checked: n.checked,
+                mixed: n.mixed,
                 selected: n.selected,
                 orientation: match n.orientation {
                     Some(crate::access::Orientation::Horizontal) => "h",
@@ -5025,6 +5150,17 @@ fn event_row(payload: &Value) -> (String, String) {
     // press point in every phase (backlog F2), and a binding that summed
     // steps instead would agree on the kind and disagree here. Printed as
     // integers — the steps are integers, so the deltas are exact.
+    // A slider's change carries its phase and the value the core worked
+    // out (ADR 0034), the arithmetic being what is pinned. The corpus
+    // steps land on whole values, so they print as integers.
+    if kind == "change" {
+        let phase = payload.get("phase").and_then(Value::as_str).unwrap_or("-");
+        let v = payload
+            .get("value")
+            .and_then(Value::as_float)
+            .unwrap_or(0.0) as i64;
+        let _ = write!(tag, " {phase} {v}");
+    }
     if kind == "drag" {
         let num = |k: &str| payload.get(k).and_then(Value::as_float).unwrap_or(0.0) as i64;
         let phase = payload.get("phase").and_then(Value::as_str).unwrap_or("-");
@@ -5327,7 +5463,7 @@ pub fn write_command(cmd: &WindowCommand, out: &mut String) {
 /// fragment-image <i> <atlas|texture> <texture index|-> <x> <y> <w> <h>
 ///                            where a fragment's `image` is; omitted with none
 /// texture <i> <x> <y> <w> <h>   the texel rect a texture quad shows
-/// node <depth> <key:016x> <role> <focused> <disabled> <checked> <scroll> <actions> <name> | <description> | <value>
+/// node <depth> <key:016x> <role> <focused> <disabled> <checked|m> <scroll> <actions> <name> | <description> | <value>
 /// event <kind> <tag>
 /// cmd <verb> <window> [...]  a window command the driver would have applied
 /// warn <code>
@@ -5389,7 +5525,11 @@ pub fn report(name: &str, env: WindowEnv, steps: &[Step], out: &Output) -> Strin
             n.role,
             n.focused as u8,
             n.disabled as u8,
-            n.checked.map_or("-".to_string(), |c| (c as u8).to_string()),
+            if n.mixed {
+                "m".to_string()
+            } else {
+                n.checked.map_or("-".to_string(), |c| (c as u8).to_string())
+            },
             n.selected
                 .map_or("-".to_string(), |c| (c as u8).to_string()),
             n.orientation,

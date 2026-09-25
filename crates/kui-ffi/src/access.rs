@@ -46,6 +46,9 @@ pub extern "C" fn kui_access_tree(ptr: *mut KuiCtx, out: *mut KuiAccessNode, cap
                 if checked {
                     flags |= KUI_ACCESS_CHECKED;
                 }
+                if n.mixed {
+                    flags |= KUI_ACCESS_MIXED;
+                }
             }
             if n.number.is_some() {
                 flags |= KUI_ACCESS_HAS_NUMBER;

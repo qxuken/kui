@@ -48,6 +48,11 @@ export function createEncoder(P) {
   // The stock button's prop list: its admitted rows less the click, which
   // rides beside the list as its own field.
   const BUTTON_ROWS = new Set([...(ROWS.get('button') ?? [])].filter((k) => k !== 'onClick'));
+  // The stock toggles' (ADR 0034) the same way, the click beside the list
+  // and `key` riding as the op's own field; the slider's less its key.
+  const TOGGLE_ROWS = new Set([...(ROWS.get('checkbox') ?? [])].filter((k) => k !== 'onClick' && k !== 'key'));
+  const SLIDER_ROWS = new Set([...(ROWS.get('slider') ?? [])].filter((k) => k !== 'key'));
+  const TOGGLE_KIND = { checkbox: 0, radio: 1, switch: 2 };
   // `<span>` is part of the text element (its props are read by collectSpans),
   // and the hud is the graph's other spelling.
   // `<input>` is the stock field around an `edit` (`widgets::text_input`),
@@ -732,6 +737,45 @@ export function createEncoder(P) {
         // disabled state from the view.
         props(p, null, false, BUTTON_ROWS);
         return;
+      case 'checkbox':
+      case 'radio':
+      case 'switch': {
+        // The stock toggles (ADR 0034) in the button's shape: the text
+        // from the children, the key, the click, then only the rows a
+        // toggle admits, read over `widgets::toggle_spec`.
+        f[fi++] = OP.toggle;
+        f[fi++] = TOGGLE_KIND[el.type];
+        strRef(collectText(el.children, ''));
+        strRef(el.key);
+        strRef(p.onClick != null ? JSON.stringify(p.onClick) : null);
+        props(p, null, false, TOGGLE_ROWS);
+        return;
+      }
+      case 'slider': {
+        // The stock slider (ADR 0034): `label` names it and keys it unless
+        // `key` does; the value rows, `onChange` and its width ride over
+        // `widgets::slider_spec`.
+        const label = p.label ?? el.key;
+        if (label == null) throw new Error('<slider> needs a label (its accessible name)');
+        f[fi++] = OP.slider;
+        strRef(String(label));
+        strRef(el.key);
+        props(p, null, false, SLIDER_ROWS);
+        return;
+      }
+      case 'radioGroup': {
+        // A container of radios (ADR 0034): every box row, the role and
+        // the name the group's own, children until CLOSE.
+        const label = p.label ?? el.key;
+        if (label == null) throw new Error('<radioGroup> needs a label (its accessible name)');
+        f[fi++] = OP.radioGroup;
+        strRef(String(label));
+        props(p, null, false);
+        children(el.children);
+        reserve(4);
+        f[fi++] = OP.close;
+        return;
+      }
       case 'edit': {
         const label = el.key ?? p.id;
         if (label == null) throw new Error('<edit> needs a key or id prop (state is retained by key)');

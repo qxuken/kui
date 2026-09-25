@@ -469,6 +469,7 @@ fn asserts() -> (String, Vec<&'static str>) {
             KUI_VALUE_CARET,
             KUI_VALUE_ANCHOR,
             KUI_VALUE_CARET_SOLID,
+            KUI_VALUE_STEP,
             KUI_ACCESS_HAS_VALUE,
             KUI_ACCESS_HAS_SELECTION,
             KUI_ACCESS_FOCUSED,
@@ -489,6 +490,7 @@ fn asserts() -> (String, Vec<&'static str>) {
             KUI_ACCESS_HAS_SET_SIZE,
             KUI_ACCESS_LIVE_POLITE,
             KUI_ACCESS_LIVE_ASSERTIVE,
+            KUI_ACCESS_MIXED,
         ]
     );
 
@@ -694,6 +696,9 @@ fn asserts() -> (String, Vec<&'static str>) {
         drop_bg: u32 => "uint32_t",
         float_clip: u32 => "uint32_t",
         aspect_ratio: f32 => "float",
+        mixed: u32 => "uint32_t",
+        value_step: f32 => "float",
+        on_change: *const KuiValue => "const KuiValue *",
     });
 
     abi_struct!(o, KuiAccessNode {
@@ -1333,9 +1338,9 @@ fn an_in_struct_s_size_is_the_abi_s() {
     use std::collections::BTreeMap;
     // (name, size in bytes, the ABI the size is from)
     const IN_LAYOUTS: &[(&str, usize, u32)] = &[
-        // ABI 19: `float_clip` took the tail padding after `drop_bg` and
-        // `aspect_ratio` the next four bytes, padded to eight.
-        ("KuiSpec", 584, 19),
+        // ABI 19: `float_clip`, `aspect_ratio`, `mixed`, `value_step` and
+        // `on_change` appended.
+        ("KuiSpec", 600, 19),
         ("KuiSizing", 8, 16),
         ("KuiKeyframe", 36, 16),
         ("KuiEnter", 40, 16),

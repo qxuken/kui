@@ -3627,6 +3627,24 @@ const SCENE_TREES = {
       ]),
     ]);
   },
+  // `conformance::build_stock_controls` (ADR 0034).
+  'stock-controls': () =>
+    root({}, [
+      box({ pad: 8, gap: 8 }, [
+        el('slider', {
+          label: 'Volume', width: 216, valueNow: 30, valueMin: 0, valueMax: 100, valueStep: 10,
+          onChange: { kind: 'vol' },
+        }),
+        el('checkbox', { onClick: { kind: 'mute' } }, ['Mute']),
+        el('checkbox', { checked: true, onClick: { kind: 'sync' } }, ['Sync']),
+        el('checkbox', { mixed: true, onClick: { kind: 'all' } }, ['All']),
+        el('radioGroup', { label: 'Theme' }, [
+          el('radio', { onClick: { kind: 'light' } }, ['Light']),
+          el('radio', { checked: true, onClick: { kind: 'dark' } }, ['Dark']),
+        ]),
+        el('switch', { checked: true, onClick: { kind: 'wifi' } }, ['Wi-Fi']),
+      ]),
+    ]),
   // `conformance::build_table` (ADR 0033): a fit header row of two bare
   // texts, then TABLE_ROWS as grow rows of a bare text, a fixed box and a
   // grow box; the label column is its longest label, the fixed column its
@@ -4734,7 +4752,7 @@ function sceneReport(name, env, steps, { ctx, events, commands, audio }) {
         'node', d, n.key, n.role,
         n.focused ? 1 : 0,
         n.disabled ? 1 : 0,
-        n.checked === null || n.checked === undefined ? '-' : n.checked ? 1 : 0,
+        n.mixed ? 'm' : n.checked === null || n.checked === undefined ? '-' : n.checked ? 1 : 0,
         n.selected === null || n.selected === undefined ? '-' : n.selected ? 1 : 0,
         n.orientation === 'horizontal' ? 'h' : n.orientation === 'vertical' ? 'v' : '-',
         n.live === 'polite' ? 'p' : n.live === 'assertive' ? 'a' : '-',
@@ -4753,6 +4771,9 @@ function sceneReport(name, env, steps, { ctx, events, commands, audio }) {
     // displacement from the press point in every phase, and the corpus
     // steps are integers, so the deltas print exactly.
     if (p?.kind === 'drag') tag += ` ${p.phase} ${Math.trunc(p.dx)} ${Math.trunc(p.dy)}`;
+    // A slider's change carries its phase and the value the core worked
+    // out (ADR 0034); the corpus steps land on whole values.
+    if (p?.kind === 'change') tag += ` ${p.phase} ${Math.trunc(p.value)}`;
     // A scroll's lines ride the same way — the whole lines a grid's notch
     // covers, `-` off a grid — so a lost carry disagrees here (ADR 0029).
     if (p?.kind === 'scroll') tag += ` ${p.lines ?? '-'}`;
@@ -6929,6 +6950,53 @@ test('<input> is the stock field and <tooltip> the node form, the doors Lua and 
   assert.ok(ctx.accessTree().nodes.some((n) => n.name === 'legend'), 'children are the float\'s content');
   assert.deepEqual(ctx.warnings(), []);
   assert.throws(() => ctx.frame(300, 200, 1, box({}, [el('tooltip', {})])), /needs a value or children/);
+});
+
+test('the stock toggles read their state and their rows only, and press through onClick (ADR 0034)', () => {
+  const ctx = new Ctx();
+  ctx.setDiagnostics(true);
+  ctx.frame(320, 240, 1, box({ pad: 10, gap: 6 }, [
+    el('checkbox', { checked: true, radius: 4, onClick: { kind: 'sync' } }, ['Sync']),
+    el('checkbox', { mixed: true, onClick: { kind: 'all' } }, ['All']),
+    el('radioGroup', { label: 'Size', dir: 'row' }, [
+      el('radio', { checked: true, onClick: { kind: 's' } }, ['S']),
+      el('radio', { onClick: { kind: 'm' } }, ['M']),
+    ]),
+    el('switch', { onClick: { kind: 'wifi' } }, ['Wi-Fi']),
+  ]));
+  const nodes = ctx.accessTree().nodes;
+  const by = (role, name) => nodes.find((n) => n.role === role && n.name === name);
+  assert.equal(by('checkbox', 'Sync').checked, true);
+  assert.equal(by('checkbox', 'All').mixed, true, 'mixed reads as mixed');
+  assert.equal(by('radioGroup', 'Size').orientation, 'horizontal', 'a row group runs across');
+  assert.equal(by('radio', 'S').checked, true);
+  assert.equal(by('switch', 'Wi-Fi').checked, false);
+  // A paint row the toggle does not read is dropped, and said so.
+  const ws = ctx.warnings().filter((w) => w.code === 'unknown-prop');
+  assert.equal(ws.length, 1, JSON.stringify(ws));
+  assert.match(ws[0].message, /`radius`/);
+  ctx.access('Wi-Fi', 'click');
+  assert.deepEqual(ctx.pollEvents().map((e) => e.payload.kind), ['wifi']);
+});
+
+test('<slider> proposes values from the keys, snapped to its step, and needs a label (ADR 0034)', () => {
+  const ctx = new Ctx();
+  const view = (v) => box({ pad: 10 }, [
+    el('slider', { label: 'Gain', valueNow: v, valueMin: 0, valueMax: 1, valueStep: 0.1, onChange: { kind: 'gain' } }),
+  ]);
+  ctx.frame(320, 240, 1, view(0.2));
+  const gain = ctx.accessTree().nodes.find((n) => n.role === 'slider');
+  assert.equal(gain.name, 'Gain');
+  // The tree reads the declared f32 back as it is, as it does valueNow.
+  assert.ok(Math.abs(gain.valueStep - 0.1) < 1e-6);
+  ctx.focus(gain.key);
+  ctx.key('right');
+  const evs = ctx.pollEvents().filter((e) => e.payload.kind === 'change');
+  assert.equal(evs.length, 1);
+  assert.equal(evs[0].payload.value, 0.3, 'the decimal the step names, not 0.30000001');
+  assert.equal(evs[0].payload.phase, 'end');
+  assert.equal(evs[0].payload.tag.kind, 'gain');
+  assert.throws(() => ctx.frame(320, 240, 1, box({}, [el('slider', { valueNow: 1 })])), /needs a label/);
 });
 
 test('<select> is the stock select: the click opens the menu under it, a row is one menu message on the field (F73)', () => {

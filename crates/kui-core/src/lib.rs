@@ -41,6 +41,7 @@ pub mod schema;
 pub mod scroll;
 pub mod select;
 pub mod session;
+pub mod slider;
 pub mod slot;
 pub mod slots;
 pub mod spec;

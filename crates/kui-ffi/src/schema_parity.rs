@@ -281,6 +281,9 @@ fn every_schema_prop_has_a_c_counterpart() {
             "label" => s.label = name,
             "description" => s.description = name,
             "checked" => s.checked = 1,
+            "mixed" => s.mixed = 1,
+            "valueStep" => (s.value_set, s.value_step) = (KUI_VALUE_STEP, F),
+            "onChange" => s.on_change = &layout_tag,
             "selected" => s.selected = 1,
             "expanded" => s.expanded = KUI_EXPANDED_EXPANDED,
             "live" => s.live = KUI_LIVE_POLITE, // the parity index is 1; LIVE[1] = polite
@@ -399,6 +402,9 @@ fn fully_populated_spec_matches_the_rust_builder() {
         drop_bg: 0x2b_33_50_ff,
         float_clip: 1,
         aspect_ratio: 1.5,
+        mixed: 1,
+        value_step: 2.5,
+        on_change: &menu_tag,
         window_role: 1,
         transition_ms: 150.0,
         easing: 3,
@@ -428,7 +434,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
             len: 3,
         },
         checked: 1,
-        value_set: KUI_VALUE_NOW | KUI_VALUE_MIN | KUI_VALUE_MAX,
+        value_set: KUI_VALUE_NOW | KUI_VALUE_MIN | KUI_VALUE_MAX | KUI_VALUE_STEP,
         value_now: 3.0,
         value_min: 0.0,
         value_max: 10.0,
@@ -509,6 +515,9 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .on_drop(Value::str("cm"))
         .drop_bg(Color::hex(0x2b3350ff))
         .aspect_ratio(1.5)
+        .mixed(true)
+        .value_step(2.5)
+        .on_change(Value::str("cm"))
         .focus_region()
         .scrollbar(kui_core::ScrollbarMode::Auto)
         .scrollbar_width(8.0)
@@ -761,6 +770,11 @@ fn the_verb_table_names_every_c_verb_and_nothing_else() {
             "kui_text_edit",
             "kui_text_input",
             "kui_select",
+            "kui_checkbox",
+            "kui_radio",
+            "kui_switch",
+            "kui_radio_group_open",
+            "kui_slider",
             "kui_image",
             "kui_image_with",
             "kui_fragment",

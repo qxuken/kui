@@ -124,6 +124,16 @@ pub const OP_POLYGON: u32 = 19;
 pub const OP_TOOLTIP: u32 = 20;
 pub const OP_DEVTOOLS_TAB: u32 = 21;
 pub const OP_SELECT: u32 = 22;
+/// A stock toggle (ADR 0034): the kind — 0 checkbox, 1 radio, 2 switch —
+/// then the button's layout: text, key?, click payload?, a prop list of
+/// the rows it admits.
+pub const OP_TOGGLE: u32 = 23;
+/// The stock slider (ADR 0034): label, key?, a prop list of the rows it
+/// admits.
+pub const OP_SLIDER: u32 = 24;
+/// A radio group (ADR 0034): label, a prop list of box rows, children
+/// until the CLOSE op.
+pub const OP_RADIO_GROUP: u32 = 25;
 
 pub fn protocol_json() -> Json {
     let mut o = JsonMap::new();
@@ -155,6 +165,9 @@ pub fn protocol_json() -> Json {
                 ("tooltip", OP_TOOLTIP),
                 ("devtoolsTab", OP_DEVTOOLS_TAB),
                 ("select", OP_SELECT),
+                ("toggle", OP_TOGGLE),
+                ("slider", OP_SLIDER),
+                ("radioGroup", OP_RADIO_GROUP),
             ]
             .into_iter()
             .map(|(k, v)| (k.to_string(), Json::from(v)))
@@ -1169,6 +1182,51 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             let current = (current > 0).then(|| current as usize - 1);
             widgets::select_items(ui, label, &options, current);
             Ok(())
+        }
+        OP_TOGGLE => {
+            let kind = match r.u()? {
+                0 => widgets::Toggle::Checkbox,
+                1 => widgets::Toggle::Radio,
+                2 => widgets::Toggle::Switch,
+                k => return Err(err(format!("toggle kind {k} out of range"))),
+            };
+            let text = r.req_str()?;
+            let key = r.str_ref()?;
+            let msg = match r.str_ref()? {
+                Some(s) => payload(s)?,
+                None => kui_core::Value::Null,
+            };
+            let mut base = PropsOut::new();
+            base.spec = widgets::toggle_spec(&ui.metrics()).on_click(msg);
+            let p = lower_props_over(r, base, ui)?;
+            widgets::toggle_with(
+                ui,
+                kind,
+                key.unwrap_or(text),
+                text,
+                p.spec,
+                p.tooltip.as_deref(),
+            );
+            Ok(())
+        }
+        OP_SLIDER => {
+            // Named by its label whatever it is keyed by.
+            let label = r.req_str()?;
+            let key = r.str_ref()?;
+            let mut base = PropsOut::new();
+            base.spec = widgets::slider_spec(&ui.metrics()).label(label);
+            let p = lower_props_over(r, base, ui)?;
+            widgets::slider_with(ui, key.unwrap_or(label), p.spec, p.tooltip.as_deref());
+            Ok(())
+        }
+        OP_RADIO_GROUP => {
+            let label = r.req_str()?.to_string();
+            let p = lower_props(r, ui)?;
+            let mut result = Ok(());
+            widgets::radio_group_with(ui, &label, p.spec, |ui| {
+                result = decode_until_close(r, ui);
+            });
+            result
         }
         OP_MENU_BAR => {
             // One JSON blob, read by the same parser `openMenu`'s items go

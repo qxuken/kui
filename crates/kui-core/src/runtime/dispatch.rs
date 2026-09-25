@@ -422,9 +422,10 @@ impl Core {
                     // Enter presses it, the arrows nudge a slider (the
                     // same events assistive technology produces), Escape
                     // lets go.
-                    use crate::access::AccessAction;
+                    use crate::slider::SliderMove;
                     let slider =
                         self.tree.specs[i].access().role == Some(crate::access::Role::Slider);
+                    let changes = slider && self.tree.specs[i].events().on_change.is_some();
                     // Each key the core acts with shows the focus first
                     // (`docs/adr/0002`, decision 4a): pointer focus is
                     // unshown, but the moment the keyboard uses it the
@@ -455,11 +456,26 @@ impl Core {
                         EditKey::Escape => self.move_focus(None),
                         EditKey::Right | EditKey::Up if slider => {
                             self.focus_visible = true;
-                            self.nudge(i, AccessAction::Increment, &mut out);
+                            self.nudge(i, SliderMove::Step(1), &mut out);
                         }
                         EditKey::Left | EditKey::Down if slider => {
                             self.focus_visible = true;
-                            self.nudge(i, AccessAction::Decrement, &mut out);
+                            self.nudge(i, SliderMove::Step(-1), &mut out);
+                        }
+                        // A slider that asked for its changes takes the
+                        // rest of the keys a range has (ADR 0034,
+                        // decision 4); one that did not leaves them be.
+                        EditKey::PageUp | EditKey::PageDown | EditKey::Home | EditKey::End
+                            if changes =>
+                        {
+                            self.focus_visible = true;
+                            let mv = match ek {
+                                EditKey::PageUp => SliderMove::Page(1),
+                                EditKey::PageDown => SliderMove::Page(-1),
+                                EditKey::Home => SliderMove::Home,
+                                _ => SliderMove::End,
+                            };
+                            self.nudge(i, mv, &mut out);
                         }
                         // Inside a composite the arrows, Home and End move
                         // focus among the items instead (see
@@ -870,7 +886,12 @@ impl Core {
             }
             AccessAction::Increment | AccessAction::Decrement => {
                 let Some(i) = idx else { return };
-                self.nudge(i, req.action, out);
+                let n = if req.action == AccessAction::Increment {
+                    1
+                } else {
+                    -1
+                };
+                self.nudge(i, crate::slider::SliderMove::Step(n), out);
             }
             AccessAction::SetTextSelection | AccessAction::ReplaceSelectedText => {
                 let Some(i) = idx else { return };
@@ -1251,13 +1272,15 @@ impl Core {
             .is_some_and(|h| h.payload.is_some() || h.window.is_some());
         let item = crate::composite::owner(&self.tree, i, &mut Vec::new()).is_some();
         let slider = self.tree.specs[i].access().role == Some(Role::Slider);
+        let changes = slider && self.tree.specs[i].events().on_change.is_some();
         match code {
             KeyCode::Enter => activates,
             // Inside a composite, Space either extends a type-ahead search
             // or presses the item (`docs/adr/0007`, decision 9).
             KeyCode::Space => activates || item,
             KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down => slider || item,
-            KeyCode::Home | KeyCode::End => item,
+            KeyCode::Home | KeyCode::End => item || changes,
+            KeyCode::PageUp | KeyCode::PageDown => changes,
             // Type-ahead inside a composite; nothing anywhere else.
             KeyCode::Char(_) => item,
             _ => false,

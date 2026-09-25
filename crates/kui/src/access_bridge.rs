@@ -344,7 +344,9 @@ mod imp {
                     focus: ak_pos(focus),
                 });
             }
-            if let Some(c) = n.checked {
+            if n.mixed {
+                node.set_toggled(Toggled::Mixed);
+            } else if let Some(c) = n.checked {
                 node.set_toggled(if c { Toggled::True } else { Toggled::False });
             }
             // `toggled` and `selected` are different states to AccessKit:
@@ -389,6 +391,9 @@ mod imp {
             }
             if let Some(v) = n.max {
                 node.set_max_numeric_value(v as f64);
+            }
+            if let Some(v) = n.step {
+                node.set_numeric_value_step(v as f64);
             }
             if let Some(s) = n.scroll {
                 node.set_scroll_x(s.x as f64);

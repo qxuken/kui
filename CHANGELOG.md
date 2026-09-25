@@ -47,8 +47,17 @@ existing input draws changes: a stroke is clipped as it was.
   `kui.VirtualColumn` is `kui.UniformList`; Node's `virtualColumn` is
   `uniformList` and `VirtualColumnProps` is `UniformListProps`.
 - `widgets::virtual_rows` is `widgets::list`.
-- `KuiSpec` gains `aspect_ratio` after `float_clip`, under the same
-  ABI 19; the struct is 584 bytes on 64-bit targets, where 18's was 576.
+- `KuiSpec` gains `aspect_ratio` after `float_clip`, and `mixed`,
+  `value_step` and `on_change` after that, under the same ABI 19; the
+  struct is 600 bytes on 64-bit targets, where 18's was 576. The frame's
+  three new ops (`toggle`, `slider`, `radioGroup`) join v16.
+- Rust: `AccessSpec` (`mixed`, `value_step`), `EventSpec` (`on_change`),
+  `AccessNode` (`mixed`, `step`) and `HitRegion` (`slider`) have new
+  public fields, so a struct literal that names every field stops
+  compiling. `Core`'s internal `nudge` takes a `SliderMove`.
+- Node: `CoreMsg` gains `ChangeMsg`, so an exhaustive `switch` over it
+  wants a `'change'` arm; the access tree's nodes gain `mixed` and
+  `valueStep`.
 - Rust: `Align` has four more variants (`SpaceBetween`, `SpaceAround`,
   `SpaceEvenly`, `Baseline`), so a `match` on it without a wildcard arm
   stops compiling. `LayoutSpec` has an `aspect` field, which a struct
@@ -99,6 +108,39 @@ existing input draws changes: a stroke is clipped as it was.
 
 Both are in the new `align` corpus scene, run by all four adapters, and
 in `examples/rust/features/align.rs`.
+
+- **Stock checkbox, radio group, switch and slider** (backlog C45,
+  [ADR 0034](docs/adr/0034-stock-controls-over-the-roles.md), from both
+  bake-offs' "roles only, you draw"). Each is drawn from the state the
+  view declares and holds none of its own. A toggle — `<checkbox>`,
+  `<radio>`, `<switch>`, their Lua tables, `kui_checkbox` /
+  `kui_radio` / `kui_switch`, `widgets::checkbox` / `radio` / `switch`
+  / `toggle_with` — is a box, a circle or a track drawn from `checked`,
+  its label beside it, and posts its `onClick` when the pointer,
+  Space, Enter or a reader presses it. The new `mixed` row is the
+  select-all box over a partial selection: a dash, read as mixed. A
+  `<radioGroup>` (`radio_group`, `kui_radio_group_open` … `kui_close`,
+  `widgets::radio_group` / `radio_group_with`) is one Tab stop whose
+  arrows move the choice and press the radio they land on. A
+  `<slider>` (`slider`, `kui_slider`, `widgets::slider` /
+  `slider_with`) that declares the new `onChange` has the core do the
+  arithmetic every app did half of. A press proposes the value under
+  the pointer and a drag each new step. The arrows and a reader's
+  increment move one `valueStep` (the new row, a hundredth of the range
+  unset), PageUp / PageDown move ten, and Home / End go to the ends.
+  Every value is clamped and snapped, in the decimal the step names,
+  and arrives as `{kind:"change", value, phase:"move"|"end", tag}`.
+  The view declares it back as `valueNow`. Sizes follow the metrics
+  (the box is the control text plus one), colours the theme. The rows
+  are closed, as the button's are: a paint row on a control is an
+  `unknown-prop` warning. A slider without `onChange` keeps the
+  `access` nudge unchanged. The new `stock-controls` corpus scene is
+  replayed by all four adapters, and `examples/rust/widgets/controls.rs`
+  and `examples/node/widgets/controls.tsx` show the controls.
+  *What you can delete:* a hand-drawn checkbox, radio, switch or
+  slider; the `drag` arithmetic that turned `x` and the parent rect into
+  a value; the increment / decrement handler that stepped, clamped and
+  snapped it; and the float noise a step of `0.1` left in the model.
 
 ### Added
 

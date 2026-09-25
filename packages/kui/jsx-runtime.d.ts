@@ -281,8 +281,12 @@ export interface GeneratedSpecProps {
   minHeight?: MinProp;
   /** Lower width clamp: logical px, or "fit" for the node's own fit width. "fit" under `width="grow"` is a content floor — CSS's `flex: 1 0 auto` — which is what an i3-style tab bar is: tabs that split the bar evenly while they fit and sit at their label's width, scrolling, once they do not. Opt-in, because a fit width is the unwrapped one: a paragraph in a grow column would stop wrapping under it. */
   minWidth?: MinProp;
+  /** A `checkbox` that is neither on nor off — the select-all box over a list some of whose rows are selected (ADR 0034). Read as mixed by assistive technology whatever `checked` says, and drawn as a dash by the stock `<checkbox>`. Meaningful on the checkbox role alone. */
+  mixed?: boolean;
   /** Modal surface: the Tab ring becomes this node's subtree, everything outside it is inert to the pointer, the wheel and assistive technology, and Escape or a press outside emits {kind:"dismiss", reason:"escape"|"outside", tag} on it — the app stops declaring the node. The last one declared in tree order is the one in effect (a confirm inside a dialog); a modal that must cover the app is a float. The access tree is not pruned to the modal: it keeps every node of the frame and marks the one in effect `modal` (`docs/adr/0003-modal-surfaces.md`, decision 7), which is what assistive technology acts on. */
   modal?: AppMsg | null;
+  /** A `slider` role's changes (ADR 0034): the core turns a press on the node into the value under the pointer, a drag into the value under it, the arrows and assistive technology's increment / decrement into one `valueStep`, PageUp / PageDown into ten, Home / End into the range's ends — clamped to `valueMin`..`valueMax` (0..100 unset) and snapped to the step — and emits `{kind:"change", value, phase, tag}`: `phase` is `"move"` while the pointer holds the slider and `"end"` when it lets go or a key moved it. The value is proposed and never applied; the slider moves when the view declares it as `valueNow`. A key that lands where the slider already is proposes nothing. The pointer reads the node's content box along its main axis, so a `dir="column"` slider runs bottom to top. Without it a slider's arrows reach the app as `{kind:"access", action}`. Ignored on any other role. */
+  onChange?: AppMsg | null;
   /** Message emitted when clicked (data, not a callback). */
   onClick?: AppMsg;
   /** Context-menu tag: a secondary-button (right) press emits {kind:"contextmenu", x, y, tag} on the node, at the logical viewport point to open the menu at. The press moves no focus, places no caret and produces no click, so right-clicking a selection keeps it. Asked of the topmost node under the pointer, and when that node offers no menu the press reaches the nearest enclosing node that does — a container declaring a menu for everything inside it is the common case — the way an unclaimed key reaches the enclosing sink (`docs/adr/0011`): the event carries the *owner's* key and tag, a nested declaration wins over its ancestor's, a disabled node's own is skipped, and the walk stops at the modal boundary. */
@@ -353,6 +357,8 @@ export interface GeneratedSpecProps {
   valueMin?: LengthProp;
   /** A `slider` role's current value (the drawing stays yours; this is what assistive technology reads). */
   valueNow?: LengthProp;
+  /** How far one arrow key moves a `slider` role, and the grid a value the pointer sets snaps to (ADR 0034). Unset, a hundredth of the range. PageUp / PageDown move ten steps. Read by the core only where the slider declares `onChange`; reported to assistive technology either way. */
+  valueStep?: LengthProp;
   /** What a `slider` role's position reads as (ARIA's `aria-valuetext`). Without one a reader has only `valueNow` and the range and says a percentage — 25 in [5..60] is "36 percent" — so a value whose unit carries the meaning says it here: "25 minutes". It replaces the number in the reading rather than joining it, and a nudge announces the new text. Meaningful on the slider role alone, like the three numbers; putting the reading in `label` instead renames the control on every nudge, which is the wrong attribute. */
   valueText?: string;
   /** Horizontal size: px | "fit" | "grow" | "N%". */
@@ -520,6 +526,61 @@ export interface ButtonProps
   children?: KuiNode;
 }
 
+/** A stock toggle — `<checkbox>`, `<radio>`, `<switch>`
+ *  (docs/adr/0034-stock-controls-over-the-roles.md): drawn from the state
+ *  you declare, `checked` (and on a checkbox `mixed`, the select-all box
+ *  over a partial selection), with its text beside it. A press by the
+ *  pointer, Space, Enter or assistive technology posts `onClick`; your
+ *  `update` flips the model and the view draws it again. Its look is its
+ *  spec, so these are the only rows it reads (`TOGGLE_ROWS_JSX` in
+ *  schema.rs): any other is dropped with an `unknown-prop` warning. Keyed
+ *  by its text unless `key` says otherwise. */
+export interface ToggleProps
+  extends Keyed,
+    Pick<GeneratedSpecProps, 'onClick' | 'label' | 'description' | 'disabled' | 'checked' | 'mixed'>,
+    Pick<CustomSpecProps, 'tooltip'> {
+  children?: KuiNode;
+}
+
+/** The stock slider (docs/adr/0034-stock-controls-over-the-roles.md): a
+ *  track, a fill to `valueNow` and a thumb. With `onChange` the core turns
+ *  a press, a drag, the arrows, PageUp / PageDown and Home / End into
+ *  `{kind: 'change', value, phase: 'move' | 'end', tag}` — clamped to
+ *  `valueMin`..`valueMax` (0..100 unset) and snapped to `valueStep` (a
+ *  hundredth of the range unset); store `value` and declare it as
+ *  `valueNow`, since nothing moves until you do. `label` is its name and,
+ *  unless `key` says otherwise, its key. Its look is its spec: the rows it
+ *  reads are these (`SLIDER_ROWS_JSX` in schema.rs). */
+export interface SliderProps
+  extends Keyed,
+    Pick<
+      GeneratedSpecProps,
+      | 'label'
+      | 'description'
+      | 'disabled'
+      | 'valueNow'
+      | 'valueMin'
+      | 'valueMax'
+      | 'valueStep'
+      | 'valueText'
+      | 'onChange'
+      | 'width'
+      | 'minWidth'
+      | 'maxWidth'
+    >,
+    Pick<CustomSpecProps, 'tooltip'> {
+  label: string;
+}
+
+/** A container of `<radio>`s (docs/adr/0034-stock-controls-over-the-roles.md):
+ *  one Tab stop whose arrows, Home and End move the choice and press the
+ *  radio they land on, so radios whose `onClick` each set the choice
+ *  answer the keyboard with nothing more. Every box row; the role and the
+ *  name are its own, and without a `gap` it takes the stock one. */
+export interface RadioGroupProps extends BoxProps {
+  label: string;
+}
+
 export interface EditProps extends TextProps, GeneratedSpecProps, CustomSpecProps {
   /** Stable identity (state is retained by key); `key` works too. */
   id?: string;
@@ -552,6 +613,11 @@ export declare namespace JSX {
     box: BoxProps;
     text: TextProps;
     button: ButtonProps;
+    checkbox: ToggleProps;
+    radio: ToggleProps;
+    switch: ToggleProps;
+    radioGroup: RadioGroupProps;
+    slider: SliderProps;
     edit: EditProps;
     /** The stock single-line field with its chrome (`widgets::text_input`):
      *  `label` is the key and the accessible name both, `initial` the seed

@@ -259,18 +259,47 @@ impl Core {
         }
     }
 
-    /// A slider nudge on node `i`: the core cannot know what a step means,
-    /// so it reaches the app as `{kind="access", action, tag}` — from the
-    /// arrow keys and from assistive technology alike.
+    /// A slider move on node `i`. A slider that declared `on_change` has
+    /// the core do the arithmetic (ADR 0034, decision 4): the move is
+    /// worked from its declared `value_now`, range and step, and proposed
+    /// as `{kind="change", value, phase="end", tag}` — nothing when it
+    /// lands where the slider already is. Any other slider reaches the app
+    /// as `{kind="access", action, tag}`, since the core cannot know what
+    /// a step means there, and only for a single step: its Page, Home and
+    /// End keys were never its own.
     pub(crate) fn nudge(
         &mut self,
         i: usize,
-        action: crate::access::AccessAction,
+        mv: crate::slider::SliderMove,
         out: &mut Vec<UiEvent>,
     ) {
-        if self.tree.specs[i].disabled {
+        use crate::slider::{SliderMove, SliderRange, change_event};
+        let spec = &self.tree.specs[i];
+        if spec.disabled {
             return;
         }
+        if let Some(tag) = spec.events().on_change.as_ref() {
+            let ax = spec.access();
+            let Some(range) = SliderRange::of(ax) else {
+                return;
+            };
+            let value = range.moved(ax.value_now, mv);
+            if ax.value_now.map(crate::slider::exact) != Some(value) {
+                out.push(change_event(
+                    self.tree.origins[i],
+                    self.tree.keys[i],
+                    value,
+                    "end",
+                    tag,
+                ));
+            }
+            return;
+        }
+        let action = match mv {
+            SliderMove::Step(n) if n > 0 => crate::access::AccessAction::Increment,
+            SliderMove::Step(_) => crate::access::AccessAction::Decrement,
+            _ => return,
+        };
         let payload = Value::map([
             ("kind", Value::str("access")),
             ("action", Value::str(action.name())),

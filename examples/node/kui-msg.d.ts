@@ -40,7 +40,14 @@ type AppMessages =
   // widgets/table.tsx: the row a click selected, and the column a header's
   // click sorts by.
   | { kind: 'select'; row: number }
-  | { kind: 'sort'; by: 'name' | 'size' | 'kind' };
+  | { kind: 'sort'; by: 'name' | 'size' | 'kind' }
+  // widgets/controls.tsx: the toggles' clicks and the sliders' change tags.
+  | { kind: 'notify' }
+  | { kind: 'all' }
+  | { kind: 'channel'; i: number }
+  | { kind: 'theme'; i: number }
+  | { kind: 'volume' }
+  | { kind: 'gain' };
 
 declare module '@qxuken/kui/jsx-runtime' {
   interface KuiMsg {

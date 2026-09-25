@@ -806,6 +806,18 @@ pub struct EventSpec {
     /// produced instead of re-deriving them; a transition that moves the
     /// node reports every frame it moves. Needs a stable key across frames.
     pub on_layout: Option<Value>,
+    /// Slider changes (`docs/adr/0034-stock-controls-over-the-roles.md`,
+    /// decision 4): on a node whose role is `Slider`, the core turns a
+    /// press into the value under the pointer, a drag into the value under
+    /// it, the arrows and assistive technology's Increment / Decrement
+    /// into one `value_step`, PageUp / PageDown into ten, Home / End into
+    /// the range's ends — clamped to `value_min..value_max`, snapped to the
+    /// step — and emits `{kind="change", value, phase="move"|"end", tag}`
+    /// with this payload under `tag`. The value is proposed, never
+    /// applied: nothing moves until the view declares it as `value_now`.
+    /// Without it a slider's keys reach the app as the `access` nudge
+    /// (ADR 0007, decision 13). Ignored on any other role.
+    pub on_change: Option<Value>,
     /// Modal: while this node is declared, the Tab ring is its subtree,
     /// everything outside it is inert to the pointer, the wheel and
     /// assistive technology, and Escape or a press outside emits
@@ -830,6 +842,7 @@ impl EventSpec {
         on_hover: None,
         on_drop: None,
         on_layout: None,
+        on_change: None,
         modal: None,
     };
 }
@@ -894,6 +907,10 @@ pub struct AccessSpec {
     pub description: Option<Label>,
     /// For checkbox / radio / switch roles: the on state.
     pub checked: bool,
+    /// For a checkbox: neither on nor off — the select-all box over a
+    /// list some of whose rows are selected (ADR 0034, decision 3). Wins
+    /// over `checked`, which it leaves as it was.
+    pub mixed: bool,
     /// The current one of a set: a `Role::Tab`, a picked `Role::ListItem`,
     /// the `Role::Link` for the page you are on. A tab reports the state
     /// either way; a row or a link reports it only where it is set (see
@@ -915,6 +932,10 @@ pub struct AccessSpec {
     /// nudge announces the new text, not the new number
     /// (`docs/adr/0008-live-regions-and-announcements.md`).
     pub value_text: Option<Label>,
+    /// For a slider role: how far one arrow key moves it, and the grid a
+    /// value set by the pointer snaps to (ADR 0034, decision 4). None =
+    /// a hundredth of the range.
+    pub value_step: Option<f32>,
     /// On a `Role::Line` of a custom editor: the caret's byte offset into
     /// the line's text, and the byte offset of the selection's other end
     /// (see [`crate::access`]).
@@ -941,12 +962,14 @@ impl AccessSpec {
         label: None,
         description: None,
         checked: false,
+        mixed: false,
         selected: false,
         expanded: None,
         value_now: None,
         value_min: None,
         value_max: None,
         value_text: None,
+        value_step: None,
         caret: None,
         selection_anchor: None,
         caret_solid: false,
@@ -1184,6 +1207,7 @@ impl NodeSpec {
                     || e.on_force_click.is_some()
                     || e.on_hover.is_some()
                     || e.on_drop.is_some()
+                    || e.on_change.is_some()
             })
             || self.interact.as_deref().is_some_and(|i| {
                 i.hover_bg.is_some()
@@ -1712,6 +1736,12 @@ impl NodeSpec {
         self
     }
 
+    /// A checkbox that is neither on nor off (see the `mixed` field).
+    pub fn mixed(mut self, mixed: bool) -> Self {
+        self.access_mut().mixed = mixed;
+        self
+    }
+
     /// The current one of a set (see the `selected` field).
     pub fn selected(mut self, selected: bool) -> Self {
         self.access_mut().selected = selected;
@@ -1743,6 +1773,19 @@ impl NodeSpec {
 
     pub fn value_max(mut self, v: f32) -> Self {
         self.access_mut().value_max = Some(v);
+        self
+    }
+
+    /// How far one arrow key moves a slider (see the `value_step` field).
+    /// A step that is not positive and finite clears it.
+    pub fn value_step(mut self, v: f32) -> Self {
+        self.access_mut().value_step = (v.is_finite() && v > 0.0).then_some(v);
+        self
+    }
+
+    /// Asks the core for a slider's changes (see the `on_change` field).
+    pub fn on_change(mut self, tag: impl Into<Value>) -> Self {
+        self.events_mut().on_change = Some(tag.into());
         self
     }
 

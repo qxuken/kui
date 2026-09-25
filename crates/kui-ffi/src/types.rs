@@ -620,6 +620,18 @@ pub struct KuiSpec {
     /// sizes the axis whose sizing is fit: a fit height from the final
     /// width, a fit width from a fixed height. ABI 19.
     pub aspect_ratio: f32,
+    /// A checkbox that is neither on nor off (`mixed`, ADR 0034): read as
+    /// mixed whatever `checked` says, drawn as a dash by `kui_checkbox`.
+    /// ABI 19.
+    pub mixed: u32,
+    /// A slider's step (`valueStep`, ADR 0034), present when
+    /// `KUI_VALUE_STEP` is in `value_set`. ABI 19.
+    pub value_step: f32,
+    /// A slider's change tag (`onChange`, ADR 0034): the core turns a
+    /// press, a drag, the arrows, PageUp / PageDown and Home / End into
+    /// `{kind:"change", value, phase, tag}`. Borrowed while the node
+    /// opens, like every other tag. ABI 19.
+    pub on_change: *const KuiValue,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a
@@ -742,6 +754,9 @@ pub const KUI_ACCESS_EXPANDED: u32 = 1 << 15;
 /// `pos_in_set` holds (on an item), `set_size` holds (on its container).
 pub const KUI_ACCESS_HAS_POS_IN_SET: u32 = 1 << 16;
 pub const KUI_ACCESS_HAS_SET_SIZE: u32 = 1 << 17;
+/// A checkbox that is neither on nor off (`KuiSpec.mixed`, ADR 0034); set
+/// beside `KUI_ACCESS_CHECKED_SET`, whose `KUI_ACCESS_CHECKED` it outranks.
+pub const KUI_ACCESS_MIXED: u32 = 1 << 20;
 /// The node declared `live` (see `KuiSpec.live`), and which politeness.
 /// Two bits rather than a `live` field, because `KuiAccessNode` is an
 /// [out-array] struct that a host allocates: appending to it would be an
@@ -795,6 +810,8 @@ pub struct KuiAnnouncement {
 pub const KUI_VALUE_NOW: u32 = 1 << 0;
 pub const KUI_VALUE_MIN: u32 = 1 << 1;
 pub const KUI_VALUE_MAX: u32 = 1 << 2;
+/// `KuiSpec.value_step` holds (ADR 0034).
+pub const KUI_VALUE_STEP: u32 = 1 << 6;
 
 /// KUI_ROLE_* is the position in `Role::ALL` plus one (0 = unset).
 pub(crate) fn role_code(role: kui_core::Role) -> u32 {

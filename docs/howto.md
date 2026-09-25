@@ -404,6 +404,42 @@ posted, the menu still open — as the pointer never reaches it.
 [examples/node/widgets/select.tsx](../examples/node/widgets/select.tsx) ·
 [the context menu](#how-do-i-open-a-popup-and-when-is-a-modal-enough)
 
+### How do I add a checkbox, a radio group, a switch or a slider?
+
+The stock controls ([ADR 0034](adr/0034-stock-controls-over-the-roles.md))
+are drawn from your model and hold nothing of their own. A toggle —
+`<checkbox checked={m.sync} onClick={{kind: 'sync'}}>Sync</checkbox>`,
+`<radio>`, `<switch>`; `checkbox { label = "Sync", checked = …, on_click
+= … }` in Lua; `kui_checkbox(ctx, text, spec, payload)` in C;
+`widgets::checkbox(ui, "Sync", on, payload)` in Rust — posts its
+`onClick` when the pointer, Space, Enter or a screen reader presses it,
+and your `update` flips the model. A select-all box over a partial
+selection says `mixed`. Put radios in a `<radioGroup label="Theme">`: it
+is one Tab stop whose arrows move the choice and press the radio they
+land on, so radios that each set the choice answer the keyboard with no
+more code (`widgets::radio_group(ui, "Theme", &options, Some(i), |i|
+payload)` in Rust).
+
+A slider says its range and step and asks the core for its changes:
+`<slider label="Volume" valueNow={v} valueMin={0} valueMax={100}
+valueStep={5} onChange={{kind: 'volume'}}/>`. A press proposes the value
+under the pointer, a drag each new step, the arrows one step, PageUp /
+PageDown ten, Home / End the ends — clamped, snapped, and the decimal the
+step names (`0.3`, not `0.30000001`) — as `{kind: 'change', value, phase:
+'move' | 'end', tag}`. Store `value` and declare it as `valueNow`; nothing
+moves until you do. A slider without `onChange` is the hand-drawn kind
+and keeps the `access` nudge.
+
+The controls' look is their spec, so they read only their own rows, and
+a paint row on one is an `unknown-prop` warning; a control that needs a
+look of its own is a box with the role and the same rows. Their size
+follows the metrics: the box is the control text plus one, so `compact`
+moves them with the stock button.
+
+[the elements](props.md#elements) ·
+[examples/rust/widgets/controls.rs](../examples/rust/widgets/controls.rs) ·
+[examples/node/widgets/controls.tsx](../examples/node/widgets/controls.tsx)
+
 ### How do I give my app a menu bar?
 
 One call, in the view, wherever the strip belongs: `<menuBar menu={[…]}/>`,

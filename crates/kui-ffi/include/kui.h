@@ -238,7 +238,10 @@ extern "C" {
  * Also new under 19, and no break of its own: kui_host_rect, one function
  * writing the KuiLayoutRect it already had (backlog F92).
  * The same bump appends aspect_ratio after it (backlog C14); a zeroed
- * field is no ratio. KUI_SPACE_BETWEEN,
+ * field is no ratio. And mixed, value_step (KUI_VALUE_STEP) and on_change
+ * after it for the stock controls (docs/adr/0034), with the functions
+ * kui_checkbox, kui_radio, kui_switch, kui_radio_group_open and kui_slider
+ * and the flag KUI_ACCESS_MIXED. KUI_SPACE_BETWEEN,
  * KUI_SPACE_AROUND, KUI_SPACE_EVENLY and KUI_BASELINE (backlog C13) are
  * new values of main_align / cross_align, which moved nothing.
  */
@@ -927,6 +930,23 @@ typedef struct KuiSpec {
      * The derived axis is neither shrunk nor fitted to the children.
      * ABI 19. */
     float aspect_ratio;
+    /* Non-zero: a checkbox that is neither on nor off - the select-all box
+     * over a partial selection (docs/adr/0034). Read as mixed whatever
+     * `checked` says (KUI_ACCESS_MIXED), drawn as a dash by kui_checkbox.
+     * ABI 19. */
+    uint32_t mixed;
+    /* A slider's step, present when KUI_VALUE_STEP is in value_set: how far
+     * an arrow moves it and the grid the pointer snaps to (default a
+     * hundredth of the range). ABI 19. */
+    float value_step;
+    /* A slider's change tag (NULL = none; docs/adr/0034): on a
+     * KUI_ROLE_SLIDER node the core turns a press into the value under the
+     * pointer, a drag into each new step, the arrows into one value_step,
+     * PageUp / PageDown into ten and Home / End into the ends - clamped and
+     * snapped - and emits {kind:"change", value, phase:"move"|"end", tag}.
+     * Proposed, never applied: declare the value as value_now. Borrowed
+     * while the node opens. ABI 19. */
+    const KuiValue *on_change;
 } KuiSpec;
 
 /* When a scrolling node's bars are drawn (KuiSpec.scrollbar): the schema
@@ -1018,6 +1038,7 @@ enum {
     KUI_VALUE_CARET = 1u << 3,
     KUI_VALUE_ANCHOR = 1u << 4,
     KUI_VALUE_CARET_SOLID = 1u << 5,
+    KUI_VALUE_STEP = 1u << 6, /* value_step holds (docs/adr/0034) */
 };
 /* Actions assistive technology can request (KuiAccessNode.actions bits,
  * kui_input_access). */
@@ -1064,6 +1085,9 @@ enum {
      * allocates the array and appending to it would be an ABI break. */
     KUI_ACCESS_LIVE_POLITE = 1u << 18,
     KUI_ACCESS_LIVE_ASSERTIVE = 1u << 19,
+    /* A checkbox that is neither on nor off (KuiSpec.mixed); beside
+     * KUI_ACCESS_CHECKED_SET, and outranking KUI_ACCESS_CHECKED. */
+    KUI_ACCESS_MIXED = 1u << 20,
 };
 
 /* [out[]] One queued announcement (kui_take_announcements): something to say
@@ -3043,6 +3067,29 @@ uint64_t kui_text_input(KuiCtx *ctx, KuiStr label, KuiStr initial);
  * select-current-ignored warning on the field. */
 uint64_t kui_select(KuiCtx *ctx, KuiStr label, const KuiMenuItem *items, size_t count,
                     int64_t current);
+/* The stock controls (docs/adr/0034-stock-controls-over-the-roles.md).
+ * A toggle is drawn from the state `spec` declares - `checked`, and on a
+ * checkbox `mixed` - labelled `text` and keyed by it; a press by the
+ * pointer, Space, Enter or assistive technology posts `payload`
+ * (consumed), and the host flips its model and draws it again. Of `spec`
+ * (NULL = none of them) each reads checked, mixed, label, description,
+ * tooltip and disabled, as kui_button_with reads its rows. Each returns
+ * its key. */
+uint64_t kui_checkbox(KuiCtx *ctx, KuiStr text, const KuiSpec *spec, KuiValue *payload);
+uint64_t kui_radio(KuiCtx *ctx, KuiStr text, const KuiSpec *spec, KuiValue *payload);
+uint64_t kui_switch(KuiCtx *ctx, KuiStr text, const KuiSpec *spec, KuiValue *payload);
+/* Opens a radio group named `label`: `spec`'s box rows (NULL = a column),
+ * the group's role and name, the stock gap where spec has none. One Tab
+ * stop whose arrows, Home and End move the choice and press the radio
+ * they land on. Declare its kui_radio's, then kui_close. Its key. */
+uint64_t kui_radio_group_open(KuiCtx *ctx, KuiStr label, const KuiSpec *spec);
+/* The stock slider, named and keyed by `label`. Reads value_now /
+ * value_min / value_max / value_step (by their KUI_VALUE_* bits),
+ * value_text, on_change, width / min_w / max_w where set, label,
+ * description, tooltip and disabled off `spec`. With on_change the core
+ * proposes values from the pointer and the keys as {kind:"change", value,
+ * phase, tag}; declare the value back as value_now. Its key. */
+uint64_t kui_slider(KuiCtx *ctx, KuiStr label, const KuiSpec *spec);
 /* Editable text node (state retained by key). Returns the node key;
  * "changed"/"submit" events arrive via kui_poll_event with that key. */
 uint64_t kui_text_edit(KuiCtx *ctx, KuiStr label, KuiStr initial,

@@ -1,11 +1,12 @@
 ---
-status: proposed
+status: accepted
 date: 2026-09-25
 ---
 
 # Stock controls over the roles: checkbox, radio group, switch, slider
 
-> **Proposed 2026-09-25**, from the second bake-off against gpui and
+> **Accepted and built 2026-09-25**, the day it was proposed; what the
+> building changed is at the end. Proposed from the second bake-off against gpui and
 > iced (backlog C45). Both rounds put the same line in kui's column of
 > the batteries table: checkbox, radio, switch and slider are "roles
 > only, you draw". iced ships all four; gpui ships them through
@@ -140,3 +141,43 @@ date: 2026-09-25
   until a report asked, and none has), a spinner (a `fragment` draws
   one), a tabs widget (the `tabList` composite exists and the look is
   the app's), a number field (an `edit` plus a slider).
+
+## What the building changed
+
+- **Five elements, not four.** `radio` is an element of its own, the
+  toggle a checkbox and a switch are, and `radioGroup` is the container:
+  radios are declared the way a view declares any list, and a group's
+  arrows reach them through the composite ADR 0007 already had. The
+  three toggles share one definition, `widgets::toggle_with(kind, …)`,
+  and one Node op; Rust adds `radio_group(label, options, current,
+  payload)` for the common case.
+- **A radio group's gap.** A spec with no gap takes the stock one
+  (`widgets::radio_group_open_spec`), so a binding that builds the spec
+  from its rows — where `dir="row"` starts one from nothing — needs no
+  default of its own. C opens the group with `kui_radio_group_open` and
+  closes it with `kui_close`. Lua's `radio_group` is a column; a group
+  across is a `row` with `role = "radioGroup"`.
+- **C keys a toggle by its text,** as `kui_button_with` keys a button;
+  `KuiSpec` has no key, and `label` is the name.
+- **The numbers are decimals.** A value is worked in `f64` from the
+  declared `f32`s read through their shortest spelling, and rounded to
+  the decimals the range and step are written in, so a step of `0.1`
+  proposes `0.3` on the wire (`slider.rs`). The access tree still reads
+  `valueNow` and `valueStep` back as the `f32`s they are.
+- **The keys a slider claims.** One that declared `onChange` claims Home,
+  End, PageUp and PageDown from the sink above it, as it claims the
+  arrows; one without keeps ADR 0007's nudge and claims nothing new. A
+  key that lands where the slider already is proposes nothing.
+- **What the access tree says.** `mixed` is AccessKit's `Toggled::Mixed`
+  and C's `KUI_ACCESS_MIXED` bit, beside the checked pair rather than a
+  third value in it (`KuiAccessNode` is `[out[]]`, and a field would
+  move its stride). `valueStep` is AccessKit's numeric value step. The
+  corpus prints a mixed box's checked column as `m`, and a `change`
+  event's phase and value in its tag column.
+- **The C ABI.** `mixed`, `value_step` (with `KUI_VALUE_STEP` in
+  `value_set`) and `on_change` join `KuiSpec` under the same unreleased
+  ABI 19 as `float_clip` and `aspect_ratio`; the frame's three new ops
+  (`toggle`, `slider`, `radioGroup`) join the unreleased v16.
+- **Not moved yet.** The accessibility, drag and focus examples and the
+  devtools' icon toggles still draw their own; moving them is a
+  follow-up, and the controls example is where the stock ones are shown.

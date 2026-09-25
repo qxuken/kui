@@ -124,6 +124,7 @@ exit code, `--light` / `--dark` pin the base.
 cargo run -p kui --example counter        # apps/: the Elm loop, the one every binding has
 cargo run -p kui --example splitmux       # apps/: tmux-style splits, tabs, ⌘-drag pane moves
 cargo run -p kui --example button         # widgets/: the stock button in every state
+cargo run -p kui --example controls       # widgets/: checkbox, radio group, switch, slider
 cargo run -p kui --example edit           # widgets/: multiline editing and the single-line field
 cargo run -p kui --example text           # widgets/: spans, decorations, families, wrap
 cargo run -p kui --example cells          # widgets/: a terminal grid that selects in cells

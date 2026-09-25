@@ -397,7 +397,22 @@ export type CoreMsg =
   | ModifiersMsg
   | EditMsg
   | SoundMsg
-  | AccessMsg;
+  | AccessMsg
+  | ChangeMsg;
+
+/** A stock slider's proposal (docs/adr/0034-stock-controls-over-the-roles.md):
+ *  the core turned a press, a drag, an arrow, a Page key, Home / End or an
+ *  assistive-technology increment into `value` — clamped to the range and
+ *  snapped to `valueStep` — on a `<slider>` (or a `role="slider"` box) that
+ *  declared `onChange`. `phase` is `'move'` while the pointer holds it and
+ *  `'end'` when it lets go or a key moved it. Nothing moves until the view
+ *  declares `value` as `valueNow`. `tag` is the `onChange` payload. */
+export interface ChangeMsg<T = AppMsg> {
+  kind: 'change';
+  value: number;
+  phase: 'move' | 'end';
+  tag?: T;
+}
 
 /** Assistive technology nudged a `slider` role. `tag` is the node's
  *  `onClick` payload (or its `onDrag` / `onKey` tag), typed as the app's
@@ -503,6 +518,8 @@ export interface AccessNode {
   focus: TextPos | null;
   /** `checked` for checkbox / radio / switch roles. */
   checked: boolean | null;
+  /** A checkbox that is neither on nor off (`mixed`, ADR 0034). */
+  mixed: boolean;
   /** The current one of a set. Every `tab` carries it; a `listItem` or a
    *  `link` only where the view set `selected`. */
   selected: boolean | null;
@@ -520,6 +537,8 @@ export interface AccessNode {
   valueNow: number | null;
   valueMin: number | null;
   valueMax: number | null;
+  /** A slider's `valueStep`, where it declared one (ADR 0034). */
+  valueStep: number | null;
   /** Holds keyboard focus (`focused()` names the same node). */
   focused: boolean;
   /** Declared `disabled`: inert, and not a Tab stop. */
