@@ -525,6 +525,18 @@ impl<'a> Ui<'a> {
         self.core.awaiting_paste()
     }
 
+    /// Asks the host for a file dialog; the answer is a `files` event to
+    /// whoever's view asked. False when one is already outstanding. See
+    /// `Core::request_files` (backlog C51).
+    pub fn request_files(&mut self, dialog: crate::dialog::FileDialog) -> bool {
+        self.core.request_files(dialog)
+    }
+
+    /// `Core::awaiting_files`.
+    pub fn awaiting_files(&self) -> bool {
+        self.core.awaiting_files()
+    }
+
     /// Selects everything in the scope `key` declared; see
     /// `Core::select_all_in`.
     pub fn select_all_in(&mut self, key: Key) -> bool {
@@ -927,10 +939,11 @@ impl<'a> Ui<'a> {
 
     /// Moves a container's scroll state by the content that moved under
     /// it — `drawn` for the drawn place and an eased leg's start, `target`
-    /// for the offset — with no ease asked or ended.
-    /// `virtual_rows`' height correction (RG18).
-    pub(crate) fn shift_scroll(&mut self, key: Key, drawn: Vec2, target: Vec2) {
-        self.core.scroll.shift(key, drawn, target);
+    /// for the offset — with no ease asked or ended: a variable-height
+    /// list's height correction (RG18), which the Node and Lua ports ask
+    /// for through their own door (backlog C46). See `Core::shift_scroll`.
+    pub fn shift_scroll(&mut self, key: Key, drawn: Vec2, target: Vec2) {
+        self.core.shift_scroll(key, drawn, target);
     }
 
     /// What the last layout resolved for a scroll container — its box, its
@@ -938,7 +951,7 @@ impl<'a> Ui<'a> {
     /// rows that fit and two spacers instead of ten thousand rows. `None`
     /// until a layout has resolved `key` as a container. It describes the
     /// previous frame; see `Core::scroll_geometry`, or
-    /// `widgets::virtual_column` for the uniform-row case.
+    /// `widgets::uniform_list` for the uniform-row case.
     pub fn scroll_geometry(&self, key: Key) -> Option<crate::scroll::ScrollGeometry> {
         self.core.scroll_geometry(key)
     }

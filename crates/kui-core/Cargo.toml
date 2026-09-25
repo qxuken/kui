@@ -17,6 +17,7 @@ naga.workspace = true
 unicode-segmentation = "1"
 # Break opportunities for a wrapped long line's rows (already in the tree via cosmic-text).
 unicode-linebreak = "0.1"
+kui-derive = { workspace = true, optional = true }
 
 [features]
 default = ["devtools"]
@@ -25,6 +26,9 @@ default = ["devtools"]
 # every binding's build has it; off for a kiosk build, where the doors
 # stay and do nothing.
 devtools = []
+# `#[derive(Message)]`, a typed Rust message to and from the payload (backlog
+# C50). Off here, since only a Rust app uses it; `kui-native` turns it on.
+derive = ["dep:kui-derive"]
 # The scene corpus (src/conformance.rs): fourteen scene builders, the
 # coverage derivation, the report formatter and the fixture bytes. It is test
 # infrastructure - every binding's adapter rebuilds the scenes and diffs its
@@ -65,7 +69,7 @@ harness = false
 name = "cells"
 harness = false
 
-# See the note in crates/kui/Cargo.toml: examples live under examples/ at the
+# See the note in crates/kui-native/Cargo.toml: examples live under examples/ at the
 # root, so cargo needs the path.
 [[example]]
 name = "conformance-dump"

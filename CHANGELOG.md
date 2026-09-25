@@ -26,6 +26,13 @@ was the first bare bump to break an app in five releases).
 **What breaks.** The ABI at 19 and the frame at v16. Nothing an
 existing input draws changes: a stroke is clipped as it was.
 
+- The runner crate `kui` is `kui-native`, since `kui` on crates.io is
+  another crate's: depend on `kui-native = { version = "…", registry =
+  "forgejo" }` and write `kui_native::` where `kui::` was, or keep every
+  path as it is with `kui = { package = "kui-native", version = "…",
+  registry = "forgejo" }`. Its directory is `crates/kui-native`, and
+  `cargo run -p kui-native --example …` runs an example. The other
+  crates and the npm package keep their names.
 - `KuiSpec` gains `float_clip` at its end (ABI 19). Recompile. A zeroed
   field is the float that escapes, which is what every float was.
 - `FloatConfig::build` takes a seventh argument, `clip`, after `fit`.
@@ -42,6 +49,204 @@ existing input draws changes: a stroke is clipped as it was.
   named from its content no longer takes text from under a `role="none"`
   node inside it. A test that asserted the hovered name, or found the
   hint's text in the tree, reads the name and the description instead.
+- `widgets::virtual_column` is `widgets::uniform_list`; Lua's
+  `virtual_column` is `uniform_list` and its options class
+  `kui.VirtualColumn` is `kui.UniformList`; Node's `virtualColumn` is
+  `uniformList` and `VirtualColumnProps` is `UniformListProps`.
+- `widgets::virtual_rows` is `widgets::list`.
+- `KuiSpec` gains `aspect_ratio` after `float_clip`, and `mixed`,
+  `value_step` and `on_change` after that, under the same ABI 19; the
+  struct is 600 bytes on 64-bit targets, where 18's was 576. The frame's
+  three new ops (`toggle`, `slider`, `radioGroup`) join v16.
+- Rust: `AccessSpec` (`mixed`, `value_step`), `EventSpec` (`on_change`),
+  `AccessNode` (`mixed`, `step`) and `HitRegion` (`slider`) have new
+  public fields, so a struct literal that names every field stops
+  compiling. `Core`'s internal `nudge` takes a `SliderMove`.
+- Every window keeps two frames queued ahead of the one on screen where
+  it kept one, and on macOS 14+ the Rust and C runners start frames that
+  run back to back at the display's vsync (under Changed, C47): smoother
+  at light load, and no slower. A Node window is not paced, so it has a
+  frame of latency more while frames run back to back.
+  `frame_latency(1)` (`frameLatency: 1`, `KuiRunConfig.frame_latency =
+  1`, `KUI_FRAME_LATENCY=1`) with `KUI_FRAME_PACING=0` is the old
+  behaviour.
+- `KuiRunConfig` gains `frame_latency` under the same ABI 19 (40 bytes,
+  was 36).
+- Node: `CoreMsg` gains `ChangeMsg`, so an exhaustive `switch` over it
+  wants a `'change'` arm; the access tree's nodes gain `mixed` and
+  `valueStep`.
+- Rust: `Align` has four more variants (`SpaceBetween`, `SpaceAround`,
+  `SpaceEvenly`, `Baseline`), so a `match` on it without a wildcard arm
+  stops compiling. `LayoutSpec` has an `aspect` field, which a struct
+  literal must now name (`..Default::default()` covers it).
+- A `KuiSpec.main_align` / `cross_align` of 3 to 6, a value past
+  `KUI_END` that used to lay out as `KUI_START`, now means one of the new
+  alignments.
+- Rust: `InputEvent` has a new variant, `Files`, the answer to a file
+  dialog, so a `match` on it without a wildcard arm stops compiling. Node:
+  `CoreMsg` gains `FilesMsg`, so an exhaustive `switch` wants a `'files'`
+  arm.
+
+### Added
+
+- **File dialogs** (backlog C51, from the second bake-off's table: gpui
+  has them, iced and kui did not). An app asks for the platform's Open,
+  Save or folder dialog and hears the answer as one event, `{kind:
+  "files", paths, tag}`. `paths` is shaped as a `drop`'s, so one handler
+  takes both, and it is empty when the user cancelled.
+  - The asks: `ui.request_files(FileDialog::open().multiple().filter(…))`
+    in Rust, `ctx.requestFiles({mode, multiple, title, filters,
+    directory, fileName, tag})` in Node, `env.request_files{…}` in Lua,
+    and `kui_request_files(ctx, &KuiFileDialog, tag)` in C.
+  - One dialog at a time, as a paste ask is: a second while one is out
+    is dropped. `awaiting_files` reads the state.
+  - The answer goes to whoever asked: the host, or the extension whose
+    fill asked.
+  - The runner shows the dialog through rfd (the new default-on `dialogs`
+    feature; on Linux through the XDG portal, no GTK). It is rfd's async
+    panel, made on the loop's thread and waited on by a thread of its
+    own, which posts the answer back through the event loop, so the loop
+    never blocks in a modal. On macOS it is a sheet on the window that
+    asked.
+  - Without `dialogs`, every ask is answered at once with no paths.
+  - A host driving its own window takes the ask with
+    `take_file_requests` / `takeFileRequests` / `kui_take_file_request`
+    (then `kui_file_request_filter` per filter) and answers with
+    `InputEvent::Files` / `ctx.answerFiles` / `kui_input_files`.
+  - C gains the [in] structs `KuiFileFilter` and `KuiFileDialog` under
+    the pending ABI 19.
+  - The drop example, Rust and Node, has an "Open…" button whose picks
+    land in the same list as a drop. It was checked in a real window
+    both ways, and its headless drive takes and answers the ask.
+
+- **Typed messages in Rust: `#[derive(Message)]`** (backlog C50, from
+  both bake-offs: "typed Rust messages: no, a `Value` payload"). A new
+  crate, `kui-derive`, re-exported by `kui` behind a default `derive`
+  feature. Derive it on an enum and each variant is a `{kind,
+  …fields}` payload, its kind the variant's name in snake_case
+  (`#[message(kind = "…")]` renames it). `on_click(Msg::Save)` builds
+  the payload, and `ev.message::<Msg>()` reads it back for an exhaustive
+  `match`, from a click's payload or from the `tag` inside a drag,
+  change, scroll or drop event.
+  - Fields may be the numbers, `bool`, `String`, `Option` (absent is
+    `None`), `Vec`, `Value`, or other messages, through the new
+    `MessageField` trait.
+  - An enum of unit variants marked `#[message(string)]` is a bare
+    string (`dir: SplitDir` is `"h"`).
+  - `MessageError` says what did not fit.
+  - The payload is the same plain data, so the other bindings read it
+    unchanged.
+
+  The syn it builds on was already in a windowed app's tree, so the
+  derive adds its own few hundred lines to a cold build and no new crate
+  besides itself. The splitmux example moved onto it, and its headless
+  drive now clicks a pane, a tab and the `+`, and drags a divider.
+
+- **The variable-height list in JSX and Lua** (backlog C46). `list(ctx,
+  { key, heights }, measure, row)` in Node and `list(env, { key, heights },
+  measure, row)` in Lua are `widgets::list`: rows of no fixed height (a
+  chat, a log whose lines wrap), built a screenful at a time. The core's
+  own `RowHeights` is the app's: `new RowHeights(rows, estimate)` /
+  `row_heights(rows, estimate)`, kept in the model or a script global,
+  with `setLen`/`set_len`, `clear`, `offsetOf`/`offset_of` and the rest.
+  `measure(i, width)` runs only for the rows a frame builds that have no
+  height yet, typically over `ctx.measureText` / `env.measure_text`.
+
+  The arithmetic is not ported. `widgets::list`'s slicing became a
+  stepping API on `RowHeights` (`slice`, `ListSlice::unmeasured` /
+  `reslice` / `finish`, `ListReading`, `ListPlan`). `widgets::list`
+  drives it in Rust, and each binding's `list` is the same loop around
+  the app's callback. So the prefix sums, the moving estimate, the anchor
+  that keeps the row under the pointer still, and RG18's second anchor
+  for a glide exist once.
+
+  The correction is a new verb in all four bindings: `Ui::shift_scroll`
+  (now public), `Core::shift_scroll`, `shiftScroll`, `env.shift_scroll`
+  and `kui_shift_scroll`. It moves a scroll by content that moved under
+  it, with no ease asked or ended and no frame requested. A list composed
+  by hand calls it too.
+
+  Each port is pinned by the Rust suite's two tests, replayed: the row
+  under the pointer stays put while the estimate moves, and a long glide
+  lands on the row asked for. Both fail with the correction taken out.
+  The Node `virtual_list` example has a `--variable` mode, and its
+  headless drive checks the variable list on every smoke round.
+
+- **Where the free space goes, and what lines up** (backlog C13, parked
+  since 2026-09-03 and named by both bake-offs against gpui and iced).
+  `mainAlign` takes `spaceBetween`, `spaceAround` and `spaceEvenly`
+  beside start/center/end, CSS's `justify-content`: the main axis's free
+  space is dealt out between the children, around each, or into equal
+  gaps and ends, on top of `gap`, per line in a wrapping row, and not at
+  all when nothing is free (a `grow` child took it, or the run
+  overflows). A lone child starts under `spaceBetween` and centres under
+  the other two. `crossAlign="baseline"` on a row lines up the first
+  baselines of the children's text, so a 13 px label and a 32 px value
+  read as one line: a child's baseline is the first line of the first
+  text down its first-child chain, measured by the text system where the
+  glyphs are drawn; a child with no text aligns by its bottom edge, a
+  `grow` or percent height fills the line from its top, and a fit-height
+  row grows to hold the aligned children. Baselines are measured only on
+  a frame that declares a baseline row. The same values in every
+  binding: the `ALIGNS` rows grew at their tail, so Lua's
+  `main_align = "spaceBetween"`, Node's `mainAlign: 'spaceBetween'` and
+  C's `KUI_SPACE_BETWEEN` .. `KUI_BASELINE` are the next indices. A value
+  on the axis where it means nothing — a spread across, `baseline` along
+  or on a column, either as a float's attach point — lays out as start
+  (the centring spreads as centre) and warns `align-ignored`.
+  *What you can delete:* the `<box width="grow"/>` spacers between
+  children that were standing in for `space-between`, and the padding a
+  view nudged onto a small label to sit it near a large one's baseline.
+- **`aspectRatio`** (backlog C14, CSS's `aspect-ratio`). Width over
+  height on any box, image or fragment, sizing the axis left `fit`: a fit
+  height is the final width over the ratio, so `width="grow"
+  aspectRatio={16/9}` keeps its shape as the window resizes, and a fit
+  width under a fixed height is that height times it. The derived axis
+  is neither shrunk nor fitted to the children (`minHeight="fit"` floors
+  it at them); on an image it wins over the pixels' own aspect. With both
+  axes declared, or a fit width under a `grow` or percent height, it has
+  nothing to set and warns `aspect-ignored`. Lua `aspect_ratio`, C
+  `KuiSpec.aspect_ratio`.
+  *What you can delete:* the `layout` event round trip that read a box's
+  width to set its height a frame later.
+
+Both are in the new `align` corpus scene, run by all four adapters, and
+in `examples/rust/features/align.rs`.
+
+- **Stock checkbox, radio group, switch and slider** (backlog C45,
+  [ADR 0034](docs/adr/0034-stock-controls-over-the-roles.md), from both
+  bake-offs' "roles only, you draw"). Each is drawn from the state the
+  view declares and holds none of its own. A toggle — `<checkbox>`,
+  `<radio>`, `<switch>`, their Lua tables, `kui_checkbox` /
+  `kui_radio` / `kui_switch`, `widgets::checkbox` / `radio` / `switch`
+  / `toggle_with` — is a box, a circle or a track drawn from `checked`,
+  its label beside it, and posts its `onClick` when the pointer,
+  Space, Enter or a reader presses it. The new `mixed` row is the
+  select-all box over a partial selection: a dash, read as mixed. A
+  `<radioGroup>` (`radio_group`, `kui_radio_group_open` … `kui_close`,
+  `widgets::radio_group` / `radio_group_with`) is one Tab stop whose
+  arrows move the choice and press the radio they land on. A
+  `<slider>` (`slider`, `kui_slider`, `widgets::slider` /
+  `slider_with`) that declares the new `onChange` has the core do the
+  arithmetic every app did half of. A press proposes the value under
+  the pointer and a drag each new step. The arrows and a reader's
+  increment move one `valueStep` (the new row, a hundredth of the range
+  unset), PageUp / PageDown move ten, and Home / End go to the ends.
+  Every value is clamped and snapped, in the decimal the step names,
+  and arrives as `{kind:"change", value, phase:"move"|"end", tag}`.
+  The view declares it back as `valueNow`. Sizes follow the metrics
+  (the box is the control text plus one), colours the theme. The rows
+  are closed, as the button's are: a paint row on a control is an
+  `unknown-prop` warning. A slider without `onChange` keeps the
+  `access` nudge unchanged. The new `stock-controls` corpus scene is
+  replayed by all four adapters, and `examples/rust/widgets/controls.rs`
+  and `examples/node/widgets/controls.tsx` show the controls. The
+  accessibility and focus examples use them now in place of the ones
+  they drew; the platform audit is unchanged at 106/106.
+  *What you can delete:* a hand-drawn checkbox, radio, switch or
+  slider; the `drag` arithmetic that turned `x` and the parent rect into
+  a value; the increment / decrement handler that stepped, clamped and
+  snapped it; and the float noise a step of `0.1` left in the model.
 
 ### Added
 
@@ -148,6 +353,105 @@ existing input draws changes: a stroke is clipped as it was.
   float". The howto's one-font answer says why a baseline compared
   across machines needs it: headless text is shaped against the
   machine's installed fonts.
+
+- **A frame of plain boxes cost 5.8% more than alpha.9's** (backlog
+  C48, from the second bake-off: 60.0% against 56.8% CPU at 40,000
+  boxes, on one OS). Bisected over every tag and then every tenth
+  commit, `frame_10k_rects` rose in steps, 743 µs at alpha.9 to 786 µs at
+  alpha.18 and 807 µs on this branch. Each step was an inlining decision
+  flipped by a change elsewhere:
+  - AR29/AR30's text-only code;
+  - C13's layout additions, after which `shadow_quad` was inlined into
+    `emit_node` and cost every node two more saved registers.
+
+  Rebuilt with every function aligned to 64 bytes, the steps stayed,
+  so it is not code placement.
+
+  Three changes bring the row to 755–761 µs, and
+  `frame_10k_rects_with_text_and_hits` from 1375 µs back to alpha.18's
+  ~1300 µs:
+  - `emit_node` keeps only a plain box's path, and the hit regions,
+    what a leaf draws, and shadows are out-of-line calls;
+  - `layout::wraps` is always inlined;
+  - `set_axis_clamped` is inlined and borrows the spec it used to copy.
+
+  The bench guard against alpha.18 passes on all eight guarded rows,
+  and the conformance dump is byte-identical. Nothing changes in what a
+  frame draws.
+
+- **An app's edit-compile loop paid for the whole runner** (backlog
+  C49, from the second bake-off: a release `touch main.rs` rebuild of
+  the counter was 1.57 s against alpha.9's 1.20 s). The runner was
+  generic over the app, `Shell<A>` and `PumpRunner<A>` alike. So every
+  app crate compiled and optimised again the event loop and every
+  feature added to it, and its drop glue, on every edit: the app
+  crate's IR grew 26% between the two tags.
+
+  The runner is now written against `Shell<dyn App>` and compiled once
+  in kui. The one generic step boxes the app, and a pumped runner keeps
+  its typed `app_mut` without a cast. The counter's release rebuild is
+  0.85 s (alpha.9 1.22 s, alpha.18 1.59 s), and its debug rebuild
+  0.54 s (0.63 / 0.65 s). The app crate's IR is 58% under alpha.9's.
+
+  The public API is unchanged, and no `'static` bound was added: an
+  app that borrows still runs.
+
+### Changed
+
+- **A window keeps two frames queued, and every vsync gets one**
+  (backlog C47, from the second bake-off: "kui and iced miss vsync when
+  there is little to draw", 105–119 fps where gpui held 120.0).
+  Measured on an M3 Pro under macOS 27 on AC power:
+  - With one queued frame, the old setting, runs of 10 s drew 112.5–118.6
+    fps at 100 and 2,500 boxes (0.8–6.2% of vsyncs missed) and 119.7 at
+    40,000. That is the report's
+    pattern: the frame's work was 0.3–0.9 ms, and a thread that woke a
+    little late after sleeping ~7.9 ms found no free drawable.
+  - With two, every run delivered 1198–1201 of the ~1200 vsyncs, in
+    three rounds and through the new default as well as the override.
+  - gpui gets the same from `maximumDrawableCount(3)` at the rev the
+    bake-off ran. wgpu makes kui's `desired_maximum_frame_latency` the
+    Metal layer's drawable count less one, so 2 is gpui's setting.
+  - The report's other lever, the present mode, does nothing here:
+    wgpu's Metal `AutoVsync` is `Fifo`.
+  - The second queued frame alone cost a frame of latency while frames
+    run back to back. A frame built as soon as a drawable freed waited
+    out a vsync in the queue. Measured from the moment a frame sampled
+    its state to the moment it was on screen (a ScreenCaptureKit
+    capture decoding a timestamp the frame drew), that is 27.5–27.9 ms,
+    against 19.2–19.5 with one queued frame.
+  - So on macOS 14+ such frames now start at the display's vsync, from a
+    `CADisplayLink` on the window's view (`kui::pacer`), which is how
+    gpui runs. The queued slot is slack and not a delay: 17.5–19.2 ms
+    once the window has settled, with every vsync delivered. A frame
+    asked for from idle, such as a keystroke, is drawn at once. The link
+    runs only while frames are asked for, so an idle window stays at no
+    CPU.
+  - A Node window turns its loop from a timer, where the link cannot
+    start frames (paced, it drew 50 frames a second against 95), so it
+    is not paced and keeps the queued frame's cost; `frameLatency: 1`
+    trades back.
+  `Launcher::frame_latency`, `WindowOptions.frameLatency` and
+  `KuiRunConfig.frame_latency` choose per app. `KUI_FRAME_LATENCY` and
+  `KUI_FRAME_PACING=0` override without a rebuild. The report saw its
+  misses on battery; this change was measured on AC.
+  *What you can delete:* nothing an app could have written; a frame
+  that missed its vsync was the runner's.
+
+- **The two virtual lists are named for what sets them apart** (from
+  the second bake-off against gpui and iced, 2026-09-25). gpui calls
+  the pair `uniform_list` and `list`, and the names say the one thing
+  a caller has to choose on: every row the same height, or each row
+  its own. `virtual_column` said how the uniform list was built, and
+  `virtual_rows` said nothing that told the two apart. Arguments,
+  behaviour and keys are unchanged, so the rename is a find and
+  replace; the examples keep their file names (`virtual_list.rs`,
+  `virtual_list.tsx`) and the bench rows theirs, so the bench guard
+  still compares against alpha.18. `RowHeights`, which the variable
+  list slices by, keeps its name. No door and nothing of the ABI or
+  the frame: C never had either list, and composes one from
+  `kui_scroll_geometry` and `kui_row_count`.
+  *What you can delete:* nothing; this one only costs a rename.
 
 ## 0.1.0-alpha.18 (2026-09-25)
 

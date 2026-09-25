@@ -274,7 +274,7 @@ derived orientation are the whole surface.
   on upgrade; it changes toward what its users expect, and there is no
   opt-out, because a per-app opt-out would be the declared flag decision 1
   rejects.
-- **The examples.** `cargo run -p kui --example accessibility` gains a
+- **The examples.** `cargo run -p kui-native --example accessibility` gains a
   radio group — the one pattern with no example today, and the one whose
   arrows must activate — and a menu opened from a button (`modal` +
   `role="menu"`), which is the shape a context menu takes now that C2

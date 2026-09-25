@@ -10,12 +10,12 @@
 //! the single-line field on Enter, both carrying the editor's key and
 //! nothing else — the text is the core's, read back with `edit_text`.
 //!
-//! Run: cargo run -p kui --example edit [-- --headless]
+//! Run: cargo run -p kui-native --example edit [-- --headless]
 
-use kui::{
+use kui_devtools::{Drive, Example};
+use kui_native::{
     Align, App, Core, EditOptions, FontFamily, Key, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value,
 };
-use kui_devtools::{Drive, Example};
 
 const INITIAL: &str = "\
 # kui edit
@@ -62,7 +62,7 @@ impl App for Edit {
                     .border(1.0, t.border),
                 |ui| {
                     ui.text("title", TextStyle::new(12.0).color(t.muted));
-                    let title = kui::widgets::text_input(ui, "title", "");
+                    let title = kui_native::widgets::text_input(ui, "title", "");
                     if self.submit.take() == Some(title) {
                         self.submitted = ui.edit_text(title);
                     }

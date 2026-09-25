@@ -15,11 +15,11 @@
 //! A tooltip is a float with `fit`: near the window's bottom edge it
 //! mirrors above the node instead of hanging off the frame.
 //!
-//! Run: cargo run -p kui --example tooltip [-- --headless]
+//! Run: cargo run -p kui-native --example tooltip [-- --headless]
 
-use kui::widgets;
-use kui::{Align, App, Core, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
 use kui_devtools::{Drive, Example};
+use kui_native::widgets;
+use kui_native::{Align, App, Core, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
 
 #[derive(Default)]
 struct Tooltip {

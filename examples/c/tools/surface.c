@@ -32,6 +32,7 @@ typedef struct Keys {
     uint64_t sound;    /* in: a registered sound handle */
     bool claim_focus;  /* in: declare the editor focused this frame */
     uint64_t card, slider, sink, editor, input, select, drag, child; /* out: node keys */
+    uint64_t checkbox, gain; /* out: the stock controls' keys */
     uint64_t hitline, region; /* out: the selectable row, the focus region */
 } Keys;
 
@@ -152,6 +153,25 @@ static void surface_view(void *user, KuiCtx *ui) {
             {.label = KUI_STR("Deutsch"), .role = KUI_MENU_CUSTOM, .enabled = 1},
         };
         k->select = kui_select(ui, KUI_STR("language"), langs, 2, 1);
+        /* The stock controls (docs/adr/0034): a mixed checkbox, a radio
+         * group of two, a switch, and a slider that asks the core for its
+         * changes. The tags are cloned, the click payloads consumed. */
+        KuiSpec mixed = {.mixed = 1};
+        k->checkbox = kui_checkbox(ui, KUI_STR("All"), &mixed, kui_value_str(KUI_STR("all")));
+        kui_radio_group_open(ui, KUI_STR("Theme"), NULL);
+        KuiSpec on = {.checked = 1};
+        kui_radio(ui, KUI_STR("Light"), NULL, kui_value_str(KUI_STR("light")));
+        kui_radio(ui, KUI_STR("Dark"), &on, kui_value_str(KUI_STR("dark")));
+        kui_close(ui);
+        kui_switch(ui, KUI_STR("Wi-Fi"), &on, kui_value_str(KUI_STR("wifi")));
+        KuiValue *gain_tag = kui_value_str(KUI_STR("gain"));
+        KuiSpec gain = {
+            .value_set = KUI_VALUE_NOW | KUI_VALUE_MIN | KUI_VALUE_MAX | KUI_VALUE_STEP,
+            .value_now = 40, .value_min = 0, .value_max = 100, .value_step = 5,
+            .on_change = gain_tag,
+        };
+        k->gain = kui_slider(ui, KUI_STR("Gain"), &gain);
+        kui_value_free(gain_tag);
         KuiTextStyle mono = {.size = 13, .family = KUI_FONT_MONO, .wrap = KUI_WRAP_GLYPH};
         KuiSpec editor = {
             .width = {KUI_PERCENT, 0.5f}, .height = {KUI_FIXED, 48},
@@ -286,6 +306,7 @@ static int surface(void) {
     surface_view(&k, ui);
     kui_frame_finish(ui);
 
+    check(k.checkbox && k.gain, "kui_checkbox and kui_slider return their keys");
     check(k.card && k.slider && k.sink && k.editor && k.input && k.select && k.drag && k.child,
           "every node got a key");
     check(kui_animating(ui), "the keyframes keep animating");
@@ -449,7 +470,7 @@ static int surface(void) {
     check(total > 1, "the access tree has nodes");
     size_t got = kui_access_tree(ui, nodes, sizeof nodes / sizeof nodes[0]);
     check(got > 0 && got <= total, "kui_access_tree fills the buffer");
-    int sliders = 0, disabled = 0, editors = 0;
+    int sliders = 0, disabled = 0, editors = 0, mixed_boxes = 0;
     size_t run_count = 0;
     for (size_t i = 0; i < got; i++) {
         const KuiAccessNode *n = &nodes[i];
@@ -460,6 +481,7 @@ static int surface(void) {
             check((n->actions & KUI_ACCESS_INCREMENT) != 0, "and accepts increments");
         }
         if (n->flags & KUI_ACCESS_DISABLED) disabled++;
+        if (n->flags & KUI_ACCESS_MIXED) mixed_boxes++;
         if (n->key == k.editor) {
             editors++;
             check(has(n->value, "replaced"), "the editor's text is in the tree");
@@ -476,7 +498,8 @@ static int surface(void) {
             }
         }
     }
-    check(sliders == 1, "one slider in the tree");
+    check(sliders == 2, "two sliders in the tree, one of them stock");
+    check(mixed_boxes == 1, "the mixed checkbox says so");
     check(disabled == 1, "the disabled switch says so");
     check(editors == 1, "the multiline editor is in the tree");
     kui_input_access(ui, k.slider, KUI_ACCESS_INCREMENT, (KuiStr){NULL, 0});
@@ -900,6 +923,7 @@ static int surface(void) {
         check(!kui_layout_of(ui, k.sink, &rect), "and for no other");
         KuiScrollGeometry geo = KUI_SCROLL_GEOMETRY_INIT;
         check(kui_scroll_geometry(ui, k.card, &geo) && geo.h > 0, "kui_scroll_geometry on the card");
+        kui_shift_scroll(ui, k.card, 0, 0); /* a zero shift moves nothing */
         kui_set_scroll(ui, k.card, 0, 9999);
         kui_reveal(ui, k.slider);
         kui_frame_begin(ui, 800, 600, 2.0f);
@@ -910,6 +934,51 @@ static int surface(void) {
         check(sx == 0 && sy >= 0, "kui_scroll_offset reads the clamped offset back");
         kui_scroll_offset(ui, 12345, NULL, &sy);
         check(sy == 0, "a node that never scrolled is 0");
+    }
+
+    /* File dialogs (backlog C51): ask, drain as the host, answer, hear it. */
+    {
+        KuiStr exts[] = { KUI_STR("png"), KUI_STR(".jpg") };
+        KuiFileFilter filter = { KUI_STR("Images"), exts, 2 };
+        KuiFileDialog dialog = { 0 };
+        dialog.mode = KUI_FILE_DIALOG_OPEN;
+        dialog.multiple = 1;
+        dialog.title = KUI_STR("Pick images");
+        dialog.filters = &filter;
+        dialog.filter_count = 1;
+        check(kui_request_files(ui, &dialog, kui_value_str(KUI_STR("pics"))), "kui_request_files asks");
+        check(kui_awaiting_files(ui), "kui_awaiting_files while it is out");
+        check(!kui_request_files(ui, NULL, NULL), "and a second ask is dropped");
+        uint32_t mode = 99;
+        bool multiple = false;
+        KuiStr title = { 0 }, dir = { 0 }, name = { 0 };
+        size_t filters = 0;
+        check(kui_take_file_request(ui, &mode, &multiple, &title, &dir, &name, &filters)
+                  && mode == KUI_FILE_DIALOG_OPEN && multiple && filters == 1
+                  && title.len == 11 && dir.len == 0,
+              "kui_take_file_request hands the host the dialog");
+        KuiStr fname, fexts;
+        check(kui_file_request_filter(ui, 0, &fname, &fexts) && fname.len == 6
+                  && fexts.len == 7 && memcmp(fexts.ptr, "png;jpg", 7) == 0,
+              "kui_file_request_filter reads a filter, dots dropped");
+        check(!kui_file_request_filter(ui, 1, &fname, &fexts), "and no filter past the last");
+        KuiStr picked[] = { KUI_STR("/tmp/a.png") };
+        kui_input_files(ui, picked, 1);
+        check(!kui_awaiting_files(ui), "kui_input_files spends the ask");
+        int files = 0;
+        KuiEvent fev = KUI_EVENT_INIT;
+        while (kui_poll_event(ui, &fev)) {
+            const KuiValue *kind = fev.payload ? kui_value_get(fev.payload, KUI_STR("kind")) : NULL;
+            const KuiValue *paths = fev.payload ? kui_value_get(fev.payload, KUI_STR("paths")) : NULL;
+            const KuiValue *tag = fev.payload ? kui_value_get(fev.payload, KUI_STR("tag")) : NULL;
+            KuiStr ks, ts;
+            if (kind && kui_value_as_str(kind, &ks) && ks.len == 5 && memcmp(ks.ptr, "files", 5) == 0
+                && paths && kui_value_len(paths) == 1 && tag && kui_value_as_str(tag, &ts)
+                && ts.len == 4) {
+                files++;
+            }
+        }
+        check(files == 1, "the answer is one files event with the path and the tag");
     }
 
     /* Focus regions: entered by name, read back as the ring in effect. */

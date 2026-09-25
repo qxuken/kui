@@ -15,7 +15,7 @@
 //! }
 //! ```
 
-use kui::{
+use kui_native::{
     AccessAction, AccessRequest, App, Core, InputEvent, Key, KeyCode, KeyMods, KeyPress, Rect,
     Size, UiEvent, Vec2,
 };
@@ -173,7 +173,7 @@ impl<'c> Drive<'c> {
                 "{:>4} {:08x} {}",
                 self.frame,
                 ev.key.0 as u32,
-                kui::devtools::fmt_value(&ev.payload)
+                kui_native::devtools::fmt_value(&ev.payload)
             ));
             app.on_event(ev);
         }

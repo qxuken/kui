@@ -207,7 +207,7 @@ imperative call decision 5 exists to provide. That is the case the original
 consequence describes, and it is the right one to make an app spell out:
 it is the app choosing to overrule a focus the user moved.
 
-`cargo test -p kui --example splitmux` drives the example headlessly
+`cargo test -p kui-native --example splitmux` drives the example headlessly
 through the `App` trait and presses ⌥v after a pane click, a tab click and
 a titlebar grab; `crates/kui-core/tests/keys.rs` pins the three rules on
 the shapes themselves, including the editor that must still win.

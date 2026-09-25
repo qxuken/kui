@@ -237,6 +237,17 @@ extern "C" {
  * zeroed field is the float that escapes, which is what every float was.
  * Also new under 19, and no break of its own: kui_host_rect, one function
  * writing the KuiLayoutRect it already had (backlog F92).
+ * The same bump appends aspect_ratio after it (backlog C14); a zeroed
+ * field is no ratio. And mixed, value_step (KUI_VALUE_STEP) and on_change
+ * after it for the stock controls (docs/adr/0034), with the functions
+ * kui_checkbox, kui_radio, kui_switch, kui_radio_group_open and kui_slider
+ * and the flag KUI_ACCESS_MIXED. And KuiRunConfig.frame_latency
+ * (backlog C47). KUI_SPACE_BETWEEN,
+ * KUI_SPACE_AROUND, KUI_SPACE_EVENLY and KUI_BASELINE (backlog C13) are
+ * new values of main_align / cross_align, which moved nothing. And the
+ * file dialogs (backlog C51): two new [in] structs, KuiFileFilter and
+ * KuiFileDialog, with kui_request_files, kui_awaiting_files,
+ * kui_take_file_request, kui_file_request_filter and kui_input_files.
  */
 #define KUI_ABI_VERSION 19u
 uint32_t kui_abi_version(void);
@@ -253,7 +264,7 @@ uint32_t kui_abi_version(void);
  *          KuiSpec, KuiSizing, KuiKeyframe, KuiEnter, KuiTextStyle, KuiSpan,
  *          KuiCell, KuiMenuItem, KuiMenu, KuiPlay, KuiAudio, KuiWindowConfig,
  *          KuiRunConfig, KuiColorToken, KuiLengthToken, KuiColorOp,
- *          KuiDerivedToken.
+ *          KuiDerivedToken, KuiFileFilter, KuiFileDialog.
  *
  * [out]    You allocate it; the library WRITES it. These lead with a
  *          `uint32_t size` you set to sizeof the struct, and the library
@@ -345,8 +356,23 @@ enum { KUI_FIT = 0, KUI_GROW = 1, KUI_FIXED = 2, KUI_PERCENT = 3 };
  * wraps. Everything else is the column's: gap is between rows, scroll y
  * scrolls them. */
 enum { KUI_COLUMN = 0, KUI_ROW = 1, KUI_TABLE = 2 };
-/* Alignment */
-enum { KUI_START = 0, KUI_CENTER = 1, KUI_END = 2 };
+/* Alignment (KuiSpec.main_align / cross_align, a float's attach points).
+ * The first three are every axis's. The spreads deal the main axis's free
+ * space out: BETWEEN between the children (none at the ends), AROUND an
+ * equal share per child split to its two sides, EVENLY equal gaps and
+ * ends - on main_align only. BASELINE lines up the first baselines of a
+ * row's children's text (a child with none by its bottom edge) - on a
+ * row's cross_align only. Anywhere else they lay out as KUI_START (AROUND
+ * and EVENLY as KUI_CENTER) and warn "align-ignored". */
+enum {
+    KUI_START = 0,
+    KUI_CENTER = 1,
+    KUI_END = 2,
+    KUI_SPACE_BETWEEN = 3,
+    KUI_SPACE_AROUND = 4,
+    KUI_SPACE_EVENLY = 5,
+    KUI_BASELINE = 6,
+};
 /* Quad kinds */
 /* KUI_QUAD_GLYPH_SUBPIXEL: atlas rgb are per-channel coverages (needs
  * per-channel / dual-source blending; else use the atlas alpha as a mask).
@@ -901,6 +927,30 @@ typedef struct KuiSpec {
      * its parent's box is always clipped this way. kui_spec_float_preset
      * clears it with the other float fields. ABI 19. */
     uint32_t float_clip;
+    /* Width over height (aspectRatio, CSS's aspect-ratio); 0 = none. It
+     * sizes the axis left fit: a fit height is the final width over the
+     * ratio, a fit width under a fixed height is that height times it.
+     * With both axes declared it has nothing to set ("aspect-ignored").
+     * The derived axis is neither shrunk nor fitted to the children.
+     * ABI 19. */
+    float aspect_ratio;
+    /* Non-zero: a checkbox that is neither on nor off - the select-all box
+     * over a partial selection (docs/adr/0034). Read as mixed whatever
+     * `checked` says (KUI_ACCESS_MIXED), drawn as a dash by kui_checkbox.
+     * ABI 19. */
+    uint32_t mixed;
+    /* A slider's step, present when KUI_VALUE_STEP is in value_set: how far
+     * an arrow moves it and the grid the pointer snaps to (default a
+     * hundredth of the range). ABI 19. */
+    float value_step;
+    /* A slider's change tag (NULL = none; docs/adr/0034): on a
+     * KUI_ROLE_SLIDER node the core turns a press into the value under the
+     * pointer, a drag into each new step, the arrows into one value_step,
+     * PageUp / PageDown into ten and Home / End into the ends - clamped and
+     * snapped - and emits {kind:"change", value, phase:"move"|"end", tag}.
+     * Proposed, never applied: declare the value as value_now. Borrowed
+     * while the node opens. ABI 19. */
+    const KuiValue *on_change;
 } KuiSpec;
 
 /* When a scrolling node's bars are drawn (KuiSpec.scrollbar): the schema
@@ -992,6 +1042,7 @@ enum {
     KUI_VALUE_CARET = 1u << 3,
     KUI_VALUE_ANCHOR = 1u << 4,
     KUI_VALUE_CARET_SOLID = 1u << 5,
+    KUI_VALUE_STEP = 1u << 6, /* value_step holds (docs/adr/0034) */
 };
 /* Actions assistive technology can request (KuiAccessNode.actions bits,
  * kui_input_access). */
@@ -1038,6 +1089,9 @@ enum {
      * allocates the array and appending to it would be an ABI break. */
     KUI_ACCESS_LIVE_POLITE = 1u << 18,
     KUI_ACCESS_LIVE_ASSERTIVE = 1u << 19,
+    /* A checkbox that is neither on nor off (KuiSpec.mixed); beside
+     * KUI_ACCESS_CHECKED_SET, and outranking KUI_ACCESS_CHECKED. */
+    KUI_ACCESS_MIXED = 1u << 20,
 };
 
 /* [out[]] One queued announcement (kui_take_announcements): something to say
@@ -2404,6 +2458,13 @@ void kui_reveal(KuiCtx *ctx, uint64_t key);
  * "jump to the top" and a huge y is "jump to the end" without knowing the
  * content height. Harmless for a key that never scrolls. */
 void kui_set_scroll(KuiCtx *ctx, uint64_t key, float x, float y);
+/* Moves a scroll container by the content that moved under it, on y: drawn
+ * for where its content is drawn (and an eased leg's start), target for the
+ * offset, with no ease asked or ended and no frame asked for. A variable-
+ * height list's correction when the rows it measured came out another
+ * height than their estimate, so the row under the pointer stays put. Call
+ * it from the view, before kui_frame_finish. */
+void kui_shift_scroll(KuiCtx *ctx, uint64_t key, float drawn, float target);
 /* Reads it back as the last layout clamped it — the number to persist and
  * restore. 0,0 for a node that never scrolled; either pointer may be NULL. */
 void kui_scroll_offset(KuiCtx *ctx, uint64_t key, float *x, float *y);
@@ -2805,6 +2866,51 @@ void kui_set_lookup_available(KuiCtx *ctx, bool on);
 /* Drains one queued menu action (see KuiMenuAction); false when there are
  * none. Drain to empty after handling input, the way window commands are. */
 bool kui_take_menu_action(KuiCtx *ctx, KuiMenuAction *out);
+
+/* File dialogs (backlog C51): ask for the platform's Open, Save or folder
+ * dialog and hear the answer as a {kind:"files", paths, tag} event - the
+ * paths a drop carries, none when the user cancelled - to whoever asked.
+ * One dialog at a time. Under kui_run the runner shows it; a host driving
+ * its own window drains it with kui_take_file_request and answers with
+ * kui_input_files. */
+enum { KUI_FILE_DIALOG_OPEN = 0, KUI_FILE_DIALOG_SAVE = 1, KUI_FILE_DIALOG_FOLDER = 2 };
+/* [in] One entry of a dialog's file-type menu: extensions without the dot. */
+typedef struct KuiFileFilter {
+    KuiStr name;
+    const KuiStr *extensions;
+    size_t extension_count;
+} KuiFileFilter;
+/* [in] The dialog kui_request_files asks for. Zeroed, it is an Open dialog
+ * for one file of any type. */
+typedef struct KuiFileDialog {
+    uint32_t mode;           /* KUI_FILE_DIALOG_* */
+    uint32_t multiple;       /* nonzero: more than one file or folder */
+    KuiStr title;            /* empty: the platform's own */
+    const KuiFileFilter *filters; /* the first is chosen when it opens */
+    size_t filter_count;
+    KuiStr directory;        /* the folder it opens in; empty: the platform's */
+    KuiStr file_name;        /* a save dialog's suggested name; empty: none */
+} KuiFileDialog;
+/* Asks for the dialog; `dialog` NULL is an Open dialog for one file, `tag`
+ * may be NULL and is consumed. False when one is already out, or the mode
+ * is not a KUI_FILE_DIALOG_*. */
+bool kui_request_files(KuiCtx *ctx, const KuiFileDialog *dialog, KuiValue *tag);
+/* Whether a file dialog asked for is still unanswered. */
+bool kui_awaiting_files(KuiCtx *ctx);
+/* Drains the dialog asked for, for a host that shows it itself: its mode,
+ * whether it picks several, its title, folder and suggested name (empty
+ * for none) and how many filters it offers. Any out pointer may be NULL;
+ * the strings are borrowed until the next call on this context. False when
+ * nothing is asked. */
+bool kui_take_file_request(KuiCtx *ctx, uint32_t *mode, bool *multiple, KuiStr *title,
+                           KuiStr *directory, KuiStr *file_name, size_t *filter_count);
+/* Filter `i` of the dialog kui_take_file_request last handed out: its name
+ * and its extensions joined with ';' ("png;jpg"). Borrowed until the next
+ * call; false for a filter that is not there. */
+bool kui_file_request_filter(KuiCtx *ctx, size_t i, KuiStr *name, KuiStr *extensions);
+/* The dialog's answer: the `count` paths picked, none for a cancelled one.
+ * With nothing asked it is dropped. */
+void kui_input_files(KuiCtx *ctx, const KuiStr *paths, size_t count);
 /* The caret rect for byte offset `byte` in that text: where a caret, a
  * selection edge or an IME candidate window goes. A byte past the text is
  * the end. False for a key that drew no text. */
@@ -3017,6 +3123,29 @@ uint64_t kui_text_input(KuiCtx *ctx, KuiStr label, KuiStr initial);
  * select-current-ignored warning on the field. */
 uint64_t kui_select(KuiCtx *ctx, KuiStr label, const KuiMenuItem *items, size_t count,
                     int64_t current);
+/* The stock controls (docs/adr/0034-stock-controls-over-the-roles.md).
+ * A toggle is drawn from the state `spec` declares - `checked`, and on a
+ * checkbox `mixed` - labelled `text` and keyed by it; a press by the
+ * pointer, Space, Enter or assistive technology posts `payload`
+ * (consumed), and the host flips its model and draws it again. Of `spec`
+ * (NULL = none of them) each reads checked, mixed, label, description,
+ * tooltip and disabled, as kui_button_with reads its rows. Each returns
+ * its key. */
+uint64_t kui_checkbox(KuiCtx *ctx, KuiStr text, const KuiSpec *spec, KuiValue *payload);
+uint64_t kui_radio(KuiCtx *ctx, KuiStr text, const KuiSpec *spec, KuiValue *payload);
+uint64_t kui_switch(KuiCtx *ctx, KuiStr text, const KuiSpec *spec, KuiValue *payload);
+/* Opens a radio group named `label`: `spec`'s box rows (NULL = a column),
+ * the group's role and name, the stock gap where spec has none. One Tab
+ * stop whose arrows, Home and End move the choice and press the radio
+ * they land on. Declare its kui_radio's, then kui_close. Its key. */
+uint64_t kui_radio_group_open(KuiCtx *ctx, KuiStr label, const KuiSpec *spec);
+/* The stock slider, named and keyed by `label`. Reads value_now /
+ * value_min / value_max / value_step (by their KUI_VALUE_* bits),
+ * value_text, on_change, width / min_w / max_w where set, label,
+ * description, tooltip and disabled off `spec`. With on_change the core
+ * proposes values from the pointer and the keys as {kind:"change", value,
+ * phase, tag}; declare the value back as value_now. Its key. */
+uint64_t kui_slider(KuiCtx *ctx, KuiStr label, const KuiSpec *spec);
 /* Editable text node (state retained by key). Returns the node key;
  * "changed"/"submit" events arrive via kui_poll_event with that key. */
 uint64_t kui_text_edit(KuiCtx *ctx, KuiStr label, KuiStr initial,
@@ -3155,6 +3284,12 @@ typedef struct KuiRunConfig {
     uint32_t diagnostics;  /* KUI_DIAG_*: the window's, over what
                             * kui_set_diagnostics set on the context; the
                             * default is the build's (debug on, release off) */
+    uint32_t frame_latency; /* frames queued ahead of the one on screen;
+                            * 0 = the default, 2 (every vsync gets a frame
+                            * at light load; on macOS 14+ back-to-back
+                            * frames start at the vsync, so it costs no
+                            * latency). KUI_FRAME_LATENCY in the environment
+                            * still overrides. ABI 19. */
 } KuiRunConfig;
 #define KUI_RUN_CONFIG_INIT ((KuiRunConfig){0})
 

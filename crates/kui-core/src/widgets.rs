@@ -33,14 +33,16 @@ pub fn latency_hud_at(ui: &mut Ui<'_>, x: Align, y: Align) {
     } else {
         0.0
     };
+    // The same attach points a float takes, which place the spreads and
+    // `Baseline` as the start or the centre (`layout::align_factor`).
     let dx = match x {
-        Align::Start => 12.0,
-        Align::Center => 0.0,
+        Align::Start | Align::SpaceBetween | Align::Baseline => 12.0,
+        Align::Center | Align::SpaceAround | Align::SpaceEvenly => 0.0,
         Align::End => -12.0,
     };
     let dy = match y {
-        Align::Start => 12.0 + top_inset,
-        Align::Center => 0.0,
+        Align::Start | Align::SpaceBetween | Align::Baseline => 12.0 + top_inset,
+        Align::Center | Align::SpaceAround | Align::SpaceEvenly => 0.0,
         Align::End => -12.0,
     };
     // Translucent over whatever the app is painting, so the panel takes
@@ -820,6 +822,405 @@ fn button_body(ui: &mut Ui<'_>, ident: Ident<'_>, text: &str, spec: NodeSpec, hi
     }
 }
 
+// -- Stock controls ---------------------------------------------------------
+// `docs/adr/0034-stock-controls-over-the-roles.md`: checkbox, radio, switch
+// and slider, composed over the roles the core already reads. The state is
+// the app's and rides on the spec — `checked`, `mixed`, `value_now` — so a
+// control is drawn from what the view declared this frame, and a toggle's
+// press is its `on_click` like any button's. One definition per control:
+// every binding's element lowers to the `*_with` here.
+
+/// The side of a stock control's box — a checkbox, a radio's circle, a
+/// switch's height, a slider's thumb — from the metrics' control text, so
+/// `compact` and `scaled` move it with the stock button: 16 px at the
+/// comfortable density, 14 at the compact one.
+pub fn control_box(m: &Metrics) -> f32 {
+    (m.control_text + 1.0).round()
+}
+
+/// Which toggle a [`toggle_with`] draws.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Toggle {
+    Checkbox,
+    Radio,
+    Switch,
+}
+
+impl Toggle {
+    /// The role it declares, whatever the spec said.
+    pub fn role(self) -> Role {
+        match self {
+            Toggle::Checkbox => Role::Checkbox,
+            Toggle::Radio => Role::Radio,
+            Toggle::Switch => Role::Switch,
+        }
+    }
+
+    /// The element's name in every binding.
+    pub fn name(self) -> &'static str {
+        match self {
+            Toggle::Checkbox => "checkbox",
+            Toggle::Radio => "radio",
+            Toggle::Switch => "switch",
+        }
+    }
+}
+
+/// A stock toggle's spec — the row its indicator and label sit in — as
+/// [`button_spec`] is the button's. A caller with a spec of its own starts
+/// here and adds the state (`checked`, `mixed`), the `on_click` and the
+/// access rows to it.
+pub fn toggle_spec(m: &Metrics) -> NodeSpec {
+    NodeSpec::row()
+        .gap((control_box(m) / 2.0).round())
+        .cross_align(Align::Center)
+}
+
+/// A checkbox labelled `text`, keyed by it, drawn from `checked`; a press
+/// — pointer, Space, Enter or assistive technology — posts `payload`,
+/// and the view flips its model and draws it again.
+pub fn checkbox(ui: &mut Ui<'_>, text: &str, checked: bool, payload: impl Into<Value>) -> Key {
+    let m = ui.metrics();
+    toggle_with(
+        ui,
+        Toggle::Checkbox,
+        text,
+        text,
+        toggle_spec(&m).checked(checked).on_click(payload.into()),
+        None,
+    )
+}
+
+/// A radio labelled `text`, keyed by it; see [`checkbox`]. Radios belong in
+/// a [`radio_group_with`], whose arrows move the choice.
+pub fn radio(ui: &mut Ui<'_>, text: &str, checked: bool, payload: impl Into<Value>) -> Key {
+    let m = ui.metrics();
+    toggle_with(
+        ui,
+        Toggle::Radio,
+        text,
+        text,
+        toggle_spec(&m).checked(checked).on_click(payload.into()),
+        None,
+    )
+}
+
+/// A switch labelled `text`, keyed by it; see [`checkbox`].
+pub fn switch(ui: &mut Ui<'_>, text: &str, on: bool, payload: impl Into<Value>) -> Key {
+    let m = ui.metrics();
+    toggle_with(
+        ui,
+        Toggle::Switch,
+        text,
+        text,
+        toggle_spec(&m).checked(on).on_click(payload.into()),
+        None,
+    )
+}
+
+/// A toggle with its spec in the caller's hands, the way [`button_with`]
+/// takes the button's: `spec` is [`toggle_spec`] plus the state and the
+/// rows the element admits — `checked`, `mixed` (a checkbox's third
+/// state), `on_click`, `label`, `description`, `disabled`, and `hint`, the
+/// tooltip drawn while it is hovered. The role is `kind`'s whatever the
+/// spec said. Keyed by `key`; an empty `text` draws the indicator alone,
+/// which then wants a `label`. A disabled toggle is dimmed as well as
+/// inert. This is what `<checkbox>`, `<radio>`, `<switch>` and their Lua
+/// and C doors lower to.
+pub fn toggle_with(
+    ui: &mut Ui<'_>,
+    kind: Toggle,
+    key: &str,
+    text: &str,
+    spec: NodeSpec,
+    hint: Option<&str>,
+) -> Key {
+    let t = ui.theme();
+    let m = ui.metrics();
+    let node = ui.child_key(key);
+    let ax = spec.access();
+    let mixed = ax.mixed && kind == Toggle::Checkbox;
+    let on = ax.checked || mixed;
+    let disabled = spec.disabled;
+    let hovered = !disabled && ui.is_hovered(node);
+    let mut spec = spec.role(kind.role());
+    if disabled {
+        let o = spec.style.opacity * t.disabled_opacity;
+        spec = spec.opacity(o);
+    } else if spec.cursor.is_none() {
+        spec = spec.cursor(CursorShape::Pointer);
+    }
+    let b = control_box(&m);
+    ui.with_keyed(key, spec, |ui| {
+        let edge = if on || hovered {
+            t.accent
+        } else {
+            t.border_strong
+        };
+        match kind {
+            Toggle::Checkbox | Toggle::Radio => {
+                let radius = if kind == Toggle::Radio {
+                    b / 2.0
+                } else {
+                    m.radius_inner.min(b / 4.0)
+                };
+                let face = NodeSpec::row()
+                    .width(Sizing::Fixed(b))
+                    .height(Sizing::Fixed(b))
+                    .radius(radius)
+                    .border(1.0, edge)
+                    .bg(if on { t.accent } else { t.sunken })
+                    .center();
+                ui.with(face, |ui| {
+                    if !on {
+                        return;
+                    }
+                    if kind == Toggle::Radio {
+                        let d = (b * 0.4).round();
+                        ui.with(
+                            NodeSpec::row()
+                                .width(Sizing::Fixed(d))
+                                .height(Sizing::Fixed(d))
+                                .radius(d / 2.0)
+                                .bg(t.on_accent),
+                            |_| {},
+                        );
+                    } else if mixed {
+                        ui.with(
+                            NodeSpec::row()
+                                .width(Sizing::Fixed((b * 0.5).round()))
+                                .height(Sizing::Fixed(2.0))
+                                .radius(1.0)
+                                .bg(t.on_accent),
+                            |_| {},
+                        );
+                    } else {
+                        // Drawn, not a glyph: the same mark at every size
+                        // and in every font.
+                        ui.polyline(
+                            &[
+                                Vec2::new(b * 0.26, b * 0.52),
+                                Vec2::new(b * 0.43, b * 0.69),
+                                Vec2::new(b * 0.75, b * 0.33),
+                            ],
+                            crate::line::Stroke::new((b / 8.0).max(1.5), t.on_accent),
+                            NodeSpec::default(),
+                        );
+                    }
+                });
+            }
+            Toggle::Switch => {
+                let track = NodeSpec::row()
+                    .width(Sizing::Fixed((b * 1.75).round()))
+                    .height(Sizing::Fixed(b))
+                    .pad(2.0)
+                    .radius(b / 2.0)
+                    .bg(if on { t.accent } else { t.border_strong })
+                    .main_align(if on { Align::End } else { Align::Start })
+                    .cross_align(Align::Center)
+                    .transition(120.0);
+                ui.with_keyed("track", track, |ui| {
+                    let k = b - 4.0;
+                    ui.with_keyed(
+                        "knob",
+                        NodeSpec::row()
+                            .width(Sizing::Fixed(k))
+                            .height(Sizing::Fixed(k))
+                            .radius(k / 2.0)
+                            .bg(t.on_accent)
+                            .transition(120.0)
+                            .slide(),
+                        |_| {},
+                    );
+                });
+            }
+        }
+        if !text.is_empty() {
+            ui.text(text, TextStyle::new(m.control_text).color(t.fg));
+        }
+        if let Some(hint) = hint
+            && ui.is_hovered(node)
+        {
+            tooltip(ui, hint);
+        }
+    })
+}
+
+/// The stock radio group's spec: a column of radios. What
+/// [`radio_group_with`] is handed by [`radio_group`].
+pub fn radio_group_spec(m: &Metrics) -> NodeSpec {
+    NodeSpec::column().gap((control_box(m) / 2.0).round())
+}
+
+/// A radio group named `label`: one Tab stop whose arrows, Home and End
+/// move the choice among the radios `f` declares and press the one they
+/// land on (ADR 0007, decisions 8 and 11), so a group of radios whose
+/// payloads each set the choice answers the keyboard with no more code.
+/// The role and the name are the group's whatever `spec` said; a `row`
+/// spec lays the radios out across, and its arrows run across with it. A
+/// spec with no gap takes [`radio_group_spec`]'s, so a binding that built
+/// the spec from its rows — where `dir="row"` starts one from nothing —
+/// gets the stock spacing without restating it.
+pub fn radio_group_with(
+    ui: &mut Ui<'_>,
+    label: &str,
+    spec: NodeSpec,
+    f: impl FnOnce(&mut Ui<'_>),
+) -> Key {
+    let spec = radio_group_open_spec(&ui.metrics(), label, spec);
+    ui.with_keyed(label, spec, f)
+}
+
+/// The spec a radio group named `label` opens with: `spec` with the
+/// group's role and name, and the stock gap where it has none. What
+/// [`radio_group_with`] opens, and what C's `kui_radio_group_open` does,
+/// whose radios are declared between it and `kui_close`.
+pub fn radio_group_open_spec(m: &Metrics, label: &str, spec: NodeSpec) -> NodeSpec {
+    let mut spec = spec.role(Role::RadioGroup).label(label);
+    if spec.layout.gap == 0.0 {
+        spec.layout.gap = radio_group_spec(m).layout.gap;
+    }
+    spec
+}
+
+/// A radio group over named options: `current` is the one in force, and a
+/// choice posts `payload(i)`. Each radio is keyed by its index, so two
+/// options with one label are two radios.
+pub fn radio_group(
+    ui: &mut Ui<'_>,
+    label: &str,
+    options: &[&str],
+    current: Option<usize>,
+    payload: impl Fn(usize) -> Value,
+) -> Key {
+    let m = ui.metrics();
+    radio_group_with(ui, label, radio_group_spec(&m), |ui| {
+        for (i, option) in options.iter().enumerate() {
+            let key = format!("{i}");
+            toggle_with(
+                ui,
+                Toggle::Radio,
+                &key,
+                option,
+                toggle_spec(&m)
+                    .checked(current == Some(i))
+                    .on_click(payload(i)),
+                None,
+            );
+        }
+    })
+}
+
+/// The stock slider's spec: a row as wide as a menu and as tall as its
+/// thumb, padded by half the thumb on either side so the thumb's centre
+/// is under the pointer at both ends — the content box is the track the
+/// core reads a press along (ADR 0034, decision 4). A caller sizing its
+/// own slider changes the width and keeps the padding.
+pub fn slider_spec(m: &Metrics) -> NodeSpec {
+    let b = control_box(m);
+    NodeSpec::row()
+        .width(Sizing::Fixed(m.menu_width))
+        .height(Sizing::Fixed(b))
+        .pad_xy(b / 2.0, 0.0)
+        .cross_align(Align::Center)
+}
+
+/// A slider named `label` over `min..=max`, at `value`, moving by `step`.
+/// Its changes arrive as `{kind: "change", value, phase, tag}` with `tag`
+/// — from the pointer, the arrows, the Page keys, Home / End and
+/// assistive technology alike — and the view stores `value` and draws the
+/// slider again at it.
+pub fn slider(
+    ui: &mut Ui<'_>,
+    label: &str,
+    value: f32,
+    min: f32,
+    max: f32,
+    step: f32,
+    tag: impl Into<Value>,
+) -> Key {
+    let m = ui.metrics();
+    slider_with(
+        ui,
+        label,
+        slider_spec(&m)
+            .value_now(value)
+            .value_min(min)
+            .value_max(max)
+            .value_step(step)
+            .on_change(tag.into()),
+        None,
+    )
+}
+
+/// A slider with its spec in the caller's hands: [`slider_spec`] plus the
+/// value rows (`value_now`, `value_min`, `value_max`, `value_step`,
+/// `value_text`), `on_change`, `description`, `disabled`, a width, and
+/// `hint`, the tooltip drawn while it is hovered. Keyed by `label`, which
+/// is its accessible name unless the spec carries a `label` of its own.
+/// The role is the slider's whatever the spec said. What `<slider>` and
+/// its Lua and C doors lower to.
+pub fn slider_with(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, hint: Option<&str>) -> Key {
+    let t = ui.theme();
+    let m = ui.metrics();
+    let node = ui.child_key(label);
+    let ax = spec.access();
+    let fraction = crate::slider::SliderRange::of(ax).map_or(0.0, |r| {
+        let now = ax.value_now.map_or(r.min, crate::slider::exact);
+        ((now - r.min) / (r.max - r.min)).clamp(0.0, 1.0) as f32
+    });
+    let named = ax.label.is_some();
+    let disabled = spec.disabled;
+    let mut spec = spec.role(Role::Slider);
+    if !named {
+        spec = spec.label(label);
+    }
+    if disabled {
+        let o = spec.style.opacity * t.disabled_opacity;
+        spec = spec.opacity(o);
+    } else if spec.cursor.is_none() {
+        spec = spec.cursor(CursorShape::Pointer);
+    }
+    let b = control_box(&m);
+    ui.with_keyed(label, spec, |ui| {
+        let track = NodeSpec::row()
+            .width(Sizing::Grow(1.0))
+            .height(Sizing::Fixed(4.0))
+            .radius(2.0)
+            .bg(t.border_strong);
+        ui.with(track, |ui| {
+            let fill = NodeSpec::row()
+                .width(Sizing::Percent(fraction))
+                .height(Sizing::Grow(1.0))
+                .radius(2.0)
+                .bg(t.accent);
+            ui.with(fill, |ui| {
+                // Hung off the fill's end, so it sits where the value is
+                // with no arithmetic of the view's.
+                ui.with(
+                    NodeSpec::row()
+                        .width(Sizing::Fixed(b))
+                        .height(Sizing::Fixed(b))
+                        .radius(b / 2.0)
+                        .bg(t.on_accent)
+                        .border(1.0, t.border_strong)
+                        .float(
+                            FloatConfig::parent()
+                                .at(Align::End, Align::Center)
+                                .self_at(Align::Center, Align::Center),
+                        ),
+                    |_| {},
+                );
+            });
+        });
+        if let Some(hint) = hint
+            && ui.is_hovered(node)
+        {
+            tooltip(ui, hint);
+        }
+    })
+}
+
 // -- Context menus ----------------------------------------------------------
 // The menu every app was writing for itself (ADR 0017, decision 5). It is
 // exported rather than hidden inside the core's automatic path, and the
@@ -1173,7 +1574,7 @@ const MENU_CHECK_W: f32 = 14.0;
 /// logical px tall, has any reason to build — those crossing the visible
 /// band, plus `overscan` on each side — given the geometry of the frame
 /// before. Pure arithmetic, exposed for views that build their own
-/// container instead of using [`virtual_column`].
+/// container instead of using [`uniform_list`].
 ///
 /// `vh` is the container's height, and `pad_t` the padding above the first
 /// row. `None` geometry means no layout has resolved the container yet:
@@ -1221,7 +1622,7 @@ pub fn visible_rows(
 /// for `set_scroll` (`Vec2::new(0.0, i as f32 * row_h)` scrolls row `i` to
 /// the top, which is how you reach a row that is not built — `reveal` of an
 /// unbuilt row finds nothing).
-pub fn virtual_column(
+pub fn uniform_list(
     ui: &mut Ui<'_>,
     label: &str,
     spec: NodeSpec,
@@ -1287,7 +1688,7 @@ fn spacer_spec(h: f32) -> NodeSpec {
 }
 
 // -- Variable-height virtual lists ------------------------------------------
-// `virtual_column` takes one stride and every row must come out that tall,
+// `uniform_list` takes one stride and every row must come out that tall,
 // which is the log viewer, the data table and the chat history whose rows are
 // one line. A row that wraps, a card with an image, a message that is
 // sometimes three lines: none of those have a stride, and the three things
@@ -1304,7 +1705,7 @@ fn spacer_spec(h: f32) -> NodeSpec {
 // it changes the height of every row above the window as well as below.
 // That is what the anchor is for.
 
-/// The heights a [`virtual_rows`] list slices by: a measured number per row
+/// The heights a [`list`] slices by: a measured number per row
 /// where one is known, an estimate everywhere else, and the prefix sums over
 /// both.
 ///
@@ -1447,7 +1848,7 @@ impl RowHeights {
 
     /// Declares the content width the next measurements are for. A width
     /// that differs from the cached one drops every height — the rows wrap
-    /// differently now — and returns true. [`virtual_rows`] calls this from
+    /// differently now — and returns true. [`list`] calls this from
     /// the container's own laid-out box.
     pub fn set_width(&mut self, w: f32) -> bool {
         if !w.is_finite() || w <= 0.0 || (self.width - w).abs() < 0.5 {
@@ -1547,7 +1948,7 @@ impl RowHeights {
 }
 
 /// A vertically scrolling column of rows of *different* heights that builds
-/// only the visible ones — [`virtual_column`] where no single stride
+/// only the visible ones — [`uniform_list`] where no single stride
 /// describes the list.
 ///
 /// `measure(ui, i, width)` returns row `i`'s height at that content width,
@@ -1556,11 +1957,11 @@ impl RowHeights {
 /// answer for a text row, wrap and all, and shapes through the same cache
 /// the row's draw will hit. What it returns is the height the row *gets*:
 /// each row's node is fixed to it, so the arithmetic above and below can
-/// never disagree with the layout, the way `virtual_column`'s stride cannot.
+/// never disagree with the layout, the way `uniform_list`'s stride cannot.
 /// A row that would rather size itself has to say what that size is here.
 ///
 /// `row(ui, i)` declares row `i` inside that node, exactly as
-/// `virtual_column`'s does, and rows are opened with [`Ui::open_indexed`] at
+/// `uniform_list`'s does, and rows are opened with [`Ui::open_indexed`] at
 /// their data index, so a row keeps its hover, focus, edit buffer and tweens
 /// as the built range slides over it.
 ///
@@ -1579,7 +1980,7 @@ impl RowHeights {
 /// Returns the container's key, for `set_scroll` — and "scroll to row `i`"
 /// is `set_scroll(key, Vec2::new(0.0, heights.offset_of(i)))`, exact for a
 /// measured row and converging over a frame or two for one that is not.
-pub fn virtual_rows(
+pub fn list(
     ui: &mut Ui<'_>,
     label: &str,
     spec: NodeSpec,
@@ -1587,85 +1988,22 @@ pub fn virtual_rows(
     mut measure: impl FnMut(&mut Ui<'_>, usize, f32) -> f32,
     mut row: impl FnMut(&mut Ui<'_>, usize),
 ) -> Key {
-    const OVERSCAN: usize = 2;
-    // Measuring changes the heights the range was sliced from, which can
-    // widen it; four passes is far more than a screenful ever needs and
-    // bounds the work whatever the measurements do.
-    const PASSES: usize = 4;
-
     let key = ui.child_key(label);
-    let pad = spec.layout.padding;
-    // Where an eased leg (F80) is going, when it is somewhere other than
-    // where the content is drawn: a second anchor, so the row under the
-    // target stays the target however the measurements below move the
-    // rows between the two (RG18).
-    let mut target_y = None;
-    let (offset_y, vh, cw, first_frame) = match ui.scroll_geometry(key) {
-        Some(g) => {
-            let t = ui.scroll_offset(key).y.clamp(0.0, g.max_offset.y);
-            if (t - g.offset.y).abs() > 0.5 {
-                target_y = Some(t);
-            }
-            (g.offset.y, g.rect.h, g.rect.w - pad.x(), false)
-        }
-        // Nothing laid out yet: a screenful of the viewport is a safe
-        // over-build for one frame, and the width is its width.
-        None => (
-            ui.scroll_offset(key).y,
-            ui.viewport().h,
-            ui.viewport().w - pad.x(),
-            true,
-        ),
-    };
-    // A resize rewraps every row, so the cache is void; the frame after it
-    // measures a screenful again.
-    heights.set_width(cw);
-
-    // The row the window starts in and how far into it — the pair the
-    // correction below puts back where it was.
-    let mut top = (offset_y - pad.t).max(0.0);
-    let anchor = heights.row_at(top);
-    let into = top - heights.offset_of(anchor);
-    // What the passes below move `top` away from. The correction is for a
-    // *measurement* moving the numbers — not for the clamp above, which
-    // on a list shorter than its box (offset 0, padding 6) makes
-    // `top + pad.t` differ from the offset every frame, and a `set_scroll`
-    // every frame is a frame requested every frame: the devtools' events
-    // list never idled again once it had one row (found building ADR
-    // 0029, ~130 frames/s after the first event).
-    let top_before = top;
-    let target_anchor = target_y.map(|t| {
-        let t = (t - pad.t).max(0.0);
-        let row = heights.row_at(t);
-        (t, row, t - heights.offset_of(row))
-    });
-
-    let mut range = visible_range(heights, top, vh, OVERSCAN);
-    for _ in 0..PASSES {
-        let mut measured = false;
-        for i in range.clone() {
-            if heights.measured(i).is_none() {
-                let h = measure(ui, i, cw);
-                heights.set(i, h);
-                measured = true;
-            }
-        }
-        if !measured {
+    let mut slice = heights.slice(ListReading::of(ui, key, spec.layout.padding));
+    loop {
+        let pending = slice.unmeasured(heights);
+        if pending.is_empty() {
             break;
         }
-        // Measuring moved the numbers the slice was taken from — this row's
-        // own, the rows above it, and (through the mean) every row nobody
-        // has measured at all. Put the anchor row back where it was before
-        // re-slicing, so what is under the pointer does not slide out from
-        // under it.
-        top = heights.offset_of(anchor) + into;
-        let next = visible_range(heights, top, vh, OVERSCAN);
-        if next == range {
+        for i in pending {
+            let h = measure(ui, i, slice.width());
+            heights.set(i, h);
+        }
+        if !slice.reslice(heights) {
             break;
         }
-        range = next;
     }
-
+    let plan = slice.finish(heights);
     // A write from inside a view lands on the frame being built: the
     // positions pass reads the store after the view has run. So the frame
     // that learned the rows are a different size is drawn already
@@ -1674,34 +2012,218 @@ pub fn virtual_rows(
     // content, so it is never eased on a container with a `transition`,
     // and mid-glide it moves the leg with it rather than ending the leg
     // where the content stands (RG18).
-    let drawn = top - top_before;
-    let target = match target_anchor {
-        Some((t, row, into)) => heights.offset_of(row) + into - t,
-        None => drawn,
-    };
-    if drawn.abs() > 0.01 || target.abs() > 0.01 {
+    if let Some((drawn, target)) = plan.shift {
         ui.shift_scroll(key, Vec2::new(0.0, drawn), Vec2::new(0.0, target));
     }
 
-    let lead = heights.offset_of(range.start);
-    let tail = heights.total() - heights.offset_of(range.end);
     ui.with_keyed(label, spec.scroll_y().gap(0.0), |ui| {
         ui.row_count(heights.len() as u64);
-        if lead > 0.0 {
-            ui.with_keyed("lead", spacer_spec(lead), |_| {});
+        if plan.lead > 0.0 {
+            ui.with_keyed("lead", spacer_spec(plan.lead), |_| {});
         }
-        for i in range.clone() {
+        for i in plan.range.clone() {
             ui.with_indexed(i as u64, row_spec(heights.get(i)), |ui| row(ui, i));
         }
-        if tail > 0.0 {
-            ui.with_keyed("tail", spacer_spec(tail), |_| {});
+        if plan.tail > 0.0 {
+            ui.with_keyed("tail", spacer_spec(plan.tail), |_| {});
         }
     });
 
-    if first_frame {
+    if plan.first_frame {
         ui.request_frame();
     }
     key
+}
+
+/// What a variable-height list reads before it slices: the container's
+/// last layout, where its scroll is going, the window, and the padding
+/// its rows sit inside. [`list`] takes it from the frame
+/// ([`Self::of`]); a binding builds it from the same readings its view
+/// already has (`scrollGeometry`, `scrollOffset`, the viewport), so the
+/// arithmetic after it is this module's in every language (backlog C46).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ListReading {
+    /// `scroll_geometry` of the container, `None` before a layout has
+    /// resolved it — the first frame.
+    pub geometry: Option<crate::scroll::ScrollGeometry>,
+    /// `scroll_offset(key).y`: the retained offset, which is where an
+    /// eased leg is going when it differs from `geometry.offset`.
+    pub scroll_y: f32,
+    /// The window, logical px: what the first frame slices by.
+    pub viewport: crate::geom::Size,
+    /// The container's top padding and its horizontal padding together.
+    pub pad_t: f32,
+    pub pad_x: f32,
+    /// Rows built past each end of the window; 2 unless a view says.
+    pub overscan: usize,
+}
+
+impl ListReading {
+    /// The reading for the container `key`, with `pad` its padding, from
+    /// the frame being built.
+    pub fn of(ui: &Ui<'_>, key: Key, pad: crate::geom::Edges) -> Self {
+        ListReading {
+            geometry: ui.scroll_geometry(key),
+            scroll_y: ui.scroll_offset(key).y,
+            viewport: ui.viewport(),
+            pad_t: pad.t,
+            pad_x: pad.x(),
+            overscan: 2,
+        }
+    }
+}
+
+/// One frame's slicing of a variable-height list, between the reading and
+/// the rows: which rows to measure, and — once they are — where the window
+/// lands and what to build. Made by [`RowHeights::slice`]; see [`list`]
+/// for the loop that drives it, which every binding's port repeats.
+#[derive(Clone, Debug)]
+pub struct ListSlice {
+    range: std::ops::Range<usize>,
+    /// The row the window starts in, and how far into it: the pair the
+    /// correction puts back where it was.
+    anchor: usize,
+    into: f32,
+    top: f32,
+    /// What the passes move `top` away from. The correction is for a
+    /// *measurement* moving the numbers — not for the clamp to zero, which
+    /// on a list shorter than its box (offset 0, padding 6) makes `top +
+    /// pad_t` differ from the offset every frame, and a correction every
+    /// frame is a frame requested every frame: the devtools' events list
+    /// never idled again once it had one row (found building ADR 0029,
+    /// ~130 frames/s after the first event).
+    top_before: f32,
+    /// Where an eased leg (F80) is going, when that is somewhere other
+    /// than where the content is drawn: a second anchor, so the row under
+    /// the target stays the target however the measurements move the rows
+    /// between the two (RG18). The target, its row, and how far into it.
+    target: Option<(f32, usize, f32)>,
+    vh: f32,
+    width: f32,
+    overscan: usize,
+    passes: usize,
+    first_frame: bool,
+}
+
+/// What a [`ListSlice`] comes to: the rows to build, the two spacers'
+/// heights, and the scroll correction the frame needs (see [`list`]).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ListPlan {
+    pub range: std::ops::Range<usize>,
+    pub lead: f32,
+    pub tail: f32,
+    /// `(drawn, target)` on y, for `Ui::shift_scroll`, when measuring moved
+    /// the rows; `None` when nothing needs correcting.
+    pub shift: Option<(f32, f32)>,
+    /// Sliced by the window, not a layout: the frame after it has to run.
+    pub first_frame: bool,
+}
+
+/// Measuring changes the heights the range was sliced from, which can widen
+/// it; four passes is far more than a screenful ever needs and bounds the
+/// work whatever the measurements do.
+const LIST_PASSES: usize = 4;
+
+impl RowHeights {
+    /// Starts a frame's slicing from `reading`: the content width (a new one
+    /// drops every height, since the rows rewrap), the anchors, and the
+    /// first range.
+    pub fn slice(&mut self, reading: ListReading) -> ListSlice {
+        let mut target_y = None;
+        let (offset_y, vh, cw, first_frame) = match reading.geometry {
+            Some(g) => {
+                let t = reading.scroll_y.clamp(0.0, g.max_offset.y);
+                if (t - g.offset.y).abs() > 0.5 {
+                    target_y = Some(t);
+                }
+                (g.offset.y, g.rect.h, g.rect.w - reading.pad_x, false)
+            }
+            // Nothing laid out yet: a screenful of the viewport is a safe
+            // over-build for one frame, and the width is its width.
+            None => (
+                reading.scroll_y,
+                reading.viewport.h,
+                reading.viewport.w - reading.pad_x,
+                true,
+            ),
+        };
+        // A resize rewraps every row, so the cache is void; the frame after
+        // it measures a screenful again.
+        self.set_width(cw);
+        let top = (offset_y - reading.pad_t).max(0.0);
+        let anchor = self.row_at(top);
+        let into = top - self.offset_of(anchor);
+        let target = target_y.map(|t| {
+            let t = (t - reading.pad_t).max(0.0);
+            let row = self.row_at(t);
+            (t, row, t - self.offset_of(row))
+        });
+        let range = visible_range(self, top, vh, reading.overscan);
+        ListSlice {
+            range,
+            anchor,
+            into,
+            top,
+            top_before: top,
+            target,
+            vh,
+            width: cw,
+            overscan: reading.overscan,
+            passes: 0,
+            first_frame,
+        }
+    }
+}
+
+impl ListSlice {
+    /// The content width the rows are measured at.
+    pub fn width(&self) -> f32 {
+        self.width
+    }
+
+    /// The rows of the current range nothing has measured: measure each,
+    /// [`RowHeights::set`] it, then [`Self::reslice`]. Empty is done.
+    pub fn unmeasured(&self, heights: &RowHeights) -> Vec<usize> {
+        self.range
+            .clone()
+            .filter(|&i| heights.measured(i).is_none())
+            .collect()
+    }
+
+    /// After measuring: puts the anchor row back where it was and slices
+    /// again. Measuring moved the numbers the slice was taken from — this
+    /// row's own, the rows above it, and (through the mean) every row
+    /// nobody has measured at all — so what is under the pointer would
+    /// otherwise slide out from under it. True when the range moved and
+    /// its new rows want measuring, within the pass budget.
+    pub fn reslice(&mut self, heights: &mut RowHeights) -> bool {
+        self.passes += 1;
+        self.top = heights.offset_of(self.anchor) + self.into;
+        let next = visible_range(heights, self.top, self.vh, self.overscan);
+        if next == self.range {
+            return false;
+        }
+        self.range = next;
+        self.passes < LIST_PASSES
+    }
+
+    /// The rows to build, the spacers, and the correction.
+    pub fn finish(self, heights: &mut RowHeights) -> ListPlan {
+        let drawn = self.top - self.top_before;
+        let target = match self.target {
+            Some((t, row, into)) => heights.offset_of(row) + into - t,
+            None => drawn,
+        };
+        let lead = heights.offset_of(self.range.start);
+        let tail = heights.total() - heights.offset_of(self.range.end);
+        ListPlan {
+            range: self.range,
+            lead,
+            tail,
+            shift: (drawn.abs() > 0.01 || target.abs() > 0.01).then_some((drawn, target)),
+            first_frame: self.first_frame,
+        }
+    }
 }
 
 /// The rows crossing `[top, top + vh)` plus `overscan` on each side, by

@@ -179,7 +179,7 @@ and on macOS a trackpad-only one that the user can switch off entirely
 (System Settings → Trackpad → Force Click and haptic feedback).
 
 The rest is available too. `objc2-app-kit` 0.3 is already a dependency of
-`kui` on macOS (for `system_env`), and carries both
+`kui-native` on macOS (for `system_env`), and carries both
 `NSView::showDefinitionForAttributedString_atPoint` and
 `setPressureConfiguration:`. winit's content view answers `isFlipped =
 true`, so kui's logical coordinates *are* the view's points — no flip

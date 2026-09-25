@@ -64,7 +64,7 @@ Four facts about those arms are the gaps:
    drag-select in a field does not even reveal the caret it is moving.
 
 3. **Shift is in the core and unread by the press.** Every driver sends
-   `InputEvent::Modifiers` (`crates/kui/src/lib.rs:1413`, `kui-node`'s
+   `InputEvent::Modifiers` (`crates/kui-native/src/lib.rs:1413`, `kui-node`'s
    `modifiers()`, `kui-ffi/src/input.rs:78`, Lua through the same door),
    `Interaction::modifiers()` (`input.rs:1103`) holds the state, and
    `arm_select_drag` (`select_api.rs:706`) already reads `.alt` from it to

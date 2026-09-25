@@ -11,8 +11,8 @@ publish = ["forgejo"]
 name = "kui_ffi"
 crate-type = ["cdylib", "staticlib", "rlib"]
 
-# The windowed runner is the only thing in this crate that needs `kui`, and
-# `kui` is the whole GUI runtime: winit, wgpu, kira, accesskit, arboard. Two
+# The windowed runner is the only thing in this crate that needs `kui-native`, and
+# `kui-native` is the whole GUI runtime: winit, wgpu, kira, accesskit, arboard. Two
 # of the 135 exported functions use it (`kui_run`, `kui_run_with`) and they
 # cost more than everything else together — the release cdylib is 12.3 MB
 # with them and 5.1 MB without, measured on x86_64-pc-windows-msvc.
@@ -30,11 +30,11 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 # imports, and panel.dll is 147 KB), so there is no ext-only build to make.
 [features]
 default = ["runner"]
-runner = ["dep:kui"]
+runner = ["dep:kui-native"]
 
 [dependencies]
 kui-core.workspace = true
-kui = { workspace = true, optional = true }
+kui-native = { workspace = true, optional = true }
 
 # The examples' devtools (docs/adr/0021), for the Rust host below.
 [dev-dependencies]
@@ -43,7 +43,7 @@ kui-devtools.workspace = true
 [package.metadata.kui]
 headless = ["c_panel"]
 
-# See the note in crates/kui/Cargo.toml: examples live under examples/ at the
+# See the note in crates/kui-native/Cargo.toml: examples live under examples/ at the
 # root, so cargo needs the path. This host and the plugin it dlopens are the
 # two halves of one example, so both are in examples/c/features/slots and
 # differ only by extension; the cbuild tool builds the plugin. The target keeps the `c_`
@@ -52,5 +52,5 @@ headless = ["c_panel"]
 [[example]]
 name = "c_panel"
 path = "../../examples/c/features/slots/panel.rs"
-# The Rust host is a `kui` app, so it needs what `kui` needs.
+# The Rust host is a `kui-native` app, so it needs what `kui-native` needs.
 required-features = ["runner"]

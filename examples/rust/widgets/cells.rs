@@ -22,14 +22,14 @@
 //! height and the frame has no seams (backlog F66) — through the font
 //! they were 1.25 em tall in a 20 px row, a dash with a gap under it.
 //!
-//! Run: cargo run -p kui --example cells [-- --headless]
+//! Run: cargo run -p kui-native --example cells [-- --headless]
 
-use kui::cells::flags;
-use kui::{
+use kui_devtools::{Drive, Example};
+use kui_native::cells::flags;
+use kui_native::{
     Align, App, Cell, CellCursor, CellGrid, Core, FontFamily, NodeSpec, Sizing, TextStyle, Theme,
     Ui, UiEvent, Value,
 };
-use kui_devtools::{Drive, Example};
 
 /// What a line of the fake session is *for*. A terminal's palette is the
 /// app's, but these three are roles the theme already names — so the
@@ -238,10 +238,16 @@ impl Example for Cells {
         // A drag from the second row to the fourth.
         let (x0, y0) = (r.x + 30.0, r.y + 10.0 + 1.5 * 18.0);
         let (x1, y1) = (r.x + 200.0, r.y + 10.0 + 3.5 * 18.0);
-        d.input(self, kui::InputEvent::CursorMoved(kui::Vec2::new(x0, y0)));
-        d.input(self, kui::InputEvent::mouse_down(1));
-        d.input(self, kui::InputEvent::CursorMoved(kui::Vec2::new(x1, y1)));
-        d.input(self, kui::InputEvent::mouse_up());
+        d.input(
+            self,
+            kui_native::InputEvent::CursorMoved(kui_native::Vec2::new(x0, y0)),
+        );
+        d.input(self, kui_native::InputEvent::mouse_down(1));
+        d.input(
+            self,
+            kui_native::InputEvent::CursorMoved(kui_native::Vec2::new(x1, y1)),
+        );
+        d.input(self, kui_native::InputEvent::mouse_up());
         d.frame(self);
         let sel = d.core.cell_selection().ok_or("the drag selected nothing")?;
         let (a, b) = sel.ordered();
@@ -279,12 +285,15 @@ impl Example for Cells {
         // A drag held past the bottom edge: the core asks the app for
         // lines every frame, at a rate from how far past, and the live
         // end follows the pointer onto the moved screen (ADR 0029).
-        d.input(self, kui::InputEvent::CursorMoved(kui::Vec2::new(x0, y0)));
-        d.input(self, kui::InputEvent::mouse_down(1));
+        d.input(
+            self,
+            kui_native::InputEvent::CursorMoved(kui_native::Vec2::new(x0, y0)),
+        );
+        d.input(self, kui_native::InputEvent::mouse_down(1));
         let below = r.y + r.h + 80.0;
         d.input(
             self,
-            kui::InputEvent::CursorMoved(kui::Vec2::new(x1, below)),
+            kui_native::InputEvent::CursorMoved(kui_native::Vec2::new(x1, below)),
         );
         let anchor = d.core.cell_selection().ok_or("no drag")?.anchor.line;
         let top = self.top;
@@ -296,7 +305,7 @@ impl Example for Cells {
             self.top > top,
             "half a second past the edge scrolled the screen",
         )?;
-        d.input(self, kui::InputEvent::mouse_up());
+        d.input(self, kui_native::InputEvent::mouse_up());
         d.frame(self);
         let held = d.core.cell_selection().ok_or("the drag is gone")?;
         d.check(held.anchor.line == anchor, "the anchor kept its line")?;

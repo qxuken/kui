@@ -5,7 +5,7 @@
 
 use super::*;
 
-impl<A: App> Shell<A> {
+impl DynShell<'_> {
     pub(super) fn pane_index(&self, id: WinitWindowId) -> Option<usize> {
         self.panes.iter().position(|p| p.window.id() == id)
     }
@@ -193,7 +193,10 @@ impl<A: App> Shell<A> {
         };
         let px = window.inner_size();
         let renderer = match kui_wgpu::Renderer::new_in(&gpu, window.clone(), px.width, px.height) {
-            Ok(r) => r,
+            Ok(mut r) => {
+                r.set_frame_latency(self.frame_latency);
+                r
+            }
             Err(err) => {
                 eprintln!("kui: cannot open window {}: {err}", id.0);
                 self.refuse_pane(event_loop, id);
@@ -389,6 +392,7 @@ impl<A: App> Shell<A> {
             (chrome == Chrome::Custom).then(|| macos_chrome::native_controls(&window));
         #[cfg(not(target_os = "macos"))]
         let native_controls = None;
+        let pacer = crate::pacer::Pacer::new(&window, !self.pumped);
         self.panes.push(Pane {
             id,
             kind: config.kind,
@@ -424,6 +428,7 @@ impl<A: App> Shell<A> {
             handed_back: false,
             first_frame: Some((FIRST_FRAME_RETRIES, std::time::Instant::now())),
             deferred_frame: false,
+            pacer,
             access,
             #[cfg(target_os = "windows")]
             anim_timer,

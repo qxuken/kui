@@ -10,7 +10,7 @@
 //     queue; its context menu's Cut / Copy / Paste queue.
 //   * **The card.** A `selectable` box: the same chord copies its runs,
 //     the bold beside as HTML; its menu's Copy queues the same.
-//   * **The log.** A selectable `virtualColumn`: a copy that reaches rows
+//   * **The log.** A selectable `uniformList`: a copy that reaches rows
 //     no frame built is a `selectionrange` message, and
 //     `win.answerSelectionRange` is what reaches the clipboard.
 //   * **The register.** An `onKey` sink: `y` → `win.setClipboard`, `p` →
@@ -22,7 +22,7 @@
 //
 //   npm run clipboard                              a real window
 //   node dist/features/clipboard.mjs --headless    every path, no window
-import { virtualColumn } from '@qxuken/kui';
+import { uniformList } from '@qxuken/kui';
 import type { App, CoreMsg, Ctx, KuiWindow, UiEvent } from '@qxuken/kui';
 import { run } from '../devtools.js';
 
@@ -123,7 +123,7 @@ function view(model: Model, win: Surface) {
       </box>
       <box {...card} pad={8}>
         {caption('a virtual list: select, scroll away, ⌘C — the app answers')}
-        {virtualColumn(
+        {uniformList(
           win,
           { key: 'log', rows: ROWS, rowH: ROW_H, width: 'grow', height: 4 * ROW_H, bg: t.sunken, radius: 6, selectable: true, role: 'list', label: 'log' },
           (i) => (

@@ -23,12 +23,12 @@
 //! hoverable, so hovering one lifts its ring — a fragment takes input like
 //! any box.
 //!
-//! Run: cargo run -p kui --example fragment [-- --headless]
+//! Run: cargo run -p kui-native --example fragment [-- --headless]
 
-use kui::{
+use kui_devtools::{Drive, Example};
+use kui_native::{
     App, Color, Core, FragmentId, ImageId, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value, widgets,
 };
-use kui_devtools::{Drive, Example};
 
 /// One colour as the four floats a `params` slot is. Fragment parameters
 /// are where a theme meets a shader: the WGSL says *what* a gradient or a
@@ -362,7 +362,7 @@ impl Example for Demo {
     /// drawn for either, and the next frame's replacement moves the
     /// revision the backend re-uploads on.
     fn headless(&mut self, core: &mut Core) -> Result<(), String> {
-        use kui::{FragmentImage, QuadKind};
+        use kui_native::{FragmentImage, QuadKind};
         let mut d = Drive::new(core, 900.0, 700.0);
         d.frame(self);
         let (images, textures, texture_quads, rev) = {

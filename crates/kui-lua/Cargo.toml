@@ -18,14 +18,14 @@ mlua.workspace = true
 kui-ffi.workspace = true
 
 [dev-dependencies]
-kui.workspace = true
+kui-native.workspace = true
 # The examples' devtools (docs/adr/0021), for the Rust host of the panel.
 kui-devtools.workspace = true
 # tests/conformance.rs drives the scene corpus, which kui-core keeps behind a
 # feature; on here only, so the published extension does not carry it.
 kui-core = { workspace = true, features = ["conformance"] }
 
-# See the note in crates/kui/Cargo.toml: examples live under examples/ at the
+# See the note in crates/kui-native/Cargo.toml: examples live under examples/ at the
 # root, so cargo needs the path. A Lua extension has no window of its own, so
 # both of these are Rust hosts and both live in examples/lua beside the script
 # they run (the panel under features/slots, the bench under tools). lua_panel keeps the `lua_` prefix the file dropped: every example

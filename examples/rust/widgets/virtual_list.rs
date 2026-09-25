@@ -9,7 +9,7 @@
 //!
 //! Two spellings of the same thing:
 //!
-//!   - **`widgets::virtual_column`** is the uniform-row case done — visible
+//!   - **`widgets::uniform_list`** is the uniform-row case done — visible
 //!     range, two rows of overscan, the two spacers, and rows opened at
 //!     their *data* index so a row keeps its hover, focus and tweens as the
 //!     built range slides over it.
@@ -19,22 +19,22 @@
 //!     that one; it is what the widget does, unrolled.
 //!
 //! And when the rows are *not* all one height — a log whose lines wrap —
-//! `widgets::virtual_rows` is the same idea over prefix sums instead of a
+//! `widgets::list` is the same idea over prefix sums instead of a
 //! stride: heights come from a `measure` callback it runs only for the rows
 //! it is about to build, everything else stands at the mean of those, and
 //! the row the window starts in is put back where it was after each frame
 //! learns something, so the content never slides. `--variable` runs that.
 //!
-//! Run: cargo run -p kui --example virtual_list
-//!      cargo run -p kui --example virtual_list -- --by-hand
-//!      cargo run -p kui --example virtual_list -- --variable
-//!      cargo run -p kui --example virtual_list -- --headless [--variable]
+//! Run: cargo run -p kui-native --example virtual_list
+//!      cargo run -p kui-native --example virtual_list -- --by-hand
+//!      cargo run -p kui-native --example virtual_list -- --variable
+//!      cargo run -p kui-native --example virtual_list -- --headless [--variable]
 
-use kui::{
+use kui_devtools::{Drive, Example};
+use kui_native::{
     Align, App, Color, Core, Key, NodeSpec, Role, Sizing, TextStyle, TextWrap, Theme, Ui, UiEvent,
     Value, widgets,
 };
-use kui_devtools::{Drive, Example};
 
 const ROWS: usize = 10_000;
 const ROW_H: f32 = 28.0;
@@ -134,7 +134,7 @@ impl VirtualList {
         let selected = self.selected;
         let spec = list_spec(&ui.theme());
         let (mut first, mut last) = (usize::MAX, 0usize);
-        widgets::virtual_column(ui, "log", spec, ROWS, ROW_H, |ui, i| {
+        widgets::uniform_list(ui, "log", spec, ROWS, ROW_H, |ui, i| {
             first = first.min(i);
             last = i + 1;
             row(ui, i, selected);
@@ -207,7 +207,7 @@ impl VirtualList {
         let selected = self.selected;
         let t = ui.theme();
         let (mut first, mut last) = (usize::MAX, 0usize);
-        widgets::virtual_rows(
+        widgets::list(
             ui,
             "log",
             list_spec(&t).pad(6.0),
@@ -249,9 +249,9 @@ impl App for VirtualList {
         ui.with(NodeSpec::column().fill().bg(t.bg), |ui| {
             let built = self.built.len();
             let how = match self.mode {
-                Mode::Widget => "virtual_column",
+                Mode::Widget => "uniform_list",
                 Mode::ByHand => "by hand",
-                Mode::Variable => "virtual_rows",
+                Mode::Variable => "list",
             };
             ui.with(
                 NodeSpec::row()
@@ -293,7 +293,7 @@ impl Example for VirtualList {
         ),
         (
             "--variable",
-            "rows of no fixed height, through virtual_rows",
+            "rows of no fixed height, through widgets::list",
         ),
     ];
     const KEYS: &'static [(&'static str, &'static str)] = &[("wheel", "scroll 10,000 rows")];

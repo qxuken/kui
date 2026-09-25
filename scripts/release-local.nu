@@ -28,7 +28,7 @@
 
 const HOST = "https://drydock9.qxuken.dev"
 const NPM_REGISTRY = "https://drydock9.qxuken.dev/api/packages/qxuken/npm/"
-const CRATES = [kui-core kui-wgpu kui kui-lua kui-ffi]
+const CRATES = [kui-derive kui-core kui-wgpu kui-native kui-lua kui-ffi]
 const PREBUILDS = [darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-x64]
 
 # Runs an external command and fails the script when it fails.

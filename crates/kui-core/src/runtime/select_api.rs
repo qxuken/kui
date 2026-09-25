@@ -713,6 +713,51 @@ impl Core {
         self.awaiting_paste
     }
 
+    /// Asks the host for a file dialog (backlog C51): an Open, a Save or
+    /// a folder picker, which the host shows as the platform's own. The
+    /// answer is an event, `{kind:"files", paths, tag}` — the `drop`
+    /// payload's shape, `paths` empty when the user cancelled — delivered
+    /// to whoever asked: the host from its own view or between frames, the
+    /// extension from inside its fill. A host drains the ask with
+    /// [`Core::take_file_requests`] and answers with `InputEvent::Files`;
+    /// the runner does both.
+    ///
+    /// One ask at a time, as for a paste: while one is outstanding —
+    /// queued, or taken and not yet answered — another is dropped and this
+    /// returns false, so a view that asks every frame until the answer
+    /// lands asks once. Between frames it asks for the frame that hands
+    /// the ask to the host.
+    pub fn request_files(&mut self, dialog: crate::dialog::FileDialog) -> bool {
+        if self.file_ask.pending() {
+            return false;
+        }
+        self.file_ask = crate::dialog::FileAsk::Queued(dialog, self.origin);
+        if !self.building {
+            self.request_frame();
+        }
+        true
+    }
+
+    /// Whether a file dialog asked for is still unanswered.
+    pub fn awaiting_files(&self) -> bool {
+        self.file_ask.pending()
+    }
+
+    /// The file dialog asked for and not yet taken — at most one — for the
+    /// host to show. Taking it keeps the ask outstanding until the answer.
+    pub fn take_file_requests(&mut self) -> Vec<crate::dialog::FileDialog> {
+        match std::mem::take(&mut self.file_ask) {
+            crate::dialog::FileAsk::Queued(dialog, origin) => {
+                self.file_ask = crate::dialog::FileAsk::Taken(dialog.tag.clone(), origin);
+                vec![dialog]
+            }
+            other => {
+                self.file_ask = other;
+                Vec::new()
+            }
+        }
+    }
+
     /// The one place a `Paste` is queued — the app's ask and a menu's
     /// Paste row alike — so the gate is one.
     pub(crate) fn queue_paste(&mut self) {

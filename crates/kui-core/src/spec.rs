@@ -117,12 +117,37 @@ impl Dir {
     }
 }
 
+/// Where children sit along an axis, and where a float attaches.
+///
+/// The first three are every axis's. The rest were appended (backlog C13,
+/// in `schema::ALIGNS` order, so the wire indices and `KUI_ALIGN_*` of the
+/// first three did not move) and each means something on one axis only:
+/// the three spreads on `main_align`, `Baseline` on a row's
+/// `cross_align`. Anywhere else one lays out as `Start`
+/// (`SpaceAround`/`SpaceEvenly` as `Center`), with a warning
+/// (`diag::ALIGN_IGNORED`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Align {
     #[default]
     Start,
     Center,
     End,
+    /// Main axis: the free space goes between the children, none at the
+    /// ends — CSS's `space-between`. One child sits at the start.
+    SpaceBetween,
+    /// Main axis: each child gets an equal share of the free space, half
+    /// on either side, so the ends get half what a gap does — CSS's
+    /// `space-around`. One child is centred.
+    SpaceAround,
+    /// Main axis: the free space splits into equal gaps between the
+    /// children and at both ends — CSS's `space-evenly`. One child is
+    /// centred.
+    SpaceEvenly,
+    /// A row's cross axis: the first baselines of the children's text line
+    /// up, so a label and a larger value on one row read as one line. A
+    /// child with no text inside it aligns by its bottom edge; a `grow` or
+    /// percent height fills the line and sits at its top.
+    Baseline,
 }
 
 impl Align {
@@ -431,10 +456,18 @@ pub struct LayoutSpec {
     /// Space between wrap lines, across the main axis. `gap` is still the
     /// space between children along it.
     pub cross_gap: f32,
-    /// Alignment of children along the main axis.
+    /// Alignment of children along the main axis, the spreads
+    /// (`SpaceBetween` / `SpaceAround` / `SpaceEvenly`) included.
     pub main_align: Align,
-    /// Alignment of children across the main axis.
+    /// Alignment of children across the main axis; `Baseline` on a row.
     pub cross_align: Align,
+    /// Width over height (backlog C14, CSS's `aspect-ratio`); 0 = none.
+    /// It sizes the axis whose sizing is `Fit`: a fit height is the final
+    /// width over the ratio, and a fit width under a `Fixed` height is
+    /// that height times it. With both axes declared it has nothing to set.
+    /// The derived axis is neither shrunk nor fitted to the children,
+    /// which overflow it — `min_h: Min::FIT` floors it at them.
+    pub aspect: f32,
     /// Clip children to this node's rect.
     pub clip: bool,
     /// Overflowing content scrolls (implies clipping). Offsets are retained
@@ -468,6 +501,7 @@ impl Default for LayoutSpec {
             cross_gap: 0.0,
             main_align: Align::Start,
             cross_align: Align::Start,
+            aspect: 0.0,
             clip: false,
             scroll_x: false,
             scroll_y: false,
@@ -493,6 +527,24 @@ impl LayoutSpec {
 }
 
 impl LayoutSpec {
+    /// The width a declared aspect ratio gives a `Fit` width: its `Fixed`
+    /// height times the ratio. `None` when the ratio has no say over the
+    /// width.
+    pub(crate) fn aspect_width(&self) -> Option<f32> {
+        match (self.width, self.height) {
+            (Sizing::Fit, Sizing::Fixed(h)) if self.aspect > 0.0 => {
+                Some(self.clamp_h(h) * self.aspect)
+            }
+            _ => None,
+        }
+    }
+
+    /// Whether a declared aspect ratio sizes the height: a `Fit` height,
+    /// read off the final width. `aspect_width`'s pair.
+    pub(crate) fn aspect_height(&self) -> bool {
+        self.aspect > 0.0 && self.height == Sizing::Fit
+    }
+
     pub(crate) fn clamp_w(&self, w: f32) -> f32 {
         let min = self.min_w.resolved();
         w.clamp(min, self.max_w.max(min))
@@ -754,6 +806,18 @@ pub struct EventSpec {
     /// produced instead of re-deriving them; a transition that moves the
     /// node reports every frame it moves. Needs a stable key across frames.
     pub on_layout: Option<Value>,
+    /// Slider changes (`docs/adr/0034-stock-controls-over-the-roles.md`,
+    /// decision 4): on a node whose role is `Slider`, the core turns a
+    /// press into the value under the pointer, a drag into the value under
+    /// it, the arrows and assistive technology's Increment / Decrement
+    /// into one `value_step`, PageUp / PageDown into ten, Home / End into
+    /// the range's ends — clamped to `value_min..value_max`, snapped to the
+    /// step — and emits `{kind="change", value, phase="move"|"end", tag}`
+    /// with this payload under `tag`. The value is proposed, never
+    /// applied: nothing moves until the view declares it as `value_now`.
+    /// Without it a slider's keys reach the app as the `access` nudge
+    /// (ADR 0007, decision 13). Ignored on any other role.
+    pub on_change: Option<Value>,
     /// Modal: while this node is declared, the Tab ring is its subtree,
     /// everything outside it is inert to the pointer, the wheel and
     /// assistive technology, and Escape or a press outside emits
@@ -778,6 +842,7 @@ impl EventSpec {
         on_hover: None,
         on_drop: None,
         on_layout: None,
+        on_change: None,
         modal: None,
     };
 }
@@ -842,6 +907,10 @@ pub struct AccessSpec {
     pub description: Option<Label>,
     /// For checkbox / radio / switch roles: the on state.
     pub checked: bool,
+    /// For a checkbox: neither on nor off — the select-all box over a
+    /// list some of whose rows are selected (ADR 0034, decision 3). Wins
+    /// over `checked`, which it leaves as it was.
+    pub mixed: bool,
     /// The current one of a set: a `Role::Tab`, a picked `Role::ListItem`,
     /// the `Role::Link` for the page you are on. A tab reports the state
     /// either way; a row or a link reports it only where it is set (see
@@ -863,6 +932,10 @@ pub struct AccessSpec {
     /// nudge announces the new text, not the new number
     /// (`docs/adr/0008-live-regions-and-announcements.md`).
     pub value_text: Option<Label>,
+    /// For a slider role: how far one arrow key moves it, and the grid a
+    /// value set by the pointer snaps to (ADR 0034, decision 4). None =
+    /// a hundredth of the range.
+    pub value_step: Option<f32>,
     /// On a `Role::Line` of a custom editor: the caret's byte offset into
     /// the line's text, and the byte offset of the selection's other end
     /// (see [`crate::access`]).
@@ -889,12 +962,14 @@ impl AccessSpec {
         label: None,
         description: None,
         checked: false,
+        mixed: false,
         selected: false,
         expanded: None,
         value_now: None,
         value_min: None,
         value_max: None,
         value_text: None,
+        value_step: None,
         caret: None,
         selection_anchor: None,
         caret_solid: false,
@@ -1132,6 +1207,7 @@ impl NodeSpec {
                     || e.on_force_click.is_some()
                     || e.on_hover.is_some()
                     || e.on_drop.is_some()
+                    || e.on_change.is_some()
             })
             || self.interact.as_deref().is_some_and(|i| {
                 i.hover_bg.is_some()
@@ -1346,6 +1422,18 @@ impl NodeSpec {
 
     pub fn cross_align(mut self, a: Align) -> Self {
         self.layout.cross_align = a;
+        self
+    }
+
+    /// Width over height (CSS's `aspect-ratio`): see
+    /// [`LayoutSpec::aspect`]. `16.0 / 9.0` for a video, `1.0` for a
+    /// square. A ratio that is not positive and finite clears it.
+    pub fn aspect_ratio(mut self, ratio: f32) -> Self {
+        self.layout.aspect = if ratio.is_finite() && ratio > 0.0 {
+            ratio
+        } else {
+            0.0
+        };
         self
     }
 
@@ -1648,6 +1736,12 @@ impl NodeSpec {
         self
     }
 
+    /// A checkbox that is neither on nor off (see the `mixed` field).
+    pub fn mixed(mut self, mixed: bool) -> Self {
+        self.access_mut().mixed = mixed;
+        self
+    }
+
     /// The current one of a set (see the `selected` field).
     pub fn selected(mut self, selected: bool) -> Self {
         self.access_mut().selected = selected;
@@ -1679,6 +1773,19 @@ impl NodeSpec {
 
     pub fn value_max(mut self, v: f32) -> Self {
         self.access_mut().value_max = Some(v);
+        self
+    }
+
+    /// How far one arrow key moves a slider (see the `value_step` field).
+    /// A step that is not positive and finite clears it.
+    pub fn value_step(mut self, v: f32) -> Self {
+        self.access_mut().value_step = (v.is_finite() && v > 0.0).then_some(v);
+        self
+    }
+
+    /// Asks the core for a slider's changes (see the `on_change` field).
+    pub fn on_change(mut self, tag: impl Into<Value>) -> Self {
+        self.events_mut().on_change = Some(tag.into());
         self
     }
 

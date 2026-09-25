@@ -19,6 +19,7 @@ pub use kui_core::*;
 mod access_bridge;
 pub mod audio;
 mod clipboard;
+mod dialogs;
 mod icon;
 /// ADR 0009's arithmetic: where a pointer in one window is in another.
 mod keys;
@@ -41,6 +42,7 @@ mod macos_menu;
 #[cfg(target_os = "macos")]
 mod macos_text_input;
 mod menus;
+mod pacer;
 mod pane;
 mod popups;
 mod retarget;
@@ -146,7 +148,7 @@ pub enum TextAa {
     Subpixel,
 }
 
-/// Entry point: `kui::app("title").custom_titlebar().run(my_app)`.
+/// Entry point: `kui_native::app("title").custom_titlebar().run(my_app)`.
 pub fn app(title: &str) -> Launcher {
     Launcher {
         title: title.to_string(),
@@ -163,6 +165,7 @@ pub fn app(title: &str) -> Launcher {
         system: SystemEnv::default(),
         icon: None,
         icon_resource: None,
+        frame_latency: kui_wgpu::DEFAULT_FRAME_LATENCY,
     }
 }
 
@@ -200,6 +203,9 @@ pub struct Launcher {
     /// The executable's icon resource on Windows
     /// ([`Launcher::icon_resource`]).
     icon_resource: Option<u16>,
+    /// Frames queued ahead of the one on screen
+    /// ([`Launcher::frame_latency`]).
+    frame_latency: u32,
 }
 
 impl Launcher {
@@ -211,6 +217,21 @@ impl Launcher {
     /// Glyph antialiasing; see [`TextAa`].
     pub fn text_aa(mut self, aa: TextAa) -> Self {
         self.text_aa = aa;
+        self
+    }
+
+    /// How many frames may be queued ahead of the one on screen, for every
+    /// window (backlog C47). Two by default
+    /// ([`kui_wgpu::DEFAULT_FRAME_LATENCY`]): every vsync gets a frame at
+    /// light load, where one lost 1–6% of them. On macOS 14+ the runner
+    /// starts frames that run back to back at the display's vsync (`mod
+    /// pacer`), so the second queued frame is slack and costs no latency;
+    /// where it cannot — another platform, a pumped runner — such a frame
+    /// reaches the screen a vsync later than with one. `KUI_FRAME_LATENCY`
+    /// overrides it, and `KUI_FRAME_PACING=0` turns the pacing off, for
+    /// comparing without a rebuild. Values below one are one.
+    pub fn frame_latency(mut self, frames: u32) -> Self {
+        self.frame_latency = frames.max(1);
         self
     }
 
@@ -305,8 +326,8 @@ impl Launcher {
     /// those still arrives as the `system` event, carrying the pin with it.
     ///
     /// ```no_run
-    /// # use kui::{SystemEnv, MotionPref};
-    /// kui::app("mine").system(SystemEnv { motion: MotionPref::Reduced, ..Default::default() });
+    /// # use kui_native::{SystemEnv, MotionPref};
+    /// kui_native::app("mine").system(SystemEnv { motion: MotionPref::Reduced, ..Default::default() });
     /// ```
     ///
     /// For looking at the window a user who asked for less motion, or a
@@ -337,7 +358,7 @@ impl Launcher {
     ///
     /// ```no_run
     /// # let rgba = vec![0u8; 64 * 64 * 4];
-    /// kui::app("mine").icon(rgba, 64, 64);
+    /// kui_native::app("mine").icon(rgba, 64, 64);
     /// ```
     ///
     /// A Windows program's own icon is a resource linked into its
@@ -457,34 +478,12 @@ impl Launcher {
         self
     }
 
-    fn shell<A: App>(self, app: A) -> Shell<A> {
-        // Before anything prints: a windows-subsystem app started from a
-        // shell has no stdout until it takes its parent's, and the
-        // diagnostics, the panics and `report_faults` are all worth
-        // reading there (`mod windows_console`).
-        #[cfg(target_os = "windows")]
-        windows_console::attach_parent();
-        // Diagnostics are a development aid: on in debug builds unless the
-        // launcher says otherwise, so a shipped app pays and prints nothing.
-        let diagnostics = self.diagnostics.unwrap_or(cfg!(debug_assertions));
-        // A handed core brings its session; a made one gets a fresh one.
-        let (session, mut core) = match self.core {
-            Some(core) => (core.session().clone(), core),
-            None => {
-                let session = Session::new();
-                let core = Core::new_in(&session);
-                (session, core)
-            }
-        };
-        core.set_diagnostics(diagnostics);
-        // `KUI_DEVTOOLS=1` opens the panel for a program that never asked
-        // (ADR 0024); read here, for a window, and never by a headless
-        // core. What the launcher was told comes after, and wins.
-        core.devtools_from_env();
-        for f in self.setup_core {
-            f(&mut core);
-        }
-        Shell {
+    /// The shell for `app`, boxed: the one generic step between an app
+    /// and the runner, kept to moving fields (C49). Everything after it
+    /// takes the box unsized, as a [`DynShell`].
+    fn shell<A: App>(mut self, app: A) -> Box<Shell<A>> {
+        let (diagnostics, session, core) = self.main_core();
+        Box::new(Shell {
             title: self.title,
             icon: icon::AppIcon::new(self.icon, self.icon_resource),
             chrome: self.chrome,
@@ -492,9 +491,9 @@ impl Launcher {
             min_size: self.min_size,
             max_size: self.max_size,
             text_aa: self.text_aa,
+            frame_latency: wanted_frame_latency(self.frame_latency),
             diagnostics,
             subpixel: false,
-            app,
             extensions: self.extensions,
             session,
             main_core: Some(core),
@@ -532,7 +531,47 @@ impl Launcher {
             saw_event: false,
             deferred_events: self.deferred_events,
             owed: std::cell::Cell::new(false),
+            app,
+        })
+    }
+
+    /// A shell as the runner sees it, for the tests.
+    #[cfg(test)]
+    fn dyn_shell<A: App + 'static>(self, app: A) -> Box<DynShell<'static>> {
+        self.shell(app)
+    }
+
+    /// Whether diagnostics are on, the session, and the main window's core
+    /// with the launcher's setup applied — the part of `shell` that does
+    /// not need the app's type.
+    fn main_core(&mut self) -> (bool, Session, Core) {
+        // Before anything prints: a windows-subsystem app started from a
+        // shell has no stdout until it takes its parent's, and the
+        // diagnostics, the panics and `report_faults` are all worth
+        // reading there (`mod windows_console`).
+        #[cfg(target_os = "windows")]
+        windows_console::attach_parent();
+        // Diagnostics are a development aid: on in debug builds unless the
+        // launcher says otherwise, so a shipped app pays and prints nothing.
+        let diagnostics = self.diagnostics.unwrap_or(cfg!(debug_assertions));
+        // A handed core brings its session; a made one gets a fresh one.
+        let (session, mut core) = match self.core.take() {
+            Some(core) => (core.session().clone(), core),
+            None => {
+                let session = Session::new();
+                let core = Core::new_in(&session);
+                (session, core)
+            }
+        };
+        core.set_diagnostics(diagnostics);
+        // `KUI_DEVTOOLS=1` opens the panel for a program that never asked
+        // (ADR 0024); read here, for a window, and never by a headless
+        // core. What the launcher was told comes after, and wins.
+        core.devtools_from_env();
+        for f in std::mem::take(&mut self.setup_core) {
+            f(&mut core);
         }
+        (diagnostics, session, core)
     }
 
     /// `KUI_SMOKE_FRAMES=n`, in a build that honours it.
@@ -558,38 +597,8 @@ impl Launcher {
     }
 
     pub fn run<A: App>(self, app: A) -> Result<(), Box<dyn std::error::Error>> {
-        // Not a parked loop: a pumped runner leaves winit's loop *running*
-        // (it never exits it — see `PARKED_LOOP`), and `run_app` on a
-        // running loop is a `debug_assert` in winit's macOS path. `run` is
-        // the one-shot runner; a process that has pumped opens again.
-        if PARKED_LOOP.with(|p| p.borrow().is_some()) {
-            return Err(
-                "kui: `run` cannot follow a pumped runner in this process — a loop \
-                        a `PumpRunner` parked is still running; open another `PumpRunner`"
-                    .into(),
-            );
-        }
-        let event_loop = EventLoop::<access_bridge::UserEvent>::with_user_event().build()?;
-        event_loop.set_control_flow(ControlFlow::Wait);
-        let mut shell = self.shell(app);
-        shell.proxy = Some(event_loop.create_proxy());
-        shell.app.setup(Waker(event_loop.create_proxy()));
-        // A menu-bar item chosen by its ⌘-shortcut is the whole of the
-        // event as far as winit is concerned — AppKit consumed the key —
-        // so the bar rings the loop itself.
-        #[cfg(target_os = "macos")]
-        if let Some(bar) = &shell.native_menu_bar {
-            bar.set_waker(Waker(event_loop.create_proxy()));
-        }
-        // And so does an insert the platform makes from the palette or
-        // dictation: no winit event carries it.
-        #[cfg(target_os = "macos")]
-        macos_text_input::set_waker(Waker(event_loop.create_proxy()));
-        // And a file drag's position (ADR 0031), which winit's do not.
-        #[cfg(target_os = "macos")]
-        macos_drop::set_waker(Waker(event_loop.create_proxy()));
-        event_loop.run_app(&mut shell)?;
-        Ok(())
+        let event_loop = run_loop()?;
+        run_shell(event_loop, self.shell(app))
     }
 
     /// Opens the window but keeps the event loop in the caller's hands: the
@@ -602,39 +611,67 @@ impl Launcher {
     /// loop, and the next `open` on the thread takes it back (backlog
     /// F58), so a process can open a window, close it, and open another.
     pub fn open<A: App>(self, app: A) -> Result<PumpRunner<A>, Box<dyn std::error::Error>> {
-        let mut event_loop = take_event_loop()?;
-        event_loop.set_control_flow(ControlFlow::Wait);
+        let event_loop = take_event_loop()?;
         let mut shell = self.shell(app);
-        shell.pumped = true;
-        shell.proxy = Some(event_loop.create_proxy());
-        shell.app.setup(Waker(event_loop.create_proxy()));
+        let state = PumpState::open(event_loop, &mut *shell);
+        let mut runner = PumpRunner {
+            state,
+            shell: std::mem::ManuallyDrop::new(shell),
+        };
+        if !runner.state.alive {
+            runner.retire();
+        }
+        Ok(runner)
+    }
+}
+
+/// The event loop `run` owns. Not a parked loop: a pumped runner leaves
+/// winit's loop *running* (it never exits it — see `PARKED_LOOP`), and
+/// `run_app` on a running loop is a `debug_assert` in winit's macOS path.
+/// `run` is the one-shot runner; a process that has pumped opens again.
+fn run_loop() -> Result<EventLoop<access_bridge::UserEvent>, Box<dyn std::error::Error>> {
+    if PARKED_LOOP.with(|p| p.borrow().is_some()) {
+        return Err(
+            "kui: `run` cannot follow a pumped runner in this process — a loop \
+                    a `PumpRunner` parked is still running; open another `PumpRunner`"
+                .into(),
+        );
+    }
+    Ok(EventLoop::<access_bridge::UserEvent>::with_user_event().build()?)
+}
+
+/// `Launcher::run` past the one generic step: compiled here, once.
+fn run_shell(
+    event_loop: EventLoop<access_bridge::UserEvent>,
+    mut shell: Box<DynShell<'_>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    event_loop.set_control_flow(ControlFlow::Wait);
+    shell.attach(&event_loop);
+    event_loop.run_app(&mut Handler(&mut shell))?;
+    Ok(())
+}
+
+impl DynShell<'_> {
+    /// What a shell takes from the loop it runs on before the first
+    /// event: the proxy, the app's waker, and the wakers of the platform
+    /// paths no winit event carries.
+    fn attach(&mut self, event_loop: &EventLoop<access_bridge::UserEvent>) {
+        self.proxy = Some(event_loop.create_proxy());
+        self.app.setup(Waker(event_loop.create_proxy()));
         // A menu-bar item chosen by its ⌘-shortcut is the whole of the
         // event as far as winit is concerned — AppKit consumed the key —
         // so the bar rings the loop itself.
         #[cfg(target_os = "macos")]
-        if let Some(bar) = &shell.native_menu_bar {
+        if let Some(bar) = &self.native_menu_bar {
             bar.set_waker(Waker(event_loop.create_proxy()));
         }
         // And so does an insert the platform makes from the palette or
         // dictation: no winit event carries it.
         #[cfg(target_os = "macos")]
         macos_text_input::set_waker(Waker(event_loop.create_proxy()));
+        // And a file drag's position (ADR 0031), which winit's do not.
         #[cfg(target_os = "macos")]
         macos_drop::set_waker(Waker(event_loop.create_proxy()));
-        // First pump delivers `resumed`, creating the window + renderer —
-        // or, on a loop taken back from an earlier runner, `about_to_wait`
-        // does, since winit's init events came and went with the first.
-        let alive = pump_once(&mut event_loop, &mut shell);
-        let mut runner = PumpRunner {
-            event_loop: Some(event_loop),
-            shell,
-            alive,
-            pumps: 1,
-        };
-        if !alive {
-            runner.retire();
-        }
-        Ok(runner)
     }
 }
 
@@ -713,7 +750,9 @@ fn input_completes(ev: &InputEvent) -> bool {
         | InputEvent::Access(_)
         // A drop is a release; a cancel ends the drag the same way.
         | InputEvent::DropFiles { .. }
-        | InputEvent::DragCancel => true,
+        | InputEvent::DragCancel
+        // A dialog's answer is one moment, as a paste is.
+        | InputEvent::Files(_) => true,
         InputEvent::CursorMoved(_)
         | InputEvent::CursorLeft
         | InputEvent::Scroll(_)
@@ -747,12 +786,12 @@ fn frame_waits_for_host(owed: bool, deferred_last: bool) -> bool {
     owed && !deferred_last
 }
 
-fn pump_once<A: App>(
+fn pump_once(
     event_loop: &mut EventLoop<access_bridge::UserEvent>,
-    shell: &mut Shell<A>,
+    shell: &mut DynShell<'_>,
 ) -> bool {
     use winit::platform::pump_events::{EventLoopExtPumpEvents, PumpStatus};
-    match event_loop.pump_app_events(Some(std::time::Duration::ZERO), shell) {
+    match event_loop.pump_app_events(Some(std::time::Duration::ZERO), &mut Handler(shell)) {
         PumpStatus::Continue => !shell.exit_requested,
         PumpStatus::Exit(_) => false,
     }
@@ -761,57 +800,76 @@ fn pump_once<A: App>(
 /// A windowed runner driven from outside: same [`Shell`] as [`Launcher::run`]
 /// (input mapping, IME, clipboard, chrome, caret blink), but the host calls
 /// [`pump`](Self::pump) on its own cadence instead of parking in `run_app`.
+///
+/// Typed by its app for [`app_mut`](Self::app_mut) and
+/// [`route_events`](Self::route_events) alone: every method hands the
+/// shell on unsized, so the work is compiled once in kui rather than in
+/// every crate that opens one (backlog C49).
 pub struct PumpRunner<A: App> {
+    state: PumpState,
+    /// Dropped by hand, unsized (`drop_shell`): as a plain field its drop
+    /// glue — every window, core and store the shell owns — was generated
+    /// in the app's crate.
+    shell: std::mem::ManuallyDrop<Box<Shell<A>>>,
+}
+
+/// What a [`PumpRunner`] keeps beside its shell, and does to it, without
+/// its app's type.
+struct PumpState {
     /// `None` once the runner has retired: the loop is parked for the next
     /// runner on this thread (see `PARKED_LOOP`).
     event_loop: Option<EventLoop<access_bridge::UserEvent>>,
-    shell: Shell<A>,
     alive: bool,
-    /// Every turn this runner has taken — [`pump`](Self::pump) and
-    /// [`pump_until`](Self::pump_until) alike, the first one that opened
-    /// the window included. What a driver's backoff is measured in
+    /// Every turn this runner has taken — [`pump`](PumpRunner::pump) and
+    /// [`pump_until`](PumpRunner::pump_until) alike, the first one that
+    /// opened the window included. What a driver's backoff is measured in
     /// (backlog F62): the runner knows how often it pumped where the app
     /// could only read a process monitor.
     pumps: u64,
 }
 
-impl<A: App> PumpRunner<A> {
-    /// Processes all pending OS events without blocking. Returns false once
-    /// the main window has closed — and from that pump on the windows are
-    /// gone and the loop is parked for the next runner; further pumps are
-    /// no-ops.
-    pub fn pump(&mut self) -> bool {
+impl PumpState {
+    fn open(
+        mut event_loop: EventLoop<access_bridge::UserEvent>,
+        shell: &mut DynShell<'_>,
+    ) -> PumpState {
+        event_loop.set_control_flow(ControlFlow::Wait);
+        shell.pumped = true;
+        shell.attach(&event_loop);
+        // First pump delivers `resumed`, creating the window + renderer —
+        // or, on a loop taken back from an earlier runner, `about_to_wait`
+        // does, since winit's init events came and went with the first.
+        let alive = pump_once(&mut event_loop, shell);
+        PumpState {
+            event_loop: Some(event_loop),
+            alive,
+            pumps: 1,
+        }
+    }
+
+    fn pump(&mut self, shell: &mut DynShell<'_>) -> bool {
         let Some(event_loop) = &mut self.event_loop else {
             return false;
         };
         self.pumps += 1;
-        self.alive = pump_once(event_loop, &mut self.shell);
+        self.alive = pump_once(event_loop, shell);
         if !self.alive {
-            self.retire();
+            self.retire(shell);
         }
         self.alive
-    }
-
-    /// How many turns this runner has taken, the one that opened the
-    /// window included — every `pump` and `pump_until` that ran, not the
-    /// no-ops after it retired. Monotonic, so two readings a second apart
-    /// are the pump rate over that second, which is what a driver's
-    /// backoff promises and what `frame_stats` cannot say (backlog F62).
-    pub fn pumps(&self) -> u64 {
-        self.pumps
     }
 
     /// The end of this runner: every window closed (dropping the panes
     /// is what closes them — the pump path never asks winit to exit) and
     /// the loop handed back for the next `Launcher::open` on the thread.
-    fn retire(&mut self) {
+    fn retire(&mut self, shell: &mut DynShell<'_>) {
         self.alive = false;
-        self.shell.teardown_once();
+        shell.teardown_once();
         // The main core outlives its window, as it predated it: a host
         // still reads events, warnings and the tree off a runner that
         // has ended (`core_mut`), and the Node driver does so for the
         // pump that returned false.
-        let mut panes = std::mem::take(&mut self.shell.panes);
+        let mut panes = std::mem::take(&mut shell.panes);
         // The facts the platform's text input reads are keyed by the
         // view's address, which the next window's view may get.
         #[cfg(target_os = "macos")]
@@ -820,11 +878,114 @@ impl<A: App> PumpRunner<A> {
             macos_drop::detach(&pane.window);
         }
         if !panes.is_empty() {
-            self.shell.main_core = Some(panes.remove(0).core);
+            shell.main_core = Some(panes.remove(0).core);
         }
         if let Some(event_loop) = self.event_loop.take() {
             PARKED_LOOP.with(|p| *p.borrow_mut() = Some(event_loop));
         }
+    }
+
+    fn pump_until(&mut self, shell: &mut DynShell<'_>, deadline: std::time::Instant) -> bool {
+        use winit::platform::pump_events::{EventLoopExtPumpEvents, PumpStatus};
+        let Some(event_loop) = &mut self.event_loop else {
+            return false;
+        };
+        let timeout = deadline.saturating_duration_since(std::time::Instant::now());
+        self.pumps += 1;
+        self.alive = match event_loop.pump_app_events(Some(timeout), &mut Handler(shell)) {
+            PumpStatus::Continue => !shell.exit_requested,
+            PumpStatus::Exit(_) => false,
+        };
+        if !self.alive {
+            self.retire(shell);
+        }
+        self.alive
+    }
+
+    fn waker(&self, shell: &DynShell<'_>) -> Waker {
+        match &self.event_loop {
+            Some(event_loop) => Waker(event_loop.create_proxy()),
+            // Retired: the proxy the shell kept still names the loop.
+            None => Waker(shell.proxy.clone().expect("a pump runner keeps its proxy")),
+        }
+    }
+}
+
+impl DynShell<'_> {
+    fn core_mut_of(&mut self, id: WindowId) -> Option<&mut Core> {
+        if id == WindowId::MAIN {
+            return Some(self.core_mut());
+        }
+        self.panes
+            .iter_mut()
+            .find(|p| p.id == id)
+            .map(|p| &mut p.core)
+    }
+
+    fn window_id(&mut self, name: &str) -> Option<WindowId> {
+        self.core_mut()
+            .windows()
+            .into_iter()
+            .find(|(_, n)| &**n == name)
+            .map(|(id, _)| id)
+    }
+
+    fn request_redraw(&self) {
+        self.owed.set(false);
+        for p in &self.panes {
+            p.window.request_redraw();
+        }
+    }
+}
+
+impl<A: App> Drop for PumpRunner<A> {
+    /// A runner dropped while alive — a host that let go of it without
+    /// pumping to the end — parks the loop too, so the next `open` on the
+    /// thread is not refused for its sake.
+    fn drop(&mut self) {
+        // `retire` reaches `App::teardown` too, so a runner a panic unwinds
+        // through hears the window go (backlog RG1); a second panic out of
+        // that `teardown` is an abort, as any panic in a drop is.
+        self.retire();
+        // SAFETY: taken once, here, and the field is not read again.
+        let shell: Box<Shell<A>> = unsafe { std::mem::ManuallyDrop::take(&mut self.shell) };
+        drop_shell(shell);
+    }
+}
+
+/// Drops a shell unsized, so its drop glue is kui's (see `PumpRunner`).
+fn drop_shell(shell: Box<DynShell<'_>>) {
+    drop(shell);
+}
+
+impl<A: App> PumpRunner<A> {
+    fn shell(&self) -> &DynShell<'_> {
+        &**self.shell
+    }
+
+    fn shell_mut(&mut self) -> &mut DynShell<'_> {
+        &mut **self.shell
+    }
+
+    fn retire(&mut self) {
+        self.state.retire(&mut **self.shell);
+    }
+
+    /// Processes all pending OS events without blocking. Returns false once
+    /// the main window has closed — and from that pump on the windows are
+    /// gone and the loop is parked for the next runner; further pumps are
+    /// no-ops.
+    pub fn pump(&mut self) -> bool {
+        self.state.pump(&mut **self.shell)
+    }
+
+    /// How many turns this runner has taken, the one that opened the
+    /// window included — every `pump` and `pump_until` that ran, not the
+    /// no-ops after it retired. Monotonic, so two readings a second apart
+    /// are the pump rate over that second, which is what a driver's
+    /// backoff promises and what `frame_stats` cannot say (backlog F62).
+    pub fn pumps(&self) -> u64 {
+        self.state.pumps
     }
 
     /// `pump`, but parked until an OS event, a [`Waker::wake`] or
@@ -832,20 +993,7 @@ impl<A: App> PumpRunner<A> {
     /// blocks on all three instead of polling on a timer (backlog C21).
     /// Returns false once the main window has closed.
     pub fn pump_until(&mut self, deadline: std::time::Instant) -> bool {
-        use winit::platform::pump_events::{EventLoopExtPumpEvents, PumpStatus};
-        let Some(event_loop) = &mut self.event_loop else {
-            return false;
-        };
-        let timeout = deadline.saturating_duration_since(std::time::Instant::now());
-        self.pumps += 1;
-        self.alive = match event_loop.pump_app_events(Some(timeout), &mut self.shell) {
-            PumpStatus::Continue => !self.shell.exit_requested,
-            PumpStatus::Exit(_) => false,
-        };
-        if !self.alive {
-            self.retire();
-        }
-        self.alive
+        self.state.pump_until(&mut **self.shell, deadline)
     }
 
     /// When the shell next needs pumping, as the last [`pump`](Self::pump)
@@ -869,16 +1017,7 @@ impl<A: App> PumpRunner<A> {
     /// A [`Waker`] for this loop, to clone into the threads the host's
     /// data arrives on.
     pub fn waker(&self) -> Waker {
-        match &self.event_loop {
-            Some(event_loop) => Waker(event_loop.create_proxy()),
-            // Retired: the proxy the shell kept still names the loop.
-            None => Waker(
-                self.shell
-                    .proxy
-                    .clone()
-                    .expect("a pump runner keeps its proxy"),
-            ),
-        }
+        self.state.waker(&**self.shell)
     }
 
     pub fn app_mut(&mut self) -> &mut A {
@@ -899,7 +1038,7 @@ impl<A: App> PumpRunner<A> {
     ) {
         let Shell {
             extensions, app, ..
-        } = &mut self.shell;
+        } = &mut **self.shell;
         extensions.route(events, |ev| to_app(app, ev));
     }
 
@@ -907,7 +1046,7 @@ impl<A: App> PumpRunner<A> {
     /// so resources registered through it draw in all of them, and
     /// `Core::windows` on it lists them.
     pub fn core_mut(&mut self) -> &mut Core {
-        self.shell.core_mut()
+        self.shell_mut().core_mut()
     }
 
     /// The core of the window `id` names, if that window is open — the
@@ -916,25 +1055,14 @@ impl<A: App> PumpRunner<A> {
     /// its scroll offsets, its tokens — is answered by this core and no
     /// other (backlog AR12).
     pub fn core_mut_of(&mut self, id: WindowId) -> Option<&mut Core> {
-        if id == WindowId::MAIN {
-            return Some(self.core_mut());
-        }
-        self.shell
-            .panes
-            .iter_mut()
-            .find(|p| p.id == id)
-            .map(|p| &mut p.core)
+        self.shell_mut().core_mut_of(id)
     }
 
     /// The id of the open window named `name` (`"main"` for the launcher's),
     /// or `None` while no window of that name is open — before its first
     /// frame's diff, or after the user closed it.
     pub fn window_id(&mut self, name: &str) -> Option<WindowId> {
-        self.core_mut()
-            .windows()
-            .into_iter()
-            .find(|(_, n)| &**n == name)
-            .map(|(id, _)| id)
+        self.shell_mut().window_id(name)
     }
 
     /// The main window's inner size (logical px) and its scale factor.
@@ -944,7 +1072,7 @@ impl<A: App> PumpRunner<A> {
     /// against: the window less the devtools' dock while the panel is
     /// docked (`docs/adr/0024`), and the window itself otherwise.
     pub fn window_size(&self) -> (Size, f32) {
-        self.shell.window_size()
+        self.shell().window_size()
     }
 
     /// Schedules a redraw of every window (call after changing what `view`
@@ -953,36 +1081,19 @@ impl<A: App> PumpRunner<A> {
     /// view is current, so the frame that was waiting can be painted now —
     /// with the answer in it.
     pub fn request_redraw(&self) {
-        self.shell.owed.set(false);
-        for p in &self.shell.panes {
-            p.window.request_redraw();
-        }
+        self.shell().request_redraw();
     }
 
     /// Asks the app to close; the next `pump` observes it and returns false.
     pub fn request_exit(&mut self) {
         self.shell.exit_requested = true;
     }
-}
 
-impl<A: App> Drop for PumpRunner<A> {
-    /// A runner dropped while alive — a host that let go of it without
-    /// pumping to the end — parks the loop too, so the next `open` on the
-    /// thread is not refused for its sake.
-    fn drop(&mut self) {
-        // `retire` reaches `App::teardown` too, so a runner a panic unwinds
-        // through hears the window go (backlog RG1); a second panic out of
-        // that `teardown` is an abort, as any panic in a drop is.
-        self.retire();
-    }
-}
-
-impl<A: App> PumpRunner<A> {
     /// Hands the core's queued audio commands to the device now, rather
     /// than at the next pump — for hosts that call `Core::play` between
     /// pumps and want the sound to start at once.
     pub fn flush_audio(&mut self) {
-        self.shell.apply_audio();
+        self.shell_mut().apply_audio();
     }
 }
 
@@ -1100,6 +1211,16 @@ fn subpixel_on(wanted: TextAa, dual_source: bool) -> bool {
     }
 }
 
+/// The frame latency asked for: `KUI_FRAME_LATENCY` if it is a positive
+/// number, for comparing without a rebuild, else the launcher's.
+fn wanted_frame_latency(launcher: u32) -> u32 {
+    std::env::var("KUI_FRAME_LATENCY")
+        .ok()
+        .and_then(|v| v.trim().parse::<u32>().ok())
+        .filter(|n| *n >= 1)
+        .unwrap_or(launcher)
+}
+
 /// The text antialiasing asked for: `KUI_TEXT_AA` if set, for quick A/B
 /// comparisons, else what the launcher was told.
 fn wanted_text_aa(launcher: TextAa) -> TextAa {
@@ -1157,7 +1278,15 @@ struct Armed {
     inside: bool,
 }
 
-struct Shell<A: App> {
+/// The runner's state for one app, over every window it opens.
+///
+/// Generic only in its last field: everything is written against
+/// [`DynShell`] and compiled once, here; a `Shell<A>` is only built,
+/// boxed, and handed over unsized. Written `impl<A: App> Shell<A>`,
+/// the whole runner was instantiated and optimised again inside every app
+/// crate, on every edit: the counter's release rebuild went from 1.20 s
+/// at alpha.9 to 1.57 s at alpha.18 as the runner grew (backlog C49).
+struct Shell<A: App + ?Sized> {
     title: String,
     /// What every window is created with (`Launcher::icon`).
     icon: icon::AppIcon,
@@ -1167,13 +1296,15 @@ struct Shell<A: App> {
     min_size: Option<(f64, f64)>,
     max_size: Option<(f64, f64)>,
     text_aa: TextAa,
+    /// What every renderer is configured with: `Launcher::frame_latency`
+    /// under `KUI_FRAME_LATENCY`.
+    frame_latency: u32,
     /// What every core is created with; see `Launcher::diagnostics`.
     diagnostics: bool,
     /// Whether the GPU blends per channel, decided by the first renderer,
     /// again by each device opened after a loss (`reopen_device`), and
     /// applied to every core.
     subpixel: bool,
-    app: A,
     /// Each under the namespace the host gave it; their `Fill` is what fills
     /// the slots a view declares (ADR 0014).
     extensions: Extensions,
@@ -1317,9 +1448,47 @@ struct Shell<A: App> {
     /// alternative — taking `&mut self` there — is a signature break for
     /// what is bookkeeping.
     owed: std::cell::Cell<bool>,
+    /// Last, so a `Box<Shell<A>>` unsizes to a `Box<DynShell>`.
+    app: A,
 }
 
-impl<A: App> Shell<A> {
+/// A shell over any app: what the runner is written against. Generic only
+/// in a lifetime, which is erased, so its code is kui's and not the app
+/// crate's (backlog C49), and an app that borrows is still an app.
+type DynShell<'a> = Shell<dyn App + 'a>;
+
+/// What winit's loop drives: it wants a sized handler, and a `DynShell`
+/// is not one.
+struct Handler<'s, 'a>(&'s mut DynShell<'a>);
+
+impl ApplicationHandler<access_bridge::UserEvent> for Handler<'_, '_> {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        self.0.resumed(event_loop);
+    }
+
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window: WinitWindowId,
+        event: WindowEvent,
+    ) {
+        self.0.window_event(event_loop, window, event);
+    }
+
+    fn exiting(&mut self, event_loop: &ActiveEventLoop) {
+        self.0.exiting(event_loop);
+    }
+
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: access_bridge::UserEvent) {
+        self.0.user_event(event_loop, event);
+    }
+
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        self.0.about_to_wait(event_loop);
+    }
+}
+
+impl DynShell<'_> {
     /// The main window's core: its pane's once it exists, the one the
     /// launcher built before that.
     fn core_mut(&mut self) -> &mut Core {
@@ -1737,6 +1906,8 @@ impl<A: App> Shell<A> {
         match drawn {
             Some(Ok(report)) => {
                 wait_ms = report.vsync_wait_ms;
+                pane.pacer
+                    .presented(std::time::Instant::now(), (size.width, size.height));
                 pane.first_frame = None;
                 pane.surface_tries = 0;
                 pane.awaits_device = false;
@@ -1839,7 +2010,8 @@ impl<A: App> Shell<A> {
                 }
             };
             match made {
-                Ok(r) => {
+                Ok(mut r) => {
+                    r.set_frame_latency(self.frame_latency);
                     let opened = gpu.is_none();
                     gpu.get_or_insert_with(|| r.gpu().clone());
                     if opened {
@@ -1885,7 +2057,7 @@ enum AppliedBar {
     Declared(WindowId, u64),
 }
 
-impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
+impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if !self.panes.is_empty() || self.opened {
             return;
@@ -1909,9 +2081,10 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
         }
         let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
         let px = window.inner_size();
-        let renderer =
+        let mut renderer =
             pollster::block_on(kui_wgpu::Renderer::new(window.clone(), px.width, px.height))
                 .expect("init renderer");
+        renderer.set_frame_latency(self.frame_latency);
         // Subpixel text only where the renderer blends per channel; the
         // env var wins over the builder for quick A/B comparisons.
         self.subpixel = subpixel_on(wanted_text_aa(self.text_aa), renderer.subpixel_text());
@@ -2273,6 +2446,9 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
                 // can stop a window painting.
                 self.panes[i].deferred_frame = true;
             }
+            // A frame asked for while frames run back to back waits for
+            // the display, which asks again at the vsync (`mod pacer`).
+            WindowEvent::RedrawRequested if !self.panes[i].admit_frame() => {}
             WindowEvent::RedrawRequested => {
                 self.panes[i].deferred_frame = false;
                 self.redraw(i);
@@ -2367,6 +2543,15 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
         let Some(i) = access_bridge::window_of(&event).and_then(|w| self.pane_index(w)) else {
             return;
         };
+        // A file dialog's answer, from the thread that waited on it: the
+        // window that asked hears it as input.
+        let event = match event {
+            access_bridge::UserEvent::Files { paths, .. } => {
+                self.dispatch(event_loop, i, InputEvent::Files(paths));
+                return;
+            }
+            other => other,
+        };
         let Some(bridge) = &mut self.panes[i].access else {
             return;
         };
@@ -2435,6 +2620,15 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
             // would only find the device still owed.
             if pane.core.animating() && !pane.awaits_device {
                 pane.window.request_redraw();
+            }
+            // A frame held for a display that stopped firing is drawn
+            // anyway once it has waited too long (`mod pacer`).
+            if let Some((at, due)) = pane.pacer.overdue(now) {
+                if due {
+                    pane.window.request_redraw();
+                } else {
+                    deadline = Some(deadline.map_or(at, |d| d.min(at)));
+                }
             }
             // A window still waiting for its first frame asks again — one
             // frame apart, and only so many times. Paced rather than spun:
@@ -2565,6 +2759,28 @@ mod tests {
         fn view(&mut self, _ui: &mut Ui<'_>) {}
     }
 
+    /// An app that borrows is still an app: the runner is compiled once
+    /// against `Shell<dyn App + 'a>` (backlog C49), and neither `run` nor
+    /// `open` asks for `'static`. Checked by the compiler alone: a loop
+    /// cannot be built on a test's worker thread.
+    #[test]
+    fn an_app_that_borrows_still_runs() {
+        struct Borrowing<'a>(&'a str);
+        impl App for Borrowing<'_> {
+            fn view(&mut self, ui: &mut Ui<'_>) {
+                ui.text(self.0, TextStyle::new(12.0));
+            }
+        }
+        let title = String::from("t");
+        let _run = || app("t").run(Borrowing(&title));
+        let _open = || {
+            let mut runner = app("t").open(Borrowing(&title))?;
+            let Borrowing(s) = runner.app_mut();
+            assert_eq!(*s, "t");
+            Ok::<_, Box<dyn std::error::Error>>(())
+        };
+    }
+
     /// `App::teardown` runs once, whichever of the runner's ends comes
     /// first and however many come after (backlog F74, tested under RG1):
     /// `retire` — what a pump returning false, `request_exit` and the
@@ -2584,20 +2800,23 @@ mod tests {
             }
         }
         let count = Rc::new(Cell::new(0));
-        let mut runner = PumpRunner {
-            event_loop: None,
-            shell: app("t").diagnostics(false).shell(Counting(count.clone())),
-            alive: true,
-            pumps: 0,
+        let runner_of = |app: Counting| PumpRunner {
+            state: PumpState {
+                event_loop: None,
+                alive: true,
+                pumps: 0,
+            },
+            shell: std::mem::ManuallyDrop::new(super::app("t").diagnostics(false).shell(app)),
         };
+        let mut runner = runner_of(Counting(count.clone()));
         assert_eq!(count.get(), 0, "nothing before the end");
         runner.request_exit();
         assert_eq!(count.get(), 0, "asking is not the end");
         runner.retire();
         assert_eq!(count.get(), 1, "retiring is");
-        assert!(!runner.alive);
+        assert!(!runner.state.alive);
         runner.retire();
-        runner.shell.teardown_once();
+        runner.shell_mut().teardown_once();
         assert_eq!(count.get(), 1, "once, however many ends come after");
         drop(runner);
         assert_eq!(
@@ -2608,12 +2827,7 @@ mod tests {
 
         // The drop alone — a runner let go of while alive — is an end too.
         let count = Rc::new(Cell::new(0));
-        drop(PumpRunner {
-            event_loop: None,
-            shell: app("t").diagnostics(false).shell(Counting(count.clone())),
-            alive: true,
-            pumps: 0,
-        });
+        drop(runner_of(Counting(count.clone())));
         assert_eq!(count.get(), 1);
     }
 
@@ -2681,20 +2895,20 @@ mod tests {
     #[test]
     fn diagnostics_follow_the_build_unless_told_otherwise() {
         assert_eq!(
-            app("t").shell(Empty).core_mut().diagnostics(),
+            app("t").dyn_shell(Empty).core_mut().diagnostics(),
             cfg!(debug_assertions)
         );
         assert!(
             app("t")
                 .diagnostics(true)
-                .shell(Empty)
+                .dyn_shell(Empty)
                 .core_mut()
                 .diagnostics()
         );
         assert!(
             !app("t")
                 .diagnostics(false)
-                .shell(Empty)
+                .dyn_shell(Empty)
                 .core_mut()
                 .diagnostics()
         );
@@ -2710,7 +2924,7 @@ mod tests {
         core.set_devtools(true);
         core.set_native_menus(false);
         let image = core.resources.add_image(1, 1, vec![0; 4]);
-        let mut shell = app("t").diagnostics(false).core(core).shell(Empty);
+        let mut shell = app("t").diagnostics(false).core(core).dyn_shell(Empty);
         assert!(shell.session.is(&session), "the session came along");
         assert!(shell.core_mut().devtools(), "the devtools door held");
         assert!(!shell.core_mut().native_menus(), "so did the menus one");
@@ -2730,7 +2944,7 @@ mod tests {
         let mut shell = app("t")
             .core(core)
             .setup_core(|c| c.set_devtools(false))
-            .shell(Empty);
+            .dyn_shell(Empty);
         assert!(!shell.core_mut().devtools());
     }
 
@@ -2739,12 +2953,12 @@ mod tests {
     /// frame, and the default stands for an app that never asked.
     #[test]
     fn the_devtools_chord_is_the_launcher_s_to_respell() {
-        let mut shell = app("t").diagnostics(false).shell(Empty);
+        let mut shell = app("t").diagnostics(false).dyn_shell(Empty);
         assert_eq!(shell.core_mut().devtools_key().spelling(), "ctrl+shift+i");
         let mut shell = app("t")
             .diagnostics(false)
             .devtools_key(Accel::parse("f12").unwrap())
-            .shell(Empty);
+            .dyn_shell(Empty);
         assert_eq!(shell.core_mut().devtools_key().spelling(), "f12");
     }
 
@@ -2753,14 +2967,14 @@ mod tests {
         let shell = app("t")
             .size(320.0, 240.0)
             .min_size(640.0, 480.0)
-            .shell(Empty);
+            .dyn_shell(Empty);
         assert_eq!(shell.size, (640.0, 480.0));
         assert_eq!(shell.min_size, Some((640.0, 480.0)));
 
         let shell = app("t")
             .size(1600.0, 1200.0)
             .max_size(800.0, 600.0)
-            .shell(Empty);
+            .dyn_shell(Empty);
         assert_eq!(shell.size, (800.0, 600.0));
         assert_eq!(shell.max_size, Some((800.0, 600.0)));
 
@@ -2768,7 +2982,7 @@ mod tests {
         let shell = app("t")
             .min_size(640.0, 480.0)
             .size(320.0, 240.0)
-            .shell(Empty);
+            .dyn_shell(Empty);
         assert_eq!(shell.size, (640.0, 480.0));
     }
 

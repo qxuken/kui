@@ -74,7 +74,7 @@ Grepping the tree for what shows what, the axis problem is concrete:
 - **Subject of none, side dish of many.** `titlebar`/`titlebar_with` is
   called in nine examples and demonstrated by none; `tooltip` in seven,
   none; `latency_hud` in fourteen. A reader looking for "how do I do
-  custom chrome" has nowhere to go, and the `kui::widgets` doc says custom
+  custom chrome" has nowhere to go, and the `kui_native::widgets` doc says custom
   widgets should follow the pattern the stock ones set.
 - **Only the C header walk has it.** `keyframes`, `hover_group`,
   `window_buttons`, `latency_graph` and the span decorations of C22 (ABI 8)
@@ -97,7 +97,7 @@ Grepping the tree for what shows what, the axis problem is concrete:
 
 This is the half a reshuffle must not lose. Five rounds read the tree:
 
-1. **`scripts/smoke-windows.ps1`** — every `[[example]]` of the `kui`
+1. **`scripts/smoke-windows.ps1`** — every `[[example]]` of the `kui-native`
    crate, read from `cargo metadata`, opened for 120 frames under
    `KUI_SMOKE_FRAMES`, exit 0 or fail. Automatic enrolment: a new example
    is smoked the day it is added. Windows only, and only when a runner
@@ -220,7 +220,7 @@ Three channels, each discovered from something a script already parses:
 
 | Channel | Enrolled by | Run by |
 |---|---|---|
-| **windowed** | being an `[[example]]` of `kui` — `cargo metadata`, as today | `smoke-windows.ps1` and a new `scripts/smoke-examples.sh` with the same contract (120 frames, exit 0, `kui: warning` lines reported), so the macOS half of the by-hand round is one command |
+| **windowed** | being an `[[example]]` of `kui-native` — `cargo metadata`, as today | `smoke-windows.ps1` and a new `scripts/smoke-examples.sh` with the same contract (120 frames, exit 0, `kui: warning` lines reported), so the macOS half of the by-hand round is one command |
 | **headless** | `[package.metadata.kui] headless = [...]` in the crate's `Cargo.toml`; `"smoke"` in `examples/node/package.json`; the round in `build.sh` | `check` in `ci.yml`, one step per binding, each a script that prints its round when not running it |
 | **by hand** | the *By hand* column of `examples/README.md`, naming the check and its backlog id | the round before a tag; results into `### Native verification` as today |
 
@@ -279,7 +279,7 @@ and exactly one — `theme` — can be flipped to the other base. All of that
 is scaffolding, none of it is a subject, and each copy is a place a
 convention can drift. It moves into `examples/harness` (now `examples/devtools`, see *What the
 building changed*, 11), an unpublished
-workspace crate that `kui`, `kui-ffi` and `kui-lua` take as a
+workspace crate that `kui-native`, `kui-ffi` and `kui-lua` take as a
 dev-dependency, with a `Harness<A: Example>` that implements `App` and
 wraps the example's.
 
@@ -390,7 +390,7 @@ one file. The chords are the same ones, relettered.
 ### 6a. One door for the status block: `env.audio`
 
 `Audio::holds_device()` and `Audio::active()` exist
-(`crates/kui/src/audio.rs`) and answer exactly the status question — but
+(`crates/kui-native/src/audio.rs`) and answer exactly the status question — but
 on the runner's private `Audio`, where the driver asks them to decide
 when to let the device go. No app can. And it is the row that matters
 most: an open output stream is a real-time thread at ~94 callbacks a
@@ -677,7 +677,7 @@ step:
 Phase 2 — the smoke contract:
 
 8. [x] `--headless` asserts, exits non-zero: `virtual_list`, `lua_panel`,
-   `c_panel`. Add `[package.metadata.kui] headless = [...]` to `kui`,
+   `c_panel`. Add `[package.metadata.kui] headless = [...]` to `kui-native`,
    `kui-lua`, `kui-ffi`; `"smoke"` script to `examples/node/package.json`.
 9. [x] `scripts/smoke-examples.sh` (unix twin of `smoke-windows.ps1`,
    same flags, same contract), both rounds running each example under

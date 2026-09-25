@@ -21,11 +21,13 @@
 //! declaration and nothing else. Walk to it with Ctrl+Shift+N (facts →
 //! events → tree → Inspector), or click it in the strip.
 //!
-//! Run: cargo run -p kui --example devtools_tab [-- --headless]
+//! Run: cargo run -p kui-native --example devtools_tab [-- --headless]
 
-use kui::widgets;
-use kui::{Align, App, Color, Core, Key, NodeSpec, Sizing, TextStyle, Theme, Ui, UiEvent, Value};
 use kui_devtools::{Drive, Example};
+use kui_native::widgets;
+use kui_native::{
+    Align, App, Color, Core, Key, NodeSpec, Sizing, TextStyle, Theme, Ui, UiEvent, Value,
+};
 
 /// One node of the syntax tree: its kind, the highlight group a token
 /// carries (`None` for an inner node), the line it starts on, its
@@ -399,7 +401,7 @@ impl App for Page {
                                             |_| {},
                                         );
                                         let one_line = |size: f32| {
-                                            TextStyle::new(size).mono().wrap(kui::TextWrap::None)
+                                            TextStyle::new(size).mono().wrap(kui_native::TextWrap::None)
                                         };
                                         ui.text(
                                             n.kind,
@@ -479,7 +481,7 @@ impl Example for Page {
         // The bare core the drive gets has no panel: on, docked right, as
         // the harness's window would have it.
         core.set_devtools(true);
-        core.set_devtools_dock(kui::DevtoolsDock::Right);
+        core.set_devtools_dock(kui_native::DevtoolsDock::Right);
         core.set_inspect(true);
         let mut d = Drive::new(core, 760.0, 480.0);
         d.frame(self);
@@ -494,7 +496,7 @@ impl Example for Page {
             d.key(
                 app,
                 "n",
-                kui::KeyMods {
+                kui_native::KeyMods {
                     ctrl: true,
                     shift: true,
                     ..Default::default()

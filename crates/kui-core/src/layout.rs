@@ -45,20 +45,152 @@ fn is_float(tree: &Tree, i: u32) -> bool {
     tree.any_float && tree.specs[i as usize].layout.float.is_some()
 }
 
+/// Where in the free space one thing sits: 0 at the start, 1 at the end.
+/// The spreads and `Baseline` mean nothing for a single placement — a
+/// cross axis, a float's attach point — and land where a spread puts a
+/// lone child (`diag::ALIGN_IGNORED` says so where one is declared).
 fn align_factor(a: Align) -> f32 {
     match a {
-        Align::Start => 0.0,
-        Align::Center => 0.5,
+        Align::Start | Align::SpaceBetween | Align::Baseline => 0.0,
+        Align::Center | Align::SpaceAround | Align::SpaceEvenly => 0.5,
         Align::End => 1.0,
+    }
+}
+
+/// How the main axis's free space is dealt out to `n` in-flow children:
+/// what goes before the first, and what goes between each two on top of
+/// the gap (backlog C13). Nothing is dealt when nothing is free, so a
+/// run that overflows or holds a grow child is laid out by its gaps
+/// alone, whatever the alignment.
+fn main_spread(a: Align, free: f32, n: u32) -> (f32, f32) {
+    let n = n as f32;
+    match a {
+        Align::SpaceBetween if n > 1.0 => (0.0, free / (n - 1.0)),
+        Align::SpaceAround if n > 0.0 => (free / (2.0 * n), free / n),
+        Align::SpaceEvenly => (free / (n + 1.0), free / (n + 1.0)),
+        _ => (align_factor(a) * free, 0.0),
     }
 }
 
 fn mirror(a: Align) -> Align {
     match a {
         Align::Start => Align::End,
-        Align::Center => Align::Center,
         Align::End => Align::Start,
+        other => other,
     }
+}
+
+/// Whether the in-flow children of `i` line up by their baselines: a row
+/// that says so. A column's cross axis is horizontal, where a baseline is
+/// not a line, so it lays out as `Start` there (as CSS does).
+#[inline]
+fn baseline_row(tree: &Tree, i: u32) -> bool {
+    let l = &tree.specs[i as usize].layout;
+    l.cross_align == Align::Baseline && l.dir == Dir::Row
+}
+
+/// Whether child `c` of a baseline row takes part in the alignment: a
+/// child whose height is `Grow` or `Percent` is sized against the line
+/// and fills it, so it sits at the line's top and its height does not
+/// count toward the line's (as in `line_extents`).
+#[inline]
+fn aligns_by_baseline(tree: &Tree, c: u32) -> bool {
+    !matches!(
+        child_sizing(tree, c, AxisSel::Height),
+        Sizing::Grow(_) | Sizing::Percent(_)
+    )
+}
+
+/// The first baseline of node `i`, logical px below its top edge, or
+/// `None` when nothing inside it is text (backlog C13). A text node's
+/// and an editor's are measured (`TextMeasure::baseline`, stored by
+/// `fit_heights` on a frame that has a baseline row); a container's is
+/// its first in-flow child's, carried down through where that child
+/// sits in it — which is why this reads sizes only, and can answer in
+/// the fit pass as well as in `positions`. Scrolling is ignored: a
+/// scrolled list's baseline is its unscrolled first row's.
+fn first_baseline(tree: &Tree, i: u32) -> Option<f32> {
+    match tree.content[i as usize] {
+        NodeContent::Text(_) | NodeContent::Edit(_) => tree
+            .baseline
+            .get(i as usize)
+            .copied()
+            .filter(|b| b.is_finite()),
+        NodeContent::Container => {
+            let f = first_in_flow(tree, i);
+            if f == NIL {
+                return None;
+            }
+            let spec = &tree.specs[i as usize].layout;
+            let size = tree.size[i as usize];
+            let fs = tree.size[f as usize];
+            match spec.dir {
+                Dir::Column => {
+                    let fb = first_baseline(tree, f)?;
+                    let content = (size.h - spec.padding.y()).max(0.0);
+                    let (mut used, mut n) = (0.0f32, 0u32);
+                    for c in tree.children(i) {
+                        if !is_float(tree, c) {
+                            used += tree.size[c as usize].h;
+                            n += 1;
+                        }
+                    }
+                    if n > 1 {
+                        used += spec.gap * (n - 1) as f32;
+                    }
+                    let (lead, _) = main_spread(spec.main_align, (content - used).max(0.0), n);
+                    Some(spec.padding.t + lead + fb)
+                }
+                Dir::Row => {
+                    let end = if wraps(tree, i) {
+                        line_end(tree, f)
+                    } else {
+                        NIL
+                    };
+                    if spec.cross_align == Align::Baseline {
+                        // The row's own shared baseline, when anything in
+                        // its first line has one.
+                        let (above, _, any) = line_baseline(tree, f, end);
+                        return any.then_some(spec.padding.t + above);
+                    }
+                    let fb = first_baseline(tree, f)?;
+                    let extent = if end == NIL {
+                        (size.h - spec.padding.y()).max(0.0)
+                    } else {
+                        line_extents(tree, f, end, spec.gap).1
+                    };
+                    let off = align_factor(spec.cross_align) * (extent - fs.h).max(0.0);
+                    Some(spec.padding.t + off + fb)
+                }
+            }
+        }
+        _ => None,
+    }
+}
+
+/// A baseline line `[c, end)`'s shared baseline: the most any taking
+/// part reaches above it, the most any hangs below it, and whether any
+/// child had a baseline of its own. A child with none aligns its bottom
+/// edge (CSS's synthesized baseline), so all of it is above.
+fn line_baseline(tree: &Tree, c: u32, end: u32) -> (f32, f32, bool) {
+    let (mut above, mut below, mut any) = (0.0f32, 0.0f32, false);
+    let mut k = c;
+    while k != end && k != NIL {
+        if !is_float(tree, k) && aligns_by_baseline(tree, k) {
+            let h = tree.size[k as usize].h;
+            let b = match first_baseline(tree, k) {
+                Some(b) => {
+                    any = true;
+                    b
+                }
+                None => h,
+            };
+            above = above.max(b);
+            below = below.max(h - b);
+        }
+        k = tree.next_sibling[k as usize];
+    }
+    (above, below, any)
 }
 
 /// One axis of float attachment: anchor point minus self point, plus offset.
@@ -88,8 +220,9 @@ fn overflow(pos: f32, len: f32, limit: f32) -> f32 {
 /// until pass 4, two passes after the cross-axis fit that would have to sum
 /// the lines. `scroll_x` says the same thing a different way — an axis that
 /// scrolls is unbounded, and an unbounded axis has nothing to break
-/// against. `diag::WRAP_IGNORED` reports both.
-#[inline]
+/// against. `diag::WRAP_IGNORED` reports both. Always inlined: asked of
+/// every node in three passes, as a call it cost the 10k grid 2% (C48).
+#[inline(always)]
 fn wraps(tree: &Tree, i: u32) -> bool {
     if !tree.any_wrap {
         return false;
@@ -427,6 +560,7 @@ fn line_end(tree: &Tree, c: u32) -> u32 {
 /// where a grow child contributes nothing to a fit height either.
 /// Wrapping is rows-only, so main is width and cross is height.
 fn line_extents(tree: &Tree, c: u32, end: u32, gap: f32) -> (f32, f32) {
+    let baseline = tree.any_baseline && c != NIL && baseline_row(tree, tree.parent[c as usize]);
     let mut main = 0.0f32;
     let mut cross = 0.0f32;
     let mut n = 0u32;
@@ -447,6 +581,12 @@ fn line_extents(tree: &Tree, c: u32, end: u32, gap: f32) -> (f32, f32) {
     }
     if n > 1 {
         main += gap * (n - 1) as f32;
+    }
+    if baseline {
+        // Aligned on one line, the children reach from the highest top
+        // to the lowest bottom, which is more than the tallest of them.
+        let (above, below, _) = line_baseline(tree, c, end);
+        cross = cross.max(above + below);
     }
     (main, cross)
 }
@@ -527,6 +667,18 @@ pub trait TextMeasure {
     /// Content size of an editable text node wrapped to `max_w`.
     fn edit_wrapped(&mut self, _key: crate::key::Key, _max_w: f32) -> Size {
         Size::ZERO
+    }
+    /// The first line's baseline of a text last wrapped by `wrapped`,
+    /// logical px below its top: what `crossAlign: baseline` lines up.
+    /// Asked only on a frame with a baseline row. `NaN` = not known, and
+    /// the text aligns by its bottom edge.
+    fn baseline(&mut self, _id: crate::tree::TextId) -> f32 {
+        f32::NAN
+    }
+    /// An editor's first baseline, below the top of its text (its box's
+    /// padding is added by the caller). `NaN` = not known.
+    fn edit_baseline(&mut self, _key: crate::key::Key) -> f32 {
+        f32::NAN
     }
     /// Pixel dimensions of a registered image (ZERO when unknown).
     fn image_size(&mut self, _id: crate::resources::ImageId) -> Size {
@@ -762,12 +914,13 @@ fn fit_widths(tree: &mut Tree, text: &mut dyn TextMeasure, range: std::ops::Rang
         if min_fit {
             tree.specs[i].layout.min_w = Min::px(fit);
         }
-        tree.size[i].w = tree.specs[i].layout.clamp_w(match width {
+        let spec = &tree.specs[i].layout;
+        tree.size[i].w = spec.clamp_w(match width {
             Sizing::Fixed(px) => px,
             // Resolved against the parent later; contributes nothing to fit
             // beyond its own floor.
             Sizing::Grow(_) | Sizing::Percent(_) => 0.0,
-            Sizing::Fit => fit,
+            Sizing::Fit => spec.aspect_width().unwrap_or(fit),
         });
     }
 }
@@ -808,6 +961,12 @@ fn fit_height(tree: &Tree, i: usize, text: &mut dyn TextMeasure, edit: Size) -> 
         // A wrapping row is as tall as its lines stacked: the lines were
         // chosen in pass 2, against a width that is already final.
         _ if wraps(tree, i as u32) => wrap_measure(tree, i as u32).1 + spec.padding.y(),
+        // One line, as tall as its children reach once their baselines
+        // line up: `line_extents` measures exactly that.
+        _ if tree.any_baseline && baseline_row(tree, i as u32) => {
+            let f = first_in_flow(tree, i as u32);
+            line_extents(tree, f, NIL, spec.gap).1 + spec.padding.y()
+        }
         _ => {
             let mut h = 0.0f32;
             let mut n = 0u32;
@@ -832,6 +991,12 @@ fn fit_height(tree: &Tree, i: usize, text: &mut dyn TextMeasure, edit: Size) -> 
 }
 
 fn fit_heights(tree: &mut Tree, text: &mut dyn TextMeasure, range: std::ops::Range<usize>) {
+    if tree.any_baseline {
+        // One per node, `NaN` where no text measured one; kept only on a
+        // frame that has a baseline row.
+        let n = tree.len();
+        tree.baseline.resize(n, f32::NAN);
+    }
     for i in range.rev() {
         if let NodeContent::Text(tid) = tree.content[i] {
             // Width is final by now: wrap to it.
@@ -846,13 +1011,20 @@ fn fit_heights(tree: &mut Tree, text: &mut dyn TextMeasure, range: std::ops::Ran
             } else {
                 tree.size[i] = wrapped;
             }
+            if tree.any_baseline {
+                tree.baseline[i] = text.baseline(tid);
+            }
             continue;
         }
         // Always wrap an editor to the final content width so emission and
         // input hit the same line layout, whatever the height sizing is.
         let edit = if let NodeContent::Edit(key) = tree.content[i] {
             let inner = (tree.size[i].w - tree.specs[i].layout.padding.x()).max(0.0);
-            text.edit_wrapped(key, inner)
+            let wrapped = text.edit_wrapped(key, inner);
+            if tree.any_baseline {
+                tree.baseline[i] = tree.specs[i].layout.padding.t + text.edit_baseline(key);
+            }
+            wrapped
         } else {
             Size::default()
         };
@@ -868,9 +1040,13 @@ fn fit_heights(tree: &mut Tree, text: &mut dyn TextMeasure, range: std::ops::Ran
         if min_fit {
             tree.specs[i].layout.min_h = Min::px(fit);
         }
-        tree.size[i].h = tree.specs[i].layout.clamp_h(match height {
+        let spec = &tree.specs[i].layout;
+        tree.size[i].h = spec.clamp_h(match height {
             Sizing::Fixed(px) => px,
             Sizing::Grow(_) | Sizing::Percent(_) => 0.0,
+            // Width is final by now: a declared ratio reads it (backlog
+            // C14), as an image's pixels do below it.
+            Sizing::Fit if spec.aspect_height() => tree.size[i].w / spec.aspect,
             Sizing::Fit => fit,
         });
     }
@@ -1221,6 +1397,15 @@ fn shrink_axis(tree: &mut Tree, i: u32, axis: AxisSel, mut deficit: f32, only_li
         }
         // Resolved to a number by the fit pass of this axis, which ran.
         let spec = tree.specs[c as usize].layout;
+        // An axis a declared ratio set would come out of shrinking at some
+        // other ratio; like an image, it keeps its size.
+        let derived = match axis {
+            AxisSel::Width => spec.aspect_width().is_some(),
+            AxisSel::Height => spec.aspect_height(),
+        };
+        if derived {
+            return None;
+        }
         Some(match axis {
             AxisSel::Width => spec.min_w.resolved(),
             AxisSel::Height => spec.min_h.resolved(),
@@ -1308,9 +1493,12 @@ fn set_axis(tree: &mut Tree, c: u32, axis: AxisSel, v: f32) {
     }
 }
 
-/// set_axis clamped by the child's own min/max on that axis.
+/// set_axis clamped by the child's own min/max on that axis. Inlined,
+/// and borrowing the spec rather than copying it: a call per child that
+/// copied the whole layout spec cost the 10k grid 2% (C48).
+#[inline]
 fn set_axis_clamped(tree: &mut Tree, c: u32, axis: AxisSel, v: f32) {
-    let spec = tree.specs[c as usize].layout;
+    let spec = &tree.specs[c as usize].layout;
     let v = match axis {
         AxisSel::Width => spec.clamp_w(v),
         AxisSel::Height => spec.clamp_h(v),
@@ -1483,7 +1671,18 @@ fn positions(
                 Dir::Column => spec.scroll_y,
             };
         let free_main = (main_content - total_main).max(0.0);
-        let content_start = main_pad_start + align_factor(spec.main_align) * free_main;
+        // The unwrapped run's spread; a wrapping row deals out each line's
+        // own below. Counting the children is skipped for the three
+        // alignments that need no count.
+        let n_main = if matches!(spec.main_align, Align::Start | Align::Center | Align::End) {
+            0
+        } else {
+            tree.children(i as u32)
+                .filter(|&c| !is_float(tree, c))
+                .count() as u32
+        };
+        let (lead_main, between_main) = main_spread(spec.main_align, free_main, n_main);
+        let content_start = main_pad_start + lead_main;
         if anchors && let Some((anchor, was_at)) = scroll.anchor(tree.keys[i]) {
             let mut at = content_start;
             let mut c = first_in_flow(tree, i as u32);
@@ -1506,7 +1705,7 @@ fn positions(
                         Dir::Row => tree.size[c as usize].w,
                         Dir::Column => tree.size[c as usize].h,
                     };
-                    at += c_main + spec.gap;
+                    at += c_main + spec.gap + between_main;
                 }
                 c = tree.next_sibling[c as usize];
             }
@@ -1567,7 +1766,7 @@ fn positions(
                         next = Some((tree.keys[c as usize], at));
                         break;
                     }
-                    at += c_main + spec.gap;
+                    at += c_main + spec.gap + between_main;
                 }
                 c = tree.next_sibling[c as usize];
             }
@@ -1604,7 +1803,26 @@ fn positions(
                 (NIL, cross_content, total_main)
             };
             let free = (main_content - run_main).max(0.0);
-            let mut cursor = main_pad_start + align_factor(spec.main_align) * free - main_scroll;
+            let (lead, between) = if wrap {
+                let mut n = 0u32;
+                let mut k = line_start;
+                while k != end && k != NIL {
+                    n += u32::from(!is_float(tree, k));
+                    k = tree.next_sibling[k as usize];
+                }
+                main_spread(spec.main_align, free, n)
+            } else {
+                (lead_main, between_main)
+            };
+            // A baseline line's shared baseline, from the line's top.
+            let base_above =
+                if tree.any_baseline && spec.cross_align == Align::Baseline && spec.dir == Dir::Row
+                {
+                    Some(line_baseline(tree, line_start, end).0)
+                } else {
+                    None
+                };
+            let mut cursor = main_pad_start + lead - main_scroll;
             let mut c = line_start;
             while c != end && c != NIL {
                 if is_float(tree, c) {
@@ -1616,13 +1834,21 @@ fn positions(
                     Dir::Row => (cs.w, cs.h),
                     Dir::Column => (cs.h, cs.w),
                 };
-                let cross_off =
-                    cross_cursor + align_factor(spec.cross_align) * (extent - c_cross).max(0.0);
+                let cross_off = match base_above {
+                    Some(above) if aligns_by_baseline(tree, c) => {
+                        let b = first_baseline(tree, c).unwrap_or(c_cross);
+                        cross_cursor + above - b
+                    }
+                    Some(_) => cross_cursor,
+                    None => {
+                        cross_cursor + align_factor(spec.cross_align) * (extent - c_cross).max(0.0)
+                    }
+                };
                 tree.pos[c as usize] = match spec.dir {
                     Dir::Row => Vec2::new(origin.x + cursor, origin.y + cross_off),
                     Dir::Column => Vec2::new(origin.x + cross_off, origin.y + cursor),
                 };
-                cursor += c_main + spec.gap;
+                cursor += c_main + spec.gap + between;
                 c = tree.next_sibling[c as usize];
             }
             cross_cursor += extent + spec.cross_gap;
@@ -1636,7 +1862,7 @@ mod tests {
     use super::*;
     use crate::geom::Edges;
     use crate::key::Key;
-    use crate::spec::NodeSpec;
+    use crate::spec::{FloatConfig, NodeSpec};
     use crate::tree::{NodeContent, OriginId, TextId};
 
     /// Deterministic measurer: every text is `10px * chars_hint` wide and wraps
@@ -1654,6 +1880,10 @@ mod tests {
             }
             let lines = (full / max_w).ceil();
             Size::new(max_w, lines * 20.0)
+        }
+        /// A 20 px line with 5 px of it below the baseline.
+        fn baseline(&mut self, _id: TextId) -> f32 {
+            15.0
         }
     }
 
@@ -1913,6 +2143,262 @@ mod tests {
         t.run(1000.0, 1000.0);
         assert_eq!(t.pos(a).y, 50.0);
         assert_eq!(t.pos(b).y, 80.0);
+    }
+
+    /// Three 10 px children in a 100 px row: 70 px free, dealt out the
+    /// way each spread says (backlog C13).
+    fn spread(a: Align, gap: f32) -> Vec<f32> {
+        let mut t = T::new(
+            NodeSpec::row()
+                .width(px(100.0))
+                .height(px(10.0))
+                .gap(gap)
+                .main_align(a),
+        );
+        let kids: Vec<u32> = (0..3)
+            .map(|_| t.node(0, NodeSpec::row().width(px(10.0)).height(px(10.0))))
+            .collect();
+        t.run(1000.0, 1000.0);
+        kids.iter().map(|&k| t.pos(k).x).collect()
+    }
+
+    #[test]
+    fn space_between_puts_the_free_space_between_the_children() {
+        assert_eq!(spread(Align::SpaceBetween, 0.0), [0.0, 45.0, 90.0]);
+        // The spread is on top of the gap: 50 free, 25 each.
+        assert_eq!(spread(Align::SpaceBetween, 10.0), [0.0, 45.0, 90.0]);
+    }
+
+    #[test]
+    fn space_around_gives_the_ends_half_a_share() {
+        // 70 / 3 each, half of it on either side of a child.
+        let x = spread(Align::SpaceAround, 0.0);
+        let share = 70.0 / 3.0;
+        for (i, want) in [share / 2.0, share * 1.5 + 10.0, share * 2.5 + 20.0]
+            .into_iter()
+            .enumerate()
+        {
+            assert!((x[i] - want).abs() < 1e-3, "{x:?}");
+        }
+    }
+
+    #[test]
+    fn space_evenly_makes_every_gap_and_both_ends_equal() {
+        assert_eq!(spread(Align::SpaceEvenly, 0.0), [17.5, 45.0, 72.5]);
+    }
+
+    /// One child: `space-between` has nothing to go between and starts it,
+    /// the other two centre it, as CSS does.
+    #[test]
+    fn a_lone_child_under_a_spread_starts_or_centres() {
+        for (a, want) in [
+            (Align::SpaceBetween, 0.0),
+            (Align::SpaceAround, 45.0),
+            (Align::SpaceEvenly, 45.0),
+        ] {
+            let mut t = T::new(NodeSpec::row().width(px(100.0)).main_align(a));
+            let c = t.node(0, NodeSpec::row().width(px(10.0)).height(px(10.0)));
+            t.run(1000.0, 1000.0);
+            assert_eq!(t.pos(c).x, want, "{a:?}");
+        }
+    }
+
+    /// Nothing free, nothing dealt: a grow child takes the space, and a run
+    /// that overflows keeps its plain gaps.
+    #[test]
+    fn a_spread_with_nothing_free_is_the_gaps_alone() {
+        let mut t = T::new(
+            NodeSpec::row()
+                .width(px(100.0))
+                .gap(5.0)
+                .main_align(Align::SpaceBetween),
+        );
+        let a = t.node(0, NodeSpec::row().width(px(10.0)).height(px(10.0)));
+        let b = t.node(0, NodeSpec::row().width(Sizing::Grow(1.0)).height(px(10.0)));
+        let c = t.node(0, NodeSpec::row().width(px(10.0)).height(px(10.0)));
+        t.run(1000.0, 1000.0);
+        assert_eq!((t.pos(a).x, t.pos(b).x, t.pos(c).x), (0.0, 15.0, 90.0));
+
+        let mut t = T::new(
+            NodeSpec::row()
+                .width(px(100.0))
+                .gap(5.0)
+                .scroll_x()
+                .main_align(Align::SpaceEvenly),
+        );
+        let kids: Vec<u32> = (0..3)
+            .map(|_| t.node(0, NodeSpec::row().width(px(50.0)).height(px(10.0))))
+            .collect();
+        t.run(1000.0, 1000.0);
+        let x: Vec<f32> = kids.iter().map(|&k| t.pos(k).x).collect();
+        assert_eq!(x, [0.0, 55.0, 110.0]);
+    }
+
+    /// A column spreads down, and floats take no share.
+    #[test]
+    fn a_column_spreads_its_height_and_floats_take_no_share() {
+        let mut t = T::new(
+            NodeSpec::column()
+                .width(px(10.0))
+                .height(px(100.0))
+                .main_align(Align::SpaceBetween),
+        );
+        let a = t.node(0, NodeSpec::row().width(px(10.0)).height(px(20.0)));
+        t.node(
+            0,
+            NodeSpec::row()
+                .width(px(5.0))
+                .height(px(5.0))
+                .float(FloatConfig::below()),
+        );
+        let b = t.node(0, NodeSpec::row().width(px(10.0)).height(px(20.0)));
+        t.run(1000.0, 1000.0);
+        assert_eq!((t.pos(a).y, t.pos(b).y), (0.0, 80.0));
+    }
+
+    /// A wrapping row deals out each line's own free space.
+    #[test]
+    fn a_wrapping_row_spreads_each_line_by_itself() {
+        let mut t = T::new(
+            NodeSpec::row()
+                .width(px(100.0))
+                .wrap()
+                .main_align(Align::SpaceBetween),
+        );
+        let kids: Vec<u32> = (0..3)
+            .map(|_| t.node(0, NodeSpec::row().width(px(40.0)).height(px(10.0))))
+            .collect();
+        t.run(1000.0, 1000.0);
+        let at: Vec<(f32, f32)> = kids.iter().map(|&k| (t.pos(k).x, t.pos(k).y)).collect();
+        // Line one holds two with 20 between; line two one, at the start.
+        assert_eq!(at, [(0.0, 0.0), (60.0, 0.0), (0.0, 10.0)]);
+    }
+
+    /// A 20 px text (baseline 15) and a 40 px box on one row: the box has
+    /// no text, so its bottom edge is its baseline, and the text drops to
+    /// meet it. The fit row holds both: 40 above, the text's 5 below.
+    #[test]
+    fn baseline_lines_up_text_with_a_box_s_bottom_edge() {
+        let mut t = T::new(NodeSpec::row().cross_align(Align::Baseline));
+        let txt = t.text(0, 3);
+        let bx = t.node(0, NodeSpec::row().width(px(10.0)).height(px(40.0)));
+        t.run(1000.0, 1000.0);
+        assert_eq!(t.pos(bx).y, 0.0);
+        assert_eq!(t.pos(txt).y, 25.0);
+        assert_eq!(t.size(0).h, 45.0);
+    }
+
+    /// A container's baseline is its first child's, carried down through
+    /// where that child sits in it: a column padded 10 on top holds its
+    /// text 10 lower, so a bare text beside it drops 10 to meet it.
+    #[test]
+    fn a_container_s_baseline_is_its_first_text_s() {
+        let mut t = T::new(NodeSpec::row().cross_align(Align::Baseline));
+        let bare = t.text(0, 3);
+        let col = t.node(
+            0,
+            NodeSpec::column().padding(Edges {
+                l: 0.0,
+                r: 0.0,
+                t: 10.0,
+                b: 0.0,
+            }),
+        );
+        let inner = t.text(col, 3);
+        t.node(col, NodeSpec::row().width(px(10.0)).height(px(30.0)));
+        t.run(1000.0, 1000.0);
+        assert_eq!(t.pos(col).y, 0.0);
+        assert_eq!(t.pos(inner).y, 10.0);
+        assert_eq!(t.pos(bare).y, 10.0);
+        // The column (60 tall, baseline 25) sets the row's height.
+        assert_eq!(t.size(0).h, 60.0);
+    }
+
+    /// A grow height fills the line from its top instead of aligning.
+    #[test]
+    fn a_grow_height_child_of_a_baseline_row_fills_from_the_top() {
+        let mut t = T::new(
+            NodeSpec::row()
+                .height(px(50.0))
+                .cross_align(Align::Baseline),
+        );
+        let txt = t.text(0, 3);
+        let g = t.node(0, NodeSpec::row().width(px(10.0)).height(Sizing::Grow(1.0)));
+        t.run(1000.0, 1000.0);
+        assert_eq!((t.pos(g).y, t.size(g).h), (0.0, 50.0));
+        assert_eq!(t.pos(txt).y, 0.0);
+    }
+
+    /// A column's cross axis is horizontal: `baseline` there is `start`.
+    #[test]
+    fn baseline_on_a_column_is_start() {
+        let mut t = T::new(
+            NodeSpec::column()
+                .width(px(100.0))
+                .cross_align(Align::Baseline),
+        );
+        let c = t.node(0, NodeSpec::row().width(px(10.0)).height(px(10.0)));
+        t.run(1000.0, 1000.0);
+        assert_eq!(t.pos(c).x, 0.0);
+    }
+
+    /// `width: grow` and a ratio keeps its shape: the fit height is the
+    /// final width over the ratio, and the children overflow it.
+    #[test]
+    fn a_ratio_sizes_a_fit_height_from_the_final_width() {
+        let mut t = T::new(NodeSpec::column().width(px(320.0)));
+        let v = t.node(
+            0,
+            NodeSpec::column()
+                .width(Sizing::Grow(1.0))
+                .aspect_ratio(16.0 / 9.0),
+        );
+        t.node(v, NodeSpec::row().width(px(10.0)).height(px(500.0)));
+        t.run(1000.0, 1000.0);
+        assert_eq!(t.size(v), Size::new(320.0, 180.0));
+    }
+
+    /// Under a fixed height, a fit width is the height times the ratio.
+    #[test]
+    fn a_ratio_sizes_a_fit_width_from_a_fixed_height() {
+        let mut t = T::new(NodeSpec::row());
+        let sq = t.node(0, NodeSpec::row().height(px(24.0)).aspect_ratio(1.0));
+        t.run(1000.0, 1000.0);
+        assert_eq!(t.size(sq), Size::new(24.0, 24.0));
+    }
+
+    /// A derived height is not shrunk: a column too short for a ratio box
+    /// shrinks its other fit children and leaves the box its shape.
+    #[test]
+    fn a_ratio_s_derived_height_is_not_shrunk() {
+        let mut t = T::new(NodeSpec::column().width(px(100.0)).height(px(100.0)));
+        let r = t.node(
+            0,
+            NodeSpec::column()
+                .width(Sizing::Grow(1.0))
+                .aspect_ratio(1.25),
+        );
+        let other = t.node(0, NodeSpec::column().height(Sizing::Fit));
+        t.node(other, NodeSpec::row().width(px(10.0)).height(px(60.0)));
+        t.run(1000.0, 1000.0);
+        assert_eq!(t.size(r).h, 80.0);
+        assert_eq!(t.size(other).h, 20.0);
+    }
+
+    /// `minHeight: fit` floors a derived height at the children.
+    #[test]
+    fn min_fit_floors_a_ratio_height_at_its_children() {
+        let mut t = T::new(NodeSpec::column().width(px(100.0)));
+        let r = t.node(
+            0,
+            NodeSpec::column()
+                .width(Sizing::Grow(1.0))
+                .aspect_ratio(4.0)
+                .min_height(Min::FIT),
+        );
+        t.node(r, NodeSpec::row().width(px(10.0)).height(px(40.0)));
+        t.run(1000.0, 1000.0);
+        assert_eq!(t.size(r).h, 40.0);
     }
 
     #[test]

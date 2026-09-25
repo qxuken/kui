@@ -207,6 +207,8 @@ export interface GeneratedSpecProps {
   anchor?: boolean;
   /** Ask for another frame after this one, every frame this node is declared. What a `fragment` that reads `time` needs, and what anything driving itself off the clock rather than off input needs. Opt-in like `exit`, and for the same reason: it takes the loop off input-driven and onto the display's cadence for as long as it is declared, so a still node must not carry it. One node asking is enough for the whole window. */
   animate?: boolean;
+  /** Width over height — `16/9`, `1` for a square — CSS's `aspect-ratio`. It sizes the axis left `fit`: a fit height is the final width over the ratio (so `width: grow` and a ratio is a box that keeps its shape as the window resizes), and a fit width under a fixed height is that height times it. With both axes declared, or a fit width under a `grow` or percent height, it has nothing it can set and warns. The derived axis is neither shrunk nor fitted to the children, which overflow it; `minHeight: 'fit'` floors it at them. On an image it wins over the pixels' own aspect. */
+  aspectRatio?: LengthProp;
   /** Background fill. */
   bg?: ColorProp;
   /** On a `line` of a custom editor (a `textInput` / `multilineTextInput` role drawn by the app): the caret's byte offset into that line's text. */
@@ -219,8 +221,8 @@ export interface GeneratedSpecProps {
   checked?: boolean;
   /** A registered sound (addSound) played when the node is clicked; implies hover tracking. */
   clickSound?: string;
-  /** Child alignment across the main axis. */
-  crossAlign?: 'start' | 'center' | 'end';
+  /** Child alignment across the main axis. On a row, `baseline` lines up the first baselines of the children's text, so a label and a larger value read as one line; a child with no text aligns by its bottom edge, a `grow` or percent height fills the line from its top, and a fit-height row grows to hold the aligned children. A column lays `baseline` out as `start` (as CSS does), and the three spreads mean nothing across an axis — each with a warning. */
+  crossAlign?: 'start' | 'center' | 'end' | 'spaceBetween' | 'spaceAround' | 'spaceEvenly' | 'baseline';
   /** Space between wrap lines, across the main axis (`gap` stays the space along it). */
   crossGap?: LengthProp;
   /** The pointer shape over this node. Unset, the pointer is `text` over an editor or a `selectable` scope and `default` over everything else — an `onClick`, `focusable` or `onDrag` node included, as a native button is — so a hand (`pointer`) over a control, a `grab` over a handle (and `grabbing` while its drag runs, which the view declares as its drag state changes), a splitter's `ewResize` / `nsResize` and a `disabled` control's `notAllowed` are all declared. The stock `button` declares `pointer` itself. A captured drag keeps the dragged node's shape wherever the pointer goes. */
@@ -269,8 +271,8 @@ export interface GeneratedSpecProps {
   label?: string;
   /** Marks this node a live region: when the text inside it changes, a screen reader reads the change without being asked — `polite` at the next pause, `assertive` interrupting. Put it on the smallest node that holds the message, since everything inside a live node is live. For a one-off with no node behind it ("Saved") the binding's `announce` verb is the other half. */
   live?: 'off' | 'polite' | 'assertive';
-  /** Child alignment along the main axis. */
-  mainAlign?: 'start' | 'center' | 'end';
+  /** Child alignment along the main axis. `start`, `center` and `end` put the children together; `spaceBetween` deals the free space out between them (none at the ends), `spaceAround` gives each child an equal share split to its two sides, and `spaceEvenly` makes every gap and both ends equal — CSS's `justify-content`. The spread is added to `gap`, and there is none when nothing is free: a `grow` child takes it all, and an overflowing run keeps its gaps. `baseline` means nothing here and lays out as `start`, with a warning. */
+  mainAlign?: 'start' | 'center' | 'end' | 'spaceBetween' | 'spaceAround' | 'spaceEvenly' | 'baseline';
   /** Upper height clamp (logical px). */
   maxHeight?: LengthProp;
   /** Upper width clamp; grow+maxWidth is the responsive-width pattern. */
@@ -279,8 +281,12 @@ export interface GeneratedSpecProps {
   minHeight?: MinProp;
   /** Lower width clamp: logical px, or "fit" for the node's own fit width. "fit" under `width="grow"` is a content floor — CSS's `flex: 1 0 auto` — which is what an i3-style tab bar is: tabs that split the bar evenly while they fit and sit at their label's width, scrolling, once they do not. Opt-in, because a fit width is the unwrapped one: a paragraph in a grow column would stop wrapping under it. */
   minWidth?: MinProp;
+  /** A `checkbox` that is neither on nor off — the select-all box over a list some of whose rows are selected (ADR 0034). Read as mixed by assistive technology whatever `checked` says, and drawn as a dash by the stock `<checkbox>`. Meaningful on the checkbox role alone. */
+  mixed?: boolean;
   /** Modal surface: the Tab ring becomes this node's subtree, everything outside it is inert to the pointer, the wheel and assistive technology, and Escape or a press outside emits {kind:"dismiss", reason:"escape"|"outside", tag} on it — the app stops declaring the node. The last one declared in tree order is the one in effect (a confirm inside a dialog); a modal that must cover the app is a float. The access tree is not pruned to the modal: it keeps every node of the frame and marks the one in effect `modal` (`docs/adr/0003-modal-surfaces.md`, decision 7), which is what assistive technology acts on. */
   modal?: AppMsg | null;
+  /** A `slider` role's changes (ADR 0034): the core turns a press on the node into the value under the pointer, a drag into the value under it, the arrows and assistive technology's increment / decrement into one `valueStep`, PageUp / PageDown into ten, Home / End into the range's ends — clamped to `valueMin`..`valueMax` (0..100 unset) and snapped to the step — and emits `{kind:"change", value, phase, tag}`: `phase` is `"move"` while the pointer holds the slider and `"end"` when it lets go or a key moved it. The value is proposed and never applied; the slider moves when the view declares it as `valueNow`. A key that lands where the slider already is proposes nothing. The pointer reads the node's content box along its main axis, so a `dir="column"` slider runs bottom to top. Without it a slider's arrows reach the app as `{kind:"access", action}`. Ignored on any other role. */
+  onChange?: AppMsg | null;
   /** Message emitted when clicked (data, not a callback). */
   onClick?: AppMsg;
   /** Context-menu tag: a secondary-button (right) press emits {kind:"contextmenu", x, y, tag} on the node, at the logical viewport point to open the menu at. The press moves no focus, places no caret and produces no click, so right-clicking a selection keeps it. Asked of the topmost node under the pointer, and when that node offers no menu the press reaches the nearest enclosing node that does — a container declaring a menu for everything inside it is the common case — the way an unclaimed key reaches the enclosing sink (`docs/adr/0011`): the event carries the *owner's* key and tag, a nested declaration wins over its ancestor's, a disabled node's own is skipped, and the walk stops at the modal boundary. */
@@ -351,6 +357,8 @@ export interface GeneratedSpecProps {
   valueMin?: LengthProp;
   /** A `slider` role's current value (the drawing stays yours; this is what assistive technology reads). */
   valueNow?: LengthProp;
+  /** How far one arrow key moves a `slider` role, and the grid a value the pointer sets snaps to (ADR 0034). Unset, a hundredth of the range. PageUp / PageDown move ten steps. Read by the core only where the slider declares `onChange`; reported to assistive technology either way. */
+  valueStep?: LengthProp;
   /** What a `slider` role's position reads as (ARIA's `aria-valuetext`). Without one a reader has only `valueNow` and the range and says a percentage — 25 in [5..60] is "36 percent" — so a value whose unit carries the meaning says it here: "25 minutes". It replaces the number in the reading rather than joining it, and a nudge announces the new text. Meaningful on the slider role alone, like the three numbers; putting the reading in `label` instead renames the control on every nudge, which is the wrong attribute. */
   valueText?: string;
   /** Horizontal size: px | "fit" | "grow" | "N%". */
@@ -431,7 +439,7 @@ export interface CustomSpecProps {
    *  range slides over it. Beside a `key`, the index wins. */
   index?: number;
   /** How many `index`ed rows this node's virtual list has, built or not.
-   *  `virtualColumn` declares it on its container; a list composed by
+   *  `uniformList` declares it on its container; a list composed by
    *  hand says it beside `scrollY`. Select All inside a `selectable`
    *  virtual list then selects the *data*, rows `0..rowCount`, and the
    *  copy is a `selectionrange` ask whose `to.byte` is past the last
@@ -518,6 +526,61 @@ export interface ButtonProps
   children?: KuiNode;
 }
 
+/** A stock toggle — `<checkbox>`, `<radio>`, `<switch>`
+ *  (docs/adr/0034-stock-controls-over-the-roles.md): drawn from the state
+ *  you declare, `checked` (and on a checkbox `mixed`, the select-all box
+ *  over a partial selection), with its text beside it. A press by the
+ *  pointer, Space, Enter or assistive technology posts `onClick`; your
+ *  `update` flips the model and the view draws it again. Its look is its
+ *  spec, so these are the only rows it reads (`TOGGLE_ROWS_JSX` in
+ *  schema.rs): any other is dropped with an `unknown-prop` warning. Keyed
+ *  by its text unless `key` says otherwise. */
+export interface ToggleProps
+  extends Keyed,
+    Pick<GeneratedSpecProps, 'onClick' | 'label' | 'description' | 'disabled' | 'checked' | 'mixed'>,
+    Pick<CustomSpecProps, 'tooltip'> {
+  children?: KuiNode;
+}
+
+/** The stock slider (docs/adr/0034-stock-controls-over-the-roles.md): a
+ *  track, a fill to `valueNow` and a thumb. With `onChange` the core turns
+ *  a press, a drag, the arrows, PageUp / PageDown and Home / End into
+ *  `{kind: 'change', value, phase: 'move' | 'end', tag}` — clamped to
+ *  `valueMin`..`valueMax` (0..100 unset) and snapped to `valueStep` (a
+ *  hundredth of the range unset); store `value` and declare it as
+ *  `valueNow`, since nothing moves until you do. `label` is its name and,
+ *  unless `key` says otherwise, its key. Its look is its spec: the rows it
+ *  reads are these (`SLIDER_ROWS_JSX` in schema.rs). */
+export interface SliderProps
+  extends Keyed,
+    Pick<
+      GeneratedSpecProps,
+      | 'label'
+      | 'description'
+      | 'disabled'
+      | 'valueNow'
+      | 'valueMin'
+      | 'valueMax'
+      | 'valueStep'
+      | 'valueText'
+      | 'onChange'
+      | 'width'
+      | 'minWidth'
+      | 'maxWidth'
+    >,
+    Pick<CustomSpecProps, 'tooltip'> {
+  label: string;
+}
+
+/** A container of `<radio>`s (docs/adr/0034-stock-controls-over-the-roles.md):
+ *  one Tab stop whose arrows, Home and End move the choice and press the
+ *  radio they land on, so radios whose `onClick` each set the choice
+ *  answer the keyboard with nothing more. Every box row; the role and the
+ *  name are its own, and without a `gap` it takes the stock one. */
+export interface RadioGroupProps extends BoxProps {
+  label: string;
+}
+
 export interface EditProps extends TextProps, GeneratedSpecProps, CustomSpecProps {
   /** Stable identity (state is retained by key); `key` works too. */
   id?: string;
@@ -550,6 +613,11 @@ export declare namespace JSX {
     box: BoxProps;
     text: TextProps;
     button: ButtonProps;
+    checkbox: ToggleProps;
+    radio: ToggleProps;
+    switch: ToggleProps;
+    radioGroup: RadioGroupProps;
+    slider: SliderProps;
     edit: EditProps;
     /** The stock single-line field with its chrome (`widgets::text_input`):
      *  `label` is the key and the accessible name both, `initial` the seed

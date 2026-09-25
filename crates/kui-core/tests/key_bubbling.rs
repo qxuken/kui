@@ -95,7 +95,7 @@ fn bare(core: &mut Core) -> (Key, Key) {
 }
 
 /// Everything a real window sends for one press, in the order it sends it
-/// (`crates/kui/src/lib.rs`): the raw press first, then the editing key it
+/// (`crates/kui-native/src/lib.rs`): the raw press first, then the editing key it
 /// maps to, then the text it would insert. The order is why a claim is
 /// resolved from the node and the key rather than from what a handler did.
 fn window_press(

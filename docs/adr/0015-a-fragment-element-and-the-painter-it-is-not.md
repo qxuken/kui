@@ -44,7 +44,7 @@ is listed with the reason, and the painter is what would do it.
   `Vec<Quad>` (`crates/kui-core/src/display.rs:206`) and the wgpu backend
   draws it as one instanced draw with one pipeline
   (`crates/kui-wgpu/src/lib.rs:1`). Lua, C and Node all render through
-  that backend by way of the `kui` runner; the C ABI's `kui_draw_data`
+  that backend by way of the `kui-native` runner; the C ABI's `kui_draw_data`
   hands the same list to a host that wants to walk it headlessly. A
   closure over a `wgpu::Device` has no place in that list: it cannot be
   encoded by Node, cannot be a `KuiQuad`, and cannot be digested by the

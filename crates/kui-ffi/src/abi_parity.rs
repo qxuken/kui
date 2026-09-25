@@ -133,6 +133,7 @@ c_type! {
     KuiDerivedToken => "KuiDerivedToken",
     KuiEvent => "KuiEvent", KuiWindowConfig => "KuiWindowConfig",
     KuiRunConfig => "KuiRunConfig",
+    KuiFileFilter => "KuiFileFilter", KuiFileDialog => "KuiFileDialog",
     KuiWindowCommand => "KuiWindowCommand", KuiDrawData => "KuiDrawData",
     ViewFn => "KuiViewFn",
 }
@@ -290,7 +291,8 @@ fn asserts() -> (String, Vec<&'static str>) {
         "KUI_WINDOW_MAXIMIZE",
     ]);
     abi_enum!(o, kui_core::schema::ALIGNS, 0 => [
-        "KUI_START", "KUI_CENTER", "KUI_END",
+        "KUI_START", "KUI_CENTER", "KUI_END", "KUI_SPACE_BETWEEN",
+        "KUI_SPACE_AROUND", "KUI_SPACE_EVENLY", "KUI_BASELINE",
     ]);
     abi_enum!(o, kui_core::schema::FAMILIES, 0 => [
         "KUI_FONT_SANS", "KUI_FONT_SERIF", "KUI_FONT_MONO",
@@ -438,6 +440,9 @@ fn asserts() -> (String, Vec<&'static str>) {
             KUI_CHROME_NATIVE,
             KUI_CHROME_CUSTOM,
             KUI_CHROME_BORDERLESS,
+            KUI_FILE_DIALOG_OPEN,
+            KUI_FILE_DIALOG_SAVE,
+            KUI_FILE_DIALOG_FOLDER,
             KUI_TEXT_AA_AUTO,
             KUI_TEXT_AA_GRAYSCALE,
             KUI_TEXT_AA_SUBPIXEL,
@@ -468,6 +473,7 @@ fn asserts() -> (String, Vec<&'static str>) {
             KUI_VALUE_CARET,
             KUI_VALUE_ANCHOR,
             KUI_VALUE_CARET_SOLID,
+            KUI_VALUE_STEP,
             KUI_ACCESS_HAS_VALUE,
             KUI_ACCESS_HAS_SELECTION,
             KUI_ACCESS_FOCUSED,
@@ -488,6 +494,7 @@ fn asserts() -> (String, Vec<&'static str>) {
             KUI_ACCESS_HAS_SET_SIZE,
             KUI_ACCESS_LIVE_POLITE,
             KUI_ACCESS_LIVE_ASSERTIVE,
+            KUI_ACCESS_MIXED,
         ]
     );
 
@@ -692,6 +699,10 @@ fn asserts() -> (String, Vec<&'static str>) {
         on_drop: *const KuiValue => "const KuiValue *",
         drop_bg: u32 => "uint32_t",
         float_clip: u32 => "uint32_t",
+        aspect_ratio: f32 => "float",
+        mixed: u32 => "uint32_t",
+        value_step: f32 => "float",
+        on_change: *const KuiValue => "const KuiValue *",
     });
 
     abi_struct!(o, KuiAccessNode {
@@ -907,6 +918,22 @@ fn asserts() -> (String, Vec<&'static str>) {
         anchor_h: f32 => "float",
     });
 
+    abi_struct!(o, KuiFileFilter {
+        name: KuiStr => "KuiStr",
+        extensions: *const KuiStr => "const KuiStr *",
+        extension_count: usize => "size_t",
+    });
+
+    abi_struct!(o, KuiFileDialog {
+        mode: u32 => "uint32_t",
+        multiple: u32 => "uint32_t",
+        title: KuiStr => "KuiStr",
+        filters: *const KuiFileFilter => "const KuiFileFilter *",
+        filter_count: usize => "size_t",
+        directory: KuiStr => "KuiStr",
+        file_name: KuiStr => "KuiStr",
+    });
+
     abi_struct!(o, KuiRunConfig {
         width: f32 => "float",
         height: f32 => "float",
@@ -917,6 +944,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         chrome: u32 => "uint32_t",
         text_aa: u32 => "uint32_t",
         diagnostics: u32 => "uint32_t",
+        frame_latency: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiWindowCommand {
@@ -1126,6 +1154,7 @@ fn every_entry_point_is_pinned() {
         include_str!("lib.rs"),
         include_str!("abi.rs"),
         include_str!("access.rs"),
+        include_str!("dialogs.rs"),
         include_str!("focus.rs"),
         include_str!("frame.rs"),
         include_str!("input.rs"),
@@ -1331,7 +1360,9 @@ fn an_in_struct_s_size_is_the_abi_s() {
     use std::collections::BTreeMap;
     // (name, size in bytes, the ABI the size is from)
     const IN_LAYOUTS: &[(&str, usize, u32)] = &[
-        ("KuiSpec", 576, 18),
+        // ABI 19: `float_clip`, `aspect_ratio`, `mixed`, `value_step` and
+        // `on_change` appended.
+        ("KuiSpec", 600, 19),
         ("KuiSizing", 8, 16),
         ("KuiKeyframe", 36, 16),
         ("KuiEnter", 40, 16),
@@ -1343,7 +1374,10 @@ fn an_in_struct_s_size_is_the_abi_s() {
         ("KuiPlay", 12, 16),
         ("KuiAudio", 24, 16),
         ("KuiWindowConfig", 32, 16),
-        ("KuiRunConfig", 36, 16),
+        ("KuiRunConfig", 40, 19),
+        // ABI 19: the file dialogs (backlog C51).
+        ("KuiFileFilter", 32, 19),
+        ("KuiFileDialog", 72, 19),
         ("KuiColorToken", 24, 16),
         ("KuiLengthToken", 24, 16),
         ("KuiColorOp", 24, 16),

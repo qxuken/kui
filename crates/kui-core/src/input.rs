@@ -130,6 +130,11 @@ pub enum InputEvent {
     /// The dragged files left the window, or the OS ended the drag
     /// elsewhere: the lit zone hears its `leave`.
     DragCancel,
+    /// A file dialog's answer (backlog C51): the paths the user picked,
+    /// none for a dialog cancelled. Whoever asked with
+    /// `Core::request_files` hears `{kind:"files", paths, tag}`; with no
+    /// ask outstanding it is dropped.
+    Files(Vec<String>),
 }
 
 /// What the pasteboard said about the text a paste brought back (backlog
@@ -1011,6 +1016,11 @@ pub struct HitRegion {
     /// Pointer shape declared by the node (`NodeSpec::cursor`). None = the
     /// I-beam over text, the arrow otherwise (`Interaction::implied_shape`).
     pub cursor: Option<CursorShape>,
+    /// A slider's track when the node declared `on_change` (ADR 0034,
+    /// decision 4): a press here proposes the value under the pointer and
+    /// captures the pointer until release, each new value a `change`
+    /// event. Boxed: nearly every region has none.
+    pub slider: Option<Box<crate::slider::SliderTrack>>,
 }
 
 /// An OS file drag over a zone (ADR 0031): what `dropBg` reads and what
@@ -1259,6 +1269,10 @@ pub struct Interaction {
     pub(crate) sound_requests: Vec<crate::resources::SoundId>,
     /// Pointer-captured drag on an `on_drag` node.
     drag: Option<DragState>,
+    /// Pointer-captured slide on a slider that declared `on_change`: the
+    /// node, its track, and the last value proposed, so a move that lands
+    /// on the same step proposes nothing.
+    slide: Option<(Key, OriginId, Box<crate::slider::SliderTrack>, f64)>,
     /// The last primary press's driver-measured click count (1 for a
     /// single, 2 for a double, …): what the `clicks` a press or drag
     /// inside a key sink carries reads (backlog C34).
@@ -1523,6 +1537,16 @@ impl Interaction {
             InputEvent::CursorMoved(p) => {
                 self.cursor = Some(p);
                 self.refresh_hover(out);
+                if let Some((key, origin, track, last)) = &mut self.slide {
+                    let v = track.value_at(p);
+                    if v != *last {
+                        *last = v;
+                        out.push(crate::slider::change_event(
+                            *origin, *key, v, "move", &track.tag,
+                        ));
+                        pointer_made += 1;
+                    }
+                }
                 if let Some(drag) = &mut self.drag
                     && p != drag.last
                 {
@@ -1564,6 +1588,14 @@ impl Interaction {
                         self.pressed = None;
                         self.window_commands
                             .push(WindowCommand::StartDrag(self.window));
+                    } else if let Some(track) = &h.slider {
+                        let p = self.cursor.unwrap();
+                        let v = track.value_at(p);
+                        out.push(crate::slider::change_event(
+                            h.origin, h.key, v, "move", &track.tag,
+                        ));
+                        pointer_made += 1;
+                        self.slide = Some((h.key, h.origin, track.clone(), v));
                     } else if let Some(tag) = &h.drag {
                         let p = self.cursor.unwrap();
                         let state = DragState {
@@ -1610,6 +1642,8 @@ impl Interaction {
             InputEvent::DragFiles { paths, at } => self.drag_files(&paths, at, out),
             InputEvent::DropFiles { paths, at } => self.drop_files(&paths, at, out),
             InputEvent::DragCancel => self.drag_cancel(out),
+            // The core's, answered before the pointer is asked.
+            InputEvent::Files(_) => {}
             InputEvent::MouseUp { button } if button != MouseButton::Primary => {}
             InputEvent::MouseUp { .. } => {
                 let dragged = self.drag.take().inspect(|drag| {
@@ -1617,8 +1651,18 @@ impl Interaction {
                     out.push(Self::drag_event(drag, "end", p, drag.displacement(p)));
                     pointer_made += 1;
                 });
-                // A press that actually dragged is not a click.
-                let click_ok = !dragged.is_some_and(|d| d.moved);
+                // A slide ends where the pointer let go: the value to
+                // commit, proposed again whether or not it moved.
+                let slid = self.slide.take().inspect(|(key, origin, track, last)| {
+                    let v = self.cursor.map_or(*last, |p| track.value_at(p));
+                    out.push(crate::slider::change_event(
+                        *origin, *key, v, "end", &track.tag,
+                    ));
+                    pointer_made += 1;
+                });
+                // A press that actually dragged is not a click, and a
+                // press on a slider's track is the slide, never a click.
+                let click_ok = !dragged.is_some_and(|d| d.moved) && slid.is_none();
                 if click_ok
                     && let (Some(pressed), Some(hovered)) = (self.pressed, self.hovered)
                     && pressed == hovered
@@ -1875,6 +1919,7 @@ mod tests {
             click_sound: None,
             hover_sound: None,
             cursor: None,
+            slider: None,
         }
     }
 

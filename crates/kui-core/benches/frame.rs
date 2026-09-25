@@ -773,7 +773,7 @@ fn frame_1k_grow_rows_capped(bencher: divan::Bencher) {
 // The case C5 is about: a log viewer or data table whose content is far
 // taller than its window. `list_naive` is what a view costs today — every row
 // built and laid out, whether or not it can be seen. `list_virtual` is the
-// same list through `widgets::virtual_column`, which builds the visible rows
+// same list through `widgets::uniform_list`, which builds the visible rows
 // and two spacers. Both scroll to the middle first, so neither is measuring
 // the easy case where the top of the list happens to be on screen.
 
@@ -826,7 +826,7 @@ fn list_naive(core: &mut Core, rows: usize) -> usize {
 fn list_virtual(core: &mut Core, rows: usize) -> usize {
     let mut ui = core.frame(Size::new(1200.0, 800.0), 2.0);
     ui.configure_root(NodeSpec::column().fill());
-    widgets::virtual_column(
+    widgets::uniform_list(
         &mut ui,
         "list",
         NodeSpec::column().fill(),
@@ -877,7 +877,7 @@ fn list_100k_rows_virtual(bencher: divan::Bencher) {
     bencher.bench_local(|| list_virtual(&mut core, 100_000));
 }
 
-// The same list with no stride: `widgets::virtual_rows`, whose spacers and
+// The same list with no stride: `widgets::list`, whose spacers and
 // search come from prefix sums over a height cache instead of `i * row_h`.
 // Three questions, in this order: what does it cost when nothing has changed
 // (the frame that only scrolls), what does it cost on the frame that learns a
@@ -888,7 +888,7 @@ fn list_100k_rows_virtual(bencher: divan::Bencher) {
 fn list_variable(core: &mut Core, heights: &mut widgets::RowHeights, vary: bool) -> usize {
     let mut ui = core.frame(Size::new(1200.0, 800.0), 2.0);
     ui.configure_root(NodeSpec::column().fill());
-    widgets::virtual_rows(
+    widgets::list(
         &mut ui,
         "list",
         NodeSpec::column().fill(),
@@ -961,7 +961,7 @@ fn list_10k_rows_variable_learning_far(bencher: divan::Bencher) {
     });
 }
 
-/// The comparison that decides whether `virtual_column` is still a widget of
+/// The comparison that decides whether `uniform_list` is still a widget of
 /// its own: the variable one told, row by row, that every row is the same
 /// height. Against `list_10k_rows_virtual`, this is what the stride buys.
 #[divan::bench]

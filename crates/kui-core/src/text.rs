@@ -3522,6 +3522,29 @@ impl TextSystem {
     }
 }
 
+impl TextSystem {
+    /// The first line's baseline of text `id` as `wrapped` last laid it
+    /// out, logical px below its top (backlog C13's `crossAlign:
+    /// baseline`). A run's `line_y`, rounded as the glyphs are drawn at
+    /// it; a long line holds one style, and its baseline is the row's
+    /// height less the descender the metrics put under it, as
+    /// `scope_selection_anchor` reads it. An empty text is one line of
+    /// its own metrics.
+    pub(crate) fn baseline(&mut self, id: TextId) -> f32 {
+        let scale = self.scale;
+        if let Some(line) = self.long_of(id) {
+            return line.line_h * 0.8 / scale;
+        }
+        let e = self.entry_mut(id);
+        let b = e
+            .buffer
+            .layout_runs()
+            .next()
+            .map_or(e.buffer.metrics().line_height * 0.8, |r| r.line_y.round());
+        b / scale
+    }
+}
+
 /// The generic families resolve to a face that is what its name says
 /// (backlog C32): upright, and monospaced for `Mono`.
 #[cfg(test)]

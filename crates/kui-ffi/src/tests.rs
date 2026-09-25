@@ -2789,6 +2789,7 @@ mod run_config_headless {
             chrome: KUI_CHROME_CUSTOM,
             text_aa: KUI_TEXT_AA_GRAYSCALE,
             diagnostics: KUI_DIAG_OFF,
+            frame_latency: 1,
         };
         assert_eq!(
             run_options_of(Some(&full)).unwrap(),
@@ -2801,6 +2802,7 @@ mod run_config_headless {
                 chrome: KUI_CHROME_CUSTOM,
                 text_aa: KUI_TEXT_AA_GRAYSCALE,
                 diagnostics: Some(false),
+                frame_latency: Some(1),
             }
         );
         assert_eq!(

@@ -168,8 +168,24 @@ pub const P_ON_DROP: u32 = 103;
 pub const P_DROP_BG: u32 = 104;
 pub const P_CARET_SOLID: u32 = 105;
 pub const P_SECURE_INPUT: u32 = 106;
+pub const P_ASPECT_RATIO: u32 = 107;
+pub const P_MIXED: u32 = 108;
+pub const P_VALUE_STEP: u32 = 109;
+pub const P_ON_CHANGE: u32 = 110;
 
-pub const ALIGNS: &[&str] = &["start", "center", "end"];
+/// The `mainAlign` / `crossAlign` rows and a float's attach points, in
+/// `Align`'s order. Append-only: the Lua and Node wires carry the index,
+/// and C's `KUI_ALIGN_*` is it. The spreads mean something on `mainAlign`
+/// and `baseline` on a row's `crossAlign` only (backlog C13).
+pub const ALIGNS: &[&str] = &[
+    "start",
+    "center",
+    "end",
+    "spaceBetween",
+    "spaceAround",
+    "spaceEvenly",
+    "baseline",
+];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
 /// The `scrollbar` row, in `ScrollbarMode::ALL`'s order: the stock
 /// overlay bar, none, or one that fades out when the scroll state has not
@@ -453,6 +469,10 @@ pub fn align_idx(i: usize) -> Align {
     match i {
         1 => Align::Center,
         2 => Align::End,
+        3 => Align::SpaceBetween,
+        4 => Align::SpaceAround,
+        5 => Align::SpaceEvenly,
+        6 => Align::Baseline,
         _ => Align::Start,
     }
 }
@@ -552,14 +572,21 @@ pub const PROPS: &[PropDef] = &[
         id: P_MAIN_ALIGN,
         kind: Kind::Enum(ALIGNS),
         apply: Apply::SpecEnum(|s, i| s.main_align(align_idx(i))),
-        doc: "Child alignment along the main axis.",
+        doc: "Child alignment along the main axis. `start`, `center` and `end` put the children together; `spaceBetween` deals the free space out between them (none at the ends), `spaceAround` gives each child an equal share split to its two sides, and `spaceEvenly` makes every gap and both ends equal — CSS's `justify-content`. The spread is added to `gap`, and there is none when nothing is free: a `grow` child takes it all, and an overflowing run keeps its gaps. `baseline` means nothing here and lays out as `start`, with a warning.",
     },
     PropDef {
         name: "crossAlign",
         id: P_CROSS_ALIGN,
         kind: Kind::Enum(ALIGNS),
         apply: Apply::SpecEnum(|s, i| s.cross_align(align_idx(i))),
-        doc: "Child alignment across the main axis.",
+        doc: "Child alignment across the main axis. On a row, `baseline` lines up the first baselines of the children's text, so a label and a larger value read as one line; a child with no text aligns by its bottom edge, a `grow` or percent height fills the line from its top, and a fit-height row grows to hold the aligned children. A column lays `baseline` out as `start` (as CSS does), and the three spreads mean nothing across an axis — each with a warning.",
+    },
+    PropDef {
+        name: "aspectRatio",
+        id: P_ASPECT_RATIO,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.aspect_ratio(v)),
+        doc: "Width over height — `16/9`, `1` for a square — CSS's `aspect-ratio`. It sizes the axis left `fit`: a fit height is the final width over the ratio (so `width: grow` and a ratio is a box that keeps its shape as the window resizes), and a fit width under a fixed height is that height times it. With both axes declared, or a fit width under a `grow` or percent height, it has nothing it can set and warns. The derived axis is neither shrunk nor fitted to the children, which overflow it; `minHeight: 'fit'` floors it at them. On an image it wins over the pixels' own aspect.",
     },
     PropDef {
         name: "bg",
@@ -1062,6 +1089,13 @@ pub const PROPS: &[PropDef] = &[
         doc: "The on state of a `checkbox` / `radio` / `switch` role.",
     },
     PropDef {
+        name: "mixed",
+        id: P_MIXED,
+        kind: Kind::Flag,
+        apply: Apply::SpecFlag(|s| s.mixed(true)),
+        doc: "A `checkbox` that is neither on nor off — the select-all box over a list some of whose rows are selected (ADR 0034). Read as mixed by assistive technology whatever `checked` says, and drawn as a dash by the stock `<checkbox>`. Meaningful on the checkbox role alone.",
+    },
+    PropDef {
         name: "selected",
         id: P_SELECTED,
         kind: Kind::Flag,
@@ -1109,6 +1143,20 @@ pub const PROPS: &[PropDef] = &[
         kind: Kind::Str,
         apply: Apply::SpecStr(|s, v| s.value_text(v)),
         doc: "What a `slider` role's position reads as (ARIA's `aria-valuetext`). Without one a reader has only `valueNow` and the range and says a percentage — 25 in [5..60] is \"36 percent\" — so a value whose unit carries the meaning says it here: \"25 minutes\". It replaces the number in the reading rather than joining it, and a nudge announces the new text. Meaningful on the slider role alone, like the three numbers; putting the reading in `label` instead renames the control on every nudge, which is the wrong attribute.",
+    },
+    PropDef {
+        name: "valueStep",
+        id: P_VALUE_STEP,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.value_step(v)),
+        doc: "How far one arrow key moves a `slider` role, and the grid a value the pointer sets snaps to (ADR 0034). Unset, a hundredth of the range. PageUp / PageDown move ten steps. Read by the core only where the slider declares `onChange`; reported to assistive technology either way.",
+    },
+    PropDef {
+        name: "onChange",
+        id: P_ON_CHANGE,
+        kind: Kind::Tag,
+        apply: Apply::SpecMsg(|s, v| s.on_change(v)),
+        doc: "A `slider` role's changes (ADR 0034): the core turns a press on the node into the value under the pointer, a drag into the value under it, the arrows and assistive technology's increment / decrement into one `valueStep`, PageUp / PageDown into ten, Home / End into the range's ends — clamped to `valueMin`..`valueMax` (0..100 unset) and snapped to the step — and emits `{kind:\"change\", value, phase, tag}`: `phase` is `\"move\"` while the pointer holds the slider and `\"end\"` when it lets go or a key moved it. The value is proposed and never applied; the slider moves when the view declares it as `valueNow`. A key that lands where the slider already is proposes nothing. The pointer reads the node's content box along its main axis, so a `dir=\"column\"` slider runs bottom to top. Without it a slider's arrows reach the app as `{kind:\"access\", action}`. Ignored on any other role.",
     },
     PropDef {
         name: "caret",
@@ -1256,7 +1304,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`rowCount`",
         lua: "`row_count`",
         c: "`kui_row_count`",
-        doc: "How many `index`ed rows this node's virtual list has, built or not. `virtualColumn` / `virtual_column` / `widgets::virtual_column` and `virtual_rows` declare it on their container; a list composed by hand says it beside `scrollY`. What it buys: Select All (Cmd/Ctrl-A, the menu's row) inside a `selectable` virtual list selects the *data*, rows `0..rowCount`, rather than the rows the frame built, and the copy is a `selectionrange` ask whose `to.byte` is past the last row's length when that row is not built — cut it to the row. Without it Select All is the built rows, which is all the core can see.",
+        doc: "How many `index`ed rows this node's virtual list has, built or not. `uniformList` / `uniform_list` / `widgets::uniform_list` and `widgets::list` declare it on their container; a list composed by hand says it beside `scrollY`. What it buys: Select All (Cmd/Ctrl-A, the menu's row) inside a `selectable` virtual list selects the *data*, rows `0..rowCount`, rather than the rows the frame built, and the copy is a `selectionrange` ask whose `to.byte` is past the last row's length when that row is not built — cut it to the row. Without it Select All is the built rows, which is all the core can see.",
     },
     CustomProp {
         name: "title",
@@ -1522,6 +1570,66 @@ pub const BUTTON_ROWS_LUA: &[&str] = &[
     "accent",
 ];
 
+/// The rows a stock toggle — `checkbox`, `radio`, `switch` — reads
+/// (`widgets::toggle_with`, ADR 0034): the button's access rows, its state
+/// and no layout or paint row, since its look is its spec. `mixed` means
+/// something on a checkbox alone.
+pub const TOGGLE_ROWS_JSX: &[&str] = &[
+    "onClick",
+    "key",
+    "label",
+    "description",
+    "tooltip",
+    "disabled",
+    "checked",
+    "mixed",
+];
+pub const TOGGLE_ROWS_LUA: &[&str] = &[
+    "on_click",
+    "key",
+    "label",
+    "description",
+    "tooltip",
+    "disabled",
+    "checked",
+    "mixed",
+];
+/// The rows the stock slider reads (`widgets::slider_with`, ADR 0034): the
+/// value rows, its change tag, the access rows, and its width — the one
+/// piece of its look an app sizes.
+pub const SLIDER_ROWS_JSX: &[&str] = &[
+    "key",
+    "label",
+    "description",
+    "tooltip",
+    "disabled",
+    "valueNow",
+    "valueMin",
+    "valueMax",
+    "valueStep",
+    "valueText",
+    "onChange",
+    "width",
+    "minWidth",
+    "maxWidth",
+];
+pub const SLIDER_ROWS_LUA: &[&str] = &[
+    "key",
+    "label",
+    "description",
+    "tooltip",
+    "disabled",
+    "value_now",
+    "value_min",
+    "value_max",
+    "value_step",
+    "value_text",
+    "on_change",
+    "width",
+    "min_width",
+    "max_width",
+];
+
 pub const ELEMENTS: &[ElementDef] = &[
     ElementDef {
         name: "box",
@@ -1590,6 +1698,61 @@ pub const ELEMENTS: &[ElementDef] = &[
         lua: "`dropdown { label=, options={…}, current= }`",
         c: "`kui_select`",
         doc: "The stock select (`widgets::select_items`, backlog F72): a field showing the choice in force that, clicked, opens the core's own menu of the options under it with the current one checked — the menu a right-click opens, drawn in the frame or the platform's where the host shows menus itself, dismissed by Escape or a press outside, its rows walked by the arrows and read as a menu. `label` is the key and the accessible name both; `options` is a list whose entries are strings (an option by its label, posting it) or menu-item objects `{ label, id, enabled }` (posting `id`), and a `{ role: \"separator\" }` is a separator; `current` is the index in force, counted from 0 in JSX and C and from 1 in Lua, or none — one past the options or on a separator is none, with a `select-current-ignored` warning on the field; an empty `options` is refused, and a key of an option object no row reads (`disabled`, where the key is `enabled`) is an `unknown-prop` warning. The app holds no open state: the choice arrives as the `menu` event a menu row posts, on the field's key — `{kind: \"menu\", role: \"custom\", item: <the option>}` — and drawing the field again with the new `current` is the whole loop. A reader hears a button named by the field, described by its choice, expanded while the menu is open. Its look is its spec, so it reads no other row: a layout, paint or access row on it is dropped with an `unknown-prop` warning. Lua spells it `dropdown`, since `select` is Lua's own.",
+    },
+    ElementDef {
+        name: "checkbox",
+        jsx_own: &[],
+        lua_own: &["text"],
+        jsx_rows: Some(TOGGLE_ROWS_JSX),
+        lua_rows: Some(TOGGLE_ROWS_LUA),
+        jsx: "`<checkbox checked mixed onClick key label description tooltip disabled>text</checkbox>`",
+        lua: "`checkbox { label=, checked=, mixed=, on_click=, key=, text=, description=, tooltip=, disabled= }`",
+        c: "`kui_checkbox`",
+        doc: "The stock checkbox (`widgets::toggle_with`, ADR 0034): a box drawn from the state the view declares — `checked`, or `mixed` for the select-all box over a list some of whose rows are selected, drawn as a dash and read as mixed — and its label beside it, keyed by its text (`key` overrides). The state is the app's: a press by the pointer, Space, Enter or assistive technology posts `onClick`, and the view flips its model and draws it again. Its look is its spec, so the layout and paint rows are closed and dropped with an `unknown-prop` warning; the rows it reads are its state and the access rows. In Lua `label` is the name and the text both unless `text` says otherwise. The box is the metrics' control text plus one (16 px comfortable), so `compact` and `scaled` move it with the stock button.",
+    },
+    ElementDef {
+        name: "radio",
+        jsx_own: &[],
+        lua_own: &["text"],
+        jsx_rows: Some(TOGGLE_ROWS_JSX),
+        lua_rows: Some(TOGGLE_ROWS_LUA),
+        jsx: "`<radio checked onClick key label description tooltip disabled>text</radio>`",
+        lua: "`radio { label=, checked=, on_click=, key=, text=, description=, tooltip=, disabled= }`",
+        c: "`kui_radio`",
+        doc: "The stock radio (`widgets::toggle_with`, ADR 0034): a circle drawn from `checked`, and its label, keyed by its text. Put radios in a `radioGroup`, which makes them one Tab stop whose arrows, Home and End move the choice and press the radio they land on (ADR 0007), so radios whose `onClick` each set the choice answer the keyboard with no more code. The state is the app's, as a checkbox's is; the rows are the checkbox's, `mixed` aside.",
+    },
+    ElementDef {
+        name: "radioGroup",
+        jsx_own: &[],
+        lua_own: &[],
+        jsx_rows: None,
+        lua_rows: None,
+        jsx: "`<radioGroup label>…radios…</radioGroup>`",
+        lua: "`radio_group { label=, … }`",
+        c: "`kui_radio_group_open` … `kui_close`",
+        doc: "A container of radios (`widgets::radio_group_with`, ADR 0034): the `radioGroup` role, named by its `label`, laid out as a column with the stock gap — a `dir=\"row\"` lays the radios across, and its arrows run across with it. It reads every box row; the role and the name are its own whatever the rows say.",
+    },
+    ElementDef {
+        name: "switch",
+        jsx_own: &[],
+        lua_own: &["text"],
+        jsx_rows: Some(TOGGLE_ROWS_JSX),
+        lua_rows: Some(TOGGLE_ROWS_LUA),
+        jsx: "`<switch checked onClick key label description tooltip disabled>text</switch>`",
+        lua: "`switch { label=, checked=, on_click=, key=, text=, description=, tooltip=, disabled= }`",
+        c: "`kui_switch`",
+        doc: "The stock switch (`widgets::toggle_with`, ADR 0034): a track and a knob drawn from `checked`, the knob sliding across when it changes, and its label; read as a switch, on or off. The state is the app's, as a checkbox's is; the rows are the checkbox's, `mixed` aside.",
+    },
+    ElementDef {
+        name: "slider",
+        jsx_own: &[],
+        lua_own: &[],
+        jsx_rows: Some(SLIDER_ROWS_JSX),
+        lua_rows: Some(SLIDER_ROWS_LUA),
+        jsx: "`<slider label valueNow valueMin valueMax valueStep valueText onChange width description tooltip disabled/>`",
+        lua: "`slider { label=, value_now=, value_min=, value_max=, value_step=, value_text=, on_change=, width=, … }`",
+        c: "`kui_slider`",
+        doc: "The stock slider (`widgets::slider_with`, ADR 0034): a track, a fill to `valueNow` and a thumb, as wide as a menu (`width` sizes it), keyed by its `label`, which is also its accessible name. With `onChange` the core does the arithmetic: a press proposes the value under the pointer, a drag each new step, the arrows one `valueStep`, PageUp / PageDown ten, Home / End the ends, all clamped to `valueMin`..`valueMax` (0..100 unset) and snapped to the step, as `{kind:\"change\", value, phase:\"move\"|\"end\", tag}`. The value is proposed, never applied: the view stores it and declares it as `valueNow`. Its look is its spec, so the rows it reads are the value rows, the access rows and its width.",
     },
     ElementDef {
         name: "image",
@@ -1805,6 +1968,11 @@ pub const EVENTS: &[EventDef] = &[
         doc: "Files dragged in from the OS over an `onDrop` node (`docs/adr/0031-a-drop-zone-is-a-row-and-the-files-are-an-event.md`): `enter` when they come over the zone, `move` while they move over it (never twice for one point), `leave` when they go to another zone, to no zone or out of the window, `drop` when they land — and no `leave` after a `drop`. `paths` are the OS paths as strings; `x`/`y` the pointer in logical viewport coordinates, absent on `leave`. The zone is the topmost one under the pointer by paint order; a node inside it is its, and a node that is no zone is looked past (an overlay shown on `enter` does not end the hover). Nothing is re-resolved when a frame lands: only the driver's next report moves the files, so a zone the view stops declaring hears its `leave` then.",
     },
     EventDef {
+        kind: "files",
+        payload: "`{ kind: \"files\", paths: string[], tag }`",
+        doc: "A file dialog's answer (backlog C51): what an Open, Save or folder dialog asked for with `requestFiles` / `request_files` / `kui_request_files` picked — the OS paths, as a `drop` carries them — or no paths when the user cancelled. `tag` is the dialog's own. It reaches whoever asked: the host, or the extension whose fill asked; one dialog is out at a time.",
+    },
+    EventDef {
         kind: "layout",
         payload: "`{ kind: \"layout\", x, y, w, h, parent: { x, y, w, h }, scale, tag }`",
         doc: "The rect layout gave an `onLayout` node (logical px, viewport coords, after scrolling and easing): on its first frame and whenever it changes, never on a frame that left it alone. `scale` is physical px per logical px at the node — `w × scale` by `h × scale` is how many pixels to render for it before `updateImage` (the frame's scale today; where a zoom would compose in).",
@@ -1852,7 +2020,12 @@ pub const EVENTS: &[EventDef] = &[
     EventDef {
         kind: "access",
         payload: "`{ kind: \"access\", action, tag, text?, anchor?: { line, offset }, focus?: { line, offset } }`",
-        doc: "Assistive technology — or the keyboard — asked for what only the app can do: `increment` / `decrement` on a `slider` role (a reader's nudge, or the arrow keys on the focused slider); `setValue` / `replaceSelectedText` (with `text`) / `setTextSelection` (with `anchor` and `focus` as line ordinals and byte offsets) on a custom editor. `tag` is the node's `onClick` payload (or its `onDrag` / `onKey` tag). Every other request resolves in the core and arrives as the events a pointer would have produced.",
+        doc: "Assistive technology — or the keyboard — asked for what only the app can do: `increment` / `decrement` on a `slider` role that declared no `onChange` (a reader's nudge, or the arrow keys on the focused slider); `setValue` / `replaceSelectedText` (with `text`) / `setTextSelection` (with `anchor` and `focus` as line ordinals and byte offsets) on a custom editor. `tag` is the node's `onClick` payload (or its `onDrag` / `onKey` tag). Every other request resolves in the core and arrives as the events a pointer would have produced.",
+    },
+    EventDef {
+        kind: "change",
+        payload: "`{ kind: \"change\", value, phase: \"move\" | \"end\", tag }`",
+        doc: "A `slider` that declared `onChange` (the stock `<slider>`, ADR 0034): the core turned a press into the value under the pointer, a drag into each new step, an arrow or assistive technology's increment / decrement into one `valueStep`, PageUp / PageDown into ten, Home / End into the ends — clamped to `valueMin`..`valueMax` and snapped to the step, the decimal the step names. `phase` is `move` while the pointer holds the slider and `end` when it lets go or a key moved it; a key that lands where the slider is proposes nothing. The value is proposed: declare it as `valueNow`. `tag` is the `onChange` payload.",
     },
 ];
 

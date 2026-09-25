@@ -6,7 +6,7 @@
 //! `{kind="key"}` events, so the same chord dispatch would work verbatim
 //! from Lua or C.
 //!
-//! Run: cargo run -p kui --example splitmux
+//! Run: cargo run -p kui-native --example splitmux
 //!
 //! Keys — Alt is ⌥ Option on macOS: Alt-v/s split · Alt-o hop panes ·
 //! Alt-w close · Alt-t new tab · Alt-1..9 jump to tab. Click a pane to
@@ -33,12 +33,12 @@
 //! on that side, on the center swaps the two panes. A ghost label follows
 //! the cursor as a viewport-anchored float.
 
-use kui::widgets;
-use kui::{
-    Align, App, Color, Core, Easing, FloatConfig, KeyMods, NodeSpec, Sizing, TextStyle, Theme, Ui,
-    UiEvent, Value, WindowCommand,
-};
 use kui_devtools::Example;
+use kui_native::widgets;
+use kui_native::{
+    Align, App, Color, Core, Easing, FloatConfig, KeyMods, Message, NodeSpec, Sizing, TextStyle,
+    Theme, Ui, UiEvent, Value, WindowCommand,
+};
 
 const TABBAR_H: f32 = 30.0;
 /// How long a split takes to ease into a new ratio.
@@ -91,7 +91,29 @@ impl From<Theme> for Pal {
 
 // ---------------------------------------------------------------- model
 
-#[derive(Clone, Copy, PartialEq)]
+/// What the view hangs on its nodes and `on_event` reads back (backlog
+/// C50): a click hands one over as its payload, a drag inside the core's
+/// `drag` event as its `tag`, and `ev.message::<Msg>()` reads either. The
+/// payloads are the same plain data as before — `{kind: "focus", pane}` —
+/// written and read by `#[derive(Message)]` instead of by string.
+#[derive(Message, Clone, Debug, PartialEq)]
+enum Msg {
+    /// A pane clicked into focus.
+    Focus { pane: u64 },
+    /// A tab chosen.
+    Tab { tab: usize },
+    /// The `+` after the tabs.
+    TabNew,
+    /// A tab dragged along the strip to reorder it.
+    TabDrag { tab: usize },
+    /// The divider of the split at `path` dragged.
+    Split { path: String, dir: SplitDir },
+    /// A pane ⌘-dragged from one of its zones.
+    PaneDrag { pane: u64, zone: Zone },
+}
+
+#[derive(Message, Clone, Copy, PartialEq, Debug)]
+#[message(string)]
 enum SplitDir {
     /// Side by side.
     H,
@@ -256,7 +278,8 @@ enum Fresh {
 
 /// Where a dragged pane lands on its target: an edge splits the target on
 /// that side, the center swaps the two.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Message, Clone, Copy, PartialEq, Eq, Debug)]
+#[message(string)]
 enum Zone {
     Left,
     Right,
@@ -561,14 +584,8 @@ impl Splitmux {
                         .transition(220.0)
                         .easing(Easing::Spring)
                         .slide()
-                        .on_click(Value::map([
-                            ("kind", "tab".into()),
-                            ("tab", Value::Int(i as i64)),
-                        ]))
-                        .on_drag(Value::map([
-                            ("kind", "tabdrag".into()),
-                            ("tab", Value::Int(i as i64)),
-                        ]));
+                        .on_click(Msg::Tab { tab: i })
+                        .on_drag(Msg::TabDrag { tab: i });
                     if lifted {
                         spec = spec.border(1.0, pal.border_focus);
                     }
@@ -598,7 +615,7 @@ impl Splitmux {
                     NodeSpec::row()
                         .pad_xy(8.0, 4.0)
                         .radius(6.0)
-                        .on_click(Value::map([("kind", "tabnew".into())])),
+                        .on_click(Msg::TabNew),
                     |ui| ui.text("+", TextStyle::new(12.0).color(pal.faint)),
                 );
                 ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
@@ -681,17 +698,10 @@ impl Splitmux {
                     ui.with_keyed(
                         "divider",
                         bar.bg(if active { pal.border_focus } else { pal.bg2 })
-                            .on_drag(Value::map([
-                                ("kind", "split".into()),
-                                ("path", Value::str(path)),
-                                (
-                                    "dir",
-                                    Value::str(match dir {
-                                        SplitDir::H => "h",
-                                        SplitDir::V => "v",
-                                    }),
-                                ),
-                            ])),
+                            .on_drag(Msg::Split {
+                                path: path.to_string(),
+                                dir: *dir,
+                            }),
                         |_| {},
                     );
                     ui.with_keyed("b", grow(wb), |ui| {
@@ -723,10 +733,7 @@ impl Splitmux {
                 .bg(pal.panel)
                 .border(1.0, border)
                 .clip()
-                .on_click(Value::map([
-                    ("kind", "focus".into()),
-                    ("pane", Value::Int(id as i64)),
-                ])),
+                .on_click(Msg::Focus { pane: id }),
             |ui| {
                 let color = if focused { pal.accent } else { pal.faint };
                 ui.text(&format!("{id}"), TextStyle::new(48.0).color(color));
@@ -771,11 +778,7 @@ impl Splitmux {
                             .bg(bg)
                             .transition(80.0)
                             .hoverable()
-                            .on_drag(Value::map([
-                                ("kind", "panedrag".into()),
-                                ("pane", Value::Int(id as i64)),
-                                ("zone", Value::str(zone.label())),
-                            ])),
+                            .on_drag(Msg::PaneDrag { pane: id, zone }),
                         |_| {},
                     );
                 }
@@ -911,58 +914,48 @@ impl App for Splitmux {
                     super_key: flag("super"),
                 };
             }
-            Some("focus") => {
-                if let Some(id) = ev.payload.get("pane").and_then(Value::as_int) {
-                    self.focused = id as u64;
-                }
-            }
-            Some("tab") => {
-                if let Some(i) = ev.payload.get("tab").and_then(Value::as_int) {
-                    self.tab = i as usize;
+            Some("drag") => match ev.message::<Msg>() {
+                Some(Msg::TabDrag { tab }) => match ev.payload.get("phase").and_then(Value::as_str)
+                {
+                    Some("start") => self.tab_drag = Some((tab, 0.0, 0.0)),
+                    Some("move") => {
+                        let dx = ev
+                            .payload
+                            .get("dx")
+                            .and_then(Value::as_float)
+                            .unwrap_or(0.0);
+                        // `dx` is measured from the press point, so the
+                        // direction of this move is the change since the
+                        // last one.
+                        if let Some((_, sign, last)) = self.tab_drag.as_mut() {
+                            let step = dx as f32 - *last;
+                            if step != 0.0 {
+                                *sign = step;
+                            }
+                            *last = dx as f32;
+                        }
+                    }
+                    Some("end") => self.tab_drag = None,
+                    _ => {}
+                },
+                Some(Msg::Split { path, dir }) => self.split_drag(&ev, path, dir),
+                Some(Msg::PaneDrag { pane, .. }) => self.pane_drag_event(&ev, pane),
+                _ => {}
+            },
+            // Everything else the app hung on a node arrives as its payload.
+            _ => match ev.message::<Msg>() {
+                Some(Msg::Focus { pane }) => self.focused = pane,
+                Some(Msg::Tab { tab }) => {
+                    self.tab = tab;
                     self.refocus();
                     self.reclaim_keys = true;
                 }
-            }
-            Some("tabnew") => {
-                self.new_tab();
-                self.reclaim_keys = true;
-            }
-            Some("drag") => {
-                let tag = ev.payload.get("tag");
-                match tag.and_then(|t| t.get("kind")).and_then(Value::as_str) {
-                    Some("tabdrag") => match ev.payload.get("phase").and_then(Value::as_str) {
-                        Some("start") => {
-                            if let Some(i) = tag.and_then(|t| t.get("tab")).and_then(Value::as_int)
-                            {
-                                self.tab_drag = Some((i as usize, 0.0, 0.0));
-                            }
-                        }
-                        Some("move") => {
-                            let dx = ev
-                                .payload
-                                .get("dx")
-                                .and_then(Value::as_float)
-                                .unwrap_or(0.0);
-                            // `dx` is measured from the press point, so
-                            // the direction of this move is the change
-                            // since the last one.
-                            if let Some((_, sign, last)) = self.tab_drag.as_mut() {
-                                let step = dx as f32 - *last;
-                                if step != 0.0 {
-                                    *sign = step;
-                                }
-                                *last = dx as f32;
-                            }
-                        }
-                        Some("end") => self.tab_drag = None,
-                        _ => {}
-                    },
-                    Some("split") => self.split_drag(&ev),
-                    Some("panedrag") => self.pane_drag_event(&ev),
-                    _ => {}
+                Some(Msg::TabNew) => {
+                    self.new_tab();
+                    self.reclaim_keys = true;
                 }
-            }
-            _ => {}
+                _ => {}
+            },
         }
     }
 }
@@ -970,14 +963,10 @@ impl App for Splitmux {
 impl Splitmux {
     /// ⌘-drag of a pane: the payload's cursor drives the ghost, the view's
     /// hover bookkeeping names the target, and release performs the move.
-    fn pane_drag_event(&mut self, ev: &UiEvent) {
+    fn pane_drag_event(&mut self, ev: &UiEvent, pane: u64) {
         let num = |k| ev.payload.get(k).and_then(Value::as_float).unwrap_or(0.0) as f32;
-        let tag = ev.payload.get("tag");
-        let Some(pane) = tag.and_then(|t| t.get("pane")).and_then(Value::as_int) else {
-            return;
-        };
         match ev.payload.get("phase").and_then(Value::as_str) {
-            Some("start") => self.pane_drag = Some((pane as u64, num("x"), num("y"))),
+            Some("start") => self.pane_drag = Some((pane, num("x"), num("y"))),
             Some("move") => {
                 if let Some((_, x, y)) = self.pane_drag.as_mut() {
                     *x = num("x");
@@ -997,18 +986,13 @@ impl Splitmux {
 
     /// Divider drags: absolute cursor position over the split's own rect
     /// (carried in the payload) is the new ratio directly.
-    fn split_drag(&mut self, ev: &UiEvent) {
-        let tag = ev.payload.get("tag");
-        let Some(path) = tag.and_then(|t| t.get("path")).and_then(Value::as_str) else {
-            return;
-        };
+    fn split_drag(&mut self, ev: &UiEvent, path: String, dir: SplitDir) {
         match ev.payload.get("phase").and_then(Value::as_str) {
             Some("end") => self.dragging = None,
             Some(_) => {
                 // Absolute cursor position over the split's own rect
                 // (carried in the payload) is the new ratio directly.
-                let horizontal =
-                    tag.and_then(|t| t.get("dir")).and_then(Value::as_str) == Some("h");
+                let horizontal = dir == SplitDir::H;
                 let parent = ev.payload.get("parent");
                 let get = |m: Option<&Value>, k| {
                     m.and_then(|v| v.get(k))
@@ -1022,7 +1006,6 @@ impl Splitmux {
                     let h = get(parent, "h").max(1.0);
                     (get(Some(&ev.payload), "y") - get(parent, "y")) / h
                 };
-                let path = path.to_string();
                 self.dragging = Some(path.clone());
                 if let Some(r) = self.tabs[self.tab].root.ratio_mut(&path) {
                     *r = (ratio as f32).clamp(0.05, 0.95);
@@ -1057,6 +1040,7 @@ impl Example for Splitmux {
     /// jump back — the keys the smoke round once checked by hand.
     fn headless(&mut self, core: &mut Core) -> Result<(), String> {
         use kui_devtools::Drive;
+        use kui_native::{InputEvent, Vec2};
         let alt = KeyMods {
             alt: true,
             ..KeyMods::default()
@@ -1098,6 +1082,59 @@ impl Example for Splitmux {
         d.key(self, "w", alt);
         d.frame(self);
         d.check(panes(self) == 4, "Alt-w closes the focused pane")?;
+        // The typed messages (backlog C50), each through real input: a
+        // click's payload, a drag's tag.
+        d.click(self, 60.0, 400.0);
+        d.frame(self);
+        let left = self.focused;
+        d.click(self, 1040.0, 680.0);
+        d.frame(self);
+        d.check(
+            self.focused != left,
+            "a click on a pane focuses it (Msg::Focus)",
+        )?;
+        let plus = d.key_of("tab+").ok_or("no + tab")?;
+        let r = d.rect_of(plus).ok_or("the + tab was not laid out")?;
+        d.click(self, r.x + r.w / 2.0, r.y + r.h / 2.0);
+        d.frame(self);
+        d.check(
+            self.tabs.len() == 3 && self.tab == 2,
+            "the + tab opens a third tab (Msg::TabNew)",
+        )?;
+        let first = d
+            .key_of(&format!("tab{}", self.tabs[0].id))
+            .ok_or("no first tab")?;
+        let r = d.rect_of(first).ok_or("the first tab was not laid out")?;
+        d.click(self, r.x + r.w / 2.0, r.y + r.h / 2.0);
+        d.frame(self);
+        d.check(self.tab == 0, "a click on a tab selects it (Msg::Tab)")?;
+        let divider = d.key_of("divider").ok_or("no divider")?;
+        let r = d.rect_of(divider).ok_or("the divider was not laid out")?;
+        let (x, y) = (r.x + r.w / 2.0, r.y + r.h / 2.0);
+        let ratios = |app: &Splitmux| {
+            fn walk(n: &Node, out: &mut Vec<f32>) {
+                if let Node::Split { a, b, ratio, .. } = n {
+                    out.push(*ratio);
+                    walk(a, out);
+                    walk(b, out);
+                }
+            }
+            let mut out = Vec::new();
+            walk(&app.tabs[app.tab].root, &mut out);
+            out
+        };
+        let before = ratios(self);
+        let (dx, dy) = if r.w < r.h { (80.0, 0.0) } else { (0.0, 60.0) };
+        d.input(self, InputEvent::CursorMoved(Vec2::new(x, y)));
+        d.input(self, InputEvent::mouse_down(1));
+        d.input(self, InputEvent::CursorMoved(Vec2::new(x + dx, y + dy)));
+        d.input(self, InputEvent::mouse_up());
+        d.frame(self);
+        d.check(
+            ratios(self) != before,
+            "dragging a divider moves its split (Msg::Split, read from the drag's tag)",
+        )?;
+
         // A click on a pane focuses it, and the chords still work after:
         // the trap the unit tests below pin.
         let before = self.focused;

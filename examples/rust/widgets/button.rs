@@ -15,11 +15,11 @@
 //! can end up with a button of its own; the access rows it admits are
 //! `schema::BUTTON_ROWS_JSX`.
 //!
-//! Run: cargo run -p kui --example button [-- --headless]
+//! Run: cargo run -p kui-native --example button [-- --headless]
 
-use kui::widgets;
-use kui::{Align, App, Color, Core, NodeSpec, TextStyle, Ui, UiEvent, Value};
 use kui_devtools::{Drive, Example};
+use kui_native::widgets;
+use kui_native::{Align, App, Color, Core, NodeSpec, TextStyle, Ui, UiEvent, Value};
 
 #[derive(Default)]
 struct Buttons {
@@ -148,7 +148,7 @@ impl Example for Buttons {
         for _ in 0..8 {
             d.input(
                 self,
-                kui::InputEvent::Key(kui::EditKey::Tab, Default::default()),
+                kui_native::InputEvent::Key(kui_native::EditKey::Tab, Default::default()),
             );
             if let Some(k) = d.core.focus() {
                 ring.push(d.core.label_of(k).unwrap_or("?").to_string());

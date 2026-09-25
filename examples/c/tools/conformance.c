@@ -237,6 +237,80 @@ static void conf_wrap(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* conformance::build_align: the three spreads (backlog C13), a baseline row
+ * of a 12 and a 20 px text and a box, and a ratio sizing each axis (C14). */
+static void conf_align_square(KuiCtx *ui) {
+    KuiSpec sq = {.width = {KUI_FIXED, 10}, .height = {KUI_FIXED, 10}, .bg = 0x30344aff};
+    kui_open(ui, &sq, NULL);
+    kui_close(ui);
+}
+
+static void conf_align(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    static const uint32_t spreads[3] = {KUI_SPACE_BETWEEN, KUI_SPACE_AROUND, KUI_SPACE_EVENLY};
+    KuiSpec outer = {
+        .pad_l = 4, .pad_r = 4, .pad_t = 4, .pad_b = 4, .gap = 6,
+        .width = {KUI_FIXED, 128}, .bg = 0x101018ff,
+    };
+    kui_open(ui, &outer, NULL);
+    for (int i = 0; i < 3; i++) {
+        KuiSpec row = {.dir = KUI_ROW, .width = {KUI_FIXED, 120}, .main_align = spreads[i]};
+        kui_open(ui, &row, NULL);
+        for (int k = 0; k < 3; k++) conf_align_square(ui);
+        kui_close(ui);
+    }
+    KuiSpec base = {.dir = KUI_ROW, .gap = 4, .cross_align = KUI_BASELINE};
+    kui_open(ui, &base, NULL);
+    KuiTextStyle s12 = {.size = 12}, s20 = {.size = 20};
+    kui_text(ui, KUI_STR("ab"), &s12);
+    kui_text(ui, KUI_STR("cd"), &s20);
+    conf_align_square(ui);
+    kui_close(ui);
+    KuiSpec wide = {.width = {KUI_GROW, 1}, .aspect_ratio = 4, .bg = 0x3b5bd4ff};
+    kui_open(ui, &wide, NULL);
+    kui_close(ui);
+    KuiSpec tall = {.height = {KUI_FIXED, 12}, .aspect_ratio = 2, .bg = 0x73d98cff};
+    kui_open(ui, &tall, NULL);
+    kui_close(ui);
+    kui_close(ui);
+}
+
+/* conformance::build_stock_controls (docs/adr/0034): every toggle keyed
+ * by its text, as kui_checkbox keys it. */
+static KuiValue *conf_kind(const char *k) {
+    KuiValue *m = kui_value_map();
+    kui_value_map_set(m, KUI_STR("kind"), kui_value_str((KuiStr){(const uint8_t *)k, strlen(k)}));
+    return m;
+}
+
+static void conf_stock_controls(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiSpec outer = {.pad_l = 8, .pad_r = 8, .pad_t = 8, .pad_b = 8, .gap = 8};
+    kui_open(ui, &outer, NULL);
+    KuiValue *vol = conf_kind("vol");
+    KuiSpec slider = {
+        .width = {KUI_FIXED, 216},
+        .value_set = KUI_VALUE_NOW | KUI_VALUE_MIN | KUI_VALUE_MAX | KUI_VALUE_STEP,
+        .value_now = 30, .value_min = 0, .value_max = 100, .value_step = 10,
+        .on_change = vol,
+    };
+    kui_slider(ui, KUI_STR("Volume"), &slider);
+    kui_value_free(vol);
+    kui_checkbox(ui, KUI_STR("Mute"), NULL, conf_kind("mute"));
+    KuiSpec on = {.checked = 1};
+    kui_checkbox(ui, KUI_STR("Sync"), &on, conf_kind("sync"));
+    KuiSpec mixed = {.mixed = 1};
+    kui_checkbox(ui, KUI_STR("All"), &mixed, conf_kind("all"));
+    kui_radio_group_open(ui, KUI_STR("Theme"), NULL);
+    kui_radio(ui, KUI_STR("Light"), NULL, conf_kind("light"));
+    kui_radio(ui, KUI_STR("Dark"), &on, conf_kind("dark"));
+    kui_close(ui);
+    kui_switch(ui, KUI_STR("Wi-Fi"), &on, conf_kind("wifi"));
+    kui_close(ui);
+}
+
 /* conformance::build_table (ADR 0033): a KUI_TABLE column of a fit header
  * row and three grow rows, each a bare text, a fixed box and a grow box,
  * so the label column is its longest label, the fixed column its widest
@@ -1662,6 +1736,8 @@ static const ConfScene CONF_SCENES[] = {
     {"layout", conf_layout},
     {"sizing", conf_sizing},
     {"wrap", conf_wrap},
+    {"align", conf_align},
+    {"stock-controls", conf_stock_controls},
     {"table", conf_table},
     {"tabs", conf_tabs},
     {"overflow", conf_overflow},
@@ -1895,6 +1971,19 @@ static void conf_drain(KuiCtx *ctx, Rep *events) {
          * displacement from the press point in every phase, and the corpus
          * steps are integers, so they print exactly (kui_value_as_int
          * truncates a float the way the reference's cast does). */
+        /* A slider's change carries its phase and the value the core
+         * worked out (docs/adr/0034); the corpus steps land on whole
+         * values, which kui_value_as_int truncates to as the reference's
+         * cast does. */
+        if (kind.len == 6 && memcmp(kind.ptr, "change", 6) == 0) {
+            KuiStr phase = KUI_STR("-");
+            const KuiValue *p = kui_value_get(ev.payload, KUI_STR("phase"));
+            if (p) kui_value_as_str(p, &phase);
+            int64_t v = 0;
+            const KuiValue *vv = kui_value_get(ev.payload, KUI_STR("value"));
+            if (vv) kui_value_as_int(vv, &v);
+            repf(events, " %.*s %lld", (int)phase.len, phase.ptr, (long long)v);
+        }
         if (kind.len == 4 && memcmp(kind.ptr, "drag", 4) == 0) {
             KuiStr phase = KUI_STR("-");
             const KuiValue *p = kui_value_get(ev.payload, KUI_STR("phase"));
@@ -2080,7 +2169,8 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
             off += (size_t)snprintf(actions + off, sizeof actions - off, "%s%s",
                                     off ? "," : "", ACTION_NAMES[bit]);
         }
-        const char *checked = !(a->flags & KUI_ACCESS_CHECKED_SET) ? "-"
+        const char *checked = (a->flags & KUI_ACCESS_MIXED)       ? "m"
+                              : !(a->flags & KUI_ACCESS_CHECKED_SET) ? "-"
                               : (a->flags & KUI_ACCESS_CHECKED)    ? "1"
                                                                    : "0";
         const char *selected = !(a->flags & KUI_ACCESS_SELECTED_SET) ? "-"

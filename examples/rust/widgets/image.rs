@@ -8,12 +8,12 @@
 //! beside `linear`; and `contain` / `cover` against a box of another
 //! aspect.
 //!
-//! Run: cargo run -p kui --example image [-- --headless]
+//! Run: cargo run -p kui-native --example image [-- --headless]
 
-use kui::{
+use kui_devtools::{Drive, Example};
+use kui_native::{
     App, Core, ImageFit, ImageId, ImageOpts, NodeSpec, Sampling, Sizing, TextStyle, Ui, UiEvent,
 };
-use kui_devtools::{Drive, Example};
 
 /// A procedural "photo": vertical sky gradient with a sun disc.
 fn sky(w: u32, h: u32) -> Vec<u8> {
@@ -176,7 +176,7 @@ impl App for Gallery {
                         NodeSpec::column()
                             .width(Sizing::Fixed(240.0))
                             .height(Sizing::Fixed(135.0))
-                            .on_layout(kui::Value::str("stream"))
+                            .on_layout(kui_native::Value::str("stream"))
                             .animate(),
                         |ui| {
                             ui.image_with(
@@ -276,7 +276,7 @@ impl Example for Gallery {
         // Read everything off the frame first; `check` wants the drive.
         let (textures, size, nearest, sky) = {
             let dl = &d.core.output().0;
-            let texture = |q: &&kui::Quad| q.kind == kui::QuadKind::Texture;
+            let texture = |q: &&kui_native::Quad| q.kind == kui_native::QuadKind::Texture;
             (
                 dl.quads.iter().filter(texture).count(),
                 dl.texture_pixels.first().map(|p| (p.width, p.height)),
@@ -287,7 +287,7 @@ impl Example for Gallery {
                     .count(),
                 dl.quads
                     .iter()
-                    .filter(|q| q.kind == kui::QuadKind::Image && q.rect.w >= 100.0)
+                    .filter(|q| q.kind == kui_native::QuadKind::Image && q.rect.w >= 100.0)
                     .copied()
                     .collect::<Vec<_>>(),
             )

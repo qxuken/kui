@@ -232,7 +232,7 @@ can stop declaring the dialog.
   the inert hit list (click, hover, wheel, Enter/Space, an
   assistive-technology `Click`), live window chrome, nesting, both
   dismiss reasons, the access flag and the derived role.
-- The examples gain a modal: `cargo run -p kui --example accessibility`
+- The examples gain a modal: `cargo run -p kui-native --example accessibility`
   has a "Delete…" button that opens a confirm dialog, which is what a
   VoiceOver session and the pre-release macOS audit can be pointed at.
   `scripts/ax-audit.swift` has no modal section: what `set_modal` does to

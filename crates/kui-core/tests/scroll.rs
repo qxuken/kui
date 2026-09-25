@@ -347,14 +347,14 @@ fn scroll_offset_of_a_node_that_never_scrolled_is_zero() {
 // `scroll_offset` says how far a container has scrolled; on its own that is
 // not enough to build only the visible rows, because the view cannot see how
 // tall the container came out. `scroll_geometry` is the rest of it, and
-// `widgets::virtual_column` is the two together.
+// `widgets::uniform_list` is the two together.
 
 /// A tall list built through the widget, in a `VIEW_H`-high window.
 fn virtual_frame(core: &mut Core, rows: usize) -> usize {
     let mut built = 0usize;
     let mut ui = core.frame(Size::new(400.0, VIEW_H), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    kui_core::widgets::virtual_column(
+    kui_core::widgets::uniform_list(
         &mut ui,
         "list",
         NodeSpec::column().fill(),
@@ -444,7 +444,7 @@ fn max_offset_is_zero_on_an_axis_that_does_not_scroll() {
 
 /// The point of the whole exercise: a list of 10k rows builds a screenful.
 #[test]
-fn a_virtual_column_builds_only_what_shows() {
+fn a_uniform_list_builds_only_what_shows() {
     let mut core = Core::new();
     // First frame has no geometry and slices by the viewport instead.
     let first = virtual_frame(&mut core, 10_000);
@@ -485,7 +485,7 @@ fn the_built_range_follows_the_offset() {
 /// A virtualized list is the same list: the content height, and so the
 /// scrollbar and the end of the travel, match a list that builds every row.
 #[test]
-fn a_virtual_column_scrolls_like_a_full_one() {
+fn a_uniform_list_scrolls_like_a_full_one() {
     let mut core = Core::new();
     virtual_frame(&mut core, 1_000);
     virtual_frame(&mut core, 1_000);
@@ -507,7 +507,7 @@ fn virtual_frame_in(core: &mut Core, rows: usize, h: f32) -> usize {
     let mut built = 0usize;
     let mut ui = core.frame(Size::new(400.0, h), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    kui_core::widgets::virtual_column(
+    kui_core::widgets::uniform_list(
         &mut ui,
         "list",
         NodeSpec::column().fill(),
@@ -529,7 +529,7 @@ fn virtual_frame_in(core: &mut Core, rows: usize, h: f32) -> usize {
 /// next event, a screenful short. The core asks for it, and the frame
 /// after builds the right rows and asks for nothing.
 #[test]
-fn a_virtual_column_owes_a_frame_when_its_box_moved() {
+fn a_uniform_list_owes_a_frame_when_its_box_moved() {
     let mut core = Core::new();
     virtual_frame_in(&mut core, 1_000, VIEW_H);
     assert!(core.owed().requested, "the first frame sliced blind");
@@ -574,7 +574,7 @@ fn a_virtual_column_owes_a_frame_when_its_box_moved() {
 /// under the pointer keeps its identity as the built range slides. This is
 /// what would have to be re-solved inside the core to virtualize there.
 #[test]
-fn virtual_rows_keep_their_key_as_the_range_slides() {
+fn list_rows_keep_their_key_as_the_range_slides() {
     let mut core = Core::new();
     virtual_frame(&mut core, 10_000);
     virtual_frame(&mut core, 10_000);
@@ -626,7 +626,7 @@ fn visible_rows_covers_the_band_and_no_more() {
 }
 
 // -- Variable-height virtual lists ------------------------------------------
-// `virtual_column` takes one stride; these are the rows that have none. The
+// `uniform_list` takes one stride; these are the rows that have none. The
 // heights come from a `measure` callback the widget runs for the rows it is
 // about to build, everything else stands at the mean of what has been
 // measured, and the prefix sums over both are what the spacers and the search
@@ -650,7 +650,7 @@ fn var_frame(core: &mut Core, heights: &mut RowHeights) -> std::ops::Range<usize
     let (mut first, mut last) = (usize::MAX, 0usize);
     let mut ui = core.frame(Size::new(400.0, VIEW_H), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    kui_core::widgets::virtual_rows(
+    kui_core::widgets::list(
         &mut ui,
         "list",
         NodeSpec::column().fill(),
@@ -1060,20 +1060,20 @@ fn an_auto_scrollbar_without_a_clock_is_visible() {
     assert!(!core.animating());
 }
 
-/// A padded `virtual_rows` list shorter than its box asks for no frame once
+/// A padded `widgets::list` shorter than its box asks for no frame once
 /// it is laid out: the correction that puts a measured anchor back where it
 /// was is for measurements, not for the clamp that keeps `top` at zero
 /// while the offset is zero and the padding is not — a `set_scroll` every
 /// frame was a frame every frame, which the devtools' events list paid
 /// from its first event on (found building ADR 0029).
 #[test]
-fn a_short_padded_virtual_rows_list_settles() {
+fn a_short_padded_list_settles() {
     let mut core = Core::new();
     let mut heights = kui_core::widgets::RowHeights::new(3, 20.0);
     let frame = |core: &mut Core, heights: &mut kui_core::widgets::RowHeights| {
         let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
         ui.configure_root(NodeSpec::column().fill());
-        kui_core::widgets::virtual_rows(
+        kui_core::widgets::list(
             &mut ui,
             "list",
             NodeSpec::column().fill().pad(6.0),
@@ -1533,7 +1533,7 @@ fn a_long_glide_over_variable_rows_reaches_the_row_asked_for() {
     let frame = |core: &mut Core, h: &mut RowHeights| {
         let mut ui = core.frame(Size::new(400.0, VIEW_H), 1.0);
         ui.configure_root(NodeSpec::column().fill());
-        kui_core::widgets::virtual_rows(
+        kui_core::widgets::list(
             &mut ui,
             "list",
             NodeSpec::column()

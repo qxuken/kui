@@ -20,13 +20,13 @@
 //! app's code is identical either way, which is the point of the items
 //! being data.
 //!
-//! Run: cargo run -p kui --example context_menu [-- --headless]
+//! Run: cargo run -p kui-native --example context_menu [-- --headless]
 
-use kui::{
+use kui_devtools::{Drive, Example};
+use kui_native::{
     Align, App, Core, EditOptions, Key, Menu, MenuItem, MenuRole, NodeSpec, Sizing, Span,
     TextStyle, Theme, Ui, UiEvent, Value, Vec2,
 };
-use kui_devtools::{Drive, Example};
 
 const ROWS: [&str; 4] = ["alpha", "bravo", "charlie", "delta"];
 
@@ -270,18 +270,18 @@ impl Example for Demo {
         d.core.set_native_menus(false);
         d.frame(self);
         let right_click = |d: &mut Drive<'_>, app: &mut Demo, x: f32, y: f32| {
-            d.input(app, kui::InputEvent::CursorMoved(Vec2::new(x, y)));
+            d.input(app, kui_native::InputEvent::CursorMoved(Vec2::new(x, y)));
             d.input(
                 app,
-                kui::InputEvent::MouseDown {
-                    button: kui::MouseButton::Secondary,
+                kui_native::InputEvent::MouseDown {
+                    button: kui_native::MouseButton::Secondary,
                     clicks: 1,
                 },
             );
             d.input(
                 app,
-                kui::InputEvent::MouseUp {
-                    button: kui::MouseButton::Secondary,
+                kui_native::InputEvent::MouseUp {
+                    button: kui_native::MouseButton::Secondary,
                 },
             );
         };

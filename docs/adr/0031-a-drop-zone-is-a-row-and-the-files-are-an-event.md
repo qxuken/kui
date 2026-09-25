@@ -182,7 +182,7 @@ and what a test reads to say a zone was found.
 
 ### 5. The runner: macOS overrides winit's window delegate; the others take winit's events at the OS cursor
 
-**macOS.** `crates/kui/src/macos_drop.rs` overrides, on winit's window
+**macOS.** `crates/kui-native/src/macos_drop.rs` overrides, on winit's window
 delegate class at runtime (the `macos_text_input` mechanism — once per
 process, `method_setImplementation` where winit had the selector,
 `class_addMethod` where it did not), the five `NSDraggingDestination`

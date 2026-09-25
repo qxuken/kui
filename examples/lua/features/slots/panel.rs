@@ -17,13 +17,13 @@
 //!
 //! Run: cargo run -p kui-lua --example lua_panel [-- --headless]
 
-use kui::widgets;
-use kui::{
+use kui_devtools::Example;
+use kui_lua::LuaExtension;
+use kui_native::widgets;
+use kui_native::{
     Align, App, Core, Extensions, InputEvent, NodeSpec, OriginId, Size, Sizing, TextStyle, Ui,
     UiEvent, Value, Vec2,
 };
-use kui_devtools::Example;
-use kui_lua::LuaExtension;
 
 #[derive(Default)]
 struct Host {

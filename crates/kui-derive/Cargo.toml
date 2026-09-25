@@ -1,0 +1,18 @@
+[package]
+name = "kui-derive"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "kui's #[derive(Message)]: a typed Rust message to and from the plain-data payload"
+publish = ["forgejo"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+# The syn 2 wgpu's and zerocopy's derives already build, so the derive adds
+# its own few hundred lines to a cold build and no new crate (backlog C50).
+syn = { version = "2", default-features = false, features = ["derive", "parsing", "printing", "proc-macro", "clone-impls"] }
+quote = "1"
+proc-macro2 = "1"

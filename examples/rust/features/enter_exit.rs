@@ -26,15 +26,15 @@
 //! until the last exit finishes, because a departing subtree is mid-flight
 //! and `animating()` says so.
 //!
-//! Run: cargo run -p kui --example enter_exit
+//! Run: cargo run -p kui-native --example enter_exit
 
 use std::time::{Duration, Instant};
 
-use kui::{
+use kui_devtools::Example;
+use kui_native::{
     Align, App, Color, Easing, Enter, FloatConfig, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value,
     widgets,
 };
-use kui_devtools::Example;
 
 const LIFETIME: Duration = Duration::from_millis(3200);
 

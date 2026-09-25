@@ -31,6 +31,7 @@ pub use ext::CExtension;
 mod abi;
 mod access;
 mod convert;
+mod dialogs;
 mod focus;
 mod frame;
 mod input;
@@ -48,6 +49,7 @@ mod windows;
 
 pub use abi::*;
 pub use access::*;
+pub use dialogs::*;
 pub use focus::*;
 pub use frame::*;
 pub use input::*;
@@ -108,6 +110,8 @@ pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
             menu_accel: String::new(),
             menu_html: String::new(),
             devtools_key: String::new(),
+            file_request: None,
+            file_filter_text: String::new(),
             devtools_tab: String::new(),
             selection_text: String::new(),
             selection_html: String::new(),

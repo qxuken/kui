@@ -13,7 +13,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { constants as osConstants, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Ctx, KuiWindow, clipStride, createApp, createEncoder, decodeQuads, defineTokens, protocol, quadStride, roles, runWindowed, virtualColumn, windowOptions, withEffects } from './index.js';
+import { Ctx, KuiWindow, RowHeights, clipStride, createApp, createEncoder, decodeQuads, defineTokens, list, protocol, quadStride, roles, runWindowed, uniformList, windowOptions, withEffects } from './index.js';
 
 const box = (props, children = [], key) => ({ type: 'box', key, props, children });
 const text = (children, props = {}) => ({ type: 'text', props, children: [].concat(children) });
@@ -72,7 +72,9 @@ const SAMPLE = {
 /** Per-prop overrides, where the shared sample for a kind would not survive
  *  the prop's own clamping — `opacity`'s default is the top of its range, so
  *  a sample above 1 clamps straight back to it. */
-const SAMPLE_BY_NAME = { opacity: 0.5 };
+// The align rows' last value is `baseline`, which means nothing on the
+// main axis or a column's cross axis, so they take a value that does.
+const SAMPLE_BY_NAME = { opacity: 0.5, mainAlign: 'spaceEvenly', crossAlign: 'end' };
 
 test('protocol exports a version and the schema rows', () => {
   const p = protocol();
@@ -99,7 +101,7 @@ const READBACK = {
   maxHeight: (n) => n.maxHeight === 12,
   gap: (n) => n.gap === 12,
   wrapChildren: (n) => n.wrap === true,
-  mainAlign: (n) => n.mainAlign === 'end',
+  mainAlign: (n) => n.mainAlign === 'spaceEvenly',
   crossAlign: (n) => n.crossAlign === 'end',
   bg: (n) => n.bg === 0x3b5bd4ff,
   radius: (n) => n.radius.every((r) => r === 12),
@@ -454,7 +456,7 @@ test('a malformed view is rejected, with the offending name in the message', () 
     [() => el('line', { from: [0, 0], to: [1], }), /bad point \[1\] for <line>/],
     [() => el('line', { from: [0, 0], to: [1, 1], width: 'grow' }), /bad width "grow" for <line>/],
     [() => box({ dir: 'diagonal' }), /bad dir "diagonal" \(row \| column \| table\)/],
-    [() => box({ mainAlign: 'middle' }), /bad value "middle" for mainAlign \(one of start \| center \| end\)/],
+    [() => box({ mainAlign: 'middle' }), /bad value "middle" for mainAlign \(one of start \| center \| end \| spaceBetween \| spaceAround \| spaceEvenly \| baseline\)/],
     [() => box({ bg: 'blue' }), /bad color "blue"/],
     [() => box({ width: 'huge' }), /bad sizing "huge"/],
     // Both places a float names a preset answer to the one table, so the
@@ -3605,6 +3607,44 @@ const SCENE_TREES = {
         WRAP_BOXES.map(([w, h]) => box({ width: w, height: h, bg: '#30344a' })),
       ),
     ]),
+  // `conformance::build_align`: the three spreads, a baseline row, and a
+  // ratio sizing each axis.
+  align: () => {
+    const sq = () => box({ width: 10, height: 10, bg: '#30344a' });
+    const spread = (mainAlign) => box({ dir: 'row', width: 120, mainAlign }, [sq(), sq(), sq()]);
+    return root({}, [
+      box({ pad: 4, gap: 6, width: 128, bg: '#101018' }, [
+        spread('spaceBetween'),
+        spread('spaceAround'),
+        spread('spaceEvenly'),
+        box({ dir: 'row', gap: 4, crossAlign: 'baseline' }, [
+          text('ab', { size: 12 }),
+          text('cd', { size: 20 }),
+          sq(),
+        ]),
+        box({ width: 'grow', aspectRatio: 4, bg: '#3b5bd4' }),
+        box({ height: 12, aspectRatio: 2, bg: '#73d98c' }),
+      ]),
+    ]);
+  },
+  // `conformance::build_stock_controls` (ADR 0034).
+  'stock-controls': () =>
+    root({}, [
+      box({ pad: 8, gap: 8 }, [
+        el('slider', {
+          label: 'Volume', width: 216, valueNow: 30, valueMin: 0, valueMax: 100, valueStep: 10,
+          onChange: { kind: 'vol' },
+        }),
+        el('checkbox', { onClick: { kind: 'mute' } }, ['Mute']),
+        el('checkbox', { checked: true, onClick: { kind: 'sync' } }, ['Sync']),
+        el('checkbox', { mixed: true, onClick: { kind: 'all' } }, ['All']),
+        el('radioGroup', { label: 'Theme' }, [
+          el('radio', { onClick: { kind: 'light' } }, ['Light']),
+          el('radio', { checked: true, onClick: { kind: 'dark' } }, ['Dark']),
+        ]),
+        el('switch', { checked: true, onClick: { kind: 'wifi' } }, ['Wi-Fi']),
+      ]),
+    ]),
   // `conformance::build_table` (ADR 0033): a fit header row of two bare
   // texts, then TABLE_ROWS as grow rows of a bare text, a fixed box and a
   // grow box; the label column is its longest label, the fixed column its
@@ -4712,7 +4752,7 @@ function sceneReport(name, env, steps, { ctx, events, commands, audio }) {
         'node', d, n.key, n.role,
         n.focused ? 1 : 0,
         n.disabled ? 1 : 0,
-        n.checked === null || n.checked === undefined ? '-' : n.checked ? 1 : 0,
+        n.mixed ? 'm' : n.checked === null || n.checked === undefined ? '-' : n.checked ? 1 : 0,
         n.selected === null || n.selected === undefined ? '-' : n.selected ? 1 : 0,
         n.orientation === 'horizontal' ? 'h' : n.orientation === 'vertical' ? 'v' : '-',
         n.live === 'polite' ? 'p' : n.live === 'assertive' ? 'a' : '-',
@@ -4731,6 +4771,9 @@ function sceneReport(name, env, steps, { ctx, events, commands, audio }) {
     // displacement from the press point in every phase, and the corpus
     // steps are integers, so the deltas print exactly.
     if (p?.kind === 'drag') tag += ` ${p.phase} ${Math.trunc(p.dx)} ${Math.trunc(p.dy)}`;
+    // A slider's change carries its phase and the value the core worked
+    // out (ADR 0034); the corpus steps land on whole values.
+    if (p?.kind === 'change') tag += ` ${p.phase} ${Math.trunc(p.value)}`;
     // A scroll's lines ride the same way — the whole lines a grid's notch
     // covers, `-` off a grid — so a lost carry disagrees here (ADR 0029).
     if (p?.kind === 'scroll') tag += ` ${p.lines ?? '-'}`;
@@ -5336,19 +5379,174 @@ test('scrollGeometry reports the container box, its content and the travel', () 
 });
 
 // -- Virtual lists (backlog C25) --------------------------------------------
-// `virtualColumn` is the slicing above as a widget: the spacers, the row
+// `uniformList` is the slicing above as a widget: the spacers, the row
 // keys, and the one thing a retained-tree binding needs that Rust does not —
 // something that makes the view run again when the wheel moves the core's
 // offset and no model changed.
 
-/** A `virtualColumn` app that records the range each frame built. */
+// -- The variable-height list (backlog C46) ----------------------------------
+// `list` is the Rust `widgets::list` from JSX: the core's `RowHeights` and
+// its slicing, driven around the app's `measure`. Rows 0..100 are 20 px and
+// the rest 60, so the estimate the first screenful produces is badly wrong
+// for the middle of the list — which is what makes the anchor observable.
+
+const varH = (i) => (i < 100 ? 20 : 60);
+
+/** A `list` app over a thousand rows that records what it built and
+ *  measured; `box` goes on the container (a `transition`, for RG18). */
+function variableApp(box = {}) {
+  const heights = new RowHeights(1000, 20);
+  const seen = { range: null, measured: 0 };
+  const view = (_model, _window, ctx) =>
+    box_({ width: 'grow', height: 'grow' }, [
+      list(
+        ctx,
+        { key: 'log', heights, width: 'grow', height: 'grow', ...box },
+        (i) => {
+          seen.measured += 1;
+          return varH(i);
+        },
+        (i) => {
+          seen.range = seen.range === null ? [i, i + 1] : [Math.min(seen.range[0], i), i + 1];
+          return box_({ width: 'grow', height: 'grow', label: `row ${i}`, onClick: { kind: 'pick', row: i } });
+        },
+      ),
+    ]);
+  const app = createApp(
+    {
+      init: { picked: -1 },
+      update: (model, msg) => (msg.kind === 'pick' ? { picked: msg.row } : undefined),
+      view,
+    },
+    { width: 400, height: 200, warnings: false },
+  );
+  // The row under the top edge, by a click rather than by arithmetic — the
+  // question "did the content move" asks of the pixels.
+  const rowUnder = () => {
+    app.click(200, 4);
+    return app.model.picked;
+  };
+  return { app, seen, heights, rowUnder };
+}
+const box_ = (props, children = []) => ({ type: 'box', props, children });
+
+test('list builds a screenful of a thousand rows of two heights', () => {
+  const { app, seen, heights } = variableApp();
+  app.render();
+  seen.range = null;
+  app.render();
+  const [first, last] = seen.range;
+  assert.equal(first, 0);
+  assert.ok(last <= 14, `built ${last} rows`);
+  // Only what was built has been measured; the rest stands at the mean.
+  assert.equal(heights.measured(last - 1), 20);
+  assert.equal(heights.measured(last + 50), null);
+  assert.equal(app.ctx.scrollGeometry('log').contentH, 1000 * 20);
+});
+
+test('a list keeps the row under the pointer while the estimate moves (C46)', () => {
+  const { app, heights, rowUnder } = variableApp();
+  app.render();
+  app.render();
+  app.ctx.setScroll('log', 0, 5000);
+  app.render();
+  const settled = rowUnder();
+  assert.ok(settled > 100, `expected to be deep in the list, at ${settled}`);
+  for (let n = 0; n < 4; n++) {
+    app.render();
+    assert.equal(rowUnder(), settled, `the content slid on frame ${n} as the estimate moved`);
+  }
+  assert.ok(heights.total() > 1000 * 20 * 1.5, `the list learned it is longer: ${heights.total()}`);
+});
+
+test('a list glides a long setScroll to the row asked for (RG18)', () => {
+  const { app, heights, rowUnder } = variableApp({ transition: 100 });
+  app.render();
+  app.render();
+  const target = 400;
+  app.ctx.setScroll('log', 0, heights.offsetOf(target));
+  for (let n = 0; n < 30; n++) app.advance(1000 / 60);
+  assert.equal(rowUnder(), target);
+});
+
+test('list says what it is missing', () => {
+  const ctx = new Ctx();
+  assert.throws(() => list(ctx, { key: 'log' }, () => 1, () => []), /RowHeights/);
+  assert.throws(() => list(ctx, { heights: new RowHeights(1, 1) }, () => 1, () => []), /key/);
+  assert.throws(() => list(ctx, { key: 'log', heights: new RowHeights(1, 1) }, null, () => []), /measure/);
+});
+
+// -- File dialogs (backlog C51) ----------------------------------------------
+
+test('requestFiles asks once, a host takes it, and the answer reaches update', () => {
+  const seen = [];
+  const app = createApp(
+    {
+      init: { ask: false },
+      update: (model, msg, _ev, ctx) => {
+        seen.push(msg);
+        if (msg.kind === 'open') {
+          // The ask is made where the surface is: update's fourth argument.
+          const asked = ctx.requestFiles({
+            mode: 'open',
+            multiple: true,
+            title: 'Add files',
+            filters: [{ name: 'Images', extensions: ['png', '.jpg'] }],
+            tag: 'add',
+          });
+          const again = ctx.requestFiles({});
+          seen.push({ asked, again, waiting: ctx.awaitingFiles() });
+        }
+        return model;
+      },
+      view: () => box_({ width: 'grow', height: 'grow' }, [
+        box_({ width: 100, height: 40, label: 'Open', onClick: { kind: 'open' } }),
+      ]),
+    },
+    { width: 200, height: 100, warnings: false },
+  );
+  app.render();
+  app.click(50, 20);
+  assert.deepEqual(seen.at(-1), { asked: true, again: false, waiting: true });
+
+  const asks = app.ctx.takeFileRequests();
+  assert.equal(asks.length, 1);
+  assert.equal(asks[0].mode, 'open');
+  assert.equal(asks[0].multiple, true);
+  assert.equal(asks[0].title, 'Add files');
+  assert.deepEqual(asks[0].filters, [{ name: 'Images', extensions: ['png', 'jpg'] }]);
+  assert.equal(asks[0].tag, 'add');
+  assert.deepEqual(app.ctx.takeFileRequests(), [], 'taken once');
+  assert.equal(app.ctx.awaitingFiles(), true, 'and still out until it is answered');
+
+  app.ctx.answerFiles(['/tmp/a.png', '/tmp/b.jpg']);
+  app.step();
+  const files = seen.find((m) => m.kind === 'files');
+  assert.deepEqual(files, { kind: 'files', paths: ['/tmp/a.png', '/tmp/b.jpg'], tag: 'add' });
+  assert.equal(app.ctx.awaitingFiles(), false);
+});
+
+test('a cancelled dialog answers with no paths, and a stray answer is dropped', () => {
+  const ctx = new Ctx();
+  ctx.answerFiles(['/tmp/nobody-asked']);
+  assert.deepEqual(ctx.pollEvents().filter((e) => e.payload?.kind === 'files'), []);
+  assert.equal(ctx.requestFiles({ mode: 'save', fileName: 'notes.md' }), true);
+  const [ask] = ctx.takeFileRequests();
+  assert.equal(ask.fileName, 'notes.md');
+  ctx.answerFiles([]);
+  const evs = ctx.pollEvents().filter((e) => e.payload?.kind === 'files');
+  assert.deepEqual(evs.map((e) => e.payload.paths), [[]]);
+  assert.throws(() => ctx.requestFiles({ mode: 'sideways' }), /unknown dialog mode/);
+});
+
+/** A `uniformList` app that records the range each frame built. */
 function virtualApp(opts = {}) {
   const ROWS = opts.rows ?? 10_000;
   const ROW_H = opts.rowH ?? 28;
   const seen = { range: null, updates: [] };
   const view = (_model, _window, ctx) =>
     box({ width: 'grow', height: 'grow' }, [
-      virtualColumn(
+      uniformList(
         ctx,
         { key: 'log', rows: ROWS, rowH: ROW_H, width: 'grow', height: 'grow', ...(opts.box ?? {}) },
         (i) => {
@@ -5371,7 +5569,7 @@ function virtualApp(opts = {}) {
   return { app, seen, ROWS, ROW_H };
 }
 
-test('virtualColumn builds a screenful of a ten-thousand-row list', () => {
+test('uniformList builds a screenful of a ten-thousand-row list', () => {
   const { app, seen, ROWS, ROW_H } = virtualApp();
   app.render();
   seen.range = null;
@@ -5387,7 +5585,7 @@ test('virtualColumn builds a screenful of a ten-thousand-row list', () => {
   assert.equal(g.maxOffset.y, ROWS * ROW_H - g.h);
 });
 
-test('a virtualColumn re-slices on the wheel, with no model change anywhere', () => {
+test('a uniformList re-slices on the wheel, with no model change anywhere', () => {
   // The gate: the wheel raises no event of its own and the driver redraws by
   // re-lowering the tree it was handed, so before C25 a JSX list sliced once
   // and froze. One `step()` — what the pump runs after every pump — has to
@@ -5410,7 +5608,7 @@ test('a virtualColumn re-slices on the wheel, with no model change anywhere', ()
   assert.deepEqual(seen.updates, []);
 });
 
-test('a virtualColumn row is keyed by its data index, so a full list agrees', () => {
+test('a uniformList row is keyed by its data index, so a full list agrees', () => {
   const { app, seen } = virtualApp({ rows: 200, rowH: 20 });
   app.render();
   app.render();
@@ -5448,7 +5646,7 @@ test('a virtualColumn row is keyed by its data index, so a full list agrees', ()
   }
 });
 
-test('a virtualColumn whose list shrank under it lands in one frame', () => {
+test('a uniformList whose rows shrank under it lands in one frame', () => {
   // The geometry is the previous frame's, so a list that shrank while
   // scrolled slices past its own new end. Both ends have to be clamped to
   // the row count, not just the far one: an unclamped `first` builds a lead
@@ -5460,7 +5658,7 @@ test('a virtualColumn whose list shrank under it lands in one frame', () => {
   const view = (_m, _w, ctx) => {
     seen.range = null;
     return box({ width: 'grow', height: 'grow' }, [
-      virtualColumn(ctx, { key: 'log', rows, rowH: 20, width: 'grow', height: 'grow' }, (i) => {
+      uniformList(ctx, { key: 'log', rows, rowH: 20, width: 'grow', height: 'grow' }, (i) => {
         seen.range = seen.range === null ? [i, i + 1] : [Math.min(seen.range[0], i), i + 1];
         return box({ width: 'grow', height: 'grow', label: `row ${i}` });
       }),
@@ -5482,7 +5680,7 @@ test('a virtualColumn whose list shrank under it lands in one frame', () => {
   assert.equal(app.ctx.scrollGeometry('log').offset.y, 0);
 });
 
-test('a virtualColumn read before the frame begins still owes the frame that re-slices it (RG24)', () => {
+test('a uniformList read before the frame begins still owes the frame that re-slices it (RG24)', () => {
   // Node's view runs before the frame begins, so its `scrollGeometry`
   // read lands between two frames; the core cleared its reads at the
   // frame's start and the window tripling left five rows on screen until
@@ -5490,7 +5688,7 @@ test('a virtualColumn read before the frame begins still owes the frame that re-
   const ctx = new Ctx();
   const view = () =>
     box({ width: 'grow', height: 'grow' }, [
-      virtualColumn(ctx, { key: 'log', rows: 1000, rowH: 20, width: 'grow', height: 'grow' }, (i) =>
+      uniformList(ctx, { key: 'log', rows: 1000, rowH: 20, width: 'grow', height: 'grow' }, (i) =>
         box({ width: 'grow', height: 'grow', label: `row ${i}` }),
       ),
     ]);
@@ -5563,12 +5761,12 @@ test('an index is a row number, and anything else is refused', () => {
   }
 });
 
-test('virtualColumn says what it needs rather than drawing nothing', () => {
+test('uniformList says what it needs rather than drawing nothing', () => {
   const ctx = new Ctx();
-  assert.throws(() => virtualColumn(ctx, { rows: 10, rowH: 10 }, () => box({})), /string `key`/);
-  assert.throws(() => virtualColumn(ctx, { key: 'l', rows: 10 }, () => box({})), /positive `rowH`/);
-  assert.throws(() => virtualColumn(ctx, { key: 'l', rowH: 10 }, () => box({})), /`rows` count/);
-  assert.throws(() => virtualColumn(ctx, { key: 'l', rows: 10, rowH: 10 }), /row builder/);
+  assert.throws(() => uniformList(ctx, { rows: 10, rowH: 10 }, () => box({})), /string `key`/);
+  assert.throws(() => uniformList(ctx, { key: 'l', rows: 10 }, () => box({})), /positive `rowH`/);
+  assert.throws(() => uniformList(ctx, { key: 'l', rowH: 10 }, () => box({})), /`rows` count/);
+  assert.throws(() => uniformList(ctx, { key: 'l', rows: 10, rowH: 10 }), /row builder/);
 });
 
 test('a query answers for a label no frame declared; a command still throws', () => {
@@ -6831,7 +7029,7 @@ test('the two classes are the verb table\'s Node column, both ways (B1a)', () =>
     'warnUnknownProps', 'warnUnknownTokens', 'clips', 'fragmentDraws', 'textureDraws', 'stats',
     // The input injection, one per `InputEvent` (the table's `handle_input` row).
     'cursor', 'cursorLeft', 'mouse', 'scroll', 'text', 'commit', 'paste', 'preedit', 'key', 'keyDown', 'keyUp',
-    'press', 'release', 'access', 'dragFiles', 'dropFiles', 'dragCancel',
+    'press', 'release', 'access', 'dragFiles', 'dropFiles', 'dragCancel', 'answerFiles',
     // The two-class mechanics: the window's own loop and its lifetime.
     'useWindow', 'pump', 'pumpUntil', 'nextDeadlineMs', 'size', 'frameStats', 'close',
   ]);
@@ -6907,6 +7105,53 @@ test('<input> is the stock field and <tooltip> the node form, the doors Lua and 
   assert.ok(ctx.accessTree().nodes.some((n) => n.name === 'legend'), 'children are the float\'s content');
   assert.deepEqual(ctx.warnings(), []);
   assert.throws(() => ctx.frame(300, 200, 1, box({}, [el('tooltip', {})])), /needs a value or children/);
+});
+
+test('the stock toggles read their state and their rows only, and press through onClick (ADR 0034)', () => {
+  const ctx = new Ctx();
+  ctx.setDiagnostics(true);
+  ctx.frame(320, 240, 1, box({ pad: 10, gap: 6 }, [
+    el('checkbox', { checked: true, radius: 4, onClick: { kind: 'sync' } }, ['Sync']),
+    el('checkbox', { mixed: true, onClick: { kind: 'all' } }, ['All']),
+    el('radioGroup', { label: 'Size', dir: 'row' }, [
+      el('radio', { checked: true, onClick: { kind: 's' } }, ['S']),
+      el('radio', { onClick: { kind: 'm' } }, ['M']),
+    ]),
+    el('switch', { onClick: { kind: 'wifi' } }, ['Wi-Fi']),
+  ]));
+  const nodes = ctx.accessTree().nodes;
+  const by = (role, name) => nodes.find((n) => n.role === role && n.name === name);
+  assert.equal(by('checkbox', 'Sync').checked, true);
+  assert.equal(by('checkbox', 'All').mixed, true, 'mixed reads as mixed');
+  assert.equal(by('radioGroup', 'Size').orientation, 'horizontal', 'a row group runs across');
+  assert.equal(by('radio', 'S').checked, true);
+  assert.equal(by('switch', 'Wi-Fi').checked, false);
+  // A paint row the toggle does not read is dropped, and said so.
+  const ws = ctx.warnings().filter((w) => w.code === 'unknown-prop');
+  assert.equal(ws.length, 1, JSON.stringify(ws));
+  assert.match(ws[0].message, /`radius`/);
+  ctx.access('Wi-Fi', 'click');
+  assert.deepEqual(ctx.pollEvents().map((e) => e.payload.kind), ['wifi']);
+});
+
+test('<slider> proposes values from the keys, snapped to its step, and needs a label (ADR 0034)', () => {
+  const ctx = new Ctx();
+  const view = (v) => box({ pad: 10 }, [
+    el('slider', { label: 'Gain', valueNow: v, valueMin: 0, valueMax: 1, valueStep: 0.1, onChange: { kind: 'gain' } }),
+  ]);
+  ctx.frame(320, 240, 1, view(0.2));
+  const gain = ctx.accessTree().nodes.find((n) => n.role === 'slider');
+  assert.equal(gain.name, 'Gain');
+  // The tree reads the declared f32 back as it is, as it does valueNow.
+  assert.ok(Math.abs(gain.valueStep - 0.1) < 1e-6);
+  ctx.focus(gain.key);
+  ctx.key('right');
+  const evs = ctx.pollEvents().filter((e) => e.payload.kind === 'change');
+  assert.equal(evs.length, 1);
+  assert.equal(evs[0].payload.value, 0.3, 'the decimal the step names, not 0.30000001');
+  assert.equal(evs[0].payload.phase, 'end');
+  assert.equal(evs[0].payload.tag.kind, 'gain');
+  assert.throws(() => ctx.frame(320, 240, 1, box({}, [el('slider', { valueNow: 1 })])), /needs a label/);
 });
 
 test('<select> is the stock select: the click opens the menu under it, a row is one menu message on the field (F73)', () => {

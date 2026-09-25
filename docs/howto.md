@@ -58,6 +58,38 @@ wrapping under it.
 [`minWidth` row](props.md#container-props) ·
 [alpha.8](../CHANGELOG.md#010-alpha8-2026-09-07)
 
+### How do I push a toolbar's last button to the far end, or space items evenly?
+
+`mainAlign="spaceBetween"` on the row: the free space goes between the
+children and none at the ends, so the first sits at the start and the last
+at the end. `spaceAround` gives each child an equal share split to its two
+sides, and `spaceEvenly` makes every gap and both ends equal. The spread is
+added to `gap`, and none is dealt when nothing is free — a `grow` child takes
+the space, and a row that overflows keeps its gaps. To push only the last of
+several, a `<box width="grow"/>` spacer before it is still the way.
+
+### How do I set a label and a large number on one line?
+
+`crossAlign="baseline"` on the row: the first baselines of the children's
+text line up, so `Total` in 13 px and `1,284` in 32 px read as one line
+instead of two tops or two bottoms. Each child's baseline is its first
+text's, found down its first-child chain through any wrapper box; a child
+with no text — an icon — aligns by its bottom edge, and a `grow` or percent
+height fills the row from its top. A fit-height row grows to hold the
+aligned children. On a column it is `start`, with a warning.
+
+### How do I keep a box 16:9, or square, whatever width it gets?
+
+`aspectRatio={16/9}` with the height left `fit`: the height is the final
+width over the ratio, so `width="grow"` and a ratio keeps its shape as the
+window resizes (cap it with `maxWidth`). Under a fixed height a fit width is
+that height times the ratio, which is how `height={40} aspectRatio={1}`
+makes a square. The derived axis is not fitted to the children, which
+overflow it — `minHeight="fit"` floors it at them — and with both axes
+declared the ratio has nothing to set and warns (`aspect-ignored`).
+[`examples/rust/features/align.rs`](../examples/rust/features/align.rs)
+shows all three.
+
 ### How do I line up the columns of a key/value list, or any table?
 
 `<box dir="table">`, `grid { }` (Lua's `table` is its own), a `KuiSpec`
@@ -138,7 +170,7 @@ Do not slice the line yourself to spare the toolkit: the chunk is the slice.
 
 ### How do I show a list of ten thousand rows?
 
-`virtualColumn` (JSX), `virtual_column` (Lua, Rust): declare the rows that
+`uniformList` (JSX), `uniform_list` (Lua, Rust): declare the rows that
 can be seen and two spacers holding the height of the rest, so the frame
 costs a screenful however long the list is — about 16 µs against 3.9 ms
 for ten thousand rows built whole. It takes the row count and one row's height;
@@ -156,7 +188,7 @@ re-lowering the tree it was handed, so nothing else would. Those events
 never reach `update`.
 
 ```jsx
-virtualColumn(ctx, { key: 'log', rows: lines.length, rowH: 28 }, (i) => (
+uniformList(ctx, { key: 'log', rows: lines.length, rowH: 28 }, (i) => (
   <box width="grow" height="grow" onClick={{ kind: 'pick', row: i }}>
     <text>{lines[i]}</text>
   </box>
@@ -168,8 +200,8 @@ virtualColumn(ctx, { key: 'log', rows: lines.length, rowH: 28 }, (i) => (
 
 ### How do I do that when the rows are not all the same height?
 
-`widgets::virtual_rows` (Rust): the same list over prefix sums instead of a
-stride. It calls a `measure(ui, i, width)` for the rows it is about to build
+`list` (JSX, Lua), `widgets::list` (Rust): the same list over prefix sums
+instead of a stride. It calls a `measure(ui, i, width)` for the rows it is about to build
 and nothing else — `ui.measure_text(text, &style, Some(width))` is what
 layout would give that row, wrap included, through the same shaping cache
 its draw will hit — and every row it has not measured stands at the mean of
@@ -184,8 +216,24 @@ window starts in back where it was before it re-slices — the frame that
 learns is drawn already corrected. To stay at the end of a growing log, ask
 for it: one `set_scroll(key, huge)` after the widget, every frame.
 
+In Node and Lua the heights are the core's own `RowHeights` too — `new
+RowHeights(rows, estimate)`, `row_heights(rows, estimate)` — kept in the
+model or a script global, and `measure` is `(i, width) => height` over
+`ctx.measureText` / `env.measure_text`. The slicing and the anchor are the
+core's arithmetic in every binding; the port is the loop around your
+`measure`, and the correction is `shiftScroll` / `shift_scroll`, which a
+list composed by hand (C's `kui_shift_scroll` included) calls the same way.
+
+```jsx
+const heights = new RowHeights(lines.length, 24); // once, kept in the model
+list(ctx, { key: 'log', heights },
+  (i, width) => ctx.measureText(lines[i], { size: 13 }, width - 12).height + 12,
+  (i) => <box pad={6}><text size={13}>{lines[i]}</text></box>)
+```
+
 [`exit_budget.rs`](../examples/rust/features/exit_budget.rs) ·
-[`virtual_list.rs`](../examples/rust/widgets/virtual_list.rs)
+[`virtual_list.rs`](../examples/rust/widgets/virtual_list.rs) ·
+[`virtual_list.tsx`](../examples/node/widgets/virtual_list.tsx) (`--variable`)
 
 ### How do I draw a terminal's screen?
 
@@ -372,6 +420,97 @@ posted, the menu still open — as the pointer never reaches it.
 [examples/node/widgets/select.tsx](../examples/node/widgets/select.tsx) ·
 [the context menu](#how-do-i-open-a-popup-and-when-is-a-modal-enough)
 
+### How do I add a checkbox, a radio group, a switch or a slider?
+
+The stock controls ([ADR 0034](adr/0034-stock-controls-over-the-roles.md))
+are drawn from your model and hold nothing of their own. A toggle —
+`<checkbox checked={m.sync} onClick={{kind: 'sync'}}>Sync</checkbox>`,
+`<radio>`, `<switch>`; `checkbox { label = "Sync", checked = …, on_click
+= … }` in Lua; `kui_checkbox(ctx, text, spec, payload)` in C;
+`widgets::checkbox(ui, "Sync", on, payload)` in Rust — posts its
+`onClick` when the pointer, Space, Enter or a screen reader presses it,
+and your `update` flips the model. A select-all box over a partial
+selection says `mixed`. Put radios in a `<radioGroup label="Theme">`: it
+is one Tab stop whose arrows move the choice and press the radio they
+land on, so radios that each set the choice answer the keyboard with no
+more code (`widgets::radio_group(ui, "Theme", &options, Some(i), |i|
+payload)` in Rust).
+
+A slider says its range and step and asks the core for its changes:
+`<slider label="Volume" valueNow={v} valueMin={0} valueMax={100}
+valueStep={5} onChange={{kind: 'volume'}}/>`. A press proposes the value
+under the pointer, a drag each new step, the arrows one step, PageUp /
+PageDown ten, Home / End the ends — clamped, snapped, and the decimal the
+step names (`0.3`, not `0.30000001`) — as `{kind: 'change', value, phase:
+'move' | 'end', tag}`. Store `value` and declare it as `valueNow`; nothing
+moves until you do. A slider without `onChange` is the hand-drawn kind
+and keeps the `access` nudge.
+
+The controls' look is their spec, so they read only their own rows, and
+a paint row on one is an `unknown-prop` warning; a control that needs a
+look of its own is a box with the role and the same rows. Their size
+follows the metrics: the box is the control text plus one, so `compact`
+moves them with the stock button.
+
+[the elements](props.md#elements) ·
+[examples/rust/widgets/controls.rs](../examples/rust/widgets/controls.rs) ·
+[examples/node/widgets/controls.tsx](../examples/node/widgets/controls.tsx)
+
+### How do I match my app's messages as types, in Rust?
+
+`#[derive(Message)]` on an enum: each variant becomes a `{kind, …fields}`
+payload (the kind is the variant's name in snake_case, or `#[message(kind
+= "…")]`), so `on_click(Msg::Save)` builds it, and `ev.message::<Msg>()`
+reads it back into an exhaustive `match`. A click delivers the message as
+its payload; a drag, a change, a scroll or a drop delivers it as the `tag`
+inside the core's event, and `message` looks in both places. The event's
+own fields stay on `ev.payload` — a drag's `phase`, a change's `value`.
+Field types are the numbers, `bool`, `String`, `Option`, `Vec`, `Value`
+and other messages. An enum of unit variants marked `#[message(string)]`
+is a bare string where it is a field (`dir: SplitDir` as `"h"`).
+
+The payload stays plain data, so Lua, C and JSX read it as they always did.
+`MessageError` says what did not fit. The derive is `kui-native`'s default
+`derive` feature; from kui-core alone it is `kui-core/derive` and
+`#[message(crate = "kui_core")]`.
+
+```rust
+#[derive(Message, Clone, Debug)]
+enum Msg { Focus { pane: u64 }, TabNew, Split { path: String, dir: SplitDir } }
+
+ui.with(NodeSpec::column().on_click(Msg::Focus { pane: id }), |ui| { … });
+
+fn on_event(&mut self, ev: UiEvent) {
+    match ev.message::<Msg>() {
+        Some(Msg::Focus { pane }) => self.focused = pane,
+        Some(Msg::Split { path, dir }) => self.drag_divider(&ev, path, dir),
+        Some(Msg::TabNew) => self.new_tab(),
+        None => {} // a core event with no message of ours: a key, a resize
+    }
+}
+```
+
+[`splitmux.rs`](../examples/rust/apps/splitmux.rs) ·
+[backlog C50](BACKLOG.md)
+
+### How do I let the user pick a file, or where to save one?
+
+Ask for the platform's dialog: `ctx.requestFiles({ mode: 'open', multiple:
+true, filters: [{ name: 'Images', extensions: ['png', 'jpg'] }], tag })`
+(`'save'` with a `fileName`, or `'folder'`). The answer is one `files`
+message — `{kind: 'files', paths, tag}`, the paths a `drop` carries, none
+when the user cancelled — so a list that takes dropped files takes picked
+ones with the same code. One dialog at a time: asking again while one is
+up does nothing. The window's runner shows it (a sheet on macOS, through
+rfd); a headless test takes the ask with `takeFileRequests()` and answers
+with `answerFiles(paths)`. Rust asks from its view with
+`ui.request_files(FileDialog::open()…)`, Lua with `env.request_files{…}`,
+C with `kui_request_files`.
+
+[`files` event](props.md#events) ·
+[`drop.tsx`](../examples/node/features/drop.tsx) ·
+[`drop.rs`](../examples/rust/features/drop.rs)
+
 ### How do I give my app a menu bar?
 
 One call, in the view, wherever the strip belongs: `<menuBar menu={[…]}/>`,
@@ -506,7 +645,7 @@ input. There are four ways onto it, and they end in one queue:
    `{kind:"selectionrange", from:{index, byte}, to:{index, byte}}`
    message arrives on the scope, and `answerSelectionRange(text)` — the
    rows are yours — queues the `setClipboard`. Select All in such a list
-   spans the whole of it — rows `0..rowCount`, which `virtualColumn` and
+   spans the whole of it — rows `0..rowCount`, which `uniformList` and
    its siblings declare for you (`rowCount` on a list you compose by
    hand) — and asks the same way, `to.byte` past the last row's length
    when that row was never built: cut it to the row.
@@ -1071,6 +1210,25 @@ const mine = decodeQuads(win.quads()).filter((q) =>
 [alpha.8](../CHANGELOG.md#010-alpha8-2026-09-07) ·
 [alpha.19 `### Added`](../CHANGELOG.md#010-alpha19-unreleased)
 
+### How do I trade smoothness for latency, or the other way?
+
+You mostly do not have to (backlog C47). A window keeps two frames queued
+ahead of the one on screen, so every vsync gets a frame even when little
+is drawn. On macOS 14+ the Rust and C runners start frames that run back to
+back (an animation, a drag, a scroll) at the display's vsync, so the queued
+slot is slack and not a delay: 17.5–19.2 ms from a frame's state to the
+screen on an M3 Pro, as quick as the old single-frame queue. A frame drawn
+from idle, such as a keystroke, is drawn at once either way.
+
+A Node window turns its event loop from a timer, where the display cannot
+start the frames, so there the queued frame costs a vsync (27.6 ms against
+19.3). For a view where a drag must track the pointer as closely as
+possible, such as a drawing canvas or a splitter, ask for one:
+`frameLatency: 1` in `WindowOptions`, `kui_native::app("t").frame_latency(1)`, or
+`frame_latency = 1` in `KuiRunConfig`. It loses the odd vsync at light load
+(1–6% of them). `KUI_FRAME_LATENCY=1` or `2` and `KUI_FRAME_PACING=0` in the
+environment compare the options on the same build.
+
 ### How do I see what a window draws for a user who asked for less motion?
 
 Pin it at the launcher. A window's `env.system` is the OS's — the runner
@@ -1091,7 +1249,7 @@ await runWindowed(app, {
 });
 ```
 
-Rust is `kui::app("mine").system(SystemEnv { motion: MotionPref::Reduced,
+Rust is `kui_native::app("mine").system(SystemEnv { motion: MotionPref::Reduced,
 ..Default::default() })`; C calls `kui_env_set_system` on the context it
 hands `kui_run_with`. The partial is the one `Ctx.setEnv` takes, so the
 branch you assert headless and the window you then look at read one
@@ -1180,7 +1338,7 @@ it again after an upgrade; it is generated, never edited.
 ### How do I give my windows the app's icon?
 
 Tell the launcher, once, and every window it creates carries it:
-`kui::app("t").icon(rgba, w, h)` with straight RGBA pixels, row by row
+`kui_native::app("t").icon(rgba, w, h)` with straight RGBA pixels, row by row
 — something a taskbar shrinks cleanly, 64 to 256 px, rendered from your
 drawing at build time or decoded from a PNG you ship — and, for a
 Windows program, `.icon_resource(1)` too. A Windows program's icon is a

@@ -12,7 +12,7 @@ bundled Lua extension support is table-to-node conversion, not FFI gymnastics.
 |---|---|
 | `kui-core` | The bindable contract: flat per-frame tree, clay-style flex solver, core text stack (shaping/wrapping/caching via cosmic-text + glyph atlas), events-as-data, slotmap resources, quad display list |
 | `kui-wgpu` | wgpu backend: one instanced über-pipeline (rounded rects, borders, glyphs), single draw call per frame |
-| `kui` | Batteries-included runner: winit + wgpu around a `Core`, `App` trait, widget sugar |
+| `kui-native` | Batteries-included runner: winit + wgpu around a `Core`, `App` trait, widget sugar |
 | `kui-lua` | Lua extensions via mlua: scripts return table trees, receive events as tables |
 | `kui-ffi` | C API (cdylib/staticlib + [include/kui.h](crates/kui-ffi/include/kui.h)): flat builder calls, opaque `KuiValue` payloads, `repr(C)` draw data, windowed runner via callbacks — and `CExtension`, the same contract inverted: a C shared library as a guest in someone else's frame |
 | `kui-node` | Node.js addon (napi-rs) + the [`packages/kui`](packages/kui) npm package: JSX views (custom jsx-runtime, no React) lowered into the IR in one call per frame, Elm-style messages as data |
@@ -75,7 +75,7 @@ host).
 
 Every app has a devtools panel, drawn by the core into its own frame
 ([ADR 0024](docs/adr/0024-the-devtools-are-the-cores.md)). Ask for it with
-`kui::app("x").devtools(true)` (or `core.set_devtools(true)`),
+`kui_native::app("x").devtools(true)` (or `core.set_devtools(true)`),
 `win.setDevtools(true)` in Node, `kui_set_devtools(ctx, true)` in C — or
 run any of them with `KUI_DEVTOOLS=1` in the environment and it is there
 with no code at all. It docks beside the app's tree (`left`, `right`,
@@ -121,17 +121,18 @@ latency graph, the key legend — and `--headless` is a self-check with an
 exit code, `--light` / `--dark` pin the base.
 
 ```bash
-cargo run -p kui --example counter        # apps/: the Elm loop, the one every binding has
-cargo run -p kui --example splitmux       # apps/: tmux-style splits, tabs, ⌘-drag pane moves
-cargo run -p kui --example button         # widgets/: the stock button in every state
-cargo run -p kui --example edit           # widgets/: multiline editing and the single-line field
-cargo run -p kui --example text           # widgets/: spans, decorations, families, wrap
-cargo run -p kui --example cells          # widgets/: a terminal grid that selects in cells
-cargo run -p kui --example focus          # features/: the Tab ring and its verbs
-cargo run -p kui --example transition     # features/: transition, easing, slide, keyframes
-cargo run -p kui --example enter_exit     # features/: toasts that slide in and back out
-cargo run -p kui --example theme          # features/: every Theme role over every stock widget
-cargo run -p kui --example counter -- --headless   # the drive, no window
+cargo run -p kui-native --example counter        # apps/: the Elm loop, the one every binding has
+cargo run -p kui-native --example splitmux       # apps/: tmux-style splits, tabs, ⌘-drag pane moves
+cargo run -p kui-native --example button         # widgets/: the stock button in every state
+cargo run -p kui-native --example controls       # widgets/: checkbox, radio group, switch, slider
+cargo run -p kui-native --example edit           # widgets/: multiline editing and the single-line field
+cargo run -p kui-native --example text           # widgets/: spans, decorations, families, wrap
+cargo run -p kui-native --example cells          # widgets/: a terminal grid that selects in cells
+cargo run -p kui-native --example focus          # features/: the Tab ring and its verbs
+cargo run -p kui-native --example transition     # features/: transition, easing, slide, keyframes
+cargo run -p kui-native --example enter_exit     # features/: toasts that slide in and back out
+cargo run -p kui-native --example theme          # features/: every Theme role over every stock widget
+cargo run -p kui-native --example counter -- --headless   # the drive, no window
 cargo run -p kui-devtools --bin cbuild && ./target/debug/counter   # the same app from C, every platform
 cargo run -p kui-ffi --example c_panel    # a Rust host + a dlopened C panel
 cargo run -p kui-lua --example lua_panel  # a Rust host + a Lua panel sharing one frame
@@ -205,7 +206,7 @@ replies out. The host loads the script under a namespace it chooses — the
 way an importer picks an alias — and names the slot by `namespace/slot`:
 
 ```rust
-kui::app("counter").extension_as("fs", LuaExtension::from_file("panel.lua")?).run(app)
+kui_native::app("counter").extension_as("fs", LuaExtension::from_file("panel.lua")?).run(app)
 // …and in the host's view, wherever the panel should sit:
 ui.slot_with("fs/panel", &Value::map([("title", "notes".into())]));
 ```
@@ -461,7 +462,7 @@ that are hard to reverse and would look arbitrary without their context.
   per channel: the fragment shader outputs premultiplied color plus a
   per-channel coverage, `out = src + dst * (1 - coverage)`. The runner turns
   subpixel rasterization on only when the renderer reports that capability
-  (`kui::app(..).text_aa(TextAa::Grayscale)` or `KUI_TEXT_AA=gray` opt out);
+  (`kui_native::app(..).text_aa(TextAa::Grayscale)` or `KUI_TEXT_AA=gray` opt out);
   headless contexts and C hosts stay grayscale unless they ask
   (`kui_set_subpixel_text`), and a renderer without per-channel blending
   still draws subpixel quads correctly from their union coverage. On a 2×
@@ -486,12 +487,12 @@ that are hard to reverse and would look arbitrary without their context.
   and the runner turns macOS's Secure Keyboard Entry on while that window
   has the keyboard and off when it loses it, closes or stops asking,
   keeping the process-wide count balanced. The windows' icon is a launch
-  option: `kui::app("t").icon(rgba, w, h).icon_resource(1)` — the pixels
+  option: `kui_native::app("t").icon(rgba, w, h).icon_resource(1)` — the pixels
   on X11, the executable's icon resource on Windows, for the title bar,
   Alt-Tab and the taskbar (`icon` in Node's `WindowOptions`,
   `kui_set_icon` in C); macOS and Wayland take the app's icon from the
   bundle and the `.desktop` file instead. Custom chrome is an opt-in:
-  `kui::app("title").custom_titlebar().run(app)` — macOS keeps native traffic lights over your content; Windows/Linux go
+  `kui_native::app("title").custom_titlebar().run(app)` — macOS keeps native traffic lights over your content; Windows/Linux go
   undecorated with drawn buttons. On Windows the runner also subclasses the
   window and answers `WM_NCHITTEST` from the frame's chrome regions
   (HTCAPTION / HTMINBUTTON / HTMAXBUTTON / HTCLOSE + resize borders), so
@@ -520,7 +521,7 @@ that are hard to reverse and would look arbitrary without their context.
   other pending events — `App::on_event` in Rust, `pollEvents` in Node, `kui_poll_event`
   in C. As a query it is `KuiWindow.size()` / `PumpRunner::window_size()`,
   which answer before the first frame too (`Core::viewport()` after it).
-  What the user may resize *to* is a launch option: `kui::app("t").min_size(420.0,
+  What the user may resize *to* is a launch option: `kui_native::app("t").min_size(420.0,
   320.0).max_size(1600.0, 1200.0)` (`minWidth` / `minHeight` / `maxWidth` /
   `maxHeight` in the Node `WindowOptions`, where either half of a pair may
   stand alone). The OS enforces the bounds — including the synthesized edge
@@ -554,7 +555,14 @@ that are hard to reverse and would look arbitrary without their context.
   topmost zone under the pointer — a button inside it is its, a banner
   the view floats over it on `enter` is looked past — and the driver
   reports the position (the macOS runner reads it from AppKit, which
-  winit does not surface).
+  winit does not surface). Files the app goes looking for arrive the same
+  way: `request_files` (`ctx.requestFiles`, `env.request_files`,
+  `kui_request_files`) asks for the platform's Open, Save or folder
+  dialog, which the runner shows through rfd as a sheet on the window
+  (the default-on `dialogs` feature), and the answer is one `{kind="files",
+  paths, tag}` event — a drop's `paths`, none when the user cancelled.
+  One dialog at a time; a headless host takes the ask with
+  `take_file_requests` and answers it as input.
 - **Measurement and layout are data, in that order.** "Declare it, the
   core resolves it" is a strategy of enumeration, and the first behaviour
   nobody enumerated needs a way out that is not an imperative hook. The
@@ -695,7 +703,7 @@ that are hard to reverse and would look arbitrary without their context.
   `{kind="sound", phase="ended", playback, tag}`. The runner plays through
   kira/cpal behind the default-on `audio` feature, opening the device on
   the first sound (no audio thread for silent apps; a missing device logs
-  once and the UI runs on). Volumes are linear amplitude; `kui::audio::blip`
+  once and the UI runs on). Volumes are linear amplitude; `kui_native::audio::blip`
   / `wav_pcm16` synthesize test sounds without asset files.
 - **The C API is translation, not architecture.** Frame building is flat
   calls on one opaque context (`kui_open`/`kui_close`/`kui_text`), payloads
@@ -800,7 +808,7 @@ Long lists: culling saves the *drawing*, not the building — a view that
 declares 10k rows lays out 10k rows. `ui.scroll_geometry(key)` hands back
 what the last layout resolved for a container (its box, its content size,
 where it is scrolled to and how far it can go), which is everything a view
-needs to declare only the rows that can be seen. `widgets::virtual_column`
+needs to declare only the rows that can be seen. `widgets::uniform_list`
 is that for uniform rows: visible rows, two of overscan, and two spacers
 holding the space of the rest, so the content height, the scrollbar and
 `set_scroll` behave as if the whole list were there. 10k rows go from
@@ -853,7 +861,7 @@ C host places the window.
 Data from another thread: the windowed loop parks between events, so a
 PTY reader, a file watcher, an LSP client or a socket that changed what
 `view` will show has to say so. `App::setup(waker)` hands the app a
-`kui::Waker` once, before the window opens; it is `Clone + Send`, and
+`kui_native::Waker` once, before the window opens; it is `Clone + Send`, and
 `waker.wake()` from any thread asks every window for a frame — the path a
 key press takes, minus the event, coalesced by the loop's queue so a
 thread waking a thousand times a frame costs one (backlog C21). A host
@@ -907,7 +915,7 @@ and the core draws whatever is left: `widgets::context_menu` and
 has a bar — so the call still says what the menu is, the strip simply is not
 there, and one view is portable. The drawn bar keeps its own open menu, hovers across its
 titles the way a menu bar does, and closes on Escape or a press below it;
-the platform's binds the accelerators its rows declare. `cargo run -p kui
+the platform's binds the accelerators its rows declare. `cargo run -p kui-native
 --example menu_bar` is both, and `--example context_menu` the menus a
 right-click gets.
 
@@ -1003,9 +1011,9 @@ that prop costs.
 | `deep_nesting_64_levels` | 16 chains nested 64 levels deep | ~82.2 µs |
 | `frame_1k_grow_rows_capped` | a column of 1k grow rows under a staircase of `max_height`s — four passes of the freeze loop with 348 rows frozen, what a pass costs over children the earlier passes settled (RG5) | ~77.7 µs |
 | `list_10k_rows_naive` | a 10k-row list held at its middle, built row by row | ~4.19 ms |
-| `list_10k_rows_virtual` | the same list through `widgets::virtual_column` | ~18.4 µs |
+| `list_10k_rows_virtual` | the same list through `widgets::uniform_list` | ~18.4 µs |
 | `list_100k_rows_virtual` | 100k rows through the same widget | ~18.2 µs |
-| `list_10k_rows_variable` | 10k rows of no fixed height through `widgets::virtual_rows` — two searches and the build; its rows average 32 px against the uniform bench's 24, so fewer are on screen | ~14.6 µs |
+| `list_10k_rows_variable` | 10k rows of no fixed height through `widgets::list` — two searches and the build; its rows average 32 px against the uniform bench's 24, so fewer are on screen | ~14.6 µs |
 | `list_10k_rows_variable_at_one_height` | the variable list told, row by row, that every row is the same height — against `list_10k_rows_virtual`, what the stride buys | ~18.6 µs |
 | `list_10k_rows_variable_learning` | a frame that learns a visible row's height — what every frame of a scroll is, and what invalidates the prefix sums | ~14.8 µs |
 | `list_10k_rows_variable_learning_far` | the same frame told about a row nowhere near the window, so everything between it and the window is summed again | ~20.1 µs |
@@ -1105,6 +1113,23 @@ vsync wait) against the display's frame budget (`env.refresh_hz`, 120 Hz
 fallback), with a red cap on frames whose work exceeds it. The runner feeds
 `core.stats` and `core.env` automatically; all examples show it.
 
+Pacing: the surface keeps two frames queued ahead of the one on screen
+(`Launcher::frame_latency`, 2 by default; C47). On macOS that is triple
+buffering, which gpui also uses, and every vsync gets a frame even when
+little is drawn. With one queued frame, a frame whose thread woke a
+little late at light load found no free drawable and missed its vsync:
+112.5–118.6 fps at 100 and 2,500 boxes on an M3 Pro, against 119.7–120.0
+with two. Frames that run back to back (an animation, a drag, a scroll)
+start at the display's vsync, from a `CADisplayLink` on the window's view
+(macOS 14+), so the extra drawable is slack and not a queue. Measured from
+the moment a frame sampled its state to the moment it was on screen, it
+takes 17.5–19.2 ms paced, 19.2–19.5 with one queued frame, and 27.5–27.9
+with two queued unpaced. A frame drawn from idle, such as a keystroke into
+a still editor, is drawn at once. A Node window turns its loop from a
+timer and is not paced, so it pays the queued frame: `frameLatency: 1`
+trades back. `KUI_FRAME_LATENCY` and `KUI_FRAME_PACING=0` compare without a
+rebuild.
+
 Editing latency (`cargo bench -p kui-core --bench editing`, same machine and
 day — one keystroke: applying the edit, then the full frame it causes, warm
 caches). Each cell is the median of four runs, because a single run of the
@@ -1135,7 +1160,7 @@ lists per release what was added and, separately, what an app can delete.
 ## Releases
 
 Tagged commits publish to the self-hosted Forgejo: the library crates
-(`kui-core`, `kui-wgpu`, `kui`, `kui-lua`, `kui-ffi`) to its cargo registry
+(`kui-core`, `kui-wgpu`, `kui-native`, `kui-lua`, `kui-ffi`) to its cargo registry
 and [`packages/kui`](packages/kui) to its npm registry as `@qxuken/kui`, with the Node addon
 prebuilt for linux-x64, linux-arm64, darwin-arm64, darwin-x64 and win32-x64 bundled
 under `prebuilds/` (`native.cjs` picks the one matching the running Node;
@@ -1147,7 +1172,7 @@ for development). Consumers point at the registries once:
 [registries.forgejo]
 index = "sparse+https://drydock9.qxuken.dev/api/packages/qxuken/cargo/"
 # Cargo.toml
-kui = { version = "0.1.0-alpha.1", registry = "forgejo" }
+kui-native = { version = "0.1.0-alpha.1", registry = "forgejo" }  # `use kui_native::…`
 ```
 
 ```bash
@@ -1203,9 +1228,9 @@ publishing. Skip the tag's CI run afterwards; it would fail on "already
 exists".
 
 That last property is also the limit of what CI proves. The Windows non-client
-chrome ([windows_nc.rs](crates/kui/src/windows_nc.rs)), the macOS traffic-light
+chrome ([windows_nc.rs](crates/kui-native/src/windows_nc.rs)), the macOS traffic-light
 inset in `widgets::titlebar_with` and the whole AccessKit bridge
-([access_bridge.rs](crates/kui/src/access_bridge.rs)) are compiled and linked by
+([access_bridge.rs](crates/kui-native/src/access_bridge.rs)) are compiled and linked by
 the release build and never executed by it — and neither of those two files
 carries a test, so the headless suite pins the data they hand the platform, not
 the platform's acceptance of it. Two optional jobs, `smoke-macos` and
@@ -1226,7 +1251,7 @@ both theme bases, and fails on a crash or a hang — one program for every
 platform, so the round cannot drift between a unix host and the Windows
 runner; `--node` adds the Node windows. `KUI_SMOKE_FRAMES=n` is what
 makes an example self-terminating, and any dev build honours it —
-`KUI_SMOKE_FRAMES=120 cargo run -p kui --example fragment` is the same check
+`KUI_SMOKE_FRAMES=120 cargo run -p kui-native --example fragment` is the same check
 by hand. A release build ignores it unless built with `--features smoke`, so
 that an app you ship does not close its own window over a variable its author
 never asked about. Run it before a tag, on Windows above all: the first round
@@ -1266,7 +1291,7 @@ or as a three-second `gate` with `check` skipped. Both are the success case.
 Before tagging, run the macOS accessibility audit by hand:
 
 ```bash
-cargo build -p kui --example accessibility
+cargo build -p kui-native --example accessibility
 swiftc -O -o target/ax-audit scripts/ax-audit.swift
 ./target/debug/examples/accessibility &
 target/ax-audit $!
@@ -1418,14 +1443,17 @@ print a token's name after the value it painted. C declares and reads
 **Layout.** Wrapping is rows only, for the pass-order reason above: a
 **column** that outgrows its height is still one line, so it shrinks its `Fit`
 children toward their `min` (or overflows) rather than moving anything into a
-second column (C12). `Dir` is `Row` or `Column` with no reverse. Beyond that
-the alignment vocabulary is start/center/end and nothing else — no
-`align-content` (a wrapping row's lines always share the leftover cross space
-equally), no `space-between` / `around` / `evenly` on either axis (a `grow`
-spacer node covers the first of the three), and no baseline cross-alignment, so
-two text sizes on one row align by box and sit on different lines (C13). There
-is no aspect ratio either: "square" or "16:9" needs one of the two dimensions
-known (C14).
+second column (C12). `Dir` is `Row` or `Column` with no reverse. The main
+axis takes start/center/end and the three spreads (`spaceBetween`,
+`spaceAround`, `spaceEvenly`, CSS's `justify-content`), and a row's cross axis
+`baseline` besides start/center/end (C13); a column's cross axis has no
+baseline, and there is no `align-content` (a wrapping row's lines always share
+the leftover cross space equally) and no per-child `align-self`. A baseline is
+the first line of the first text down a child's first-child chain; a child with
+no text aligns by its bottom edge. `aspectRatio` (C14) sizes one axis from the
+other — a fit height from the final width, or a fit width from a fixed height —
+and not a fit width from a `grow` or percent height, which is resolved only
+after every width is.
 
 **Input.** Pointer buttons: the secondary one is routed to `on_context_menu`
 and nothing else (C2); the middle button and anything past it (back, forward)

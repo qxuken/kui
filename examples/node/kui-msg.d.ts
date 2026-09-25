@@ -27,9 +27,11 @@ type AppMessages =
   | { kind: 'register' }
   // features/relaunch.tsx: the button that closes the window for the next.
   | { kind: 'reopen' }
-  // features/drop.tsx: the zone's tag, and the button inside it.
+  // features/drop.tsx: the zone's tag, the buttons inside it, and the
+  // Open dialog's tag.
   | { kind: 'zone' }
   | { kind: 'clear' }
+  | { kind: 'open' }
   // features/devtools_tab.tsx: a source token and an Inspector row (each
   // both a hover tag and a click payload), the picker the tab raises, and
   // the page's button that jumps to the tab.
@@ -40,7 +42,14 @@ type AppMessages =
   // widgets/table.tsx: the row a click selected, and the column a header's
   // click sorts by.
   | { kind: 'select'; row: number }
-  | { kind: 'sort'; by: 'name' | 'size' | 'kind' };
+  | { kind: 'sort'; by: 'name' | 'size' | 'kind' }
+  // widgets/controls.tsx: the toggles' clicks and the sliders' change tags.
+  | { kind: 'notify' }
+  | { kind: 'all' }
+  | { kind: 'channel'; i: number }
+  | { kind: 'theme'; i: number }
+  | { kind: 'volume' }
+  | { kind: 'gain' };
 
 declare module '@qxuken/kui/jsx-runtime' {
   interface KuiMsg {

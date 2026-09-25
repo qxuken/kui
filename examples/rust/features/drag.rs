@@ -9,7 +9,10 @@
 //! the release lands wherever it lands.
 //!
 //! Two things it is for: a **slider** whose value is what it was at the
-//! press plus `dx` over the track, and a **card** whose float offset is
+//! press plus `dx` over the track — drawn by hand here because the drag
+//! is the subject; an app's slider is the stock one
+//! (`widgets::slider`, ADR 0034), which does this and the keys — and a
+//! **card** whose float offset is
 //! where it was at the press plus the displacement, kept inside the stage
 //! (its own size from `on_layout`, the stage's from the event's `parent`).
 //! A drag that started on the card is the card's until it ends, whatever
@@ -22,12 +25,12 @@
 //! whichever shape the dragged node declared for as long as the pointer
 //! is captured, wherever it goes.
 //!
-//! Run: cargo run -p kui --example drag [-- --headless]
+//! Run: cargo run -p kui-native --example drag [-- --headless]
 
-use kui::{
+use kui_devtools::{Drive, Example};
+use kui_native::{
     Align, App, Core, CursorShape, FloatConfig, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value,
 };
-use kui_devtools::{Drive, Example};
 
 const TRACK_W: f32 = 320.0;
 
@@ -214,12 +217,15 @@ impl Example for Drag {
         let track = d.key_of("track").ok_or("no track")?;
         let r = d.rect_of(track).ok_or("no track rect")?;
         let (x0, y0) = (r.x + 10.0, r.y + 12.0);
-        d.input(self, kui::InputEvent::CursorMoved(kui::Vec2::new(x0, y0)));
+        d.input(
+            self,
+            kui_native::InputEvent::CursorMoved(kui_native::Vec2::new(x0, y0)),
+        );
         d.check(
             d.core.cursor_shape() == CursorShape::Grab,
             "the track declares the open hand at rest",
         )?;
-        let evs = d.input(self, kui::InputEvent::mouse_down(1));
+        let evs = d.input(self, kui_native::InputEvent::mouse_down(1));
         d.check(
             evs.iter()
                 .any(|e| e.payload.get("phase").and_then(Value::as_str) == Some("start")),
@@ -232,7 +238,7 @@ impl Example for Drag {
         )?;
         d.input(
             self,
-            kui::InputEvent::CursorMoved(kui::Vec2::new(x0 + TRACK_W * 0.5, y0)),
+            kui_native::InputEvent::CursorMoved(kui_native::Vec2::new(x0 + TRACK_W * 0.5, y0)),
         );
         d.check(
             (self.value - 0.5).abs() < 0.02,
@@ -240,13 +246,13 @@ impl Example for Drag {
         )?;
         d.input(
             self,
-            kui::InputEvent::CursorMoved(kui::Vec2::new(x0 + TRACK_W * 0.9, y0)),
+            kui_native::InputEvent::CursorMoved(kui_native::Vec2::new(x0 + TRACK_W * 0.9, y0)),
         );
         d.check(
             (self.value - 0.9).abs() < 0.02,
             "and the value follows the pointer, not the steps",
         )?;
-        d.input(self, kui::InputEvent::mouse_up());
+        d.input(self, kui_native::InputEvent::mouse_up());
         d.frame(self);
         d.check(
             d.core.cursor_shape() == CursorShape::Grab,
@@ -256,15 +262,18 @@ impl Example for Drag {
         let card = d.key_of("card").ok_or("no card")?;
         let c = d.rect_of(card).ok_or("no card rect")?;
         let (x0, y0) = (c.x + c.w / 2.0, c.y + c.h / 2.0);
-        d.input(self, kui::InputEvent::CursorMoved(kui::Vec2::new(x0, y0)));
-        d.input(self, kui::InputEvent::mouse_down(1));
+        d.input(
+            self,
+            kui_native::InputEvent::CursorMoved(kui_native::Vec2::new(x0, y0)),
+        );
+        d.input(self, kui_native::InputEvent::mouse_down(1));
         d.check(
             self.dragging.is_some(),
             "a press on the card starts its drag",
         )?;
         d.input(
             self,
-            kui::InputEvent::CursorMoved(kui::Vec2::new(x0 + 60.0, y0 + 30.0)),
+            kui_native::InputEvent::CursorMoved(kui_native::Vec2::new(x0 + 60.0, y0 + 30.0)),
         );
         d.frame(self);
         d.check(
@@ -275,14 +284,14 @@ impl Example for Drag {
         // and the card stops at the stage's edge.
         d.input(
             self,
-            kui::InputEvent::CursorMoved(kui::Vec2::new(x0 + 600.0, y0 + 30.0)),
+            kui_native::InputEvent::CursorMoved(kui_native::Vec2::new(x0 + 600.0, y0 + 30.0)),
         );
         d.frame(self);
         d.check(
             self.card.0 > 200.0 && self.card.0 + self.card_size.0 <= 420.0 + 0.5,
             "the pointer leaving the card does not end the drag, and the card stops at the edge",
         )?;
-        d.input(self, kui::InputEvent::mouse_up());
+        d.input(self, kui_native::InputEvent::mouse_up());
         d.check(
             self.dragging.is_none(),
             "the release ends it, wherever it lands",

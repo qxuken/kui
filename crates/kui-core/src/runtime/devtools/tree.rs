@@ -298,7 +298,7 @@ pub(super) fn tree_tab(
     let list_key = ui.child_key("kui-devtools/nodes");
     let list_focused = ui.is_focused(list_key);
     let cursor = st.tree_cursor;
-    let list = widgets::virtual_column(
+    let list = widgets::uniform_list(
         ui,
         "kui-devtools/nodes",
         NodeSpec::column()
@@ -492,11 +492,7 @@ fn inspector(
     };
     let px = |v: f32| format!("{v:.0}{}", length_names(v));
     let opt_px = |v: Option<f32>| v.map_or("—".to_string(), |v| format!("{v:.0}"));
-    let align = |a: Align| match a {
-        Align::Start => "start",
-        Align::Center => "center",
-        Align::End => "end",
-    };
+    let align = |a: Align| a.name();
     let is = |k: Option<Key>| k == Some(n.key);
     let mut state = Vec::new();
     if is(st.facts.hovered) {

@@ -17,13 +17,13 @@
 //! Force-clicking a word (a Force Touch trackpad) selects it and opens
 //! the system's Look Up panel.
 //!
-//! Run: cargo run -p kui --example selection [-- --headless]
+//! Run: cargo run -p kui-native --example selection [-- --headless]
 
-use kui::{
+use kui_devtools::{Drive, Example};
+use kui_native::{
     Align, App, Cell, CellGrid, Core, EditOptions, FontFamily, NodeSpec, Sizing, Span, TextStyle,
     Theme, Ui,
 };
-use kui_devtools::{Drive, Example};
 
 const LINES: [&str; 4] = [
     "~/kui $ cargo test -p kui-core",
@@ -198,14 +198,14 @@ impl Example for Selection {
         let r = d.rect_of(term).ok_or("the grid has no rect")?;
         d.input(
             self,
-            kui::InputEvent::CursorMoved(kui::Vec2::new(r.x + 20.0, r.y + 14.0)),
+            kui_native::InputEvent::CursorMoved(kui_native::Vec2::new(r.x + 20.0, r.y + 14.0)),
         );
-        d.input(self, kui::InputEvent::mouse_down(1));
+        d.input(self, kui_native::InputEvent::mouse_down(1));
         d.input(
             self,
-            kui::InputEvent::CursorMoved(kui::Vec2::new(r.x + 200.0, r.y + 40.0)),
+            kui_native::InputEvent::CursorMoved(kui_native::Vec2::new(r.x + 200.0, r.y + 40.0)),
         );
-        d.input(self, kui::InputEvent::mouse_up());
+        d.input(self, kui_native::InputEvent::mouse_up());
         d.frame(self);
         d.check(
             d.core.cell_selection().is_some(),

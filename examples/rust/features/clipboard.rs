@@ -33,14 +33,14 @@
 //! readout at the bottom is the app's side of it: what it last handed
 //! over, and what last came back.
 //!
-//! Run: cargo run -p kui --example clipboard [-- --headless]
+//! Run: cargo run -p kui-native --example clipboard [-- --headless]
 
-use kui::widgets;
-use kui::{
+use kui_devtools::{Drive, Example};
+use kui_native::widgets;
+use kui_native::{
     Align, App, Core, EditKey, EditOptions, MenuAction, Mods, NodeSpec, Role, Sizing, Span,
     TextStyle, Theme, Ui, UiEvent, Value,
 };
-use kui_devtools::{Drive, Example};
 
 const ROWS: usize = 2000;
 const ROW_H: f32 = 22.0;
@@ -195,7 +195,7 @@ impl App for Clipboard {
                         &t,
                         "a virtual list: select, scroll away, ⌘C — the app answers",
                     );
-                    widgets::virtual_column(
+                    widgets::uniform_list(
                         ui,
                         "log",
                         NodeSpec::column()
@@ -327,7 +327,7 @@ impl Example for Clipboard {
 
     /// Each path onto the queue, and what it leaves there.
     fn headless(&mut self, core: &mut Core) -> Result<(), String> {
-        use kui::{CopyRequest, InputEvent, KeyMods};
+        use kui_native::{CopyRequest, InputEvent, KeyMods};
         let mut d = Drive::new(core, 640.0, 640.0);
         d.core.set_native_menus(false);
         d.frame(self);
@@ -363,12 +363,12 @@ impl Example for Clipboard {
         let r = d.rect_of(article).ok_or("the card has no rect")?;
         d.input(
             self,
-            InputEvent::CursorMoved(kui::Vec2::new(r.x + 30.0, r.y + 40.0)),
+            InputEvent::CursorMoved(kui_native::Vec2::new(r.x + 30.0, r.y + 40.0)),
         );
         d.input(self, InputEvent::mouse_down(1));
         d.input(
             self,
-            InputEvent::CursorMoved(kui::Vec2::new(r.x + 300.0, r.y + 44.0)),
+            InputEvent::CursorMoved(kui_native::Vec2::new(r.x + 300.0, r.y + 44.0)),
         );
         d.input(self, InputEvent::mouse_up());
         d.check(
@@ -381,26 +381,26 @@ impl Example for Clipboard {
         )?;
         d.input(
             self,
-            InputEvent::CursorMoved(kui::Vec2::new(r.x + 30.0, r.y + 40.0)),
+            InputEvent::CursorMoved(kui_native::Vec2::new(r.x + 30.0, r.y + 40.0)),
         );
         d.input(
             self,
             InputEvent::MouseDown {
-                button: kui::MouseButton::Secondary,
+                button: kui_native::MouseButton::Secondary,
                 clicks: 1,
             },
         );
         d.input(
             self,
             InputEvent::MouseUp {
-                button: kui::MouseButton::Secondary,
+                button: kui_native::MouseButton::Secondary,
             },
         );
         let menu = d.core.menu().cloned().ok_or("no menu over the card")?;
         let copy = menu
             .items
             .iter()
-            .position(|i| i.role == kui::MenuRole::Copy)
+            .position(|i| i.role == kui_native::MenuRole::Copy)
             .ok_or("no Copy row")?;
         d.core.activate_menu_item(copy).ok_or("Copy refused")?;
         let queued = d.core.take_menu_actions();
@@ -414,12 +414,12 @@ impl Example for Clipboard {
         let r = d.rect_of(log).ok_or("the log has no rect")?;
         d.input(
             self,
-            InputEvent::CursorMoved(kui::Vec2::new(r.x + 20.0, r.y + 6.0)),
+            InputEvent::CursorMoved(kui_native::Vec2::new(r.x + 20.0, r.y + 6.0)),
         );
         d.input(self, InputEvent::mouse_down(1));
         d.input(
             self,
-            InputEvent::CursorMoved(kui::Vec2::new(r.x + 200.0, r.y + 2.5 * ROW_H)),
+            InputEvent::CursorMoved(kui_native::Vec2::new(r.x + 200.0, r.y + 2.5 * ROW_H)),
         );
         d.input(self, InputEvent::mouse_up());
         d.frame(self);
@@ -429,12 +429,12 @@ impl Example for Clipboard {
         // 0..~13. The wheel under the held press moves it too.
         d.input(
             self,
-            InputEvent::CursorMoved(kui::Vec2::new(r.x + 20.0, r.y + 6.0)),
+            InputEvent::CursorMoved(kui_native::Vec2::new(r.x + 20.0, r.y + 6.0)),
         );
         d.input(self, InputEvent::mouse_down(1));
         d.input(
             self,
-            InputEvent::CursorMoved(kui::Vec2::new(r.x + 200.0, r.y + r.h + 60.0)),
+            InputEvent::CursorMoved(kui_native::Vec2::new(r.x + 200.0, r.y + r.h + 60.0)),
         );
         for _ in 0..30 {
             d.advance(1.0 / 60.0);
@@ -451,7 +451,7 @@ impl Example for Clipboard {
         )?;
         d.input(
             self,
-            InputEvent::CursorMoved(kui::Vec2::new(r.x + 200.0, r.y + 2.5 * ROW_H)),
+            InputEvent::CursorMoved(kui_native::Vec2::new(r.x + 200.0, r.y + 2.5 * ROW_H)),
         );
         d.wheel(self, r.x + 200.0, r.y + 2.5 * ROW_H, 0.0, -20.0 * ROW_H);
         d.frame(self);
@@ -473,7 +473,7 @@ impl Example for Clipboard {
         );
         d.input(
             self,
-            InputEvent::CursorMoved(kui::Vec2::new(r.x + 100.0, r.y + 1.5 * ROW_H)),
+            InputEvent::CursorMoved(kui_native::Vec2::new(r.x + 100.0, r.y + 1.5 * ROW_H)),
         );
         d.input(self, InputEvent::mouse_down(1));
         d.input(self, InputEvent::mouse_up());
@@ -488,16 +488,16 @@ impl Example for Clipboard {
             "a Shift-click extends from the anchor instead of starting over",
         )?;
         // Back to the top for the copy below: a plain drag over rows 0..2.
-        d.core.set_scroll(log, kui::Vec2::ZERO);
+        d.core.set_scroll(log, kui_native::Vec2::ZERO);
         d.frame(self);
         d.input(
             self,
-            InputEvent::CursorMoved(kui::Vec2::new(r.x + 20.0, r.y + 6.0)),
+            InputEvent::CursorMoved(kui_native::Vec2::new(r.x + 20.0, r.y + 6.0)),
         );
         d.input(self, InputEvent::mouse_down(1));
         d.input(
             self,
-            InputEvent::CursorMoved(kui::Vec2::new(r.x + 200.0, r.y + 2.5 * ROW_H)),
+            InputEvent::CursorMoved(kui_native::Vec2::new(r.x + 200.0, r.y + 2.5 * ROW_H)),
         );
         d.input(self, InputEvent::mouse_up());
         d.frame(self);
@@ -533,16 +533,16 @@ impl Example for Clipboard {
         // row 0 — is asked for as the same range: `from` precedes `to`
         // whichever end the press was, so the app's `from..=to` answers
         // the same rows.
-        d.core.set_scroll(log, kui::Vec2::ZERO);
+        d.core.set_scroll(log, kui_native::Vec2::ZERO);
         d.frame(self);
         d.input(
             self,
-            InputEvent::CursorMoved(kui::Vec2::new(r.x + 200.0, r.y + 2.5 * ROW_H)),
+            InputEvent::CursorMoved(kui_native::Vec2::new(r.x + 200.0, r.y + 2.5 * ROW_H)),
         );
         d.input(self, InputEvent::mouse_down(1));
         d.input(
             self,
-            InputEvent::CursorMoved(kui::Vec2::new(r.x + 20.0, r.y + 6.0)),
+            InputEvent::CursorMoved(kui_native::Vec2::new(r.x + 20.0, r.y + 6.0)),
         );
         d.input(self, InputEvent::mouse_up());
         d.frame(self);

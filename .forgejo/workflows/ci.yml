@@ -95,11 +95,11 @@
 # Nothing in this workflow dispatches a Windows message or answers an
 # NSAccessibility query. That leaves uncovered:
 #
-#   * crates/kui/src/windows_nc.rs - the WM_NCHITTEST / DWM caption work
+#   * crates/kui-native/src/windows_nc.rs - the WM_NCHITTEST / DWM caption work
 #     behind custom chrome (drag strip, caption buttons, resize borders);
 #   * the macOS traffic-light inset in `widgets::titlebar_with`, and the
 #     `native_controls` rect that feeds it;
-#   * crates/kui/src/access_bridge.rs - the whole AccessKit bridge (UIA,
+#   * crates/kui-native/src/access_bridge.rs - the whole AccessKit bridge (UIA,
 #     NSAccessibility, AT-SPI).
 #
 # Neither windows_nc.rs nor access_bridge.rs contains a single #[test]:
@@ -736,7 +736,7 @@ jobs:
       # One invocation publishes in dependency order: each crate's verify
       # build resolves the earlier ones from the freshly published index.
       - name: cargo publish
-        run: cargo publish -p kui-core -p kui-wgpu -p kui -p kui-lua -p kui-ffi --registry forgejo
+        run: cargo publish -p kui-derive -p kui-core -p kui-wgpu -p kui-native -p kui-lua -p kui-ffi --registry forgejo
 
       # Prereleases get their identifier as the dist-tag (0.1.0-alpha.1 ->
       # `alpha`, installed with `npm i @qxuken/kui@alpha`); plain versions become

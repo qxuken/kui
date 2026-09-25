@@ -10,7 +10,10 @@
 //   * the button inside the zone is the zone's: files over it land here;
 //   * the banner the view shows on `enter` is a float over the zone that
 //     is no zone, and the files look past it — no `leave` for it;
-//   * the box below takes nothing: a release there slides the icon home.
+//   * the box below takes nothing: a release there slides the icon home;
+//   * "Open…" asks for the platform's Open dialog instead (backlog C51):
+//     `win.requestFiles` from `update`, answered by one `files` message
+//     whose `paths` are what a drop's are, so the same list takes both.
 //
 //   npm run drop                              a real window
 //   node dist/features/drop.mjs --headless    every path, no window
@@ -18,15 +21,23 @@ import type { App, CoreMsg, Ctx, KuiWindow, UiEvent } from '@qxuken/kui';
 import { run } from '../devtools.js';
 
 type Model = { landed: string[]; hovering: string[]; at: [number, number] | null; events: number; cleared: number };
-type AppMsg = { kind: 'zone' } | { kind: 'clear' };
+type AppMsg = { kind: 'zone' } | { kind: 'clear' } | { kind: 'open' };
 type Msg = AppMsg | CoreMsg;
 
 const init: Model = { landed: [], hovering: [], at: null, events: 0, cleared: 0 };
 
-function update(model: Model, msg: Msg, _ev: UiEvent<Msg>, _win: KuiWindow): Model | undefined {
+function update(model: Model, msg: Msg, _ev: UiEvent<Msg>, win: KuiWindow): Model | undefined {
   switch (msg.kind) {
     case 'clear':
       return { ...model, landed: [], cleared: model.cleared + 1 };
+    case 'open':
+      // One dialog at a time: a click while it is up asks for nothing more.
+      win.requestFiles({ mode: 'open', multiple: true, title: 'Add files', tag: { kind: 'open' } });
+      return undefined;
+    // The dialog's answer: the same paths a drop carries, none when it was
+    // cancelled.
+    case 'files':
+      return { ...model, landed: [...model.landed, ...msg.paths] };
     case 'drop': {
       const at: [number, number] | null = msg.x !== undefined && msg.y !== undefined ? [msg.x, msg.y] : null;
       const events = model.events + 1;
@@ -59,6 +70,9 @@ function view(model: Model, win: Surface) {
         {/* Inside the zone: a button, and files over it are the zone's. */}
         <box key="clear" label="Clear" padX={12} padY={6} radius={6} bg={t.raised} hoverBg={t.hover} onClick={{ kind: 'clear' }}>
           <text size={12} color={t.fg}>Clear the list</text>
+        </box>
+        <box key="open" label="Open…" padX={12} padY={6} radius={6} bg={t.raised} hoverBg={t.hover} onClick={{ kind: 'open' }}>
+          <text size={12} color={t.fg}>Open…</text>
         </box>
         {/* What an app shows in answer to `enter`: a banner floated over the
             zone. It takes no files, so the files look past it (decision 2). */}
@@ -133,6 +147,19 @@ await run<Model, AppMsg>({
     ctx.dragCancel();
     app.settle();
     ok(app.model.hovering.length === 0 && ctx.dropTarget() === null, 'out of the window: the lit zone\'s `leave`');
+
+    // "Open…": update asks, the host (this drive) takes the ask and answers
+    // it, and the answer lands in the same list.
+    app.render();
+    const open = rect('open');
+    app.click(open.x + 4, open.y + 4);
+    const asks = ctx.takeFileRequests();
+    ok(asks.length === 1 && asks[0].multiple === true, 'Open… asks the host for one multiple-file dialog');
+    app.click(open.x + 4, open.y + 4);
+    ok(ctx.takeFileRequests().length === 0, 'a second click while it is up asks for nothing more');
+    ctx.answerFiles(['/tmp/c.md']);
+    app.settle();
+    ok(app.model.landed.at(-1) === '/tmp/c.md' && !ctx.awaitingFiles(), 'the answer lands like a drop, and the ask is spent');
     return true;
   },
 });

@@ -15,13 +15,13 @@
 //! Nothing here calls an animation; each frame declares the value it wants
 //! and the core is between the last frame and this one.
 //!
-//! Run: cargo run -p kui --example transition [-- --headless]
+//! Run: cargo run -p kui-native --example transition [-- --headless]
 
-use kui::{
+use kui_devtools::{Drive, Example};
+use kui_native::{
     Align, App, Core, Easing, FloatConfig, Keyframe, NodeSpec, Repeat, Sizing, TextStyle, Ui,
     UiEvent, Value,
 };
-use kui_devtools::{Drive, Example};
 
 const EASINGS: [(&str, Easing); 6] = [
     ("linear", Easing::Linear),
@@ -58,7 +58,7 @@ impl App for Motion {
                 ui.text("transition · the bar eases to whatever the buttons set", TextStyle::new(12.0).color(t.muted));
                 ui.with(NodeSpec::row().gap(8.0).cross_align(Align::Center), |ui| {
                     for (label, level) in [("0%", 0.0), ("40%", 0.4), ("100%", 1.0)] {
-                        kui::widgets::button(
+                        kui_native::widgets::button(
                             ui,
                             label,
                             Value::map([("kind", Value::str("level")), ("to", Value::Float(level))]),

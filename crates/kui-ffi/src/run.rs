@@ -18,8 +18,8 @@ struct CApp {
 /// `kui_run`'s app is three arguments and not a struct (backlog RG1).
 static ON_TEARDOWN: std::sync::Mutex<Option<TeardownFn>> = std::sync::Mutex::new(None);
 
-impl kui::App for CApp {
-    fn view(&mut self, ui: &mut kui::Ui<'_>) {
+impl kui_native::App for CApp {
+    fn view(&mut self, ui: &mut kui_native::Ui<'_>) {
         // Hand the callback a context that borrows the runner's frame for the
         // duration of view(). `borrowing_in` rather than `borrowing`: the
         // `Ui` is what carries the runner's extensions, so a `kui_slot`
@@ -38,7 +38,7 @@ impl kui::App for CApp {
         }
     }
 
-    fn on_event(&mut self, ev: kui::UiEvent) {
+    fn on_event(&mut self, ev: kui_native::UiEvent) {
         let Some(cb) = self.on_event else { return };
         let payload = KuiValue(ev.payload);
         // Library-allocated, so the full struct: `size` says how much of it
@@ -269,8 +269,8 @@ pub extern "C" fn kui_run_with(
 /// The launcher `options` describe: each field that was set is one
 /// builder call, a default is none, so `kui_run` builds exactly what it
 /// always did.
-fn launcher_for(title: &str, options: RunOptions) -> kui::Launcher {
-    let mut l = kui::app(title);
+fn launcher_for(title: &str, options: RunOptions) -> kui_native::Launcher {
+    let mut l = kui_native::app(title);
     if let Some((w, h)) = options.size {
         l = l.size(w, h);
     }
@@ -281,17 +281,20 @@ fn launcher_for(title: &str, options: RunOptions) -> kui::Launcher {
         l = l.max_size(w, h);
     }
     l = l.chrome(match options.chrome {
-        KUI_CHROME_CUSTOM => kui::Chrome::Custom,
-        KUI_CHROME_BORDERLESS => kui::Chrome::Borderless,
-        _ => kui::Chrome::Native,
+        KUI_CHROME_CUSTOM => kui_native::Chrome::Custom,
+        KUI_CHROME_BORDERLESS => kui_native::Chrome::Borderless,
+        _ => kui_native::Chrome::Native,
     });
     l = l.text_aa(match options.text_aa {
-        KUI_TEXT_AA_GRAYSCALE => kui::TextAa::Grayscale,
-        KUI_TEXT_AA_SUBPIXEL => kui::TextAa::Subpixel,
-        _ => kui::TextAa::Auto,
+        KUI_TEXT_AA_GRAYSCALE => kui_native::TextAa::Grayscale,
+        KUI_TEXT_AA_SUBPIXEL => kui_native::TextAa::Subpixel,
+        _ => kui_native::TextAa::Auto,
     });
     if let Some(on) = options.diagnostics {
         l = l.diagnostics(on);
+    }
+    if let Some(frames) = options.frame_latency {
+        l = l.frame_latency(frames);
     }
     l
 }

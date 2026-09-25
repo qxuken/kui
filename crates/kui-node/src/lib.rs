@@ -25,6 +25,7 @@ use napi_derive::napi;
 use serde_json::{Map as JsonMap, Value as Json};
 
 mod binary;
+mod rows;
 mod schema;
 
 type Result<T> = napi::Result<T>;
@@ -676,6 +677,15 @@ impl Ctx {
             paths,
             at: Vec2::new(x as f32, y as f32),
         });
+    }
+
+    /// A file dialog's answer, as a host that showed it reports it: the
+    /// paths picked, none for a cancelled dialog. Whoever asked with
+    /// `requestFiles` hears `{kind:"files", paths, tag}`; with nothing
+    /// asked it is dropped (backlog C51).
+    #[napi]
+    pub fn answer_files(&mut self, paths: Vec<String>) {
+        self.input(InputEvent::Files(paths));
     }
 
     /// The dragged files released at (`x`, `y`): the zone there hears
@@ -1527,7 +1537,7 @@ pub fn clip_stride() -> u32 {
 // ---------------------------------------------------------------------------
 // Windowed runner (winit + wgpu via kui's PumpRunner)
 
-/// The `kui::App` behind a Node window. JS never gets called from inside
+/// The `kui_native::App` behind a Node window. JS never gets called from inside
 /// winit: it stores the next view tree per window between pumps
 /// (`set_view`), and this lowers the stored tree whenever the runner
 /// redraws that window. Events collect here and JS drains them after each
@@ -1560,7 +1570,7 @@ struct TreeApp {
     teardown_error: Option<napi::Error>,
 }
 
-impl kui::App for TreeApp {
+impl kui_native::App for TreeApp {
     /// The window going for good, to JS (backlog RG1): once, synchronously,
     /// inside the pump it happened in — the close button's, a `close()`'s,
     /// or the one an OS Quit ends the process inside of, where nothing
@@ -1578,7 +1588,7 @@ impl kui::App for TreeApp {
         }
     }
 
-    fn view(&mut self, ui: &mut kui::Ui<'_>) {
+    fn view(&mut self, ui: &mut kui_native::Ui<'_>) {
         let name = ui.window_name();
         let Some((stream, strings)) = self.trees.get(&*name) else {
             return;
@@ -1616,7 +1626,7 @@ enum WindowRef {
 /// them, and `setView` takes the name of the one a tree is for.
 #[napi]
 pub struct KuiWindow {
-    runner: kui::PumpRunner<TreeApp>,
+    runner: kui_native::PumpRunner<TreeApp>,
     /// The window every per-window door addresses (`useWindow`): the
     /// main window until `runWindowed` aims the surface at the window
     /// whose view or event it is handing to the app (backlog AR12).
@@ -1627,7 +1637,7 @@ pub struct KuiWindow {
 impl KuiWindow {
     /// Options: `{width, height, minWidth, minHeight, maxWidth, maxHeight,
     /// chrome: "native" | "custom" | "borderless", textAa: "auto" | "gray"
-    /// | "subpixel", system, icon}`. The min/max pairs bound what the user can
+    /// | "subpixel", frameLatency, system, icon}`. The min/max pairs bound what the user can
     /// resize the window to; either half may stand alone. `system` pins part of `env.system` over what the OS
     /// says, for the life of the window — `{motion: 'reduced'}` is what a
     /// user who asked for less motion would get, on a machine whose owner
@@ -1641,7 +1651,7 @@ impl KuiWindow {
         // the pump and submits the next view. So an input leaves its frame
         // to that answer, and a click paints once — the button let go and
         // the count moved in one frame, not two.
-        let mut launcher = kui::app(&title).deferred_events();
+        let mut launcher = kui_native::app(&title).deferred_events();
         // A size is both halves or neither: a lone `width` used to be
         // dropped silently, against the encoder's own "refuse, don't drop"
         // (backlog AR40). The min/max pairs below are different — either
@@ -1714,15 +1724,30 @@ impl KuiWindow {
         // in the environment still wins, for an A/B by hand.
         launcher = match o.get("textAa") {
             None | Some(Json::Null) => launcher,
-            Some(Json::String(s)) if s == "auto" => launcher.text_aa(kui::TextAa::Auto),
-            Some(Json::String(s)) if s == "gray" => launcher.text_aa(kui::TextAa::Grayscale),
-            Some(Json::String(s)) if s == "subpixel" => launcher.text_aa(kui::TextAa::Subpixel),
+            Some(Json::String(s)) if s == "auto" => launcher.text_aa(kui_native::TextAa::Auto),
+            Some(Json::String(s)) if s == "gray" => launcher.text_aa(kui_native::TextAa::Grayscale),
+            Some(Json::String(s)) if s == "subpixel" => {
+                launcher.text_aa(kui_native::TextAa::Subpixel)
+            }
             Some(other) => {
                 return Err(err(format!(
                     "window options: textAa must be \"auto\", \"gray\" or \"subpixel\", not {other}"
                 )));
             }
         };
+        // Frames queued ahead of the one on screen (backlog C47), the
+        // launcher's `frame_latency`; `KUI_FRAME_LATENCY` still wins.
+        match o.get("frameLatency") {
+            None | Some(Json::Null) => {}
+            Some(Json::Number(n)) if n.as_u64().is_some_and(|n| (1..=3).contains(&n)) => {
+                launcher = launcher.frame_latency(n.as_u64().unwrap_or(2) as u32);
+            }
+            Some(other) => {
+                return Err(err(format!(
+                    "window options: frameLatency must be 1, 2 or 3, not {other}"
+                )));
+            }
+        }
         // `system: {motion: 'reduced'}` — the same partial `setEnv` takes
         // headless, read the same way, but pinned at the launcher rather
         // than pushed into a core: the runner writes the real reading
@@ -3220,6 +3245,44 @@ macro_rules! core_methods {
             /// A windowed app never needs this — the driver drains it —
             /// but a headless one does: nothing else empties the queue,
             /// and a Copy nobody drains is a copy that never happened.
+            /// Asks for the platform's Open, Save or folder dialog (backlog
+            /// C51): `{mode, multiple, title, filters: [{name, extensions}],
+            /// directory, fileName, tag}`, every field optional. The answer
+            /// is a `{kind:"files", paths, tag}` event — `paths` empty when
+            /// the user cancelled. A window's runner shows the dialog; a
+            /// headless context queues it for `takeFileRequests`. False when
+            /// one is already out: one dialog at a time.
+            #[napi(ts_args_type = "dialog?: FileDialogOptions")]
+            pub fn request_files(&mut self, dialog: Option<Json>) -> Result<bool> {
+                let v = dialog.as_ref().map_or(Value::Null, value_of);
+                let dialog = kui_core::FileDialog::from_value(&v)
+                    .map_err(|e| err(format!("requestFiles(): {e}")))?;
+                let asked = self.$core().request_files(dialog);
+                self.$redraw();
+                Ok(asked)
+            }
+
+            /// Whether a file dialog asked for is still unanswered.
+            #[napi]
+            pub fn awaiting_files(&mut self) -> bool {
+                self.$core().awaiting_files()
+            }
+
+            /// The file dialog asked for and not yet taken — at most one —
+            /// as `requestFiles` took it, for a host that shows it itself.
+            /// A window never needs this: its runner drains and shows it.
+            /// Answer with `answerFiles`.
+            #[napi(ts_return_type = "FileDialogOptions[]")]
+            pub fn take_file_requests(&mut self) -> Json {
+                Json::Array(
+                    self.$core()
+                        .take_file_requests()
+                        .iter()
+                        .map(|d| readback(&d.to_value()))
+                        .collect(),
+                )
+            }
+
             #[napi(ts_return_type = "MenuAction[]")]
             pub fn take_menu_actions(&mut self) -> Result<Json> {
                 let out: Vec<Json> = self
@@ -3570,6 +3633,26 @@ macro_rules! core_methods {
                 self.$core().set_scroll(key, Vec2::new(x as f32, y as f32));
                 self.$redraw();
                 Ok(())
+            }
+
+            /// Moves the scroll container `key` by the content that moved
+            /// under it — `drawn` for where the content is drawn (and an
+            /// eased leg's start), `target` for the retained offset — with
+            /// no ease asked or ended and no frame asked for: a correction to
+            /// the frame the view is building. What `list()` calls when the
+            /// rows it measured came out another height than the estimate
+            /// they stood at, so the row under the pointer stays put (RG18,
+            /// backlog C46). A label nothing declared yet is the first
+            /// frame, which has nothing to correct.
+            #[napi]
+            pub fn shift_scroll(&mut self, key: String, drawn: f64, target: f64) {
+                if let Some(key) = resolve_query(self.$core(), &key) {
+                    self.$core().shift_scroll(
+                        key,
+                        Vec2::new(0.0, drawn as f32),
+                        Vec2::new(0.0, target as f32),
+                    );
+                }
             }
 
             // -- Windows ----------------------------------------------------
@@ -4393,6 +4476,7 @@ mod readback_pins {
                 "nodes[].runs[].wordStarts",
                 "nodes[].runs[].rtl",
                 "nodes[].checked",
+                "nodes[].mixed",
                 "nodes[].selected",
                 "nodes[].expanded",
                 "nodes[].posInSet",
@@ -4402,6 +4486,7 @@ mod readback_pins {
                 "nodes[].valueNow",
                 "nodes[].valueMin",
                 "nodes[].valueMax",
+                "nodes[].valueStep",
                 "nodes[].focused",
                 "nodes[].disabled",
                 "nodes[].modal",

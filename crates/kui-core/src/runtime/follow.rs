@@ -108,7 +108,7 @@ impl Core {
     }
 
     /// The nearest ancestor-or-self of `node` that a held drag scrolls,
-    /// with its current reading. Self first, because a `virtual_column`
+    /// with its current reading. Self first, because a `uniform_list`
     /// is both the selection's scope and its scroller. A handler beats
     /// a container on the same node: the app asked to hear the wheel
     /// (`ScrollRegion::handler`). Read off the finished frame's tree,

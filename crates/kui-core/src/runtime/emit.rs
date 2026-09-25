@@ -62,6 +62,177 @@ impl Core {
         }
     }
 
+    /// Node `i`'s hit region, for a node that tracks the pointer. Out of
+    /// line: a box that takes no input — most of a frame — does not carry
+    /// the context-menu walk, the slider's track or the shape in
+    /// `emit_node`'s saved registers and stack frame (backlog C48).
+    #[inline(never)]
+    fn push_hit(
+        &mut self,
+        i: usize,
+        rect: Rect,
+        clip: Rect,
+        drop: Option<crate::input::DropOwner>,
+        hits: &mut Vec<HitRegion>,
+    ) {
+        let spec = &self.tree.specs[i];
+        let parent = self.tree.parent[i];
+        let parent_rect = if parent == NIL {
+            Rect::new(0.0, 0.0, self.viewport.w, self.viewport.h)
+        } else {
+            let p = parent as usize;
+            Rect::from_pos_size(self.tree.pos[p], self.tree.size[p])
+        };
+        // A disabled node keeps hover (a tooltip can say why) and loses
+        // every interaction: it emits nothing and takes no focus.
+        let live = !spec.disabled;
+        // The menu this region opens is its own or an ancestor's; the
+        // walk is skipped on a frame where no node offers one (T1).
+        let context_menu = if self.tree.any_context_menu {
+            self.enclosing_menu(i).map(|j| crate::input::MenuOwner {
+                key: self.tree.keys[j],
+                origin: self.tree.origins[j],
+                tag: self.tree.specs[j]
+                    .events()
+                    .on_context_menu
+                    .clone()
+                    .expect("enclosing_menu returns a node that offers one"),
+            })
+        } else {
+            None
+        };
+        // A slider that asked for its changes reads the pointer along
+        // its content box (ADR 0034, decision 4); a disabled one, or a
+        // range that is not one, reads nothing.
+        let slider = match spec.events().on_change.as_ref() {
+            Some(tag) if live && spec.access().role == Some(crate::access::Role::Slider) => {
+                crate::slider::SliderRange::of(spec.access()).map(|range| {
+                    Box::new(crate::slider::SliderTrack::new(
+                        rect,
+                        spec.layout.padding,
+                        spec.layout.dir == crate::spec::Dir::Column,
+                        range,
+                        tag.clone(),
+                    ))
+                })
+            }
+            _ => None,
+        };
+        // The shape past the rect (ADR 0026): a stroke's pieces, a
+        // fill's outline, a rounded box's corners; a plain box none.
+        let shape = match self.tree.content[i] {
+            NodeContent::Line(id) => {
+                let (run, points) = self.lines.run(id);
+                self.hit_shapes.segments(points, run.width)
+            }
+            NodeContent::Polygon(id) => {
+                let draw = self.fragments.get(id);
+                let mut pts = [Vec2::ZERO; crate::fragment::POLYGON_MAX_POINTS];
+                for (k, p) in pts.iter_mut().enumerate() {
+                    *p = Vec2::new(draw.params[k * 2] * rect.w, draw.params[k * 2 + 1] * rect.h);
+                }
+                self.hit_shapes.polygon(&pts)
+            }
+            _ if spec.style.radius != crate::display::SQUARE => {
+                crate::input::HitShape::Rounded(spec.style.radius)
+            }
+            _ => crate::input::HitShape::Rect,
+        };
+        hits.push(HitRegion {
+            key: self.tree.keys[i],
+            origin: self.tree.origins[i],
+            rect,
+            clip,
+            shape,
+            payload: spec.events().on_click.clone().filter(|_| live),
+            drag: spec.events().on_drag.clone().filter(|_| live),
+            parent_rect,
+            key_sink: spec.events().on_key.clone().filter(|_| live),
+            key_up: spec.events().key_up,
+            context_menu,
+            drop,
+            focusable: crate::access::focusable(&self.tree, i),
+            edit_origin: None,
+            select_scope: self.scope_of(i).filter(|_| live),
+            window: spec.window,
+            hover: spec.events().on_hover.clone(),
+            group: spec.interact().hover_group,
+            click_sound: spec.interact().click_sound.filter(|_| live),
+            hover_sound: spec.interact().hover_sound,
+            cursor: spec.cursor,
+            slider,
+        });
+    }
+
+    /// An editor's own hit region, whose origin is where its glyphs sit
+    /// (shifted by what a field is scrolled). Out of line for the reason
+    /// `push_hit` is (backlog C48).
+    #[inline(never)]
+    #[allow(clippy::too_many_arguments)]
+    fn push_edit_hit(
+        &mut self,
+        i: usize,
+        key: Key,
+        rect: Rect,
+        clip: Rect,
+        scale: f32,
+        drop: Option<crate::input::DropOwner>,
+        hits: &mut Vec<HitRegion>,
+    ) {
+        let spec = &self.tree.specs[i];
+        let pad = spec.layout.padding;
+        let content_origin = Vec2::new(rect.x + pad.l, rect.y + pad.t);
+        let inner_w = (rect.w - pad.x()).max(0.0);
+        // A single-line field scrolls its own text (F41). Resolved
+        // here, where the box is known, and read back by the hit
+        // region and the access runs so all three agree on where the
+        // glyphs are; the painter reads the same stored offset.
+        let offset = {
+            let sess = &mut *self.session.state();
+            self.edit.line_offset(key, inner_w * scale, &mut sess.fonts)
+        };
+        hits.push(HitRegion {
+            key,
+            origin: self.tree.origins[i],
+            rect,
+            clip,
+            // A field's corners round its hit too (ADR 0026).
+            shape: if spec.style.radius != crate::display::SQUARE {
+                crate::input::HitShape::Rounded(spec.style.radius)
+            } else {
+                crate::input::HitShape::Rect
+            },
+            payload: None,
+            drag: None,
+            parent_rect: rect,
+            // Shifted by what the field is scrolled: a click lands on
+            // the character under the pointer.
+            edit_origin: Some(Vec2::new(
+                content_origin.x - offset / scale,
+                content_origin.y,
+            )),
+            // An editor is its own selection scope: a press in it
+            // places a caret and drags a selection through the
+            // editor's own path, not the scope's.
+            select_scope: None,
+            key_sink: None,
+            key_up: false,
+            context_menu: None,
+            // A field inside a zone is the zone's: files dropped on
+            // it land there.
+            drop,
+            focusable: !spec.disabled,
+            window: None,
+            hover: None,
+            group: None,
+            click_sound: None,
+            hover_sound: None,
+            // The editor's own node carries any override.
+            cursor: spec.cursor,
+            slider: None,
+        });
+    }
+
     /// Emits one node's quads and registers its hit/scroll regions.
     fn emit_node(
         &mut self,
@@ -95,76 +266,9 @@ impl Core {
         // A stroke emits no hit region: it takes no input (ADR 0010,
         // decision 7).
         if spec.hover_tracked() && interactive {
-            let parent = self.tree.parent[i];
-            let parent_rect = if parent == NIL {
-                Rect::new(0.0, 0.0, self.viewport.w, self.viewport.h)
-            } else {
-                let p = parent as usize;
-                Rect::from_pos_size(self.tree.pos[p], self.tree.size[p])
-            };
-            // A disabled node keeps hover (a tooltip can say why) and loses
-            // every interaction: it emits nothing and takes no focus.
-            let live = !spec.disabled;
-            // The menu this region opens is its own or an ancestor's; the
-            // walk is skipped on a frame where no node offers one (T1).
-            let context_menu = if self.tree.any_context_menu {
-                self.enclosing_menu(i).map(|j| crate::input::MenuOwner {
-                    key: self.tree.keys[j],
-                    origin: self.tree.origins[j],
-                    tag: self.tree.specs[j]
-                        .events()
-                        .on_context_menu
-                        .clone()
-                        .expect("enclosing_menu returns a node that offers one"),
-                })
-            } else {
-                None
-            };
-            // The shape past the rect (ADR 0026): a stroke's pieces, a
-            // fill's outline, a rounded box's corners; a plain box none.
-            let shape = match self.tree.content[i] {
-                NodeContent::Line(id) => {
-                    let (run, points) = self.lines.run(id);
-                    self.hit_shapes.segments(points, run.width)
-                }
-                NodeContent::Polygon(id) => {
-                    let draw = self.fragments.get(id);
-                    let mut pts = [Vec2::ZERO; crate::fragment::POLYGON_MAX_POINTS];
-                    for (k, p) in pts.iter_mut().enumerate() {
-                        *p =
-                            Vec2::new(draw.params[k * 2] * rect.w, draw.params[k * 2 + 1] * rect.h);
-                    }
-                    self.hit_shapes.polygon(&pts)
-                }
-                _ if style.radius != crate::display::SQUARE => {
-                    crate::input::HitShape::Rounded(style.radius)
-                }
-                _ => crate::input::HitShape::Rect,
-            };
-            hits.push(HitRegion {
-                key: self.tree.keys[i],
-                origin: self.tree.origins[i],
-                rect,
-                clip: clip.rect,
-                shape,
-                payload: spec.events().on_click.clone().filter(|_| live),
-                drag: spec.events().on_drag.clone().filter(|_| live),
-                parent_rect,
-                key_sink: spec.events().on_key.clone().filter(|_| live),
-                key_up: spec.events().key_up,
-                context_menu,
-                drop: drop.clone(),
-                focusable: crate::access::focusable(&self.tree, i),
-                edit_origin: None,
-                select_scope: self.scope_of(i).filter(|_| live),
-                window: spec.window,
-                hover: spec.events().on_hover.clone(),
-                group: spec.interact().hover_group,
-                click_sound: spec.interact().click_sound.filter(|_| live),
-                hover_sound: spec.interact().hover_sound,
-                cursor: spec.cursor,
-            });
+            self.push_hit(i, rect, clip.rect, drop.clone(), hits);
         }
+        let spec = &self.tree.specs[i];
         // An `on_scroll` node takes the wheel the way a container does —
         // one list, one paint-order rule (ADR 0029, decision 4).
         let handler = self.tree.any_scroll_handler && spec.events().on_scroll.is_some();
@@ -183,56 +287,7 @@ impl Core {
         if let NodeContent::Edit(key) = self.tree.content[i]
             && interactive
         {
-            let pad = spec.layout.padding;
-            let content_origin = Vec2::new(rect.x + pad.l, rect.y + pad.t);
-            let inner_w = (rect.w - pad.x()).max(0.0);
-            // A single-line field scrolls its own text (F41). Resolved
-            // here, where the box is known, and read back by the hit
-            // region and the access runs so all three agree on where the
-            // glyphs are; the painter reads the same stored offset.
-            let offset = {
-                let sess = &mut *self.session.state();
-                self.edit.line_offset(key, inner_w * scale, &mut sess.fonts)
-            };
-            hits.push(HitRegion {
-                key,
-                origin: self.tree.origins[i],
-                rect,
-                clip: clip.rect,
-                // A field's corners round its hit too (ADR 0026).
-                shape: if spec.style.radius != crate::display::SQUARE {
-                    crate::input::HitShape::Rounded(spec.style.radius)
-                } else {
-                    crate::input::HitShape::Rect
-                },
-                payload: None,
-                drag: None,
-                parent_rect: rect,
-                // Shifted by what the field is scrolled: a click lands on
-                // the character under the pointer.
-                edit_origin: Some(Vec2::new(
-                    content_origin.x - offset / scale,
-                    content_origin.y,
-                )),
-                // An editor is its own selection scope: a press in it
-                // places a caret and drags a selection through the
-                // editor's own path, not the scope's.
-                select_scope: None,
-                key_sink: None,
-                key_up: false,
-                context_menu: None,
-                // A field inside a zone is the zone's: files dropped on
-                // it land there.
-                drop,
-                focusable: !spec.disabled,
-                window: None,
-                hover: None,
-                group: None,
-                click_sound: None,
-                hover_sound: None,
-                // The editor's own node carries any override.
-                cursor: spec.cursor,
-            });
+            self.push_edit_hit(i, key, rect, clip.rect, scale, drop, hits);
         }
         // The content, resolved to what the painter needs — a text node's
         // selection and its place, an editor's focus — then painted by the
@@ -1675,6 +1730,14 @@ impl TextMeasure for Measure<'_> {
         self.edit.wrapped(key, max_w, self.fonts)
     }
 
+    fn baseline(&mut self, id: crate::tree::TextId) -> f32 {
+        self.text.baseline(id)
+    }
+
+    fn edit_baseline(&mut self, key: Key) -> f32 {
+        self.edit.baseline(key)
+    }
+
     fn cells_size(&mut self, id: crate::cells::CellsId) -> Size {
         self.cells.size(id, self.resources, self.fonts)
     }
@@ -1740,6 +1803,9 @@ struct Painter<'a> {
 impl Painter<'_> {
     /// Inlined into its two callers: a call per node with the borrows
     /// packed into a struct measured +2.5% on `frame_10k_rects` (C15).
+    /// What a leaf draws, and a shadow, are calls (`paint_leaf`,
+    /// `shadow_quad`): inlined as well, they made every box pay for them
+    /// (C48).
     #[inline(always)]
     fn paint_box(
         &mut self,
@@ -1780,6 +1846,29 @@ impl Painter<'_> {
                 uv: [0; 4],
             });
         }
+        if !matches!(leaf, Leaf::Container) {
+            self.paint_leaf(rect, style, paint, clip_px, leaf);
+        }
+        if opacity < 1.0 {
+            fade(&mut self.display.quads[first_quad..], opacity);
+        }
+    }
+
+    /// What a leaf draws inside its box: text, cells, an editor, an
+    /// image, a fragment, a polygon's fill or a stroke. Out of line, so the
+    /// kinds a plain box never takes do not weigh on every node's
+    /// `emit_node` — its saved registers and its stack frame (backlog C48,
+    /// as C41 was for the segment loop).
+    #[inline(never)]
+    fn paint_leaf(
+        &mut self,
+        rect: Rect,
+        style: &crate::spec::VisualStyle,
+        paint: &Paint,
+        clip_px: crate::display::Clip,
+        leaf: Leaf<'_>,
+    ) {
+        let Paint { clip_id, scale, .. } = *paint;
         match leaf {
             Leaf::Container => {}
             Leaf::Text { tid, sel } => {
@@ -1953,9 +2042,6 @@ impl Painter<'_> {
                 );
             }
         }
-        if opacity < 1.0 {
-            fade(&mut self.display.quads[first_quad..], opacity);
-        }
     }
 }
 
@@ -2114,7 +2200,10 @@ fn push_segments(
 /// `spread` — inflated by `blur` on every side, because that is how far
 /// the blurred edge reaches; the backend insets by `blur` again to find
 /// the shape. Radii grow with the spread so a rounded box keeps its
-/// silhouette instead of sprouting corners.
+/// silhouette instead of sprouting corners. Never inlined: in
+/// `emit_node` its arithmetic took two more saved float registers for
+/// every node, shadow or not (backlog C48).
+#[inline(never)]
 fn shadow_quad(style: &crate::spec::VisualStyle, rect: Rect, clip_id: ClipId, scale: f32) -> Quad {
     let sh = style.shadow;
     let blur = sh.blur.max(0.0);

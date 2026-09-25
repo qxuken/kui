@@ -69,6 +69,41 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         "#
             )
         }
+        // `conformance::build_align`: the three spreads, a baseline row,
+        // and a ratio sizing each axis.
+        "align" => r#"
+            local function sq() return column { width = 10, height = 10, bg = 0x30344aff } end
+            local function spread(a)
+              return row { width = 120, main_align = a, sq(), sq(), sq() }
+            end
+            return column { pad = 4, gap = 6, width = 128, bg = 0x101018ff,
+              spread("spaceBetween"), spread("spaceAround"), spread("spaceEvenly"),
+              row { gap = 4, cross_align = "baseline",
+                text("ab", { size = 12 }), text("cd", { size = 20 }), sq() },
+              column { width = { grow = 1 }, aspect_ratio = 4, bg = 0x3b5bd4ff },
+              column { height = 12, aspect_ratio = 2, bg = 0x73d98cff },
+            }
+        "#
+        .to_string(),
+        // `conformance::build_stock_controls` (ADR 0034).
+        "stock-controls" => r#"
+            return column { pad = 8, gap = 8,
+              slider { label = "Volume", width = 216, value_now = 30,
+                       value_min = 0, value_max = 100, value_step = 10,
+                       on_change = { kind = "vol" } },
+              checkbox { label = "Mute", on_click = { kind = "mute" } },
+              checkbox { label = "Sync", checked = true, on_click = { kind = "sync" } },
+              checkbox { label = "All", mixed = true,
+                         on_click = { kind = "all" } },
+              radio_group { label = "Theme",
+                radio { label = "Light", on_click = { kind = "light" } },
+                radio { label = "Dark", checked = true,
+                        on_click = { kind = "dark" } },
+              },
+              switch { label = "Wi-Fi", checked = true, on_click = { kind = "wifi" } },
+            }
+        "#
+        .to_string(),
         // A table (ADR 0033): `grid`, since `table` is Lua's own. The
         // header is a fit row of two bare texts; each body row a grow row
         // of a bare text, a fixed box and a grow box.

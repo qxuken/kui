@@ -449,6 +449,13 @@ pub const DOORS: &[Door] = &[
         doc: "Scrolls a node to an offset.",
     },
     Door {
+        rust: "Ui::shift_scroll",
+        c: Is("kui_shift_scroll"),
+        node: Is("shiftScroll"),
+        lua: Is("shift_scroll"),
+        doc: "Moves a node's scroll by content that moved under it, with no ease: a variable-height list's anchor (backlog C46).",
+    },
+    Door {
         rust: "Ui::reveal",
         c: Is("kui_reveal"),
         node: Is("reveal"),
@@ -625,6 +632,27 @@ pub const DOORS: &[Door] = &[
         node: Is("awaitingPaste"),
         lua: Is("awaiting_paste"),
         doc: "Whether a paste asked for is still unanswered (backlog AR34).",
+    },
+    Door {
+        rust: "Ui::request_files",
+        c: Is("kui_request_files"),
+        node: Is("requestFiles"),
+        lua: Is("request_files"),
+        doc: "Asks for the platform's Open, Save or folder dialog; the answer is a `files` event to whoever asked. One at a time — a second while one is out is dropped (backlog C51).",
+    },
+    Door {
+        rust: "Ui::awaiting_files",
+        c: Is("kui_awaiting_files"),
+        node: Is("awaitingFiles"),
+        lua: Is("awaiting_files"),
+        doc: "Whether a file dialog asked for is still unanswered.",
+    },
+    Door {
+        rust: "Core::take_file_requests",
+        c: As("`kui_take_file_request`, then `kui_file_request_filter` per filter"),
+        node: Is("takeFileRequests"),
+        lua: No(GUEST),
+        doc: "Drains the dialog asked for, for a host that shows it itself; the runner does. The answer goes back as input (`Ctx.answerFiles`, `kui_input_files`).",
     },
     Door {
         rust: "Core::set_lookup_available",
@@ -1128,7 +1156,7 @@ pub const DOORS: &[Door] = &[
             "`Ctx.cursor` … `Ctx.access`, one per `InputEvent`; a `KuiWindow` refuses injection",
         ),
         lua: No(GUEST),
-        doc: "Pointer, wheel, key, text, IME, assistive and OS file-drag input; `press` / `release` are a click by label (`kui_input_press`, `Ctx.press`); the file drag is `drag_files` / `drop_files` / `drag_cancel` (ADR 0031).",
+        doc: "Pointer, wheel, key, text, IME, assistive and OS file-drag input; `press` / `release` are a click by label (`kui_input_press`, `Ctx.press`); the file drag is `drag_files` / `drop_files` / `drag_cancel` (ADR 0031); a file dialog's answer is `answer_files` (`kui_input_files`, `Ctx.answerFiles`, backlog C51).",
     },
     Door {
         rust: "Core::modifiers",
@@ -1189,7 +1217,7 @@ pub const DOORS: &[Door] = &[
         c: As("`width` / `height` in the `KuiRunConfig` `kui_run_with` takes"),
         node: As("`width` / `height` in `WindowOptions`"),
         lua: No(GUEST),
-        doc: "The window's opening size; `min_size` / `max_size` / `chrome` / `text_aa` / `diagnostics` are the rest of the set, and each binding's form carries them all (`min_w`, `chrome`, `text_aa`, `diagnostics` in C; `minWidth`, `chrome`, `textAa`, `diagnostics` in Node). `Launcher::devtools` and `Launcher::core` are the two the others reach another way: `kui_set_devtools` / `setDevtools` on the context, and the context handed to `kui_run_with` *is* the core.",
+        doc: "The window's opening size; `min_size` / `max_size` / `chrome` / `text_aa` / `diagnostics` / `frame_latency` are the rest of the set, and each binding's form carries them all (`min_w`, `chrome`, `text_aa`, `diagnostics`, `frame_latency` in C; `minWidth`, `chrome`, `textAa`, `diagnostics`, `frameLatency` in Node). `Launcher::devtools` and `Launcher::core` are the two the others reach another way: `kui_set_devtools` / `setDevtools` on the context, and the context handed to `kui_run_with` *is* the core.",
     },
     Door {
         rust: "Launcher::icon",
@@ -1214,7 +1242,7 @@ mod tests {
     /// A row's Rust spelling is a `pub fn` in the file its prefix names —
     /// `Ui::` in `ui.rs`, `Core::` under `runtime/`, `SharedResources::`
     /// in `session.rs`, `Tokens::` in `tokens.rs`, `Launcher::` in the
-    /// `kui` crate, and `App::` a method of that crate's `App` trait (a
+    /// `kui-native` crate, and `App::` a method of that crate's `App` trait (a
     /// trait's `fn` is public without the word) — so a renamed or
     /// removed verb is a red row and not a stale one, which is the pin
     /// Rust's column can have without reflection.
@@ -1234,7 +1262,7 @@ mod tests {
         let ui = read(root.join("ui.rs"));
         let session = read(root.join("session.rs"));
         let tokens = read(root.join("tokens.rs"));
-        let launcher = read(root.join("../../kui/src/lib.rs"));
+        let launcher = read(root.join("../../kui-native/src/lib.rs"));
         // The `App` trait's body: a method of it is a callback the app
         // writes, spelled `fn name(` and public by being the trait's.
         let app_trait = launcher

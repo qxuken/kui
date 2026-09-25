@@ -34,6 +34,27 @@ pub extern "C" fn kui_set_scroll(ptr: *mut KuiCtx, key: u64, x: f32, y: f32) {
     });
 }
 
+/// Moves a scroll container by the content that moved under it, on y:
+/// `drawn` for where its content is drawn (and an eased leg's start),
+/// `target` for the retained offset. No ease is asked or ended and no frame
+/// is asked for — it corrects the frame being built. What a variable-height
+/// list does when the rows it measured came out another height than the
+/// estimate they stood at, so the row under the pointer stays put
+/// (`widgets::list`, RG18, backlog C46). Call it from the view, before
+/// `kui_frame_finish`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_shift_scroll(ptr: *mut KuiCtx, key: u64, drawn: f32, target: f32) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().shift_scroll(
+                Key(key),
+                kui_core::Vec2::new(0.0, drawn),
+                kui_core::Vec2::new(0.0, target),
+            );
+        }
+    });
+}
+
 /// Reads that offset back, as the last layout clamped it — the number to
 /// persist and hand to `kui_set_scroll` later. Writes 0,0 for a node that
 /// never scrolled; either out pointer may be NULL.

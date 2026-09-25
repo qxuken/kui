@@ -1,6 +1,6 @@
 # The Forgejo cargo registry the kui crates publish to (`publish = ["forgejo"]`
 # in each manifest). Consumers add the same table to their own config and
-# depend on `kui = { version = "...", registry = "forgejo" }`. Publishing needs
+# depend on `kui-native = { version = "...", registry = "forgejo" }`. Publishing needs
 # a token: `cargo login --registry forgejo` and paste `Bearer <token>` (a
 # personal access token with write:packages), or set
 # CARGO_REGISTRIES_FORGEJO_TOKEN="Bearer <token>" as CI does.

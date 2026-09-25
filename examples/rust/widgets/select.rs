@@ -11,11 +11,11 @@
 //! and a `select_items` over `MenuItem`s, whose choice posts each item's
 //! `id` — here the size in points, so the app parses nothing.
 //!
-//! Run: cargo run -p kui --example select [-- --headless]
+//! Run: cargo run -p kui-native --example select [-- --headless]
 
-use kui::widgets;
-use kui::{Align, App, Core, MenuItem, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
 use kui_devtools::{Drive, Example};
+use kui_native::widgets;
+use kui_native::{Align, App, Core, MenuItem, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
 
 const LANGUAGES: [&str; 4] = ["English", "Deutsch", "Français", "日本語"];
 const SIZES: [u32; 4] = [11, 13, 15, 18];
@@ -150,7 +150,7 @@ impl Example for Select {
             .access_tree()
             .nodes
             .iter()
-            .find(|n| n.role == kui::Role::MenuItem && n.name.as_deref() == Some("Deutsch"))
+            .find(|n| n.role == kui_native::Role::MenuItem && n.name.as_deref() == Some("Deutsch"))
             .map(|n| n.rect)
             .ok_or("the rows are not drawn")?;
         let evs = d.click(self, row.x + row.w / 2.0, row.y + row.h / 2.0);
@@ -166,7 +166,7 @@ impl Example for Select {
             .access_tree()
             .nodes
             .iter()
-            .find(|n| n.role == kui::Role::Button && n.name.as_deref() == Some("language"))
+            .find(|n| n.role == kui_native::Role::Button && n.name.as_deref() == Some("language"))
             .and_then(|n| n.description.clone());
         d.check(
             shown.as_deref() == Some("Deutsch"),
@@ -181,7 +181,7 @@ impl Example for Select {
             .access_tree()
             .nodes
             .iter()
-            .find(|n| n.role == kui::Role::MenuItem && n.name.as_deref() == Some("18 pt"))
+            .find(|n| n.role == kui_native::Role::MenuItem && n.name.as_deref() == Some("18 pt"))
             .map(|n| n.rect)
             .ok_or("the size rows are not drawn")?;
         d.click(self, row.x + row.w / 2.0, row.y + row.h / 2.0);

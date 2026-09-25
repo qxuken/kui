@@ -8,10 +8,10 @@
 //! it like any background. The links are declared before the cards, so
 //! they paint under them (floats stack in tree order).
 //!
-//! Run: cargo run -p kui --example line
+//! Run: cargo run -p kui-native --example line
 
-use kui::{App, FloatConfig, NodeSpec, Sizing, Stroke, TextStyle, Ui, Vec2};
 use kui_devtools::Example;
+use kui_native::{App, FloatConfig, NodeSpec, Sizing, Stroke, TextStyle, Ui, Vec2};
 
 struct Card {
     label: &'static str,
@@ -39,13 +39,13 @@ const H: f32 = 36.0;
 /// handles the same four points are only *pulled* towards, so the curve
 /// stays inside them and leaves each card level.
 ///
-/// One piece per [`kui::line::CURVE_STEP`] of control polygon, so the
+/// One piece per [`kui_native::line::CURVE_STEP`] of control polygon, so the
 /// sampling is as fine as the flattening the core would have done.
 fn link(from: Vec2, to: Vec2, out: &mut Vec<Vec2>) {
     let h = (to.x - from.x) * 0.5;
     let (c1, c2) = (Vec2::new(from.x + h, from.y), Vec2::new(to.x - h, to.y));
     let span = h.abs() * 2.0 + (to.y - from.y).abs();
-    let n = ((span / kui::line::CURVE_STEP).ceil() as usize).clamp(1, 64);
+    let n = ((span / kui_native::line::CURVE_STEP).ceil() as usize).clamp(1, 64);
     out.clear();
     for i in 0..=n {
         let t = i as f32 / n as f32;
@@ -135,7 +135,7 @@ impl App for Map {
                         .width(Sizing::Fixed(W))
                         .height(Sizing::Fixed(H))
                         .pad_xy(12.0, 0.0)
-                        .cross_align(kui::Align::Center)
+                        .cross_align(kui_native::Align::Center)
                         .bg(t.raised)
                         // An opaque step toward the accent rather than the
                         // translucent `accent_soft`: a `hover_bg` replaces

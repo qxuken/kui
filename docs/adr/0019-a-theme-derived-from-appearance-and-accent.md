@@ -48,7 +48,7 @@ about one control.
 
 ### The same six roles, spelled twenty-eight ways
 
-Counting the colour literals in `crates/kui-core/src`, `crates/kui/src`
+Counting the colour literals in `crates/kui-core/src`, `crates/kui-native/src`
 and `examples/` (excluding the conformance corpus, whose colours are
 fixtures): **199 literals, 87 distinct values**. They are not 87 different
 intentions. Grouped by what they are *for*:
@@ -235,7 +235,7 @@ the theme said. It is the one surface a `bg` prop cannot reach: it is
 The runner now writes `theme.bg` into `renderer.clear_color` each frame,
 straight through, since the renderer asks for a non-sRGB surface and a
 clear component lands as the byte it is. Node and C inherit it for free —
-both drive `kui::App` through the same `PumpRunner`.
+both drive `kui_native::App` through the same `PumpRunner`.
 
 ### 7. `accent` stays a question, not a colour
 

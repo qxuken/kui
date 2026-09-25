@@ -224,6 +224,18 @@ warnings! {
     /// which reads as "wrapping is broken"; see `LayoutSpec::wrap` for why
     /// a column cannot have it.
     pub const WRAP_IGNORED: &str = "wrap-ignored";
+    /// An alignment declared where it means nothing (backlog C13): a spread
+    /// (`spaceBetween` / `spaceAround` / `spaceEvenly`) on `crossAlign`,
+    /// `baseline` on `mainAlign` or on a column's `crossAlign`, or either
+    /// as a float's attach point. Each lays out as `start` — the two
+    /// centring spreads as `center` — which reads as "the value is
+    /// broken" when it is the axis that is wrong.
+    pub const ALIGN_IGNORED: &str = "align-ignored";
+    /// An `aspectRatio` with nothing it can set (backlog C14): both axes are
+    /// declared, or the width is `fit` under a `grow` or percent height,
+    /// which is resolved only after every width is. The ratio sizes a fit
+    /// height from the width, or a fit width from a fixed height.
+    pub const ASPECT_IGNORED: &str = "aspect-ignored";
     /// A text node sits more than four levels below the `line` row above
     /// it, which is as far as a text's place remembers its ancestors — so
     /// `textHit` / `caretRect` asked by that row's key cannot find the run,
@@ -922,6 +934,7 @@ impl Diagnostics {
         }
         self.check_grow_weights(tree);
         self.check_wrap(tree);
+        self.check_align(tree);
         self.check_auto_keyed_transitions(tree);
         self.check_duplicate_keys(tree);
         self.check_modal(tree);
@@ -1178,6 +1191,67 @@ impl Diagnostics {
                          takes all of it (cap it with max{}, or give a sibling a grow too)",
                         if row { "Width" } else { "Height" }
                     )
+                });
+            }
+        }
+    }
+
+    /// Alignments and ratios with nothing to act on: see
+    /// [`ALIGN_IGNORED`] and [`ASPECT_IGNORED`].
+    fn check_align(&mut self, tree: &Tree) {
+        use crate::spec::Align;
+        let spread = |a: Align| {
+            matches!(
+                a,
+                Align::SpaceBetween | Align::SpaceAround | Align::SpaceEvenly
+            )
+        };
+        let odd = |a: Align| spread(a) || a == Align::Baseline;
+        for i in 0..tree.len() {
+            let l = &tree.specs[i].layout;
+            let reason = if l.main_align == Align::Baseline {
+                Some("mainAlign baseline: a baseline lines children up across a row, not along it (use crossAlign)".to_string())
+            } else if spread(l.cross_align) {
+                Some(format!(
+                    "crossAlign {}: a spread deals free space out between children, and there is one child per line across the axis (use mainAlign)",
+                    l.cross_align.name()
+                ))
+            } else if l.cross_align == Align::Baseline && l.dir == Dir::Column {
+                Some("crossAlign baseline on a column: a column's cross axis is horizontal, where a baseline is not a line (lay the text out in a row)".to_string())
+            } else {
+                l.float.and_then(|f| {
+                    let pts = [
+                        f.anchor_point.0,
+                        f.anchor_point.1,
+                        f.self_point.0,
+                        f.self_point.1,
+                    ];
+                    pts.into_iter().find(|&a| odd(a)).map(|a| {
+                        format!(
+                            "a float attaches at start, center or end, not {} (it lays out as {})",
+                            a.name(),
+                            if matches!(a, Align::SpaceAround | Align::SpaceEvenly) {
+                                "center"
+                            } else {
+                                "start"
+                            }
+                        )
+                    })
+                })
+            };
+            if let Some(reason) = reason {
+                self.warn(ALIGN_IGNORED, tree.keys[i], || {
+                    format!("{reason}; it has no effect here")
+                });
+            }
+            if l.aspect > 0.0 && !l.aspect_height() && l.aspect_width().is_none() {
+                let why = if l.width == Sizing::Fit {
+                    "the width is fit, and a grow or percent height is resolved only after every width is (give the height a fixed size, or let the height be the fit axis)"
+                } else {
+                    "both axes are declared, so there is no fit axis for the ratio to size (leave one of them fit)"
+                };
+                self.warn(ASPECT_IGNORED, tree.keys[i], || {
+                    format!("aspectRatio {} has no effect: {why}", l.aspect)
                 });
             }
         }

@@ -291,7 +291,7 @@ fn a_ghost_escapes_its_ancestors_clip_and_keeps_its_place() {
 }
 
 /// The clips *inside* the picture stay: a departing scroll box still
-/// bounds what it held. The list example's `virtual_column` builds two
+/// bounds what it held. The list example's `uniform_list` builds two
 /// rows of overscan past its edge, and they showed the frame the list
 /// left.
 #[test]

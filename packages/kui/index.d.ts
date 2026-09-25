@@ -191,6 +191,34 @@ export type DropMsg<T = AppMsg> = {
   tag?: T;
 };
 
+/** A file dialog's answer (backlog C51): the paths an Open, Save or folder
+ *  dialog asked for with `requestFiles` picked, as a `drop` carries them —
+ *  none when the user cancelled. `tag` is the dialog's own. */
+export type FilesMsg<T = AppMsg> = {
+  kind: 'files';
+  paths: string[];
+  tag?: T;
+};
+
+/** A file dialog to ask for with `requestFiles`, and what
+ *  `takeFileRequests` hands a host that shows it itself. Every field is
+ *  optional: an Open dialog for one file, any type, is `{}`. */
+export interface FileDialogOptions {
+  /** `'open'` (the default), `'save'` or `'folder'`. */
+  mode?: 'open' | 'save' | 'folder';
+  /** More than one file or folder may be picked (open and folder). */
+  multiple?: boolean;
+  title?: string;
+  /** The file types offered, the first chosen; extensions without the dot. */
+  filters?: { name: string; extensions: string[] }[];
+  /** The folder it opens in. */
+  directory?: string;
+  /** A save dialog's suggested name. */
+  fileName?: string;
+  /** Handed back on the `files` event. */
+  tag?: AppMsg;
+}
+
 /** The rect layout gave an `onLayout` node — logical px, viewport
  *  coordinates, after scrolling and position easing — on its first frame
  *  and whenever it changes, never on a frame that left it alone (a
@@ -397,7 +425,23 @@ export type CoreMsg =
   | ModifiersMsg
   | EditMsg
   | SoundMsg
-  | AccessMsg;
+  | AccessMsg
+  | ChangeMsg
+  | FilesMsg;
+
+/** A stock slider's proposal (docs/adr/0034-stock-controls-over-the-roles.md):
+ *  the core turned a press, a drag, an arrow, a Page key, Home / End or an
+ *  assistive-technology increment into `value` — clamped to the range and
+ *  snapped to `valueStep` — on a `<slider>` (or a `role="slider"` box) that
+ *  declared `onChange`. `phase` is `'move'` while the pointer holds it and
+ *  `'end'` when it lets go or a key moved it. Nothing moves until the view
+ *  declares `value` as `valueNow`. `tag` is the `onChange` payload. */
+export interface ChangeMsg<T = AppMsg> {
+  kind: 'change';
+  value: number;
+  phase: 'move' | 'end';
+  tag?: T;
+}
 
 /** Assistive technology nudged a `slider` role. `tag` is the node's
  *  `onClick` payload (or its `onDrag` / `onKey` tag), typed as the app's
@@ -503,6 +547,8 @@ export interface AccessNode {
   focus: TextPos | null;
   /** `checked` for checkbox / radio / switch roles. */
   checked: boolean | null;
+  /** A checkbox that is neither on nor off (`mixed`, ADR 0034). */
+  mixed: boolean;
   /** The current one of a set. Every `tab` carries it; a `listItem` or a
    *  `link` only where the view set `selected`. */
   selected: boolean | null;
@@ -520,6 +566,8 @@ export interface AccessNode {
   valueNow: number | null;
   valueMin: number | null;
   valueMax: number | null;
+  /** A slider's `valueStep`, where it declared one (ADR 0034). */
+  valueStep: number | null;
   /** Holds keyboard focus (`focused()` names the same node). */
   focused: boolean;
   /** Declared `disabled`: inert, and not a Tab stop. */
@@ -755,6 +803,18 @@ export type WarningCode =
    *  reads as "wrapping is broken"; see `LayoutSpec::wrap` for why a column
    *  cannot have it. */
   | 'wrap-ignored'
+  /** An alignment declared where it means nothing (backlog C13): a spread
+   *  (`spaceBetween` / `spaceAround` / `spaceEvenly`) on `crossAlign`,
+   *  `baseline` on `mainAlign` or on a column's `crossAlign`, or either as a
+   *  float's attach point. Each lays out as `start` — the two centring spreads
+   *  as `center` — which reads as "the value is broken" when it is the axis
+   *  that is wrong. */
+  | 'align-ignored'
+  /** An `aspectRatio` with nothing it can set (backlog C14): both axes are
+   *  declared, or the width is `fit` under a `grow` or percent height, which is
+   *  resolved only after every width is. The ratio sizes a fit height from the
+   *  width, or a fit width from a fixed height. */
+  | 'aspect-ignored'
   /** A text node sits more than four levels below the `line` row above it,
    *  which is as far as a text's place remembers its ancestors — so `textHit` /
    *  `caretRect` asked by that row's key cannot find the run, and a press
@@ -1577,6 +1637,15 @@ export interface WindowOptions {
    *  otherwise. `KUI_TEXT_AA=gray|subpixel` in the environment still
    *  overrides, for an A/B by hand. */
   textAa?: 'auto' | 'gray' | 'subpixel';
+  /** Frames queued ahead of the one on screen (backlog C47). 2 by default:
+   *  every vsync gets a frame at light load. A Node window turns its loop
+   *  from a timer, where the display cannot start its frames (the Rust and
+   *  C runners' pacing), so a frame drawn while frames run back to back (an
+   *  animation, a drag, a scroll) reaches the screen a vsync later than
+   *  with 1 — the lowest latency during those, at the cost of an occasional
+   *  missed vsync when little is drawn. `KUI_FRAME_LATENCY` in the
+   *  environment still overrides. */
+  frameLatency?: number;
   /** Pins part of `env.system` for the life of the window, over whatever
    *  the OS says: `{ motion: 'reduced' }` opens the window as a user who
    *  asked for less motion sees it, on a machine whose owner did not. The
@@ -1741,6 +1810,73 @@ export interface ResolvedTokens {
 // -- generated from the addon's `#[napi]` surface; edit crates/kui-node/src/lib.rs, then `npm run gen` --
 
 /**
+ * The heights a `list()` slices by: a measured number per row where one is
+ * known, the mean of those for every other row, and the prefix sums over
+ * both. The app owns it and hands the same one back every frame; rebuild it
+ * (or `clear()` it) when the rows change under the same indices, and
+ * `setLen` it when rows are appended.
+ */
+export declare class RowHeights {
+  /**
+   * `rows` rows, none measured, each standing at `estimate` logical px
+   * until it is. The estimate only has to be the right order of
+   * magnitude: it decides how wrong the scrollbar is before the list has
+   * been scrolled through, and nothing else.
+   */
+  constructor(rows: number, estimate: number)
+  /** How many rows. */
+  get length(): number
+  /**
+   * Grows or shrinks to `rows`, keeping what is still in range — rows
+   * appended to a log keep every height already measured.
+   */
+  setLen(rows: number): void
+  /**
+   * Forgets every measurement, keeping the length and the estimate —
+   * for a list whose rows changed under the same indices.
+   */
+  clear(): void
+  /**
+   * Records row `i`'s height; the estimate for the others is the mean of
+   * the rows recorded this way.
+   */
+  set(i: number, h: number): void
+  /** Row `i`'s height as measured, or null for one at the estimate. */
+  measured(i: number): number | null
+  /** Row `i`'s height: measured, or the estimate. */
+  get(i: number): number
+  /** What an unmeasured row stands at. */
+  estimate(): number
+  /** The whole list's height, measured and estimated together. */
+  total(): number
+  /**
+   * The top of row `i` in content coordinates. `ctx.setScroll(key, 0,
+   * heights.offsetOf(i))` puts row `i` at the top — exactly for a
+   * measured row, within a frame or two for one at the estimate.
+   */
+  offsetOf(i: number): number
+  /** The row content-coordinate `y` lands in. */
+  rowAt(y: number): number
+  /**
+   * `list()`'s first step: the reading, and back the rows to measure
+   * (`{ width, rows }`). Not for an app to call; `list()` is the loop.
+   */
+  sliceBegin(reading: ListReading): { width: number, rows: number[] }
+  /**
+   * `list()`'s middle step: the heights of the rows the last step asked
+   * for, in its order, and back the next rows to measure — empty once
+   * the window has settled.
+   */
+  sliceMeasured(heights: Array<number>): Array<number>
+  /**
+   * `list()`'s last step: the rows to build (`first`..`last`) with each
+   * one's height, the spacers, and the scroll correction for
+   * `ctx.shiftScroll` (null when nothing moved).
+   */
+  sliceFinish(): ListPlan
+}
+
+/**
  * The binary-frame protocol tables (`{version, op, prop}`). The JS encoder
  * reads its opcodes and prop ids from here at module init, so the two sides
  * cannot drift.
@@ -1825,6 +1961,13 @@ export declare class Ctx {
    * with.
    */
   dragFiles(paths: Array<string>, x: number, y: number): void
+  /**
+   * A file dialog's answer, as a host that showed it reports it: the
+   * paths picked, none for a cancelled dialog. Whoever asked with
+   * `requestFiles` hears `{kind:"files", paths, tag}`; with nothing
+   * asked it is dropped (backlog C51).
+   */
+  answerFiles(paths: Array<string>): void
   /**
    * The dragged files released at (`x`, `y`): the zone there hears
    * `{kind:"drop", phase:"drop", paths, x, y, tag}` and no `leave`
@@ -2732,7 +2875,24 @@ export declare class Ctx {
    * A windowed app never needs this — the driver drains it —
    * but a headless one does: nothing else empties the queue,
    * and a Copy nobody drains is a copy that never happened.
+   * Asks for the platform's Open, Save or folder dialog (backlog
+   * C51): `{mode, multiple, title, filters: [{name, extensions}],
+   * directory, fileName, tag}`, every field optional. The answer
+   * is a `{kind:"files", paths, tag}` event — `paths` empty when
+   * the user cancelled. A window's runner shows the dialog; a
+   * headless context queues it for `takeFileRequests`. False when
+   * one is already out: one dialog at a time.
    */
+  requestFiles(dialog?: FileDialogOptions): boolean
+  /** Whether a file dialog asked for is still unanswered. */
+  awaitingFiles(): boolean
+  /**
+   * The file dialog asked for and not yet taken — at most one —
+   * as `requestFiles` took it, for a host that shows it itself.
+   * A window never needs this: its runner drains and shows it.
+   * Answer with `answerFiles`.
+   */
+  takeFileRequests(): FileDialogOptions[]
   takeMenuActions(): MenuAction[]
   /**
    * Puts `text` on the system clipboard — the action a menu's
@@ -2928,6 +3088,18 @@ export declare class Ctx {
    */
   setScroll(key: string, x: number, y: number): void
   /**
+   * Moves the scroll container `key` by the content that moved
+   * under it — `drawn` for where the content is drawn (and an
+   * eased leg's start), `target` for the retained offset — with
+   * no ease asked or ended and no frame asked for: a correction to
+   * the frame the view is building. What `list()` calls when the
+   * rows it measured came out another height than the estimate
+   * they stood at, so the row under the pointer stays put (RG18,
+   * backlog C46). A label nothing declared yet is the first
+   * frame, which has nothing to correct.
+   */
+  shiftScroll(key: string, drawn: number, target: number): void
+  /**
    * The names of every window open right now, `"main"` first,
    * then in the order they opened — what a view's root
    * `windows` declared and the diff has opened. `view(model,
@@ -3006,7 +3178,7 @@ export declare class KuiWindow {
   /**
    * Options: `{width, height, minWidth, minHeight, maxWidth, maxHeight,
    * chrome: "native" | "custom" | "borderless", textAa: "auto" | "gray"
-   * | "subpixel", system, icon}`. The min/max pairs bound what the user can
+   * | "subpixel", frameLatency, system, icon}`. The min/max pairs bound what the user can
    * resize the window to; either half may stand alone. `system` pins part of `env.system` over what the OS
    * says, for the life of the window — `{motion: 'reduced'}` is what a
    * user who asked for less motion would get, on a machine whose owner
@@ -3820,7 +3992,24 @@ export declare class KuiWindow {
    * A windowed app never needs this — the driver drains it —
    * but a headless one does: nothing else empties the queue,
    * and a Copy nobody drains is a copy that never happened.
+   * Asks for the platform's Open, Save or folder dialog (backlog
+   * C51): `{mode, multiple, title, filters: [{name, extensions}],
+   * directory, fileName, tag}`, every field optional. The answer
+   * is a `{kind:"files", paths, tag}` event — `paths` empty when
+   * the user cancelled. A window's runner shows the dialog; a
+   * headless context queues it for `takeFileRequests`. False when
+   * one is already out: one dialog at a time.
    */
+  requestFiles(dialog?: FileDialogOptions): boolean
+  /** Whether a file dialog asked for is still unanswered. */
+  awaitingFiles(): boolean
+  /**
+   * The file dialog asked for and not yet taken — at most one —
+   * as `requestFiles` took it, for a host that shows it itself.
+   * A window never needs this: its runner drains and shows it.
+   * Answer with `answerFiles`.
+   */
+  takeFileRequests(): FileDialogOptions[]
   takeMenuActions(): MenuAction[]
   /**
    * Puts `text` on the system clipboard — the action a menu's
@@ -4015,6 +4204,18 @@ export declare class KuiWindow {
    * the end without knowing the content height.
    */
   setScroll(key: string, x: number, y: number): void
+  /**
+   * Moves the scroll container `key` by the content that moved
+   * under it — `drawn` for where the content is drawn (and an
+   * eased leg's start), `target` for the retained offset — with
+   * no ease asked or ended and no frame asked for: a correction to
+   * the frame the view is building. What `list()` calls when the
+   * rows it measured came out another height than the estimate
+   * they stood at, so the row under the pointer stays put (RG18,
+   * backlog C46). A label nothing declared yet is the first
+   * frame, which has nothing to correct.
+   */
+  shiftScroll(key: string, drawn: number, target: number): void
   /**
    * The names of every window open right now, `"main"` first,
    * then in the order they opened — what a view's root
@@ -4338,9 +4539,9 @@ export interface Clip {
   radii: [number, number, number, number];
 }
 
-/** The container `virtualColumn` declares: every `<box>` prop, plus what it
+/** The container `uniformList` declares: every `<box>` prop, plus what it
  *  needs to slice by. `scrollY` and `gap` are the widget's own. */
-export interface VirtualColumnProps extends Omit<BoxProps, 'children' | 'scrollY' | 'gap'> {
+export interface UniformListProps extends Omit<BoxProps, 'children' | 'scrollY' | 'gap'> {
   /** Names the container. Required: its geometry is read back by this name,
    *  so two lists cannot share one (`ambiguous-key`). */
   key: string;
@@ -4359,7 +4560,7 @@ export interface VirtualColumnProps extends Omit<BoxProps, 'children' | 'scrollY
  * the visible ones, and the two spacers that hold the height of the rest —
  * so the frame costs a screenful however long the list is.
  *
- *     virtualColumn(ctx, { key: 'log', rows: lines.length, rowH: 28 }, (i) => (
+ *     uniformList(ctx, { key: 'log', rows: lines.length, rowH: 28 }, (i) => (
  *       <box width="grow" height="grow" onClick={{ kind: 'pick', row: i }}>
  *         <text>{lines[i]}</text>
  *       </box>
@@ -4380,9 +4581,72 @@ export interface VirtualColumnProps extends Omit<BoxProps, 'children' | 'scrollY
  * reach a row that is not built, since `reveal` of an unbuilt row finds
  * nothing.
  */
-export declare function virtualColumn(
+export declare function uniformList(
   ctx: Pick<Ctx, 'scrollGeometry' | 'env'>,
-  opts: VirtualColumnProps,
+  opts: UniformListProps,
+  row: (i: number) => KuiNode,
+): KuiNode;
+
+/** What `list` reads before it slices, handed to `RowHeights.sliceBegin`:
+ *  the container's last layout (null on the first frame), where its scroll
+ *  is going, the window, and the padding its rows sit inside. */
+export interface ListReading {
+  geometry: ScrollGeometry | null;
+  scrollY: number;
+  viewportW: number;
+  viewportH: number;
+  padT: number;
+  padX: number;
+  overscan?: number;
+}
+
+/** What a frame's slicing comes to, from `RowHeights.sliceFinish`: the rows
+ *  to build (`first` up to, not including, `last`) with each one's height,
+ *  the two spacers, and the correction `ctx.shiftScroll` makes. */
+export interface ListPlan {
+  first: number;
+  last: number;
+  heights: number[];
+  lead: number;
+  tail: number;
+  shift: { drawn: number; target: number } | null;
+  firstFrame: boolean;
+}
+
+/** The container `list` declares: every `<box>` prop, plus what it slices
+ *  by. `scrollY` and `gap` are the widget's own. */
+export interface ListProps extends Omit<BoxProps, 'children' | 'scrollY' | 'gap'> {
+  /** Names the container. Required: its geometry is read back by this name. */
+  key: string;
+  /** The heights the list slices by: a `new RowHeights(rows, estimate)` the
+   *  app makes once and keeps between views. */
+  heights: RowHeights;
+  /** Rows built past each edge of the window. Two by default. */
+  overscan?: number;
+}
+
+/**
+ * A vertically scrolling column of rows of *different* heights that declares
+ * only the visible ones — `uniformList` where no single stride describes the
+ * list.
+ *
+ *     const heights = new RowHeights(messages.length, 40); // kept in the model
+ *     list(ctx, { key: 'chat', heights },
+ *       (i, width) => ctx.measureText(messages[i], style, width - 16).height + 12,
+ *       (i) => <box pad={6}><text>{messages[i]}</text></box>)
+ *
+ * `measure(i, width)` is called only for the rows this frame builds that
+ * `heights` has no number for, and its answer is the height the row gets.
+ * Measuring moves the estimate under every row above the window, so the
+ * widget puts the row the window starts in back where it was
+ * (`ctx.shiftScroll`), and mid-glide the row the glide is going to — the
+ * core's arithmetic, `widgets::list`'s. `ctx.setScroll(key, 0,
+ * heights.offsetOf(i))` puts row `i` at the top.
+ */
+export declare function list(
+  ctx: Pick<Ctx, 'scrollGeometry' | 'scrollOffset' | 'shiftScroll' | 'env'>,
+  opts: ListProps,
+  measure: (i: number, width: number) => number,
   row: (i: number) => KuiNode,
 ): KuiNode;
 

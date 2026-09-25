@@ -1,5 +1,5 @@
 //! The sizes the stock widgets are built from, and an app's own controls
-//! agreeing with them (`kui::Metrics`, backlog T2): the palette's other
+//! agreeing with them (`kui_native::Metrics`, backlog T2): the palette's other
 //! axis. Three densities of the same page — the stock set, `compact`, and
 //! the stock set scaled up — switched by the buttons at the top, and a
 //! card of the app's own that reads `ui.metrics()` for its radius and its
@@ -9,12 +9,12 @@
 //! Nothing here scales by itself: `env.scale` is the renderer's and comes
 //! after; a density is the app's choice, made here by a click.
 //!
-//! Run: cargo run -p kui --example metrics [-- --headless]
+//! Run: cargo run -p kui-native --example metrics [-- --headless]
 
-use kui::menu::MenuItem;
-use kui::widgets;
-use kui::{Align, App, Core, Metrics, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
 use kui_devtools::{Drive, Example};
+use kui_native::menu::MenuItem;
+use kui_native::widgets;
+use kui_native::{Align, App, Core, Metrics, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Density {
@@ -140,7 +140,7 @@ impl App for Page {
                 if let Some((x, y)) = self.menu {
                     widgets::context_menu(
                         ui,
-                        kui::Vec2::new(x, y),
+                        kui_native::Vec2::new(x, y),
                         &[MenuItem::new("A row"), MenuItem::new("Another")],
                     );
                 }

@@ -16,16 +16,16 @@
 //! `ui.set_clipboard` / `ui.request_paste` (backlog C33), and the paste
 //! comes back as a `text` event the way an IME's commit does.
 //!
-//! Run: cargo run -p kui --example modal_editor
+//! Run: cargo run -p kui-native --example modal_editor
 //!
 //! Keys: see the buffer text (`:help` puts a summary in the minibuffer).
 
-use kui::widgets;
-use kui::{
+use kui_devtools::Example;
+use kui_native::widgets;
+use kui_native::{
     Align, App, Color, Core, NodeSpec, Role, Sizing, TextStyle, Theme, Ui, UiEvent, Value,
     WindowCommand,
 };
-use kui_devtools::Example;
 
 const FONT: f32 = 13.5;
 const LH: f32 = 20.0;
@@ -1204,8 +1204,8 @@ impl Example for ModalEditor {
     /// The keymap, the mouse and the clipboard, driven (backlog C36) —
     /// what the smoke round once checked by hand with real keystrokes.
     fn headless(&mut self, core: &mut Core) -> Result<(), String> {
-        use kui::{InputEvent, KeyCode, KeyMods, KeyPress, MenuAction, Vec2};
         use kui_devtools::Drive;
+        use kui_native::{InputEvent, KeyCode, KeyMods, KeyPress, MenuAction, Vec2};
         let mut d = Drive::new(core, 900.0, 700.0);
         d.frame(self);
         // Typed characters, as a driver reports them: the code and the

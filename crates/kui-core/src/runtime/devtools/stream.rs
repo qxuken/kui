@@ -179,7 +179,7 @@ pub(super) fn events_tab(ui: &mut Ui<'_>, st: &mut State, t: &Theme) {
         });
         return;
     }
-    let list = widgets::virtual_rows(
+    let list = widgets::list(
         ui,
         "kui-devtools/stream",
         spec.scrollbar(crate::spec::ScrollbarMode::Auto),

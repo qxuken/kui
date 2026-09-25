@@ -5,7 +5,7 @@
 
 use super::*;
 
-impl<A: App> Shell<A> {
+impl DynShell<'_> {
     /// Hands a menu the core opened to the platform, and hands the
     /// platform's answer back (ADR 0017, decision 5, step 3).
     ///
@@ -256,6 +256,9 @@ impl<A: App> Shell<A> {
                 }
             }
         }
+        // Drained with the menu's asks, at the same moments: after every
+        // input and every frame (backlog C51).
+        self.show_file_dialogs(event_loop, i);
     }
 }
 

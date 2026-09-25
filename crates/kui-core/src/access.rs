@@ -542,6 +542,9 @@ pub struct AccessNode {
     pub focus: Option<TextPos>,
     /// `checked` for checkbox / radio / switch roles.
     pub checked: Option<bool>,
+    /// A checkbox that is neither on nor off (ADR 0034, decision 3):
+    /// reported as mixed whatever `checked` says.
+    pub mixed: bool,
     /// The current one of a set: every `tab` carries it, a `listItem` or a
     /// `link` only where the view set it (an ordinary list is not a
     /// selection, and "not selected" on every row of one is noise).
@@ -569,6 +572,8 @@ pub struct AccessNode {
     pub number: Option<f32>,
     pub min: Option<f32>,
     pub max: Option<f32>,
+    /// A slider's `valueStep`, where it declared one (ADR 0034).
+    pub step: Option<f32>,
     /// Holds keyboard focus (`Core::focus`; see
     /// `docs/adr/0002-keyboard-focus-as-data.md`).
     pub focused: bool,
@@ -620,6 +625,7 @@ impl AccessNode {
             ("focus", Value::opt(self.focus, |p| p.to_value(h))),
             ("runs", Value::list(self.runs.iter().map(|r| r.to_value(h)))),
             ("checked", Value::opt_bool(self.checked)),
+            ("mixed", Value::Bool(self.mixed)),
             ("selected", Value::opt_bool(self.selected)),
             ("expanded", Value::opt_bool(self.expanded)),
             ("pos_in_set", Value::opt_usize(self.pos_in_set)),
@@ -632,6 +638,7 @@ impl AccessNode {
             ("value_now", Value::opt_float(self.number)),
             ("value_min", Value::opt_float(self.min)),
             ("value_max", Value::opt_float(self.max)),
+            ("value_step", Value::opt_float(self.step)),
             ("focused", Value::Bool(self.focused)),
             ("disabled", Value::Bool(self.disabled)),
             ("modal", Value::Bool(self.modal)),
@@ -1050,9 +1057,10 @@ pub(crate) fn inputs_hash(tree: &Tree, src: &Sources<'_>) -> Option<u64> {
         crate::composite::orientation(tree, i).hash(&mut h);
         ax.expanded.hash(&mut h);
         ax.checked.hash(&mut h);
+        ax.mixed.hash(&mut h);
         ax.selected.hash(&mut h);
         ax.value_text.as_deref().hash(&mut h);
-        for v in [ax.value_now, ax.value_min, ax.value_max] {
+        for v in [ax.value_now, ax.value_min, ax.value_max, ax.value_step] {
             v.is_some().hash(&mut h);
             f(&mut h, v.unwrap_or(0.0));
         }
@@ -1151,6 +1159,7 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
             anchor: None,
             focus: None,
             checked: None,
+            mixed: false,
             selected: None,
             expanded: None,
             orientation: crate::composite::orientation(tree, i),
@@ -1159,6 +1168,7 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
             number: None,
             min: None,
             max: None,
+            step: None,
             focused: src.focus == Some(key),
             disabled: spec.disabled,
             modal: src.modal == Some(key),
@@ -1216,7 +1226,10 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
         let ax = spec.access();
         node.expanded = ax.expanded;
         match sem.role {
-            Role::Checkbox | Role::Radio | Role::Switch => node.checked = Some(ax.checked),
+            Role::Checkbox | Role::Radio | Role::Switch => {
+                node.checked = Some(ax.checked);
+                node.mixed = ax.mixed && sem.role == Role::Checkbox;
+            }
             // A tab is one of a set by definition, so it reports either
             // state; a row or a link reports only the one it declares,
             // since most lists and every navigation bar are not
@@ -1235,6 +1248,7 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
                 node.number = ax.value_now;
                 node.min = ax.value_min;
                 node.max = ax.value_max;
+                node.step = ax.value_step;
                 // The declared reading, in the one string slot the
                 // platform gives a node (see `value`). Slider-only, like
                 // the three numbers: a `group` shaped like a progress bar
@@ -1637,7 +1651,8 @@ fn hash_of(tree: &AccessTree) -> u64 {
         }
         mix_pos(&mut mix, n.anchor);
         mix_pos(&mut mix, n.focus);
-        mix(&[n.checked.map_or(2, |c| c as u8)]);
+        mix(&[n.checked.map_or(2, |c| c as u8), n.mixed as u8]);
+        mix(&n.step.map_or(u32::MAX, f32::to_bits).to_le_bytes());
         mix(&[n.selected.map_or(2, |c| c as u8)]);
         mix(&[n.expanded.map_or(2, |c| c as u8)]);
         mix(&n.pos_in_set.unwrap_or(usize::MAX).to_le_bytes());

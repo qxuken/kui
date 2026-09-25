@@ -8,7 +8,7 @@
 //! into a percentage, while `Focus length` also declares a `value_text`
 //! and is read as "25 minutes" (backlog F8).
 //!
-//! Run: cargo run -p kui --example accessibility
+//! Run: cargo run -p kui-native --example accessibility
 //!
 //! With VoiceOver (⌘F5): VO-right walks the controls, VO-space presses
 //! the button, and inside either editor the arrow keys read by character
@@ -55,12 +55,12 @@
 //! a destructive confirm should not be one habitual Enter away from
 //! confirming.
 
-use kui::widgets;
-use kui::{
+use kui_devtools::Example;
+use kui_native::widgets;
+use kui_native::{
     Align, App, EditOptions, FloatConfig, Key, Live, NodeSpec, Role, Sizing, TextStyle, Ui,
     UiEvent, Value,
 };
-use kui_devtools::Example;
 
 const DOC: &str = "hello world\nsecond line";
 
@@ -233,45 +233,20 @@ impl App for A11y {
 
                 // A radio group: the one pattern whose arrows *must* also check
                 // the radio they land on, which is why the group is here at all.
-                // `radioGroup` is the container; each `radio` says `checked`, and
-                // the group's own `dir` is what tells the platform the set is
-                // laid out horizontally. Nothing declares a Tab stop or an arrow
-                // key — the group holds focusable radios, and that is a composite.
+                // The stock group (`docs/adr/0034-stock-controls-over-the-roles.md`)
+                // is the `radioGroup` container; each stock `radio` says
+                // `checked`, and the group's `row` spec is what tells the
+                // platform the set is laid out horizontally. Nothing declares a
+                // Tab stop or an arrow key — the group holds focusable radios,
+                // and that is a composite.
                 ui.with(NodeSpec::row().role(Role::Heading), |ui| {
                     ui.text("Theme", TextStyle::new(15.0).color(t.fg))
                 });
-                ui.with_keyed(
-                    "theme",
-                    NodeSpec::row()
-                        .role(Role::RadioGroup)
-                        .gap(4.0)
-                        .label("Theme"),
-                    |ui| {
-                        for (i, name) in ["Light", "Dark", "Auto"].iter().enumerate() {
-                            let on = i == self.theme;
-                            ui.with_keyed(
-                                name,
-                                NodeSpec::row()
-                                    .role(Role::Radio)
-                                    .checked(on)
-                                    .on_click(Value::str(format!("theme{i}")))
-                                    .pad_xy(10.0, 6.0)
-                                    .bg(if on { t.accent } else { t.surface })
-                                    .radius(6.0),
-                                |ui| {
-                                    ui.text(
-                                        name,
-                                        TextStyle::new(13.0).color(if on {
-                                            t.on_accent
-                                        } else {
-                                            t.muted
-                                        }),
-                                    )
-                                },
-                            );
-                        }
-                    },
-                );
+                widgets::radio_group_with(ui, "Theme", NodeSpec::row().gap(16.0), |ui| {
+                    for (i, name) in ["Light", "Dark", "Auto"].iter().enumerate() {
+                        widgets::radio(ui, name, i == self.theme, format!("theme{i}"));
+                    }
+                });
 
                 // A list whose rows can be picked. A row is not named by its
                 // content the way a button is — it is a container of content, and
@@ -435,51 +410,16 @@ impl App for A11y {
                     }
                 });
 
-                // A switch: `checked` is the state assistive technology reads.
-                ui.with_keyed(
-                    "mute",
-                    NodeSpec::row()
-                        .role(Role::Switch)
-                        .checked(self.muted)
-                        .on_click(Value::str("mute"))
-                        .pad_xy(10.0, 6.0)
-                        .bg(t.surface)
-                        .radius(6.0)
-                        .label("Mute"),
-                    |ui| {
-                        ui.text(
-                            if self.muted { "on" } else { "off" },
-                            TextStyle::new(13.0).color(t.muted),
-                        )
-                    },
-                );
+                // A switch: `checked` is the state assistive technology reads,
+                // and its text is its name.
+                widgets::switch(ui, "Mute", self.muted, "mute");
 
-                // A slider the app draws: the value and range are data, and the
-                // increment / decrement requests arrive as `access` events.
-                ui.with_keyed(
-                    "volume",
-                    NodeSpec::row()
-                        .role(Role::Slider)
-                        .label("Volume")
-                        .value_now(self.volume)
-                        .value_min(0.0)
-                        .value_max(10.0)
-                        .on_drag(Value::str("volume"))
-                        .width(Sizing::Fixed(200.0))
-                        .height(Sizing::Fixed(16.0))
-                        .bg(t.surface)
-                        .radius(8.0),
-                    |ui| {
-                        ui.with(
-                            NodeSpec::row()
-                                .width(Sizing::Percent(self.volume / 10.0))
-                                .height(Sizing::Grow(1.0))
-                                .bg(t.accent)
-                                .radius(8.0),
-                            |_| {},
-                        );
-                    },
-                );
+                // A stock slider: the value, the range and the step are data,
+                // and every way of moving it — the pointer, the arrows, the
+                // Page keys, Home and End, a reader's increment and decrement —
+                // arrives as one `change` event proposing the new value.
+                let m = ui.metrics();
+                widgets::slider(ui, "Volume", self.volume, 0.0, 10.0, 1.0, "volume");
 
                 // The same control, saying what its position *reads as*.
                 // With only `value_now` and the range a reader has to
@@ -489,30 +429,19 @@ impl App for A11y {
                 // replaces the number rather than joining it. It is not
                 // the `label`: the name of the control does not change
                 // when its value does.
-                ui.with_keyed(
-                    "focus_length",
-                    NodeSpec::row()
-                        .role(Role::Slider)
-                        .label("Focus length")
+                // Five minutes a step, which is the step a reader's increment
+                // and the arrows both take.
+                widgets::slider_with(
+                    ui,
+                    "Focus length",
+                    widgets::slider_spec(&m)
                         .value_now(self.focus_min)
                         .value_min(5.0)
                         .value_max(60.0)
+                        .value_step(5.0)
                         .value_text(format!("{} minutes", self.focus_min as i32))
-                        .on_drag(Value::str("focus"))
-                        .width(Sizing::Fixed(200.0))
-                        .height(Sizing::Fixed(16.0))
-                        .bg(t.surface)
-                        .radius(8.0),
-                    |ui| {
-                        ui.with(
-                            NodeSpec::row()
-                                .width(Sizing::Percent((self.focus_min - 5.0) / 55.0))
-                                .height(Sizing::Grow(1.0))
-                                .bg(t.accent)
-                                .radius(8.0),
-                            |_| {},
-                        );
-                    },
+                        .on_change("focus"),
+                    None,
                 );
 
                 // A built-in editor: the core owns the buffer, so its runs, caret
@@ -745,28 +674,31 @@ impl App for A11y {
             }
             return;
         }
+        // The sliders: the core proposes a value — stepped, clamped and
+        // snapped already — and which slider moved is its own tag. The
+        // reading the next frame declares is what a reader announces.
+        if payload.get("kind").and_then(Value::as_str) == Some("change") {
+            let value = payload
+                .get("value")
+                .and_then(Value::as_float)
+                .unwrap_or(0.0) as f32;
+            match payload.get("tag").and_then(Value::as_str) {
+                Some("focus") => {
+                    self.focus_min = value;
+                    println!("focus length -> {} minutes", self.focus_min as i32);
+                }
+                _ => {
+                    self.volume = value;
+                    println!("volume -> {}", self.volume);
+                }
+            }
+            return;
+        }
         if payload.get("kind").and_then(Value::as_str) != Some("access") {
             return;
         }
         let action = payload.get("action").and_then(Value::as_str).unwrap_or("");
         match action {
-            // The sliders: the app decides what a step means, and which
-            // slider was nudged is the node's own tag.
-            "increment" | "decrement" => {
-                let step = if action == "increment" { 1.0 } else { -1.0 };
-                match payload.get("tag").and_then(Value::as_str) {
-                    Some("focus") => {
-                        // Five minutes a step, and the reading the next
-                        // frame declares is what a reader announces.
-                        self.focus_min = (self.focus_min + step * 5.0).clamp(5.0, 60.0);
-                        println!("focus length -> {} minutes", self.focus_min as i32);
-                    }
-                    _ => {
-                        self.volume = (self.volume + step).clamp(0.0, 10.0);
-                        println!("volume -> {}", self.volume);
-                    }
-                }
-            }
             // The app-owned editor: line ordinals among the rows it drew
             // (all of them here), byte offsets into their text.
             "setTextSelection" => {

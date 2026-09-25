@@ -51,6 +51,43 @@ function button(t)
   return t
 end
 
+-- The stock toggles (docs/adr/0034): checkbox { label = "Mute", checked =
+-- muted, on_click = "mute" }, radio { ... }, switch { ... }. The state is
+-- the model's: a press posts on_click and the view flips it. A checkbox
+-- also takes mixed = true, the select-all box over a partial selection.
+-- `label` is the name and the text both unless `text` says otherwise.
+function checkbox(t)
+  t.type = "checkbox"
+  return t
+end
+
+function radio(t)
+  t.type = "radio"
+  return t
+end
+
+function switch(t)
+  t.type = "switch"
+  return t
+end
+
+-- radio_group { label = "Theme", radio { ... }, radio { ... } }: one Tab
+-- stop whose arrows move the choice and press the radio they land on.
+-- Takes every box row; a column by default.
+function radio_group(t)
+  t.type = "radio_group"
+  return t
+end
+
+-- slider { label = "Volume", value_now = v, value_min = 0, value_max = 100,
+-- value_step = 5, on_change = "vol" }: the core turns the pointer and the
+-- keys into {kind = "change", value, phase, tag} events; store `value` and
+-- draw the slider at it.
+function slider(t)
+  t.type = "slider"
+  return t
+end
+
 -- Single-line input with chrome: input { label = "name", initial = "" }
 function input(t)
   t.type = "input"
@@ -223,7 +260,7 @@ function devtools_tab(t)
   return t
 end
 
--- virtual_column(env, { key = "log", rows = 10000, row_h = 28, ... }, function(i)
+-- uniform_list(env, { key = "log", rows = 10000, row_h = 28, ... }, function(i)
 --   return column { fill = true, on_click = { kind = "pick", row = i }, text("line " .. i) }
 -- end)
 --
@@ -246,17 +283,17 @@ end
 --
 -- To reach a row that is not built, scroll to it:
 -- `env.set_scroll(key, 0, i * row_h)` puts row i at the top.
-function virtual_column(env, opts, row)
+function uniform_list(env, opts, row)
   local key = opts.key
   if type(key) ~= "string" or key == "" then
-    error("virtual_column needs a string `key` -- its geometry is read back by that name", 2)
+    error("uniform_list needs a string `key` -- its geometry is read back by that name", 2)
   end
   local row_h = opts.row_h
   if type(row_h) ~= "number" or row_h <= 0 then
-    error("virtual_column needs a positive `row_h` -- one row's height is the whole stride", 2)
+    error("uniform_list needs a positive `row_h` -- one row's height is the whole stride", 2)
   end
   if type(row) ~= "function" then
-    error("virtual_column needs a row builder -- virtual_column(env, opts, function(i) ... end)", 2)
+    error("uniform_list needs a row builder -- uniform_list(env, opts, function(i) ... end)", 2)
   end
   local n = math.max(0, math.floor(opts.rows or 0))
   local overscan = opts.overscan or 2
@@ -307,6 +344,106 @@ function virtual_column(env, opts, row)
   end
   if last < n then
     t[at] = column { key = "kui:tail", width = "grow", height = (n - last) * row_h }
+  end
+  return t
+end
+
+-- local heights = row_heights(#lines, 20)
+-- list(env, { key = "chat", heights = heights },
+--   function(i, width) return env.measure_text(lines[i + 1], { size = 14 }, width).height + 8 end,
+--   function(i) return text { pad = 4, lines[i + 1] } end)
+--
+-- A scrolling column of rows of *different* heights that declares only the
+-- visible ones -- `uniform_list` where no single stride describes the list.
+-- `heights` is a `row_heights(rows, estimate)` the script makes once and
+-- keeps: the core's own prefix sums over the rows measured so far, with the
+-- mean of those standing in for every other row. `set_len` it when rows are
+-- appended, `clear` it when they change under the same indices.
+--
+-- `measure(i, width)` returns row i's height at that content width, and is
+-- called only for rows the frame is about to build that `heights` has no
+-- number for; `env.measure_text(s, style, width)` is layout's own answer for
+-- a text row. What it returns is the height the row gets: the widget fixes
+-- each row's node to it. `row(i)` returns row i's contents, as
+-- `uniform_list`'s does, keyed by the row's data `index` (0-based).
+--
+-- Measuring moves the estimate, and with it every row above the window, so
+-- the widget puts the row the window starts in back where it was
+-- (`env.shift_scroll`) -- and, mid-glide on a container with a
+-- `transition`, the row the glide is going to. The arithmetic is the core's
+-- (`widgets::list` in Rust); this is the loop around the script's callback.
+--
+-- `env.set_scroll(key, 0, heights:offset_of(i))` puts row i at the top.
+function list(env, opts, measure, row)
+  local key = opts.key
+  if type(key) ~= "string" or key == "" then
+    error("list needs a string `key` -- its geometry is read back by that name", 2)
+  end
+  local heights = opts.heights
+  if type(heights) ~= "userdata" then
+    error("list needs `heights` -- a row_heights(rows, estimate) the script keeps between views", 2)
+  end
+  if type(measure) ~= "function" then
+    error("list needs a measure function -- list(env, opts, function(i, width) return h end, row)", 2)
+  end
+  if type(row) ~= "function" then
+    error("list needs a row builder -- list(env, opts, measure, function(i) ... end)", 2)
+  end
+
+  -- The padding the rows sit inside: its top shifts where the window
+  -- starts, its sides narrow what a row is measured at. A `"$token"` is
+  -- not resolved here and counts as none.
+  local pad = opts.pad
+  local pad_t, pad_x = 0, 0
+  if type(pad) == "number" then
+    pad_t, pad_x = pad, 2 * pad
+  elseif type(pad) == "table" then
+    local function n(v) return type(v) == "number" and v or nil end
+    local all = n(pad.all)
+    pad_t = n(pad.t) or n(pad.y) or all or 0
+    pad_x = (n(pad.l) or n(pad.x) or all or 0) + (n(pad.r) or n(pad.x) or all or 0)
+  end
+
+  local width, pending = heights:slice_begin {
+    geometry = env.scroll_geometry(key),
+    scroll_y = env.scroll_offset(key).y,
+    viewport_w = env.viewport_w,
+    viewport_h = env.viewport_h,
+    pad_t = pad_t,
+    pad_x = pad_x,
+    overscan = opts.overscan or 2,
+  }
+  while #pending > 0 do
+    local measured = {}
+    for n, i in ipairs(pending) do
+      measured[n] = measure(i, width)
+    end
+    pending = heights:slice_measured(measured)
+  end
+  local plan = heights:slice_finish()
+  if plan.shift then
+    env.shift_scroll(key, plan.shift.drawn, plan.shift.target)
+  end
+
+  local t = {}
+  for k, v in pairs(opts) do t[k] = v end
+  t.heights, t.overscan = nil, nil
+  t.type = "column"
+  t.scroll_y = true
+  t.gap = 0
+  t.row_count = heights:len()
+
+  local at = 1
+  if plan.lead > 0 then
+    t[at] = column { key = "kui:lead", width = "grow", height = plan.lead }
+    at = at + 1
+  end
+  for i = plan.first, plan.last - 1 do
+    t[at] = column { index = i, width = "grow", height = plan.heights[i - plan.first + 1], row(i) }
+    at = at + 1
+  end
+  if plan.tail > 0 then
+    t[at] = column { key = "kui:tail", width = "grow", height = plan.tail }
   end
   return t
 end

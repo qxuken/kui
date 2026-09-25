@@ -10,11 +10,15 @@
 //! `env.blur()`, `env.focus_next()`, `env.focus_prev()`),
 //! `env.announce(text, politeness)` and scroll calls
 //! (`env.reveal(key)`, `env.scroll_offset(key)`, `env.set_scroll(key, x, y)`,
-//! `env.scroll_geometry(key)`), text queries (`env.text_hit(key, x, y)`,
+//! `env.shift_scroll(key, drawn, target)`, `env.scroll_geometry(key)`), file dialogs
+//! (`env.request_files(opts)`, `env.awaiting_files()`), text queries (`env.text_hit(key, x, y)`,
 //! `env.caret_rect(key, byte)`) and window requests
 //! (`env.set_window_size(window, w, h)`, `env.focus_window(window)`); the
 //! root table may set `window_title`, `always_on_top` and `secure_input`. Because the IR is data all the way down, the binding is
-//! just table-to-node conversion — no closures cross the boundary.
+//! just table-to-node conversion — no closures cross the boundary. One
+//! global is native rather than the prelude's: `row_heights(rows,
+//! estimate)`, the core's `RowHeights` as userdata the script keeps, which
+//! the prelude's `list` slices a variable-height list by (backlog C46).
 //!
 //! ## The two `focus` names
 //!
@@ -89,6 +93,7 @@ use kui_core::{
 use mlua::{Lua, Table};
 
 mod meta;
+mod rows;
 pub use meta::luals_meta;
 
 const PRELUDE: &str = include_str!("prelude.lua");
@@ -129,6 +134,7 @@ struct Loaded {
 impl LuaExtension {
     pub fn from_source(name: impl Into<String>, source: &str) -> mlua::Result<Self> {
         let lua = Lua::new();
+        rows::register(&lua)?;
         lua.load(PRELUDE).set_name("kui:prelude").exec()?;
         let name = name.into();
         lua.load(source).set_name(&name).exec()?;
@@ -359,7 +365,7 @@ fn key_arg(ui: &mut Ui<'_>, v: mlua::Value) -> mlua::Result<Key> {
 /// rather than an error. Every one of them already has a "no such node"
 /// reply for a key no layout resolved (false, nil, a zero offset), and a
 /// label is the spelling a view uses *before* the node exists: the first
-/// frame of a `virtual_column` asks its own container for geometry that is
+/// frame of a `uniform_list` asks its own container for geometry that is
 /// not there yet. The command verbs ([`key_arg`]) keep throwing, where a
 /// typo is a bug worth naming (backlog C25). What a key may *be* is the
 /// same question for both, so anything that is not an integer or a string
@@ -438,7 +444,7 @@ fn menu_items(t: &mlua::Table) -> mlua::Result<Vec<kui_core::MenuItem>> {
 /// `measure_text(s, opts, max_w)` (see `measure_from_lua`), the
 /// focus verbs `set_focus(key)` / `blur()` / `focus_next()` / `focus_prev()` / `focus_region(key)`
 /// and the scroll calls `reveal(key)` / `scroll_offset(key)` / `set_scroll(key, x, y)` /
-/// `scroll_geometry(key)`, the text queries `text_hit(key, x, y)` /
+/// `shift_scroll(key, drawn, target)` / `scroll_geometry(key)`, the text queries `text_hit(key, x, y)` /
 /// `caret_rect(key, byte)`, the selection calls `selection_text()` /
 /// `selection_html()` (the same words with the formatting they declared) /
 /// `selection_ends()` (the anchor and the focus as row indices and bytes,
@@ -884,6 +890,27 @@ fn env_table<'scope, 'env: 'scope>(
         "awaiting_paste",
         scope.create_function(move |_, ()| Ok(ui.borrow().awaiting_paste()))?,
     )?;
+    // The platform's Open, Save or folder dialog (backlog C51): `{ mode =
+    // "open"|"save"|"folder", multiple, title, filters = {{ name, extensions
+    // = {...} }}, directory, file_name, tag }`, every field optional. The
+    // answer is a `files` event to this script — `paths` empty when the
+    // user cancelled. False when one is already out.
+    t.set(
+        "request_files",
+        scope.create_function(move |_, opts: Option<mlua::Value>| {
+            let v = match &opts {
+                Some(o) => lua_to_value(o)?,
+                None => Value::Null,
+            };
+            let dialog = kui_core::FileDialog::from_value(&v)
+                .map_err(|e| mlua::Error::runtime(format!("request_files: {e}")))?;
+            Ok(ui.borrow_mut().request_files(dialog))
+        })?,
+    )?;
+    t.set(
+        "awaiting_files",
+        scope.create_function(move |_, ()| Ok(ui.borrow().awaiting_files()))?,
+    )?;
     // The selection as HTML: the formatting the text declared (bold,
     // The text selection's two ends as the drag made them: `{anchor =
     // {index, byte}, focus = {index, byte}}`, `index` the data index of
@@ -1014,6 +1041,24 @@ fn env_table<'scope, 'env: 'scope>(
             let mut ui = ui.borrow_mut();
             let key = key_arg(&mut ui, key)?;
             ui.set_scroll(key, kui_core::Vec2::new(x, y));
+            Ok(())
+        })?,
+    )?;
+    // A correction by content that moved under the list, on y, with no
+    // ease: what the prelude's `list` asks for when the rows it measured
+    // came out another height than their estimate (RG18, backlog C46). A
+    // key nothing declared yet is the first frame, with nothing to correct.
+    t.set(
+        "shift_scroll",
+        scope.create_function(move |_, (key, drawn, target): (mlua::Value, f32, f32)| {
+            let mut ui = ui.borrow_mut();
+            if let Some(key) = key_query(&mut ui, key)? {
+                ui.shift_scroll(
+                    key,
+                    kui_core::Vec2::new(0.0, drawn),
+                    kui_core::Vec2::new(0.0, target),
+                );
+            }
             Ok(())
         })?,
     )?;
@@ -1228,6 +1273,7 @@ fn element_of(ty: &str) -> &str {
         "grid" => "table",
         "input" => "edit",
         "dropdown" => "select",
+        "radio_group" => "radioGroup",
         "window_buttons" => "windowButtons",
         "menu_bar" => "menuBar",
         "latency_graph" | "latency_hud" => "latencyGraph",
@@ -1804,8 +1850,115 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             }
             Ok(())
         }
+        "checkbox" | "radio" | "switch" => {
+            // The button's shape (docs/adr/0034): `label` is the name and
+            // the text unless `text` says otherwise, and the rows the
+            // toggle admits (`schema::TOGGLE_ROWS_LUA`) are read by name
+            // over `widgets::toggle_spec`.
+            let kind = match ty.as_str() {
+                "checkbox" => widgets::Toggle::Checkbox,
+                "radio" => widgets::Toggle::Radio,
+                _ => widgets::Toggle::Switch,
+            };
+            let label: String = t.get("label")?;
+            let text: String = t
+                .get::<Option<String>>("text")?
+                .unwrap_or_else(|| label.clone());
+            let key: String = t
+                .get::<Option<String>>("key")?
+                .unwrap_or_else(|| label.clone());
+            let payload = match t.get::<Option<mlua::Value>>("on_click")? {
+                Some(v) => lua_to_value(&v)?,
+                None => Value::Null,
+            };
+            let mut out = PropsOut::new();
+            out.spec = widgets::toggle_spec(&ui.metrics())
+                .on_click(payload)
+                .label(label.as_str());
+            if let Some(hint) = t.get::<Option<String>>("tooltip")? {
+                out.apply_tooltip(&hint);
+            }
+            apply_named_rows(
+                ui,
+                t,
+                &["description", "disabled", "checked", "mixed"],
+                &mut out,
+            )?;
+            widgets::toggle_with(ui, kind, &key, &text, out.spec, out.tooltip.as_deref());
+            Ok(())
+        }
+        "slider" => {
+            // Keyed by `label`, which is its name too; the value rows, its
+            // change tag and its width are read by name over
+            // `widgets::slider_spec` (`schema::SLIDER_ROWS_LUA`).
+            let label: String = t.get("label")?;
+            let key: String = t
+                .get::<Option<String>>("key")?
+                .unwrap_or_else(|| label.clone());
+            let mut out = PropsOut::new();
+            out.spec = widgets::slider_spec(&ui.metrics()).label(label.as_str());
+            if let Some(hint) = t.get::<Option<String>>("tooltip")? {
+                out.apply_tooltip(&hint);
+            }
+            apply_named_rows(
+                ui,
+                t,
+                &[
+                    "description",
+                    "disabled",
+                    "value_now",
+                    "value_min",
+                    "value_max",
+                    "value_step",
+                    "value_text",
+                    "on_change",
+                    "width",
+                    "min_width",
+                    "max_width",
+                ],
+                &mut out,
+            )?;
+            widgets::slider_with(ui, &key, out.spec, out.tooltip.as_deref());
+            Ok(())
+        }
+        "radio_group" => {
+            // Every box row; the role, the name and, with no `gap`, the
+            // stock spacing are the group's (`widgets::radio_group_with`).
+            let label: String = t.get("label")?;
+            let p = with_refs(ui, |refs| parse_props(t, false, refs))?;
+            let mut result = Ok(());
+            widgets::radio_group_with(ui, &label, p.spec, |ui| result = build_children(ui, t));
+            result
+        }
         other => Err(mlua::Error::runtime(format!("unknown node type '{other}'"))),
     }
+}
+
+/// Reads the rows `names` off `t` by their Lua names and applies them over
+/// `out` through the schema, the way the stock button reads its rows: a
+/// widget whose look is its spec takes a closed list of rows, never the
+/// whole prop list.
+fn apply_named_rows(
+    ui: &mut Ui<'_>,
+    t: &Table,
+    names: &[&str],
+    out: &mut PropsOut,
+) -> mlua::Result<()> {
+    with_refs(ui, |refs| {
+        for name in names {
+            let v = t.get::<mlua::Value>(*name)?;
+            if v.is_nil() {
+                continue;
+            }
+            let def = schema::by_snake_name(name).expect("a schema row");
+            if let Some(parsed) =
+                parse_value(&def.kind, &v, refs).map_err(|e| bad(format!("{name}: {e}")))?
+            {
+                schema::apply(def, parsed, out).map_err(bad)?;
+            }
+        }
+        Ok(())
+    })
 }
 
 struct SpanPart {
@@ -5649,7 +5802,7 @@ mod tests {
         assert_eq!(built, 7, "still a screenful at the far end");
     }
 
-    /// The same list as one call: `virtual_column` from the prelude owns the
+    /// The same list as one call: `uniform_list` from the prelude owns the
     /// slicing, the two spacers and the row keys, and the script says what a
     /// row looks like. It names its container by label, which is why the
     /// queries had to answer for a name no frame has declared yet — the
@@ -5662,7 +5815,7 @@ mod tests {
                 ROWS, ROW_H, first_built, built = 10000, 30, -1, 0
                 function view(env)
                   built, first_built = 0, -1
-                  return virtual_column(env,
+                  return uniform_list(env,
                     { key = "list", rows = ROWS, row_h = ROW_H,
                       width = "grow", height = "grow" },
                     function(i)
@@ -5715,14 +5868,14 @@ mod tests {
     /// slices past its own new end, and an unclamped `first` builds a lead
     /// spacer taller than the whole list with no rows in it.
     #[test]
-    fn a_virtual_column_whose_list_shrank_lands_in_one_frame() {
+    fn a_uniform_list_that_shrank_lands_in_one_frame() {
         let mut ext = LuaExtension::from_source(
             "virtual",
             r#"
                 ROWS, first_built = 200, -1
                 function view(env)
                   first_built = -1
-                  return virtual_column(env,
+                  return uniform_list(env,
                     { key = "list", rows = ROWS, row_h = 20,
                       width = "grow", height = "grow" },
                     function(i)
@@ -5764,6 +5917,189 @@ mod tests {
         let first: i64 = ext.lua.globals().get("first_built").unwrap();
         assert_eq!(first, 0, "and every row of it is built");
         assert_eq!(core.scroll_offset(list).y, 0.0);
+    }
+
+    /// The variable-height list's script (backlog C46): rows 0..100 are 20
+    /// px and the rest 60, so the estimate the first screenful produces is
+    /// badly wrong for the middle of the list — which is what makes the
+    /// anchor observable. `TRANSITION` puts RG18's glide on the container.
+    const VARIABLE_LIST: &str = r#"
+        heights = row_heights(1000, 20)
+        measured = 0
+        function view(env)
+          return list(env,
+            { key = "list", heights = heights, width = "grow", height = "grow",
+              transition = TRANSITION },
+            function(i, width)
+              measured = measured + 1
+              if i < 100 then return 20 else return 60 end
+            end,
+            function(i)
+              return column { width = "grow", height = "grow", bg = 0x282840ff,
+                              label = "row", on_click = i }
+            end)
+        end
+    "#;
+
+    /// One frame of `VARIABLE_LIST` at time `t`, 400 x 200.
+    fn variable_frame(core: &mut Core, ext: &mut LuaExtension, t: f64) {
+        core.set_time(t);
+        let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+        ui.set_origin(OriginId(1));
+        ext.view(&Slot::root(), &mut ui).unwrap();
+        ui.finish();
+    }
+
+    /// Which row is under `y`, by a click rather than by arithmetic — the
+    /// question "did the content move" asks of the pixels.
+    fn row_under(core: &mut Core, y: f32) -> Option<i64> {
+        core.handle_input(InputEvent::CursorMoved(Vec2::new(200.0, y)));
+        core.handle_input(InputEvent::mouse_down(1));
+        let evs = core.handle_input(InputEvent::mouse_up());
+        evs.first()?.payload.as_int()
+    }
+
+    /// The Lua port of `widgets::list`'s crux: measuring the rows a frame
+    /// builds moves the estimate under every row above the window, and the
+    /// row under the top edge stays the row under the top edge.
+    #[test]
+    fn a_lua_list_keeps_the_row_under_the_pointer_while_the_estimate_moves() {
+        let mut ext = LuaExtension::from_source("variable", VARIABLE_LIST).unwrap();
+        let list = Key::ROOT.str("list");
+        let mut core = Core::new();
+        variable_frame(&mut core, &mut ext, 0.0);
+        variable_frame(&mut core, &mut ext, 0.0);
+        let measured: i64 = ext.lua.globals().get("measured").unwrap();
+        assert!(
+            (10..=20).contains(&measured),
+            "a screenful measured, not the list: {measured}"
+        );
+
+        core.set_scroll(list, Vec2::new(0.0, 5_000.0));
+        variable_frame(&mut core, &mut ext, 0.0);
+        let settled = row_under(&mut core, 4.0);
+        assert!(settled.is_some(), "nothing under the top edge");
+        for n in 0..4 {
+            variable_frame(&mut core, &mut ext, 0.0);
+            assert_eq!(
+                row_under(&mut core, 4.0),
+                settled,
+                "the content slid on frame {n} as the estimate moved"
+            );
+        }
+        let g = core.scroll_geometry(list).expect("laid out");
+        assert!(
+            g.content.h > 1000.0 * 20.0 * 1.5,
+            "the list learned it is longer: {}",
+            g.content.h
+        );
+    }
+
+    /// RG18 through the Lua port: a long `set_scroll` on a container with a
+    /// `transition` glides all the way to the row asked for, the heights of
+    /// the rows it passes measured on the way.
+    #[test]
+    fn a_lua_list_glides_to_the_row_asked_for() {
+        let mut ext =
+            LuaExtension::from_source("variable", &format!("TRANSITION = 100\n{VARIABLE_LIST}"))
+                .unwrap();
+        let list = Key::ROOT.str("list");
+        let mut core = Core::new();
+        let mut t = 0.0;
+        variable_frame(&mut core, &mut ext, t);
+        variable_frame(&mut core, &mut ext, t);
+        let target = 400;
+        let offset: f32 = ext
+            .lua
+            .load(format!("return heights:offset_of({target})"))
+            .eval()
+            .unwrap();
+        core.set_scroll(list, Vec2::new(0.0, offset));
+        for _ in 0..30 {
+            t += 1.0 / 60.0;
+            variable_frame(&mut core, &mut ext, t);
+        }
+        assert_eq!(row_under(&mut core, 4.0), Some(target));
+    }
+
+    /// A script asks for a file dialog (backlog C51); the host takes the
+    /// ask, answers it, and the answer comes back to the script that asked
+    /// — its origin — as a `files` event with its tag.
+    #[test]
+    fn a_script_asks_for_a_file_dialog_and_hears_the_answer() {
+        let mut ext = LuaExtension::from_source(
+            "files",
+            r#"
+                ask, asked, again, waiting, heard = true, nil, nil, nil, nil
+                function view(env)
+                  if ask then
+                    asked = env.request_files {
+                      mode = "save", title = "Export", file_name = "notes.md",
+                      filters = { { name = "Markdown", extensions = { "md" } } },
+                      tag = "export",
+                    }
+                    again = env.request_files {}
+                    waiting = env.awaiting_files()
+                    ask = false
+                  end
+                  return column {}
+                end
+                function on_event(ev)
+                  if ev.kind == "files" then heard = ev.paths[1] .. "|" .. ev.tag end
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        variable_frame(&mut core, &mut ext, 0.0);
+        let g = ext.lua.globals();
+        assert!(g.get::<bool>("asked").unwrap(), "the first ask is taken");
+        assert!(
+            !g.get::<bool>("again").unwrap(),
+            "a second while it is out is not"
+        );
+        assert!(g.get::<bool>("waiting").unwrap());
+
+        let asks = core.take_file_requests();
+        assert_eq!(asks.len(), 1);
+        let d = &asks[0];
+        assert_eq!(d.mode, kui_core::FileDialogMode::Save);
+        assert_eq!(d.file_name.as_deref(), Some("notes.md"));
+        assert_eq!(d.filters[0].extensions, vec!["md".to_string()]);
+
+        let evs = core.handle_input(InputEvent::Files(vec!["/tmp/notes.md".into()]));
+        assert_eq!(evs.len(), 1);
+        assert_eq!(
+            evs[0].origin,
+            OriginId(1),
+            "the answer goes to the script that asked"
+        );
+        for e in &evs {
+            ext.on_event(e);
+        }
+        let heard: String = ext.lua.globals().get("heard").unwrap();
+        assert_eq!(heard, "/tmp/notes.md|export");
+    }
+
+    /// The script is told what it got wrong, not handed a Lua error from
+    /// inside the prelude.
+    #[test]
+    fn a_lua_list_names_what_it_is_missing() {
+        let mut ext = LuaExtension::from_source(
+            "bad",
+            r#"
+                function view(env)
+                  ok, err = pcall(list, env, { key = "list" }, function() return 1 end,
+                    function() return column {} end)
+                  return column {}
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        variable_frame(&mut core, &mut ext, 0.0);
+        let err: String = ext.lua.globals().get("err").unwrap();
+        assert!(err.contains("row_heights"), "{err}");
     }
 
     /// A query answers for a label nothing declared, where a command says it

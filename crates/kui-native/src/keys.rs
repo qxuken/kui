@@ -126,7 +126,7 @@ pub(crate) fn physical_code(key: winit::keyboard::PhysicalKey) -> KeyCode {
     }
 }
 
-impl<A: App> Shell<A> {
+impl DynShell<'_> {
     pub(super) fn on_key(
         &mut self,
         event_loop: &ActiveEventLoop,

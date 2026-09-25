@@ -21,6 +21,7 @@ pub mod cursor;
 pub mod deco;
 pub mod depart;
 pub mod diag;
+pub mod dialog;
 pub mod display;
 pub mod edit;
 pub mod enter;
@@ -33,6 +34,7 @@ pub mod keyframes;
 pub mod layout;
 pub mod line;
 pub mod menu;
+pub mod message;
 pub mod metrics;
 pub mod resources;
 pub(crate) mod retain;
@@ -41,6 +43,7 @@ pub mod schema;
 pub mod scroll;
 pub mod select;
 pub mod session;
+pub mod slider;
 pub mod slot;
 pub mod slots;
 pub mod spec;
@@ -69,6 +72,7 @@ pub use color::Color;
 pub use cursor::CursorShape;
 pub use depart::DepartStore;
 pub use diag::Warning;
+pub use dialog::{FileDialog, FileDialogMode, FileFilter};
 pub use display::{
     Clip, ClipId, DisplayList, FragmentDraw, FragmentImage, NO_CLIP, NO_CLIP_ID, Quad, QuadKind,
 };
@@ -84,8 +88,15 @@ pub use input::{
 };
 pub use key::Key;
 pub use keyframes::Keyframe;
+/// `#[derive(Message)]` (backlog C50), with the `derive` feature; `kui-native`
+/// turns it on. From a crate that depends on kui-core alone, say
+/// `#[message(crate = "kui_core")]` — the generated code reaches `::kui`
+/// unless told otherwise.
+#[cfg(feature = "derive")]
+pub use kui_derive::Message;
 pub use line::{LineId, LineStore, Stroke};
 pub use menu::{Accel, BarMenu, Menu, MenuAction, MenuBar, MenuItem, MenuRole};
+pub use message::{MessageError, MessageField};
 pub use metrics::Metrics;
 pub use resources::{
     FontId, FragmentId, ImageBacking, ImageFit, ImageId, ImageOpts, Resources, Sampling, SessionId,
