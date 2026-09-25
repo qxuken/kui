@@ -326,6 +326,11 @@ impl Core {
                     }
                 }
             }
+            InputEvent::Files(paths) => {
+                if let Some(ev) = self.file_ask.answer(&paths) {
+                    out.push(ev);
+                }
+            }
             InputEvent::Commit(s) => {
                 // The paste's answer, when one was asked — a driver answers
                 // every ask, with an empty commit for an empty clipboard,

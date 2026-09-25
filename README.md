@@ -555,7 +555,14 @@ that are hard to reverse and would look arbitrary without their context.
   topmost zone under the pointer — a button inside it is its, a banner
   the view floats over it on `enter` is looked past — and the driver
   reports the position (the macOS runner reads it from AppKit, which
-  winit does not surface).
+  winit does not surface). Files the app goes looking for arrive the same
+  way: `request_files` (`ctx.requestFiles`, `env.request_files`,
+  `kui_request_files`) asks for the platform's Open, Save or folder
+  dialog, which the runner shows through rfd as a sheet on the window
+  (the default-on `dialogs` feature), and the answer is one `{kind="files",
+  paths, tag}` event — a drop's `paths`, none when the user cancelled.
+  One dialog at a time; a headless host takes the ask with
+  `take_file_requests` and answers it as input.
 - **Measurement and layout are data, in that order.** "Declare it, the
   core resolves it" is a strategy of enumeration, and the first behaviour
   nobody enumerated needs a way out that is not an imperative hook. The

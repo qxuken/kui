@@ -936,6 +936,51 @@ static int surface(void) {
         check(sy == 0, "a node that never scrolled is 0");
     }
 
+    /* File dialogs (backlog C51): ask, drain as the host, answer, hear it. */
+    {
+        KuiStr exts[] = { KUI_STR("png"), KUI_STR(".jpg") };
+        KuiFileFilter filter = { KUI_STR("Images"), exts, 2 };
+        KuiFileDialog dialog = { 0 };
+        dialog.mode = KUI_FILE_DIALOG_OPEN;
+        dialog.multiple = 1;
+        dialog.title = KUI_STR("Pick images");
+        dialog.filters = &filter;
+        dialog.filter_count = 1;
+        check(kui_request_files(ui, &dialog, kui_value_str(KUI_STR("pics"))), "kui_request_files asks");
+        check(kui_awaiting_files(ui), "kui_awaiting_files while it is out");
+        check(!kui_request_files(ui, NULL, NULL), "and a second ask is dropped");
+        uint32_t mode = 99;
+        bool multiple = false;
+        KuiStr title = { 0 }, dir = { 0 }, name = { 0 };
+        size_t filters = 0;
+        check(kui_take_file_request(ui, &mode, &multiple, &title, &dir, &name, &filters)
+                  && mode == KUI_FILE_DIALOG_OPEN && multiple && filters == 1
+                  && title.len == 11 && dir.len == 0,
+              "kui_take_file_request hands the host the dialog");
+        KuiStr fname, fexts;
+        check(kui_file_request_filter(ui, 0, &fname, &fexts) && fname.len == 6
+                  && fexts.len == 7 && memcmp(fexts.ptr, "png;jpg", 7) == 0,
+              "kui_file_request_filter reads a filter, dots dropped");
+        check(!kui_file_request_filter(ui, 1, &fname, &fexts), "and no filter past the last");
+        KuiStr picked[] = { KUI_STR("/tmp/a.png") };
+        kui_input_files(ui, picked, 1);
+        check(!kui_awaiting_files(ui), "kui_input_files spends the ask");
+        int files = 0;
+        KuiEvent fev = KUI_EVENT_INIT;
+        while (kui_poll_event(ui, &fev)) {
+            const KuiValue *kind = fev.payload ? kui_value_get(fev.payload, KUI_STR("kind")) : NULL;
+            const KuiValue *paths = fev.payload ? kui_value_get(fev.payload, KUI_STR("paths")) : NULL;
+            const KuiValue *tag = fev.payload ? kui_value_get(fev.payload, KUI_STR("tag")) : NULL;
+            KuiStr ks, ts;
+            if (kind && kui_value_as_str(kind, &ks) && ks.len == 5 && memcmp(ks.ptr, "files", 5) == 0
+                && paths && kui_value_len(paths) == 1 && tag && kui_value_as_str(tag, &ts)
+                && ts.len == 4) {
+                files++;
+            }
+        }
+        check(files == 1, "the answer is one files event with the path and the tag");
+    }
+
     /* Focus regions: entered by name, read back as the ring in effect. */
     check(kui_region(ui) == 0, "the main ring to begin with");
     kui_focus_region(ui, k.region);

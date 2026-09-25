@@ -75,8 +75,42 @@ existing input draws changes: a stroke is clipped as it was.
 - A `KuiSpec.main_align` / `cross_align` of 3 to 6, a value past
   `KUI_END` that used to lay out as `KUI_START`, now means one of the new
   alignments.
+- Rust: `InputEvent` has a new variant, `Files`, the answer to a file
+  dialog, so a `match` on it without a wildcard arm stops compiling. Node:
+  `CoreMsg` gains `FilesMsg`, so an exhaustive `switch` wants a `'files'`
+  arm.
 
 ### Added
+
+- **File dialogs** (backlog C51, from the second bake-off's table: gpui
+  has them, iced and kui did not). An app asks for the platform's Open,
+  Save or folder dialog and hears the answer as one event, `{kind:
+  "files", paths, tag}`. `paths` is shaped as a `drop`'s, so one handler
+  takes both, and it is empty when the user cancelled.
+  - The asks: `ui.request_files(FileDialog::open().multiple().filter(…))`
+    in Rust, `ctx.requestFiles({mode, multiple, title, filters,
+    directory, fileName, tag})` in Node, `env.request_files{…}` in Lua,
+    and `kui_request_files(ctx, &KuiFileDialog, tag)` in C.
+  - One dialog at a time, as a paste ask is: a second while one is out
+    is dropped. `awaiting_files` reads the state.
+  - The answer goes to whoever asked: the host, or the extension whose
+    fill asked.
+  - The runner shows the dialog through rfd (the new default-on `dialogs`
+    feature; on Linux through the XDG portal, no GTK). It is rfd's async
+    panel, made on the loop's thread and waited on by a thread of its
+    own, which posts the answer back through the event loop, so the loop
+    never blocks in a modal. On macOS it is a sheet on the window that
+    asked.
+  - Without `dialogs`, every ask is answered at once with no paths.
+  - A host driving its own window takes the ask with
+    `take_file_requests` / `takeFileRequests` / `kui_take_file_request`
+    (then `kui_file_request_filter` per filter) and answers with
+    `InputEvent::Files` / `ctx.answerFiles` / `kui_input_files`.
+  - C gains the [in] structs `KuiFileFilter` and `KuiFileDialog` under
+    the pending ABI 19.
+  - The drop example, Rust and Node, has an "Open…" button whose picks
+    land in the same list as a drop. It was checked in a real window
+    both ways, and its headless drive takes and answers the ask.
 
 - **Typed messages in Rust: `#[derive(Message)]`** (backlog C50, from
   both bake-offs: "typed Rust messages: no, a `Value` payload"). A new

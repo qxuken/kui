@@ -1951,7 +1951,55 @@ write the counter and splitmux with it by hand to see whether the
 derive earns its crate. If the hand-written impls are short, a howto
 entry is the answer instead.
 
-### `.` C51 — No file dialogs
+### `.` C51 — No file dialogs — **built 2026-09-26**
+
+**Built 2026-09-26**, on the user's ask rather than a view's, in the
+shape the entry planned, with three changes.
+
+- **An ask of its own, not an ADR 0013 effect.** Those effects are ones
+  the app performs; this one the host does, like a paste. `request_files`
+  queues it (one at a time, as AR34 made the paste ask). Hosts drain it
+  with `take_file_requests`, and the answer is input
+  (`InputEvent::Files`). The core pairs the answer with the ask's tag
+  and its origin, so an extension that asked hears it.
+- **A queue of its own beside `MenuAction`,** not a variant of it. A new
+  variant would have broken every Rust host's exhaustive match on the
+  menu drain, and a dialog is not a menu's action.
+- **Async, never modal on the loop.** rfd's async panel is made on the
+  loop's thread (macOS insists) and waited on by a thread of its own,
+  which posts `UserEvent::Files` back through the event-loop proxy. The
+  loop keeps turning, a Node window's pumped loop included. On macOS it
+  is a sheet on the window that asked.
+
+**Doors,** with rows in `DOORS` and an `EVENTS` row for `files`:
+- **Rust:** `Ui` / `Core::request_files`, `awaiting_files`,
+  `take_file_requests`, with `FileDialog` / `FileDialogMode` /
+  `FileFilter` and plain-data `to_value` / `from_value`.
+- **Node:** `requestFiles`, `awaitingFiles`, `takeFileRequests`, and
+  `Ctx.answerFiles` as the input.
+- **Lua:** `env.request_files`, `env.awaiting_files`.
+- **C:** `kui_request_files` with the [in] `KuiFileFilter` /
+  `KuiFileDialog` under the pending ABI 19, `kui_awaiting_files`,
+  `kui_take_file_request` with `kui_file_request_filter`, and
+  `kui_input_files`.
+
+**Features:** `dialogs` in `kui`, default-on, rfd 0.17 with the XDG
+portal on Linux (no GTK). The lock gained only rfd and the pollster it
+pins. Without the feature every ask is answered at once with no paths.
+
+**Checked:**
+- **Real windows.** The Rust and Node drop examples got an "Open…"
+  button. In a real window, driven through the accessibility API, the
+  sheet opened titled as asked, a file typed into its go-to field and
+  opened landed in the list, and Cancel answered with no paths and let
+  the next ask through.
+- **Headless drives:** Rust and Node.
+- **Tests:** one each in Lua and Node, and in C's surface walk.
+- **Builds:** clippy over every feature subset of `kui`, and on Windows
+  through xwin.
+
+**Not measured:** how the panel feels while a Node window's pump has
+backed off at idle; the scripted pick waited a second between steps.
 
 **Found** by the bake-off's table: gpui has them, iced and kui do not
 (iced apps use `rfd`). A kui app can call `rfd` itself today, from its
@@ -2013,9 +2061,9 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** C51 from the second bake-off, parked until a view asks;
-C50, typed Rust messages (`#[derive(Message)]`), was **built
-2026-09-25**; C47 was
+**Build next.** Nothing from the second bake-off: C51, the file
+dialogs, was **built 2026-09-26**; C50, typed Rust messages
+(`#[derive(Message)]`), was **built 2026-09-25**; C47 was
 **built 2026-09-25** (two queued frames by default), C46, the
 variable-height list in JSX and Lua over the core's `RowHeights`, and C48, the
 geometry drift since alpha.9, and C49, the edit-compile loop, the same
@@ -2032,7 +2080,7 @@ day after it). Nothing of the regression pass of 2026-09-19 is open (RG1, the No
 drop-zone commit — was **built 2026-09-25**, a register spill in the
 segment loop, and F86, the window icon, the same day. Next is W19, when
 a Windows or Linux round comes (the macOS half of ADR 0031 is built and
-verified; the fallback elsewhere is honest and positionless). Nothing else filed is open besides C51, parked. The rounds since the alpha.14 tag, newest first:
+verified; the fallback elsewhere is honest and positionless). Nothing else filed is open. The rounds since the alpha.14 tag, newest first:
 the regression pass of 2026-09-19 over F67–F75 (RG1–RG16 — all
 sixteen built or done between 2026-09-19 and 2026-09-20, RG14's ten
 nits and RG16's removal of the press-and-hold door **done

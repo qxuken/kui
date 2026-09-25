@@ -493,6 +493,24 @@ fn on_event(&mut self, ev: UiEvent) {
 [`splitmux.rs`](../examples/rust/apps/splitmux.rs) ·
 [backlog C50](BACKLOG.md)
 
+### How do I let the user pick a file, or where to save one?
+
+Ask for the platform's dialog: `ctx.requestFiles({ mode: 'open', multiple:
+true, filters: [{ name: 'Images', extensions: ['png', 'jpg'] }], tag })`
+(`'save'` with a `fileName`, or `'folder'`). The answer is one `files`
+message — `{kind: 'files', paths, tag}`, the paths a `drop` carries, none
+when the user cancelled — so a list that takes dropped files takes picked
+ones with the same code. One dialog at a time: asking again while one is
+up does nothing. The window's runner shows it (a sheet on macOS, through
+rfd); a headless test takes the ask with `takeFileRequests()` and answers
+with `answerFiles(paths)`. Rust asks from its view with
+`ui.request_files(FileDialog::open()…)`, Lua with `env.request_files{…}`,
+C with `kui_request_files`.
+
+[`files` event](props.md#events) ·
+[`drop.tsx`](../examples/node/features/drop.tsx) ·
+[`drop.rs`](../examples/rust/features/drop.rs)
+
 ### How do I give my app a menu bar?
 
 One call, in the view, wherever the strip belongs: `<menuBar menu={[…]}/>`,

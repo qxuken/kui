@@ -10,7 +10,8 @@
 //! `env.blur()`, `env.focus_next()`, `env.focus_prev()`),
 //! `env.announce(text, politeness)` and scroll calls
 //! (`env.reveal(key)`, `env.scroll_offset(key)`, `env.set_scroll(key, x, y)`,
-//! `env.shift_scroll(key, drawn, target)`, `env.scroll_geometry(key)`), text queries (`env.text_hit(key, x, y)`,
+//! `env.shift_scroll(key, drawn, target)`, `env.scroll_geometry(key)`), file dialogs
+//! (`env.request_files(opts)`, `env.awaiting_files()`), text queries (`env.text_hit(key, x, y)`,
 //! `env.caret_rect(key, byte)`) and window requests
 //! (`env.set_window_size(window, w, h)`, `env.focus_window(window)`); the
 //! root table may set `window_title`, `always_on_top` and `secure_input`. Because the IR is data all the way down, the binding is
@@ -888,6 +889,27 @@ fn env_table<'scope, 'env: 'scope>(
     t.set(
         "awaiting_paste",
         scope.create_function(move |_, ()| Ok(ui.borrow().awaiting_paste()))?,
+    )?;
+    // The platform's Open, Save or folder dialog (backlog C51): `{ mode =
+    // "open"|"save"|"folder", multiple, title, filters = {{ name, extensions
+    // = {...} }}, directory, file_name, tag }`, every field optional. The
+    // answer is a `files` event to this script — `paths` empty when the
+    // user cancelled. False when one is already out.
+    t.set(
+        "request_files",
+        scope.create_function(move |_, opts: Option<mlua::Value>| {
+            let v = match &opts {
+                Some(o) => lua_to_value(o)?,
+                None => Value::Null,
+            };
+            let dialog = kui_core::FileDialog::from_value(&v)
+                .map_err(|e| mlua::Error::runtime(format!("request_files: {e}")))?;
+            Ok(ui.borrow_mut().request_files(dialog))
+        })?,
+    )?;
+    t.set(
+        "awaiting_files",
+        scope.create_function(move |_, ()| Ok(ui.borrow().awaiting_files()))?,
     )?;
     // The selection as HTML: the formatting the text declared (bold,
     // The text selection's two ends as the drag made them: `{anchor =
@@ -5998,6 +6020,65 @@ mod tests {
             variable_frame(&mut core, &mut ext, t);
         }
         assert_eq!(row_under(&mut core, 4.0), Some(target));
+    }
+
+    /// A script asks for a file dialog (backlog C51); the host takes the
+    /// ask, answers it, and the answer comes back to the script that asked
+    /// — its origin — as a `files` event with its tag.
+    #[test]
+    fn a_script_asks_for_a_file_dialog_and_hears_the_answer() {
+        let mut ext = LuaExtension::from_source(
+            "files",
+            r#"
+                ask, asked, again, waiting, heard = true, nil, nil, nil, nil
+                function view(env)
+                  if ask then
+                    asked = env.request_files {
+                      mode = "save", title = "Export", file_name = "notes.md",
+                      filters = { { name = "Markdown", extensions = { "md" } } },
+                      tag = "export",
+                    }
+                    again = env.request_files {}
+                    waiting = env.awaiting_files()
+                    ask = false
+                  end
+                  return column {}
+                end
+                function on_event(ev)
+                  if ev.kind == "files" then heard = ev.paths[1] .. "|" .. ev.tag end
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        variable_frame(&mut core, &mut ext, 0.0);
+        let g = ext.lua.globals();
+        assert!(g.get::<bool>("asked").unwrap(), "the first ask is taken");
+        assert!(
+            !g.get::<bool>("again").unwrap(),
+            "a second while it is out is not"
+        );
+        assert!(g.get::<bool>("waiting").unwrap());
+
+        let asks = core.take_file_requests();
+        assert_eq!(asks.len(), 1);
+        let d = &asks[0];
+        assert_eq!(d.mode, kui_core::FileDialogMode::Save);
+        assert_eq!(d.file_name.as_deref(), Some("notes.md"));
+        assert_eq!(d.filters[0].extensions, vec!["md".to_string()]);
+
+        let evs = core.handle_input(InputEvent::Files(vec!["/tmp/notes.md".into()]));
+        assert_eq!(evs.len(), 1);
+        assert_eq!(
+            evs[0].origin,
+            OriginId(1),
+            "the answer goes to the script that asked"
+        );
+        for e in &evs {
+            ext.on_event(e);
+        }
+        let heard: String = ext.lua.globals().get("heard").unwrap();
+        assert_eq!(heard, "/tmp/notes.md|export");
     }
 
     /// The script is told what it got wrong, not handed a Lua error from

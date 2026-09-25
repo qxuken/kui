@@ -365,6 +365,9 @@ pub struct Core {
     /// second ask while one is out is dropped, so a view that asks every
     /// frame until the answer lands asks once.
     awaiting_paste: bool,
+    /// The one file-dialog ask (backlog C51): queued, taken by the host,
+    /// or none.
+    file_ask: crate::dialog::FileAsk,
     /// The drag a press is running through a selection scope, if any: set
     /// on the press inside a scope, cleared on release. The counterpart of
     /// `EditStore::dragging` for text nobody is editing.
@@ -886,6 +889,7 @@ impl Core {
             cell_selection: None,
             awaiting_selection: false,
             awaiting_paste: false,
+            file_ask: Default::default(),
             select_dragging: None,
             drag_follow: None,
             last_frame_time: None,

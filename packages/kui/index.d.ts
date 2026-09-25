@@ -191,6 +191,34 @@ export type DropMsg<T = AppMsg> = {
   tag?: T;
 };
 
+/** A file dialog's answer (backlog C51): the paths an Open, Save or folder
+ *  dialog asked for with `requestFiles` picked, as a `drop` carries them —
+ *  none when the user cancelled. `tag` is the dialog's own. */
+export type FilesMsg<T = AppMsg> = {
+  kind: 'files';
+  paths: string[];
+  tag?: T;
+};
+
+/** A file dialog to ask for with `requestFiles`, and what
+ *  `takeFileRequests` hands a host that shows it itself. Every field is
+ *  optional: an Open dialog for one file, any type, is `{}`. */
+export interface FileDialogOptions {
+  /** `'open'` (the default), `'save'` or `'folder'`. */
+  mode?: 'open' | 'save' | 'folder';
+  /** More than one file or folder may be picked (open and folder). */
+  multiple?: boolean;
+  title?: string;
+  /** The file types offered, the first chosen; extensions without the dot. */
+  filters?: { name: string; extensions: string[] }[];
+  /** The folder it opens in. */
+  directory?: string;
+  /** A save dialog's suggested name. */
+  fileName?: string;
+  /** Handed back on the `files` event. */
+  tag?: AppMsg;
+}
+
 /** The rect layout gave an `onLayout` node — logical px, viewport
  *  coordinates, after scrolling and position easing — on its first frame
  *  and whenever it changes, never on a frame that left it alone (a
@@ -398,7 +426,8 @@ export type CoreMsg =
   | EditMsg
   | SoundMsg
   | AccessMsg
-  | ChangeMsg;
+  | ChangeMsg
+  | FilesMsg;
 
 /** A stock slider's proposal (docs/adr/0034-stock-controls-over-the-roles.md):
  *  the core turned a press, a drag, an arrow, a Page key, Home / End or an
@@ -1933,6 +1962,13 @@ export declare class Ctx {
    */
   dragFiles(paths: Array<string>, x: number, y: number): void
   /**
+   * A file dialog's answer, as a host that showed it reports it: the
+   * paths picked, none for a cancelled dialog. Whoever asked with
+   * `requestFiles` hears `{kind:"files", paths, tag}`; with nothing
+   * asked it is dropped (backlog C51).
+   */
+  answerFiles(paths: Array<string>): void
+  /**
    * The dragged files released at (`x`, `y`): the zone there hears
    * `{kind:"drop", phase:"drop", paths, x, y, tag}` and no `leave`
    * after it; with no zone there, nothing but the lit zone's `leave`.
@@ -2839,7 +2875,24 @@ export declare class Ctx {
    * A windowed app never needs this — the driver drains it —
    * but a headless one does: nothing else empties the queue,
    * and a Copy nobody drains is a copy that never happened.
+   * Asks for the platform's Open, Save or folder dialog (backlog
+   * C51): `{mode, multiple, title, filters: [{name, extensions}],
+   * directory, fileName, tag}`, every field optional. The answer
+   * is a `{kind:"files", paths, tag}` event — `paths` empty when
+   * the user cancelled. A window's runner shows the dialog; a
+   * headless context queues it for `takeFileRequests`. False when
+   * one is already out: one dialog at a time.
    */
+  requestFiles(dialog?: FileDialogOptions): boolean
+  /** Whether a file dialog asked for is still unanswered. */
+  awaitingFiles(): boolean
+  /**
+   * The file dialog asked for and not yet taken — at most one —
+   * as `requestFiles` took it, for a host that shows it itself.
+   * A window never needs this: its runner drains and shows it.
+   * Answer with `answerFiles`.
+   */
+  takeFileRequests(): FileDialogOptions[]
   takeMenuActions(): MenuAction[]
   /**
    * Puts `text` on the system clipboard — the action a menu's
@@ -3939,7 +3992,24 @@ export declare class KuiWindow {
    * A windowed app never needs this — the driver drains it —
    * but a headless one does: nothing else empties the queue,
    * and a Copy nobody drains is a copy that never happened.
+   * Asks for the platform's Open, Save or folder dialog (backlog
+   * C51): `{mode, multiple, title, filters: [{name, extensions}],
+   * directory, fileName, tag}`, every field optional. The answer
+   * is a `{kind:"files", paths, tag}` event — `paths` empty when
+   * the user cancelled. A window's runner shows the dialog; a
+   * headless context queues it for `takeFileRequests`. False when
+   * one is already out: one dialog at a time.
    */
+  requestFiles(dialog?: FileDialogOptions): boolean
+  /** Whether a file dialog asked for is still unanswered. */
+  awaitingFiles(): boolean
+  /**
+   * The file dialog asked for and not yet taken — at most one —
+   * as `requestFiles` took it, for a host that shows it itself.
+   * A window never needs this: its runner drains and shows it.
+   * Answer with `answerFiles`.
+   */
+  takeFileRequests(): FileDialogOptions[]
   takeMenuActions(): MenuAction[]
   /**
    * Puts `text` on the system clipboard — the action a menu's

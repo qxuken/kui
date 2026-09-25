@@ -244,7 +244,10 @@ extern "C" {
  * and the flag KUI_ACCESS_MIXED. And KuiRunConfig.frame_latency
  * (backlog C47). KUI_SPACE_BETWEEN,
  * KUI_SPACE_AROUND, KUI_SPACE_EVENLY and KUI_BASELINE (backlog C13) are
- * new values of main_align / cross_align, which moved nothing.
+ * new values of main_align / cross_align, which moved nothing. And the
+ * file dialogs (backlog C51): two new [in] structs, KuiFileFilter and
+ * KuiFileDialog, with kui_request_files, kui_awaiting_files,
+ * kui_take_file_request, kui_file_request_filter and kui_input_files.
  */
 #define KUI_ABI_VERSION 19u
 uint32_t kui_abi_version(void);
@@ -261,7 +264,7 @@ uint32_t kui_abi_version(void);
  *          KuiSpec, KuiSizing, KuiKeyframe, KuiEnter, KuiTextStyle, KuiSpan,
  *          KuiCell, KuiMenuItem, KuiMenu, KuiPlay, KuiAudio, KuiWindowConfig,
  *          KuiRunConfig, KuiColorToken, KuiLengthToken, KuiColorOp,
- *          KuiDerivedToken.
+ *          KuiDerivedToken, KuiFileFilter, KuiFileDialog.
  *
  * [out]    You allocate it; the library WRITES it. These lead with a
  *          `uint32_t size` you set to sizeof the struct, and the library
@@ -2863,6 +2866,51 @@ void kui_set_lookup_available(KuiCtx *ctx, bool on);
 /* Drains one queued menu action (see KuiMenuAction); false when there are
  * none. Drain to empty after handling input, the way window commands are. */
 bool kui_take_menu_action(KuiCtx *ctx, KuiMenuAction *out);
+
+/* File dialogs (backlog C51): ask for the platform's Open, Save or folder
+ * dialog and hear the answer as a {kind:"files", paths, tag} event - the
+ * paths a drop carries, none when the user cancelled - to whoever asked.
+ * One dialog at a time. Under kui_run the runner shows it; a host driving
+ * its own window drains it with kui_take_file_request and answers with
+ * kui_input_files. */
+enum { KUI_FILE_DIALOG_OPEN = 0, KUI_FILE_DIALOG_SAVE = 1, KUI_FILE_DIALOG_FOLDER = 2 };
+/* [in] One entry of a dialog's file-type menu: extensions without the dot. */
+typedef struct KuiFileFilter {
+    KuiStr name;
+    const KuiStr *extensions;
+    size_t extension_count;
+} KuiFileFilter;
+/* [in] The dialog kui_request_files asks for. Zeroed, it is an Open dialog
+ * for one file of any type. */
+typedef struct KuiFileDialog {
+    uint32_t mode;           /* KUI_FILE_DIALOG_* */
+    uint32_t multiple;       /* nonzero: more than one file or folder */
+    KuiStr title;            /* empty: the platform's own */
+    const KuiFileFilter *filters; /* the first is chosen when it opens */
+    size_t filter_count;
+    KuiStr directory;        /* the folder it opens in; empty: the platform's */
+    KuiStr file_name;        /* a save dialog's suggested name; empty: none */
+} KuiFileDialog;
+/* Asks for the dialog; `dialog` NULL is an Open dialog for one file, `tag`
+ * may be NULL and is consumed. False when one is already out, or the mode
+ * is not a KUI_FILE_DIALOG_*. */
+bool kui_request_files(KuiCtx *ctx, const KuiFileDialog *dialog, KuiValue *tag);
+/* Whether a file dialog asked for is still unanswered. */
+bool kui_awaiting_files(KuiCtx *ctx);
+/* Drains the dialog asked for, for a host that shows it itself: its mode,
+ * whether it picks several, its title, folder and suggested name (empty
+ * for none) and how many filters it offers. Any out pointer may be NULL;
+ * the strings are borrowed until the next call on this context. False when
+ * nothing is asked. */
+bool kui_take_file_request(KuiCtx *ctx, uint32_t *mode, bool *multiple, KuiStr *title,
+                           KuiStr *directory, KuiStr *file_name, size_t *filter_count);
+/* Filter `i` of the dialog kui_take_file_request last handed out: its name
+ * and its extensions joined with ';' ("png;jpg"). Borrowed until the next
+ * call; false for a filter that is not there. */
+bool kui_file_request_filter(KuiCtx *ctx, size_t i, KuiStr *name, KuiStr *extensions);
+/* The dialog's answer: the `count` paths picked, none for a cancelled one.
+ * With nothing asked it is dropped. */
+void kui_input_files(KuiCtx *ctx, const KuiStr *paths, size_t count);
 /* The caret rect for byte offset `byte` in that text: where a caret, a
  * selection edge or an IME candidate window goes. A byte past the text is
  * the end. False for a key that drew no text. */

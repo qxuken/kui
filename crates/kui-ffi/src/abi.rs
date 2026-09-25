@@ -229,6 +229,9 @@
 /// functions `kui_checkbox`, `kui_radio`, `kui_switch`,
 /// `kui_radio_group_open` and `kui_slider` and the flag
 /// `KUI_ACCESS_MIXED`. And `KuiRunConfig.frame_latency` (backlog C47).
+/// And the file dialogs (backlog C51): the new [in] structs `KuiFileFilter`
+/// and `KuiFileDialog` and five functions, `kui_request_files` through
+/// `kui_input_files`.
 /// `KUI_SPACE_BETWEEN`, `KUI_SPACE_AROUND`,
 /// `KUI_SPACE_EVENLY` and `KUI_BASELINE` (backlog C13) are new values of
 /// `main_align` / `cross_align`, which moved nothing.

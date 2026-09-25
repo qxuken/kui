@@ -70,6 +70,12 @@ pub struct KuiCtx {
     /// The chord most recently handed out by `kui_devtools_key`, on the
     /// same terms.
     pub(crate) devtools_key: String,
+    /// The file dialog `kui_take_file_request` most recently handed out,
+    /// whose strings — and the filter `kui_file_request_filter` read,
+    /// its extensions joined — are borrowed until the next call (backlog
+    /// C51).
+    pub(crate) file_request: Option<kui_core::FileDialog>,
+    pub(crate) file_filter_text: String,
     /// The tab name most recently handed out by `kui_devtools_current_tab`,
     /// on the same terms.
     pub(crate) devtools_tab: String,
@@ -167,6 +173,8 @@ impl KuiCtx {
             menu_text: String::new(),
             menu_accel: String::new(),
             devtools_key: String::new(),
+            file_request: None,
+            file_filter_text: String::new(),
             devtools_tab: String::new(),
             menu_html: String::new(),
             selection_text: String::new(),

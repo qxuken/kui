@@ -21,6 +21,7 @@ pub mod cursor;
 pub mod deco;
 pub mod depart;
 pub mod diag;
+pub mod dialog;
 pub mod display;
 pub mod edit;
 pub mod enter;
@@ -71,6 +72,7 @@ pub use color::Color;
 pub use cursor::CursorShape;
 pub use depart::DepartStore;
 pub use diag::Warning;
+pub use dialog::{FileDialog, FileDialogMode, FileFilter};
 pub use display::{
     Clip, ClipId, DisplayList, FragmentDraw, FragmentImage, NO_CLIP, NO_CLIP_ID, Quad, QuadKind,
 };

@@ -130,6 +130,11 @@ pub enum InputEvent {
     /// The dragged files left the window, or the OS ended the drag
     /// elsewhere: the lit zone hears its `leave`.
     DragCancel,
+    /// A file dialog's answer (backlog C51): the paths the user picked,
+    /// none for a dialog cancelled. Whoever asked with
+    /// `Core::request_files` hears `{kind:"files", paths, tag}`; with no
+    /// ask outstanding it is dropped.
+    Files(Vec<String>),
 }
 
 /// What the pasteboard said about the text a paste brought back (backlog
@@ -1637,6 +1642,8 @@ impl Interaction {
             InputEvent::DragFiles { paths, at } => self.drag_files(&paths, at, out),
             InputEvent::DropFiles { paths, at } => self.drop_files(&paths, at, out),
             InputEvent::DragCancel => self.drag_cancel(out),
+            // The core's, answered before the pointer is asked.
+            InputEvent::Files(_) => {}
             InputEvent::MouseUp { button } if button != MouseButton::Primary => {}
             InputEvent::MouseUp { .. } => {
                 let dragged = self.drag.take().inspect(|drag| {

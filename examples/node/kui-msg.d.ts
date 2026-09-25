@@ -27,9 +27,11 @@ type AppMessages =
   | { kind: 'register' }
   // features/relaunch.tsx: the button that closes the window for the next.
   | { kind: 'reopen' }
-  // features/drop.tsx: the zone's tag, and the button inside it.
+  // features/drop.tsx: the zone's tag, the buttons inside it, and the
+  // Open dialog's tag.
   | { kind: 'zone' }
   | { kind: 'clear' }
+  | { kind: 'open' }
   // features/devtools_tab.tsx: a source token and an Inspector row (each
   // both a hover tag and a click payload), the picker the tab raises, and
   // the page's button that jumps to the tab.

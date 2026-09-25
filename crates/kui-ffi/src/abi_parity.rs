@@ -133,6 +133,7 @@ c_type! {
     KuiDerivedToken => "KuiDerivedToken",
     KuiEvent => "KuiEvent", KuiWindowConfig => "KuiWindowConfig",
     KuiRunConfig => "KuiRunConfig",
+    KuiFileFilter => "KuiFileFilter", KuiFileDialog => "KuiFileDialog",
     KuiWindowCommand => "KuiWindowCommand", KuiDrawData => "KuiDrawData",
     ViewFn => "KuiViewFn",
 }
@@ -439,6 +440,9 @@ fn asserts() -> (String, Vec<&'static str>) {
             KUI_CHROME_NATIVE,
             KUI_CHROME_CUSTOM,
             KUI_CHROME_BORDERLESS,
+            KUI_FILE_DIALOG_OPEN,
+            KUI_FILE_DIALOG_SAVE,
+            KUI_FILE_DIALOG_FOLDER,
             KUI_TEXT_AA_AUTO,
             KUI_TEXT_AA_GRAYSCALE,
             KUI_TEXT_AA_SUBPIXEL,
@@ -914,6 +918,22 @@ fn asserts() -> (String, Vec<&'static str>) {
         anchor_h: f32 => "float",
     });
 
+    abi_struct!(o, KuiFileFilter {
+        name: KuiStr => "KuiStr",
+        extensions: *const KuiStr => "const KuiStr *",
+        extension_count: usize => "size_t",
+    });
+
+    abi_struct!(o, KuiFileDialog {
+        mode: u32 => "uint32_t",
+        multiple: u32 => "uint32_t",
+        title: KuiStr => "KuiStr",
+        filters: *const KuiFileFilter => "const KuiFileFilter *",
+        filter_count: usize => "size_t",
+        directory: KuiStr => "KuiStr",
+        file_name: KuiStr => "KuiStr",
+    });
+
     abi_struct!(o, KuiRunConfig {
         width: f32 => "float",
         height: f32 => "float",
@@ -1134,6 +1154,7 @@ fn every_entry_point_is_pinned() {
         include_str!("lib.rs"),
         include_str!("abi.rs"),
         include_str!("access.rs"),
+        include_str!("dialogs.rs"),
         include_str!("focus.rs"),
         include_str!("frame.rs"),
         include_str!("input.rs"),
@@ -1354,6 +1375,9 @@ fn an_in_struct_s_size_is_the_abi_s() {
         ("KuiAudio", 24, 16),
         ("KuiWindowConfig", 32, 16),
         ("KuiRunConfig", 40, 19),
+        // ABI 19: the file dialogs (backlog C51).
+        ("KuiFileFilter", 32, 19),
+        ("KuiFileDialog", 72, 19),
         ("KuiColorToken", 24, 16),
         ("KuiLengthToken", 24, 16),
         ("KuiColorOp", 24, 16),

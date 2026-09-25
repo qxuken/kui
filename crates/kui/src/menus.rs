@@ -256,6 +256,9 @@ impl DynShell<'_> {
                 }
             }
         }
+        // Drained with the menu's asks, at the same moments: after every
+        // input and every frame (backlog C51).
+        self.show_file_dialogs(event_loop, i);
     }
 }
 

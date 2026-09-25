@@ -23,6 +23,9 @@ accesskit_winit = { version = "0.34", optional = true }
 # default). Default features are trimmed: no realtime-priority dbus
 # (libdbus), no streaming formats — decoding covers wav/ogg/mp3/flac.
 kira = { version = "0.12", default-features = false, features = ["cpal", "mp3", "ogg", "vorbis", "flac", "wav", "pcm"], optional = true }
+# The platform's Open / Save / folder dialogs (backlog C51), shown by the
+# runner when an app asks. On Linux through the XDG desktop portal (no GTK).
+rfd = { version = "0.17", default-features = false, features = ["xdg-portal"], optional = true }
 
 # The examples' devtools (docs/adr/0021): the dock, the CLI and the
 # headless drive every example under examples/rust runs inside. A
@@ -32,7 +35,7 @@ kira = { version = "0.12", default-features = false, features = ["cpal", "mp3", 
 kui-devtools.workspace = true
 
 [features]
-default = ["audio", "accesskit", "derive"]
+default = ["audio", "accesskit", "derive", "dialogs"]
 # Play sounds through kira/cpal. Off: audio commands are dropped, the UI
 # runs the same, and the crate links no audio libraries (ALSA on Linux).
 audio = ["dep:kira"]
@@ -41,6 +44,10 @@ audio = ["dep:kira"]
 # replace building and picking apart `Value`s by string (backlog C50). On by
 # default: the syn it builds on is already in a windowed app's tree.
 derive = ["kui-core/derive"]
+# Show the file dialogs an app asks for (`request_files`, backlog C51) with
+# the platform's own panels through rfd. Off: an ask is answered at once
+# with no paths, as a cancelled dialog would be.
+dialogs = ["dep:rfd"]
 # Expose the core's access tree to screen readers and other assistive
 # technology through AccessKit. On by default (an accessibility feature that
 # is off by default does not get tested); off for kiosk builds, where the

@@ -5476,6 +5476,69 @@ test('list says what it is missing', () => {
   assert.throws(() => list(ctx, { key: 'log', heights: new RowHeights(1, 1) }, null, () => []), /measure/);
 });
 
+// -- File dialogs (backlog C51) ----------------------------------------------
+
+test('requestFiles asks once, a host takes it, and the answer reaches update', () => {
+  const seen = [];
+  const app = createApp(
+    {
+      init: { ask: false },
+      update: (model, msg, _ev, ctx) => {
+        seen.push(msg);
+        if (msg.kind === 'open') {
+          // The ask is made where the surface is: update's fourth argument.
+          const asked = ctx.requestFiles({
+            mode: 'open',
+            multiple: true,
+            title: 'Add files',
+            filters: [{ name: 'Images', extensions: ['png', '.jpg'] }],
+            tag: 'add',
+          });
+          const again = ctx.requestFiles({});
+          seen.push({ asked, again, waiting: ctx.awaitingFiles() });
+        }
+        return model;
+      },
+      view: () => box_({ width: 'grow', height: 'grow' }, [
+        box_({ width: 100, height: 40, label: 'Open', onClick: { kind: 'open' } }),
+      ]),
+    },
+    { width: 200, height: 100, warnings: false },
+  );
+  app.render();
+  app.click(50, 20);
+  assert.deepEqual(seen.at(-1), { asked: true, again: false, waiting: true });
+
+  const asks = app.ctx.takeFileRequests();
+  assert.equal(asks.length, 1);
+  assert.equal(asks[0].mode, 'open');
+  assert.equal(asks[0].multiple, true);
+  assert.equal(asks[0].title, 'Add files');
+  assert.deepEqual(asks[0].filters, [{ name: 'Images', extensions: ['png', 'jpg'] }]);
+  assert.equal(asks[0].tag, 'add');
+  assert.deepEqual(app.ctx.takeFileRequests(), [], 'taken once');
+  assert.equal(app.ctx.awaitingFiles(), true, 'and still out until it is answered');
+
+  app.ctx.answerFiles(['/tmp/a.png', '/tmp/b.jpg']);
+  app.step();
+  const files = seen.find((m) => m.kind === 'files');
+  assert.deepEqual(files, { kind: 'files', paths: ['/tmp/a.png', '/tmp/b.jpg'], tag: 'add' });
+  assert.equal(app.ctx.awaitingFiles(), false);
+});
+
+test('a cancelled dialog answers with no paths, and a stray answer is dropped', () => {
+  const ctx = new Ctx();
+  ctx.answerFiles(['/tmp/nobody-asked']);
+  assert.deepEqual(ctx.pollEvents().filter((e) => e.payload?.kind === 'files'), []);
+  assert.equal(ctx.requestFiles({ mode: 'save', fileName: 'notes.md' }), true);
+  const [ask] = ctx.takeFileRequests();
+  assert.equal(ask.fileName, 'notes.md');
+  ctx.answerFiles([]);
+  const evs = ctx.pollEvents().filter((e) => e.payload?.kind === 'files');
+  assert.deepEqual(evs.map((e) => e.payload.paths), [[]]);
+  assert.throws(() => ctx.requestFiles({ mode: 'sideways' }), /unknown dialog mode/);
+});
+
 /** A `uniformList` app that records the range each frame built. */
 function virtualApp(opts = {}) {
   const ROWS = opts.rows ?? 10_000;
@@ -6966,7 +7029,7 @@ test('the two classes are the verb table\'s Node column, both ways (B1a)', () =>
     'warnUnknownProps', 'warnUnknownTokens', 'clips', 'fragmentDraws', 'textureDraws', 'stats',
     // The input injection, one per `InputEvent` (the table's `handle_input` row).
     'cursor', 'cursorLeft', 'mouse', 'scroll', 'text', 'commit', 'paste', 'preedit', 'key', 'keyDown', 'keyUp',
-    'press', 'release', 'access', 'dragFiles', 'dropFiles', 'dragCancel',
+    'press', 'release', 'access', 'dragFiles', 'dropFiles', 'dragCancel', 'answerFiles',
     // The two-class mechanics: the window's own loop and its lifetime.
     'useWindow', 'pump', 'pumpUntil', 'nextDeadlineMs', 'size', 'frameStats', 'close',
   ]);

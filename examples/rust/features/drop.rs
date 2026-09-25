@@ -12,11 +12,17 @@
 //!   zone that is no zone, and the files look past it — the flicker
 //!   HTML's `dragleave` is known for cannot happen;
 //! - the second box below takes nothing: over it the cursor shows the
-//!   not-allowed circle and a release there slides the icon home.
+//!   not-allowed circle and a release there slides the icon home;
+//! - "Open…" asks for the platform's Open dialog instead (backlog C51):
+//!   `ui.request_files`, answered by one `files` event whose `paths` are
+//!   what a drop's are, so the same list takes both.
 //!
 //! Run: cargo run -p kui --example drop [-- --headless]
 
-use kui::{Align, App, Core, FloatConfig, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value, Vec2};
+use kui::{
+    Align, App, Core, FileDialog, FloatConfig, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value,
+    Vec2,
+};
 use kui_devtools::{Drive, Example};
 
 #[derive(Default)]
@@ -29,11 +35,24 @@ struct Drop {
     at: Option<(f32, f32)>,
     events: u32,
     cleared: u32,
+    /// "Open…" was clicked: the next view asks for the dialog. `on_event`
+    /// has no `Ui` to ask with, so the ask is the view's.
+    open: bool,
 }
 
 impl App for Drop {
     fn view(&mut self, ui: &mut Ui<'_>) {
         let t = ui.theme();
+        if std::mem::take(&mut self.open) {
+            // One ask at a time: a click while the dialog is up asks for
+            // nothing more.
+            ui.request_files(
+                FileDialog::open()
+                    .multiple()
+                    .title("Add files")
+                    .tag(Value::str("add")),
+            );
+        }
         ui.with(
             NodeSpec::column()
                 .fill()
@@ -83,6 +102,19 @@ impl App for Drop {
                                 .label("Clear"),
                             |ui| {
                                 ui.text("Clear the list", TextStyle::new(12.0));
+                            },
+                        );
+                        ui.with_keyed(
+                            "open",
+                            NodeSpec::row()
+                                .pad_xy(12.0, 6.0)
+                                .radius(6.0)
+                                .bg(t.raised)
+                                .hover_bg(t.hover)
+                                .on_click(Value::map([("kind", Value::str("open"))]))
+                                .label("Open…"),
+                            |ui| {
+                                ui.text("Open…", TextStyle::new(12.0));
                             },
                         );
                         // What an app shows in answer to `enter`: a banner
@@ -154,6 +186,22 @@ impl App for Drop {
             Some("clear") => {
                 self.landed.clear();
                 self.cleared += 1;
+                return;
+            }
+            Some("open") => {
+                self.open = true;
+                return;
+            }
+            // The dialog's answer: the same paths a drop carries, none when
+            // it was cancelled.
+            Some("files") => {
+                let paths = ev.payload.get("paths").and_then(Value::as_list);
+                self.landed.extend(
+                    paths
+                        .unwrap_or(&[])
+                        .iter()
+                        .filter_map(|p| p.as_str().map(str::to_string)),
+                );
                 return;
             }
             Some("drop") => {}
@@ -287,6 +335,41 @@ impl Example for Drop {
         d.check(
             self.landed.is_empty() && self.cleared == 1,
             "the button inside still clicks",
+        )?;
+
+        // "Open…": the view asks, the host (this drive) takes the ask and
+        // answers it, and the answer lands in the same list.
+        let open = d.key_of("open").ok_or("no Open button")?;
+        d.click_key(self, open);
+        d.frame(self);
+        let asks = d.core.take_file_requests();
+        d.check(
+            asks.len() == 1 && asks[0].multiple && asks[0].tag == Value::str("add"),
+            "Open… asks the host for one multiple-file dialog, tagged",
+        )?;
+        d.check(
+            d.core.awaiting_files(),
+            "and the ask stays out until it is answered",
+        )?;
+        d.click_key(self, open);
+        d.frame(self);
+        let again = d.core.take_file_requests();
+        d.check(
+            again.is_empty(),
+            "a second click while it is up asks for nothing more",
+        )?;
+        d.input(self, kui::InputEvent::Files(vec!["/tmp/c.md".to_string()]));
+        d.check(
+            self.landed == ["/tmp/c.md"] && !d.core.awaiting_files(),
+            "the answer lands like a drop, and the ask is spent",
+        )?;
+        d.click_key(self, open);
+        d.frame(self);
+        d.core.take_file_requests();
+        d.input(self, kui::InputEvent::Files(Vec::new()));
+        d.check(
+            self.landed.len() == 1,
+            "a cancelled dialog answers with no paths, and nothing lands",
         )
     }
 }

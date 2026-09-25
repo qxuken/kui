@@ -634,6 +634,27 @@ pub const DOORS: &[Door] = &[
         doc: "Whether a paste asked for is still unanswered (backlog AR34).",
     },
     Door {
+        rust: "Ui::request_files",
+        c: Is("kui_request_files"),
+        node: Is("requestFiles"),
+        lua: Is("request_files"),
+        doc: "Asks for the platform's Open, Save or folder dialog; the answer is a `files` event to whoever asked. One at a time — a second while one is out is dropped (backlog C51).",
+    },
+    Door {
+        rust: "Ui::awaiting_files",
+        c: Is("kui_awaiting_files"),
+        node: Is("awaitingFiles"),
+        lua: Is("awaiting_files"),
+        doc: "Whether a file dialog asked for is still unanswered.",
+    },
+    Door {
+        rust: "Core::take_file_requests",
+        c: As("`kui_take_file_request`, then `kui_file_request_filter` per filter"),
+        node: Is("takeFileRequests"),
+        lua: No(GUEST),
+        doc: "Drains the dialog asked for, for a host that shows it itself; the runner does. The answer goes back as input (`Ctx.answerFiles`, `kui_input_files`).",
+    },
+    Door {
         rust: "Core::set_lookup_available",
         c: Is("kui_set_lookup_available"),
         node: Is("setLookupAvailable"),
@@ -1135,7 +1156,7 @@ pub const DOORS: &[Door] = &[
             "`Ctx.cursor` … `Ctx.access`, one per `InputEvent`; a `KuiWindow` refuses injection",
         ),
         lua: No(GUEST),
-        doc: "Pointer, wheel, key, text, IME, assistive and OS file-drag input; `press` / `release` are a click by label (`kui_input_press`, `Ctx.press`); the file drag is `drag_files` / `drop_files` / `drag_cancel` (ADR 0031).",
+        doc: "Pointer, wheel, key, text, IME, assistive and OS file-drag input; `press` / `release` are a click by label (`kui_input_press`, `Ctx.press`); the file drag is `drag_files` / `drop_files` / `drag_cancel` (ADR 0031); a file dialog's answer is `answer_files` (`kui_input_files`, `Ctx.answerFiles`, backlog C51).",
     },
     Door {
         rust: "Core::modifiers",

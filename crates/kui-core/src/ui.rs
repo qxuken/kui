@@ -525,6 +525,18 @@ impl<'a> Ui<'a> {
         self.core.awaiting_paste()
     }
 
+    /// Asks the host for a file dialog; the answer is a `files` event to
+    /// whoever's view asked. False when one is already outstanding. See
+    /// `Core::request_files` (backlog C51).
+    pub fn request_files(&mut self, dialog: crate::dialog::FileDialog) -> bool {
+        self.core.request_files(dialog)
+    }
+
+    /// `Core::awaiting_files`.
+    pub fn awaiting_files(&self) -> bool {
+        self.core.awaiting_files()
+    }
+
     /// Selects everything in the scope `key` declared; see
     /// `Core::select_all_in`.
     pub fn select_all_in(&mut self, key: Key) -> bool {

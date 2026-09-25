@@ -19,6 +19,7 @@ pub use kui_core::*;
 mod access_bridge;
 pub mod audio;
 mod clipboard;
+mod dialogs;
 mod icon;
 /// ADR 0009's arithmetic: where a pointer in one window is in another.
 mod keys;
@@ -749,7 +750,9 @@ fn input_completes(ev: &InputEvent) -> bool {
         | InputEvent::Access(_)
         // A drop is a release; a cancel ends the drag the same way.
         | InputEvent::DropFiles { .. }
-        | InputEvent::DragCancel => true,
+        | InputEvent::DragCancel
+        // A dialog's answer is one moment, as a paste is.
+        | InputEvent::Files(_) => true,
         InputEvent::CursorMoved(_)
         | InputEvent::CursorLeft
         | InputEvent::Scroll(_)
@@ -2539,6 +2542,15 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
         }
         let Some(i) = access_bridge::window_of(&event).and_then(|w| self.pane_index(w)) else {
             return;
+        };
+        // A file dialog's answer, from the thread that waited on it: the
+        // window that asked hears it as input.
+        let event = match event {
+            access_bridge::UserEvent::Files { paths, .. } => {
+                self.dispatch(event_loop, i, InputEvent::Files(paths));
+                return;
+            }
+            other => other,
         };
         let Some(bridge) = &mut self.panes[i].access else {
             return;

@@ -1968,6 +1968,11 @@ pub const EVENTS: &[EventDef] = &[
         doc: "Files dragged in from the OS over an `onDrop` node (`docs/adr/0031-a-drop-zone-is-a-row-and-the-files-are-an-event.md`): `enter` when they come over the zone, `move` while they move over it (never twice for one point), `leave` when they go to another zone, to no zone or out of the window, `drop` when they land — and no `leave` after a `drop`. `paths` are the OS paths as strings; `x`/`y` the pointer in logical viewport coordinates, absent on `leave`. The zone is the topmost one under the pointer by paint order; a node inside it is its, and a node that is no zone is looked past (an overlay shown on `enter` does not end the hover). Nothing is re-resolved when a frame lands: only the driver's next report moves the files, so a zone the view stops declaring hears its `leave` then.",
     },
     EventDef {
+        kind: "files",
+        payload: "`{ kind: \"files\", paths: string[], tag }`",
+        doc: "A file dialog's answer (backlog C51): what an Open, Save or folder dialog asked for with `requestFiles` / `request_files` / `kui_request_files` picked — the OS paths, as a `drop` carries them — or no paths when the user cancelled. `tag` is the dialog's own. It reaches whoever asked: the host, or the extension whose fill asked; one dialog is out at a time.",
+    },
+    EventDef {
         kind: "layout",
         payload: "`{ kind: \"layout\", x, y, w, h, parent: { x, y, w, h }, scale, tag }`",
         doc: "The rect layout gave an `onLayout` node (logical px, viewport coords, after scrolling and easing): on its first frame and whenever it changes, never on a frame that left it alone. `scale` is physical px per logical px at the node — `w × scale` by `h × scale` is how many pixels to render for it before `updateImage` (the frame's scale today; where a zoom would compose in).",

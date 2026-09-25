@@ -679,6 +679,15 @@ impl Ctx {
         });
     }
 
+    /// A file dialog's answer, as a host that showed it reports it: the
+    /// paths picked, none for a cancelled dialog. Whoever asked with
+    /// `requestFiles` hears `{kind:"files", paths, tag}`; with nothing
+    /// asked it is dropped (backlog C51).
+    #[napi]
+    pub fn answer_files(&mut self, paths: Vec<String>) {
+        self.input(InputEvent::Files(paths));
+    }
+
     /// The dragged files released at (`x`, `y`): the zone there hears
     /// `{kind:"drop", phase:"drop", paths, x, y, tag}` and no `leave`
     /// after it; with no zone there, nothing but the lit zone's `leave`.
@@ -3234,6 +3243,44 @@ macro_rules! core_methods {
             /// A windowed app never needs this — the driver drains it —
             /// but a headless one does: nothing else empties the queue,
             /// and a Copy nobody drains is a copy that never happened.
+            /// Asks for the platform's Open, Save or folder dialog (backlog
+            /// C51): `{mode, multiple, title, filters: [{name, extensions}],
+            /// directory, fileName, tag}`, every field optional. The answer
+            /// is a `{kind:"files", paths, tag}` event — `paths` empty when
+            /// the user cancelled. A window's runner shows the dialog; a
+            /// headless context queues it for `takeFileRequests`. False when
+            /// one is already out: one dialog at a time.
+            #[napi(ts_args_type = "dialog?: FileDialogOptions")]
+            pub fn request_files(&mut self, dialog: Option<Json>) -> Result<bool> {
+                let v = dialog.as_ref().map_or(Value::Null, value_of);
+                let dialog = kui_core::FileDialog::from_value(&v)
+                    .map_err(|e| err(format!("requestFiles(): {e}")))?;
+                let asked = self.$core().request_files(dialog);
+                self.$redraw();
+                Ok(asked)
+            }
+
+            /// Whether a file dialog asked for is still unanswered.
+            #[napi]
+            pub fn awaiting_files(&mut self) -> bool {
+                self.$core().awaiting_files()
+            }
+
+            /// The file dialog asked for and not yet taken — at most one —
+            /// as `requestFiles` took it, for a host that shows it itself.
+            /// A window never needs this: its runner drains and shows it.
+            /// Answer with `answerFiles`.
+            #[napi(ts_return_type = "FileDialogOptions[]")]
+            pub fn take_file_requests(&mut self) -> Json {
+                Json::Array(
+                    self.$core()
+                        .take_file_requests()
+                        .iter()
+                        .map(|d| readback(&d.to_value()))
+                        .collect(),
+                )
+            }
+
             #[napi(ts_return_type = "MenuAction[]")]
             pub fn take_menu_actions(&mut self) -> Result<Json> {
                 let out: Vec<Json> = self
