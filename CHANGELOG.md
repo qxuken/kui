@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.19 (unreleased)
+## 0.1.0-alpha.19 (2026-09-26)
 
 **What breaks.** The ABI at 19 and the frame at v16. Nothing an
 existing input draws changes: a stroke is clipped as it was.
@@ -129,8 +129,8 @@ existing input draws changes: a stroke is clipped as it was.
 
 - **Typed messages in Rust: `#[derive(Message)]`** (backlog C50, from
   both bake-offs: "typed Rust messages: no, a `Value` payload"). A new
-  crate, `kui-derive`, re-exported by `kui` behind a default `derive`
-  feature. Derive it on an enum and each variant is a `{kind,
+  crate, `kui-derive`, re-exported by `kui-native` behind a default
+  `derive` feature. Derive it on an enum and each variant is a `{kind,
   …fields}` payload, its kind the variant's name in snake_case
   (`#[message(kind = "…")]` renames it). `on_click(Msg::Save)` builds
   the payload, and `ev.message::<Msg>()` reads it back for an exhaustive
@@ -255,8 +255,6 @@ in `examples/rust/features/align.rs`.
   slider; the `drag` arithmetic that turned `x` and the parent rect into
   a value; the increment / decrement handler that stepped, clamped and
   snapped it; and the float noise a step of `0.1` left in the model.
-
-### Added
 
 - **A float can take its parent's clip** (backlog F90, from the mind
   map's alpha.18 report). `float={{ anchor: 'parent', clip: true }}`
@@ -482,7 +480,7 @@ in `examples/rust/features/align.rs`.
     capture decoding a timestamp the frame drew), that is 27.5–27.9 ms,
     against 19.2–19.5 with one queued frame.
   - So on macOS 14+ such frames now start at the display's vsync, from a
-    `CADisplayLink` on the window's view (`kui::pacer`), which is how
+    `CADisplayLink` on the window's view (`kui_native::pacer`), which is how
     gpui runs. The queued slot is slack and not a delay: 17.5–19.2 ms
     once the window has settled, with every vsync delivered. A frame
     asked for from idle, such as a keystroke, is drawn at once. The link
@@ -513,6 +511,79 @@ in `examples/rust/features/align.rs`.
   the frame: C never had either list, and composes one from
   `kui_scroll_geometry` and `kui_row_count`.
   *What you can delete:* nothing; this one only costs a rename.
+
+- **The runner crate is `kui-native`** (from the distribution decision
+  of 2026-09-26). The name `kui` on crates.io is another crate's, and
+  crates.io is where the runner goes at the beta, so it takes the name
+  it can keep now, while an alpha may still rename. The crate, its
+  directory and `cargo run -p kui-native --example …` change; its
+  modules, types and behaviour do not. `kui-derive`, new this release,
+  is published beside it. The Forgejo registry keeps `kui` at
+  alpha.18 and earlier. The other crates and the npm package keep
+  their names. How to move an app over is under What breaks.
+  *What you can delete:* nothing; this one only costs a rename.
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), on 2026-09-26 —
+twenty-one commits after the alpha.18 tag: the upgrade reports'
+F88–F92, the second bake-off's C13, C14 and C45–C51 with the two
+renames, and the Windows and WSLg rounds' RG38–RG52. What follows is
+what executed on what.
+
+**Windows 11 (RTX 5080, 239.76 Hz, 150%) and Ubuntu 24.04 under WSL 2
+(WSLg, llvmpipe)**, on the Windows round's branch (`e7b85c1`, merged
+unchanged as `f1a4caa`). On Windows: **1381 tests over 103 suites**,
+`cargo clippy -D warnings` and `cargo fmt` clean, the C round, **32
+headless drives**, **189 of 190 Node tests** (the RTLD test skips on
+Windows), `npm run gen` stable, and the windowed round, **38 examples
+on both bases with the Node windows**. Probed by hand through user32 and
+UI Automation: the accent against Settings, a Rust app's icon resource,
+F84's markers both ways, RG31's fault line inside a window callback,
+the device reopen, C51's dialogs and C45's controls. On Linux: **1378
+tests over 102 suites**, **190 of 190 Node**, the C round and the X11
+windowed round, 38 examples on both bases; the X11 icon, the KDE secret
+hint and the portal-less dialog held. Not covered: a Wayland session
+other than WSLg's (whose Weston crashes under winit's decoration
+subsurfaces, filed as theirs), W19's drop position off macOS, and the
+five prebuilds, which CI cross-compiles.
+
+**macOS 27.0 (26A428, arm64, Apple M3 Pro), Xcode 27.0, rustc 1.98.0,
+Node 26.8.1**, on `main` at `f1a4caa`. `cargo fmt --all --check` and
+`cargo clippy --workspace --all-targets -- -D warnings` are clean.
+`cargo test --workspace`: **1380 tests over 102 suites, 0 failed** (1
+ignored, the devtools' `drive.rs` doc example), from alpha.18's 1324.
+The scene corpus runs in all four adapters against one reference
+report: Rust and Lua through `cargo test`, C through
+`target/debug/conformance` (the header at **390 fields, 269 enum
+members and 250 prototypes**, the ABI **19**), Node through `npm test`
+(**190 Node tests, 190 passed, 0 skipped**, the frame at **version
+16**). The C round, `cbuild --run`, passes its five checks and the
+conformance replay, and the no-ABI panel is refused as "this build is
+19". `npm run gen` leaves a zero-line diff; `npm run typecheck` on
+`examples/node` is clean and the examples lockfile matches. The
+headless round, `smoke -- --headless`, passes all **32 drives**.
+
+**The windowed round**, `cargo run -p kui-devtools --bin smoke --
+--node`: **38 Rust examples and the eleven Node examples, each on both
+bases, 120 frames each, every one exiting 0 with nothing on stderr** —
+98 windows. The C and Lua hosts by hand under `KUI_SMOKE_FRAMES=120`:
+`counter`, `host`, `c_panel` and `lua_panel` each opened a window and
+exited 0 with nothing on stderr — **102 windows over five hosts.** The
+AX audit against `accessibility`, whose controls are the stock ones
+now: **106/106**.
+
+**The bench guard** against the alpha.18 tag, on a quiet machine: worst
+guarded spread 3.4%, every guarded row within its tolerance —
+`deep_nesting_64_levels` +2.8%, `frame_10k_rects` −2.7% (791 → 770 µs,
+C48), `frame_10k_rects_with_access_tree` −0.5%,
+`frame_10k_rects_with_text_and_hits` +0.9%, `frame_10k_segments`
++3.1%, `frame_1k_curves` −1.7%, `frame_1k_typical` +0.6%,
+`list_10k_rows_virtual` +1.9% (its bench touched by the rename). Of
+the unguarded rows only `replay_a_full_depart_store` is slower by more
+than its run-to-run spread, 15.2 → 16.1 µs (+5.5%, ±3.7%). The README's
+table is refreshed from every row whose two runs agree within 5%; the
+seven that do not keep their earlier numbers.
 
 ## 0.1.0-alpha.18 (2026-09-25)
 

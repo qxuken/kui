@@ -1210,7 +1210,7 @@ const mine = decodeQuads(win.quads()).filter((q) =>
 
 [`access` event](props.md#events) ·
 [alpha.8](../CHANGELOG.md#010-alpha8-2026-09-07) ·
-[alpha.19 `### Added`](../CHANGELOG.md#010-alpha19-unreleased)
+[alpha.19 `### Added`](../CHANGELOG.md#010-alpha19-2026-09-26)
 
 ### How do I trade smoothness for latency, or the other way?
 
