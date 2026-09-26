@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.21 (unreleased)
+## 0.1.0-alpha.21 (2026-09-26)
 
 **What breaks.** No door changes, the ABI stays at 19 and the frame at
 v16. Rust gains two methods and a type, and Node and C a door each.
@@ -210,6 +210,55 @@ Four readings change:
   family whose bold is its SemiBold copies `<b>`.
   *What you can delete:* a style that avoided bold, or named another
   family for it, because bold of such a family drew elsewhere.
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), on 2026-09-26 —
+five commits after the alpha.20 tag (W20 and F97–F100) and the
+regression pass over them (backlog RG53–RG59: RG53–RG55, RG57 and RG58
+built before the tag and folded into the entries above, RG56 and RG59
+open). This round ran on the Mac alone; Windows and Linux were not in
+it.
+
+**macOS 27.0 on an M3 Pro MacBook Pro, rustc 1.98.0, Node 26.8.1**, on
+`main` at `21428ca`. `cargo fmt --all --check` and `cargo clippy
+--workspace --all-targets -- -D warnings` are clean. `cargo test
+--workspace`: **1423 tests over 104 suites, 0 failed** (1 ignored doc
+example). The scene corpus runs in all four adapters against one
+reference report: Rust and Lua through `cargo test`, C through
+`target/debug/conformance` (**45 scenes**, the header at **395 fields,
+269 enum members and 251 prototypes** — `KuiSystemFont` and
+`kui_system_fonts` are the difference — the ABI still **19**), Node
+through `npm test` (**193 of 193**, the frame still at **version 16**).
+The C round, `cbuild --run`, passes its five checks, and the no-ABI
+panel is refused as "this build is 19". `npm run gen` leaves no diff;
+`npm run typecheck` on `examples/node` is clean and its lockfile
+installs. The headless round, `smoke -- --headless`, passes all **32
+drives**.
+
+**The windowed round**, `cargo run -p kui-devtools --bin smoke --
+--node`: **38 Rust examples and the eleven Node examples, each on both
+bases, 120 frames each, every one exiting 0 with nothing on stderr** —
+98 windows, the `image` example's stream among them through
+`update_image_with`. The C and Lua hosts by hand under
+`KUI_SMOKE_FRAMES=120`: `counter`, `host`, `c_panel` and `lua_panel`
+each opened a window and exited 0 with nothing on stderr — **102
+windows over five hosts.** The AX audit (`scripts/ax-audit.swift`,
+compiled) against the `accessibility` example: **106/106**, and the
+fixture said nothing on stderr. F97–F100 are pinned by headless tests
+on font fixtures (`tests/fonts.rs`, `tests/atlas_turnover.rs`,
+`atlas.rs`'s own); none was checked in kawoosh's windows for this tag.
+
+**The bench guard** against the alpha.20 tag, alone on a quiet
+machine: **green**, no guarded row more than 0.8% slower
+(`frame_10k_segments`), the worst guarded run-to-run spread 2.4%. Every
+unguarded row moved less than 5% but
+`frame_10k_rects_all_declaring_exit`, −13.7% at ±11.7% noise. The new
+`update_image_1080p_recycled_and_frame` reads ~119 µs here, level with
+the `Vec` handoff (~114 µs): macOS's allocator hands an 8 MB block
+straight back, which Windows' does not (W20). README's table is
+refreshed from this run: 29 rows whose two runs agreed within 5%, four
+noisier ones kept.
 
 ## 0.1.0-alpha.20 (2026-09-26)
 

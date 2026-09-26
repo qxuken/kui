@@ -168,7 +168,7 @@ monospaced because its glyphs share an advance. `systemFontFamilies()`
 is the names alone.
 
 [Doors](props.md#doors) ·
-[alpha.21 `### Added`](../CHANGELOG.md#010-alpha21-unreleased)
+[alpha.21 `### Added`](../CHANGELOG.md#010-alpha21-2026-09-26)
 
 ### How do I show a 100k-character line, or a paragraph that long?
 
