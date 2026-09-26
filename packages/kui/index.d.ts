@@ -781,6 +781,15 @@ export type WarningCode =
    *  node inside the *container* but outside every item — a "+" at the end of a
    *  tab bar — is reachable and is not reported. */
   | 'focusable-inside-item'
+  /** A `radio` with no `radioGroup` above it, or a `tab` with no `tabList` —
+   *  the stock `<radio>` included. Outside its container an item is no
+   *  composite's (`docs/adr/0007-composite-keyboard-patterns.md`): each one is
+   *  a Tab stop of its own, the arrows, Home and End do not move the choice,
+   *  and a screen reader announces no "2 of 3". Wrap the set in the container,
+   *  labelled with what the choice is. A `menuItem` or `listItem` on its own is
+   *  not reported: the menus build their own container, and a row outside a
+   *  list is only a looser reading. */
+  | 'item-outside-container'
   /** A `modal` surface with no `label`. A dialog is not named by the text
    *  inside it (it is not one of ARIA's name-from-content roles), so a screen
    *  reader announces it as an unnamed dialog — the same silent defect

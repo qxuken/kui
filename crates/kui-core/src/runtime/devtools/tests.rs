@@ -2223,3 +2223,40 @@ fn the_stream_never_keeps_a_concealed_pastes_text() {
         );
     });
 }
+
+/// The panel's own radios and tabs sit in their containers (backlog F96):
+/// docked on every side and popped out, on each of its tabs, it raises no
+/// warning of its own in the app's core or in its window's.
+#[test]
+fn the_panel_raises_no_warning_of_its_own() {
+    let settle = |core: &mut Core| {
+        for _ in 0..crate::diag::CHECK_EVERY {
+            frame(core);
+        }
+    };
+    let mut core = on();
+    for dock in [Dock::Left, Dock::Right, Dock::Bottom] {
+        core.set_devtools_dock(dock);
+        for tab in ["facts", "events", "tree"] {
+            core.devtools_act(&format!("tab:{tab}"));
+            settle(&mut core);
+        }
+    }
+    let warnings = core.take_warnings();
+    assert!(warnings.is_empty(), "{warnings:#?}");
+    core.set_devtools_dock(Dock::Window);
+    frame(&mut core);
+    let mut panel = Core::new_in(core.session());
+    panel.env.window.id = core
+        .take_window_commands()
+        .iter()
+        .find_map(|c| match c {
+            WindowCommand::Open { id, .. } => Some(*id),
+            _ => None,
+        })
+        .expect("the panel's window opens");
+    settle(&mut panel);
+    assert!(panel.key_of("kui-devtools/dock:left").is_some());
+    let warnings = panel.take_warnings();
+    assert!(warnings.is_empty(), "{warnings:#?}");
+}

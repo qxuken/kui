@@ -195,6 +195,15 @@ warnings! {
     /// for. A focusable node inside the *container* but outside every item —
     /// a "+" at the end of a tab bar — is reachable and is not reported.
     pub const FOCUSABLE_INSIDE_ITEM: &str = "focusable-inside-item";
+    /// A `radio` with no `radioGroup` above it, or a `tab` with no
+    /// `tabList` — the stock `<radio>` included. Outside its container an
+    /// item is no composite's (`docs/adr/0007-composite-keyboard-patterns.md`):
+    /// each one is a Tab stop of its own, the arrows, Home and End do not
+    /// move the choice, and a screen reader announces no "2 of 3". Wrap the
+    /// set in the container, labelled with what the choice is. A `menuItem`
+    /// or `listItem` on its own is not reported: the menus build their own
+    /// container, and a row outside a list is only a looser reading.
+    pub const ITEM_OUTSIDE_CONTAINER: &str = "item-outside-container";
     /// A `modal` surface with no `label`. A dialog is not named by the text
     /// inside it (it is not one of ARIA's name-from-content roles), so a
     /// screen reader announces it as an unnamed dialog — the same silent
@@ -849,7 +858,7 @@ pub fn unknown_prop(element: &str, name: &str, spelling: schema::Spelling) -> Wa
 /// grow the queue without bound.
 const MAX_PENDING: usize = 256;
 /// The checks run on the first two frames and every this many after.
-const CHECK_EVERY: u64 = 16;
+pub(crate) const CHECK_EVERY: u64 = 16;
 
 pub(crate) struct Diagnostics {
     pub(crate) enabled: bool,
@@ -940,6 +949,7 @@ impl Diagnostics {
         self.check_modal(tree);
         self.check_selection_scopes(tree);
         self.check_composites(tree);
+        self.check_lone_items(tree);
         self.check_access(tree, text, edit);
         self.check_live_regions(tree, text);
     }
@@ -1043,6 +1053,43 @@ impl Diagnostics {
                     });
                 }
             }
+        }
+    }
+
+    /// A `radio` or `tab` with no container of its pair above it (see
+    /// [`ITEM_OUTSIDE_CONTAINER`]). The pairs are `composite::PAIRS`, less
+    /// the menu's and the list's. Parents precede children, so one forward
+    /// pass carries down a bit per pair for the containers above each node,
+    /// as the selection-scope check carries its one.
+    fn check_lone_items(&mut self, tree: &Tree) {
+        use crate::composite::PAIRS;
+        const CHECKED: [Role; 2] = [Role::Radio, Role::Tab];
+        self.scratch.clear();
+        self.scratch.resize(tree.len(), 0);
+        for i in 0..tree.len() {
+            let above = match tree.parent[i] {
+                NIL => 0,
+                p => self.scratch[p as usize],
+            };
+            let mut here = above;
+            if let Some(role) = tree.specs[i].access().role {
+                for (bit, (container, item)) in PAIRS.iter().enumerate() {
+                    if role == *container {
+                        here |= 1 << bit;
+                    } else if role == *item && CHECKED.contains(item) && above & (1 << bit) == 0 {
+                        let (item, container) = (item.name(), container.name());
+                        self.warn(ITEM_OUTSIDE_CONTAINER, tree.keys[i], || {
+                            format!(
+                                "this `{item}` has no `{container}` above it, so it is a Tab \
+                                 stop of its own: the arrows do not move the choice and a \
+                                 screen reader announces no position in the set (wrap the \
+                                 set in a `{container}` with a `label`)"
+                            )
+                        });
+                    }
+                }
+            }
+            self.scratch[i] = here;
         }
     }
 

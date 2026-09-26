@@ -7165,6 +7165,27 @@ test('the stock toggles read their state and their rows only, and press through 
   assert.deepEqual(ctx.pollEvents().map((e) => e.payload.kind), ['wifi']);
 });
 
+test('a <radio> outside a <radioGroup> and a tab outside a tabList are warned about, once (F96)', () => {
+  const ctx = new Ctx();
+  ctx.setDiagnostics(true);
+  const view = () => box({ pad: 10, gap: 6 }, [
+    el('radio', { onClick: { kind: 'lone' } }, ['Lone']),
+    box({ role: 'tab', label: 'Tab', onClick: 0 }),
+    box({ role: 'menuItem', label: 'Item', onClick: 1 }),
+    el('radioGroup', { label: 'Size' }, [
+      box({}, [el('radio', { onClick: { kind: 's' } }, ['S'])]),
+    ]),
+    box({ role: 'tabList', label: 'Tabs' }, [box({ role: 'tab', label: 'In', onClick: 2 })]),
+  ]);
+  ctx.frame(320, 240, 1, view());
+  ctx.frame(320, 240, 1, view());
+  const ws = ctx.warnings().filter((w) => w.code === 'item-outside-container');
+  const named = (name) => ctx.accessTree().nodes.find((n) => n.name === name).key;
+  assert.deepEqual(ws.map((w) => w.key), [named('Lone'), named('Tab')], JSON.stringify(ws));
+  assert.match(ws[0].message, /`radioGroup`/);
+  assert.match(ws[1].message, /`tabList`/);
+});
+
 test('<slider> proposes values from the keys, snapped to its step, and needs a label (ADR 0034)', () => {
   const ctx = new Ctx();
   const view = (v) => box({ pad: 10 }, [

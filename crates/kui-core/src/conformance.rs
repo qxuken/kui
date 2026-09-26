@@ -2917,6 +2917,8 @@ pub const SCENES: &[Scene] = &[
               stop; a text with \
               `max_lines`, `ellipsis`, both decorations and a feature \
               string; and a `line` with a caret and a selection anchor. \
+              The card is a lone `tab`, so the one warning is \
+              `item-outside-container`. \
               The pointer enters the card (its hover tag and sound) and \
               clicks it (its sound), and the layout tag reports its rect. \
               The Node suite holds every generic prop to some scene's \
@@ -2956,7 +2958,9 @@ pub const SCENES: &[Scene] = &[
             // click sound as two playbacks.
             events: &["layout lay", "hover hov", "card -"],
             announcements: &[],
-            warnings: &[],
+            // The card is a `tab` with no `tabList` above it, and every
+            // binding says so the same way.
+            warnings: &["item-outside-container"],
             commands: &[],
             audio: &["play 1 0", "play 2 0"],
             title: None,

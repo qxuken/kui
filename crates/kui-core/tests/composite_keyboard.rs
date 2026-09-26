@@ -503,3 +503,80 @@ fn focusable_inside_an_item_is_reported_and_beside_one_is_not() {
     tab(&mut core, false);
     assert_eq!(core.focus(), Some(plus));
 }
+
+/// Backlog F96: a `radio` with no `radioGroup` above it and a `tab` with
+/// no `tabList` are each reported once, the stock radio with them; the
+/// same items inside their containers, however deep, are not, and a lone
+/// `menuItem` or `listItem` is left alone.
+#[test]
+fn a_radio_or_tab_outside_its_container_is_reported() {
+    use kui_core::diag::ITEM_OUTSIDE_CONTAINER;
+    let mut core = Core::new();
+    let mut lone = Vec::new();
+    for _ in 0..3 {
+        lone.clear();
+        let mut ui = core.frame(VIEW, 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        for (name, role) in [
+            ("radio", Role::Radio),
+            ("tab", Role::Tab),
+            ("menu item", Role::MenuItem),
+            ("list item", Role::ListItem),
+        ] {
+            let key = ui.with_keyed(
+                name,
+                NodeSpec::row()
+                    .role(role)
+                    .on_click(Value::str(name))
+                    .label(name),
+                |_| {},
+            );
+            if matches!(role, Role::Radio | Role::Tab) {
+                lone.push(key);
+            }
+        }
+        lone.push(kui_core::widgets::radio(&mut ui, "Stock", false, "stock"));
+        // Inside their containers, with a plain box between.
+        ui.with_keyed(
+            "group",
+            NodeSpec::row().role(Role::RadioGroup).label("Group"),
+            |ui| {
+                ui.with(NodeSpec::column(), |ui| {
+                    kui_core::widgets::radio(ui, "In", true, "in");
+                });
+            },
+        );
+        ui.with_keyed(
+            "tabs",
+            NodeSpec::row().role(Role::TabList).label("Tabs"),
+            |ui| {
+                ui.with(NodeSpec::row(), |ui| {
+                    ui.with_keyed(
+                        "t",
+                        NodeSpec::row()
+                            .role(Role::Tab)
+                            .on_click(Value::str("t"))
+                            .label("T"),
+                        |_| {},
+                    );
+                });
+            },
+        );
+        // The other pair's container does not count.
+        ui.with_keyed(
+            "wrong",
+            NodeSpec::row().role(Role::TabList).label("Wrong"),
+            |ui| {
+                lone.push(kui_core::widgets::radio(ui, "Astray", false, "astray"));
+            },
+        );
+        ui.finish();
+    }
+    let warnings = core.take_warnings();
+    let codes: Vec<&str> = warnings.iter().map(|w| w.code).collect();
+    assert_eq!(codes, [ITEM_OUTSIDE_CONTAINER; 4], "{warnings:#?}");
+    let keys: Vec<Key> = warnings.iter().map(|w| w.key).collect();
+    assert_eq!(keys, lone, "once per node over three frames");
+    assert!(warnings[0].message.contains("`radioGroup`"));
+    assert!(warnings[1].message.contains("`tabList`"));
+}

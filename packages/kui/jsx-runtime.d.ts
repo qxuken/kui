@@ -321,7 +321,7 @@ export interface GeneratedSpecProps {
   radiusTR?: LengthProp;
   /** How `keyframes` cycle (CSS `animation-direction`, default normal). Lua: `direction`, since `repeat` is a keyword. */
   repeat?: 'normal' | 'reverse' | 'alternate' | 'alternateReverse';
-  /** What the node is to assistive technology. Unset, the core derives one (an `onClick` node is a button, an editor a text input, a scrolling box a scroll view, a plain box nothing); `none` hides the node and its subtree from the access tree. */
+  /** What the node is to assistive technology. Unset, the core derives one (an `onClick` node is a button, an editor a text input, a scrolling box a scroll view, a plain box nothing); `none` hides the node and its subtree from the access tree. A `radio` belongs inside a `radioGroup` and a `tab` inside a `tabList`, labelled with what the choice is: the pair is a composite (`docs/adr/0007-composite-keyboard-patterns.md`) — one Tab stop for the set, the arrows, Home and End moving the choice inside it (each step is the item's click, so the choice follows focus), and a screen reader reading "2 of 3". A `radio` or `tab` with no container above it is a Tab stop of its own that no arrow moves, and the core warns (`item-outside-container`). `menu` holds `menuItem`s and `list` holds `listItem`s the same way. */
   role?: 'none' | 'button' | 'checkbox' | 'radio' | 'switch' | 'slider' | 'tab' | 'tabList' | 'link' | 'heading' | 'list' | 'listItem' | 'image' | 'dialog' | 'group' | 'textInput' | 'multilineTextInput' | 'line' | 'radioGroup' | 'menu' | 'menuItem' | 'terminal';
   /** When a scrolling node draws its bars: `visible` (the default — the stock overlay thumb, drawn while the content overflows), `hidden` (no thumb, no track to press; the wheel, the keyboard, `reveal` and the caret still scroll it — for a list that draws its own indicator, or a pane whose bar would sit on a border), or `auto` (shown while the scroll state is changing — the offset or the content's extent moved, the pointer is on the track, a thumb is dragged — and for a second after, then faded out over a quarter of one; a node first seen shows it the same second; what an overlay bar does on macOS). `auto` needs the driver's clock and is `visible` without one. The bars are overlays and take no layout space in any mode. From the last change until it has faded — a second and a quarter — an `auto` bar asks for frames the way a transition of that length would (nothing else could wake the core when the hold ends); while the pointer holds it, it asks for none. */
   scrollbar?: 'visible' | 'hidden' | 'auto';
@@ -726,11 +726,11 @@ export declare namespace JSX {
      *  curve through them with `curve`. Points are in the parent's box space
      *  (`float="viewport"` for viewport space). Never in layout: it floats,
      *  sized to its own bounding box, so it takes no room in a row or
-     *  column. Unlike a declared float, which escapes every ancestor's
-     *  clip, a stroke in its parent's box space is held by the parent's
-     *  clip as a child is, its hit region with it — cut at a scroller's
-     *  edge with the row it is drawn in — and a `float="viewport"` one
-     *  escapes (backlog F78). `width` is the stroke width in px (default 1), `color` the
+     *  column. A stroke in its parent's box space is held by the parent's
+     *  clip as a child is, its hit region with it, so it is cut at a
+     *  scroller's edge with the row it is drawn in; a declared float is
+     *  held that way only when it declares `clip` with a parent anchor, and
+     *  a `float="viewport"` stroke escapes (backlog F78). `width` is the stroke width in px (default 1), `color` the
      *  stroke colour (default the foreground); `transition` eases the colour,
      *  and with `slide` beside it the stroke's position too — the points ride
      *  its box, so a stroke whose ends all move together slides with them,
