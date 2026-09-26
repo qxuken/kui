@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.20 (unreleased)
+## 0.1.0-alpha.20 (2026-09-26)
 
 **What breaks.** No door, the ABI at 19 and the frame at v16. One
 reading changes, one warning is new, and `frameStats()` gains a field.
@@ -130,6 +130,69 @@ reading changes, one warning is new, and `frameStats()` gains a field.
   `radio` belongs in a `radioGroup` and a `tab` in a `tabList`, and what
   the pair buys: one Tab stop, the arrows, Home and End moving the
   choice, and "2 of 3" read to a screen reader (ADR 0007).
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), on 2026-09-26 —
+four commits after the alpha.19 tag, the alpha.19 upgrade reports'
+F93–F96. This round ran on Windows and on Linux under WSL 2; the Mac
+was not in it, so the AX audit was not run for this tag. What follows
+is what executed on what.
+
+**Windows 11 Pro (26200, RTX 5080, 239.76 Hz, 150%), rustc 1.98.1,
+Node 25.2.1**, on `main` at `15120d5`. `cargo fmt --all --check` and
+`cargo clippy --workspace --all-targets -- -D warnings` are clean.
+`cargo test --workspace`: **1394 tests over 104 suites, 0 failed** (2
+ignored, the devtools' `drive.rs` and kui-native's `windows_console`
+doc examples), from alpha.19's 1381 over 103 on this machine. The
+scene corpus runs in all four adapters against one reference report:
+Rust and Lua through `cargo test`, C through `target/debug/conformance`
+(**45 scenes**, the header at **390 fields, 269 enum members and 250
+prototypes**, the ABI still **19**), Node through `npm test` (**190 of
+191**, the RTLD test skipping on Windows as it does, the frame still at
+**version 16**). The C round, `cbuild --run`, passes its six checks,
+and the no-ABI panel is refused as "this build is 19". `npm run gen`
+leaves no diff but the checkout's line endings; `npm run typecheck` on
+`examples/node` is clean. The headless round, `smoke -- --headless`,
+passes all **32 drives**.
+
+**The windowed round**, `cargo run -p kui-devtools --bin smoke --
+--node`: **38 Rust examples and the eleven Node examples, each on both
+bases, 120 frames each, every one exiting 0 with nothing on stderr** —
+98 windows. The C and Lua hosts by hand under `KUI_SMOKE_FRAMES=120`,
+after a fresh `cbuild` (W16): `counter`, `host`, `c_panel` and
+`lua_panel` each opened a window and exited 0 with nothing on stderr —
+**102 windows over five hosts.**
+
+**The release's two runner-facing fixes, in a real window.** F94: a
+`runWindowed` app ticking once a second read 21–24 pumps, **0 woken**
+and 1 frame in every idle second; the two seconds in which
+`SetCursorPos` swept the pointer across it read 48 and 52 pumps, 13 and
+4 woken, 13 and 5 frames. F93, through UI Automation: in a 180 px
+scroller of 40 px rows, the row half past its edge reads a
+`BoundingRectangle` 30 px tall (20 logical at 150%), the rows wholly
+past it read `Empty`, and the rows inside read whole.
+
+**Ubuntu 24.04 under WSL 2 (WSLg, llvmpipe), rustc 1.96.1, Node
+25.2.1**, on a clone of the same commit: `cargo test --workspace`,
+**1392 tests over 103 suites, 0 failed** (1 ignored); **191 of 191
+Node tests**; the C round's five checks; all **32 headless drives**;
+and the windowed round on X11, **38 Rust examples and the eleven Node
+examples on both bases** — 98 windows, every one exiting 0. Not
+covered, as in alpha.19's round: a Wayland session other than WSLg's,
+and the five prebuilds, which CI cross-compiles.
+
+**The bench guard** against the alpha.19 tag, on this machine rather
+than the M3 Pro the README's table comes from. Both runs ended
+INCONCLUSIVE by the script's rule — the desktop's noise put four
+guarded rows, then one, over the 10% run-to-run spread — but every
+guarded row read clean in one of the two and none regressed:
+`deep_nesting_64_levels` −0.6%, `frame_10k_rects` +3.2%,
+`frame_10k_rects_with_access_tree` −1.6% (F93's cut is on this path),
+`frame_10k_rects_with_text_and_hits` −0.8%, `frame_10k_segments`
+−2.3%, `frame_1k_curves` +0.2% and `list_10k_rows_virtual` +2.4% from
+the second, `frame_1k_typical` +0.7% (±2.2%) from the first. The
+README's table keeps its macOS numbers.
 
 ## 0.1.0-alpha.19 (2026-09-26)
 
