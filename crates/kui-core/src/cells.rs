@@ -35,7 +35,7 @@
 //! drag payloads — the entry's steps 1–4, built after the measurement
 //! this began as.
 
-use cosmic_text::{Attrs, Buffer, FontSystem, Metrics, Shaping, Style as FontStyle, Weight};
+use cosmic_text::{Attrs, Buffer, FontSystem, Metrics, Shaping, Style as FontStyle};
 use rustc_hash::FxHashMap;
 
 use crate::atlas::GlyphAtlas;
@@ -757,10 +757,12 @@ fn shape_one(
     let metrics = Metrics::new(style.size * scale, style.line_height * scale);
     let mut buffer = Buffer::new(fs, metrics);
     buffer.set_size(None, None);
-    let mut attrs = Attrs::new().family(res.family_of(style.family));
-    if flags & flags::BOLD != 0 {
-        attrs = attrs.weight(Weight::BOLD);
-    }
+    // Bold at a weight the family has a face for, never another family's
+    // (backlog F100).
+    let mut attrs = res.weights_of(style.family).apply(
+        Attrs::new().family(res.family_of(style.family)),
+        flags & flags::BOLD != 0,
+    );
     if flags & flags::ITALIC != 0 {
         attrs = attrs.style(FontStyle::Italic);
     }

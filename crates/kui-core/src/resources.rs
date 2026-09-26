@@ -301,11 +301,13 @@ impl ImageFit {
     }
 }
 
-/// A registered font: the family name shaping resolves it by, and the
-/// faces it loaded into the font database (empty for installed fonts).
+/// A registered font: the family name shaping resolves it by, the faces
+/// it loaded into the font database (empty for installed fonts), and the
+/// weights the family is asked at for regular and bold (backlog F100).
 pub struct FontEntry {
     pub family: String,
     pub faces: Vec<cosmic_text::fontdb::ID>,
+    pub(crate) weights: crate::weights::Weights,
 }
 
 /// One family of the font database — installed or loaded — as its faces
@@ -425,8 +427,30 @@ impl Resources {
         faces: Vec<cosmic_text::fontdb::ID>,
     ) -> FontId {
         let id = mint().fonts.insert(self.session);
-        self.fonts.insert(id, FontEntry { family, faces });
+        self.fonts.insert(
+            id,
+            FontEntry {
+                family,
+                faces,
+                weights: crate::weights::Weights::CSS,
+            },
+        );
         id
+    }
+
+    /// Reads again the weights of the registered families `families` holds
+    /// from what `db` has of them now (backlog F100): after a family is
+    /// registered, and after faces of it come into the database or leave.
+    pub(crate) fn reweigh(
+        &mut self,
+        db: &cosmic_text::fontdb::Database,
+        families: &rustc_hash::FxHashSet<String>,
+    ) {
+        for (_, entry) in self.fonts.iter_mut() {
+            if families.contains(&entry.family) {
+                entry.weights = crate::weights::Weights::of(db, &entry.family);
+            }
+        }
     }
 
     pub(crate) fn remove_font(&mut self, id: FontId) -> Option<FontEntry> {
@@ -460,6 +484,19 @@ impl Resources {
                 Some(name) => cosmic_text::Family::Name(name),
                 None => cosmic_text::Family::SansSerif,
             },
+        }
+    }
+
+    /// The weights a style's `FontFamily` is asked at (backlog F100): a
+    /// registered family's own, the CSS ones for a generic family and for
+    /// an unknown or removed custom font (which shapes as sans-serif).
+    pub(crate) fn weights_of(&self, f: FontFamily) -> crate::weights::Weights {
+        match f {
+            FontFamily::Custom(id) => self
+                .fonts
+                .get(id)
+                .map_or(crate::weights::Weights::CSS, |entry| entry.weights),
+            _ => crate::weights::Weights::CSS,
         }
     }
 

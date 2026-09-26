@@ -6,7 +6,7 @@
 
 use cosmic_text::{
     Attrs, Buffer, CacheKeyFlags, Ellipsize, EllipsizeHeightLimit, FontSystem, Metrics, Shaping,
-    Style as FontStyle, SwashCache, SwashContent, Weight, Wrap,
+    Style as FontStyle, SwashContent, Weight, Wrap,
 };
 use rustc_hash::FxHashMap;
 
@@ -21,12 +21,16 @@ use crate::spec::{FontFamily, TextStyle, TextWrap, UnderlineStyle};
 use crate::tree::TextId;
 use crate::value::Value;
 
-/// The glyph rasterizer: cosmic-text's swash cache for plain alpha masks and
-/// color bitmaps, plus our own scaler for LCD subpixel masks (cosmic-text's
-/// cache is fixed to `Format::Alpha`).
+/// The glyph rasterizer: swash's scaler, as cosmic-text's `SwashCache`
+/// drives it, for plain alpha masks, LCD subpixel masks and color bitmaps
+/// alike — our own so the subpixel format is ours to pick, and so a
+/// variable face is drawn at the `wght` coordinate its axis gives a CSS
+/// weight and a glyph marked for synthetic bold is drawn bold (backlog
+/// F100), neither of which cosmic-text's cache does.
 pub(crate) struct Raster {
-    swash: SwashCache,
     ctx: swash::scale::ScaleContext,
+    /// Each face's `wght` axis, read once: `None` for a face without one.
+    axes: FxHashMap<cosmic_text::fontdb::ID, Option<crate::weights::WghtAxis>>,
     /// Rasterize outline glyphs as per-channel subpixel coverage. Set by
     /// the driver from what its renderer can blend; see
     /// `Core::set_subpixel_text`.
@@ -36,37 +40,68 @@ pub(crate) struct Raster {
 impl Raster {
     fn new() -> Self {
         Self {
-            swash: SwashCache::new(),
             ctx: swash::scale::ScaleContext::new(),
+            axes: FxHashMap::default(),
             subpixel: false,
         }
     }
 
-    /// cosmic-text's `swash_image`, with `Format::Subpixel`: three
-    /// rasterizations shifted by a third of a pixel land in r, g and b.
-    /// Color sources are tried first so emoji still come out as bitmaps.
-    fn subpixel_image(
+    /// cosmic-text's `swash_image` in `format`: with `Format::Subpixel`,
+    /// three rasterizations shifted by a third of a pixel land in r, g and
+    /// b. Color sources are tried first so emoji still come out as bitmaps.
+    ///
+    /// A variable face is drawn where its `wght` axis puts the glyph's
+    /// weight ([`WghtAxis`](crate::weights::WghtAxis)) — cosmic-text takes
+    /// the CSS number itself as the coordinate, which draws Berkeley Mono
+    /// Variable's regular at its Bold — and a glyph marked
+    /// [`SYNTHETIC_BOLD`](crate::weights::SYNTHETIC_BOLD) at the axis's
+    /// bold, or, when the face has no heavier instance or no axis, with
+    /// its outline emboldened.
+    fn image(
         &mut self,
         fs: &mut FontSystem,
         key: cosmic_text::CacheKey,
+        format: swash::zeno::Format,
     ) -> Option<cosmic_text::SwashImage> {
         use swash::scale::{Render, Source, StrikeWith};
-        use swash::zeno::{Angle, Format, Transform, Vector};
+        use swash::zeno::{Angle, Transform, Vector};
         let font = fs.get_font(key.font_id, key.font_weight)?;
         let swash_font = font.as_swash();
-        let variable_weight = swash_font
-            .variations()
-            .find_by_tag(swash::Tag::from_be_bytes(*b"wght"));
+        let axis = self
+            .axes
+            .entry(key.font_id)
+            .or_insert_with(|| {
+                let weight = fs.db().face(key.font_id).map_or(400, |face| face.weight.0);
+                crate::weights::WghtAxis::read(swash_font, weight)
+            })
+            .as_ref();
+        let size = f32::from_bits(key.font_size_bits);
+        let face_weight = f32::from(key.font_weight.0);
+        let bold = key.flags.contains(crate::weights::SYNTHETIC_BOLD);
+        let asked = if bold {
+            f32::from(Weight::BOLD.0)
+        } else {
+            face_weight
+        };
+        let at = axis.map(|axis| axis.coordinate(asked));
+        // Bold that the axis cannot draw heavier than the face's own
+        // weight, or a face with no axis: the outline grown instead.
+        let embolden = bold
+            && match (axis, at) {
+                (Some(axis), Some(at)) => at <= axis.coordinate(face_weight),
+                _ => true,
+            };
         let mut scaler = self
             .ctx
             .builder(swash_font)
-            .size(f32::from_bits(key.font_size_bits))
+            .size(size)
             .hint(!key.flags.contains(CacheKeyFlags::DISABLE_HINTING));
-        if let Some(v) = variable_weight {
-            scaler = scaler.normalized_coords(swash_font.variations().normalized_coords([(
-                swash::Tag::from_be_bytes(*b"wght"),
-                f32::from(key.font_weight.0).clamp(v.min_value(), v.max_value()),
-            )]));
+        if let Some(at) = at {
+            scaler = scaler.normalized_coords(
+                swash_font
+                    .variations()
+                    .normalized_coords([(swash::Tag::from_be_bytes(*b"wght"), at)]),
+            );
         }
         let mut scaler = scaler.build();
         let offset = if key.flags.contains(CacheKeyFlags::PIXEL_FONT) {
@@ -79,8 +114,13 @@ impl Raster {
             Source::ColorBitmap(StrikeWith::BestFit),
             Source::Outline,
         ])
-        .format(Format::Subpixel)
+        .format(format)
         .offset(offset)
+        .embolden(if embolden {
+            crate::weights::embolden_strength(size)
+        } else {
+            0.0
+        })
         .transform(
             key.flags
                 .contains(CacheKeyFlags::FAKE_ITALIC)
@@ -98,11 +138,12 @@ pub(crate) fn raster_glyph(
     atlas: &mut crate::atlas::GlyphAtlas,
 ) -> Option<crate::atlas::GlyphSlot> {
     atlas.get_or_insert(key, || {
-        let image = if raster.subpixel {
-            raster.subpixel_image(fs, key)?
+        let format = if raster.subpixel {
+            swash::zeno::Format::Subpixel
         } else {
-            raster.swash.get_image_uncached(fs, key)?
+            swash::zeno::Format::Alpha
         };
+        let image = raster.image(fs, key, format)?;
         if image.placement.width == 0 || image.placement.height == 0 {
             return None;
         }
@@ -373,14 +414,15 @@ impl<'a> Span<'a> {
         }
     }
 
-    fn attrs(&self, family: cosmic_text::Family<'a>) -> Attrs<'a> {
+    fn attrs(
+        &self,
+        family: cosmic_text::Family<'a>,
+        weights: crate::weights::Weights,
+    ) -> Attrs<'a> {
         // Pin the family (the paragraph base's) so weight/style variants
         // stay in one typeface instead of falling back to whatever face
-        // matches first.
-        let mut attrs = Attrs::new().family(family);
-        if self.bold {
-            attrs = attrs.weight(Weight::BOLD);
-        }
+        // matches first — at weights it has faces for (backlog F100).
+        let mut attrs = weights.apply(Attrs::new().family(family), self.bold);
         if self.italic {
             attrs = attrs.style(FontStyle::Italic);
         }
@@ -1830,6 +1872,7 @@ impl TextSystem {
         if !self.entries.contains_key(&key) {
             let mut buffer = new_buffer(fs, base, scale);
             let family = res.family_of(base.family);
+            let weights = res.weights_of(base.family);
             let features = cosmic_features(&base.features);
             // Each span's index rides its glyphs as metadata, which is how
             // the decoration rects find their span after layout.
@@ -1837,7 +1880,9 @@ impl TextSystem {
                 spans.iter().enumerate().map(|(i, s)| {
                     (
                         s.text,
-                        s.attrs(family).font_features(features.clone()).metadata(i),
+                        s.attrs(family, weights)
+                            .font_features(features.clone())
+                            .metadata(i),
                     )
                 }),
                 &Attrs::new().family(family).font_features(features.clone()),
@@ -3333,7 +3378,10 @@ fn html_of_run(entry: &CachedText, lo: usize, hi: usize, out: &mut String) {
                 continue;
             }
             let piece = &entry.content[s..e];
-            let bold = attrs.weight >= cosmic_text::Weight::BOLD;
+            let bold = attrs.weight >= cosmic_text::Weight::BOLD
+                || attrs
+                    .cache_key_flags
+                    .contains(crate::weights::SYNTHETIC_BOLD);
             let italic = attrs.style != cosmic_text::Style::Normal;
             if let Some(c) = attrs.color_opt {
                 let _ = std::fmt::Write::write_fmt(

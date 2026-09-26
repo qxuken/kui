@@ -58,6 +58,7 @@ pub mod tokens;
 pub mod tree;
 pub mod ui;
 pub mod value;
+pub(crate) mod weights;
 pub mod widgets;
 pub mod window;
 

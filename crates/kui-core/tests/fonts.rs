@@ -234,3 +234,187 @@ fn han_in_mono_draws_at_finite_places() {
         assert!(han.x + han.w <= a.x, "字 before a: {glyphs:?}");
     }
 }
+
+/// The glyph quads of `spans` in `style`, drawn as one rich text: each
+/// glyph's x and width.
+fn rich_glyphs(core: &mut Core, spans: &[kui_core::Span<'_>], style: TextStyle) -> Vec<(f32, f32)> {
+    let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+    ui.with(NodeSpec::column(), |ui| ui.rich_text(spans, style));
+    ui.finish();
+    let (dl, _) = core.output();
+    dl.quads
+        .iter()
+        .filter(|q| q.kind != kui_core::QuadKind::Solid)
+        .map(|q| (q.rect.x, q.rect.w))
+        .collect()
+}
+
+/// The glyph quads of one row of cells in `style`, each `flags`: each
+/// glyph's x and width.
+fn cell_glyphs(core: &mut Core, text: &str, flags: u8, style: TextStyle) -> Vec<(f32, f32)> {
+    use kui_core::cells::{Cell, CellGrid};
+    let cells: Vec<Cell> = text
+        .chars()
+        .map(|ch| Cell {
+            flags,
+            ..Cell::new(ch, 0xffffffff, 0)
+        })
+        .collect();
+    let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    ui.cells(
+        &CellGrid {
+            rows: 1,
+            cols: cells.len(),
+            cells: &cells,
+            style,
+            cursor: None,
+            origin_line: 0,
+        },
+        NodeSpec::default(),
+    );
+    ui.finish();
+    let (dl, _) = core.output();
+    dl.quads
+        .iter()
+        .filter(|q| q.kind != kui_core::QuadKind::Solid)
+        .map(|q| (q.rect.x, q.rect.w))
+        .collect()
+}
+
+/// Every glyph `advance` from the one before it and `width` wide: glyphs
+/// of the fixture family, whose advance is half an em.
+fn assert_fixture(glyphs: &[(f32, f32)], advance: f32, width: f32, what: &str) {
+    assert_eq!(glyphs.len(), 4, "{what}: {glyphs:?}");
+    for pair in glyphs.windows(2) {
+        assert_eq!(pair[1].0 - pair[0].0, advance, "{what}: {glyphs:?}");
+    }
+    for &(_, w) in glyphs {
+        assert_eq!(w, width, "{what}: {glyphs:?}");
+    }
+}
+
+/// A variable family whose `wght` axis is not on the CSS scale — Berkeley
+/// Mono Variable's, 100 (Regular) to 150 (Bold) with an `OS/2` weight of
+/// 400 — draws its Regular for regular and its Bold for bold, in text and
+/// in cells (backlog F100). Bold, asked at 700, fell outside the axis and
+/// was drawn in another family, one glyph to a cell in a terminal; regular
+/// took 400 as the coordinate and was drawn at the Bold. The fixture's
+/// square is 400 units wide at the Regular and 500 at the Bold; a family
+/// with a bold face is registered beside it, where bold used to go.
+#[test]
+fn bold_of_a_variable_family_off_the_css_scale_is_its_bold_instance() {
+    use kui_core::Span;
+    use kui_core::cells::flags;
+    use kui_core::testing::{font_face, variable_face};
+    let mut core = Core::new();
+    let axis = [("Regular", 100), ("Bold", 150)];
+    let id = core
+        .add_font_data(variable_face("Kui F100 Var", false, [100, 100, 150], &axis))
+        .expect("the variable fixture registers");
+    core.add_font_data(variable_face("Kui F100 Var", true, [100, 100, 150], &axis))
+        .expect("its italic");
+    core.add_font_data(font_face("Kui F100 Decoy", 700, false, false))
+        .expect("a bold face of another family");
+    // 20 px: an advance of 10, a square of 8 at the Regular and 10 at the Bold.
+    let style = TextStyle::new(20.0).font(id).line_height(24.0);
+    let plain = Span::new("aaaa");
+    let bold = Span {
+        bold: true,
+        ..plain
+    };
+    let both = Span {
+        italic: true,
+        ..bold
+    };
+    assert_fixture(
+        &rich_glyphs(&mut core, &[plain], style),
+        10.0,
+        8.0,
+        "regular",
+    );
+    assert_fixture(&rich_glyphs(&mut core, &[bold], style), 10.0, 10.0, "bold");
+    assert_fixture(
+        &cell_glyphs(&mut core, "aaaa", 0, style),
+        10.0,
+        8.0,
+        "regular cells",
+    );
+    assert_fixture(
+        &cell_glyphs(&mut core, "aaaa", flags::BOLD, style),
+        10.0,
+        10.0,
+        "bold cells",
+    );
+    // Bold italic from the italic face (upright squares too, so no lean
+    // is synthesized) at its Bold.
+    let flags = flags::BOLD | flags::ITALIC;
+    assert_fixture(
+        &rich_glyphs(&mut core, &[both], style),
+        10.0,
+        10.0,
+        "bold italic",
+    );
+    assert_fixture(
+        &cell_glyphs(&mut core, "aaaa", flags, style),
+        10.0,
+        10.0,
+        "bold italic cells",
+    );
+}
+
+/// A family of one regular face draws bold in that face, its outline
+/// grown, and italic in that face, leaning — never in another family
+/// that has the weight or the style (backlog F100). Bold used to go to
+/// the other family's bold face, the fixture's square at its own width.
+#[test]
+fn bold_and_italic_of_a_family_without_them_are_synthesized_in_it() {
+    use kui_core::Span;
+    use kui_core::cells::flags;
+    use kui_core::testing::font_face;
+    let mut core = Core::new();
+    let id = core
+        .add_font_data(font_face("Kui F100 Mono", 400, false, true))
+        .expect("the fixture registers");
+    core.add_font_data(font_face("Kui F100 Decoy", 700, false, false))
+        .expect("a bold face of another family");
+    core.add_font_data(font_face("Kui F100 Decoy", 400, true, false))
+        .expect("an italic face of another family");
+    let style = TextStyle::new(20.0).font(id).line_height(24.0);
+    let plain = Span::new("aaaa");
+    let regular = rich_glyphs(&mut core, &[plain], style);
+    assert_fixture(&regular, 10.0, 8.0, "regular");
+    let cases = [
+        (
+            Span {
+                bold: true,
+                ..plain
+            },
+            flags::BOLD,
+            "bold",
+        ),
+        (
+            Span {
+                italic: true,
+                ..plain
+            },
+            flags::ITALIC,
+            "italic",
+        ),
+    ];
+    for (span, flag, what) in cases {
+        let text = rich_glyphs(&mut core, &[span], style);
+        let cells = cell_glyphs(&mut core, "aaaa", flag, style);
+        for glyphs in [&text, &cells] {
+            assert_eq!(glyphs.len(), 4, "{what}: {glyphs:?}");
+            assert!(
+                glyphs.windows(2).all(|p| p[1].0 - p[0].0 == 10.0),
+                "{what}, a glyph to a cell: {glyphs:?}"
+            );
+            assert!(
+                glyphs.iter().all(|g| g.1 > 8.0),
+                "{what} wider than regular: {glyphs:?}"
+            );
+        }
+    }
+}

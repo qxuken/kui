@@ -57,7 +57,9 @@ report of the same day, the day it was filed, and F98 — a face with no
 metrics refused — from the kawoosh Han-in-mono report of the same day,
 the day it was filed, and F99 — an atlas page never emptied under a
 frame — from the kawoosh fonts-pane scrolling report of the same day,
-the day it was filed. The index
+the day it was filed, and F100 — bold in the family that has no bold
+face — from the kawoosh Berkeley-bold report of the same day, the day
+it was filed. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -1363,6 +1365,17 @@ frame right. The atlas page filled mid-frame, reset under the quads
 already emitted, and that frame was presented. One entry, F99,
 **built 2026-09-26**, the day it was filed, and in the archive.
 
+## From the kawoosh Berkeley-bold report (2026-09-26)
+
+kawoosh's terminal, in Berkeley Mono Variable (a Regular and an Italic
+file, each with a `wght` axis from 100 to 150), drew bold and bold
+italic in another, proportional family, one glyph to a cell: no slash
+in `0`, a squeezed `m`, gaps round `i`. cosmic-text passed over a
+family with no face at the weight asked and read the CSS weight as the
+axis coordinate, so Berkeley's regular was drawn at its Bold too. One
+entry, F100, **built 2026-09-26**, the day it was filed, and in the
+archive.
+
 ## From the regression pass of 2026-09-19
 
 A review of everything since the alpha.15 tag — F67–F75, nine features
@@ -2365,6 +2378,8 @@ Nothing of the kawoosh Han-in-mono report is open (F98 **built
 2026-09-26**, the day it was filed).
 Nothing of the kawoosh fonts-pane scrolling report is open (F99
 **built 2026-09-26**, the day it was filed).
+Nothing of the kawoosh Berkeley-bold report is open (F100 **built
+2026-09-26**, the day it was filed).
 Nothing of the Windows regression round of 2026-09-26 is open
 (RG38–RG46 **built 2026-09-26**, the day they were filed).
 Nothing of the Linux round under WSLg is open (RG47–RG49 **built
@@ -3179,6 +3194,10 @@ move.
 **From the kawoosh fonts-pane scrolling report (2026-09-26)** — F99, filed and built the same day
 
 - `!` **F99** — [A glyph set that turns over fills the atlas mid-frame and the page resets under the quads already emitted: now and then one frame draws nearly every glyph blank](backlog/closed-2026-09.md#-f99--a-glyph-set-that-turns-over-fills-the-atlas-mid-frame-and-the-page-resets-under-the-quads-already-emitted-now-and-then-one-frame-draws-nearly-every-glyph-blank--done-2026-09-26) — done (2026-09-26) — the page is never emptied during a frame: `begin_frame` empties it when the rows the last frames opened foresee a fill, an unforeseen fill doubles it for the frame with every slot in place (`extend_to`), a page emptied again within two frames doubles for good, and at 4096 the glyph waits a frame (`short`)
+
+**From the kawoosh Berkeley-bold report (2026-09-26)** — F100, filed and built the same day
+
+- `!` **F100** — [Bold of a family with no bold face draws in another family, and a variable face whose `wght` axis is off the CSS scale draws regular at its Bold](backlog/closed-2026-09.md#-f100--bold-of-a-family-with-no-bold-face-draws-in-another-family-and-a-variable-face-whose-wght-axis-is-off-the-css-scale-draws-regular-at-its-bold--done-2026-09-26) — done (2026-09-26) — each registered family is asked at weights it has faces for (`weights::Weights`), bold of a lighter face carries `SYNTHETIC_BOLD`, and the rasterizer draws a variable face at the coordinate its named instances give (`WghtAxis`), a marked glyph at the axis's bold or emboldened
 
 **From the regression pass of 2026-09-25** — RG17–RG36 built the same day, before the alpha.17 tag; RG37 the same day, after it
 

@@ -206,6 +206,33 @@ pub fn unmeasurable_face(family: &str) -> Vec<u8> {
     })
 }
 
+/// A variable face of `family` (backlog F100): the [`liga_font`] fixture,
+/// fixed-pitch, whose `OS/2` says weight 400 and which carries a `wght`
+/// axis from `wght[0]` to `wght[2]`, its default at `wght[1]`, with the
+/// named instances `instances` (subfamily name, coordinate). At the axis's
+/// maximum every square's right edge is 100 units further right (`gvar`),
+/// so a glyph drawn at the heavy end is 500 units wide where the default's
+/// is 400; the advances stay 500. `[100, 100, 150]` with "Regular" at 100
+/// and "Bold" at 150 is Berkeley Mono Variable's axis, which is not on the
+/// CSS scale its `OS/2` weight is.
+pub fn variable_face(
+    family: &str,
+    italic: bool,
+    wght: [u16; 3],
+    instances: &[(&str, u16)],
+) -> Vec<u8> {
+    liga_font::build(&liga_font::Face {
+        family,
+        italic,
+        fixed_pitch: true,
+        wght: Some(liga_font::Wght {
+            axis: wght,
+            instances,
+        }),
+        ..liga_font::Face::LIGA
+    })
+}
+
 mod liga_font {
     /// What the tables say the face is: its family, weight and style.
     pub(super) struct Face<'a> {
@@ -218,6 +245,15 @@ mod liga_font {
         /// Carries `head`, `hhea`, `hmtx` and the outlines; without them
         /// nothing says how wide a glyph is.
         pub(super) metrics: bool,
+        /// A `wght` axis (`fvar`, `gvar`): a variable face.
+        pub(super) wght: Option<Wght<'a>>,
+    }
+
+    /// A variable face's weight axis: minimum, default and maximum, and
+    /// the named instances along it.
+    pub(super) struct Wght<'a> {
+        pub(super) axis: [u16; 3],
+        pub(super) instances: &'a [(&'a str, u16)],
     }
 
     impl Face<'static> {
@@ -228,6 +264,7 @@ mod liga_font {
             fixed_pitch: false,
             han: false,
             metrics: true,
+            wght: None,
         };
     }
 
@@ -486,18 +523,25 @@ mod liga_font {
             sub => format!("{} {sub}", face.family),
         };
         let postscript: String = full.chars().filter(|c| !c.is_whitespace()).collect();
-        let strings: [(u16, &str); 4] = [
+        let mut strings: Vec<(u16, &str)> = vec![
             (1, face.family),
             (2, face.subfamily()),
             (4, &full),
             (6, &postscript),
         ];
+        // A variable face's axis name at 256 and its instances' after it.
+        if let Some(wght) = &face.wght {
+            strings.push((AXIS_NAME, "Weight"));
+            for (i, (name, _)) in wght.instances.iter().enumerate() {
+                strings.push((AXIS_NAME + 1 + i as u16, name));
+            }
+        }
         let mut w = W(Vec::new());
         w.u16(0); // format
         w.u16(strings.len() as u16);
         w.u16(6 + 12 * strings.len() as u16); // stringOffset
         let mut pool = W(Vec::new());
-        for (id, s) in strings {
+        for (id, s) in strings.iter().copied() {
             let start = pool.0.len() as u16;
             for unit in s.encode_utf16() {
                 pool.u16(unit);
@@ -581,6 +625,74 @@ mod liga_font {
         w.0
     }
 
+    /// The `name` id of a variable face's axis; its instances' follow.
+    const AXIS_NAME: u16 = 256;
+
+    fn fixed(v: u16) -> u32 {
+        u32::from(v) << 16
+    }
+
+    /// One `wght` axis and its named instances.
+    fn fvar(wght: &Wght) -> Vec<u8> {
+        let mut w = W(Vec::new());
+        w.u32(0x0001_0000);
+        w.u16(16); // axesArrayOffset
+        w.u16(2); // reserved
+        w.u16(1); // axisCount
+        w.u16(20); // axisSize
+        w.u16(wght.instances.len() as u16);
+        w.u16(8); // instanceSize: name id, flags, one coordinate
+        w.bytes(b"wght");
+        for v in wght.axis {
+            w.u32(fixed(v)); // min, default, max
+        }
+        w.u16(0); // flags
+        w.u16(AXIS_NAME);
+        for (i, &(_, at)) in wght.instances.iter().enumerate() {
+            w.u16(AXIS_NAME + 1 + i as u16);
+            w.u16(0);
+            w.u32(fixed(at));
+        }
+        w.0
+    }
+
+    /// Every square's right edge 100 units further right at the axis's
+    /// maximum (a peak of +1.0), the phantom points — the advance — still.
+    fn gvar() -> Vec<u8> {
+        // One tuple over all points: the square's four and the four
+        // phantoms. x: 0 0 100 100 0 0 0 0, y: all 0.
+        let mut data = W(Vec::new());
+        data.u16(1); // tupleVariationCount
+        data.u16(10); // dataOffset: past this header and the tuple's
+        data.u16(7); // variationDataSize
+        data.u16(0xA000); // EMBEDDED_PEAK_TUPLE | PRIVATE_POINT_NUMBERS
+        data.u16(0x4000); // peak: +1.0 in F2Dot14
+        data.u8(0); // point numbers: all of them
+        data.bytes(&[0x81, 0x01, 100, 100, 0x83]); // x deltas
+        data.u8(0x87); // y deltas: eight zeros
+        data.pad4();
+        let per_glyph = data.0;
+        let mut w = W(Vec::new());
+        w.u16(1);
+        w.u16(0);
+        w.u16(1); // axisCount
+        w.u16(0); // sharedTupleCount
+        let array = 20 + 4 * (u32::from(GLYPHS) + 1);
+        w.u32(array); // sharedTuplesOffset: none, at the array
+        w.u16(GLYPHS);
+        w.u16(1); // flags: 32-bit offsets
+        w.u32(array); // glyphVariationDataArrayOffset
+        // .notdef has no variation data; the squares each have one.
+        w.u32(0);
+        for g in 1..=GLYPHS {
+            w.u32((per_glyph.len() * usize::from(g - 1)) as u32);
+        }
+        for _ in 1..GLYPHS {
+            w.bytes(&per_glyph);
+        }
+        w.0
+    }
+
     /// What a face without metrics leaves out: what says how wide a glyph
     /// is, and the outlines `loca` finds by `head`'s index format.
     const METRICS: [&[u8; 4]; 5] = [b"glyf", b"head", b"hhea", b"hmtx", b"loca"];
@@ -599,7 +711,7 @@ mod liga_font {
     pub(super) fn build(face: &Face) -> Vec<u8> {
         let (glyf, loca) = glyf_and_loca();
         // The directory wants its records sorted by tag.
-        let tables: Vec<(&[u8; 4], Vec<u8>)> = [
+        let mut tables: Vec<(&[u8; 4], Vec<u8>)> = [
             (b"GSUB", gsub()),
             (b"OS/2", os2(face)),
             (b"cmap", cmap(face)),
@@ -615,6 +727,11 @@ mod liga_font {
         .into_iter()
         .filter(|(tag, _)| face.metrics || !METRICS.contains(tag))
         .collect();
+        if let Some(wght) = &face.wght {
+            tables.push((b"fvar", fvar(wght)));
+            tables.push((b"gvar", gvar()));
+            tables.sort_by_key(|(tag, _)| **tag);
+        }
         let n = tables.len() as u16;
         let mut w = W(Vec::new());
         w.u32(0x0001_0000);

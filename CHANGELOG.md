@@ -25,7 +25,7 @@ was the first bare bump to break an app in five releases).
 
 **What breaks.** No door changes, the ABI stays at 19 and the frame at
 v16. Rust gains two methods and a type, and Node and C a door each.
-Three readings change:
+Four readings change:
 
 - A font face whose glyphs cannot be measured (no `head`, `hhea` or
   `hmtx`) is refused (under Fixed, F98). `addFontData` and
@@ -48,6 +48,14 @@ Three readings change:
   within two frames doubles, up to 4096.
 - A frame that grew the atlas no longer asks for another frame
   (`animating()` stays false): it is drawn right as it is.
+- Bold of a family with no bold face draws in that family (under
+  Fixed, F100), where it drew in whatever family cosmic-text's fallback
+  found first: `.SF NS` on a Mac. Bold text in such a family now
+  measures at the family's own advances, so a layout that sized itself
+  to the fallback's bold (a button's width, a column) comes out at the
+  family's width. Regular text in a variable face whose `wght` axis is
+  not on the CSS scale (Berkeley Mono Variable) draws lighter: at its
+  Regular, where it drew at its Bold.
 
 ### Added
 
@@ -153,6 +161,38 @@ Three readings change:
   *What you can delete:* nothing an app could have written. The wrong
   frame came from inside the atlas, and nothing outside it could
   reach it.
+
+- **Bold of a family with no bold face drew in another family, and a
+  variable face off the CSS scale drew regular at its Bold** (backlog
+  F100, from kawoosh's Berkeley-bold report). kawoosh set its editor
+  and terminal font to Berkeley Mono Variable, a variable family of a
+  Regular and an Italic file, each with a `wght` axis. Bold and bold
+  italic in its terminal drew another font's glyphs one to a cell (no
+  slash in `0`, a squeezed `m`, gaps round `i` and `.`). cosmic-text
+  takes a family's face for a weight only when the face is that weight
+  or its `wght` axis spans it, and otherwise goes to the platform's
+  fallback list and then to every installed face. It also reads the
+  CSS number as the axis coordinate. Berkeley's axis runs from 100
+  (its Regular) to 150 (its Bold) with an `OS/2` weight of 400, so 700
+  fell outside it and 400 clamped to the Bold. A static family with
+  one regular face (Monaco, Andale Mono) sent bold to the fallback too.
+  Now each registered family is asked at weights it has faces for: bold
+  asked of a family with none is asked at its nearest face's weight,
+  and its glyphs are marked for the rasterizer to draw bold. A variable
+  face draws at the coordinate its named instances give the weight
+  ("Regular", "Bold"…) when its axis is off the CSS scale, a marked
+  glyph at the axis's bold, and a marked glyph of a face with no
+  heavier instance has its outline grown (Skia's fake-bold ratios).
+  Italic of a family with no italic face was already drawn in the
+  family, leaning. Faces whose axis is on the CSS scale (Cascadia Code,
+  200–700) draw as before. Cost: registering a family reads its faces'
+  `wght` axes once, ~40 µs a family (686 installed families in 38 ms
+  against 11 ms); shaping and a cached glyph cost nothing new. Limit: a
+  variable face off the CSS scale is still *shaped* at cosmic-text's
+  clamped coordinate, so a proportional one's advances are its
+  heaviest instance's (a monospaced one's do not vary).
+  *What you can delete:* a style that avoided bold, or named another
+  family for it, because bold of such a family drew elsewhere.
 
 ## 0.1.0-alpha.20 (2026-09-26)
 

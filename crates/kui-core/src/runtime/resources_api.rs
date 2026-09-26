@@ -98,7 +98,10 @@ impl Core {
             let ids = crate::text::keep_measurable(db, ids.to_vec());
             let family = db.face(*ids.first()?)?.families.first()?.0.clone();
             sess.fonts_rev += 1;
-            sess.resources.add_font(family, ids.to_vec())
+            let touched = families_of(db, &ids);
+            let id = sess.resources.add_font(family, ids.to_vec());
+            sess.resources.reweigh(sess.fonts.db(), &touched);
+            id
         };
         self.sync_font_names();
         Some(id)
@@ -120,7 +123,10 @@ impl Core {
             let ids = crate::text::keep_measurable(db, ids.to_vec());
             let family = db.face(*ids.first()?)?.families.first()?.0.clone();
             sess.fonts_rev += 1;
-            sess.resources.add_font(family, ids.to_vec())
+            let touched = families_of(db, &ids);
+            let id = sess.resources.add_font(family, ids.to_vec());
+            sess.resources.reweigh(sess.fonts.db(), &touched);
+            id
         };
         self.sync_font_names();
         Some(id)
@@ -141,7 +147,11 @@ impl Core {
             .map(|face| face.id)
             .filter(|id| !before.contains(id))
             .collect();
-        crate::text::keep_measurable(db, added).len()
+        let added = crate::text::keep_measurable(db, added);
+        // A registered family may have gained a bold (backlog F100).
+        let touched = families_of(db, &added);
+        sess.resources.reweigh(sess.fonts.db(), &touched);
+        added.len()
     }
 
     /// The handle for a font family by name (`"Menlo"`, `"Antonio"`) —
@@ -170,7 +180,10 @@ impl Core {
                 return Some(id);
             }
             sess.fonts_rev += 1;
-            sess.resources.add_font(family, Vec::new())
+            let touched = std::iter::once(family.clone()).collect();
+            let id = sess.resources.add_font(family, Vec::new());
+            sess.resources.reweigh(sess.fonts.db(), &touched);
+            id
         };
         self.sync_font_names();
         Some(id)
@@ -186,9 +199,11 @@ impl Core {
             };
             sess.fonts_rev += 1;
             let db = sess.fonts.db_mut();
+            let touched = families_of(db, &entry.faces);
             for face in entry.faces {
                 db.remove_face(face);
             }
+            sess.resources.reweigh(sess.fonts.db(), &touched);
         }
         self.sync_font_names();
     }
@@ -520,4 +535,16 @@ impl Core {
             self.atlas.retain_images(|id| live.contains_key(id));
         }
     }
+}
+
+/// Every family name the faces `ids` answer to, for
+/// [`Resources::reweigh`](crate::resources::Resources::reweigh).
+fn families_of(
+    db: &cosmic_text::fontdb::Database,
+    ids: &[cosmic_text::fontdb::ID],
+) -> rustc_hash::FxHashSet<String> {
+    ids.iter()
+        .filter_map(|&id| db.face(id))
+        .flat_map(|face| face.families.iter().map(|(name, _)| name.clone()))
+        .collect()
 }
