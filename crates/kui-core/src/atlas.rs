@@ -2,7 +2,7 @@
 //! mirror it to a texture; `dirty`/`epoch` tell them when to re-upload.
 
 use cosmic_text::CacheKey;
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 
 use crate::resources::ImageId;
 
@@ -42,13 +42,32 @@ struct Shelf {
     cursor_x: u32,
 }
 
+/// How the page makes room (backlog F99). A slot handed out during a
+/// frame is never moved or overwritten before that frame is presented:
+/// the quads already emitted, the text templates built and the cell
+/// tables filled all carry its texel rect, and nothing walks them again.
+/// So a page that fills mid-frame is *extended* — doubled with its
+/// pixels kept where they are, which leaves every texel rect valid, since
+/// `uv` is in texels and the renderer divides by the page's size at draw
+/// time — and the reset that reclaims it waits for the next
+/// `begin_frame`, before anything is emitted. The page then starts that
+/// frame empty at its base size and holds that frame's set alone; if the
+/// set does not fit it, it is larger than the page and the page keeps the
+/// growth (AR19, F83). Most fills never get as far as mid-frame:
+/// `begin_frame` sees one coming in the rows the last frames opened and
+/// empties the page first. A page at `MAX_ATLAS_SIZE` cannot extend: there
+/// the request is refused for this frame (the glyph is not drawn, an
+/// image draws from a texture of its own) and the next frame, which
+/// `short` asks for, starts on an empty page.
 pub struct GlyphAtlas {
     pub size: u32,
     /// RGBA, size*size*4.
     pub pixels: Vec<u8>,
     /// Set when pixels changed since the renderer last consumed them.
     pub dirty: bool,
-    /// Bumped when the atlas is reset; renderers drop cached state.
+    /// Bumped whenever the page is replaced — reset, or resized — so
+    /// renderers re-upload it whole and caches that stamped it re-look
+    /// their slots up. A resize keeps every slot where it was.
     pub epoch: u64,
     map: FxHashMap<CacheKey, Option<GlyphSlot>>,
     /// Registered images blitted into the same page (one texture, one draw
@@ -61,25 +80,28 @@ pub struct GlyphAtlas {
     synth: FxHashMap<(char, u32, u32), Option<GlyphSlot>>,
     shelves: Vec<Shelf>,
     next_shelf_y: u32,
-    /// How many times the page filled since `begin_frame`: once is a
-    /// working set that turned over, twice is one that does not fit the
-    /// page, which is when the page grows (AR19).
-    resets_this_frame: u32,
-    /// The glyphs the last reset for room dropped, and whether one of
-    /// them has come back since: a page that fills again while holding
-    /// what it just threw out is thrashing — a working set between one
-    /// page and two resets once a frame, never twice in one, and every
-    /// frame's early quads sampled the overwritten page (F83) — and
-    /// grows. A set that turns over (new keys) never sets it.
-    dropped: FxHashSet<CacheKey>,
-    returned: bool,
-    /// Frames begun since the last reset for room. The thrash `dropped`
-    /// watches for is the page filling again on the frame after the
-    /// reset; a fill a minute later that happens to want back one glyph
-    /// the reset dropped — a chrome letter, a common `e` — is an
-    /// ordinary turnover, and growing on it would double the page on
-    /// every later fill and never give it back (RG23). So the set is
-    /// forgotten once a whole frame has passed without a fill.
+    /// The size the page settles at: what `begin_frame` resets an
+    /// extended page to. It grows when one frame's set does not fit it —
+    /// the page filled on a frame it began empty — or one item alone is
+    /// bigger than it, and never shrinks.
+    base: u32,
+    /// The page held nothing when this frame began, so whatever fills it
+    /// is this frame's own set.
+    fresh: bool,
+    /// A request was refused for room this frame on a page that could not
+    /// extend and still held earlier frames' glyphs: the next frame
+    /// starts on an empty page and should come.
+    short: bool,
+    /// The shelf rows a frame has been opening lately — the last frame's,
+    /// or a quarter less than the figure before, whichever is more; a
+    /// frame that began on an empty page counts none — and the page's
+    /// rows when this frame began, which the next frame's figure is read
+    /// against.
+    rows_per_frame: u32,
+    rows_at_begin: u32,
+    /// Frames begun since the page was last emptied. A page that needs
+    /// emptying again within two is too small for its set and how fast
+    /// it turns over, and grows instead (F83's thrash, measured).
     frames_since_reset: u32,
 }
 
@@ -99,33 +121,87 @@ impl GlyphAtlas {
             synth: FxHashMap::default(),
             shelves: Vec::new(),
             next_shelf_y: 0,
-            resets_this_frame: 0,
-            dropped: FxHashSet::default(),
-            returned: false,
-            frames_since_reset: 0,
+            base: size,
+            fresh: true,
+            short: false,
+            rows_per_frame: 0,
+            rows_at_begin: 0,
+            frames_since_reset: u32::MAX,
         }
     }
 
-    /// A frame begins: the count that decides between a reset and a
-    /// growth starts over.
+    /// A frame begins, before anything is emitted — the one point where
+    /// the page can be emptied without a quad sampling what it dropped.
+    /// It is emptied, back at its base size, when the last frame extended
+    /// it or was refused room (`short`) — and when it is about to fill:
+    /// fewer rows free than two frames open at the rate they lately have.
+    /// A set that turns
+    /// over a little each frame, a list scrolling through fonts, fills
+    /// the page every so often, and the rows foresee it, so the frame
+    /// that would have extended the page mid-emit — a page four times
+    /// the size, its rows copied, a texture made and uploaded twice —
+    /// begins on an empty one instead. A fill it does not foresee still
+    /// extends.
+    ///
+    /// A page that needs emptying within two frames of the last time is
+    /// too small for its set and the rate it turns over at, and grows
+    /// instead: an extension is kept, and a page about to fill doubles
+    /// with its slots in place. That is F83's thrash, a set between one
+    /// page and two, measured by what the page does rather than by which
+    /// glyphs come back; a fill long after the last (RG23) empties it.
     pub fn begin_frame(&mut self) {
-        self.resets_this_frame = 0;
+        let rows = self.next_shelf_y;
+        // A frame that began on an empty page opened its whole set, which
+        // says nothing of how fast the set turns over.
+        let opened = if self.fresh {
+            0
+        } else {
+            rows.saturating_sub(self.rows_at_begin)
+        };
+        self.rows_per_frame = opened.max(self.rows_per_frame - self.rows_per_frame / 4);
         self.frames_since_reset = self.frames_since_reset.saturating_add(1);
-        if self.frames_since_reset >= 2 && !self.dropped.is_empty() {
-            self.dropped = FxHashSet::default();
-            self.returned = false;
+        let extended = self.size > self.base;
+        let filling = self.size - rows < 2 * self.rows_per_frame;
+        let thrash = self.frames_since_reset <= 2;
+        if self.short {
+            self.reset_to(self.base);
+        } else if extended && thrash {
+            self.base = self.size;
+        } else if extended {
+            self.reset_to(self.base);
+        } else if filling && thrash && self.size < MAX_ATLAS_SIZE {
+            self.extend_to((self.size * 2).min(MAX_ATLAS_SIZE));
+            self.base = self.size;
+        } else if filling {
+            self.reset_to(self.base);
         }
+        self.short = false;
+        self.fresh = self.next_shelf_y == 0;
+        self.rows_at_begin = self.next_shelf_y;
+    }
+
+    /// Whether this frame was refused room (see `short`): it drew without
+    /// some glyph, and the next frame, on an empty page, draws it.
+    pub(crate) fn short(&self) -> bool {
+        self.short
     }
 
     /// Drops every cached glyph and image (they re-rasterize on demand) and
     /// bumps the epoch so renderers re-upload. Used when the raster mode
-    /// changes under the cache.
+    /// changes under the cache — between frames, never during one.
     pub fn clear(&mut self) {
-        self.reset();
+        self.reset_to(self.size);
     }
 
-    fn reset(&mut self) {
-        self.pixels.fill(0);
+    /// Empties the page onto a `size` one: every slot dropped, the epoch
+    /// bumped. Only between frames.
+    fn reset_to(&mut self, size: u32) {
+        if size == self.size {
+            self.pixels.fill(0);
+        } else {
+            self.size = size;
+            self.pixels = vec![0; (size * size * 4) as usize];
+        }
         self.map.clear();
         self.images.clear();
         self.synth.clear();
@@ -133,61 +209,62 @@ impl GlyphAtlas {
         self.next_shelf_y = 0;
         self.epoch += 1;
         self.dirty = true;
-        self.dropped.clear();
-        self.returned = false;
+        self.frames_since_reset = 0;
     }
 
-    /// Reset onto a bigger page (used when content outgrows the current
-    /// one). Everything cached is dropped and re-inserts on demand.
-    fn grow_to(&mut self, size: u32) {
-        self.dropped.clear();
-        self.returned = false;
+    /// Doubles the page with every slot kept where it is: the rows copy
+    /// into the top-left of the bigger page, the shelves run on into the
+    /// new width and new ones open below. Nothing handed out is
+    /// invalidated, so it is safe mid-frame.
+    fn extend_to(&mut self, size: u32) {
+        let old = self.size as usize;
+        let mut pixels = vec![0; (size * size * 4) as usize];
+        for (row, src) in self.pixels.chunks_exact(old * 4).enumerate() {
+            let at = row * size as usize * 4;
+            pixels[at..at + old * 4].copy_from_slice(src);
+        }
+        self.pixels = pixels;
         self.size = size;
-        self.pixels = vec![0; (size * size * 4) as usize];
-        self.map.clear();
-        self.images.clear();
-        self.synth.clear();
-        self.shelves.clear();
-        self.next_shelf_y = 0;
         self.epoch += 1;
         self.dirty = true;
     }
 
-    /// Alloc with escalation: on a full page, reset and retry; still no fit,
-    /// double the page (to `MAX_ATLAS_SIZE`) until it fits or can't. A
-    /// page that fills *twice in one frame* holds a working set larger
-    /// than itself — three atlas-backed 800×600 images, a code view with
-    /// many sizes plus CJK and emoji — and doubles instead of resetting
-    /// again (AR19): resetting alone left every such frame corrupt, since
-    /// after a reset any one item fits and the page never grew, and every
-    /// frame then reset mid-emit, invalidated every text template and
-    /// sampled the overwritten page from the quads emitted before it.
+    /// Alloc with room made: on a full page, extend it (see the type's
+    /// note) until the item fits or the page is at `MAX_ATLAS_SIZE`. The
+    /// growth is kept — `base` moves — when the page began the frame
+    /// empty, since then this frame's set alone overflowed it (AR19: a
+    /// set larger than the page; F83: one between one page and two), or
+    /// when the item alone does not fit the base page; otherwise it is
+    /// this frame's, and `begin_frame` resets to the base. Resetting here
+    /// instead, as this did until F99, overwrote the slots of every quad
+    /// the frame had emitted before the fill, and that frame was
+    /// presented with them blank or scrambled.
     fn alloc_or_make_room(&mut self, w: u32, h: u32) -> Option<(u32, u32)> {
         if let Some(pos) = self.alloc(w, h) {
             return Some(pos);
         }
-        // Quads emitted earlier this frame may sample stale UVs for one
-        // frame; the epoch bump forces a re-upload — and `Core` asks for
-        // the frame that rebuilds them — so it self-heals.
-        self.resets_this_frame += 1;
-        let bigger = (self.size * 2).min(MAX_ATLAS_SIZE);
-        if (self.resets_this_frame >= 2 || self.returned) && bigger != self.size {
-            self.grow_to(bigger);
-        } else {
-            let dropped: FxHashSet<CacheKey> = self.map.keys().copied().collect();
-            self.reset();
-            self.dropped = dropped;
-            self.frames_since_reset = 0;
+        if w + 1 > MAX_ATLAS_SIZE || h + 1 > MAX_ATLAS_SIZE {
+            return None; // no page holds it: nothing to make room for
         }
         loop {
+            let bigger = (self.size * 2).min(MAX_ATLAS_SIZE);
+            if bigger == self.size {
+                // No room without dropping a slot this frame may have
+                // used. A page that began the frame empty would refuse
+                // this on any frame; one that held earlier frames' glyphs
+                // will not, once the next frame begins on an empty page.
+                if !self.fresh {
+                    self.short = true;
+                }
+                return None;
+            }
+            self.extend_to(bigger);
+            if self.fresh || w + 1 > self.base || h + 1 > self.base {
+                self.base = self.size;
+            }
             if let Some(pos) = self.alloc(w, h) {
                 return Some(pos);
             }
-            let bigger = (self.size * 2).min(MAX_ATLAS_SIZE);
-            if bigger == self.size {
-                return None;
-            }
-            self.grow_to(bigger);
         }
     }
 
@@ -247,9 +324,6 @@ impl GlyphAtlas {
             self.map.insert(key, None);
             return None;
         };
-        if self.dropped.contains(&key) {
-            self.returned = true;
-        }
         let Some((x, y)) = self.alloc_or_make_room(glyph.w, glyph.h) else {
             self.map.insert(key, None);
             return None;
@@ -446,22 +520,77 @@ mod tests {
         assert_eq!(calls, 1);
     }
 
-    #[test]
-    fn overflow_resets_and_bumps_epoch() {
-        let mut atlas = GlyphAtlas::with_size(64);
-        for i in 0..100 {
-            atlas.get_or_insert(fake_key(i), || Some(raster(30, 30)));
+    fn filled(w: u32, h: u32, v: u8) -> RasterGlyph {
+        RasterGlyph {
+            data: vec![v; (w * h * 4) as usize],
+            ..raster(w, h)
         }
-        assert!(atlas.epoch > 0, "expected at least one reset");
-        // Still functional after reset.
-        let s = atlas.get_or_insert(fake_key(1000), || Some(raster(20, 20)));
-        assert!(s.is_some());
     }
 
-    /// AR19: a set that does not fit the page grows it, once — and from
-    /// the next frame on, nothing resets. Before, the page reset on every
-    /// overflow and never grew for a set of items that each fit, so a
-    /// frame whose glyphs outnumbered the page reset mid-emit every time.
+    /// Whether every texel of `slot` is `v`: the slot still holds what
+    /// was put there.
+    fn holds(atlas: &GlyphAtlas, slot: GlyphSlot, v: u8) -> bool {
+        (slot.y..slot.y + slot.h).all(|y| {
+            let at = ((y * atlas.size + slot.x) * 4) as usize;
+            atlas.pixels[at..at + (slot.w * 4) as usize]
+                .iter()
+                .all(|&p| p == v)
+        })
+    }
+
+    /// F99: a page that fills mid-frame makes room without moving or
+    /// overwriting a slot the frame already has — it extends, the pixels
+    /// kept in place — and resets only when the next frame begins, back
+    /// to the size it had. It used to reset on the spot, and every quad
+    /// emitted before the fill sampled the page packed over it.
+    #[test]
+    fn a_page_that_fills_mid_frame_keeps_the_frames_slots_until_it_ends() {
+        let mut atlas = GlyphAtlas::with_size(64);
+        // 30×30 glyphs; a 64 page holds four.
+        atlas.begin_frame();
+        for i in 0..4u32 {
+            atlas.get_or_insert(fake_key(i), || Some(filled(30, 30, i as u8 + 1)));
+        }
+        assert_eq!(atlas.size, 64);
+        // The next frame draws one glyph it had and four new ones: the
+        // fifth does not fit the page with the four old ones in it.
+        atlas.begin_frame();
+        let mut used = Vec::new();
+        for i in [0u32, 4, 5, 6, 7] {
+            let v = i as u8 + 1;
+            let slot = atlas
+                .get_or_insert(fake_key(i), || Some(filled(30, 30, v)))
+                .expect("room is made");
+            used.push((slot, v));
+            for &(slot, v) in &used {
+                assert!(
+                    holds(&atlas, slot, v),
+                    "a slot this frame used was overwritten"
+                );
+            }
+        }
+        assert_eq!(atlas.size, 128, "extended for the rest of the frame");
+        assert!(!atlas.short());
+        let epoch = atlas.epoch;
+        // Between frames the extension goes: the page is its old size,
+        // empty, and the frame's glyphs re-rasterize.
+        atlas.begin_frame();
+        assert_eq!(atlas.size, 64);
+        assert!(atlas.epoch > epoch, "reset before anything is emitted");
+        let mut rasterized = 0;
+        for i in [4u32, 5, 6, 7] {
+            atlas.get_or_insert(fake_key(i), || {
+                rasterized += 1;
+                Some(filled(30, 30, i as u8 + 1))
+            });
+        }
+        assert_eq!(rasterized, 4);
+        assert_eq!(atlas.size, 64, "the set fits the page: no growth kept");
+    }
+
+    /// AR19: a set that does not fit the page grows it, and from the
+    /// next frame on nothing resets. A set that turns over — one page's
+    /// worth of new keys a frame — never keeps a growth.
     #[test]
     fn a_working_set_larger_than_the_page_grows_it_and_then_holds() {
         let mut atlas = GlyphAtlas::with_size(64);
@@ -470,62 +599,140 @@ mod tests {
             atlas.get_or_insert(fake_key(i), || Some(raster(30, 30)));
         }
         assert!(atlas.size >= 512, "grown to hold the set: {}", atlas.size);
-        let epoch = atlas.epoch;
-        // The same set next frame: what the last growth dropped is
-        // rasterized again and fits, and the page is still.
-        atlas.begin_frame();
-        for i in 0..100 {
-            atlas.get_or_insert(fake_key(i), || Some(raster(30, 30)));
-        }
-        assert_eq!(atlas.epoch, epoch, "no reset on the second frame");
-        atlas.begin_frame();
-        for i in 0..100 {
-            atlas.get_or_insert(fake_key(i), || panic!("cached by now"));
-        }
-        assert_eq!(atlas.epoch, epoch);
-        // A turned-over set — one page's worth of new keys per frame —
-        // still resets rather than growing without bound.
-        let mut atlas = GlyphAtlas::with_size(64);
-        for frame in 0..10u32 {
+        let (size, epoch) = (atlas.size, atlas.epoch);
+        for _ in 0..3 {
             atlas.begin_frame();
+            for i in 0..100 {
+                atlas.get_or_insert(fake_key(i), || panic!("cached"));
+            }
+        }
+        assert_eq!(
+            (atlas.size, atlas.epoch),
+            (size, epoch),
+            "still from then on"
+        );
+        // A set that turns over whole each frame — a page's worth of new
+        // keys every frame — grows only until a page lasts past two
+        // frames, and then holds its size, emptied between frames.
+        let mut atlas = GlyphAtlas::with_size(64);
+        let mut sizes = Vec::new();
+        for frame in 0..40u32 {
+            atlas.begin_frame();
+            let (size, epoch) = (atlas.size, atlas.epoch);
             for i in 0..4 {
                 atlas.get_or_insert(fake_key(frame * 4 + i), || Some(raster(30, 30)));
             }
+            if frame >= 20 {
+                assert_eq!(
+                    (atlas.size, atlas.epoch),
+                    (size, epoch),
+                    "no fill mid-frame"
+                );
+            }
+            sizes.push(atlas.size);
         }
-        assert_eq!(atlas.size, 64, "one page's worth a frame never grows it");
+        assert!(sizes[20..].iter().all(|&s| s == sizes[39]), "{sizes:?}");
+        assert!(sizes[39] <= 256, "bounded: {sizes:?}");
     }
 
-    /// F83: a working set between one page and two — the glyphs of a
-    /// big font — resets once a frame, never twice in one, so the
-    /// twice-a-frame rule never grew it and every frame sampled a page
-    /// overwritten under its early quads. A glyph the last reset dropped
-    /// coming back to a full page is that thrash, and the page grows;
-    /// the next frame is still.
+    /// F99: a set that turns over a little each frame — a list scrolling
+    /// through fonts — is emptied at `begin_frame`, when fewer rows are
+    /// free than a frame has lately opened, and never fills mid-frame.
+    #[test]
+    fn a_turnover_the_rows_foresee_is_emptied_between_frames() {
+        // 30×30 glyphs; a 256 page's row of 32 holds eight, and it has
+        // eight rows. Eight new keys a frame is a row a frame.
+        let mut atlas = GlyphAtlas::with_size(256);
+        let mut resets = 0;
+        for frame in 0..40u32 {
+            let epoch = atlas.epoch;
+            atlas.begin_frame();
+            if atlas.epoch != epoch {
+                resets += 1;
+            }
+            let (size, epoch) = (atlas.size, atlas.epoch);
+            for i in 0..8 {
+                atlas.get_or_insert(fake_key(frame * 8 + i), || Some(raster(30, 30)));
+            }
+            assert_eq!(
+                (atlas.size, atlas.epoch),
+                (size, epoch),
+                "frame {frame}: the page filled mid-frame"
+            );
+        }
+        assert_eq!(atlas.size, 256);
+        assert!(resets >= 4, "emptied between frames: {resets}");
+    }
+
+    /// F83's thrash, measured: a page about to fill within two frames of
+    /// being emptied is too small for its set and its turnover, and
+    /// doubles at `begin_frame` with every slot in place — the set it
+    /// holds is not rasterized again.
+    #[test]
+    fn a_page_emptied_again_within_two_frames_grows_with_its_slots() {
+        let mut atlas = GlyphAtlas::with_size(256);
+        // Six rows that stay, a new row a frame, on a page of eight.
+        let mut next = 1000;
+        let mut frame = |atlas: &mut GlyphAtlas| {
+            atlas.begin_frame();
+            for i in 0..48 {
+                atlas.get_or_insert(fake_key(i), || Some(raster(30, 30)));
+            }
+            for _ in 0..8 {
+                next += 1;
+                atlas.get_or_insert(fake_key(next), || Some(raster(30, 30)));
+            }
+        };
+        frame(&mut atlas); // on an empty page: seven rows
+        frame(&mut atlas); // eight: full, a row a frame measured
+        let epoch = atlas.epoch;
+        frame(&mut atlas); // emptied before it: seven rows again
+        assert_eq!((atlas.size, atlas.epoch), (256, epoch + 1));
+        atlas.begin_frame(); // one row free, a row a frame: again, so soon
+        assert_eq!(atlas.size, 512, "grown instead");
+        for i in 0..48 {
+            atlas.get_or_insert(fake_key(i), || panic!("kept in place"));
+        }
+        let epoch = atlas.epoch;
+        for _ in 0..40 {
+            frame(&mut atlas);
+            assert_eq!(atlas.size, 512, "and it holds");
+        }
+        assert!(
+            atlas.epoch > epoch,
+            "emptied between frames as it turns over"
+        );
+    }
+
+    /// F83: a set between one page and two — the glyphs of a big font —
+    /// that first arrives on a page holding older glyphs: the frame it
+    /// fills extends the page for itself, the next begins empty at the
+    /// old size, fills again with that set alone, and keeps the growth;
+    /// from then on the page is still.
     #[test]
     fn a_set_between_one_page_and_two_grows_on_its_second_frame() {
         let mut atlas = GlyphAtlas::with_size(64);
-        // Six 30×30 glyphs; a 64 page holds four.
-        let frame = |atlas: &mut GlyphAtlas| {
+        let frame = |atlas: &mut GlyphAtlas, keys: std::ops::Range<u32>| {
             atlas.begin_frame();
-            for i in 0..6 {
+            for i in keys {
                 atlas.get_or_insert(fake_key(i), || Some(raster(30, 30)));
             }
         };
-        frame(&mut atlas);
-        assert_eq!(atlas.size, 64, "one reset in the first frame");
-        frame(&mut atlas);
-        assert!(atlas.size > 64, "the dropped glyphs came back: grown");
+        frame(&mut atlas, 100..102);
+        // Six 30×30 glyphs; a 64 page holds four.
+        frame(&mut atlas, 0..6);
+        assert_eq!(atlas.size, 128, "extended for the frame");
+        frame(&mut atlas, 0..6);
+        assert_eq!(atlas.size, 128, "the set alone overflowed: kept");
         let epoch = atlas.epoch;
-        frame(&mut atlas);
-        frame(&mut atlas);
+        frame(&mut atlas, 0..6);
+        frame(&mut atlas, 0..6);
         assert_eq!(atlas.epoch, epoch, "and still from then on");
     }
 
-    /// RG23: the thrash F83 grows on is a fill on the frame after the
-    /// reset. A fill much later that happens to want back one glyph the
-    /// reset dropped — the chrome's letters are in every set — is an
-    /// ordinary turnover and resets, or every later fill would double
-    /// the page and it would never shrink.
+    /// RG23: a fill long after the last, one that happens to want back a
+    /// glyph an earlier reset dropped — the chrome's letters are in every
+    /// set — is an ordinary turnover, and the page keeps its size.
     #[test]
     fn a_fill_long_after_a_reset_resets_even_with_a_dropped_glyph_back() {
         let mut atlas = GlyphAtlas::with_size(64);
@@ -538,13 +745,60 @@ mod tests {
         };
         frame(&mut atlas, &[0, 1, 2, 3]);
         frame(&mut atlas, &[4, 5, 6, 7]);
-        assert_eq!(atlas.size, 64, "one turnover, one reset");
         for _ in 0..3 {
             frame(&mut atlas, &[4, 5, 6, 7]);
         }
-        // Key 0 was dropped by that reset, frames ago.
+        assert_eq!(atlas.size, 64, "one turnover, one reset");
+        frame(&mut atlas, &[0, 8, 9, 10]);
         frame(&mut atlas, &[0, 8, 9, 10]);
         assert_eq!(atlas.size, 64, "a later turnover resets, it does not grow");
+    }
+
+    /// F99: a page at `MAX_ATLAS_SIZE` cannot extend, so a fill there
+    /// refuses the glyph for this frame rather than drop a slot the frame
+    /// used, says so (`short`, which asks for the next frame), and the
+    /// next frame begins on an empty page that takes it. A page that
+    /// began the frame empty and still cannot take it is not short:
+    /// nothing the next frame does would change that.
+    #[test]
+    fn a_full_page_at_the_largest_size_refuses_for_one_frame() {
+        let mut atlas = GlyphAtlas::with_size(MAX_ATLAS_SIZE);
+        // 1000×1000 items: a 4096 page holds sixteen.
+        atlas.begin_frame();
+        let mut used = Vec::new();
+        for i in 0..16u32 {
+            let v = i as u8 + 1;
+            let slot = atlas
+                .get_or_insert(fake_key(i), || Some(filled(1000, 1000, v)))
+                .expect("fits");
+            used.push((slot, v));
+        }
+        assert!(!atlas.short());
+        atlas.begin_frame();
+        assert!(
+            atlas
+                .get_or_insert(fake_key(16), || Some(raster(1000, 1000)))
+                .is_none()
+        );
+        assert!(atlas.short(), "refused on a page holding the last frame");
+        for &(slot, v) in &used {
+            assert!(holds(&atlas, slot, v), "nothing dropped under the frame");
+        }
+        let epoch = atlas.epoch;
+        atlas.begin_frame();
+        assert!(atlas.epoch > epoch && !atlas.short());
+        assert!(
+            atlas
+                .get_or_insert(fake_key(16), || Some(raster(1000, 1000)))
+                .is_some()
+        );
+        for i in 0..16u32 {
+            atlas.get_or_insert(fake_key(i), || Some(raster(1000, 1000)));
+        }
+        assert!(
+            !atlas.short(),
+            "a set bigger than the page on an empty one is not short"
+        );
     }
 
     /// F66: a synthesized shape is one slot per character and cell size —

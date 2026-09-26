@@ -420,10 +420,6 @@ pub struct Core {
     /// A view asked for one more frame (`request_frame`); cleared by
     /// `begin_frame`, reported through `animating`.
     frame_requested: bool,
-    /// The atlas epoch at `begin_frame`: one that moved by the end of the
-    /// frame means quads emitted before the reset sample a page that was
-    /// overwritten after them, so the next frame is asked for (AR19).
-    atlas_epoch_seen: u64,
     /// The focused editor's caret rect (logical, viewport coords) as of the
     /// last finish_frame — where drivers should anchor the OS IME window.
     ime_rect: Option<Rect>,
@@ -910,7 +906,6 @@ impl Core {
             ghost_clip_ids: Vec::new(),
             ghost_rect: Vec::new(),
             frame_requested: false,
-            atlas_epoch_seen: 0,
             pending_reveal: Vec::new(),
             pending_focus_step: None,
             region: None,
@@ -1384,11 +1379,10 @@ impl Core {
         // because a removal can land between frames, after the list was
         // cleared, and through a window that never draws again.
         self.sync_dropped();
-        // The atlas counts its resets per frame (AR19): a page that fills
-        // twice in one frame grows, and a frame that moved the epoch at
-        // all is followed by one that rebuilds what sampled the old page.
+        // Before anything is emitted: the one point where the atlas may
+        // empty its page — one the last frame extended, or one about to
+        // fill — without a quad sampling what it dropped (F99).
         self.atlas.begin_frame();
-        self.atlas_epoch_seen = self.atlas.epoch;
         // The text list goes with the tree: a kept frame's text nodes carry
         // that frame's `TextId`s, and nothing else can resolve them.
         self.text.begin_frame(

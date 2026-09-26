@@ -1834,6 +1834,9 @@ pub struct KuiDrawData {
     pub scale: f32,
     /// RGBA, atlas_size * atlas_size * 4 bytes.
     pub atlas_pixels: *const u8,
+    /// Changes either way between frames: a page extended for one frame
+    /// goes back to its size at the next (backlog F99). Size the texture
+    /// to it, not to the largest seen.
     pub atlas_size: u32,
     /// Re-upload the atlas texture when either of these changes/sets.
     pub atlas_dirty: bool,

@@ -948,12 +948,12 @@ impl Core {
         self.interaction.scrollbars = scrollbars;
         self.ime_rect = self.focused_caret_rect();
         self.note_sink_caret();
-        // The atlas reset or grew under this frame: the templates built
-        // before it are stamped stale and the quads already emitted sample
-        // the page that was overwritten after them. "Rebuild next frame"
-        // needs there to be one (AR19: nothing asked, so an input-driven
-        // app kept the corrupt frame until the next event).
-        if self.atlas.epoch != self.atlas_epoch_seen {
+        // The atlas refused a glyph for room this frame rather than drop
+        // a slot the frame had already used (F99): the next frame starts
+        // on an empty page and draws it, and has to come — an
+        // input-driven app would keep the short frame until the next
+        // event. A page that only grew is right as it is presented.
+        if self.atlas.short() {
             self.frame_requested = true;
         }
     }

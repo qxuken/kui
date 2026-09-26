@@ -24,8 +24,8 @@ was the first bare bump to break an app in five releases).
 ## 0.1.0-alpha.21 (unreleased)
 
 **What breaks.** No door changes, the ABI stays at 19 and the frame at
-v16. Rust gains two methods and a type, and Node and C a door each. One
-reading changes:
+v16. Rust gains two methods and a type, and Node and C a door each.
+Three readings change:
 
 - A font face whose glyphs cannot be measured (no `head`, `hhea` or
   `hmtx`) is refused (under Fixed, F98). `addFontData` and
@@ -36,6 +36,18 @@ reading changes:
   out a family of only such faces: GB18030 Bitmap on a Mac. A host that
   unwrapped the handle for such a file fails at load, where the text
   drawn with it used to fail.
+- The glyph atlas's size can go down between frames (under Fixed, F99):
+  a page that filled mid-frame is doubled for that frame and goes back
+  to its size at the next. C's `KuiDrawData.atlas_size`, Node's
+  `frameStats().atlasSize` and Rust's `GlyphAtlas::size` read the
+  doubled size for one frame. A renderer of your own that sized its
+  texture to the largest `atlas_size` it had seen samples the smaller
+  page at the wrong scale. Size the texture to each frame's
+  `atlas_size`, as `kui-wgpu` does. A set that turns over fast can now
+  keep a bigger page than before: a page that has to be emptied twice
+  within two frames doubles, up to 4096.
+- A frame that grew the atlas no longer asks for another frame
+  (`animating()` stays false): it is drawn right as it is.
 
 ### Added
 
@@ -110,6 +122,37 @@ reading changes:
   *What you can delete:* a family list's filter for GB18030 Bitmap, and
   any code that kept Han out of `mono` or named a CJK family ahead of
   it to dodge the panic.
+
+- **One frame in a scroll drew nearly every glyph blank or scrambled**
+  (backlog F99, from kawoosh's fonts-pane report). kawoosh's font
+  picker scrolls a list of cards, each drawing its family's name and
+  two lines of code in that family. Now and then, while scrolling or
+  filtering, one frame showed the chrome's text and every card blank
+  or in scraps, and the next frame was right. Each card brings glyphs
+  no earlier frame drew, so the atlas page filled every so often. When
+  it filled mid-frame it dropped every slot and packed new glyphs over
+  them. The quads emitted earlier in that frame still pointed at the
+  old slots, and that frame was presented. Any app whose text turns
+  over (new fonts, sizes, CJK or emoji as it scrolls) hit it. Now the
+  page is never emptied while a frame is being drawn. `begin_frame`
+  empties it before anything is emitted when the rows the last frames
+  opened say it is about to fill, which catches the steady turnover. A
+  fill it does not foresee doubles the page for that frame with every
+  glyph where it was, since quads address the atlas in texels, and the
+  next frame goes back to the page's size. A page that has to be
+  emptied again within two frames doubles for good, which is how a set
+  too big for the page grows (AR19, F83). At 4096, where the page
+  cannot double, the glyph that does not fit is left out of that frame
+  and the next frame, which is asked for, draws it. Cost: an ordinary
+  frame does nothing new. Scrolling 400 frames of such a list at 2×,
+  kawoosh-style: before, 59 frames were drawn wrong, and each was
+  followed by a ~2.2 ms rebuild; after, 15 frames emptied the page
+  first at ~2.5 ms each, and the page settled at 2048. A fill nothing
+  foresaw costs the frame about 0.5–1 ms at 1024 (the 4 MB copied into
+  a 16 MB page) and 2–3 ms at 2048.
+  *What you can delete:* nothing an app could have written. The wrong
+  frame came from inside the atlas, and nothing outside it could
+  reach it.
 
 ## 0.1.0-alpha.20 (2026-09-26)
 

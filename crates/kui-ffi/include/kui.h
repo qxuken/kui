@@ -1615,7 +1615,8 @@ typedef struct KuiDrawData {
     float viewport_w, viewport_h; /* physical pixels */
     float scale;
     const uint8_t *atlas_pixels;  /* RGBA, atlas_size^2 * 4 bytes */
-    uint32_t atlas_size;
+    uint32_t atlas_size;          /* either way between frames: size the
+                                   * texture to it, not to the largest seen */
     bool atlas_dirty;             /* re-upload when set or epoch changed */
     uint64_t atlas_epoch;
     /* One per KUI_QUAD_FRAGMENT quad, indexed by its uv[0]; NULL and 0 on a

@@ -55,6 +55,8 @@ upgrade reports of the same day, the day they were filed, and F97 — the
 installed families with what they are — from the kawoosh fonts-pane
 report of the same day, the day it was filed, and F98 — a face with no
 metrics refused — from the kawoosh Han-in-mono report of the same day,
+the day it was filed, and F99 — an atlas page never emptied under a
+frame — from the kawoosh fonts-pane scrolling report of the same day,
 the day it was filed. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
@@ -1352,6 +1354,15 @@ fallback picked GB18030 Bitmap for 字: a bitmap-only face with no
 infinite. One entry, F98, **built 2026-09-26**, the day it was filed,
 and in the archive.
 
+## From the kawoosh fonts-pane scrolling report (2026-09-26)
+
+Scrolling or filtering kawoosh's fonts pane — a virtual list of cards,
+each drawing text in its own family — showed now and then one frame
+with nearly every glyph in the window blank or in scraps, and the next
+frame right. The atlas page filled mid-frame, reset under the quads
+already emitted, and that frame was presented. One entry, F99,
+**built 2026-09-26**, the day it was filed, and in the archive.
+
 ## From the regression pass of 2026-09-19
 
 A review of everything since the alpha.15 tag — F67–F75, nine features
@@ -2352,6 +2363,8 @@ Nothing of the kawoosh fonts-pane report is open (F97 **built
 2026-09-26**, the day it was filed).
 Nothing of the kawoosh Han-in-mono report is open (F98 **built
 2026-09-26**, the day it was filed).
+Nothing of the kawoosh fonts-pane scrolling report is open (F99
+**built 2026-09-26**, the day it was filed).
 Nothing of the Windows regression round of 2026-09-26 is open
 (RG38–RG46 **built 2026-09-26**, the day they were filed).
 Nothing of the Linux round under WSLg is open (RG47–RG49 **built
@@ -3162,6 +3175,10 @@ move.
 **From the kawoosh Han-in-mono report (2026-09-26)** — F98, filed and built the same day
 
 - `!` **F98** — [Han text in `mono` falls back to a face with no metrics: a debug build overflows, a release one draws the rest of the line at infinity](backlog/closed-2026-09.md#-f98--han-text-in-mono-falls-back-to-a-face-with-no-metrics-a-debug-build-overflows-a-release-one-draws-the-rest-of-the-line-at-infinity--done-2026-09-26) — done (2026-09-26) — a face without a readable `head`, `hhea` or `hmtx` is kept out of the font database (`text::keep_measurable`): at the session's start, and from `add_font_data`, `load_font_file` and `load_fonts_dir`
+
+**From the kawoosh fonts-pane scrolling report (2026-09-26)** — F99, filed and built the same day
+
+- `!` **F99** — [A glyph set that turns over fills the atlas mid-frame and the page resets under the quads already emitted: now and then one frame draws nearly every glyph blank](backlog/closed-2026-09.md#-f99--a-glyph-set-that-turns-over-fills-the-atlas-mid-frame-and-the-page-resets-under-the-quads-already-emitted-now-and-then-one-frame-draws-nearly-every-glyph-blank--done-2026-09-26) — done (2026-09-26) — the page is never emptied during a frame: `begin_frame` empties it when the rows the last frames opened foresee a fill, an unforeseen fill doubles it for the frame with every slot in place (`extend_to`), a page emptied again within two frames doubles for good, and at 4096 the glyph waits a frame (`short`)
 
 **From the regression pass of 2026-09-25** — RG17–RG36 built the same day, before the alpha.17 tag; RG37 the same day, after it
 

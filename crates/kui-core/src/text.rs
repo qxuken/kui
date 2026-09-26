@@ -2341,8 +2341,9 @@ fn build_templates(
                     });
                 }
             }
-            // Rasterizing may have reset the atlas mid-build; rebuild next
-            // frame if so by stamping the epoch we actually ended on.
+            // Rasterizing may have extended the page mid-build, which
+            // keeps every slot where it was but moves the epoch: stamp the
+            // one we ended on.
             entry.glyphs_built_for = Some((entry.wrap.map(f32::to_bits), atlas.epoch));
         }
     }

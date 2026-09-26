@@ -460,7 +460,8 @@ impl CellStore {
         let entry = &self.frame[id.0 as usize];
         let table = self.tables.get_mut(&key).expect("just built");
         if table.epoch != atlas.epoch {
-            // The atlas was repacked: every slot is stale.
+            // The page was replaced — reset, whose slots are gone, or
+            // resized, whose slots stayed: look every one up again.
             table.ascii.iter_mut().for_each(|g| *g = None);
             table.other.clear();
             table.epoch = atlas.epoch;

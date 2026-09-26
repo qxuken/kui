@@ -383,13 +383,14 @@ fn a_removed_image_under_a_live_fragment_draws_nothing() {
 
 /// AR19: a working set larger than the atlas page — three atlas-backed
 /// images that do not fit one page together — grows the page within the
-/// frame instead of resetting it on every overflow, and the frame that
-/// moved the epoch asks for the next one, since the quads emitted before
-/// the reset sample a page that was overwritten after them. Before, the
-/// page reset mid-emit every frame and nothing asked for the frame that
-/// would have rebuilt it.
+/// frame instead of resetting it on every overflow. Before, the page
+/// reset mid-emit every frame. The growth keeps every slot where it was
+/// (F99), so the frame that grew is right as presented and asks for no
+/// other; until F99 it reset first, the quads emitted before sampled the
+/// page packed over them, and the frame asked for the one that rebuilt
+/// them.
 #[test]
-fn a_set_larger_than_the_atlas_page_grows_it_and_asks_for_a_frame() {
+fn a_set_larger_than_the_atlas_page_grows_it_within_the_frame() {
     let mut core = Core::new();
     core.atlas = kui_core::atlas::GlyphAtlas::with_size(128);
     let ids: Vec<_> = (0..3)
@@ -411,8 +412,8 @@ fn a_set_larger_than_the_atlas_page_grows_it_and_asks_for_a_frame() {
         core.atlas.size
     );
     assert!(
-        core.animating(),
-        "the frame that moved the epoch asks for another"
+        !core.animating(),
+        "the frame that grew is right as it is: it asks for no other"
     );
     let epoch = core.atlas.epoch;
     draw(&mut core);
