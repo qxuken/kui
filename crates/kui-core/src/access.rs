@@ -31,6 +31,7 @@ use std::sync::Arc;
 use cosmic_text::Buffer;
 use unicode_segmentation::UnicodeSegmentation;
 
+use crate::display::{Clip, NO_CLIP};
 use crate::edit::EditStore;
 use crate::geom::{Rect, Size, Vec2};
 use crate::key::Key;
@@ -471,7 +472,9 @@ pub struct AccessRun {
     pub start: usize,
     pub end: usize,
     pub text: String,
-    /// Logical px, viewport coordinates.
+    /// Logical px, viewport coordinates, cut to the clip the text is
+    /// drawn under as a node's `rect` is; `char_positions` still place
+    /// every character where it is drawn.
     pub rect: Rect,
     pub char_lengths: Vec<u8>,
     /// Each character's x relative to `rect.x`, and its width.
@@ -519,7 +522,11 @@ pub struct AccessNode {
     pub name: Option<String>,
     /// `description` on the spec — the `description` prop, or a `tooltip`.
     pub description: Option<String>,
-    /// Final laid-out rect, logical px, viewport coordinates.
+    /// Final laid-out rect, logical px, viewport coordinates, cut to the
+    /// clip the node is drawn under — the one its hit region carries
+    /// (backlog F93) — so a reader's hover finds only what a pointer
+    /// could. A node wholly clipped away is a zero-size rect on the clip's
+    /// edge nearest it: still in the tree, still actionable, never hit.
     pub rect: Rect,
     /// The node's string value, which the platform has exactly one slot
     /// for: an editor's committed text (a custom editor's: the lines it
@@ -960,6 +967,92 @@ pub(crate) struct Sources<'a> {
     pub modal: Option<Key>,
     pub viewport: Size,
     pub scale: f32,
+    /// The clip each node was emitted under, by tree index: its
+    /// ancestors' only, and the one its hit region carries, so a float
+    /// that escapes has none and a `clip` float has its parent's (F90).
+    /// Empty when the frame clipped nothing.
+    pub clips: &'a [Clip],
+}
+
+/// The clip node `i` was emitted under (see [`Sources::clips`]).
+fn clip_of(src: &Sources<'_>, i: usize) -> Rect {
+    src.clips.get(i).map_or(NO_CLIP, |c| c.rect)
+}
+
+/// `rect` cut to `clip`, so assistive technology finds and highlights
+/// only what is drawn (backlog F93). A rect wholly outside becomes a
+/// zero-size one on the clip's edge nearest it: the node keeps its place
+/// in reading order and its actions (a reader's "scroll into view" goes by
+/// key), but a point never lands in it. The clip is a rect even where the
+/// clipper's corners are round, as the hit test's is.
+fn clipped(rect: Rect, clip: Rect) -> Rect {
+    let x0 = rect.x.max(clip.x);
+    let y0 = rect.y.max(clip.y);
+    let x1 = (rect.x + rect.w).min(clip.x + clip.w);
+    let y1 = (rect.y + rect.h).min(clip.y + clip.h);
+    // Gone along an axis when nothing of it is left, which is emission's
+    // cull: past the edge, or on it with no extent inside. An axis the
+    // rect never had extent on (a caret-wide run) is not gone for that.
+    let gone = |lo: f32, hi: f32, extent: f32| hi < lo || (hi == lo && extent > 0.0);
+    if gone(x0, x1, rect.w) || gone(y0, y1, rect.h) {
+        // `max` then `min` rather than `clamp`, which panics on a clip
+        // whose edges cross.
+        let x = rect.x.max(clip.x).min(clip.x + clip.w);
+        let y = rect.y.max(clip.y).min(clip.y + clip.h);
+        return Rect::new(x, y, 0.0, 0.0);
+    }
+    Rect::new(x0, y0, x1 - x0, y1 - y0)
+}
+
+/// Node `i`'s access rect: the root's viewport, everyone else's box cut
+/// to the clip it was emitted under.
+fn node_rect(tree: &Tree, src: &Sources<'_>, i: usize) -> Rect {
+    if i == 0 {
+        Rect::new(0.0, 0.0, src.viewport.w, src.viewport.h)
+    } else {
+        clipped(
+            Rect::from_pos_size(tree.pos[i], tree.size[i]),
+            clip_of(src, i),
+        )
+    }
+}
+
+/// What an editor's runs are cut to: the node's clip and, for a field
+/// that does not fold to its width, its content box across, as emission
+/// cuts its glyphs (F41) — a scrolled field's text past its edge is not
+/// drawn, so a reader should not find it there either.
+fn edit_run_clip(tree: &Tree, src: &Sources<'_>, i: usize, edit_key: Key) -> Rect {
+    let clip = clip_of(src, i);
+    if src.edit.folds(edit_key) {
+        return clip;
+    }
+    let pad = tree.specs[i].layout.padding;
+    let across = Rect::new(
+        tree.pos[i].x + pad.l,
+        clip.y,
+        (tree.size[i].w - pad.x()).max(0.0),
+        clip.h,
+    );
+    clip.intersect(&across)
+}
+
+/// Cuts runs to `clip` the way [`clipped`] cuts a node, keeping each
+/// character where it is: `char_positions` are relative to the run's x,
+/// so they move by what the x did.
+fn clip_runs(runs: &mut [AccessRun], clip: Rect) {
+    if clip == NO_CLIP {
+        return;
+    }
+    for run in runs {
+        let cut = clipped(run.rect, clip);
+        let dx = run.rect.x - cut.x;
+        if dx != 0.0 {
+            for p in &mut run.char_positions {
+                *p += dx;
+            }
+        }
+        run.rect = cut;
+    }
 }
 
 /// A hash of every input [`build`] reads, taken by the same walk with
@@ -1036,12 +1129,9 @@ pub(crate) fn inputs_hash(tree: &Tree, src: &Sources<'_>) -> Option<u64> {
         sem.presentational.hash(&mut h);
         ax.description.as_deref().hash(&mut h);
 
-        // The rect, which is the root's viewport and everyone else's box.
-        let rect = if i == 0 {
-            Rect::new(0.0, 0.0, src.viewport.w, src.viewport.h)
-        } else {
-            Rect::from_pos_size(tree.pos[i], tree.size[i])
-        };
+        // The rect, which is the root's viewport and everyone else's box
+        // cut to its clip.
+        let rect = node_rect(tree, src, i);
         for v in [rect.x, rect.y, rect.w, rect.h] {
             f(&mut h, v);
         }
@@ -1080,6 +1170,10 @@ pub(crate) fn inputs_hash(tree: &Tree, src: &Sources<'_>) -> Option<u64> {
                 // on every mutation that could, so it stands in for reading
                 // the runs, which would cost what building them costs.
                 src.edit.version(edit_key).hash(&mut h);
+                let clip = edit_run_clip(tree, src, i, edit_key);
+                for v in [clip.x, clip.y, clip.w, clip.h] {
+                    f(&mut h, v);
+                }
             }
             NodeContent::Cells(id) => src.cells.value(id).hash(&mut h),
             _ => {}
@@ -1139,11 +1233,7 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
         let key = tree.keys[i];
         parents[i] = Some(key);
         let spec: &NodeSpec = &tree.specs[i];
-        let rect = if i == 0 {
-            Rect::new(0.0, 0.0, src.viewport.w, src.viewport.h)
-        } else {
-            Rect::from_pos_size(tree.pos[i], tree.size[i])
-        };
+        let rect = node_rect(tree, src, i);
         let mut node = AccessNode {
             key,
             parent: inherited,
@@ -1196,6 +1286,7 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
             let origin = Vec2::new(tree.pos[i].x + pad.l, tree.pos[i].y + pad.t);
             node.value = src.edit.text(edit_key);
             node.runs = src.edit.runs(edit_key, key, origin, src.scale);
+            clip_runs(&mut node.runs, edit_run_clip(tree, src, i, edit_key));
             if let Some((caret, selection)) = src.edit.caret_and_selection(edit_key) {
                 node.caret = Some(caret);
                 node.selection = selection;
@@ -1396,6 +1487,7 @@ fn custom_editor(tree: &Tree, src: &Sources<'_>, i: usize, node: &mut AccessNode
             let base = line_text.len();
             line_text.push_str(src.text.content(id));
             let newline = !last && k + 1 == texts.len();
+            let first = node.runs.len();
             src.text.with_buffer(id, |b| {
                 runs_of_buffer(
                     b,
@@ -1411,6 +1503,7 @@ fn custom_editor(tree: &Tree, src: &Sources<'_>, i: usize, node: &mut AccessNode
                     &mut node.runs,
                 );
             });
+            clip_runs(&mut node.runs[first..], clip_of(src, t));
         }
         if texts.is_empty() {
             // An empty line still has a place for the caret.
@@ -1421,6 +1514,8 @@ fn custom_editor(tree: &Tree, src: &Sources<'_>, i: usize, node: &mut AccessNode
                 Rect::from_pos_size(tree.pos[l], tree.size[l]),
                 !last,
             ));
+            let at = node.runs.len() - 1;
+            clip_runs(&mut node.runs[at..], clip_of(src, l));
             run_no += 1;
         }
         if let Some(c) = tree.specs[l].access().caret {

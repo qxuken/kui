@@ -690,6 +690,62 @@ static void conf_clip_float(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* A fixed box that posts `key` when clicked and is named `label`: the
+ * nodes and rows of conf_clip_access. */
+static KuiSpec conf_clip_access_button(float w, float h, uint32_t bg, const char *label) {
+    KuiSpec spec = {.width = {KUI_FIXED, w}, .height = {KUI_FIXED, h}, .bg = bg,
+                    .label = KUI_STR(label)};
+    return spec;
+}
+
+/* conformance::build_clip_access (backlog F93): access rects cut to the
+ * clip. A toolbar over a clip canvas beside a short scroller; on the
+ * canvas a float straddling its top, one wholly past it (both
+ * float_clip) and one escaping, and in the scroller three rows, the
+ * second half out and the third wholly out. */
+static void conf_clip_access(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiSpec outer = {.width = {KUI_GROW, 1}, .height = {KUI_GROW, 1}};
+    kui_open(ui, &outer, NULL);
+    KuiSpec toolbar = conf_clip_access_button(0, 40, 0x3a3f52ff, "Toolbar");
+    toolbar.width = (KuiSizing){KUI_GROW, 1};
+    kui_open_keyed(ui, KUI_STR("toolbar"), &toolbar, conf_kind("toolbar"));
+    kui_close(ui);
+    KuiSpec body = {.dir = KUI_ROW, .width = {KUI_GROW, 1}, .height = {KUI_GROW, 1}};
+    kui_open(ui, &body, NULL);
+    KuiSpec canvas = {.width = {KUI_GROW, 1}, .height = {KUI_GROW, 1},
+                      .overflow = KUI_CLIP, .bg = 0x101018ff};
+    kui_open_keyed(ui, KUI_STR("canvas"), &canvas, NULL);
+    const struct { const char *key, *label; float dx, dy; uint32_t clip; } nodes[] = {
+        {"cut", "Cut", 20, -20, 1},
+        {"past", "Past", 100, -60, 1},
+        {"free", "Free", 140, -60, 0},
+    };
+    for (size_t i = 0; i < sizeof nodes / sizeof nodes[0]; i++) {
+        KuiSpec node = conf_clip_access_button(60, 40, 0x3b5bd4ff, nodes[i].label);
+        node.float_mode = KUI_FLOAT_PARENT;
+        node.float_dx = nodes[i].dx;
+        node.float_dy = nodes[i].dy;
+        node.float_clip = nodes[i].clip;
+        kui_open_keyed(ui, KUI_STR(nodes[i].key), &node, conf_kind(nodes[i].key));
+        kui_close(ui);
+    }
+    kui_close(ui);
+    KuiSpec list = {.width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 50},
+                    .overflow = KUI_SCROLL_Y, .bg = 0x202030ff};
+    kui_open_keyed(ui, KUI_STR("list"), &list, NULL);
+    const char *rows[][2] = {{"row0", "Row 0"}, {"row1", "Row 1"}, {"row2", "Row 2"}};
+    for (size_t i = 0; i < 3; i++) {
+        KuiSpec row = conf_clip_access_button(100, 30, 0x73d98cff, rows[i][1]);
+        kui_open_keyed(ui, KUI_STR(rows[i][0]), &row, conf_kind(rows[i][0]));
+        kui_close(ui);
+    }
+    kui_close(ui);
+    kui_close(ui);
+    kui_close(ui);
+}
+
 static void conf_tooltip(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
     (void)phase;
@@ -1743,6 +1799,7 @@ static const ConfScene CONF_SCENES[] = {
     {"overflow", conf_overflow},
     {"float", conf_float},
     {"clip-float", conf_clip_float},
+    {"clip-access", conf_clip_access},
     {"tooltip", conf_tooltip},
     {"select", conf_select},
     {"chrome", conf_chrome},
@@ -2182,12 +2239,17 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
         const char *live = (a->flags & KUI_ACCESS_LIVE_POLITE)      ? "p"
                            : (a->flags & KUI_ACCESS_LIVE_ASSERTIVE) ? "a"
                                                                     : "-";
-        repf(out, "node %d %016llx %s %d %d %s %s %s %s %d %s %.*s | %.*s | %.*s\n",
+        /* The rect as f32 bits, cut to the node's clip (backlog F93). */
+        uint32_t rect[4];
+        const float xywh[4] = {a->x, a->y, a->w, a->h};
+        memcpy(rect, xywh, sizeof rect);
+        repf(out, "node %d %016llx %s %d %d %s %s %s %s %d %08x %08x %08x %08x %s %.*s | %.*s | %.*s\n",
              depth, (unsigned long long)a->key, role_name(a->role),
              (a->flags & KUI_ACCESS_FOCUSED) ? 1 : 0,
              (a->flags & KUI_ACCESS_DISABLED) ? 1 : 0,
              checked, selected, orientation, live,
              (a->flags & KUI_ACCESS_HAS_SCROLL) ? 1 : 0,
+             rect[0], rect[1], rect[2], rect[3],
              off ? actions : "-",
              (int)a->name.len, a->name.ptr,
              (int)a->description.len, a->description.ptr,

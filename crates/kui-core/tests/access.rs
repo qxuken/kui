@@ -586,7 +586,12 @@ fn scroll_requests_move_the_scroll_view() {
     let (_, _, list) = app_frame(&mut core, false);
     let row8 = list.str("row-8");
     let before = core.access_tree().get(row8).unwrap().rect;
-    assert!(before.y + before.h > 300.0, "row 8 starts out of view");
+    // Out of view is a point on the list's edge (F93), not a rect past it.
+    assert_eq!(
+        (before.w, before.h),
+        (0.0, 0.0),
+        "row 8 starts out of view: {before:?}"
+    );
 
     core.handle_input(InputEvent::Access(AccessRequest {
         key: row8,

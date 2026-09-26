@@ -285,6 +285,8 @@ pub struct Core {
     counters: Vec<u64>,
     origin: OriginId,
     /// Per-node inherited clip (logical), rebuilt each finish_frame.
+    /// The access tree cuts each node's rect to it (F93), so what a
+    /// reader finds is what a pointer can hit.
     clips: Vec<Clip>,
     /// The `DisplayList::clips` index each of those became, so a node
     /// whose clip is its parent's names the entry the parent already

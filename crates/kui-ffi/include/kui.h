@@ -1106,7 +1106,9 @@ typedef struct KuiAnnouncement {
 
 /* [out[]] One node of the access tree (kui_access_tree): what assistive technology
  * sees. Plain boxes are elided, so `parent` is the nearest semantic
- * ancestor (0 for the root). Rects are logical px in viewport coordinates.
+ * ancestor (0 for the root). Rects are logical px in viewport coordinates,
+ * cut to the clip the node is drawn under: a node wholly clipped away is a
+ * zero-size rect on the clip's edge, still in the tree and actionable.
  * Strings are borrowed until the next kui_access_tree on the context. */
 typedef struct KuiAccessNode {
     uint64_t key;
@@ -1149,8 +1151,9 @@ typedef struct KuiAccessNode {
  * reader reads by character and word. `text` ends with "\n" (a character
  * of zero width) when the line continues into another; `line` is a
  * buffer line (a KUI_ROLE_LINE ordinal for a custom editor) and
- * start/end the run's byte range in that line's text. Character positions
- * are relative to x. Arrays and strings are borrowed until the next
+ * start/end the run's byte range in that line's text. The rect is cut to
+ * the clip the text is drawn under, as a node's is; character positions
+ * are relative to x, so they still land where each character is drawn. Arrays and strings are borrowed until the next
  * kui_access_tree / kui_access_runs on the context. */
 typedef struct KuiAccessRun {
     uint64_t key;

@@ -3798,6 +3798,29 @@ const SCENE_TREES = {
       ),
     ])]);
   },
+  // Access rects cut to the clip (backlog F93): three nodes on a `clip`
+  // canvas past its top, three rows in a short scroller.
+  'clip-access': () => {
+    const button = (key, label, width, height, bg, extra = {}) =>
+      box({ width, height, bg, onClick: { kind: key }, label, ...extra }, [], key);
+    const node = (key, label, dx, dy, clip) =>
+      button(key, label, 60, 40, '#3b5bd4', { float: { anchor: 'parent', dx, dy, clip } });
+    return root({}, [box({ width: 'grow', height: 'grow' }, [
+      button('toolbar', 'Toolbar', 'grow', 40, '#3a3f52'),
+      box({ dir: 'row', width: 'grow', height: 'grow' }, [
+        box(
+          { width: 'grow', height: 'grow', clip: true, bg: '#101018' },
+          [node('cut', 'Cut', 20, -20, true), node('past', 'Past', 100, -60, true), node('free', 'Free', 140, -60, false)],
+          'canvas',
+        ),
+        box(
+          { width: 100, height: 50, scrollY: true, bg: '#202030' },
+          [['row0', 'Row 0'], ['row1', 'Row 1'], ['row2', 'Row 2']].map(([k, l]) => button(k, l, 100, 30, '#73d98c')),
+          'list',
+        ),
+      ]),
+    ])]);
+  },
   tooltip: () =>
     root({}, [
       box({ pad: 10 }, [
@@ -4744,6 +4767,11 @@ function sceneReport(name, env, steps, { ctx, events, commands, audio }) {
     lines.push(`texture ${i} ${textures.slice(i * 9 + 5, i * 9 + 9).join(' ')}`);
   }
   const depth = new Map();
+  // The access rect as f32 bits, cut to the node's clip (backlog F93).
+  const bits = (v) => {
+    f32.setFloat32(0, v, true);
+    return f32.getUint32(0, true).toString(16).padStart(8, '0');
+  };
   for (const n of ctx.accessTree().nodes) {
     const d = n.parent === null ? 0 : depth.get(n.parent) + 1;
     depth.set(n.key, d);
@@ -4757,6 +4785,7 @@ function sceneReport(name, env, steps, { ctx, events, commands, audio }) {
         n.orientation === 'horizontal' ? 'h' : n.orientation === 'vertical' ? 'v' : '-',
         n.live === 'polite' ? 'p' : n.live === 'assertive' ? 'a' : '-',
         n.scroll ? 1 : 0,
+        bits(n.rect.x), bits(n.rect.y), bits(n.rect.w), bits(n.rect.h),
         n.actions.length ? n.actions.join(',') : '-',
         `${n.name ?? ''} | ${n.description ?? ''} | ${n.value ?? ''}`,
       ].join(' '),

@@ -1016,6 +1016,7 @@ impl Core {
                 modal: self.modal(),
                 viewport: self.viewport,
                 scale: self.scale,
+                clips: &self.clips,
             };
             // Deriving the tree is about 480 µs on a 10,000-node frame and
             // is paid on every frame a screen reader is attached; hashing
@@ -1615,6 +1616,31 @@ mod access_cache {
         let (b0, h0) = draw("hello");
         let (b1, h1) = draw("goodbye");
         assert!(b1 > b0 && h1 != h0, "a changed string kept its old node");
+    }
+
+    /// The clip a node was emitted under is not in its spec either: a
+    /// clipping parent narrowing cuts the rect of a node whose own box
+    /// stayed where it was (F93).
+    #[test]
+    fn a_parents_clip_moves_the_tree() {
+        let mut core = Core::new();
+        let mut draw = |w: f32| {
+            let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
+            ui.configure_root(NodeSpec::column());
+            let clipper = NodeSpec::column()
+                .width(Sizing::Fixed(w))
+                .height(Sizing::Fixed(40.0))
+                .clip();
+            ui.with(clipper, |ui| {
+                ui.with_keyed("node", base(), |_| {});
+            });
+            ui.finish();
+            let hash = core.access_tree().hash;
+            (core.access_rebuilds, hash)
+        };
+        let (b0, h0) = draw(100.0);
+        let (b1, h1) = draw(30.0);
+        assert!(b1 > b0 && h1 != h0, "the clip moved and the tree did not");
     }
 
     /// Focus is the core's, not any node's spec.

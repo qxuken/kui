@@ -21,6 +21,48 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.20 (unreleased)
+
+**What breaks.** No ABI, frame or API change. One reading changes.
+
+- An access node's rect, and an editor's text run's, is cut to the clip
+  the node is drawn under, and a node wholly clipped away reads as a
+  zero-size rect on the clip's edge (under Fixed, F93). A test that read
+  the rect of a node on a `clip` canvas, a row half out of a scroller or
+  anything inside a `clip` box reads the cut one. Nothing that is not
+  clipped moves.
+
+### Fixed
+
+- **A clipped node's access rect was its whole box** (backlog F93, from
+  the mind map's alpha.19 report). A node panned 28 px under the
+  toolbar was cut at its `clip` canvas's edge (F90) and a click there
+  missed it, but its access node still read `y=17.7 h=36.6`, so a
+  reader's highlight was drawn over the toolbar. It was every clipped
+  node, not only a `clip` float: a row half out of a scroller and a
+  child of a `clip` box too. The runner hands the rect to AccessKit as
+  the node's bounds, and AccessKit's hit test reads raw bounds, so
+  VoiceOver's mouse-over, Narrator's hover and a Windows
+  `ElementFromPoint` could name a clipped node over whatever was drawn
+  there. `access::build` now cuts every rect to the clip the node's hit
+  region carries: a `clip` float takes its parent's, and a float that
+  escapes keeps its whole box, as it draws and is hit. A node wholly
+  clipped keeps its place in reading order and its actions (a reader's
+  "scroll into view" goes by key) on a zero-size rect at the clip's
+  edge nearest it, so it is never a hit. An editor's text runs are cut
+  the same way, a field's also across its own content box as its
+  glyphs are (F41), and each character's position moves with the run's
+  x, so it still lands where the character is drawn. AccessKit's own
+  `clips_children` was not used: an escaping float is the clipper's
+  semantic child, and a plain `clip` box is elided from the access
+  tree, so there is nothing to set it on. The access cache hashes the
+  cut rect, so a clip that moved rebuilds the tree.
+  The corpus's `node` lines carry the rect as f32 bits, which pins it in
+  all four bindings over every scene, and the new `clip-access` scene
+  has a node straddling a `clip` canvas's edge, one wholly past it, one
+  that escapes, and a row half out of a scroller and one wholly out.
+  *What you can delete:* nothing; a reader was the one misled.
+
 ## 0.1.0-alpha.19 (2026-09-26)
 
 **What breaks.** The ABI at 19 and the frame at v16. Nothing an

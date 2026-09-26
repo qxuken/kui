@@ -699,7 +699,8 @@ pub struct KuiAccessNode {
     /// text, or a slider's `value_text` — the platform has one slot, and a
     /// slider that named its reading reads as that instead of its number.
     pub value: KuiStr,
-    /// Logical px, viewport coordinates.
+    /// Logical px, viewport coordinates, cut to the node's clip (zero-size
+    /// on the clip's edge when wholly clipped).
     pub x: f32,
     pub y: f32,
     pub w: f32,
