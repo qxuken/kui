@@ -23,9 +23,19 @@ was the first bare bump to break an app in five releases).
 
 ## 0.1.0-alpha.21 (unreleased)
 
-**What breaks.** Nothing: no door changes, the ABI stays at 19 and the
-frame at v16. Rust gains two methods and a type, and Node and C a door
-each.
+**What breaks.** No door changes, the ABI stays at 19 and the frame at
+v16. Rust gains two methods and a type, and Node and C a door each. One
+reading changes:
+
+- A font face whose glyphs cannot be measured (no `head`, `hhea` or
+  `hmtx`) is refused (under Fixed, F98). `addFontData` and
+  `loadFontFile` (Rust `add_font_data`, `load_font_file`; C
+  `kui_font_add`, `kui_font_load_file`) return no handle for a file
+  holding only such faces, where they returned one. `loadFontsDir`
+  does not count them. `systemFonts()` and `systemFontFamilies()` leave
+  out a family of only such faces: GB18030 Bitmap on a Mac. A host that
+  unwrapped the handle for such a file fails at load, where the text
+  drawn with it used to fail.
 
 ### Added
 
@@ -76,6 +86,30 @@ each.
   `updateImage` in a real window on Windows went from 808 µs to ~335.
   `kui_image_pixels`' pointer is still valid only until the next update
   of the handle, as it says.
+
+### Fixed
+
+- **Han text in `mono` fell back to a face with no metrics** (backlog
+  F98, from kawoosh's Han-in-mono report). On a Mac, "字 a" in
+  `FontFamily::Mono` panicked in a debug build with `attempt to add
+  with overflow` in cosmic-text's `LayoutGlyph::physical`, and in a
+  release build it drew every glyph after the ideograph at x = ∞. Menlo
+  has no 字. `Mono`'s fallback then takes a monospaced face that maps
+  it, and the first was GB18030 Bitmap. That is a bitmap-only face with
+  no `head`, `hhea` or `hmtx`, so its units per em read 0 and its
+  advances came out infinite. Named families, `sans` and `serif` never
+  reached it. The font database now keeps out any face whose glyphs
+  cannot be measured: one with no `head` whose units per em are in
+  16–16384, no `hhea` with a horizontal metric, or no `hmtx` as long as
+  that says. That holds for the installed fonts when the session starts
+  and for every face `addFontData`, `loadFontFile` and `loadFontsDir`
+  bring in. So such a face is never a fallback, a family to name or a
+  row in `systemFonts()`, and 字 falls to a face that measures it. The
+  check reads each file's table directory once, on a few threads, and
+  adds about 4.5 ms to a Mac's ~20 ms font scan (1312 faces).
+  *What you can delete:* a family list's filter for GB18030 Bitmap, and
+  any code that kept Han out of `mono` or named a CJK family ahead of
+  it to dodge the panic.
 
 ## 0.1.0-alpha.20 (2026-09-26)
 

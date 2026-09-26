@@ -86,13 +86,16 @@ impl Core {
     // -- Fonts ----------------------------------------------------------
 
     /// Registers a font from its file bytes (TTF/OTF/TTC); `None` when the
-    /// data holds no usable face. Shape with it via `TextStyle::font`.
+    /// data holds no usable face — none the font database can read, or
+    /// none whose glyphs can be measured (no `head`, `hhea` or `hmtx`,
+    /// backlog F98). Shape with it via `TextStyle::font`.
     pub fn add_font_data(&mut self, data: Vec<u8>) -> Option<crate::resources::FontId> {
         use cosmic_text::fontdb::Source;
         let id = {
             let sess = &mut *self.session.state();
             let db = sess.fonts.db_mut();
             let ids = db.load_font_source(Source::Binary(std::sync::Arc::new(data)));
+            let ids = crate::text::keep_measurable(db, ids.to_vec());
             let family = db.face(*ids.first()?)?.families.first()?.0.clone();
             sess.fonts_rev += 1;
             sess.resources.add_font(family, ids.to_vec())
@@ -103,7 +106,8 @@ impl Core {
 
     /// Registers a font file (TTF/OTF/TTC) by path, memory-mapped by the
     /// font database; `None` when it cannot be read or holds no usable
-    /// face. Shape with it via `TextStyle::font`.
+    /// face (see [`add_font_data`](Self::add_font_data)). Shape with it
+    /// via `TextStyle::font`.
     pub fn load_font_file(
         &mut self,
         path: impl Into<std::path::PathBuf>,
@@ -113,6 +117,7 @@ impl Core {
             let sess = &mut *self.session.state();
             let db = sess.fonts.db_mut();
             let ids = db.load_font_source(Source::File(path.into()));
+            let ids = crate::text::keep_measurable(db, ids.to_vec());
             let family = db.face(*ids.first()?)?.families.first()?.0.clone();
             sess.fonts_rev += 1;
             sess.resources.add_font(family, ids.to_vec())
@@ -123,14 +128,20 @@ impl Core {
 
     /// Loads every font file under `dir` (recursively) into the font
     /// database, so their families become available to `add_system_font`
-    /// by name; returns how many faces were added. A bundled `fonts/`
-    /// folder next to the app is the usual case.
+    /// by name; returns how many faces were added. A face whose glyphs
+    /// cannot be measured is left out and not counted (backlog F98). A
+    /// bundled `fonts/` folder next to the app is the usual case.
     pub fn load_fonts_dir(&mut self, dir: impl AsRef<std::path::Path>) -> usize {
         let sess = &mut *self.session.state();
         let db = sess.fonts.db_mut();
-        let before = db.len();
+        let before: rustc_hash::FxHashSet<_> = db.faces().map(|face| face.id).collect();
         db.load_fonts_dir(dir);
-        db.len().saturating_sub(before)
+        let added = db
+            .faces()
+            .map(|face| face.id)
+            .filter(|id| !before.contains(id))
+            .collect();
+        crate::text::keep_measurable(db, added).len()
     }
 
     /// The handle for a font family by name (`"Menlo"`, `"Antonio"`) —
@@ -203,7 +214,10 @@ impl Core {
     /// with what its faces say they are: monospaced, the weights, an
     /// italic (backlog F97). Read from what the font database recorded
     /// when it scanned each face, so a fonts pane showing the monospaced
-    /// ones first costs no file loaded and no glyph shaped.
+    /// ones first costs no file loaded and no glyph shaped. A face whose
+    /// glyphs cannot be measured never entered the database (backlog F98),
+    /// so a family of only such faces — macOS's GB18030 Bitmap — is not
+    /// listed.
     pub fn system_fonts(&self) -> Vec<crate::resources::SystemFont> {
         use crate::resources::SystemFont;
         use cosmic_text::fontdb::Style;

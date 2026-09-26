@@ -3391,6 +3391,15 @@ test('systemFonts() is the families with what their faces say they are (F97)', (
   }
 });
 
+test('a face whose glyphs cannot be measured is not a family to pick (F98)', () => {
+  // macOS's GB18030 Bitmap has no head, hhea or hmtx: Han in mono fell
+  // back to it and drew at infinity. The Rust tests pin the refusal on a
+  // fixture face; here, the platform's own is not offered.
+  const ctx = new Ctx();
+  assert.ok(!ctx.systemFontFamilies().includes('GB18030 Bitmap'));
+  assert.equal(ctx.addSystemFont('GB18030 Bitmap'), null);
+});
+
 test('font files and folders load by path', () => {
   const ctx = new Ctx();
   assert.throws(() => ctx.loadFontFile('/no/such/font.ttf'), /no usable font face/);

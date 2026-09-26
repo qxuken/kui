@@ -166,3 +166,71 @@ fn system_fonts_say_what_each_family_is() {
         "gone with their faces"
     );
 }
+
+/// A face whose glyph advances cannot be measured — no `head`, `hhea` or
+/// `hmtx`, the way macOS's GB18030 Bitmap has none — is refused wherever
+/// a face comes in (backlog F98): from bytes, from a file, from a folder,
+/// so it is never a family to list, name or fall back to.
+#[test]
+fn a_face_whose_advances_cannot_be_measured_is_refused() {
+    use kui_core::testing::{han_face, unmeasurable_face};
+    let mut core = Core::new();
+    assert!(
+        core.add_font_data(unmeasurable_face("Kui F98 Bitmap"))
+            .is_none(),
+        "no usable face in the bytes"
+    );
+
+    let dir = std::env::temp_dir().join(format!("kui-f98-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let bitmap = dir.join("bitmap.ttf");
+    std::fs::write(&bitmap, unmeasurable_face("Kui F98 Bitmap")).unwrap();
+    std::fs::write(dir.join("han.ttf"), han_face("Kui F98 Han")).unwrap();
+    assert!(core.load_font_file(&bitmap).is_none(), "nor in the file");
+    assert_eq!(core.load_fonts_dir(&dir), 1, "the folder's other face");
+    std::fs::remove_dir_all(&dir).ok();
+
+    let families = core.system_font_families();
+    assert!(families.iter().any(|f| f == "Kui F98 Han"));
+    assert!(
+        !families.iter().any(|f| f == "Kui F98 Bitmap"),
+        "not offered in the list"
+    );
+    assert!(core.add_system_font("Kui F98 Bitmap").is_none());
+}
+
+/// Han text in `mono` on the fonts this machine has (backlog F98): on a
+/// Mac, 字 fell back to GB18030 Bitmap, whose advances are infinite, and
+/// the frame overflowed in a debug build or placed what followed at
+/// infinity. Every glyph lands at a finite place, left to right.
+#[test]
+fn han_in_mono_draws_at_finite_places() {
+    use kui_core::{FontFamily, QuadKind};
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+    ui.with(NodeSpec::column(), |ui| {
+        ui.text("字 a", TextStyle::new(14.0).family(FontFamily::Mono))
+    });
+    ui.finish();
+    let (dl, _) = core.output();
+    let glyphs: Vec<_> = dl
+        .quads
+        .iter()
+        .filter(|q| q.kind != QuadKind::Solid)
+        .map(|q| q.rect)
+        .collect();
+    for r in &glyphs {
+        assert!(
+            r.x.is_finite() && r.y.is_finite() && r.w.is_finite() && r.h.is_finite(),
+            "a glyph at {r:?}"
+        );
+        assert!(
+            r.x >= 0.0 && r.x + r.w <= 400.0,
+            "a glyph off the line: {r:?}"
+        );
+    }
+    // Where some installed face maps 字, it is drawn and the `a` starts past it.
+    if let [han, a] = glyphs[..] {
+        assert!(han.x + han.w <= a.x, "字 before a: {glyphs:?}");
+    }
+}

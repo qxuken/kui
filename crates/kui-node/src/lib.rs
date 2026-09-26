@@ -4009,7 +4009,8 @@ fn font_str(id: FontId) -> String {
 fn load_font_file_impl(core: &mut Core, path: &str) -> Result<String> {
     core.load_font_file(path).map(font_str).ok_or_else(|| {
         err(format!(
-            "no usable font face in {path:?} (unreadable, or not TTF/OTF/TTC)"
+            "no usable font face in {path:?} (unreadable, not TTF/OTF/TTC, \
+             or no face with the head, hhea and hmtx tables its glyphs are measured by)"
         ))
     })
 }
@@ -4071,7 +4072,12 @@ fn audio_commands_json(cmds: Vec<AudioCommand>) -> Json {
 fn add_font_impl(core: &mut Core, data: &[u8]) -> Result<String> {
     core.add_font_data(data.to_vec())
         .map(font_str)
-        .ok_or_else(|| err("no usable font face in the data (expected TTF/OTF/TTC bytes)"))
+        .ok_or_else(|| {
+            err(
+                "no usable font face in the data (expected TTF/OTF/TTC bytes, \
+                 a face with the head, hhea and hmtx tables its glyphs are measured by)",
+            )
+        })
 }
 
 /// `addFragment`: validate, then mint. The warning the core raises is not

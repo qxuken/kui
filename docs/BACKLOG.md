@@ -53,7 +53,9 @@ filed, and F93–F96 — a clipped node's access rect, the pumps an OS
 event woke, two docs and a radio outside its group — from the alpha.19
 upgrade reports of the same day, the day they were filed, and F97 — the
 installed families with what they are — from the kawoosh fonts-pane
-report of the same day, the day it was filed. The index
+report of the same day, the day it was filed, and F98 — a face with no
+metrics refused — from the kawoosh Han-in-mono report of the same day,
+the day it was filed. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -1340,6 +1342,16 @@ the app measured glyph widths itself: about 5 s for 613 families, and
 symbol fonts called monospaced. One entry, F97, **built 2026-09-26**,
 the day it was filed, and in the archive.
 
+## From the kawoosh Han-in-mono report (2026-09-26)
+
+Text in `mono` holding a Han ideograph — "字 か" — overflowed in
+cosmic-text's `LayoutGlyph::physical` in a debug build and placed every
+glyph after the ideograph at x = ∞ in a release one. On a Mac, `Mono`'s
+fallback picked GB18030 Bitmap for 字: a bitmap-only face with no
+`head`, `hhea` or `hmtx`, so its units per em read 0 and its advances
+infinite. One entry, F98, **built 2026-09-26**, the day it was filed,
+and in the archive.
+
 ## From the regression pass of 2026-09-19
 
 A review of everything since the alpha.15 tag — F67–F75, nine features
@@ -2338,6 +2350,8 @@ Nothing of the alpha.19 upgrade reports of 2026-09-26 is open (F93–F96
 **built 2026-09-26**, the day they were filed).
 Nothing of the kawoosh fonts-pane report is open (F97 **built
 2026-09-26**, the day it was filed).
+Nothing of the kawoosh Han-in-mono report is open (F98 **built
+2026-09-26**, the day it was filed).
 Nothing of the Windows regression round of 2026-09-26 is open
 (RG38–RG46 **built 2026-09-26**, the day they were filed).
 Nothing of the Linux round under WSLg is open (RG47–RG49 **built
@@ -3144,6 +3158,10 @@ move.
 **From the kawoosh fonts-pane report (2026-09-26)** — F97, filed and built the same day
 
 - `.` **F97** — [The installed families come as bare names: a font picker measures glyphs to find the monospaced ones](backlog/closed-2026-09.md#-f97--the-installed-families-come-as-bare-names-a-font-picker-measures-glyphs-to-find-the-monospaced-ones--done-2026-09-26) — done (2026-09-26) — `Core::system_fonts()` → `SystemFont {family, monospaced, weights, italic}` from fontdb's face records; Node's `systemFonts()`, C's `kui_system_fonts`
+
+**From the kawoosh Han-in-mono report (2026-09-26)** — F98, filed and built the same day
+
+- `!` **F98** — [Han text in `mono` falls back to a face with no metrics: a debug build overflows, a release one draws the rest of the line at infinity](backlog/closed-2026-09.md#-f98--han-text-in-mono-falls-back-to-a-face-with-no-metrics-a-debug-build-overflows-a-release-one-draws-the-rest-of-the-line-at-infinity--done-2026-09-26) — done (2026-09-26) — a face without a readable `head`, `hhea` or `hmtx` is kept out of the font database (`text::keep_measurable`): at the session's start, and from `add_font_data`, `load_font_file` and `load_fonts_dir`
 
 **From the regression pass of 2026-09-25** — RG17–RG36 built the same day, before the alpha.17 tag; RG37 the same day, after it
 

@@ -919,20 +919,141 @@ fn first_installed<'a>(db: &cosmic_text::fontdb::Database, list: &[&'a str]) -> 
 /// generic sans, serif and monospace families pinned to an installed face
 /// (see [`DEFAULT_FAMILIES`]), so weight and style matching starts from a
 /// face with real variants rather than whatever the fallback pops.
+/// Faces whose glyphs cannot be measured are taken out first (backlog
+/// F98, see [`keep_measurable`]).
 pub(crate) fn new_font_system() -> FontSystem {
-    let mut font_system = FontSystem::new();
-    let db = font_system.db_mut();
+    let (locale, db) = FontSystem::new().into_locale_and_db();
+    font_system_with(locale, db)
+}
+
+/// [`new_font_system`] over a database already loaded. The font system is
+/// built after the unmeasurable faces are out, so cosmic-text's list of
+/// monospaced faces, which `Mono`'s fallback walks, never names one.
+fn font_system_with(locale: String, mut db: cosmic_text::fontdb::Database) -> FontSystem {
+    let all: Vec<_> = db.faces().map(|face| face.id).collect();
+    keep_measurable(&mut db, all);
     let [sans, serif, mono] = DEFAULT_FAMILIES;
-    if let Some(name) = first_installed(db, sans) {
+    if let Some(name) = first_installed(&db, sans) {
         db.set_sans_serif_family(name);
     }
-    if let Some(name) = first_installed(db, serif) {
+    if let Some(name) = first_installed(&db, serif) {
         db.set_serif_family(name);
     }
-    if let Some(name) = first_installed(db, mono) {
+    if let Some(name) = first_installed(&db, mono) {
         db.set_monospace_family(name);
     }
-    font_system
+    FontSystem::new_with_locale_and_db(locale, db)
+}
+
+/// Whether the shaper can say how wide a face's glyphs are (backlog F98):
+/// a `head` whose units per em are in the range the spec allows
+/// (16–16384), an `hhea` with at least one horizontal metric, and an
+/// `hmtx` as long as that says. Every advance is design units over units
+/// per em, so a face without a readable `head` shapes to infinitely wide
+/// glyphs — macOS's GB18030 Bitmap, which carries Apple's `bhed` in its
+/// place — and swash, which reads `hmtx` for the raster, subtracts one
+/// from a zero count. Read with skrifa, the reader the shaper measures
+/// with, from the table directory, two fixed-size headers and `hmtx`'s
+/// length: nothing that can panic on the face it is there to catch.
+pub(crate) fn measurable(data: &[u8], index: u32) -> bool {
+    use cosmic_text::skrifa::raw::{FontRef, TableProvider};
+    let Ok(font) = FontRef::from_index(data, index) else {
+        return false;
+    };
+    font.head()
+        .is_ok_and(|head| (16..=16384).contains(&head.units_per_em()))
+        && font.hhea().is_ok_and(|hhea| hhea.number_of_h_metrics() > 0)
+        && font.hmtx().is_ok()
+}
+
+/// Files per checking thread, below which [`keep_measurable`] checks on
+/// the caller's thread: a font added from bytes, or a folder of a few.
+const FILES_PER_CHECKER: usize = 64;
+
+/// Takes the faces of `ids` the shaper cannot measure out of `db` (see
+/// [`measurable`]) and returns the rest, so a face that would shape to
+/// infinitely wide glyphs is not a family to list, to name or to fall
+/// back to (backlog F98). A face whose file cannot be read goes too: the
+/// shaper could not load it either.
+///
+/// Each file is opened once for all its faces, and the files are spread
+/// over a few threads: opening one is most of the cost. Measured over the
+/// 1312 faces in 850 files of a Mac, the check adds about 4.5 ms to the
+/// ~20 ms fontdb takes to scan them warm (release build); on one thread
+/// it took 15–22 ms.
+pub(crate) fn keep_measurable(
+    db: &mut cosmic_text::fontdb::Database,
+    ids: Vec<cosmic_text::fontdb::ID>,
+) -> Vec<cosmic_text::fontdb::ID> {
+    use cosmic_text::fontdb::{ID, Source};
+    // The faces of one file together; bytes already in memory each alone.
+    let mut by_file = FxHashMap::<&std::path::Path, Vec<ID>>::default();
+    let mut groups = Vec::new();
+    for &id in &ids {
+        match db.face(id).map(|face| &face.source) {
+            Some(Source::File(path) | Source::SharedFile(path, _)) => {
+                by_file.entry(path).or_default().push(id);
+            }
+            Some(Source::Binary(_)) => groups.push(vec![id]),
+            None => {}
+        }
+    }
+    groups.extend(by_file.into_values());
+    let db_ref = &*db;
+    let unmeasurable_in = |groups: &[Vec<ID>]| -> Vec<ID> {
+        let mut out = Vec::new();
+        for group in groups {
+            let read = db_ref.with_face_data(group[0], |data, _| {
+                group
+                    .iter()
+                    .filter(|&&id| {
+                        db_ref
+                            .face(id)
+                            .is_none_or(|face| !measurable(data, face.index))
+                    })
+                    .copied()
+                    .collect::<Vec<_>>()
+            });
+            out.extend(read.unwrap_or_else(|| group.clone()));
+        }
+        out
+    };
+    let checkers = std::thread::available_parallelism()
+        .map_or(1, |n| n.get())
+        .min(groups.len().div_ceil(FILES_PER_CHECKER));
+    let unmeasurable = if checkers <= 1 {
+        unmeasurable_in(&groups)
+    } else {
+        let per = groups.len().div_ceil(checkers);
+        std::thread::scope(|scope| {
+            let parts: Vec<_> = groups
+                .chunks(per)
+                .map(|part| {
+                    let spawned = std::thread::Builder::new()
+                        .name("kui-font-check".into())
+                        .spawn_scoped(scope, move || unmeasurable_in(part));
+                    (part, spawned.ok())
+                })
+                .collect();
+            let mut out = Vec::new();
+            for (part, checker) in parts {
+                out.extend(match checker {
+                    Some(checker) => checker
+                        .join()
+                        .unwrap_or_else(|panic| std::panic::resume_unwind(panic)),
+                    // No thread to be had: check that part here.
+                    None => unmeasurable_in(part),
+                });
+            }
+            out
+        })
+    };
+    for &id in &unmeasurable {
+        db.remove_face(id);
+    }
+    ids.into_iter()
+        .filter(|id| !unmeasurable.contains(id))
+        .collect()
 }
 
 /// The family names `Sans`, `Serif` and `Mono` shape with, in that order —
@@ -3624,6 +3745,83 @@ mod default_families {
                 installed == on_list,
                 "{name}: installed {installed}, on the platform list {on_list}"
             );
+        }
+    }
+}
+
+/// A face whose glyph advances cannot be measured never reaches the shaper
+/// (backlog F98). macOS's GB18030 Bitmap has no `head`, `hhea` or `hmtx`;
+/// it says it is fixed-pitch and maps the ideographs, so Han text in
+/// `Mono` fell back to it, and its advances came out infinite: every glyph
+/// after one was placed at infinity, and a debug build overflowed in
+/// `LayoutGlyph::physical`. The fixture faces stand in for it here.
+#[cfg(test)]
+mod unmeasurable_faces {
+    use super::*;
+    use crate::testing::{font_face, han_face, unmeasurable_face};
+    use cosmic_text::Family;
+    use cosmic_text::fontdb::{Database, Source};
+
+    /// A session font system over the fixture faces alone: a monospaced
+    /// family without Han, pinned as `Mono`, the face without metrics that
+    /// maps 字 and says it is fixed-pitch, and a proportional face that
+    /// maps it too.
+    fn font_system() -> FontSystem {
+        let mut db = Database::new();
+        for bytes in [
+            font_face("Kui Mono", 400, false, true),
+            unmeasurable_face("Kui Bitmap"),
+            han_face("Kui Han"),
+        ] {
+            db.load_font_source(Source::Binary(std::sync::Arc::new(bytes)));
+        }
+        let mut fs = font_system_with("en-US".into(), db);
+        fs.db_mut().set_monospace_family("Kui Mono");
+        fs
+    }
+
+    fn family(fs: &FontSystem, id: cosmic_text::fontdb::ID) -> String {
+        fs.db()
+            .face(id)
+            .map_or_else(String::new, |f| f.families[0].0.clone())
+    }
+
+    #[test]
+    fn a_face_without_metrics_is_not_in_the_database() {
+        let fs = font_system();
+        let families: Vec<String> = fs.db().faces().map(|f| family(&fs, f.id)).collect();
+        assert_eq!(families, ["Kui Mono", "Kui Han"]);
+    }
+
+    /// "字 a" in `Mono`: 字 from the face that can say how wide it is, the
+    /// space and the `a` from the monospaced family after it, every glyph
+    /// at a finite place.
+    #[test]
+    fn han_in_mono_falls_back_to_a_face_that_measures() {
+        let mut fs = font_system();
+        let mut buffer = Buffer::new(&mut fs, Metrics::new(14.0, 21.0));
+        let attrs = Attrs::new().family(Family::Monospace);
+        buffer.set_text("字 a", &attrs, Shaping::Advanced, None);
+        buffer.shape_until_scroll(&mut fs, false);
+        let run = buffer.layout_runs().next().expect("one line");
+        let glyphs: Vec<(&str, f32, f32, String)> = run
+            .glyphs
+            .iter()
+            .map(|g| (&run.text[g.start..g.end], g.x, g.w, family(&fs, g.font_id)))
+            .collect();
+        for &(text, x, w, _) in &glyphs {
+            assert!(x.is_finite() && w.is_finite(), "{text:?} at {x}, {w} wide");
+        }
+        let faces: Vec<(&str, &str)> = glyphs.iter().map(|g| (g.0, g.3.as_str())).collect();
+        assert_eq!(
+            faces,
+            [("字", "Kui Han"), (" ", "Kui Mono"), ("a", "Kui Mono")]
+        );
+        // The fixture's advance is half an em, 7 px at 14.
+        let xs: Vec<f32> = glyphs.iter().map(|g| g.1).collect();
+        assert_eq!(xs, [0.0, 7.0, 14.0]);
+        for glyph in run.glyphs {
+            glyph.physical((0.0, 0.0), 1.0);
         }
     }
 }

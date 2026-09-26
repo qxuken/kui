@@ -173,6 +173,36 @@ pub fn font_face(family: &str, weight: u16, italic: bool, fixed_pitch: bool) -> 
         weight,
         italic,
         fixed_pitch,
+        ..liga_font::Face::LIGA
+    })
+}
+
+/// The [`liga_font`] fixture as a proportional face of `family` that maps
+/// 字 (U+5B57) to its square besides printable ASCII: a face Han text can
+/// fall back to, measured like any other (backlog F98).
+pub fn han_face(family: &str) -> Vec<u8> {
+    liga_font::build(&liga_font::Face {
+        family,
+        han: true,
+        ..liga_font::Face::LIGA
+    })
+}
+
+/// A face whose glyph advances cannot be measured (backlog F98): the
+/// [`han_face`] fixture, fixed-pitch, without its `head`, `hhea` and
+/// `hmtx` tables — no units per em, no horizontal metrics — and without
+/// its outlines, the way macOS's GB18030 Bitmap has none of them (it
+/// carries Apple's `bhed` and bitmap tables instead, and this carries no
+/// bitmaps either). The font database takes it, since its records come
+/// from `name`, `OS/2` and `post`; the shaper reads its units per em as 0
+/// and so its every advance as infinite.
+pub fn unmeasurable_face(family: &str) -> Vec<u8> {
+    liga_font::build(&liga_font::Face {
+        family,
+        fixed_pitch: true,
+        han: true,
+        metrics: false,
+        ..liga_font::Face::LIGA
     })
 }
 
@@ -183,6 +213,11 @@ mod liga_font {
         pub(super) weight: u16,
         pub(super) italic: bool,
         pub(super) fixed_pitch: bool,
+        /// Maps 字 (U+5B57) to the square as well as printable ASCII.
+        pub(super) han: bool,
+        /// Carries `head`, `hhea`, `hmtx` and the outlines; without them
+        /// nothing says how wide a glyph is.
+        pub(super) metrics: bool,
     }
 
     impl Face<'static> {
@@ -191,6 +226,8 @@ mod liga_font {
             weight: 400,
             italic: false,
             fixed_pitch: false,
+            han: false,
+            metrics: true,
         };
     }
 
@@ -241,6 +278,8 @@ mod liga_font {
     const GLYPHS: u16 = 5;
     const FIRST: u16 = 0x20;
     const LAST: u16 = 0x7E;
+    /// 字, the one ideograph a `han` face maps.
+    const HAN: u16 = 0x5B57;
 
     /// A simple glyph: one contour, a square from (50, 0) to (`right`, 700).
     fn square(right: i16) -> Vec<u8> {
@@ -356,7 +395,8 @@ mod liga_font {
         w.i16(0); // sFamilyClass
         w.bytes(&[0; 10]); // panose
         w.u32(1); // ulUnicodeRange1: Basic Latin
-        w.u32(0);
+        // ulUnicodeRange2: CJK Unified Ideographs (bit 59) for a `han` face.
+        w.u32(u32::from(face.han) << 27);
         w.u32(0);
         w.u32(0);
         w.bytes(b"KUI "); // achVendID
@@ -366,7 +406,7 @@ mod liga_font {
             (bold, italic) => u16::from(italic) | u16::from(bold) << 5,
         });
         w.u16(FIRST); // usFirstCharIndex
-        w.u16(LAST); // usLastCharIndex
+        w.u16(if face.han { HAN } else { LAST }); // usLastCharIndex
         w.i16(800); // sTypoAscender
         w.i16(-200); // sTypoDescender
         w.i16(0); // sTypoLineGap
@@ -394,10 +434,14 @@ mod liga_font {
 
     /// One format-4 subtable: every printable ASCII character through the
     /// glyph array, so `f` and `i` can be their own glyphs while the rest
-    /// share the square.
-    fn cmap() -> Vec<u8> {
+    /// share the square, and a `han` face's 字 to the square by delta.
+    fn cmap(face: &Face) -> Vec<u8> {
         let chars = usize::from(LAST - FIRST + 1);
-        let segments: u16 = 2;
+        // By endCode: ASCII, 字 when mapped, and the closing 0xFFFF.
+        let han: &[u16] = if face.han { &[HAN] } else { &[] };
+        let segments = 2 + han.len() as u16;
+        let entry_selector = segments.ilog2() as u16;
+        let search_range = 2 << entry_selector;
         let mut w = W(Vec::new());
         w.u16(0); // version
         w.u16(1); // one encoding record
@@ -409,17 +453,21 @@ mod liga_font {
         w.u16(length as u16);
         w.u16(0); // language
         w.u16(segments * 2);
-        w.u16(4); // searchRange
-        w.u16(1); // entrySelector
-        w.u16(0); // rangeShift
+        w.u16(search_range);
+        w.u16(entry_selector);
+        w.u16(segments * 2 - search_range); // rangeShift
         w.u16(LAST); // endCode
+        han.iter().for_each(|&c| w.u16(c));
         w.u16(0xFFFF);
         w.u16(0); // reservedPad
         w.u16(FIRST); // startCode
+        han.iter().for_each(|&c| w.u16(c));
         w.u16(0xFFFF);
         w.i16(0); // idDelta: the array's ids are final
+        han.iter().for_each(|&c| w.u16(BOX.wrapping_sub(c)));
         w.i16(1);
         w.u16(2 * segments); // idRangeOffset: the glyph array starts right after
+        han.iter().for_each(|_| w.u16(0));
         w.u16(0);
         for c in FIRST..=LAST {
             w.u16(match c {
@@ -533,6 +581,10 @@ mod liga_font {
         w.0
     }
 
+    /// What a face without metrics leaves out: what says how wide a glyph
+    /// is, and the outlines `loca` finds by `head`'s index format.
+    const METRICS: [&[u8; 4]; 5] = [b"glyf", b"head", b"hhea", b"hmtx", b"loca"];
+
     fn checksum(table: &[u8]) -> u32 {
         table
             .chunks(4)
@@ -547,10 +599,10 @@ mod liga_font {
     pub(super) fn build(face: &Face) -> Vec<u8> {
         let (glyf, loca) = glyf_and_loca();
         // The directory wants its records sorted by tag.
-        let tables: [(&[u8; 4], Vec<u8>); 11] = [
+        let tables: Vec<(&[u8; 4], Vec<u8>)> = [
             (b"GSUB", gsub()),
             (b"OS/2", os2(face)),
-            (b"cmap", cmap()),
+            (b"cmap", cmap(face)),
             (b"glyf", glyf),
             (b"head", head(face)),
             (b"hhea", hhea()),
@@ -559,7 +611,10 @@ mod liga_font {
             (b"maxp", maxp()),
             (b"name", name(face)),
             (b"post", post(face)),
-        ];
+        ]
+        .into_iter()
+        .filter(|(tag, _)| face.metrics || !METRICS.contains(tag))
+        .collect();
         let n = tables.len() as u16;
         let mut w = W(Vec::new());
         w.u32(0x0001_0000);
