@@ -51,7 +51,9 @@ RG47–RG49 from the Linux round under WSLg the same day, and
 RG50–RG52 from the custom chrome example after it, each the day it was
 filed, and F93–F96 — a clipped node's access rect, the pumps an OS
 event woke, two docs and a radio outside its group — from the alpha.19
-upgrade reports of the same day, the day they were filed. The index
+upgrade reports of the same day, the day they were filed, and F97 — the
+installed families with what they are — from the kawoosh fonts-pane
+report of the same day, the day it was filed. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -1329,6 +1331,15 @@ bar and Alt-Tab: winit registers its window class with no icon, and
 kui created every window without giving it one. One entry, F86,
 **built 2026-09-25**, the day it was filed, and in the archive.
 
+## From the kawoosh fonts-pane report (2026-09-26)
+
+kawoosh lists the installed families to pick an editor font from and
+wants the monospaced ones first. `system_font_families()` gave the
+names and dropped what the font database had read off every face, so
+the app measured glyph widths itself: about 5 s for 613 families, and
+symbol fonts called monospaced. One entry, F97, **built 2026-09-26**,
+the day it was filed, and in the archive.
+
 ## From the regression pass of 2026-09-19
 
 A review of everything since the alpha.15 tag — F67–F75, nine features
@@ -2325,6 +2336,8 @@ alpha.14, alpha.16 and alpha.18 upgrade
 reports is open (F88–F92 **built 2026-09-25**, the day they were filed).
 Nothing of the alpha.19 upgrade reports of 2026-09-26 is open (F93–F96
 **built 2026-09-26**, the day they were filed).
+Nothing of the kawoosh fonts-pane report is open (F97 **built
+2026-09-26**, the day it was filed).
 Nothing of the Windows regression round of 2026-09-26 is open
 (RG38–RG46 **built 2026-09-26**, the day they were filed).
 Nothing of the Linux round under WSLg is open (RG47–RG49 **built
@@ -3127,6 +3140,10 @@ move.
 **From the kawoosh window-icon report (2026-09-25)** — F86, filed and built the same day
 
 - `~` **F86** — [A window shows the platform's default icon, and the launcher cannot give it the app's](backlog/closed-2026-09.md#-f86--a-window-shows-the-platforms-default-icon-and-the-launcher-cannot-give-it-the-apps--done-2026-09-25) — done (2026-09-25) — `Launcher::icon` (RGBA) and `Launcher::icon_resource` (Windows), given to every window `window_attrs` creates; Node's `WindowOptions.icon`, C's `kui_set_icon`
+
+**From the kawoosh fonts-pane report (2026-09-26)** — F97, filed and built the same day
+
+- `.` **F97** — [The installed families come as bare names: a font picker measures glyphs to find the monospaced ones](backlog/closed-2026-09.md#-f97--the-installed-families-come-as-bare-names-a-font-picker-measures-glyphs-to-find-the-monospaced-ones--done-2026-09-26) — done (2026-09-26) — `Core::system_fonts()` → `SystemFont {family, monospaced, weights, italic}` from fontdb's face records; Node's `systemFonts()`, C's `kui_system_fonts`
 
 **From the regression pass of 2026-09-25** — RG17–RG36 built the same day, before the alpha.17 tag; RG37 the same day, after it
 

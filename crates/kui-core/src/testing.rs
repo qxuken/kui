@@ -158,10 +158,54 @@ pub fn tags(evs: &[UiEvent]) -> Vec<&str> {
 /// ligature's 700. The GSUB has one lookup, `liga` under `DFLT` and
 /// `latn`, so the shaper applies it by default the way a real font's is.
 pub fn liga_font() -> Vec<u8> {
-    liga_font::build()
+    liga_font::build(&liga_font::Face::LIGA)
+}
+
+/// The [`liga_font`] fixture as a face of another family — `family`, at
+/// `weight` on the CSS scale (the `OS/2` table's `usWeightClass`), italic
+/// or upright, and saying it is fixed-pitch or not (the `post` table's
+/// `isFixedPitch`) — so a test can stock a font database with families
+/// whose faces differ in what the database reads off them (backlog F97).
+/// The glyphs are the fixture's whatever the flag says.
+pub fn font_face(family: &str, weight: u16, italic: bool, fixed_pitch: bool) -> Vec<u8> {
+    liga_font::build(&liga_font::Face {
+        family,
+        weight,
+        italic,
+        fixed_pitch,
+    })
 }
 
 mod liga_font {
+    /// What the tables say the face is: its family, weight and style.
+    pub(super) struct Face<'a> {
+        pub(super) family: &'a str,
+        pub(super) weight: u16,
+        pub(super) italic: bool,
+        pub(super) fixed_pitch: bool,
+    }
+
+    impl Face<'static> {
+        pub(super) const LIGA: Self = Self {
+            family: "Kui Liga",
+            weight: 400,
+            italic: false,
+            fixed_pitch: false,
+        };
+    }
+
+    impl Face<'_> {
+        /// The `name` table's subfamily, the way a family's faces spell it.
+        fn subfamily(&self) -> &'static str {
+            match (self.weight >= 600, self.italic) {
+                (false, false) => "Regular",
+                (true, false) => "Bold",
+                (false, true) => "Italic",
+                (true, true) => "Bold Italic",
+            }
+        }
+    }
+
     struct W(Vec<u8>);
     impl W {
         fn u8(&mut self, v: u8) {
@@ -240,7 +284,7 @@ mod liga_font {
         (glyf.0, loca.0)
     }
 
-    fn head() -> Vec<u8> {
+    fn head(face: &Face) -> Vec<u8> {
         let mut w = W(Vec::new());
         w.u32(0x0001_0000); // version
         w.u32(0x0001_0000); // fontRevision
@@ -254,7 +298,8 @@ mod liga_font {
         w.i16(0); // yMin
         w.i16(700); // xMax
         w.i16(700); // yMax
-        w.u16(0); // macStyle
+        // macStyle: bold, italic.
+        w.u16(u16::from(face.weight >= 600) | u16::from(face.italic) << 1);
         w.u16(8); // lowestRecPPEM
         w.i16(2); // fontDirectionHint
         w.i16(1); // indexToLocFormat: long
@@ -298,11 +343,11 @@ mod liga_font {
         w.0
     }
 
-    fn os2() -> Vec<u8> {
+    fn os2(face: &Face) -> Vec<u8> {
         let mut w = W(Vec::new());
         w.u16(4); // version
         w.i16(500); // xAvgCharWidth
-        w.u16(400); // usWeightClass
+        w.u16(face.weight); // usWeightClass
         w.u16(5); // usWidthClass
         w.u16(0); // fsType
         for v in [650, 600, 0, 75, 650, 600, 0, 350, 50, 350] {
@@ -315,7 +360,11 @@ mod liga_font {
         w.u32(0);
         w.u32(0);
         w.bytes(b"KUI "); // achVendID
-        w.u16(0x0040); // fsSelection: REGULAR
+        // fsSelection: ITALIC, BOLD, or REGULAR when neither.
+        w.u16(match (face.weight >= 600, face.italic) {
+            (false, false) => 0x0040,
+            (bold, italic) => u16::from(italic) | u16::from(bold) << 5,
+        });
         w.u16(FIRST); // usFirstCharIndex
         w.u16(LAST); // usLastCharIndex
         w.i16(800); // sTypoAscender
@@ -383,12 +432,17 @@ mod liga_font {
         w.0
     }
 
-    fn name() -> Vec<u8> {
+    fn name(face: &Face) -> Vec<u8> {
+        let full = match face.subfamily() {
+            "Regular" => face.family.to_string(),
+            sub => format!("{} {sub}", face.family),
+        };
+        let postscript: String = full.chars().filter(|c| !c.is_whitespace()).collect();
         let strings: [(u16, &str); 4] = [
-            (1, "Kui Liga"),
-            (2, "Regular"),
-            (4, "Kui Liga"),
-            (6, "KuiLiga"),
+            (1, face.family),
+            (2, face.subfamily()),
+            (4, &full),
+            (6, &postscript),
         ];
         let mut w = W(Vec::new());
         w.u16(0); // format
@@ -404,20 +458,25 @@ mod liga_font {
             w.u16(1); // Unicode BMP
             w.u16(0x0409); // en-US
             w.u16(id);
-            w.u16((s.len() * 2) as u16);
+            w.u16((s.encode_utf16().count() * 2) as u16);
             w.u16(start);
         }
         w.bytes(&pool.0);
         w.0
     }
 
-    fn post() -> Vec<u8> {
+    fn post(face: &Face) -> Vec<u8> {
         let mut w = W(Vec::new());
         w.u32(0x0003_0000); // no glyph names
-        w.u32(0); // italicAngle
+        // italicAngle, 16.16: an italic leans 12 degrees to the right.
+        w.u32(if face.italic {
+            (-12i32 << 16) as u32
+        } else {
+            0
+        });
         w.i16(-100); // underlinePosition
         w.i16(50); // underlineThickness
-        w.u32(0); // isFixedPitch
+        w.u32(u32::from(face.fixed_pitch)); // isFixedPitch
         for _ in 0..4 {
             w.u32(0);
         }
@@ -485,21 +544,21 @@ mod liga_font {
             .fold(0u32, u32::wrapping_add)
     }
 
-    pub(super) fn build() -> Vec<u8> {
+    pub(super) fn build(face: &Face) -> Vec<u8> {
         let (glyf, loca) = glyf_and_loca();
         // The directory wants its records sorted by tag.
         let tables: [(&[u8; 4], Vec<u8>); 11] = [
             (b"GSUB", gsub()),
-            (b"OS/2", os2()),
+            (b"OS/2", os2(face)),
             (b"cmap", cmap()),
             (b"glyf", glyf),
-            (b"head", head()),
+            (b"head", head(face)),
             (b"hhea", hhea()),
             (b"hmtx", hmtx()),
             (b"loca", loca),
             (b"maxp", maxp()),
-            (b"name", name()),
-            (b"post", post()),
+            (b"name", name(face)),
+            (b"post", post(face)),
         ];
         let n = tables.len() as u16;
         let mut w = W(Vec::new());

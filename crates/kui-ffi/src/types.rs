@@ -88,6 +88,10 @@ pub struct KuiCtx {
     /// held so the `KuiStr`s written into the host's array stay valid
     /// until the next call.
     pub(crate) font_families: Vec<String>,
+    /// The families most recently handed out by `kui_system_fonts`, held
+    /// for the same reason: their names and weights are what the
+    /// `KuiSystemFont`s written into the host's array point at.
+    pub(crate) system_fonts: Vec<kui_core::SystemFont>,
     /// The node list most recently handed out by `kui_nodes`; borrowed
     /// until the next call, like every other reading here.
     pub(crate) nodes: Option<Box<KuiValue>>,
@@ -180,6 +184,7 @@ impl KuiCtx {
             selection_text: String::new(),
             selection_html: String::new(),
             font_families: Vec::new(),
+            system_fonts: Vec::new(),
             nodes: None,
             last_window_name: None,
             slot_name: None,
@@ -1102,6 +1107,25 @@ pub struct KuiWarning {
     pub code: KuiStr,
     pub key: u64,
     pub message: KuiStr,
+}
+
+/// One installed or loaded font family (`kui_system_fonts`), as the font
+/// database read its faces (backlog F97): what `SystemFont` says, laid
+/// out for C. `family` and `weights` are borrowed until the next
+/// `kui_system_fonts` on the same context.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KuiSystemFont {
+    /// The name `kui_font_add_system` takes.
+    pub family: KuiStr,
+    /// The weights its faces come in (400 regular, 700 bold), sorted,
+    /// each once; `weight_count` of them.
+    pub weights: *const u16,
+    pub weight_count: u32,
+    /// 1 when every face says it is fixed-pitch.
+    pub monospaced: u32,
+    /// 1 when it has an italic or an oblique face.
+    pub italic: u32,
 }
 
 /// Options for `kui_play`. NULL means defaults; a given struct is read

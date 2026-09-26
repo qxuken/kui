@@ -100,7 +100,7 @@ pub use message::{MessageError, MessageField};
 pub use metrics::Metrics;
 pub use resources::{
     FontId, FragmentId, ImageBacking, ImageFit, ImageId, ImageOpts, Resources, Sampling, SessionId,
-    SoundId,
+    SoundId, SystemFont,
 };
 pub use runtime::devtools;
 pub use runtime::devtools::Dock as DevtoolsDock;

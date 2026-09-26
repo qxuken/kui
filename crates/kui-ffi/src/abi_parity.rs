@@ -126,7 +126,8 @@ c_type! {
     KuiTextMetrics => "KuiTextMetrics",
     KuiScrollGeometry => "KuiScrollGeometry", KuiAccessNode => "KuiAccessNode",
     KuiAccessRun => "KuiAccessRun", KuiAnnouncement => "KuiAnnouncement",
-    KuiWarning => "KuiWarning", KuiPlay => "KuiPlay", KuiAudio => "KuiAudio",
+    KuiWarning => "KuiWarning", KuiSystemFont => "KuiSystemFont",
+    KuiPlay => "KuiPlay", KuiAudio => "KuiAudio",
     KuiAudioCommand => "KuiAudioCommand", KuiTheme => "KuiTheme",
     KuiMetrics => "KuiMetrics", KuiColorToken => "KuiColorToken",
     KuiLengthToken => "KuiLengthToken", KuiColorOp => "KuiColorOp",
@@ -770,6 +771,14 @@ fn asserts() -> (String, Vec<&'static str>) {
         code: KuiStr => "KuiStr",
         key: u64 => "uint64_t",
         message: KuiStr => "KuiStr",
+    });
+
+    abi_struct!(o, KuiSystemFont {
+        family: KuiStr => "KuiStr",
+        weights: *const u16 => "const uint16_t *",
+        weight_count: u32 => "uint32_t",
+        monospaced: u32 => "uint32_t",
+        italic: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiAnnouncement {

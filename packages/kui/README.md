@@ -225,7 +225,8 @@ pointing into the other three.
   hands you what a window would have played, which is what to assert on.
 - **Fonts**: `win.loadFontsDir('fonts')` then `win.addSystemFont('Antonio')`,
   or `win.loadFontFile('fonts/Antonio.ttf')`, `win.addFont(bytes)`, or an
-  installed family by name (see `systemFontFamilies()`); then
+  installed family by name (see `systemFontFamilies()`, or `systemFonts()`
+  for which are monospaced, their weights and italics); then
   `<text font={id}>`. Register in `setup(win)` before the first frame.
 - **Window chrome**: open with `chrome: 'custom'`, put a `<titlebar>` (or
   your own strip with `window="drag"` plus `<windowButtons/>`) in the root;

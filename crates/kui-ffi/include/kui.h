@@ -248,6 +248,8 @@ extern "C" {
  * file dialogs (backlog C51): two new [in] structs, KuiFileFilter and
  * KuiFileDialog, with kui_request_files, kui_awaiting_files,
  * kui_take_file_request, kui_file_request_filter and kui_input_files.
+ * Still at 19, since nothing a host had laid out moved: KuiSystemFont, a
+ * new [out[]] struct, with kui_system_fonts (backlog F97).
  */
 #define KUI_ABI_VERSION 19u
 uint32_t kui_abi_version(void);
@@ -295,7 +297,7 @@ uint32_t kui_abi_version(void);
  *          every host sees - and by bumping KUI_ABI_VERSION. Until then the
  *          version check is the whole guard.
  *          KuiAccessNode, KuiAccessRun, KuiWarning, KuiAudioCommand,
- *          KuiAnnouncement.
+ *          KuiAnnouncement, KuiSystemFont.
  *
  * [lib]    The library allocates it; you read it. KuiQuad, KuiClip,
  *          KuiFragmentDraw and KuiTextureDraw, through KuiDrawData.quads /
@@ -2508,6 +2510,23 @@ uint64_t kui_font_add_system(KuiCtx *ctx, KuiStr name);
  * repeated (NULL `out` asks for the count alone). Strings are borrowed
  * until the next kui_font_families on the context. */
 size_t kui_font_families(KuiCtx *ctx, KuiStr *out, size_t cap);
+/* [out[]] One family kui_font_families names, with what the font database
+ * read off its faces (backlog F97). `family` and `weights` are borrowed
+ * until the next kui_system_fonts on the context. */
+typedef struct KuiSystemFont {
+    KuiStr family;           /* the name kui_font_add_system takes */
+    const uint16_t *weights; /* 400 regular, 700 bold; sorted, each once */
+    uint32_t weight_count;
+    uint32_t monospaced;     /* 1: every face says it is fixed-pitch */
+    uint32_t italic;         /* 1: it has an italic or an oblique face */
+} KuiSystemFont;
+/* The families kui_font_families names, in its order, each with what its
+ * faces say they are: monospaced, the weights, an italic - so a font
+ * picker can put the monospaced ones first without loading a file or
+ * shaping a glyph to measure them. Written into `out` up to `cap` and the
+ * total returned, as kui_font_families does (NULL `out` asks for the
+ * count alone). */
+size_t kui_system_fonts(KuiCtx *ctx, KuiSystemFont *out, size_t cap);
 /* Registers a font file by path (memory-mapped); 0 on failure. */
 uint64_t kui_font_load_file(KuiCtx *ctx, KuiStr path);
 /* Loads every font file under a folder (recursively) for kui_font_add_system;

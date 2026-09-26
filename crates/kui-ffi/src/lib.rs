@@ -116,6 +116,7 @@ pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
             selection_text: String::new(),
             selection_html: String::new(),
             font_families: Vec::new(),
+            system_fonts: Vec::new(),
             nodes: None,
             last_window_name: None,
             slot_name: None,

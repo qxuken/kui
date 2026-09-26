@@ -24,7 +24,8 @@ was the first bare bump to break an app in five releases).
 ## 0.1.0-alpha.21 (unreleased)
 
 **What breaks.** Nothing: no door changes, the ABI stays at 19 and the
-frame at v16. Rust gains one method.
+frame at v16. Rust gains two methods and a type, and Node and C a door
+each.
 
 ### Added
 
@@ -44,6 +45,28 @@ frame at v16. Rust gains one method.
   which takes a `Vec`, is unchanged.
   *What you can delete:* a Rust stream's own frame buffer and its
   per-frame `clone()` into `update_image`. Render into `fill`'s slice.
+
+- **`systemFonts()`: the installed families with what they are**
+  (backlog F97, from kawoosh's fonts-pane report). kawoosh lists the
+  installed families to pick an editor font from and wants the
+  monospaced ones first. `systemFontFamilies()` handed out the names and
+  dropped what the font database had already read off every face, so
+  the app measured an `i` against an `M` in each family: about 5 s for
+  613 families on a Mac, every file loaded to shape, and symbol fonts
+  such as Webdings called monospaced. `ctx.systemFonts()` lists the same
+  families in the same order as `{family, monospaced, weights, italic}`:
+  `monospaced` when every face's `post` table says fixed-pitch (Cascadia,
+  Fira Code, Iosevka Term, Menlo and a Nerd Font's "Mono" are; its
+  "Propo" and Webdings are not), the weights the faces come in, sorted,
+  and whether one is italic or oblique. Nothing is loaded or shaped to
+  answer. Rust: `Core::system_fonts()` returning `Vec<SystemFont>`
+  (`kui_native::SystemFont`); `system_font_families()` is now its names.
+  C: `kui_system_fonts(ctx, out, cap)` filling `KuiSystemFont`s, as
+  `kui_font_families` fills names, a new [out[]] struct and function,
+  ABI still 19. Lua names no font by family, so it has none, as it has
+  no `systemFontFamilies`.
+  *What you can delete:* the glyph measuring that sorted a font list
+  into monospaced and not, and the list of symbol fonts it had to skip.
 
 ### Changed
 

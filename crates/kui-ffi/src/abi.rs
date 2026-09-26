@@ -38,10 +38,11 @@
 //   append back into a compatible change.
 // - **[out-array]** — the host allocates an array, the library fills up to
 //   `cap` of its elements: `KuiAccessNode`, `KuiAccessRun`, `KuiWarning`,
-//   `KuiAudioCommand`. A `size` field cannot save these. The library
-//   strides by its own `size_of`, so element 1 lands past the host's
-//   element 1 whatever element 0 says, and the damage is done before any
-//   in-band handshake could be read. Growing one of these means adding an
+//   `KuiAudioCommand`, `KuiAnnouncement`, `KuiSystemFont`. A `size` field
+//   cannot save these. The library strides by its own `size_of`, so
+//   element 1 lands past the host's element 1 whatever element 0 says,
+//   and the damage is done before any in-band handshake could be read.
+//   Growing one of these means adding an
 //   explicit stride parameter — a source break every host sees — and
 //   bumping `KUI_ABI_VERSION`.
 // - **[lib]** — the library allocates it and the host reads it: `KuiQuad`,
@@ -231,7 +232,9 @@
 /// `KUI_ACCESS_MIXED`. And `KuiRunConfig.frame_latency` (backlog C47).
 /// And the file dialogs (backlog C51): the new [in] structs `KuiFileFilter`
 /// and `KuiFileDialog` and five functions, `kui_request_files` through
-/// `kui_input_files`.
+/// `kui_input_files`. Still at 19, since nothing a host had laid out
+/// moved: `KuiSystemFont`, a new [out-array] struct, with
+/// `kui_system_fonts` (backlog F97).
 /// `KUI_SPACE_BETWEEN`, `KUI_SPACE_AROUND`,
 /// `KUI_SPACE_EVENLY` and `KUI_BASELINE` (backlog C13) are new values of
 /// `main_align` / `cross_align`, which moved nothing.

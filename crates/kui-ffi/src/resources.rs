@@ -137,6 +137,42 @@ pub extern "C" fn kui_font_families(ptr: *mut KuiCtx, out: *mut KuiStr, cap: usi
     })
 }
 
+/// Every family `kui_font_families` names, one per family and in its
+/// order, with what its faces say they are — monospaced, the weights, an
+/// italic (backlog F97) — written into `out` up to `cap` and the total
+/// returned, as `kui_font_families` does. Read from what the font database
+/// recorded when it scanned each face: nothing is loaded or shaped. The
+/// names and weight arrays are borrowed until the next call on this
+/// context. What Node's `systemFonts()` answers.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_system_fonts(ptr: *mut KuiCtx, out: *mut KuiSystemFont, cap: usize) -> usize {
+    guard(0, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
+        c.system_fonts = c.core().system_fonts();
+        let n = c.system_fonts.len();
+        if out.is_null() {
+            return n;
+        }
+        for (i, font) in c.system_fonts.iter().take(cap).enumerate() {
+            unsafe {
+                out.add(i).write(KuiSystemFont {
+                    family: KuiStr {
+                        ptr: font.family.as_ptr(),
+                        len: font.family.len(),
+                    },
+                    weights: font.weights.as_ptr(),
+                    weight_count: font.weights.len() as u32,
+                    monospaced: u32::from(font.monospaced),
+                    italic: u32::from(font.italic),
+                })
+            };
+        }
+        n
+    })
+}
+
 /// Registers a WGSL fragment function; 0 when it does not compile, with a
 /// `fragment-rejected` warning carrying the message. Idempotent by source.
 #[unsafe(no_mangle)]

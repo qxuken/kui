@@ -153,6 +153,23 @@ arithmetic; a wave is pieces of the segment primitive a `line` draws.
 [`underlineColor` / `underlineStyle` rows](props.md#text-props) ·
 [alpha.13](../CHANGELOG.md#010-alpha13-2026-09-15)
 
+### How do I list the installed fonts, the monospaced ones first?
+
+`ctx.systemFonts()` (Rust `Core::system_fonts()`, C `kui_system_fonts`)
+lists every family the core can see, installed or loaded, sorted by
+name, each as `{family, monospaced, weights, italic}`: `monospaced` when
+every face says it is fixed-pitch, the weights its faces come in (400
+regular, 700 bold) and whether one is italic. Filter or sort on
+`monospaced` and hand the chosen `family` to `addSystemFont`. It is read
+from what the font database recorded when it scanned each face, so six
+hundred families answer at once; measuring an `i` against an `M` in each
+instead loads and shapes every file — seconds — and calls a symbol font
+monospaced because its glyphs share an advance. `systemFontFamilies()`
+is the names alone.
+
+[Doors](props.md#doors) ·
+[alpha.21 `### Added`](../CHANGELOG.md#010-alpha21-unreleased)
+
 ### How do I show a 100k-character line, or a paragraph that long?
 
 Hand it over as one `text` node, plain or as spans. A text of 4096 bytes or

@@ -2153,6 +2153,31 @@ macro_rules! core_methods {
                 self.$core().system_font_families()
             }
 
+            /// The families `systemFontFamilies` names, in its order, each
+            /// with what its faces say they are: `monospaced` (every face
+            /// fixed-pitch), `weights` (sorted, each once) and `italic`
+            /// (backlog F97). Read from what the font database recorded
+            /// when it scanned each face, so a font picker can put the
+            /// monospaced ones first without loading a file or shaping a
+            /// glyph.
+            #[napi(ts_return_type = "Array<SystemFont>")]
+            pub fn system_fonts(&mut self) -> Json {
+                Json::Array(
+                    self.$core()
+                        .system_fonts()
+                        .into_iter()
+                        .map(|f| {
+                            serde_json::json!({
+                                "family": f.family,
+                                "monospaced": f.monospaced,
+                                "weights": f.weights,
+                                "italic": f.italic,
+                            })
+                        })
+                        .collect(),
+                )
+            }
+
             // -- Audio -----------------------------------------------------
 
             /// Registers a sound from its encoded bytes (wav/ogg/mp3/flac);

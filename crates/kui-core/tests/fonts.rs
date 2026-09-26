@@ -1,5 +1,6 @@
 //! Registered fonts: installed families by name, font files from bytes,
-//! stale handles falling back to sans, and shaping through `TextStyle::font`.
+//! stale handles falling back to sans, shaping through `TextStyle::font`,
+//! and what the font database says each family is.
 
 use kui_core::{Core, NodeSpec, Size, TextStyle};
 
@@ -86,4 +87,82 @@ fn font_folders_and_files_load_by_path_and_names_resolve_idempotently() {
     assert_eq!(a, b, "the same family keeps one handle");
     assert!(glyph_quads(&mut fresh, TextStyle::new(20.0).font(a)) > 0);
     std::fs::remove_dir_all(&dir).ok();
+}
+
+/// What the font database knows of each family, listed without loading or
+/// shaping anything (backlog F97): whether every face is fixed-pitch, the
+/// weights, an italic. Families of the fixture face stand in for installed
+/// ones: a monospaced one in three faces, a proportional one, and one whose
+/// faces disagree, which is not monospaced.
+#[test]
+fn system_fonts_say_what_each_family_is() {
+    use kui_core::SystemFont;
+    use kui_core::testing::font_face;
+    let mut core = Core::new();
+    let faces = [
+        font_face("Kui F97 Mono", 400, false, true),
+        font_face("Kui F97 Mono", 700, false, true),
+        font_face("Kui F97 Mono", 400, true, true),
+        font_face("Kui F97 Sans", 300, false, false),
+        font_face("Kui F97 Mixed", 700, false, false),
+        font_face("Kui F97 Mixed", 400, false, true),
+    ];
+    let ids: Vec<_> = faces
+        .into_iter()
+        .map(|bytes| core.add_font_data(bytes).expect("the fixture registers"))
+        .collect();
+
+    let fonts = core.system_fonts();
+    let names: Vec<&str> = fonts.iter().map(|f| f.family.as_str()).collect();
+    let mut sorted = names.clone();
+    sorted.sort();
+    sorted.dedup();
+    assert_eq!(names, sorted, "sorted by family, one row each");
+    assert_eq!(
+        core.system_font_families(),
+        names,
+        "the same families system_font_families names"
+    );
+
+    let find = |family: &str| fonts.iter().find(|f| f.family == family).cloned();
+    assert_eq!(
+        find("Kui F97 Mono"),
+        Some(SystemFont {
+            family: "Kui F97 Mono".into(),
+            monospaced: true,
+            weights: vec![400, 700],
+            italic: true,
+        })
+    );
+    assert_eq!(
+        find("Kui F97 Sans"),
+        Some(SystemFont {
+            family: "Kui F97 Sans".into(),
+            monospaced: false,
+            weights: vec![300],
+            italic: false,
+        })
+    );
+    let mixed = find("Kui F97 Mixed").expect("listed");
+    assert!(!mixed.monospaced, "one proportional face and it is not");
+    assert_eq!(
+        mixed.weights,
+        vec![400, 700],
+        "sorted, whatever the load order"
+    );
+
+    // Each family's name is one add_system_font takes.
+    let mono = core.add_system_font("Kui F97 Mono").expect("resolves");
+    assert_eq!(core.font_family(mono), Some("Kui F97 Mono"));
+
+    for id in ids {
+        core.remove_font(id);
+    }
+    assert!(
+        !core
+            .system_fonts()
+            .iter()
+            .any(|f| f.family.starts_with("Kui F97")),
+        "gone with their faces"
+    );
 }

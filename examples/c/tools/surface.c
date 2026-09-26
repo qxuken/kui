@@ -866,6 +866,12 @@ static int surface(void) {
         KuiStr families[4];
         size_t nf = kui_font_families(ui, families, 4);
         check(nf > 0 && families[0].len > 0, "kui_font_families lists the stock set");
+        KuiSystemFont fonts[4];
+        size_t ns = kui_system_fonts(ui, fonts, 4);
+        check(ns == nf && fonts[0].family.len == families[0].len
+                  && memcmp(fonts[0].family.ptr, families[0].ptr, families[0].len) == 0
+                  && fonts[0].weight_count > 0 && fonts[0].weights[0] > 0,
+              "kui_system_fonts: the same families, each with its weights");
     }
 
     /* The image's pixels read back, and a fragment's whole module. */

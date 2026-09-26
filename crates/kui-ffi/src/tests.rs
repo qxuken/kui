@@ -2324,6 +2324,54 @@ mod parity_headless {
         assert_eq!(s(one[0]), names[0]);
         kui_ctx_free(ctx);
     }
+
+    /// The same families with what their faces say they are (backlog F97)
+    /// — what Node's `systemFonts()` answers: in `kui_font_families`'
+    /// order, each with its weights sorted and once, the two flags 0 or 1
+    /// and the core's reading of them. A short array is filled as far as
+    /// it goes, and a NULL one asks for the count.
+    #[test]
+    fn system_fonts_are_the_families_with_what_they_are() {
+        let ctx = kui_ctx_new();
+        let total = kui_font_families(ctx, std::ptr::null_mut(), 0);
+        let mut names = vec![ks(""); total];
+        kui_font_families(ctx, names.as_mut_ptr(), total);
+        let names: Vec<String> = names.iter().map(|k| s(*k)).collect();
+
+        assert_eq!(kui_system_fonts(ctx, std::ptr::null_mut(), 0), total);
+        let blank = KuiSystemFont {
+            family: ks(""),
+            weights: std::ptr::null(),
+            weight_count: 0,
+            monospaced: 7,
+            italic: 7,
+        };
+        let mut out = vec![blank; total];
+        assert_eq!(kui_system_fonts(ctx, out.as_mut_ptr(), total), total);
+        let expected = unsafe { ctx.as_mut() }.unwrap().core().system_fonts();
+        for ((font, name), want) in out.iter().zip(&names).zip(&expected) {
+            assert_eq!(&s(font.family), name, "kui_font_families' order");
+            let weights =
+                unsafe { std::slice::from_raw_parts(font.weights, font.weight_count as usize) };
+            assert!(!weights.is_empty(), "{name}: a face has a weight");
+            assert!(
+                weights.windows(2).all(|w| w[0] < w[1]),
+                "{name}: {weights:?}"
+            );
+            assert_eq!(weights, want.weights.as_slice());
+            assert_eq!(font.monospaced, u32::from(want.monospaced), "{name}");
+            assert_eq!(font.italic, u32::from(want.italic), "{name}");
+        }
+
+        let mut one = [blank];
+        assert_eq!(kui_system_fonts(ctx, one.as_mut_ptr(), 1), total);
+        assert_eq!(s(one[0].family), names[0]);
+        assert_eq!(
+            kui_system_fonts(std::ptr::null_mut(), one.as_mut_ptr(), 1),
+            0
+        );
+        kui_ctx_free(ctx);
+    }
 }
 
 #[cfg(test)]

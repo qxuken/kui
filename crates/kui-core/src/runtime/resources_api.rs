@@ -192,18 +192,45 @@ impl Core {
     }
 
     /// Family names of every installed font the core can see (sorted,
-    /// deduplicated) — what `add_system_font` accepts.
+    /// deduplicated) — what `add_system_font` accepts. The names of
+    /// [`system_fonts`](Self::system_fonts), which says what each is.
     pub fn system_font_families(&self) -> Vec<String> {
+        self.system_fonts().into_iter().map(|f| f.family).collect()
+    }
+
+    /// Every family the core can see, installed or loaded, one per family
+    /// and sorted by name — the families `system_font_families` names —
+    /// with what its faces say they are: monospaced, the weights, an
+    /// italic (backlog F97). Read from what the font database recorded
+    /// when it scanned each face, so a fonts pane showing the monospaced
+    /// ones first costs no file loaded and no glyph shaped.
+    pub fn system_fonts(&self) -> Vec<crate::resources::SystemFont> {
+        use crate::resources::SystemFont;
+        use cosmic_text::fontdb::Style;
         let sess = self.session.state();
-        let mut names: Vec<String> = sess
-            .fonts
-            .db()
-            .faces()
-            .filter_map(|f| f.families.first().map(|(n, _)| n.clone()))
-            .collect();
-        names.sort();
-        names.dedup();
-        names
+        let mut by_family = std::collections::BTreeMap::<&str, SystemFont>::new();
+        for face in sess.fonts.db().faces() {
+            let Some((name, _)) = face.families.first() else {
+                continue;
+            };
+            let font = by_family.entry(name).or_insert_with(|| SystemFont {
+                family: name.clone(),
+                monospaced: true,
+                weights: Vec::new(),
+                italic: false,
+            });
+            font.monospaced &= face.monospaced;
+            font.italic |= face.style != Style::Normal;
+            font.weights.push(face.weight.0);
+        }
+        by_family
+            .into_values()
+            .map(|mut font| {
+                font.weights.sort_unstable();
+                font.weights.dedup();
+                font
+            })
+            .collect()
     }
 
     /// The installed families `FontFamily::Sans`, `Serif` and `Mono` shape

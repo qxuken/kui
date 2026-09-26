@@ -3365,6 +3365,32 @@ test('fonts register by installed name or bytes and shape text', () => {
   assert.ok(glyphs(box({}, [text('Fonts', { size: 20, font: id })])) > 0);
 });
 
+test('systemFonts() is the families with what their faces say they are (F97)', () => {
+  const ctx = new Ctx();
+  const fonts = ctx.systemFonts();
+  assert.deepEqual(
+    fonts.map((f) => f.family),
+    ctx.systemFontFamilies(),
+    'the same families, in the same order',
+  );
+  for (const f of fonts) {
+    assert.deepEqual(Object.keys(f).sort(), ['family', 'italic', 'monospaced', 'weights']);
+    assert.equal(typeof f.monospaced, 'boolean');
+    assert.equal(typeof f.italic, 'boolean');
+    assert.ok(f.weights.length > 0, `${f.family}: a face has a weight`);
+    assert.deepEqual(f.weights, [...new Set(f.weights)].sort((a, b) => a - b), f.family);
+  }
+  // The platform's own, where they are installed: the Rust test pins the
+  // reading on fixture faces that are everywhere.
+  const byName = new Map(fonts.map((f) => [f.family, f]));
+  for (const mono of ['Menlo', 'DejaVu Sans Mono', 'Consolas']) {
+    if (byName.has(mono)) assert.ok(byName.get(mono).monospaced, `${mono} is monospaced`);
+  }
+  for (const prop of ['Helvetica', 'DejaVu Sans', 'Arial']) {
+    if (byName.has(prop)) assert.ok(!byName.get(prop).monospaced, `${prop} is not`);
+  }
+});
+
 test('font files and folders load by path', () => {
   const ctx = new Ctx();
   assert.throws(() => ctx.loadFontFile('/no/such/font.ttf'), /no usable font face/);

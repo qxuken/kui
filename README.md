@@ -693,7 +693,8 @@ that are hard to reverse and would look arbitrary without their context.
   mono families, `Core::load_fonts_dir("fonts")` / `load_font_file(path)` /
   `add_font_data(bytes)` load TTF/OTF/TTC files into the font database and
   `Core::add_system_font("Antonio")` names a family — installed or just
-  loaded (`system_font_families()` lists them); all hand back a `FontId`
+  loaded (`system_font_families()` lists them, `system_fonts()` with
+  which are monospaced, their weights and italics); all hand back a `FontId`
   slotmap handle for `TextStyle::font(id)` — JSX `<text font={id}>` via
   `ctx.addFont` / `addSystemFont`, Lua `font = id`, C `KuiTextStyle.font`
   via `kui_font_add*`. The shaping cache keys on the handle, editors shape

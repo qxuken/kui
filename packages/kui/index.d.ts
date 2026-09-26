@@ -1626,6 +1626,21 @@ export interface ScrollOffset {
   y: number;
 }
 
+/** One font family the core can see, installed or loaded, with what the
+ *  font database read off its faces (`systemFonts()`, backlog F97). */
+export interface SystemFont {
+  /** The name `addSystemFont` takes. */
+  family: string;
+  /** Every face says it is fixed-pitch (the `post` table's
+   *  `isFixedPitch`). */
+  monospaced: boolean;
+  /** The weights its faces come in — 400 regular, 700 bold — sorted,
+   *  each once. */
+  weights: number[];
+  /** It has an italic or an oblique face. */
+  italic: boolean;
+}
+
 /** What the last layout resolved for a scroll container: its own box
  *  (`x`/`y`/`w`/`h`, logical px in viewport coordinates), its laid-out
  *  content size (padding included) and the offset it clamped. */
@@ -2260,6 +2275,16 @@ export declare class Ctx {
    * loaded (sorted).
    */
   systemFontFamilies(): Array<string>
+  /**
+   * The families `systemFontFamilies` names, in its order, each
+   * with what its faces say they are: `monospaced` (every face
+   * fixed-pitch), `weights` (sorted, each once) and `italic`
+   * (backlog F97). Read from what the font database recorded
+   * when it scanned each face, so a font picker can put the
+   * monospaced ones first without loading a file or shaping a
+   * glyph.
+   */
+  systemFonts(): Array<SystemFont>
   /**
    * Registers a sound from its encoded bytes (wav/ogg/mp3/flac);
    * returns its id for `<audio src>`, the `clickSound` /
@@ -3382,6 +3407,16 @@ export declare class KuiWindow {
    * loaded (sorted).
    */
   systemFontFamilies(): Array<string>
+  /**
+   * The families `systemFontFamilies` names, in its order, each
+   * with what its faces say they are: `monospaced` (every face
+   * fixed-pitch), `weights` (sorted, each once) and `italic`
+   * (backlog F97). Read from what the font database recorded
+   * when it scanned each face, so a font picker can put the
+   * monospaced ones first without loading a file or shaping a
+   * glyph.
+   */
+  systemFonts(): Array<SystemFont>
   /**
    * Registers a sound from its encoded bytes (wav/ogg/mp3/flac);
    * returns its id for `<audio src>`, the `clickSound` /

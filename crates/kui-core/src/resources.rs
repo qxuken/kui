@@ -308,6 +308,29 @@ pub struct FontEntry {
     pub faces: Vec<cosmic_text::fontdb::ID>,
 }
 
+/// One family of the font database — installed or loaded — as its faces
+/// describe it, from what the database read off each face's tables when
+/// it was scanned: nothing is loaded or shaped to answer (backlog F97).
+/// What [`Core::system_fonts`](crate::Core::system_fonts) lists, one per
+/// family.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SystemFont {
+    /// The family name [`Core::add_system_font`](crate::Core::add_system_font)
+    /// takes.
+    pub family: String,
+    /// Every face of the family says it is fixed-pitch (the `post` table's
+    /// `isFixedPitch`): a monospaced family. Measuring glyph widths instead
+    /// loads and shapes every file, and calls a symbol font whose glyphs
+    /// happen to share an advance monospaced.
+    pub monospaced: bool,
+    /// The weights its faces come in, on the CSS scale (400 regular, 700
+    /// bold) as each face's `OS/2` table says it — sorted, each once. A
+    /// variable font's face reads as its default instance.
+    pub weights: Vec<u16>,
+    /// It has an italic or an oblique face.
+    pub italic: bool,
+}
+
 /// A registered sound: the encoded file (wav/ogg/mp3/flac, whatever the
 /// driver's backend decodes), shared so the backend can hold it without a
 /// copy. The core never decodes — headless drivers have no use for PCM.

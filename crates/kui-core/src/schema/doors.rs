@@ -164,6 +164,13 @@ pub const DOORS: &[Door] = &[
         doc: "The installed family names `add_system_font` accepts.",
     },
     Door {
+        rust: "Core::system_fonts",
+        c: Is("kui_system_fonts"),
+        node: Is("systemFonts"),
+        lua: No(NO_HANDLE),
+        doc: "The same families, each with what the font database read off its faces: `monospaced` (every face fixed-pitch), `weights`, `italic` (backlog F97) — a font picker's monospaced-first list without a file loaded or a glyph shaped.",
+    },
+    Door {
         rust: "Core::add_sound",
         c: Is("kui_sound_add"),
         node: Is("addSound"),
