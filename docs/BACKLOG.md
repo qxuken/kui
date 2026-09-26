@@ -1563,6 +1563,172 @@ F90 is `clip` on a parent-anchored float (ABI 19, frame v16); F91 is
 - **Help on a non-Latin layout** (mind map, alpha.18): bound to `/`
   and `?`; `physical === '/'` binds the key where it sits.
 
+## From the alpha.19 upgrade reports (2026-09-26)
+
+Both apps upgraded to alpha.19 the day it was tagged, on the Mac: the
+mind map's `FINDINGS.md` (alpha.18 → alpha.19) and the LCARS pomodoro's
+`docs/kui-alpha-19.md` (wishes 1–4, the first three carried). The bare
+bump was a drop-in for both. Every ask of the alpha.18 round had landed
+(F88–F92), and each app took what it had asked for: the mind map's
+nodes carry F90's `clip`, its `init` reads F91's `size()`, and the
+pomodoro's smoke test reads F92's `hostArea()`. The pomodoro also took
+RG42's `setValue` on its hand-drawn sliders and C13's `spaceBetween`
+and `baseline`.
+
+Both apps' first run on alpha.19 failed the same smoke assertion, "a
+stopped window paints about once a second". Both apps showed it fails as
+often on alpha.18 on a loaded machine. Both traced it to the desktop:
+the mind map's probe caught `env().focused` going false as the frame
+landed, and the pomodoro's readings showed bursts of 50–130 pumps when
+the pointer crossed the window. Both then wrote a heuristic around it
+(a median of five, or a retry when focus, `owed()` or the cursor
+moved). Both asked for the same count in `frameStats` (F94).
+
+Every claim below was checked against this tree. The mind map's access
+rect is broader than filed: it is every clipped node, not only a
+clipped float (F93).
+
+### `!` F93 — A clipped node's access rect is its whole box: assistive technology finds and highlights it past the clip
+
+**Found** by the mind map, taking F90. A node panned 28 px under the
+toolbar is cut at the canvas's edge, and a click there misses it. Its
+access node still reads `y=17.7 h=36.6`, so "a reader's highlight is
+drawn over the toolbar where the node no longer is".
+
+**In the tree:** `access::build` gives every node
+`Rect::from_pos_size(tree.pos[i], tree.size[i])` (`access.rs:1141-1145`)
+and never looks at a clip. So the same is true of a row scrolled half
+out of a scroller, and of anything in a `clip` box. None of it is new
+with F90, but F90 is the first release that promised "cannot be hit
+past it". The runner hands the rect to AccessKit as the node's bounds
+(`access_bridge.rs:312`) and sets `clips_children` on nothing.
+AccessKit's `hit_test` (accesskit_consumer 0.39, `node.rs:344`) reads
+raw bounds, children last-to-first. VoiceOver's mouse-over, Narrator's
+hover and a Windows `ElementFromPoint` can then name a clipped node over
+whatever sits there, when it comes later in the tree than the toolbar.
+AccessKit's clip model can't be used as is. `clips_children` on the
+scroller would also cut a tooltip that escapes it (a float's semantic
+parent is the node that declared it, not the layer it paints in), and a
+plain `clip` box is elided from the access tree, so there is no node to
+set it on.
+
+**Do.** Clip the access rect in the core by the node's effective clip:
+the one its hit region already carries (`HitRegion::clip`), which a
+`clip` float takes and an escaping float does not. A node wholly
+clipped keeps a zero-size rect at the clip's edge. That leaves it
+reachable in reading order and by its actions (a reader's "scroll into
+view" is `scroll_rect_into_view` on the key), but it is never a hit.
+Text runs are clipped the same way. The other reading, Chromium's
+(unclipped bounds plus an offscreen flag), was considered. AccessKit
+0.25 has no offscreen state for kui to set, so it would leave the hit
+test as it is. Pin it headlessly in four bindings: the mind map's
+canvas, a node straddling its edge, and a row half out of a scroller.
+
+### `~` F94 — Nothing says what woke a pump: an idle-window test cannot tell the desktop from a regression
+
+**Found** by both apps in the same release, independently. "A stopped
+window paints about once a second" is the test for F57, a tick's frame
+resetting the backoff. Read over one second it fails 2–3 runs in ten,
+on alpha.18 as on alpha.19. A focus change is a repaint (the ring
+goes), a pointer crossing the window is a hover transition, and a busy
+WindowServer is a burst of events. Each resets the backoff exactly as
+the regression would. The pomodoro now judges by the median of five
+seconds. The mind map re-measures when `env().focused`, `owed()` or
+`cursorShape()` moved in the second. Both asked for the count
+directly: "what woke the pump" (pomodoro wish 4) and "a count of OS
+input events beside `pumps` and `framesTotal`" (mind map).
+
+**In the tree:** the runner already knows. `saw_event` is set for every
+window event but a redraw and for every wake (`kui-native/src/lib.rs`,
+`window_event` and `user_event`), and it is taken once per batch to set
+the zero deadline the Node driver reads as "used". Nothing counts it.
+`Runner::pumps()` counts turns, `FrameStats::total` counts frames.
+
+**Do.** A third monotonic count beside them: the pumps whose batch saw
+an OS event or a wake. `Runner` gets an accessor next to `pumps()`,
+and Node gets a `frameStats()` field next to `pumps`, documented as
+"two readings a second apart with this one unmoved are a second the
+desktop left alone". The name is the chip's to pick. This is also the
+use behind the parked "frames by cause" (pomodoro, alpha.14 wish 3,
+carried again): with it, a stopped window's second is "frames
+= ticks that drew" whenever the count did not move. So the split by
+cause stays parked. C and Lua have no `pumps` today (their hosts own
+the loop), so this is where `pumps` is and nowhere else.
+
+### `.` F95 — Two docs behind the code: the stroke rows' contrast after F90, and `radio` without `radioGroup`
+
+**Found** by the mind map and by the pomodoro.
+- **The stroke rows.** The `line` and `polygon` rows say "Unlike a
+  declared float, which escapes every ancestor's clip" (`schema.rs`
+  twice, so `props.md`, and the hand-written `jsx-runtime.d.ts:729`).
+  Since F90 a declared float escapes unless it declares `clip` with a
+  parent anchor. The float row says so, but these two sentences
+  contradict it.
+- **The `role` row.** It lists `radio` and `radioGroup` side by side and
+  says nothing about how they relate. The pomodoro declared
+  `role="radio"` on its three mode buttons in alpha.6 and had three Tab
+  stops for ten releases. It found `radioGroup` in alpha.19 through the
+  stock `<radio>` row. Wrapping the modes in `role="radioGroup"` gave
+  one stop, arrows and "2 of 3". The `role` row should say that a
+  `radio` belongs in a `radioGroup` and a `tab` in a `tabList`, and
+  what the pair buys (ADR 0007).
+
+**Do.** Edit the rows and regenerate. The `jsx-runtime.d.ts` text is
+hand-written, so edit it by hand too.
+
+### `.` F96 — A radio or a tab outside its container is a Tab stop of its own, silently
+
+**Found** with F95, and it is the half the doc can't reach. An app
+that declares `role="radio"` and never reads the `role` row gets
+radios that each take a Tab stop and answer no arrows, and a reader
+announces no position in a set. Nothing warns. `composite::PAIRS`
+(`composite.rs:24`) already knows each item role's container, and a
+`Warning` is "a silent misconfiguration the core noticed"
+(`diag.rs:60`). A `radio` with no `radioGroup` above it is one.
+
+**Do.** A `radio-outside-group` warning (name to taste) for a `radio`
+with no `radioGroup` ancestor and a `tab` with no `tabList` ancestor,
+once per key as the other structural warnings are. The stock `<radio>`
+included. Leave out `menuItem` and `listItem`: the menus build their
+own containers, and a list item outside a list is only a looser
+reading. The warning code goes in each binding's code list (the TS
+union is generated; check the Lua meta file and `kui.h`'s list).
+
+### Wishes, not entries
+
+- **A `cursor` warning for a clickable node with no `cursor`**
+  (pomodoro, alpha.14 wish 1, now on its fourth report). Declined again,
+  for alpha.14's reason, recorded under the alpha.14/16/18 round above.
+  An arrow over a clickable box is a choice the desktop makes, not a
+  misconfiguration. That answer lives only in this file, which is why
+  the pomodoro keeps carrying the wish.
+- **Frames by cause in `frameStats`** (pomodoro, alpha.14 wish 3,
+  carried). Still parked. F94 is the part of it both apps' tests need.
+- **The icon read back** (pomodoro, alpha.18 wish 6, carried). Declined,
+  as in the round above.
+
+### Theirs, not ours
+
+- **The idle-second failures themselves** (both). They are the desktop,
+  as both reports found. F94 is the count that lets a test say so.
+- **Four failures under `KUI_DEVTOOLS=1`** (pomodoro). The smoke test
+  assumes the wide tier, as alpha.16's report found. The fifth was the
+  overflow check, and F92 fixed it.
+- **The zoom hint in the status bar since alpha.6** (mind map). It was
+  `anchor: 'viewport'` with a `dy` measured from the window's bottom.
+  Found by taking F90 and fixed in the app.
+- **The rename echo's two readings past the edge** (mind map). They are
+  a trailing space, which no wrap can move, and are never presented, as
+  the alpha.12 report found.
+- **Save As, and Help on a non-Latin layout** (mind map). C51's
+  `requestFiles({ mode: 'save' })` is the first. `physical === '/'` is
+  the second, as in the round above.
+- **`frameLatency: 1` not taken** (both measured C47). The mind map
+  measured two queued frames buying 2–3 frames a second and nearly all
+  the time blocked on a drawable. The pomodoro measured one more vsync
+  (~8 ms) of latency only while frames run back to back. Neither
+  changes the default.
+
 ## From the second bake-off (2026-09-25)
 
 The comparison of round one (2026-09-08, above) was run again
@@ -2191,6 +2357,9 @@ compiled once in kui, a release rebuild of the counter 1.59 → 0.85 s). C45, th
 same day. Nothing of the
 alpha.14, alpha.16 and alpha.18 upgrade
 reports is open (F88–F92 **built 2026-09-25**, the day they were filed).
+The alpha.19 upgrade reports of 2026-09-26 left four open: F93, a
+clipped node's access rect, first; then F94, the pumps an OS event
+woke; F96, the radio outside its group; and F95, two docs.
 Nothing of the Windows regression round of 2026-09-26 is open
 (RG38–RG46 **built 2026-09-26**, the day they were filed).
 Nothing of the Linux round under WSLg is open (RG47–RG49 **built
