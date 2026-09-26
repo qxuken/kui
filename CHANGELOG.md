@@ -24,7 +24,7 @@ was the first bare bump to break an app in five releases).
 ## 0.1.0-alpha.20 (unreleased)
 
 **What breaks.** No door, the ABI at 19 and the frame at v16. One
-reading changes and one warning is new.
+reading changes, one warning is new, and `frameStats()` gains a field.
 
 - An access node's rect, and an editor's text run's, is cut to the clip
   the node is drawn under, and a node wholly clipped away reads as a
@@ -42,6 +42,30 @@ reading changes and one warning is new.
   set's one stop and moves by arrows from there.
 
 ### Added
+
+- **`frameStats().wokenPumps`: the pumps an OS event or a wake reached**
+  (backlog F94, from both apps' alpha.19 reports). A third monotonic
+  count beside `pumps` and `framesTotal`: the pumps whose batch carried
+  a window event other than a redraw (a key, the pointer crossing the
+  window, a focus change, a resize, the window moved or occluded) or
+  something through the loop's proxy (a `Waker` wake, a screen reader
+  asking, a file dialog's answer). It is the same signal that makes
+  `nextDeadlineMs()` answer 0 and resets `runWindowed`'s backoff, now
+  counted. Two readings a second apart with it unmoved are a second the
+  desktop left the window alone, so every frame in that second was the
+  app's own. Both apps' smoke test, "a stopped window paints about once
+  a second", failed 2–3 runs in ten on a loaded machine. A focus change,
+  a pointer crossing and a busy WindowServer each reset the backoff
+  exactly as the F57 regression would, and the test could not tell them
+  apart. In a real window on this Mac, a stopped app with a
+  once-a-second tick read 30 pumps, 0 woken and 1 frame per idle
+  second; the second the pointer crossed it read 115 pumps, 20 woken
+  and 21 frames. In Rust, `PumpRunner::woken_pumps()`. C and Lua have
+  no `pumps` either, since their hosts own the loop.
+  *What you can delete:* the heuristic an idle-window test wrapped
+  around a second the desktop touched (a median of five seconds, or a
+  retry when `env().focused`, `owed()` or `cursorShape()` moved in it).
+  Measure the second again when `wokenPumps` moved.
 
 - **A radio or a tab outside its container is warned about** (backlog
   F96, from the LCARS pomodoro's alpha.19 report). The pomodoro declared

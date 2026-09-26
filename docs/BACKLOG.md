@@ -49,8 +49,9 @@ filed, RG38–RG46 — the Windows halves since alpha.16, run on a
 Windows machine — from the Windows regression round of 2026-09-26, and
 RG47–RG49 from the Linux round under WSLg the same day, and
 RG50–RG52 from the custom chrome example after it, each the day it was
-filed, and F93 — a clipped node's access rect — from the alpha.19
-upgrade reports of the same day, the day it was filed. The index
+filed, and F93–F96 — a clipped node's access rect, the pumps an OS
+event woke, two docs and a radio outside its group — from the alpha.19
+upgrade reports of the same day, the day they were filed. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -1589,117 +1590,14 @@ Every claim below was checked against this tree. The mind map's access
 rect is broader than filed: it is every clipped node, not only a
 clipped float (F93).
 
-F93 was **built 2026-09-26**, the day it was filed, and is in the
-archive: every access rect, and every editor run's, is cut to the clip
-the node's hit region carries, a node wholly clipped a zero-size rect
-on the clip's edge.
-
-### `~` F94 — Nothing says what woke a pump: an idle-window test cannot tell the desktop from a regression
-
-**Found** by both apps in the same release, independently. "A stopped
-window paints about once a second" is the test for F57, a tick's frame
-resetting the backoff. Read over one second it fails 2–3 runs in ten,
-on alpha.18 as on alpha.19. A focus change is a repaint (the ring
-goes), a pointer crossing the window is a hover transition, and a busy
-WindowServer is a burst of events. Each resets the backoff exactly as
-the regression would. The pomodoro now judges by the median of five
-seconds. The mind map re-measures when `env().focused`, `owed()` or
-`cursorShape()` moved in the second. Both asked for the count
-directly: "what woke the pump" (pomodoro wish 4) and "a count of OS
-input events beside `pumps` and `framesTotal`" (mind map).
-
-**In the tree:** the runner already knows. `saw_event` is set for every
-window event but a redraw and for every wake (`kui-native/src/lib.rs`,
-`window_event` and `user_event`), and it is taken once per batch to set
-the zero deadline the Node driver reads as "used". Nothing counts it.
-`Runner::pumps()` counts turns, `FrameStats::total` counts frames.
-
-**Do.** A third monotonic count beside them: the pumps whose batch saw
-an OS event or a wake. `Runner` gets an accessor next to `pumps()`,
-and Node gets a `frameStats()` field next to `pumps`, documented as
-"two readings a second apart with this one unmoved are a second the
-desktop left alone". The name is the chip's to pick. This is also the
-use behind the parked "frames by cause" (pomodoro, alpha.14 wish 3,
-carried again): with it, a stopped window's second is "frames
-= ticks that drew" whenever the count did not move. So the split by
-cause stays parked. C and Lua have no `pumps` today (their hosts own
-the loop), so this is where `pumps` is and nowhere else.
-
-### `.` F95 — Two docs behind the code: the stroke rows' contrast after F90, and `radio` without `radioGroup` — **built 2026-09-26**
-
-**Built 2026-09-26**, with F96. The `line` and `polygon` rows and the
-hand-written `line` doc in `jsx-runtime.d.ts` now say a stroke in its
-parent's box is held by the parent's clip, and that a declared float is
-held that way only when it declares `clip` with a parent anchor. The
-`role` row says a `radio` belongs inside a `radioGroup` and a `tab`
-inside a `tabList`, labelled with what the choice is, and what the pair
-buys (ADR 0007): one Tab stop, the arrows, Home and End moving the
-choice as focus moves, and "2 of 3" read to a screen reader. It names
-F96's warning for the item on its own, and says `menu` and `list` pair
-the same way. `props.md` and the prop types regenerated.
-
-**Found** by the mind map and by the pomodoro.
-- **The stroke rows.** The `line` and `polygon` rows say "Unlike a
-  declared float, which escapes every ancestor's clip" (`schema.rs`
-  twice, so `props.md`, and the hand-written `jsx-runtime.d.ts:729`).
-  Since F90 a declared float escapes unless it declares `clip` with a
-  parent anchor. The float row says so, but these two sentences
-  contradict it.
-- **The `role` row.** It lists `radio` and `radioGroup` side by side and
-  says nothing about how they relate. The pomodoro declared
-  `role="radio"` on its three mode buttons in alpha.6 and had three Tab
-  stops for ten releases. It found `radioGroup` in alpha.19 through the
-  stock `<radio>` row. Wrapping the modes in `role="radioGroup"` gave
-  one stop, arrows and "2 of 3". The `role` row should say that a
-  `radio` belongs in a `radioGroup` and a `tab` in a `tabList`, and
-  what the pair buys (ADR 0007).
-
-**Do.** Edit the rows and regenerate. The `jsx-runtime.d.ts` text is
-hand-written, so edit it by hand too.
-
-### `.` F96 — A radio or a tab outside its container is a Tab stop of its own, silently — **built 2026-09-26**
-
-**Built 2026-09-26** as `item-outside-container`, one code for both
-items, since the message names the pair. `Diagnostics::check_lone_items`
-is one forward pass over the tree on the checks' cadence. It carries a
-bit per `composite::PAIRS` container down from each parent, and it
-reports a `radio` or `tab` whose container's bit is unset, once per key.
-The pair's own container is the only one that counts: a radio in a
-`tabList` is reported. Lua's meta file and `kui.h` list no codes (the
-header names three as examples), so the generated `WarningCode` union
-and `props.md` are the lists that changed.
-
-**What tripped it:** the devtools, eight times. Its five dock buttons
-were `radio`s with no group, and its tabs had no `tabList`. The four
-placements are now a `radioGroup` labelled "Dock" and the strip is a
-`tabList`. Close is not a placement, so it is a plain button after the
-group, because an arrow that moved onto it would have closed the panel.
-The corpus's `sampler` card is a lone `tab` on purpose (it shows
-`selected` landing). It keeps the role and pins the warning, so all four
-bindings are held to raising it. No example tripped it.
-
-**Tests:** core (`composite_keyboard.rs`: a lone radio, tab and stock
-radio reported once over three frames, the same nested in their
-containers not, a lone `menuItem` and `listItem` not, a radio in a
-`tabList` reported; the devtools raising nothing in every dock and on
-every tab, popped out included), Node (a lone `<radio>` and tab against
-grouped ones), and the corpus in Rust, Lua, C and Node.
-
-**Found** with F95, and it is the half the doc can't reach. An app
-that declares `role="radio"` and never reads the `role` row gets
-radios that each take a Tab stop and answer no arrows, and a reader
-announces no position in a set. Nothing warns. `composite::PAIRS`
-(`composite.rs:24`) already knows each item role's container, and a
-`Warning` is "a silent misconfiguration the core noticed"
-(`diag.rs:60`). A `radio` with no `radioGroup` above it is one.
-
-**Do.** A `radio-outside-group` warning (name to taste) for a `radio`
-with no `radioGroup` ancestor and a `tab` with no `tabList` ancestor,
-once per key as the other structural warnings are. The stock `<radio>`
-included. Leave out `menuItem` and `listItem`: the menus build their
-own containers, and a list item outside a list is only a looser
-reading. The warning code goes in each binding's code list (the TS
-union is generated; check the Lua meta file and `kui.h`'s list).
+F93–F96 were **built 2026-09-26**, the day they were filed, and are in
+the archive: every access rect, and every editor run's, is cut to the
+clip the node's hit region carries (F93); `frameStats().wokenPumps` in
+Node and `PumpRunner::woken_pumps()` in Rust count the pumps whose
+batch saw an OS event or a wake (F94); the stroke rows and the `role`
+row caught up with F90 and ADR 0007 (F95); and a `radio` with no
+`radioGroup`, or a `tab` with no `tabList`, raises
+`item-outside-container` (F96).
 
 ### Wishes, not entries
 
@@ -1710,14 +1608,16 @@ union is generated; check the Lua meta file and `kui.h`'s list).
   misconfiguration. That answer lives only in this file, which is why
   the pomodoro keeps carrying the wish.
 - **Frames by cause in `frameStats`** (pomodoro, alpha.14 wish 3,
-  carried). Still parked. F94 is the part of it both apps' tests need.
+  carried). Still parked. F94, built, is the part of it both apps'
+  tests need.
 - **The icon read back** (pomodoro, alpha.18 wish 6, carried). Declined,
   as in the round above.
 
 ### Theirs, not ours
 
 - **The idle-second failures themselves** (both). They are the desktop,
-  as both reports found. F94 is the count that lets a test say so.
+  as both reports found. F94's `wokenPumps` is the count that lets a
+  test say so.
 - **Four failures under `KUI_DEVTOOLS=1`** (pomodoro). The smoke test
   assumes the wide tier, as alpha.16's report found. The fifth was the
   overflow check, and F92 fixed it.
@@ -3225,6 +3125,9 @@ move.
 - `.` **RG51** — [A Windows window with its own titlebar is square and flat](backlog/closed-2026-09.md#-rg51--a-windows-window-with-its-own-titlebar-is-square-and-flat--done-2026-09-26) — done (2026-09-26) — `Chrome::Custom` on Windows keeps the undecorated shadow and rounded corners
 - `.` **RG52** — [The Node relaunch example's custom-chrome window has its titlebar mid-window](backlog/closed-2026-09.md#-rg52--the-node-relaunch-examples-custom-chrome-window-has-its-titlebar-mid-window--done-2026-09-26) — done (2026-09-26) — The strip is the root's first row, outside the padding, and the custom launch docks the devtools at the bottom
 
-**From the alpha.19 upgrade reports (2026-09-26)** — F93 built the same day; F94–F96 open above
+**From the alpha.19 upgrade reports (2026-09-26)** — F93–F96, filed and built the same day
 
 - `!` **F93** — [A clipped node's access rect is its whole box: assistive technology finds and highlights it past the clip](backlog/closed-2026-09.md#-f93--a-clipped-nodes-access-rect-is-its-whole-box-assistive-technology-finds-and-highlights-it-past-the-clip--done-2026-09-26) — done (2026-09-26) — `access::build` cuts every rect, and every editor run's, to the clip the node's hit region carries (`Sources::clips`); a node wholly clipped is a zero-size rect on the clip's edge; the corpus's `node` lines carry the rect, and `clip-access` pins it in four bindings
+- `~` **F94** — [Nothing says what woke a pump: an idle-window test cannot tell the desktop from a regression](backlog/closed-2026-09.md#-f94--nothing-says-what-woke-a-pump-an-idle-window-test-cannot-tell-the-desktop-from-a-regression--done-2026-09-26) — done (2026-09-26) — `frameStats().wokenPumps` and `PumpRunner::woken_pumps()`: the pumps whose batch saw an OS event or a wake; unmoved over a second, the desktop left the window alone
+- `.` **F95** — [Two docs behind the code: the stroke rows' contrast after F90, and `radio` without `radioGroup`](backlog/closed-2026-09.md#-f95--two-docs-behind-the-code-the-stroke-rows-contrast-after-f90-and-radio-without-radiogroup--done-2026-09-26) — done (2026-09-26) — the `line`/`polygon` rows and the JSX `line` doc say a `clip` float is held too; the `role` row pairs `radio`/`radioGroup` and `tab`/`tabList` (ADR 0007)
+- `.` **F96** — [A radio or a tab outside its container is a Tab stop of its own, silently](backlog/closed-2026-09.md#-f96--a-radio-or-a-tab-outside-its-container-is-a-tab-stop-of-its-own-silently--done-2026-09-26) — done (2026-09-26) — `item-outside-container` for a `radio` with no `radioGroup` or a `tab` with no `tabList`, once per key; the devtools' dock placements a `radioGroup`, its tabs a `tabList`

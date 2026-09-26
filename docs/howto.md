@@ -1193,6 +1193,14 @@ being opened to be looked at rather than used. (`KUI_SMOKE_FRAMES` is the
 Rust runner's own version of this, live in a dev build — for the examples
 in this repository, which have no test around them to do the asking.)
 
+A test of the window's idle pace ("a stopped window paints about once a
+second") reads `frameStats()` twice, a second apart. `framesTotal` and
+`pumps` give the rates. `wokenPumps` says whether the desktop touched the
+window in that second: a focus change, the pointer crossing, a resize.
+Each of those resets the driver's backoff exactly as a regression would.
+If `wokenPumps` did not move, every frame in the second was the app's
+own. If it moved, measure another second instead of failing.
+
 Run under `KUI_DEVTOOLS=1` and the frame holds the dock's quads too.
 `win.hostArea()` is where the frame put the app, `{x, y, w, h}` in
 logical px — right of the pane under a left dock — and the quads are

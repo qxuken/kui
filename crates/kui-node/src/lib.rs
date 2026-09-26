@@ -1505,15 +1505,17 @@ fn owed_json(o: kui_core::Owed) -> Json {
     Json::Object(m)
 }
 
-/// The runner's frame-timing ring as `{frames, framesTotal, pumps, last,
-/// avgTotalMs, maxTotalMs, avgWorkMs, maxWorkMs}`; `last` is null before
-/// the first frame. The same numbers the latency HUD draws, plus the two
-/// monotonic counts a bench asserts a rate from (backlog F62).
-fn frame_stats_json(stats: &FrameStats, pumps: u64) -> Json {
+/// The runner's frame-timing ring as `{frames, framesTotal, pumps,
+/// wokenPumps, last, avgTotalMs, maxTotalMs, avgWorkMs, maxWorkMs}`;
+/// `last` is null before the first frame. The same numbers the latency
+/// HUD draws, plus the three monotonic counts a bench asserts a rate from
+/// (backlog F62, F94).
+fn frame_stats_json(stats: &FrameStats, pumps: u64, woken_pumps: u64) -> Json {
     let mut o = JsonMap::new();
     o.insert("frames".into(), Json::from(stats.len()));
     o.insert("framesTotal".into(), Json::from(stats.total));
     o.insert("pumps".into(), Json::from(pumps));
+    o.insert("wokenPumps".into(), Json::from(woken_pumps));
     o.insert("last".into(), stats.last().map_or(Json::Null, sample_json));
     o.insert("avgTotalMs".into(), Json::from(stats.avg_total() as f64));
     o.insert("maxTotalMs".into(), Json::from(stats.max_total() as f64));
@@ -1961,20 +1963,25 @@ impl KuiWindow {
     }
 
     /// Frame timing measured by the runner — what the latency HUD draws,
-    /// as data: `{frames, framesTotal, pumps, last: {inputMs, viewMs,
-    /// layoutMs, renderMs, waitMs, totalMs, workMs} | null, avgTotalMs,
-    /// maxTotalMs, avgWorkMs, maxWorkMs}`. The averages and maxima are
-    /// over the last 120 frames and `frames` is how many of those the
-    /// ring holds — its fill, one per painted frame up to 120, so a window
-    /// that paints only when something changes stays below it for as long
-    /// as it idles. `framesTotal` and `pumps` are the monotonic counts of
-    /// every frame painted and every `pump()` taken (backlog F62), so two
-    /// readings a second apart are that second's frame and pump rates.
-    /// `waitMs` is vsync backpressure; `workMs` is everything else.
+    /// as data: `{frames, framesTotal, pumps, wokenPumps, last: {inputMs,
+    /// viewMs, layoutMs, renderMs, waitMs, totalMs, workMs} | null,
+    /// avgTotalMs, maxTotalMs, avgWorkMs, maxWorkMs}`. The averages and
+    /// maxima are over the last 120 frames and `frames` is how many of
+    /// those the ring holds — its fill, one per painted frame up to 120, so
+    /// a window that paints only when something changes stays below it for
+    /// as long as it idles. `framesTotal` and `pumps` are the monotonic
+    /// counts of every frame painted and every `pump()` taken (backlog
+    /// F62), so two readings a second apart are that second's frame and
+    /// pump rates. `wokenPumps` counts the pumps that found an OS event or
+    /// a wake — a key, the pointer crossing, a focus change, a resize, a
+    /// reader asking (backlog F94) — so two readings a second apart with it
+    /// unmoved are a second the desktop left the window alone, and every
+    /// frame in it was the app's own. `waitMs` is vsync backpressure;
+    /// `workMs` is everything else.
     #[napi(ts_return_type = "FrameTiming")]
     pub fn frame_stats(&mut self) -> Json {
-        let pumps = self.runner.pumps();
-        frame_stats_json(&self.runner.core_mut().stats, pumps)
+        let (pumps, woken) = (self.runner.pumps(), self.runner.woken_pumps());
+        frame_stats_json(&self.runner.core_mut().stats, pumps, woken)
     }
 
     /// Asks the window to close; the next pump returns false.
@@ -4147,10 +4154,11 @@ mod frame_stats_tests {
     #[test]
     fn frame_stats_shape_before_and_after_frames() {
         let mut st = FrameStats::default();
-        let empty = frame_stats_json(&st, 0);
+        let empty = frame_stats_json(&st, 0, 0);
         assert_eq!(empty["frames"], Json::from(0));
         assert_eq!(empty["framesTotal"], Json::from(0));
         assert_eq!(empty["pumps"], Json::from(0));
+        assert_eq!(empty["wokenPumps"], Json::from(0));
         assert_eq!(empty["last"], Json::Null);
         assert_eq!(empty["avgTotalMs"], Json::from(0.0));
 
@@ -4165,10 +4173,12 @@ mod frame_stats_tests {
             view_ms: 3.0,
             ..Default::default()
         });
-        let o = frame_stats_json(&st, 7);
+        // F94: the woken pumps are their own count, not the pumps'.
+        let o = frame_stats_json(&st, 7, 3);
         assert_eq!(o["frames"], Json::from(2));
         assert_eq!(o["framesTotal"], Json::from(2));
         assert_eq!(o["pumps"], Json::from(7));
+        assert_eq!(o["wokenPumps"], Json::from(3));
         assert_eq!(o["last"]["viewMs"], Json::from(3.0));
         assert_eq!(o["last"]["totalMs"], Json::from(3.0));
         assert_eq!(o["maxTotalMs"], Json::from(10.5));
@@ -4179,7 +4189,7 @@ mod frame_stats_tests {
         for _ in 0..200 {
             st.push(FrameSample::default());
         }
-        let o = frame_stats_json(&st, 7);
+        let o = frame_stats_json(&st, 7, 3);
         assert_eq!(o["frames"], Json::from(120));
         assert_eq!(o["framesTotal"], Json::from(202));
     }

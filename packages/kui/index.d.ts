@@ -1130,8 +1130,20 @@ export interface FrameTiming {
   /** Every `pump()` the window has taken, the one that opened it
    *  included — what the driver's backoff is measured in: a stopped app
    *  with a once-a-second tick takes ~30 pumps a second at the default
-   *  `idlePumpMs`, ~60 in the half-second after a click. */
+   *  `idlePumpMs`, ~60 in the half-second after a click. Which of them
+   *  something outside the app caused is `wokenPumps`. */
   pumps: number;
+  /** The pumps among `pumps` that found an OS event or a wake: any window
+   *  event but a redraw — a key, the pointer crossing the window, a focus
+   *  change, a resize, the window moved or occluded — or a reader or a
+   *  file dialog answering (backlog F94). Monotonic, never more than
+   *  `pumps`. Two readings a second apart with this one unmoved are a
+   *  second the desktop left the window alone: every frame in it was the
+   *  app's own (a tick, a caret blink, a transition). A moved one is the
+   *  desktop or a person reaching in, which resets the driver's backoff
+   *  exactly as a regression would, so an idle-window test that sees it
+   *  move measures that second again rather than failing it. */
+  wokenPumps: number;
   /** Null before the first frame. */
   last: FrameSample | null;
   avgTotalMs: number;
@@ -3295,16 +3307,21 @@ export declare class KuiWindow {
   size(): WindowSize
   /**
    * Frame timing measured by the runner — what the latency HUD draws,
-   * as data: `{frames, framesTotal, pumps, last: {inputMs, viewMs,
-   * layoutMs, renderMs, waitMs, totalMs, workMs} | null, avgTotalMs,
-   * maxTotalMs, avgWorkMs, maxWorkMs}`. The averages and maxima are
-   * over the last 120 frames and `frames` is how many of those the
-   * ring holds — its fill, one per painted frame up to 120, so a window
-   * that paints only when something changes stays below it for as long
-   * as it idles. `framesTotal` and `pumps` are the monotonic counts of
-   * every frame painted and every `pump()` taken (backlog F62), so two
-   * readings a second apart are that second's frame and pump rates.
-   * `waitMs` is vsync backpressure; `workMs` is everything else.
+   * as data: `{frames, framesTotal, pumps, wokenPumps, last: {inputMs,
+   * viewMs, layoutMs, renderMs, waitMs, totalMs, workMs} | null,
+   * avgTotalMs, maxTotalMs, avgWorkMs, maxWorkMs}`. The averages and
+   * maxima are over the last 120 frames and `frames` is how many of
+   * those the ring holds — its fill, one per painted frame up to 120, so
+   * a window that paints only when something changes stays below it for
+   * as long as it idles. `framesTotal` and `pumps` are the monotonic
+   * counts of every frame painted and every `pump()` taken (backlog
+   * F62), so two readings a second apart are that second's frame and
+   * pump rates. `wokenPumps` counts the pumps that found an OS event or
+   * a wake — a key, the pointer crossing, a focus change, a resize, a
+   * reader asking (backlog F94) — so two readings a second apart with it
+   * unmoved are a second the desktop left the window alone, and every
+   * frame in it was the app's own. `waitMs` is vsync backpressure;
+   * `workMs` is everything else.
    */
   frameStats(): FrameTiming
   /** Asks the window to close; the next pump returns false. */

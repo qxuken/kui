@@ -972,7 +972,9 @@ export function runWindowed(config, opts = {}) {
       // before this counted as work, against 34 ms for a driver that never
       // backs off. A frame `step` drew for a tick does not read as zero:
       // only the pump's own events set that deadline (`saw_event`), and a
-      // redraw is presented inside the pump that asked for it.
+      // redraw is presented inside the pump that asked for it. The pumps
+      // that set it are counted, `win.frameStats().wokenPumps` (F94), so a
+      // test can tell a backoff the desktop reset from one the app did.
       const due = win.nextDeadlineMs();
       const gap = pace.after(worked || (due !== null && due <= 1), at());
       // The loop's own timing (ticks, anything animating) capped by the
