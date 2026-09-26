@@ -468,7 +468,7 @@ impl Core {
     /// `width × height × 4` bytes holding an earlier frame's pixels and
     /// writes every one. Where [`Self::update_image`] takes a buffer the
     /// app allocated — and frees the one it replaces — this one stops
-    /// allocating after a stream's second frame, which on Windows is most
+    /// allocating after a stream's third update, which on Windows is most
     /// of what a 1080p update cost (backlog W20). Render into `fill`'s
     /// slice rather than into a buffer of your own to skip the copy too.
     /// `fill` runs while the session's resources are borrowed, so it must

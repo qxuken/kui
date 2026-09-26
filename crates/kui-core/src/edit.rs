@@ -426,10 +426,14 @@ fn admitted(text: &str, multiline: bool) -> std::borrow::Cow<'_, str> {
     std::borrow::Cow::Owned(text.chars().filter(|c| *c != '\n' && *c != '\r').collect())
 }
 
+/// At the family's regular weight, as text draws it (F100).
 fn attrs_for<'a>(style: &TextStyle, res: &'a Resources) -> Attrs<'a> {
-    Attrs::new()
-        .family(res.family_of(style.family))
-        .font_features(crate::text::cosmic_features(&style.features))
+    res.weights_of(style.family).apply(
+        Attrs::new()
+            .family(res.family_of(style.family))
+            .font_features(crate::text::cosmic_features(&style.features)),
+        false,
+    )
 }
 
 impl EditStore {

@@ -217,9 +217,21 @@ pub struct ImageEntry {
     /// was a fresh `w × h × 4` allocation and the previous one freed —
     /// 590 µs of page faults and 170 µs of release at 1080p on Windows,
     /// three times the copy itself. Two buffers per streamed image, and a
-    /// stream stops allocating from its third frame.
+    /// stream stops allocating from its fourth update. Kept only for an
+    /// image updated before, at the same size, and dropped by
+    /// [`Resources::release_spares`] once [`SPARE_FRAMES`] frames pass
+    /// with no update: an image updated once, or a stream that stopped,
+    /// holds one buffer again.
     pub(crate) spare: Option<std::sync::Arc<Vec<u8>>>,
+    /// [`Resources::frames`] when `spare` was last set.
+    spare_at: u64,
 }
+
+/// How many frames an image's spare buffer outlives its last update
+/// (backlog W20). Long enough for a stream slower than the display — a
+/// 30 fps video beside a 120 Hz animation updates every fourth frame —
+/// and short enough that one that stopped gives its buffer back.
+pub const SPARE_FRAMES: u64 = 30;
 
 /// Where a registered image's pixels are kept for drawing
 /// (`docs/adr/0025-the-image-is-the-canvas.md`, decision 2). The core
@@ -363,6 +375,10 @@ pub struct Resources {
     /// them (`family_of` under a shaping closure, `image` under the
     /// emitter's shared borrow) hold the registry by `&`.
     foreign: RefCell<Vec<Foreign>>,
+    /// Frames begun by any window of the session, for aging spares.
+    frames: u64,
+    /// The images holding a spare buffer (W20), swept each frame.
+    spared: Vec<ImageId>,
 }
 
 impl Resources {
@@ -376,6 +392,8 @@ impl Resources {
             sounds: SparseSecondaryMap::new(),
             fragments: SparseSecondaryMap::new(),
             foreign: RefCell::new(Vec::new()),
+            frames: 0,
+            spared: Vec::new(),
         }
     }
 
@@ -511,6 +529,7 @@ impl Resources {
                 rgba: std::sync::Arc::new(rgba),
                 rev: 0,
                 spare: None,
+                spare_at: 0,
                 // Past a page it has nowhere to go but its own texture;
                 // before ADR 0025 it was dropped at emission, silently.
                 backing: if width > crate::atlas::MAX_ATLAS_SIZE
@@ -546,6 +565,7 @@ impl Resources {
         entry.width = width;
         entry.height = height;
         entry.rgba = std::sync::Arc::new(rgba);
+        entry.spare = None;
         entry.rev = entry.rev.wrapping_add(1);
         entry.backing = ImageBacking::Texture;
         true
@@ -559,8 +579,11 @@ impl Resources {
     /// one. The buffer is the image's own when no display list still
     /// holds it, else the one the previous update replaced, else a new
     /// one — so a stream updated every frame, between frames or inside
-    /// them, allocates twice and then never again (backlog W20). What
-    /// every door that copies an app's bytes goes through.
+    /// them, allocates at most three times and then never again (backlog
+    /// W20). The replaced buffer is kept only for an image updated before
+    /// at the same size, and let go [`SPARE_FRAMES`] frames after the
+    /// last update. What every door that copies an app's bytes goes
+    /// through.
     pub fn update_image_with(
         &mut self,
         id: ImageId,
@@ -585,20 +608,63 @@ impl Resources {
             // nothing reads that any more, else into a new one. `vec!`
             // rather than a resize, so a fresh buffer's zeros are the
             // allocator's and not a pass over it.
+            let had = entry.spare.is_some();
+            // Unique by both counts: a `Weak` a host took of pixels it
+            // was handed makes `get_mut` refuse the buffer as well.
             let next = match entry.spare.take() {
-                Some(spare) if Arc::strong_count(&spare) == 1 => spare,
+                Some(spare) if Arc::strong_count(&spare) == 1 && Arc::weak_count(&spare) == 0 => {
+                    spare
+                }
                 _ => Arc::new(vec![0; len]),
             };
-            entry.spare = Some(std::mem::replace(&mut entry.rgba, next));
+            let replaced = std::mem::replace(&mut entry.rgba, next);
+            // The replaced buffer is worth keeping for a stream: an image
+            // updated before (not the pixels it was added with) whose size
+            // holds. A one-off update, or a resize, keeps nothing.
+            if entry.rev > 0 && replaced.len() == len {
+                entry.spare = Some(replaced);
+                entry.spare_at = self.frames;
+                if !had {
+                    self.spared.push(id);
+                }
+            }
         }
-        let buf = Arc::get_mut(&mut entry.rgba).expect("unshared: checked or replaced above");
-        buf.resize(len, 0);
-        fill(buf);
+        // The size, revision and backing before `fill`, so a `fill` that
+        // panics leaves stale pixels at the right length rather than a
+        // buffer whose length its size does not match.
         entry.width = width;
         entry.height = height;
         entry.rev = entry.rev.wrapping_add(1);
         entry.backing = ImageBacking::Texture;
+        let buf = Arc::get_mut(&mut entry.rgba).expect("unshared: checked or replaced above");
+        buf.resize(len, 0);
+        // A stream that shrank does not keep its old size's allocation.
+        if buf.capacity() > len.saturating_mul(2) {
+            buf.shrink_to(len);
+        }
+        fill(buf);
         true
+    }
+
+    /// Called as each frame begins: drops the spare buffer of every image
+    /// not updated for [`SPARE_FRAMES`] frames (W20).
+    pub(crate) fn release_spares(&mut self) {
+        self.frames += 1;
+        if self.spared.is_empty() {
+            return;
+        }
+        let (images, frames) = (&mut self.images, self.frames);
+        self.spared.retain(|&id| match images.get_mut(id) {
+            Some(entry) if entry.spare.is_some() => {
+                if frames - entry.spare_at > SPARE_FRAMES {
+                    entry.spare = None;
+                    false
+                } else {
+                    true
+                }
+            }
+            _ => false,
+        });
     }
 
     pub fn remove_image(&mut self, id: ImageId) -> Option<ImageEntry> {

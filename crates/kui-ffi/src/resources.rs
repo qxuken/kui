@@ -3,6 +3,20 @@
 
 use super::*;
 
+/// The byte length of a `w × h` RGBA buffer at `rgba`, or `None` for a
+/// null pointer, an empty size, or one whose length overflows (or passes
+/// `isize::MAX`, which no slice may) — checked before the slice is made,
+/// since a wrapped length is undefined behaviour even unread.
+fn rgba_len(rgba: *const u8, w: u32, h: u32) -> Option<usize> {
+    if rgba.is_null() || w == 0 || h == 0 {
+        return None;
+    }
+    (w as usize)
+        .checked_mul(h as usize)?
+        .checked_mul(4)
+        .filter(|&n| n <= isize::MAX as usize)
+}
+
 /// Registers a w×h RGBA image (pixels copied); returns its handle, 0 on
 /// failure. Draw it with `kui_image`; free it with `kui_image_remove`.
 #[unsafe(no_mangle)]
@@ -11,11 +25,10 @@ pub extern "C" fn kui_image_add(ptr: *mut KuiCtx, w: u32, h: u32, rgba: *const u
         let Some(c) = (unsafe { ctx(ptr) }) else {
             return 0;
         };
-        if rgba.is_null() || w == 0 || h == 0 {
+        let Some(len) = rgba_len(rgba, w, h) else {
             return 0;
-        }
-        let data =
-            unsafe { std::slice::from_raw_parts(rgba, w as usize * h as usize * 4) }.to_vec();
+        };
+        let data = unsafe { std::slice::from_raw_parts(rgba, len) }.to_vec();
         c.core().resources.add_image(w, h, data).to_ffi()
     })
 }
@@ -32,10 +45,10 @@ pub extern "C" fn kui_image_update(ptr: *mut KuiCtx, id: u64, w: u32, h: u32, rg
         let Some(c) = (unsafe { ctx(ptr) }) else {
             return;
         };
-        if rgba.is_null() || w == 0 || h == 0 {
+        let Some(len) = rgba_len(rgba, w, h) else {
             return;
-        }
-        let data = unsafe { std::slice::from_raw_parts(rgba, w as usize * h as usize * 4) };
+        };
+        let data = unsafe { std::slice::from_raw_parts(rgba, len) };
         // Into a buffer the core recycles, not a fresh copy a frame
         // (backlog W20).
         c.core()

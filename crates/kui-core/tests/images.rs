@@ -275,6 +275,128 @@ fn update_image_with_resizes_and_refuses_a_dead_handle() {
     }));
 }
 
+/// Weak handles on every buffer an image's pixels were seen in, and how
+/// many of them are still alive.
+fn live(seen: &[std::sync::Weak<Vec<u8>>]) -> usize {
+    seen.iter().filter(|w| w.upgrade().is_some()).count()
+}
+
+/// One frame drawing `id`, whatever its backing.
+fn frame(core: &mut Core, id: kui_core::ImageId) {
+    let mut ui = core.frame(Size::new(64.0, 64.0), 1.0);
+    ui.image(id, NodeSpec::column().fill());
+    ui.finish();
+}
+
+/// An image updated once keeps one buffer, not the pixels it was added
+/// with as a spare for a stream that never comes (W20's review: an 8K
+/// image updated once held ~264 MB).
+#[test]
+fn an_image_updated_once_keeps_no_spare() {
+    let mut core = Core::new();
+    let id = core.resources.add_image(4, 4, rgba(4, 4));
+    frame(&mut core, id);
+    // A backend still reading the added pixels, so the update cannot
+    // write over them.
+    let held = core.image_pixels(id).unwrap().2;
+    let added = std::sync::Arc::downgrade(&held);
+    assert!(core.update_image_with(id, 4, 4, |px| px.fill(1)));
+    drop(held);
+    assert_eq!(draw(&mut core, id), 1);
+    assert!(added.upgrade().is_none(), "the added pixels were kept");
+}
+
+/// A stream that stops gives its spare back once `SPARE_FRAMES` frames
+/// pass with no update; while it runs, it keeps two buffers.
+#[test]
+fn a_stopped_stream_gives_its_spare_back() {
+    let mut core = Core::new();
+    let id = core.resources.add_image(4, 4, rgba(4, 4));
+    frame(&mut core, id);
+    let mut seen = Vec::new();
+    for i in 1..=6u8 {
+        core.update_image_with(id, 4, 4, |px| px.fill(i));
+        draw(&mut core, id);
+        seen.push(std::sync::Arc::downgrade(&core.image_pixels(id).unwrap().2));
+    }
+    assert_eq!(live(&seen), 2, "a running stream keeps two buffers");
+    // The loop's last frame was the first after the last update.
+    for _ in 1..kui_core::resources::SPARE_FRAMES {
+        draw(&mut core, id);
+    }
+    assert_eq!(live(&seen), 2, "the spare outlives the stream a while");
+    draw(&mut core, id);
+    assert_eq!(live(&seen), 1, "a stopped stream holds one buffer");
+    // And starting again is a stream like any other.
+    for i in 1..=4u8 {
+        core.update_image_with(id, 4, 4, |px| px.fill(i));
+        assert_eq!(draw(&mut core, id), i);
+    }
+}
+
+/// A stream that shrinks keeps neither its old size's buffers nor their
+/// capacity.
+#[test]
+fn a_shrunk_stream_drops_its_old_size() {
+    let mut core = Core::new();
+    let id = core.resources.add_image(64, 64, rgba(64, 64));
+    frame(&mut core, id);
+    for i in 1..=4u8 {
+        core.update_image_with(id, 64, 64, |px| px.fill(i));
+        draw(&mut core, id);
+    }
+    // Taken after the stream, since a `Weak` keeps a buffer from reuse.
+    let last_big = std::sync::Arc::downgrade(&core.image_pixels(id).unwrap().2);
+    for i in 1..=4u8 {
+        core.update_image_with(id, 2, 2, |px| px.fill(i));
+        assert_eq!(draw(&mut core, id), i);
+        let (w, h, px) = core.image_pixels(id).unwrap();
+        assert_eq!((w, h, px.len()), (2, 2, 16));
+        assert!(
+            px.capacity() <= 32,
+            "update {i}: capacity {}",
+            px.capacity()
+        );
+    }
+    assert!(
+        last_big.upgrade().is_none(),
+        "a 64×64 buffer outlived the shrink"
+    );
+}
+
+/// A host that keeps a `Weak` on pixels it was handed does not make the
+/// next update panic: a spare with a live `Weak` is not reused.
+#[test]
+fn a_weak_on_the_pixels_does_not_break_the_stream() {
+    let mut core = Core::new();
+    let id = core.resources.add_image(4, 4, rgba(4, 4));
+    frame(&mut core, id);
+    let mut weaks = Vec::new();
+    for i in 1..=6u8 {
+        core.update_image_with(id, 4, 4, |px| px.fill(i));
+        assert_eq!(draw(&mut core, id), i);
+        weaks.push(std::sync::Arc::downgrade(&core.image_pixels(id).unwrap().2));
+    }
+}
+
+/// A `fill` that panics leaves the image at its new size with bytes of
+/// that length, so the next frame draws (stale pixels) instead of reading
+/// past a buffer its size does not match.
+#[test]
+fn a_panicking_fill_leaves_a_consistent_image() {
+    let mut core = Core::new();
+    let id = core.resources.add_image(4, 4, rgba(4, 4));
+    core.update_image_with(id, 4, 4, |px| px.fill(1));
+    draw(&mut core, id);
+    let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        core.update_image_with(id, 8, 8, |_| panic!("the app's fill"));
+    }));
+    assert!(caught.is_err());
+    draw(&mut core, id);
+    let (w, h, px) = core.image_pixels(id).unwrap();
+    assert_eq!((w, h, px.len()), (8, 8, 8 * 8 * 4));
+}
+
 /// The corpus fixture that samples its `image` (backlog V1).
 const SAMPLER: &str = "\
 fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32> {

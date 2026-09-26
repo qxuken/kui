@@ -103,6 +103,14 @@ pub struct GlyphAtlas {
     /// emptying again within two is too small for its set and how fast
     /// it turns over, and grows instead (F83's thrash, measured).
     frames_since_reset: u32,
+    /// A frame since the page was last emptied began on a page holding
+    /// something and opened rows on it: the set is turning over. Until
+    /// one has, `rows_per_frame` is what the frames before the reset
+    /// opened — a burst, a view's worth of new glyphs, that says nothing
+    /// of how fast the set that followed turns over — and the page is not
+    /// read as filling (the regression pass over F99: a burst that fit
+    /// doubled the page for good two frames later).
+    turned: bool,
 }
 
 impl GlyphAtlas {
@@ -127,6 +135,7 @@ impl GlyphAtlas {
             rows_per_frame: 0,
             rows_at_begin: 0,
             frames_since_reset: u32::MAX,
+            turned: false,
         }
     }
 
@@ -160,8 +169,9 @@ impl GlyphAtlas {
         };
         self.rows_per_frame = opened.max(self.rows_per_frame - self.rows_per_frame / 4);
         self.frames_since_reset = self.frames_since_reset.saturating_add(1);
+        self.turned |= opened > 0;
         let extended = self.size > self.base;
-        let filling = self.size - rows < 2 * self.rows_per_frame;
+        let filling = self.turned && self.size - rows < 2 * self.rows_per_frame;
         let thrash = self.frames_since_reset <= 2;
         if self.short {
             self.reset_to(self.base);
@@ -210,6 +220,7 @@ impl GlyphAtlas {
         self.epoch += 1;
         self.dirty = true;
         self.frames_since_reset = 0;
+        self.turned = false;
     }
 
     /// Doubles the page with every slot kept where it is: the rows copy
@@ -688,7 +699,9 @@ mod tests {
         let epoch = atlas.epoch;
         frame(&mut atlas); // emptied before it: seven rows again
         assert_eq!((atlas.size, atlas.epoch), (256, epoch + 1));
-        atlas.begin_frame(); // one row free, a row a frame: again, so soon
+        frame(&mut atlas); // a row turned over on it: full again
+        assert_eq!(atlas.size, 256);
+        atlas.begin_frame(); // no row free, a row a frame: again, so soon
         assert_eq!(atlas.size, 512, "grown instead");
         for i in 0..48 {
             atlas.get_or_insert(fake_key(i), || panic!("kept in place"));
@@ -799,6 +812,37 @@ mod tests {
             !atlas.short(),
             "a set bigger than the page on an empty one is not short"
         );
+    }
+
+    /// One view's worth of new glyphs arriving at once — a tab of other
+    /// fonts opened beside a steady chrome — fits the page, and a page
+    /// whose set then holds still keeps its size: a burst is not a
+    /// turnover (the regression pass over F99: the burst's rows, decayed,
+    /// read as a page about to fill again within two frames of emptying).
+    #[test]
+    fn a_burst_that_fits_does_not_grow_the_page() {
+        // 30×30 glyphs: 33 to a 32 px row of a 1024 page.
+        let mut atlas = GlyphAtlas::with_size(1024);
+        let frame = |atlas: &mut GlyphAtlas, burst: bool| {
+            atlas.begin_frame();
+            for i in 0..297 {
+                atlas.get_or_insert(fake_key(i), || Some(raster(30, 30)));
+            }
+            if burst {
+                for i in 1000..1627 {
+                    atlas.get_or_insert(fake_key(i), || Some(raster(30, 30)));
+                }
+            }
+        };
+        for _ in 0..4 {
+            frame(&mut atlas, false);
+        }
+        for n in 0..12 {
+            frame(&mut atlas, true);
+            assert_eq!(atlas.size, 1024, "frame {n} after the burst");
+        }
+        atlas.begin_frame();
+        assert_eq!(atlas.size, 1024);
     }
 
     /// F66: a synthesized shape is one slot per character and cell size —

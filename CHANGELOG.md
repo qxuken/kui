@@ -45,7 +45,8 @@ Four readings change:
   page at the wrong scale. Size the texture to each frame's
   `atlas_size`, as `kui-wgpu` does. A set that turns over fast can now
   keep a bigger page than before: a page that has to be emptied twice
-  within two frames doubles, up to 4096.
+  within two frames, turning glyphs over in between, doubles, up to
+  4096.
 - A frame that grew the atlas no longer asks for another frame
   (`animating()` stays false): it is drawn right as it is.
 - Bold of a family with no bold face draws in that family (under
@@ -55,7 +56,9 @@ Four readings change:
   to the fallback's bold (a button's width, a column) comes out at the
   family's width. Regular text in a variable face whose `wght` axis is
   not on the CSS scale (Berkeley Mono Variable) draws lighter: at its
-  Regular, where it drew at its Bold.
+  Regular, where it drew at its Bold. Plain text and editors in a
+  family with no 400 face (a Light-only file) draw in that family,
+  where they drew in the fallback's.
 
 ### Added
 
@@ -66,7 +69,10 @@ Four readings change:
   previous update replaced once no display list holds it, else a new
   one. It writes every byte, since what it is handed is an earlier
   frame's pixels. A stream settles on two buffers and allocates nothing
-  from its third frame. On Windows that was most of the cost: a fresh
+  from its fourth update. The second buffer is kept only for an image
+  updated before at the same size, and is let go 30 frames after the
+  last update, so an image updated once, a stream that stopped and one
+  that shrank hold one buffer of their size. On Windows that was most of the cost: a fresh
   8 MB buffer a frame read ~870 µs there, 590 of it faulting the new
   block in page by page and 170 releasing the old one, against a 275 µs
   memcpy. `update_image_1080p_recycled_and_frame` reads 275 µs on that
@@ -105,7 +111,8 @@ Four readings change:
   and the copy are unchanged, and the allocation is gone. A 1080p
   `updateImage` in a real window on Windows went from 808 µs to ~335.
   `kui_image_pixels`' pointer is still valid only until the next update
-  of the handle, as it says.
+  of the handle, as it says. `kui_image_add` and `kui_image_update`
+  refuse a size whose byte count overflows before reading a byte.
 
 ### Fixed
 
@@ -147,11 +154,18 @@ Four readings change:
   opened say it is about to fill, which catches the steady turnover. A
   fill it does not foresee doubles the page for that frame with every
   glyph where it was, since quads address the atlas in texels, and the
-  next frame goes back to the page's size. A page that has to be
-  emptied again within two frames doubles for good, which is how a set
-  too big for the page grows (AR19, F83). At 4096, where the page
-  cannot double, the glyph that does not fit is left out of that frame
-  and the next frame, which is asked for, draws it. Cost: an ordinary
+  next frame goes back to the page's size. A set too big for the page
+  fills it on a frame that began it empty, and the page keeps the
+  growth (AR19, F83). A page that has to be emptied again within two
+  frames, once a frame since the last emptying has turned glyphs over
+  on it, doubles for good: the set turns over faster than the page
+  holds it. One burst of new glyphs that fits the page (a view of
+  other fonts opened beside a steady chrome) does not count. At 4096,
+  where the page cannot double, the glyph that does not fit is left
+  out of that frame and the next frame, which is asked for, draws it,
+  when the page held earlier frames' glyphs. A set bigger than a 4096
+  page on its own leaves glyphs out for as long as it holds (backlog
+  RG56, open). Cost: an ordinary
   frame does nothing new. Scrolling 400 frames of such a list at 2×,
   kawoosh-style: before, 59 frames were drawn wrong, and each was
   followed by a ~2.2 ms rebuild; after, 15 frames emptied the page
@@ -176,7 +190,8 @@ Four readings change:
   (its Regular) to 150 (its Bold) with an `OS/2` weight of 400, so 700
   fell outside it and 400 clamped to the Bold. A static family with
   one regular face (Monaco, Andale Mono) sent bold to the fallback too.
-  Now each registered family is asked at weights it has faces for: bold
+  Now each registered family is asked at weights it has faces for, in
+  text, rich text, cells and editors alike: bold
   asked of a family with none is asked at its nearest face's weight,
   and its glyphs are marked for the rasterizer to draw bold. A variable
   face draws at the coordinate its named instances give the weight
@@ -191,6 +206,8 @@ Four readings change:
   variable face off the CSS scale is still *shaped* at cosmic-text's
   clamped coordinate, so a proportional one's advances are its
   heaviest instance's (a monospaced one's do not vary).
+  A copy of rich text reads bold against the family's regular, so a
+  family whose bold is its SemiBold copies `<b>`.
   *What you can delete:* a style that avoided bold, or named another
   family for it, because bold of such a family drew elsewhere.
 

@@ -381,6 +381,45 @@ fn a_copy_carries_the_formatting_the_text_declared() {
     );
 }
 
+/// A copy's bold is read against the family's own regular (the
+/// regression pass over F100): a family of a Regular and a SemiBold bolds
+/// at 600, and one whose only face is a Bold is regular at 700.
+#[test]
+fn a_copy_reads_bold_against_the_familys_regular() {
+    use kui_core::Span;
+    use kui_core::testing::font_face;
+    let mut core = Core::new();
+    let semi = core
+        .add_font_data(font_face("Kui F100 Semi", 400, false, false))
+        .expect("regular");
+    core.add_font_data(font_face("Kui F100 Semi", 600, false, false))
+        .expect("semibold");
+    let heavy = core
+        .add_font_data(font_face("Kui F100 Heavy", 700, false, false))
+        .expect("a bold-only family");
+    for (font, want_bold) in [(semi, true), (heavy, false)] {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        let scope = ui.with_keyed(
+            "card",
+            NodeSpec::column().width(Sizing::Grow(1.0)).selectable(),
+            |ui| {
+                ui.rich_text(
+                    &[Span::new("plain "), Span::new("bold").bold()],
+                    style().font(font),
+                );
+            },
+        );
+        ui.finish();
+        assert!(core.select_all_in(scope));
+        let html = core.selection_html().unwrap_or_default();
+        assert!(!html.contains("plain</b>"), "regular read as bold: {html}");
+        if want_bold {
+            assert!(html.contains("<b>bold</b>"), "{html}");
+        }
+    }
+}
+
 #[test]
 fn a_plain_selection_carries_no_theme_colour() {
     // The node's own colour is the app's theme, not the text's: a grey

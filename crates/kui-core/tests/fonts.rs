@@ -418,3 +418,54 @@ fn bold_and_italic_of_a_family_without_them_are_synthesized_in_it() {
         }
     }
 }
+
+/// A family with no 400 face — a Light-only file — draws in that family
+/// in plain text and in an editor, as it does in a span and a cell: every
+/// path asks it at its own regular (the regression pass over F100: only
+/// spans and cells did, so one style drew in two families).
+#[test]
+fn a_family_with_no_400_face_draws_in_it_everywhere() {
+    use kui_core::testing::font_face;
+    use kui_core::{EditOptions, Span};
+    let mut core = Core::new();
+    let id = core
+        .add_font_data(font_face("Kui F100 Light", 300, false, false))
+        .expect("the fixture registers");
+    let style = TextStyle::new(20.0).font(id).line_height(24.0);
+    assert_fixture(
+        &rich_glyphs(&mut core, &[Span::new("aaaa")], style),
+        10.0,
+        8.0,
+        "span",
+    );
+    assert_fixture(
+        &cell_glyphs(&mut core, "aaaa", 0, style),
+        10.0,
+        8.0,
+        "cells",
+    );
+    let glyphs = |core: &mut Core| -> Vec<(f32, f32)> {
+        let (dl, _) = core.output();
+        dl.quads
+            .iter()
+            .filter(|q| q.kind == kui_core::QuadKind::GlyphMask)
+            .map(|q| (q.rect.x, q.rect.w))
+            .collect()
+    };
+    let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+    ui.with(NodeSpec::column(), |ui| ui.text("aaaa", style));
+    ui.finish();
+    assert_fixture(&glyphs(&mut core), 10.0, 8.0, "plain text");
+    let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+    ui.text_edit(
+        "field",
+        "aaaa",
+        &EditOptions {
+            style,
+            ..Default::default()
+        },
+        NodeSpec::column().width(kui_core::Sizing::Fixed(300.0)),
+    );
+    ui.finish();
+    assert_fixture(&glyphs(&mut core), 10.0, 8.0, "editor");
+}

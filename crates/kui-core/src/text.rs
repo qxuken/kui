@@ -1346,11 +1346,17 @@ impl TextSystem {
         let scale = self.scale;
         if !self.entries.contains_key(&key) {
             let mut buffer = new_buffer(fs, style, scale);
+            // At the family's regular, as a span or a cell is: a family
+            // with no 400 face asked at 400 falls back to another family
+            // (F100).
             buffer.set_text(
                 content,
-                &Attrs::new()
-                    .family(res.family_of(style.family))
-                    .font_features(cosmic_features(&style.features)),
+                &res.weights_of(style.family).apply(
+                    Attrs::new()
+                        .family(res.family_of(style.family))
+                        .font_features(cosmic_features(&style.features)),
+                    false,
+                ),
                 Shaping::Advanced,
                 None,
             );
@@ -1885,7 +1891,10 @@ impl TextSystem {
                             .metadata(i),
                     )
                 }),
-                &Attrs::new().family(family).font_features(features.clone()),
+                &weights.apply(
+                    Attrs::new().family(family).font_features(features.clone()),
+                    false,
+                ),
                 Shaping::Advanced,
                 None,
             );
@@ -3378,7 +3387,11 @@ fn html_of_run(entry: &CachedText, lo: usize, hi: usize, out: &mut String) {
                 continue;
             }
             let piece = &entry.content[s..e];
-            let bold = attrs.weight >= cosmic_text::Weight::BOLD
+            // Heavier than the line's default, which is the family's
+            // regular (F100): a family whose bold face is its SemiBold
+            // bolds at 600, and one whose only face is 700 is regular
+            // there.
+            let bold = attrs.weight > attrs_list.defaults().weight
                 || attrs
                     .cache_key_flags
                     .contains(crate::weights::SYNTHETIC_BOLD);

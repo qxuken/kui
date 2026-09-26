@@ -1383,6 +1383,8 @@ impl Core {
         // empty its page — one the last frame extended, or one about to
         // fill — without a quad sampling what it dropped (F99).
         self.atlas.begin_frame();
+        // An image's spare buffer outlives its stream by a few frames (W20).
+        self.session.state().resources.release_spares();
         // The text list goes with the tree: a kept frame's text nodes carry
         // that frame's `TextId`s, and nothing else can resolve them.
         self.text.begin_frame(
