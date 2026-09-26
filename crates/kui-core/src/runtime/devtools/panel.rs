@@ -239,26 +239,47 @@ fn header(ui: &mut Ui<'_>, st: &State, t: &Theme) {
                 None => format!("{}", st.frames),
             };
             ui.text(&frames, TextStyle::new(11.0).color(t.faint).mono());
-            // One button per placement, the current one lit; the same
-            // walk `Ctrl+Shift+D` makes, one press at a time.
+            // One radio per placement, the current one lit, in a group
+            // so the four are one Tab stop the arrows walk (ADR 0007);
+            // the same walk `Ctrl+Shift+D` makes, one press at a time.
+            // Closing is not a placement, so it is a button after them:
+            // an arrow never closes the panel.
             ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
-            for dock in Dock::ALL {
-                let (glyph, what) = match dock {
-                    Dock::Left => (Icon::DockLeft, "dock on the left"),
-                    Dock::Right => (Icon::DockRight, "dock on the right"),
-                    Dock::Bottom => (Icon::DockBottom, "dock at the bottom"),
-                    Dock::Window => (Icon::DockWindow, "undock into a window"),
-                    Dock::Off => (Icon::Close, "close · Ctrl+Shift+D brings it back"),
-                };
-                icon_lit(
-                    ui,
-                    t,
-                    &format!("dock:{}", dock.name()),
-                    glyph,
-                    dock == st.dock,
-                    &format!("{what} · Ctrl+Shift+D walks left → right → bottom → window → off"),
-                );
-            }
+            let walk = "Ctrl+Shift+D walks left → right → bottom → window → off";
+            ui.with(
+                NodeSpec::row()
+                    .gap(6.0)
+                    .cross_align(Align::Center)
+                    .role(crate::access::Role::RadioGroup)
+                    .label("Dock"),
+                |ui| {
+                    for dock in Dock::ALL {
+                        let (glyph, what) = match dock {
+                            Dock::Left => (Icon::DockLeft, "dock on the left"),
+                            Dock::Right => (Icon::DockRight, "dock on the right"),
+                            Dock::Bottom => (Icon::DockBottom, "dock at the bottom"),
+                            Dock::Window => (Icon::DockWindow, "undock into a window"),
+                            Dock::Off => continue,
+                        };
+                        icon_lit(
+                            ui,
+                            t,
+                            &format!("dock:{}", dock.name()),
+                            glyph,
+                            Some(dock == st.dock),
+                            &format!("{what} · {walk}"),
+                        );
+                    }
+                },
+            );
+            icon_lit(
+                ui,
+                t,
+                &format!("dock:{}", Dock::Off.name()),
+                Icon::Close,
+                None,
+                &format!("close · Ctrl+Shift+D brings it back · {walk}"),
+            );
         },
     );
 }
@@ -274,7 +295,10 @@ fn tabs(ui: &mut Ui<'_>, st: &State, t: &Theme) {
             .gap(2.0)
             .cross_gap(2.0)
             .wrap()
-            .cross_align(Align::Center),
+            .cross_align(Align::Center)
+            // One Tab stop, the arrows walking the tabs (ADR 0007).
+            .role(crate::access::Role::TabList)
+            .label("Devtools"),
         |ui| {
             let shown = st.shown();
             // The panel's three, then every tab the app or an extension
@@ -545,20 +569,25 @@ pub(super) fn fixed(ui: &mut Ui<'_>, f: impl FnOnce(&mut Ui<'_>)) {
     );
 }
 
-/// One of the header's placement buttons, a choice among several: `on`
+/// One of the header's placement radios, a choice among several: `Some(on)`
 /// paints it as the one chosen
 /// — the strokes in the accent and the pane filled with it, against the
-/// muted outline and a faint pane of the others. It and the button shapes
+/// muted outline and a faint pane of the others. `None` is a plain button
+/// drawn the same way, unlit: the close beside them. It and the button shapes
 /// below declare the hand, as the stock button does (`crate::cursor`):
 /// the dock's tabs and rows do not, since a native tab strip and list are
 /// the arrow.
-fn icon_lit(ui: &mut Ui<'_>, t: &Theme, what: &str, glyph: Icon, on: bool, hint: &str) {
+fn icon_lit(ui: &mut Ui<'_>, t: &Theme, what: &str, glyph: Icon, radio: Option<bool>, hint: &str) {
     let label = format!("kui-devtools/{what}");
     let key = ui.child_key(&label);
+    let on = radio == Some(true);
+    let mut spec = NodeSpec::row();
+    if let Some(on) = radio {
+        spec = spec.role(crate::access::Role::Radio).checked(on);
+    }
     ui.with_keyed(
         &label,
-        NodeSpec::row()
-            .width(Sizing::Fixed(22.0))
+        spec.width(Sizing::Fixed(22.0))
             .height(Sizing::Fixed(22.0))
             .center()
             .radius(4.0)
@@ -567,8 +596,6 @@ fn icon_lit(ui: &mut Ui<'_>, t: &Theme, what: &str, glyph: Icon, on: bool, hint:
             .pressed_bg(t.pressed)
             .on_click(action(what))
             .cursor(crate::cursor::CursorShape::Pointer)
-            .role(crate::access::Role::Radio)
-            .checked(on)
             .label(hint.split(" · ").next().unwrap_or(what))
             .apply_tooltip(hint),
         |ui| {

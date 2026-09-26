@@ -1655,7 +1655,18 @@ carried again): with it, a stopped window's second is "frames
 cause stays parked. C and Lua have no `pumps` today (their hosts own
 the loop), so this is where `pumps` is and nowhere else.
 
-### `.` F95 — Two docs behind the code: the stroke rows' contrast after F90, and `radio` without `radioGroup`
+### `.` F95 — Two docs behind the code: the stroke rows' contrast after F90, and `radio` without `radioGroup` — **built 2026-09-26**
+
+**Built 2026-09-26**, with F96. The `line` and `polygon` rows and the
+hand-written `line` doc in `jsx-runtime.d.ts` now say a stroke in its
+parent's box is held by the parent's clip, and that a declared float is
+held that way only when it declares `clip` with a parent anchor. The
+`role` row says a `radio` belongs inside a `radioGroup` and a `tab`
+inside a `tabList`, labelled with what the choice is, and what the pair
+buys (ADR 0007): one Tab stop, the arrows, Home and End moving the
+choice as focus moves, and "2 of 3" read to a screen reader. It names
+F96's warning for the item on its own, and says `menu` and `list` pair
+the same way. `props.md` and the prop types regenerated.
 
 **Found** by the mind map and by the pomodoro.
 - **The stroke rows.** The `line` and `polygon` rows say "Unlike a
@@ -1676,7 +1687,33 @@ the loop), so this is where `pumps` is and nowhere else.
 **Do.** Edit the rows and regenerate. The `jsx-runtime.d.ts` text is
 hand-written, so edit it by hand too.
 
-### `.` F96 — A radio or a tab outside its container is a Tab stop of its own, silently
+### `.` F96 — A radio or a tab outside its container is a Tab stop of its own, silently — **built 2026-09-26**
+
+**Built 2026-09-26** as `item-outside-container`, one code for both
+items, since the message names the pair. `Diagnostics::check_lone_items`
+is one forward pass over the tree on the checks' cadence. It carries a
+bit per `composite::PAIRS` container down from each parent, and it
+reports a `radio` or `tab` whose container's bit is unset, once per key.
+The pair's own container is the only one that counts: a radio in a
+`tabList` is reported. Lua's meta file and `kui.h` list no codes (the
+header names three as examples), so the generated `WarningCode` union
+and `props.md` are the lists that changed.
+
+**What tripped it:** the devtools, eight times. Its five dock buttons
+were `radio`s with no group, and its tabs had no `tabList`. The four
+placements are now a `radioGroup` labelled "Dock" and the strip is a
+`tabList`. Close is not a placement, so it is a plain button after the
+group, because an arrow that moved onto it would have closed the panel.
+The corpus's `sampler` card is a lone `tab` on purpose (it shows
+`selected` landing). It keeps the role and pins the warning, so all four
+bindings are held to raising it. No example tripped it.
+
+**Tests:** core (`composite_keyboard.rs`: a lone radio, tab and stock
+radio reported once over three frames, the same nested in their
+containers not, a lone `menuItem` and `listItem` not, a radio in a
+`tabList` reported; the devtools raising nothing in every dock and on
+every tab, popped out included), Node (a lone `<radio>` and tab against
+grouped ones), and the corpus in Rust, Lua, C and Node.
 
 **Found** with F95, and it is the half the doc can't reach. An app
 that declares `role="radio"` and never reads the `role` row gets
@@ -2357,9 +2394,10 @@ compiled once in kui, a release rebuild of the counter 1.59 → 0.85 s). C45, th
 same day. Nothing of the
 alpha.14, alpha.16 and alpha.18 upgrade
 reports is open (F88–F92 **built 2026-09-25**, the day they were filed).
-The alpha.19 upgrade reports of 2026-09-26 left four open: F93, a
+The alpha.19 upgrade reports of 2026-09-26 left two open: F93, a
 clipped node's access rect, first; then F94, the pumps an OS event
-woke; F96, the radio outside its group; and F95, two docs.
+woke. F95, two docs, and F96, the radio outside its group, were
+**built 2026-09-26**, the day they were filed.
 Nothing of the Windows regression round of 2026-09-26 is open
 (RG38–RG46 **built 2026-09-26**, the day they were filed).
 Nothing of the Linux round under WSLg is open (RG47–RG49 **built

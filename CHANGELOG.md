@@ -21,6 +21,57 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.20 (unreleased)
+
+**What breaks.** No door, the ABI at 19 and the frame at v16.
+
+- A `radio` with no `radioGroup` above it, or a `tab` with no `tabList`,
+  raises the new `item-outside-container` warning (under Added, F96). A
+  test that asserts an app raises no warnings fails on such a view until
+  the set is wrapped in its container, which is what the warning asks.
+- The devtools' four dock placements are one Tab stop in a
+  `radioGroup`, and its tabs one in a `tabList` (under Changed). A
+  script that pressed Tab to reach a placement or a tab reaches the
+  set's one stop and moves by arrows from there.
+
+### Added
+
+- **A radio or a tab outside its container is warned about** (backlog
+  F96, from the LCARS pomodoro's alpha.19 report). The pomodoro declared
+  `role="radio"` on its three mode buttons in alpha.6 and had three Tab
+  stops, no arrows and no "2 of 3" for ten releases, with nothing to
+  say why. A `radio` with no `radioGroup` above it and a `tab` with no
+  `tabList` now raise `item-outside-container`, once per node, the stock
+  radio (`<radio>`, `widgets::radio`, `kui_radio`, Lua's `radio`)
+  included. The pairs are the composite ones (`composite::PAIRS`, ADR
+  0007). A lone `menuItem` or `listItem` is left alone: the menus build
+  their own container, and a row outside a list is only a looser
+  reading. Every binding gets it from the core; Node's `WarningCode`
+  union and `docs/props.md` list it. The conformance corpus's `sampler`
+  scene, whose card is a lone `tab`, pins it in all four bindings.
+
+### Changed
+
+- **The devtools' radios and tabs are composites** (with F96, which
+  found them). The four dock placements sit in a `radioGroup` labelled
+  "Dock" and the tab strip is a `tabList`: one Tab stop each, the
+  arrows, Home and End inside, and a reader's "2 of 4". Moving onto a
+  placement docks the panel there, as a radio's choice follows focus.
+  Close is not a placement, so it is a plain button after the group, and
+  no arrow closes the panel. The header draws as it did.
+
+### Fixed
+
+- **Two reference docs behind the code** (backlog F95, from the mind
+  map's and the pomodoro's alpha.19 reports). The `line` and `polygon`
+  rows, and the `line` element's JSX doc, set a stroke against "a
+  declared float, which escapes every ancestor's clip", which F90 made
+  false: a float that declares `clip` with a parent anchor is held by
+  the parent's clip too. They now say that. The `role` row says that a
+  `radio` belongs in a `radioGroup` and a `tab` in a `tabList`, and what
+  the pair buys: one Tab stop, the arrows, Home and End moving the
+  choice, and "2 of 3" read to a screen reader (ADR 0007).
+
 ## 0.1.0-alpha.19 (2026-09-26)
 
 **What breaks.** The ABI at 19 and the frame at v16. Nothing an
