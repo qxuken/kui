@@ -309,6 +309,10 @@ mod imp {
             if let Some(d) = &n.description {
                 node.set_description(d.as_str());
             }
+            // Already cut to the node's clip in the core (F93): AccessKit's
+            // hit test reads raw bounds, and `clips_children` cannot say it
+            // (an escaping float is the clipper's semantic child, and a
+            // plain clip box is not a node at all).
             node.set_bounds(rect_of(n.rect));
             if n.role == Role::Window {
                 node.set_transform(Affine::scale(scale as f64));

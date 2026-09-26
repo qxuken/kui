@@ -49,7 +49,8 @@ filed, RG38–RG46 — the Windows halves since alpha.16, run on a
 Windows machine — from the Windows regression round of 2026-09-26, and
 RG47–RG49 from the Linux round under WSLg the same day, and
 RG50–RG52 from the custom chrome example after it, each the day it was
-filed. The index
+filed, and F93 — a clipped node's access rect — from the alpha.19
+upgrade reports of the same day, the day it was filed. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -1588,41 +1589,10 @@ Every claim below was checked against this tree. The mind map's access
 rect is broader than filed: it is every clipped node, not only a
 clipped float (F93).
 
-### `!` F93 — A clipped node's access rect is its whole box: assistive technology finds and highlights it past the clip
-
-**Found** by the mind map, taking F90. A node panned 28 px under the
-toolbar is cut at the canvas's edge, and a click there misses it. Its
-access node still reads `y=17.7 h=36.6`, so "a reader's highlight is
-drawn over the toolbar where the node no longer is".
-
-**In the tree:** `access::build` gives every node
-`Rect::from_pos_size(tree.pos[i], tree.size[i])` (`access.rs:1141-1145`)
-and never looks at a clip. So the same is true of a row scrolled half
-out of a scroller, and of anything in a `clip` box. None of it is new
-with F90, but F90 is the first release that promised "cannot be hit
-past it". The runner hands the rect to AccessKit as the node's bounds
-(`access_bridge.rs:312`) and sets `clips_children` on nothing.
-AccessKit's `hit_test` (accesskit_consumer 0.39, `node.rs:344`) reads
-raw bounds, children last-to-first. VoiceOver's mouse-over, Narrator's
-hover and a Windows `ElementFromPoint` can then name a clipped node over
-whatever sits there, when it comes later in the tree than the toolbar.
-AccessKit's clip model can't be used as is. `clips_children` on the
-scroller would also cut a tooltip that escapes it (a float's semantic
-parent is the node that declared it, not the layer it paints in), and a
-plain `clip` box is elided from the access tree, so there is no node to
-set it on.
-
-**Do.** Clip the access rect in the core by the node's effective clip:
-the one its hit region already carries (`HitRegion::clip`), which a
-`clip` float takes and an escaping float does not. A node wholly
-clipped keeps a zero-size rect at the clip's edge. That leaves it
-reachable in reading order and by its actions (a reader's "scroll into
-view" is `scroll_rect_into_view` on the key), but it is never a hit.
-Text runs are clipped the same way. The other reading, Chromium's
-(unclipped bounds plus an offscreen flag), was considered. AccessKit
-0.25 has no offscreen state for kui to set, so it would leave the hit
-test as it is. Pin it headlessly in four bindings: the mind map's
-canvas, a node straddling its edge, and a row half out of a scroller.
+F93 was **built 2026-09-26**, the day it was filed, and is in the
+archive: every access rect, and every editor run's, is cut to the clip
+the node's hit region carries, a node wholly clipped a zero-size rect
+on the clip's edge.
 
 ### `~` F94 — Nothing says what woke a pump: an idle-window test cannot tell the desktop from a regression
 
@@ -2357,9 +2327,10 @@ compiled once in kui, a release rebuild of the counter 1.59 → 0.85 s). C45, th
 same day. Nothing of the
 alpha.14, alpha.16 and alpha.18 upgrade
 reports is open (F88–F92 **built 2026-09-25**, the day they were filed).
-The alpha.19 upgrade reports of 2026-09-26 left four open: F93, a
-clipped node's access rect, first; then F94, the pumps an OS event
-woke; F96, the radio outside its group; and F95, two docs.
+The alpha.19 upgrade reports of 2026-09-26 left three open: F94, the
+pumps an OS event woke, first; then F96, the radio outside its group;
+and F95, two docs. F93, a clipped node's access rect, was **built
+2026-09-26**, the day it was filed.
 Nothing of the Windows regression round of 2026-09-26 is open
 (RG38–RG46 **built 2026-09-26**, the day they were filed).
 Nothing of the Linux round under WSLg is open (RG47–RG49 **built
@@ -3218,3 +3189,7 @@ move.
 - `!` **RG50** — [`window_buttons` alone in a fitted row is 0 px tall, its glyphs hanging out of it](backlog/closed-2026-09.md#-rg50--window_buttons-alone-in-a-fitted-row-is-0-px-tall-its-glyphs-hanging-out-of-it--done-2026-09-26) — done (2026-09-26) — The cluster's row gains `min_height(titlebar_height)`: the strip's height in the strip, a titlebar tall alone
 - `.` **RG51** — [A Windows window with its own titlebar is square and flat](backlog/closed-2026-09.md#-rg51--a-windows-window-with-its-own-titlebar-is-square-and-flat--done-2026-09-26) — done (2026-09-26) — `Chrome::Custom` on Windows keeps the undecorated shadow and rounded corners
 - `.` **RG52** — [The Node relaunch example's custom-chrome window has its titlebar mid-window](backlog/closed-2026-09.md#-rg52--the-node-relaunch-examples-custom-chrome-window-has-its-titlebar-mid-window--done-2026-09-26) — done (2026-09-26) — The strip is the root's first row, outside the padding, and the custom launch docks the devtools at the bottom
+
+**From the alpha.19 upgrade reports (2026-09-26)** — F93 built the same day; F94–F96 open above
+
+- `!` **F93** — [A clipped node's access rect is its whole box: assistive technology finds and highlights it past the clip](backlog/closed-2026-09.md#-f93--a-clipped-nodes-access-rect-is-its-whole-box-assistive-technology-finds-and-highlights-it-past-the-clip--done-2026-09-26) — done (2026-09-26) — `access::build` cuts every rect, and every editor run's, to the clip the node's hit region carries (`Sources::clips`); a node wholly clipped is a zero-size rect on the clip's edge; the corpus's `node` lines carry the rect, and `clip-access` pins it in four bindings

@@ -215,6 +215,36 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
+        // Backlog F93: access rects cut to the clip — three nodes on a
+        // `clip` canvas past its top, three rows in a short scroller.
+        "clip-access" => r#"
+            local function button(key, label, w, h, bg)
+              return { key = key, width = w, height = h, bg = bg,
+                       on_click = { kind = key }, label = label }
+            end
+            local function node(key, label, dx, dy, clip)
+              local t = button(key, label, 60, 40, 0x3b5bd4ff)
+              t.float = { anchor = "parent", dx = dx, dy = dy, clip = clip }
+              return column(t)
+            end
+            local function item(key, label)
+              return column(button(key, label, 100, 30, 0x73d98cff))
+            end
+            local toolbar = button("toolbar", "Toolbar", { grow = 1 }, 40, 0x3a3f52ff)
+            return column { width = { grow = 1 }, height = { grow = 1 },
+              column(toolbar),
+              row { width = { grow = 1 }, height = { grow = 1 },
+                column { key = "canvas", width = { grow = 1 }, height = { grow = 1 }, clip = true,
+                         bg = 0x101018ff,
+                         node("cut", "Cut", 20, -20, true),
+                         node("past", "Past", 100, -60, true),
+                         node("free", "Free", 140, -60, false) },
+                column { key = "list", width = 100, height = 50, scroll_y = true, bg = 0x202030ff,
+                         item("row0", "Row 0"), item("row1", "Row 1"), item("row2", "Row 2") },
+              },
+            }
+        "#
+        .to_string(),
         "tooltip" => r#"
             return column { pad = 10,
               row { key = "tip", width = 100, height = 40, bg = 0x333333ff,

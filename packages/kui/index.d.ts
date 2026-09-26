@@ -534,7 +534,9 @@ export interface AccessNode {
   /** What the `description` prop sets, or the `tooltip` shorthand: both
    *  write this one slot, and the later declaration wins. */
   description: string | null;
-  /** Logical px, viewport coordinates. */
+  /** Logical px, viewport coordinates, cut to the clip the node is drawn
+   *  under: a node wholly clipped away is a zero-size rect on the clip's
+   *  edge, still in the tree and actionable. */
   rect: { x: number; y: number; w: number; h: number };
   /** The node's one string value: an editor's text, with its caret and
    *  non-empty selection as byte offsets, or a slider's `valueText` — a

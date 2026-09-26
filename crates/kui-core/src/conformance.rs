@@ -1180,6 +1180,54 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "clip-access",
+        doc: "An access rect is what is drawn (backlog F93): a toolbar over \
+              a `clip` canvas beside a scroller. On the canvas, a `clip` \
+              float straddling its top edge, one wholly past it, and one \
+              that escapes; in the scroller, three rows, the second half \
+              out of its bottom and the third wholly out. The report's \
+              `node` lines carry each rect: cut at the edge, a zero-size \
+              point on it, the whole box. A binding that drops `clip` from \
+              a float leaves the first two whole.",
+        custom: &["float", "key", "overflow"],
+        elements: &["box"],
+        build: build_clip_access,
+        env: NATIVE_CHROME,
+        steps: &[],
+        expect: Expect {
+            // The toolbar, the canvas, the two nodes drawn on it, the
+            // scroller, its two rows in view and its bar; the node wholly
+            // past the canvas's edge and the row wholly out are culled.
+            solid: 8,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            segments_follow_text: false,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 0,
+            access: &[
+                "0 window ||",
+                "1 button Toolbar||",
+                "1 button Cut||",
+                "1 button Past||",
+                "1 button Free||",
+                "1 scrollView ||",
+                "2 button Row 0||",
+                "2 button Row 1||",
+                "2 button Row 2||",
+            ],
+            events: &[],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+            secure_input: false,
+        },
+    },
+    Scene {
         name: "tooltip",
         doc: "The tooltip prop: hover tracking, the accessible description \
               it sets, and the hint that floats only while hovered — beside \
@@ -5052,6 +5100,11 @@ pub struct NodeRow {
     /// `-` / `p` / `a`: the liveness the node declared.
     pub live: &'static str,
     pub scrollable: bool,
+    /// The access rect as f32 bits, `[x, y, w, h]`: font-dependent where
+    /// text sizes the node, so in the report and never in [`Expect`].
+    /// What a reader's hover and highlight go by, cut to the node's clip
+    /// (backlog F93).
+    pub rect: [u32; 4],
     /// Action names in `AccessAction::ALL` (bit) order, comma-joined.
     pub actions: String,
     pub name: String,
@@ -5166,6 +5219,7 @@ fn rows(tree: &AccessTree) -> Vec<NodeRow> {
                     crate::access::Live::Assertive => "a",
                 },
                 scrollable: n.scroll.is_some(),
+                rect: [n.rect.x, n.rect.y, n.rect.w, n.rect.h].map(f32::to_bits),
                 actions: n
                     .action_list()
                     .into_iter()
@@ -5521,7 +5575,9 @@ pub fn write_command(cmd: &WindowCommand, out: &mut String) {
 /// fragment-image <i> <atlas|texture> <texture index|-> <x> <y> <w> <h>
 ///                            where a fragment's `image` is; omitted with none
 /// texture <i> <x> <y> <w> <h>   the texel rect a texture quad shows
-/// node <depth> <key:016x> <role> <focused> <disabled> <checked|m> <scroll> <actions> <name> | <description> | <value>
+/// node <depth> <key:016x> <role> <focused> <disabled> <checked|m> <selected> <orientation> <live> <scroll>
+///      <x> <y> <w> <h> <actions> <name> | <description> | <value>
+///                            one line; the rect as f32 bits
 /// event <kind> <tag>
 /// cmd <verb> <window> [...]  a window command the driver would have applied
 /// warn <code>
@@ -5577,7 +5633,7 @@ pub fn report(name: &str, env: WindowEnv, steps: &[Step], out: &Output) -> Strin
     for n in &out.nodes {
         let _ = writeln!(
             s,
-            "node {} {:016x} {} {} {} {} {} {} {} {} {} {} | {} | {}",
+            "node {} {:016x} {} {} {} {} {} {} {} {} {:08x} {:08x} {:08x} {:08x} {} {} | {} | {}",
             n.depth,
             n.key.0,
             n.role,
@@ -5593,6 +5649,10 @@ pub fn report(name: &str, env: WindowEnv, steps: &[Step], out: &Output) -> Strin
             n.orientation,
             n.live,
             n.scrollable as u8,
+            n.rect[0],
+            n.rect[1],
+            n.rect[2],
+            n.rect[3],
             if n.actions.is_empty() {
                 "-"
             } else {
@@ -5768,6 +5828,80 @@ fn build_sampler(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
             },
         );
     });
+}
+
+fn build_clip_access(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    let button = |w: f32, h: f32, kind: &str, label: &str, bg: u32| {
+        NodeSpec::column()
+            .width(Sizing::Fixed(w))
+            .height(Sizing::Fixed(h))
+            .bg(Color::hex(bg))
+            .on_click(Value::map([("kind", Value::str(kind))]))
+            .label(label)
+    };
+    ui.with(
+        NodeSpec::column()
+            .width(Sizing::Grow(1.0))
+            .height(Sizing::Grow(1.0)),
+        |ui| {
+            ui.with_keyed(
+                "toolbar",
+                button(0.0, 40.0, "toolbar", "Toolbar", 0x3a3f52ff).width(Sizing::Grow(1.0)),
+                |_| {},
+            );
+            ui.with(
+                NodeSpec::row()
+                    .width(Sizing::Grow(1.0))
+                    .height(Sizing::Grow(1.0)),
+                |ui| {
+                    ui.with_keyed(
+                        "canvas",
+                        NodeSpec::column()
+                            .width(Sizing::Grow(1.0))
+                            .height(Sizing::Grow(1.0))
+                            .clip()
+                            .bg(Color::hex(0x101018ff)),
+                        |ui| {
+                            // 20 px past the canvas's top, 60 px past it,
+                            // and 60 px past it escaping.
+                            for (key, label, dx, dy, clip) in [
+                                ("cut", "Cut", 20.0, -20.0, true),
+                                ("past", "Past", 100.0, -60.0, true),
+                                ("free", "Free", 140.0, -60.0, false),
+                            ] {
+                                let float = FloatConfig::parent().offset(dx, dy);
+                                let float = if clip { float.clipped() } else { float };
+                                ui.with_keyed(
+                                    key,
+                                    button(60.0, 40.0, key, label, 0x3b5bd4ff).float(float),
+                                    |_| {},
+                                );
+                            }
+                        },
+                    );
+                    ui.with_keyed(
+                        "list",
+                        NodeSpec::column()
+                            .width(Sizing::Fixed(100.0))
+                            .height(Sizing::Fixed(50.0))
+                            .scroll_y()
+                            .bg(Color::hex(0x202030ff)),
+                        |ui| {
+                            for (key, label) in
+                                [("row0", "Row 0"), ("row1", "Row 1"), ("row2", "Row 2")]
+                            {
+                                ui.with_keyed(
+                                    key,
+                                    button(100.0, 30.0, key, label, 0x73d98cff),
+                                    |_| {},
+                                );
+                            }
+                        },
+                    );
+                },
+            );
+        },
+    );
 }
 
 fn build_clip_float(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {

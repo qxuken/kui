@@ -122,6 +122,41 @@ fn every_scene_matches_its_expectations() {
     }
 }
 
+/// The `clip-access` scene's rects, which no text sizes, so they can be
+/// checked in (backlog F93): the reference the other three bindings'
+/// reports are diffed against, pinned here so the reference itself cannot
+/// drift back to whole boxes.
+#[test]
+fn the_clip_access_scene_cuts_its_rects() {
+    let scene = conformance::SCENES
+        .iter()
+        .find(|s| s.name == "clip-access")
+        .unwrap();
+    let out = conformance::run(scene);
+    let rects: Vec<[f32; 4]> = out
+        .nodes
+        .iter()
+        .map(|n| n.rect.map(f32::from_bits))
+        .collect();
+    assert_eq!(
+        rects,
+        [
+            [0.0, 0.0, 320.0, 240.0],
+            [0.0, 0.0, 320.0, 40.0],
+            // Cut at the canvas's top; a point on it; escaping, whole.
+            [20.0, 40.0, 60.0, 20.0],
+            [100.0, 40.0, 0.0, 0.0],
+            [140.0, -20.0, 60.0, 40.0],
+            // The scroller; a row in view, one cut at its bottom, one a
+            // point on it.
+            [220.0, 40.0, 100.0, 50.0],
+            [220.0, 40.0, 100.0, 30.0],
+            [220.0, 70.0, 100.0, 20.0],
+            [220.0, 90.0, 0.0, 0.0],
+        ]
+    );
+}
+
 /// A scene that draws nothing would pass every count above by accident.
 #[test]
 fn every_scene_draws_and_reports() {
