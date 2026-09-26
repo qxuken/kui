@@ -35,10 +35,13 @@ pub extern "C" fn kui_image_update(ptr: *mut KuiCtx, id: u64, w: u32, h: u32, rg
         if rgba.is_null() || w == 0 || h == 0 {
             return;
         }
-        let data =
-            unsafe { std::slice::from_raw_parts(rgba, w as usize * h as usize * 4) }.to_vec();
+        let data = unsafe { std::slice::from_raw_parts(rgba, w as usize * h as usize * 4) };
+        // Into a buffer the core recycles, not a fresh copy a frame
+        // (backlog W20).
         c.core()
-            .update_image(kui_core::ImageId::from_ffi(id), w, h, data);
+            .update_image_with(kui_core::ImageId::from_ffi(id), w, h, |px| {
+                px.copy_from_slice(data)
+            });
     });
 }
 

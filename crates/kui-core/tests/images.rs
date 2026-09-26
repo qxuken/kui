@@ -169,6 +169,112 @@ fn an_update_of_the_wrong_length_is_refused() {
     assert_eq!((w, h), (8, 2));
 }
 
+/// One frame drawing `id` as a texture-backed image; what it returns is
+/// the first byte of the pixels the display list hands a backend.
+fn draw(core: &mut Core, id: kui_core::ImageId) -> u8 {
+    let mut ui = core.frame(Size::new(64.0, 64.0), 1.0);
+    ui.image(id, NodeSpec::column().fill());
+    ui.finish();
+    core.output().0.texture_pixels[0].rgba[0]
+}
+
+/// Where an image's bytes live, for telling a reused buffer from a new one.
+fn buffer_of(core: &Core, id: kui_core::ImageId) -> usize {
+    core.image_pixels(id).unwrap().2.as_ptr() as usize
+}
+
+/// `update_image_with` between frames, the way a Node or C stream calls
+/// it: the last frame's display list still holds the current buffer, so
+/// the update writes into the one the update before replaced. From the
+/// third frame on, a stream alternates two buffers and allocates nothing
+/// (backlog W20) — and each frame still draws its own pixels.
+#[test]
+fn a_stream_updated_between_frames_alternates_two_buffers() {
+    let mut core = Core::new();
+    let id = core.resources.add_image(4, 4, rgba(4, 4));
+    let mut seen = Vec::new();
+    for i in 1..=8u8 {
+        assert!(core.update_image_with(id, 4, 4, |px| {
+            assert_eq!(px.len(), 4 * 4 * 4);
+            px.fill(i);
+        }));
+        assert_eq!(draw(&mut core, id), i, "frame {i} draws its own pixels");
+        seen.push(buffer_of(&core, id));
+    }
+    let (_, _, px) = core.image_pixels(id).unwrap();
+    assert!(px.iter().all(|&b| b == 8));
+    let mut steady = seen[2..].to_vec();
+    steady.sort();
+    steady.dedup();
+    assert_eq!(steady.len(), 2, "two buffers, taken in turn: {seen:x?}");
+    assert_ne!(seen[6], seen[7]);
+    assert_eq!(seen[5], seen[7]);
+}
+
+/// Inside the frame's build the display list has been cleared, so nothing
+/// else holds the pixels and the update writes where they already are.
+#[test]
+fn a_stream_updated_inside_the_frame_writes_in_place() {
+    let mut core = Core::new();
+    let id = core.resources.add_image(4, 4, rgba(4, 4));
+    let mut seen = Vec::new();
+    for i in 1..=4u8 {
+        let mut ui = core.frame(Size::new(64.0, 64.0), 1.0);
+        assert!(ui.core().update_image_with(id, 4, 4, |px| px.fill(i)));
+        ui.image(id, NodeSpec::column().fill());
+        ui.finish();
+        assert_eq!(core.output().0.texture_pixels[0].rgba[0], i);
+        seen.push(buffer_of(&core, id));
+    }
+    assert!(seen[1..].iter().all(|&p| p == seen[1]), "{seen:x?}");
+}
+
+/// A reused buffer is only one nobody reads: pixels a backend (or the last
+/// display list) still holds are never written under it.
+#[test]
+fn an_update_never_writes_into_pixels_still_held() {
+    let mut core = Core::new();
+    let id = core.resources.add_image(4, 4, rgba(4, 4));
+    for i in 1..=3u8 {
+        core.update_image_with(id, 4, 4, |px| px.fill(i));
+        draw(&mut core, id);
+    }
+    // A backend mid-upload of frame 3, and the display list of frame 3.
+    let held = core.output().0.texture_pixels[0].rgba.clone();
+    let older = core.image_pixels(id).unwrap().2;
+    assert!(std::sync::Arc::ptr_eq(&held, &older));
+    core.update_image_with(id, 4, 4, |px| px.fill(4));
+    core.update_image_with(id, 4, 4, |px| px.fill(5));
+    assert!(
+        held.iter().all(|&b| b == 3),
+        "the held frame kept its pixels"
+    );
+    assert_eq!(draw(&mut core, id), 5);
+}
+
+/// The size may change on any update, and the handed slice follows it; a
+/// dead handle takes nothing and never calls `fill`.
+#[test]
+fn update_image_with_resizes_and_refuses_a_dead_handle() {
+    let mut core = Core::new();
+    let id = core.resources.add_image(4, 4, rgba(4, 4));
+    for (w, h) in [(8, 2), (16, 16), (2, 2), (16, 16)] {
+        assert!(core.update_image_with(id, w, h, |px| {
+            assert_eq!(px.len(), (w * h * 4) as usize);
+            px.fill(0x11);
+        }));
+        draw(&mut core, id);
+        let (pw, ph, px) = core.image_pixels(id).unwrap();
+        assert_eq!((pw, ph, px.len()), (w, h, (w * h * 4) as usize));
+    }
+    core.remove_image(id);
+    assert!(!core.update_image_with(id, 4, 4, |_| panic!("fill called for a dead handle")));
+    let live = core.resources.add_image(1, 1, rgba(1, 1));
+    assert!(!core.update_image_with(live, u32::MAX, u32::MAX, |_| {
+        panic!("fill called for a size that overflows")
+    }));
+}
+
 /// The corpus fixture that samples its `image` (backlog V1).
 const SAMPLER: &str = "\
 fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32> {

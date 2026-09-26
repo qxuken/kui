@@ -1636,6 +1636,62 @@ row caught up with F90 and ADR 0007 (F95); and a `radio` with no
   (~8 ms) of latency only while frames run back to back. Neither
   changes the default.
 
+## From the Windows–Mac bench comparison (2026-09-26)
+
+The whole `kui-core` bench suite, run on the Windows machine
+(Ryzen 9 9950X3D) after the alpha.20 tag. It ran under Windows 11 and
+under WSL 2's Linux on the same CPU, against the README's M3 Pro
+medians. Plain frame work reads 0.88× the Mac on Windows and 0.81× on
+Linux (geometric mean of 27 rows), so Windows costs ~9% on the same
+silicon. Two groups did not follow the CPU. The text-shaping rows
+(`stream`, `long_line`) spread 4–25× across the three. That is the
+platform's mono face and not the machine: this machine's rows at
+alpha.15 match HEAD's within 4%, and pinning Consolas over Cascadia
+Mono moves them under 2%. README's performance section says so now.
+The 1080p image rows were 5–6× slower on Windows and matched the Mac
+on Linux: W20.
+
+### `.` W20 — A streamed image allocated and freed 8 MB a frame, which on Windows is three times the copy — **built 2026-09-26**
+
+**Found.** `copy_1080p_frame` read 734 µs on Windows, 103 on Linux on
+the same CPU, and 139 on the Mac. A probe split Windows' ~870 µs of
+`clone` + drop: 275 µs of memcpy, ~590 of faulting in and zeroing a
+fresh 8 MB block, and ~170 of releasing it. macOS's and glibc's
+allocators hand a freed block of that size straight back, and Windows'
+heap returns it to the OS. Every door paid it. The core took a `Vec`
+and dropped the one it replaced, and the Node and C doors built that
+`Vec` with `to_vec()` on every update. The core could not write in
+place either, because between frames the last display list's
+`texture_pixels` still holds the current buffer's `Arc`. Node's
+`updateImage` of a 1080p frame read **808 µs** in a real window.
+
+**Built.** `Core::update_image_with(id, w, h, fill)` hands `fill` a
+`w × h × 4` buffer to write: the image's own when nothing else holds it
+(an update inside the frame's build), else the one the previous update
+replaced once no display list holds that (between frames), else a new
+one. Each entry keeps one spare, so a stream alternates two buffers and
+allocates nothing from its third frame. Node's `updateImage` and C's
+`kui_image_update` copy into it, and the `image` example renders its
+plasma straight into it. `update_image_1080p_recycled_and_frame`
+**875 → 275 µs** on Windows, the memcpy alone. Node's `updateImage`
+**808 → ~335 µs** in a real window. `tests/images.rs` pins the
+alternation, in-place writes inside the frame, that pixels still held
+are never written under, and resizing. ADR 0025 has the amendment.
+
+### `.` W21 — `write_texture` costs the memcpy again plus ~100 µs a 1080p frame
+
+**Found** with W20. `queue.write_texture` of a 1080p frame is ~375 µs
+of CPU under Vulkan and ~405 under DX12 on the RTX 5080. That is the
+copy into wgpu's staging buffer, ~275 µs, plus what wgpu spends
+arranging it, measured in a scratch probe against the workspace's
+wgpu 30. Submit and the GPU's copy add 100–130 µs.
+
+**Do.** Measure it on the Mac first; the staging half may be Windows'
+allocator again. If it is wgpu's own, keep a mapped staging buffer per
+texture-backed image and record `copy_buffer_to_texture`, so the core's
+buffer is copied once into it. The copy stays. What goes is whatever
+`write_texture` does beyond it.
+
 ## From the second bake-off (2026-09-25)
 
 The comparison of round one (2026-09-08, above) was run again

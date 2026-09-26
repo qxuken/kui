@@ -407,6 +407,34 @@ impl Core {
         taken
     }
 
+    /// Replaces an image's pixels by writing them into a buffer the core
+    /// recycles; see `Resources::update_image_with`. `fill` gets
+    /// `width × height × 4` bytes holding an earlier frame's pixels and
+    /// writes every one. Where [`Self::update_image`] takes a buffer the
+    /// app allocated — and frees the one it replaces — this one stops
+    /// allocating after a stream's second frame, which on Windows is most
+    /// of what a 1080p update cost (backlog W20). Render into `fill`'s
+    /// slice rather than into a buffer of your own to skip the copy too.
+    /// `fill` runs while the session's resources are borrowed, so it must
+    /// not reach them through another window's `Core`; that panics.
+    pub fn update_image_with(
+        &mut self,
+        id: crate::resources::ImageId,
+        width: u32,
+        height: u32,
+        fill: impl FnOnce(&mut [u8]),
+    ) -> bool {
+        let taken = self
+            .session
+            .state()
+            .resources
+            .update_image_with(id, width, height, fill);
+        if taken {
+            self.atlas.evict_image(id);
+        }
+        taken
+    }
+
     /// The pixels behind an image handle — its size and a shared handle on
     /// the bytes — for a host that renders the display list itself and
     /// meets a `QuadKind::Texture` quad. `None` for a dead or foreign

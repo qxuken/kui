@@ -967,8 +967,13 @@ for a page, which used to draw nothing. `sampling="nearest"` keeps an
 emulator's or a pixel-art texel square; `fit="contain"` or `"cover"` meets
 a box of another aspect without stretching. kui composes, clips, rounds,
 fades and hit-tests the box; what is inside it is yours, rasterised with
-whatever you like. At 1080p the cost is your own 8 MB copy of the frame and
-the upload; the core adds nothing measurable.
+whatever you like. In Rust, prefer `update_image_with(id, w, h, |px| …)`
+and render straight into the slice it hands you. It is a buffer the core
+recycles, so a stream stops allocating after its second frame and skips
+your copy too. `updateImage` and `kui_image_update` copy your bytes into
+that same recycled buffer. At 1080p that copy is ~275 µs, where a fresh
+8 MB buffer a frame cost ~870 on Windows, whose heap faults every new
+block in page by page (backlog W20). The upload to the GPU comes on top.
 
 [`image` element](props.md#elements) ·
 [ADR 0025](adr/0025-the-image-is-the-canvas.md) ·

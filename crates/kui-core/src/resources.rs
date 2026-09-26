@@ -210,6 +210,15 @@ pub struct ImageEntry {
     pub rev: u32,
     /// Where the pixels live on the GPU (ADR 0025, decision 2).
     pub backing: ImageBacking,
+    /// The buffer the last [`Resources::update_image_with`] replaced, kept
+    /// for the next one to write into once no display list holds it
+    /// (backlog W20). An update between frames finds `rgba` still shared
+    /// with the last frame's `texture_pixels`, so without it every update
+    /// was a fresh `w × h × 4` allocation and the previous one freed —
+    /// 590 µs of page faults and 170 µs of release at 1080p on Windows,
+    /// three times the copy itself. Two buffers per streamed image, and a
+    /// stream stops allocating from its third frame.
+    pub(crate) spare: Option<std::sync::Arc<Vec<u8>>>,
 }
 
 /// Where a registered image's pixels are kept for drawing
@@ -441,6 +450,7 @@ impl Resources {
                 height,
                 rgba: std::sync::Arc::new(rgba),
                 rev: 0,
+                spare: None,
                 // Past a page it has nowhere to go but its own texture;
                 // before ADR 0025 it was dropped at emission, silently.
                 backing: if width > crate::atlas::MAX_ATLAS_SIZE
@@ -476,6 +486,56 @@ impl Resources {
         entry.width = width;
         entry.height = height;
         entry.rgba = std::sync::Arc::new(rgba);
+        entry.rev = entry.rev.wrapping_add(1);
+        entry.backing = ImageBacking::Texture;
+        true
+    }
+
+    /// [`Self::update_image`] into a buffer the core recycles: `fill` is
+    /// handed `width × height × 4` bytes to write the new pixels into, and
+    /// is not called for a foreign or removed handle (noted as a miss),
+    /// or for a size whose byte count overflows. The bytes it is handed
+    /// hold an earlier frame's pixels, not zeros, so `fill` writes every
+    /// one. The buffer is the image's own when no display list still
+    /// holds it, else the one the previous update replaced, else a new
+    /// one — so a stream updated every frame, between frames or inside
+    /// them, allocates twice and then never again (backlog W20). What
+    /// every door that copies an app's bytes goes through.
+    pub fn update_image_with(
+        &mut self,
+        id: ImageId,
+        width: u32,
+        height: u32,
+        fill: impl FnOnce(&mut [u8]),
+    ) -> bool {
+        use std::sync::Arc;
+        let Some(len) = (width as usize)
+            .checked_mul(height as usize)
+            .and_then(|n| n.checked_mul(4))
+        else {
+            return false;
+        };
+        let Some(entry) = self.images.get_mut(id) else {
+            self.note_miss(ResourceKind::Image, id.to_ffi());
+            return false;
+        };
+        if Arc::get_mut(&mut entry.rgba).is_none() {
+            // The last frame's display list (or a backend mid-upload)
+            // still reads the current buffer: write into the spare if
+            // nothing reads that any more, else into a new one. `vec!`
+            // rather than a resize, so a fresh buffer's zeros are the
+            // allocator's and not a pass over it.
+            let next = match entry.spare.take() {
+                Some(spare) if Arc::strong_count(&spare) == 1 => spare,
+                _ => Arc::new(vec![0; len]),
+            };
+            entry.spare = Some(std::mem::replace(&mut entry.rgba, next));
+        }
+        let buf = Arc::get_mut(&mut entry.rgba).expect("unshared: checked or replaced above");
+        buf.resize(len, 0);
+        fill(buf);
+        entry.width = width;
+        entry.height = height;
         entry.rev = entry.rev.wrapping_add(1);
         entry.backing = ImageBacking::Texture;
         true
