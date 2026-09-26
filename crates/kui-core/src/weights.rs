@@ -69,21 +69,7 @@ impl Weights {
             if covered {
                 return Weight(asked);
             }
-            // The nearest face; between two as near, the heavier for bold
-            // and the lighter for regular, the way CSS matching leans.
-            let nearest = faces
-                .iter()
-                .map(|&(weight, _)| weight)
-                .min_by_key(|&weight| {
-                    let lean = if asked >= 500 {
-                        u16::MAX - weight
-                    } else {
-                        weight
-                    };
-                    (weight.abs_diff(asked), lean)
-                })
-                .unwrap_or(asked);
-            Weight(nearest)
+            Weight(css_match(asked, faces.iter().map(|&(weight, _)| weight)).unwrap_or(asked))
         };
         Self {
             regular: serve(Weight::NORMAL.0),
@@ -107,6 +93,25 @@ impl Weights {
     }
 }
 
+/// The face weight CSS font matching takes for `asked` among `weights`
+/// (CSS Fonts 4, § 5.2, step 4): for 400 to 500, the weights from it up
+/// to 500 in ascending order, then those below it in descending order,
+/// then those above 500; below 400, those at or below it descending, then
+/// those above ascending; above 500, those at or above it ascending, then
+/// those below descending. So regular with faces at 300 and 500 is the
+/// 500, and bold with faces at 500 and 900 the 900 (RG59).
+fn css_match(asked: u16, weights: impl Iterator<Item = u16> + Clone) -> Option<u16> {
+    let up = |lo: u16, hi: u16| weights.clone().filter(|w| (lo..=hi).contains(w)).min();
+    let down = |lo: u16, hi: u16| weights.clone().filter(|w| (lo..=hi).contains(w)).max();
+    match asked {
+        400..=500 => up(asked, 500)
+            .or_else(|| down(0, asked - 1))
+            .or_else(|| up(501, u16::MAX)),
+        0..400 => down(0, asked).or_else(|| up(asked + 1, u16::MAX)),
+        _ => up(asked, u16::MAX).or_else(|| down(0, asked - 1)),
+    }
+}
+
 /// The span of a face's `wght` axis, if it is variable along one.
 fn wght_range(db: &fontdb::Database, id: fontdb::ID) -> Option<(f32, f32)> {
     use cosmic_text::skrifa::{FontRef, MetadataProvider, Tag};
@@ -123,8 +128,11 @@ fn wght_range(db: &fontdb::Database, id: fontdb::ID) -> Option<(f32, f32)> {
 /// `OS/2` weight says — a weight is its own coordinate, as cosmic-text
 /// takes it. Otherwise the coordinate is read off the named instances
 /// whose names say a weight ("Regular", "Bold", "SemiBold"…), with the
-/// default standing for the `OS/2` weight, and between two of them it is
-/// linear; past the last it stays there (backlog F100).
+/// default standing for the `OS/2` weight when no instance names that
+/// weight, and between two of them it is linear; past the last it stays
+/// there (backlog F100). An instance goes first: a face whose `OS/2`
+/// weight is 400 and whose default is its Thin, with a Regular at 400,
+/// draws regular at the Regular (RG59).
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct WghtAxis {
     min: f32,
@@ -141,9 +149,8 @@ impl WghtAxis {
             .variations()
             .find_by_tag(swash::Tag::from_be_bytes(*b"wght"))?;
         let (min, max, default) = (axis.min_value(), axis.max_value(), axis.default_value());
-        let mut points = Vec::new();
+        let mut points: Vec<(f32, f32)> = Vec::new();
         if (default - f32::from(weight)).abs() >= 0.5 {
-            points.push((f32::from(weight), default));
             for instance in font.instances() {
                 let Some(css) = instance
                     .name(None)
@@ -157,6 +164,9 @@ impl WghtAxis {
                 if !points.iter().any(|&(w, _)| w == css) {
                     points.push((css, at));
                 }
+            }
+            if !points.iter().any(|&(w, _)| w == f32::from(weight)) {
+                points.push((f32::from(weight), default));
             }
             points.sort_by(|a, b| a.0.total_cmp(&b.0));
         }
@@ -308,6 +318,51 @@ mod tests {
         // Without a named bold, the default is all there is.
         let bare = axis(&variable_face("Kui Bare", false, [100, 100, 150], &[]));
         assert_eq!(bare.coordinate(700.0), 100.0);
+    }
+
+    /// RG59: a named instance at the `OS/2` weight is where that weight
+    /// draws, not the default: a face whose `OS/2` weight is 400 and
+    /// whose default is its Thin draws regular at its Regular. The
+    /// default's point used to go first and shadow it, and regular drew
+    /// Thin.
+    #[test]
+    fn an_instance_at_the_os2_weight_is_not_shadowed_by_the_default() {
+        let a = axis(&variable_face(
+            "Kui Thin Default",
+            false,
+            [100, 100, 900],
+            &[("Thin", 100), ("Regular", 400)],
+        ));
+        assert_eq!(a.coordinate(400.0), 400.0);
+        assert_eq!(a.coordinate(100.0), 100.0);
+    }
+
+    /// RG59: the nearest face is CSS's (CSS Fonts 4, § 5.2): regular
+    /// looks up to 500 before it looks down, and below 400 or above 500
+    /// looks away from 400–500 first.
+    #[test]
+    fn the_nearest_face_is_the_one_css_matching_takes() {
+        let m = |asked, weights: &[u16]| css_match(asked, weights.iter().copied());
+        assert_eq!(m(400, &[300, 500]), Some(500), "up to 500 first");
+        assert_eq!(m(400, &[300, 600]), Some(300), "then down");
+        assert_eq!(m(400, &[100, 600]), Some(100), "down before past 500");
+        assert_eq!(m(400, &[600, 900]), Some(600));
+        assert_eq!(m(700, &[500, 900]), Some(900), "bold looks up first");
+        assert_eq!(m(700, &[300, 500]), Some(500), "then down");
+        assert_eq!(m(300, &[200, 400]), Some(200), "light looks down first");
+        assert_eq!(m(300, &[400, 500]), Some(400));
+        assert_eq!(m(400, &[]), None);
+        let db = db(vec![
+            font_face("Kui Between", 300, false, true),
+            font_face("Kui Between", 500, false, true),
+        ]);
+        assert_eq!(
+            Weights::of(&db, "Kui Between"),
+            Weights {
+                regular: Weight(500),
+                bold: Weight(500),
+            }
+        );
     }
 
     #[test]

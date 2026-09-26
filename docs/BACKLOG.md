@@ -59,8 +59,8 @@ the day it was filed, and F99 — an atlas page never emptied under a
 frame — from the kawoosh fonts-pane scrolling report of the same day,
 the day it was filed, and F100 — bold in the family that has no bold
 face — from the kawoosh Berkeley-bold report of the same day, the day
-it was filed, and RG53–RG55, RG57 and RG58 from the regression pass
-over those five the same day, the day they were filed. The index
+it was filed, and RG53–RG59 from the regression pass over those five
+the same day, the day they were filed. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -90,8 +90,7 @@ two entries, C42 and C43 — `rich_text` shaped whole past the long-line
 threshold, and a long line's key hashed a byte at a time every frame —
 were built the day they were filed; the "thousands of spans" the report
 blamed measured as a factor of 1.5 and not the cause), the "theirs, not ours" lists the field reports left
-behind, C45–C51 from the second bake-off of 2026-09-25, and RG56 and
-RG59 from the regression pass of 2026-09-26. Everything else that has been filed has
+behind, and C45–C51 from the second bake-off of 2026-09-25. Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
 they were filed (2026-09-07), F25–F31 from the alpha.8 ones by the day
@@ -1445,77 +1444,14 @@ full-size buffer for life, not only a stream (RG53). F99 doubled the
 page for good after one burst that fit it (RG55), and F100 reached
 spans and cells but not plain text or an editor (RG57). RG53–RG55,
 RG57 and RG58 were **built 2026-09-26**, the day they were filed, and
-are in the archive. RG56 — a glyph refused on a 4096 page that began
-the frame empty — and RG59 — four smaller readings of F100 — are open
-below.
-
-### `!` RG56 — A glyph refused on a 4096 page that began the frame empty stays blank until something else empties the page
-
-A set bigger than a `MAX_ATLAS_SIZE` page on its own (a frame of
-large CJK or emoji at 2×, or big box-drawing cells: more than 16M
-texels of distinct glyphs) fills the page on a frame that began it
-empty. `alloc_or_make_room` refuses the glyphs that do not fit without
-setting `short`, since the next frame would refuse them too, and
-`get_or_insert` (and `get_or_insert_synth`, `get_or_insert_image`)
-caches the refusal as `None`. When the app then scrolls to a subset
-that holds those glyphs and opens no new row, the lookups hit the
-cached `None`, nothing tries to allocate, nothing empties the page,
-and the glyphs stay blank for as long as the page lives. Before F99 a
-full 4096 page reset mid-frame and the glyph drew after one wrong
-frame.
-
-Not a one-line fix. Caching nothing retries (and rasterizes) the glyph
-on every lookup, and uncaching the refusals at `begin_frame` makes the
-retry on the next, non-fresh frame set `short`, empty the page, refuse
-again on the fresh one, and ask for a frame every two frames for as
-long as the big set is on screen. What is missing is a measure of how
-much of the page the last frame used: the texels of the slots it
-looked up, counted on each hit. A page whose last frame used less
-than it holds, with refusals pending, can be emptied at `begin_frame`
-so they get room; one whose last frame used all of it cannot.
-
-Repro (a unit test in `atlas.rs`): `with_size(MAX_ATLAS_SIZE)`,
-`begin_frame`, 17 items of 1000×1000 (the 17th refused, `short`
-false), then frames that look up only the 17th: it never gets a slot.
-Found reading F99 in the regression pass of 2026-09-26; not seen in
-an app.
-
-### `.` RG59 — Four readings of F100 the regression pass left: an OS/2 weight over a named instance, the mapped weight handed to fallback faces, shaped text kept across a reweigh, and the nearest face's lean
-
-Read in the review of F100, none seen in an app or with an installed
-font on this Mac. Each is small; they are one entry because they
-touch the same few functions in `weights.rs` and `text.rs`.
-
-1. **The `OS/2` point shadows a named instance at the same weight**
-   (`weights.rs`, where a face's `(OS/2 weight, default)` point is
-   pushed before its named instances and the dedupe keeps the first).
-   A face whose `OS/2` weight is 400 but whose default instance is
-   Thin, with a "Regular" instance at 400, is read as off the CSS
-   scale and `coordinate(400)` gives 100: regular draws Thin, where
-   before F100 it drew at 400. Push the named instances first and
-   the `(OS/2, default)` point only for a weight no instance names;
-   Berkeley's result does not change. Test: a `variable_face` over
-   [100, 100, 900], `OS/2` 400, instances Thin = 100 and Regular =
-   400; `coordinate(400) == 400`.
-2. **The mapped weight reaches fallback faces.** Skia, on every Mac,
-   is off the scale with an `OS/2` weight of 5, so its regular is
-   asked at weight 5. A glyph it lacks falls back at `ideal_weight` 5
-   to `.SFNS`, whose axis spans 1–1000, and draws near hairline.
-   Skia itself is shaped at its axis's clamp and drawn at 1.0, the
-   limit the F100 entry names. Clamp the asked weight to 100–900 for
-   a face whose `OS/2` weight is outside it, or name Skia in the
-   limit.
-3. **A reweigh does not reach shaped text.** `reweigh` runs after
-   `load_fonts_dir`, `add_font_data` and `remove_font`, but
-   `TextSystem` entries and cell tables are keyed by content, style
-   and scale, and `load_fonts_dir` does not bump `fonts_rev`: text
-   shaped with `SYNTHETIC_BOLD` stays synthetic after the family's
-   real Bold is loaded, until it is evicted. The class predates F100
-   (a font loaded under shaped text); a weights epoch in `style_key`,
-   or clearing the entries when a reweigh changed anything, closes it.
-4. **The nearest face leans light where CSS leans heavy.** For 400
-   with faces at 300 and 500, `Weights::of` takes 300; CSS's font
-   matching tries 500 first. The comment claims CSS's rule.
+RG56 — a glyph refused on a 4096 page that began the frame empty — and
+RG59 — four smaller readings of F100 — the same day after the alpha.21
+tag; all are in the archive. RG56's measure needed a half the entry did
+not name: text templates and cell tables look nothing up on a steady
+frame, so they now key their slots on a stamp that moves while the
+atlas measures. RG59's second reading is a limit written down, not a
+fix: cosmic-text takes a family's face only at its exact weight or
+inside its axis, so clamping Skia's asked weight would pass Skia over.
 
 ## From the Windows regression round of 2026-09-26
 
@@ -3356,10 +3292,12 @@ move.
 - `.` **F95** — [Two docs behind the code: the stroke rows' contrast after F90, and `radio` without `radioGroup`](backlog/closed-2026-09.md#-f95--two-docs-behind-the-code-the-stroke-rows-contrast-after-f90-and-radio-without-radiogroup--done-2026-09-26) — done (2026-09-26) — the `line`/`polygon` rows and the JSX `line` doc say a `clip` float is held too; the `role` row pairs `radio`/`radioGroup` and `tab`/`tabList` (ADR 0007)
 - `.` **F96** — [A radio or a tab outside its container is a Tab stop of its own, silently](backlog/closed-2026-09.md#-f96--a-radio-or-a-tab-outside-its-container-is-a-tab-stop-of-its-own-silently--done-2026-09-26) — done (2026-09-26) — `item-outside-container` for a `radio` with no `radioGroup` or a `tab` with no `tabList`, once per key; the devtools' dock placements a `radioGroup`, its tabs a `tabList`
 
-**From the regression pass of 2026-09-26** — RG53–RG55, RG57 and RG58, filed and built the same day
+**From the regression pass of 2026-09-26** — RG53–RG59, filed and built the same day
 
 - `!` **RG53** — [Every image updated between frames keeps a second full-size buffer for life](backlog/closed-2026-09.md#-rg53--every-image-updated-between-frames-keeps-a-second-full-size-buffer-for-life--done-2026-09-26) — done (2026-09-26) — the replaced buffer is kept only for an image updated before at the same size and let go `SPARE_FRAMES` (30) frames after the last update; a shrunk buffer's capacity follows
 - `.` **RG54** — [Three edges of update_image_with: a Weak on the pixels panics, a fill that panics leaves size and length apart, and the C door slices a wrapped length](backlog/closed-2026-09.md#-rg54--three-edges-of-update_image_with-a-weak-on-the-pixels-panics-a-fill-that-panics-leaves-size-and-length-apart-and-the-c-door-slices-a-wrapped-length--done-2026-09-26) — done (2026-09-26) — the spare is reused only with no `Weak` on it, the size is set before `fill`, and the C doors check the byte count before the slice
 - `.` **RG55** — [One burst of new glyphs that fits the page doubles it for good](backlog/closed-2026-09.md#-rg55--one-burst-of-new-glyphs-that-fits-the-page-doubles-it-for-good--done-2026-09-26) — done (2026-09-26) — `begin_frame` reads the page as filling only once a frame since the last emptying turned rows over on it (`turned`)
+- `!` **RG56** — [A glyph refused on a 4096 page that began the frame empty stays blank until something else empties the page](backlog/closed-2026-09.md#-rg56--a-glyph-refused-on-a-4096-page-that-began-the-frame-empty-stays-blank-until-something-else-empties-the-page--done-2026-09-26) — done (2026-09-26) — the atlas keeps its refusals and measures each frame's distinct texels (templates and cell tables key on `stamp`, which moves while it measures); a frame that wanted one and fits asks for the next, which begins empty
 - `!` **RG57** — [Plain text and editors are asked at 400, not the family's regular: a family with no 400 face draws in two families](backlog/closed-2026-09.md#-rg57--plain-text-and-editors-are-asked-at-400-not-the-familys-regular-a-family-with-no-400-face-draws-in-two-families--done-2026-09-26) — done (2026-09-26) — plain text, rich text's defaults and editors are asked at the family's regular through `Weights::apply`
 - `.` **RG58** — [A copy reads bold as 700 and up: a SemiBold bold copies plain, and a Bold-only family copies everything bold](backlog/closed-2026-09.md#-rg58--a-copy-reads-bold-as-700-and-up-a-semibold-bold-copies-plain-and-a-bold-only-family-copies-everything-bold--done-2026-09-26) — done (2026-09-26) — a copy's run is bold when heavier than the line's default (the family's regular) or `SYNTHETIC_BOLD`
+- `.` **RG59** — [Four readings of F100 the regression pass left: an OS/2 weight over a named instance, the mapped weight handed to fallback faces, shaped text kept across a reweigh, and the nearest face's lean](backlog/closed-2026-09.md#-rg59--four-readings-of-f100-the-regression-pass-left-an-os2-weight-over-a-named-instance-the-mapped-weight-handed-to-fallback-faces-shaped-text-kept-across-a-reweigh-and-the-nearest-faces-lean--done-2026-09-26) — done (2026-09-26) — named instances before the `OS/2` point; a reweigh of a family registered before drops each window's shaped text and cell tables and re-attributes its editors; CSS Fonts 4's matching order; Skia's fallback weight written down as a limit

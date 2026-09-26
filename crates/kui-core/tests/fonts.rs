@@ -469,3 +469,93 @@ fn a_family_with_no_400_face_draws_in_it_everywhere() {
     ui.finish();
     assert_fixture(&glyphs(&mut core), 10.0, 8.0, "editor");
 }
+
+/// A face of a registered family loaded or removed under text already
+/// shaped in it reaches that text: plain text, spans, cells and an
+/// editor shape again at the weights the family is asked at now (RG59).
+/// They were keyed by content and style alone, so text shaped before a
+/// family gained its regular kept the face it had, and bold synthesized
+/// before the family's Bold was loaded stayed synthetic — or stayed that
+/// Bold after it was removed.
+#[test]
+fn a_face_loaded_or_removed_under_shaped_text_reaches_it() {
+    use kui_core::testing::{font_face, han_face};
+    use kui_core::{EditOptions, Span};
+    let mut core = Core::new();
+    // A Light face with no 字: the family's regular is 300, and 字 falls
+    // back to another family.
+    let light = core
+        .add_font_data(font_face("Kui RG59", 300, false, false))
+        .expect("the fixture registers");
+    let style = TextStyle::new(20.0).font(light).line_height(24.0);
+    let glyphs = |core: &mut Core| -> Vec<(f32, f32)> {
+        let (dl, _) = core.output();
+        dl.quads
+            .iter()
+            .filter(|q| q.kind == kui_core::QuadKind::GlyphMask)
+            .map(|q| (q.rect.x, q.rect.w))
+            .collect()
+    };
+    // Each path's glyphs of 字字字字.
+    let every_path = |core: &mut Core| -> Vec<(&str, Vec<(f32, f32)>)> {
+        let han = "字字字字";
+        let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+        ui.with(NodeSpec::column(), |ui| ui.text(han, style));
+        ui.finish();
+        let plain = glyphs(core);
+        let spans = rich_glyphs(core, &[Span::new(han)], style);
+        let cells = cell_glyphs(core, han, 0, style);
+        let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+        ui.text_edit(
+            "field",
+            han,
+            &EditOptions {
+                style,
+                ..Default::default()
+            },
+            NodeSpec::column().width(kui_core::Sizing::Fixed(300.0)),
+        );
+        ui.finish();
+        let editor = glyphs(core);
+        vec![
+            ("plain text", plain),
+            ("span", spans),
+            ("cells", cells),
+            ("editor", editor),
+        ]
+    };
+    let bold = Span {
+        bold: true,
+        ..Span::new("aaaa")
+    };
+    every_path(&mut core);
+    let synthetic = rich_glyphs(&mut core, &[bold], style);
+    assert!(synthetic.iter().all(|g| g.1 > 8.0), "{synthetic:?}");
+    // A Regular with 字 comes: the family's regular is 400, and 字 is
+    // the fixture's, half an em apart.
+    core.add_font_data(han_face("Kui RG59"))
+        .expect("a regular face of it");
+    let paths = every_path(&mut core);
+    let square = paths[0].1.first().map(|g| g.1);
+    for (what, glyphs) in paths {
+        assert_eq!(glyphs.len(), 4, "{what}: {glyphs:?}");
+        assert!(
+            glyphs.windows(2).all(|p| p[1].0 - p[0].0 == 10.0)
+                && glyphs.iter().all(|g| Some(g.1) == square),
+            "{what} shaped at the family's new regular: {glyphs:?}"
+        );
+    }
+    // Its Bold comes: bold is that face, drawn as it is.
+    let bold_face = core
+        .add_font_data(font_face("Kui RG59", 700, false, false))
+        .expect("a bold face of it");
+    let real = rich_glyphs(&mut core, &[bold], style);
+    assert_fixture(&real, 10.0, 8.0, "bold, the family's Bold");
+    // And goes: bold is synthesized again.
+    core.remove_font(bold_face);
+    let synthetic = rich_glyphs(&mut core, &[bold], style);
+    assert!(
+        synthetic.iter().all(|g| g.1 > 8.0),
+        "bold synthesized again: {synthetic:?}"
+    );
+}

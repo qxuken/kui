@@ -87,6 +87,10 @@ pub(crate) struct SessionState {
     /// Bumped by every font registration and removal, so a `Core` can tell
     /// whether its name mirror is behind without walking the slotmap.
     pub(crate) fonts_rev: u64,
+    /// Bumped when the weights a registered family is asked at change
+    /// under it — a face of it loaded or removed (RG59) — so each `Core`
+    /// drops the text it shaped at the old ones.
+    pub(crate) weights_rev: u64,
     /// Bumped by every image removal, so a `Core` can tell whether its
     /// atlas still holds a slot for an image the registry no longer has
     /// (AR8). The atlas is per window, so every core re-checks its own.
@@ -114,6 +118,7 @@ impl SessionState {
             resources: Resources::new(id),
             audio: AudioStore::default(),
             fonts_rev: 0,
+            weights_rev: 0,
             images_rev: 0,
             dropped: Dropped::default(),
             windows: WindowRegistry::new(),

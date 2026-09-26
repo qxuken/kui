@@ -104,6 +104,9 @@ pub struct Core {
     /// `SessionState::fonts_rev`.
     font_names: FxHashMap<FontId, std::rc::Rc<str>>,
     fonts_rev: u64,
+    /// The session's `weights_rev` this core's shaped text is of
+    /// (`sync_weights`).
+    weights_rev: u64,
     /// The session's `images_rev` this core last checked its atlas
     /// against (`sync_dropped`).
     images_rev: u64,
@@ -808,6 +811,7 @@ impl Core {
             audio: SharedAudio::new(session),
             font_names: FxHashMap::default(),
             fonts_rev: u64::MAX,
+            weights_rev: 0,
             images_rev: 0,
             interaction: Interaction::default(),
             scroll: ScrollStore::default(),
@@ -1385,6 +1389,8 @@ impl Core {
         self.atlas.begin_frame();
         // An image's spare buffer outlives its stream by a few frames (W20).
         self.session.state().resources.release_spares();
+        // Before the text store begins its frame, as a scale change is.
+        self.sync_weights();
         // The text list goes with the tree: a kept frame's text nodes carry
         // that frame's `TextId`s, and nothing else can resolve them.
         self.text.begin_frame(

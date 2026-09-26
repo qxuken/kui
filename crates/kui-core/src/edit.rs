@@ -7,8 +7,8 @@
 use std::collections::VecDeque;
 
 use cosmic_text::{
-    Action, Attrs, Buffer, Cursor, Edit as _, Editor, FontSystem, Metrics, Motion, Selection,
-    Shaping, Wrap,
+    Action, Attrs, AttrsList, Buffer, Cursor, Edit as _, Editor, FontSystem, Metrics, Motion,
+    Selection, Shaping, Wrap,
 };
 use rustc_hash::FxHashMap;
 
@@ -437,6 +437,28 @@ fn attrs_for<'a>(style: &TextStyle, res: &'a Resources) -> Attrs<'a> {
 }
 
 impl EditStore {
+    /// Gives every editor's text the weights its family is asked at now
+    /// (RG59): a face of a registered family came or went. The text,
+    /// caret and history stay; every line shapes again, and every
+    /// measurement of it is of the old weights.
+    pub(crate) fn reweigh(&mut self, res: &Resources) {
+        for s in self.states.values_mut() {
+            let a = AttrsList::new(&attrs_for(&s.style, res));
+            let mut moved = false;
+            s.editor.with_buffer_mut(|b| {
+                for line in &mut b.lines {
+                    moved |= line.set_attrs_list(a.clone());
+                }
+            });
+            if moved {
+                s.editor.set_redraw(true);
+                s.wrap = None;
+                s.metrics_rev = s.metrics_rev.wrapping_add(1);
+                s.invalidate_measurements();
+            }
+        }
+    }
+
     pub fn focused(&self) -> Option<Key> {
         self.focused
     }

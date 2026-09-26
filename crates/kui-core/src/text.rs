@@ -258,7 +258,7 @@ pub(crate) struct CachedText {
     /// What each span asked for, by the index its glyphs carry as
     /// metadata; one entry for plain text.
     span_deco: Vec<SpanDeco>,
-    /// (wrap, atlas epoch) the template cache was built for.
+    /// (wrap, atlas stamp) the template cache was built for.
     glyphs_built_for: Option<(Option<u32>, u64)>,
 }
 
@@ -879,7 +879,7 @@ impl TextMetrics {
 /// ([`crate::session::Session`]), passed in as `fs` — because a font
 /// registered in one window has to shape in every window of the session.
 /// What is here is coupled to this window's glyph atlas: the shaped-buffer
-/// cache stamps its positioned glyphs with the atlas epoch they were
+/// cache stamps its positioned glyphs with the atlas stamp they were
 /// packed against, and the frame lists are what `TextId` indexes.
 pub struct TextSystem {
     raster: Raster,
@@ -1254,6 +1254,13 @@ impl TextSystem {
         // the budget frees what a stream of new text piles up faster than
         // that (backlog C16).
         self.evict_to_budget(fs);
+    }
+
+    /// Drops every shaped entry, to shape again on its next draw: the
+    /// weights a family is asked at changed under them (RG59).
+    pub(crate) fn forget_shaped(&mut self) {
+        self.entries.clear();
+        self.bytes = 0;
     }
 
     /// Inserts a fresh entry, charging it to the budget.
@@ -2366,7 +2373,7 @@ fn build_templates(
 ) {
     {
         // Steady state: same wrap, same atlas — reuse positioned templates.
-        let built_for = (entry.wrap.map(f32::to_bits), atlas.epoch);
+        let built_for = (entry.wrap.map(f32::to_bits), atlas.stamp);
         if entry.glyphs_built_for != Some(built_for) {
             entry.glyphs.clear();
             entry.deco.clear();
@@ -2396,9 +2403,9 @@ fn build_templates(
                 }
             }
             // Rasterizing may have extended the page mid-build, which
-            // keeps every slot where it was but moves the epoch: stamp the
+            // keeps every slot where it was but moves the stamp: keep the
             // one we ended on.
-            entry.glyphs_built_for = Some((entry.wrap.map(f32::to_bits), atlas.epoch));
+            entry.glyphs_built_for = Some((entry.wrap.map(f32::to_bits), atlas.stamp));
         }
     }
 }

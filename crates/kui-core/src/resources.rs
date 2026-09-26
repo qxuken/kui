@@ -459,16 +459,24 @@ impl Resources {
     /// Reads again the weights of the registered families `families` holds
     /// from what `db` has of them now (backlog F100): after a family is
     /// registered, and after faces of it come into the database or leave.
+    /// Whether the weights of a font other than `fresh` — the one just
+    /// registered, which nothing has shaped in yet — changed: text shaped
+    /// in it was shaped at the old ones (RG59).
     pub(crate) fn reweigh(
         &mut self,
         db: &cosmic_text::fontdb::Database,
         families: &rustc_hash::FxHashSet<String>,
-    ) {
-        for (_, entry) in self.fonts.iter_mut() {
+        fresh: Option<FontId>,
+    ) -> bool {
+        let mut changed = false;
+        for (id, entry) in self.fonts.iter_mut() {
             if families.contains(&entry.family) {
-                entry.weights = crate::weights::Weights::of(db, &entry.family);
+                let weights = crate::weights::Weights::of(db, &entry.family);
+                changed |= Some(id) != fresh && weights != entry.weights;
+                entry.weights = weights;
             }
         }
+        changed
     }
 
     pub(crate) fn remove_font(&mut self, id: FontId) -> Option<FontEntry> {
@@ -798,6 +806,31 @@ impl Drop for Resources {
 mod tests {
     use super::*;
     use slotmap::KeyData;
+
+    /// RG59: a reweigh reports a change only to a family registered
+    /// before — text may have been shaped in it — and never for the one
+    /// just registered, so a list registering a family per row as it
+    /// scrolls does not drop every window's shaped text each time.
+    #[test]
+    fn a_reweigh_reports_only_a_family_text_may_be_shaped_in() {
+        use crate::weights::Weights;
+        use cosmic_text::fontdb::{Database, Source};
+        let mut db = Database::new();
+        let load = |db: &mut Database, weight| {
+            let bytes = crate::testing::font_face("Kui Fresh", weight, false, true);
+            db.load_font_source(Source::Binary(std::sync::Arc::new(bytes)));
+        };
+        load(&mut db, 400);
+        let touched = std::iter::once("Kui Fresh".to_string()).collect();
+        let mut r = Resources::new(SessionId::next());
+        let id = r.add_font("Kui Fresh".into(), vec![]);
+        assert!(!r.reweigh(&db, &touched, Some(id)), "just registered");
+        assert_ne!(r.weights_of(FontFamily::Custom(id)), Weights::CSS);
+        assert!(!r.reweigh(&db, &touched, None), "nothing moved");
+        load(&mut db, 700);
+        assert!(r.reweigh(&db, &touched, None), "its Bold came");
+        assert_eq!(r.weights_of(FontFamily::Custom(id)), Weights::CSS);
+    }
 
     #[test]
     fn stale_handle_is_rejected_after_removal() {

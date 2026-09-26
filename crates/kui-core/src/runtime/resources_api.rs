@@ -100,7 +100,9 @@ impl Core {
             sess.fonts_rev += 1;
             let touched = families_of(db, &ids);
             let id = sess.resources.add_font(family, ids.to_vec());
-            sess.resources.reweigh(sess.fonts.db(), &touched);
+            if sess.resources.reweigh(sess.fonts.db(), &touched, Some(id)) {
+                sess.weights_rev += 1;
+            }
             id
         };
         self.sync_font_names();
@@ -125,7 +127,9 @@ impl Core {
             sess.fonts_rev += 1;
             let touched = families_of(db, &ids);
             let id = sess.resources.add_font(family, ids.to_vec());
-            sess.resources.reweigh(sess.fonts.db(), &touched);
+            if sess.resources.reweigh(sess.fonts.db(), &touched, Some(id)) {
+                sess.weights_rev += 1;
+            }
             id
         };
         self.sync_font_names();
@@ -150,7 +154,9 @@ impl Core {
         let added = crate::text::keep_measurable(db, added);
         // A registered family may have gained a bold (backlog F100).
         let touched = families_of(db, &added);
-        sess.resources.reweigh(sess.fonts.db(), &touched);
+        if sess.resources.reweigh(sess.fonts.db(), &touched, None) {
+            sess.weights_rev += 1;
+        }
         added.len()
     }
 
@@ -182,7 +188,9 @@ impl Core {
             sess.fonts_rev += 1;
             let touched = std::iter::once(family.clone()).collect();
             let id = sess.resources.add_font(family, Vec::new());
-            sess.resources.reweigh(sess.fonts.db(), &touched);
+            if sess.resources.reweigh(sess.fonts.db(), &touched, Some(id)) {
+                sess.weights_rev += 1;
+            }
             id
         };
         self.sync_font_names();
@@ -203,7 +211,9 @@ impl Core {
             for face in entry.faces {
                 db.remove_face(face);
             }
-            sess.resources.reweigh(sess.fonts.db(), &touched);
+            if sess.resources.reweigh(sess.fonts.db(), &touched, None) {
+                sess.weights_rev += 1;
+            }
         }
         self.sync_font_names();
     }
@@ -423,6 +433,25 @@ impl Core {
             self.pending.push(ev);
         }
         self.warn(warning);
+    }
+
+    /// Drops what this window shaped when a registered family's weights
+    /// changed since it last looked (RG59): text shaped with a bold
+    /// synthesized for a family that has since gained its Bold, or at a
+    /// face since removed, would otherwise stay as it was until evicted.
+    /// Shaped text and cell tables shape again on their next draw; an
+    /// editor keeps its text and takes the new weights. Rare — a face of
+    /// a family already registered coming or going — so dropping every
+    /// family's text is cheaper than knowing which.
+    pub(crate) fn sync_weights(&mut self) {
+        let sess = self.session.state();
+        if sess.weights_rev == self.weights_rev {
+            return;
+        }
+        self.weights_rev = sess.weights_rev;
+        self.text.forget_shaped();
+        self.cells.forget_shaped();
+        self.edit.reweigh(&sess.resources);
     }
 
     /// Re-reads the session's font family names into the mirror

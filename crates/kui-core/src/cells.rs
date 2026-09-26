@@ -197,7 +197,7 @@ struct StyleTable {
     cell_h: f32,
     ascii: Vec<Option<Option<CellGlyph>>>,
     other: FxHashMap<(char, u8), Option<CellGlyph>>,
-    /// The atlas epoch the slots were packed against.
+    /// The atlas stamp the slots were looked up against.
     epoch: u64,
 }
 
@@ -232,6 +232,12 @@ impl CellStore {
             tables: FxHashMap::default(),
             scale: 1.0,
         }
+    }
+
+    /// Drops every style's table, to shape again on its next draw: the
+    /// weights a family is asked at changed under them (RG59).
+    pub(crate) fn forget_shaped(&mut self) {
+        self.tables.clear();
     }
 
     pub(crate) fn begin_frame(&mut self, scale: f32) {
@@ -459,12 +465,13 @@ impl CellStore {
         let oy = crate::geom::snap_px(origin.y * scale);
         let entry = &self.frame[id.0 as usize];
         let table = self.tables.get_mut(&key).expect("just built");
-        if table.epoch != atlas.epoch {
+        if table.epoch != atlas.stamp {
             // The page was replaced — reset, whose slots are gone, or
-            // resized, whose slots stayed: look every one up again.
+            // resized, whose slots stayed — or the atlas is measuring
+            // what the frame uses (RG56): look every one up again.
             table.ascii.iter_mut().for_each(|g| *g = None);
             table.other.clear();
-            table.epoch = atlas.epoch;
+            table.epoch = atlas.stamp;
         }
         let (cw, ch) = (table.cell_w, table.cell_h);
         let quad = |rect: Rect, color: Color, kind: QuadKind, uv: [u32; 4]| Quad {

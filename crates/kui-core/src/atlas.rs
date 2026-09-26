@@ -2,7 +2,7 @@
 //! mirror it to a texture; `dirty`/`epoch` tell them when to re-upload.
 
 use cosmic_text::CacheKey;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::resources::ImageId;
 
@@ -36,6 +36,14 @@ pub struct RasterGlyph {
     pub data: Vec<u8>,
 }
 
+/// A glyph or shape refused for room on a page that began the frame
+/// empty (RG56).
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum Refusal {
+    Glyph(CacheKey),
+    Synth(char, u32, u32),
+}
+
 struct Shelf {
     y: u32,
     h: u32,
@@ -59,6 +67,16 @@ struct Shelf {
 /// the request is refused for this frame (the glyph is not drawn, an
 /// image draws from a texture of its own) and the next frame, which
 /// `short` asks for, starts on an empty page.
+///
+/// A page that began the frame empty and still refuses holds a set bigger
+/// than itself, and the next frame would refuse the same (RG56). Its
+/// refusals are kept, and until the page is next emptied the atlas
+/// measures what each frame looks up: `stamp` moves every frame, so the
+/// caches that keep slots look theirs up again, and each distinct slot's
+/// texels are counted once. A frame that wanted a refused glyph and whose
+/// set fits in what the page held is `short`, and the next frame begins
+/// on an empty page that takes it — the view has scrolled to a part of
+/// the set. One that did not fit keeps the page as it is.
 pub struct GlyphAtlas {
     pub size: u32,
     /// RGBA, size*size*4.
@@ -69,6 +87,11 @@ pub struct GlyphAtlas {
     /// renderers re-upload it whole and caches that stamped it re-look
     /// their slots up. A resize keeps every slot where it was.
     pub epoch: u64,
+    /// What caches that keep slots across frames — text templates, cell
+    /// tables — key them on: it moves with `epoch`, and on every frame
+    /// while refusals are pending (RG56), so that those frames look every
+    /// slot they use up again and are measured.
+    pub stamp: u64,
     map: FxHashMap<CacheKey, Option<GlyphSlot>>,
     /// Registered images blitted into the same page (one texture, one draw
     /// call). Keyed by handle; re-blitted from `Resources` after a reset.
@@ -111,6 +134,23 @@ pub struct GlyphAtlas {
     /// read as filling (the regression pass over F99: a burst that fit
     /// doubled the page for good two frames later).
     turned: bool,
+    /// The refusals pending (RG56): what a page that began the frame empty
+    /// could not take, with the texels each would use and the frame it
+    /// was last looked up on. Emptied with the page.
+    refused: FxHashMap<Refusal, (u64, u64)>,
+    /// Texels handed out since the page was last emptied, padding
+    /// included, and what they came to on the frame that began it empty
+    /// and refused: the part of its set the page was seen to hold.
+    placed: u64,
+    held: u64,
+    /// While refusals are pending: the texels of the distinct slots this
+    /// frame looked up, refused ones included, the slots already counted,
+    /// and whether a refused one was among them.
+    demand: u64,
+    seen: FxHashSet<(u32, u32)>,
+    wanted: bool,
+    /// Frames begun, for `refused`'s once-a-frame count.
+    frame: u64,
 }
 
 impl GlyphAtlas {
@@ -124,6 +164,7 @@ impl GlyphAtlas {
             pixels: vec![0; (size * size * 4) as usize],
             dirty: false,
             epoch: 0,
+            stamp: 0,
             map: FxHashMap::default(),
             images: FxHashMap::default(),
             synth: FxHashMap::default(),
@@ -136,6 +177,13 @@ impl GlyphAtlas {
             rows_at_begin: 0,
             frames_since_reset: u32::MAX,
             turned: false,
+            refused: FxHashMap::default(),
+            placed: 0,
+            held: 0,
+            demand: 0,
+            seen: FxHashSet::default(),
+            wanted: false,
+            frame: 0,
         }
     }
 
@@ -158,7 +206,15 @@ impl GlyphAtlas {
     /// with its slots in place. That is F83's thrash, a set between one
     /// page and two, measured by what the page does rather than by which
     /// glyphs come back; a fill long after the last (RG23) empties it.
+    ///
+    /// A page with refusals pending is emptied when the last frame wanted
+    /// one and its set fits (see the type's note); otherwise the frame
+    /// ahead is measured.
     pub fn begin_frame(&mut self) {
+        if self.fresh && !self.refused.is_empty() {
+            self.held = self.placed;
+        }
+        let refit = self.refit();
         let rows = self.next_shelf_y;
         // A frame that began on an empty page opened its whole set, which
         // says nothing of how fast the set turns over.
@@ -173,7 +229,7 @@ impl GlyphAtlas {
         let extended = self.size > self.base;
         let filling = self.turned && self.size - rows < 2 * self.rows_per_frame;
         let thrash = self.frames_since_reset <= 2;
-        if self.short {
+        if self.short || refit {
             self.reset_to(self.base);
         } else if extended && thrash {
             self.base = self.size;
@@ -188,12 +244,58 @@ impl GlyphAtlas {
         self.short = false;
         self.fresh = self.next_shelf_y == 0;
         self.rows_at_begin = self.next_shelf_y;
+        self.frame += 1;
+        self.demand = 0;
+        self.seen.clear();
+        self.wanted = false;
+        if !self.refused.is_empty() {
+            self.stamp += 1;
+        }
     }
 
-    /// Whether this frame was refused room (see `short`): it drew without
-    /// some glyph, and the next frame, on an empty page, draws it.
+    /// Whether this frame was refused room (see `short`), or wanted a
+    /// glyph refused earlier while its set fits the page (RG56): it drew
+    /// without some glyph, and the next frame, on an empty page, draws it.
     pub(crate) fn short(&self) -> bool {
-        self.short
+        self.short || self.refit()
+    }
+
+    /// The frame wanted a pending refusal, and what it looked up fits in
+    /// what the page was seen to hold. Not on a frame that began empty,
+    /// which was measured only from its first refusal on.
+    fn refit(&self) -> bool {
+        !self.fresh && self.wanted && self.demand <= self.held
+    }
+
+    /// Counts a looked-up slot into the frame's demand, once a frame,
+    /// while refusals are pending.
+    fn note_slot(&mut self, slot: GlyphSlot) {
+        if !self.refused.is_empty() && self.seen.insert((slot.x, slot.y)) {
+            self.demand += texels(slot.w, slot.h);
+        }
+    }
+
+    /// Counts a looked-up refusal into the frame's demand, once a frame.
+    /// Not a refusal — a glyph with nothing to draw, or larger than any
+    /// page — counts nothing.
+    fn note_refusal(&mut self, refusal: Refusal) {
+        if let Some((cost, last)) = self.refused.get_mut(&refusal)
+            && *last != self.frame
+        {
+            *last = self.frame;
+            self.demand += *cost;
+            self.wanted = true;
+        }
+    }
+
+    /// Keeps a refusal for room made on a page that began the frame
+    /// empty, the first time it is refused.
+    fn refuse(&mut self, refusal: Refusal, w: u32, h: u32) {
+        if self.fresh && w < MAX_ATLAS_SIZE && h < MAX_ATLAS_SIZE {
+            self.refused.insert(refusal, (texels(w, h), self.frame));
+            self.demand += texels(w, h);
+            self.wanted = true;
+        }
     }
 
     /// Drops every cached glyph and image (they re-rasterize on demand) and
@@ -218,9 +320,13 @@ impl GlyphAtlas {
         self.shelves.clear();
         self.next_shelf_y = 0;
         self.epoch += 1;
+        self.stamp += 1;
         self.dirty = true;
         self.frames_since_reset = 0;
         self.turned = false;
+        self.refused.clear();
+        self.placed = 0;
+        self.held = 0;
     }
 
     /// Doubles the page with every slot kept where it is: the rows copy
@@ -237,6 +343,7 @@ impl GlyphAtlas {
         self.pixels = pixels;
         self.size = size;
         self.epoch += 1;
+        self.stamp += 1;
         self.dirty = true;
     }
 
@@ -251,6 +358,14 @@ impl GlyphAtlas {
     /// the frame had emitted before the fill, and that frame was
     /// presented with them blank or scrambled.
     fn alloc_or_make_room(&mut self, w: u32, h: u32) -> Option<(u32, u32)> {
+        let pos = self.make_room(w, h);
+        if pos.is_some() {
+            self.placed += texels(w, h);
+        }
+        pos
+    }
+
+    fn make_room(&mut self, w: u32, h: u32) -> Option<(u32, u32)> {
         if let Some(pos) = self.alloc(w, h) {
             return Some(pos);
         }
@@ -328,14 +443,19 @@ impl GlyphAtlas {
         key: CacheKey,
         raster: impl FnOnce() -> Option<RasterGlyph>,
     ) -> Option<GlyphSlot> {
-        if let Some(slot) = self.map.get(&key) {
-            return *slot;
+        if let Some(&slot) = self.map.get(&key) {
+            match slot {
+                Some(slot) => self.note_slot(slot),
+                None => self.note_refusal(Refusal::Glyph(key)),
+            }
+            return slot;
         }
         let Some(glyph) = raster() else {
             self.map.insert(key, None);
             return None;
         };
         let Some((x, y)) = self.alloc_or_make_room(glyph.w, glyph.h) else {
+            self.refuse(Refusal::Glyph(key), glyph.w, glyph.h);
             self.map.insert(key, None);
             return None;
         };
@@ -350,6 +470,7 @@ impl GlyphAtlas {
             color_glyph: glyph.color,
             subpixel: glyph.subpixel,
         };
+        self.note_slot(slot);
         self.map.insert(key, Some(slot));
         Some(slot)
     }
@@ -365,10 +486,15 @@ impl GlyphAtlas {
         h: u32,
         coverage: impl FnOnce() -> Vec<u8>,
     ) -> Option<GlyphSlot> {
-        if let Some(slot) = self.synth.get(&(ch, w, h)) {
-            return *slot;
+        if let Some(&slot) = self.synth.get(&(ch, w, h)) {
+            match slot {
+                Some(slot) => self.note_slot(slot),
+                None => self.note_refusal(Refusal::Synth(ch, w, h)),
+            }
+            return slot;
         }
         let Some((x, y)) = self.alloc_or_make_room(w, h) else {
+            self.refuse(Refusal::Synth(ch, w, h), w, h);
             self.synth.insert((ch, w, h), None);
             return None;
         };
@@ -389,6 +515,7 @@ impl GlyphAtlas {
             color_glyph: false,
             subpixel: false,
         };
+        self.note_slot(slot);
         self.synth.insert((ch, w, h), Some(slot));
         Some(slot)
     }
@@ -402,8 +529,13 @@ impl GlyphAtlas {
         h: u32,
         rgba: &[u8],
     ) -> Option<GlyphSlot> {
-        if let Some(slot) = self.images.get(&id) {
-            return *slot;
+        if let Some(&slot) = self.images.get(&id) {
+            // A refused image draws from a texture of its own: it takes
+            // nothing of the page and wants nothing of it.
+            if let Some(slot) = slot {
+                self.note_slot(slot);
+            }
+            return slot;
         }
         debug_assert_eq!(rgba.len(), (w * h * 4) as usize);
         let Some((x, y)) = self.alloc_or_make_room(w, h) else {
@@ -421,6 +553,7 @@ impl GlyphAtlas {
             color_glyph: true,
             subpixel: false,
         };
+        self.note_slot(slot);
         self.images.insert(id, Some(slot));
         Some(slot)
     }
@@ -442,6 +575,11 @@ impl GlyphAtlas {
     pub fn has_image(&self, id: ImageId) -> bool {
         self.images.contains_key(&id)
     }
+}
+
+/// The texels a `w × h` item takes of the page, its padding included.
+fn texels(w: u32, h: u32) -> u64 {
+    u64::from(w + 1) * u64::from(h + 1)
 }
 
 impl Default for GlyphAtlas {
@@ -812,6 +950,72 @@ mod tests {
             !atlas.short(),
             "a set bigger than the page on an empty one is not short"
         );
+    }
+
+    /// RG56: a set bigger than a `MAX_ATLAS_SIZE` page on a frame that
+    /// began it empty refuses what does not fit, and nothing the next
+    /// frame does would change that, so it is not `short`. When the view
+    /// then shows a part of the set that wants a refused glyph and fits,
+    /// that frame is short and the next one empties the page and draws
+    /// the glyph. It used to stay blank for as long as the page lived.
+    #[test]
+    fn a_glyph_refused_on_a_fresh_full_page_gets_room_once_its_set_fits() {
+        let mut atlas = GlyphAtlas::with_size(MAX_ATLAS_SIZE);
+        // 1000×1000 items: a 4096 page holds sixteen.
+        let frame = |atlas: &mut GlyphAtlas, keys: std::ops::Range<u32>| {
+            atlas.begin_frame();
+            keys.map(|i| atlas.get_or_insert(fake_key(i), || Some(raster(1000, 1000))))
+                .collect::<Vec<_>>()
+        };
+        let slots = frame(&mut atlas, 0..17);
+        assert!(slots[16].is_none() && !atlas.short(), "refused, not short");
+        // The view scrolls to the last four: they fit, one is refused.
+        let slots = frame(&mut atlas, 13..17);
+        assert!(slots[3].is_none(), "the cached refusal, this frame");
+        assert!(atlas.short(), "and the next frame is owed");
+        let epoch = atlas.epoch;
+        let slots = frame(&mut atlas, 13..17);
+        assert!(atlas.epoch > epoch, "emptied before anything is emitted");
+        assert!(slots.iter().all(Option::is_some), "and drawn: {slots:?}");
+        assert!(!atlas.short());
+        let (epoch, stamp) = (atlas.epoch, atlas.stamp);
+        for _ in 0..3 {
+            frame(&mut atlas, 13..17);
+        }
+        assert_eq!((atlas.epoch, atlas.stamp), (epoch, stamp), "then still");
+    }
+
+    /// RG56: while the whole of a set bigger than the page stays on
+    /// screen, the frames that measure it find it does not fit and keep
+    /// the page — nothing is emptied or asked for, however many frames —
+    /// while the stamp moves, so the caches that keep slots look them up
+    /// and are counted.
+    #[test]
+    fn a_set_bigger_than_the_largest_page_keeps_it_still() {
+        let mut atlas = GlyphAtlas::with_size(MAX_ATLAS_SIZE);
+        let frame = |atlas: &mut GlyphAtlas| {
+            atlas.begin_frame();
+            for i in 0..17u32 {
+                atlas.get_or_insert(fake_key(i), || Some(raster(1000, 1000)));
+            }
+        };
+        frame(&mut atlas);
+        let epoch = atlas.epoch;
+        for _ in 0..5 {
+            let stamp = atlas.stamp;
+            frame(&mut atlas);
+            assert!(!atlas.short(), "the set does not fit: nothing owed");
+            assert_eq!(atlas.epoch, epoch, "the page is kept");
+            assert!(atlas.stamp > stamp, "measured again");
+        }
+        // A page with nothing refused keeps its stamp from frame to frame.
+        let mut atlas = GlyphAtlas::with_size(256);
+        atlas.begin_frame();
+        atlas.get_or_insert(fake_key(0), || Some(raster(30, 30)));
+        let stamp = atlas.stamp;
+        atlas.begin_frame();
+        atlas.get_or_insert(fake_key(0), || panic!("cached"));
+        assert_eq!(atlas.stamp, stamp);
     }
 
     /// One view's worth of new glyphs arriving at once — a tab of other

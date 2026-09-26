@@ -21,6 +21,79 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.22 (unreleased)
+
+**What breaks.** No door changes, the ABI stays at 19 and the frame at
+v16. Two readings change:
+
+- A family registered with no 400 face, one face lighter than 400 and
+  one between 400 and 500 — a Light and a Medium — is asked for regular
+  at the heavier one, where it was asked at the lighter one (under
+  Fixed, RG59). That is the order CSS font matching tries them in. Regular
+  text in such a family draws heavier and, when the faces differ in
+  width, measures wider.
+- Text already shaped when a face of its family is loaded or removed is
+  shaped again at the family's new weights (under Fixed, RG59). Bold
+  synthesized before the family's Bold was loaded draws in that Bold
+  from the next frame, where it stayed synthesized until the text left
+  the cache.
+
+### Fixed
+
+- **A glyph the atlas refused for room on a page that began the frame
+  empty stayed blank for as long as the page lived** (backlog RG56,
+  from the regression pass of 2026-09-26). A frame whose own glyphs
+  come to more than a 4096 page holds — large CJK or emoji at 2×, big
+  box-drawing cells — draws without the ones that do not fit, and the
+  next frame would too, so nothing asked for it. The refusal was cached,
+  and so were the text templates and cell tables built on that frame.
+  When the view then scrolled to a part of the set, nothing looked the
+  refused glyphs up and nothing emptied the page, and they stayed
+  blank. Before F99 a full 4096 page reset mid-frame, so the glyph drew
+  after one wrong frame. Now the atlas keeps what it refused and, until
+  the page is next emptied, measures each frame. Text templates and
+  cell tables look their glyphs up again on each such frame (they key
+  their slots on `GlyphAtlas::stamp`, which moves with `epoch` and on
+  every measured frame), and the atlas counts the texels of the
+  distinct slots the frame used. A frame that wanted a refused glyph,
+  and whose glyphs fit in what the page was seen to hold, asks for the
+  next frame, and that one begins on an empty page and draws them. A
+  view that still shows the whole set keeps the page as it is, with
+  nothing emptied or asked for. Cost: none on a page that has refused
+  nothing. On one that has, every frame rebuilds the text templates and
+  cell tables it draws, until the page is emptied.
+  *What you can delete:* nothing an app could have written.
+
+- **Four readings of F100's weights** (backlog RG59, from the
+  regression pass of 2026-09-26).
+  *A face's `OS/2` weight shadowed a named instance at the same
+  weight*: a variable face whose `OS/2` weight is 400 and whose default
+  instance is its Thin, with a Regular at 400, drew regular Thin. Named
+  instances now go first, and the default stands for the `OS/2` weight
+  only when no instance names it.
+  *A face loaded or removed did not reach text already shaped*: the
+  shaped-text cache, cell tables and editors were keyed by content and
+  style, and a reweigh changed neither. Now a registration or removal
+  that changes the weights of a family registered before it drops each
+  window's shaped text and cell tables at its next frame, and gives
+  every editor the new weights (text, caret and history kept).
+  Registering a new family drops nothing, so a list that registers a
+  family per row as it scrolls does not reshape the window each time.
+  *The nearest face leaned light where CSS leans heavy*: regular with
+  faces at 300 and 500 was asked at 300. It now follows CSS Fonts 4
+  § 5.2, so that case is asked at 500. Regular looks up to 500 first,
+  then down, then above 500. Bold looks up first, then down.
+  *Limit, now written down*: Skia's `OS/2` weight is 5, off the CSS
+  scale, so its regular is asked at 5. A glyph Skia lacks falls back at
+  weight 5, and a variable fallback such as `.SF NS`, whose axis starts
+  at 1, shapes and draws near hairline. Clamping the asked weight to
+  100–900 would pass Skia itself over for another family: cosmic-text
+  takes a family's face only at its exact weight or inside its `wght`
+  axis, and Skia's axis runs from 0.48 to 3.2. The rasterizer cannot
+  correct it alone either, since the fallback face was also shaped at
+  that weight.
+  *What you can delete:* nothing an app could have written.
+
 ## 0.1.0-alpha.21 (2026-09-26)
 
 **What breaks.** No door changes, the ABI stays at 19 and the frame at

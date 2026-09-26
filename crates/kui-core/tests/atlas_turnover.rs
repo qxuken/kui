@@ -117,3 +117,38 @@ fn a_frame_that_fills_the_page_presents_every_quad_on_what_it_was_emitted_for() 
     assert!(fills >= 3, "the turnover filled the page: {fills}");
     assert!(grew >= 1, "a burst filled it mid-frame: {grew}");
 }
+
+/// RG56, through the text cache: a frame of big glyphs that fills a
+/// `MAX_ATLAS_SIZE` page it began empty draws without the ones that do
+/// not fit, and the text entries keep their templates without them. When
+/// the view then shows only those lines, the frame is owed another, and
+/// that one draws every glyph. The refused glyphs used to stay blank for
+/// as long as the page lived — the templates were stamped with an epoch
+/// nothing moved.
+#[test]
+fn glyphs_refused_on_a_fresh_full_page_draw_once_the_view_shows_a_part_that_fits() {
+    let mut core = Core::new();
+    core.atlas = GlyphAtlas::with_size(kui_core::atlas::MAX_ATLAS_SIZE);
+    // One "M" per line, each size its own glyph of about 900 × 800 texels:
+    // a 4096 page holds a score of them.
+    let sizes: Vec<f32> = (0..30).map(|k| 1100.0 + k as f32).collect();
+    let draw = |core: &mut Core, sizes: &[f32]| {
+        let mut ui = core.frame(Size::new(1400.0, 40_000.0), 1.0);
+        ui.with(NodeSpec::column(), |ui| {
+            for &size in sizes {
+                ui.text("M", TextStyle::new(size));
+            }
+        });
+        ui.finish();
+        let (dl, _) = core.output();
+        dl.quads.iter().filter(|q| samples_atlas(q.kind)).count()
+    };
+    let drawn = draw(&mut core, &sizes);
+    assert!(drawn < sizes.len(), "the page refused some: {drawn}");
+    // The view scrolls to the lines past the ones that fit.
+    let rest = &sizes[drawn..];
+    assert_eq!(draw(&mut core, rest), 0, "still refused on this frame");
+    assert!(core.owed().requested, "and the next frame is owed");
+    assert_eq!(draw(&mut core, rest), rest.len(), "which draws them");
+    assert!(!core.owed().requested);
+}
