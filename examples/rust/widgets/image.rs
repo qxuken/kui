@@ -3,7 +3,7 @@
 //! sizing, aspect-preserving responsive width, rounded corners, and alpha
 //! — and, since ADR 0025 (`docs/adr/0025-the-image-is-the-canvas.md`),
 //! the image as the canvas: a *stream* whose pixels the app replaces
-//! every frame with `update_image`, rendered at exactly the pixel count
+//! every frame with `update_image_with`, rendered at exactly the pixel count
 //! the `layout` event's `scale` says the box covers, shown `nearest`
 //! beside `linear`; and `contain` / `cover` against a box of another
 //! aspect.
@@ -54,23 +54,23 @@ fn checker(w: u32, h: u32) -> Vec<u8> {
     px
 }
 
-/// A frame of plasma at `w`×`h`, `phase` along: what a video decoder, a
-/// camera or a plot library would hand back — pixels the app made.
-fn plasma(w: u32, h: u32, phase: f32, out: &mut Vec<u8>) {
-    out.clear();
-    out.reserve((w * h * 4) as usize);
-    for y in 0..h {
-        for x in 0..w {
-            let (u, v) = (x as f32 / w as f32, y as f32 / h as f32);
-            let a = ((u * 6.0 + phase).sin()
-                + (v * 5.0 - phase * 0.7).sin()
-                + ((u + v) * 4.0 + phase * 1.3).sin())
-                / 3.0;
-            out.push((128.0 + 100.0 * a) as u8);
-            out.push((128.0 + 100.0 * (a + 2.1).sin()) as u8);
-            out.push((128.0 + 100.0 * (a + 4.2).sin()) as u8);
-            out.push(0xff);
-        }
+/// A frame of plasma at `w`×`h`, `phase` along, written into `out`
+/// (`w × h × 4` bytes): what a video decoder, a camera or a plot library
+/// would hand back — pixels the app made.
+fn plasma(w: u32, h: u32, phase: f32, out: &mut [u8]) {
+    for (i, px) in out.as_chunks_mut::<4>().0.iter_mut().enumerate() {
+        let (x, y) = (i as u32 % w, i as u32 / w);
+        let (u, v) = (x as f32 / w as f32, y as f32 / h as f32);
+        let a = ((u * 6.0 + phase).sin()
+            + (v * 5.0 - phase * 0.7).sin()
+            + ((u + v) * 4.0 + phase * 1.3).sin())
+            / 3.0;
+        *px = [
+            (128.0 + 100.0 * a) as u8,
+            (128.0 + 100.0 * (a + 2.1).sin()) as u8,
+            (128.0 + 100.0 * (a + 4.2).sin()) as u8,
+            0xff,
+        ];
     }
 }
 
@@ -85,7 +85,6 @@ struct Gallery {
     /// first layout arrives, which is the frame model — one frame late.
     stream_px: (u32, u32),
     phase: f32,
-    pixels: Vec<u8>,
     /// How many frames were rendered at the reported size — the
     /// headless drive's evidence that the loop closed.
     rendered: u32,
@@ -107,12 +106,15 @@ impl App for Gallery {
             .get_or_insert_with(|| ui.core().resources.add_image(16, 9, vec![0; 16 * 9 * 4]));
         // The loop: render at the size the box covers, replace the pixels,
         // keep the handle. Before the first `layout` event the token
-        // 16×9 shows, stretched — one frame.
+        // 16×9 shows, stretched — one frame. `update_image_with` hands
+        // over a buffer the core recycles, so the plasma is rendered
+        // straight into it: no buffer of the app's own, no copy, and no
+        // allocation after the second frame (backlog W20).
         let (pw, ph) = self.stream_px;
         if pw > 0 && ph > 0 {
-            plasma(pw, ph, self.phase, &mut self.pixels);
+            let phase = self.phase;
             ui.core()
-                .update_image(stream_id, pw, ph, self.pixels.clone());
+                .update_image_with(stream_id, pw, ph, |px| plasma(pw, ph, phase, px));
             self.rendered += 1;
         }
         self.phase += 0.04;
@@ -323,6 +325,5 @@ kui_devtools::main!(Gallery {
     stream: None,
     stream_px: (0, 0),
     phase: 0.0,
-    pixels: Vec::new(),
     rendered: 0,
 });

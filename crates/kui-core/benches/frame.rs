@@ -448,6 +448,29 @@ fn update_image_1080p_and_frame(bencher: divan::Bencher) {
     });
 }
 
+/// The same stream through `update_image_with`, copying the app's frame
+/// into the buffer the core recycles — what the Node and C doors do — so
+/// the difference from `update_image_1080p_and_frame` is the allocation
+/// and the release a fresh buffer a frame costs (backlog W20: ~600 µs of
+/// it on Windows, where a new 8 MB block is faulted in page by page).
+#[divan::bench]
+fn update_image_1080p_recycled_and_frame(bencher: divan::Bencher) {
+    let mut core = Core::new();
+    let (w, h) = (1920u32, 1080u32);
+    let id = core
+        .resources
+        .add_image(w, h, vec![0; (w * h * 4) as usize]);
+    let frame = vec![0x40u8; (w * h * 4) as usize];
+    bencher.bench_local(|| {
+        core.update_image_with(id, w, h, |px| px.copy_from_slice(&frame));
+        let mut ui = core.frame(Size::new(1920.0, 1080.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.image(id, NodeSpec::column().fill());
+        ui.finish();
+        core.output().0.quads.len()
+    });
+}
+
 // -- Clipping ---------------------------------------------------------------
 // A clipping node with a radius rounds what it clips, which is four more
 // floats on `Quad` and a per-corner intersect for every node under a

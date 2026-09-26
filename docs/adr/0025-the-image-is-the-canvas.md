@@ -449,6 +449,38 @@ noise of no split at all.
   polygon is a fragment draw; the per-quad session lookup this amendment
   already names is where that comes back.
 
+## Amendment: the handoff on Windows (2026-09-26, backlog W20)
+
+*Measurements* said a stream costs the core "the app's copy and nothing
+measurable beyond it". That was the M3 Pro, whose allocator keeps a
+freed 8 MB block for the next request of that size. The first Windows
+run of the suite (Ryzen 9 9950X3D) read `copy_1080p_frame` at 734 µs
+against the Mac's 139, and `update_image_1080p_and_frame` at 867 against
+136. The same CPU under Linux read 103 and 138, so it is not the
+hardware. Of Windows' 870 µs, the memcpy is 275; ~590 is faulting in
+and zeroing a fresh 8 MB block page by page, and ~170 is releasing the
+one it replaced. The core's share, the release, is no longer inside the
+noise. The Node and C doors paid all of it on every frame, since both
+copied the app's bytes into a new `Vec` (Node measured 808 µs an
+`updateImage` in a real window).
+
+Decision 1 keeps its signature. What changes is that the core now
+recycles: `update_image_with(id, w, h, fill)` hands `fill` the image's
+own buffer when no display list holds it, else the one the previous
+update replaced, else a new one. One spare per entry, so a stream
+settles on two buffers and stops allocating from its third frame. The
+Node and C doors copy into it. Rust apps can render straight into it,
+as the `image` example now does. `update_image_1080p_recycled_and_frame`
+reads 275 µs on Windows, the memcpy alone, and Node's `updateImage`
+reads ~335. `update_image` taking a `Vec` stays for an app that already
+owns one. It still frees the buffer it replaces, and that is its cost
+on Windows.
+
+Not changed: the upload. `write_texture` of the same frame costs
+~375–405 µs of CPU on this machine under Vulkan and DX12, about the
+memcpy into wgpu's staging plus ~100 µs. A persistent staging buffer
+would save part of that. It is filed as backlog W21.
+
 ## Action items — all done 2026-09-11
 
 1. [x] `Resources::update_image` + revision; `ImageBacking` decided by the

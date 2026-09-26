@@ -4082,7 +4082,9 @@ fn update_image_impl(
             rgba.len()
         )));
     }
-    core.update_image(id, width, height, rgba.to_vec());
+    // Into a buffer the core recycles, not a fresh `to_vec` a frame
+    // (backlog W20).
+    core.update_image_with(id, width, height, |px| px.copy_from_slice(rgba));
     Ok(())
 }
 

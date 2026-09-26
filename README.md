@@ -1008,6 +1008,7 @@ that prop costs.
 | `frame_1k_typical_with_8_textures` | `frame_1k_typical` plus eight texture-backed images, registered once and updated once, so each is its own texture and a side-list entry (ADR 0025) | ~135 µs |
 | `update_image_1080p_and_frame` | replacing a 1080p frame — the `Vec` handoff, the revision bump, then the frame that draws it; the upload is the backend's (`benches/split.rs` in kui-wgpu under `TEX=1`) | ~136 µs |
 | `copy_1080p_frame` | the app's own copy of that 1080p frame, measured beside it so the core's share of `update_image_1080p_and_frame` is the difference | ~139 µs |
+| `update_image_1080p_recycled_and_frame` | the same frame copied through `update_image_with` into the buffer the core recycles, as the Node and C doors do: the memcpy and no allocation (backlog W20) | ~275 µs on Windows (against 875 for the handoff row there); not yet run on the Mac |
 | `frame_10k_rects_all_transitioning` | every cell declares a `transition` — nine retained tween slots each | ~1.96 ms |
 | `frame_10k_rects_all_declaring_exit` | every cell also declares an `exit`, so the whole frame is kept for the next one to diff against | ~2.88 ms |
 | `frame_10k_rects_one_exit` | the same 10k grid with a single cell declaring an `exit` | ~776 µs |
@@ -1075,6 +1076,31 @@ cache holds a byte budget (`Core::set_text_cache_budget`, 64 MB by
 default) and evicts the least recently drawn entries past it, never what
 the last frame drew, so the stream that used to park 3.6 GB of shaped lines
 settles at the budget (backlog C16, `tests/text_budget.rs`).
+
+**The text rows measure the platform's font as much as the machine.**
+`Mono` resolves to a face per platform: SF Mono on macOS, Cascadia Mono
+on Windows, DejaVu Sans Mono on Linux (backlog C32). Shaping cost
+follows the face, so the `stream` and `long_line` rows do not compare
+across operating systems. `long_line_100k_first_frame` reads 18 ms on
+the M3 Pro, 2.8 ms on a Ryzen 9 9950X3D under Windows and 0.77 ms on the
+same Ryzen under Linux. The 23× spread is mostly the font, not the CPU.
+That machine's rows at alpha.15 match HEAD's within 4%, and pinning
+Consolas over Cascadia Mono moves them under 2%. Compare those rows
+only within one OS. The `cells` rows shape no ASCII and agree
+everywhere (55–60 µs).
+
+**On other machines.** The same suite on that Ryzen (2026-09-26, rustc
+1.98.1, Windows 11 on the Balanced power plan, and Ubuntu 24.04 under
+WSL 2 with rustc 1.96.1): the plain frame rows read 0.88× the table's
+medians under Windows and 0.81× under Linux (geometric mean of 27 rows).
+Windows costs ~9% on the same CPU. Some rows read 1.3–1.75× slower
+under Windows than under Linux: the exit-copying rows, the naive list,
+the access tree and `hover_over_10k_regions`. The first three allocate
+heavily, and the hover row's reason is not isolated. The 1080p image copy
+was 7× slower, because Windows' heap faults in a fresh 8 MB block page
+by page where macOS's and glibc's reuse the freed one. That is why a
+stream should go through `update_image_with`, which recycles its buffer
+(backlog W20). `frame_1k_curves` is the one row the M3 Pro wins on both.
 
 **These numbers went the wrong way once, and this is where that is
 recorded.** The four rows this table used to carry were measured on

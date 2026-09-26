@@ -21,6 +21,39 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.21 (unreleased)
+
+**What breaks.** Nothing: no door changes, the ABI stays at 19 and the
+frame at v16. Rust gains one method.
+
+### Added
+
+- **`Core::update_image_with(id, w, h, fill)`: a streamed image's
+  pixels written into a buffer the core recycles** (backlog W20, from
+  the Windows–Mac bench comparison). `fill` is handed `w × h × 4` bytes:
+  the image's own when nothing else holds them, else the buffer the
+  previous update replaced once no display list holds it, else a new
+  one. It writes every byte, since what it is handed is an earlier
+  frame's pixels. A stream settles on two buffers and allocates nothing
+  from its third frame. On Windows that was most of the cost: a fresh
+  8 MB buffer a frame read ~870 µs there, 590 of it faulting the new
+  block in page by page and 170 releasing the old one, against a 275 µs
+  memcpy. `update_image_1080p_recycled_and_frame` reads 275 µs on that
+  machine, against 875 for `update_image_1080p_and_frame`. The `image`
+  example renders its plasma straight into the slice. `update_image`,
+  which takes a `Vec`, is unchanged.
+  *What you can delete:* a Rust stream's own frame buffer and its
+  per-frame `clone()` into `update_image`. Render into `fill`'s slice.
+
+### Changed
+
+- **Node's `updateImage` and C's `kui_image_update` copy into the
+  recycled buffer** (W20) instead of a new `Vec` per call. The signature
+  and the copy are unchanged, and the allocation is gone. A 1080p
+  `updateImage` in a real window on Windows went from 808 µs to ~335.
+  `kui_image_pixels`' pointer is still valid only until the next update
+  of the handle, as it says.
+
 ## 0.1.0-alpha.20 (2026-09-26)
 
 **What breaks.** No door, the ABI at 19 and the frame at v16. One
