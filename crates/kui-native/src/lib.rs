@@ -531,6 +531,7 @@ impl Launcher {
             proxy: None,
             next_deadline: None,
             saw_event: false,
+            woke: false,
             deferred_events: self.deferred_events,
             owed: std::cell::Cell::new(false),
             app,
@@ -848,6 +849,9 @@ struct PumpState {
     /// (backlog F62): the runner knows how often it pumped where the app
     /// could only read a process monitor.
     pumps: u64,
+    /// The turns among `pumps` whose batch carried an OS event or a wake
+    /// (backlog F94): what `saw_event` marks, counted once per turn.
+    woken_pumps: u64,
 }
 
 impl PumpState {
@@ -862,10 +866,21 @@ impl PumpState {
         // or, on a loop taken back from an earlier runner, `about_to_wait`
         // does, since winit's init events came and went with the first.
         let alive = pump_once(&mut event_loop, shell);
-        PumpState {
+        let mut state = PumpState {
             event_loop: Some(event_loop),
             alive,
             pumps: 1,
+            woken_pumps: 0,
+        };
+        state.tally(shell);
+        state
+    }
+
+    /// Counts the turn that just ran as woken if its batch saw an event.
+    /// The flag is taken, so the quiet turns after it are not counted too.
+    fn tally(&mut self, shell: &mut DynShell<'_>) {
+        if std::mem::take(&mut shell.woke) {
+            self.woken_pumps += 1;
         }
     }
 
@@ -875,6 +890,7 @@ impl PumpState {
         };
         self.pumps += 1;
         self.alive = pump_once(event_loop, shell);
+        self.tally(shell);
         if !self.alive {
             self.retire(shell);
         }
@@ -918,6 +934,7 @@ impl PumpState {
             PumpStatus::Continue => !shell.exit_requested,
             PumpStatus::Exit(_) => false,
         };
+        self.tally(shell);
         if !self.alive {
             self.retire(shell);
         }
@@ -1006,8 +1023,29 @@ impl<A: App> PumpRunner<A> {
     /// no-ops after it retired. Monotonic, so two readings a second apart
     /// are the pump rate over that second, which is what a driver's
     /// backoff promises and what `frame_stats` cannot say (backlog F62).
+    /// Which of them something outside the app caused is
+    /// [`woken_pumps`](Self::woken_pumps).
     pub fn pumps(&self) -> u64 {
         self.state.pumps
+    }
+
+    /// How many of those [`pumps`](Self::pumps) found an OS event or a
+    /// wake in their batch: any window event but a redraw — a key, the
+    /// pointer crossing the window, a focus change, a resize, the window
+    /// moved or occluded — or anything that came through the loop's
+    /// proxy: a [`Waker::wake`], assistive technology asking, a file
+    /// dialog's answer. It is what makes
+    /// [`next_deadline`](Self::next_deadline) answer "now" after a pump,
+    /// counted (backlog F94). Monotonic, and never more than `pumps`.
+    ///
+    /// Two readings a second apart with this one unmoved are a second the
+    /// desktop left the window alone: whatever it drew was the app's own
+    /// doing — a tick, a caret blink, a transition, the audio poll. A
+    /// moved one is the desktop or a person reaching in, which resets a
+    /// driver's backoff exactly as a regression would, so an idle-window
+    /// test that sees it move re-measures instead of failing.
+    pub fn woken_pumps(&self) -> u64 {
+        self.state.woken_pumps
     }
 
     /// `pump`, but parked until an OS event, a [`Waker::wake`] or
@@ -1463,6 +1501,10 @@ struct Shell<A: App + ?Sized> {
     /// redraw and wants pumping to present it, and that is also the honest
     /// signal for "somebody is using this window".
     saw_event: bool,
+    /// `saw_event` as `about_to_wait` took it, left for the pump runner to
+    /// take in turn and count (`PumpRunner::woken_pumps`, backlog F94). A
+    /// loop that owns itself never reads it.
+    woke: bool,
     /// The host answers events after the loop hands them over
     /// (`Launcher::deferred_events`).
     deferred_events: bool,
@@ -2772,6 +2814,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
         // one thing it cannot work out from the events *it* was handed.
         if std::mem::take(&mut self.saw_event) {
             deadline = Some(now);
+            self.woke = true;
         }
         self.next_deadline = deadline;
         event_loop.set_control_flow(match deadline {
@@ -2846,6 +2889,7 @@ mod tests {
                 event_loop: None,
                 alive: true,
                 pumps: 0,
+                woken_pumps: 0,
             },
             shell: std::mem::ManuallyDrop::new(super::app("t").diagnostics(false).shell(app)),
         };
@@ -2870,6 +2914,40 @@ mod tests {
         let count = Rc::new(Cell::new(0));
         drop(runner_of(Counting(count.clone())));
         assert_eq!(count.get(), 1);
+    }
+
+    /// A turn whose batch saw an event is counted once, and the flag is
+    /// taken with it: left set, every quiet turn after the first event
+    /// would count, and a test reading `woken_pumps` (backlog F94) would
+    /// see the desktop in every idle second. Driven through `tally`, the
+    /// step each pump ends with, since `about_to_wait` — which sets the
+    /// flag — needs a live loop, and winit builds one on the main thread
+    /// only.
+    #[test]
+    fn a_woken_turn_is_counted_once() {
+        let mut runner = PumpRunner {
+            state: PumpState {
+                event_loop: None,
+                alive: true,
+                pumps: 0,
+                woken_pumps: 0,
+            },
+            shell: std::mem::ManuallyDrop::new(super::app("t").diagnostics(false).shell(Empty)),
+        };
+        let tally = |r: &mut PumpRunner<Empty>| r.state.tally(&mut **r.shell);
+        tally(&mut runner);
+        assert_eq!(runner.woken_pumps(), 0, "a quiet turn is not woken");
+        runner.shell_mut().woke = true;
+        tally(&mut runner);
+        assert_eq!(runner.woken_pumps(), 1);
+        assert!(!runner.shell().woke, "taken by the turn that counted it");
+        tally(&mut runner);
+        tally(&mut runner);
+        assert_eq!(
+            runner.woken_pumps(),
+            1,
+            "and the quiet turns after it are quiet"
+        );
     }
 
     /// A frame waits only for an answer that is actually owed, and never

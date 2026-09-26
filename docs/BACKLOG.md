@@ -49,7 +49,8 @@ filed, RG38–RG46 — the Windows halves since alpha.16, run on a
 Windows machine — from the Windows regression round of 2026-09-26, and
 RG47–RG49 from the Linux round under WSLg the same day, and
 RG50–RG52 from the custom chrome example after it, each the day it was
-filed. The index
+filed, and F94 — the pumps an OS event woke — from the alpha.19 upgrade
+reports of the same day, the day it was filed. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -1588,6 +1589,10 @@ Every claim below was checked against this tree. The mind map's access
 rect is broader than filed: it is every clipped node, not only a
 clipped float (F93).
 
+F94 was **built 2026-09-26**, the day it was filed, and is in the
+archive: `frameStats().wokenPumps` in Node and `PumpRunner::woken_pumps()`
+in Rust, the pumps whose batch saw an OS event or a wake.
+
 ### `!` F93 — A clipped node's access rect is its whole box: assistive technology finds and highlights it past the clip
 
 **Found** by the mind map, taking F90. A node panned 28 px under the
@@ -1623,37 +1628,6 @@ Text runs are clipped the same way. The other reading, Chromium's
 0.25 has no offscreen state for kui to set, so it would leave the hit
 test as it is. Pin it headlessly in four bindings: the mind map's
 canvas, a node straddling its edge, and a row half out of a scroller.
-
-### `~` F94 — Nothing says what woke a pump: an idle-window test cannot tell the desktop from a regression
-
-**Found** by both apps in the same release, independently. "A stopped
-window paints about once a second" is the test for F57, a tick's frame
-resetting the backoff. Read over one second it fails 2–3 runs in ten,
-on alpha.18 as on alpha.19. A focus change is a repaint (the ring
-goes), a pointer crossing the window is a hover transition, and a busy
-WindowServer is a burst of events. Each resets the backoff exactly as
-the regression would. The pomodoro now judges by the median of five
-seconds. The mind map re-measures when `env().focused`, `owed()` or
-`cursorShape()` moved in the second. Both asked for the count
-directly: "what woke the pump" (pomodoro wish 4) and "a count of OS
-input events beside `pumps` and `framesTotal`" (mind map).
-
-**In the tree:** the runner already knows. `saw_event` is set for every
-window event but a redraw and for every wake (`kui-native/src/lib.rs`,
-`window_event` and `user_event`), and it is taken once per batch to set
-the zero deadline the Node driver reads as "used". Nothing counts it.
-`Runner::pumps()` counts turns, `FrameStats::total` counts frames.
-
-**Do.** A third monotonic count beside them: the pumps whose batch saw
-an OS event or a wake. `Runner` gets an accessor next to `pumps()`,
-and Node gets a `frameStats()` field next to `pumps`, documented as
-"two readings a second apart with this one unmoved are a second the
-desktop left alone". The name is the chip's to pick. This is also the
-use behind the parked "frames by cause" (pomodoro, alpha.14 wish 3,
-carried again): with it, a stopped window's second is "frames
-= ticks that drew" whenever the count did not move. So the split by
-cause stays parked. C and Lua have no `pumps` today (their hosts own
-the loop), so this is where `pumps` is and nowhere else.
 
 ### `.` F95 — Two docs behind the code: the stroke rows' contrast after F90, and `radio` without `radioGroup`
 
@@ -1703,14 +1677,16 @@ union is generated; check the Lua meta file and `kui.h`'s list).
   misconfiguration. That answer lives only in this file, which is why
   the pomodoro keeps carrying the wish.
 - **Frames by cause in `frameStats`** (pomodoro, alpha.14 wish 3,
-  carried). Still parked. F94 is the part of it both apps' tests need.
+  carried). Still parked. F94, built, is the part of it both apps'
+  tests need.
 - **The icon read back** (pomodoro, alpha.18 wish 6, carried). Declined,
   as in the round above.
 
 ### Theirs, not ours
 
 - **The idle-second failures themselves** (both). They are the desktop,
-  as both reports found. F94 is the count that lets a test say so.
+  as both reports found. F94's `wokenPumps` is the count that lets a
+  test say so.
 - **Four failures under `KUI_DEVTOOLS=1`** (pomodoro). The smoke test
   assumes the wide tier, as alpha.16's report found. The fifth was the
   overflow check, and F92 fixed it.
@@ -2357,9 +2333,10 @@ compiled once in kui, a release rebuild of the counter 1.59 → 0.85 s). C45, th
 same day. Nothing of the
 alpha.14, alpha.16 and alpha.18 upgrade
 reports is open (F88–F92 **built 2026-09-25**, the day they were filed).
-The alpha.19 upgrade reports of 2026-09-26 left four open: F93, a
-clipped node's access rect, first; then F94, the pumps an OS event
-woke; F96, the radio outside its group; and F95, two docs.
+The alpha.19 upgrade reports of 2026-09-26 filed four. F94, the pumps
+an OS event woke, was **built 2026-09-26**, the day it was filed. Three
+are open: F93, a clipped node's access rect, first; then F96, the radio
+outside its group; and F95, two docs.
 Nothing of the Windows regression round of 2026-09-26 is open
 (RG38–RG46 **built 2026-09-26**, the day they were filed).
 Nothing of the Linux round under WSLg is open (RG47–RG49 **built
@@ -3218,3 +3195,7 @@ move.
 - `!` **RG50** — [`window_buttons` alone in a fitted row is 0 px tall, its glyphs hanging out of it](backlog/closed-2026-09.md#-rg50--window_buttons-alone-in-a-fitted-row-is-0-px-tall-its-glyphs-hanging-out-of-it--done-2026-09-26) — done (2026-09-26) — The cluster's row gains `min_height(titlebar_height)`: the strip's height in the strip, a titlebar tall alone
 - `.` **RG51** — [A Windows window with its own titlebar is square and flat](backlog/closed-2026-09.md#-rg51--a-windows-window-with-its-own-titlebar-is-square-and-flat--done-2026-09-26) — done (2026-09-26) — `Chrome::Custom` on Windows keeps the undecorated shadow and rounded corners
 - `.` **RG52** — [The Node relaunch example's custom-chrome window has its titlebar mid-window](backlog/closed-2026-09.md#-rg52--the-node-relaunch-examples-custom-chrome-window-has-its-titlebar-mid-window--done-2026-09-26) — done (2026-09-26) — The strip is the root's first row, outside the padding, and the custom launch docks the devtools at the bottom
+
+**From the alpha.19 upgrade reports (2026-09-26)** — F94, filed and built the same day; F93, F95 and F96 stay open
+
+- `~` **F94** — [Nothing says what woke a pump: an idle-window test cannot tell the desktop from a regression](backlog/closed-2026-09.md#-f94--nothing-says-what-woke-a-pump-an-idle-window-test-cannot-tell-the-desktop-from-a-regression--done-2026-09-26) — done (2026-09-26) — `frameStats().wokenPumps` and `PumpRunner::woken_pumps()`: the pumps whose batch saw an OS event or a wake; unmoved over a second, the desktop left the window alone
