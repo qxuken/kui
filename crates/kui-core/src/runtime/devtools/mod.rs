@@ -1388,7 +1388,7 @@ impl Core {
             }
             if matches!(
                 ev.kind(),
-                Some("drag" | "layout" | "contextmenu" | "forceclick")
+                Some("drag" | "layout" | "contextmenu" | "forceclick" | "button")
             ) {
                 shift_xy(&mut ev.payload, shift);
             }

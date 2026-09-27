@@ -259,7 +259,11 @@ extern "C" {
  * keyboard focus where it was; zeroed, a press focuses as it did. Then
  * on_focus (backlog DX18): focus entering and leaving the node's subtree,
  * as an event; NULL hears nothing. Then rules and rule_w (backlog DX21):
- * a table's grid lines; zeroed, none. The 64-bit size is 624. Recompile.
+ * a table's grid lines; zeroed, none. Then on_button and buttons
+ * (backlog F105): the non-primary buttons as events on the node that
+ * claims them, captured from press to release; NULL hears nothing, and a
+ * zeroed buttons with on_button set claims all three kinds. The 64-bit
+ * size is 640. Recompile.
  * The same bump appends bg_radius to KuiSpan (backlog F101): a span's
  * background rounded and joined with the ones it meets. On a 64-bit target
  * it takes what was the struct's tail padding, so the stride did not move
@@ -995,6 +999,21 @@ typedef struct KuiSpec {
      * their width in logical px, 0 meaning 1. ABI 20. */
     uint32_t rules;
     float rule_w;
+    /* The non-primary buttons as events (onButton, backlog F105): a press
+     * of a button in `buttons` over this node, or over a descendant that
+     * claims no such button, emits {kind:"button", phase:"press", button,
+     * x, y, clicks, tag} on it, and the button is captured by it until
+     * released - every pointer move while held is phase "move", the
+     * release phase "release", on this node wherever the pointer is.
+     * `button` is "secondary", "middle" or a further button's number
+     * (KUI_MOUSE_OTHER + n); on a cells grid each event carries cell:
+     * {row, col}. A claimed secondary press is this instead of a
+     * contextmenu event and the stock menu. It moves no focus. Borrowed
+     * while the node opens. ABI 20. */
+    const KuiValue *on_button;
+    /* Which buttons on_button claims, as KUI_BUTTONS_* bits; 0 (the zeroed
+     * field) is all three. ABI 20. */
+    uint32_t buttons;
 } KuiSpec;
 
 /* When a scrolling node's bars are drawn (KuiSpec.scrollbar): the schema
@@ -1700,13 +1719,21 @@ void kui_input_mouse(KuiCtx *ctx, bool down, uint32_t clicks);
 /* Buttons (kui_input_mouse_button). Only the primary one presses, drags,
  * places the caret and clicks; the secondary one asks the node under it
  * for a context menu (KuiSpec.on_context_menu) and moves nothing else.
- * Nothing routes the rest yet; pass 3 + n for a further button n so a
- * driver need not drop it. */
+ * Every non-primary button reaches a node claiming it with
+ * KuiSpec.on_button (backlog F105), which a claimed secondary press is
+ * instead of the menu; pass 3 + n for a further button n. */
 enum {
     KUI_MOUSE_PRIMARY = 0,
     KUI_MOUSE_SECONDARY = 1,
     KUI_MOUSE_MIDDLE = 2,
     KUI_MOUSE_OTHER = 3,
+};
+/* The buttons KuiSpec.on_button claims (KuiSpec.buttons), or-ed; none set
+ * is all three. KUI_BUTTONS_OTHER is every button past the middle one. */
+enum {
+    KUI_BUTTONS_SECONDARY = 1,
+    KUI_BUTTONS_MIDDLE = 2,
+    KUI_BUTTONS_OTHER = 4,
 };
 /* kui_input_mouse for a named button (KUI_MOUSE_*). */
 void kui_input_mouse_button(KuiCtx *ctx, bool down, uint32_t button,

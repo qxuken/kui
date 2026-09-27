@@ -625,6 +625,36 @@ impl Core {
         None
     }
 
+    /// The node a non-primary press of `button` on node `i` goes to
+    /// (backlog F105): `i` itself when its live `on_button` claims the
+    /// button, else the nearest enclosing node whose does — the walk
+    /// `enclosing_menu` takes, stopping at the modal boundary and skipping
+    /// a disabled node's own. For the secondary button a nearer live
+    /// `on_context_menu` ends the walk with nothing, the nested
+    /// declaration winning over its ancestor's either way; a node that
+    /// declares both is the button's, which is what claiming it says.
+    pub(crate) fn enclosing_button(&self, i: usize, button: MouseButton) -> Option<usize> {
+        let mut n = i as u32;
+        while n != crate::tree::NIL {
+            let j = n as usize;
+            if j != i && !self.interactive(j) {
+                return None;
+            }
+            let spec = &self.tree.specs[j];
+            if !spec.disabled {
+                let ev = spec.events();
+                if ev.on_button.is_some() && ev.buttons.contains(button) {
+                    return Some(j);
+                }
+                if button == MouseButton::Secondary && ev.on_context_menu.is_some() {
+                    return None;
+                }
+            }
+            n = self.tree.parent[j];
+        }
+        None
+    }
+
     /// The zone node `i` belongs to: itself when it declares `on_drop`,
     /// else the nearest enclosing declaration (ADR 0031, decision 2) —
     /// the same walk as `enclosing_menu`, stopping at the modal boundary

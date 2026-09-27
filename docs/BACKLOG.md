@@ -66,7 +66,9 @@ rounded-selection report of 2026-09-27, the day it was filed, and F102
 — a frame the surface skipped asked for again — from the kawoosh ⌘-Tab
 report of the same day, the day it was filed, and F104 — a trackpad
 swipe kept to its axis — from the kawoosh trackpad-drift report of
-2026-09-28, the day it was filed. The index
+2026-09-28, the day it was filed, and F105 — the non-primary buttons
+on the node that claims them — from the kawoosh mouse-buttons report
+of the same day, the day it was filed. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -493,7 +495,7 @@ Four kui-facing claims were checked against the tree:
   feature is a two-line change, and nobody has asked — under "Rows, when
   a view asks".
 - "the middle mouse button routes nowhere" — true and already parked
-  (C2, same paragraph).
+  (C2, same paragraph); answered by F105 (2026-09-28), `onButton`.
 - "no gradients" — ADR 0005 declined them with the reasoning written
   down; "no z-index" and "one shadow" are the same ADR's paint vocabulary.
 - "`Value::as_str` can fail at runtime where iced's `match` cannot" —
@@ -855,7 +857,8 @@ better one later, each parked until a view asks:
   for free and `caret_rect` gives otherwise. **A view asked on
   2026-09-15**: this is K4 below, with its shape.
 - **The middle button** (C2: "reaches the core and routes nowhere") —
-  a Linux terminal's paste and an editor's close-tab. Today: nothing.
+  a Linux terminal's paste and an editor's close-tab. **A view asked on
+  2026-09-28**: this is F105, `onButton`, built the same day.
 - **Window position**, declared and read (the README's Status names
   it) — an editor restoring its last geometry. Today: the size, not
   the place.
@@ -1434,6 +1437,18 @@ delta on, and a finger never moves along one alone; DX13, which lets a
 `scrollY` list hand the x it cannot use to the strip around it, made
 the drift reach further. One entry, F104, **built 2026-09-28**, the day
 it was filed, and in the archive.
+
+## From the kawoosh mouse-buttons report (2026-09-28)
+
+kawoosh's terminal panes wanted the buttons past the primary one: the
+middle button pastes, and a program in the terminal that asked for mouse
+reports (tmux, htop, a TUI) is owed the secondary and middle buttons'
+presses, the motion while one is held, and the releases. kui routed the
+secondary button to a context menu and nothing else, and the middle
+button and every button past it reached the core and went nowhere — the
+wish parked under the editor-and-mux round's three (C2) and in "Rows,
+when a view asks" until a view asked. One entry, F105, **built
+2026-09-28**, the day it was filed, and in the archive.
 
 ## From the regression pass of 2026-09-19
 
@@ -2982,6 +2997,8 @@ Nothing of the kawoosh Berkeley-bold report is open (F100 **built
 2026-09-26**, the day it was filed).
 Nothing of the kawoosh rounded-selection report is open (F101 **built
 2026-09-27**, the day it was filed).
+Nothing of the kawoosh mouse-buttons report is open (F105 **built
+2026-09-28**, the day it was filed).
 Nothing of the Windows regression round of 2026-09-26 is open
 (RG38–RG46 **built 2026-09-26**, the day they were filed).
 Nothing of the Linux round under WSLg is open (RG47–RG49 **built
@@ -3238,7 +3255,10 @@ have the API behind it, and AccessKit's whole event surface is a tree diff.
 **Rows, when a view asks.** A configurable focus-ring colour (README names
 it). `required` / `invalid` and heading `level` (ADR 0001 follow-ups).
 Per-button `on_click` and middle-button routing (C2 left them "reach the
-core and route nowhere"; the bake-off noticed the same). A `clipboard`
+core and route nowhere"; the bake-off noticed the same) — the routing
+answered by F105 (2026-09-28): `onButton` hears every non-primary button,
+press to release, on the node that claims it; a click stays the primary
+button's. A `clipboard`
 feature beside `audio` and `accesskit`, so a build that wants no `arboard`
 can say so — the bake-off's idle figure counted it, and nobody has asked. Physical key positions beyond what `60ca137`
 carried. One did ask, on 2026-09-07: an i3-style tab bar wanted `grow`
@@ -3812,6 +3832,10 @@ move.
 **From the kawoosh trackpad-drift report (2026-09-28)** — F104, filed and built the same day
 
 - `~` **F104** — [A trackpad swipe moves both axes: a swipe down nudges whatever scrolls sideways under it](backlog/closed-2026-09.md#-f104--a-trackpad-swipe-moves-both-axes-a-swipe-down-nudges-whatever-scrolls-sideways-under-it--done-2026-09-28) — done (2026-09-28) — a swipe keeps to the larger axis once it has travelled 4 px (`axis_lock::AxisLock` in kui-native), the other dropped while it and its glide last; a 200 ms pause ends it, the other axis at three times the locked one's recent travel turns it; pixel deltas only
+
+**From the kawoosh mouse-buttons report (2026-09-28)** — F105, filed and built the same day
+
+- `~` **F105** — [The middle and secondary buttons reach no node: a terminal pane cannot paste on a middle click or report the mouse to the program in it](backlog/closed-2026-09.md#-f105--the-middle-and-secondary-buttons-reach-no-node-a-terminal-pane-cannot-paste-on-a-middle-click-or-report-the-mouse-to-the-program-in-it--done-2026-09-28) — done (2026-09-28) — `onButton` (`on_button`, `KuiSpec.on_button`) hears the non-primary buttons as `{kind:"button", phase:"press"|"move"|"release", button, x, y, clicks, tag}` on the nearest node claiming them, captured from press to release; `buttons` (`Buttons`, `KUI_BUTTONS_*`) narrows which, and a claimed secondary press is the event instead of the context menu
 
 **From the regression pass of 2026-09-25** — RG17–RG36 built the same day, before the alpha.17 tag; RG37 the same day, after it
 

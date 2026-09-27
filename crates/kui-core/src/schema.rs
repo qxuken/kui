@@ -177,6 +177,8 @@ pub const P_KEEP_FOCUS: u32 = 112;
 pub const P_ON_FOCUS: u32 = 113;
 pub const P_RULES: u32 = 114;
 pub const P_RULE_WIDTH: u32 = 115;
+pub const P_ON_BUTTON: u32 = 116;
+pub const P_BUTTONS: u32 = 117;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -915,6 +917,20 @@ pub const PROPS: &[PropDef] = &[
         doc: "Force-click tag: a press that deepens past the second stage of a Force Touch trackpad emits {kind:\"forceclick\", x, y, tag} on the node, at the logical viewport point it happened at (`docs/adr/0017-selection-as-a-scope.md`). Routed as a secondary press is — no focus moved, no caret placed, no click — but asked of the topmost node only, with no walk to an enclosing declaration — and the ordinary click the press is still producing arrives afterwards, as it does on macOS. Text needs none of this: a force click over an `edit` or a `selectable` scope selects the word under it and asks the host for its Look Up panel. macOS-only in practice, and there the user can switch the gesture off, so nothing may declare itself the only way to reach something.",
     },
     PropDef {
+        name: "onButton",
+        id: P_ON_BUTTON,
+        kind: Kind::Tag,
+        apply: Apply::SpecMsg(|s, v| s.on_button(v)),
+        doc: "Button tag (backlog F105): a press of a non-primary button — middle, secondary, or one past those — emits {kind:\"button\", phase:\"press\", button, x, y, clicks, tag} on the node, and the button is then captured by it: every pointer move while it is held arrives as phase:\"move\" and its release as phase:\"release\", on this node wherever the pointer is. `button` is `\"secondary\"`, `\"middle\"` or a further button's number (3 and up); `x`/`y` are logical viewport coordinates, and on a `cells` grid each event carries `cell: {row, col}` as a click does. Several buttons can be held at once, each its own capture, and a primary drag is untouched. `buttons` says which buttons it claims — all of them unless it narrows them. Asked of the topmost node under the pointer, and when that node claims no such button the press reaches the nearest enclosing node that does, the way a context menu's does: a disabled node's own is skipped and the walk stops at the modal boundary. A claimed secondary press is this event *instead of* a `contextmenu` event and the stock menu (a nearer `onContextMenu` still wins, being the nested declaration). Like every non-primary press it moves no focus, places no caret and touches no selection or scrollbar. For a terminal's middle-click paste, and the mouse reports a program in it asked for.",
+    },
+    PropDef {
+        name: "buttons",
+        id: P_BUTTONS,
+        kind: Kind::Str,
+        apply: Apply::SpecStr(|s, v| s.buttons(crate::input::Buttons::parse(v))),
+        doc: "Which non-primary buttons `onButton` claims (backlog F105): `\"secondary\"`, `\"middle\"` and `\"other\"` (every button past those), separated by spaces or commas — `\"middle\"`, `\"secondary middle\"`. Unset, all three: a node that wants the middle button and leaves the secondary one to its context menu says `\"middle\"`. A word that is none of the three is skipped, so a string of none of them claims nothing, and a typo never takes the secondary button from a context menu. Meaningless without `onButton`.",
+    },
+    PropDef {
         name: "onScroll",
         id: P_ON_SCROLL,
         kind: Kind::Tag,
@@ -1464,6 +1480,14 @@ pub const C_FIELDS: &[(&str, &str)] = &[
         "`on_context_menu` (a borrowed `KuiValue*`, cloned while the node opens)",
     ),
     (
+        "onButton",
+        "`on_button` (a borrowed `KuiValue*`, cloned while the node opens)",
+    ),
+    (
+        "buttons",
+        "`buttons` (`KUI_BUTTONS_*` bits; zeroed, all three)",
+    ),
+    (
         "modal",
         "`modal` (a borrowed `KuiValue*`, cloned while the node opens)",
     ),
@@ -1997,6 +2021,11 @@ pub const EVENTS: &[EventDef] = &[
         kind: "forceclick",
         payload: "`{ kind: \"forceclick\", x, y, tag }`",
         doc: "A press that deepened past the second stage of a Force Touch trackpad, on an `onForceClick` node, at the logical viewport point it happened at. Routed as a secondary press is — no focus moved, no caret placed, no click — but asked of the topmost node only, and the ordinary click the press is still producing arrives afterwards. Text needs none of this: over an `edit` or a `selectable` scope the core selects the word under it and asks the host for its Look Up panel instead. macOS-only in practice.",
+    },
+    EventDef {
+        kind: "button",
+        payload: "`{ kind: \"button\", phase: \"press\" | \"move\" | \"release\", button: \"secondary\" | \"middle\" | number, x, y, clicks, tag }`",
+        doc: "A non-primary button on an `onButton` node that claims it (`buttons`), backlog F105: `press` where it went down — with the driver's click count, `clicks` — then `move` for every pointer move while it is held and `release` where it came up, both on the same node wherever the pointer went, since the press captured the button. `button` is the button's name, or for one past the middle button its number (`3 + n`, as `ctx.mouse` / `kui_input_mouse_button` take it); `x`/`y` are logical viewport coordinates. On a `cells` grid each carries `cell: {row, col}`, clamped to the grid, and inside an `onKey` sink that draws `role=\"line\"` rows `line` and `byte` as a drag does. A claimed secondary press is this event instead of `contextmenu`; the press moves no focus, caret, selection or scrollbar.",
     },
     EventDef {
         kind: "scroll",

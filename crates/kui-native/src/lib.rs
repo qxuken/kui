@@ -2447,9 +2447,10 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                     WinitButton::Left => MouseButton::Primary,
                     WinitButton::Right => MouseButton::Secondary,
                     WinitButton::Middle => MouseButton::Middle,
-                    // Nothing routes these, so the numbering only has to be
-                    // stable: back, forward, then whatever the platform
-                    // reports beyond them.
+                    // `onButton` hears these as `Other`'s code (backlog
+                    // F105), so the numbering has to be stable: back,
+                    // forward, then whatever the platform reports beyond
+                    // them.
                     WinitButton::Back => MouseButton::Other(0),
                     WinitButton::Forward => MouseButton::Other(1),
                     WinitButton::Other(n) => {

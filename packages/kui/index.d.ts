@@ -115,6 +115,27 @@ export type ContextMenuMsg<T = AppMsg> = {
   tag?: T;
 };
 
+/** A non-primary button on an `onButton` node that claims it (`buttons`),
+ *  backlog F105: `press` where it went down, with the click count, then
+ *  `move` for every pointer move while it is held and `release` where it
+ *  came up — on the same node wherever the pointer went, since the press
+ *  captured the button. `button` is its name, or for one past the middle
+ *  button its number (`3 + n`). On a `cells` grid each also carries
+ *  `cell: { row, col }` under the pointer, clamped to the grid, and inside
+ *  an `onKey` sink that draws `role="line"` rows `line` and `byte`, as a
+ *  drag does. A claimed secondary press is this instead of a
+ *  `contextmenu`. */
+export type ButtonMsg<T = AppMsg> = {
+  kind: 'button';
+  phase: 'press' | 'move' | 'release';
+  button: 'secondary' | 'middle' | number;
+  x: number;
+  y: number;
+  /** On the press only. */
+  clicks?: number;
+  tag?: T;
+};
+
 /** The wheel over an `onScroll` node, or a drag-select held past a
  *  `cells` grid's top or bottom edge
  *  (`docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md`).
@@ -427,6 +448,7 @@ export type CoreMsg =
   | TextMsg
   | PreeditMsg
   | ContextMenuMsg
+  | ButtonMsg
   | ScrollMsg
   | MenuMsg
   | SelectionRangeMsg
@@ -2058,7 +2080,8 @@ export declare class Ctx {
    * where it counts in cells. `button` defaults to "primary", and
    * only that one presses, drags, places the caret and clicks;
    * "secondary" asks the node under the pointer for a context menu and
-   * moves nothing else, and nothing routes "middle" yet.
+   * moves nothing else, and every button but the primary reaches a node
+   * that claims it with `onButton`, press to release (backlog F105).
    */
   mouse(down: boolean, clicks?: number, button?: MouseButtonName): void
   scroll(dx: number, dy: number): void

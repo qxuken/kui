@@ -837,8 +837,13 @@ static void conf_controls(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)phase;
     KuiValue *menu = kui_value_map();
     kui_value_map_set(menu, KUI_STR("kind"), kui_value_str(KUI_STR("menu")));
+    /* The panel claims the middle button (backlog F105) and leaves the
+     * secondary one to its menu. */
+    KuiValue *panel = kui_value_map();
+    kui_value_map_set(panel, KUI_STR("kind"), kui_value_str(KUI_STR("panel")));
     KuiSpec outer = {.pad_l = 10, .pad_r = 10, .pad_t = 10, .pad_b = 10, .gap = 6,
-                     .on_context_menu = menu};
+                     .on_context_menu = menu, .on_button = panel,
+                     .buttons = KUI_BUTTONS_MIDDLE};
     kui_open(ui, &outer, NULL);
     KuiValue *go = kui_value_map();
     kui_value_map_set(go, KUI_STR("kind"), kui_value_str(KUI_STR("go")));
@@ -876,6 +881,7 @@ static void conf_controls(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
     kui_close(ui);
     kui_value_free(menu);
+    kui_value_free(panel);
 }
 
 static void conf_media(KuiCtx *ui, const Fixtures *f, int phase) {
@@ -1992,6 +1998,10 @@ static void conf_apply(KuiCtx *ctx, const ConfStep *s) {
         kui_input_mouse_button(ctx, true, KUI_MOUSE_SECONDARY, 1);
     else if (strcmp(s->kind, "secondaryup") == 0)
         kui_input_mouse_button(ctx, false, KUI_MOUSE_SECONDARY, 1);
+    else if (strcmp(s->kind, "middledown") == 0)
+        kui_input_mouse_button(ctx, true, KUI_MOUSE_MIDDLE, 1);
+    else if (strcmp(s->kind, "middleup") == 0)
+        kui_input_mouse_button(ctx, false, KUI_MOUSE_MIDDLE, 1);
     else if (strcmp(s->kind, "scroll") == 0) kui_input_scroll(ctx, (float)s->a, (float)s->b);
     else if (strcmp(s->kind, "tab") == 0) kui_input_key(ctx, KUI_KEY_TAB, 0);
     else if (strcmp(s->kind, "shifttab") == 0) kui_input_key(ctx, KUI_KEY_TAB, KUI_MOD_SHIFT);
@@ -2108,6 +2118,22 @@ static void conf_drain(KuiCtx *ctx, Rep *events) {
             if (vx) kui_value_as_int(vx, &dx);
             if (vy) kui_value_as_int(vy, &dy);
             repf(events, " %.*s %lld %lld", (int)phase.len, phase.ptr, (long long)dx, (long long)dy);
+        }
+        /* A held button's phase and which button ride the same way
+         * (backlog F105): a lost mask claims the secondary presses. */
+        if (kind.len == 6 && memcmp(kind.ptr, "button", 6) == 0) {
+            KuiStr phase = KUI_STR("-");
+            const KuiValue *p = kui_value_get(ev.payload, KUI_STR("phase"));
+            if (p) kui_value_as_str(p, &phase);
+            const KuiValue *b = kui_value_get(ev.payload, KUI_STR("button"));
+            KuiStr name;
+            int64_t code = 0;
+            if (b && kui_value_as_str(b, &name))
+                repf(events, " %.*s %.*s", (int)phase.len, phase.ptr, (int)name.len, name.ptr);
+            else if (b && kui_value_as_int(b, &code))
+                repf(events, " %.*s %lld", (int)phase.len, phase.ptr, (long long)code);
+            else
+                repf(events, " %.*s -", (int)phase.len, phase.ptr);
         }
         /* A scroll's lines ride the same way - the whole lines a grid's
          * notch covers, `-` off a grid - so a lost carry disagrees here

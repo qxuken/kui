@@ -1494,9 +1494,12 @@ and not a fit width from a `grow` or percent height, which is resolved only
 after every width is.
 
 **Input.** Pointer buttons: the secondary one is routed to `on_context_menu`
-and nothing else (C2); the middle button and anything past it (back, forward)
-reach the core as data and route nowhere, so there is no middle-click-to-close,
-no right-drag and no per-button `on_click`. Touch and pen are not input modes
+(C2); every non-primary button — secondary, middle, back, forward — reaches a
+node that claims it with `on_button` as press, move and release events,
+captured by that node until the release (F105), which is a terminal's
+middle-click paste and its mouse reporting, a middle-click-to-close and a
+right-drag. There is no per-button `on_click`: a click is the primary
+button's. Touch and pen are not input modes
 of their own: a finger on a touchscreen arrives as whatever the platform
 synthesises as mouse input, so a tap presses and clicks and nothing past that
 exists — no multi-touch, no pinch, rotate or two-finger gestures, no pressure

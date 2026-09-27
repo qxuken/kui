@@ -293,6 +293,10 @@ pub enum Step {
     /// The secondary (context-menu) button.
     SecondaryDown,
     SecondaryUp,
+    /// The middle button, which only an `onButton` node hears (backlog
+    /// F105).
+    MiddleDown,
+    MiddleUp,
     /// Wheel delta in logical px; positive y scrolls up.
     Scroll(i32, i32),
     /// Tab and Shift-Tab: one step along the focus ring, forwards and
@@ -403,6 +407,8 @@ impl Step {
             Step::MouseUp => out.push_str("step mouseup\n"),
             Step::SecondaryDown => out.push_str("step secondarydown\n"),
             Step::SecondaryUp => out.push_str("step secondaryup\n"),
+            Step::MiddleDown => out.push_str("step middledown\n"),
+            Step::MiddleUp => out.push_str("step middleup\n"),
             Step::Scroll(x, y) => {
                 let _ = writeln!(out, "step scroll {x} {y}");
             }
@@ -482,6 +488,13 @@ impl Step {
             },
             Step::SecondaryUp => InputEvent::MouseUp {
                 button: crate::input::MouseButton::Secondary,
+            },
+            Step::MiddleDown => InputEvent::MouseDown {
+                button: crate::input::MouseButton::Middle,
+                clicks: 1,
+            },
+            Step::MiddleUp => InputEvent::MouseUp {
+                button: crate::input::MouseButton::Middle,
             },
             Step::Scroll(x, y) => InputEvent::Scroll(Vec2::new(x as f32, y as f32)),
             Step::Tab => InputEvent::Key(EditKey::Tab, Mods::default()),
@@ -1502,7 +1515,12 @@ pub const SCENES: &[Scene] = &[
               panel's own body, and from the button over it that offers no \
               menu of its own, since an unclaimed press reaches the \
               enclosing menu as an unclaimed key reaches the enclosing sink \
-              (backlog T1). The slider \
+              (backlog T1). The panel claims the middle button with \
+              `onButton` and `buttons=\"middle\"` (backlog F105), so the \
+              secondary presses stay its context menu's while a middle \
+              press over the button reaches the panel, and the pointer \
+              moved while it is held and its release go there too — the \
+              phases in order, whichever binding spelled the mask. The slider \
               names its own reading (`valueText`), which lands in the value \
               column beside the editor's text — a node has one string slot, \
               and a slider that named its reading reads as that instead of \
@@ -1530,6 +1548,9 @@ pub const SCENES: &[Scene] = &[
             Step::Cursor(30, 24),
             Step::SecondaryDown,
             Step::SecondaryUp,
+            Step::MiddleDown,
+            Step::Cursor(32, 25),
+            Step::MiddleUp,
         ],
         expect: Expect {
             // Two buttons: the disabled one is dimmed, and a quad at half
@@ -1549,7 +1570,14 @@ pub const SCENES: &[Scene] = &[
                 "1 textInput Note||hello, on two lines in a narrow field",
                 "1 slider Focus length||25 minutes",
             ],
-            events: &["go -", "contextmenu menu", "contextmenu menu"],
+            events: &[
+                "go -",
+                "contextmenu menu",
+                "contextmenu menu",
+                "button panel press middle",
+                "button panel move middle",
+                "button panel release middle",
+            ],
             announcements: &[],
             warnings: &[],
             commands: &[],
@@ -3841,7 +3869,9 @@ fn build_controls(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     let panel = NodeSpec::column()
         .pad(10.0)
         .gap(6.0)
-        .on_context_menu(Value::map([("kind", Value::str("menu"))]));
+        .on_context_menu(Value::map([("kind", Value::str("menu"))]))
+        .on_button(Value::map([("kind", Value::str("panel"))]))
+        .buttons(crate::input::Buttons::MIDDLE);
     ui.with(panel, |ui| {
         widgets::button_with(
             ui,
@@ -5222,6 +5252,25 @@ fn event_row(payload: &Value) -> (String, String) {
     // lines are the contract for a grid, and a binding that lost the
     // carried fraction between two notches would agree on the kind and
     // disagree here. `-` for a node that is not a grid.
+    // A held button's phase and which button ride the same way
+    // (`button panel press middle`, backlog F105): the capture is the
+    // contract — a move and a release on the owner wherever the pointer
+    // went — and a binding that lost the mask would claim the secondary
+    // presses and disagree here.
+    if kind == "button" {
+        let phase = payload.get_str("phase").unwrap_or("-");
+        match payload.get("button") {
+            Some(Value::Str(b)) => {
+                let _ = write!(tag, " {phase} {b}");
+            }
+            Some(Value::Int(n)) => {
+                let _ = write!(tag, " {phase} {n}");
+            }
+            _ => {
+                let _ = write!(tag, " {phase} -");
+            }
+        }
+    }
     if kind == "scroll" {
         match payload.get_int("lines") {
             Some(n) => {
