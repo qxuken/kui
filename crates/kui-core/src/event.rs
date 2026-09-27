@@ -100,6 +100,8 @@ pub struct Layout {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TextInput<'a> {
     pub text: &'a str,
+    /// The clipboard's answer to a paste the app asked for, not typing.
+    pub pasted: bool,
     /// Typed under secure keyboard entry: keep it out of logs and history.
     pub concealed: bool,
     /// A clipboard manager or a password tool marked it as not for keeping.
@@ -194,6 +196,7 @@ impl UiEvent {
         }
         Some(TextInput {
             text: p.get_str("text")?,
+            pasted: p.get_bool("pasted").unwrap_or(false),
             concealed: p.get_bool("concealed").unwrap_or(false),
             transient: p.get_bool("transient").unwrap_or(false),
         })

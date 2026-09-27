@@ -453,9 +453,9 @@ fn menu_items(t: &mlua::Table) -> mlua::Result<Vec<kui_core::MenuItem>> {
 /// `request_copy()` + `answer_selection_range(text)` (a copy that reaches
 /// rows a virtual list never built is asked of the app) /
 /// `set_clipboard(text, html?)` + `request_paste()` (a key sink's own
-/// Ctrl-c and Ctrl-v; the paste comes back as a `text` event, one ask at
-/// a time, with `concealed = true` / `transient = true` where the
-/// pasteboard marked it so) + `awaiting_paste()` (whether one is
+/// Ctrl-c and Ctrl-v; the paste comes back as a `text` event with
+/// `pasted = true`, one ask at a time, and `concealed = true` /
+/// `transient = true` where the pasteboard marked it so) + `awaiting_paste()` (whether one is
 /// unanswered) + `set_clipboard_secret(text)` (a secret the host writes
 /// marked concealed and transient, backlog F84) /
 /// `select_all_in(key)` / `clear_selection()` (ADR 0017 — one selection

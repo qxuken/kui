@@ -1710,10 +1710,12 @@ void kui_input_text(KuiCtx *ctx, KuiStr text);   /* typing/paste -> focused edit
 void kui_input_commit(KuiCtx *ctx, KuiStr text);
 /* The clipboard's answer to a KUI_MENU_ACTION_PASTE, with the pasteboard's
  * markers as KUI_PASTE_* bits (backlog F84): routed as kui_input_commit
- * is, and the focused on_key sink hears {kind:"text", text, tag} with
- * concealed: true / transient: true for the bits that are set - absent,
- * never false, for those that are not. 0 is a paste nothing marked, the
- * same answer kui_input_commit gives. */
+ * is, and the focused on_key sink hears {kind:"text", text, pasted: true,
+ * tag} with concealed: true / transient: true for the bits that are set -
+ * absent, never false, for those that are not. 0 is a paste nothing
+ * marked, the same answer kui_input_commit gives while a paste is asked
+ * for; pasted is what tells either answer from an IME's commit (backlog
+ * DX14). */
 void kui_input_paste(KuiCtx *ctx, KuiStr text, uint32_t marks);
 /* In-progress IME composition shown at the focused editor's caret, or with
  * no editor focused delivered to the focused on_key sink as

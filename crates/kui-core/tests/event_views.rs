@@ -122,3 +122,45 @@ fn modifiers_and_text_read_as_theirs() {
         ("ё", false, false)
     );
 }
+
+/// DX14: a paste's answer says it is one. kawoosh kept a `clip_probe` and
+/// an `awaiting_paste` of its own to tell the clipboard's text, read into
+/// a register, from an IME's commit, which arrives the same way.
+#[test]
+fn a_paste_answer_is_marked_pasted_and_a_commit_is_not() {
+    let mut core = Core::new();
+    frame(&mut core, NodeSpec::row().on_key("keys"));
+    let sink = core.key_of("n").unwrap();
+    core.set_key_focus(Some(sink));
+    let text = |evs: &[kui_core::UiEvent]| {
+        let t = evs.iter().find_map(|e| e.text()).expect("a text event");
+        (t.text.to_string(), t.pasted)
+    };
+
+    let ime = core.handle_input(InputEvent::Commit("か".into()));
+    assert_eq!(
+        text(&ime),
+        ("か".into(), false),
+        "a commit nobody asked for"
+    );
+
+    core.request_paste();
+    let bare = core.handle_input(InputEvent::Commit("clip".into()));
+    assert_eq!(
+        text(&bare),
+        ("clip".into(), true),
+        "a bare commit answering the ask"
+    );
+    let after = core.handle_input(InputEvent::Commit("か".into()));
+    assert_eq!(text(&after), ("か".into(), false), "the ask was spent");
+
+    let paste = core.handle_input(InputEvent::Paste {
+        text: "p".into(),
+        marks: Default::default(),
+    });
+    assert_eq!(
+        text(&paste),
+        ("p".into(), true),
+        "a paste reply, asked or not"
+    );
+}

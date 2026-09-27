@@ -1524,7 +1524,8 @@ test('a press in a sink names the line, the byte and the click count, and the si
   ctx.commit('from the clipboard');
   assert.equal(ctx.awaitingPaste(), false, 'the commit is the answer');
   assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [
-    { kind: 'text', text: 'from the clipboard', tag: { kind: 'ed' } },
+    // `pasted`: the answer to the ask, not an IME's commit (backlog DX14).
+    { kind: 'text', text: 'from the clipboard', pasted: true, tag: { kind: 'ed' } },
   ]);
   // A secret goes out as its own kind, for the window to write marked
   // concealed and transient; a paste the pasteboard marked comes back
@@ -1540,9 +1541,9 @@ test('a press in a sink names the line, the byte and the click count, and the si
   ctx.paste('brief', { transient: true });
   ctx.paste('plain');
   assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [
-    { kind: 'text', text: 's3cret', concealed: true, transient: true, tag: { kind: 'ed' } },
-    { kind: 'text', text: 'brief', transient: true, tag: { kind: 'ed' } },
-    { kind: 'text', text: 'plain', tag: { kind: 'ed' } },
+    { kind: 'text', text: 's3cret', pasted: true, concealed: true, transient: true, tag: { kind: 'ed' } },
+    { kind: 'text', text: 'brief', pasted: true, transient: true, tag: { kind: 'ed' } },
+    { kind: 'text', text: 'plain', pasted: true, tag: { kind: 'ed' } },
   ]);
 });
 

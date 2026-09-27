@@ -76,7 +76,8 @@ export type KeyMsg<T = AppMsg> = {
  *  both would type every character twice. A focused `<edit>` takes the
  *  commit itself and reports `changed`.
  *
- *  The answer to a `requestPaste()` arrives the same way, with what the
+ *  The answer to a `requestPaste()` arrives the same way, with `pasted`
+ *  set (backlog DX14) — an IME's commit never has it — and with what the
  *  pasteboard marked it (backlog F84): `concealed` for a secret a password
  *  manager copied — show it to no one, keep it nowhere — and `transient`
  *  for text not to keep in a history. A marker that is not set is absent,
@@ -84,6 +85,7 @@ export type KeyMsg<T = AppMsg> = {
 export type TextMsg<T = AppMsg> = {
   kind: 'text';
   text: string;
+  pasted?: true;
   concealed?: true;
   transient?: true;
   tag?: T;

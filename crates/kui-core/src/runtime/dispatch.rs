@@ -272,9 +272,9 @@ impl Core {
         // it (backlog F84), and a bare commit is one whose pasteboard marked
         // nothing — the answer an older driver sends — so the two are one
         // arm below.
-        let (ev, marks) = match ev {
-            InputEvent::Paste { text, marks } => (InputEvent::Commit(text), marks),
-            ev => (ev, crate::input::ClipboardMarks::default()),
+        let (ev, marks, paste) = match ev {
+            InputEvent::Paste { text, marks } => (InputEvent::Commit(text), marks, true),
+            ev => (ev, crate::input::ClipboardMarks::default(), false),
         };
         match ev {
             InputEvent::Scroll(delta) => {
@@ -334,8 +334,10 @@ impl Core {
             InputEvent::Commit(s) => {
                 // The paste's answer, when one was asked — a driver answers
                 // every ask, with an empty commit for an empty clipboard,
-                // which is what lets the next ask through (AR34).
-                self.awaiting_paste = false;
+                // which is what lets the next ask through (AR34). The same
+                // rule says whether this *is* the answer: a `Paste`, or any
+                // commit while an ask is out (backlog DX14).
+                let pasted = std::mem::replace(&mut self.awaiting_paste, false) || paste;
                 if let Some(key) = self.edit.focused() {
                     if self.edit_with_fonts(|edit, fs| edit.apply_text(key, &s, fs)) {
                         self.push_edit_event(key, "changed", &mut out);
@@ -349,6 +351,9 @@ impl Core {
                     // that never heard of them sees the payload it always
                     // did.
                     let mut fields = vec![("kind", Value::str("text")), ("text", Value::Str(s))];
+                    if pasted {
+                        fields.push(("pasted", Value::Bool(true)));
+                    }
                     if marks.concealed {
                         fields.push(("concealed", Value::Bool(true)));
                     }
