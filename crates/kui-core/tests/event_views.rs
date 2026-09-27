@@ -91,7 +91,7 @@ fn a_wheel_a_hover_and_a_layout_read_as_theirs() {
 
     let entered = hover(&mut core, Vec2::new(50.0, 50.0));
     assert_eq!(
-        entered.iter().find_map(|e| e.hover()),
+        entered.iter().find_map(|e| e.hover()).map(|h| h.phase),
         Some(HoverPhase::Enter)
     );
     let wheel = core.handle_input(InputEvent::Scroll(Vec2::new(0.0, -30.0)));
@@ -101,7 +101,10 @@ fn a_wheel_a_hover_and_a_layout_read_as_theirs() {
         (Vec2::new(50.0, 50.0), Vec2::new(0.0, -30.0), None)
     );
     let left = hover(&mut core, Vec2::new(290.0, 190.0));
-    assert_eq!(left.iter().find_map(|e| e.hover()), Some(HoverPhase::Leave));
+    assert_eq!(
+        left.iter().find_map(|e| e.hover()).map(|h| h.phase),
+        Some(HoverPhase::Leave)
+    );
 }
 
 #[test]
@@ -162,5 +165,54 @@ fn a_paste_answer_is_marked_pasted_and_a_commit_is_not() {
         text(&paste),
         ("p".into(), true),
         "a paste reply, asked or not"
+    );
+}
+
+/// DX20: a hover says what moved. kawoosh's picker kept its own
+/// bookkeeping, because the rows sliding under a still pointer as the list
+/// scrolled by the keys moved its selection as a pointer would.
+#[test]
+fn a_hover_says_whether_the_pointer_or_the_content_moved() {
+    use kui_core::HoverBy;
+    let frame = |core: &mut Core| {
+        let mut ui = core.frame(VIEW, 1.0);
+        ui.with_keyed(
+            "list",
+            NodeSpec::column().size(200.0, 100.0).scroll_y(),
+            |ui| {
+                for i in 0..20 {
+                    ui.leaf_indexed(i, NodeSpec::row().size(200.0, 20.0).on_hover(i as i64));
+                }
+            },
+        );
+        ui.finish();
+    };
+    let mut core = Core::new();
+    frame(&mut core);
+    let entered = hover(&mut core, Vec2::new(10.0, 10.0));
+    let h = entered
+        .iter()
+        .find_map(|e| e.hover())
+        .expect("row 0 entered");
+    assert_eq!((h.phase, h.by), (HoverPhase::Enter, HoverBy::Pointer));
+
+    // The keys scroll the list a row; the pointer never moved.
+    let list = core.key_of("list").unwrap();
+    core.set_scroll(list, Vec2::new(0.0, 20.0));
+    frame(&mut core);
+    frame(&mut core);
+    let moved: Vec<_> = core.take_pending_events();
+    let by: Vec<_> = moved
+        .iter()
+        .filter_map(|e| e.hover())
+        .map(|h| (h.phase, h.by))
+        .collect();
+    assert_eq!(
+        by,
+        [
+            (HoverPhase::Leave, HoverBy::Content),
+            (HoverPhase::Enter, HoverBy::Content)
+        ],
+        "row 0 left and row 1 entered under a still pointer"
     );
 }

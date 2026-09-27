@@ -1379,7 +1379,9 @@ impl Interaction {
         self.hits = hits;
         self.shape_points = shapes.points;
         let mut out = std::mem::take(&mut self.pending);
-        self.refresh_hover(&mut out);
+        // The pointer is where it was: whatever changed under it is the
+        // content (backlog DX20).
+        self.refresh_hover(&mut out, "content");
         self.pending = out;
     }
 
@@ -1498,8 +1500,11 @@ impl Interaction {
     }
 
     /// Re-resolves the hovered region under the cursor, emitting `on_hover`
-    /// leave/enter events when the hovered node changes.
-    fn refresh_hover(&mut self, out: &mut Vec<UiEvent>) {
+    /// leave/enter events when the hovered node changes. `by` is what
+    /// moved: `"pointer"` for the cursor, `"content"` for a frame that put
+    /// something else under a still one — a list scrolled by the wheel or
+    /// the keyboard, a row that grew (backlog DX20).
+    fn refresh_hover(&mut self, out: &mut Vec<UiEvent>, by: &'static str) {
         let before = self.hovered;
         // Through `target_at`, like the press and the cursor shape (ADR
         // 0023, decision 4): over a bar painted above the node, nothing
@@ -1521,14 +1526,28 @@ impl Interaction {
         }
         // The old region may be gone from a new frame's hits, so the leave
         // event was prepared when the node was entered.
-        out.extend(self.hovered_leave.take());
+        out.extend(self.hovered_leave.take().map(|ev| Self::moved_by(ev, by)));
         if let Some(i) = idx {
-            out.extend(Self::hover_event(&self.hits[i], "enter"));
+            out.extend(Self::hover_event(&self.hits[i], "enter").map(|ev| Self::moved_by(ev, by)));
             self.hovered_leave = Self::hover_event(&self.hits[i], "leave");
             if let Some(sound) = self.hits[i].hover_sound {
                 self.sound_requests.push(sound);
             }
         }
+    }
+
+    /// A hover event's `by`, set as it goes out: a `leave` is built when
+    /// its node is entered, before anyone knows what will move.
+    fn moved_by(mut ev: UiEvent, by: &'static str) -> UiEvent {
+        if let Value::Map(entries) = &mut ev.payload {
+            // After `phase`, before the tag: the order the payload reads in.
+            let at = entries
+                .iter()
+                .position(|(k, _)| k == "tag")
+                .unwrap_or(entries.len());
+            entries.insert(at, ("by".to_string(), Value::str(by)));
+        }
+        ev
     }
 
     fn hover_event(region: &HitRegion, phase: &str) -> Option<UiEvent> {
@@ -1608,7 +1627,7 @@ impl Interaction {
         match ev {
             InputEvent::CursorMoved(p) => {
                 self.cursor = Some(p);
-                self.refresh_hover(out);
+                self.refresh_hover(out, "pointer");
                 if let Some((key, origin, track, last)) = &mut self.slide {
                     let v = track.value_at(p);
                     if v != *last {
@@ -1635,7 +1654,7 @@ impl Interaction {
             }
             InputEvent::CursorLeft => {
                 self.cursor = None;
-                self.refresh_hover(out);
+                self.refresh_hover(out, "pointer");
             }
             InputEvent::MouseDown { button, .. } if button != MouseButton::Primary => {
                 // Nothing but the primary button presses: no pressed

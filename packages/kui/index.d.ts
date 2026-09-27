@@ -167,10 +167,13 @@ export type SelectionRangeMsg = {
 };
 
 /** The pointer entered or left an `onHover` node — also when a new frame
- *  moved it under a still cursor. */
+ *  moved it under a still cursor, which `by` tells apart. */
 export type HoverMsg<T = AppMsg> = {
   kind: 'hover';
   phase: 'enter' | 'leave';
+  /** What moved: the pointer, or what is under a still one — a list the
+   *  keys scrolled, a row that grew (backlog DX20). */
+  by: 'pointer' | 'content';
   tag?: T;
 };
 

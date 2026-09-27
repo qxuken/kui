@@ -2419,7 +2419,7 @@ uint64_t kui_open_draggable(KuiCtx *ctx, KuiStr label, const KuiSpec *spec,
  * {kind="key", phase="down", code, ctrl, alt, shift, super, text, repeat,
  * tag} - releases too, with phase="up", when KuiSpec.key_up is set. A non-NULL
  * on_hover makes the pointer entering/leaving emit
- * {kind="hover", phase="enter"|"leave", tag} — for hover-dependent layout;
+ * {kind="hover", phase="enter"|"leave", by="pointer"|"content", tag} — for hover-dependent layout;
  * plain hover colors belong in KuiSpec.hover_bg / pressed_bg. A tag of
  * kui_value_null() keeps the behaviour and leaves `tag` off the events.
  * Layout events come from KuiSpec.on_layout, not an argument. */

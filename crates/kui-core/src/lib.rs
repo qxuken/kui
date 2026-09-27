@@ -82,7 +82,7 @@ pub use display::{
 pub use edit::{EditOptions, MAX_UNDECLARED_EDITS};
 pub use enter::Enter;
 pub use env::{Appearance, Assistive, AudioDevice, AudioEnv, Env, Locale, MotionPref, SystemEnv};
-pub use event::{Drag, DragPhase, HoverPhase, Layout, Scroll, TextInput};
+pub use event::{Drag, DragPhase, Hover, HoverBy, HoverPhase, Layout, Scroll, TextInput};
 pub use fragment::{FragmentDrawId, FragmentList, FragmentRef};
 pub use geom::{Edges, Rect, Size, Vec2};
 pub use input::ScrollAxis;

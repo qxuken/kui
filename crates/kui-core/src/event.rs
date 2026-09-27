@@ -87,6 +87,24 @@ pub enum HoverPhase {
     Leave,
 }
 
+/// What moved to change the hover (backlog DX20).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HoverBy {
+    /// The pointer moved, or left the window.
+    Pointer,
+    /// The pointer stayed and what is under it changed: a list scrolled
+    /// by the wheel or the keys, a row that grew, a float that opened. A
+    /// picker that follows the pointer ignores these.
+    Content,
+}
+
+/// A `{kind:"hover"}` event: an `onHover` node entered or left.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Hover {
+    pub phase: HoverPhase,
+    pub by: HoverBy,
+}
+
 /// A `{kind:"layout"}` event: an `onLayout` node's placed rect.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Layout {
@@ -216,15 +234,20 @@ impl UiEvent {
     }
 
     /// This event as a hover edge, if it is one.
-    pub fn hover(&self) -> Option<HoverPhase> {
+    pub fn hover(&self) -> Option<Hover> {
         if self.kind()? != "hover" {
             return None;
         }
-        match self.payload.get_str("phase")? {
-            "enter" => Some(HoverPhase::Enter),
-            "leave" => Some(HoverPhase::Leave),
-            _ => None,
-        }
+        let phase = match self.payload.get_str("phase")? {
+            "enter" => HoverPhase::Enter,
+            "leave" => HoverPhase::Leave,
+            _ => return None,
+        };
+        let by = match self.payload.get_str("by") {
+            Some("content") => HoverBy::Content,
+            _ => HoverBy::Pointer,
+        };
+        Some(Hover { phase, by })
     }
 
     /// This event as a modifier change, if it is one: the keys now held.

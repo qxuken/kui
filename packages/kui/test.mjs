@@ -3150,7 +3150,7 @@ test('onHover emits enter and leave with the tag', () => {
   ctx.frame(320, 240, 1, tree);
   ctx.cursor(10, 10);
   let evs = ctx.pollEvents();
-  assert.deepEqual(evs.map((e) => e.payload), [{ kind: 'hover', phase: 'enter', tag: { kind: 'hov', id: 'a' } }]);
+  assert.deepEqual(evs.map((e) => e.payload), [{ kind: 'hover', phase: 'enter', by: 'pointer', tag: { kind: 'hov', id: 'a' } }]);
   const aKey = evs[0].key;
   assert.ok(ctx.isHovered(aKey));
   ctx.cursor(60, 10);

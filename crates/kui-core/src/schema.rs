@@ -1975,8 +1975,8 @@ pub const EVENTS: &[EventDef] = &[
     },
     EventDef {
         kind: "hover",
-        payload: "`{ kind: \"hover\", phase: \"enter\" | \"leave\", tag }`",
-        doc: "The pointer entered or left an `onHover` node — also when a new frame moved it under a still cursor.",
+        payload: "`{ kind: \"hover\", phase: \"enter\" | \"leave\", by: \"pointer\" | \"content\", tag }`",
+        doc: "The pointer entered or left an `onHover` node — also when a new frame moved it under a still cursor. `by` says which (backlog DX20): `pointer` when the pointer moved or left the window, `content` when it stayed and what is under it changed — a list scrolled by the wheel or the keys, a row that grew, a float that opened. A picker whose selection follows the pointer ignores `content`, or the rows sliding under a still pointer as the keys scroll the list drag the selection with them.",
     },
     EventDef {
         kind: "drop",
