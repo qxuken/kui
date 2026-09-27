@@ -3924,7 +3924,7 @@ const SCENE_TREES = {
         // `<titlebar>` appends its own cluster; the second one goes through
         // the `<windowButtons>` element, in a strip laid out by hand.
         el('titlebar', {}, [text('app', { size: 12 })]),
-        box({ dir: 'row', width: 'grow' }, [el('windowButtons')]),
+        box({ dir: 'row', width: 'grow', keepFocus: true }, [el('windowButtons')]),
         box({ width: 40, height: 16, bg: '#22242c', focusable: true, keyFocus: true, label: 'Sink' }, [], 'sink'),
       ]),
     ]),

@@ -651,6 +651,9 @@ pub struct KuiSpec {
     /// without a seam. A zeroed field is a box drawn where layout put it.
     /// ABI 20.
     pub pixel_snap: u32,
+    /// Non-zero: a press on this node or inside it leaves keyboard focus
+    /// where it was (`keepFocus`, backlog DX10). ABI 20.
+    pub keep_focus: u32,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a

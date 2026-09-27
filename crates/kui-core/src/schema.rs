@@ -173,6 +173,7 @@ pub const P_MIXED: u32 = 108;
 pub const P_VALUE_STEP: u32 = 109;
 pub const P_ON_CHANGE: u32 = 110;
 pub const P_PIXEL_SNAP: u32 = 111;
+pub const P_KEEP_FOCUS: u32 = 112;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -721,6 +722,13 @@ pub const PROPS: &[PropDef] = &[
         kind: Kind::Flag,
         apply: Apply::SpecFlag(|s| s.focusable()),
         doc: "Reachable by Tab (and focused by a click) without a click payload or a control role — a row that opens on Enter. Editors, key sinks, `onClick` boxes and the control roles are focusable already.",
+    },
+    PropDef {
+        name: "keepFocus",
+        id: P_KEEP_FOCUS,
+        kind: Kind::Flag,
+        apply: Apply::SpecFlag(|s| s.keep_focus()),
+        doc: "A press on this node, or anywhere inside it, leaves keyboard focus where it was: a toolbar button, a tab or a divider that acts without taking the keyboard from the editor or key sink that had it. Without it a press on an `onClick` node focuses the node, and the app's keys stop reaching the sink until it takes focus back. The click, drag and hover are unchanged, and Tab and assistive technology still reach the node.",
     },
     PropDef {
         name: "focusRegion",

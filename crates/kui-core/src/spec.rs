@@ -857,6 +857,13 @@ pub struct EventSpec {
     /// effect (a confirm inside a dialog); see
     /// `docs/adr/0003-modal-surfaces.md`. Null = modal without a tag.
     pub modal: Option<Value>,
+    /// A press on this node, or anywhere inside it, leaves keyboard focus
+    /// where it was (`keepFocus`): a toolbar button, a tab, a divider
+    /// that acts without taking the keyboard from the editor beside it
+    /// (backlog DX10). Its click, drag and hover are unchanged, and Tab
+    /// and assistive technology still reach a focusable node in it — it
+    /// is the pointer's press alone that stops moving focus.
+    pub keep_focus: bool,
 }
 
 impl EventSpec {
@@ -875,6 +882,7 @@ impl EventSpec {
         on_layout: None,
         on_change: None,
         modal: None,
+        keep_focus: false,
     };
 }
 
@@ -1718,6 +1726,13 @@ impl NodeSpec {
     /// Puts this node in the Tab ring (see the `focusable` field).
     pub fn focusable(mut self) -> Self {
         self.focusable = true;
+        self
+    }
+
+    /// A press here leaves keyboard focus where it was (see the
+    /// `keep_focus` field).
+    pub fn keep_focus(mut self) -> Self {
+        self.events_mut().keep_focus = true;
         self
     }
 

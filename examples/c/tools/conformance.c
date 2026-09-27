@@ -815,7 +815,7 @@ static void conf_chrome(KuiCtx *ui, const Fixtures *f, int phase) {
      * one is kui_window_buttons called directly, in a strip laid out here -
      * the "fully custom titlebar" the element exists for. */
     kui_titlebar_with(ui, conf_titlebar_body, NULL);
-    KuiSpec strip = {.dir = KUI_ROW, .width = {KUI_GROW, 1}};
+    KuiSpec strip = {.dir = KUI_ROW, .width = {KUI_GROW, 1}, .keep_focus = 1};
     kui_open(ui, &strip, NULL);
     kui_window_buttons(ui);
     kui_close(ui);

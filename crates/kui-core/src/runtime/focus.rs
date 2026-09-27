@@ -554,6 +554,15 @@ impl Core {
         if self.tree.specs[i].window.is_some() {
             return self.focus;
         }
+        // `keepFocus` on the node or an ancestor: the press acts and the
+        // keyboard stays where it was (backlog DX10). One walk per press.
+        let mut n = i as u32;
+        while n != crate::tree::NIL {
+            if self.tree.specs[n as usize].events().keep_focus {
+                return self.focus;
+            }
+            n = self.tree.parent[n as usize];
+        }
         if self.tree.specs[i].events().on_key.is_some() {
             return Some(key);
         }

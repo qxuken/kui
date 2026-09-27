@@ -243,6 +243,11 @@
 /// with each edge on a whole pixel, so it meets a text's background or
 /// another snapped box without a seam. An [in] append; recompile. A zeroed
 /// field is the box drawn where layout put it, which is what every box was.
+/// The same bump appends `keep_focus` after it (backlog DX10): a press
+/// that leaves keyboard focus where it was; zeroed, a press focuses as it
+/// did. On a 64-bit target it takes what was the struct's tail padding, so
+/// the size did not move there, but a host that did not recompile leaves
+/// those bytes to chance. Recompile.
 /// The same bump appends `bg_radius` to `KuiSpan` (backlog F101): a
 /// span's background rounded and joined with the ones it meets. On a
 /// 64-bit target it takes what was the struct's tail padding, so the

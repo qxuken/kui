@@ -254,7 +254,12 @@ extern "C" {
  * ABI 20 appends pixel_snap to KuiSpec: a box that sets it is painted with
  * each edge on a whole pixel, so it meets a text's background or another
  * snapped box without a seam. An [in] append; recompile. A zeroed field is
- * the box drawn where layout put it, which is what every box was.
+ * the box drawn where layout put it, which is what every box was. The same
+ * bump appends keep_focus after it (backlog DX10): a press that leaves
+ * keyboard focus where it was; zeroed, a press focuses as it did. On a
+ * 64-bit target it takes what was the struct's tail padding, so the size
+ * did not move there, but a host that did not recompile leaves those
+ * bytes to chance. Recompile.
  * The same bump appends bg_radius to KuiSpan (backlog F101): a span's
  * background rounded and joined with the ones it meets. On a 64-bit target
  * it takes what was the struct's tail padding, so the stride did not move
@@ -973,6 +978,12 @@ typedef struct KuiSpec {
      * scale. Layout, hit-testing, the clip and the children are untouched.
      * ABI 20. */
     uint32_t pixel_snap;
+    /* Non-zero: a press on this node, or anywhere inside it, leaves
+     * keyboard focus where it was (keepFocus): a toolbar button or a
+     * divider that acts without taking the keyboard from the key sink
+     * that had it. Its click, drag and hover are unchanged; Tab and
+     * assistive technology still reach it. ABI 20. */
+    uint32_t keep_focus;
 } KuiSpec;
 
 /* When a scrolling node's bars are drawn (KuiSpec.scrollbar): the schema

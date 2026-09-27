@@ -3807,8 +3807,13 @@ fn build_chrome(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
         // The strip is a plain row rather than a second `window_drag`: the
         // element under test is the cluster, and a drag handle would derive
         // a second `titleBar` role, which is a thing to tell a screen reader
-        // rather than a side effect of where the corpus put a box.
-        ui.with(NodeSpec::row().grow_width(), widgets::window_buttons);
+        // rather than a side effect of where the corpus put a box. It keeps
+        // focus (`keepFocus`, backlog DX10), as a strip of buttons beside
+        // an editor would, which changes nothing drawn.
+        ui.with(
+            NodeSpec::row().grow_width().keep_focus(),
+            widgets::window_buttons,
+        );
         let sink = ui.open_keyed(
             "sink",
             NodeSpec::column()

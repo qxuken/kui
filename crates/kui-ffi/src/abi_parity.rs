@@ -705,6 +705,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         value_step: f32 => "float",
         on_change: *const KuiValue => "const KuiValue *",
         pixel_snap: u32 => "uint32_t",
+        keep_focus: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiAccessNode {
@@ -1372,7 +1373,9 @@ fn an_in_struct_s_size_is_the_abi_s() {
     // (name, size in bytes, the ABI the size is from)
     const IN_LAYOUTS: &[(&str, usize, u32)] = &[
         // ABI 20: `pixel_snap` appended, after ABI 19's `float_clip`,
-        // `aspect_ratio`, `mixed`, `value_step` and `on_change`.
+        // `aspect_ratio`, `mixed`, `value_step` and `on_change`; then
+        // `keep_focus`, into what was the tail padding, so the 64-bit
+        // size stayed at 608 while the layout moved.
         ("KuiSpec", 608, 20),
         ("KuiSizing", 8, 16),
         ("KuiKeyframe", 36, 16),
