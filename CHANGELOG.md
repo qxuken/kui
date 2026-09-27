@@ -289,6 +289,22 @@ Seven readings change:
   *What you can delete:* a flag of the app's own, set on the ask and
   cleared on the next `text`, to tell the clipboard's text from typing.
 
+- **A divider, a revealed row and a row spec, in Rust** (backlog DX12).
+  `widgets::splitter(ui, label, dir, thickness, tag)` is a divider
+  between two panes: the theme's border colour, its accent while hovered
+  or held, the resize arrows, `on_drag(tag)` and `keep_focus`; the
+  handler's `ev.drag().ratio()` is the new split. `widgets::reveal_row(ui,
+  label, i, row_h)` centres a `uniform_list`'s row `i` when it does not
+  show — called before the list, so that frame builds the rows it
+  scrolled to, where `reveal` finds nothing for a row the list has not
+  built — and `rows_in_view` is a page's stride. `uniform_list_with`
+  takes `row_spec(i)` for each row's own node. Rust only for now: Lua's
+  and Node's lists and the two helpers are DX22.
+  *What you can delete:* a divider's hover-or-pressed colouring and its
+  ratio arithmetic; `scroll_geometry` plus an in-view test plus
+  `set_scroll` to reach a list's row; a second node inside every row to
+  carry its click.
+
 - **`reveal` and `setScroll` by a label the frame has not declared
   yet** (backlog DX15). `Core::reveal_label` / `set_scroll_label` (and
   `Ui`'s) resolve when the frame finishes — the scroll before layout, so

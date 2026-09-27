@@ -2354,9 +2354,9 @@ The sweep found three things. Everything kawoosh has asked for by name
 entries of it were **built the same day** (DX1–DX6, `2852e9a`, the
 repo migrated in `20a1988`). The rest was filed here, DX7–DX21, and
 seven of those were built the same day too (DX7, DX8, DX10, DX11, DX13,
-DX14, DX15); DX16 was declined. Open: DX9 and DX17, which want an ADR
-each; DX12, whose home — Rust widgets or a door per binding — is the
-user's call; and DX18–DX21.
+DX14, DX15), and DX12 in Rust after it (its other bindings are DX22);
+DX16 was declined. Open: DX9 and DX17, which want an ADR each, DX18–DX21
+and DX22.
 
 Kawoosh can already delete some code without kui changing: the
 non-breaking-space padding in its Lua plugins (K3, alpha.13), string
@@ -2558,7 +2558,14 @@ Then add `kui_core::testing::frame(core, |ui| …)` and `drag`,
 `move_to`, `click_key`, `rect_of` beside it, make the devtools `Drive`
 delegate to them, and migrate the tests.
 
-### `.` DX12 — Revealing a virtual list's row and a resizable divider are written by hand, three times each
+### `.` DX12 — Revealing a virtual list's row and a resizable divider are written by hand, three times each — **built 2026-09-27** (Rust)
+
+**Built 2026-09-27** in kui-core's widgets, Rust only, on the user's
+go-ahead to put it where it fit: `splitter`, `reveal_row` with
+`rows_in_view`, and `uniform_list_with`. `reveal_row` centres, as all
+three of kawoosh's did; it assumes no top padding on the list. The drag
+payload already carried the parent, so the ratio is `Drag::ratio()`
+(DX7) rather than a new field. The other bindings are DX22.
 
 - Kawoosh reveals a `uniform_list` row three times:
   `child_key("rows")`, `scroll_geometry`, an in-view test, then
@@ -2670,6 +2677,16 @@ cells between the real ones, and a separate edge row
 (`rows.rs:927-1030`). **Do.** `column_rule(width, colour)` and
 `row_rule(width, colour)` on a table: collapsed borders drawn between
 the columns layout already aligns.
+
+### `.` DX22 — `splitter`, `reveal_row` and a list's row spec are Rust's alone
+
+DX12 built them in kui-core's widgets. Lua's prelude `uniform_list` and
+Node's `uniformList` each wrap a row in a box of their own too, and
+neither has a divider or a row reveal. **Do.** In each binding: a row
+spec on the list (`row_props = function(i)` in Lua, `rowProps: (i) =>
+props` in Node), `reveal_row` / `revealRow` as the same arithmetic over
+`scroll_geometry` and `set_scroll`, and a `splitter` helper returning
+the element, over the theme's colours and `keepFocus`.
 
 Seen in the sweep and not filed, each wanting a check on this tree
 first:
