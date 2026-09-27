@@ -2931,6 +2931,52 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "joined-backgrounds",
+        doc: "Rounded span backgrounds joined into one shape (backlog \
+              F101): four texts of mono no-wrap spans stacked with no gap, \
+              the first three's selected spans in one translucent colour \
+              with `bgRadius` 4 — the tail of the first line, the whole \
+              second, the head of the third — and the fourth's in another \
+              colour, meeting the third but not joined with it. Each \
+              rounded background is one `fragment` quad of the stock join \
+              source the core registers, as the polygon's is, so no \
+              adapter writes WGSL here; its sixteen params are its own \
+              extent, the extents of the pieces it meets above and below, \
+              the radius and which of the two there are, in physical px, \
+              and the `fragment` lines of the report pin them to the bit. \
+              A binding that drops the radius draws four solids instead.",
+        custom: &[],
+        elements: &["box", "text"],
+        build: build_joined_backgrounds,
+        env: NATIVE_CHROME,
+        steps: &[],
+        expect: Expect {
+            solid: 0,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            segments_follow_text: false,
+            fragments: 4,
+            textures: 0,
+            glyphs_min: 20,
+            access: &[
+                "0 window ||",
+                "1 staticText let a = 1;||",
+                "1 staticText let b = 22;||",
+                "1 staticText c + d||",
+                "1 staticText find||",
+            ],
+            events: &[],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+            secure_input: false,
+        },
+    },
+    Scene {
         name: "sampler",
         doc: "The generic rows no other scene declares, on four nodes \
               (backlog AR47): a card carrying the size ceilings, `center`, \
@@ -4246,6 +4292,20 @@ fn build_underlines(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 origin_line: 0,
             },
             NodeSpec::default().label("term"),
+        );
+    });
+}
+
+fn build_joined_backgrounds(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    let mono = TextStyle::new(14.0).mono().line_height(20.0);
+    let sel = |s| Span::new(s).bg(Color::hex(0x3b5bd466)).bg_radius(4.0);
+    ui.with(NodeSpec::column().pad(10.0), |ui| {
+        ui.rich_text(&[Span::new("let "), sel("a = 1;")], mono);
+        ui.rich_text(&[sel("let b = 22;")], mono);
+        ui.rich_text(&[sel("c"), Span::new(" + d")], mono);
+        ui.rich_text(
+            &[Span::new("find").bg(Color::hex(0xd9738c66)).bg_radius(4.0)],
+            mono,
         );
     });
 }

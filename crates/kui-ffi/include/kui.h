@@ -255,6 +255,12 @@ extern "C" {
  * each edge on a whole pixel, so it meets a text's background or another
  * snapped box without a seam. An [in] append; recompile. A zeroed field is
  * the box drawn where layout put it, which is what every box was.
+ * The same bump appends bg_radius to KuiSpan (backlog F101): a span's
+ * background rounded and joined with the ones it meets. On a 64-bit target
+ * it takes what was the struct's tail padding, so the stride did not move
+ * there, but a host that did not recompile leaves those bytes to chance
+ * (on a 32-bit one the stride moved, as ABI 8's did). Recompile; a zeroed
+ * field is the square background every span had.
  */
 #define KUI_ABI_VERSION 20u
 uint32_t kui_abi_version(void);
@@ -1459,6 +1465,12 @@ typedef struct KuiSpan {
     uint32_t underline_color; /* the underline's own, 0 = the span's; non-zero implies
                                  KUI_SPAN_UNDERLINE. ABI 17. */
     uint32_t underline_style; /* KUI_UNDERLINE_* ; non-solid implies KUI_SPAN_UNDERLINE. ABI 17. */
+    float bg_radius; /* bg's corner radius, logical px; 0 = square. Above zero, bg is joined
+                        into one shape with every rounded background of the same colour and
+                        radius it meets - on the line above or below, or end to end on its
+                        own line, in this text or another: convex where a line reaches past
+                        its neighbour, a fillet where it falls short, round where nothing
+                        meets it. A selection over rows is one outline. ABI 20. */
 } KuiSpan;
 
 /* The window an app starts in - the one kui_run opens - which is always

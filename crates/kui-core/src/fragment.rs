@@ -295,6 +295,96 @@ fn kui_fs_fragment(
 }
 "#;
 
+/// The stock fragment a rounded span background is painted with once the
+/// frame has joined it with the ones it meets (backlog F101,
+/// `crate::join`): one piece of the shape per line, its quad as tall as
+/// the line and as wide as the piece and whatever of its neighbours'
+/// reach its corners can fill. The params are physical px from the
+/// quad's left: `params[0]` this piece `[a, b]` and the line above's,
+/// `params[1]` the line below's, the radius and which neighbours there
+/// are (1 above, 2 below); the fill is `in.color`, its alpha the quad's.
+///
+/// A corner is convex where this piece reaches past its neighbour on that
+/// side, a fillet past its end where the neighbour reaches past it
+/// (concave), square where the two end together, and round where there is
+/// no neighbour or it does not overlap. At a join the radius is half the
+/// step at most, and both pieces work it out from the same two ends, so
+/// the convex half above and the fillet below meet. The ends and the arcs
+/// are sampled sixteen times a pixel, and only near them; the pieces meet
+/// on whole pixels because a span's background is on them already.
+/// Registered by the core, as [`POLYGON`] is.
+pub const JOIN: &str = r#"
+fn join_radii(cx: f32, e: f32, has: bool, sx: f32, r: f32, lone: f32) -> vec2<f32> {
+    // A corner's (convex, concave) radii: `e` the neighbour's end on this
+    // side, `sx` outward.
+    if !has {
+        return vec2<f32>(lone, 0.0);
+    }
+    let d = (e - cx) * sx;
+    return vec2<f32>(min(r, max(-d, 0.0) * 0.5), min(r, max(d, 0.0) * 0.5));
+}
+
+fn join_cut(p: vec2<f32>, cx: f32, cy: f32, sx: f32, sy: f32, rc: f32) -> bool {
+    // Inside the piece's box, but outside a convex corner's arc.
+    let near = (cx - p.x) * sx < rc && (cy - p.y) * sy < rc;
+    let c = vec2<f32>(cx - sx * rc, cy - sy * rc);
+    return rc > 0.0 && near && distance(p, c) > rc;
+}
+
+fn join_fillet(p: vec2<f32>, cx: f32, cy: f32, sx: f32, sy: f32, rf: f32) -> bool {
+    // Past the piece's end, inside a concave corner's fillet.
+    let dx = (p.x - cx) * sx;
+    let dy = (cy - p.y) * sy;
+    let c = vec2<f32>(cx + sx * rf, cy - sy * rf);
+    return rf > 0.0 && dx >= 0.0 && dx < rf && dy >= 0.0 && dy < rf && distance(p, c) >= rf;
+}
+
+fn join_inside(p: vec2<f32>, h: f32, a: f32, b: f32, pv: vec2<f32>, hp: bool, nx: vec2<f32>, hn: bool, r: f32) -> bool {
+    let lone = min(r, (b - a) * 0.5);
+    let tl = join_radii(a, pv.x, hp, -1.0, r, lone);
+    let tr = join_radii(b, pv.y, hp, 1.0, r, lone);
+    let bl = join_radii(a, nx.x, hn, -1.0, r, lone);
+    let br = join_radii(b, nx.y, hn, 1.0, r, lone);
+    let in_box = p.x >= a && p.x < b && p.y >= 0.0 && p.y < h;
+    let cut = join_cut(p, a, 0.0, -1.0, -1.0, tl.x) || join_cut(p, b, 0.0, 1.0, -1.0, tr.x)
+        || join_cut(p, a, h, -1.0, 1.0, bl.x) || join_cut(p, b, h, 1.0, 1.0, br.x);
+    let fill = join_fillet(p, a, 0.0, -1.0, -1.0, tl.y) || join_fillet(p, b, 0.0, 1.0, -1.0, tr.y)
+        || join_fillet(p, a, h, -1.0, 1.0, bl.y) || join_fillet(p, b, h, 1.0, 1.0, br.y);
+    return (in_box && !cut) || fill;
+}
+
+fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32> {
+    let a = params[0].x;
+    let b = params[0].y;
+    let pv = params[0].zw;
+    let nx = params[1].xy;
+    let h = in.size.y;
+    let r = min(params[1].z, h * 0.5);
+    let flags = u32(params[1].w + 0.5);
+    // A neighbour shapes the corners only where it overlaps this piece.
+    let hp = (flags & 1u) != 0u && pv.x < b && pv.y > a;
+    let hn = (flags & 2u) != 0u && nx.x < b && nx.y > a;
+    let x = in.local.x;
+    // Past the fillets nothing; away from both ends every pixel.
+    if x < a - r - 1.0 || x > b + r + 1.0 {
+        return vec4<f32>(0.0);
+    }
+    if x > a + r + 1.0 && x < b - r - 1.0 {
+        return vec4<f32>(in.color.rgb, 1.0);
+    }
+    var n = 0.0;
+    for (var i = 0; i < 4; i++) {
+        for (var j = 0; j < 4; j++) {
+            let o = vec2<f32>((f32(i) + 0.5) * 0.25 - 0.5, (f32(j) + 0.5) * 0.25 - 0.5);
+            if join_inside(in.local + o, h, a, b, pv, hp, nx, hn, r) {
+                n += 1.0;
+            }
+        }
+    }
+    return vec4<f32>(in.color.rgb, n / 16.0);
+}
+"#;
+
 /// The entry point [`EPILOGUE`] declares — what a backend names when it
 /// builds the pipeline.
 pub const ENTRY_POINT: &str = "kui_fs_fragment";
@@ -421,6 +511,11 @@ fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32> {
     #[test]
     fn the_stock_polygon_validates() {
         validate(POLYGON).unwrap();
+    }
+
+    #[test]
+    fn the_stock_join_validates() {
+        validate(JOIN).unwrap();
     }
 
     /// `in.color` is what the prelude added for it (ADR 0025).

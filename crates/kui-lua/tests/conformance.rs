@@ -475,6 +475,19 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
+        // Backlog F101: rounded span backgrounds joined across four texts,
+        // the fourth in another colour.
+        "joined-backgrounds" => r#"
+            local mono = { size = 14, family = "mono", line_height = 20 }
+            local function sel(s) return { s, bg = 0x3b5bd466, bg_radius = 4 } end
+            return column { pad = 10,
+              text({ "let ", sel("a = 1;") }, mono),
+              text({ sel("let b = 22;") }, mono),
+              text({ sel("c"), " + d" }, mono),
+              text({ { "find", bg = 0xd9738c66, bg_radius = 4 } }, mono),
+            }
+        "#
+        .to_string(),
         // docs/adr/0010-a-segment-primitive.md: three strokes and a box in
         // a 200×120 canvas; the elbow takes a click, hit by its stroke.
         "lines" => r#"

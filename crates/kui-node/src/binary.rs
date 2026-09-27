@@ -91,7 +91,10 @@ use crate::{Result, err, value_of};
 /// array may have four or five entries a cell. Slots in the middle of two
 /// ops, which is what the bump is for; `underlineColor` and
 /// `underlineStyle` on a `<text>` are ordinary schema rows.
-pub const VERSION: u32 = 16;
+/// v17: a span carries a fifth slot after its underline colour, its
+/// background's radius in logical px (backlog F101), 0 for the square
+/// background every span had. A slot in the middle of an op again.
+pub const VERSION: u32 = 17;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a
 /// token index rather than a value (`docs/adr/0027-tokens-beside-the-theme.md`,
@@ -726,7 +729,8 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut, refs: &mut Refs<'_>) -
 /// colour, 8 underline, 16 strikethrough, 32 has bg, 64 the colour is a
 /// token index, 128 the bg is, 256 has an underline colour, 512 it is a
 /// token index, 1024 the underline is wavy, 2048 dotted) with the three
-/// colours (v13, backlog K4).
+/// colours (v13, backlog K4), then the background's radius (v17, backlog
+/// F101).
 fn read_spans<'a>(r: &mut Reader<'a>, refs: &mut Refs<'_>) -> Result<Vec<Span<'a>>> {
     let nspans = r.u()? as usize;
     let mut spans = Vec::with_capacity(nspans);
@@ -736,6 +740,7 @@ fn read_spans<'a>(r: &mut Reader<'a>, refs: &mut Refs<'_>) -> Result<Vec<Span<'a
         let color = r.f()?;
         let bg = r.f()?;
         let ul = r.f()?;
+        let radius = r.f()?;
         let mut s = Span::new(text);
         if flags & 1 != 0 {
             s = s.bold();
@@ -783,6 +788,9 @@ fn read_spans<'a>(r: &mut Reader<'a>, refs: &mut Refs<'_>) -> Result<Vec<Span<'a
             s = s.underline_style(kui_core::UnderlineStyle::Wavy);
         } else if flags & 2048 != 0 {
             s = s.underline_style(kui_core::UnderlineStyle::Dotted);
+        }
+        if radius > 0.0 {
+            s = s.bg_radius(radius as f32);
         }
         spans.push(s);
     }

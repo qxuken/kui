@@ -1320,6 +1320,32 @@ test("an underline can be its own colour and a wave or dots (K4)", () => {
   assert.throws(() => draw(text([el('span', { underlineStyle: 'squiggly' }, ['x'])], mono)), /bad underlineStyle/);
 });
 
+// A rounded span background (backlog F101): `bgRadius` makes a span's
+// background a piece of the stock join fragment (kind 7) instead of a
+// solid, one a line, told the pieces it meets in the texts above and below.
+// Square is what it was; a nested span inherits the radius.
+test('a rounded span background is joined with the ones it meets (F101)', () => {
+  const ctx = new Ctx();
+  const mono = { size: 14, family: 'mono', lineHeight: 20 };
+  const sel = '#3b5bd466';
+  const draw = (rows) => {
+    ctx.frame(400, 200, 1, box({}, rows));
+    return decodeQuads(ctx.quads());
+  };
+  const row = (s, props) => text([el('span', { bg: sel, ...props }, [s])], mono);
+  let quads = draw([row('first line', { bgRadius: 4 }), row('second', { bgRadius: 4 }), row('third line here', { bgRadius: 4 })]);
+  assert.equal(quads.filter((q) => q.kind === 7).length, 3, 'a piece a row');
+  assert.equal(quads.filter((q) => q.kind === 0).length, 0, 'no square background beside them');
+  // Inherited from the enclosing span.
+  quads = draw([text([el('span', { bg: sel, bgRadius: 4 }, ['a ', el('span', { bold: true }, ['b'])])], mono)]);
+  assert.equal(quads.filter((q) => q.kind === 7).length, 1, 'one run, one piece');
+  // Without a radius, the square background it always was.
+  quads = draw([row('first line'), row('second')]);
+  assert.equal(quads.filter((q) => q.kind === 7).length, 0);
+  assert.equal(quads.filter((q) => q.kind === 0).length, 2);
+  assert.throws(() => draw([row('x', { bgRadius: 'round' })]), /bad bgRadius/);
+});
+
 // OpenType features on a text style (backlog C23): one string every
 // binding shares, part of what the text is shaped as. The ligature half runs
 // only where a font with one is installed.
@@ -3841,6 +3867,18 @@ const SCENE_TREES = {
       cell('#d9738c', { pixelSnap: true, shadowColor: '#000000' }),
       cell('#73d98c', { pixelSnap: true }),
       cell('#3b5bd4'),
+    ])]);
+  },
+  // Rounded span backgrounds joined across four texts (backlog F101), the
+  // fourth in another colour.
+  'joined-backgrounds': () => {
+    const mono = { size: 14, family: 'mono', lineHeight: 20 };
+    const sel = (s) => el('span', { bg: '#3b5bd466', bgRadius: 4 }, [s]);
+    return root({}, [box({ pad: 10 }, [
+      text(['let ', sel('a = 1;')], mono),
+      text([sel('let b = 22;')], mono),
+      text([sel('c'), ' + d'], mono),
+      text([el('span', { bg: '#d9738c66', bgRadius: 4 }, ['find'])], mono),
     ])]);
   },
   // Access rects cut to the clip (backlog F93): three nodes on a `clip`

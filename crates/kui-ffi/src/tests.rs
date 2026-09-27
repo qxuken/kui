@@ -2452,6 +2452,67 @@ mod follow_headless {
         kui_ctx_free(ctx);
     }
 
+    /// `KuiSpan.bg_radius` crosses the boundary (backlog F101): two rows'
+    /// rounded backgrounds are two pieces of the stock join fragment, the
+    /// first told there is a row below it and the second one above; a
+    /// zeroed field is the square background.
+    #[test]
+    fn a_span_s_bg_radius_joins_its_background_across_the_boundary() {
+        let ctx = kui_ctx_new();
+        let mut mono = unsafe { std::mem::zeroed::<KuiTextStyle>() };
+        mono.size = 14.0;
+        mono.family = 2;
+        mono.line_height = 20.0;
+        let draw = |radius: f32| -> Vec<(u32, [f32; 16])> {
+            kui_frame_begin(ctx, 400.0, 200.0, 1.0);
+            for s in ["first line", "second"] {
+                let mut span = unsafe { std::mem::zeroed::<KuiSpan>() };
+                span.text = ks(s);
+                span.bg = 0x3b5bd466;
+                span.bg_radius = radius;
+                kui_rich_text(ctx, &span, 1, &mono);
+            }
+            kui_frame_finish(ctx);
+            let mut draw = KuiDrawData::default();
+            kui_draw_data(ctx, &mut draw);
+            let quads = unsafe { std::slice::from_raw_parts(draw.quads, draw.quad_count) };
+            let frags = if draw.fragment_count == 0 {
+                &[][..]
+            } else {
+                unsafe { std::slice::from_raw_parts(draw.fragments, draw.fragment_count) }
+            };
+            let (solid, fragment) = (
+                kui_core::QuadKind::Solid as u32,
+                kui_core::QuadKind::Fragment as u32,
+            );
+            quads
+                .iter()
+                .filter(|q| q.kind == solid || q.kind == fragment)
+                .map(|q| {
+                    let params = if q.kind == fragment {
+                        frags[q.uv[0] as usize].params
+                    } else {
+                        [0.0; 16]
+                    };
+                    (q.kind, params)
+                })
+                .collect()
+        };
+        let joined = draw(4.0);
+        assert_eq!(joined.len(), 2, "a piece a row");
+        let fragment = kui_core::QuadKind::Fragment as u32;
+        assert!(joined.iter().all(|(k, _)| *k == fragment));
+        // params[7] says which neighbours there are: 2 below, 1 above.
+        assert_eq!(joined[0].1[7], 2.0);
+        assert_eq!(joined[1].1[7], 1.0);
+        assert_eq!(joined[0].1[6], 4.0, "the radius, physical px at 1x");
+        let square = draw(0.0);
+        assert_eq!(square.len(), 2);
+        let solid = kui_core::QuadKind::Solid as u32;
+        assert!(square.iter().all(|(k, _)| *k == solid));
+        kui_ctx_free(ctx);
+    }
+
     /// A press through the C surface with Shift held (`kui_input_modifiers`)
     /// keeps the anchor, which `kui_selection_ends` reads back as the
     /// directed pair (ADR 0029, backlog C39); an `on_scroll` grid hears

@@ -935,6 +935,17 @@ impl Core {
             self.depart.end_replay(replay);
         }
 
+        // Rounded span backgrounds, joined into one shape with the ones
+        // they meet now that every text is painted (backlog F101).
+        let joins = self.text.take_joins();
+        if !joins.is_empty() {
+            let sess = &mut *self.session.state();
+            let id = sess.resources.add_fragment(crate::fragment::JOIN);
+            if let Some(source) = sess.resources.fragment(id).cloned() {
+                crate::join::shape(&mut self.display, &joins, id, &source, scale);
+            }
+        }
+
         let shapes = std::mem::take(&mut self.hit_shapes);
         self.interaction.set_hits_shaped(hits, shapes);
         // A new frame can move a hover-sound node under a still cursor.

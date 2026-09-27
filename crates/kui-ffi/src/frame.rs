@@ -551,6 +551,9 @@ fn with_spans<R>(
             if s.bg != 0 {
                 span = span.bg(Color::hex(s.bg));
             }
+            if s.bg_radius > 0.0 {
+                span = span.bg_radius(s.bg_radius);
+            }
             span
         })
         .collect();

@@ -80,3 +80,87 @@ pub fn inside(clip: &kui_core::Clip, x: f32, y: f32) -> f32 {
     );
     1.0 - smoothstep(-AA, AA, d)
 }
+
+/// `kui_core::fragment::JOIN`'s shape (backlog F101), line for line: the
+/// alpha of the piece at the pixel centred on `local` (physical px from
+/// the quad's top-left) of a quad `size` tall, from its sixteen params,
+/// before the quad's colour and the epilogue's coverage. The fragment
+/// lives in the core rather than `shader.wgsl`, but what a test needs of
+/// it is the same agreement.
+pub fn join_alpha(local: (f32, f32), size: (f32, f32), p: &[f32; 16]) -> f32 {
+    fn radii(cx: f32, e: f32, has: bool, sx: f32, r: f32, lone: f32) -> (f32, f32) {
+        if !has {
+            return (lone, 0.0);
+        }
+        let d = (e - cx) * sx;
+        (r.min((-d).max(0.0) * 0.5), r.min(d.max(0.0) * 0.5))
+    }
+    fn dist(p: (f32, f32), c: (f32, f32)) -> f32 {
+        ((p.0 - c.0).powi(2) + (p.1 - c.1).powi(2)).sqrt()
+    }
+    fn cut(p: (f32, f32), cx: f32, cy: f32, sx: f32, sy: f32, rc: f32) -> bool {
+        let near = (cx - p.0) * sx < rc && (cy - p.1) * sy < rc;
+        rc > 0.0 && near && dist(p, (cx - sx * rc, cy - sy * rc)) > rc
+    }
+    fn fillet(p: (f32, f32), cx: f32, cy: f32, sx: f32, sy: f32, rf: f32) -> bool {
+        let dx = (p.0 - cx) * sx;
+        let dy = (cy - p.1) * sy;
+        rf > 0.0
+            && (0.0..rf).contains(&dx)
+            && (0.0..rf).contains(&dy)
+            && dist(p, (cx + sx * rf, cy - sy * rf)) >= rf
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn inside(
+        p: (f32, f32),
+        h: f32,
+        a: f32,
+        b: f32,
+        pv: (f32, f32),
+        hp: bool,
+        nx: (f32, f32),
+        hn: bool,
+        r: f32,
+    ) -> bool {
+        let lone = r.min((b - a) * 0.5);
+        let tl = radii(a, pv.0, hp, -1.0, r, lone);
+        let tr = radii(b, pv.1, hp, 1.0, r, lone);
+        let bl = radii(a, nx.0, hn, -1.0, r, lone);
+        let br = radii(b, nx.1, hn, 1.0, r, lone);
+        let in_box = p.0 >= a && p.0 < b && p.1 >= 0.0 && p.1 < h;
+        let c = cut(p, a, 0.0, -1.0, -1.0, tl.0)
+            || cut(p, b, 0.0, 1.0, -1.0, tr.0)
+            || cut(p, a, h, -1.0, 1.0, bl.0)
+            || cut(p, b, h, 1.0, 1.0, br.0);
+        let f = fillet(p, a, 0.0, -1.0, -1.0, tl.1)
+            || fillet(p, b, 0.0, 1.0, -1.0, tr.1)
+            || fillet(p, a, h, -1.0, 1.0, bl.1)
+            || fillet(p, b, h, 1.0, 1.0, br.1);
+        (in_box && !c) || f
+    }
+    let (a, b) = (p[0], p[1]);
+    let pv = (p[2], p[3]);
+    let nx = (p[4], p[5]);
+    let h = size.1;
+    let r = p[6].min(h * 0.5);
+    let flags = (p[7] + 0.5) as u32;
+    let hp = flags & 1 != 0 && pv.0 < b && pv.1 > a;
+    let hn = flags & 2 != 0 && nx.0 < b && nx.1 > a;
+    let x = local.0;
+    if x < a - r - 1.0 || x > b + r + 1.0 {
+        return 0.0;
+    }
+    if x > a + r + 1.0 && x < b - r - 1.0 {
+        return 1.0;
+    }
+    let mut n = 0.0;
+    for i in 0..4 {
+        for j in 0..4 {
+            let o = ((i as f32 + 0.5) * 0.25 - 0.5, (j as f32 + 0.5) * 0.25 - 0.5);
+            if inside((local.0 + o.0, local.1 + o.1), h, a, b, pv, hp, nx, hn, r) {
+                n += 1.0;
+            }
+        }
+    }
+    n / 16.0
+}

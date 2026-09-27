@@ -883,6 +883,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         bg: u32 => "uint32_t",
         underline_color: u32 => "uint32_t",
         underline_style: u32 => "uint32_t",
+        bg_radius: f32 => "float",
     });
 
     abi_struct!(o, KuiColorToken {
@@ -1377,7 +1378,9 @@ fn an_in_struct_s_size_is_the_abi_s() {
         ("KuiKeyframe", 36, 16),
         ("KuiEnter", 40, 16),
         ("KuiTextStyle", 72, 17),
-        ("KuiSpan", 40, 17),
+        // ABI 20: `bg_radius` appended into what was the tail padding, so
+        // the 64-bit size stayed at 40 while the layout moved.
+        ("KuiSpan", 40, 20),
         ("KuiCell", 20, 17),
         ("KuiMenuItem", 56, 16),
         ("KuiMenu", 40, 16),
