@@ -27,17 +27,15 @@ fn button(w: f32, h: f32, name: &str) -> NodeSpec {
 fn canvas_with_a_node(core: &mut Core, float: FloatConfig, dy: f32) -> Key {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    ui.with_keyed(
+    ui.leaf_keyed(
         "toolbar",
         button(400.0, 40.0, "toolbar").width(Sizing::Grow(1.0)),
-        |_| {},
     );
     let mut node = Key::ROOT;
     ui.with(NodeSpec::column().fill().clip(), |ui| {
-        node = ui.with_keyed(
+        node = ui.leaf_keyed(
             "node",
             button(80.0, 40.0, "node").float(float.offset(40.0, dy)),
-            |_| {},
         );
     });
     ui.finish();
@@ -95,7 +93,7 @@ fn a_child_of_a_clip_box_is_cut_at_its_side() {
             .width(Sizing::Fixed(100.0))
             .height(Sizing::Fixed(50.0))
             .clip(),
-        |ui| wide = ui.with_keyed("wide", button(160.0, 30.0, "wide"), |_| {}),
+        |ui| wide = ui.leaf_keyed("wide", button(160.0, 30.0, "wide")),
     );
     ui.finish();
     assert_eq!(rect_of(&mut core, wide), Rect::new(0.0, 0.0, 100.0, 30.0));
@@ -116,7 +114,7 @@ fn scroller(core: &mut Core) -> (Key, [Key; 3]) {
         |ui| {
             for (i, row) in rows.iter_mut().enumerate() {
                 let name = format!("row {i}");
-                *row = ui.with_keyed(&name, button(120.0, 30.0, &name), |_| {});
+                *row = ui.leaf_keyed(&name, button(120.0, 30.0, &name));
             }
         },
     );
@@ -174,7 +172,7 @@ fn a_clip_that_moved_moves_the_tree() {
                 .width(Sizing::Fixed(w))
                 .height(Sizing::Fixed(50.0))
                 .clip(),
-            |ui| key = ui.with_keyed("b", button(160.0, 30.0, "b"), |_| {}),
+            |ui| key = ui.leaf_keyed("b", button(160.0, 30.0, "b")),
         );
         ui.finish();
         core.access_tree().get(key).unwrap().rect

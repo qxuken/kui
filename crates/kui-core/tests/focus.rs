@@ -52,13 +52,12 @@ fn frame(core: &mut Core, declare_pane: bool, autofocus_edit: bool) -> Keys {
             .height(Sizing::Fixed(H))
     };
     ui.with_keyed("titlebar", row().window_drag(), |ui| {
-        ui.with_keyed(
+        ui.leaf_keyed(
             "close",
             NodeSpec::row()
                 .width(Sizing::Fixed(H))
                 .height(Sizing::Fixed(H))
                 .window_button(WindowButton::Close),
-            |_| {},
         );
     });
     ui.with_keyed("heading", row().role(Role::Heading), |ui| {
@@ -67,21 +66,16 @@ fn frame(core: &mut Core, declare_pane: bool, autofocus_edit: bool) -> Keys {
     let go = ui.with_keyed("go", row().on_click(Value::str("go")), |ui| {
         ui.text("Go", TextStyle::new(12.0))
     });
-    let save = ui.with_keyed(
-        "save",
-        row().on_click(Value::str("save")).label("Save"),
-        |_| {},
-    );
-    let mute = ui.with_keyed(
+    let save = ui.leaf_keyed("save", row().on_click(Value::str("save")).label("Save"));
+    let mute = ui.leaf_keyed(
         "mute",
         row()
             .role(Role::Switch)
             .checked(true)
             .on_click(Value::str("mute"))
             .label("Mute"),
-        |_| {},
     );
-    let vol = ui.with_keyed(
+    let vol = ui.leaf_keyed(
         "vol",
         row()
             .role(Role::Slider)
@@ -90,30 +84,27 @@ fn frame(core: &mut Core, declare_pane: bool, autofocus_edit: bool) -> Keys {
             .value_now(3.0)
             .value_min(0.0)
             .value_max(10.0),
-        |_| {},
     );
-    let off = ui.with_keyed(
+    let off = ui.leaf_keyed(
         "off",
         row()
             .on_click(Value::str("nope"))
             .disabled(true)
             .hover_bg(Color::WHITE)
             .label("Off"),
-        |_| {},
     );
     let mut hidden = Key::ROOT;
     ui.with_keyed("deco", row().role(Role::None), |ui| {
-        hidden = ui.with_keyed(
+        hidden = ui.leaf_keyed(
             "hidden",
             NodeSpec::row()
                 .width(Sizing::Fixed(H))
                 .height(Sizing::Fixed(H))
                 .on_click(Value::str("hidden")),
-            |_| {},
         );
     });
-    ui.with_keyed("plain", row(), |_| {});
-    let row_key = ui.with_keyed("row", row().focusable().label("Row"), |_| {});
+    ui.leaf_keyed("plain", row());
+    let row_key = ui.leaf_keyed("row", row().focusable().label("Row"));
     let name = ui.text_edit(
         "name",
         "hi",
@@ -123,17 +114,16 @@ fn frame(core: &mut Core, declare_pane: bool, autofocus_edit: bool) -> Keys {
         },
         row().label("Name"),
     );
-    let pane = ui.with_keyed("pane", row().on_key(Value::str("pane")), |_| {});
+    let pane = ui.leaf_keyed("pane", row().on_key(Value::str("pane")));
     if declare_pane {
         ui.take_key_focus(pane);
     }
-    let styled = ui.with_keyed(
+    let styled = ui.leaf_keyed(
         "styled",
         row()
             .on_click(Value::str("styled"))
             .bg(Color::BLACK)
             .focus_bg(FOCUS_BG),
-        |_| {},
     );
     ui.finish();
     Keys {
@@ -231,13 +221,12 @@ fn a_view_steps_focus_onto_the_frame_it_is_declaring() {
             None => {}
         }
         for name in ["a", "b", "c"] {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 name,
                 NodeSpec::row()
                     .focusable()
                     .width(Sizing::Fixed(100.0))
                     .height(Sizing::Fixed(H)),
-                |_| {},
             );
         }
         ui.finish();
@@ -252,13 +241,12 @@ fn a_view_steps_focus_onto_the_frame_it_is_declaring() {
         let mut ui = immediate.frame(Size::new(200.0, 200.0), 1.0);
         ui.core().focus_next(true);
         for name in ["a", "b", "c"] {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 name,
                 NodeSpec::row()
                     .focusable()
                     .width(Sizing::Fixed(100.0))
                     .height(Sizing::Fixed(H)),
-                |_| {},
             );
         }
         ui.finish();
@@ -276,13 +264,12 @@ fn a_view_steps_focus_onto_the_frame_it_is_declaring() {
         ui.focus(a);
         ui.focus_prev();
         for name in ["a", "b", "c"] {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 name,
                 NodeSpec::row()
                     .focusable()
                     .width(Sizing::Fixed(100.0))
                     .height(Sizing::Fixed(H)),
-                |_| {},
             );
         }
         ui.finish();
@@ -639,20 +626,15 @@ fn modal_frame(core: &mut Core, dialog: bool) -> Modal {
             .height(Sizing::Fixed(H))
     };
     ui.with_keyed("titlebar", row().window_drag(), |ui| {
-        ui.with_keyed(
+        ui.leaf_keyed(
             "close",
             NodeSpec::row()
                 .width(Sizing::Fixed(H))
                 .height(Sizing::Fixed(H))
                 .window_button(WindowButton::Close),
-            |_| {},
         );
     });
-    let open = ui.with_keyed(
-        "open",
-        row().on_click(Value::str("open")).label("Open"),
-        |_| {},
-    );
+    let open = ui.leaf_keyed("open", row().on_click(Value::str("open")).label("Open"));
     // A scroll container two rows tall holding four: it overflows, so it
     // has a scrollbar and somewhere for the wheel to go.
     let list = ui.with_keyed(
@@ -663,10 +645,9 @@ fn modal_frame(core: &mut Core, dialog: bool) -> Modal {
             .scroll_y(),
         |ui| {
             for n in 0..4 {
-                ui.with_keyed(
+                ui.leaf_keyed(
                     ["a", "b", "c", "d"][n],
                     row().on_click(Value::str("row")).label("Row"),
-                    |_| {},
                 );
             }
         },
@@ -690,7 +671,7 @@ fn modal_frame(core: &mut Core, dialog: bool) -> Modal {
                 .modal(Value::str("dlg"))
                 .label("Settings"),
             |ui| {
-                ok = ui.with_keyed("ok", row().on_click(Value::str("ok")).label("OK"), |_| {});
+                ok = ui.leaf_keyed("ok", row().on_click(Value::str("ok")).label("OK"));
                 reason = ui.text_edit("reason", "", &EditOptions::default(), row().label("Reason"));
             },
         );
@@ -831,7 +812,7 @@ fn a_modal_without_a_tag_still_dismisses() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(200.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    let menu = ui.with_keyed(
+    let menu = ui.leaf_keyed(
         "menu",
         NodeSpec::column()
             .width(Sizing::Fixed(100.0))
@@ -839,7 +820,6 @@ fn a_modal_without_a_tag_still_dismisses() {
             .float(FloatConfig::viewport())
             .modal(Value::Null)
             .label("Menu"),
-        |_| {},
     );
     ui.finish();
     let out = key(&mut core, EditKey::Escape);
@@ -924,16 +904,15 @@ fn a_modal_that_is_not_floated_warns() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(200.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    let sheet = ui.with_keyed(
+    let sheet = ui.leaf_keyed(
         "sheet",
         NodeSpec::column()
             .width(Sizing::Fixed(100.0))
             .height(Sizing::Fixed(H))
             .modal(Value::Null)
             .label("Sheet"),
-        |_| {},
     );
-    ui.with_keyed("after", NodeSpec::row().height(Sizing::Fixed(H)), |_| {});
+    ui.leaf_keyed("after", NodeSpec::row().height(Sizing::Fixed(H)));
     ui.finish();
     let ws = core.take_warnings();
     let modal: Vec<_> = ws
@@ -994,22 +973,20 @@ fn a_float_declared_before_a_modal_paints_over_it_too() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(200.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    ui.with_keyed(
+    ui.leaf_keyed(
         "hud",
         NodeSpec::row()
             .width(Sizing::Fixed(50.0))
             .height(Sizing::Fixed(H))
             .float(FloatConfig::viewport()),
-        |_| {},
     );
-    let sheet = ui.with_keyed(
+    let sheet = ui.leaf_keyed(
         "sheet",
         NodeSpec::column()
             .width(Sizing::Fixed(100.0))
             .height(Sizing::Fixed(H))
             .modal(Value::Null)
             .label("Sheet"),
-        |_| {},
     );
     ui.finish();
     let ws = core.take_warnings();
@@ -1033,13 +1010,12 @@ fn a_float_declared_before_a_modal_paints_over_it_too() {
             .modal(Value::Null)
             .label("Sheet"),
         |ui| {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "menu",
                 NodeSpec::row()
                     .width(Sizing::Fixed(50.0))
                     .height(Sizing::Fixed(H))
                     .float(FloatConfig::viewport()),
-                |_| {},
             );
         },
     );
@@ -1062,8 +1038,8 @@ fn drag_frame(core: &mut Core, dialog: bool) -> (Key, Key) {
             .width(Sizing::Fixed(100.0))
             .height(Sizing::Fixed(H))
     };
-    let handle = ui.with_keyed("handle", row().on_drag(Value::str("split")), |_| {});
-    let button = ui.with_keyed("button", row().on_click(Value::str("go")), |_| {});
+    let handle = ui.leaf_keyed("handle", row().on_drag(Value::str("split")));
+    let button = ui.leaf_keyed("button", row().on_click(Value::str("go")));
     if dialog {
         ui.with_keyed(
             "dialog",
@@ -1078,7 +1054,7 @@ fn drag_frame(core: &mut Core, dialog: bool) -> (Key, Key) {
                 .modal(Value::Null)
                 .label("Wait"),
             |ui| {
-                ui.with_keyed("ok", row().on_click(Value::str("ok")), |_| {});
+                ui.leaf_keyed("ok", row().on_click(Value::str("ok")));
             },
         );
     }
@@ -1170,7 +1146,7 @@ fn rename_frame(
     };
     let keys: Vec<Key> = nodes
         .iter()
-        .map(|n| ui.with_keyed(n, row().focusable().label(*n), |_| {}))
+        .map(|n| ui.leaf_keyed(n, row().focusable().label(*n)))
         .collect();
     if let Some(name) = focus_on {
         let i = nodes
@@ -1285,8 +1261,8 @@ fn an_imperative_focus_beats_the_focus_the_modal_gives_back() {
             .width(Sizing::Fixed(100.0))
             .height(Sizing::Fixed(H))
     };
-    ui.with_keyed("a", row().focusable().label("a"), |_| {});
-    ui.with_keyed("b", row().focusable().label("b"), |_| {});
+    ui.leaf_keyed("a", row().focusable().label("a"));
+    ui.leaf_keyed("b", row().focusable().label("b"));
     ui.focus(b);
     ui.finish();
     assert_eq!(core.focus(), Some(b));
@@ -1376,12 +1352,11 @@ fn the_root_is_never_a_tab_stop() {
     let build = |core: &mut Core, go: &mut Key| {
         let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
         ui.configure_root(NodeSpec::column().fill().on_key(Value::str("root")));
-        *go = ui.with_keyed(
+        *go = ui.leaf_keyed(
             "go",
             NodeSpec::row()
                 .height(Sizing::Fixed(H))
                 .on_click(Value::str("go")),
-            |_| {},
         );
         ui.finish();
     };

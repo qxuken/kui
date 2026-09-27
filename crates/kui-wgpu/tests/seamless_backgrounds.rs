@@ -131,13 +131,12 @@ fn editor_rows(lh: f32, top: f32, scale: f32) -> Vec<(Quad, Clip)> {
                 if !text.is_empty() {
                     ui.rich_text(&[Span::new(text).bg(sel())], style);
                 }
-                ui.with(
+                ui.leaf(
                     NodeSpec::column()
                         .width(Sizing::Fixed(9.63))
                         .height(Sizing::Fixed(lh))
                         .bg(sel())
                         .pixel_snap(),
-                    |_| {},
                 );
             },
         );
@@ -204,8 +203,8 @@ fn a_square_rect_on_whole_pixels_is_solid_to_its_edge_and_a_rounded_one_still_ra
             .radius(r)
             .bg(Color::rgb8(20, 20, 30))
     };
-    ui.with(fill(0.0), |_| {});
-    ui.with(fill(8.0), |_| {});
+    ui.leaf(fill(0.0));
+    ui.leaf(fill(8.0));
     ui.finish();
     let dl = core.output().0;
     let (square, round) = (dl.quads[0], dl.quads[1]);
@@ -245,12 +244,11 @@ fn a_one_pixel_gap_between_boxes_is_there_at_any_scale() {
                 let mut ui = core.frame(Size::new(600.0, 40.0), scale);
                 ui.configure_root(NodeSpec::row().pad_xy(off, 5.0).gap(1.0));
                 for _ in 0..20 {
-                    ui.with(
+                    ui.leaf(
                         NodeSpec::column()
                             .width(Sizing::Fixed(w))
                             .height(Sizing::Fixed(10.0))
                             .bg(Color::WHITE),
-                        |_| {},
                     );
                 }
                 ui.finish();
@@ -300,7 +298,7 @@ fn band_rows(scale: f32, snap: bool) -> Vec<Quad> {
         if snap {
             spec = spec.pixel_snap();
         }
-        ui.with(spec, |_| {});
+        ui.leaf(spec);
     }
     ui.finish();
     let dl = core.output().0;

@@ -17,17 +17,13 @@ fn mono() -> TextStyle {
 fn frame(core: &mut Core, text: &str, width: Option<f32>, scale: f32) -> Key {
     let mut ui = core.frame(Size::new(400.0, 300.0), scale);
     ui.configure_root(NodeSpec::column().fill().pad(10.0));
-    ui.with(NodeSpec::column().height(Sizing::Fixed(10.0)), |_| {});
+    ui.leaf(NodeSpec::column().height(Sizing::Fixed(10.0)));
     let key = ui.with_keyed(
         "line",
         NodeSpec::row().width(width.map_or(Sizing::Grow(1.0), Sizing::Fixed)),
         |ui| ui.text(text, mono()),
     );
-    ui.with_keyed(
-        "box",
-        NodeSpec::column().height(Sizing::Fixed(10.0)),
-        |_| {},
-    );
+    ui.leaf_keyed("box", NodeSpec::column().height(Sizing::Fixed(10.0)));
     ui.finish();
     // An unkeyed text node is auto-keyed by its index under its parent.
     key.index(0)

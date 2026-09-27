@@ -144,7 +144,7 @@ impl App for Controls {
                     );
                 });
 
-                ui.with(NodeSpec::column().height(Sizing::Fixed(8.0)), |_| {});
+                ui.leaf(NodeSpec::column().height(Sizing::Fixed(8.0)));
                 ui.text(&self.last, TextStyle::new(12.0).color(t.faint).mono());
             },
         );

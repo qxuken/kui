@@ -9,10 +9,7 @@ use kui_core::{Core, Key, NodeSpec, Size, Sizing, Value, widgets};
 fn row_of(core: &mut Core, children: &[NodeSpec]) -> Vec<Key> {
     let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
     ui.configure_root(NodeSpec::row().fill());
-    let keys = children
-        .iter()
-        .map(|c| ui.with(c.clone(), |_| {}))
-        .collect();
+    let keys = children.iter().map(|c| ui.leaf(c.clone())).collect();
     ui.finish();
     keys
 }
@@ -66,11 +63,10 @@ fn a_cross_axis_weight_warns() {
     // A column's children grow *across* it in width: the weight is moot.
     let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    let key = ui.with(
+    let key = ui.leaf(
         NodeSpec::row()
             .width(Sizing::Grow(3.0))
             .height(Sizing::Fixed(10.0)),
-        |_| {},
     );
     ui.finish();
     let ws = core.take_warnings();
@@ -89,9 +85,9 @@ fn list(core: &mut Core, n: usize, keyed: bool) -> Key {
                 .height(Sizing::Fixed(20.0))
                 .transition(100.0);
             if keyed {
-                ui.with_keyed(&format!("item-{i}"), spec, |_| {});
+                ui.leaf_keyed(&format!("item-{i}"), spec);
             } else {
-                ui.with(spec, |_| {});
+                ui.leaf(spec);
             }
         }
     });
@@ -129,8 +125,8 @@ fn two_nodes_on_one_key_warn() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     let key = ui.child_key("same");
-    ui.with_keyed("same", NodeSpec::column(), |_| {});
-    ui.with_keyed("same", NodeSpec::column(), |_| {});
+    ui.leaf_keyed("same", NodeSpec::column());
+    ui.leaf_keyed("same", NodeSpec::column());
     ui.finish();
     let ws = core.take_warnings();
     assert_eq!(codes(&ws), [DUPLICATE_KEY]);

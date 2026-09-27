@@ -376,13 +376,12 @@ fn a_custom_editor_declares_its_lines_caret_and_selection() {
 fn a_key_sink_is_a_focusable_group() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
-    let sink = ui.with_keyed(
+    let sink = ui.leaf_keyed(
         "canvas",
         NodeSpec::column()
             .fill()
             .on_key(Value::Null)
             .label("Canvas"),
-        |_| {},
     );
     ui.finish();
     let tree = core.access_tree().clone();

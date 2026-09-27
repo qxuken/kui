@@ -156,7 +156,7 @@ impl Demo {
                             TextStyle::new(14.0).color(if archived { t.muted } else { t.fg });
                         ui.text(name, style);
                         if archived {
-                            ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
+                            ui.leaf(NodeSpec::row().width(Sizing::Grow(1.0)));
                             ui.text("archived", TextStyle::new(12.0).color(t.muted));
                         }
                     },
@@ -199,7 +199,7 @@ impl Demo {
             |ui| {
                 ui.text("last menu event —", TextStyle::new(12.0).color(t.muted));
                 ui.text(&said, TextStyle::new(12.0).color(t.accent));
-                ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
+                ui.leaf(NodeSpec::row().width(Sizing::Grow(1.0)));
                 ui.text(
                     "a plain box: right-click here opens nothing",
                     TextStyle::new(12.0).color(t.faint),

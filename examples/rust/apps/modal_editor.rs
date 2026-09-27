@@ -394,7 +394,7 @@ impl ModalEditor {
                 } else {
                     ui.text(&self.message, TextStyle::new(12.0).color(pal.dim));
                 }
-                ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
+                ui.leaf(NodeSpec::row().width(Sizing::Grow(1.0)));
                 let hint = match self.mode {
                     Mode::Insert => "esc → normal",
                     Mode::Command => "enter run · esc cancel",
@@ -607,12 +607,11 @@ fn mono(pal: &Pal) -> TextStyle {
 }
 
 fn caret_bar(ui: &mut Ui<'_>, color: Color) {
-    ui.with(
+    ui.leaf(
         NodeSpec::column()
             .width(Sizing::Fixed(2.0))
             .height(Sizing::Fixed(LH - 4.0))
             .bg(color),
-        |_| {},
     );
 }
 
@@ -824,21 +823,19 @@ fn emit_line(
             match caret_kind {
                 Some(Caret::Bar) => caret_bar(ui, pal.accent),
                 Some(Caret::Block) => {
-                    ui.with(
+                    ui.leaf(
                         NodeSpec::column()
                             .width(Sizing::Fixed(8.0))
                             .height(Sizing::Fixed(LH - 4.0))
                             .bg(pal.accent),
-                        |_| {},
                     );
                 }
                 Some(Caret::Hollow) => {
-                    ui.with(
+                    ui.leaf(
                         NodeSpec::column()
                             .width(Sizing::Fixed(8.0))
                             .height(Sizing::Fixed(LH - 4.0))
                             .border(1.0, pal.accent),
-                        |_| {},
                     );
                 }
                 None => {}
@@ -846,12 +843,11 @@ fn emit_line(
         }
         // Selection running past the newline.
         if sel.is_some_and(|(_, b)| b > chars.len()) && caret_col != Some(chars.len()) {
-            ui.with(
+            ui.leaf(
                 NodeSpec::column()
                     .width(Sizing::Fixed(8.0))
                     .height(Sizing::Fixed(LH))
                     .bg(pal.select),
-                |_| {},
             );
         }
     });
@@ -882,7 +878,7 @@ fn status_line(ui: &mut Ui<'_>, pal: &Pal, mode: Mode, doc: &Doc, view: &View) {
             if doc.modified {
                 ui.text("●", TextStyle::new(10.0).color(pal.command));
             }
-            ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
+            ui.leaf(NodeSpec::row().width(Sizing::Grow(1.0)));
             let total = doc.lines.len();
             let pct = if total <= 1 {
                 100

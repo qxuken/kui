@@ -3759,7 +3759,7 @@ mod tests {
         let mut ui = core.frame(crate::Size::new(200.0, 200.0), 1.0);
         ui.window_title("Demo");
         ui.configure_root(NodeSpec::column().fill());
-        ui.with_keyed("titlebar", NodeSpec::row().window_drag(), |_| {});
+        ui.leaf_keyed("titlebar", NodeSpec::row().window_drag());
         ui.with_keyed(
             "scroll",
             NodeSpec::column().height(Sizing::Fixed(40.0)).scroll_y(),

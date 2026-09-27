@@ -459,13 +459,12 @@ fn a_right_click_on_a_plain_box_opens_nothing() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    ui.with_keyed(
+    ui.leaf_keyed(
         "plain",
         NodeSpec::column()
             .width(Sizing::Grow(1.0))
             .height(Sizing::Fixed(60.0))
             .hoverable(),
-        |_| {},
     );
     ui.finish();
     let events = right_click(&mut core, Vec2::new(20.0, 8.0));
@@ -617,13 +616,12 @@ fn a_force_click_elsewhere_reaches_the_node_that_asked_for_it() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    let key = ui.with_keyed(
+    let key = ui.leaf_keyed(
         "chart",
         NodeSpec::column()
             .width(Sizing::Grow(1.0))
             .height(Sizing::Fixed(80.0))
             .on_force_click(Value::str("peek")),
-        |_| {},
     );
     ui.finish();
     let events = core.handle_input(InputEvent::ForceClick(Vec2::new(30.0, 30.0)));

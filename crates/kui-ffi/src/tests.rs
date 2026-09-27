@@ -2966,7 +2966,7 @@ mod run_config_headless {
                     let w = NodeSpec::column()
                         .width(Sizing::Fixed(100.0))
                         .height(Sizing::Grow(1.0));
-                    last = Some(ui.with_keyed(&format!("b{i}"), w, |_| {}));
+                    last = Some(ui.leaf_keyed(&format!("b{i}"), w));
                 }
             });
             if reveal {

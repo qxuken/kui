@@ -15,13 +15,12 @@ fn frame(core: &mut Core, rows: &[(&str, f32)], anchor: bool) {
     let spec = if anchor { spec.anchor() } else { spec };
     ui.with_keyed("list", spec, |ui| {
         for (key, h) in rows {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 key,
                 NodeSpec::row()
                     .width(Sizing::Grow(1.0))
                     .height(Sizing::Fixed(*h))
                     .bg(Color::rgb8(40, 40, 60)),
-                |_| {},
             );
         }
     });
@@ -147,13 +146,12 @@ fn a_missing_anchor_and_the_clamp() {
         ui.configure_root(NodeSpec::column().fill());
         ui.with_keyed("list", NodeSpec::row().fill().scroll_x().anchor(), |ui| {
             for (key, w) in cols {
-                ui.with_keyed(
+                ui.leaf_keyed(
                     key,
                     NodeSpec::row()
                         .width(Sizing::Fixed(*w))
                         .height(Sizing::Grow(1.0))
                         .bg(Color::rgb8(40, 40, 60)),
-                    |_| {},
                 );
             }
         });

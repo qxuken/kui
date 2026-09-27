@@ -346,10 +346,7 @@ pub(super) fn tree_tab(
                     .selected(on)
                     .label(format!("{} {}", n.kind.name(), name_of(n)).as_str()),
                 |ui| {
-                    ui.with(
-                        NodeSpec::row().width(Sizing::Fixed(row.depth as f32 * 10.0)),
-                        |_| {},
-                    );
+                    ui.leaf(NodeSpec::row().width(Sizing::Fixed(row.depth as f32 * 10.0)));
                     // The disclosure: its own hit region inside the row's,
                     // so a press on it folds and does not select.
                     if n.children > 0 {
@@ -369,7 +366,7 @@ pub(super) fn tree_tab(
                             },
                         );
                     } else {
-                        ui.with(NodeSpec::row().width(Sizing::Fixed(12.0)), |_| {});
+                        ui.leaf(NodeSpec::row().width(Sizing::Fixed(12.0)));
                     }
                     ui.text(n.kind.name(), TextStyle::new(11.0).color(t.accent).mono());
                     let what = name_of(n);
@@ -873,7 +870,7 @@ pub(super) fn overlays(
         st.pick_hover = cursor.and_then(|p| pick_target(nodes, p));
         // The overlay: over the app's area only, so the panel's own
         // controls — the crosshair that leaves — stay pressable.
-        ui.with_keyed(
+        ui.leaf_keyed(
             "kui-devtools/picker",
             NodeSpec::row()
                 .float(
@@ -889,7 +886,6 @@ pub(super) fn overlays(
                 .cursor(crate::cursor::CursorShape::Pointer)
                 .on_click(action("picked"))
                 .label("pick a node"),
-            |_| {},
         );
         if let Some(n) = find(st.pick_hover) {
             outlines.push((n, "kui-devtools/outline-pick", true));
@@ -934,7 +930,7 @@ pub(super) fn overlays(
     // half the nodes worth outlining are accent-coloured buttons, on which
     // an accent border is nothing.
     for (n, label, strong) in outlines {
-        ui.with_keyed(
+        ui.leaf_keyed(
             label,
             NodeSpec::row()
                 .float(
@@ -951,7 +947,6 @@ pub(super) fn overlays(
                 )
                 .bg(t.accent.with_alpha(if strong { 0.10 } else { 0.05 }))
                 .role(crate::access::Role::None),
-            |_| {},
         );
     }
 }

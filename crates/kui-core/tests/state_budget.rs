@@ -46,12 +46,11 @@ fn scroll_frame(core: &mut Core, range: std::ops::Range<usize>) -> Vec<Key> {
                 // to zero is how a surviving entry proves it is the same
                 // entry.
                 |ui| {
-                    ui.with_keyed(
+                    ui.leaf_keyed(
                         "tall",
                         NodeSpec::column()
                             .width(Sizing::Grow(1.0))
                             .height(Sizing::Fixed(100.0)),
-                        |_| {},
                     );
                 },
             )

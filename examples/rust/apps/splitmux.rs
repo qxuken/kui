@@ -598,15 +598,13 @@ impl Splitmux {
                             // Hangs from the tab's bottom edge: the tab
                             // keeps its own hover, so a press-release on
                             // it is still a click.
-                            ui.with_keyed(
+                            ui.leaf_keyed(
                                 "col",
                                 NodeSpec::column()
                                     .float(FloatConfig::parent().at(Align::Start, Align::End))
                                     .width(Sizing::Percent(1.0))
                                     .height(Sizing::Fixed(column_h))
-                                    .hoverable(),
-                                |_| {},
-                            );
+                                    .hoverable());
                         }
                     });
                 }
@@ -618,7 +616,7 @@ impl Splitmux {
                         .on_click(Msg::TabNew),
                     |ui| ui.text("+", TextStyle::new(12.0).color(pal.faint)),
                 );
-                ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
+                ui.leaf(NodeSpec::row().width(Sizing::Grow(1.0)));
                 ui.text(
                     &format!(
                         "{ALT}v/{ALT}s split · {ALT}o hop · {ALT}w close · {ALT}t tab · {PRIMARY}drag moves a pane"
@@ -695,14 +693,13 @@ impl Splitmux {
                             .width(Sizing::Grow(1.0))
                             .height(Sizing::Fixed(5.0)),
                     };
-                    ui.with_keyed(
+                    ui.leaf_keyed(
                         "divider",
                         bar.bg(if active { pal.border_focus } else { pal.bg2 })
                             .on_drag(Msg::Split {
                                 path: path.to_string(),
                                 dir: *dir,
                             }),
-                        |_| {},
                     );
                     ui.with_keyed("b", grow(wb), |ui| {
                         self.render_node(ui, b, &format!("{path}b"))
@@ -772,14 +769,13 @@ impl Splitmux {
                     } else {
                         Color::TRANSPARENT
                     };
-                    ui.with_keyed(
+                    ui.leaf_keyed(
                         zone.label(),
                         zone.spec()
                             .bg(bg)
                             .transition(80.0)
                             .hoverable()
                             .on_drag(Msg::PaneDrag { pane: id, zone }),
-                        |_| {},
                     );
                 }
             },

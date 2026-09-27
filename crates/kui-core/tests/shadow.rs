@@ -9,12 +9,11 @@ const VIEW: Size = Size { w: 200.0, h: 100.0 };
 fn quads(core: &mut Core, spec: NodeSpec, scale: f32) -> Vec<kui_core::Quad> {
     let mut ui = core.frame(VIEW, scale);
     ui.configure_root(NodeSpec::column().pad(20.0));
-    ui.with_keyed(
+    ui.leaf_keyed(
         "card",
         spec.bg(Color::WHITE)
             .width(Sizing::Fixed(80.0))
             .height(Sizing::Fixed(40.0)),
-        |_| {},
     );
     ui.finish();
     let (dl, _) = core.output();

@@ -1632,7 +1632,7 @@ mod access_cache {
                 .height(Sizing::Fixed(40.0))
                 .clip();
             ui.with(clipper, |ui| {
-                ui.with_keyed("node", base(), |_| {});
+                ui.leaf_keyed("node", base());
             });
             ui.finish();
             let hash = core.access_tree().hash;
@@ -1670,11 +1670,7 @@ mod access_cache {
             let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
             ui.configure_root(NodeSpec::column());
             ui.with_keyed("node", scroller(), |ui| {
-                ui.with_keyed(
-                    "tall",
-                    NodeSpec::column().height(Sizing::Fixed(400.0)),
-                    |_| {},
-                );
+                ui.leaf_keyed("tall", NodeSpec::column().height(Sizing::Fixed(400.0)));
             });
             ui.finish();
             let h = core.access_tree().hash;
@@ -1723,7 +1719,7 @@ mod access_cache {
         let mut draw = |w: f32| {
             let mut ui = core.frame(Size::new(w, 100.0), 1.0);
             ui.configure_root(NodeSpec::column());
-            ui.with_keyed("node", base(), |_| {});
+            ui.leaf_keyed("node", base());
             ui.finish();
             let h = core.access_tree().hash;
             (core.access_rebuilds, h)

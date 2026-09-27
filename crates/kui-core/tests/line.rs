@@ -126,13 +126,12 @@ fn a_line_takes_no_room_and_paints_over_its_siblings() {
     let mut core = Core::new();
     let quads = frame(&mut core, 1.0, |ui| {
         ui.with(NodeSpec::column().gap(4.0), |ui| {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "a",
                 NodeSpec::column()
                     .width(Sizing::Fixed(50.0))
                     .height(Sizing::Fixed(20.0))
                     .bg(Color::WHITE),
-                |_| {},
             );
             ui.line(
                 Vec2::new(0.0, 0.0),
@@ -140,13 +139,12 @@ fn a_line_takes_no_room_and_paints_over_its_siblings() {
                 Stroke::new(1.0, Color::WHITE),
                 NodeSpec::column(),
             );
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "b",
                 NodeSpec::column()
                     .width(Sizing::Fixed(50.0))
                     .height(Sizing::Fixed(20.0))
                     .bg(Color::WHITE),
-                |_| {},
             );
         });
     });

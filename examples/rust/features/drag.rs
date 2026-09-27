@@ -84,14 +84,12 @@ impl App for Drag {
                         .on_drag(Value::str("slider"))
                         .cursor(hand("slider")),
                     |ui| {
-                        ui.with(
+                        ui.leaf(
                             NodeSpec::row()
                                 .width(Sizing::Percent(self.value))
                                 .height(Sizing::Grow(1.0))
                                 .bg(t.accent)
-                                .radius(12.0),
-                            |_| {},
-                        );
+                                .radius(12.0));
                     },
                 );
 

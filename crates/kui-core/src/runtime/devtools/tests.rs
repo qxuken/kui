@@ -1435,14 +1435,13 @@ fn node_info_carries_the_layer_and_the_picker_reads_it() {
     let build = |core: &mut Core| {
         let mut ui = core.frame(VIEWPORT, 1.0);
         ui.with(NodeSpec::column().fill(), |ui| {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "under",
                 NodeSpec::row()
                     .width(Sizing::Fixed(200.0))
                     .height(Sizing::Fixed(200.0)),
-                |_| {},
             );
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "over",
                 NodeSpec::row()
                     .float(
@@ -1453,7 +1452,6 @@ fn node_info_carries_the_layer_and_the_picker_reads_it() {
                     )
                     .width(Sizing::Fixed(50.0))
                     .height(Sizing::Fixed(50.0)),
-                |_| {},
             );
         });
         ui.finish();
@@ -1583,16 +1581,15 @@ fn the_host_s_viewport_is_the_window_less_the_dock() {
     // layout report, to read the coordinates back through.
     let view = |ui: &mut Ui<'_>| {
         ui.with(NodeSpec::column().fill(), |ui| {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "target",
                 NodeSpec::row()
                     .width(Sizing::Fixed(100.0))
                     .height(Sizing::Fixed(50.0))
                     .on_context_menu(Value::str("menu"))
                     .on_layout(Value::str("box")),
-                |_| {},
             );
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "centred",
                 NodeSpec::row()
                     .float(
@@ -1602,7 +1599,6 @@ fn the_host_s_viewport_is_the_window_less_the_dock() {
                     )
                     .width(Sizing::Fixed(100.0))
                     .height(Sizing::Fixed(100.0)),
-                |_| {},
             );
         });
     };
@@ -1829,14 +1825,14 @@ fn the_host_rect_places_the_app_and_separates_its_quads_from_the_dock_s() {
                 .height(Sizing::Grow(1.0))
                 .bg(APP),
             |ui| {
-                ui.with(card(), |_| {});
-                ui.with(NodeSpec::column().height(Sizing::Grow(1.0)), |_| {});
+                ui.leaf(card());
+                ui.leaf(NodeSpec::column().height(Sizing::Grow(1.0)));
                 ui.with(
                     NodeSpec::row()
                         .width(Sizing::Grow(1.0))
                         .main_align(Align::End),
                     |ui| {
-                        ui.with(card(), |_| {});
+                        ui.leaf(card());
                     },
                 );
             },
@@ -2010,14 +2006,13 @@ fn the_facts_list_the_tokens_and_the_inspector_names_a_painted_one() {
                 .height(Sizing::Grow(1.0))
                 .gap(7.0),
             |ui| {
-                ui.with_keyed(
+                ui.leaf_keyed(
                     "swatch",
                     NodeSpec::column()
                         .width(Sizing::Fixed(20.0))
                         .height(Sizing::Fixed(20.0))
                         .bg(Color::hex(0xffcc99ff))
                         .focusable(),
-                    |_| {},
                 );
             },
         );

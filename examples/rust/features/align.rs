@@ -62,14 +62,13 @@ impl Page {
                 .main_align(self.main),
             |ui| {
                 for (i, w) in CHIPS.into_iter().enumerate() {
-                    ui.with_keyed(
+                    ui.leaf_keyed(
                         &format!("chip{i}"),
                         NodeSpec::column()
                             .width(Sizing::Fixed(w))
                             .height(Sizing::Fixed(24.0))
                             .radius(m.radius_inner)
                             .bg(t.accent),
-                        |_| {},
                     );
                 }
             },
@@ -128,13 +127,12 @@ impl Page {
                     .into_iter()
                     .enumerate()
                 {
-                    ui.with_keyed(
+                    ui.leaf_keyed(
                         &format!("square{i}"),
                         NodeSpec::column()
                             .height(Sizing::Fixed(40.0))
                             .aspect_ratio(1.0)
                             .bg(Color::hex(c)),
-                        |_| {},
                     );
                 }
             });

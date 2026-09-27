@@ -62,7 +62,7 @@ impl BulkExit {
                 for r in 0..ROWS {
                     ui.with_indexed(r as u64, NodeSpec::row().gap(2.0), |ui| {
                         for c in 0..CELLS_PER_ROW {
-                            ui.with_indexed(
+                            ui.leaf_indexed(
                                 c as u64,
                                 NodeSpec::column()
                                     .width(Sizing::Fixed(12.0))
@@ -71,7 +71,6 @@ impl BulkExit {
                                     .radius(2.0)
                                     .transition(360.0)
                                     .exit(Enter::from(0.0, 28.0).opacity(0.0)),
-                                |_| {},
                             );
                         }
                     });

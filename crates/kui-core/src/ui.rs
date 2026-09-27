@@ -610,6 +610,31 @@ impl<'a> Ui<'a> {
         key
     }
 
+    /// A node with no children: a spacer, a rule, a swatch, a hit area —
+    /// `with(spec, |_| {})` without the empty closure.
+    #[inline]
+    pub fn leaf(&mut self, spec: NodeSpec) -> Key {
+        let key = self.open(spec);
+        self.close();
+        key
+    }
+
+    /// [`Self::leaf`] under a label key.
+    #[inline]
+    pub fn leaf_keyed(&mut self, label: &str, spec: NodeSpec) -> Key {
+        let key = self.open_keyed(label, spec);
+        self.close();
+        key
+    }
+
+    /// [`Self::leaf`] under a data index; see [`Self::open_indexed`].
+    #[inline]
+    pub fn leaf_indexed(&mut self, i: u64, spec: NodeSpec) -> Key {
+        let key = self.open_indexed(i, spec);
+        self.close();
+        key
+    }
+
     /// Declares how many indexed rows the open node's virtual list has,
     /// built or not; see [`crate::Core::row_count`].
     pub fn row_count(&mut self, n: u64) {

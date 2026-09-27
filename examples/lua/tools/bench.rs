@@ -41,12 +41,11 @@ fn rust_frame(core: &mut Core) {
         for i in 0..ROWS {
             ui.with(NodeSpec::row().gap(4.0).bg(Color::hex(0x202030ff)), |ui| {
                 ui.text(&format!("row {i}"), TextStyle::new(14.0));
-                ui.with(
+                ui.leaf(
                     NodeSpec::column()
                         .width(Sizing::Fixed(40.0))
                         .height(Sizing::Fixed(12.0))
                         .bg(Color::hex(0x3b5bd4ff)),
-                    |_| {},
                 );
             });
         }

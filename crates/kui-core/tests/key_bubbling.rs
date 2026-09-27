@@ -40,8 +40,8 @@ fn shell(core: &mut Core, disabled_shell: bool) -> Shell {
             .key_up()
             .disabled(disabled_shell),
         |ui| {
-            keys.0 = ui.with_keyed("go", row().on_click(Value::str("go")).label("Go"), |_| {});
-            keys.1 = ui.with_keyed(
+            keys.0 = ui.leaf_keyed("go", row().on_click(Value::str("go")).label("Go"));
+            keys.1 = ui.leaf_keyed(
                 "vol",
                 row()
                     .role(Role::Slider)
@@ -50,14 +50,9 @@ fn shell(core: &mut Core, disabled_shell: bool) -> Shell {
                     .value_now(3.0)
                     .value_min(0.0)
                     .value_max(10.0),
-                |_| {},
             );
             keys.2 = ui.with_keyed("inner", row().on_key(Value::str("inner")), |ui| {
-                keys.3 = ui.with_keyed(
-                    "deep",
-                    row().on_click(Value::str("deep")).label("Deep"),
-                    |_| {},
-                );
+                keys.3 = ui.leaf_keyed("deep", row().on_click(Value::str("deep")).label("Deep"));
             });
         },
     );
@@ -81,14 +76,13 @@ fn bare(core: &mut Core) -> (Key, Key) {
             .width(Sizing::Fixed(100.0))
             .height(Sizing::Fixed(H))
     };
-    let go = ui.with_keyed("go", row().on_click(Value::str("go")).label("Go"), |_| {});
-    let vol = ui.with_keyed(
+    let go = ui.leaf_keyed("go", row().on_click(Value::str("go")).label("Go"));
+    let vol = ui.leaf_keyed(
         "vol",
         row()
             .role(Role::Slider)
             .on_drag(Value::str("vol"))
             .label("V"),
-        |_| {},
     );
     ui.finish();
     (go, vol)
@@ -495,14 +489,13 @@ fn modal_over_a_shell(core: &mut Core) -> (Key, Key) {
         "shell",
         NodeSpec::column().fill().on_key(Value::str("shell")),
         |ui| {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "go",
                 NodeSpec::row()
                     .width(Sizing::Fixed(100.0))
                     .height(Sizing::Fixed(H))
                     .on_click(Value::str("go"))
                     .label("Go"),
-                |_| {},
             );
             ui.with_keyed(
                 "dialog",
@@ -512,14 +505,13 @@ fn modal_over_a_shell(core: &mut Core) -> (Key, Key) {
                     .modal(Value::str("dlg"))
                     .label("Settings"),
                 |ui| {
-                    ok = ui.with_keyed(
+                    ok = ui.leaf_keyed(
                         "ok",
                         NodeSpec::row()
                             .width(Sizing::Fixed(80.0))
                             .height(Sizing::Fixed(H))
                             .on_click(Value::str("ok"))
                             .label("OK"),
-                        |_| {},
                     );
                 },
             );

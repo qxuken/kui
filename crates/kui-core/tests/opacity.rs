@@ -53,14 +53,13 @@ fn opacity_fades_the_whole_subtree_and_compounds() {
 fn opacity_fades_the_border_too() {
     let mut core = Core::new();
     let mut ui = core.frame(VIEW, 1.0);
-    ui.with_keyed(
+    ui.leaf_keyed(
         "panel",
         NodeSpec::column()
             .opacity(0.25)
             .border(2.0, Color::WHITE)
             .width(Sizing::Fixed(80.0))
             .height(Sizing::Fixed(40.0)),
-        |_| {},
     );
     ui.finish();
     let (dl, _) = core.output();
@@ -76,14 +75,13 @@ fn a_faded_subtree_still_lays_out_and_still_takes_clicks() {
     let build = |core: &mut Core| {
         let mut ui = core.frame(VIEW, 1.0);
         ui.with_keyed("panel", NodeSpec::column().opacity(0.0).pad(4.0), |ui| {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "btn",
                 NodeSpec::column()
                     .on_click(Value::str("hit"))
                     .label("Save")
                     .width(Sizing::Fixed(40.0))
                     .height(Sizing::Fixed(20.0)),
-                |_| {},
             );
         });
         ui.finish();
@@ -114,7 +112,7 @@ fn a_transition_eases_opacity_and_enter_fades_a_panel_in() {
     let frame = |core: &mut Core, t: f64, o: f32| {
         core.set_time(t);
         let mut ui = core.frame(VIEW, 1.0);
-        ui.with_keyed(
+        ui.leaf_keyed(
             "panel",
             NodeSpec::column()
                 .transition(100.0)
@@ -124,7 +122,6 @@ fn a_transition_eases_opacity_and_enter_fades_a_panel_in() {
                 .bg(Color::WHITE)
                 .width(Sizing::Fixed(40.0))
                 .height(Sizing::Fixed(20.0)),
-            |_| {},
         );
         ui.finish();
         let (dl, _) = core.output();

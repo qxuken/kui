@@ -32,7 +32,7 @@ fn frame(core: &mut Core, declare: bool) -> Key {
     ui.with(NodeSpec::column(), |ui| {
         zone = ui.child_key("zone");
         if declare {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "zone",
                 NodeSpec::column()
                     .width(Sizing::Fixed(100.0))
@@ -41,7 +41,6 @@ fn frame(core: &mut Core, declare: bool) -> Key {
                     .hover_bg(HOVER)
                     .drop_bg(LIT)
                     .on_drop(Value::str("files")),
-                |_| {},
             );
         }
     });

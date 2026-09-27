@@ -209,14 +209,13 @@ fn handle(ui: &mut Ui<'_>, t: &Theme, dock: Dock) {
             .height(Sizing::Fixed(6.0))
             .cursor(crate::cursor::CursorShape::NsResize)
     };
-    ui.with_keyed(
+    ui.leaf_keyed(
         "kui-devtools/resize",
         spec.hover_bg(t.accent_soft)
             .pressed_bg(t.accent)
             .on_drag(action("resize"))
             .role(crate::access::Role::None)
             .label("resize the panel"),
-        |_| {},
     );
 }
 
@@ -244,7 +243,7 @@ fn header(ui: &mut Ui<'_>, st: &State, t: &Theme) {
             // the same walk `Ctrl+Shift+D` makes, one press at a time.
             // Closing is not a placement, so it is a button after them:
             // an arrow never closes the panel.
-            ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
+            ui.leaf(NodeSpec::row().width(Sizing::Grow(1.0)));
             let walk = "Ctrl+Shift+D walks left → right → bottom → window → off";
             ui.with(
                 NodeSpec::row()
@@ -532,14 +531,13 @@ fn tokens(ui: &mut Ui<'_>, st: &State, t: &Theme) {
 /// A 12 px colour sample with a hairline, so a colour near the panel's
 /// own surface still reads as a sample.
 fn swatch(ui: &mut Ui<'_>, c: Color, t: &Theme) {
-    ui.with(
+    ui.leaf(
         NodeSpec::row()
             .width(Sizing::Fixed(12.0))
             .height(Sizing::Fixed(12.0))
             .radius(2.0)
             .bg(c)
             .border(1.0, t.border),
-        |_| {},
     );
 }
 

@@ -10,12 +10,11 @@ fn frame(core: &mut Core, panel_w: f32, spacer: bool, tag: Value, slide: bool) -
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::row().fill());
     if spacer {
-        ui.with_keyed(
+        ui.leaf_keyed(
             "spacer",
             NodeSpec::column()
                 .width(Sizing::Fixed(50.0))
                 .height(Sizing::Grow(1.0)),
-            |_| {},
         );
     }
     let mut spec = NodeSpec::column()
@@ -27,7 +26,7 @@ fn frame(core: &mut Core, panel_w: f32, spacer: bool, tag: Value, slide: bool) -
             .transition_with(Transition::ms(100.0).easing(Easing::Linear))
             .slide();
     }
-    let key = ui.with_keyed("panel", spec, |_| {});
+    let key = ui.leaf_keyed("panel", spec);
     ui.finish();
     key
 }
@@ -99,7 +98,7 @@ fn a_node_that_leaves_and_returns_reports_again() {
 
     // A frame without the panel at all.
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
-    ui.with(NodeSpec::column(), |_| {});
+    ui.leaf(NodeSpec::column());
     ui.finish();
     assert!(rects(&core.take_pending_events()).is_empty());
 
@@ -238,20 +237,12 @@ fn layout_of_reads_the_last_frames_rect_without_the_event() {
         Some(0.0),
         "during the build it is the frame before"
     );
-    ui.with_keyed(
-        "panel",
-        NodeSpec::column().width(Sizing::Fixed(10.0)),
-        |_| {},
-    );
+    ui.leaf_keyed("panel", NodeSpec::column().width(Sizing::Fixed(10.0)));
     ui.finish();
     assert_eq!(core.layout_of(key), None, "gone once that frame finished");
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     assert_eq!(ui.layout_of(key), None);
-    ui.with_keyed(
-        "panel",
-        NodeSpec::column().width(Sizing::Fixed(10.0)),
-        |_| {},
-    );
+    ui.leaf_keyed("panel", NodeSpec::column().width(Sizing::Fixed(10.0)));
     ui.finish();
     assert_eq!(core.layout_of(key), None);
 }

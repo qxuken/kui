@@ -3022,9 +3022,9 @@ fn build_virtual(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             // How many rows the list has, built or not.
             ui.row_count(VIRTUAL_ROW_COUNT);
             // The height of the rows above the built range, and below it.
-            ui.with_keyed("lead", virtual_spacer(20.0), |_| {});
+            ui.leaf_keyed("lead", virtual_spacer(20.0));
             for i in VIRTUAL_ROWS {
-                ui.with_indexed(
+                ui.leaf_indexed(
                     i,
                     NodeSpec::column()
                         .width(Sizing::Grow(1.0))
@@ -3036,10 +3036,9 @@ fn build_virtual(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                             101 => "row 101",
                             _ => "row 102",
                         }),
-                    |_| {},
                 );
             }
-            ui.with_keyed("tail", virtual_spacer(100.0), |_| {});
+            ui.leaf_keyed("tail", virtual_spacer(100.0));
         },
     );
 }
@@ -3086,7 +3085,7 @@ fn build_layout(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             // resolved shorthand, so a binding that fell back differently
             // draws a differently sized quad. `padY` gives the top, `padB`
             // overrides the bottom, `padX` both sides.
-            ui.with(
+            ui.leaf(
                 NodeSpec::column()
                     .padding(
                         PadShorthand {
@@ -3098,7 +3097,6 @@ fn build_layout(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                         .resolve(),
                     )
                     .bg(Color::hex(0x2a2d3aff)),
-                |_| {},
             );
             ui.rich_text(
                 &[
@@ -3135,22 +3133,21 @@ fn build_sizing(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                             .height(Sizing::Fixed(20.0))
                             .bg(Color::hex(bg))
                     };
-                    ui.with(cell(0x30344aff).width(Sizing::Fixed(30.0)), |_| {});
+                    ui.leaf(cell(0x30344aff).width(Sizing::Fixed(30.0)));
                     ui.with(cell(0x3b5bd4ff).width(Sizing::Percent(0.25)), |ui| {
                         // Nothing inside: a percent is the parent's, not
                         // the content's.
                         let _ = ui;
                     });
                     ui.with(cell(0x73d98cff).width(Sizing::Fit), |ui| {
-                        ui.with(
+                        ui.leaf(
                             NodeSpec::column()
                                 .width(Sizing::Fixed(20.0))
                                 .height(Sizing::Fixed(10.0))
                                 .bg(Color::hex(0xff0000ff)),
-                            |_| {},
                         );
                     });
-                    ui.with(cell(0xffcc00ff).width(Sizing::Grow(1.0)), |_| {});
+                    ui.leaf(cell(0xffcc00ff).width(Sizing::Grow(1.0)));
                 },
             );
         },
@@ -3171,12 +3168,11 @@ fn build_wrap(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             .bg(Color::hex(0x101018ff)),
         |ui| {
             for (w, h) in WRAP_BOXES {
-                ui.with(
+                ui.leaf(
                     NodeSpec::column()
                         .width(Sizing::Fixed(*w))
                         .height(Sizing::Fixed(*h))
                         .bg(Color::hex(0x30344aff)),
-                    |_| {},
                 );
             }
         },
@@ -3205,7 +3201,7 @@ fn build_align(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                     NodeSpec::row().width(Sizing::Fixed(120.0)).main_align(a),
                     |ui| {
                         for _ in 0..3 {
-                            ui.with(square(), |_| {});
+                            ui.leaf(square());
                         }
                     },
                 );
@@ -3215,22 +3211,20 @@ fn build_align(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 |ui| {
                     ui.text("ab", TextStyle::new(12.0));
                     ui.text("cd", TextStyle::new(20.0));
-                    ui.with(square(), |_| {});
+                    ui.leaf(square());
                 },
             );
-            ui.with(
+            ui.leaf(
                 NodeSpec::column()
                     .width(Sizing::Grow(1.0))
                     .aspect_ratio(4.0)
                     .bg(Color::hex(0x3b5bd4ff)),
-                |_| {},
             );
-            ui.with(
+            ui.leaf(
                 NodeSpec::column()
                     .height(Sizing::Fixed(12.0))
                     .aspect_ratio(2.0)
                     .bg(Color::hex(0x73d98cff)),
-                |_| {},
             );
         },
     );
@@ -3295,19 +3289,17 @@ fn build_table(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             for (label, w, h) in TABLE_ROWS {
                 ui.with(NodeSpec::row().width(Sizing::Grow(1.0)).gap(6.0), |ui| {
                     ui.text(label, TextStyle::new(12.0));
-                    ui.with(
+                    ui.leaf(
                         NodeSpec::column()
                             .width(Sizing::Fixed(*w))
                             .height(Sizing::Fixed(*h))
                             .bg(Color::hex(0x30344aff)),
-                        |_| {},
                     );
-                    ui.with(
+                    ui.leaf(
                         NodeSpec::column()
                             .width(Sizing::Grow(1.0))
                             .height(Sizing::Fixed(*h))
                             .bg(Color::hex(0x3b5bd4ff)),
-                        |_| {},
                     );
                 });
             }
@@ -3361,7 +3353,7 @@ fn build_tabs(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 ui.with(
                     tab().height(Sizing::Percent(0.5)).min_height(Min::FIT),
                     |ui| {
-                        ui.with(label(*w, *h), |_| {});
+                        ui.leaf(label(*w, *h));
                     },
                 );
             }
@@ -3369,7 +3361,7 @@ fn build_tabs(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
         ui.with_keyed("crowded", bar().scroll_x(), |ui| {
             for w in TAB_CROWDED {
                 ui.with(tab().height(Sizing::Grow(1.0)), |ui| {
-                    ui.with(label(*w, 12.0), |_| {});
+                    ui.leaf(label(*w, 12.0));
                 });
             }
         });
@@ -3393,13 +3385,12 @@ fn build_overflow(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 .bg(Color::hex(0x101018ff)),
             |ui| {
                 for key in ITEM_KEYS {
-                    ui.with_keyed(
+                    ui.leaf_keyed(
                         key,
                         NodeSpec::column()
                             .width(Sizing::Fixed(100.0))
                             .height(Sizing::Fixed(20.0))
                             .bg(Color::hex(0x30344aff)),
-                        |_| {},
                     );
                 }
             },
@@ -3434,13 +3425,12 @@ fn build_scrollbar(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             };
             ui.with_keyed(key, list, |ui| {
                 for item in ITEM_KEYS {
-                    ui.with_keyed(
+                    ui.leaf_keyed(
                         item,
                         NodeSpec::column()
                             .width(Sizing::Fixed(80.0))
                             .height(Sizing::Fixed(20.0))
                             .bg(Color::hex(0x30344aff)),
-                        |_| {},
                     );
                 }
             });
@@ -3536,12 +3526,12 @@ fn build_tokens(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             })
             .gap(gap),
         |ui| {
-            ui.with_keyed(TOKEN_KEYS[0], cell(Some(peach)), |_| {});
-            ui.with_keyed(TOKEN_KEYS[1], cell(Some(ink)).border(gap, peach), |_| {});
-            ui.with_keyed(TOKEN_KEYS[2], cell(Some(surface)).radius(radius), |_| {});
-            ui.with_keyed(TOKEN_KEYS[3], cell(nothing), |_| {});
+            ui.leaf_keyed(TOKEN_KEYS[0], cell(Some(peach)));
+            ui.leaf_keyed(TOKEN_KEYS[1], cell(Some(ink)).border(gap, peach));
+            ui.leaf_keyed(TOKEN_KEYS[2], cell(Some(surface)).radius(radius));
+            ui.leaf_keyed(TOKEN_KEYS[3], cell(nothing));
             for (key, c) in TOKEN_KEYS[4..].iter().zip(derived) {
-                ui.with_keyed(key, cell(c), |_| {});
+                ui.leaf_keyed(key, cell(c));
             }
             ui.rich_text(
                 &[Span::new("tokens"), Span::new("x").color(ink)],
@@ -3566,13 +3556,12 @@ fn build_anchor(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
             let list = if n == 0 { list.anchor() } else { list };
             ui.with_keyed(key, list, |ui| {
                 let row = |ui: &mut Ui<'_>, key: &str, h: f32| {
-                    ui.with_keyed(
+                    ui.leaf_keyed(
                         key,
                         NodeSpec::column()
                             .width(Sizing::Fixed(80.0))
                             .height(Sizing::Fixed(h))
                             .bg(Color::hex(0x30344aff)),
-                        |_| {},
                     );
                 };
                 if phase >= 1 {
@@ -3665,13 +3654,12 @@ fn build_float(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 .height(Sizing::Fixed(24.0))
                 .bg(Color::hex(0x333333ff)),
             |ui| {
-                ui.with(
+                ui.leaf(
                     NodeSpec::column()
                         .float(FloatConfig::below())
                         .width(Sizing::Fixed(40.0))
                         .height(Sizing::Fixed(12.0))
                         .bg(Color::hex(0xff0000ff)),
-                    |_| {},
                 );
             },
         );
@@ -3686,7 +3674,7 @@ fn build_float(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 .height(Sizing::Fixed(20.0))
                 .bg(Color::hex(0x444444ff)),
             |ui| {
-                ui.with(
+                ui.leaf(
                     NodeSpec::column()
                         .float(FloatConfig::build(
                             FloatConfig::below(),
@@ -3700,11 +3688,10 @@ fn build_float(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                         .width(Sizing::Fixed(30.0))
                         .height(Sizing::Fixed(10.0))
                         .bg(Color::hex(0x0000ffff)),
-                    |_| {},
                 );
             },
         );
-        ui.with(
+        ui.leaf(
             NodeSpec::column()
                 // Deliberately asymmetric in every axis, and placed so
                 // that `fit` has to do something: `at` differs from
@@ -3723,7 +3710,6 @@ fn build_float(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 .width(Sizing::Fixed(10.0))
                 .height(Sizing::Fixed(10.0))
                 .bg(Color::hex(0x00ff00ff)),
-            |_| {},
         );
     });
 }
@@ -3772,14 +3758,13 @@ fn build_tooltip(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 }
             },
         );
-        ui.with(
+        ui.leaf(
             NodeSpec::row()
                 .width(Sizing::Fixed(100.0))
                 .height(Sizing::Fixed(20.0))
                 .role(Role::Button)
                 .label("Save")
                 .description("Nothing to save yet"),
-            |_| {},
         );
     });
 }
@@ -3908,7 +3893,7 @@ fn build_controls(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
         // travels in the access row's value column, the one string slot a
         // node has (backlog F8). No background, so the scene's quad counts
         // are the button's and the editor's as before.
-        ui.with_keyed(
+        ui.leaf_keyed(
             "focus",
             NodeSpec::row()
                 .role(Role::Slider)
@@ -3919,7 +3904,6 @@ fn build_controls(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 .value_text("25 minutes")
                 .width(Sizing::Fixed(120.0))
                 .height(Sizing::Fixed(12.0)),
-            |_| {},
         );
     });
 }
@@ -3999,12 +3983,12 @@ fn build_keys(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             .label(label)
     };
     ui.with(NodeSpec::column().pad(10.0).gap(6.0), |ui| {
-        ui.with_keyed("press", sink("press"), |_| {});
-        ui.with_keyed("held", sink("held").key_up(), |_| {});
+        ui.leaf_keyed("press", sink("press"));
+        ui.leaf_keyed("held", sink("held").key_up());
         // A shell over a ring: the sink hears what the button inside it
         // does not claim, and the button holds focus from the first frame.
         ui.with_keyed("shell", sink("shell").key_up(), |ui| {
-            let go = ui.with_keyed(
+            let go = ui.leaf_keyed(
                 "go",
                 NodeSpec::row()
                     .width(Sizing::Fixed(80.0))
@@ -4012,7 +3996,6 @@ fn build_keys(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                     .bg(Color::hex(0x3b5bd4ff))
                     .on_click(Value::map([("kind", Value::str("go"))]))
                     .label("Go"),
-                |_| {},
             );
             ui.take_key_focus(go);
         });
@@ -4172,7 +4155,7 @@ fn build_drop(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
                     .on_drop(Value::map([("kind", Value::str("files"))])),
                 |ui| {
                     // Inside the zone: files over it are the zone's.
-                    ui.with_keyed(
+                    ui.leaf_keyed(
                         "pick",
                         NodeSpec::row()
                             .width(Sizing::Fixed(60.0))
@@ -4180,18 +4163,16 @@ fn build_drop(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
                             .bg(Color::hex(0x3b5bd4ff))
                             .on_click(Value::map([("kind", Value::str("pick"))]))
                             .label("Pick"),
-                        |_| {},
                     );
                 },
             );
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "other",
                 NodeSpec::column()
                     .width(Sizing::Grow(1.0))
                     .height(Sizing::Grow(1.0))
                     .bg(Color::hex(0x30344aff))
                     .on_drop(Value::map([("kind", Value::str("other"))])),
-                |_| {},
             );
             let over = FloatConfig::viewport()
                 .at(Align::Start, Align::Start)
@@ -4200,20 +4181,19 @@ fn build_drop(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
             // What an app shows in answer to `enter`: a hoverable float
             // over the zone that takes no files, and is looked past.
             if phase == 1 {
-                ui.with_keyed(
+                ui.leaf_keyed(
                     "overlay",
                     NodeSpec::column()
                         .float(over)
                         .width(Sizing::Fixed(160.0))
                         .height(Sizing::Fixed(160.0))
                         .hoverable(),
-                    |_| {},
                 );
             }
             // A modal over the zone: the zone's region is not emitted, so
             // the files find nothing there.
             if phase == 2 {
-                ui.with_keyed(
+                ui.leaf_keyed(
                     "confirm",
                     NodeSpec::column()
                         .float(over)
@@ -4221,7 +4201,6 @@ fn build_drop(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
                         .height(Sizing::Fixed(160.0))
                         .bg(Color::hex(0x101018ff))
                         .modal(Value::map([("kind", Value::str("dismiss"))])),
-                    |_| {},
                 );
             }
         },
@@ -4307,12 +4286,11 @@ fn build_lines(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 Stroke::new(1.5, Color::hex(0x9ad9a0ff)).curve(),
                 NodeSpec::column().opacity(0.5),
             );
-            ui.with(
+            ui.leaf(
                 NodeSpec::column()
                     .width(Sizing::Fixed(40.0))
                     .height(Sizing::Fixed(20.0))
                     .bg(Color::hex(0x202030ff)),
-                |_| {},
             );
         },
     );
@@ -4356,12 +4334,11 @@ fn build_fragments(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
                     .radius(8.0)
                     .opacity(0.5),
                 |ui| {
-                    ui.with(
+                    ui.leaf(
                         NodeSpec::column()
                             .width(Sizing::Fixed(20.0))
                             .height(Sizing::Fixed(10.0))
                             .bg(Color::hex(0x202030ff)),
-                        |_| {},
                     );
                 },
             );
@@ -4430,7 +4407,7 @@ fn build_modal(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
         widgets::titlebar_with(ui, |ui| {
             ui.text("app", TextStyle::new(12.0));
         });
-        let open = ui.with_keyed(
+        let open = ui.leaf_keyed(
             "open",
             NodeSpec::row()
                 .width(Sizing::Fixed(100.0))
@@ -4438,14 +4415,13 @@ fn build_modal(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
                 .bg(Color::hex(0x30344aff))
                 .on_click(Value::map([("kind", Value::str("open"))]))
                 .label("Open"),
-            |_| {},
         );
         // Phase 1 is the app with the dialog gone: the node it was opened
         // to rename, created with it and still here, declared focused so
         // that the restore has a declaration to yield to
         // (`docs/adr/0003-modal-surfaces.md`, decision 4).
         if phase != 0 {
-            let note = ui.with_keyed(
+            let note = ui.leaf_keyed(
                 "note",
                 NodeSpec::row()
                     .width(Sizing::Fixed(100.0))
@@ -4453,7 +4429,6 @@ fn build_modal(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
                     .bg(Color::hex(0x30344aff))
                     .on_click(Value::map([("kind", Value::str("note"))]))
                     .label("Note"),
-                |_| {},
             );
             ui.take_key_focus(note);
             return;
@@ -4481,8 +4456,8 @@ fn build_modal(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
                 .modal(Value::map([("kind", Value::str("dlg"))]))
                 .label("Settings"),
             |ui| {
-                ui.with_keyed("ok", button("ok", "OK"), |_| {});
-                ui.with_keyed("cancel", button("cancel", "Cancel"), |_| {});
+                ui.leaf_keyed("ok", button("ok", "OK"));
+                ui.leaf_keyed("cancel", button("cancel", "Cancel"));
             },
         );
     });
@@ -4511,7 +4486,7 @@ fn build_composite(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 );
             }
         });
-        ui.with_keyed(
+        ui.leaf_keyed(
             "add",
             NodeSpec::row()
                 .width(Sizing::Fixed(40.0))
@@ -4519,7 +4494,6 @@ fn build_composite(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 .bg(Color::hex(0x3b5bd4ff))
                 .on_click(Value::map([("kind", Value::str("add"))]))
                 .label("Add"),
-            |_| {},
         );
         ui.with_keyed("rows", NodeSpec::column().role(Role::List).gap(2.0), |ui| {
             for name in ["Alpha", "Bravo"] {
@@ -4593,7 +4567,7 @@ fn build_exit(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
             .gap(6.0)
             .bg(Color::hex(0x14161eff)),
         |ui| {
-            ui.with_keyed("a", keep("A"), |_| {});
+            ui.leaf_keyed("a", keep("A"));
             ui.with_keyed("slotFade", slot(40.0), |ui| {
                 if phase == 0 {
                     ui.with_keyed(
@@ -4615,7 +4589,7 @@ fn build_exit(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
             });
             ui.with_keyed("slotBlink", slot(16.0), |ui| {
                 if phase == 0 {
-                    ui.with_keyed(
+                    ui.leaf_keyed(
                         "blink",
                         NodeSpec::column()
                             .width(Sizing::Fixed(100.0))
@@ -4623,13 +4597,12 @@ fn build_exit(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
                             .bg(Color::hex(0x73d98cff))
                             .transition(50.0)
                             .exit(Enter::from(20.0, 0.0)),
-                        |_| {},
                     );
                 }
             });
             ui.with_keyed("slotFlash", slot(16.0), |ui| {
                 if phase != 1 {
-                    ui.with_keyed(
+                    ui.leaf_keyed(
                         "flash",
                         NodeSpec::column()
                             .width(Sizing::Fixed(100.0))
@@ -4637,11 +4610,10 @@ fn build_exit(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
                             .bg(Color::hex(0xffcc00ff))
                             .transition(400.0)
                             .exit(Enter::from(-20.0, 0.0)),
-                        |_| {},
                     );
                 }
             });
-            ui.with_keyed("b", keep("B"), |_| {});
+            ui.leaf_keyed("b", keep("B"));
             // More one-node departures than the budget, each a solid quad
             // half a pixel wide, in a slot that keeps its size when they go.
             ui.with_keyed(
@@ -4653,7 +4625,7 @@ fn build_exit(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
                 |ui| {
                     if phase < 4 {
                         for i in 0..EXIT_ROWS {
-                            ui.with_indexed(
+                            ui.leaf_indexed(
                                 i as u64,
                                 NodeSpec::column()
                                     .width(Sizing::Fixed(0.5))
@@ -4661,7 +4633,6 @@ fn build_exit(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
                                     .bg(Color::hex(0x8a8fa3ff))
                                     .transition(400.0)
                                     .exit(Enter::default().opacity(0.0)),
-                                |_| {},
                             );
                         }
                     }
@@ -4677,7 +4648,7 @@ fn build_exit(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
                         .exit(Enter::default().opacity(0.0)),
                     |ui| {
                         for _ in 0..EXIT_BULK_ROWS {
-                            ui.with(NodeSpec::column(), |_| {});
+                            ui.leaf(NodeSpec::column());
                         }
                     },
                 );
@@ -4725,14 +4696,13 @@ fn build_drag(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     // A splitter handle: 80x40 at the origin, so (40, 20) is its middle
     // and every step lands on it. Keyed, so the press has a stable node
     // to capture on across the frames the scene drives.
-    ui.with_keyed(
+    ui.leaf_keyed(
         "handle",
         NodeSpec::column()
             .width(Sizing::Fixed(80.0))
             .height(Sizing::Fixed(40.0))
             .bg(Color::hex(0x30344aff))
             .on_drag(Value::map([("kind", Value::str("split"))])),
-        |_ui| {},
     );
 }
 
@@ -4760,10 +4730,9 @@ fn build_live(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
                 },
             );
             // Live, and with nothing to be live about.
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "empty",
                 NodeSpec::column().live(crate::access::Live::Polite),
-                |_ui| {},
             );
         },
     );
@@ -5805,14 +5774,13 @@ fn build_sampler(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
         ui.with_keyed("card", card, |ui| {
             ui.text("ab", TextStyle::new(12.0));
         });
-        ui.with_keyed(
+        ui.leaf_keyed(
             "strip",
             NodeSpec::row()
                 .width(Sizing::Fixed(60.0))
                 .height(Sizing::Fixed(10.0))
                 .bg(Color::hex(0x3a3f52ff))
                 .window_drag(),
-            |_| {},
         );
         ui.with_keyed(
             "dock",
@@ -5823,7 +5791,7 @@ fn build_sampler(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
                 .main_align(Align::Center)
                 .cross_align(Align::End),
             |ui| {
-                ui.with_keyed(
+                ui.leaf_keyed(
                     "stop",
                     NodeSpec::row()
                         .width(Sizing::Fixed(20.0))
@@ -5832,7 +5800,6 @@ fn build_sampler(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
                         .focusable()
                         .role(Role::Button)
                         .label("Stop"),
-                    |_| {},
                 );
             },
         );
@@ -5876,10 +5843,9 @@ fn build_clip_access(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             .width(Sizing::Grow(1.0))
             .height(Sizing::Grow(1.0)),
         |ui| {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "toolbar",
                 button(0.0, 40.0, "toolbar", "Toolbar", 0x3a3f52ff).width(Sizing::Grow(1.0)),
-                |_| {},
             );
             ui.with(
                 NodeSpec::row()
@@ -5903,10 +5869,9 @@ fn build_clip_access(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                             ] {
                                 let float = FloatConfig::parent().offset(dx, dy);
                                 let float = if clip { float.clipped() } else { float };
-                                ui.with_keyed(
+                                ui.leaf_keyed(
                                     key,
                                     button(60.0, 40.0, key, label, 0x3b5bd4ff).float(float),
-                                    |_| {},
                                 );
                             }
                         },
@@ -5922,11 +5887,7 @@ fn build_clip_access(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                             for (key, label) in
                                 [("row0", "Row 0"), ("row1", "Row 1"), ("row2", "Row 2")]
                             {
-                                ui.with_keyed(
-                                    key,
-                                    button(100.0, 30.0, key, label, 0x73d98cff),
-                                    |_| {},
-                                );
+                                ui.leaf_keyed(key, button(100.0, 30.0, key, label, 0x73d98cff));
                             }
                         },
                     );
@@ -5944,14 +5905,13 @@ fn build_pixel_snap(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             .bg(Color::hex(bg))
     };
     ui.with(NodeSpec::row(), |ui| {
-        ui.with(
+        ui.leaf(
             cell(0xd9738cff)
                 .pixel_snap()
                 .shadow_color(Color::hex(0x000000ff)),
-            |_| {},
         );
-        ui.with(cell(0x73d98cff).pixel_snap(), |_| {});
-        ui.with(cell(0x3b5bd4ff), |_| {});
+        ui.leaf(cell(0x73d98cff).pixel_snap());
+        ui.leaf(cell(0x3b5bd4ff));
     });
 }
 
@@ -5961,7 +5921,7 @@ fn build_clip_float(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             .width(Sizing::Grow(1.0))
             .height(Sizing::Grow(1.0)),
         |ui| {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "toolbar",
                 NodeSpec::row()
                     .width(Sizing::Grow(1.0))
@@ -5969,7 +5929,6 @@ fn build_clip_float(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                     .bg(Color::hex(0x3a3f52ff))
                     .on_click(Value::map([("kind", Value::str("toolbar"))]))
                     .label("Toolbar"),
-                |_| {},
             );
             ui.with_keyed(
                 "canvas",
@@ -5980,7 +5939,7 @@ fn build_clip_float(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                     .bg(Color::hex(0x101018ff)),
                 |ui| {
                     // 20 px above the canvas's top: half past its edge.
-                    ui.with_keyed(
+                    ui.leaf_keyed(
                         "node",
                         NodeSpec::column()
                             .float(FloatConfig::parent().offset(40.0, -20.0).clipped())
@@ -5989,9 +5948,8 @@ fn build_clip_float(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                             .bg(Color::hex(0x3b5bd4ff))
                             .on_click(Value::map([("kind", Value::str("node"))]))
                             .label("Node"),
-                        |_| {},
                     );
-                    ui.with_keyed(
+                    ui.leaf_keyed(
                         "free",
                         NodeSpec::column()
                             .float(FloatConfig::parent().offset(160.0, -20.0))
@@ -6000,7 +5958,6 @@ fn build_clip_float(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                             .bg(Color::hex(0x73d98cff))
                             .on_click(Value::map([("kind", Value::str("free"))]))
                             .label("Free"),
-                        |_| {},
                     );
                 },
             );
@@ -6025,7 +5982,7 @@ fn build_layers(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
                     .bg(Color::hex(0x101018ff)),
                 |ui| {
                     for i in 0..LAYERS_ROWS {
-                        ui.with_keyed(
+                        ui.leaf_keyed(
                             &format!("row{i}"),
                             NodeSpec::row()
                                 .width(Sizing::Grow(1.0))
@@ -6035,7 +5992,6 @@ fn build_layers(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
                                 } else {
                                     Color::hex(0x30344aff)
                                 }),
-                            |_| {},
                         );
                     }
                 },
@@ -6049,7 +6005,7 @@ fn build_layers(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
             // Closed in phase 1, back in phase 2: the reopening is what
             // puts it over the toast, whatever the tree says.
             if phase != 1 {
-                ui.with_keyed(
+                ui.leaf_keyed(
                     "popover",
                     NodeSpec::column()
                         .float(at(200.0, 40.0))
@@ -6058,10 +6014,9 @@ fn build_layers(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
                         .bg(Color::hex(0x3b5bd4ff))
                         .on_click(Value::map([("kind", Value::str("popover"))]))
                         .label("Popover"),
-                    |_| {},
                 );
             }
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "toast",
                 NodeSpec::column()
                     .float(at(140.0, 60.0))
@@ -6070,7 +6025,6 @@ fn build_layers(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
                     .bg(Color::hex(0x73d98cff))
                     .on_click(Value::map([("kind", Value::str("toast"))]))
                     .label("Toast"),
-                |_| {},
             );
         },
     );

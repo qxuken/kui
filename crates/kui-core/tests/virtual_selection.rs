@@ -37,12 +37,11 @@ fn frame_of(core: &mut Core, range: std::ops::Range<u64>, rows: Option<u64>) -> 
             if let Some(n) = rows {
                 ui.row_count(n);
             }
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "lead",
                 NodeSpec::column()
                     .width(Sizing::Grow(1.0))
                     .height(Sizing::Fixed(range.start as f32 * 20.0)),
-                |_| {},
             );
             for i in range.clone() {
                 ui.with_indexed(
@@ -371,12 +370,11 @@ fn two_lists(core: &mut Core, range: std::ops::Range<u64>, other: std::ops::Rang
                     .height(Sizing::Fixed(20.0)),
                 |ui| ui.text("header", style()),
             );
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "lead",
                 NodeSpec::column()
                     .width(Sizing::Grow(1.0))
                     .height(Sizing::Fixed(range.start as f32 * 20.0)),
-                |_| {},
             );
             for i in range.clone() {
                 ui.with_indexed(

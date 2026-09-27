@@ -186,7 +186,7 @@ impl App for Cells {
                                     ),
                                     TextStyle::new(12.0).color(t.muted),
                                 );
-                                ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
+                                ui.leaf(NodeSpec::row().width(Sizing::Grow(1.0)));
                                 ui.text(
                                     selected.as_deref().unwrap_or("nothing selected"),
                                     TextStyle::new(12.0).color(t.accent),

@@ -90,7 +90,7 @@ fn measurement_is_logical_px_at_the_frame_scale() {
     let style = TextStyle::new(14.0);
     let at_1x = core.measure_text("hello world", &style, None);
     let mut ui = core.frame(Size::new(400.0, 300.0), 2.0);
-    ui.with(NodeSpec::column(), |_| {});
+    ui.leaf(NodeSpec::column());
     ui.finish();
     let at_2x = core.measure_text("hello world", &style, None);
     assert!(

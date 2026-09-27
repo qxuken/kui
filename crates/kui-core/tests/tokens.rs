@@ -175,11 +175,10 @@ impl Extension for Guest {
             };
             self.seen.borrow_mut().push((name.to_string(), c));
         }
-        ui.with(
+        ui.leaf(
             NodeSpec::column()
                 .width(Sizing::Fixed(10.0))
                 .height(Sizing::Fixed(10.0)),
-            |_| {},
         );
         Ok(())
     }

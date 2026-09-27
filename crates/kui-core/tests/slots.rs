@@ -63,7 +63,7 @@ impl Extension for Ext {
             ui.open(cell());
             ui.open_keyed("box", cell());
         } else {
-            ui.with_keyed("box", cell(), |_| {});
+            ui.leaf_keyed("box", cell());
         }
         Ok(())
     }
@@ -116,12 +116,12 @@ fn host_frame(
     let mut ui = core.frame_with(Size::new(600.0, 100.0), 1.0, exts);
     ui.configure_root(NodeSpec::row().fill());
     for _ in 0..before {
-        ui.with(cell(), |_| {});
+        ui.leaf(cell());
     }
     if let Some((name, params)) = slot {
         ui.slot_with(name, params);
     }
-    let after = ui.with_keyed("after", cell(), |_| {});
+    let after = ui.leaf_keyed("after", cell());
     ui.finish();
     after
 }
@@ -508,10 +508,9 @@ fn an_event_carries_the_slot_its_node_was_filled_into() {
             std::slice::from_ref(Box::leak(Box::new(ANY_SLOT.to_owned())))
         }
         fn view(&mut self, _slot: &Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "box",
                 cell().on_click(Value::map([("kind", "cell".into())])),
-                |_| {},
             );
             Ok(())
         }
@@ -525,10 +524,9 @@ fn an_event_carries_the_slot_its_node_was_filled_into() {
     // 80..120.
     let mut ui = core.frame_with(Size::new(600.0, 100.0), 1.0, &mut exts);
     ui.configure_root(NodeSpec::row().fill());
-    ui.with_keyed(
+    ui.leaf_keyed(
         "host",
         cell().on_click(Value::map([("kind", "host".into())])),
-        |_| {},
     );
     ui.slot("views/pane:1");
     ui.slot("views/pane:2");
@@ -616,7 +614,7 @@ impl Extension for Loader {
         if let Some(inner) = self.inner.take() {
             ui.add_extension("inner", inner)?;
         }
-        ui.with_keyed("mine", cell(), |_| {});
+        ui.leaf_keyed("mine", cell());
         ui.slot(self.declares);
         Ok(())
     }
@@ -774,7 +772,7 @@ fn a_label_asked_for_by_a_guest_is_the_guests_own_node() {
             // answer — the way a script reads an editor at the top of
             // its view.
             let asked = ui.key_of("filter");
-            let mine = ui.with_keyed("filter", cell(), |_| {});
+            let mine = ui.leaf_keyed("filter", cell());
             self.seen.borrow_mut().push((asked, mine));
             Ok(())
         }
@@ -791,7 +789,7 @@ fn a_label_asked_for_by_a_guest_is_the_guests_own_node() {
         let mut ui = core.frame_with(Size::new(600.0, 100.0), 1.0, &mut exts);
         ui.configure_root(NodeSpec::row().fill());
         // The host's own "filter", declared before the slot in tree order.
-        host_keys.push(ui.with_keyed("filter", cell(), |_| {}));
+        host_keys.push(ui.leaf_keyed("filter", cell()));
         // And the host asks for its own, this frame's — not the guest's.
         assert_eq!(ui.key_of("filter"), host_keys.last().copied());
         ui.slot_with("asker/root", &Value::Null);

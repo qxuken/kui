@@ -289,14 +289,13 @@ fn a_rounded_corner_is_not_a_hit() {
         ui.with(
             NodeSpec::column().fill().on_click(Value::str("page")),
             |ui| {
-                ui.with(
+                ui.leaf(
                     NodeSpec::column()
                         .float(FloatConfig::parent().offset(10.0, 10.0))
                         .width(Sizing::Fixed(100.0))
                         .height(Sizing::Fixed(60.0))
                         .radius(20.0)
                         .on_click(Value::str("card")),
-                    |_| {},
                 );
             },
         );
@@ -408,13 +407,12 @@ fn shapes_are_the_frames_own() {
     // The same box, plain: the corner that missed the triangle hits it.
     frame(&mut core, |ui| {
         ui.with(NodeSpec::column().fill(), |ui| {
-            ui.with(
+            ui.leaf(
                 NodeSpec::column()
                     .float(FloatConfig::parent().offset(9.0, 9.0))
                     .width(Sizing::Fixed(102.0))
                     .height(Sizing::Fixed(102.0))
                     .on_click(Value::str("box")),
-                |_| {},
             );
         });
     });
@@ -434,10 +432,7 @@ fn a_shape_without_its_points_misses() {
     let base = {
         let mut core = Core::new();
         frame(&mut core, |ui| {
-            ui.with(
-                NodeSpec::column().fill().on_click(Value::str("box")),
-                |_| {},
-            );
+            ui.leaf(NodeSpec::column().fill().on_click(Value::str("box")));
         });
         core.interaction.hits()[0].clone()
     };

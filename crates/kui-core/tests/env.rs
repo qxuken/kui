@@ -92,10 +92,9 @@ fn the_accent_prop_paints_from_the_env_or_keeps_its_bg() {
     };
     let bg_of = |core: &mut Core, spec: NodeSpec| -> Color {
         let mut ui = core.frame(Size::new(100.0, 100.0), 1.0);
-        ui.with(
+        ui.leaf(
             spec.width(kui_core::Sizing::Fixed(50.0))
                 .height(kui_core::Sizing::Fixed(20.0)),
-            |_| {},
         );
         ui.finish();
         core.output().0.quads[0].color

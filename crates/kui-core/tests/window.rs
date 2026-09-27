@@ -17,28 +17,26 @@ fn frame(core: &mut Core) {
             .height(Sizing::Fixed(40.0))
             .window_drag(),
         |ui| {
-            ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
+            ui.leaf(NodeSpec::row().width(Sizing::Grow(1.0)));
             for b in [
                 WindowButton::Minimize,
                 WindowButton::Maximize,
                 WindowButton::Close,
             ] {
-                ui.with(
+                ui.leaf(
                     NodeSpec::row()
                         .width(Sizing::Fixed(40.0))
                         .height(Sizing::Grow(1.0))
                         .window_button(b),
-                    |_| {},
                 );
             }
         },
     );
-    ui.with(
+    ui.leaf(
         NodeSpec::row()
             .width(Sizing::Fixed(100.0))
             .height(Sizing::Fixed(30.0))
             .on_click("content-click"),
-        |_| {},
     );
     ui.finish();
 }

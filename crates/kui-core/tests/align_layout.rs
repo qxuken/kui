@@ -49,11 +49,10 @@ fn warnings_for(spec: NodeSpec) -> Vec<kui_core::diag::Warning> {
     let mut core = Core::new();
     frame(&mut core, |ui| {
         ui.with(spec, |ui| {
-            ui.with(
+            ui.leaf(
                 NodeSpec::column()
                     .width(Sizing::Fixed(10.0))
                     .height(Sizing::Fixed(10.0)),
-                |_| {},
             );
         });
     });

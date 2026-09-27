@@ -79,7 +79,7 @@ impl App for Select {
                         .collect();
                     widgets::select_items(ui, "size", &items, Some(self.size));
                 });
-                ui.with(NodeSpec::column().height(Sizing::Fixed(10.0)), |_| {});
+                ui.leaf(NodeSpec::column().height(Sizing::Fixed(10.0)));
                 ui.text(
                     &format!("{} at {} pt", LANGUAGES[self.language], SIZES[self.size]),
                     TextStyle::new(SIZES[self.size] as f32),

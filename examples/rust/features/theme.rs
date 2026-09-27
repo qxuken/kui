@@ -36,14 +36,13 @@ struct Gallery {
 /// translucent washes with nothing legible to write on them.
 fn swatch(ui: &mut Ui<'_>, name: &str, c: Color, t: &Theme) {
     ui.with(NodeSpec::row().gap(8.0).cross_align(Align::Center), |ui| {
-        ui.with(
+        ui.leaf(
             NodeSpec::row()
                 .width(Sizing::Fixed(34.0))
                 .height(Sizing::Fixed(20.0))
                 .bg(c)
                 .radius(4.0)
                 .border(1.0, t.border),
-            |_| {},
         );
         ui.with(NodeSpec::column().width(Sizing::Fixed(112.0)), |ui| {
             ui.text(name, TextStyle::new(12.0).color(t.fg));

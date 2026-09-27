@@ -19,12 +19,12 @@ fn frame(core: &mut Core, twice: bool) -> (Key, Key, Key) {
     let mut keys = (Key(0), Key(0), Key(0));
     ui.with(NodeSpec::row(), |ui| {
         ui.with(NodeSpec::column(), |ui| {
-            keys.0 = ui.with_keyed("alpha", cell(), |_| {});
-            keys.1 = ui.with_keyed("beta", cell(), |_| {});
+            keys.0 = ui.leaf_keyed("alpha", cell());
+            keys.1 = ui.leaf_keyed("beta", cell());
         });
         if twice {
             ui.with(NodeSpec::column(), |ui| {
-                keys.2 = ui.with_keyed("beta", cell(), |_| {});
+                keys.2 = ui.leaf_keyed("beta", cell());
             });
         }
     });
@@ -103,7 +103,7 @@ fn the_index_is_per_frame() {
     assert!(core.take_warnings().is_empty(), "and no longer ambiguous");
     // A frame that drops the label drops the answer.
     let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
-    ui.with_keyed("alpha", cell(), |_| {});
+    ui.leaf_keyed("alpha", cell());
     ui.finish();
     assert_eq!(core.key_of("alpha"), Some(Key::ROOT.str("alpha")));
     assert_ne!(
@@ -124,7 +124,7 @@ fn while_a_frame_is_built_it_reads_this_frame_first_and_then_the_last() {
     assert_eq!(ui.key_of("beta"), Some(beta));
     // Declared this frame, elsewhere: this frame's key wins over last
     // frame's, since it is the one the frame being built will have.
-    let moved = ui.with_keyed("alpha", cell(), |_| {});
+    let moved = ui.leaf_keyed("alpha", cell());
     assert_ne!(moved, alpha);
     assert_eq!(ui.key_of("alpha"), Some(moved));
     // Never declared: nothing.

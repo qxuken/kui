@@ -14,21 +14,19 @@ use kui_core::{
 fn frame(core: &mut Core, focus_left: bool) -> (Key, Key) {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::row().fill());
-    let left = ui.with(
+    let left = ui.leaf(
         NodeSpec::column()
             .width(Sizing::Grow(1.0))
             .height(Sizing::Grow(1.0))
             .on_key(Value::map([("pane", Value::Int(0))]))
             .key_up(),
-        |_| {},
     );
-    let right = ui.with(
+    let right = ui.leaf(
         NodeSpec::column()
             .width(Sizing::Grow(1.0))
             .height(Sizing::Grow(1.0))
             .on_key(Value::map([("pane", Value::Int(1))]))
             .key_up(),
-        |_| {},
     );
     ui.take_key_focus(if focus_left { left } else { right });
     ui.finish();
@@ -132,7 +130,7 @@ fn no_focus_no_events() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(100.0, 100.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    ui.with(NodeSpec::column().fill().on_key(Value::Null), |_| {});
+    ui.leaf(NodeSpec::column().fill().on_key(Value::Null));
     ui.finish(); // sink declared, but nothing took focus
     assert!(drive(&mut core, &[press(KeyCode::Char('x'))]).is_empty());
 }
@@ -142,7 +140,7 @@ fn null_tag_omitted_from_payload() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(100.0, 100.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    let sink = ui.with(NodeSpec::column().fill().on_key(Value::Null), |_| {});
+    let sink = ui.leaf(NodeSpec::column().fill().on_key(Value::Null));
     ui.take_key_focus(sink);
     ui.finish();
     let evs = drive(&mut core, &[press(KeyCode::Enter)]);
@@ -221,7 +219,7 @@ fn a_sink_without_key_up_hears_presses_only() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    let sink = ui.with(NodeSpec::column().fill().on_key(Value::Null), |_| {});
+    let sink = ui.leaf(NodeSpec::column().fill().on_key(Value::Null));
     ui.take_key_focus(sink);
     ui.finish();
     let down = |repeat| {
@@ -383,10 +381,7 @@ fn a_key_held_over_an_editor_taking_focus_is_not_delivered_twice() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    let sink = ui.with(
-        NodeSpec::column().fill().on_key(Value::Null).key_up(),
-        |_| {},
-    );
+    let sink = ui.leaf(NodeSpec::column().fill().on_key(Value::Null).key_up());
     ui.take_key_focus(sink);
     ui.finish();
     drive(&mut core, &[press(KeyCode::Char('w'))]);
@@ -494,14 +489,13 @@ fn the_second_channel_of_a_press_is_one_table() {
 fn sink_in_a_modal(core: &mut Core) -> (Key, Key) {
     let mut ui = core.frame(Size::new(200.0, 200.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    ui.with_keyed(
+    ui.leaf_keyed(
         "behind",
         NodeSpec::row()
             .width(Sizing::Fixed(60.0))
             .height(Sizing::Fixed(20.0))
             .on_click(Value::str("behind"))
             .label("Behind"),
-        |_| {},
     );
     let mut sink = Key::ROOT;
     let dialog = ui.with_keyed(
@@ -517,14 +511,13 @@ fn sink_in_a_modal(core: &mut Core) -> (Key, Key) {
             .modal(Value::str("editor"))
             .label("Editor"),
         |ui| {
-            sink = ui.with_keyed(
+            sink = ui.leaf_keyed(
                 "notes",
                 NodeSpec::column()
                     .width(Sizing::Fixed(100.0))
                     .height(Sizing::Fixed(40.0))
                     .on_key(Value::str("notes"))
                     .label("Notes"),
-                |_| {},
             );
         },
     );
@@ -577,16 +570,15 @@ fn a_press_walks_the_ring_presses_a_control_and_nudges_a_slider() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(200.0, 200.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    let go = ui.with_keyed(
+    let go = ui.leaf_keyed(
         "go",
         NodeSpec::row()
             .width(Sizing::Fixed(60.0))
             .height(Sizing::Fixed(20.0))
             .on_click(Value::str("go"))
             .label("Go"),
-        |_| {},
     );
-    let vol = ui.with_keyed(
+    let vol = ui.leaf_keyed(
         "vol",
         NodeSpec::row()
             .width(Sizing::Fixed(100.0))
@@ -597,7 +589,6 @@ fn a_press_walks_the_ring_presses_a_control_and_nudges_a_slider() {
             .value_min(0.0)
             .value_max(10.0)
             .on_drag(Value::str("vol")),
-        |_| {},
     );
     ui.finish();
 
@@ -635,13 +626,12 @@ fn multiplexer(core: &mut Core) -> (Key, Key) {
     let mut pane = None;
     let sink = ui.with_keyed("main", NodeSpec::row().fill().on_key(Value::Null), |ui| {
         pane = Some(
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "pane1",
                 NodeSpec::column()
                     .width(Sizing::Grow(1.0))
                     .height(Sizing::Grow(1.0))
                     .on_click(Value::map([("kind", Value::str("focus"))])),
-                |_| {},
             ),
         );
     });
@@ -700,15 +690,14 @@ fn pressing_window_chrome_leaves_the_keyboard_where_it_was() {
     ui.configure_root(NodeSpec::column().fill());
     // A custom titlebar above the app's own key sink, as every custom-chrome
     // app draws it.
-    ui.with_keyed(
+    ui.leaf_keyed(
         "bar",
         NodeSpec::row()
             .width(Sizing::Grow(1.0))
             .height(Sizing::Fixed(40.0))
             .window_drag(),
-        |_| {},
     );
-    let sink = ui.with_keyed("main", NodeSpec::row().fill().on_key(Value::Null), |_| {});
+    let sink = ui.leaf_keyed("main", NodeSpec::row().fill().on_key(Value::Null));
     ui.take_key_focus(sink);
     ui.finish();
     // Grabbing the window to move it is the platform's business; the app
@@ -998,13 +987,12 @@ fn a_focused_sink_outside_the_clip_still_hears_the_keyboard() {
         ui.with_keyed("strip", NodeSpec::row().fill().scroll_x(), |ui| {
             for i in 0..2 {
                 cols.push(
-                    ui.with_keyed(
+                    ui.leaf_keyed(
                         &format!("col{i}"),
                         NodeSpec::column()
                             .width(Sizing::Fixed(400.0))
                             .height(Sizing::Grow(1.0))
                             .on_key(Value::map([("pane", Value::Int(i))])),
-                        |_| {},
                     ),
                 );
             }
@@ -1049,23 +1037,21 @@ fn a_sink_a_modal_shuts_out_hears_nothing_wherever_it_is_drawn() {
     let build = |core: &mut Core, modal: bool| {
         let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
         ui.configure_root(NodeSpec::column().fill());
-        let sink = ui.with_keyed(
+        let sink = ui.leaf_keyed(
             "sink",
             NodeSpec::column()
                 .width(Sizing::Grow(1.0))
                 .height(Sizing::Grow(1.0))
                 .on_key(Value::map([("pane", Value::Int(0))])),
-            |_| {},
         );
         if modal {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "dialog",
                 NodeSpec::column()
                     .width(Sizing::Fixed(100.0))
                     .height(Sizing::Fixed(50.0))
                     .float(FloatConfig::parent().at(Align::Center, Align::Center))
                     .modal(Value::str("dlg")),
-                |_| {},
             );
         }
         ui.take_key_focus(sink);

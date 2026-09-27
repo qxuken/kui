@@ -120,16 +120,14 @@ impl App for Demo {
                             ui.polygon(&arrowhead(tip, dir, 12.0), NodeSpec::column().bg(t.border_strong));
                         }
                         for n in nodes {
-                            ui.with(
+                            ui.leaf(
                                 NodeSpec::column()
                                     .float(FloatConfig::parent().offset(n.x - 12.0, n.y - 12.0))
                                     .width(Sizing::Fixed(24.0))
                                     .height(Sizing::Fixed(24.0))
                                     .bg(t.raised)
                                     .border(1.0, t.border)
-                                    .radius(12.0),
-                                |_| {},
-                            );
+                                    .radius(12.0));
                         }
                     });
 

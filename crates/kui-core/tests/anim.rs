@@ -27,8 +27,8 @@ fn frame_bg(core: &mut Core, ratio: f32, transition: Option<Transition>) -> f32 
         left = left.transition_with(t);
         right = right.transition_with(t);
     }
-    ui.with_keyed("left", left, |_| {});
-    ui.with_keyed("right", right, |_| {});
+    ui.leaf_keyed("left", left);
+    ui.leaf_keyed("right", right);
     ui.finish();
     left_width(core)
 }
@@ -94,14 +94,13 @@ fn colors_ease_too() {
     let t = Transition::ms(100.0).easing(Easing::Linear);
     let paint = |core: &mut Core, a: f32| {
         let mut ui = core.frame(Size::new(100.0, 100.0), 1.0);
-        ui.with_keyed(
+        ui.leaf_keyed(
             "chip",
             NodeSpec::column()
                 .width(Sizing::Fixed(10.0))
                 .height(Sizing::Fixed(10.0))
                 .bg(kui_core::Color::rgba(1.0, 1.0, 1.0, a))
                 .transition_with(t),
-            |_| {},
         );
         ui.finish();
         let (dl, _) = core.output();
@@ -129,7 +128,7 @@ fn tab_xs(core: &mut Core, order: [&str; 2], slide: bool) -> Vec<(String, f32)> 
         if slide {
             spec = spec.slide();
         }
-        ui.with_keyed(label, spec, |_| {});
+        ui.leaf_keyed(label, spec);
     }
     ui.finish();
     let (dl, _) = core.output();
@@ -210,7 +209,7 @@ fn an_animate_node_owes_a_frame_while_it_is_declared() {
         if animate {
             spec = spec.animate();
         }
-        ui.with_keyed("node", spec, |_| {});
+        ui.leaf_keyed("node", spec);
         ui.finish();
     };
     frame(&mut core, false);
@@ -249,8 +248,8 @@ fn frame_keyframed(core: &mut Core, now: Option<f64>, repeat: Repeat) -> f32 {
     let right = NodeSpec::column()
         .width(Sizing::Grow(1.0))
         .height(Sizing::Grow(1.0));
-    ui.with_keyed("left", left, |_| {});
-    ui.with_keyed("right", right, |_| {});
+    ui.leaf_keyed("left", left);
+    ui.leaf_keyed("right", right);
     ui.finish();
     left_width(core)
 }
@@ -299,7 +298,7 @@ fn a_slot_the_keyframes_skip_still_tweens() {
             .bg(bg)
             .transition_with(Transition::ms(1000.0).easing(Easing::Linear))
             .keyframes(vec![Keyframe::default().width(Sizing::Fixed(200.0))]);
-        ui.with_keyed("k", spec, |_| {});
+        ui.leaf_keyed("k", spec);
         ui.finish();
         let (dl, _) = core.output();
         let q = dl.quads.first().expect("a quad");
@@ -339,7 +338,7 @@ fn what_is_owed_is_readable_by_kind() {
                     .repeat(Repeat::Alternate),
             )
             .keyframes(vec![Keyframe::default().width(Sizing::Fixed(200.0))]);
-        ui.with_keyed("k", spec, |_| {});
+        ui.leaf_keyed("k", spec);
         ui.finish();
         core.owed()
     };
@@ -385,7 +384,7 @@ fn float_x(core: &mut Core, dx: f32, spec: NodeSpec) -> f32 {
         .height(Sizing::Fixed(20.0))
         .bg(Color::WHITE)
         .float(FloatConfig::viewport().offset(dx, 0.0));
-    ui.with_keyed("toast", spec, |_| {});
+    ui.leaf_keyed("toast", spec);
     ui.finish();
     let (dl, _) = core.output();
     dl.quads.first().map_or(f32::NAN, |q| q.rect.x)
@@ -489,7 +488,7 @@ fn enter_fades_a_background_in() {
             .bg(Color::WHITE)
             .transition_with(linear(100.0))
             .enter(enter);
-        ui.with_keyed("toast", spec, |_| {});
+        ui.leaf_keyed("toast", spec);
         ui.finish();
         let (dl, _) = core.output();
         dl.quads.first().map_or(f32::NAN, |q| q.color.a)

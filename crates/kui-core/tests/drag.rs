@@ -8,20 +8,18 @@ fn drag_frame(core: &mut Core) {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::row().fill());
     // A 100px left panel, a draggable 10px divider, the rest.
-    ui.with(
+    ui.leaf(
         NodeSpec::column()
             .width(Sizing::Fixed(100.0))
             .height(Sizing::Grow(1.0)),
-        |_| {},
     );
-    ui.with_keyed(
+    ui.leaf_keyed(
         "divider",
         NodeSpec::column()
             .width(Sizing::Fixed(10.0))
             .height(Sizing::Grow(1.0))
             .on_click(Value::str("clicked"))
             .on_drag(Value::str("split")),
-        |_| {},
     );
     ui.finish();
 }
@@ -98,11 +96,10 @@ fn scroll_frame(core: &mut Core) -> kui_core::Key {
             .scroll_y(),
         |ui| {
             for _ in 0..20 {
-                ui.with(
+                ui.leaf(
                     NodeSpec::column()
                         .width(Sizing::Grow(1.0))
                         .height(Sizing::Fixed(30.0)),
-                    |_| {},
                 );
             }
         },
@@ -120,13 +117,12 @@ fn hover_keeps_tracking_other_nodes_during_a_drag() {
         let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
         ui.configure_root(NodeSpec::row().fill());
         for label in ["a", "b"] {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 label,
                 NodeSpec::column()
                     .width(Sizing::Fixed(100.0))
                     .height(Sizing::Fixed(30.0))
                     .on_drag(Value::str(label)),
-                |_| {},
             );
         }
         ui.finish();
@@ -223,7 +219,7 @@ fn hoverable_added_below_a_pressed_node_keeps_the_click() {
                 .on_drag(Value::str("lift")),
             |ui| {
                 if with_column {
-                    ui.with_keyed(
+                    ui.leaf_keyed(
                         "col",
                         NodeSpec::column()
                             .float(
@@ -233,7 +229,6 @@ fn hoverable_added_below_a_pressed_node_keeps_the_click() {
                             .width(Sizing::Percent(1.0))
                             .height(Sizing::Fixed(300.0))
                             .hoverable(),
-                        |_| {},
                     );
                 }
             },
@@ -307,14 +302,13 @@ fn a_captured_drag_keeps_its_hover_group_pressed() {
     let frame = |core: &mut Core| {
         let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
         ui.configure_root(NodeSpec::row().fill());
-        ui.with_keyed(
+        ui.leaf_keyed(
             "handle",
             NodeSpec::column()
                 .width(Sizing::Fixed(100.0))
                 .height(Sizing::Fixed(30.0))
                 .hover_group("split")
                 .on_drag(Value::str("split")),
-            |_| {},
         );
         ui.finish();
     };

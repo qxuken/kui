@@ -89,6 +89,17 @@ Four readings change:
   of its own (a space with the colour behind it), so its edge would round
   the way the text beside it does.
 
+- **`Ui::leaf`: a node with no children, in Rust** (from kawoosh,
+  2026-09-27). `ui.leaf(spec)`, `ui.leaf_keyed(label, spec)` and
+  `ui.leaf_indexed(i, spec)` open a node and close it, returning its key,
+  as `with` does with nothing inside. A spacer, a rule, a swatch or a hit
+  area was `ui.with(spec, |_| {})`, the empty closure there only because
+  `with` takes one; the repo's own trees had 452 of them and now have
+  none. The other bindings already had it: `<box … />` in JSX, `row { }`
+  in Lua, `kui_open` then `kui_close` in C. No door changes.
+  *What you can delete:* the `|_| {}` on every childless `with`,
+  `with_keyed` and `with_indexed`.
+
 ### Fixed
 
 - **Text backgrounds that adjoin showed a seam at every join** (from

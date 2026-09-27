@@ -86,13 +86,12 @@ fn scroller_and_float(core: &mut Core, modal: bool) {
     ui.configure_root(NodeSpec::column().fill());
     ui.with_keyed("list", NodeSpec::column().fill().scroll_y(), |ui| {
         for i in 0..20 {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 &format!("row{i}"),
                 NodeSpec::row()
                     .width(Sizing::Grow(1.0))
                     .height(Sizing::Fixed(30.0))
                     .bg(GREY),
-                |_| {},
             );
         }
     });
@@ -102,7 +101,7 @@ fn scroller_and_float(core: &mut Core, modal: bool) {
     if modal {
         spec = spec.modal(Value::str("menu"));
     }
-    ui.with_keyed("menu", spec, |_| {});
+    ui.leaf_keyed("menu", spec);
     ui.finish();
 }
 
@@ -171,10 +170,10 @@ fn bar_and_body(core: &mut Core, dropdown: bool, tooltip: bool) {
     ui.configure_root(NodeSpec::column().fill());
     ui.with_keyed("bar", NodeSpec::row().height(Sizing::Fixed(24.0)), |ui| {
         if dropdown {
-            ui.with_keyed("dropdown", float_at(100.0, RED), |_| {});
+            ui.leaf_keyed("dropdown", float_at(100.0, RED));
         }
     });
-    ui.with_keyed(
+    ui.leaf_keyed(
         "btn",
         NodeSpec::row()
             .width(Sizing::Fixed(80.0))
@@ -182,10 +181,9 @@ fn bar_and_body(core: &mut Core, dropdown: bool, tooltip: bool) {
             .bg(GREEN)
             .on_click(Value::str("btn"))
             .focusable(),
-        |_| {},
     );
     if tooltip {
-        ui.with_keyed("tip", float_at(150.0, BLUE), |_| {});
+        ui.leaf_keyed("tip", float_at(150.0, BLUE));
     }
     ui.finish();
 }
@@ -229,17 +227,12 @@ fn the_hit_list_is_the_stack() {
         let mut ui = core.frame(VIEW, 1.0);
         ui.configure_root(NodeSpec::column().fill());
         if dropdown {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "dropdown",
                 float_at(100.0, RED).on_click(Value::str("dropdown")),
-                |_| {},
             );
         }
-        ui.with_keyed(
-            "tip",
-            float_at(150.0, BLUE).on_click(Value::str("tip")),
-            |_| {},
-        );
+        ui.leaf_keyed("tip", float_at(150.0, BLUE).on_click(Value::str("tip")));
         ui.finish();
     };
     let click = |core: &mut Core| -> Option<String> {
@@ -291,7 +284,7 @@ fn a_ring_inside_a_float_ends_that_layer() {
         let mut ui = core.frame(VIEW, 1.0);
         ui.configure_root(NodeSpec::column().fill());
         ui.with_keyed("popover", float_at(100.0, RED), |ui| {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "ok",
                 NodeSpec::row()
                     .width(Sizing::Fixed(40.0))
@@ -299,10 +292,9 @@ fn a_ring_inside_a_float_ends_that_layer() {
                     .bg(GREEN)
                     .on_click(Value::str("ok"))
                     .focusable(),
-                |_| {},
             );
         });
-        ui.with_keyed("tip", float_at(150.0, BLUE), |_| {});
+        ui.leaf_keyed("tip", float_at(150.0, BLUE));
         ui.finish();
     };
     build(&mut core);
@@ -323,17 +315,16 @@ fn a_scroller_inside_a_float_bars_at_that_layers_end() {
     ui.configure_root(NodeSpec::column().fill());
     ui.with_keyed("menu", float_at(100.0, RED).scroll_y(), |ui| {
         for i in 0..10 {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 &format!("row{i}"),
                 NodeSpec::row()
                     .width(Sizing::Grow(1.0))
                     .height(Sizing::Fixed(30.0))
                     .bg(GREY),
-                |_| {},
             );
         }
     });
-    ui.with_keyed("tip", float_at(150.0, BLUE), |_| {});
+    ui.leaf_keyed("tip", float_at(150.0, BLUE));
     ui.finish();
     let order = painted(&mut core);
     let bar = order.iter().position(|n| *n == "bar").unwrap();
@@ -352,15 +343,14 @@ fn a_nested_float_is_above_the_float_it_is_in() {
         ui.configure_root(NodeSpec::column().fill());
         ui.with_keyed("menu", float_at(100.0, RED), |ui| {
             if sub {
-                ui.with_keyed("submenu", float_at(120.0, BLUE), |_| {});
+                ui.leaf_keyed("submenu", float_at(120.0, BLUE));
             }
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "item",
                 NodeSpec::row()
                     .width(Sizing::Fixed(40.0))
                     .height(Sizing::Fixed(20.0))
                     .bg(GREEN),
-                |_| {},
             );
         });
         ui.finish();
@@ -387,24 +377,22 @@ fn a_float_over_a_modal_from_outside_it_warns_when_it_holds_a_control() {
     let build = |core: &mut Core, hud: bool, button: bool| {
         let mut ui = core.frame(VIEW, 1.0);
         ui.configure_root(NodeSpec::column().fill());
-        ui.with_keyed(
+        ui.leaf_keyed(
             "dialog",
             float_at(100.0, RED)
                 .modal(Value::str("dialog"))
                 .label("Dialog"),
-            |_| {},
         );
         if hud {
             ui.with_keyed("hud", float_at(150.0, BLUE), |ui| {
                 if button {
-                    ui.with_keyed(
+                    ui.leaf_keyed(
                         "close",
                         NodeSpec::row()
                             .width(Sizing::Fixed(20.0))
                             .height(Sizing::Fixed(20.0))
                             .on_click(Value::str("close"))
                             .label("Close"),
-                        |_| {},
                     );
                 }
             });

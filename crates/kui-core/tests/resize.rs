@@ -5,7 +5,7 @@ use kui_core::{Core, InputEvent, Key, NodeSpec, Size, UiEvent, Value};
 
 fn frame(core: &mut Core, w: f32, h: f32, scale: f32) {
     let mut ui = core.frame(Size::new(w, h), scale);
-    ui.with(NodeSpec::column(), |_| {});
+    ui.leaf(NodeSpec::column());
     ui.finish();
 }
 

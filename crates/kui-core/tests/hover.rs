@@ -9,12 +9,11 @@ fn frame(core: &mut Core, badge_spec: NodeSpec) -> Key {
     let mut badge = Key(0);
     ui.with(NodeSpec::column(), |ui| {
         badge = ui.child_key("badge");
-        ui.with_keyed(
+        ui.leaf_keyed(
             "badge",
             badge_spec
                 .width(Sizing::Fixed(20.0))
                 .height(Sizing::Fixed(20.0)),
-            |_| {},
         );
     });
     ui.finish();
@@ -80,13 +79,12 @@ fn hoverable_badge_inside_viewport_float_hovers() {
             .pad(10.0),
         |ui| {
             badge = ui.child_key("badge");
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "badge",
                 NodeSpec::column()
                     .width(Sizing::Fixed(20.0))
                     .height(Sizing::Fixed(20.0))
                     .hoverable(),
-                |_| {},
             );
         },
     );
@@ -132,13 +130,12 @@ fn pair_frame(core: &mut Core, spec: impl Fn(&str) -> NodeSpec) -> (Key, Key) {
     let (mut a, mut b) = (Key(0), Key(0));
     for (label, out) in [("a", &mut a), ("b", &mut b)] {
         *out = ui.child_key(label);
-        ui.with_keyed(
+        ui.leaf_keyed(
             label,
             spec(label)
                 .bg(BASE)
                 .width(Sizing::Fixed(50.0))
                 .height(Sizing::Fixed(50.0)),
-            |_| {},
         );
     }
     ui.finish();
@@ -290,7 +287,7 @@ fn on_hover_fires_when_a_frame_moves_a_node_under_a_still_cursor() {
 
     // Next frame: nothing hover-tracked at the cursor.
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
-    ui.with(NodeSpec::column(), |_| {});
+    ui.leaf(NodeSpec::column());
     ui.finish();
     let pending = core.take_pending_events();
     assert_eq!(hover_phases(&pending), [(a, "leave".to_string())]);

@@ -105,10 +105,9 @@ fn a_labelled_live_region_is_not_reported() {
     core.set_diagnostics(true);
     let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    ui.with_keyed(
+    ui.leaf_keyed(
         "status",
         NodeSpec::column().live(Live::Polite).label("Saved"),
-        |_ui| {},
     );
     ui.finish();
     assert!(core.take_warnings().is_empty());
@@ -184,14 +183,13 @@ fn the_same_text_after_a_press_is_not_reported() {
     let build = |core: &mut Core| {
         let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
         ui.configure_root(NodeSpec::column().fill());
-        ui.with_keyed(
+        ui.leaf_keyed(
             "copy",
             NodeSpec::row()
                 .width(kui_core::Sizing::Fixed(80.0))
                 .height(kui_core::Sizing::Fixed(30.0))
                 .on_click(kui_core::Value::str("copy"))
                 .label("Copy"),
-            |_| {},
         );
         ui.finish();
     };

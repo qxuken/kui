@@ -12,14 +12,13 @@ fn frame(core: &mut Core) {
     ui.configure_root(NodeSpec::column().fill());
     ui.with_keyed("list", NodeSpec::column().fill().scroll_y(), |ui| {
         for i in 0..ROWS {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 &format!("row{i}"),
                 NodeSpec::row()
                     .width(Sizing::Grow(1.0))
                     .height(Sizing::Fixed(ROW_H))
                     .bg(Color::rgb8(40, 40, 60))
                     .on_click(Value::Int(i as i64)),
-                |_| {},
             );
         }
     });
@@ -105,10 +104,7 @@ fn scrollbar_appears_only_when_overflowing() {
     // A short list needs no scrollbar.
     let mut ui = core.frame(Size::new(400.0, VIEW_H), 1.0);
     ui.with_keyed("list", NodeSpec::column().fill().scroll_y(), |ui| {
-        ui.with(
-            NodeSpec::row().height(Sizing::Fixed(50.0)).bg(Color::WHITE),
-            |_| {},
-        );
+        ui.leaf(NodeSpec::row().height(Sizing::Fixed(50.0)).bg(Color::WHITE));
     });
     ui.finish();
     let (dl, _) = core.output();
@@ -126,13 +122,12 @@ fn scroll_offset_survives_and_reclamps_on_content_shrink() {
     let mut ui = core.frame(Size::new(400.0, VIEW_H), 1.0);
     ui.with_keyed("list", NodeSpec::column().fill().scroll_y(), |ui| {
         for i in 0..10 {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 &format!("row{i}"),
                 NodeSpec::row()
                     .width(Sizing::Grow(1.0))
                     .height(Sizing::Fixed(ROW_H))
                     .bg(Color::rgb8(40, 40, 60)),
-                |_| {},
             );
         }
     });
@@ -239,13 +234,12 @@ fn reveal_reaches_a_row_the_frame_declares_for_the_first_time() {
     ui.configure_root(NodeSpec::column().fill());
     ui.with_keyed("list", NodeSpec::column().fill().scroll_y(), |ui| {
         for i in 0..40 {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 &format!("row{i}"),
                 NodeSpec::row()
                     .width(Sizing::Grow(1.0))
                     .height(Sizing::Fixed(ROW_H))
                     .bg(Color::rgb8(40, 40, 60)),
-                |_| {},
             );
         }
     });
@@ -261,12 +255,11 @@ fn two_lists(core: &mut Core) {
     for list in ["left", "right"] {
         ui.with_keyed(list, NodeSpec::column().fill().scroll_y(), |ui| {
             for i in 0..ROWS {
-                ui.with_keyed(
+                ui.leaf_keyed(
                     &format!("row{i}"),
                     NodeSpec::row()
                         .width(Sizing::Grow(1.0))
                         .height(Sizing::Fixed(ROW_H)),
-                    |_| {},
                 );
             }
         });
@@ -362,12 +355,11 @@ fn virtual_frame(core: &mut Core, rows: usize) -> usize {
         ROW_H,
         |ui, i| {
             built += 1;
-            ui.with(
+            ui.leaf(
                 NodeSpec::row()
                     .fill()
                     .bg(Color::rgb8(40, 40, 60))
                     .on_click(Value::Int(i as i64)),
-                |_| {},
             );
         },
     );
@@ -515,7 +507,7 @@ fn virtual_frame_in(core: &mut Core, rows: usize, h: f32) -> usize {
         ROW_H,
         |ui, _| {
             built += 1;
-            ui.with(NodeSpec::row().fill(), |_| {});
+            ui.leaf(NodeSpec::row().fill());
         },
     );
     ui.finish();
@@ -659,12 +651,11 @@ fn var_frame(core: &mut Core, heights: &mut RowHeights) -> std::ops::Range<usize
         |ui, i| {
             first = first.min(i);
             last = i + 1;
-            ui.with(
+            ui.leaf(
                 NodeSpec::row()
                     .fill()
                     .bg(Color::rgb8(40, 40, 60))
                     .on_click(Value::Int(i as i64)),
-                |_| {},
             );
         },
     );
@@ -932,13 +923,12 @@ fn styled(core: &mut Core, style: impl Fn(NodeSpec) -> NodeSpec) {
     ui.configure_root(NodeSpec::column().fill());
     ui.with_keyed("list", style(NodeSpec::column().fill().scroll_y()), |ui| {
         for i in 0..ROWS {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 &format!("row{i}"),
                 NodeSpec::row()
                     .width(Sizing::Grow(1.0))
                     .height(Sizing::Fixed(ROW_H))
                     .bg(Color::rgb8(40, 40, 60)),
-                |_| {},
             );
         }
     });
@@ -1080,7 +1070,7 @@ fn a_short_padded_list_settles() {
             heights,
             |_ui, _i, _w| 20.0,
             |ui, _i| {
-                ui.with(NodeSpec::row().fill(), |_| {});
+                ui.leaf(NodeSpec::row().fill());
             },
         );
         ui.finish();
@@ -1110,7 +1100,7 @@ fn hover_over_the_scrollbar_is_not_hover_over_the_row_beneath() {
         ui.configure_root(NodeSpec::column().fill());
         ui.with_keyed("list", NodeSpec::column().fill().scroll_y(), |ui| {
             for i in 0..ROWS {
-                ui.with_keyed(
+                ui.leaf_keyed(
                     &format!("row{i}"),
                     NodeSpec::row()
                         .width(Sizing::Grow(1.0))
@@ -1118,7 +1108,6 @@ fn hover_over_the_scrollbar_is_not_hover_over_the_row_beneath() {
                         .bg(Color::rgb8(40, 40, 60))
                         .hover_bg(Color::WHITE)
                         .on_hover(Value::Int(i as i64)),
-                    |_| {},
                 );
             }
         });
@@ -1166,12 +1155,11 @@ fn strokes_in_a_scrolled_row_are_clipped_by_the_container() {
     let build = |core: &mut Core| {
         let mut ui = core.frame(Size::new(400.0, VIEW_H), 1.0);
         ui.configure_root(NodeSpec::column().fill());
-        ui.with_keyed(
+        ui.leaf_keyed(
             "strip",
             NodeSpec::row()
                 .width(Sizing::Grow(1.0))
                 .height(Sizing::Fixed(40.0)),
-            |_| {},
         );
         ui.with_keyed("list", NodeSpec::column().fill().scroll_y(), |ui| {
             for i in 0..ROWS {
@@ -1244,12 +1232,11 @@ fn a_programmatic_scroll_eases_where_the_container_asks_and_the_wheel_never_does
         let row = ui.with_keyed("row", spec, |ui| {
             for i in 0..4 {
                 boxes.push(
-                    ui.with_keyed(
+                    ui.leaf_keyed(
                         &format!("b{i}"),
                         NodeSpec::column()
                             .width(Sizing::Fixed(100.0))
                             .height(Sizing::Grow(1.0)),
-                        |_| {},
                     ),
                 );
             }
@@ -1333,12 +1320,11 @@ fn eased_ribbon(
     let row = ui.with_keyed("row", spec, |ui| {
         for i in 0..n {
             boxes.push(
-                ui.with_keyed(
+                ui.leaf_keyed(
                     &format!("b{i}"),
                     NodeSpec::column()
                         .width(Sizing::Fixed(100.0))
                         .height(Sizing::Grow(1.0)),
-                    |_| {},
                 ),
             );
         }
@@ -1466,11 +1452,7 @@ fn a_geometry_read_before_the_frame_begins_is_that_frames_read() {
         let mut ui = core.frame(Size::new(100.0, h), 1.0);
         ui.configure_root(NodeSpec::column().fill());
         let k = ui.with_keyed("list", NodeSpec::column().fill().scroll_y(), |ui| {
-            ui.with_keyed(
-                "tall",
-                NodeSpec::column().height(Sizing::Fixed(1000.0)),
-                |_| {},
-            );
+            ui.leaf_keyed("tall", NodeSpec::column().height(Sizing::Fixed(1000.0)));
         });
         ui.finish();
         k
@@ -1503,11 +1485,7 @@ fn a_read_of_a_container_not_laid_out_owes_no_frame() {
         ui.scroll_geometry(list_key());
         if show {
             ui.with_keyed("list", NodeSpec::column().fill().scroll_y(), |ui| {
-                ui.with_keyed(
-                    "tall",
-                    NodeSpec::column().height(Sizing::Fixed(1000.0)),
-                    |_| {},
-                );
+                ui.leaf_keyed("tall", NodeSpec::column().height(Sizing::Fixed(1000.0)));
             });
         }
         ui.finish();
@@ -1542,12 +1520,11 @@ fn a_long_glide_over_variable_rows_reaches_the_row_asked_for() {
             h,
             |_ui, i, _w| var_h(i),
             |ui, i| {
-                ui.with(
+                ui.leaf(
                     NodeSpec::row()
                         .fill()
                         .bg(Color::rgb8(40, 40, 60))
                         .on_click(Value::Int(i as i64)),
-                    |_| {},
                 );
             },
         );
@@ -1587,12 +1564,11 @@ fn strokes_in_a_departing_scrolled_row_are_clipped_by_the_container() {
                 .transition(100.0)
                 .exit(kui_core::Enter::default().opacity(0.0));
             ui.with_keyed("panel", panel, |ui| {
-                ui.with_keyed(
+                ui.leaf_keyed(
                     "strip",
                     NodeSpec::row()
                         .width(Sizing::Grow(1.0))
                         .height(Sizing::Fixed(40.0)),
-                    |_| {},
                 );
                 ui.with_keyed("list", NodeSpec::column().fill().scroll_y(), |ui| {
                     for i in 0..ROWS {

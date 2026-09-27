@@ -72,16 +72,14 @@ impl App for Motion {
                         .bg(t.sunken)
                         .radius(7.0),
                     |ui| {
-                        ui.with_keyed(
+                        ui.leaf_keyed(
                             "bar",
                             NodeSpec::row()
                                 .width(Sizing::Percent(self.level))
                                 .height(Sizing::Grow(1.0))
                                 .bg(t.accent)
                                 .radius(7.0)
-                                .transition(600.0),
-                            |_| {},
-                        );
+                                .transition(600.0));
                     },
                 );
 
@@ -108,7 +106,7 @@ impl App for Motion {
                                     |ui| {
                                         // The racer floats inside its lane; `slide`
                                         // is what makes its *position* ease.
-                                        ui.with_keyed(
+                                        ui.leaf_keyed(
                                             name,
                                             NodeSpec::row()
                                                 .float(
@@ -122,9 +120,7 @@ impl App for Motion {
                                                 .bg(t.accent)
                                                 .transition(900.0)
                                                 .easing(easing)
-                                                .slide(),
-                                            |_| {},
-                                        );
+                                                .slide());
                                     },
                                 );
                             });
@@ -174,7 +170,7 @@ impl App for Motion {
                     .into_iter()
                     {
                         ui.with(NodeSpec::column().gap(4.0).cross_align(Align::Center), |ui| {
-                            ui.with_keyed(
+                            ui.leaf_keyed(
                                 name,
                                 NodeSpec::row()
                                     .width(Sizing::Fixed(48.0))
@@ -187,16 +183,14 @@ impl App for Motion {
                                         Keyframe::default().at(0.0).bg(t.accent).radius(6.0).opacity(1.0),
                                         Keyframe::default().at(0.5).bg(t.success).radius(24.0).opacity(0.6),
                                         Keyframe::default().at(1.0).bg(t.danger).radius(6.0).opacity(1.0),
-                                    ]),
-                                |_| {},
-                            );
+                                    ]));
                             ui.text(name, TextStyle::new(10.0).color(t.muted));
                         });
                     }
                     // The chase: one cycle, five delays.
                     ui.with(NodeSpec::row().gap(4.0).cross_align(Align::Center), |ui| {
                         for i in 0..5 {
-                            ui.with_keyed(
+                            ui.leaf_keyed(
                                 &format!("chase{i}"),
                                 NodeSpec::row()
                                     .width(Sizing::Fixed(12.0))
@@ -209,9 +203,7 @@ impl App for Motion {
                                         Keyframe::default().at(0.0).bg(t.faint).opacity(0.4),
                                         Keyframe::default().at(0.5).bg(t.accent).opacity(1.0),
                                         Keyframe::default().at(1.0).bg(t.faint).opacity(0.4),
-                                    ]),
-                                |_| {},
-                            );
+                                    ]));
                         }
                     });
                 });

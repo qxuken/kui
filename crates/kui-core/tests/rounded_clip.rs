@@ -31,13 +31,12 @@ fn card_and_child(
             .height(Sizing::Fixed(CARD))
             .bg(Color::WHITE),
         |ui| {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "child",
                 child
                     .width(Sizing::Fixed(CHILD))
                     .height(Sizing::Fixed(CHILD))
                     .bg(Color::rgb8(20, 20, 30)),
-                |_| {},
             );
         },
     );
@@ -183,14 +182,13 @@ fn a_float_escapes_the_rounded_clip_with_the_rest_of_it() {
             .clip()
             .bg(Color::WHITE),
         |ui| {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "tip",
                 NodeSpec::column()
                     .float(kui_core::FloatConfig::below())
                     .width(Sizing::Fixed(40.0))
                     .height(Sizing::Fixed(20.0))
                     .bg(Color::rgb8(255, 0, 0)),
-                |_| {},
             );
         },
     );
@@ -267,13 +265,12 @@ fn a_scrolled_child_keeps_the_containers_corners_not_its_own_position() {
                 .scroll_y(),
             |ui| {
                 for i in 0..8 {
-                    ui.with_indexed(
+                    ui.leaf_indexed(
                         i,
                         NodeSpec::column()
                             .width(Sizing::Grow(1.0))
                             .height(Sizing::Fixed(30.0))
                             .bg(Color::rgb8(40, 40, 60)),
-                        |_| {},
                     );
                 }
             },

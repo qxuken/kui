@@ -54,9 +54,9 @@ fn frame(core: &mut Core, shape: Shape) -> Keys {
             .on_click(Value::str(label))
             .label(label)
     };
-    let a = ui.with_keyed("a", row("a"), |_| {});
-    let b = ui.with_keyed("b", row("b"), |_| {});
-    let c = ui.with_keyed("c", row("c"), |_| {});
+    let a = ui.leaf_keyed("a", row("a"));
+    let b = ui.leaf_keyed("b", row("b"));
+    let c = ui.leaf_keyed("c", row("c"));
     let (mut dock, mut d1, mut d2) = (Key::ROOT, Key::ROOT, Key::ROOT);
     if shape.dock {
         dock = ui.with_keyed(
@@ -66,12 +66,12 @@ fn frame(core: &mut Core, shape: Shape) -> Keys {
                 .height(Sizing::Fixed(100.0))
                 .focus_region(),
             |ui| {
-                d1 = ui.with_keyed("d1", row("d1"), |_| {});
+                d1 = ui.leaf_keyed("d1", row("d1"));
                 let mut second = row("d2");
                 if shape.entry {
                     second = second.initial_focus();
                 }
-                d2 = ui.with_keyed("d2", second, |_| {});
+                d2 = ui.leaf_keyed("d2", second);
             },
         );
     }
@@ -84,7 +84,7 @@ fn frame(core: &mut Core, shape: Shape) -> Keys {
                 .height(Sizing::Fixed(H))
                 .modal(Value::str("dlg")),
             |ui| {
-                ui.with_keyed("ok", row("ok"), |_| {});
+                ui.leaf_keyed("ok", row("ok"));
             },
         );
     }

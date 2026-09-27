@@ -135,7 +135,7 @@ impl App for Combo {
                         .cursor(CursorShape::Pointer),
                     |ui| {
                         ui.text(ITEMS[self.chosen], TextStyle::new(14.0).color(t.fg));
-                        ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
+                        ui.leaf(NodeSpec::row().width(Sizing::Grow(1.0)));
                         ui.text("v", TextStyle::new(11.0).color(t.muted));
                     },
                 );

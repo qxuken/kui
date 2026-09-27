@@ -228,7 +228,7 @@ fn a_disabled_slider_proposes_nothing() {
 fn a_slider_without_on_change_still_nudges() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
-    let k = ui.with_keyed(
+    let k = ui.leaf_keyed(
         "vol",
         NodeSpec::row()
             .width(kui_core::Sizing::Fixed(100.0))
@@ -237,7 +237,6 @@ fn a_slider_without_on_change_still_nudges() {
             .label("Volume")
             .value_now(3.0)
             .on_drag(Value::str("vol")),
-        |_| {},
     );
     ui.finish();
     key(&mut core, KeyCode::Tab);

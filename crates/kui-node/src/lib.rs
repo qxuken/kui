@@ -4308,7 +4308,7 @@ mod readback_pins {
                     );
                 },
             );
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "vol",
                 NodeSpec::row()
                     .role(Role::Slider)
@@ -4317,7 +4317,6 @@ mod readback_pins {
                     .value_min(0.0)
                     .value_max(1.0)
                     .on_drag(Value::str("vol")),
-                |_| {},
             );
             ui.with_keyed(
                 "remember",
@@ -4666,10 +4665,9 @@ mod readback_payloads {
         core.set_inspect(true);
         let mut ui = core.frame(Size::new(100.0, 100.0), 1.0);
         ui.configure_root(kui_core::NodeSpec::column().fill());
-        ui.with_keyed(
+        ui.leaf_keyed(
             "b",
             kui_core::NodeSpec::row().on_click(Value::map([("by_amount", Value::Int(2))])),
-            |_| {},
         );
         ui.finish();
         let nodes = core.nodes();

@@ -167,13 +167,12 @@ pub fn latency_graph(ui: &mut Ui<'_>) {
                                         ui.with(
                                             NodeSpec::row().gap(7.0).cross_align(Align::Center),
                                             |ui| {
-                                                ui.with(
+                                                ui.leaf(
                                                     NodeSpec::column()
                                                         .width(Sizing::Fixed(9.0))
                                                         .height(Sizing::Fixed(9.0))
                                                         .bg(color)
                                                         .radius(2.0),
-                                                    |_| {},
                                                 );
                                                 ui.text(name, TextStyle::new(11.0).color(theme.fg));
                                             },
@@ -209,12 +208,11 @@ pub fn latency_graph(ui: &mut Ui<'_>) {
                                 .max_height(GRAPH_H),
                             |ui| {
                                 if over {
-                                    ui.with(
+                                    ui.leaf(
                                         NodeSpec::column()
                                             .width(Sizing::Fixed(1.0))
                                             .height(Sizing::Fixed(3.0))
                                             .bg(OVER),
-                                        |_| {},
                                     );
                                 }
                                 // Column children run top->bottom; push in
@@ -230,12 +228,11 @@ pub fn latency_graph(ui: &mut Ui<'_>) {
                                         continue;
                                     }
                                     let h = (ms * px_per_ms).max(1.0);
-                                    ui.with(
+                                    ui.leaf(
                                         NodeSpec::column()
                                             .width(Sizing::Fixed(1.0))
                                             .height(Sizing::Fixed(h))
                                             .bg(color),
-                                        |_| {},
                                     );
                                 }
                             },
@@ -533,7 +530,7 @@ pub fn titlebar_with(ui: &mut Ui<'_>, content: impl FnOnce(&mut Ui<'_>)) {
             // reported rect already includes the trailing gap); without
             // them, a plain leading margin.
             let inset = win.native_controls.map_or(12.0, |r| r.x + r.w);
-            ui.with(NodeSpec::row().width(Sizing::Fixed(inset)), |_| {});
+            ui.leaf(NodeSpec::row().width(Sizing::Fixed(inset)));
             content(ui);
             window_buttons(ui);
         },
@@ -593,12 +590,11 @@ fn window_button(ui: &mut Ui<'_>, button: WindowButton, maximized: bool) {
             .window_button(button),
         |ui| match button {
             WindowButton::Minimize => {
-                ui.with(
+                ui.leaf(
                     NodeSpec::row()
                         .width(Sizing::Fixed(10.0))
                         .height(Sizing::Fixed(1.0))
                         .bg(fg),
-                    |_| {},
                 );
             }
             WindowButton::Maximize if maximized => {
@@ -609,7 +605,7 @@ fn window_button(ui: &mut Ui<'_>, button: WindowButton, maximized: bool) {
                         .height(Sizing::Fixed(10.0)),
                     |ui| {
                         for (x, y) in [(Align::End, Align::Start), (Align::Start, Align::End)] {
-                            ui.with(
+                            ui.leaf(
                                 NodeSpec::column()
                                     .width(Sizing::Fixed(7.5))
                                     .height(Sizing::Fixed(7.5))
@@ -617,19 +613,17 @@ fn window_button(ui: &mut Ui<'_>, button: WindowButton, maximized: bool) {
                                     .float(
                                         crate::spec::FloatConfig::parent().at(x, y).self_at(x, y),
                                     ),
-                                |_| {},
                             );
                         }
                     },
                 );
             }
             WindowButton::Maximize => {
-                ui.with(
+                ui.leaf(
                     NodeSpec::column()
                         .width(Sizing::Fixed(9.0))
                         .height(Sizing::Fixed(9.0))
                         .border(1.0, fg),
-                    |_| {},
                 );
             }
             WindowButton::Close => {
@@ -985,22 +979,20 @@ pub fn toggle_with(
                     }
                     if kind == Toggle::Radio {
                         let d = (b * 0.4).round();
-                        ui.with(
+                        ui.leaf(
                             NodeSpec::row()
                                 .width(Sizing::Fixed(d))
                                 .height(Sizing::Fixed(d))
                                 .radius(d / 2.0)
                                 .bg(t.on_accent),
-                            |_| {},
                         );
                     } else if mixed {
-                        ui.with(
+                        ui.leaf(
                             NodeSpec::row()
                                 .width(Sizing::Fixed((b * 0.5).round()))
                                 .height(Sizing::Fixed(2.0))
                                 .radius(1.0)
                                 .bg(t.on_accent),
-                            |_| {},
                         );
                     } else {
                         // Drawn, not a glyph: the same mark at every size
@@ -1029,7 +1021,7 @@ pub fn toggle_with(
                     .transition(120.0);
                 ui.with_keyed("track", track, |ui| {
                     let k = b - 4.0;
-                    ui.with_keyed(
+                    ui.leaf_keyed(
                         "knob",
                         NodeSpec::row()
                             .width(Sizing::Fixed(k))
@@ -1038,7 +1030,6 @@ pub fn toggle_with(
                             .bg(t.on_accent)
                             .transition(120.0)
                             .slide(),
-                        |_| {},
                     );
                 });
             }
@@ -1205,7 +1196,7 @@ pub fn slider_with(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, hint: Option<&s
             ui.with(fill, |ui| {
                 // Hung off the fill's end, so it sits where the value is
                 // with no arithmetic of the view's.
-                ui.with(
+                ui.leaf(
                     NodeSpec::row()
                         .width(Sizing::Fixed(b))
                         .height(Sizing::Fixed(b))
@@ -1217,7 +1208,6 @@ pub fn slider_with(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, hint: Option<&s
                                 .at(Align::End, Align::Center)
                                 .self_at(Align::Center, Align::Center),
                         ),
-                    |_| {},
                 );
             });
         });
@@ -1336,7 +1326,7 @@ pub fn menu_panel(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, items: &[MenuIte
         let mut first = true;
         for (i, item) in items.iter().enumerate() {
             if item.role == MenuRole::Separator {
-                ui.with_indexed(
+                ui.leaf_indexed(
                     i as u64,
                     NodeSpec::row()
                         .width(Sizing::Grow(1.0))
@@ -1346,7 +1336,6 @@ pub fn menu_panel(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, items: &[MenuIte
                         // paint, and a screen reader hearing "separator"
                         // between every pair of items is noise.
                         .role(Role::None),
-                    |_| {},
                 );
                 continue;
             }
@@ -1394,7 +1383,7 @@ pub fn menu_panel(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, items: &[MenuIte
                     // Pushed to the right edge by a grow spacer, so the label
                     // stays where the eye expects it whatever the
                     // accelerator is.
-                    ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
+                    ui.leaf(NodeSpec::row().width(Sizing::Grow(1.0)));
                     ui.text(accel, TextStyle::new(m.chrome_text).color(t.muted));
                 }
             });
@@ -1663,14 +1652,14 @@ pub fn uniform_list(
         // auto-keyed spacer next to a built row 0 would be row 0's key.
         let lead = range.start as f32 * row_h;
         if lead > 0.0 {
-            ui.with_keyed("lead", spacer_spec(lead), |_| {});
+            ui.leaf_keyed("lead", spacer_spec(lead));
         }
         for i in range.clone() {
             ui.with_indexed(i as u64, row_spec(row_h), |ui| row(ui, i));
         }
         let tail = (rows - range.end) as f32 * row_h;
         if tail > 0.0 {
-            ui.with_keyed("tail", spacer_spec(tail), |_| {});
+            ui.leaf_keyed("tail", spacer_spec(tail));
         }
     });
 
@@ -2027,13 +2016,13 @@ pub fn list(
     ui.with_keyed(label, spec.scroll_y().gap(0.0), |ui| {
         ui.row_count(heights.len() as u64);
         if plan.lead > 0.0 {
-            ui.with_keyed("lead", spacer_spec(plan.lead), |_| {});
+            ui.leaf_keyed("lead", spacer_spec(plan.lead));
         }
         for i in plan.range.clone() {
             ui.with_indexed(i as u64, row_spec(heights.get(i)), |ui| row(ui, i));
         }
         if plan.tail > 0.0 {
-            ui.with_keyed("tail", spacer_spec(plan.tail), |_| {});
+            ui.leaf_keyed("tail", spacer_spec(plan.tail));
         }
     });
 

@@ -28,10 +28,9 @@ fn card_shadow(spec: NodeSpec) -> Quad {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
     ui.configure_root(NodeSpec::column().pad(20.0));
-    ui.with_keyed(
+    ui.leaf_keyed(
         "card",
         spec.width(Sizing::Fixed(80.0)).height(Sizing::Fixed(40.0)),
-        |_| {},
     );
     ui.finish();
     let q = core.output().0.quads[0];

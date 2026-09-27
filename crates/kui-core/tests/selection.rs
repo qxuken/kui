@@ -593,13 +593,12 @@ fn shift_motions_on_a_focused_scope_select_its_text() {
         NodeSpec::column().width(Sizing::Grow(1.0)).selectable(),
         |ui| {
             ui.text("one two", style());
-            button = ui.with_keyed(
+            button = ui.leaf_keyed(
                 "copy",
                 NodeSpec::row()
                     .width(Sizing::Fixed(20.0))
                     .height(Sizing::Fixed(20.0))
                     .on_click(kui_core::Value::str("copy")),
-                |_| {},
             );
         },
     );

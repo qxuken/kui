@@ -141,7 +141,7 @@ fn grid(ui: &mut Ui<'_>, g: Grid) {
                         ui.text(&s, TextStyle::new(10.0));
                     });
                 } else {
-                    ui.with(spec, |_| {});
+                    ui.leaf(spec);
                 }
             }
         });
@@ -543,7 +543,7 @@ fn frame_10k_rects_one_exit(bencher: divan::Bencher) {
     let frame = |core: &mut Core| {
         let mut ui = core.frame(Size::new(1920.0, 1080.0), 2.0);
         grid(&mut ui, g);
-        ui.with_keyed(
+        ui.leaf_keyed(
             "dialog",
             NodeSpec::column()
                 .width(Sizing::Fixed(200.0))
@@ -551,7 +551,6 @@ fn frame_10k_rects_one_exit(bencher: divan::Bencher) {
                 .bg(Color::rgb8(20, 20, 30))
                 .transition(200.0)
                 .exit(kui_core::Enter::default().opacity(0.0)),
-            |_| {},
         );
         ui.finish();
         let (dl, _) = core.output();
@@ -602,7 +601,7 @@ fn bench_drop(bencher: divan::Bencher, rows_n: usize, exits: bool) {
                     .transition(200.0)
                     .exit(kui_core::Enter::default().opacity(0.0));
             }
-            ui.with_indexed(i as u64, spec, |_| {});
+            ui.leaf_indexed(i as u64, spec);
         }
         ui.finish();
     }
@@ -661,7 +660,7 @@ fn replay_a_full_depart_store(bencher: divan::Bencher) {
         let mut ui = core.frame(Size::new(1920.0, 1080.0), 2.0);
         ui.configure_root(NodeSpec::column().fill());
         for i in 0..n {
-            ui.with_indexed(
+            ui.leaf_indexed(
                 i as u64,
                 NodeSpec::column()
                     .width(Sizing::Grow(1.0))
@@ -669,7 +668,6 @@ fn replay_a_full_depart_store(bencher: divan::Bencher) {
                     .bg(Color::rgb8((i % 255) as u8, 90, 140))
                     .transition(100_000.0)
                     .exit(kui_core::Enter::default().opacity(0.0)),
-                |_| {},
             );
         }
         ui.finish();
@@ -703,14 +701,13 @@ fn chips(ui: &mut Ui<'_>, wrap: bool) {
         }
         ui.with(row, |ui| {
             for c in 0..100 {
-                ui.with(
+                ui.leaf(
                     NodeSpec::column()
                         // 40..=110px: several lines per row at 1920 wide.
                         .width(Sizing::Fixed(40.0 + ((r * 100 + c) % 8) as f32 * 10.0))
                         .height(Sizing::Fixed(14.0))
                         .bg(Color::rgb8((r % 255) as u8, (c % 255) as u8, 128))
                         .radius(2.0),
-                    |_| {},
                 );
             }
         });
@@ -774,13 +771,12 @@ fn frame_1k_grow_rows_capped(bencher: divan::Bencher) {
         let mut ui = core.frame(Size::new(1920.0, 1080.0), 2.0);
         ui.configure_root(NodeSpec::column().fill());
         for i in 0..1000 {
-            ui.with(
+            ui.leaf(
                 NodeSpec::row()
                     .width(Sizing::Grow(1.0))
                     .height(Sizing::Grow(1.0))
                     .max_height(0.5 + i as f32 * 0.002)
                     .bg(Color::rgb8(20, 20, 30)),
-                |_| {},
             );
         }
         ui.finish();
@@ -813,13 +809,12 @@ fn list_row(ui: &mut Ui<'_>, i: usize) {
             .bg(Color::rgb8(24, 24, 32))
             .on_click(Value::Int(i as i64)),
         |ui| {
-            ui.with(
+            ui.leaf(
                 NodeSpec::column()
                     .width(Sizing::Fixed(4.0))
                     .height(Sizing::Grow(1.0))
                     .bg(Color::rgb8((i % 255) as u8, 90, 140))
                     .radius(2.0),
-                |_| {},
             );
             // 64 distinct strings -> realistic warm-cache text load.
             ui.text(&format!("line {}", i % 64), TextStyle::new(12.0));

@@ -160,15 +160,14 @@ fn ui_event_message_reads_a_click_and_a_drags_tag() {
     let frame = |core: &mut Core| {
         let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
         ui.configure_root(NodeSpec::row().fill());
-        ui.with(
+        ui.leaf(
             NodeSpec::column()
                 .width(kui_native::Sizing::Fixed(100.0))
                 .height(kui_native::Sizing::Grow(1.0))
                 .label("focus")
                 .on_click(Msg::Focus { pane: 4 }),
-            |_| {},
         );
-        ui.with(
+        ui.leaf(
             NodeSpec::column()
                 .width(kui_native::Sizing::Fixed(100.0))
                 .height(kui_native::Sizing::Grow(1.0))
@@ -176,7 +175,6 @@ fn ui_event_message_reads_a_click_and_a_drags_tag() {
                     path: "a".into(),
                     dir: Dir::H,
                 }),
-            |_| {},
         );
         ui.finish();
     };

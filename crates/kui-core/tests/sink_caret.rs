@@ -35,12 +35,11 @@ fn frame(core: &mut Core, caret: Option<(usize, u32)>, draw_caret: bool) -> Key 
                     // The drawn caret: on the phase, and only when the
                     // app draws one at all.
                     if draw_caret && visible && caret.is_some_and(|(l, _)| l == n) {
-                        ui.with_keyed(
+                        ui.leaf_keyed(
                             "caret",
                             NodeSpec::column()
                                 .width(Sizing::Fixed(2.0))
                                 .height(Sizing::Fixed(16.0)),
-                            |_| {},
                         );
                     }
                 });
@@ -231,14 +230,13 @@ fn the_caret_is_the_enclosing_sinks_wherever_focus_sits_inside_it() {
                         |ui| ui.text("gutter", mono()),
                     );
                 });
-                button = ui.with_keyed(
+                button = ui.leaf_keyed(
                     "wrap",
                     NodeSpec::row()
                         .width(Sizing::Fixed(20.0))
                         .height(Sizing::Fixed(20.0))
                         .on_click(Value::str("wrap"))
                         .label("Wrap"),
-                    |_| {},
                 );
                 for (n, text) in ["first line", "second"].iter().enumerate() {
                     let mut row = NodeSpec::row().height(Sizing::Fixed(20.0)).role(Role::Line);

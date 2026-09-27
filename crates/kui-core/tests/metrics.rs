@@ -118,12 +118,11 @@ fn compact_and_scaled_keep_the_platforms_titlebar() {
         let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
         ui.configure_root(NodeSpec::column().fill());
         widgets::titlebar_with(&mut ui, |ui| {
-            ui.with(
+            ui.leaf(
                 NodeSpec::column()
                     .width(kui_core::Sizing::Fixed(10.0))
                     .height(kui_core::Sizing::Grow(1.0))
                     .bg(kui_core::Color::WHITE),
-                |_| {},
             );
         });
         ui.finish();

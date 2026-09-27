@@ -242,10 +242,8 @@ impl App for Page {
                             .width(Sizing::Grow(1.0))
                             .cross_align(Align::Center),
                         |ui| {
-                            ui.with(
-                                NodeSpec::row().width(Sizing::Fixed(8.0 * *indent as f32)),
-                                |_| {},
-                            );
+                            ui.leaf(
+                                NodeSpec::row().width(Sizing::Fixed(8.0 * *indent as f32)));
                             let mut first = true;
                             for (i, n) in TREE.iter().enumerate() {
                                 let Some(text) = n.text else { continue };
@@ -257,7 +255,7 @@ impl App for Page {
                                 // leaves.
                                 let word = text.chars().next().is_some_and(|c| c.is_alphanumeric());
                                 if !first && (word || matches!(text, "=" | "{")) {
-                                    ui.with(NodeSpec::row().width(Sizing::Fixed(7.0)), |_| {});
+                                    ui.leaf(NodeSpec::row().width(Sizing::Fixed(7.0)));
                                 }
                                 first = false;
                                 let on = lit(i);
@@ -395,11 +393,9 @@ impl App for Page {
                                         .on_click(tag)
                                         .label(n.kind),
                                     |ui| {
-                                        ui.with(
+                                        ui.leaf(
                                             NodeSpec::row()
-                                                .width(Sizing::Fixed(10.0 * depth(i) as f32)),
-                                            |_| {},
-                                        );
+                                                .width(Sizing::Fixed(10.0 * depth(i) as f32)));
                                         let one_line = |size: f32| {
                                             TextStyle::new(size).mono().wrap(kui_native::TextWrap::None)
                                         };
@@ -413,7 +409,7 @@ impl App for Page {
                                         if let Some(text) = n.text {
                                             ui.text(text, one_line(11.0).color(t.faint));
                                         }
-                                        ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
+                                        ui.leaf(NodeSpec::row().width(Sizing::Grow(1.0)));
                                         ui.text(
                                             &format!("{}", n.line + 1),
                                             TextStyle::new(10.0).color(t.faint),

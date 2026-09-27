@@ -263,21 +263,19 @@ fn handlers(core: &mut Core) -> (Key, Key, Key) {
                             .height(Sizing::Fixed(30.0))
                             .scroll_y(),
                         |ui| {
-                            ui.with(
+                            ui.leaf(
                                 NodeSpec::column()
                                     .width(Sizing::Grow(1.0))
                                     .height(Sizing::Fixed(200.0)),
-                                |_| {},
                             );
                         },
                     );
                 },
             );
-            ui.with(
+            ui.leaf(
                 NodeSpec::column()
                     .width(Sizing::Grow(1.0))
                     .height(Sizing::Fixed(200.0)),
-                |_| {},
             );
         },
     );

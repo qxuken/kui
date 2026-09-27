@@ -120,8 +120,8 @@ fn modal_frame_with(core: &mut Core, dialog: bool, confirm: bool, entry: Entry) 
             .height(Sizing::Fixed(20.0))
     };
     let mut keys = vec![
-        ui.with_keyed("open", row().on_click(Value::str("open")), |_| {}),
-        ui.with_keyed("other", row().on_click(Value::str("other")), |_| {}),
+        ui.leaf_keyed("open", row().on_click(Value::str("open"))),
+        ui.leaf_keyed("other", row().on_click(Value::str("other"))),
     ];
     if dialog {
         let dlg = ui.with_keyed(
@@ -139,21 +139,20 @@ fn modal_frame_with(core: &mut Core, dialog: bool, confirm: bool, entry: Entry) 
             |ui| {
                 // The destructive one first, so declaration order alone
                 // would open the dialog on it.
-                ui.with_keyed("ok", row().on_click(Value::str("ok")), |_| {});
+                ui.leaf_keyed("ok", row().on_click(Value::str("ok")));
                 let mut cancel = row().on_click(Value::str("cancel"));
                 if entry == Entry::Cancel {
                     cancel = cancel.initial_focus();
                 }
-                ui.with_keyed("cancel", cancel, |_| {});
+                ui.leaf_keyed("cancel", cancel);
                 if entry == Entry::Disabled {
                     // Declared, and skipped by the ring anyway.
-                    ui.with_keyed(
+                    ui.leaf_keyed(
                         "gone",
                         row()
                             .on_click(Value::str("gone"))
                             .disabled(true)
                             .initial_focus(),
-                        |_| {},
                     );
                 }
                 if confirm {
@@ -166,7 +165,7 @@ fn modal_frame_with(core: &mut Core, dialog: bool, confirm: bool, entry: Entry) 
                             .modal(Value::Null)
                             .label("Sure?"),
                         |ui| {
-                            ui.with_keyed("yes", row().on_click(Value::str("yes")), |_| {});
+                            ui.leaf_keyed("yes", row().on_click(Value::str("yes")));
                         },
                     );
                 }
@@ -269,8 +268,8 @@ fn a_modal_with_no_controls_holds_focus_by_holding_none() {
     core.set_focus(Some(k[0]));
     let mut ui = core.frame(Size::new(200.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    ui.with_keyed("open", NodeSpec::row().on_click(Value::str("open")), |_| {});
-    ui.with_keyed(
+    ui.leaf_keyed("open", NodeSpec::row().on_click(Value::str("open")));
+    ui.leaf_keyed(
         "note",
         NodeSpec::column()
             .width(Sizing::Fixed(100.0))
@@ -278,7 +277,6 @@ fn a_modal_with_no_controls_holds_focus_by_holding_none() {
             .float(FloatConfig::viewport())
             .modal(Value::Null)
             .label("Working"),
-        |_| {},
     );
     ui.finish();
     assert_eq!(

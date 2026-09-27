@@ -345,7 +345,7 @@ fn status_line(ui: &mut Ui<'_>, pal: &Pal, doc: &Doc, line: usize) {
                 },
             );
             ui.text(&doc.name, TextStyle::new(12.0).color(pal.fg));
-            ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
+            ui.leaf(NodeSpec::row().width(Sizing::Grow(1.0)));
             ui.text("tab switches buffer", TextStyle::new(11.0).color(pal.faint));
             let total = doc.lines.len();
             let pct = if total <= 1 {

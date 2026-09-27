@@ -496,11 +496,10 @@ fn a_wrapping_table_row_warns_and_lays_out_as_a_row() {
         ui.with(NodeSpec::table().width(Sizing::Fixed(100.0)), |ui| {
             ui.with(NodeSpec::row().wrap().width(grow()), |ui| {
                 for _ in 0..3 {
-                    ui.with(
+                    ui.leaf(
                         NodeSpec::column()
                             .width(Sizing::Fixed(60.0))
                             .height(Sizing::Fixed(20.0)),
-                        |_| {},
                     );
                 }
             });
@@ -611,11 +610,10 @@ fn a_floating_row_under_a_table_wraps_and_is_not_warned_about() {
                     .float(kui_core::spec::FloatConfig::default()),
                 |ui| {
                     for _ in 0..3 {
-                        ui.with(
+                        ui.leaf(
                             NodeSpec::column()
                                 .width(Sizing::Fixed(60.0))
                                 .height(Sizing::Fixed(20.0)),
-                            |_| {},
                         );
                     }
                 },

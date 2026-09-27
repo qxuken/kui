@@ -45,10 +45,9 @@ fn build(
             );
         }
     });
-    let after = ui.with_keyed(
+    let after = ui.leaf_keyed(
         "after",
         NodeSpec::row().on_click(Value::str("after")).label("After"),
-        |_| {},
     );
     (keys, after)
 }
@@ -132,11 +131,7 @@ fn a_list_is_a_composite_only_when_its_rows_are_focusable() {
     ui.with_keyed("nav", NodeSpec::column().role(Role::List), |ui| {
         for name in ["one", "two"] {
             ui.with_keyed(name, NodeSpec::row().role(Role::ListItem), |ui| {
-                links.push(ui.with_keyed(
-                    "link",
-                    NodeSpec::row().role(Role::Link).label(name),
-                    |_| {},
-                ));
+                links.push(ui.leaf_keyed("link", NodeSpec::row().role(Role::Link).label(name)));
             });
         }
     });
@@ -382,7 +377,7 @@ fn a_wrapped_container_moves_by_line() {
         |ui| {
             for name in ["a", "b", "c", "d", "e"] {
                 keys.push(
-                    ui.with_keyed(
+                    ui.leaf_keyed(
                         name,
                         NodeSpec::row()
                             .role(Role::ListItem)
@@ -390,7 +385,6 @@ fn a_wrapped_container_moves_by_line() {
                             .width(kui_core::Sizing::Fixed(50.0))
                             .height(kui_core::Sizing::Fixed(10.0))
                             .label(name),
-                        |_| {},
                     ),
                 );
             }
@@ -417,12 +411,11 @@ fn a_composite_inside_a_modal_collapses_too() {
     let mut core = Core::new();
     let mut ui = core.frame(VIEW, 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    ui.with_keyed(
+    ui.leaf_keyed(
         "behind",
         NodeSpec::row()
             .on_click(Value::str("behind"))
             .label("Behind"),
-        |_| {},
     );
     let mut tabs = Vec::new();
     let mut ok = Key::ROOT;
@@ -435,18 +428,13 @@ fn a_composite_inside_a_modal_collapses_too() {
         |ui| {
             ui.with_keyed("tabs", NodeSpec::row().role(Role::TabList), |ui| {
                 for name in ["a", "b"] {
-                    tabs.push(ui.with_keyed(
+                    tabs.push(ui.leaf_keyed(
                         name,
                         NodeSpec::row().role(Role::Tab).focusable().label(name),
-                        |_| {},
                     ));
                 }
             });
-            ok = ui.with_keyed(
-                "ok",
-                NodeSpec::row().on_click(Value::str("ok")).label("OK"),
-                |_| {},
-            );
+            ok = ui.leaf_keyed("ok", NodeSpec::row().on_click(Value::str("ok")).label("OK"));
         },
     );
     ui.finish();
@@ -480,17 +468,15 @@ fn focusable_inside_an_item_is_reported_and_beside_one_is_not() {
                 .focusable()
                 .label("Row"),
             |ui| {
-                buried = ui.with_keyed(
+                buried = ui.leaf_keyed(
                     "delete",
                     NodeSpec::row().on_click(Value::str("del")).label("Delete"),
-                    |_| {},
                 );
             },
         );
-        plus = ui.with_keyed(
+        plus = ui.leaf_keyed(
             "add",
             NodeSpec::row().on_click(Value::str("add")).label("Add"),
-            |_| {},
         );
     });
     ui.finish();
@@ -523,13 +509,12 @@ fn a_radio_or_tab_outside_its_container_is_reported() {
             ("menu item", Role::MenuItem),
             ("list item", Role::ListItem),
         ] {
-            let key = ui.with_keyed(
+            let key = ui.leaf_keyed(
                 name,
                 NodeSpec::row()
                     .role(role)
                     .on_click(Value::str(name))
                     .label(name),
-                |_| {},
             );
             if matches!(role, Role::Radio | Role::Tab) {
                 lone.push(key);
@@ -551,13 +536,12 @@ fn a_radio_or_tab_outside_its_container_is_reported() {
             NodeSpec::row().role(Role::TabList).label("Tabs"),
             |ui| {
                 ui.with(NodeSpec::row(), |ui| {
-                    ui.with_keyed(
+                    ui.leaf_keyed(
                         "t",
                         NodeSpec::row()
                             .role(Role::Tab)
                             .on_click(Value::str("t"))
                             .label("T"),
-                        |_| {},
                     );
                 });
             },

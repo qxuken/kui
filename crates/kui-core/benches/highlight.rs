@@ -109,12 +109,11 @@ fn pane(ui: &mut Ui<'_>, pane_no: usize, top: usize, salt: usize, caret_line: us
                                     let style = mono().color(color);
                                     if ln == caret_line && i == 2 {
                                         // Inline caret node between runs.
-                                        ui.with(
+                                        ui.leaf(
                                             NodeSpec::column()
                                                 .width(Sizing::Fixed(2.0))
                                                 .height(Sizing::Fixed(LH - 4.0))
                                                 .bg(Color::rgb8(0x6a, 0x8b, 0xff)),
-                                            |_| {},
                                         );
                                     }
                                     if selected && (1..=3).contains(&i) {

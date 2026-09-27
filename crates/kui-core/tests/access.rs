@@ -40,10 +40,9 @@ fn app_frame(core: &mut Core, focus_edit: bool) -> (Key, Key, Key) {
             |ui| ui.text("×", TextStyle::new(12.0)),
         );
     });
-    ui.with_keyed(
+    ui.leaf_keyed(
         "icon",
         NodeSpec::row().on_click(Value::str("save")).label("Save"),
-        |_| {},
     );
     let mut button = Key::ROOT;
     ui.with_keyed("wrap", NodeSpec::column().pad(4.0), |ui| {
@@ -203,7 +202,7 @@ fn explicit_roles_win_and_carry_their_state() {
             .on_click(Value::str("toggle")),
         |ui| ui.text("Remember me", TextStyle::new(12.0)),
     );
-    let slider = ui.with_keyed(
+    let slider = ui.leaf_keyed(
         "vol",
         NodeSpec::row()
             .role(Role::Slider)
@@ -212,12 +211,11 @@ fn explicit_roles_win_and_carry_their_state() {
             .value_min(0.0)
             .value_max(1.0)
             .on_drag(Value::str("vol")),
-        |_| {},
     );
     // The same control naming its own reading: 25 in [5..60] is "36
     // percent" to a reader with only the numbers, which is the bug F8
     // reported.
-    let text_slider = ui.with_keyed(
+    let text_slider = ui.leaf_keyed(
         "focus",
         NodeSpec::row()
             .role(Role::Slider)
@@ -226,7 +224,6 @@ fn explicit_roles_win_and_carry_their_state() {
             .value_min(5.0)
             .value_max(60.0)
             .value_text("25 minutes"),
-        |_| {},
     );
     let heading = ui.with_keyed("h", NodeSpec::row().role(Role::Heading), |ui| {
         ui.text("Settings", TextStyle::new(20.0))
@@ -532,19 +529,14 @@ fn focus_and_value_requests_drive_an_editor() {
 fn slider_nudges_reach_the_app_as_access_events() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
-    let slider = ui.with_keyed(
+    let slider = ui.leaf_keyed(
         "vol",
         NodeSpec::row()
             .role(Role::Slider)
             .label("Volume")
             .on_drag(Value::str("vol")),
-        |_| {},
     );
-    let untagged = ui.with_keyed(
-        "bare",
-        NodeSpec::row().role(Role::Slider).label("x"),
-        |_| {},
-    );
+    let untagged = ui.leaf_keyed("bare", NodeSpec::row().role(Role::Slider).label("x"));
     ui.finish();
 
     let evs = core.handle_input(InputEvent::Access(AccessRequest {
@@ -640,7 +632,7 @@ fn requests_behind_a_modal_or_on_a_disabled_node_do_nothing() {
                 .width(Sizing::Fixed(100.0))
                 .height(Sizing::Fixed(20.0)),
         );
-        let slider = ui.with_keyed(
+        let slider = ui.leaf_keyed(
             "vol",
             NodeSpec::row()
                 .width(Sizing::Fixed(100.0))
@@ -648,9 +640,8 @@ fn requests_behind_a_modal_or_on_a_disabled_node_do_nothing() {
                 .role(Role::Slider)
                 .label("Volume")
                 .on_drag(Value::str("vol")),
-            |_| {},
         );
-        let off = ui.with_keyed(
+        let off = ui.leaf_keyed(
             "off",
             NodeSpec::row()
                 .width(Sizing::Fixed(100.0))
@@ -659,7 +650,6 @@ fn requests_behind_a_modal_or_on_a_disabled_node_do_nothing() {
                 .label("Muted")
                 .disabled(true)
                 .on_drag(Value::str("off")),
-            |_| {},
         );
         let list = ui.with_keyed(
             "list",
@@ -670,12 +660,11 @@ fn requests_behind_a_modal_or_on_a_disabled_node_do_nothing() {
                 .label("List"),
             |ui| {
                 for i in 0..10 {
-                    ui.with_keyed(
+                    ui.leaf_keyed(
                         &format!("row-{i}"),
                         NodeSpec::row()
                             .width(Sizing::Fixed(100.0))
                             .height(Sizing::Fixed(20.0)),
-                        |_| {},
                     );
                 }
             },
@@ -689,14 +678,13 @@ fn requests_behind_a_modal_or_on_a_disabled_node_do_nothing() {
                     .modal(Value::str("dlg"))
                     .label("Settings"),
                 |ui| {
-                    ui.with_keyed(
+                    ui.leaf_keyed(
                         "ok",
                         NodeSpec::row()
                             .width(Sizing::Fixed(80.0))
                             .height(Sizing::Fixed(20.0))
                             .on_click(Value::str("ok"))
                             .label("OK"),
-                        |_| {},
                     );
                 },
             );
@@ -763,25 +751,23 @@ fn a_click_behind_a_modal_fires_nothing_and_asks_the_modal_to_go() {
     let build = |core: &mut Core| {
         let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
         ui.configure_root(NodeSpec::column().fill());
-        let close = ui.with_keyed(
+        let close = ui.leaf_keyed(
             "close",
             NodeSpec::row()
                 .width(Sizing::Fixed(20.0))
                 .height(Sizing::Fixed(20.0))
                 .window_button(WindowButton::Close)
                 .label("Close"),
-            |_| {},
         );
-        let save = ui.with_keyed(
+        let save = ui.leaf_keyed(
             "save",
             NodeSpec::row()
                 .width(Sizing::Fixed(100.0))
                 .height(Sizing::Fixed(20.0))
                 .on_click(Value::map([("kind", Value::str("save"))]))
                 .label("Save"),
-            |_| {},
         );
-        let off = ui.with_keyed(
+        let off = ui.leaf_keyed(
             "off",
             NodeSpec::row()
                 .width(Sizing::Fixed(100.0))
@@ -789,7 +775,6 @@ fn a_click_behind_a_modal_fires_nothing_and_asks_the_modal_to_go() {
                 .on_click(Value::map([("kind", Value::str("off"))]))
                 .disabled(true)
                 .label("Off"),
-            |_| {},
         );
         let dialog = ui.with_keyed(
             "dialog",
@@ -799,14 +784,13 @@ fn a_click_behind_a_modal_fires_nothing_and_asks_the_modal_to_go() {
                 .modal(Value::str("dlg"))
                 .label("Settings"),
             |ui| {
-                ui.with_keyed(
+                ui.leaf_keyed(
                     "ok",
                     NodeSpec::row()
                         .width(Sizing::Fixed(80.0))
                         .height(Sizing::Fixed(20.0))
                         .on_click(Value::map([("kind", Value::str("ok"))]))
                         .label("OK"),
-                    |_| {},
                 );
             },
         );
@@ -856,14 +840,13 @@ fn a_click_behind_a_modal_fires_nothing_and_asks_the_modal_to_go() {
     let mut plain = Core::new();
     let mut ui = plain.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    let save = ui.with_keyed(
+    let save = ui.leaf_keyed(
         "save",
         NodeSpec::row()
             .width(Sizing::Fixed(100.0))
             .height(Sizing::Fixed(20.0))
             .on_click(Value::map([("kind", Value::str("save"))]))
             .label("Save"),
-        |_| {},
     );
     ui.finish();
     assert_eq!(kinds(&click(&mut plain, save)), ["save"]);
@@ -879,12 +862,12 @@ fn missing_names_are_warnings_raised_once() {
         ui.image(id, NodeSpec::column().label("fine"));
         ui.image(id, NodeSpec::column().role(Role::None));
         // An icon button with nothing to read.
-        ui.with_keyed("icon", NodeSpec::row().on_click(Value::Int(1)), |_| {});
+        ui.leaf_keyed("icon", NodeSpec::row().on_click(Value::Int(1)));
         // A named one, and a plain box that is not a control at all.
         ui.with_keyed("ok", NodeSpec::row().on_click(Value::Int(2)), |ui| {
             ui.text("OK", TextStyle::new(12.0))
         });
-        ui.with(NodeSpec::row(), |_| {});
+        ui.leaf(NodeSpec::row());
         // An editor without a label.
         ui.text_edit("q", "", &EditOptions::default(), NodeSpec::column());
         ui.finish();
@@ -917,36 +900,32 @@ fn slider_value_outside_its_range_warns() {
     let slider = |label: &'static str| NodeSpec::row().role(Role::Slider).label(label);
     let frame = |core: &mut Core| {
         let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
-        ui.with_keyed(
+        ui.leaf_keyed(
             "fine",
             slider("fine").value_now(5.0).value_min(0.0).value_max(10.0),
-            |_| {},
         );
-        ui.with_keyed(
+        ui.leaf_keyed(
             "below",
             slider("below")
                 .value_now(-1.0)
                 .value_min(0.0)
                 .value_max(10.0),
-            |_| {},
         );
-        ui.with_keyed(
+        ui.leaf_keyed(
             "above",
             slider("above")
                 .value_now(999.0)
                 .value_min(0.0)
                 .value_max(10.0),
-            |_| {},
         );
-        ui.with_keyed(
+        ui.leaf_keyed(
             "inverted",
             slider("inverted")
                 .value_now(5.0)
                 .value_min(10.0)
                 .value_max(0.0),
-            |_| {},
         );
-        ui.with_keyed("open", slider("open").value_now(999.0), |_| {});
+        ui.leaf_keyed("open", slider("open").value_now(999.0));
         ui.finish();
     };
     frame(&mut core);

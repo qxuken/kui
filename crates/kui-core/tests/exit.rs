@@ -182,13 +182,12 @@ fn without_both_halves_a_removed_node_still_vanishes_at_once() {
             core.set_time(now);
             let mut ui = core.frame(VIEW, 1.0);
             if show {
-                ui.with_keyed(
+                ui.leaf_keyed(
                     "panel",
                     spec.clone()
                         .width(Sizing::Fixed(80.0))
                         .height(Sizing::Fixed(40.0))
                         .bg(Color::WHITE),
-                    |_| {},
                 );
             }
             ui.finish();
@@ -209,7 +208,7 @@ fn a_driver_without_a_clock_gets_the_disappearance_it_always_had() {
     let build = |core: &mut Core, show: bool| {
         let mut ui = core.frame(VIEW, 1.0);
         if show {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "panel",
                 NodeSpec::column()
                     .width(Sizing::Fixed(80.0))
@@ -217,7 +216,6 @@ fn a_driver_without_a_clock_gets_the_disappearance_it_always_had() {
                     .bg(Color::WHITE)
                     .transition(100.0)
                     .exit(Enter::from(40.0, 0.0)),
-                |_| {},
             );
         }
         ui.finish();
@@ -247,7 +245,7 @@ fn a_ghost_escapes_its_ancestors_clip_and_keeps_its_place() {
                 .bg(Color::rgb8(1, 2, 3)),
             |ui| {
                 if show {
-                    ui.with_keyed(
+                    ui.leaf_keyed(
                         "inner",
                         NodeSpec::column()
                             .width(Sizing::Fixed(40.0))
@@ -256,7 +254,6 @@ fn a_ghost_escapes_its_ancestors_clip_and_keeps_its_place() {
                             .transition(100.0)
                             .easing(Easing::Linear)
                             .exit(Enter::from(200.0, 0.0)),
-                        |_| {},
                     );
                 }
             },
@@ -313,20 +310,18 @@ fn a_ghost_keeps_the_clips_its_own_subtree_established() {
                     .exit(Enter::from(200.0, 0.0)),
                 |ui| {
                     // Taller than the box: its bottom third is clipped.
-                    ui.with(
+                    ui.leaf(
                         NodeSpec::column()
                             .width(Sizing::Fixed(40.0))
                             .height(Sizing::Fixed(30.0))
                             .bg(Color::WHITE),
-                        |_| {},
                     );
                     // Entirely past the box's edge: never painted.
-                    ui.with(
+                    ui.leaf(
                         NodeSpec::column()
                             .width(Sizing::Fixed(40.0))
                             .height(Sizing::Fixed(10.0))
                             .bg(Color::WHITE),
-                        |_| {},
                     );
                 },
             );
@@ -371,7 +366,7 @@ fn list(core: &mut Core, now: f64, from: usize, rows: usize) {
     core.set_time(now);
     let mut ui = core.frame(Size::new(400.0, 400.0), 1.0);
     for i in from..from + rows {
-        ui.with_indexed(
+        ui.leaf_indexed(
             i as u64,
             NodeSpec::column()
                 .width(Sizing::Fixed(10.0))
@@ -379,7 +374,6 @@ fn list(core: &mut Core, now: f64, from: usize, rows: usize) {
                 .bg(Color::WHITE)
                 .transition(100.0)
                 .exit(Enter::default().opacity(0.0)),
-            |_| {},
         );
     }
     ui.finish();
@@ -430,7 +424,7 @@ fn a_new_removal_outranks_the_ghosts_already_in_flight() {
         let mut ui = core.frame(Size::new(400.0, 400.0), 1.0);
         for (from, rows) in [(0, first), (1000, second)] {
             for i in from..from + rows {
-                ui.with_indexed(
+                ui.leaf_indexed(
                     i as u64,
                     NodeSpec::column()
                         .width(Sizing::Fixed(10.0))
@@ -438,7 +432,6 @@ fn a_new_removal_outranks_the_ghosts_already_in_flight() {
                         .bg(Color::WHITE)
                         .transition(100.0)
                         .exit(Enter::default().opacity(0.0)),
-                    |_| {},
                 );
             }
         }
@@ -624,7 +617,7 @@ fn a_float_leaves_under_the_floats_that_were_above_it() {
         core.set_time(now);
         let mut ui = core.frame(VIEW, 1.0);
         if panel {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "panel",
                 leaving(
                     NodeSpec::column()
@@ -633,18 +626,16 @@ fn a_float_leaves_under_the_floats_that_were_above_it() {
                         .height(Sizing::Fixed(120.0))
                         .bg(PANEL),
                 ),
-                |_| {},
             );
         }
         // Unkeyed on purpose: a keyed sibling does not consume a sibling
         // index, so the HUD keeps its key with the panel gone.
-        ui.with(
+        ui.leaf(
             NodeSpec::column()
                 .float(FloatConfig::viewport().at(Align::Start, Align::End))
                 .width(Sizing::Fixed(80.0))
                 .height(Sizing::Fixed(20.0))
                 .bg(HUD),
-            |_| {},
         );
         ui.finish();
     };
@@ -687,12 +678,12 @@ fn an_in_flow_ghost_keeps_its_place_between_its_siblings() {
                 .height(Sizing::Fixed(10.0))
                 .bg(bg)
         };
-        ui.with_keyed("a", cell(A), |_| {});
+        ui.leaf_keyed("a", cell(A));
         if b {
-            ui.with_keyed("b", leaving(cell(B)), |_| {});
+            ui.leaf_keyed("b", leaving(cell(B)));
         }
-        ui.with_keyed("c", cell(C), |_| {});
-        ui.with_keyed("hud", cell(HUD).float(FloatConfig::viewport()), |_| {});
+        ui.leaf_keyed("c", cell(C));
+        ui.leaf_keyed("hud", cell(HUD).float(FloatConfig::viewport()));
         ui.finish();
     };
     build(&mut core, 0.0, true);
@@ -723,12 +714,12 @@ fn a_ghost_whose_neighbour_leaves_too_keeps_the_order_they_had() {
             )
         };
         if a {
-            ui.with_keyed("a", cell(A), |_| {});
+            ui.leaf_keyed("a", cell(A));
         }
         if b {
-            ui.with_keyed("b", cell(B), |_| {});
+            ui.leaf_keyed("b", cell(B));
         }
-        ui.with_keyed("c", cell(C), |_| {});
+        ui.leaf_keyed("c", cell(C));
         ui.finish();
     };
     build(&mut core, 0.0, true, true);
@@ -765,16 +756,16 @@ fn a_ghost_that_lost_its_place_ends_its_pass_under_the_floats() {
                 .height(Sizing::Fixed(10.0))
                 .bg(bg)
         };
-        ui.with_keyed("a", cell(A), |_| {});
+        ui.leaf_keyed("a", cell(A));
         if phase < 1 {
-            ui.with_keyed("b", leaving(cell(B)), |_| {});
+            ui.leaf_keyed("b", leaving(cell(B)));
         }
         // `c` has no exit: when it goes, it goes at once, and b's ghost
         // has nothing to be under.
         if phase < 2 {
-            ui.with_keyed("c", cell(C), |_| {});
+            ui.leaf_keyed("c", cell(C));
         }
-        ui.with_keyed("hud", cell(HUD).float(FloatConfig::viewport()), |_| {});
+        ui.leaf_keyed("hud", cell(HUD).float(FloatConfig::viewport()));
         ui.finish();
     };
     build(&mut core, 0.0, 0);
@@ -800,7 +791,7 @@ fn a_float_that_opened_over_another_leaves_over_it() {
         core.set_time(now);
         let mut ui = core.frame(VIEW, 1.0);
         if panel {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "panel",
                 leaving(
                     NodeSpec::column()
@@ -809,16 +800,14 @@ fn a_float_that_opened_over_another_leaves_over_it() {
                         .height(Sizing::Fixed(120.0))
                         .bg(PANEL),
                 ),
-                |_| {},
             );
         }
-        ui.with(
+        ui.leaf(
             NodeSpec::column()
                 .float(FloatConfig::viewport().at(Align::Start, Align::End))
                 .width(Sizing::Fixed(80.0))
                 .height(Sizing::Fixed(20.0))
                 .bg(HUD),
-            |_| {},
         );
         ui.finish();
     };
@@ -862,14 +851,14 @@ fn a_ghost_inside_a_float_stays_in_that_layer() {
                 .height(Sizing::Fixed(60.0))
                 .bg(PANEL),
             |ui| {
-                ui.with_keyed("a", cell(A), |_| {});
+                ui.leaf_keyed("a", cell(A));
                 if b {
-                    ui.with_keyed("b", leaving(cell(B)), |_| {});
+                    ui.leaf_keyed("b", leaving(cell(B)));
                 }
-                ui.with_keyed("c", cell(C), |_| {});
+                ui.leaf_keyed("c", cell(C));
             },
         );
-        ui.with_keyed("hud", cell(HUD).float(FloatConfig::viewport()), |_| {});
+        ui.leaf_keyed("hud", cell(HUD).float(FloatConfig::viewport()));
         ui.finish();
     };
     build(&mut core, 0.0, true);

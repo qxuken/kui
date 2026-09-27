@@ -129,7 +129,7 @@ impl App for Edit {
                     let muted = TextStyle::new(12.0).color(t.muted);
                     ui.text(&format!("{} lines", self.lines), muted);
                     ui.text(&format!("{} chars", self.chars), muted);
-                    ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
+                    ui.leaf(NodeSpec::row().width(Sizing::Grow(1.0)));
                     ui.text(
                         if self.edited { "edited" } else { "saved" },
                         TextStyle::new(12.0).color(if self.edited { t.warning } else { t.success }),

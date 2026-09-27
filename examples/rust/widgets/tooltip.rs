@@ -105,7 +105,7 @@ impl App for Tooltip {
                         }
                     },
                 );
-                ui.with(NodeSpec::column().height(Sizing::Grow(1.0)), |_| {});
+                ui.leaf(NodeSpec::column().height(Sizing::Grow(1.0)));
                 let low = ui.child_key("low");
                 let over_low = ui.is_hovered(low);
                 ui.with_keyed(

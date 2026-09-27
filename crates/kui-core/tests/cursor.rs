@@ -34,56 +34,51 @@ fn frame(core: &mut Core) {
         band(NodeSpec::column()),
     );
     // 1: a clickable box that says it is a hand.
-    ui.with_keyed(
+    ui.leaf_keyed(
         "button",
         band(NodeSpec::column())
             .on_click("go")
             .cursor(CursorShape::Pointer),
-        |_| {},
     );
     // 2: a plain box — no hit region at all.
-    ui.with_keyed("plain", band(NodeSpec::column()), |_| {});
+    ui.leaf_keyed("plain", band(NodeSpec::column()));
     // 3: a drag source that says it is a grab.
-    ui.with_keyed(
+    ui.leaf_keyed(
         "handle",
         band(NodeSpec::column())
             .on_drag("h")
             .cursor(CursorShape::Grab),
-        |_| {},
     );
     // 4: a splitter: draggable, but it resizes rather than moves.
-    ui.with_keyed(
+    ui.leaf_keyed(
         "splitter",
         band(NodeSpec::column())
             .on_drag("s")
             .cursor(CursorShape::EwResize),
-        |_| {},
     );
     // 5: a disabled control that says so.
-    ui.with_keyed(
+    ui.leaf_keyed(
         "refused",
         band(NodeSpec::column())
             .on_click("nope")
             .disabled(true)
             .cursor(CursorShape::NotAllowed),
-        |_| {},
     );
     // 6: a disabled control that stays quiet.
-    ui.with_keyed(
+    ui.leaf_keyed(
         "quiet",
         band(NodeSpec::column()).on_click("nope").disabled(true),
-        |_| {},
     );
     // 7: a window-drag strip.
-    ui.with_keyed("titlebar", band(NodeSpec::column()).window_drag(), |_| {});
+    ui.leaf_keyed("titlebar", band(NodeSpec::column()).window_drag());
     // 8: focusable without a click payload (a list row that opens on Enter).
-    ui.with_keyed("row", band(NodeSpec::column()).focusable(), |_| {});
+    ui.leaf_keyed("row", band(NodeSpec::column()).focusable());
     // 9: hover-only (a tooltip badge).
-    ui.with_keyed("badge", band(NodeSpec::column()).hoverable(), |_| {});
+    ui.leaf_keyed("badge", band(NodeSpec::column()).hoverable());
     // 10: a clickable box that said nothing — the ordinary case.
-    ui.with_keyed("silent", band(NodeSpec::column()).on_click("go"), |_| {});
+    ui.leaf_keyed("silent", band(NodeSpec::column()).on_click("go"));
     // 11: a drag source that said nothing.
-    ui.with_keyed("mute", band(NodeSpec::column()).on_drag("m"), |_| {});
+    ui.leaf_keyed("mute", band(NodeSpec::column()).on_drag("m"));
     ui.finish();
 }
 
@@ -275,14 +270,13 @@ fn the_topmost_node_answers() {
         "card",
         NodeSpec::column().fill().pad(20.0).hoverable(),
         |ui| {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "button",
                 NodeSpec::column()
                     .width(Sizing::Fixed(100.0))
                     .height(Sizing::Fixed(30.0))
                     .on_click(Value::str("go"))
                     .cursor(CursorShape::Pointer),
-                |_| {},
             );
         },
     );

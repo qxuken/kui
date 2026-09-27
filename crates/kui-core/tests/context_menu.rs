@@ -65,17 +65,15 @@ fn frame(core: &mut Core) -> Keys {
             .gap(0.0)
             .on_context_menu(Value::str("panel")),
         |ui| {
-            keys.row = ui.with_keyed(
+            keys.row = ui.leaf_keyed(
                 "row",
                 row()
                     .on_click(Value::str("open"))
                     .on_context_menu(Value::str("row")),
-                |_| {},
             );
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "off",
                 row().disabled(true).on_context_menu(Value::str("off")),
-                |_| {},
             );
             keys.edit = ui.text_edit(
                 "note",
@@ -158,13 +156,12 @@ fn a_child_without_a_menu_reaches_the_enclosing_one() {
         "sink",
         NodeSpec::column().fill().on_key(Value::str("keys")),
         |ui| {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "button",
                 NodeSpec::row()
                     .width(Sizing::Fixed(100.0))
                     .height(Sizing::Fixed(40.0))
                     .on_click(Value::str("open")),
-                |_| {},
             );
         },
     );
@@ -206,13 +203,12 @@ fn the_walk_stops_at_the_modal_boundary() {
             .height(Sizing::Fixed(40.0))
             .modal(Value::str("dialog")),
         |ui| {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "ok",
                 NodeSpec::row()
                     .width(Sizing::Fixed(40.0))
                     .height(Sizing::Fixed(20.0))
                     .on_click(Value::str("ok")),
-                |_| {},
             );
         },
     );
@@ -283,14 +279,13 @@ fn a_secondary_press_does_not_break_a_drag() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(W, H), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    ui.with_keyed(
+    ui.leaf_keyed(
         "handle",
         NodeSpec::row()
             .width(Sizing::Fixed(100.0))
             .height(Sizing::Fixed(40.0))
             .on_drag(Value::str("h"))
             .on_context_menu(Value::str("h")),
-        |_| {},
     );
     ui.finish();
 
@@ -342,15 +337,14 @@ fn a_modal_contains_and_dismisses_on_secondary_presses() {
     let menu = |core: &mut Core| {
         let mut ui = core.frame(Size::new(W, H), 1.0);
         ui.configure_root(NodeSpec::column().fill());
-        let behind = ui.with_keyed(
+        let behind = ui.leaf_keyed(
             "behind",
             NodeSpec::row()
                 .width(Sizing::Fixed(W))
                 .height(Sizing::Fixed(100.0))
                 .on_context_menu(Value::str("behind")),
-            |_| {},
         );
-        let menu = ui.with_keyed(
+        let menu = ui.leaf_keyed(
             "menu",
             NodeSpec::column()
                 .float(kui_core::FloatConfig::viewport())
@@ -358,7 +352,6 @@ fn a_modal_contains_and_dismisses_on_secondary_presses() {
                 .height(Sizing::Fixed(40.0))
                 .modal(Value::str("menu"))
                 .on_context_menu(Value::str("menu")),
-            |_| {},
         );
         ui.finish();
         (behind, menu)

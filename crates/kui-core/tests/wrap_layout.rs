@@ -452,11 +452,10 @@ fn frame(core: &mut Core, root: NodeSpec) {
     let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
     ui.configure_root(root);
     for _ in 0..3 {
-        ui.with(
+        ui.leaf(
             NodeSpec::column()
                 .width(Sizing::Fixed(60.0))
                 .height(Sizing::Fixed(20.0)),
-            |_| {},
         );
     }
     ui.finish();

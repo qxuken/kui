@@ -171,7 +171,7 @@ impl VirtualList {
             // the rows already occupy that namespace at their data indices.
             let lead = range.start as f32 * ROW_H;
             if lead > 0.0 {
-                ui.with_keyed("lead", spacer(lead), |_| {});
+                ui.leaf_keyed("lead", spacer(lead));
             }
             for i in range.clone() {
                 // The key auto-keying would have given row `i` in a list
@@ -187,7 +187,7 @@ impl VirtualList {
             }
             let tail = (ROWS - range.end) as f32 * ROW_H;
             if tail > 0.0 {
-                ui.with_keyed("tail", spacer(tail), |_| {});
+                ui.leaf_keyed("tail", spacer(tail));
             }
         });
     }

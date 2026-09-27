@@ -34,13 +34,12 @@ fn child_of_rounded_card(radius: NodeSpec) -> (Quad, Clip) {
             .height(Sizing::Fixed(CARD))
             .clip(),
         |ui| {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "child",
                 NodeSpec::column()
                     .width(Sizing::Grow(1.0))
                     .height(Sizing::Grow(1.0))
                     .bg(Color::rgb8(20, 20, 30)),
-                |_| {},
             );
         },
     );
@@ -163,13 +162,12 @@ fn the_clip_shape_is_the_clippers_box_not_the_quad_being_clipped() {
             .clip()
             .pad(30.0),
         |ui| {
-            ui.with_keyed(
+            ui.leaf_keyed(
                 "inner",
                 NodeSpec::column()
                     .width(Sizing::Fixed(20.0))
                     .height(Sizing::Fixed(20.0))
                     .bg(Color::rgb8(200, 30, 30)),
-                |_| {},
             );
         },
     );

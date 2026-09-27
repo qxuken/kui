@@ -16,10 +16,9 @@ fn frame(core: &mut Core, spec: NodeSpec, audio: Option<AudioSpec>) -> (Key, Key
     let mut keys = (Key(0), Key(0));
     ui.with(NodeSpec::column(), |ui| {
         keys.0 = ui.child_key("btn");
-        ui.with_keyed(
+        ui.leaf_keyed(
             "btn",
             spec.width(Sizing::Fixed(40.0)).height(Sizing::Fixed(20.0)),
-            |_| {},
         );
         if let Some(a) = audio {
             keys.1 = ui.audio_keyed("music", a);
