@@ -630,6 +630,24 @@ rows.
 [`transition` row](props.md#container-props) ·
 [alpha.17](../CHANGELOG.md#010-alpha17-2026-09-25)
 
+### Why does a swipe down not move the strip sideways?
+
+A trackpad swipe keeps to the axis it started on, so nothing is yours
+to filter. A finger never moves straight: a swipe down carries a few
+pixels sideways, and a `scrollY` list passes the x it does not scroll
+to the `scrollX` strip around it, so every swipe used to nudge the
+strip. The native runner locks a swipe to the larger of the two axes
+once it has travelled 4 px and drops the other while the swipe and its
+glide last; a pause of 200 ms ends it, and a hand that turns without
+lifting — the other axis carrying three times the locked one's recent
+travel — turns the lock with it. A diagonal swipe therefore moves one
+axis at a time, as macOS's own scroll views do. A mouse wheel's notches
+are not locked: they come one axis at a time already, and Shift turns
+them sideways on purpose. An `onScroll` node hears the locked delta.
+
+[`scroll` event](props.md#events) ·
+[alpha.22](../CHANGELOG.md#010-alpha22-unreleased)
+
 ### Does a pane off the edge of a scroller still hear its keys?
 
 Yes, since alpha.17. A key reaches a node by holding focus, not by being

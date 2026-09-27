@@ -421,6 +421,7 @@ impl DynShell<'_> {
             caret_stamp_seen: 0,
             resize_edge: None,
             pressure_stage: 0,
+            axis_lock: Default::default(),
             file_drag: Vec::new(),
             file_drag_pending: None,
             cursor_icon: CursorIcon::Default,

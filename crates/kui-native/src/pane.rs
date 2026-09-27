@@ -260,6 +260,9 @@ pub(crate) struct Pane {
     /// press, 2 a force click). Kept so only the *edge* into 2 counts:
     /// AppKit reports the whole ramp, many events a press.
     pub(crate) pressure_stage: i64,
+    /// The trackpad swipe under way and the axis it keeps to (`mod
+    /// axis_lock`, backlog F104).
+    pub(crate) axis_lock: crate::axis_lock::AxisLock,
     /// The paths winit's per-file drag events built this batch, and
     /// whether the batch was a drop (`Some(true)`), a hover
     /// (`Some(false)`) or nothing (`None`) — dispatched at the batch's

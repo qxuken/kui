@@ -64,7 +64,9 @@ the same day, the day they were filed, and F101 — a span's rounded
 background joined with the ones it meets — from the kawoosh
 rounded-selection report of 2026-09-27, the day it was filed, and F102
 — a frame the surface skipped asked for again — from the kawoosh ⌘-Tab
-report of the same day, the day it was filed. The index
+report of the same day, the day it was filed, and F104 — a trackpad
+swipe kept to its axis — from the kawoosh trackpad-drift report of
+2026-09-28, the day it was filed. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -1421,6 +1423,17 @@ once a retry interval (`retry::RETRY`) — and a held frame waits for the
 link rather than being asked for again. Not built with F102, which
 keeps to asking again: this touches the pacer, whose latency C47
 measured.
+
+## From the kawoosh trackpad-drift report (2026-09-28)
+
+kawoosh's user, scrolling with a trackpad, found a swipe meant straight
+down shifting the view a little sideways: the column ribbon under a
+list, and the editor's text column, which takes the wheel's `dx` as its
+own sideways offset. The runner passed both axes of every trackpad
+delta on, and a finger never moves along one alone; DX13, which lets a
+`scrollY` list hand the x it cannot use to the strip around it, made
+the drift reach further. One entry, F104, **built 2026-09-28**, the day
+it was filed, and in the archive.
 
 ## From the regression pass of 2026-09-19
 
@@ -3795,6 +3808,10 @@ move.
 **From the kawoosh ⌘-Tab report (2026-09-27)** — F102, filed and built the same day
 
 - `!` **F102** — [A window brought back shows its last frame: a frame the surface skipped is never asked for again, and being uncovered asks for none](backlog/closed-2026-09.md#-f102--a-window-brought-back-shows-its-last-frame-a-frame-the-surface-skipped-is-never-asked-for-again-and-being-uncovered-asks-for-none--done-2026-09-27) — done (2026-09-27) — a skipped frame is owed (`retry::Retry`): asked for again 16 ms apart, 60 times, until one lands; `Occluded(false)` asks for one at once, `Occluded(true)` owes none
+
+**From the kawoosh trackpad-drift report (2026-09-28)** — F104, filed and built the same day
+
+- `~` **F104** — [A trackpad swipe moves both axes: a swipe down nudges whatever scrolls sideways under it](backlog/closed-2026-09.md#-f104--a-trackpad-swipe-moves-both-axes-a-swipe-down-nudges-whatever-scrolls-sideways-under-it--done-2026-09-28) — done (2026-09-28) — a swipe keeps to the larger axis once it has travelled 4 px (`axis_lock::AxisLock` in kui-native), the other dropped while it and its glide last; a 200 ms pause ends it, the other axis at three times the locked one's recent travel turns it; pixel deltas only
 
 **From the regression pass of 2026-09-25** — RG17–RG36 built the same day, before the alpha.17 tag; RG37 the same day, after it
 

@@ -97,6 +97,11 @@ Twelve readings change:
 - The wheel over a scroller that scrolls on one axis passes the other
   axis to the scroller or `onScroll` node under it (under Added, DX13),
   where the inner one swallowed it and nothing moved.
+- A trackpad swipe keeps to one axis (under Fixed, F104): the other
+  axis's delta is dropped while the swipe and its glide last, so a
+  diagonal swipe moves a two-axis scroller one axis at a time, and an
+  `onScroll` node hears `delta` with one component zero. A mouse wheel's
+  notches are unchanged.
 - An `exit` plays only when its node's parent is still declared (under
   Added, DX19). A node that goes because an ancestor went — a tab
   switched away, a panel closed around it — goes at once, where every
@@ -554,6 +559,22 @@ Twelve readings change:
   frame, a later skip, the bound, covered and uncovered).
   *What you can delete:* a redraw an app asked for itself on regaining
   focus, a beat later, to get past the skip.
+
+- **A trackpad swipe down nudged the strip sideways** (backlog F104,
+  from kawoosh, 2026-09-28). A finger never moves along one axis alone,
+  and the runner passed both axes of every trackpad delta on, so a
+  vertical swipe's few pixels of drift — and its momentum's — reached
+  whatever scrolls sideways: since DX13 the strip around a `scrollY`
+  list, and an editor's own text column where an `onScroll` node takes
+  the whole delta. A swipe now locks to the larger axis once it has
+  travelled 4 px and drops the other while it and its glide last (`mod
+  axis_lock` in kui-native); a 200 ms pause ends it, and the other axis
+  carrying three times the locked one's recent travel (and at least
+  24 px) turns the lock, so a hand that turns without lifting is
+  followed. Pixel deltas only — a trackpad's, a Magic Mouse's; a wheel's
+  line notches pass whole. Pinned by `axis_lock.rs`'s six tests.
+  *What you can delete:* a dead zone or axis filter an app put on the
+  `scroll` event's `delta` itself.
 
 ## 0.1.0-alpha.21 (2026-09-26)
 

@@ -18,6 +18,7 @@ pub use kui_core::*;
 
 mod access_bridge;
 pub mod audio;
+mod axis_lock;
 mod clipboard;
 mod dialogs;
 mod icon;
@@ -2424,16 +2425,22 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                 }
             }
             WindowEvent::MouseWheel { delta, .. } => {
-                let scale = self.panes[i].window.scale_factor() as f32;
+                let pane = &mut self.panes[i];
+                let scale = pane.window.scale_factor() as f32;
                 let d = match delta {
                     winit::event::MouseScrollDelta::LineDelta(x, y) => {
+                        pane.axis_lock.line();
                         Vec2::new(Core::lines_to_px(x), Core::lines_to_px(y))
                     }
-                    winit::event::MouseScrollDelta::PixelDelta(p) => {
-                        Vec2::new(p.x as f32 / scale, p.y as f32 / scale)
-                    }
+                    // A trackpad's swipe keeps to its axis (`mod axis_lock`).
+                    winit::event::MouseScrollDelta::PixelDelta(p) => pane.axis_lock.pixel(
+                        Vec2::new(p.x as f32 / scale, p.y as f32 / scale),
+                        std::time::Instant::now(),
+                    ),
                 };
-                self.dispatch(event_loop, i, InputEvent::Scroll(d));
+                if d != Vec2::ZERO {
+                    self.dispatch(event_loop, i, InputEvent::Scroll(d));
+                }
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 let button = match button {
