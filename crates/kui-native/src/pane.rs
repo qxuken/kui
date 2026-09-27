@@ -278,10 +278,10 @@ pub(crate) struct Pane {
     /// Cursor icon last set on the window, so a shape that did not change
     /// costs nothing.
     pub(crate) cursor_icon: CursorIcon,
-    /// Tries left at getting this window's *first* frame onto the screen,
-    /// and when to make the next one — `None` once a frame has landed. See
-    /// the `Skip` arm of [`Shell::redraw`].
-    pub(crate) first_frame: Option<(u32, std::time::Instant)>,
+    /// A frame the surface skipped, owed until one lands (`mod retry`):
+    /// the window's first, and any after it that an occluded or timed-out
+    /// acquire dropped. See the `Skip` arm of [`Shell::redraw`].
+    pub(crate) retry: crate::retry::Retry,
     /// Whether the last redraw this pane was asked for was let wait for
     /// the host's answer (`Launcher::deferred_events`). It is what bounds
     /// the wait to a single frame: never two in a row, so no stream of

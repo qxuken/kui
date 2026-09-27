@@ -489,6 +489,24 @@ Ten readings change:
   that weight.
   *What you can delete:* nothing an app could have written.
 
+- **A frame the surface skipped is asked for again, and a window
+  uncovered draws** (backlog F102, from kawoosh, 2026-09-27). A window
+  brought back with ⌘-Tab or Alt-Tab showed the frame from before it went
+  away until something else asked for one: the frame its focus asked for
+  was skipped, the surface still calling the window occluded, and only a
+  window's *first* frame was ever asked for again. Now any skipped frame
+  is owed. The next is asked for 16 ms later, up to 60 times, until one
+  lands, as the first frame was (`mod retry` in kui-native). Where the
+  platform says a window is covered (`WindowEvent::Occluded`, on macOS
+  and X11), a skip there owes nothing, and when the platform says the
+  window is uncovered a frame is asked for at once. Probed on macOS 27 with the
+  `counter` example hidden and shown by AppleScript: before, two skips
+  and no frame until the process was killed; after, the frame lands as
+  the window is uncovered. Pinned by `retry.rs`'s four tests (a first
+  frame, a later skip, the bound, covered and uncovered).
+  *What you can delete:* a redraw an app asked for itself on regaining
+  focus, a beat later, to get past the skip.
+
 ## 0.1.0-alpha.21 (2026-09-26)
 
 **What breaks.** No door changes, the ABI stays at 19 and the frame at

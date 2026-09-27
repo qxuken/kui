@@ -62,7 +62,9 @@ face — from the kawoosh Berkeley-bold report of the same day, the day
 it was filed, and RG53–RG59 from the regression pass over those five
 the same day, the day they were filed, and F101 — a span's rounded
 background joined with the ones it meets — from the kawoosh
-rounded-selection report of 2026-09-27, the day it was filed. The index
+rounded-selection report of 2026-09-27, the day it was filed, and F102
+— a frame the surface skipped asked for again — from the kawoosh ⌘-Tab
+report of the same day, the day it was filed. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -1389,6 +1391,36 @@ frame behind every edit and scroll, and it could not follow a markdown
 paragraph, whose lines only layout knows. One entry, F101, **built
 2026-09-27**, the day it was filed, and in the archive
 ([ADR 0035](adr/0035-a-rounded-background-is-joined-by-meeting.md)).
+
+## From the kawoosh ⌘-Tab report (2026-09-27)
+
+kawoosh's window, brought back with ⌘-Tab (Alt-Tab on Windows), did not
+always come up at once: it showed the frame from before it went away
+until something else asked for one. Probed on macOS 27 with the
+`counter` example hidden and shown again by AppleScript (`visible`,
+then `frontmost`): the frame the returning focus asked for was skipped
+as occluded, twice, and nothing asked again — only a window's first
+frame was ever retried — and AppKit's `Occluded(false)`, 35 ms later,
+went to no handler. Two entries: F102, **built 2026-09-27**, the day it
+was filed, and in the archive; F103, open.
+
+### `.` F103 — A frame the surface skips returns at once, so an animating hidden window spins
+
+Seen in the same probe, on the commit before F102 as after it: hidden
+for 1.5 s while its blur transition played, `counter` asked for and
+skipped about 8,300 frames. A skip returns at once — there is no
+drawable to wait for, so no vsync paces it — and the pacer (`mod
+pacer`) counts only presents, so each skip's `about_to_wait` asks for
+the next frame straight away and the loop spins until the animation
+ends. The same shape shows while visible when the pacer holds a frame:
+a run of held redraws, tens of microseconds apart, between two
+presents (seen once, while an animation ran; not yet measured against
+the commit before). **Wants:** a skipped frame paces as a presented one
+does, so an animating window the surface will not take tries at most
+once a retry interval (`retry::RETRY`) — and a held frame waits for the
+link rather than being asked for again. Not built with F102, which
+keeps to asking again: this touches the pacer, whose latency C47
+measured.
 
 ## From the regression pass of 2026-09-19
 
@@ -3644,6 +3676,10 @@ move.
 **From the kawoosh rounded-selection report (2026-09-27)** — F101, filed and built the same day
 
 - `~` **F101** — [A selection's backgrounds cannot be one rounded shape: an app draws the outline a frame late, and not at all over a wrapped paragraph](backlog/closed-2026-09.md#-f101--a-selections-backgrounds-cannot-be-one-rounded-shape-an-app-draws-the-outline-a-frame-late-and-not-at-all-over-a-wrapped-paragraph--done-2026-09-27) — done (2026-09-27) — `Span::bg_radius` (`bgRadius`, `bg_radius`, `KuiSpan.bg_radius`): rounded backgrounds of one colour and radius that meet, in any text, are joined after emission (`join::shape`) and painted by the stock `fragment::JOIN`; ADR 0035
+
+**From the kawoosh ⌘-Tab report (2026-09-27)** — F102, filed and built the same day
+
+- `!` **F102** — [A window brought back shows its last frame: a frame the surface skipped is never asked for again, and being uncovered asks for none](backlog/closed-2026-09.md#-f102--a-window-brought-back-shows-its-last-frame-a-frame-the-surface-skipped-is-never-asked-for-again-and-being-uncovered-asks-for-none--done-2026-09-27) — done (2026-09-27) — a skipped frame is owed (`retry::Retry`): asked for again 16 ms apart, 60 times, until one lands; `Occluded(false)` asks for one at once, `Occluded(true)` owes none
 
 **From the regression pass of 2026-09-25** — RG17–RG36 built the same day, before the alpha.17 tag; RG37 the same day, after it
 

@@ -427,7 +427,7 @@ impl DynShell<'_> {
             os_focused: false,
             appearance,
             handed_back: false,
-            first_frame: Some((FIRST_FRAME_RETRIES, std::time::Instant::now())),
+            retry: crate::retry::Retry::new(std::time::Instant::now()),
             deferred_frame: false,
             pacer,
             access,

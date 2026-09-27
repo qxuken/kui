@@ -46,6 +46,7 @@ mod pacer;
 mod pane;
 mod popups;
 mod retarget;
+mod retry;
 mod secure_input;
 /// A headless driver for an `App` (backlog DX11).
 pub mod testing;
@@ -1231,12 +1232,6 @@ const AUDIO_POLL: std::time::Duration = std::time::Duration::from_millis(50);
 /// first click), and any input at all re-warms it: the pointer moving
 /// towards a button is minutes of warning before the button is pressed.
 const AUDIO_IDLE_CLOSE: std::time::Duration = std::time::Duration::from_secs(5);
-/// How long to wait between tries at a window's first frame, and how many
-/// tries to make: about a second of a just-shown window insisting it is
-/// occluded, after which it is taken at its word and the ordinary redraw
-/// path (a resize, an expose, any input) is what wakes it.
-const FIRST_FRAME_RETRY: std::time::Duration = std::time::Duration::from_millis(16);
-const FIRST_FRAME_RETRIES: u32 = 60;
 /// How long after one try at opening a new device (`Shell::reopen_device`)
 /// the next may be made. A device that will not open — a driver still
 /// being installed, an adapter gone — is tried once a second, and the
@@ -2032,7 +2027,7 @@ impl DynShell<'_> {
                 wait_ms = report.vsync_wait_ms;
                 pane.pacer
                     .presented(std::time::Instant::now(), (size.width, size.height));
-                pane.first_frame = None;
+                pane.retry.presented();
                 pane.surface_tries = 0;
                 pane.awaits_device = false;
             }
@@ -2067,15 +2062,17 @@ impl DynShell<'_> {
                     }
                 }
             }
-            // Occluded or timed out: nothing to present, try next frame —
-            // and, until a window has managed one, *schedule* that next
-            // frame. A window ordered front reports itself occluded for a
-            // beat or two before the platform catches up, and nothing else
-            // was asking for a redraw, so its first frame never landed and
-            // it sat blank until a stray mouse move woke it. Only until it
-            // has presented once, and only for a bounded number of tries,
-            // so a window that really is hidden does not spin.
-            Some(Err(kui_wgpu::RenderError::Skip)) => {}
+            // Occluded or timed out: nothing to present, and the frame is
+            // owed — *scheduled*, since nothing else may ask for one. A
+            // window ordered front, or brought back with ⌘-Tab, reports
+            // itself occluded for a beat or two before the platform
+            // catches up; its frame dropped, it showed the one from
+            // before until a stray mouse move woke it (F102). Only for a
+            // bounded number of tries, and not while the platform says
+            // the window is covered, so a hidden window does not spin.
+            Some(Err(kui_wgpu::RenderError::Skip)) => {
+                pane.retry.skipped(std::time::Instant::now());
+            }
             // The device is gone (a driver update, a GPU reset), or a
             // frame ago it was and no new one could be opened: open one.
             Some(Err(kui_wgpu::RenderError::DeviceLost)) | None => reopen = true,
@@ -2359,6 +2356,18 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                     }
                 }
             }
+            // Covered or uncovered — where the platform says (macOS, X11):
+            // uncovered, the window shows what it presented before it was
+            // covered, so a frame is owed now (F102); covered, frames the
+            // surface skips are not retried.
+            WindowEvent::Occluded(covered) => {
+                self.panes[i]
+                    .retry
+                    .occluded(covered, std::time::Instant::now());
+                if !covered {
+                    self.panes[i].window.request_redraw();
+                }
+            }
             // The theme changing is the other one, and the only one that
             // arrives while the app is in front. The next frame reads the
             // appearance off the window anyway; the redraw is what makes
@@ -2584,16 +2593,16 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                 self.panes[i].deferred_frame = false;
                 self.redraw(i);
                 // KUI_SMOKE_FRAMES: count what the main window actually
-                // landed and quit at the target. `first_frame` is `None`
-                // only once a present succeeded, so a window that never
-                // draws never counts and the run fails on the caller's
-                // timeout rather than passing quietly. Asking for the next
+                // landed and quit at the target. Counted only once a
+                // present succeeded, so a window that never draws never
+                // counts and the run fails on the caller's timeout rather
+                // than passing quietly. Asking for the next
                 // one keeps an app that paints only on input painting, so
                 // every example reaches the count at the same speed.
                 if let Some(n) = self.smoke_frames
                     && let Some(p) = self.panes.get(i)
                     && p.id == WindowId::MAIN
-                    && p.first_frame.is_none()
+                    && p.retry.presented_once()
                 {
                     self.frames_drawn += 1;
                     if self.frames_drawn >= n {
@@ -2767,20 +2776,14 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                     deadline = Some(deadline.map_or(at, |d| d.min(at)));
                 }
             }
-            // A window still waiting for its first frame asks again — one
-            // frame apart, and only so many times. Paced rather than spun:
-            // asking again the instant a try fails would burn every try in
-            // a millisecond, which is exactly how long the platform has
-            // *not* had to stop calling a just-shown window occluded.
-            if let Some((left, at)) = &mut pane.first_frame
-                && *left > 0
-            {
-                if now >= *at {
-                    *left -= 1;
-                    *at = now + FIRST_FRAME_RETRY;
-                    pane.window.request_redraw();
-                }
-                deadline = Some(deadline.map_or(*at, |d| d.min(*at)));
+            // A frame the surface skipped asks again — a retry apart, and
+            // only so many times (`mod retry`).
+            let (ask, wake) = pane.retry.poll(now);
+            if ask {
+                pane.window.request_redraw();
+            }
+            if let Some(at) = wake {
+                deadline = Some(deadline.map_or(at, |d| d.min(at)));
             }
             // A caret to blink: the stock editor's, or the `caret` a
             // custom editor declares on one of its lines (backlog C35).
