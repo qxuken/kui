@@ -246,8 +246,9 @@
 /// The same bump appends `keep_focus` after it (backlog DX10): a press
 /// that leaves keyboard focus where it was; zeroed, a press focuses as it
 /// did. Then `on_focus` (backlog DX18): focus entering and leaving the
-/// node's subtree, as an event; NULL hears nothing. With it the 64-bit
-/// size is 616. Recompile.
+/// node's subtree, as an event; NULL hears nothing. Then `rules` and
+/// `rule_w` (backlog DX21): a table's grid lines; zeroed, none. The 64-bit
+/// size is 624. Recompile.
 /// The same bump appends `bg_radius` to `KuiSpan` (backlog F101): a
 /// span's background rounded and joined with the ones it meets. On a
 /// 64-bit target it takes what was the struct's tail padding, so the

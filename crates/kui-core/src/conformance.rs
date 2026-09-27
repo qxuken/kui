@@ -855,9 +855,9 @@ pub const SCENES: &[Scene] = &[
         env: NATIVE_CHROME,
         steps: &[],
         expect: Expect {
-            // The table's own background, and a box per cell of the
-            // fixed and grow columns in the three body rows.
-            solid: 7,
+            // The table's own background, a box per cell of the fixed and
+            // grow columns in the three body rows, and five rules.
+            solid: 12,
             shadows: 0,
             images: 0,
             segments: 0,
@@ -3302,7 +3302,12 @@ fn build_table(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             .width(200.0)
             .pad(4.0)
             .gap(2.0)
-            .bg(Color::hex(0x101018ff)),
+            .bg(Color::hex(0x101018ff))
+            // Grid rules (backlog DX21): one across each of the three
+            // gaps between the four rows, one down each of the two gaps
+            // between the body rows' three columns.
+            .rules(Color::hex(0x2b3350ff))
+            .rule_width(1.0),
         |ui| {
             // The header: a fit row of two cells, held to the columns.
             ui.with(NodeSpec::row().gap(6.0), |ui| {

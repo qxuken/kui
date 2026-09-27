@@ -258,8 +258,8 @@ extern "C" {
  * bump appends keep_focus after it (backlog DX10): a press that leaves
  * keyboard focus where it was; zeroed, a press focuses as it did. Then
  * on_focus (backlog DX18): focus entering and leaving the node's subtree,
- * as an event; NULL hears nothing. With it the 64-bit size is 616.
- * Recompile.
+ * as an event; NULL hears nothing. Then rules and rule_w (backlog DX21):
+ * a table's grid lines; zeroed, none. The 64-bit size is 624. Recompile.
  * The same bump appends bg_radius to KuiSpan (backlog F101): a span's
  * background rounded and joined with the ones it meets. On a 64-bit target
  * it takes what was the struct's tail padding, so the stride did not move
@@ -989,6 +989,12 @@ typedef struct KuiSpec {
      * by being "pointer", "keyboard", "assistive" or "program" (onFocus).
      * Makes nothing focusable. Borrowed while the node opens. ABI 20. */
     const KuiValue *on_focus;
+    /* On a table (dir = KUI_TABLE): grid lines of this 0xRRGGBBAA colour
+     * down the middle of each gap between its columns and across each gap
+     * between its rows, under its cells (rules); 0 draws none. rule_w is
+     * their width in logical px, 0 meaning 1. ABI 20. */
+    uint32_t rules;
+    float rule_w;
 } KuiSpec;
 
 /* When a scrolling node's bars are drawn (KuiSpec.scrollbar): the schema

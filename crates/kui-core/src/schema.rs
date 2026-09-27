@@ -175,6 +175,8 @@ pub const P_ON_CHANGE: u32 = 110;
 pub const P_PIXEL_SNAP: u32 = 111;
 pub const P_KEEP_FOCUS: u32 = 112;
 pub const P_ON_FOCUS: u32 = 113;
+pub const P_RULES: u32 = 114;
+pub const P_RULE_WIDTH: u32 = 115;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -786,6 +788,20 @@ pub const PROPS: &[PropDef] = &[
         kind: Kind::Color,
         apply: Apply::SpecColor(|s, c| s.hover_bg(c)),
         doc: "Background while hovered (or while any node in its hoverGroup is); implies hover tracking, eases with `transition`.",
+    },
+    PropDef {
+        name: "rules",
+        id: P_RULES,
+        kind: Kind::Color,
+        apply: Apply::SpecColor(|s, c| s.rules(c)),
+        doc: "On a table (`dir=\"table\"`, ADR 0033): grid lines of this colour between its columns and between its rows (backlog DX21) — down the middle of each gap between the columns of its widest row, from the first row's top to the last row's bottom, and across the middle of each gap between rows, the content box wide. Drawn with the table's box, under its cells and on whole pixels, so give the table and its rows a `gap` at least `ruleWidth` for the lines to show between cells; the outer edge is the table's `border`. Ignored on anything but a table.",
+    },
+    PropDef {
+        name: "ruleWidth",
+        id: P_RULE_WIDTH,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.rule_width(v)),
+        doc: "The width of a table's `rules` in logical px; 1 when unset.",
     },
     PropDef {
         name: "dropBg",

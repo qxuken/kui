@@ -658,6 +658,11 @@ pub struct KuiSpec {
     /// phase, by, tag}` (`onFocus`, backlog DX18). Borrowed while the node
     /// opens, like every other tag. ABI 20.
     pub on_focus: *const KuiValue,
+    /// A table's grid rules (`rules`, backlog DX21), 0xRRGGBBAA; 0 draws
+    /// none. ABI 20.
+    pub rules: u32,
+    /// Their width in logical px (`ruleWidth`); 0 is 1. ABI 20.
+    pub rule_w: f32,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a

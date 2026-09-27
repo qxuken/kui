@@ -338,6 +338,96 @@ impl Core {
             NodeContent::Container => Leaf::Container,
         };
         painter!(self).paint_box(rect, &style, &paint, leaf);
+        // A table's grid rules, with its box and under its cells. Out of
+        // `emit_node`: a rare path kept off its codegen (C48).
+        if self.tree.any_table
+            && let Some(c) = self.tree.specs[i].interact().rules
+            && self.tree.specs[i].layout.is_table()
+        {
+            self.emit_rules(i, rect, c, &paint);
+        }
+    }
+
+    /// The `rules` of table `i` (backlog DX21): a line down the middle of
+    /// each gap between the columns of its widest row, from its first
+    /// row's top to its last row's bottom, and one across the middle of
+    /// each gap between its rows, the content box wide. On whole pixels,
+    /// so a 1 px rule is one crisp pixel line at any scale.
+    #[cold]
+    #[inline(never)]
+    fn emit_rules(&mut self, i: usize, rect: Rect, color: Color, paint: &Paint) {
+        let spec = &self.tree.specs[i];
+        let w = match spec.interact().rule_w {
+            w if w > 0.0 => w,
+            _ => 1.0,
+        };
+        let pad = spec.layout.padding;
+        let row_of = |j: usize| Rect::from_pos_size(self.tree.pos[j], self.tree.size[j]);
+        // The table's rows: its in-flow row children.
+        let mut rows: Vec<usize> = Vec::new();
+        let mut c = self.tree.first_child[i];
+        while c != NIL {
+            let j = c as usize;
+            if self.tree.specs[j].layout.dir == crate::spec::Dir::Row
+                && self.tree.specs[j].layout.float.is_none()
+            {
+                rows.push(j);
+            }
+            c = self.tree.next_sibling[j];
+        }
+        let (Some(&first), Some(&last)) = (rows.first(), rows.last()) else {
+            return;
+        };
+        let mut lines: Vec<Rect> = Vec::new();
+        for pair in rows.windows(2) {
+            let (a, b) = (row_of(pair[0]), row_of(pair[1]));
+            let y = (a.y + a.h + b.y) / 2.0;
+            let x = rect.x + pad.l;
+            lines.push(Rect::new(x, y - w / 2.0, rect.w - pad.l - pad.r, w));
+        }
+        // The columns: the in-flow cells of the row with the most of them.
+        let cells_of = |row: usize| {
+            let mut out = Vec::new();
+            let mut c = self.tree.first_child[row];
+            while c != NIL {
+                let j = c as usize;
+                if self.tree.specs[j].layout.float.is_none() {
+                    out.push(row_of(j));
+                }
+                c = self.tree.next_sibling[j];
+            }
+            out
+        };
+        let widest = rows
+            .iter()
+            .map(|&r| cells_of(r))
+            .max_by_key(|cells| cells.len())
+            .unwrap_or_default();
+        let (top, bottom) = (row_of(first).y, {
+            let r = row_of(last);
+            r.y + r.h
+        });
+        for pair in widest.windows(2) {
+            let x = (pair[0].x + pair[0].w + pair[1].x) / 2.0;
+            lines.push(Rect::new(x - w / 2.0, top, w, bottom - top));
+        }
+        let color = Color {
+            a: color.a * paint.opacity,
+            ..color
+        };
+        for line in lines {
+            self.display.quads.push(Quad {
+                rect: line.scaled(paint.scale).on_pixels(),
+                color,
+                border_color: Color::TRANSPARENT,
+                radius: [0.0; 4],
+                border_w: 0.0,
+                blur: 0.0,
+                kind: QuadKind::Solid,
+                clip: paint.clip_id,
+                uv: [0; 4],
+            });
+        }
     }
 
     /// Runs layout and emission into `output()`, and installs this frame's

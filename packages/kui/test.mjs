@@ -3715,7 +3715,7 @@ const SCENE_TREES = {
   table: () =>
     root({}, [
       box(
-        { dir: 'table', width: 200, pad: 4, gap: 2, bg: '#101018' },
+        { dir: 'table', width: 200, pad: 4, gap: 2, bg: '#101018', rules: '#2b3350', ruleWidth: 1 },
         [
           box({ dir: 'row', gap: 6 }, [text('name', { size: 12 }), text('w', { size: 12 })]),
           ...TABLE_ROWS.map(([label, w, h]) =>

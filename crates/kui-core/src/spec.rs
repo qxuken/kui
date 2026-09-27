@@ -1096,6 +1096,15 @@ pub struct InteractSpec {
     /// chrome is emitted, which is why it lives in this box rather than
     /// beside `scroll_y` on every node.
     pub scrollbar: Scrollbar,
+    /// On a table (ADR 0033): lines of this colour between its columns and
+    /// between its rows, drawn with the table's own box, under its cells,
+    /// down the middle of each gap — so a table with a `gap` of at least
+    /// `rule_w` gets a grid with no rule cells (backlog DX21). The
+    /// columns come from the row with the most cells; the lines run the
+    /// table's content box. Ignored on anything that is not a table.
+    pub rules: Option<Color>,
+    /// The rules' width in logical px; 0 is 1.
+    pub rule_w: f32,
 }
 
 /// A scrolling node's bars, per node. Every field's default is the stock
@@ -1174,6 +1183,8 @@ impl InteractSpec {
         selectable: false,
         focus_region: false,
         scrollbar: Scrollbar::DEFAULT,
+        rules: None,
+        rule_w: 0.0,
     };
 }
 
@@ -1677,6 +1688,18 @@ impl NodeSpec {
     /// `drop_bg` field, ADR 0031).
     pub fn drop_bg(mut self, c: Color) -> Self {
         self.interact_mut().drop_bg = Some(c);
+        self
+    }
+
+    /// A table's grid rules in `c` (see the `rules` field).
+    pub fn rules(mut self, c: Color) -> Self {
+        self.interact_mut().rules = Some(c);
+        self
+    }
+
+    /// The rules' width in logical px; 1 when unset (see `rules`).
+    pub fn rule_width(mut self, w: f32) -> Self {
+        self.interact_mut().rule_w = w;
         self
     }
 

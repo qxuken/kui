@@ -275,6 +275,8 @@ fn every_schema_prop_has_a_c_counterpart() {
             "focusable" => s.focusable = 1,
             "keepFocus" => s.keep_focus = 1,
             "onFocus" => s.on_focus = &layout_tag,
+            "rules" => s.rules = C,
+            "ruleWidth" => s.rule_w = F,
             "initialFocus" => s.initial_focus = 1,
             "disabled" => s.disabled = 1,
             "focusBg" => s.focus_bg = C,
@@ -451,6 +453,8 @@ fn fully_populated_spec_matches_the_rust_builder() {
         focusable: 1,
         keep_focus: 1,
         on_focus: &menu_tag,
+        rules: 0x2b_33_50_ff,
+        rule_w: 2.0,
         disabled: 1,
         focus_bg: 0x11_22_33_ff,
         tooltip: KuiStr {
@@ -540,6 +544,8 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .focusable()
         .keep_focus()
         .on_focus("cm")
+        .rules(Color::hex(0x2b3350ff))
+        .rule_width(2.0)
         .initial_focus()
         .disabled(true)
         .focus_bg(Color::hex(0x11_22_33_ff))

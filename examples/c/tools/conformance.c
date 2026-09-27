@@ -326,6 +326,7 @@ static void conf_table(KuiCtx *ui, const Fixtures *f, int phase) {
         .pad_l = 4, .pad_r = 4, .pad_t = 4, .pad_b = 4,
         .gap = 2,
         .width = {KUI_FIXED, 200}, .bg = 0x101018ff,
+        .rules = 0x2b3350ff, .rule_w = 1,
     };
     kui_open_keyed(ui, KUI_STR("table"), &table, NULL);
     KuiSpec header = {.dir = KUI_ROW, .gap = 6};

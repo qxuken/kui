@@ -202,6 +202,12 @@ pub(crate) fn spec_of(
     if let Some(tag) = unsafe { s.on_focus.as_ref() } {
         spec = spec.on_focus(tag.0.clone());
     }
+    if s.rules != 0 {
+        spec = spec.rules(Color::hex(s.rules));
+    }
+    if s.rule_w != 0.0 {
+        spec = spec.rule_width(s.rule_w);
+    }
     if s.selectable != 0 {
         spec = spec.selectable();
     }

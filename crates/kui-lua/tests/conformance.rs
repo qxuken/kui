@@ -124,6 +124,7 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             format!(
                 r#"
             return grid {{ key = "table", width = 200, pad = 4, gap = 2, bg = 0x101018ff,
+                           rules = 0x2b3350ff, rule_width = 1,
               row {{ gap = 6, text("name", {{ size = 12 }}), text("w", {{ size = 12 }}) }},
               {rows}
             }}
