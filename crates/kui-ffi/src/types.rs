@@ -1233,6 +1233,14 @@ pub struct KuiSpan {
     pub underline_color: u32,
     /// `KUI_UNDERLINE_*`; non-solid implies `KUI_SPAN_UNDERLINE`. ABI 17.
     pub underline_style: u32,
+    /// The background's corner radius, logical px (backlog F101); 0 is the
+    /// square background. Above zero, `bg` is joined into one shape with
+    /// every rounded background of the same colour and radius it meets —
+    /// on the line above or below, or end to end on its own line, in this
+    /// text or another — rounded outside where a line reaches past its
+    /// neighbour and filleted inside where it falls short: a selection
+    /// over rows is one outline. ABI 20.
+    pub bg_radius: f32,
 }
 
 /// One colour token as `kui_tokens_set` reads it

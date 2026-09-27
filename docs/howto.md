@@ -153,6 +153,24 @@ arithmetic; a wave is pieces of the segment primitive a `line` draws.
 [`underlineColor` / `underlineStyle` rows](props.md#text-props) ·
 [alpha.13](../CHANGELOG.md#010-alpha13-2026-09-15)
 
+### How do I draw a selection over several lines as one rounded shape?
+
+Give each selected span its background and a radius:
+`<span bg="#3b5bd466" bgRadius={4}>…</span>` on every row the selection
+covers. Rounded backgrounds of one colour and radius that meet are one
+shape, whichever text drew them: an editor's rows, the wrapped lines of
+one paragraph, a line and the cell after it for its newline. The corners
+are convex where a line reaches past the one above or below, filleted
+where it falls short, and round where nothing meets them. It is worked
+out from the frame's own layout once every text is painted, so it is
+never a frame behind a wrap or a scroll, and the view names no shape and
+measures no line. Give a second selection another colour, or leave a
+gap, to keep it apart.
+
+[`text` element](props.md#elements) ·
+[ADR 0035](adr/0035-a-rounded-background-is-joined-by-meeting.md) ·
+[alpha.22 `### Added`](../CHANGELOG.md#010-alpha22-unreleased)
+
 ### How do I list the installed fonts, the monospaced ones first?
 
 `ctx.systemFonts()` (Rust `Core::system_fonts()`, C `kui_system_fonts`)

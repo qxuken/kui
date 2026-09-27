@@ -60,7 +60,9 @@ frame — from the kawoosh fonts-pane scrolling report of the same day,
 the day it was filed, and F100 — bold in the family that has no bold
 face — from the kawoosh Berkeley-bold report of the same day, the day
 it was filed, and RG53–RG59 from the regression pass over those five
-the same day, the day they were filed. The index
+the same day, the day they were filed, and F101 — a span's rounded
+background joined with the ones it meets — from the kawoosh
+rounded-selection report of 2026-09-27, the day it was filed. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -1376,6 +1378,17 @@ family with no face at the weight asked and read the CSS weight as the
 axis coordinate, so Berkeley's regular was drawn at its Bold too. One
 entry, F100, **built 2026-09-26**, the day it was filed, and in the
 archive.
+
+## From the kawoosh rounded-selection report (2026-09-27)
+
+kawoosh draws a selection as a translucent `bg` on the spans of each
+row it covers and wanted one rounded outline, convex where a line
+reaches past its neighbour and concave where it falls short. Drawn by
+the app as a `fragment` under each row, told the rows' extents, it was a
+frame behind every edit and scroll, and it could not follow a markdown
+paragraph, whose lines only layout knows. One entry, F101, **built
+2026-09-27**, the day it was filed, and in the archive
+([ADR 0035](adr/0035-a-rounded-background-is-joined-by-meeting.md)).
 
 ## From the regression pass of 2026-09-19
 
@@ -2705,6 +2718,8 @@ Nothing of the kawoosh fonts-pane scrolling report is open (F99
 **built 2026-09-26**, the day it was filed).
 Nothing of the kawoosh Berkeley-bold report is open (F100 **built
 2026-09-26**, the day it was filed).
+Nothing of the kawoosh rounded-selection report is open (F101 **built
+2026-09-27**, the day it was filed).
 Nothing of the Windows regression round of 2026-09-26 is open
 (RG38–RG46 **built 2026-09-26**, the day they were filed).
 Nothing of the Linux round under WSLg is open (RG47–RG49 **built
@@ -3523,6 +3538,10 @@ move.
 **From the kawoosh Berkeley-bold report (2026-09-26)** — F100, filed and built the same day
 
 - `!` **F100** — [Bold of a family with no bold face draws in another family, and a variable face whose `wght` axis is off the CSS scale draws regular at its Bold](backlog/closed-2026-09.md#-f100--bold-of-a-family-with-no-bold-face-draws-in-another-family-and-a-variable-face-whose-wght-axis-is-off-the-css-scale-draws-regular-at-its-bold--done-2026-09-26) — done (2026-09-26) — each registered family is asked at weights it has faces for (`weights::Weights`), bold of a lighter face carries `SYNTHETIC_BOLD`, and the rasterizer draws a variable face at the coordinate its named instances give (`WghtAxis`), a marked glyph at the axis's bold or emboldened
+
+**From the kawoosh rounded-selection report (2026-09-27)** — F101, filed and built the same day
+
+- `~` **F101** — [A selection's backgrounds cannot be one rounded shape: an app draws the outline a frame late, and not at all over a wrapped paragraph](backlog/closed-2026-09.md#-f101--a-selections-backgrounds-cannot-be-one-rounded-shape-an-app-draws-the-outline-a-frame-late-and-not-at-all-over-a-wrapped-paragraph--done-2026-09-27) — done (2026-09-27) — `Span::bg_radius` (`bgRadius`, `bg_radius`, `KuiSpan.bg_radius`): rounded backgrounds of one colour and radius that meet, in any text, are joined after emission (`join::shape`) and painted by the stock `fragment::JOIN`; ADR 0035
 
 **From the regression pass of 2026-09-25** — RG17–RG36 built the same day, before the alpha.17 tag; RG37 the same day, after it
 

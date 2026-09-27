@@ -243,6 +243,13 @@
 /// with each edge on a whole pixel, so it meets a text's background or
 /// another snapped box without a seam. An [in] append; recompile. A zeroed
 /// field is the box drawn where layout put it, which is what every box was.
+/// The same bump appends `bg_radius` to `KuiSpan` (backlog F101): a
+/// span's background rounded and joined with the ones it meets. On a
+/// 64-bit target it takes what was the struct's tail padding, so the
+/// stride did not move there, but a host that did not recompile leaves
+/// those bytes to chance (on a 32-bit one the stride moved, as ABI 8's
+/// did). Recompile; a zeroed field is the square background every span
+/// had.
 pub const KUI_ABI_VERSION: u32 = 20;
 
 /// The ABI version this library implements, for a host to compare against

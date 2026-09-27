@@ -29,6 +29,7 @@ pub mod env;
 pub mod fragment;
 pub mod geom;
 pub mod input;
+pub(crate) mod join;
 pub mod key;
 pub mod keyframes;
 pub mod layout;

@@ -499,6 +499,14 @@ export interface SpanProps extends Keyed {
   /** A background behind the span's glyphs alone — one rect per line it
    *  spans, so it follows the span across a wrap the way a box cannot. */
   bg?: ColorProp;
+  /** Rounds `bg` (logical px), and joins it into one shape with every
+   *  rounded background of the same colour and radius it meets — edge to
+   *  edge on the line above or below, or end to end on its own line, in
+   *  this text or another: convex corners where a line reaches past its
+   *  neighbour, a fillet where it falls short, round where nothing meets.
+   *  A selection over rows, or over a paragraph's wrapped lines, is one
+   *  outline. Nested spans inherit; 0 (the default) is square. */
+  bgRadius?: number;
   children?: KuiNode;
 }
 

@@ -27,8 +27,16 @@ was the first bare bump to break an app in five releases).
 
 - C: `KuiSpec` gains `pixel_snap` at its end (under Added), so
   `KUI_ABI_VERSION` is 20: an [in] append. Recompile against the new
-  header; a zeroed field is a box drawn as before. The frame stays at
-  v16 (a new generic prop rides the wire by its id), and no door changes.
+  header; a zeroed field is a box drawn as before. No door changes.
+- C: `KuiSpan` gains `bg_radius` at its end under the same ABI 20
+  (under Added). On a 64-bit target it takes what was the struct's tail
+  padding, so the stride holds at 40 bytes, but a host that did not
+  recompile leaves those bytes to chance; on a 32-bit one the stride
+  moves. Recompile; a zeroed field is the square background.
+- Node: the binary frame is v17. A span carries one more slot, its
+  background's radius (`bgRadius`, under Added); `pixelSnap` rode v16
+  by its id. The encoder and the addon ship together, so this breaks
+  only a stale prebuilt addon, which refuses the stream by its version.
 - Rust: `Ui::child_key_index` and `Core::child_key_index` are
   `child_key_indexed`, the spelling of every other `_indexed` (under
   Added, DX5).
@@ -64,6 +72,43 @@ Four readings change:
   the cache.
 
 ### Added
+
+- **`bgRadius`: a span's background rounded, and joined into one shape
+  with the ones it meets** (backlog F101, from kawoosh, 2026-09-27;
+  [ADR 0035](docs/adr/0035-a-rounded-background-is-joined-by-meeting.md)).
+  `bgRadius` on a `<span>` in JSX, `bg_radius` in a Lua span table and
+  on `KuiSpan` in C, `Span::bg_radius(r)` in Rust, in logical px. A
+  rounded background is one shape with every rounded background of the
+  same colour and radius it meets. That is a piece whose edge touches
+  it exactly on the line above or below and overlaps it sideways, or one
+  that meets it end to end on its own line, such as a line's text and
+  the cell an editor draws for its newline. The piece can be in the same
+  text (a wrapped paragraph's lines) or in another (an editor's rows).
+  Its corners are convex where a line reaches past its neighbour, a
+  fillet where it falls short, square where the two end together, and
+  round where nothing meets it. A selection over rows, or over the
+  wrapped lines of a markdown paragraph, is one rounded outline. Nothing
+  names the shape, and two that touch are one. The join runs once the
+  frame's quads are all emitted, so every text's lines are known, and it
+  uses the layout of the frame it draws: the outline is never a frame
+  behind the text. Each piece is a `fragment` quad painted by a source
+  the core registers itself (`fragment::JOIN`, as the polygon's is), so
+  no backend learned a kind. It is clipped as its text's parent is, so
+  a fillet past a short no-wrap line's end shows. At 0, the default, the
+  background is the square one it was. The corpus gains
+  `joined-backgrounds`, re-expressed in Lua, C and Node: four texts of
+  mono spans, three in one translucent colour joined, the fourth in
+  another beside them. Pinned by `tests/joined_backgrounds.rs` in
+  kui-core (the pieces' extents and neighbours across texts, a wrap,
+  colours and radii that stay apart, pieces meeting end to end) and in
+  kui-wgpu (the shape composited through the fragment's mirror), by a
+  Node test and by the ffi's
+  `a_span_s_bg_radius_joins_its_background_across_the_boundary`. Lua
+  was seen going red with the radius dropped.
+  *What you can delete:* a rounded selection drawn by the app as a
+  `fragment` under each row, told its own extent and its neighbours'
+  from the last frame's layout, and the line rects of a wrapped
+  paragraph worked out to draw one under it.
 
 - **`pixelSnap`: a box painted on whole pixels.** A flag on any node
   (`pixelSnap` in JSX, `pixel_snap` in Lua and on `KuiSpec`,

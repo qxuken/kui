@@ -1017,6 +1017,33 @@ static void conf_underlines(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* conformance::build_joined_backgrounds (backlog F101): four texts of mono
+ * spans, the first three's selected spans in one translucent colour with
+ * bg_radius 4 (ABI 20), joined into one shape; the fourth in another. */
+static void conf_joined_backgrounds(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiSpec outer = {.pad_l = 10, .pad_r = 10, .pad_t = 10, .pad_b = 10};
+    kui_open(ui, &outer, NULL);
+    KuiTextStyle mono = {.size = 14, .family = KUI_FONT_MONO, .line_height = 20};
+    const uint32_t sel = 0x3b5bd466;
+    KuiSpan first[] = {
+        {.text = KUI_STR("let ")},
+        {.text = KUI_STR("a = 1;"), .bg = sel, .bg_radius = 4},
+    };
+    kui_rich_text(ui, first, 2, &mono);
+    KuiSpan second[] = {{.text = KUI_STR("let b = 22;"), .bg = sel, .bg_radius = 4}};
+    kui_rich_text(ui, second, 1, &mono);
+    KuiSpan third[] = {
+        {.text = KUI_STR("c"), .bg = sel, .bg_radius = 4},
+        {.text = KUI_STR(" + d")},
+    };
+    kui_rich_text(ui, third, 2, &mono);
+    KuiSpan fourth[] = {{.text = KUI_STR("find"), .bg = 0xd9738c66, .bg_radius = 4}};
+    kui_rich_text(ui, fourth, 1, &mono);
+    kui_close(ui);
+}
+
 static void conf_lines(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
     (void)phase;
@@ -1838,6 +1865,7 @@ static const ConfScene CONF_SCENES[] = {
     {"paste", conf_ime},
     {"cells", conf_cells},
     {"underlines", conf_underlines},
+    {"joined-backgrounds", conf_joined_backgrounds},
     {"media", conf_media},
     {"lines", conf_lines},
     {"polygon", conf_polygon},

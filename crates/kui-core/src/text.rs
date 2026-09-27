@@ -290,6 +290,25 @@ struct DecoTemplate {
     /// The shape, for an underline: the rect is where a solid line goes,
     /// and a wave or dots are built around it at emission (backlog K4).
     style: UnderlineStyle,
+    /// A background's radius, logical px; above zero the frame joins it
+    /// with the ones it meets ([`JoinBg`]).
+    radius: f32,
+}
+
+/// A rounded span background emitted this frame (backlog F101): the quad
+/// it is, square for now, which the frame's last pass turns into its part
+/// of one shape once every text has been painted and each can be told the
+/// ones it meets (`crate::join`). The radius is logical px. `outer` is the
+/// clip the text was given, and `own` its own box's physical x-range when
+/// it clips to it, as a no-wrap text does: a piece is no wider than that
+/// box shows, but a fillet past the end of a short line lies outside the
+/// box, beside it, and is clipped only as the text's parent is.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct JoinBg {
+    pub quad: u32,
+    pub radius: f32,
+    pub outer: ClipId,
+    pub own: Option<(f32, f32)>,
 }
 
 /// The decorations one span (or a plain text's whole content) asked for.
@@ -300,6 +319,9 @@ struct SpanDeco {
     underline_style: UnderlineStyle,
     strikethrough: bool,
     bg: Option<Color>,
+    /// The background's radius, logical px: above zero it is joined with
+    /// the backgrounds it meets (backlog F101).
+    bg_radius: f32,
 }
 
 impl SpanDeco {
@@ -310,6 +332,7 @@ impl SpanDeco {
             underline_style: style.underline_style,
             strikethrough: style.strikethrough,
             bg: None,
+            bg_radius: 0.0,
         }
     }
 
@@ -338,6 +361,13 @@ pub struct Span<'a> {
     /// A background behind the span's glyphs, one rect per line it spans,
     /// so it follows the span across a wrap the way a box cannot.
     pub bg: Option<Color>,
+    /// The background's corner radius, logical px (backlog F101). Above
+    /// zero, every background of the same colour and radius that meets
+    /// another edge to edge on the line above or below — in this text or
+    /// another — is one shape with it: its corners convex where a line
+    /// reaches past its neighbour, concave where it falls short, round
+    /// where nothing meets it. What a selection over lines looks like.
+    pub bg_radius: f32,
 }
 
 impl<'a> Span<'a> {
@@ -352,6 +382,7 @@ impl<'a> Span<'a> {
             underline_style: UnderlineStyle::Solid,
             strikethrough: false,
             bg: None,
+            bg_radius: 0.0,
         }
     }
 
@@ -399,6 +430,13 @@ impl<'a> Span<'a> {
         self
     }
 
+    /// Rounds the background, joined with the ones it meets (see
+    /// [`Span::bg_radius`](Self#structfield.bg_radius)).
+    pub fn bg_radius(mut self, r: f32) -> Self {
+        self.bg_radius = r.max(0.0);
+        self
+    }
+
     /// The span without its text: what a long line keeps per span so a
     /// chunk can be rebuilt from the content and the ranges (backlog C42).
     fn attrs_only(&self) -> SpanAttrs {
@@ -411,6 +449,7 @@ impl<'a> Span<'a> {
             underline_style: self.underline_style,
             strikethrough: self.strikethrough,
             bg: self.bg,
+            bg_radius: self.bg_radius,
         }
     }
 
@@ -451,6 +490,7 @@ struct SpanAttrs {
     underline_style: UnderlineStyle,
     strikethrough: bool,
     bg: Option<Color>,
+    bg_radius: f32,
 }
 
 impl SpanAttrs {
@@ -465,6 +505,7 @@ impl SpanAttrs {
             underline_style: self.underline_style,
             strikethrough: self.strikethrough,
             bg: self.bg,
+            bg_radius: self.bg_radius,
         }
     }
 }
@@ -883,6 +924,9 @@ impl TextMetrics {
 /// packed against, and the frame lists are what `TextId` indexes.
 pub struct TextSystem {
     raster: Raster,
+    /// The rounded span backgrounds this frame emitted, for the pass that
+    /// joins them once every text is painted (backlog F101).
+    joins: Vec<JoinBg>,
     /// Every shaped run and every long line, by key — a long line's key
     /// is salted (`LONG_SALT`) and its chunks are runs beside it (backlog
     /// C19).
@@ -1114,6 +1158,7 @@ impl TextSystem {
     pub fn new() -> Self {
         Self {
             raster: Raster::new(),
+            joins: Vec::new(),
             entries: FxHashMap::default(),
             bytes: 0,
             budget: DEFAULT_TEXT_CACHE_BYTES,
@@ -1122,6 +1167,12 @@ impl TextSystem {
             scale: 1.0,
             frame_no: 0,
         }
+    }
+
+    /// The rounded backgrounds emitted since the last call: what the
+    /// frame's join pass shapes (`crate::join`).
+    pub(crate) fn take_joins(&mut self) -> Vec<JoinBg> {
+        std::mem::take(&mut self.joins)
     }
 
     /// This window's rasterizer, for glyph raster against its atlas.
@@ -1224,6 +1275,7 @@ impl TextSystem {
         keep_prev: bool,
         frame_no: u64,
     ) {
+        self.joins.clear();
         // Scale change invalidates every physical-px measurement.
         if (scale - self.scale).abs() > f32::EPSILON {
             self.entries.clear();
@@ -1861,6 +1913,7 @@ impl TextSystem {
                 s.underline_style as u8,
                 s.underline_color.is_some() as u8,
             ]);
+            mix(&s.bg_radius.to_bits().to_le_bytes());
             for c in [s.color, s.bg, s.underline_color].into_iter().flatten() {
                 mix(&c.r.to_bits().to_le_bytes());
                 mix(&c.g.to_bits().to_le_bytes());
@@ -1919,6 +1972,7 @@ impl TextSystem {
                     },
                     strikethrough: s.strikethrough || base.strikethrough,
                     bg: s.bg,
+                    bg_radius: s.bg_radius,
                 })
                 .collect();
             let entry = CachedText::new(buffer, content, base, decos, fs, frame_no);
@@ -1946,10 +2000,48 @@ impl TextSystem {
     }
 
     /// Emits positioned glyph quads for a laid-out text node.
-    /// `origin` and `node` are logical; output quads are physical px.
-    #[allow(clippy::too_many_arguments)]
+    /// `origin` and `node` are logical; output quads are physical px. The
+    /// rounded backgrounds it notes are clipped as its parent is, whatever
+    /// its own box does (`JoinBg::outer`).
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn emit(
+        &mut self,
+        id: TextId,
+        origin: Vec2,
+        node: Size,
+        clip: Clip,
+        clip_id: ClipId,
+        clips: &mut Vec<Clip>,
+        res: &Resources,
+        fs: &mut FontSystem,
+        atlas: &mut GlyphAtlas,
+        out: &mut Vec<Quad>,
+        sel: Option<((usize, usize), Color)>,
+    ) {
+        let from = self.joins.len();
+        self.emit_text(
+            id, origin, node, clip, clip_id, clips, res, fs, atlas, out, sel,
+        );
+        if self.joins.len() == from {
+            return;
+        }
+        // The box a long line or an overflowing text clips to, as
+        // `emit_text` works it out.
+        let key = self.frame[id.0 as usize].cache_key;
+        let clamps = self.long(key).is_some() || self.run(key).is_some_and(|e| e.clamp_w);
+        let own = clamps.then(|| {
+            let ox = crate::geom::snap_px(origin.x * self.scale);
+            (ox, ox + (node.w * self.scale).ceil())
+        });
+        for j in &mut self.joins[from..] {
+            j.outer = clip_id;
+            j.own = own;
+        }
+    }
+
+    /// [`Self::emit`]'s body.
+    #[allow(clippy::too_many_arguments)]
+    fn emit_text(
         &mut self,
         id: TextId,
         origin: Vec2,
@@ -2034,6 +2126,7 @@ impl TextSystem {
                     fs,
                     atlas,
                     out,
+                    &mut self.joins,
                 );
             }
             return;
@@ -2060,7 +2153,18 @@ impl TextSystem {
             push_highlight(&rects, ox, oy, nudge, tint, clip_id, out);
         }
         emit_entry(
-            entry, ox, oy, nudge, color, clip, clip_id, raster, fs, atlas, out,
+            entry,
+            ox,
+            oy,
+            nudge,
+            color,
+            clip,
+            clip_id,
+            raster,
+            fs,
+            atlas,
+            out,
+            &mut self.joins,
         );
     }
 }
@@ -2180,6 +2284,7 @@ impl TextSystem {
                 fs,
                 atlas,
                 out,
+                &mut self.joins,
             );
         }
     }
@@ -2205,6 +2310,7 @@ fn emit_entry_rows(
     fs: &mut FontSystem,
     atlas: &mut GlyphAtlas,
     out: &mut Vec<Quad>,
+    joins: &mut Vec<JoinBg>,
 ) {
     build_templates(entry, raster, fs, atlas);
     // A decoration rect spans glyphs of the unwrapped run; the row a
@@ -2212,7 +2318,7 @@ fn emit_entry_rows(
     // covers `rows[r].x..rows[r + 1].x` of the run — so a rect a row
     // break falls inside is cut there, one piece a row, each shifted as
     // the row's glyphs are (backlog C42: a rich chunk's spans).
-    let row_pieces = |d: &DecoTemplate, out: &mut Vec<Quad>| {
+    let mut row_pieces = |d: &DecoTemplate, out: &mut Vec<Quad>| {
         let (x0, x1) = (d.x, d.x + d.w);
         for r in 0..rows.len() {
             let ra = rows[r].x;
@@ -2249,7 +2355,16 @@ fn emit_entry_rows(
                 uv: [0; 4],
             };
             // A background or a solid line is its rect; a wave or dots
-            // are pieces built around it, as in `emit_entry`.
+            // are pieces built around it, as in `emit_entry`. A rounded
+            // background is noted for the join pass (backlog F101).
+            if d.under && d.radius > 0.0 {
+                joins.push(JoinBg {
+                    quad: out.len() as u32,
+                    radius: d.radius,
+                    outer: clip_id,
+                    own: None,
+                });
+            }
             if d.under || d.style == UnderlineStyle::Solid {
                 out.push(quad);
             } else {
@@ -2459,6 +2574,7 @@ fn emit_entry(
     fs: &mut FontSystem,
     atlas: &mut GlyphAtlas,
     out: &mut Vec<Quad>,
+    joins: &mut Vec<JoinBg>,
 ) {
     build_templates(entry, raster, fs, atlas);
     {
@@ -2480,17 +2596,27 @@ fn emit_entry(
             uv: [0; 4],
         };
         // A span's background goes under its glyphs, on whole pixels;
-        // its lines go over.
-        out.extend(
-            entry
-                .deco
-                .iter()
-                .filter(|d| d.under && inside(d.x, d.y, d.w, d.h))
-                .map(|d| Quad {
-                    rect: on_pixels(ox + d.x, oy + d.y, d.w, d.h, nudge),
-                    ..deco_quad(d)
-                }),
-        );
+        // its lines go over. A rounded one is noted for the join pass,
+        // which gives it its corners once every text is painted (backlog
+        // F101).
+        for d in entry
+            .deco
+            .iter()
+            .filter(|d| d.under && inside(d.x, d.y, d.w, d.h))
+        {
+            if d.radius > 0.0 {
+                joins.push(JoinBg {
+                    quad: out.len() as u32,
+                    radius: d.radius,
+                    outer: clip_id,
+                    own: None,
+                });
+            }
+            out.push(Quad {
+                rect: on_pixels(ox + d.x, oy + d.y, d.w, d.h, nudge),
+                ..deco_quad(d)
+            });
+        }
 
         // Glyph templates are in layout order; skip everything above the clip
         // and stop at the first glyph past it (rows below never come back).
@@ -2595,7 +2721,9 @@ fn build_decorations(
             let w = (x1 - x0).max(0.0);
             match (deco.bg, last_bg.map(|k| &mut out[k])) {
                 (Some(bg), Some(prev))
-                    if prev.color == Some(bg) && (prev.x + prev.w - x0).abs() < 0.01 =>
+                    if prev.color == Some(bg)
+                        && prev.radius == deco.bg_radius
+                        && (prev.x + prev.w - x0).abs() < 0.01 =>
                 {
                     prev.w = (x1 - prev.x).max(prev.w);
                 }
@@ -2609,6 +2737,7 @@ fn build_decorations(
                         color: Some(bg),
                         under: true,
                         style: UnderlineStyle::Solid,
+                        radius: deco.bg_radius,
                     });
                 }
                 (None, _) => last_bg = None,
@@ -2643,6 +2772,7 @@ fn build_decorations(
                         }),
                         under: false,
                         style: deco.underline_style,
+                        radius: 0.0,
                     });
                 }
                 if deco.strikethrough {
@@ -2656,6 +2786,7 @@ fn build_decorations(
                             .map(|c| Color::rgba8(c.r(), c.g(), c.b(), c.a())),
                         under: false,
                         style: UnderlineStyle::Solid,
+                        radius: 0.0,
                     });
                 }
             }

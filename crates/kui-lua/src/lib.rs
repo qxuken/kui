@@ -1973,6 +1973,9 @@ struct SpanPart {
     strikethrough: bool,
     color: Option<Color>,
     bg: Option<Color>,
+    /// `bg_radius`: the background rounded, one shape with the ones it
+    /// meets (backlog F101).
+    bg_radius: f32,
 }
 
 fn span_of(p: &SpanPart) -> Span<'_> {
@@ -2001,6 +2004,9 @@ fn span_of(p: &SpanPart) -> Span<'_> {
     if let Some(c) = p.bg {
         s = s.bg(c);
     }
+    if p.bg_radius > 0.0 {
+        s = s.bg_radius(p.bg_radius);
+    }
     s
 }
 
@@ -2019,6 +2025,7 @@ fn collect_spans(spans: &Table, refs: &mut Refs<'_>) -> mlua::Result<Vec<SpanPar
                 strikethrough: false,
                 color: None,
                 bg: None,
+                bg_radius: 0.0,
             }),
             mlua::Value::Table(t) => {
                 let text: String = t
@@ -2061,6 +2068,7 @@ fn collect_spans(spans: &Table, refs: &mut Refs<'_>) -> mlua::Result<Vec<SpanPar
                     strikethrough: t.get::<Option<bool>>("strikethrough")?.unwrap_or(false),
                     color,
                     bg,
+                    bg_radius: t.get::<Option<f32>>("bg_radius")?.unwrap_or(0.0).max(0.0),
                 });
             }
             other => {

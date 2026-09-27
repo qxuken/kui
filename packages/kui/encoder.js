@@ -544,7 +544,9 @@ export function createEncoder(P) {
   // the colour is a token index, 128 the bg is, 256 has an underline
   // colour, 512 it is a token index, 1024 the underline is wavy, 2048
   // dotted (v13, backlog K4). A span's own underline colour and style
-  // beat the enclosing span's; either implies the underline.
+  // beat the enclosing span's; either implies the underline. Then the
+  // background's radius (v17, backlog F101), 0 for a square one; a span's
+  // own beats the enclosing span's.
   function collectSpans(node, st, out) {
     if (node == null || typeof node === 'boolean') return;
     if (typeof node === 'string' || typeof node === 'number') {
@@ -561,7 +563,7 @@ export function createEncoder(P) {
         (st.ul?.ref ? 512 : 0) |
         (st.ulStyle === 'wavy' ? 1024 : 0) |
         (st.ulStyle === 'dotted' ? 2048 : 0);
-      out.push([String(node), flags, st.color?.v ?? 0, st.bg?.v ?? 0, st.ul?.v ?? 0]);
+      out.push([String(node), flags, st.color?.v ?? 0, st.bg?.v ?? 0, st.ul?.v ?? 0, st.bgRadius ?? 0]);
       return;
     }
     if (Array.isArray(node)) {
@@ -572,6 +574,9 @@ export function createEncoder(P) {
     const p = node.props ?? {};
     if (p.underlineStyle != null && !P.underlineStyles.includes(p.underlineStyle)) {
       throw new Error(`bad underlineStyle ${JSON.stringify(p.underlineStyle)} on <span> (${P.underlineStyles.join(' | ')})`);
+    }
+    if (p.bgRadius != null && !(typeof p.bgRadius === 'number' && p.bgRadius >= 0)) {
+      throw new Error(`bad bgRadius ${JSON.stringify(p.bgRadius)} on <span> (a number of logical px, 0 or more)`);
     }
     collectSpans(
       node.children,
@@ -584,6 +589,7 @@ export function createEncoder(P) {
         bg: spanColor(p.bg, st.bg),
         ul: spanColor(p.underlineColor, st.ul),
         ulStyle: p.underlineStyle ?? st.ulStyle,
+        bgRadius: p.bgRadius ?? st.bgRadius,
       },
       out,
     );
@@ -634,14 +640,15 @@ export function createEncoder(P) {
           collectSpans(el.children, {}, spans);
           f[fi++] = OP.richText;
           props(p, null, false);
-          reserve(8 + spans.length * 7);
+          reserve(8 + spans.length * 8);
           f[fi++] = spans.length;
-          for (const [text, flags, c, bg, ul] of spans) {
+          for (const [text, flags, c, bg, ul, radius] of spans) {
             strRef(text);
             f[fi++] = flags;
             f[fi++] = c;
             f[fi++] = bg;
             f[fi++] = ul;
+            f[fi++] = radius;
           }
         } else {
           f[fi++] = OP.text;
