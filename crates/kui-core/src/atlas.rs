@@ -50,6 +50,30 @@ struct Shelf {
     cursor_x: u32,
 }
 
+/// The page as it was when `begin_frame` last emptied it, kept for that
+/// one frame (backlog DX26): its pixels, and the glyphs and shapes it
+/// held, where.
+struct Prev {
+    size: u32,
+    pixels: Vec<u8>,
+    map: FxHashMap<CacheKey, Option<GlyphSlot>>,
+    synth: FxHashMap<(char, u32, u32), Option<GlyphSlot>>,
+}
+
+impl Prev {
+    /// The texels of the `w × h` rect at (`x`, `y`), row after row.
+    fn texels(&self, x: u32, y: u32, w: u32, h: u32) -> Vec<u8> {
+        let stride = (self.size * 4) as usize;
+        let row = (w * 4) as usize;
+        let mut out = Vec::with_capacity(row * h as usize);
+        for r in 0..h as usize {
+            let at = (y as usize + r) * stride + (x * 4) as usize;
+            out.extend_from_slice(&self.pixels[at..at + row]);
+        }
+        out
+    }
+}
+
 /// How the page makes room (backlog F99). A slot handed out during a
 /// frame is never moved or overwritten before that frame is presented:
 /// the quads already emitted, the text templates built and the cell
@@ -77,6 +101,15 @@ struct Shelf {
 /// set fits in what the page held is `short`, and the next frame begins
 /// on an empty page that takes it — the view has scrolled to a part of
 /// the set. One that did not fit keeps the page as it is.
+///
+/// An emptied page is not drawn from again, but it is kept for the frame
+/// that begins on the empty one (backlog DX26). A glyph or shape that
+/// frame looks up and the old page held is copied across, not
+/// rasterized again: the frame after a reset is the whole visible set
+/// looked up at once — kawoosh's window, ~600 glyphs, was 2.5–5.3 ms of
+/// rasterizing where the copy is a fraction of one. Only what the frame
+/// looks up is copied, so the page still holds that frame's set alone.
+/// `clear`, for a raster mode that changed, keeps nothing.
 pub struct GlyphAtlas {
     pub size: u32,
     /// RGBA, size*size*4.
@@ -151,6 +184,9 @@ pub struct GlyphAtlas {
     wanted: bool,
     /// Frames begun, for `refused`'s once-a-frame count.
     frame: u64,
+    /// The page `begin_frame` emptied, for this frame only (see the type's
+    /// note).
+    prev: Option<Prev>,
 }
 
 impl GlyphAtlas {
@@ -184,6 +220,7 @@ impl GlyphAtlas {
             seen: FxHashSet::default(),
             wanted: false,
             frame: 0,
+            prev: None,
         }
     }
 
@@ -211,6 +248,8 @@ impl GlyphAtlas {
     /// one and its set fits (see the type's note); otherwise the frame
     /// ahead is measured.
     pub fn begin_frame(&mut self) {
+        // The page emptied a frame ago has served the frame it was kept for.
+        self.prev = None;
         if self.fresh && !self.refused.is_empty() {
             self.held = self.placed;
         }
@@ -230,16 +269,16 @@ impl GlyphAtlas {
         let filling = self.turned && self.size - rows < 2 * self.rows_per_frame;
         let thrash = self.frames_since_reset <= 2;
         if self.short || refit {
-            self.reset_to(self.base);
+            self.reset_to(self.base, true);
         } else if extended && thrash {
             self.base = self.size;
         } else if extended {
-            self.reset_to(self.base);
+            self.reset_to(self.base, true);
         } else if filling && thrash && self.size < MAX_ATLAS_SIZE {
             self.extend_to((self.size * 2).min(MAX_ATLAS_SIZE));
             self.base = self.size;
         } else if filling {
-            self.reset_to(self.base);
+            self.reset_to(self.base, true);
         }
         self.short = false;
         self.fresh = self.next_shelf_y == 0;
@@ -302,13 +341,24 @@ impl GlyphAtlas {
     /// bumps the epoch so renderers re-upload. Used when the raster mode
     /// changes under the cache — between frames, never during one.
     pub fn clear(&mut self) {
-        self.reset_to(self.size);
+        self.prev = None;
+        self.reset_to(self.size, false);
     }
 
     /// Empties the page onto a `size` one: every slot dropped, the epoch
-    /// bumped. Only between frames.
-    fn reset_to(&mut self, size: u32) {
-        if size == self.size {
+    /// bumped. Only between frames. `keep` keeps the old page for the
+    /// frame ahead to copy from (see the type's note).
+    fn reset_to(&mut self, size: u32, keep: bool) {
+        if keep {
+            let pixels = std::mem::replace(&mut self.pixels, vec![0; (size * size * 4) as usize]);
+            self.prev = Some(Prev {
+                size: self.size,
+                pixels,
+                map: std::mem::take(&mut self.map),
+                synth: std::mem::take(&mut self.synth),
+            });
+            self.size = size;
+        } else if size == self.size {
             self.pixels.fill(0);
         } else {
             self.size = size;
@@ -436,8 +486,26 @@ impl GlyphAtlas {
         self.dirty = true;
     }
 
-    /// Cached lookup; rasterizes on miss. `None` means unrasterizable (e.g.
-    /// whitespace) and is cached as such.
+    /// A glyph the page held before `begin_frame` emptied it, its texels
+    /// copied out of the old page (DX26). Only one that was drawn: a
+    /// `None` there may be a refusal, which the empty page is for.
+    fn carried(&self, key: &CacheKey) -> Option<RasterGlyph> {
+        let prev = self.prev.as_ref()?;
+        let slot = (*prev.map.get(key)?)?;
+        Some(RasterGlyph {
+            w: slot.w,
+            h: slot.h,
+            left: slot.left,
+            top: slot.top,
+            color: slot.color_glyph,
+            subpixel: slot.subpixel,
+            data: prev.texels(slot.x, slot.y, slot.w, slot.h),
+        })
+    }
+
+    /// Cached lookup; rasterizes on miss — or, the frame after the page
+    /// was emptied, copies what the old page held (DX26). `None` means
+    /// unrasterizable (e.g. whitespace) and is cached as such.
     pub fn get_or_insert(
         &mut self,
         key: CacheKey,
@@ -450,7 +518,7 @@ impl GlyphAtlas {
             }
             return slot;
         }
-        let Some(glyph) = raster() else {
+        let Some(glyph) = self.carried(&key).or_else(raster) else {
             self.map.insert(key, None);
             return None;
         };
@@ -498,12 +566,19 @@ impl GlyphAtlas {
             self.synth.insert((ch, w, h), None);
             return None;
         };
-        let mask = coverage();
-        debug_assert_eq!(mask.len(), (w * h) as usize);
-        let mut rgba = Vec::with_capacity(mask.len() * 4);
-        for &a in &mask {
-            rgba.extend_from_slice(&[255, 255, 255, a]);
-        }
+        let carried = self.prev.as_ref().and_then(|prev| {
+            let slot = (*prev.synth.get(&(ch, w, h))?)?;
+            Some(prev.texels(slot.x, slot.y, w, h))
+        });
+        let rgba = carried.unwrap_or_else(|| {
+            let mask = coverage();
+            debug_assert_eq!(mask.len(), (w * h) as usize);
+            let mut rgba = Vec::with_capacity(mask.len() * 4);
+            for &a in &mask {
+                rgba.extend_from_slice(&[255, 255, 255, a]);
+            }
+            rgba
+        });
         self.blit(x, y, w, h, &rgba);
         let slot = GlyphSlot {
             x,
@@ -722,18 +797,22 @@ mod tests {
         assert!(!atlas.short());
         let epoch = atlas.epoch;
         // Between frames the extension goes: the page is its old size,
-        // empty, and the frame's glyphs re-rasterize.
+        // empty, and the frame's glyphs are copied from the page it
+        // replaced (DX26), not rasterized again.
         atlas.begin_frame();
         assert_eq!(atlas.size, 64);
         assert!(atlas.epoch > epoch, "reset before anything is emitted");
         let mut rasterized = 0;
         for i in [4u32, 5, 6, 7] {
-            atlas.get_or_insert(fake_key(i), || {
-                rasterized += 1;
-                Some(filled(30, 30, i as u8 + 1))
-            });
+            let slot = atlas
+                .get_or_insert(fake_key(i), || {
+                    rasterized += 1;
+                    Some(filled(30, 30, i as u8 + 1))
+                })
+                .expect("room");
+            assert!(holds(&atlas, slot, i as u8 + 1), "copied whole");
         }
-        assert_eq!(rasterized, 4);
+        assert_eq!(rasterized, 0);
         assert_eq!(atlas.size, 64, "the set fits the page: no growth kept");
     }
 
@@ -1052,6 +1131,77 @@ mod tests {
     /// F66: a synthesized shape is one slot per character and cell size —
     /// the same size twice shares, another size does not — and a reset
     /// drops it with the glyphs.
+    /// DX26: the frame that begins on an emptied page copies what the old
+    /// page held and it looks up — texels, offsets, kind — rather than
+    /// rasterizing it again, and only for that frame. What it did not look
+    /// up is gone with the old page, and `clear` keeps nothing.
+    #[test]
+    fn the_frame_after_a_reset_copies_what_the_old_page_held() {
+        let mut atlas = GlyphAtlas::with_size(64);
+        atlas.begin_frame();
+        let glyph = |v: u8| RasterGlyph {
+            left: -2,
+            top: 9,
+            subpixel: true,
+            ..filled(30, 30, v)
+        };
+        for i in 0..4u32 {
+            atlas.get_or_insert(fake_key(i), || Some(glyph(i as u8 + 1)));
+        }
+        atlas.get_or_insert_synth('─', 8, 16, || vec![200; 8 * 16]);
+        atlas.short = true; // what a refusal leaves: the next frame resets
+        let epoch = atlas.epoch;
+        atlas.begin_frame();
+        assert!(atlas.epoch > epoch, "the page was emptied");
+
+        let mut rasterized = 0;
+        for i in [2u32, 0] {
+            let slot = atlas
+                .get_or_insert(fake_key(i), || {
+                    rasterized += 1;
+                    Some(glyph(0))
+                })
+                .unwrap();
+            assert!(holds(&atlas, slot, i as u8 + 1), "glyph {i}'s texels");
+            assert_eq!((slot.left, slot.top, slot.subpixel), (-2, 9, true));
+        }
+        let mut drawn = 0;
+        let shape = atlas
+            .get_or_insert_synth('─', 8, 16, || {
+                drawn += 1;
+                vec![0; 8 * 16]
+            })
+            .unwrap();
+        assert_eq!(
+            atlas.pixels[((shape.y * atlas.size + shape.x) * 4 + 3) as usize],
+            200
+        );
+        assert_eq!((rasterized, drawn), (0, 0), "copied, not drawn again");
+        assert_eq!(
+            atlas.placed,
+            2 * texels(30, 30) + texels(8, 16),
+            "only what was looked up is placed"
+        );
+
+        // The next frame: the old page is gone, and a glyph the reset
+        // frame did not ask for is rasterized.
+        atlas.begin_frame();
+        atlas.get_or_insert(fake_key(1), || {
+            rasterized += 1;
+            Some(glyph(2))
+        });
+        assert_eq!(rasterized, 1);
+
+        // `clear` (a raster mode that changed) keeps nothing.
+        atlas.clear();
+        atlas.begin_frame();
+        atlas.get_or_insert(fake_key(1), || {
+            rasterized += 1;
+            Some(glyph(2))
+        });
+        assert_eq!(rasterized, 2);
+    }
+
     #[test]
     fn a_synthesized_shape_is_keyed_on_its_cell_size() {
         use std::cell::Cell;

@@ -2390,7 +2390,8 @@ DX14, DX15), and DX12 in Rust after it (its other bindings are DX22);
 and DX22 the same day, and DX18–DX21 after them; DX16 was declined.
 DX23 and DX24 came from kawoosh's report on moving onto the round, and
 were built the same day. DX25 came from kawoosh's windowed probe of its
-fonts pane the day after, and was built that day.
+fonts pane the day after, and was built that day, and DX26 from
+profiling what was left of it, built the same day.
 DX9 and DX17 were built as ADRs 0036 and 0037 the same day. Nothing
 filed by the sweep is open.
 
@@ -2834,7 +2835,42 @@ new family cost ~1.0 ms in both. Pinned by `a_loaded_file_is_shared_too`
 **Not done:** a first sight still costs ~1 ms over a frame without one,
 and a few faces take 4–5.5 ms in layout (Brush Script MT, Silom,
 Mishafi, SF Pro Display), not profiled. The upstream fix (DX24's) would
-make both shares unnecessary.
+make both shares unnecessary. (The layout frames were profiled the same
+day: DX26.)
+
+### `.` DX26 — The frame after an atlas reset rasterized the whole window — **built 2026-09-28**
+
+What was left of DX25's fonts-pane frames: a few took 4–7 ms, nearly all
+of it layout, and a different family was named each run. Profiled with
+counters on the glyph rasterizer in kawoosh's probe: a first sight
+rasterizes its own ~52 glyphs in ~0.24 ms. The slow frames were 16
+across the walk, every ~40 families, each rasterizing ~600 glyphs in
+2.5–5.3 ms (3.5 mean) — kawoosh's own interface among them (Helvetica
+Neue ~1 ms, Iosevka ~0.5 ms). A list scrolling through fonts turns the
+atlas's set over a little each frame; `begin_frame` sees the page
+about to fill and empties it (F99), and the frame that begins on the
+empty page looks up the whole visible set at once and rasterized all of
+it. The new family was whichever one that frame happened to show.
+
+**Built 2026-09-28:** the emptied page is kept for the frame that begins
+on the empty one (`atlas::Prev`). A glyph or synthesized shape that
+frame looks up and the old page held is copied across — texels, offsets
+and kind — rather than rasterized; only what the frame looks up is
+placed, so the page still holds that frame's set alone, and it resets
+exactly when it did. The old page is dropped at the next `begin_frame`,
+so a reset frame holds two pages, one frame. A `None` in the old map may
+be a refusal, and is not carried. `clear` (a raster mode that changed)
+keeps nothing. kawoosh's probe, two runs each against DX25: layout's
+worst frame 5.4–5.5 ms → 2.0, frames with layout over 3 ms 8 → 0, the
+worst frame 6.6 → 4.4–4.5 ms, the mean unchanged (2.1). Pinned by
+`the_frame_after_a_reset_copies_what_the_old_page_held`; F99's
+mid-frame fill test now asserts the copy where it asserted the
+re-raster.
+**Not done:** the page still empties every ~40 frames of such a walk, so
+the reset frame pays the copy and the view's own work; a page that
+evicts what went unused, rather than emptying, would not reset at all.
+And a first sight's ~1 ms of view is cosmic-text ranking every face for
+each new family, weight and style (DX24's upstream fix).
 
 Seen in the sweep and not filed, each wanting a check on this tree
 first:

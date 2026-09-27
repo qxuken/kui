@@ -438,6 +438,16 @@ Twelve readings change:
   ships, and its fonts pane's frame that first shows a family went from
   6.6 ms to 2.0 ms (worst 16 → 7.4 ms, none over 8 ms).
 
+- **The frame after the glyph atlas emptied rasterized every glyph on
+  screen again** (backlog DX26, 2026-09-28). A view whose text turns
+  over a little each frame — a list scrolling through fonts — fills the
+  atlas every so often, and the page is emptied between frames; the
+  frame after looked up its whole visible set on the empty page and
+  rasterized all of it, ~600 glyphs and 2.5–5.3 ms in kawoosh's window,
+  every ~40 frames of its fonts pane. The emptied page is now kept for
+  that one frame, and what it held is copied, not rasterized. kawoosh's
+  worst layout frame in that walk went from 5.5 ms to 2.0.
+
 - **Text backgrounds that adjoin showed a seam at every join** (from
   kawoosh, 2026-09-26). An editor's selection is a translucent `bg` on
   each span of its syntax runs, row after row, and it drew as stripes.
