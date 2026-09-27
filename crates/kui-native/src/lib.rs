@@ -47,6 +47,8 @@ mod pane;
 mod popups;
 mod retarget;
 mod secure_input;
+/// A headless driver for an `App` (backlog DX11).
+pub mod testing;
 mod windows;
 
 use pane::{Pane, appearance_of, level_change, level_supported, sync_env, theme_appearance};
