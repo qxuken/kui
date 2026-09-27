@@ -2388,6 +2388,8 @@ repo migrated in `20a1988`). The rest was filed here, DX7–DX21, and
 seven of those were built the same day too (DX7, DX8, DX10, DX11, DX13,
 DX14, DX15), and DX12 in Rust after it (its other bindings are DX22);
 and DX22 the same day, and DX18–DX21 after them; DX16 was declined.
+DX23 and DX24 came from kawoosh's report on moving onto the round, and
+were built the same day.
 DX9 and DX17 were built as ADRs 0036 and 0037 the same day. Nothing
 filed by the sweep is open.
 
@@ -2756,6 +2758,52 @@ spec on the list (`row_props = function(i)` in Lua, `rowProps: (i) =>
 props` in Node), `reveal_row` / `revealRow` as the same arithmetic over
 `scroll_geometry` and `set_scroll`, and a `splitter` helper returning
 the element, over the theme's colours and `keepFocus`.
+
+### `.` DX23 — A pane of more than 512 nodes cannot fade out — **built 2026-09-27**
+
+Filed from kawoosh's report on moving onto this round (2026-09-27): with
+DX19 an `exit` on its closing columns plays only when the column is what
+closed, so it put the fade back — and closing the fonts or the themes
+pane, 1,500–1,800 nodes each, raised `exit-budget` and vanished. It
+reverted and wrote the reason into `docs/design/scrolling-tab.md`. ADR
+0012 had said the 512 "could be raised" once a view asked.
+
+**Measured (release, M3 Pro, a pane of rows of a box and a text):** a
+departing subtree costs ~0.065 µs a node in the frame it leaves and
+~0.021 µs a node a frame while it plays, linear to 8192. 4096 nodes are
+267 µs, then 87 µs a frame, where the same pane cost 404 µs a frame
+alive, so a fade costs less than the frames before it.
+
+**Built 2026-09-27** (`2c1df2b`): `depart::MAX_NODES` is 4096. Everything
+that spelled 512 follows the constant or moved with it: the corpus's exit
+scene in four adapters (`bulk` the budget's rows plus its root, the
+together-removal 4200 rows), the depart and exit tests, the exit_budget
+example (2 × 2100 cells, a 5000-row list, and a headless drive for its
+three rules), and the benches (`drop_5k_rows_declaring_exit` is the
+refusal `drop_1k` was). The bigger scene found the corpus observer
+quadratic in a parent's children (`is_label_keyed`, 8 s → 46 s), now a
+set built once per parent per frame. **Not done:** a departing pane as
+one texture, which would make the budget moot but needs every renderer to
+learn it; nothing asks for more than 4096.
+
+### `.` DX24 — A family's first shaping costs 9.7 ms — **built 2026-09-27**
+
+Filed from the same report: kawoosh keeps warming families ahead of
+time, because cosmic-text's first shaping in a family cost 8–10 ms.
+Measured here: 9.7 ms a family in release, 0.02 ms after, and 0.04 ms to
+register it. The time is cosmic-text's `get_font_matches`, which ranks
+every face in the database for a new family, weight or style and reads
+the `wght` axis of each face of another weight, opening and mapping that
+face's file each time while it is unshared (1,311 faces on the Mac it
+was measured on). Its cache also holds only 256 of those rankings.
+
+**Built 2026-09-27** (`d88b758`): the first font an app registers — by
+name, from bytes or from a file — maps the database's file-backed faces
+once and shares them (`share_faces`, `make_shared_face_data`, as
+cosmic-text does for each face it loads): 30 ms once, and then 0.42 ms a
+family's first shaping. An app on the stock families pays nothing new.
+**Not done:** the upstream fix — the axis read once per face when the
+database loads, in cosmic-text — which would make the share unnecessary.
 
 Seen in the sweep and not filed, each wanting a check on this tree
 first:

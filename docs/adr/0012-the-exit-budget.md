@@ -5,6 +5,14 @@ date: 2026-09-07
 
 # The exit budget: a frame's removal animates whole or not at all
 
+> **The number moved, 2026-09-27: 4096 nodes, where it was 512**
+> (backlog DX23). The view this ADR waited for came: kawoosh's fonts and
+> themes panes, 1,500–1,800 nodes, could not fade out. Measured again:
+> ~0.065 µs a node to depart and ~0.021 µs a node a frame to replay,
+> linear, so 4096 nodes are 267 µs and then 87 µs a frame, less than the
+> pane cost alive. Every decision below holds as written; only the
+> constant and the corpus's numbers changed.
+
 > **Accepted and built (2026-09-07).** Decision 5 landed first, on its
 > own; decisions 2, 3 and 6 followed the same day: `DepartStore::admit`
 > judges a frame's removal whole before anything is copied

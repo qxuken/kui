@@ -67,7 +67,7 @@ was the first bare bump to break an app in five releases).
   `kui_native::testing::Drive` over `&mut Core` (under Added, DX11); a
   drive written against it compiles as it was.
 
-Ten readings change:
+Twelve readings change:
 
 - A square-cornered quad (a `bg`, a span's background, an image with no
   `radius`, a solid underline, a `fragment` node's box) covers each pixel
@@ -102,6 +102,14 @@ Ten readings change:
   switched away, a panel closed around it — goes at once, where every
   node with an `exit` inside it faded out; put the `exit` on the node
   that goes, or keep its parent declared and empty it.
+- The exit budget is 4096 nodes, where it was 512 (under Fixed, DX23).
+  A removal of 513 to 4096 nodes declaring `exit` now animates, where it
+  vanished at once with an `exit-budget` warning; one past 4096 is
+  refused as before.
+- The first font an app registers — by name, from bytes or from a file —
+  maps the database's installed font files once (under Fixed, DX24): ~30
+  ms at that call on a Mac with 1,311 faces, after which a family's first
+  shaping costs ~0.4 ms where it cost ~9.7 ms.
 - A hover event carries `by: "pointer" | "content"` (under Added, DX20),
   and the window's `window` event has two more phases, `focused` and
   `blurred`, raised when `env.focused` changes (under Added, DX18). A
@@ -399,6 +407,26 @@ Ten readings change:
   frames after.
 
 ### Fixed
+
+- **A pane of more than 512 nodes could not fade out** (backlog DX23,
+  from kawoosh, 2026-09-27). `depart::MAX_NODES` is 4096. Measured: a
+  departing subtree costs ~0.065 µs a node to depart and ~0.021 µs a node
+  a frame to replay, so 4096 nodes are 267 µs and then 87 µs a frame,
+  less than the same pane alive. kawoosh's fonts and themes panes
+  (1,500–1,800 nodes) raised `exit-budget` and vanished; they fade. The
+  corpus's exit scene moved with the number in four adapters, and
+  `drop_5k_rows_declaring_exit` is the bench of the refusal.
+  *What you can delete:* an `exit` dropped from a big pane because it
+  tripped the budget.
+
+- **A family's first shaping cost ~9.7 ms** (backlog DX24, from kawoosh,
+  2026-09-27). cosmic-text ranks every installed face for a new family,
+  weight or style, opening each face's file to read its weight axis while
+  the file is unshared. The first font an app registers now maps the
+  installed files once (~30 ms), and a family's first shaping costs ~0.4
+  ms. An app on the stock families pays nothing new.
+  *What you can delete:* warming families ahead of time to keep their
+  first shaping off the frames (kawoosh's `warm`).
 
 - **Text backgrounds that adjoin showed a seam at every join** (from
   kawoosh, 2026-09-26). An editor's selection is a translucent `bg` on
