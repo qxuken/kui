@@ -9,7 +9,9 @@
 //! it; what survives here is a copy.
 //!
 //! A node that declared both a `transition` and an `exit`, was in the last
-//! frame's tree and is not in this one, becomes a **ghost**: its specs,
+//! frame's tree and is not in this one — while its parent still is: a node
+//! that went with an ancestor goes at once, as the ancestor's subtree does
+//! (backlog DX19) — becomes a **ghost**: its specs,
 //! contents and laid-out rects are copied out of the previous frame's tree
 //! into this store, stamped with the clock reading it left at. Every later
 //! frame replays it:

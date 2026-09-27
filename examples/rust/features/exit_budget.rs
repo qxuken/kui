@@ -44,8 +44,10 @@ struct BulkExit {
 
 impl BulkExit {
     /// A grid of cells that each carry their own `exit`. The rows are plain
-    /// containers: when the grid goes they vanish, and what departs is the
-    /// 300 one-node cells inside them.
+    /// containers that stay declared when the grid clears, so what departs
+    /// is the 300 one-node cells inside them: an exit plays where its
+    /// parent is still declared, and a cell whose row went would go with it
+    /// at once (backlog DX19).
     fn grid(&self, ui: &mut Ui<'_>, key: &str, filled: bool, color: Color) {
         ui.with_keyed(
             key,
@@ -53,11 +55,11 @@ impl BulkExit {
                 .size(CELLS_PER_ROW as f32 * 14.0 - 2.0, ROWS as f32 * 14.0 - 2.0)
                 .gap(2.0),
             |ui| {
-                if !filled {
-                    return;
-                }
                 for r in 0..ROWS {
-                    ui.with_indexed(r as u64, NodeSpec::row().gap(2.0), |ui| {
+                    ui.with_indexed(r as u64, NodeSpec::row().gap(2.0).height(12.0), |ui| {
+                        if !filled {
+                            return;
+                        }
                         for c in 0..CELLS_PER_ROW {
                             ui.leaf_indexed(
                                 c as u64,

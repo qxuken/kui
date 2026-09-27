@@ -1012,9 +1012,18 @@ impl Core {
         for i in 0..self.prev_tree.len() {
             if crate::depart::can_depart(&self.prev_tree.specs[i]) {
                 candidates.push(i);
-                let k = self.prev_tree.keys[i];
-                watch.insert(k);
-                mask |= 1u64 << (k.0 & 63);
+                // The node, and its parent: an exit plays only where the
+                // parent is still declared (backlog DX19), so the diff has
+                // to know about that key too.
+                let p = self.prev_tree.parent[i];
+                let keys = [
+                    Some(self.prev_tree.keys[i]),
+                    (p != NIL).then(|| self.prev_tree.keys[p as usize]),
+                ];
+                for k in keys.into_iter().flatten() {
+                    watch.insert(k);
+                    mask |= 1u64 << (k.0 & 63);
+                }
             }
         }
         if watch.is_empty() {
@@ -1036,6 +1045,17 @@ impl Core {
         let mut swallowed_until = 0usize;
         for i in candidates {
             if i < swallowed_until || live.contains(&self.prev_tree.keys[i]) {
+                continue;
+            }
+            // Its parent went too, and the parent declared no exit that
+            // would have carried it (it would have swallowed it above): the
+            // node went with its ancestor, not on its own, and plays nothing
+            // — a tab switched away does not fade out every column that
+            // fades when it closes (backlog DX19). CSS removes the subtree;
+            // React's `AnimatePresence` plays the exits of its direct
+            // children only. This is that rule.
+            let p = self.prev_tree.parent[i];
+            if p != NIL && !live.contains(&self.prev_tree.keys[p as usize]) {
                 continue;
             }
             swallowed_until = self.prev_tree.subtree_end(i);
