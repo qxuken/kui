@@ -1474,14 +1474,14 @@ impl Interaction {
         self.hits.iter().rev().find(|h| self.contains(h, p))
     }
 
-    /// The scroll region under the cursor: the topmost container or
-    /// `on_scroll` handler there, by paint order.
-    pub(crate) fn scroll_region_at(&self) -> Option<&ScrollRegion> {
-        let p = self.cursor?;
-        self.scroll_regions
-            .iter()
-            .rev()
-            .find(|r| !r.inert && r.rect.contains(p) && r.clip.contains(p))
+    /// Every scroll region under the cursor — containers and `on_scroll`
+    /// handlers — topmost by paint order first: what a notch walks when
+    /// the innermost scroller moves on one axis only.
+    pub(crate) fn scroll_regions_at(&self) -> impl Iterator<Item = &ScrollRegion> {
+        let p = self.cursor;
+        self.scroll_regions.iter().rev().filter(move |r| {
+            p.is_some_and(|p| !r.inert && r.rect.contains(p) && r.clip.contains(p))
+        })
     }
 
     /// The content origin the editor `key` was drawn at this frame — what

@@ -283,14 +283,34 @@ impl Core {
                 // instead — the whole lines it covers on a grid, the
                 // fraction carried to the next notch on the same node
                 // (ADR 0029, decision 4).
-                if let Some(r) = self.interaction.scroll_region_at().copied() {
+                //
+                // A scroller takes the axes it scrolls on and passes the
+                // rest to the region under it (backlog DX13): a vertical
+                // list inside a horizontal strip moves the strip on a
+                // sideways swipe, where the list used to swallow the x it
+                // could do nothing with. A handler takes the whole notch,
+                // as it always did — the app said it wanted the wheel.
+                let regions: Vec<_> = self.interaction.scroll_regions_at().copied().collect();
+                let mut rest = delta;
+                for r in regions {
+                    if rest == Vec2::ZERO {
+                        break;
+                    }
                     if r.handler {
                         let p = self.interaction.cursor().unwrap_or(Vec2::ZERO);
-                        if let Some(ev) = self.scroll_event(r.key, p, delta) {
+                        if let Some(ev) = self.scroll_event(r.key, p, rest) {
                             out.push(ev);
                         }
-                    } else {
-                        self.scroll.scroll_by(r.key, Vec2::new(-delta.x, -delta.y));
+                        break;
+                    }
+                    let layout = &self.tree.specs[r.node as usize].layout;
+                    let take = Vec2::new(
+                        if layout.scroll_x { rest.x } else { 0.0 },
+                        if layout.scroll_y { rest.y } else { 0.0 },
+                    );
+                    if take != Vec2::ZERO {
+                        self.scroll.scroll_by(r.key, Vec2::new(-take.x, -take.y));
+                        rest = Vec2::new(rest.x - take.x, rest.y - take.y);
                     }
                 }
             }
