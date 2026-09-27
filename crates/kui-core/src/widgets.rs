@@ -53,8 +53,7 @@ pub fn latency_hud_at(ui: &mut Ui<'_>, x: Align, y: Align) {
         NodeSpec::column()
             .float(
                 crate::spec::FloatConfig::viewport()
-                    .at(x, y)
-                    .self_at(x, y)
+                    .inside(x, y)
                     .offset(dx, dy),
             )
             .pad(10.0)
@@ -145,8 +144,7 @@ pub fn latency_graph(ui: &mut Ui<'_>) {
                 ui.with_keyed(
                     "kui:latency-legend",
                     NodeSpec::column()
-                        .width(Sizing::Fixed(13.0))
-                        .height(Sizing::Fixed(13.0))
+                        .size(13.0, 13.0)
                         .center()
                         .bg(badge_bg)
                         .radius(6.5)
@@ -169,8 +167,7 @@ pub fn latency_graph(ui: &mut Ui<'_>) {
                                             |ui| {
                                                 ui.leaf(
                                                     NodeSpec::column()
-                                                        .width(Sizing::Fixed(9.0))
-                                                        .height(Sizing::Fixed(9.0))
+                                                        .size(9.0, 9.0)
                                                         .bg(color)
                                                         .radius(2.0),
                                                 );
@@ -186,8 +183,7 @@ pub fn latency_graph(ui: &mut Ui<'_>) {
             });
             ui.with(
                 NodeSpec::row()
-                    .width(Sizing::Fixed(STATS_CAPACITY as f32 * 2.0))
-                    .height(Sizing::Fixed(GRAPH_H))
+                    .size(STATS_CAPACITY as f32 * 2.0, GRAPH_H)
                     .gap(1.0)
                     .main_align(Align::End)
                     .cross_align(Align::End)
@@ -203,17 +199,12 @@ pub fn latency_graph(ui: &mut Ui<'_>) {
                         let over = s.work() > budget_ms;
                         ui.with(
                             NodeSpec::column()
-                                .width(Sizing::Fixed(1.0))
+                                .width(1.0)
                                 .main_align(Align::End)
                                 .max_height(GRAPH_H),
                             |ui| {
                                 if over {
-                                    ui.leaf(
-                                        NodeSpec::column()
-                                            .width(Sizing::Fixed(1.0))
-                                            .height(Sizing::Fixed(3.0))
-                                            .bg(OVER),
-                                    );
+                                    ui.leaf(NodeSpec::column().size(1.0, 3.0).bg(OVER));
                                 }
                                 // Column children run top->bottom; push in
                                 // reverse so input sits at the bottom.
@@ -228,12 +219,7 @@ pub fn latency_graph(ui: &mut Ui<'_>) {
                                         continue;
                                     }
                                     let h = (ms * px_per_ms).max(1.0);
-                                    ui.leaf(
-                                        NodeSpec::column()
-                                            .width(Sizing::Fixed(1.0))
-                                            .height(Sizing::Fixed(h))
-                                            .bg(color),
-                                    );
+                                    ui.leaf(NodeSpec::column().size(1.0, h).bg(color));
                                 }
                             },
                         );
@@ -272,9 +258,7 @@ pub fn tooltip_with(ui: &mut Ui<'_>, content: impl FnOnce(&mut Ui<'_>)) {
 pub(crate) fn hover_hint(ui: &mut Ui<'_>, text: &str) {
     let size = ui.metrics().hint_text;
     let spec = tooltip_spec(ui).role(crate::access::Role::None);
-    ui.with(spec, |ui| {
-        ui.text(text, TextStyle::new(size));
-    });
+    ui.text_in(spec, text, TextStyle::new(size));
 }
 
 fn tooltip_spec(ui: &Ui<'_>) -> NodeSpec {
@@ -314,7 +298,7 @@ pub fn text_input(ui: &mut Ui<'_>, label: &str, initial: &str) -> Key {
             ..Default::default()
         },
         NodeSpec::column()
-            .width(Sizing::Grow(1.0))
+            .grow_width()
             .pad_xy(m.field_pad_x, m.field_pad_y)
             .bg(t.sunken)
             .radius(m.radius)
@@ -501,12 +485,10 @@ pub fn titlebar(ui: &mut Ui<'_>, title: &str) {
         let t = ui.theme();
         let size = ui.metrics().chrome_text;
         let color = if focused { t.fg } else { t.faint };
-        ui.with(
-            NodeSpec::row()
-                .width(Sizing::Grow(1.0))
-                .height(Sizing::Grow(1.0))
-                .cross_align(Align::Center),
-            |ui| ui.text(&title, TextStyle::new(size).color(color).ellipsis()),
+        ui.text_in(
+            NodeSpec::row().fill().cross_align(Align::Center),
+            &title,
+            TextStyle::new(size).color(color).ellipsis(),
         );
     });
 }
@@ -521,8 +503,8 @@ pub fn titlebar_with(ui: &mut Ui<'_>, content: impl FnOnce(&mut Ui<'_>)) {
     ui.with_keyed(
         "kui:titlebar",
         NodeSpec::row()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Fixed(h))
+            .grow_width()
+            .height(h)
             .cross_align(Align::Center)
             .window_drag(),
         |ui| {
@@ -530,7 +512,7 @@ pub fn titlebar_with(ui: &mut Ui<'_>, content: impl FnOnce(&mut Ui<'_>)) {
             // reported rect already includes the trailing gap); without
             // them, a plain leading margin.
             let inset = win.native_controls.map_or(12.0, |r| r.x + r.w);
-            ui.leaf(NodeSpec::row().width(Sizing::Fixed(inset)));
+            ui.leaf(NodeSpec::row().width(inset));
             content(ui);
             window_buttons(ui);
         },
@@ -550,14 +532,11 @@ pub fn window_buttons(ui: &mut Ui<'_>) {
         return;
     }
     let h = titlebar_height(ui);
-    ui.with(
-        NodeSpec::row().height(Sizing::Grow(1.0)).min_height(h),
-        |ui| {
-            window_button(ui, WindowButton::Minimize, win.maximized);
-            window_button(ui, WindowButton::Maximize, win.maximized);
-            window_button(ui, WindowButton::Close, win.maximized);
-        },
-    );
+    ui.with(NodeSpec::row().grow_height().min_height(h), |ui| {
+        window_button(ui, WindowButton::Minimize, win.maximized);
+        window_button(ui, WindowButton::Maximize, win.maximized);
+        window_button(ui, WindowButton::Close, win.maximized);
+    });
 }
 
 fn window_button(ui: &mut Ui<'_>, button: WindowButton, maximized: bool) {
@@ -583,48 +562,30 @@ fn window_button(ui: &mut Ui<'_>, button: WindowButton, maximized: bool) {
     ui.with_keyed(
         label,
         NodeSpec::row()
-            .width(Sizing::Fixed(46.0))
-            .height(Sizing::Grow(1.0))
+            .width(46.0)
+            .grow_height()
             .center()
             .bg(bg)
             .window_button(button),
         |ui| match button {
             WindowButton::Minimize => {
-                ui.leaf(
-                    NodeSpec::row()
-                        .width(Sizing::Fixed(10.0))
-                        .height(Sizing::Fixed(1.0))
-                        .bg(fg),
-                );
+                ui.leaf(NodeSpec::row().size(10.0, 1.0).bg(fg));
             }
             WindowButton::Maximize if maximized => {
                 // Restore: two offset outlines.
-                ui.with(
-                    NodeSpec::column()
-                        .width(Sizing::Fixed(10.0))
-                        .height(Sizing::Fixed(10.0)),
-                    |ui| {
-                        for (x, y) in [(Align::End, Align::Start), (Align::Start, Align::End)] {
-                            ui.leaf(
-                                NodeSpec::column()
-                                    .width(Sizing::Fixed(7.5))
-                                    .height(Sizing::Fixed(7.5))
-                                    .border(1.0, fg)
-                                    .float(
-                                        crate::spec::FloatConfig::parent().at(x, y).self_at(x, y),
-                                    ),
-                            );
-                        }
-                    },
-                );
+                ui.with(NodeSpec::column().size(10.0, 10.0), |ui| {
+                    for (x, y) in [(Align::End, Align::Start), (Align::Start, Align::End)] {
+                        ui.leaf(
+                            NodeSpec::column()
+                                .size(7.5, 7.5)
+                                .border(1.0, fg)
+                                .float(crate::spec::FloatConfig::parent().inside(x, y)),
+                        );
+                    }
+                });
             }
             WindowButton::Maximize => {
-                ui.leaf(
-                    NodeSpec::column()
-                        .width(Sizing::Fixed(9.0))
-                        .height(Sizing::Fixed(9.0))
-                        .border(1.0, fg),
-                );
+                ui.leaf(NodeSpec::column().size(9.0, 9.0).border(1.0, fg));
             }
             WindowButton::Close => {
                 // The multiplication sign inks only about 0.42 em, so it
@@ -633,12 +594,13 @@ fn window_button(ui: &mut Ui<'_>, button: WindowButton, maximized: bool) {
                 // which sits a little under the middle of the line box, so
                 // the bottom padding lifts it back onto the button center.
                 const EM: f32 = 23.0;
-                ui.with(
+                ui.text_in(
                     NodeSpec::row().padding(Edges {
                         b: EM * 0.25,
                         ..Edges::default()
                     }),
-                    |ui| ui.text("\u{00d7}", TextStyle::new(EM).line_height(EM).color(fg)),
+                    "\u{00d7}",
+                    TextStyle::new(EM).line_height(EM).color(fg),
                 );
             }
         },
@@ -977,8 +939,7 @@ pub fn toggle_with(
                     m.radius_inner.min(b / 4.0)
                 };
                 let face = NodeSpec::row()
-                    .width(Sizing::Fixed(b))
-                    .height(Sizing::Fixed(b))
+                    .size(b, b)
                     .radius(radius)
                     .border(1.0, edge)
                     .bg(if on { t.accent } else { t.sunken })
@@ -989,18 +950,11 @@ pub fn toggle_with(
                     }
                     if kind == Toggle::Radio {
                         let d = (b * 0.4).round();
-                        ui.leaf(
-                            NodeSpec::row()
-                                .width(Sizing::Fixed(d))
-                                .height(Sizing::Fixed(d))
-                                .radius(d / 2.0)
-                                .bg(t.on_accent),
-                        );
+                        ui.leaf(NodeSpec::row().size(d, d).radius(d / 2.0).bg(t.on_accent));
                     } else if mixed {
                         ui.leaf(
                             NodeSpec::row()
-                                .width(Sizing::Fixed((b * 0.5).round()))
-                                .height(Sizing::Fixed(2.0))
+                                .size((b * 0.5).round(), 2.0)
                                 .radius(1.0)
                                 .bg(t.on_accent),
                         );
@@ -1021,8 +975,7 @@ pub fn toggle_with(
             }
             Toggle::Switch => {
                 let track = NodeSpec::row()
-                    .width(Sizing::Fixed((b * 1.75).round()))
-                    .height(Sizing::Fixed(b))
+                    .size((b * 1.75).round(), b)
                     .pad(2.0)
                     .radius(b / 2.0)
                     .bg(if on { t.accent } else { t.border_strong })
@@ -1034,8 +987,7 @@ pub fn toggle_with(
                     ui.leaf_keyed(
                         "knob",
                         NodeSpec::row()
-                            .width(Sizing::Fixed(k))
-                            .height(Sizing::Fixed(k))
+                            .size(k, k)
                             .radius(k / 2.0)
                             .bg(t.on_accent)
                             .transition(120.0)
@@ -1128,8 +1080,7 @@ pub fn radio_group(
 pub fn slider_spec(m: &Metrics) -> NodeSpec {
     let b = control_box(m);
     NodeSpec::row()
-        .width(Sizing::Fixed(m.menu_width))
-        .height(Sizing::Fixed(b))
+        .size(m.menu_width, b)
         .pad_xy(b / 2.0, 0.0)
         .cross_align(Align::Center)
 }
@@ -1194,14 +1145,14 @@ pub fn slider_with(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, hint: Option<&s
     let b = control_box(&m);
     ui.with_keyed(label, spec, |ui| {
         let track = NodeSpec::row()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Fixed(4.0))
+            .grow_width()
+            .height(4.0)
             .radius(2.0)
             .bg(t.border_strong);
         ui.with(track, |ui| {
             let fill = NodeSpec::row()
                 .width(Sizing::Percent(fraction))
-                .height(Sizing::Grow(1.0))
+                .grow_height()
                 .radius(2.0)
                 .bg(t.accent);
             ui.with(fill, |ui| {
@@ -1209,8 +1160,7 @@ pub fn slider_with(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, hint: Option<&s
                 // with no arithmetic of the view's.
                 ui.leaf(
                     NodeSpec::row()
-                        .width(Sizing::Fixed(b))
-                        .height(Sizing::Fixed(b))
+                        .size(b, b)
                         .radius(b / 2.0)
                         .bg(t.on_accent)
                         .border(1.0, t.border_strong)
@@ -1285,8 +1235,7 @@ pub fn context_menu(ui: &mut Ui<'_>, at: Vec2, items: &[MenuItem]) -> Key {
                     // viewport, then offset to the point: the placement
                     // every context menu has, with `fit` flipping it up
                     // or clamping it in when the point is near an edge.
-                    .at(Align::Start, Align::Start)
-                    .self_at(Align::Start, Align::Start)
+                    .inside(Align::Start, Align::Start)
                     .offset(at.x, at.y)
                     .fit(),
             )
@@ -1310,7 +1259,7 @@ pub fn context_menu(ui: &mut Ui<'_>, at: Vec2, items: &[MenuItem]) -> Key {
 pub fn menu_panel_spec(t: &Theme, m: &Metrics) -> NodeSpec {
     NodeSpec::column()
         .role(Role::Menu)
-        .width(Sizing::Fixed(m.menu_width))
+        .width(m.menu_width)
         .pad(4.0)
         .gap(1.0)
         .bg(t.raised)
@@ -1340,8 +1289,8 @@ pub fn menu_panel(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, items: &[MenuIte
                 ui.leaf_indexed(
                     i as u64,
                     NodeSpec::row()
-                        .width(Sizing::Grow(1.0))
-                        .height(Sizing::Fixed(1.0))
+                        .grow_width()
+                        .height(1.0)
                         .bg(t.border)
                         // Not a row anything reads out: a divider is
                         // paint, and a screen reader hearing "separator"
@@ -1357,7 +1306,7 @@ pub fn menu_panel(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, items: &[MenuIte
             let mut spec = NodeSpec::row()
                 .role(Role::MenuItem)
                 .label(item.text())
-                .width(Sizing::Grow(1.0))
+                .grow_width()
                 .pad_xy(m.menu_pad_x, m.menu_pad_y)
                 .gap(8.0)
                 .radius(m.radius_inner)
@@ -1383,7 +1332,7 @@ pub fn menu_panel(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, items: &[MenuIte
             }
             ui.with_indexed(i as u64, spec, |ui| {
                 if gutter {
-                    ui.with(NodeSpec::row().width(Sizing::Fixed(MENU_CHECK_W)), |ui| {
+                    ui.with(NodeSpec::row().width(MENU_CHECK_W), |ui| {
                         if item.checked {
                             ui.text("\u{2713}", TextStyle::new(m.chrome_text).color(t.fg));
                         }
@@ -1394,7 +1343,7 @@ pub fn menu_panel(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, items: &[MenuIte
                     // Pushed to the right edge by a grow spacer, so the label
                     // stays where the eye expects it whatever the
                     // accelerator is.
-                    ui.leaf(NodeSpec::row().width(Sizing::Grow(1.0)));
+                    ui.leaf(NodeSpec::row().grow_width());
                     ui.text(accel, TextStyle::new(m.chrome_text).color(t.muted));
                 }
             });
@@ -1478,8 +1427,8 @@ pub fn menu_bar(ui: &mut Ui<'_>, bar: MenuBar) {
     let saved = ui.origin();
     ui.set_origin(OriginId::MENU_BAR);
     let mut spec = NodeSpec::row()
-        .width(Sizing::Grow(1.0))
-        .height(Sizing::Fixed(m.menu_bar_h))
+        .grow_width()
+        .height(m.menu_bar_h)
         .cross_align(Align::Center)
         .pad_xy(4.0, 0.0)
         .gap(2.0)
@@ -1538,12 +1487,12 @@ pub fn menu_bar(ui: &mut Ui<'_>, bar: MenuBar) {
                 } else {
                     spec = spec.disabled(true).opacity(t.disabled_opacity);
                 }
-                ui.with_keyed(MENU_BAR_TITLE_KEY, spec, |ui| {
-                    ui.text(
-                        menu.label.as_str(),
-                        TextStyle::new(m.chrome_text).color(t.fg),
-                    );
-                });
+                ui.text_in_keyed(
+                    MENU_BAR_TITLE_KEY,
+                    spec,
+                    menu.label.as_str(),
+                    TextStyle::new(m.chrome_text).color(t.fg),
+                );
                 if is_open {
                     // Out of the title's bottom-left corner, and `fit` to
                     // slide back in at the right-hand end of the bar.
@@ -1684,15 +1633,11 @@ pub fn uniform_list(
 /// stride the arithmetic assumes. A clickable row puts `on_click` on a
 /// `.fill()` child of it.
 fn row_spec(h: f32) -> NodeSpec {
-    NodeSpec::column()
-        .width(Sizing::Grow(1.0))
-        .height(Sizing::Fixed(h))
+    NodeSpec::column().grow_width().height(h)
 }
 
 fn spacer_spec(h: f32) -> NodeSpec {
-    NodeSpec::column()
-        .width(Sizing::Grow(1.0))
-        .height(Sizing::Fixed(h))
+    NodeSpec::column().grow_width().height(h)
 }
 
 // -- Variable-height virtual lists ------------------------------------------

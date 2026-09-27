@@ -27,8 +27,8 @@
 use kui_devtools::{Drive, Example};
 use kui_native::cells::flags;
 use kui_native::{
-    Align, App, Cell, CellCursor, CellGrid, Core, FontFamily, NodeSpec, Sizing, TextStyle, Theme,
-    Ui, UiEvent, Value,
+    Align, App, Cell, CellCursor, CellGrid, Core, FontFamily, NodeSpec, TextStyle, Theme, Ui,
+    UiEvent,
 };
 
 /// What a line of the fake session is *for*. A terminal's palette is the
@@ -141,7 +141,7 @@ impl App for Cells {
             |ui| {
                 ui.with(
                     NodeSpec::column()
-                        .width(Sizing::Grow(1.0))
+                        .grow_width()
                         .max_width(620.0)
                         .pad(12.0)
                         .gap(8.0)
@@ -157,7 +157,7 @@ impl App for Cells {
                             "term",
                             &grid,
                             NodeSpec::column()
-                                .width(Sizing::Grow(1.0))
+                                .grow_width()
                                 .pad(10.0)
                                 .radius(6.0)
                                 .bg(t.sunken)
@@ -170,11 +170,11 @@ impl App for Cells {
                                 // edge, ask the app to scroll: the
                                 // screen is the app's, so the core
                                 // cannot.
-                                .on_scroll(Value::str("scroll")),
+                                .on_scroll("scroll"),
                         );
                         ui.with(
                             NodeSpec::row()
-                                .width(Sizing::Grow(1.0))
+                                .grow_width()
                                 .gap(8.0)
                                 .cross_align(Align::Center),
                             |ui| {
@@ -186,7 +186,7 @@ impl App for Cells {
                                     ),
                                     TextStyle::new(12.0).color(t.muted),
                                 );
-                                ui.leaf(NodeSpec::row().width(Sizing::Grow(1.0)));
+                                ui.leaf(NodeSpec::row().grow_width());
                                 ui.text(
                                     selected.as_deref().unwrap_or("nothing selected"),
                                     TextStyle::new(12.0).color(t.accent),
@@ -204,8 +204,8 @@ impl App for Cells {
         // `lines` is how many rows later (positive) or earlier the screen
         // should move — the whole lines the delta covered, the fraction
         // carried by the core to the next notch.
-        if ev.payload.get("kind").and_then(Value::as_str) == Some("scroll") {
-            let lines = ev.payload.get("lines").and_then(Value::as_int).unwrap_or(0);
+        if ev.kind() == Some("scroll") {
+            let lines = ev.payload.get_int("lines").unwrap_or(0);
             self.top =
                 (self.top as i64 + lines).clamp(0, (SESSION.len() - TERM_ROWS) as i64) as usize;
         }

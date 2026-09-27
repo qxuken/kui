@@ -3,7 +3,7 @@
 //! is on screen when the content before it changes size, with no
 //! `set_scroll` and no arithmetic in the view.
 
-use kui_core::{Color, Core, InputEvent, Key, NodeSpec, Size, Sizing, Vec2};
+use kui_core::{Color, Core, InputEvent, Key, NodeSpec, Size, Vec2};
 
 const VIEW_H: f32 = 100.0;
 
@@ -18,8 +18,8 @@ fn frame(core: &mut Core, rows: &[(&str, f32)], anchor: bool) {
             ui.leaf_keyed(
                 key,
                 NodeSpec::row()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Fixed(*h))
+                    .grow_width()
+                    .height(*h)
                     .bg(Color::rgb8(40, 40, 60)),
             );
         }
@@ -149,8 +149,8 @@ fn a_missing_anchor_and_the_clamp() {
                 ui.leaf_keyed(
                     key,
                     NodeSpec::row()
-                        .width(Sizing::Fixed(*w))
-                        .height(Sizing::Grow(1.0))
+                        .width(*w)
+                        .grow_height()
                         .bg(Color::rgb8(40, 40, 60)),
                 );
             }

@@ -1,7 +1,7 @@
 //! Undo/redo of the edit widget's own history: coalesced typing bursts,
 //! delete runs, selection replaces, caret restore, and history limits.
 
-use kui_core::{Core, EditKey, EditOptions, InputEvent, Key, Mods, NodeSpec, Size, Sizing};
+use kui_core::{Core, EditKey, EditOptions, InputEvent, Key, Mods, NodeSpec, Size};
 
 const SHIFT: Mods = Mods {
     shift: true,
@@ -55,7 +55,7 @@ fn frame(core: &mut Core, initial: &str, multiline: bool) -> Key {
             autofocus: true,
             ..Default::default()
         },
-        NodeSpec::column().width(Sizing::Grow(1.0)),
+        NodeSpec::column().grow_width(),
     );
     ui.finish();
     key
@@ -206,20 +206,8 @@ fn backspace_at_buffer_start_emits_nothing() {
 fn multiline_edits_round_trip() {
     let mut rig = Rig::new("alpha\nbeta\ngamma", true);
     // Jump to doc end, remove "gamma" word-wise, then undo everything.
-    rig.press(
-        EditKey::End,
-        Mods {
-            doc: true,
-            ..Mods::default()
-        },
-    );
-    rig.press(
-        EditKey::Backspace,
-        Mods {
-            word: true,
-            ..Mods::default()
-        },
-    );
+    rig.press(EditKey::End, Mods::NONE.with_doc());
+    rig.press(EditKey::Backspace, Mods::NONE.with_word());
     assert_eq!(rig.text(), "alpha\nbeta\n");
     rig.press(EditKey::Backspace, Mods::default());
     assert_eq!(rig.text(), "alpha\nbeta");

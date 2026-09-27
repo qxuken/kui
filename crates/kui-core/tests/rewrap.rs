@@ -2,14 +2,14 @@
 //! shaping caches) must rewrap when consecutive frames shrink the viewport —
 //! the path a window resize exercises.
 
-use kui_core::{Core, NodeSpec, Size, Sizing, TextStyle};
+use kui_core::{Core, NodeSpec, Size, TextStyle};
 
 const PARA: &str = "The whole paragraph is shaped together, which means wrapping \
 crosses style boundaries correctly instead of breaking at every run.";
 
 fn glyph_bottom(core: &mut Core, viewport_w: f32) -> f32 {
     let mut ui = core.frame(Size::new(viewport_w, 600.0), 1.0);
-    ui.configure_root(NodeSpec::column().width(Sizing::Grow(1.0)).pad(10.0));
+    ui.configure_root(NodeSpec::column().grow_width().pad(10.0));
     ui.text(PARA, TextStyle::new(16.0));
     ui.finish();
     let (dl, _) = core.output();

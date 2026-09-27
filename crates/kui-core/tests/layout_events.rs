@@ -2,7 +2,7 @@
 //! on its first frame and whenever it changes, never on a frame that left
 //! it alone — through the same pending queue a `resize` uses.
 
-use kui_core::{Core, Easing, InputEvent, Key, NodeSpec, Size, Sizing, Transition, UiEvent, Value};
+use kui_core::{Core, Easing, InputEvent, Key, NodeSpec, Size, Transition, UiEvent, Value};
 
 /// A row root with an optional 50px spacer before a keyed `panel` of
 /// `panel_w` px; returns the panel's key.
@@ -10,16 +10,11 @@ fn frame(core: &mut Core, panel_w: f32, spacer: bool, tag: Value, slide: bool) -
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::row().fill());
     if spacer {
-        ui.leaf_keyed(
-            "spacer",
-            NodeSpec::column()
-                .width(Sizing::Fixed(50.0))
-                .height(Sizing::Grow(1.0)),
-        );
+        ui.leaf_keyed("spacer", NodeSpec::column().width(50.0).grow_height());
     }
     let mut spec = NodeSpec::column()
-        .width(Sizing::Fixed(panel_w))
-        .height(Sizing::Grow(1.0))
+        .width(panel_w)
+        .grow_height()
         .on_layout(tag);
     if slide {
         spec = spec
@@ -34,7 +29,7 @@ fn frame(core: &mut Core, panel_w: f32, spacer: bool, tag: Value, slide: bool) -
 /// `(x, y, w, h)` of every layout event in `evs`.
 fn rects(evs: &[UiEvent]) -> Vec<(f64, f64, f64, f64)> {
     evs.iter()
-        .filter(|ev| ev.payload.get("kind").and_then(Value::as_str) == Some("layout"))
+        .filter(|ev| ev.kind() == Some("layout"))
         .map(|ev| {
             let f = |k| ev.payload.get(k).and_then(Value::as_float).unwrap();
             (f("x"), f("y"), f("w"), f("h"))
@@ -50,11 +45,11 @@ fn first_sight_reports_the_rect_then_silence() {
     assert_eq!(rects(&evs), [(0.0, 0.0, 100.0, 300.0)]);
     let ev = &evs[0];
     assert_eq!(ev.key, panel);
-    assert_eq!(ev.payload.get("tag").and_then(Value::as_str), Some("panel"));
+    assert_eq!(ev.payload.get_str("tag"), Some("panel"));
     // The parent rect rides along, as it does on drag events.
     let parent = ev.payload.get("parent").expect("parent rect");
-    assert_eq!(parent.get("w").and_then(Value::as_float), Some(400.0));
-    assert_eq!(parent.get("h").and_then(Value::as_float), Some(300.0));
+    assert_eq!(parent.get_float("w"), Some(400.0));
+    assert_eq!(parent.get_float("h"), Some(300.0));
 
     // Same layout again: nothing.
     frame(&mut core, 100.0, false, Value::str("panel"), false);
@@ -157,12 +152,11 @@ fn the_inspector_reads_the_frame_back_when_asked() {
     let mut core = Core::new();
     let build = |core: &mut Core| {
         let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
-        ui.with_keyed(
+        ui.text_in_keyed(
             "card",
-            NodeSpec::column().pad(10.0).on_click(Value::str("go")),
-            |ui| {
-                ui.text("hello world", TextStyle::new(12.0));
-            },
+            NodeSpec::column().pad(10.0).on_click("go"),
+            "hello world",
+            TextStyle::new(12.0),
         );
         ui.finish();
     };
@@ -237,12 +231,12 @@ fn layout_of_reads_the_last_frames_rect_without_the_event() {
         Some(0.0),
         "during the build it is the frame before"
     );
-    ui.leaf_keyed("panel", NodeSpec::column().width(Sizing::Fixed(10.0)));
+    ui.leaf_keyed("panel", NodeSpec::column().width(10.0));
     ui.finish();
     assert_eq!(core.layout_of(key), None, "gone once that frame finished");
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     assert_eq!(ui.layout_of(key), None);
-    ui.leaf_keyed("panel", NodeSpec::column().width(Sizing::Fixed(10.0)));
+    ui.leaf_keyed("panel", NodeSpec::column().width(10.0));
     ui.finish();
     assert_eq!(core.layout_of(key), None);
 }

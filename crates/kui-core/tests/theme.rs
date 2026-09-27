@@ -12,7 +12,7 @@ use kui_core::{Appearance, Color, Core, NodeSpec, Theme, ThemeSource, Value, wid
 fn painted(core: &mut Core) -> Vec<u32> {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill().bg(ui.theme().bg));
-    let spec = widgets::button_spec(&ui.theme(), &ui.metrics()).on_click(Value::str("ok"));
+    let spec = widgets::button_spec(&ui.theme(), &ui.metrics()).on_click("ok");
     widgets::button_with(&mut ui, "ok", "OK", spec, None);
     widgets::label(&mut ui, "a label");
     widgets::text_input(&mut ui, "search", "hello");

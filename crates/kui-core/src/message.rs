@@ -62,9 +62,7 @@ pub fn field<T: MessageField>(v: &Value, kind: &str, key: &'static str) -> Resul
 
 /// The `kind` of a map payload, for the derive's match.
 pub fn kind_of(v: &Value) -> Result<&str, MessageError> {
-    v.get("kind")
-        .and_then(Value::as_str)
-        .ok_or(MessageError::NoKind)
+    v.get_str("kind").ok_or(MessageError::NoKind)
 }
 
 impl MessageField for Value {

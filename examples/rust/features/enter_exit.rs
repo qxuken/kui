@@ -68,11 +68,7 @@ impl Toasts {
         let th = ui.theme();
         ui.with(
             NodeSpec::column()
-                .float(
-                    FloatConfig::parent()
-                        .at(Align::End, Align::End)
-                        .self_at(Align::End, Align::End),
-                )
+                .float(FloatConfig::parent().inside(Align::End, Align::End))
                 .gap(10.0)
                 .cross_align(Align::End),
             |ui| {
@@ -80,7 +76,7 @@ impl Toasts {
                     ui.with_keyed(
                         &format!("toast-{}", t.id),
                         NodeSpec::column()
-                            .width(Sizing::Fixed(268.0))
+                            .width(268.0)
                             .pad(14.0)
                             .gap(3.0)
                             .bg(th.raised)
@@ -123,12 +119,8 @@ impl Toasts {
         ui.with_keyed(
             "panel",
             NodeSpec::column()
-                .float(
-                    FloatConfig::parent()
-                        .at(Align::Start, Align::Start)
-                        .self_at(Align::Start, Align::Start),
-                )
-                .width(Sizing::Fixed(240.0))
+                .float(FloatConfig::parent().inside(Align::Start, Align::Start))
+                .width(240.0)
                 .height(Sizing::Percent(1.0))
                 .pad(20.0)
                 .gap(12.0)
@@ -196,7 +188,7 @@ impl App for Toasts {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.payload.get("kind").and_then(Value::as_str) {
+        match ev.kind() {
             Some("notify") => {
                 self.sent += 1;
                 self.next_id += 1;

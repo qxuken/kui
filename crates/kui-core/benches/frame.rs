@@ -3,9 +3,7 @@
 //!
 //! Run: cargo bench -p kui-core
 
-use kui_core::{
-    Color, Core, Key, NodeSpec, Size, Sizing, Stroke, TextStyle, Ui, Value, Vec2, widgets,
-};
+use kui_core::{Color, Core, Key, NodeSpec, Size, Stroke, TextStyle, Ui, Value, Vec2, widgets};
 
 /// What one grid frame contains. Every grid bench below goes through the
 /// same builder and differs only in these switches, so their medians can be
@@ -105,7 +103,7 @@ fn grid(ui: &mut Ui<'_>, g: Grid) {
     }
     ui.configure_root(root);
     for r in 0..g.rows {
-        let mut row = NodeSpec::row().width(Sizing::Grow(1.0)).gap(4.0);
+        let mut row = NodeSpec::row().grow_width().gap(4.0);
         if g.clip {
             row = row.clip();
         }
@@ -115,8 +113,8 @@ fn grid(ui: &mut Ui<'_>, g: Grid) {
         ui.with(row, |ui| {
             for c in 0..g.cols {
                 let mut spec = NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Fixed(14.0))
+                    .grow_width()
+                    .height(14.0)
                     .bg(Color::rgb8((r % 255) as u8, (c % 255) as u8, 128))
                     .radius(2.0);
                 if g.shadows {
@@ -391,8 +389,7 @@ fn run_typical_with_textures(core: &mut Core, g: Grid, images: &[kui_core::Image
             *id,
             NodeSpec::column()
                 .float(kui_core::FloatConfig::parent().offset(20.0 + i as f32 * 60.0, 900.0))
-                .width(Sizing::Fixed(48.0))
-                .height(Sizing::Fixed(48.0)),
+                .size(48.0, 48.0),
         );
     }
     ui.finish();
@@ -546,8 +543,7 @@ fn frame_10k_rects_one_exit(bencher: divan::Bencher) {
         ui.leaf_keyed(
             "dialog",
             NodeSpec::column()
-                .width(Sizing::Fixed(200.0))
-                .height(Sizing::Fixed(100.0))
+                .size(200.0, 100.0)
                 .bg(Color::rgb8(20, 20, 30))
                 .transition(200.0)
                 .exit(kui_core::Enter::default().opacity(0.0)),
@@ -592,10 +588,11 @@ fn bench_drop(bencher: divan::Bencher, rows_n: usize, exits: bool) {
         let mut ui = core.frame(Size::new(1920.0, 1080.0), 2.0);
         ui.configure_root(NodeSpec::column().fill());
         for i in 0..n {
-            let mut spec = NodeSpec::column()
-                .width(Sizing::Grow(1.0))
-                .height(Sizing::Fixed(14.0))
-                .bg(Color::rgb8((i % 255) as u8, 90, 140));
+            let mut spec = NodeSpec::column().grow_width().height(14.0).bg(Color::rgb8(
+                (i % 255) as u8,
+                90,
+                140,
+            ));
             if exits {
                 spec = spec
                     .transition(200.0)
@@ -628,17 +625,17 @@ fn frame_1k_typical_with_100_floats(bencher: divan::Bencher) {
         let mut ui = core.frame(Size::new(1920.0, 1080.0), 2.0);
         grid(&mut ui, Grid::new(32, 32).text().clicks());
         for i in 0..100u64 {
-            ui.with_indexed(
+            ui.text_in_indexed(
                 i,
                 NodeSpec::column()
                     .float(
                         kui_core::FloatConfig::viewport()
                             .offset((i % 10) as f32 * 40.0, (i / 10) as f32 * 30.0),
                     )
-                    .width(Sizing::Fixed(60.0))
-                    .height(Sizing::Fixed(20.0))
+                    .size(60.0, 20.0)
                     .bg(Color::rgb8(30, 30, 40)),
-                |ui| ui.text("tip", TextStyle::new(10.0)),
+                "tip",
+                TextStyle::new(10.0),
             );
         }
         ui.finish();
@@ -663,8 +660,8 @@ fn replay_a_full_depart_store(bencher: divan::Bencher) {
             ui.leaf_indexed(
                 i as u64,
                 NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Fixed(14.0))
+                    .grow_width()
+                    .height(14.0)
                     .bg(Color::rgb8((i % 255) as u8, 90, 140))
                     .transition(100_000.0)
                     .exit(kui_core::Enter::default().opacity(0.0)),
@@ -695,7 +692,7 @@ fn replay_a_full_depart_store(bencher: divan::Bencher) {
 fn chips(ui: &mut Ui<'_>, wrap: bool) {
     ui.configure_root(NodeSpec::column().fill().pad(8.0).gap(4.0));
     for r in 0..100 {
-        let mut row = NodeSpec::row().width(Sizing::Grow(1.0)).gap(4.0);
+        let mut row = NodeSpec::row().grow_width().gap(4.0);
         if wrap {
             row = row.wrap().cross_gap(4.0);
         }
@@ -704,8 +701,7 @@ fn chips(ui: &mut Ui<'_>, wrap: bool) {
                 ui.leaf(
                     NodeSpec::column()
                         // 40..=110px: several lines per row at 1920 wide.
-                        .width(Sizing::Fixed(40.0 + ((r * 100 + c) % 8) as f32 * 10.0))
-                        .height(Sizing::Fixed(14.0))
+                        .size(40.0 + ((r * 100 + c) % 8) as f32 * 10.0, 14.0)
                         .bg(Color::rgb8((r % 255) as u8, (c % 255) as u8, 128))
                         .radius(2.0),
                 );
@@ -773,8 +769,7 @@ fn frame_1k_grow_rows_capped(bencher: divan::Bencher) {
         for i in 0..1000 {
             ui.leaf(
                 NodeSpec::row()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Grow(1.0))
+                    .fill()
                     .max_height(0.5 + i as f32 * 0.002)
                     .bg(Color::rgb8(20, 20, 30)),
             );
@@ -811,8 +806,8 @@ fn list_row(ui: &mut Ui<'_>, i: usize) {
         |ui| {
             ui.leaf(
                 NodeSpec::column()
-                    .width(Sizing::Fixed(4.0))
-                    .height(Sizing::Grow(1.0))
+                    .width(4.0)
+                    .grow_height()
                     .bg(Color::rgb8((i % 255) as u8, 90, 140))
                     .radius(2.0),
             );
@@ -829,9 +824,7 @@ fn list_naive(core: &mut Core, rows: usize) -> usize {
         for i in 0..rows {
             ui.with_indexed(
                 i as u64,
-                NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Fixed(LIST_ROW_H)),
+                NodeSpec::column().grow_width().height(LIST_ROW_H),
                 |ui| list_row(ui, i),
             );
         }

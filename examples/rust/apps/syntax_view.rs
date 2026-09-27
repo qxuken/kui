@@ -18,7 +18,7 @@
 use kui_devtools::Example;
 use kui_native::widgets;
 use kui_native::{
-    Align, App, Color, Core, NodeSpec, Sizing, TextStyle, Theme, Ui, UiEvent, UnderlineStyle, Value,
+    Align, App, Color, Core, NodeSpec, TextStyle, Theme, Ui, UiEvent, UnderlineStyle,
 };
 
 const FONT: f32 = 13.5;
@@ -193,66 +193,44 @@ impl App for SyntaxView {
 
             let sink = ui.with_keyed(
                 "view",
-                NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Grow(1.0))
-                    .bg(pal.panel)
-                    .clip()
-                    .on_key(Value::Null),
+                NodeSpec::column().fill().bg(pal.panel).clip().key_sink(),
                 |ui| {
-                    ui.with(
-                        NodeSpec::row()
-                            .width(Sizing::Grow(1.0))
-                            .height(Sizing::Grow(1.0))
-                            .pad_xy(0.0, 4.0),
-                        |ui| {
-                            // Gutter.
-                            ui.with(
-                                NodeSpec::column()
-                                    .width(Sizing::Fixed(GUTTER_W))
-                                    .height(Sizing::Grow(1.0))
-                                    .pad_xy(12.0, 0.0),
-                                |ui| {
-                                    for ln in top..last {
-                                        let color =
-                                            if ln == cur_line { pal.dim } else { pal.faint };
-                                        ui.with(
-                                            NodeSpec::row()
-                                                .width(Sizing::Grow(1.0))
-                                                .height(Sizing::Fixed(LH))
-                                                .main_align(Align::End)
-                                                .cross_align(Align::Center),
-                                            |ui| {
-                                                ui.text(
-                                                    &format!("{}", ln + 1),
-                                                    TextStyle::new(11.0).mono().color(color),
-                                                );
-                                            },
-                                        );
-                                    }
-                                },
-                            );
-                            // Text.
-                            ui.with(
-                                NodeSpec::column()
-                                    .width(Sizing::Grow(1.0))
-                                    .height(Sizing::Grow(1.0))
-                                    .clip(),
-                                |ui| {
-                                    for ln in top..last {
-                                        emit_line(
-                                            ui,
-                                            &pal,
-                                            &doc.lines[ln],
-                                            doc.lang,
-                                            ln == cur_line,
-                                            doc.diagnostic_on(ln),
-                                        );
-                                    }
-                                },
-                            );
-                        },
-                    );
+                    ui.with(NodeSpec::row().fill().pad_xy(0.0, 4.0), |ui| {
+                        // Gutter.
+                        ui.with(
+                            NodeSpec::column()
+                                .width(GUTTER_W)
+                                .grow_height()
+                                .pad_xy(12.0, 0.0),
+                            |ui| {
+                                for ln in top..last {
+                                    let color = if ln == cur_line { pal.dim } else { pal.faint };
+                                    ui.text_in(
+                                        NodeSpec::row()
+                                            .grow_width()
+                                            .height(LH)
+                                            .main_align(Align::End)
+                                            .cross_align(Align::Center),
+                                        &format!("{}", ln + 1),
+                                        TextStyle::new(11.0).mono().color(color),
+                                    );
+                                }
+                            },
+                        );
+                        // Text.
+                        ui.with(NodeSpec::column().fill().clip(), |ui| {
+                            for ln in top..last {
+                                emit_line(
+                                    ui,
+                                    &pal,
+                                    &doc.lines[ln],
+                                    doc.lang,
+                                    ln == cur_line,
+                                    doc.diagnostic_on(ln),
+                                );
+                            }
+                        });
+                    });
                     status_line(ui, &pal, doc, cur_line);
                 },
             );
@@ -264,8 +242,8 @@ impl App for SyntaxView {
         // Presses only, because the sink never asked for releases (no
         // `key_up`): this pane scrolls on a chord, and nothing arrives on
         // the way up to be filtered out.
-        if ev.payload.get("kind").and_then(Value::as_str) == Some("key")
-            && let Some(code) = ev.payload.get("code").and_then(Value::as_str)
+        if ev.kind() == Some("key")
+            && let Some(code) = ev.payload.get_str("code")
         {
             let code = code.to_string();
             self.on_key(&code);
@@ -296,8 +274,8 @@ fn emit_line(
     // covers the marked columns and nothing beside them.
     let marked = |i: usize| diagnostic.as_ref().is_some_and(|d| d.contains(&i));
     let mut row = NodeSpec::row()
-        .width(Sizing::Grow(1.0))
-        .height(Sizing::Fixed(LH))
+        .grow_width()
+        .height(LH)
         .cross_align(Align::Center);
     if current {
         row = row.bg(pal.line);
@@ -327,8 +305,8 @@ fn emit_line(
 fn status_line(ui: &mut Ui<'_>, pal: &Pal, doc: &Doc, line: usize) {
     ui.with(
         NodeSpec::row()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Fixed(STATUS_H))
+            .grow_width()
+            .height(STATUS_H)
             .bg(pal.status)
             .pad_xy(8.0, 0.0)
             .gap(8.0)
@@ -345,7 +323,7 @@ fn status_line(ui: &mut Ui<'_>, pal: &Pal, doc: &Doc, line: usize) {
                 },
             );
             ui.text(&doc.name, TextStyle::new(12.0).color(pal.fg));
-            ui.leaf(NodeSpec::row().width(Sizing::Grow(1.0)));
+            ui.leaf(NodeSpec::row().grow_width());
             ui.text("tab switches buffer", TextStyle::new(11.0).color(pal.faint));
             let total = doc.lines.len();
             let pct = if total <= 1 {

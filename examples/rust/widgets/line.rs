@@ -11,7 +11,7 @@
 //! Run: cargo run -p kui-native --example line
 
 use kui_devtools::Example;
-use kui_native::{App, FloatConfig, NodeSpec, Sizing, Stroke, TextStyle, Ui, Vec2};
+use kui_native::{App, FloatConfig, NodeSpec, Stroke, TextStyle, Ui, Vec2};
 
 struct Card {
     label: &'static str,
@@ -97,8 +97,7 @@ impl App for Map {
             TextStyle::new(12.0).color(t.muted),
         );
         let canvas = NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Grow(1.0))
+            .fill()
             // The canvas is a panel on the page, not the page.
             .bg(t.surface)
             .border(1.0, t.border)
@@ -132,8 +131,7 @@ impl App for Map {
                     &format!("card{i}"),
                     NodeSpec::row()
                         .float(FloatConfig::parent().offset(card.at.x, card.at.y))
-                        .width(Sizing::Fixed(W))
-                        .height(Sizing::Fixed(H))
+                        .size(W, H)
                         .pad_xy(12.0, 0.0)
                         .cross_align(kui_native::Align::Center)
                         .bg(t.raised)

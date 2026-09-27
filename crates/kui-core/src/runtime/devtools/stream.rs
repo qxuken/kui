@@ -8,7 +8,7 @@ use super::panel::{filter_field, small_button};
 use super::{Entry, EntryKind, STREAM_CAP, State, action, fmt_value};
 use crate::geom::Vec2;
 use crate::spec::TextStyle;
-use crate::spec::{Align, Min, NodeSpec, Sizing};
+use crate::spec::{Align, Min, NodeSpec};
 use crate::theme::Theme;
 use crate::ui::Ui;
 use crate::value::Value;
@@ -72,11 +72,8 @@ fn summary(e: &Entry) -> String {
         EntryKind::Note => format!("{window}{}", fmt_value(&e.payload)),
         EntryKind::Warning => format!(
             "{window}warning [{}] {}",
-            e.payload.get("code").and_then(Value::as_str).unwrap_or(""),
-            e.payload
-                .get("message")
-                .and_then(Value::as_str)
-                .unwrap_or("")
+            e.payload.get_str("code").unwrap_or(""),
+            e.payload.get_str("message").unwrap_or("")
         ),
         EntryKind::Event => {
             let who = match &e.label {
@@ -97,7 +94,7 @@ pub(super) fn events_tab(ui: &mut Ui<'_>, st: &mut State, t: &Theme) {
     // The toolbar: the count, the filter, and the three toggles.
     ui.with(
         NodeSpec::row()
-            .width(Sizing::Grow(1.0))
+            .grow_width()
             .min_height(Min::FIT)
             .cross_align(Align::Center)
             .gap(6.0),
@@ -160,23 +157,22 @@ pub(super) fn events_tab(ui: &mut Ui<'_>, st: &mut State, t: &Theme) {
         ..
     } = st;
     let spec = NodeSpec::column()
-        .width(Sizing::Grow(1.0))
-        .height(Sizing::Grow(1.0))
+        .fill()
         .min_height(60.0)
         .bg(t.sunken)
         .radius(6.0)
         .pad(6.0);
     if rows.is_empty() {
-        ui.with_keyed("kui-devtools/stream", spec, |ui| {
-            ui.text(
-                if stream.is_empty() {
-                    "events arrive here as data"
-                } else {
-                    "nothing matches the filter"
-                },
-                TextStyle::new(11.0).color(t.faint),
-            );
-        });
+        ui.text_in_keyed(
+            "kui-devtools/stream",
+            spec,
+            if stream.is_empty() {
+                "events arrive here as data"
+            } else {
+                "nothing matches the filter"
+            },
+            TextStyle::new(11.0).color(t.faint),
+        );
         return;
     }
     let list = widgets::list(
@@ -226,8 +222,7 @@ fn row(ui: &mut Ui<'_>, t: &Theme, e: &Entry, open: bool) {
     ui.with_keyed(
         &format!("row:{}", e.seq),
         NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Grow(1.0))
+            .fill()
             .radius(3.0)
             .bg(if open { t.raised } else { t.sunken })
             .hover_bg(if open { t.raised } else { t.hover })
@@ -237,8 +232,8 @@ fn row(ui: &mut Ui<'_>, t: &Theme, e: &Entry, open: bool) {
         |ui| {
             ui.with(
                 NodeSpec::row()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Fixed(ROW_H))
+                    .grow_width()
+                    .height(ROW_H)
                     .pad_xy(4.0, 0.0)
                     .gap(6.0)
                     .cross_align(Align::Center)
@@ -262,24 +257,18 @@ fn row(ui: &mut Ui<'_>, t: &Theme, e: &Entry, open: bool) {
                 let mut lines = Vec::new();
                 tree_lines(&e.payload, 0, &mut lines);
                 ui.with(
-                    NodeSpec::column()
-                        .width(Sizing::Grow(1.0))
-                        .pad_xy(28.0, OPEN_PAD / 2.0),
+                    NodeSpec::column().grow_width().pad_xy(28.0, OPEN_PAD / 2.0),
                     |ui| {
                         for (indent, line) in lines {
-                            ui.with(
+                            ui.text_in(
                                 NodeSpec::row()
-                                    .width(Sizing::Grow(1.0))
-                                    .height(Sizing::Fixed(LINE_H))
+                                    .grow_width()
+                                    .height(LINE_H)
                                     .pad_xy(indent as f32 * 12.0, 0.0)
                                     .cross_align(Align::Center)
                                     .clip(),
-                                |ui| {
-                                    ui.text(
-                                        &line,
-                                        TextStyle::new(11.0).color(t.fg).mono().nowrap(),
-                                    );
-                                },
+                                &line,
+                                TextStyle::new(11.0).color(t.fg).mono().nowrap(),
                             );
                         }
                     },

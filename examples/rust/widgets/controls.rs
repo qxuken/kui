@@ -13,9 +13,7 @@
 
 use kui_devtools::{Drive, Example};
 use kui_native::widgets;
-use kui_native::{
-    Align, App, Core, KeyMods, NodeSpec, Role, Sizing, TextStyle, Ui, UiEvent, Value,
-};
+use kui_native::{Align, App, Core, KeyMods, NodeSpec, Role, TextStyle, Ui, UiEvent, Value};
 
 const THEMES: [&str; 3] = ["Light", "Dark", "System"];
 const CHANNELS: [&str; 3] = ["Mail", "Calendar", "Chat"];
@@ -129,7 +127,7 @@ impl App for Controls {
                         ui,
                         "Gain",
                         widgets::slider_spec(&m)
-                            .width(Sizing::Fixed(120.0))
+                            .width(120.0)
                             .value_now(self.gain)
                             .value_min(0.0)
                             .value_max(1.0)
@@ -144,28 +142,24 @@ impl App for Controls {
                     );
                 });
 
-                ui.leaf(NodeSpec::column().height(Sizing::Fixed(8.0)));
+                ui.leaf(NodeSpec::column().height(8.0));
                 ui.text(&self.last, TextStyle::new(12.0).color(t.faint).mono());
             },
         );
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        let kind = ev.payload.get("kind").and_then(Value::as_str);
+        let kind = ev.kind();
         let tag = ev
             .payload
             .get("tag")
             .and_then(|t| t.get("kind"))
             .and_then(Value::as_str);
-        let i = |v: &Value| v.get("i").and_then(Value::as_int).unwrap_or(0) as usize;
+        let i = |v: &Value| v.get_int("i").unwrap_or(0) as usize;
         match (kind, tag) {
             // A slider's proposal: store it, and the next frame draws it.
             (Some("change"), Some(which)) => {
-                let v = ev
-                    .payload
-                    .get("value")
-                    .and_then(Value::as_float)
-                    .unwrap_or(0.0) as f32;
+                let v = ev.payload.get_float("value").unwrap_or(0.0) as f32;
                 match which {
                     "volume" => self.volume = v,
                     "gain" => self.gain = v,

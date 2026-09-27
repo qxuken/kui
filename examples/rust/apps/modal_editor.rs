@@ -23,8 +23,7 @@
 use kui_devtools::Example;
 use kui_native::widgets;
 use kui_native::{
-    Align, App, Color, Core, NodeSpec, Role, Sizing, TextStyle, Theme, Ui, UiEvent, Value,
-    WindowCommand,
+    Align, App, Color, Core, NodeSpec, Role, TextStyle, Theme, Ui, UiEvent, Value, WindowCommand,
 };
 
 const FONT: f32 = 13.5;
@@ -161,7 +160,7 @@ impl KeyEv {
     fn from_payload(p: &Value) -> Option<Self> {
         Some(Self {
             code: p.get("code")?.as_str()?.to_string(),
-            text: p.get("text").and_then(Value::as_str).map(str::to_string),
+            text: p.get_str("text").map(str::to_string),
         })
     }
 }
@@ -380,8 +379,8 @@ impl ModalEditor {
         let pal = self.pal;
         ui.with(
             NodeSpec::row()
-                .width(Sizing::Grow(1.0))
-                .height(Sizing::Fixed(MINIBUF_H))
+                .grow_width()
+                .height(MINIBUF_H)
                 .bg(pal.bg2)
                 .pad_xy(10.0, 0.0)
                 .gap(2.0)
@@ -394,7 +393,7 @@ impl ModalEditor {
                 } else {
                     ui.text(&self.message, TextStyle::new(12.0).color(pal.dim));
                 }
-                ui.leaf(NodeSpec::row().width(Sizing::Grow(1.0)));
+                ui.leaf(NodeSpec::row().grow_width());
                 let hint = match self.mode {
                     Mode::Insert => "esc → normal",
                     Mode::Command => "enter run · esc cancel",
@@ -435,11 +434,10 @@ impl App for ModalEditor {
             let sink = ui.with_keyed(
                 "editor",
                 NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Grow(1.0))
+                    .fill()
                     .bg(pal.panel)
                     .clip()
-                    .on_key(Value::Null)
+                    .key_sink()
                     // The mouse: a press or drag anywhere in the sink says
                     // which line and byte it landed on (`on_drag`).
                     .on_drag(Value::Null)
@@ -458,7 +456,7 @@ impl App for ModalEditor {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.payload.get("kind").and_then(Value::as_str) {
+        match ev.kind() {
             Some("key") => {
                 if let Some(k) = KeyEv::from_payload(&ev.payload) {
                     self.on_key(k);
@@ -467,7 +465,7 @@ impl App for ModalEditor {
             // The clipboard's answer, or an IME's commit: the paste `p`
             // asked for, else typed text in insert mode.
             Some("text") => {
-                let text = ev.payload.get("text").and_then(Value::as_str).unwrap_or("");
+                let text = ev.payload.get_str("text").unwrap_or("");
                 if std::mem::take(&mut self.awaiting_paste) {
                     paste(&mut self.doc, &mut self.view, text);
                 } else if self.mode == Mode::Insert {
@@ -491,9 +489,9 @@ impl ModalEditor {
         let Some(pos) = self.drag_pos(p) else {
             return;
         };
-        let clicks = p.get("clicks").and_then(Value::as_int).unwrap_or(1);
+        let clicks = p.get_int("clicks").unwrap_or(1);
         let (doc, view) = (&self.doc, &mut self.view);
-        match p.get("phase").and_then(Value::as_str) {
+        match p.get_str("phase") {
             Some("start") => {
                 self.drag_from = Some(pos);
                 match clicks {
@@ -553,8 +551,8 @@ impl ModalEditor {
     /// ordinals among the drawn lines (so `view.top` maps them back into
     /// the document), offsets are bytes.
     fn on_access(&mut self, p: &Value) {
-        let text = p.get("text").and_then(Value::as_str).unwrap_or("");
-        match p.get("action").and_then(Value::as_str) {
+        let text = p.get_str("text").unwrap_or("");
+        match p.get_str("action") {
             Some("setTextSelection") => {
                 let (Some(anchor), Some(focus)) = (
                     p.get("anchor").and_then(|v| self.access_pos(v)),
@@ -607,12 +605,7 @@ fn mono(pal: &Pal) -> TextStyle {
 }
 
 fn caret_bar(ui: &mut Ui<'_>, color: Color) {
-    ui.leaf(
-        NodeSpec::column()
-            .width(Sizing::Fixed(2.0))
-            .height(Sizing::Fixed(LH - 4.0))
-            .bg(color),
-    );
+    ui.leaf(NodeSpec::column().size(2.0, LH - 4.0).bg(color));
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -650,81 +643,65 @@ fn render_editor(ui: &mut Ui<'_>, pal: &Pal, doc: &Doc, view: &mut View, mode: M
     }
     let last = (view.top + rows).min(doc.lines.len());
 
-    ui.with(
-        NodeSpec::row()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Grow(1.0))
-            .pad_xy(0.0, 4.0),
-        |ui| {
-            // Gutter.
-            ui.with(
-                NodeSpec::column()
-                    .width(Sizing::Fixed(GUTTER_W))
-                    .height(Sizing::Grow(1.0))
-                    .pad_xy(12.0, 0.0)
-                    // Decoration: not part of the editor's text.
-                    .role(Role::None),
-                |ui| {
-                    for ln in view.top..last {
-                        let color = if ln == view.cur.line {
-                            pal.dim
-                        } else {
-                            pal.faint
-                        };
-                        ui.with(
-                            NodeSpec::row()
-                                .width(Sizing::Grow(1.0))
-                                .height(Sizing::Fixed(LH))
-                                .main_align(Align::End)
-                                .cross_align(Align::Center),
-                            |ui| {
-                                ui.text(
-                                    &format!("{}", ln + 1),
-                                    TextStyle::new(11.0).mono().color(color),
-                                );
-                            },
-                        );
-                    }
-                },
-            );
-            // Text.
-            ui.with(
-                NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Grow(1.0))
-                    .clip(),
-                |ui| {
-                    for ln in view.top..last {
-                        let kind = match (solid, hollow) {
-                            (false, _) => Caret::Bar,
-                            (true, false) => Caret::Block,
-                            (true, true) => Caret::Hollow,
-                        };
-                        let caret = (ln == view.cur.line && (solid || blink_on))
-                            .then_some((view.cur.col, kind));
-                        // Where the caret and the selection's other end
-                        // sit on this line, as byte offsets, for the
-                        // access tree.
-                        let access = (
-                            (ln == view.cur.line).then(|| byte_at(&doc.lines[ln], view.cur.col)),
-                            view.anchor
-                                .filter(|a| a.line == ln)
-                                .map(|a| byte_at(&doc.lines[ln], a.col)),
-                        );
-                        emit_line(
-                            ui,
-                            pal,
-                            &doc.lines[ln],
-                            sel_on_line(view, doc, ln),
-                            caret,
-                            access,
-                            solid,
-                        );
-                    }
-                },
-            );
-        },
-    );
+    ui.with(NodeSpec::row().fill().pad_xy(0.0, 4.0), |ui| {
+        // Gutter.
+        ui.with(
+            NodeSpec::column()
+                .width(GUTTER_W)
+                .grow_height()
+                .pad_xy(12.0, 0.0)
+                // Decoration: not part of the editor's text.
+                .role(Role::None),
+            |ui| {
+                for ln in view.top..last {
+                    let color = if ln == view.cur.line {
+                        pal.dim
+                    } else {
+                        pal.faint
+                    };
+                    ui.text_in(
+                        NodeSpec::row()
+                            .grow_width()
+                            .height(LH)
+                            .main_align(Align::End)
+                            .cross_align(Align::Center),
+                        &format!("{}", ln + 1),
+                        TextStyle::new(11.0).mono().color(color),
+                    );
+                }
+            },
+        );
+        // Text.
+        ui.with(NodeSpec::column().fill().clip(), |ui| {
+            for ln in view.top..last {
+                let kind = match (solid, hollow) {
+                    (false, _) => Caret::Bar,
+                    (true, false) => Caret::Block,
+                    (true, true) => Caret::Hollow,
+                };
+                let caret =
+                    (ln == view.cur.line && (solid || blink_on)).then_some((view.cur.col, kind));
+                // Where the caret and the selection's other end
+                // sit on this line, as byte offsets, for the
+                // access tree.
+                let access = (
+                    (ln == view.cur.line).then(|| byte_at(&doc.lines[ln], view.cur.col)),
+                    view.anchor
+                        .filter(|a| a.line == ln)
+                        .map(|a| byte_at(&doc.lines[ln], a.col)),
+                );
+                emit_line(
+                    ui,
+                    pal,
+                    &doc.lines[ln],
+                    sel_on_line(view, doc, ln),
+                    caret,
+                    access,
+                    solid,
+                );
+            }
+        });
+    });
 
     status_line(ui, pal, mode, doc, view);
 }
@@ -751,8 +728,8 @@ fn emit_line(
     // One line of the editor's text to assistive technology: the text
     // nodes inside this row, whatever they are split into for drawing.
     let mut row = NodeSpec::row()
-        .width(Sizing::Grow(1.0))
-        .height(Sizing::Fixed(LH))
+        .grow_width()
+        .height(LH)
         .cross_align(Align::Center)
         .role(Role::Line);
     if let Some(c) = access.0 {
@@ -774,12 +751,13 @@ fn emit_line(
             }
             if caret_col == Some(i) && caret_kind == Some(Caret::Block) {
                 // Block caret: one inverted cell.
-                ui.with(
+                ui.text_in(
                     NodeSpec::row()
-                        .height(Sizing::Fixed(LH))
+                        .height(LH)
                         .cross_align(Align::Center)
                         .bg(pal.accent),
-                    |ui| ui.text(&chars[i].to_string(), mono(pal).color(pal.bg)),
+                    &chars[i].to_string(),
+                    mono(pal).color(pal.bg),
                 );
                 i += 1;
                 continue;
@@ -787,12 +765,13 @@ fn emit_line(
             if caret_col == Some(i) && caret_kind == Some(Caret::Hollow) {
                 // The block without the keyboard: the cell outlined, its
                 // glyph as it is.
-                ui.with(
+                ui.text_in(
                     NodeSpec::row()
-                        .height(Sizing::Fixed(LH))
+                        .height(LH)
                         .cross_align(Align::Center)
                         .border(1.0, pal.accent),
-                    |ui| ui.text(&chars[i].to_string(), mono(pal)),
+                    &chars[i].to_string(),
+                    mono(pal),
                 );
                 i += 1;
                 continue;
@@ -807,12 +786,13 @@ fn emit_line(
             }
             let run: String = chars[start..i].iter().collect();
             if selected {
-                ui.with(
+                ui.text_in(
                     NodeSpec::row()
-                        .height(Sizing::Fixed(LH))
+                        .height(LH)
                         .cross_align(Align::Center)
                         .bg(pal.select),
-                    |ui| ui.text(&run, mono(pal)),
+                    &run,
+                    mono(pal),
                 );
             } else {
                 ui.text(&run, mono(pal));
@@ -823,18 +803,12 @@ fn emit_line(
             match caret_kind {
                 Some(Caret::Bar) => caret_bar(ui, pal.accent),
                 Some(Caret::Block) => {
-                    ui.leaf(
-                        NodeSpec::column()
-                            .width(Sizing::Fixed(8.0))
-                            .height(Sizing::Fixed(LH - 4.0))
-                            .bg(pal.accent),
-                    );
+                    ui.leaf(NodeSpec::column().size(8.0, LH - 4.0).bg(pal.accent));
                 }
                 Some(Caret::Hollow) => {
                     ui.leaf(
                         NodeSpec::column()
-                            .width(Sizing::Fixed(8.0))
-                            .height(Sizing::Fixed(LH - 4.0))
+                            .size(8.0, LH - 4.0)
                             .border(1.0, pal.accent),
                     );
                 }
@@ -843,12 +817,7 @@ fn emit_line(
         }
         // Selection running past the newline.
         if sel.is_some_and(|(_, b)| b > chars.len()) && caret_col != Some(chars.len()) {
-            ui.leaf(
-                NodeSpec::column()
-                    .width(Sizing::Fixed(8.0))
-                    .height(Sizing::Fixed(LH))
-                    .bg(pal.select),
-            );
+            ui.leaf(NodeSpec::column().size(8.0, LH).bg(pal.select));
         }
     });
 }
@@ -856,8 +825,8 @@ fn emit_line(
 fn status_line(ui: &mut Ui<'_>, pal: &Pal, mode: Mode, doc: &Doc, view: &View) {
     ui.with(
         NodeSpec::row()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Fixed(STATUS_H))
+            .grow_width()
+            .height(STATUS_H)
             .bg(pal.status)
             .pad_xy(8.0, 0.0)
             .gap(8.0)
@@ -868,17 +837,16 @@ fn status_line(ui: &mut Ui<'_>, pal: &Pal, mode: Mode, doc: &Doc, view: &View) {
                 Mode::Insert => ("INS", pal.insert),
                 Mode::Command => ("CMD", pal.command),
             };
-            ui.with(
+            ui.text_in(
                 NodeSpec::row().pad_xy(8.0, 2.0).radius(4.0).bg(color),
-                |ui| {
-                    ui.text(label, TextStyle::new(10.0).mono().color(pal.bg));
-                },
+                label,
+                TextStyle::new(10.0).mono().color(pal.bg),
             );
             ui.text(&doc.name, TextStyle::new(12.0).color(pal.fg));
             if doc.modified {
                 ui.text("●", TextStyle::new(10.0).color(pal.command));
             }
-            ui.leaf(NodeSpec::row().width(Sizing::Grow(1.0)));
+            ui.leaf(NodeSpec::row().grow_width());
             let total = doc.lines.len();
             let pct = if total <= 1 {
                 100

@@ -11,8 +11,8 @@ use kui_core::diag::{RESERVED_TOKEN, UNKNOWN_TOKEN};
 use kui_core::testing::codes;
 use kui_core::tokens::{COLOR_ROLES, LENGTH_ROLES};
 use kui_core::{
-    Appearance, Color, Core, Extension, Extensions, NodeSpec, Size, Sizing, Slot, SystemEnv,
-    TokenError, TokenKind, TokenRef, Tokens, Ui, UiEvent, Value,
+    Appearance, Color, Core, Extension, Extensions, NodeSpec, Size, Slot, SystemEnv, TokenError,
+    TokenKind, TokenRef, Tokens, Ui, UiEvent, Value,
 };
 
 const PEACH: Color = Color {
@@ -175,11 +175,7 @@ impl Extension for Guest {
             };
             self.seen.borrow_mut().push((name.to_string(), c));
         }
-        ui.leaf(
-            NodeSpec::column()
-                .width(Sizing::Fixed(10.0))
-                .height(Sizing::Fixed(10.0)),
-        );
+        ui.leaf(NodeSpec::column().size(10.0, 10.0));
         Ok(())
     }
     fn on_event(&mut self, _ev: &UiEvent) -> Vec<Value> {

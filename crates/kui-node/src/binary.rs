@@ -1415,8 +1415,7 @@ mod tests {
                     expected.with_spec(|x| {
                         x.float(
                             FloatConfig::viewport()
-                                .at(Align::End, Align::End)
-                                .self_at(Align::End, Align::End)
+                                .inside(Align::End, Align::End)
                                 .offset(-8.0, -8.0)
                                 .fit(),
                         )

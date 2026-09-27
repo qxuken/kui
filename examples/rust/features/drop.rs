@@ -21,8 +21,7 @@
 
 use kui_devtools::{Drive, Example};
 use kui_native::{
-    Align, App, Core, FileDialog, FloatConfig, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value,
-    Vec2,
+    Align, App, Core, FileDialog, FloatConfig, NodeSpec, TextStyle, Ui, UiEvent, Value, Vec2,
 };
 
 #[derive(Default)]
@@ -67,15 +66,14 @@ impl App for Drop {
                 ui.with_keyed(
                     "zone",
                     NodeSpec::column()
-                        .width(Sizing::Fixed(400.0))
-                        .height(Sizing::Fixed(180.0))
+                        .size(400.0, 180.0)
                         .pad(14.0)
                         .gap(8.0)
                         .radius(10.0)
                         .bg(t.surface)
                         .drop_bg(t.accent.with_alpha(0.35))
                         .border(1.0, t.border)
-                        .on_drop(Value::str("zone")),
+                        .on_drop("zone"),
                     |ui| {
                         let heading = if self.hovering.is_empty() {
                             "drop files here".to_string()
@@ -91,7 +89,7 @@ impl App for Drop {
                         }
                         // Inside the zone: a button, and files over it are
                         // the zone's — no `on_drop` of its own.
-                        ui.with_keyed(
+                        ui.text_in_keyed(
                             "clear",
                             NodeSpec::row()
                                 .pad_xy(12.0, 6.0)
@@ -100,11 +98,10 @@ impl App for Drop {
                                 .hover_bg(t.hover)
                                 .on_click(Value::map([("kind", Value::str("clear"))]))
                                 .label("Clear"),
-                            |ui| {
-                                ui.text("Clear the list", TextStyle::new(12.0));
-                            },
+                            "Clear the list",
+                            TextStyle::new(12.0),
                         );
-                        ui.with_keyed(
+                        ui.text_in_keyed(
                             "open",
                             NodeSpec::row()
                                 .pad_xy(12.0, 6.0)
@@ -113,54 +110,44 @@ impl App for Drop {
                                 .hover_bg(t.hover)
                                 .on_click(Value::map([("kind", Value::str("open"))]))
                                 .label("Open…"),
-                            |ui| {
-                                ui.text("Open…", TextStyle::new(12.0));
-                            },
+                            "Open…",
+                            TextStyle::new(12.0),
                         );
                         // What an app shows in answer to `enter`: a banner
                         // floated over the zone. It takes no files, so
                         // the files look past it (decision 2) — the zone
                         // stays lit and hears `move`, not `leave`.
                         if !self.hovering.is_empty() {
-                            ui.with_keyed(
+                            ui.text_in_keyed(
                                 "banner",
                                 NodeSpec::row()
                                     .float(
                                         FloatConfig::parent()
-                                            .at(Align::Center, Align::End)
-                                            .self_at(Align::Center, Align::End)
+                                            .inside(Align::Center, Align::End)
                                             .offset(0.0, -8.0),
                                     )
                                     .pad_xy(14.0, 8.0)
                                     .radius(8.0)
                                     .bg(t.accent)
                                     .hoverable(),
-                                |ui| {
-                                    ui.text(
-                                        "release to add",
-                                        TextStyle::new(12.0)
-                                            .color(kui_native::widgets::readable_on(t.accent)),
-                                    );
-                                },
+                                "release to add",
+                                TextStyle::new(12.0)
+                                    .color(kui_native::widgets::readable_on(t.accent)),
                             );
                         }
                     },
                 );
-                ui.with_keyed(
+                ui.text_in_keyed(
                     "nowhere",
                     NodeSpec::row()
-                        .width(Sizing::Fixed(400.0))
+                        .width(400.0)
                         .pad(12.0)
                         .radius(10.0)
                         .bg(t.surface)
                         .border(1.0, t.border)
                         .hoverable(),
-                    |ui| {
-                        ui.text(
-                            "not a zone · the cursor says no, a release slides home",
-                            TextStyle::new(12.0).color(t.muted),
-                        );
-                    },
+                    "not a zone · the cursor says no, a release slides home",
+                    TextStyle::new(12.0).color(t.muted),
                 );
                 ui.text(
                     &format!(
@@ -182,7 +169,7 @@ impl App for Drop {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.payload.get("kind").and_then(Value::as_str) {
+        match ev.kind() {
             Some("clear") => {
                 self.landed.clear();
                 self.cleared += 1;
@@ -218,14 +205,11 @@ impl App for Drop {
                     .collect()
             })
             .unwrap_or_default();
-        let at = match (
-            ev.payload.get("x").and_then(Value::as_float),
-            ev.payload.get("y").and_then(Value::as_float),
-        ) {
+        let at = match (ev.payload.get_float("x"), ev.payload.get_float("y")) {
             (Some(x), Some(y)) => Some((x as f32, y as f32)),
             _ => None,
         };
-        match ev.payload.get("phase").and_then(Value::as_str) {
+        match ev.payload.get_str("phase") {
             Some("enter") => {
                 self.hovering = paths;
                 self.at = at;

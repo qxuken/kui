@@ -7,9 +7,7 @@
 
 use kui_core::input::{HitShape, MIN_STROKE_GRAB, in_polygon, in_rounded_rect, segment_distance};
 use kui_core::testing::{click_at, kinds};
-use kui_core::{
-    Color, Core, CursorShape, FloatConfig, InputEvent, NodeSpec, Size, Sizing, Stroke, Value, Vec2,
-};
+use kui_core::{Color, Core, CursorShape, FloatConfig, InputEvent, NodeSpec, Size, Stroke, Vec2};
 
 const VIEW: Size = Size { w: 300.0, h: 200.0 };
 
@@ -128,7 +126,7 @@ fn two_wedges_sharing_a_box_are_told_apart() {
         // button, which folds its children into its own name.
         let canvas = NodeSpec::column()
             .fill()
-            .on_click(Value::str("canvas"))
+            .on_click("canvas")
             .role(kui_core::Role::Group);
         ui.with(canvas, |ui| {
             ui.polygon_keyed(
@@ -136,7 +134,7 @@ fn two_wedges_sharing_a_box_are_told_apart() {
                 &upper,
                 NodeSpec::column()
                     .bg(Color::WHITE)
-                    .on_click(Value::str("upper"))
+                    .on_click("upper")
                     .label("Upper"),
             );
             ui.polygon_keyed(
@@ -144,7 +142,7 @@ fn two_wedges_sharing_a_box_are_told_apart() {
                 &lower,
                 NodeSpec::column()
                     .bg(Color::WHITE)
-                    .on_click(Value::str("lower"))
+                    .on_click("lower")
                     .label("Lower"),
             );
         });
@@ -180,7 +178,7 @@ fn hover_is_by_shape() {
                 NodeSpec::column()
                     .bg(Color::WHITE)
                     .hover_bg(Color::BLACK)
-                    .on_hover(Value::str("tri")),
+                    .on_hover("tri"),
             );
         });
     };
@@ -222,25 +220,22 @@ fn hover_is_by_shape() {
 fn a_stroke_is_hit_within_its_width_and_never_less_than_the_grab() {
     let mut core = Core::new();
     frame(&mut core, |ui| {
-        ui.with(
-            NodeSpec::column().fill().on_click(Value::str("canvas")),
-            |ui| {
-                ui.line_keyed(
-                    "thin",
-                    Vec2::new(10.0, 50.0),
-                    Vec2::new(200.0, 50.0),
-                    Stroke::new(1.0, Color::WHITE),
-                    NodeSpec::column().on_click(Value::str("thin")),
-                );
-                ui.line_keyed(
-                    "wide",
-                    Vec2::new(10.0, 150.0),
-                    Vec2::new(200.0, 150.0),
-                    Stroke::new(20.0, Color::WHITE),
-                    NodeSpec::column().on_click(Value::str("wide")),
-                );
-            },
-        );
+        ui.with(NodeSpec::column().fill().on_click("canvas"), |ui| {
+            ui.line_keyed(
+                "thin",
+                Vec2::new(10.0, 50.0),
+                Vec2::new(200.0, 50.0),
+                Stroke::new(1.0, Color::WHITE),
+                NodeSpec::column().on_click("thin"),
+            );
+            ui.line_keyed(
+                "wide",
+                Vec2::new(10.0, 150.0),
+                Vec2::new(200.0, 150.0),
+                Stroke::new(20.0, Color::WHITE),
+                NodeSpec::column().on_click("wide"),
+            );
+        });
     });
     assert_eq!(MIN_STROKE_GRAB, 4.0);
     assert_eq!(tag(&click_at(&mut core, 100.0, 51.5)), ["thin"]);
@@ -262,17 +257,14 @@ fn a_curve_is_hit_along_its_pieces() {
         Vec2::new(180.0, 100.0),
     ];
     frame(&mut core, |ui| {
-        ui.with(
-            NodeSpec::column().fill().on_click(Value::str("canvas")),
-            |ui| {
-                ui.polyline_keyed(
-                    "arc",
-                    &knots,
-                    Stroke::new(3.0, Color::WHITE).curve(),
-                    NodeSpec::column().on_click(Value::str("arc")),
-                );
-            },
-        );
+        ui.with(NodeSpec::column().fill().on_click("canvas"), |ui| {
+            ui.polyline_keyed(
+                "arc",
+                &knots,
+                Stroke::new(3.0, Color::WHITE).curve(),
+                NodeSpec::column().on_click("arc"),
+            );
+        });
     });
     // The middle knot is on the curve; the middle of the chord between
     // the outer knots is well below it, inside the bounding box.
@@ -286,19 +278,15 @@ fn a_curve_is_hit_along_its_pieces() {
 fn a_rounded_corner_is_not_a_hit() {
     let mut core = Core::new();
     frame(&mut core, |ui| {
-        ui.with(
-            NodeSpec::column().fill().on_click(Value::str("page")),
-            |ui| {
-                ui.leaf(
-                    NodeSpec::column()
-                        .float(FloatConfig::parent().offset(10.0, 10.0))
-                        .width(Sizing::Fixed(100.0))
-                        .height(Sizing::Fixed(60.0))
-                        .radius(20.0)
-                        .on_click(Value::str("card")),
-                );
-            },
-        );
+        ui.with(NodeSpec::column().fill().on_click("page"), |ui| {
+            ui.leaf(
+                NodeSpec::column()
+                    .float(FloatConfig::parent().offset(10.0, 10.0))
+                    .size(100.0, 60.0)
+                    .radius(20.0)
+                    .on_click("card"),
+            );
+        });
     });
     assert_eq!(
         tag(&click_at(&mut core, 60.0, 40.0)),
@@ -333,7 +321,7 @@ fn the_cursor_follows_the_shape() {
                 &tri,
                 NodeSpec::column()
                     .bg(Color::WHITE)
-                    .on_click(Value::str("tri"))
+                    .on_click("tri")
                     .cursor(CursorShape::Pointer),
             );
         });
@@ -359,9 +347,7 @@ fn a_drag_starts_by_shape() {
             ui.polygon_keyed(
                 "tri",
                 &tri,
-                NodeSpec::column()
-                    .bg(Color::WHITE)
-                    .on_drag(Value::str("tri")),
+                NodeSpec::column().bg(Color::WHITE).on_drag("tri"),
             );
         });
     });
@@ -395,12 +381,7 @@ fn shapes_are_the_frames_own() {
     ];
     frame(&mut core, |ui| {
         ui.with(NodeSpec::column().fill(), |ui| {
-            ui.polygon(
-                &tri,
-                NodeSpec::column()
-                    .bg(Color::WHITE)
-                    .on_click(Value::str("tri")),
-            );
+            ui.polygon(&tri, NodeSpec::column().bg(Color::WHITE).on_click("tri"));
         });
     });
     assert_eq!(tag(&click_at(&mut core, 20.0, 20.0)), ["tri"]);
@@ -410,9 +391,8 @@ fn shapes_are_the_frames_own() {
             ui.leaf(
                 NodeSpec::column()
                     .float(FloatConfig::parent().offset(9.0, 9.0))
-                    .width(Sizing::Fixed(102.0))
-                    .height(Sizing::Fixed(102.0))
-                    .on_click(Value::str("box")),
+                    .size(102.0, 102.0)
+                    .on_click("box"),
             );
         });
     });
@@ -432,7 +412,7 @@ fn a_shape_without_its_points_misses() {
     let base = {
         let mut core = Core::new();
         frame(&mut core, |ui| {
-            ui.leaf(NodeSpec::column().fill().on_click(Value::str("box")));
+            ui.leaf(NodeSpec::column().fill().on_click("box"));
         });
         core.interaction.hits()[0].clone()
     };

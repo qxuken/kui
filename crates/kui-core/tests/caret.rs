@@ -2,9 +2,7 @@
 //! inside scroll containers, multi-click word/line selection, and the blink
 //! gate on caret emission.
 
-use kui_core::{
-    Core, EditKey, EditOptions, InputEvent, Key, Mods, NodeSpec, QuadKind, Size, Sizing, Vec2,
-};
+use kui_core::{Core, EditKey, EditOptions, InputEvent, Key, Mods, NodeSpec, QuadKind, Size, Vec2};
 
 const VIEW_H: f32 = 100.0;
 
@@ -15,10 +13,7 @@ fn frame(core: &mut Core, initial: &str) -> (Key, Key) {
     let mut edit_key = Key::ROOT;
     let scroll_key = ui.with_keyed(
         "scroll",
-        NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Fixed(VIEW_H))
-            .scroll_y(),
+        NodeSpec::column().grow_width().height(VIEW_H).scroll_y(),
         |ui| {
             edit_key = ui.text_edit(
                 "doc",
@@ -28,7 +23,7 @@ fn frame(core: &mut Core, initial: &str) -> (Key, Key) {
                     autofocus: true,
                     ..Default::default()
                 },
-                NodeSpec::column().width(Sizing::Grow(1.0)),
+                NodeSpec::column().grow_width(),
             );
         },
     );
@@ -50,13 +45,7 @@ fn caret_motion_scrolls_container() {
     assert_eq!(core.scroll.offset(scroll_key), Vec2::ZERO);
 
     // Jump to the end of the document: far below the 100px viewport.
-    core.handle_input(InputEvent::Key(
-        EditKey::End,
-        Mods {
-            doc: true,
-            ..Default::default()
-        },
-    ));
+    core.handle_input(InputEvent::Key(EditKey::End, Mods::NONE.with_doc()));
     frame(&mut core, "");
     let bottom = core.scroll.offset(scroll_key).y;
     assert!(
@@ -65,13 +54,7 @@ fn caret_motion_scrolls_container() {
     );
 
     // And back to the start scrolls home again.
-    core.handle_input(InputEvent::Key(
-        EditKey::Home,
-        Mods {
-            doc: true,
-            ..Default::default()
-        },
-    ));
+    core.handle_input(InputEvent::Key(EditKey::Home, Mods::NONE.with_doc()));
     frame(&mut core, "");
     assert_eq!(core.scroll.offset(scroll_key).y, 0.0);
 }
@@ -80,13 +63,7 @@ fn caret_motion_scrolls_container() {
 fn typing_at_bottom_keeps_caret_visible() {
     let mut core = Core::new();
     let (scroll_key, _) = frame(&mut core, &many_lines(6));
-    core.handle_input(InputEvent::Key(
-        EditKey::End,
-        Mods {
-            doc: true,
-            ..Default::default()
-        },
-    ));
+    core.handle_input(InputEvent::Key(EditKey::End, Mods::NONE.with_doc()));
     frame(&mut core, "");
     let mut last = core.scroll.offset(scroll_key).y;
     // Each new line pushes the caret below the view; the frame must follow.
@@ -104,13 +81,7 @@ fn unfocused_edits_do_not_scroll() {
     let mut core = Core::new();
     let (scroll_key, _) = frame(&mut core, &many_lines(40));
     core.edit.set_focus(None);
-    core.handle_input(InputEvent::Key(
-        EditKey::End,
-        Mods {
-            doc: true,
-            ..Default::default()
-        },
-    ));
+    core.handle_input(InputEvent::Key(EditKey::End, Mods::NONE.with_doc()));
     frame(&mut core, "");
     assert_eq!(core.scroll.offset(scroll_key), Vec2::ZERO);
 }

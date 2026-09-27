@@ -20,7 +20,7 @@ fn a_lone_weighted_grow_child_warns_once() {
     let keys = row_of(
         &mut core,
         &[
-            NodeSpec::column().width(Sizing::Fixed(50.0)),
+            NodeSpec::column().width(50.0),
             NodeSpec::column().width(Sizing::Grow(2.0)),
         ],
     );
@@ -36,7 +36,7 @@ fn a_lone_weighted_grow_child_warns_once() {
     row_of(
         &mut core,
         &[
-            NodeSpec::column().width(Sizing::Fixed(50.0)),
+            NodeSpec::column().width(50.0),
             NodeSpec::column().width(Sizing::Grow(2.0)),
         ],
     );
@@ -46,12 +46,12 @@ fn a_lone_weighted_grow_child_warns_once() {
 #[test]
 fn weights_that_split_something_do_not_warn() {
     let mut core = Core::new();
-    row_of(&mut core, &[NodeSpec::column().width(Sizing::Grow(1.0))]);
+    row_of(&mut core, &[NodeSpec::column().grow_width()]);
     row_of(
         &mut core,
         &[
             NodeSpec::column().width(Sizing::Grow(2.0)),
-            NodeSpec::column().width(Sizing::Grow(1.0)),
+            NodeSpec::column().grow_width(),
         ],
     );
     assert!(core.take_warnings().is_empty());
@@ -63,11 +63,7 @@ fn a_cross_axis_weight_warns() {
     // A column's children grow *across* it in width: the weight is moot.
     let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    let key = ui.leaf(
-        NodeSpec::row()
-            .width(Sizing::Grow(3.0))
-            .height(Sizing::Fixed(10.0)),
-    );
+    let key = ui.leaf(NodeSpec::row().width(Sizing::Grow(3.0)).height(10.0));
     ui.finish();
     let ws = core.take_warnings();
     assert_eq!(codes(&ws), [GROW_WEIGHT_IGNORED]);
@@ -80,10 +76,7 @@ fn list(core: &mut Core, n: usize, keyed: bool) -> Key {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.with_keyed("list", NodeSpec::column().fill(), |ui| {
         for i in 0..n {
-            let spec = NodeSpec::row()
-                .width(Sizing::Grow(1.0))
-                .height(Sizing::Fixed(20.0))
-                .transition(100.0);
+            let spec = NodeSpec::row().grow_width().height(20.0).transition(100.0);
             if keyed {
                 ui.leaf_keyed(&format!("item-{i}"), spec);
             } else {

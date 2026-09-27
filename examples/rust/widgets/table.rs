@@ -79,7 +79,7 @@ impl App for Table {
             ui.with_keyed(
                 "files",
                 NodeSpec::table()
-                    .width(Sizing::Grow(1.0))
+                    .grow_width()
                     .gap(2.0)
                     .bg(t.sunken)
                     .radius(6.0)
@@ -88,10 +88,7 @@ impl App for Table {
                     // The header: a row of three clickable cells, each
                     // sorting by its column; the sorted one in the accent.
                     ui.with(
-                        NodeSpec::row()
-                            .width(Sizing::Grow(1.0))
-                            .gap(16.0)
-                            .pad_xy(8.0, 4.0),
+                        NodeSpec::row().grow_width().gap(16.0).pad_xy(8.0, 4.0),
                         |ui| {
                             for (label, sort, align) in [
                                 ("name", Sort::Name, Align::Start),
@@ -104,7 +101,7 @@ impl App for Table {
                                 } else {
                                     Sizing::Fit
                                 };
-                                ui.with_keyed(
+                                ui.text_in_keyed(
                                     &format!("sort-{label}"),
                                     NodeSpec::row()
                                         .width(width)
@@ -114,9 +111,8 @@ impl App for Table {
                                             ("by", Value::str(label)),
                                         ]))
                                         .label(format!("sort by {label}").as_str()),
-                                    |ui| {
-                                        ui.text(label, TextStyle::new(11.0).color(color));
-                                    },
+                                    label,
+                                    TextStyle::new(11.0).color(color),
                                 );
                             }
                         },
@@ -127,7 +123,7 @@ impl App for Table {
                         ui.with_keyed(
                             name,
                             NodeSpec::row()
-                                .width(Sizing::Grow(1.0))
+                                .grow_width()
                                 .gap(16.0)
                                 .pad_xy(8.0, 3.0)
                                 .radius(4.0)
@@ -143,15 +139,11 @@ impl App for Table {
                                 // A bare text is a cell, held to its column.
                                 ui.text(name, TextStyle::new(13.0).color(fg).nowrap());
                                 // A number sits at the column's right edge.
-                                ui.with_keyed(
+                                ui.text_in_keyed(
                                     "size",
                                     NodeSpec::row().main_align(Align::End),
-                                    |ui| {
-                                        ui.text(
-                                            &size(bytes),
-                                            TextStyle::new(13.0).color(fg).mono().nowrap(),
-                                        );
-                                    },
+                                    &size(bytes),
+                                    TextStyle::new(13.0).color(fg).mono().nowrap(),
                                 );
                                 ui.text(
                                     kind,
@@ -175,16 +167,12 @@ impl App for Table {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.payload.get("kind").and_then(Value::as_str) {
+        match ev.kind() {
             Some("select") => {
-                self.selected = ev
-                    .payload
-                    .get("row")
-                    .and_then(Value::as_int)
-                    .map(|i| i as usize);
+                self.selected = ev.payload.get_int("row").map(|i| i as usize);
             }
             Some("sort") => {
-                self.sort = match ev.payload.get("by").and_then(Value::as_str) {
+                self.sort = match ev.payload.get_str("by") {
                     Some("size") => Sort::Size,
                     Some("kind") => Sort::Kind,
                     _ => Sort::Name,

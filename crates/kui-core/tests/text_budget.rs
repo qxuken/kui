@@ -13,9 +13,7 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use kui_core::{
-    Color, Core, DEFAULT_TEXT_CACHE_BYTES, NodeSpec, QuadKind, Size, Sizing, TextStyle,
-};
+use kui_core::{Color, Core, DEFAULT_TEXT_CACHE_BYTES, NodeSpec, QuadKind, Size, TextStyle};
 
 struct Counting;
 static LIVE: AtomicUsize = AtomicUsize::new(0);
@@ -69,9 +67,11 @@ fn stream_frame(core: &mut Core, salt: usize, rows: usize, cols: usize) -> usize
     ui.configure_root(NodeSpec::column().fill().bg(Color::rgb8(0, 0, 0)));
     for r in 0..rows {
         let t = line(r, salt, cols);
-        ui.with(NodeSpec::row().height(Sizing::Fixed(18.0)), |ui| {
-            ui.text(&t, TextStyle::new(13.0).mono().line_height(18.0))
-        });
+        ui.text_in(
+            NodeSpec::row().height(18.0),
+            &t,
+            TextStyle::new(13.0).mono().line_height(18.0),
+        );
     }
     ui.finish();
     let (dl, _) = core.output();

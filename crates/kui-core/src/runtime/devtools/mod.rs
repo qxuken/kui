@@ -917,8 +917,7 @@ impl Core {
                 anchor: crate::spec::FloatAnchor::Node(tab_body_key(name)),
                 ..Default::default()
             })
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Grow(1.0))
+            .fill()
             .clip();
         self.open_keyed(&format!("devtools-tab:{name}"), spec);
     }
@@ -1388,7 +1387,7 @@ impl Core {
                 continue;
             }
             if matches!(
-                ev.payload.get("kind").and_then(Value::as_str),
+                ev.kind(),
                 Some("drag" | "layout" | "contextmenu" | "forceclick")
             ) {
                 shift_xy(&mut ev.payload, shift);
@@ -1522,8 +1521,7 @@ impl Core {
                 Dock::Bottom => NodeSpec::column(),
                 _ => NodeSpec::row(),
             }
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Grow(1.0));
+            .fill();
             // A left dock precedes the app in the root row, so it is built
             // now, from the last frame's facts and the tab on show, and
             // `finish` skips it.
@@ -1533,13 +1531,7 @@ impl Core {
             }
             // By key and not by label: the container is not the host's
             // to find through `key_of`.
-            self.open_with_key(
-                Key::ROOT.str(APP_KEY),
-                NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Grow(1.0))
-                    .clip(),
-            );
+            self.open_with_key(Key::ROOT.str(APP_KEY), NodeSpec::column().fill().clip());
             // The host's children are keyed from the root, as if the
             // container were not there (ADR 0014's namespace, reused).
             self.ns_depth = self.stack.len();
@@ -1596,9 +1588,7 @@ impl Core {
                 crate::tree::NIL,
                 Key::ROOT,
                 OriginId::HOST,
-                NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Grow(1.0)),
+                NodeSpec::column().fill(),
                 crate::tree::NodeContent::Container,
             );
             self.stack.clear();
@@ -1904,10 +1894,8 @@ impl Core {
                 // field's text; nothing to do here.
                 return false;
             }
-            if ev.payload.get("kind").and_then(Value::as_str) == Some("window")
-                && ev.payload.get("name").and_then(Value::as_str) == Some(DEVTOOLS_WINDOW)
-            {
-                closed |= ev.payload.get("phase").and_then(Value::as_str) == Some("closed");
+            if ev.kind() == Some("window") && ev.payload.get_str("name") == Some(DEVTOOLS_WINDOW) {
+                closed |= ev.payload.get_str("phase") == Some("closed");
                 return false;
             }
             !self.dt_window
@@ -2315,7 +2303,7 @@ enum Place {
 /// markers and its length and loses its text, which the events tab would
 /// otherwise show in plain view and hold for the stream's lifetime (RG34).
 fn redact(payload: &Value) -> Value {
-    let concealed = payload.get("concealed").and_then(Value::as_bool) == Some(true);
+    let concealed = payload.get_bool("concealed") == Some(true);
     match payload {
         Value::Map(fields) if concealed => Value::Map(
             fields

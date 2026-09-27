@@ -77,17 +77,16 @@ impl App for Drag {
                 ui.with_keyed(
                     "track",
                     NodeSpec::row()
-                        .width(Sizing::Fixed(TRACK_W))
-                        .height(Sizing::Fixed(24.0))
+                        .size(TRACK_W, 24.0)
                         .bg(t.sunken)
                         .radius(12.0)
-                        .on_drag(Value::str("slider"))
+                        .on_drag("slider")
                         .cursor(hand("slider")),
                     |ui| {
                         ui.leaf(
                             NodeSpec::row()
                                 .width(Sizing::Percent(self.value))
-                                .height(Sizing::Grow(1.0))
+                                .grow_height()
                                 .bg(t.accent)
                                 .radius(12.0));
                     },
@@ -100,8 +99,7 @@ impl App for Drag {
                 ui.with_keyed(
                     "stage",
                     NodeSpec::row()
-                        .width(Sizing::Fixed(420.0))
-                        .height(Sizing::Fixed(200.0))
+                        .size(420.0, 200.0)
                         .bg(t.surface)
                         .radius(10.0)
                         .border(1.0, t.border),
@@ -112,17 +110,16 @@ impl App for Drag {
                             NodeSpec::column()
                                 .float(
                                     FloatConfig::parent()
-                                        .at(Align::Start, Align::Start)
-                                        .self_at(Align::Start, Align::Start)
+                                        .inside(Align::Start, Align::Start)
                                         .offset(self.card.0, self.card.1),
                                 )
                                 .pad_xy(16.0, 12.0)
                                 .bg(if grabbing { t.accent_soft } else { t.raised })
                                 .radius(8.0)
                                 .border(1.0, if grabbing { t.accent } else { t.border })
-                                .on_drag(Value::str("card"))
+                                .on_drag("card")
                                 .cursor(hand("card"))
-                                .on_layout(Value::str("card")),
+                                .on_layout("card"),
                             |ui| {
                                 ui.text("drag me", TextStyle::new(14.0));
                                 ui.text(
@@ -140,7 +137,7 @@ impl App for Drag {
 
     fn on_event(&mut self, ev: UiEvent) {
         let num = |k: &str| ev.payload.get(k).and_then(Value::as_float).unwrap_or(0.0) as f32;
-        match ev.payload.get("kind").and_then(Value::as_str) {
+        match ev.kind() {
             Some("layout") => {
                 self.card_size = (num("w"), num("h"));
                 return;
@@ -148,12 +145,8 @@ impl App for Drag {
             Some("drag") => {}
             _ => return,
         }
-        let phase = ev
-            .payload
-            .get("phase")
-            .and_then(Value::as_str)
-            .unwrap_or("");
-        let tag = ev.payload.get("tag").and_then(Value::as_str).unwrap_or("");
+        let phase = ev.payload.get_str("phase").unwrap_or("");
+        let tag = ev.payload.get_str("tag").unwrap_or("");
         self.log = format!(
             "{tag} {phase} x {:.0} y {:.0} dx {:.0} dy {:.0}",
             num("x"),
@@ -226,7 +219,7 @@ impl Example for Drag {
         let evs = d.input(self, kui_native::InputEvent::mouse_down(1));
         d.check(
             evs.iter()
-                .any(|e| e.payload.get("phase").and_then(Value::as_str) == Some("start")),
+                .any(|e| e.payload.get_str("phase") == Some("start")),
             "a press on the track starts a drag",
         )?;
         d.frame(self);

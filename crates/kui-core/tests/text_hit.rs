@@ -17,13 +17,14 @@ fn mono() -> TextStyle {
 fn frame(core: &mut Core, text: &str, width: Option<f32>, scale: f32) -> Key {
     let mut ui = core.frame(Size::new(400.0, 300.0), scale);
     ui.configure_root(NodeSpec::column().fill().pad(10.0));
-    ui.leaf(NodeSpec::column().height(Sizing::Fixed(10.0)));
-    let key = ui.with_keyed(
+    ui.leaf(NodeSpec::column().height(10.0));
+    let key = ui.text_in_keyed(
         "line",
         NodeSpec::row().width(width.map_or(Sizing::Grow(1.0), Sizing::Fixed)),
-        |ui| ui.text(text, mono()),
+        text,
+        mono(),
     );
-    ui.leaf_keyed("box", NodeSpec::column().height(Sizing::Fixed(10.0)));
+    ui.leaf_keyed("box", NodeSpec::column().height(10.0));
     ui.finish();
     // An unkeyed text node is auto-keyed by its index under its parent.
     key.index(0)
@@ -165,9 +166,11 @@ fn a_line_of_runs_answers_by_the_row_key() {
     ui.configure_root(NodeSpec::column().fill());
     let line = ui.with_keyed("line", NodeSpec::row(), |ui| {
         ui.text("let ", mono().color(Color::rgb8(200, 100, 255)));
-        ui.with(NodeSpec::row().bg(Color::rgba8(60, 90, 212, 85)), |ui| {
-            ui.text("value", mono())
-        });
+        ui.text_in(
+            NodeSpec::row().bg(Color::rgba8(60, 90, 212, 85)),
+            "value",
+            mono(),
+        );
         ui.text(" = 1;", mono());
     });
     ui.finish();
@@ -218,9 +221,7 @@ fn the_line_is_the_visual_row_across_the_nodes_runs() {
             ui.text("b ", mono());
             ui.text("c", mono());
         });
-        ui.with(NodeSpec::row().width(Sizing::Fixed(60.0)), |ui| {
-            ui.text("wrapping text here", mono());
-        });
+        ui.text_in(NodeSpec::row().width(60.0), "wrapping text here", mono());
     });
     ui.finish();
     let w = cell(&mut core);
@@ -257,9 +258,7 @@ fn a_none_subtree_under_a_line_is_not_its_text() {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
     let line = ui.with_keyed("line", NodeSpec::row().role(Role::Line), |ui| {
-        ui.with(NodeSpec::row().role(Role::None), |ui| {
-            ui.text("12 ", mono())
-        });
+        ui.text_in(NodeSpec::row().role(Role::None), "12 ", mono());
         ui.text("let x", mono());
     });
     ui.finish();
@@ -302,7 +301,7 @@ fn a_text_too_deep_under_its_line_is_a_named_diagnostic() {
             ui.with(NodeSpec::row(), |ui| {
                 ui.with(NodeSpec::row(), |ui| {
                     ui.with(NodeSpec::row(), |ui| {
-                        ui.with(NodeSpec::row(), |ui| ui.text("deep", mono()));
+                        ui.text_in(NodeSpec::row(), "deep", mono());
                     });
                 });
             });
@@ -317,7 +316,7 @@ fn a_text_too_deep_under_its_line_is_a_named_diagnostic() {
     ui.with_keyed("line", NodeSpec::row().role(Role::Line), |ui| {
         ui.with(NodeSpec::row(), |ui| {
             ui.with(NodeSpec::row(), |ui| {
-                ui.with(NodeSpec::row(), |ui| ui.text("deep", mono()));
+                ui.text_in(NodeSpec::row(), "deep", mono());
             });
         });
     });

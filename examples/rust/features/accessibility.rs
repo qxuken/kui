@@ -58,8 +58,7 @@
 use kui_devtools::Example;
 use kui_native::widgets;
 use kui_native::{
-    Align, App, EditOptions, FloatConfig, Key, Live, NodeSpec, Role, Sizing, TextStyle, Ui,
-    UiEvent, Value,
+    Align, App, EditOptions, FloatConfig, Key, Live, NodeSpec, Role, TextStyle, Ui, UiEvent, Value,
 };
 
 const DOC: &str = "hello world\nsecond line";
@@ -172,9 +171,11 @@ impl App for A11y {
             |ui| {
                 // A heading: named by the text inside it, which is then read as
                 // part of it rather than as a label of its own.
-                ui.with(NodeSpec::row().role(Role::Heading), |ui| {
-                    ui.text("Controls", TextStyle::new(20.0).color(t.fg))
-                });
+                ui.text_in(
+                    NodeSpec::row().role(Role::Heading),
+                    "Controls",
+                    TextStyle::new(20.0).color(t.fg),
+                );
 
                 // A tab list: `selected` is which one the view shows, and every
                 // tab reports the state so a reader can say which is on. Nothing
@@ -182,7 +183,7 @@ impl App for A11y {
                 ui.with_keyed("tabs", NodeSpec::row().role(Role::TabList).gap(4.0), |ui| {
                     for (i, name) in ["General", "Network", "About"].iter().enumerate() {
                         let on = i == self.tab;
-                        ui.with_keyed(
+                        ui.text_in_keyed(
                             name,
                             NodeSpec::row()
                                 .role(Role::Tab)
@@ -191,43 +192,32 @@ impl App for A11y {
                                 .pad_xy(10.0, 6.0)
                                 .bg(if on { t.accent } else { t.surface })
                                 .radius(6.0),
-                            |ui| {
-                                ui.text(
-                                    name,
-                                    TextStyle::new(13.0).color(if on {
-                                        t.on_accent
-                                    } else {
-                                        t.muted
-                                    }),
-                                )
-                            },
+                            name,
+                            TextStyle::new(13.0).color(if on { t.on_accent } else { t.muted }),
                         );
                     }
                 });
 
                 // A disclosure: `expanded` names its state, so a reader says
                 // "collapsed" rather than nothing at all when it is shut.
-                ui.with_keyed(
+                ui.text_in_keyed(
                     "advanced",
                     widgets::button_spec(&ui.theme(), &ui.metrics())
                         .expanded(self.advanced)
-                        .on_click(Value::str("advanced"))
+                        .on_click("advanced")
                         .label("Advanced"),
-                    |ui| {
-                        ui.text(
-                            if self.advanced {
-                                "▾ Advanced"
-                            } else {
-                                "▸ Advanced"
-                            },
-                            TextStyle::new(widgets::BUTTON_TEXT).color(on_button),
-                        )
+                    if self.advanced {
+                        "▾ Advanced"
+                    } else {
+                        "▸ Advanced"
                     },
+                    TextStyle::new(widgets::BUTTON_TEXT).color(on_button),
                 );
                 if self.advanced {
-                    ui.with(
+                    ui.text_in(
                         NodeSpec::row().pad_xy(10.0, 6.0).bg(t.sunken).radius(6.0),
-                        |ui| ui.text("Nothing here yet.", text),
+                        "Nothing here yet.",
+                        text,
                     );
                 }
 
@@ -239,9 +229,11 @@ impl App for A11y {
                 // platform the set is laid out horizontally. Nothing declares a
                 // Tab stop or an arrow key — the group holds focusable radios,
                 // and that is a composite.
-                ui.with(NodeSpec::row().role(Role::Heading), |ui| {
-                    ui.text("Theme", TextStyle::new(15.0).color(t.fg))
-                });
+                ui.text_in(
+                    NodeSpec::row().role(Role::Heading),
+                    "Theme",
+                    TextStyle::new(15.0).color(t.fg),
+                );
                 widgets::radio_group_with(ui, "Theme", NodeSpec::row().gap(16.0), |ui| {
                     for (i, name) in ["Light", "Dark", "Auto"].iter().enumerate() {
                         widgets::radio(ui, name, i == self.theme, format!("theme{i}"));
@@ -259,27 +251,19 @@ impl App for A11y {
                     |ui| {
                         for (i, name) in ["Inbox", "Drafts", "Sent"].iter().enumerate() {
                             let on = i == self.row;
-                            ui.with_keyed(
+                            ui.text_in_keyed(
                                 name,
                                 NodeSpec::row()
                                     .role(Role::ListItem)
                                     .selected(on)
                                     .focusable()
                                     .on_click(Value::str(format!("row{i}")))
-                                    .width(Sizing::Fixed(200.0))
+                                    .width(200.0)
                                     .pad_xy(10.0, 5.0)
                                     .bg(if on { t.accent_pressed } else { t.surface })
                                     .radius(4.0),
-                                |ui| {
-                                    ui.text(
-                                        name,
-                                        TextStyle::new(13.0).color(if on {
-                                            t.on_accent
-                                        } else {
-                                            t.muted
-                                        }),
-                                    )
-                                },
+                                name,
+                                TextStyle::new(13.0).color(if on { t.on_accent } else { t.muted }),
                             );
                         }
                     },
@@ -291,24 +275,21 @@ impl App for A11y {
                 // a re-keyed node is a new node, which drops keyboard focus and
                 // leaves a screen reader's cursor on an element that no longer
                 // exists.
-                ui.with_keyed(
+                ui.text_in_keyed(
                     "count",
-                    widgets::button_spec(&ui.theme(), &ui.metrics()).on_click(Value::str("press")),
-                    |ui| {
-                        ui.text(
-                            &format!("count {}", self.presses),
-                            TextStyle::new(widgets::BUTTON_TEXT).color(on_button),
-                        )
-                    },
+                    widgets::button_spec(&ui.theme(), &ui.metrics()).on_click("press"),
+                    &format!("count {}", self.presses),
+                    TextStyle::new(widgets::BUTTON_TEXT).color(on_button),
                 );
 
                 // An icon button: nothing to read inside, so it needs a label.
-                ui.with_keyed(
+                ui.text_in_keyed(
                     "save",
                     widgets::button_spec(&ui.theme(), &ui.metrics())
-                        .on_click(Value::str("save"))
+                        .on_click("save")
                         .label("Save"),
-                    |ui| ui.text("⌘", TextStyle::new(15.0).color(on_button)),
+                    "⌘",
+                    TextStyle::new(15.0).color(on_button),
                 );
 
                 // A one-off announcement: nothing on screen says "Copied", and
@@ -327,25 +308,21 @@ impl App for A11y {
                 // text inside, and a reader announces the count each time it
                 // changes. `polite` waits for a pause — `assertive` would
                 // interrupt, which a save confirmation has not earned.
-                ui.with_keyed(
+                ui.text_in_keyed(
                     "status",
                     NodeSpec::row()
                         .live(Live::Polite)
                         .pad_xy(10.0, 5.0)
                         .bg(t.sunken)
                         .radius(4.0),
-                    |ui| {
-                        ui.text(
-                            &if self.saves == 0 {
-                                "No changes saved".to_string()
-                            } else if self.saves == 1 {
-                                "Saved 1 change".to_string()
-                            } else {
-                                format!("Saved {} changes", self.saves)
-                            },
-                            text,
-                        )
+                    &if self.saves == 0 {
+                        "No changes saved".to_string()
+                    } else if self.saves == 1 {
+                        "Saved 1 change".to_string()
+                    } else {
+                        format!("Saved {} changes", self.saves)
                     },
+                    text,
                 );
 
                 // The button that opens the modal below.
@@ -382,10 +359,10 @@ impl App for A11y {
                                         .self_at(Align::Start, Align::Start)
                                         .fit(),
                                 )
-                                .modal(Value::str("menu"))
+                                .modal("menu")
                                 .role(Role::Menu)
                                 .label("Actions")
-                                .width(Sizing::Fixed(180.0))
+                                .width(180.0)
                                 .pad(4.0)
                                 .gap(2.0)
                                 .bg(t.surface)
@@ -393,16 +370,17 @@ impl App for A11y {
                                 .radius(6.0),
                             |ui| {
                                 for name in ["Rename", "Duplicate", "Archive"] {
-                                    ui.with_keyed(
+                                    ui.text_in_keyed(
                                         name,
                                         NodeSpec::row()
                                             .role(Role::MenuItem)
                                             .on_click(Value::str(format!("menu:{name}")))
-                                            .width(Sizing::Grow(1.0))
+                                            .grow_width()
                                             .pad_xy(8.0, 5.0)
                                             .radius(4.0)
                                             .focus_bg(t.accent_soft),
-                                        |ui| ui.text(name, TextStyle::new(13.0).color(t.fg)),
+                                        name,
+                                        TextStyle::new(13.0).color(t.fg),
                                     );
                                 }
                             },
@@ -447,9 +425,11 @@ impl App for A11y {
                 // A built-in editor: the core owns the buffer, so its runs, caret
                 // and selection come out of the edit store, and a screen reader's
                 // selection and text requests are applied for you.
-                ui.with(NodeSpec::row().role(Role::Heading), |ui| {
-                    ui.text("Built-in editor", TextStyle::new(15.0).color(t.fg))
-                });
+                ui.text_in(
+                    NodeSpec::row().role(Role::Heading),
+                    "Built-in editor",
+                    TextStyle::new(15.0).color(t.fg),
+                );
                 self.edit = ui.text_edit(
                     "doc",
                     DOC,
@@ -459,8 +439,7 @@ impl App for A11y {
                         ..Default::default()
                     },
                     NodeSpec::column()
-                        .width(Sizing::Fixed(280.0))
-                        .height(Sizing::Fixed(56.0))
+                        .size(280.0, 56.0)
                         .pad(8.0)
                         .bg(t.sunken)
                         .radius(6.0)
@@ -471,18 +450,20 @@ impl App for A11y {
                 // An editor the app owns: the sink says what it is, each drawn
                 // row is a line of its text, and the caret rides along as a byte
                 // offset. Text requests come back as `access` events.
-                ui.with(NodeSpec::row().role(Role::Heading), |ui| {
-                    ui.text("App-owned editor", TextStyle::new(15.0).color(t.fg))
-                });
+                ui.text_in(
+                    NodeSpec::row().role(Role::Heading),
+                    "App-owned editor",
+                    TextStyle::new(15.0).color(t.fg),
+                );
                 let (lines, caret) = (&self.lines, self.caret);
                 sink = ui.with_keyed(
                     "code",
                     NodeSpec::column()
-                        .width(Sizing::Fixed(280.0))
+                        .width(280.0)
                         .pad(8.0)
                         .bg(t.sunken)
                         .radius(6.0)
-                        .on_key(Value::str("code"))
+                        .on_key("code")
                         .role(Role::MultilineTextInput)
                         .label("Source"),
                     |ui| {
@@ -502,14 +483,12 @@ impl App for A11y {
                                     if caret.0 == i {
                                         row = row.caret(caret.1.min(line.len()) as u32);
                                     }
-                                    ui.with_keyed(&format!("l{i}"), row, |ui| {
-                                        ui.text(
-                                            line,
-                                            TextStyle::new(13.0)
-                                                .mono()
-                                                .color(text.color_or_default()),
-                                        );
-                                    });
+                                    ui.text_in_keyed(
+                                        &format!("l{i}"),
+                                        row,
+                                        line,
+                                        TextStyle::new(13.0).mono().color(text.color_or_default()),
+                                    );
                                 }
                             });
                         });
@@ -527,14 +506,10 @@ impl App for A11y {
             ui.with_keyed(
                 "confirm",
                 NodeSpec::column()
-                    .float(
-                        FloatConfig::viewport()
-                            .at(Align::Center, Align::Center)
-                            .self_at(Align::Center, Align::Center),
-                    )
-                    .modal(Value::str("confirm"))
+                    .float(FloatConfig::viewport().inside(Align::Center, Align::Center))
+                    .modal("confirm")
                     .label("Delete note")
-                    .width(Sizing::Fixed(260.0))
+                    .width(260.0)
                     .gap(10.0)
                     .pad(14.0)
                     .bg(t.surface)
@@ -551,17 +526,13 @@ impl App for A11y {
                         // because Cancel happens to be declared first — and
                         // that is exactly the thing an app should not have
                         // to keep true by hand.
-                        ui.with_keyed(
+                        ui.text_in_keyed(
                             "Cancel",
                             widgets::button_spec(&ui.theme(), &ui.metrics())
-                                .on_click(Value::str("cancel"))
+                                .on_click("cancel")
                                 .initial_focus(),
-                            |ui| {
-                                ui.text(
-                                    "Cancel",
-                                    TextStyle::new(widgets::BUTTON_TEXT).color(on_button),
-                                )
-                            },
+                            "Cancel",
+                            TextStyle::new(widgets::BUTTON_TEXT).color(on_button),
                         );
                         widgets::button(ui, "Delete", Value::str("delete"));
                     });
@@ -663,10 +634,10 @@ impl App for A11y {
         }
         // Escape, or a click outside the dialog: the core asks, the app
         // decides. A dialog holding unsaved work could ask again here.
-        if payload.get("kind").and_then(Value::as_str) == Some("dismiss") {
-            let reason = payload.get("reason").and_then(Value::as_str).unwrap_or("");
+        if payload.get_str("kind") == Some("dismiss") {
+            let reason = payload.get_str("reason").unwrap_or("");
             // Two modals now, so the tag says which one asked to go.
-            let which = payload.get("tag").and_then(Value::as_str).unwrap_or("");
+            let which = payload.get_str("tag").unwrap_or("");
             println!("dismiss {which} ({reason})");
             match which {
                 "menu" => self.menu = false,
@@ -677,12 +648,9 @@ impl App for A11y {
         // The sliders: the core proposes a value — stepped, clamped and
         // snapped already — and which slider moved is its own tag. The
         // reading the next frame declares is what a reader announces.
-        if payload.get("kind").and_then(Value::as_str) == Some("change") {
-            let value = payload
-                .get("value")
-                .and_then(Value::as_float)
-                .unwrap_or(0.0) as f32;
-            match payload.get("tag").and_then(Value::as_str) {
+        if payload.get_str("kind") == Some("change") {
+            let value = payload.get_float("value").unwrap_or(0.0) as f32;
+            match payload.get_str("tag") {
                 Some("focus") => {
                     self.focus_min = value;
                     println!("focus length -> {} minutes", self.focus_min as i32);
@@ -694,23 +662,23 @@ impl App for A11y {
             }
             return;
         }
-        if payload.get("kind").and_then(Value::as_str) != Some("access") {
+        if payload.get_str("kind") != Some("access") {
             return;
         }
-        let action = payload.get("action").and_then(Value::as_str).unwrap_or("");
+        let action = payload.get_str("action").unwrap_or("");
         match action {
             // The app-owned editor: line ordinals among the rows it drew
             // (all of them here), byte offsets into their text.
             "setTextSelection" => {
                 if let Some(f) = payload.get("focus") {
-                    let line = f.get("line").and_then(Value::as_int).unwrap_or(0) as usize;
-                    let offset = f.get("offset").and_then(Value::as_int).unwrap_or(0) as usize;
+                    let line = f.get_int("line").unwrap_or(0) as usize;
+                    let offset = f.get_int("offset").unwrap_or(0) as usize;
                     self.caret = (line, offset);
                     println!("caret -> {line}:{offset}");
                 }
             }
             "replaceSelectedText" | "setValue" => {
-                let text = payload.get("text").and_then(Value::as_str).unwrap_or("");
+                let text = payload.get_str("text").unwrap_or("");
                 if action == "setValue" {
                     self.lines = text.split('\n').map(String::from).collect();
                     self.caret = (0, 0);

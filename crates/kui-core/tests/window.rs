@@ -2,9 +2,7 @@
 //! `WindowCommand`s for the driver, never `UiEvent`s — through a live `Core`.
 
 use kui_core::testing::{click_at, drive};
-use kui_core::{
-    Core, InputEvent, NodeSpec, Size, Sizing, Vec2, WindowButton, WindowCommand, WindowId,
-};
+use kui_core::{Core, InputEvent, NodeSpec, Size, Vec2, WindowButton, WindowCommand, WindowId};
 
 /// Builds a custom-chrome-ish frame: a 40px drag strip with min/max/close
 /// buttons on the right, over a plain button in the content area.
@@ -12,32 +10,19 @@ fn frame(core: &mut Core) {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
     ui.with(
-        NodeSpec::row()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Fixed(40.0))
-            .window_drag(),
+        NodeSpec::row().grow_width().height(40.0).window_drag(),
         |ui| {
-            ui.leaf(NodeSpec::row().width(Sizing::Grow(1.0)));
+            ui.leaf(NodeSpec::row().grow_width());
             for b in [
                 WindowButton::Minimize,
                 WindowButton::Maximize,
                 WindowButton::Close,
             ] {
-                ui.leaf(
-                    NodeSpec::row()
-                        .width(Sizing::Fixed(40.0))
-                        .height(Sizing::Grow(1.0))
-                        .window_button(b),
-                );
+                ui.leaf(NodeSpec::row().width(40.0).grow_height().window_button(b));
             }
         },
     );
-    ui.leaf(
-        NodeSpec::row()
-            .width(Sizing::Fixed(100.0))
-            .height(Sizing::Fixed(30.0))
-            .on_click("content-click"),
-    );
+    ui.leaf(NodeSpec::row().size(100.0, 30.0).on_click("content-click"));
     ui.finish();
 }
 

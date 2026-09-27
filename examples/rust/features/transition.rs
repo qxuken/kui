@@ -67,8 +67,7 @@ impl App for Motion {
                 });
                 ui.with(
                     NodeSpec::row()
-                        .width(Sizing::Fixed(420.0))
-                        .height(Sizing::Fixed(14.0))
+                        .size(420.0, 14.0)
                         .bg(t.sunken)
                         .radius(7.0),
                     |ui| {
@@ -76,7 +75,7 @@ impl App for Motion {
                             "bar",
                             NodeSpec::row()
                                 .width(Sizing::Percent(self.level))
-                                .height(Sizing::Grow(1.0))
+                                .grow_height()
                                 .bg(t.accent)
                                 .radius(7.0)
                                 .transition(600.0));
@@ -88,21 +87,19 @@ impl App for Motion {
                 ui.with_keyed(
                     "lanes",
                     NodeSpec::column()
-                        .width(Sizing::Fixed(420.0))
+                        .width(420.0)
                         .gap(6.0)
                         .pad(8.0)
                         .bg(t.surface)
                         .radius(8.0)
                         .border(1.0, t.border)
-                        .on_click(Value::str("race")),
+                        .on_click("race"),
                     |ui| {
                         for (name, easing) in EASINGS {
-                            ui.with(NodeSpec::row().width(Sizing::Grow(1.0)).gap(8.0).cross_align(Align::Center), |ui| {
-                                ui.with(NodeSpec::row().width(Sizing::Fixed(80.0)), |ui| {
-                                    ui.text(name, TextStyle::new(11.0).color(t.muted));
-                                });
+                            ui.with(NodeSpec::row().grow_width().gap(8.0).cross_align(Align::Center), |ui| {
+                                ui.text_in(NodeSpec::row().width(80.0), name, TextStyle::new(11.0).color(t.muted));
                                 ui.with(
-                                    NodeSpec::row().width(Sizing::Grow(1.0)).height(Sizing::Fixed(16.0)),
+                                    NodeSpec::row().grow_width().height(16.0),
                                     |ui| {
                                         // The racer floats inside its lane; `slide`
                                         // is what makes its *position* ease.
@@ -111,11 +108,9 @@ impl App for Motion {
                                             NodeSpec::row()
                                                 .float(
                                                     FloatConfig::parent()
-                                                        .at(if self.far { Align::End } else { Align::Start }, Align::Center)
-                                                        .self_at(if self.far { Align::End } else { Align::Start }, Align::Center),
+                                                        .inside(if self.far { Align::End } else { Align::Start }, Align::Center),
                                                 )
-                                                .width(Sizing::Fixed(16.0))
-                                                .height(Sizing::Fixed(16.0))
+                                                .size(16.0, 16.0)
                                                 .radius(8.0)
                                                 .bg(t.accent)
                                                 .transition(900.0)
@@ -133,28 +128,21 @@ impl App for Motion {
                 ui.with_keyed(
                     "stage",
                     NodeSpec::row()
-                        .width(Sizing::Fixed(420.0))
-                        .height(Sizing::Fixed(64.0))
+                        .size(420.0, 64.0)
                         .bg(t.sunken)
                         .radius(8.0)
-                        .on_click(Value::str("flip")),
+                        .on_click("flip"),
                     |ui| {
                         let side = if self.right { Align::End } else { Align::Start };
-                        ui.with_keyed(
-                            "card",
-                            NodeSpec::column()
-                                .float(FloatConfig::parent().at(side, Align::Center).self_at(side, Align::Center).offset(0.0, 0.0))
+                        ui.text_in_keyed("card", NodeSpec::column()
+                                .float(FloatConfig::parent().inside(side, Align::Center).offset(0.0, 0.0))
                                 .pad_xy(14.0, 10.0)
                                 .bg(t.raised)
                                 .radius(8.0)
                                 .border(1.0, t.border)
                                 .transition(500.0)
                                 .easing(Easing::EaseInOut)
-                                .slide(),
-                            |ui| {
-                                ui.text("click the stage", TextStyle::new(13.0));
-                            },
-                        );
+                                .slide(), "click the stage", TextStyle::new(13.0));
                     },
                 );
 
@@ -173,8 +161,7 @@ impl App for Motion {
                             ui.leaf_keyed(
                                 name,
                                 NodeSpec::row()
-                                    .width(Sizing::Fixed(48.0))
-                                    .height(Sizing::Fixed(48.0))
+                                    .size(48.0, 48.0)
                                     .bg(t.accent)
                                     .radius(6.0)
                                     .transition(1200.0)
@@ -193,8 +180,7 @@ impl App for Motion {
                             ui.leaf_keyed(
                                 &format!("chase{i}"),
                                 NodeSpec::row()
-                                    .width(Sizing::Fixed(12.0))
-                                    .height(Sizing::Fixed(12.0))
+                                    .size(12.0, 12.0)
                                     .radius(6.0)
                                     .bg(t.faint)
                                     .transition(800.0)
@@ -220,7 +206,7 @@ impl App for Motion {
             Some("race") => self.far = !self.far,
             Some("flip") => self.right = !self.right,
             _ => {
-                if let Some(to) = ev.payload.get("to").and_then(Value::as_float) {
+                if let Some(to) = ev.payload.get_float("to") {
                     self.level = to as f32;
                 }
             }

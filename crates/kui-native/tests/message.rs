@@ -58,14 +58,11 @@ fn a_message_is_a_map_with_a_snake_case_kind() {
         path: "ab".into(),
         dir: Dir::H,
     });
-    assert_eq!(split.get("path").and_then(Value::as_str), Some("ab"));
+    assert_eq!(split.get_str("path"), Some("ab"));
     // A `string` enum is a bare string where it is a field.
     assert_eq!(split.get("dir"), Some(&Value::str("h")));
     // A tuple variant's fields are keyed by position.
-    assert_eq!(
-        Value::from(Msg::Pick(7)).get("0").and_then(Value::as_int),
-        Some(7)
-    );
+    assert_eq!(Value::from(Msg::Pick(7)).get_int("0"), Some(7));
     let r = Value::from(Resize { w: 2.0, h: 3.0 });
     assert_eq!(r.get("kind"), Some(&Value::str("resize")));
 }
@@ -191,7 +188,7 @@ fn ui_event_message_reads_a_click_and_a_drags_tag() {
     let evs = core.handle_input(InputEvent::mouse_down(1));
     let drag = evs
         .iter()
-        .find(|e| e.payload.get("kind").and_then(Value::as_str) == Some("drag"))
+        .find(|e| e.kind() == Some("drag"))
         .expect("a drag start");
     assert_eq!(
         drag.message::<Msg>(),
@@ -201,10 +198,7 @@ fn ui_event_message_reads_a_click_and_a_drags_tag() {
         })
     );
     // The event's own fields stay on the payload.
-    assert_eq!(
-        drag.payload.get("phase").and_then(Value::as_str),
-        Some("start")
-    );
+    assert_eq!(drag.payload.get_str("phase"), Some("start"));
     // A message of another type is not this one.
     assert_eq!(drag.message::<Resize>(), None);
 }

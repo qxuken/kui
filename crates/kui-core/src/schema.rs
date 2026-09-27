@@ -3760,10 +3760,11 @@ mod tests {
         ui.window_title("Demo");
         ui.configure_root(NodeSpec::column().fill());
         ui.leaf_keyed("titlebar", NodeSpec::row().window_drag());
-        ui.with_keyed(
+        ui.text_in_keyed(
             "scroll",
-            NodeSpec::column().height(Sizing::Fixed(40.0)).scroll_y(),
-            |ui| ui.text("hello", TextStyle::new(12.0)),
+            NodeSpec::column().height(40.0).scroll_y(),
+            "hello",
+            TextStyle::new(12.0),
         );
         ui.finish();
         core.access_tree().nodes.iter().map(|n| n.role).collect()

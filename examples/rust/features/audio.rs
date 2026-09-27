@@ -54,9 +54,12 @@ fn sound_button(ui: &mut Ui<'_>, name: &str, label: &str, payload: Value, sound:
     // Readable on whatever this button's background *is*, which is the
     // rule `widgets::button_with` applies to the stock one.
     let fg = widgets::readable_on(spec.style.bg);
-    ui.with_keyed(name, spec, |ui| {
-        ui.text(label, TextStyle::new(widgets::BUTTON_TEXT).color(fg))
-    });
+    ui.text_in_keyed(
+        name,
+        spec,
+        label,
+        TextStyle::new(widgets::BUTTON_TEXT).color(fg),
+    );
 }
 
 impl App for Audio {
@@ -113,7 +116,7 @@ impl App for Audio {
                         // `hover_sound` — the tick plays when the pointer
                         // arrives, and `on_hover` reports the same arrival
                         // as data so the count above can follow it.
-                        ui.with_keyed(
+                        ui.text_in_keyed(
                             "badge",
                             NodeSpec::column()
                                 .pad_xy(12.0, 6.0)
@@ -122,9 +125,8 @@ impl App for Audio {
                                 .hoverable()
                                 .hover_sound(sounds.tick)
                                 .on_hover(Value::map([("kind", "hover".into())])),
-                            |ui| {
-                                ui.text("hover me", TextStyle::new(13.0));
-                            },
+                            "hover me",
+                            TextStyle::new(13.0),
                         );
                     });
                 },
@@ -137,12 +139,10 @@ impl App for Audio {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.payload.get("kind").and_then(Value::as_str) {
+        match ev.kind() {
             Some("click") => self.clicks += 1,
             Some("hum") => self.hum = !self.hum,
-            Some("hover") if ev.payload.get("phase").and_then(Value::as_str) == Some("enter") => {
-                self.hovers += 1
-            }
+            Some("hover") if ev.payload.get_str("phase") == Some("enter") => self.hovers += 1,
             _ => {}
         }
     }

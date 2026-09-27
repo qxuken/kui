@@ -8,7 +8,7 @@
 use kui_core::line::{CURVE_STEP, flatten_curve};
 use kui_core::{
     Color, Core, FloatAnchor, FloatConfig, InputEvent, MouseButton, NodeSpec, Quad, QuadKind, Size,
-    Sizing, Stroke, Value, Vec2,
+    Stroke, Value, Vec2,
 };
 
 const VIEW: Size = Size { w: 300.0, h: 200.0 };
@@ -126,26 +126,14 @@ fn a_line_takes_no_room_and_paints_over_its_siblings() {
     let mut core = Core::new();
     let quads = frame(&mut core, 1.0, |ui| {
         ui.with(NodeSpec::column().gap(4.0), |ui| {
-            ui.leaf_keyed(
-                "a",
-                NodeSpec::column()
-                    .width(Sizing::Fixed(50.0))
-                    .height(Sizing::Fixed(20.0))
-                    .bg(Color::WHITE),
-            );
+            ui.leaf_keyed("a", NodeSpec::column().size(50.0, 20.0).bg(Color::WHITE));
             ui.line(
                 Vec2::new(0.0, 0.0),
                 Vec2::new(50.0, 50.0),
                 Stroke::new(1.0, Color::WHITE),
                 NodeSpec::column(),
             );
-            ui.leaf_keyed(
-                "b",
-                NodeSpec::column()
-                    .width(Sizing::Fixed(50.0))
-                    .height(Sizing::Fixed(20.0))
-                    .bg(Color::WHITE),
-            );
+            ui.leaf_keyed("b", NodeSpec::column().size(50.0, 20.0).bg(Color::WHITE));
         });
     });
     let solids: Vec<&Quad> = quads.iter().filter(|q| q.kind == QuadKind::Solid).collect();
@@ -206,9 +194,8 @@ fn a_line_with_input_is_hit_by_its_stroke() {
             // folds its children into its name, and the point here is
             // the line's own row.
             NodeSpec::column()
-                .width(Sizing::Fixed(100.0))
-                .height(Sizing::Fixed(100.0))
-                .on_click(Value::str("under"))
+                .size(100.0, 100.0)
+                .on_click("under")
                 .role(kui_core::Role::Group)
                 .label("under"),
             |ui| {
@@ -217,9 +204,7 @@ fn a_line_with_input_is_hit_by_its_stroke() {
                     Vec2::new(0.0, 0.0),
                     Vec2::new(100.0, 100.0),
                     Stroke::new(8.0, Color::WHITE),
-                    NodeSpec::column()
-                        .on_click(Value::str("line"))
-                        .label("the diagonal"),
+                    NodeSpec::column().on_click("line").label("the diagonal"),
                 );
             },
         );

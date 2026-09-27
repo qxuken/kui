@@ -666,6 +666,7 @@ impl<'a> Ui<'a> {
     /// A box of `spec` holding one text: `with(spec, |ui| ui.text(…))` for
     /// the label, the cell, the badge that needs a width, a background, a
     /// click or a role. Returns the box's key.
+    #[inline]
     pub fn text_in(&mut self, spec: NodeSpec, content: &str, style: TextStyle) -> Key {
         let key = self.open(spec);
         self.text(content, style);
@@ -674,6 +675,7 @@ impl<'a> Ui<'a> {
     }
 
     /// [`Self::text_in`] under a label key.
+    #[inline]
     pub fn text_in_keyed(
         &mut self,
         label: &str,
@@ -688,6 +690,7 @@ impl<'a> Ui<'a> {
     }
 
     /// [`Self::text_in`] under a data index; see [`Self::open_indexed`].
+    #[inline]
     pub fn text_in_indexed(
         &mut self,
         i: u64,

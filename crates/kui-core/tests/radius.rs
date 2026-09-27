@@ -2,16 +2,11 @@
 //! override one, the quads carry all four (scaled), and a transition eases
 //! each corner independently.
 
-use kui_core::{Core, NodeSpec, Size, Sizing, corner};
+use kui_core::{Core, NodeSpec, Size, corner};
 
 fn quad_radii(core: &mut Core, spec: NodeSpec, scale: f32) -> [f32; 4] {
     let mut ui = core.frame(Size::new(200.0, 100.0), scale);
-    ui.leaf_keyed(
-        "box",
-        spec.bg(kui_core::Color::WHITE)
-            .width(Sizing::Fixed(80.0))
-            .height(Sizing::Fixed(40.0)),
-    );
+    ui.leaf_keyed("box", spec.bg(kui_core::Color::WHITE).size(80.0, 40.0));
     ui.finish();
     let (dl, _) = core.output();
     dl.quads[0].radius

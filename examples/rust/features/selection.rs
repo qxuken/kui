@@ -21,8 +21,7 @@
 
 use kui_devtools::{Drive, Example};
 use kui_native::{
-    Align, App, Cell, CellGrid, Core, EditOptions, FontFamily, NodeSpec, Sizing, Span, TextStyle,
-    Theme, Ui,
+    Align, App, Cell, CellGrid, Core, EditOptions, FontFamily, NodeSpec, Span, TextStyle, Theme, Ui,
 };
 
 const LINES: [&str; 4] = [
@@ -37,7 +36,7 @@ struct Selection;
 
 fn card(t: &Theme) -> NodeSpec {
     NodeSpec::column()
-        .width(Sizing::Grow(1.0))
+        .grow_width()
         .max_width(560.0)
         .pad(20.0)
         .gap(10.0)
@@ -119,7 +118,7 @@ impl App for Selection {
                         "term",
                         &grid,
                         NodeSpec::column()
-                            .width(Sizing::Grow(1.0))
+                            .grow_width()
                             .pad(10.0)
                             .radius(6.0)
                             .bg(t.sunken)
@@ -139,7 +138,7 @@ impl App for Selection {
                         "Select in here with a drag, a double-click, or Shift and the arrows.",
                         &EditOptions::default(),
                         NodeSpec::column()
-                            .width(Sizing::Grow(1.0))
+                            .grow_width()
                             .pad(10.0)
                             .radius(6.0)
                             .bg(t.bg)
@@ -148,14 +147,13 @@ impl App for Selection {
                     );
                 });
 
-                ui.with(
+                ui.text_in(
                     NodeSpec::row()
-                        .width(Sizing::Grow(1.0))
+                        .grow_width()
                         .max_width(560.0)
                         .main_align(Align::End),
-                    |ui| {
-                        ui.text(&readout, TextStyle::new(12.0).color(t.accent));
-                    },
+                    &readout,
+                    TextStyle::new(12.0).color(t.accent),
                 );
             },
         );

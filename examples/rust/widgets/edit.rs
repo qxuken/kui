@@ -14,7 +14,7 @@
 
 use kui_devtools::{Drive, Example};
 use kui_native::{
-    Align, App, Core, EditOptions, FontFamily, Key, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value,
+    Align, App, Core, EditOptions, FontFamily, Key, NodeSpec, TextStyle, Ui, UiEvent,
 };
 
 const INITIAL: &str = "\
@@ -54,7 +54,7 @@ impl App for Edit {
             // element with `multiline: false`, chrome, and a focus ring.
             ui.with(
                 NodeSpec::row()
-                    .width(Sizing::Grow(1.0))
+                    .grow_width()
                     .pad(12.0)
                     .gap(12.0)
                     .cross_align(Align::Center)
@@ -79,47 +79,38 @@ impl App for Edit {
             // The document: the edit node grows its height with content
             // inside a scroll container, so the document scrolls as it
             // grows.
-            ui.with(
-                NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Grow(1.0))
-                    .scroll_y(),
-                |ui| {
-                    let key = ui.text_edit(
-                        "doc",
-                        INITIAL,
-                        &EditOptions {
-                            style: TextStyle::new(14.0)
-                                .family(FontFamily::Mono)
-                                .line_height(22.0),
-                            multiline: true,
-                            autofocus: true,
-                            ..Default::default()
-                        },
-                        // Nothing inside an editor names it, so
-                        // `control-without-name` is right to ask: a screen
-                        // reader would say "text input".
-                        NodeSpec::column()
-                            .width(Sizing::Grow(1.0))
-                            .pad(20.0)
-                            .label("document"),
-                    );
-                    self.doc = Some(key);
-                    // Recount only when the document actually changed —
-                    // pulling the full text out every frame would be
-                    // O(doc) per keystroke.
-                    let version = ui.core().edit.version(key);
-                    if version != self.seen_version || self.chars == 0 {
-                        self.recount(ui.edit_text(key));
-                        self.seen_version = version;
-                    }
-                },
-            );
+            ui.with(NodeSpec::column().fill().scroll_y(), |ui| {
+                let key = ui.text_edit(
+                    "doc",
+                    INITIAL,
+                    &EditOptions {
+                        style: TextStyle::new(14.0)
+                            .family(FontFamily::Mono)
+                            .line_height(22.0),
+                        multiline: true,
+                        autofocus: true,
+                        ..Default::default()
+                    },
+                    // Nothing inside an editor names it, so
+                    // `control-without-name` is right to ask: a screen
+                    // reader would say "text input".
+                    NodeSpec::column().grow_width().pad(20.0).label("document"),
+                );
+                self.doc = Some(key);
+                // Recount only when the document actually changed —
+                // pulling the full text out every frame would be
+                // O(doc) per keystroke.
+                let version = ui.core().edit.version(key);
+                if version != self.seen_version || self.chars == 0 {
+                    self.recount(ui.edit_text(key));
+                    self.seen_version = version;
+                }
+            });
 
             // Status bar.
             ui.with(
                 NodeSpec::row()
-                    .width(Sizing::Grow(1.0))
+                    .grow_width()
                     .pad_xy(12.0, 6.0)
                     .gap(16.0)
                     .bg(t.surface)
@@ -129,7 +120,7 @@ impl App for Edit {
                     let muted = TextStyle::new(12.0).color(t.muted);
                     ui.text(&format!("{} lines", self.lines), muted);
                     ui.text(&format!("{} chars", self.chars), muted);
-                    ui.leaf(NodeSpec::row().width(Sizing::Grow(1.0)));
+                    ui.leaf(NodeSpec::row().grow_width());
                     ui.text(
                         if self.edited { "edited" } else { "saved" },
                         TextStyle::new(12.0).color(if self.edited { t.warning } else { t.success }),
@@ -140,7 +131,7 @@ impl App for Edit {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.payload.get("kind").and_then(Value::as_str) {
+        match ev.kind() {
             Some("changed") if Some(ev.key) == self.doc => {
                 self.edited = true;
                 self.chars = 0; // recount next view

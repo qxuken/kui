@@ -1,7 +1,7 @@
 //! End-to-end scrolling through a live `Core`: wheel routing, offset clamping,
 //! content movement, clipping of draw + hit regions, scrollbar emission.
 
-use kui_core::{Color, Core, InputEvent, NodeSpec, Size, Sizing, Value, Vec2};
+use kui_core::{Color, Core, InputEvent, NodeSpec, Size, Value, Vec2};
 
 const VIEW_H: f32 = 200.0;
 const ROWS: usize = 20;
@@ -15,8 +15,8 @@ fn frame(core: &mut Core) {
             ui.leaf_keyed(
                 &format!("row{i}"),
                 NodeSpec::row()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Fixed(ROW_H))
+                    .grow_width()
+                    .height(ROW_H)
                     .bg(Color::rgb8(40, 40, 60))
                     .on_click(Value::Int(i as i64)),
             );
@@ -104,7 +104,7 @@ fn scrollbar_appears_only_when_overflowing() {
     // A short list needs no scrollbar.
     let mut ui = core.frame(Size::new(400.0, VIEW_H), 1.0);
     ui.with_keyed("list", NodeSpec::column().fill().scroll_y(), |ui| {
-        ui.leaf(NodeSpec::row().height(Sizing::Fixed(50.0)).bg(Color::WHITE));
+        ui.leaf(NodeSpec::row().height(50.0).bg(Color::WHITE));
     });
     ui.finish();
     let (dl, _) = core.output();
@@ -125,8 +125,8 @@ fn scroll_offset_survives_and_reclamps_on_content_shrink() {
             ui.leaf_keyed(
                 &format!("row{i}"),
                 NodeSpec::row()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Fixed(ROW_H))
+                    .grow_width()
+                    .height(ROW_H)
                     .bg(Color::rgb8(40, 40, 60)),
             );
         }
@@ -237,8 +237,8 @@ fn reveal_reaches_a_row_the_frame_declares_for_the_first_time() {
             ui.leaf_keyed(
                 &format!("row{i}"),
                 NodeSpec::row()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Fixed(ROW_H))
+                    .grow_width()
+                    .height(ROW_H)
                     .bg(Color::rgb8(40, 40, 60)),
             );
         }
@@ -257,9 +257,7 @@ fn two_lists(core: &mut Core) {
             for i in 0..ROWS {
                 ui.leaf_keyed(
                     &format!("row{i}"),
-                    NodeSpec::row()
-                        .width(Sizing::Grow(1.0))
-                        .height(Sizing::Fixed(ROW_H)),
+                    NodeSpec::row().grow_width().height(ROW_H),
                 );
             }
         });
@@ -926,8 +924,8 @@ fn styled(core: &mut Core, style: impl Fn(NodeSpec) -> NodeSpec) {
             ui.leaf_keyed(
                 &format!("row{i}"),
                 NodeSpec::row()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Fixed(ROW_H))
+                    .grow_width()
+                    .height(ROW_H)
                     .bg(Color::rgb8(40, 40, 60)),
             );
         }
@@ -1103,8 +1101,8 @@ fn hover_over_the_scrollbar_is_not_hover_over_the_row_beneath() {
                 ui.leaf_keyed(
                     &format!("row{i}"),
                     NodeSpec::row()
-                        .width(Sizing::Grow(1.0))
-                        .height(Sizing::Fixed(ROW_H))
+                        .grow_width()
+                        .height(ROW_H)
                         .bg(Color::rgb8(40, 40, 60))
                         .hover_bg(Color::WHITE)
                         .on_hover(Value::Int(i as i64)),
@@ -1127,10 +1125,7 @@ fn hover_over_the_scrollbar_is_not_hover_over_the_row_beneath() {
     // plain arrow the bar has.
     let evs = hover(&mut core, Vec2::new(398.0, 45.0));
     assert_eq!(kinds(&evs), ["hover"], "the leave");
-    assert_eq!(
-        evs[0].payload.get("phase").and_then(Value::as_str),
-        Some("leave")
-    );
+    assert_eq!(evs[0].payload.get_str("phase"), Some("leave"));
     assert_eq!(
         hovered_row(&mut core),
         None,
@@ -1138,10 +1133,7 @@ fn hover_over_the_scrollbar_is_not_hover_over_the_row_beneath() {
     );
     // Back beside it: entered again.
     let evs = hover(&mut core, Vec2::new(200.0, 45.0));
-    assert_eq!(
-        evs[0].payload.get("phase").and_then(Value::as_str),
-        Some("enter")
-    );
+    assert_eq!(evs[0].payload.get_str("phase"), Some("enter"));
     assert_eq!(hovered_row(&mut core), core.key_of("row1"));
 }
 
@@ -1155,19 +1147,12 @@ fn strokes_in_a_scrolled_row_are_clipped_by_the_container() {
     let build = |core: &mut Core| {
         let mut ui = core.frame(Size::new(400.0, VIEW_H), 1.0);
         ui.configure_root(NodeSpec::column().fill());
-        ui.leaf_keyed(
-            "strip",
-            NodeSpec::row()
-                .width(Sizing::Grow(1.0))
-                .height(Sizing::Fixed(40.0)),
-        );
+        ui.leaf_keyed("strip", NodeSpec::row().grow_width().height(40.0));
         ui.with_keyed("list", NodeSpec::column().fill().scroll_y(), |ui| {
             for i in 0..ROWS {
                 ui.with_keyed(
                     &format!("row{i}"),
-                    NodeSpec::row()
-                        .width(Sizing::Grow(1.0))
-                        .height(Sizing::Fixed(ROW_H)),
+                    NodeSpec::row().grow_width().height(ROW_H),
                     |ui| {
                         ui.line(
                             Vec2::new(10.0, 0.0),
@@ -1231,14 +1216,10 @@ fn a_programmatic_scroll_eases_where_the_container_asks_and_the_wheel_never_does
         let mut boxes = Vec::new();
         let row = ui.with_keyed("row", spec, |ui| {
             for i in 0..4 {
-                boxes.push(
-                    ui.leaf_keyed(
-                        &format!("b{i}"),
-                        NodeSpec::column()
-                            .width(Sizing::Fixed(100.0))
-                            .height(Sizing::Grow(1.0)),
-                    ),
-                );
+                boxes.push(ui.leaf_keyed(
+                    &format!("b{i}"),
+                    NodeSpec::column().width(100.0).grow_height(),
+                ));
             }
         });
         if let Some(i) = reveal {
@@ -1319,14 +1300,10 @@ fn eased_ribbon(
     let mut boxes = Vec::new();
     let row = ui.with_keyed("row", spec, |ui| {
         for i in 0..n {
-            boxes.push(
-                ui.leaf_keyed(
-                    &format!("b{i}"),
-                    NodeSpec::column()
-                        .width(Sizing::Fixed(100.0))
-                        .height(Sizing::Grow(1.0)),
-                ),
-            );
+            boxes.push(ui.leaf_keyed(
+                &format!("b{i}"),
+                NodeSpec::column().width(100.0).grow_height(),
+            ));
         }
     });
     if let Some(i) = reveal {
@@ -1452,7 +1429,7 @@ fn a_geometry_read_before_the_frame_begins_is_that_frames_read() {
         let mut ui = core.frame(Size::new(100.0, h), 1.0);
         ui.configure_root(NodeSpec::column().fill());
         let k = ui.with_keyed("list", NodeSpec::column().fill().scroll_y(), |ui| {
-            ui.leaf_keyed("tall", NodeSpec::column().height(Sizing::Fixed(1000.0)));
+            ui.leaf_keyed("tall", NodeSpec::column().height(1000.0));
         });
         ui.finish();
         k
@@ -1485,7 +1462,7 @@ fn a_read_of_a_container_not_laid_out_owes_no_frame() {
         ui.scroll_geometry(list_key());
         if show {
             ui.with_keyed("list", NodeSpec::column().fill().scroll_y(), |ui| {
-                ui.leaf_keyed("tall", NodeSpec::column().height(Sizing::Fixed(1000.0)));
+                ui.leaf_keyed("tall", NodeSpec::column().height(1000.0));
             });
         }
         ui.finish();
@@ -1564,19 +1541,12 @@ fn strokes_in_a_departing_scrolled_row_are_clipped_by_the_container() {
                 .transition(100.0)
                 .exit(kui_core::Enter::default().opacity(0.0));
             ui.with_keyed("panel", panel, |ui| {
-                ui.leaf_keyed(
-                    "strip",
-                    NodeSpec::row()
-                        .width(Sizing::Grow(1.0))
-                        .height(Sizing::Fixed(40.0)),
-                );
+                ui.leaf_keyed("strip", NodeSpec::row().grow_width().height(40.0));
                 ui.with_keyed("list", NodeSpec::column().fill().scroll_y(), |ui| {
                     for i in 0..ROWS {
                         ui.with_keyed(
                             &format!("row{i}"),
-                            NodeSpec::row()
-                                .width(Sizing::Grow(1.0))
-                                .height(Sizing::Fixed(ROW_H)),
+                            NodeSpec::row().grow_width().height(ROW_H),
                             |ui| {
                                 ui.line(
                                     Vec2::new(10.0, 0.0),

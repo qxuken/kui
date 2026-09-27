@@ -12,7 +12,7 @@ use crate::geom::{Rect, Vec2};
 use crate::key::Key;
 use crate::runtime::inspect::NodeInfo;
 use crate::spec::TextStyle;
-use crate::spec::{Align, FloatConfig, Min, NodeSpec, Sizing};
+use crate::spec::{Align, FloatConfig, Min, NodeSpec};
 use crate::theme::Theme;
 use crate::tokens::TokenKind;
 use crate::tree::OriginId;
@@ -189,7 +189,7 @@ pub(super) fn tree_tab(
     // The toolbar.
     ui.with(
         NodeSpec::row()
-            .width(Sizing::Grow(1.0))
+            .grow_width()
             .min_height(Min::FIT)
             .cross_align(Align::Center)
             .gap(6.0),
@@ -302,8 +302,7 @@ pub(super) fn tree_tab(
         ui,
         "kui-devtools/nodes",
         NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Grow(1.0))
+            .fill()
             .min_height(80.0)
             .bg(t.sunken)
             .radius(6.0)
@@ -332,8 +331,7 @@ pub(super) fn tree_tab(
             ui.with_keyed(
                 &row_key,
                 NodeSpec::row()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Grow(1.0))
+                    .fill()
                     .pad_xy(4.0, 0.0)
                     .radius(3.0)
                     .bg(if on { t.accent_soft } else { t.sunken })
@@ -346,27 +344,23 @@ pub(super) fn tree_tab(
                     .selected(on)
                     .label(format!("{} {}", n.kind.name(), name_of(n)).as_str()),
                 |ui| {
-                    ui.leaf(NodeSpec::row().width(Sizing::Fixed(row.depth as f32 * 10.0)));
+                    ui.leaf(NodeSpec::row().width(row.depth as f32 * 10.0));
                     // The disclosure: its own hit region inside the row's,
                     // so a press on it folds and does not select.
                     if n.children > 0 {
-                        ui.with_keyed(
+                        ui.text_in_keyed(
                             &format!("fold:{:016x}", n.key.0),
                             NodeSpec::row()
-                                .width(Sizing::Fixed(12.0))
-                                .height(Sizing::Grow(1.0))
+                                .width(12.0)
+                                .grow_height()
                                 .center()
                                 .on_click(action(format!("fold:{:016x}", n.key.0)))
                                 .label(if folded { "expand" } else { "collapse" }),
-                            |ui| {
-                                ui.text(
-                                    if folded { "▸" } else { "▾" },
-                                    TextStyle::new(10.0).color(t.muted),
-                                );
-                            },
+                            if folded { "▸" } else { "▾" },
+                            TextStyle::new(10.0).color(t.muted),
                         );
                     } else {
-                        ui.leaf(NodeSpec::row().width(Sizing::Fixed(12.0)));
+                        ui.leaf(NodeSpec::row().width(12.0));
                     }
                     ui.text(n.kind.name(), TextStyle::new(11.0).color(t.accent).mono());
                     let what = name_of(n);
@@ -690,8 +684,7 @@ fn inspector(
     ui.with_keyed(
         "kui-devtools/inspector",
         NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Grow(1.0))
+            .fill()
             .min_height(60.0)
             .max_height(300.0)
             .gap(4.0)
@@ -705,7 +698,7 @@ fn inspector(
             // The breadcrumb: each ancestor a button that selects it.
             ui.with(
                 NodeSpec::row()
-                    .width(Sizing::Grow(1.0))
+                    .grow_width()
                     .min_height(Min::FIT)
                     .gap(2.0)
                     .wrap()
@@ -723,7 +716,7 @@ fn inspector(
                                 name
                             }
                         };
-                        ui.with_keyed(
+                        ui.text_in_keyed(
                             &format!("crumb:{:016x}", a.key.0),
                             NodeSpec::row()
                                 .pad_xy(4.0, 1.0)
@@ -731,9 +724,8 @@ fn inspector(
                                 .hover_bg(t.hover)
                                 .on_click(action(format!("goto:{:016x}", a.key.0)))
                                 .label(what.as_str()),
-                            |ui| {
-                                ui.text(&what, TextStyle::new(10.0).color(t.muted).mono().nowrap());
-                            },
+                            &what,
+                            TextStyle::new(10.0).color(t.muted).mono().nowrap(),
                         );
                         ui.text("›", TextStyle::new(10.0).color(t.faint));
                     }
@@ -754,15 +746,15 @@ fn inspector(
             for (group, rows) in groups {
                 ui.with(
                     NodeSpec::column()
-                        .width(Sizing::Grow(1.0))
+                        .grow_width()
                         .min_height(Min::FIT)
                         .gap(1.0),
                     |ui| {
                         ui.text(group, TextStyle::new(10.0).color(t.accent));
-                        ui.with(NodeSpec::table().width(Sizing::Grow(1.0)).gap(1.0), |ui| {
+                        ui.with(NodeSpec::table().grow_width().gap(1.0), |ui| {
                             for (k, v, goto) in rows {
                                 let spec = NodeSpec::row()
-                                    .width(Sizing::Grow(1.0))
+                                    .grow_width()
                                     .gap(8.0)
                                     .pad_xy(2.0, 0.0)
                                     .radius(3.0);
@@ -875,12 +867,10 @@ pub(super) fn overlays(
             NodeSpec::row()
                 .float(
                     FloatConfig::viewport()
-                        .at(Align::Start, Align::Start)
-                        .self_at(Align::Start, Align::Start)
+                        .inside(Align::Start, Align::Start)
                         .offset(area.x, area.y),
                 )
-                .width(Sizing::Fixed(area.w.max(1.0)))
-                .height(Sizing::Fixed(area.h.max(1.0)))
+                .size(area.w.max(1.0), area.h.max(1.0))
                 .bg(t.accent.with_alpha(0.04))
                 .hoverable()
                 .cursor(crate::cursor::CursorShape::Pointer)
@@ -904,22 +894,20 @@ pub(super) fn overlays(
             } else {
                 n.rect.y + n.rect.h
             };
-            ui.with_keyed(
+            ui.text_in_keyed(
                 "kui-devtools/badge",
                 NodeSpec::row()
                     .float(
                         FloatConfig::viewport()
-                            .at(Align::Start, Align::Start)
-                            .self_at(Align::Start, Align::Start)
+                            .inside(Align::Start, Align::Start)
                             .offset(n.rect.x.max(0.0), y.max(0.0)),
                     )
                     .pad_xy(6.0, 2.0)
                     .radius(3.0)
                     .bg(t.fg)
                     .role(crate::access::Role::None),
-                |ui| {
-                    ui.text(&badge, TextStyle::new(10.0).color(t.bg).mono().nowrap());
-                },
+                &badge,
+                TextStyle::new(10.0).color(t.bg).mono().nowrap(),
             );
         }
     } else {
@@ -935,12 +923,10 @@ pub(super) fn overlays(
             NodeSpec::row()
                 .float(
                     FloatConfig::viewport()
-                        .at(Align::Start, Align::Start)
-                        .self_at(Align::Start, Align::Start)
+                        .inside(Align::Start, Align::Start)
                         .offset(n.rect.x, n.rect.y),
                 )
-                .width(Sizing::Fixed(n.rect.w.max(1.0)))
-                .height(Sizing::Fixed(n.rect.h.max(1.0)))
+                .size(n.rect.w.max(1.0), n.rect.h.max(1.0))
                 .border(
                     if strong { 2.0 } else { 1.0 },
                     t.fg.with_alpha(if strong { 0.9 } else { 0.5 }),

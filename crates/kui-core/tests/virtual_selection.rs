@@ -10,7 +10,7 @@
 //! (`selectionrange`) and answered (`answer_selection_range`) rather than
 //! guessed at.
 
-use kui_core::{Core, InputEvent, Key, MouseButton, NodeSpec, Size, Sizing, TextStyle, Vec2};
+use kui_core::{Core, InputEvent, Key, MouseButton, NodeSpec, Size, TextStyle, Vec2};
 
 fn style() -> TextStyle {
     TextStyle::new(14.0)
@@ -29,8 +29,8 @@ fn frame_of(core: &mut Core, range: std::ops::Range<u64>, rows: Option<u64>) -> 
     let scope = ui.with_keyed(
         "list",
         NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Fixed(100.0))
+            .grow_width()
+            .height(100.0)
             .scroll_y()
             .selectable(),
         |ui| {
@@ -40,16 +40,15 @@ fn frame_of(core: &mut Core, range: std::ops::Range<u64>, rows: Option<u64>) -> 
             ui.leaf_keyed(
                 "lead",
                 NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Fixed(range.start as f32 * 20.0)),
+                    .grow_width()
+                    .height(range.start as f32 * 20.0),
             );
             for i in range.clone() {
-                ui.with_indexed(
+                ui.text_in_indexed(
                     i,
-                    NodeSpec::column()
-                        .width(Sizing::Grow(1.0))
-                        .height(Sizing::Fixed(20.0)),
-                    |ui| ui.text(&format!("row {i}"), style()),
+                    NodeSpec::column().grow_width().height(20.0),
+                    &format!("row {i}"),
+                    style(),
                 );
             }
         },
@@ -158,7 +157,7 @@ fn the_built_middle_of_a_selection_still_paints() {
 /// the app's answer is what reaches the clipboard.
 #[test]
 fn a_copy_over_unbuilt_rows_asks_the_app_and_takes_its_answer() {
-    use kui_core::{CopyRequest, MenuAction, Value};
+    use kui_core::{CopyRequest, MenuAction};
 
     let mut core = Core::new();
     frame(&mut core, 0..6);
@@ -183,14 +182,11 @@ fn a_copy_over_unbuilt_rows_asks_the_app_and_takes_its_answer() {
     let asked = core.take_pending_events();
     let ev = asked
         .iter()
-        .find(|e| e.payload.get("kind").and_then(Value::as_str) == Some("selectionrange"))
+        .find(|e| e.kind() == Some("selectionrange"))
         .expect("the app is asked, on the scope");
     let end = |name: &str| {
         let e = ev.payload.get(name).expect("an end");
-        (
-            e.get("index").and_then(Value::as_int),
-            e.get("byte").and_then(Value::as_int),
-        )
+        (e.get_int("index"), e.get_int("byte"))
     };
     assert_eq!(end("from"), (Some(0), Some(0)), "row 0, byte 0");
     assert_eq!(end("to").0, Some(2), "row 2");
@@ -223,20 +219,19 @@ fn an_end_below_a_mixed_scope_is_placed_below_it() {
         let scope = ui.with_keyed(
             "list",
             NodeSpec::column()
-                .width(Sizing::Grow(1.0))
-                .height(Sizing::Fixed(200.0))
+                .grow_width()
+                .height(200.0)
                 .scroll_y()
                 .selectable(),
             |ui| {
                 // A header, which is not a row and knows no index.
                 ui.text("HEADER", style());
                 for i in range.clone() {
-                    ui.with_indexed(
+                    ui.text_in_indexed(
                         i,
-                        NodeSpec::column()
-                            .width(Sizing::Grow(1.0))
-                            .height(Sizing::Fixed(20.0)),
-                        |ui| ui.text(&format!("row {i}"), style()),
+                        NodeSpec::column().grow_width().height(20.0),
+                        &format!("row {i}"),
+                        style(),
                     );
                 }
             },
@@ -281,20 +276,17 @@ fn an_end_below_a_mixed_scope_is_placed_below_it() {
 /// neither is, or only one (backlog C39's finding).
 #[test]
 fn a_backwards_drag_asks_for_its_range_in_reading_order() {
-    use kui_core::{CopyRequest, Value};
+    use kui_core::CopyRequest;
     let ask = |core: &mut Core| -> (i64, i64, i64, i64) {
         assert_eq!(core.request_copy(), CopyRequest::Asked);
         let ev = core
             .take_pending_events()
             .into_iter()
-            .find(|e| e.payload.get("kind").and_then(Value::as_str) == Some("selectionrange"))
+            .find(|e| e.kind() == Some("selectionrange"))
             .expect("a selectionrange ask");
         let end = |name: &str| {
             let e = ev.payload.get(name).unwrap();
-            (
-                e.get("index").and_then(Value::as_int).unwrap(),
-                e.get("byte").and_then(Value::as_int).unwrap(),
-            )
+            (e.get_int("index").unwrap(), e.get_int("byte").unwrap())
         };
         let (from, to) = (end("from"), end("to"));
         (from.0, from.1, to.0, to.1)
@@ -358,31 +350,28 @@ fn two_lists(core: &mut Core, range: std::ops::Range<u64>, other: std::ops::Rang
     ui.with_keyed(
         "list",
         NodeSpec::column()
-            .width(Sizing::Fixed(200.0))
-            .height(Sizing::Fixed(140.0))
+            .size(200.0, 140.0)
             .scroll_y()
             .selectable(),
         |ui| {
-            ui.with_keyed(
+            ui.text_in_keyed(
                 "header",
-                NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Fixed(20.0)),
-                |ui| ui.text("header", style()),
+                NodeSpec::column().grow_width().height(20.0),
+                "header",
+                style(),
             );
             ui.leaf_keyed(
                 "lead",
                 NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Fixed(range.start as f32 * 20.0)),
+                    .grow_width()
+                    .height(range.start as f32 * 20.0),
             );
             for i in range.clone() {
-                ui.with_indexed(
+                ui.text_in_indexed(
                     i,
-                    NodeSpec::column()
-                        .width(Sizing::Grow(1.0))
-                        .height(Sizing::Fixed(20.0)),
-                    |ui| ui.text(&format!("row {i}"), style()),
+                    NodeSpec::column().grow_width().height(20.0),
+                    &format!("row {i}"),
+                    style(),
                 );
             }
         },
@@ -390,18 +379,16 @@ fn two_lists(core: &mut Core, range: std::ops::Range<u64>, other: std::ops::Rang
     ui.with_keyed(
         "other",
         NodeSpec::column()
-            .width(Sizing::Fixed(200.0))
-            .height(Sizing::Fixed(140.0))
+            .size(200.0, 140.0)
             .scroll_y()
             .selectable(),
         |ui| {
             for i in other.clone() {
-                ui.with_indexed(
+                ui.text_in_indexed(
                     i,
-                    NodeSpec::column()
-                        .width(Sizing::Grow(1.0))
-                        .height(Sizing::Fixed(20.0)),
-                    |ui| ui.text(&format!("other {i}"), style()),
+                    NodeSpec::column().grow_width().height(20.0),
+                    &format!("other {i}"),
+                    style(),
                 );
             }
         },
@@ -442,7 +429,7 @@ fn an_unbuilt_end_is_placed_against_its_own_lists_rows() {
     let ev = core
         .take_pending_events()
         .into_iter()
-        .find(|e| e.payload.get("kind").and_then(Value::as_str) == Some("selectionrange"))
+        .find(|e| e.kind() == Some("selectionrange"))
         .expect("a selectionrange ask");
     let index = |name: &str| {
         ev.payload

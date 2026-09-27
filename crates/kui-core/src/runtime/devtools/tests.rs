@@ -17,15 +17,10 @@ fn view(ui: &mut Ui<'_>, root: Option<NodeSpec>) {
     if let Some(spec) = root {
         ui.configure_root(spec);
     }
-    ui.with(
-        NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Grow(1.0)),
-        |ui| {
-            widgets::button(ui, "press", Value::map([("kind", Value::str("pressed"))]));
-            ui.text("hello", TextStyle::new(12.0));
-        },
-    );
+    ui.with(NodeSpec::column().fill(), |ui| {
+        widgets::button(ui, "press", Value::map([("kind", Value::str("pressed"))]));
+        ui.text("hello", TextStyle::new(12.0));
+    });
 }
 
 fn frame(core: &mut Core) {
@@ -49,11 +44,7 @@ fn on() -> Core {
 fn chord(c: char) -> InputEvent {
     InputEvent::KeyDown(KeyPress::new(
         KeyCode::Char(c),
-        KeyMods {
-            ctrl: true,
-            shift: true,
-            ..Default::default()
-        },
+        KeyMods::NONE.with_ctrl().with_shift(),
     ))
 }
 
@@ -244,7 +235,7 @@ fn configure_root_is_split_between_root_and_container() {
             .pad(20.0)
             .gap(7.0)
             .bg(Color::hex(0x112233ff))
-            .on_key(Value::str("sink"))
+            .on_key("sink")
             .focusable()
     };
     frame_with(&mut core, Some(root()));
@@ -279,10 +270,7 @@ fn configure_root_is_split_between_root_and_container() {
     )));
     assert_eq!(evs.len(), 1);
     assert_eq!(evs[0].key, Key::ROOT);
-    assert_eq!(
-        evs[0].payload.get("tag").and_then(Value::as_str),
-        Some("sink")
-    );
+    assert_eq!(evs[0].payload.get_str("tag"), Some("sink"));
 }
 
 /// The dock is a focus region: out of the app's ring, entered by
@@ -369,10 +357,7 @@ fn the_inspect_chord_is_the_app_s_to_respell() {
     // A modifier held that the chord does not name is another chord.
     core.handle_input(InputEvent::KeyDown(KeyPress::new(
         KeyCode::F(12),
-        KeyMods {
-            shift: true,
-            ..Default::default()
-        },
+        KeyMods::NONE.with_shift(),
     )));
     frame(&mut core);
     assert_eq!(core.region(), None, "Shift+F12 is not F12");
@@ -766,10 +751,7 @@ fn events_flow_to_the_host_and_into_the_stream_and_the_panel_s_do_not() {
         assert_eq!(last.kind, EntryKind::Event);
         assert_eq!(last.key, press);
         assert_eq!(last.label.as_deref(), Some("press"));
-        assert_eq!(
-            last.payload.get("kind").and_then(Value::as_str),
-            Some("pressed")
-        );
+        assert_eq!(last.payload.get_str("kind"), Some("pressed"));
         // The theme note came before it.
         assert!(s.stream.iter().any(|e| e.kind == EntryKind::Note));
     });
@@ -782,11 +764,7 @@ fn events_flow_to_the_host_and_into_the_stream_and_the_panel_s_do_not() {
     // Ctrl+Shift+Tab is not Ctrl+Shift+T.
     let named = InputEvent::KeyDown(KeyPress::new(
         KeyCode::Tab,
-        KeyMods {
-            ctrl: true,
-            shift: true,
-            ..Default::default()
-        },
+        KeyMods::NONE.with_ctrl().with_shift(),
     ));
     core.handle_input(named);
     assert_eq!(state(&core, |s| s.base), Some(Appearance::Light));
@@ -1192,16 +1170,7 @@ fn the_tree_walks_by_keyboard_through_the_list_s_own_cursor() {
     assert_eq!(state(&core, |s| s.tree_cursor), Some(first));
     // A chord bubbles to the list like any other (ADR 0011) and is not a
     // bare arrow: Cmd+Down and Ctrl+Down each leave the cursor alone.
-    for mods in [
-        KeyMods {
-            super_key: true,
-            ..Default::default()
-        },
-        KeyMods {
-            ctrl: true,
-            ..Default::default()
-        },
-    ] {
+    for mods in [KeyMods::NONE.with_super(), KeyMods::NONE.with_ctrl()] {
         core.handle_input(InputEvent::KeyDown(KeyPress::new(KeyCode::Down, mods)));
         core.handle_input(InputEvent::KeyUp(KeyPress::new(KeyCode::Down, mods)));
         frame(&mut core);
@@ -1435,23 +1404,16 @@ fn node_info_carries_the_layer_and_the_picker_reads_it() {
     let build = |core: &mut Core| {
         let mut ui = core.frame(VIEWPORT, 1.0);
         ui.with(NodeSpec::column().fill(), |ui| {
-            ui.leaf_keyed(
-                "under",
-                NodeSpec::row()
-                    .width(Sizing::Fixed(200.0))
-                    .height(Sizing::Fixed(200.0)),
-            );
+            ui.leaf_keyed("under", NodeSpec::row().size(200.0, 200.0));
             ui.leaf_keyed(
                 "over",
                 NodeSpec::row()
                     .float(
                         crate::spec::FloatConfig::viewport()
-                            .at(Align::Start, Align::Start)
-                            .self_at(Align::Start, Align::Start)
+                            .inside(Align::Start, Align::Start)
                             .offset(50.0, 50.0),
                     )
-                    .width(Sizing::Fixed(50.0))
-                    .height(Sizing::Fixed(50.0)),
+                    .size(50.0, 50.0),
             );
         });
         ui.finish();
@@ -1584,21 +1546,17 @@ fn the_host_s_viewport_is_the_window_less_the_dock() {
             ui.leaf_keyed(
                 "target",
                 NodeSpec::row()
-                    .width(Sizing::Fixed(100.0))
-                    .height(Sizing::Fixed(50.0))
-                    .on_context_menu(Value::str("menu"))
-                    .on_layout(Value::str("box")),
+                    .size(100.0, 50.0)
+                    .on_context_menu("menu")
+                    .on_layout("box"),
             );
             ui.leaf_keyed(
                 "centred",
                 NodeSpec::row()
                     .float(
-                        crate::spec::FloatConfig::viewport()
-                            .at(Align::Center, Align::Center)
-                            .self_at(Align::Center, Align::Center),
+                        crate::spec::FloatConfig::viewport().inside(Align::Center, Align::Center),
                     )
-                    .width(Sizing::Fixed(100.0))
-                    .height(Sizing::Fixed(100.0)),
+                    .size(100.0, 100.0),
             );
         });
     };
@@ -1618,10 +1576,10 @@ fn the_host_s_viewport_is_the_window_less_the_dock() {
     let evs = frame(&mut core);
     let resize = evs
         .iter()
-        .find(|e| e.payload.get("kind").and_then(Value::as_str) == Some("resize"))
+        .find(|e| e.kind() == Some("resize"))
         .expect("the dock is a resize");
     assert_eq!(
-        resize.payload.get("width").and_then(Value::as_float),
+        resize.payload.get_float("width"),
         Some((VIEWPORT.w - DOCK_SIDE_W) as f64)
     );
     assert_eq!(
@@ -1637,9 +1595,8 @@ fn the_host_s_viewport_is_the_window_less_the_dock() {
     core.set_devtools_dock(Dock::Bottom);
     let evs = frame(&mut core);
     assert!(evs.iter().any(|e| {
-        e.payload.get("kind").and_then(Value::as_str) == Some("resize")
-            && e.payload.get("height").and_then(Value::as_float)
-                == Some((VIEWPORT.h - DOCK_BOTTOM_H) as f64)
+        e.kind() == Some("resize")
+            && e.payload.get_float("height") == Some((VIEWPORT.h - DOCK_BOTTOM_H) as f64)
     }));
     // A left dock: the app's origin is the pane's edge, and every
     // coordinate it is handed is relative to it.
@@ -1647,9 +1604,9 @@ fn the_host_s_viewport_is_the_window_less_the_dock() {
     let evs = frame(&mut core);
     let layout = evs
         .iter()
-        .find(|e| e.payload.get("kind").and_then(Value::as_str) == Some("layout"))
+        .find(|e| e.kind() == Some("layout"))
         .expect("the box reports its rect again: it moved");
-    assert_eq!(layout.payload.get("x").and_then(Value::as_float), Some(0.0));
+    assert_eq!(layout.payload.get_float("x"), Some(0.0));
     let target = core.key_of("target").unwrap();
     let r = node(&core, target).rect;
     assert_eq!(
@@ -1687,9 +1644,9 @@ fn the_host_s_viewport_is_the_window_less_the_dock() {
     });
     let menu = evs
         .iter()
-        .find(|e| e.payload.get("kind").and_then(Value::as_str) == Some("contextmenu"))
+        .find(|e| e.kind() == Some("contextmenu"))
         .expect("the context menu event");
-    assert_eq!(menu.payload.get("x").and_then(Value::as_float), Some(10.0));
+    assert_eq!(menu.payload.get_float("x"), Some(10.0));
     // And a popup anchored where the app thinks the box is lands where
     // the box is in the window.
     {
@@ -1811,32 +1768,16 @@ fn the_host_rect_places_the_app_and_separates_its_quads_from_the_dock_s() {
     // The app fills what it is given, with a card in its top-left and
     // bottom-right corners, over a root background of its own.
     let draw = |core: &mut Core, scale: f32| {
-        let card = || {
-            NodeSpec::row()
-                .width(Sizing::Fixed(40.0))
-                .height(Sizing::Fixed(30.0))
-                .bg(APP)
-        };
+        let card = || NodeSpec::row().size(40.0, 30.0).bg(APP);
         let mut ui = core.frame(WINDOW, scale);
         ui.configure_root(NodeSpec::column().bg(ROOT));
-        ui.with(
-            NodeSpec::column()
-                .width(Sizing::Grow(1.0))
-                .height(Sizing::Grow(1.0))
-                .bg(APP),
-            |ui| {
+        ui.with(NodeSpec::column().fill().bg(APP), |ui| {
+            ui.leaf(card());
+            ui.leaf(NodeSpec::column().grow_height());
+            ui.with(NodeSpec::row().grow_width().main_align(Align::End), |ui| {
                 ui.leaf(card());
-                ui.leaf(NodeSpec::column().height(Sizing::Grow(1.0)));
-                ui.with(
-                    NodeSpec::row()
-                        .width(Sizing::Grow(1.0))
-                        .main_align(Align::End),
-                    |ui| {
-                        ui.leaf(card());
-                    },
-                );
-            },
-        );
+            });
+        });
         ui.finish();
     };
     // Split the list by the rect: fully inside it, or not.
@@ -1969,7 +1910,7 @@ fn a_placement_chosen_in_the_panel_s_window_survives_the_window_closing() {
         !core
             .take_pending_events()
             .iter()
-            .any(|e| e.payload.get("kind").and_then(Value::as_str) == Some("window")),
+            .any(|e| e.kind() == Some("window")),
         "the host hears nothing of the panel's window"
     );
     assert_eq!(
@@ -2000,22 +1941,15 @@ fn the_facts_list_the_tokens_and_the_inspector_names_a_painted_one() {
             .length("gap", 7.0),
     );
     let view = |ui: &mut Ui<'_>| {
-        ui.with(
-            NodeSpec::column()
-                .width(Sizing::Grow(1.0))
-                .height(Sizing::Grow(1.0))
-                .gap(7.0),
-            |ui| {
-                ui.leaf_keyed(
-                    "swatch",
-                    NodeSpec::column()
-                        .width(Sizing::Fixed(20.0))
-                        .height(Sizing::Fixed(20.0))
-                        .bg(Color::hex(0xffcc99ff))
-                        .focusable(),
-                );
-            },
-        );
+        ui.with(NodeSpec::column().fill().gap(7.0), |ui| {
+            ui.leaf_keyed(
+                "swatch",
+                NodeSpec::column()
+                    .size(20.0, 20.0)
+                    .bg(Color::hex(0xffcc99ff))
+                    .focusable(),
+            );
+        });
     };
     for _ in 0..2 {
         let mut ui = core.frame(VIEWPORT, 1.0);
@@ -2199,12 +2133,7 @@ fn the_stream_never_keeps_a_concealed_pastes_text() {
             .iter()
             .rev()
             .take(2)
-            .map(|e| {
-                e.payload
-                    .get("text")
-                    .and_then(Value::as_str)
-                    .map(str::to_string)
-            })
+            .map(|e| e.payload.get_str("text").map(str::to_string))
             .collect();
         assert_eq!(
             texts,

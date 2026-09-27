@@ -1,7 +1,7 @@
 //! Images end to end: registration, layout sizing (intrinsic + aspect),
 //! atlas placement/growth, and display-list emission.
 
-use kui_core::{Core, NodeSpec, QuadKind, Size, Sizing};
+use kui_core::{Core, NodeSpec, QuadKind, Size};
 
 fn rgba(w: u32, h: u32) -> Vec<u8> {
     vec![0x80; (w * h * 4) as usize]
@@ -35,7 +35,7 @@ fn fit_height_preserves_aspect_at_fixed_width() {
     let mut core = Core::new();
     let id = core.resources.add_image(100, 50, rgba(100, 50));
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
-    ui.image(id, NodeSpec::column().width(Sizing::Fixed(80.0)));
+    ui.image(id, NodeSpec::column().width(80.0));
     ui.finish();
 
     let quads = image_quads(&mut core);
@@ -48,12 +48,7 @@ fn removed_image_emits_nothing() {
     let id = core.resources.add_image(10, 10, rgba(10, 10));
     core.remove_image(id);
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
-    ui.image(
-        id,
-        NodeSpec::column()
-            .width(Sizing::Fixed(10.0))
-            .height(Sizing::Fixed(10.0)),
-    );
+    ui.image(id, NodeSpec::column().size(10.0, 10.0));
     ui.finish();
     assert!(image_quads(&mut core).is_empty());
 }
@@ -111,13 +106,7 @@ fn a_lone_translucent_image_fades() {
     let mut core = Core::new();
     let id = core.resources.add_image(10, 10, rgba(10, 10));
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
-    ui.image(
-        id,
-        NodeSpec::column()
-            .width(Sizing::Fixed(10.0))
-            .height(Sizing::Fixed(10.0))
-            .opacity(0.5),
-    );
+    ui.image(id, NodeSpec::column().size(10.0, 10.0).opacity(0.5));
     ui.finish();
     let quads = image_quads(&mut core);
     assert_eq!(quads.len(), 1);
@@ -133,17 +122,11 @@ fn a_lone_floating_image_escapes_its_parent_clip() {
     let mut core = Core::new();
     let id = core.resources.add_image(10, 10, rgba(10, 10));
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
-    ui.open(
-        NodeSpec::column()
-            .width(Sizing::Fixed(20.0))
-            .height(Sizing::Fixed(20.0))
-            .clip(),
-    );
+    ui.open(NodeSpec::column().size(20.0, 20.0).clip());
     ui.image(
         id,
         NodeSpec::column()
-            .width(Sizing::Fixed(10.0))
-            .height(Sizing::Fixed(10.0))
+            .size(10.0, 10.0)
             .float(FloatConfig::parent().offset(100.0, 100.0)),
     );
     ui.close();
@@ -420,11 +403,7 @@ fn a_fragment_reads_an_image_from_the_atlas_or_its_texture() {
     assert!(core.update_image(stream, 8, 2, rgba(8, 2)));
     let f = core.add_fragment(SAMPLER).unwrap();
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
-    let spec = || {
-        NodeSpec::column()
-            .width(Sizing::Fixed(16.0))
-            .height(Sizing::Fixed(16.0))
-    };
+    let spec = || NodeSpec::column().size(16.0, 16.0);
     ui.fragment(f.with_image(icon), &[], spec());
     ui.fragment(f.with_image(stream), &[], spec());
     ui.fragment(f, &[], spec());
@@ -470,11 +449,7 @@ fn a_removed_image_under_a_live_fragment_draws_nothing() {
     let mut core = Core::new();
     let img = core.resources.add_image(4, 4, rgba(4, 4));
     let f = core.add_fragment(SAMPLER).unwrap();
-    let spec = || {
-        NodeSpec::column()
-            .width(Sizing::Fixed(16.0))
-            .height(Sizing::Fixed(16.0))
-    };
+    let spec = || NodeSpec::column().size(16.0, 16.0);
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.fragment(f.with_image(img), &[], spec());
     ui.finish();

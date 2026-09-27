@@ -19,7 +19,7 @@
 
 use kui_devtools::{Drive, Example};
 use kui_native::widgets;
-use kui_native::{Align, App, Core, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
+use kui_native::{Align, App, Core, NodeSpec, TextStyle, Ui, UiEvent};
 
 #[derive(Default)]
 struct Tooltip {
@@ -64,14 +64,14 @@ impl App for Tooltip {
                         ui,
                         "save",
                         "save",
-                        widgets::button_spec(&ui.theme(), &ui.metrics()).on_click(Value::str("save")).apply_tooltip("⌘S · write the file"),
+                        widgets::button_spec(&ui.theme(), &ui.metrics()).on_click("save").apply_tooltip("⌘S · write the file"),
                         Some("⌘S · write the file"),
                     );
                     widgets::button_with(
                         ui,
                         "run",
                         "run",
-                        widgets::button_spec(&ui.theme(), &ui.metrics()).accent().on_click(Value::str("run")).apply_tooltip("⌘R · run the current file"),
+                        widgets::button_spec(&ui.theme(), &ui.metrics()).accent().on_click("run").apply_tooltip("⌘R · run the current file"),
                         Some("⌘R · run the current file"),
                     );
                 });
@@ -94,9 +94,7 @@ impl App for Tooltip {
                                 ui.with(NodeSpec::column().gap(4.0), |ui| {
                                     for (k, what) in [("⌘S", "save"), ("⌘R", "run"), ("⌘-Shift-P", "the palette")] {
                                         ui.with(NodeSpec::row().gap(10.0), |ui| {
-                                            ui.with(NodeSpec::row().width(Sizing::Fixed(80.0)), |ui| {
-                                                ui.text(k, TextStyle::new(12.0).color(t.accent).mono());
-                                            });
+                                            ui.text_in(NodeSpec::row().width(80.0), k, TextStyle::new(12.0).color(t.accent).mono());
                                             ui.text(what, TextStyle::new(12.0).color(t.muted));
                                         });
                                     }
@@ -105,7 +103,7 @@ impl App for Tooltip {
                         }
                     },
                 );
-                ui.leaf(NodeSpec::column().height(Sizing::Grow(1.0)));
+                ui.leaf(NodeSpec::column().grow_height());
                 let low = ui.child_key("low");
                 let over_low = ui.is_hovered(low);
                 ui.with_keyed(

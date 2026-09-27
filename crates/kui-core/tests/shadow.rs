@@ -2,19 +2,14 @@
 //! blurred shape's geometry — the node's rect moved by the offset, grown by
 //! the spread, inflated by the blur the backend ramps over.
 
-use kui_core::{Color, Core, NodeSpec, QuadKind, Shadow, Size, Sizing};
+use kui_core::{Color, Core, NodeSpec, QuadKind, Shadow, Size};
 
 const VIEW: Size = Size { w: 200.0, h: 100.0 };
 
 fn quads(core: &mut Core, spec: NodeSpec, scale: f32) -> Vec<kui_core::Quad> {
     let mut ui = core.frame(VIEW, scale);
     ui.configure_root(NodeSpec::column().pad(20.0));
-    ui.leaf_keyed(
-        "card",
-        spec.bg(Color::WHITE)
-            .width(Sizing::Fixed(80.0))
-            .height(Sizing::Fixed(40.0)),
-    );
+    ui.leaf_keyed("card", spec.bg(Color::WHITE).size(80.0, 40.0));
     ui.finish();
     let (dl, _) = core.output();
     dl.quads.clone()

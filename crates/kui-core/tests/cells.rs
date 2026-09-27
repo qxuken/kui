@@ -166,7 +166,7 @@ fn a_click_names_its_cell_and_the_screen_is_the_value() {
             },
             NodeSpec::default()
                 .on_click(Value::map([("kind", Value::str("hit"))]))
-                .on_drag(Value::str("sel")),
+                .on_drag("sel"),
         );
         ui.finish();
     };
@@ -232,7 +232,7 @@ fn a_key_on_the_grid_and_a_click_without_a_press_name_no_cell() {
             origin_line: 0,
         },
         NodeSpec::default()
-            .on_key(Value::Null)
+            .key_sink()
             .on_click(Value::map([("kind", Value::str("hit"))])),
     );
     ui.take_key_focus(key);
@@ -246,7 +246,7 @@ fn a_key_on_the_grid_and_a_click_without_a_press_name_no_cell() {
     )));
     let k = evs
         .iter()
-        .find(|e| e.payload.get("kind").and_then(Value::as_str) == Some("key"))
+        .find(|e| e.kind() == Some("key"))
         .expect("the key arrived");
     assert!(!has_cell(k), "{:?}", k.payload);
     // A click Enter made: the sink holds focus, so it is the keyboard's
@@ -258,7 +258,7 @@ fn a_key_on_the_grid_and_a_click_without_a_press_name_no_cell() {
     )));
     let click = evs
         .iter()
-        .find(|e| e.payload.get("kind").and_then(Value::as_str) == Some("hit"))
+        .find(|e| e.kind() == Some("hit"))
         .expect("the click arrived");
     assert!(!has_cell(click), "{:?}", click.payload);
     // And a real press does name it.
@@ -266,7 +266,7 @@ fn a_key_on_the_grid_and_a_click_without_a_press_name_no_cell() {
     let evs = core.handle_input(InputEvent::mouse_up());
     let click = evs
         .iter()
-        .find(|e| e.payload.get("kind").and_then(Value::as_str) == Some("hit"))
+        .find(|e| e.kind() == Some("hit"))
         .expect("the click arrived");
     assert!(has_cell(click), "{:?}", click.payload);
 }

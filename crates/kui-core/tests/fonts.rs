@@ -6,7 +6,7 @@ use kui_core::{Core, NodeSpec, Size, TextStyle};
 
 fn glyph_quads(core: &mut Core, style: TextStyle) -> usize {
     let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
-    ui.with(NodeSpec::column(), |ui| ui.text("Fonts", style));
+    ui.text_in(NodeSpec::column(), "Fonts", style);
     ui.finish();
     let (dl, _) = core.output();
     dl.quads
@@ -208,9 +208,11 @@ fn han_in_mono_draws_at_finite_places() {
     use kui_core::{FontFamily, QuadKind};
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
-    ui.with(NodeSpec::column(), |ui| {
-        ui.text("字 a", TextStyle::new(14.0).family(FontFamily::Mono))
-    });
+    ui.text_in(
+        NodeSpec::column(),
+        "字 a",
+        TextStyle::new(14.0).family(FontFamily::Mono),
+    );
     ui.finish();
     let (dl, _) = core.output();
     let glyphs: Vec<_> = dl
@@ -453,7 +455,7 @@ fn a_family_with_no_400_face_draws_in_it_everywhere() {
             .collect()
     };
     let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
-    ui.with(NodeSpec::column(), |ui| ui.text("aaaa", style));
+    ui.text_in(NodeSpec::column(), "aaaa", style);
     ui.finish();
     assert_fixture(&glyphs(&mut core), 10.0, 8.0, "plain text");
     let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
@@ -500,7 +502,7 @@ fn a_face_loaded_or_removed_under_shaped_text_reaches_it() {
     let every_path = |core: &mut Core| -> Vec<(&str, Vec<(f32, f32)>)> {
         let han = "字字字字";
         let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
-        ui.with(NodeSpec::column(), |ui| ui.text(han, style));
+        ui.text_in(NodeSpec::column(), han, style);
         ui.finish();
         let plain = glyphs(core);
         let spans = rich_glyphs(core, &[Span::new(han)], style);

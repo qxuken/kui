@@ -117,18 +117,12 @@ fn what_on_event_returns_is_the_scripts_replies() {
     // One table: one reply, the host's template with the field added.
     let replies = ext_ref.on_event(&ev("pick", Some(("item", "foo.rs".into()))));
     assert_eq!(replies.len(), 1);
-    assert_eq!(
-        replies[0].get("kind").and_then(Value::as_str),
-        Some("picked")
-    );
-    assert_eq!(
-        replies[0].get("item").and_then(Value::as_str),
-        Some("foo.rs")
-    );
+    assert_eq!(replies[0].get_str("kind"), Some("picked"));
+    assert_eq!(replies[0].get_str("item"), Some("foo.rs"));
     // A sequence: several. Nothing: none.
     let replies = ext_ref.on_event(&ev("many", None));
     assert_eq!(replies.len(), 2);
-    assert_eq!(replies[1].get("kind").and_then(Value::as_str), Some("b"));
+    assert_eq!(replies[1].get_str("kind"), Some("b"));
     assert!(ext_ref.on_event(&ev("other", None)).is_empty());
 
     // A script with no `on_event` at all replies nothing.
@@ -187,14 +181,8 @@ fn a_wildcard_script_fills_every_declared_name_and_hears_which_one() {
     let mut replies = Vec::new();
     exts.route(events, |ev| replies.push(ev));
     assert_eq!(replies.len(), 1);
-    assert_eq!(
-        replies[0].payload.get("kind").and_then(Value::as_str),
-        Some("routed")
-    );
-    assert_eq!(
-        replies[0].payload.get("slot").and_then(Value::as_str),
-        Some("views/pane:2")
-    );
+    assert_eq!(replies[0].kind(), Some("routed"));
+    assert_eq!(replies[0].payload.get_str("slot"), Some("views/pane:2"));
 }
 
 #[test]
@@ -238,17 +226,17 @@ impl Extension for Panel {
     fn view(&mut self, slot: &Slot<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(), String> {
         let title = slot
             .params
-            .get("title")
-            .and_then(Value::as_str)
+            .get_str("title")
             .unwrap_or("untitled")
             .to_owned();
-        ui.with_keyed(
+        ui.text_in_keyed(
             "row",
             NodeSpec::column()
                 .width(kui_core::Sizing::Fixed(40.0))
                 .height(kui_core::Sizing::Fixed(20.0))
                 .focusable(),
-            |ui| ui.text(&title, kui_core::TextStyle::new(12.0)),
+            &title,
+            kui_core::TextStyle::new(12.0),
         );
         Ok(())
     }
@@ -340,12 +328,9 @@ fn a_placed_plugins_reply_reaches_the_script_and_not_the_host() {
     );
 
     assert_eq!(to_host.len(), 1);
+    assert_eq!(to_host[0].kind(), Some("counted"));
     assert_eq!(
-        to_host[0].payload.get("kind").and_then(Value::as_str),
-        Some("counted")
-    );
-    assert_eq!(
-        to_host[0].payload.get("was").and_then(Value::as_str),
+        to_host[0].payload.get_str("was"),
         Some("toggled"),
         "the script heard the plugin's reply, not the click"
     );
@@ -356,10 +341,7 @@ fn a_placed_plugins_reply_reaches_the_script_and_not_the_host() {
     );
     // `from` is the namespace *this script* loaded the plugin under; the
     // host loaded this one, so the script is told nothing it did not do.
-    assert_eq!(
-        to_host[0].payload.get("from").and_then(Value::as_str),
-        Some("-")
-    );
+    assert_eq!(to_host[0].payload.get_str("from"), Some("-"));
 }
 
 /// `fill` is a position, not a box: it takes a full name and params and
@@ -519,11 +501,11 @@ fn a_script_loads_a_c_plugin_and_places_it() {
     exts.route(events, |ev| to_host.push(ev));
     let heard: Vec<_> = to_host
         .iter()
-        .filter(|e| e.payload.get("kind").and_then(Value::as_str) == Some("heard"))
+        .filter(|e| e.kind() == Some("heard"))
         .collect();
     assert_eq!(heard.len(), 1, "got {to_host:?}");
     assert_eq!(
-        heard[0].payload.get("who").and_then(Value::as_str),
+        heard[0].payload.get_str("who"),
         Some("todos"),
         "the script is told which of its plugins answered"
     );

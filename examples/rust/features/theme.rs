@@ -19,7 +19,7 @@
 
 use kui_devtools::Example;
 use kui_native::widgets;
-use kui_native::{Align, App, Color, NodeSpec, Sizing, TextStyle, Theme, Ui, UiEvent, Value};
+use kui_native::{Align, App, Color, NodeSpec, TextStyle, Theme, Ui, UiEvent, Value};
 
 /// What the demo buttons post: they are here to be looked at, not to say
 /// anything, and the menu's rows post their own text.
@@ -38,13 +38,12 @@ fn swatch(ui: &mut Ui<'_>, name: &str, c: Color, t: &Theme) {
     ui.with(NodeSpec::row().gap(8.0).cross_align(Align::Center), |ui| {
         ui.leaf(
             NodeSpec::row()
-                .width(Sizing::Fixed(34.0))
-                .height(Sizing::Fixed(20.0))
+                .size(34.0, 20.0)
                 .bg(c)
                 .radius(4.0)
                 .border(1.0, t.border),
         );
-        ui.with(NodeSpec::column().width(Sizing::Fixed(112.0)), |ui| {
+        ui.with(NodeSpec::column().width(112.0), |ui| {
             ui.text(name, TextStyle::new(12.0).color(t.fg));
             ui.text(
                 &format!("#{:08x}", c.to_hex()),
@@ -77,8 +76,7 @@ impl App for Gallery {
         ui.open_keyed(
             "page",
             NodeSpec::column()
-                .width(Sizing::Grow(1.0))
-                .height(Sizing::Grow(1.0))
+                .fill()
                 .gap(16.0)
                 .pad(20.0)
                 .bg(t.bg)
@@ -98,7 +96,7 @@ impl App for Gallery {
             TextStyle::new(12.0).color(t.muted),
         );
 
-        ui.with(NodeSpec::row().gap(16.0).width(Sizing::Grow(1.0)), |ui| {
+        ui.with(NodeSpec::row().gap(16.0).grow_width(), |ui| {
             card(ui, "SURFACES", |ui| {
                 for (n, c) in [
                     ("bg", t.bg),
@@ -137,7 +135,7 @@ impl App for Gallery {
             });
         });
 
-        ui.with(NodeSpec::row().gap(16.0).width(Sizing::Grow(1.0)), |ui| {
+        ui.with(NodeSpec::row().gap(16.0).grow_width(), |ui| {
             card(ui, "BUTTONS", |ui| {
                 ui.with(NodeSpec::row().gap(10.0).cross_align(Align::Center), |ui| {
                     widgets::button(ui, "stock", Value::str(NOOP));
@@ -216,7 +214,7 @@ impl App for Gallery {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.payload.get("kind").and_then(Value::as_str) {
+        match ev.kind() {
             Some("contextmenu") => {
                 let at = |k| ev.payload.get(k).and_then(Value::as_float).unwrap_or(0.0) as f32;
                 self.menu = Some((at("x"), at("y")));

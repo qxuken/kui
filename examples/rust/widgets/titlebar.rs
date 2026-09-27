@@ -28,7 +28,7 @@
 
 use kui_devtools::Example;
 use kui_native::widgets;
-use kui_native::{Align, App, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
+use kui_native::{Align, App, NodeSpec, TextStyle, Ui, UiEvent, Value};
 
 const TABS: [&str; 3] = ["main.rs", "layout.rs", "README"];
 
@@ -51,16 +51,13 @@ impl App for Chrome {
                 let t = ui.theme();
                 ui.with(
                     NodeSpec::row()
-                        .width(Sizing::Grow(1.0))
-                        .height(Sizing::Grow(1.0))
+                        .fill()
                         .gap(4.0)
                         .cross_align(Align::End),
                     |ui| {
                         for (i, name) in TABS.iter().enumerate() {
                             let on = i == self.tab;
-                            ui.with_keyed(
-                                name,
-                                NodeSpec::row()
+                            ui.text_in_keyed(name, NodeSpec::row()
                                     .pad_xy(12.0, 6.0)
                                     .radius_top(6.0)
                                     .bg(if on { t.bg } else { t.surface })
@@ -68,22 +65,15 @@ impl App for Chrome {
                                     .on_click(Value::map([
                                         ("kind", Value::str("tab")),
                                         ("name", Value::str(*name)),
-                                    ])),
-                                |ui| {
-                                    ui.text(
-                                        name,
-                                        TextStyle::new(12.0).color(if on { t.fg } else { t.muted }),
-                                    );
-                                },
-                            );
+                                    ])), name,
+                                        TextStyle::new(12.0).color(if on { t.fg } else { t.muted }));
                         }
                     },
                 );
             });
             ui.with(
                 NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Grow(1.0))
+                    .fill()
                     .pad(24.0)
                     .gap(12.0),
                 |ui| {
@@ -144,10 +134,10 @@ impl App for Chrome {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        if ev.payload.get("kind").and_then(Value::as_str) == Some("pin") {
+        if ev.kind() == Some("pin") {
             self.pinned = !self.pinned;
         }
-        if let Some(name) = ev.payload.get("name").and_then(Value::as_str)
+        if let Some(name) = ev.payload.get_str("name")
             && let Some(i) = TABS.iter().position(|t| *t == name)
         {
             self.tab = i;

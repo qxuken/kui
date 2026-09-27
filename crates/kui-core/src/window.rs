@@ -211,11 +211,10 @@ impl WindowConfig {
             Value::Str(name) => Ok((name.clone(), Self::default())),
             Value::Map(_) => {
                 let name = v
-                    .get("name")
-                    .and_then(Value::as_str)
+                    .get_str("name")
                     .ok_or("a windows entry needs a name")?
                     .to_string();
-                let kind = match v.get("kind").and_then(Value::as_str) {
+                let kind = match v.get_str("kind") {
                     None => WindowKind::Normal,
                     Some(k) => WindowKind::from_name(k).ok_or_else(|| {
                         format!(
@@ -239,7 +238,7 @@ impl WindowConfig {
                 {
                     cfg.size = Size::new(w, h);
                 }
-                if let Some(a) = v.get("activates").and_then(Value::as_bool) {
+                if let Some(a) = v.get_bool("activates") {
                     cfg.activates = a;
                 }
                 if let Some(a) = v.get("anchor") {

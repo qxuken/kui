@@ -25,8 +25,8 @@ fn key(core: &mut Core, code: KeyCode) -> Vec<UiEvent> {
 
 fn value(ev: &UiEvent) -> (f64, &str) {
     (
-        ev.payload.get("value").and_then(Value::as_float).unwrap(),
-        ev.payload.get("phase").and_then(Value::as_str).unwrap(),
+        ev.payload.get_float("value").unwrap(),
+        ev.payload.get_str("phase").unwrap(),
     )
 }
 
@@ -145,10 +145,7 @@ fn a_press_proposes_the_value_under_it_and_a_drag_each_new_step() {
         .unwrap();
     assert_eq!(value(change), (30.0, "move"));
     assert_eq!(change.key, k);
-    assert_eq!(
-        change.payload.get("tag").and_then(Value::as_str),
-        Some("vol")
-    );
+    assert_eq!(change.payload.get_str("tag"), Some("vol"));
 
     // Within the same step: nothing. Past it: the next one.
     let evs = core.handle_input(InputEvent::CursorMoved(Vec2::new(72.0, 8.0)));
@@ -156,7 +153,7 @@ fn a_press_proposes_the_value_under_it_and_a_drag_each_new_step() {
     let evs = core.handle_input(InputEvent::CursorMoved(Vec2::new(150.0, 40.0)));
     let moved: Vec<(f64, &str)> = evs
         .iter()
-        .filter(|e| e.payload.get("kind").and_then(Value::as_str) == Some("change"))
+        .filter(|e| e.kind() == Some("change"))
         .map(value)
         .collect();
     assert_eq!(moved, [(70.0, "move")]);
@@ -165,7 +162,7 @@ fn a_press_proposes_the_value_under_it_and_a_drag_each_new_step() {
     let evs = release(&mut core);
     let ended: Vec<(f64, &str)> = evs
         .iter()
-        .filter(|e| e.payload.get("kind").and_then(Value::as_str) == Some("change"))
+        .filter(|e| e.kind() == Some("change"))
         .map(value)
         .collect();
     assert_eq!(ended, [(100.0, "end")]);
@@ -184,7 +181,7 @@ fn the_keys_move_it_by_its_step_and_to_its_ends() {
     let step = |core: &mut Core, code| {
         let evs = key(core, code);
         evs.iter()
-            .filter(|e| e.payload.get("kind").and_then(Value::as_str) == Some("change"))
+            .filter(|e| e.kind() == Some("change"))
             .map(|e| value(e).0)
             .collect::<Vec<_>>()
     };
@@ -236,7 +233,7 @@ fn a_slider_without_on_change_still_nudges() {
             .role(Role::Slider)
             .label("Volume")
             .value_now(3.0)
-            .on_drag(Value::str("vol")),
+            .on_drag("vol"),
     );
     ui.finish();
     key(&mut core, KeyCode::Tab);
@@ -249,14 +246,8 @@ fn a_slider_without_on_change_still_nudges() {
         AccessRequest::new(k, AccessAction::SetValue).with_value("7.5"),
     ));
     assert_eq!(kinds(&evs), ["access"]);
-    assert_eq!(
-        evs[0].payload.get("action").and_then(Value::as_str),
-        Some("setValue")
-    );
-    assert_eq!(
-        evs[0].payload.get("value").and_then(Value::as_float),
-        Some(7.5)
-    );
+    assert_eq!(evs[0].payload.get_str("action"), Some("setValue"));
+    assert_eq!(evs[0].payload.get_float("value"), Some(7.5));
 }
 
 /// Windows' UI Automation moves a slider only by setting it — RangeValue

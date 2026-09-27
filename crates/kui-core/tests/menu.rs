@@ -5,7 +5,7 @@
 use kui_core::testing::click;
 use kui_core::{
     Core, InputEvent, Key, Menu, MenuAction, MenuItem, MenuRole, MouseButton, NodeSpec, Size,
-    Sizing, TextStyle, Value, Vec2,
+    TextStyle, Value, Vec2,
 };
 
 fn style() -> TextStyle {
@@ -17,14 +17,10 @@ fn style() -> TextStyle {
 fn frame(core: &mut Core) -> Key {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    let scope = ui.with_keyed(
-        "card",
-        NodeSpec::column().width(Sizing::Grow(1.0)).selectable(),
-        |ui| {
-            ui.text("one", style());
-            ui.text("two", style());
-        },
-    );
+    let scope = ui.with_keyed("card", NodeSpec::column().grow_width().selectable(), |ui| {
+        ui.text("one", style());
+        ui.text("two", style());
+    });
     ui.finish();
     scope
 }
@@ -89,15 +85,9 @@ fn choosing_a_custom_row_posts_it_on_the_node_the_menu_was_about() {
     );
     let ev = &events[0];
     assert_eq!(ev.key, scope, "posted on the menu's target");
-    assert_eq!(ev.payload.get("kind").and_then(Value::as_str), Some("menu"));
-    assert_eq!(
-        ev.payload.get("role").and_then(Value::as_str),
-        Some("custom")
-    );
-    assert_eq!(
-        ev.payload.get("item").and_then(Value::as_str),
-        Some("inspect")
-    );
+    assert_eq!(ev.kind(), Some("menu"));
+    assert_eq!(ev.payload.get_str("role"), Some("custom"));
+    assert_eq!(ev.payload.get_str("item"), Some("inspect"));
     assert!(core.menu().is_none(), "choosing closes it");
 }
 
@@ -119,7 +109,7 @@ fn copy_puts_the_selection_on_the_hosts_clipboard() {
         "the core works out what to copy; the clipboard stays the host's"
     );
     assert_eq!(
-        events[0].payload.get("role").and_then(Value::as_str),
+        events[0].payload.get_str("role"),
         Some("copy"),
         "a standard item posts too, so an app can hear it"
     );
@@ -187,7 +177,7 @@ fn an_editors_selection_survives_the_menu_that_is_about_it() {
             autofocus: true,
             ..Default::default()
         },
-        NodeSpec::column().width(Sizing::Grow(1.0)),
+        NodeSpec::column().grow_width(),
     );
     ui.finish();
     core.handle_input(InputEvent::Key(
@@ -207,7 +197,7 @@ fn an_editors_selection_survives_the_menu_that_is_about_it() {
             "field",
             "typed text",
             &kui_core::EditOptions::default(),
-            NodeSpec::column().width(Sizing::Grow(1.0)),
+            NodeSpec::column().grow_width(),
         );
         ui.finish();
     };
@@ -229,10 +219,7 @@ fn an_editors_selection_survives_the_menu_that_is_about_it() {
     // AR15: a cut is an edit, and the app mirroring the field through
     // `changed` hears it — beside the `menu` event the chosen row posts,
     // which is not the app's click.
-    let changed: Vec<_> = evs
-        .iter()
-        .filter(|e| e.payload.get("kind").and_then(Value::as_str) == Some("changed"))
-        .collect();
+    let changed: Vec<_> = evs.iter().filter(|e| e.kind() == Some("changed")).collect();
     assert_eq!(changed.len(), 1, "{evs:?}");
     assert_eq!(changed[0].key, edit);
 }
@@ -411,7 +398,7 @@ fn a_right_click_in_an_editor_offers_the_four_a_field_has() {
             autofocus: true,
             ..Default::default()
         },
-        NodeSpec::column().width(Sizing::Grow(1.0)),
+        NodeSpec::column().grow_width(),
     );
     ui.finish();
     right_click(&mut core, Vec2::new(20.0, 8.0));
@@ -421,7 +408,7 @@ fn a_right_click_in_an_editor_offers_the_four_a_field_has() {
         "field",
         "typed text",
         &kui_core::EditOptions::default(),
-        NodeSpec::column().width(Sizing::Grow(1.0)),
+        NodeSpec::column().grow_width(),
     );
     ui.finish();
     assert_eq!(rows(&mut core), ["Cut", "Copy", "Paste", "Select All"]);
@@ -432,22 +419,20 @@ fn a_node_that_declares_its_own_context_menu_keeps_it() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    ui.with_keyed(
+    ui.text_in_keyed(
         "card",
         NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Fixed(60.0))
+            .grow_width()
+            .height(60.0)
             .selectable()
-            .on_context_menu(Value::str("mine")),
-        |ui| ui.text("one", style()),
+            .on_context_menu("mine"),
+        "one",
+        style(),
     );
     ui.finish();
     let events = right_click(&mut core, Vec2::new(20.0, 8.0));
     assert_eq!(
-        events
-            .iter()
-            .filter_map(|e| e.payload.get("kind").and_then(Value::as_str))
-            .collect::<Vec<_>>(),
+        events.iter().filter_map(|e| e.kind()).collect::<Vec<_>>(),
         ["contextmenu"],
         "the app's declaration wins"
     );
@@ -461,10 +446,7 @@ fn a_right_click_on_a_plain_box_opens_nothing() {
     ui.configure_root(NodeSpec::column().fill());
     ui.leaf_keyed(
         "plain",
-        NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Fixed(60.0))
-            .hoverable(),
+        NodeSpec::column().grow_width().height(60.0).hoverable(),
     );
     ui.finish();
     let events = right_click(&mut core, Vec2::new(20.0, 8.0));
@@ -510,10 +492,7 @@ fn the_host_reports_the_row_it_chose() {
         "the same path the drawn menu's row takes"
     );
     assert_eq!(events.len(), 1);
-    assert_eq!(
-        events[0].payload.get("role").and_then(Value::as_str),
-        Some("copy")
-    );
+    assert_eq!(events[0].payload.get_str("role"), Some("copy"));
     assert!(core.menu().is_none());
 }
 
@@ -554,10 +533,7 @@ fn a_disabled_row_or_a_separator_is_refused_and_the_menu_stays_open() {
     assert!(core.menu().is_some());
     let events = core.activate_menu_item(0).expect("an enabled row is taken");
     assert_eq!(events.len(), 1);
-    assert_eq!(
-        events[0].payload.get("item").and_then(Value::as_str),
-        Some("Archive")
-    );
+    assert_eq!(events[0].payload.get_str("item"), Some("Archive"));
     assert!(core.menu().is_none());
 }
 
@@ -571,10 +547,11 @@ fn a_force_click_over_text_selects_the_word_and_asks_for_a_panel() {
     ui.configure_root(NodeSpec::column().fill());
     let lead = ui.measure_text("hello ", &style(), None).width;
     let word = ui.measure_text("brave", &style(), None).width;
-    ui.with_keyed(
+    ui.text_in_keyed(
         "card",
-        NodeSpec::column().width(Sizing::Grow(1.0)).selectable(),
-        |ui| ui.text("hello brave world", style()),
+        NodeSpec::column().grow_width().selectable(),
+        "hello brave world",
+        style(),
     );
     ui.finish();
     let at = Vec2::new(lead + word / 2.0, 8.0);
@@ -619,22 +596,16 @@ fn a_force_click_elsewhere_reaches_the_node_that_asked_for_it() {
     let key = ui.leaf_keyed(
         "chart",
         NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Fixed(80.0))
-            .on_force_click(Value::str("peek")),
+            .grow_width()
+            .height(80.0)
+            .on_force_click("peek"),
     );
     ui.finish();
     let events = core.handle_input(InputEvent::ForceClick(Vec2::new(30.0, 30.0)));
     assert_eq!(events.len(), 1, "{events:?}");
     assert_eq!(events[0].key, key);
-    assert_eq!(
-        events[0].payload.get("kind").and_then(Value::as_str),
-        Some("forceclick")
-    );
-    assert_eq!(
-        events[0].payload.get("tag").and_then(Value::as_str),
-        Some("peek")
-    );
+    assert_eq!(events[0].kind(), Some("forceclick"));
+    assert_eq!(events[0].payload.get_str("tag"), Some("peek"));
 }
 
 #[test]
@@ -662,10 +633,11 @@ fn the_panel_is_anchored_to_the_word_and_not_the_paragraph() {
     let build = |core: &mut Core| {
         let mut ui = core.frame(Size::new(420.0, 300.0), 1.0);
         ui.configure_root(NodeSpec::column().fill());
-        ui.with_keyed(
+        ui.text_in_keyed(
             "card",
-            NodeSpec::column().width(Sizing::Fixed(400.0)).selectable(),
-            |ui| ui.text(text, TextStyle::new(16.0).line_height(26.0)),
+            NodeSpec::column().width(400.0).selectable(),
+            text,
+            TextStyle::new(16.0).line_height(26.0),
         );
         ui.finish();
     };
@@ -699,10 +671,11 @@ fn a_force_click_keeps_its_word_through_the_rest_of_the_press() {
     ui.configure_root(NodeSpec::column().fill());
     let lead = ui.measure_text("hello ", &style(), None).width;
     let word = ui.measure_text("brave", &style(), None).width;
-    ui.with_keyed(
+    ui.text_in_keyed(
         "card",
-        NodeSpec::column().width(Sizing::Grow(1.0)).selectable(),
-        |ui| ui.text("hello brave world", style()),
+        NodeSpec::column().grow_width().selectable(),
+        "hello brave world",
+        style(),
     );
     ui.finish();
     let at = Vec2::new(lead + word / 2.0, 8.0);
@@ -738,10 +711,11 @@ fn a_force_click_in_a_wide_gap_looks_nothing_up() {
     ui.configure_root(NodeSpec::column().fill());
     let lead = ui.measure_text("hello", &style(), None).width;
     let gap = ui.measure_text("hello          ", &style(), None).width - lead;
-    ui.with_keyed(
+    ui.text_in_keyed(
         "card",
-        NodeSpec::column().width(Sizing::Grow(1.0)).selectable(),
-        |ui| ui.text("hello          world", style()),
+        NodeSpec::column().grow_width().selectable(),
+        "hello          world",
+        style(),
     );
     ui.finish();
     core.handle_input(InputEvent::ForceClick(Vec2::new(lead + gap / 2.0, 8.0)));

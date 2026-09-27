@@ -10,7 +10,7 @@
 //!
 //! Run: cargo bench -p kui-core --bench stream
 
-use kui_core::{Color, Core, NodeSpec, Size, Sizing, TextStyle};
+use kui_core::{Color, Core, NodeSpec, Size, TextStyle};
 
 const ROWS: usize = 50;
 const COLS: usize = 200;
@@ -94,9 +94,7 @@ fn frame(core: &mut Core, salt: usize, mk: fn(usize, usize) -> String) -> usize 
     ui.configure_root(NodeSpec::column().fill().bg(Color::rgb8(0, 0, 0)));
     for r in 0..ROWS {
         let t = mk(r, salt);
-        ui.with(NodeSpec::row().height(Sizing::Fixed(LH)), |ui| {
-            ui.text(&t, mono())
-        });
+        ui.text_in(NodeSpec::row().height(LH), &t, mono());
     }
     ui.finish();
     let (dl, _) = core.output();

@@ -243,7 +243,7 @@ fn a_dismissed_popup_closes_nothing_until_the_app_stops_declaring_it() {
         ]
     );
     assert_eq!(
-        events[0].payload.get("name").and_then(Value::as_str),
+        events[0].payload.get_str("name"),
         Some("menu"),
         "the event says which window, since it is on the root of whichever core noticed"
     );

@@ -3,7 +3,7 @@
 //! and between frames, wrapped or not — so a view sizes to its labels
 //! from numbers, not screenshots.
 
-use kui_core::{Color, Core, NodeSpec, Size, Sizing, Span, TextStyle};
+use kui_core::{Color, Core, NodeSpec, Size, Span, TextStyle};
 
 /// The laid-out size of a text node: a fit-sized box with a background
 /// holds only the text, so its quad is the text's size.
@@ -11,9 +11,9 @@ fn text_box(core: &mut Core, content: &str, style: TextStyle, box_w: Option<f32>
     let mut ui = core.frame(Size::new(800.0, 600.0), 1.0);
     let mut spec = NodeSpec::column().bg(Color::WHITE);
     if let Some(w) = box_w {
-        spec = spec.width(Sizing::Fixed(w));
+        spec = spec.width(w);
     }
-    ui.with(spec, |ui| ui.text(content, style));
+    ui.text_in(spec, content, style);
     ui.finish();
     let (dl, _) = core.output();
     let q = dl.quads.first().expect("the box quad");

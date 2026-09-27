@@ -13,7 +13,7 @@
 
 use kui_devtools::{Drive, Example};
 use kui_native::widgets;
-use kui_native::{Align, App, Core, FloatConfig, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
+use kui_native::{Align, App, Core, FloatConfig, NodeSpec, TextStyle, Ui, UiEvent, Value};
 
 #[derive(Default)]
 struct Counter {
@@ -43,7 +43,7 @@ impl App for Counter {
                         .radius(12.0)
                         .border(1.0, t.border)
                         .cross_align(Align::Center)
-                        .width(Sizing::Fixed(320.0)),
+                        .width(320.0),
                     |ui| {
                         ui.text("kui counter", TextStyle::new(14.0).color(t.muted));
                         ui.text(&self.count.to_string(), TextStyle::new(56.0));
@@ -70,16 +70,15 @@ impl App for Counter {
                 NodeSpec::column()
                     .float(
                         FloatConfig::viewport()
-                            .at(Align::Start, Align::Start)
-                            .self_at(Align::Start, Align::Start)
+                            .inside(Align::Start, Align::Start)
                             .offset(x, y)
                             // Opened near an edge, the menu would hang off
                             // the window; `fit` mirrors it back instead.
                             .fit(),
                     )
-                    .modal(Value::str("menu"))
+                    .modal("menu")
                     .label("Actions")
-                    .width(Sizing::Fixed(120.0))
+                    .width(120.0)
                     .pad(4.0)
                     .gap(4.0)
                     .bg(t.raised)
@@ -94,7 +93,7 @@ impl App for Counter {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.payload.get("kind").and_then(Value::as_str) {
+        match ev.kind() {
             Some("inc") => self.count += 1,
             Some("dec") => self.count -= 1,
             Some("reset") => {

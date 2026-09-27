@@ -8,7 +8,7 @@
 //!
 //! Run: cargo bench -p kui-core --bench highlight
 
-use kui_core::{Color, Core, NodeSpec, Size, Sizing, TextStyle, Ui};
+use kui_core::{Color, Core, NodeSpec, Size, TextStyle, Ui};
 
 const LH: f32 = 20.0;
 const LINES_PER_PANE: usize = 55;
@@ -85,57 +85,47 @@ fn pane(ui: &mut Ui<'_>, pane_no: usize, top: usize, salt: usize, caret_line: us
             .bg(Color::rgb8(0x14, 0x16, 0x1e))
             .clip(),
         |ui| {
-            ui.with(
-                NodeSpec::row()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Grow(1.0)),
-                |ui| {
-                    ui.with(NodeSpec::column().width(Sizing::Fixed(52.0)), |ui| {
-                        for ln in top..top + LINES_PER_PANE {
-                            ui.with(
-                                NodeSpec::row()
-                                    .height(Sizing::Fixed(LH))
-                                    .main_align(kui_core::Align::End),
-                                |ui| ui.text(&format!("{}", ln + 1), TextStyle::new(11.0).mono()),
-                            );
-                        }
-                    });
-                    ui.with(NodeSpec::column().width(Sizing::Grow(1.0)).clip(), |ui| {
-                        for ln in top..top + LINES_PER_PANE {
-                            let selected = pane_no == 0 && (10..20).contains(&(ln - top));
-                            ui.with(NodeSpec::row().height(Sizing::Fixed(LH)), |ui| {
-                                for (i, (run, color)) in line_runs(ln, salt).into_iter().enumerate()
-                                {
-                                    let style = mono().color(color);
-                                    if ln == caret_line && i == 2 {
-                                        // Inline caret node between runs.
-                                        ui.leaf(
-                                            NodeSpec::column()
-                                                .width(Sizing::Fixed(2.0))
-                                                .height(Sizing::Fixed(LH - 4.0))
-                                                .bg(Color::rgb8(0x6a, 0x8b, 0xff)),
-                                        );
-                                    }
-                                    if selected && (1..=3).contains(&i) {
-                                        ui.with(
-                                            NodeSpec::row().height(Sizing::Fixed(LH)).bg(sel_bg),
-                                            |ui| ui.text(&run, style),
-                                        );
-                                    } else {
-                                        ui.text(&run, style);
-                                    }
+            ui.with(NodeSpec::row().fill(), |ui| {
+                ui.with(NodeSpec::column().width(52.0), |ui| {
+                    for ln in top..top + LINES_PER_PANE {
+                        ui.text_in(
+                            NodeSpec::row().height(LH).main_align(kui_core::Align::End),
+                            &format!("{}", ln + 1),
+                            TextStyle::new(11.0).mono(),
+                        );
+                    }
+                });
+                ui.with(NodeSpec::column().grow_width().clip(), |ui| {
+                    for ln in top..top + LINES_PER_PANE {
+                        let selected = pane_no == 0 && (10..20).contains(&(ln - top));
+                        ui.with(NodeSpec::row().height(LH), |ui| {
+                            for (i, (run, color)) in line_runs(ln, salt).into_iter().enumerate() {
+                                let style = mono().color(color);
+                                if ln == caret_line && i == 2 {
+                                    // Inline caret node between runs.
+                                    ui.leaf(
+                                        NodeSpec::column()
+                                            .size(2.0, LH - 4.0)
+                                            .bg(Color::rgb8(0x6a, 0x8b, 0xff)),
+                                    );
                                 }
-                            });
-                        }
-                    });
-                },
-            );
-            ui.with(
+                                if selected && (1..=3).contains(&i) {
+                                    ui.text_in(NodeSpec::row().height(LH).bg(sel_bg), &run, style);
+                                } else {
+                                    ui.text(&run, style);
+                                }
+                            }
+                        });
+                    }
+                });
+            });
+            ui.text_in(
                 NodeSpec::row()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Fixed(24.0))
+                    .grow_width()
+                    .height(24.0)
                     .bg(Color::rgb8(0x1a, 0x1d, 0x27)),
-                |ui| ui.text("main.rs 12:8 34%", TextStyle::new(11.0).mono()),
+                "main.rs 12:8 34%",
+                TextStyle::new(11.0).mono(),
             );
         },
     );
@@ -177,9 +167,11 @@ fn highlight_2x55_typing(bencher: divan::Bencher) {
             ui.with(NodeSpec::column().fill(), |ui| {
                 pane(ui, p, 0, 0, 12);
                 // The "edited" line, unique content per frame.
-                ui.with(NodeSpec::row().height(Sizing::Fixed(LH)), |ui| {
-                    ui.text(&format!("    let typed = \"abc{tick}\";"), mono());
-                });
+                ui.text_in(
+                    NodeSpec::row().height(LH),
+                    &format!("    let typed = \"abc{tick}\";"),
+                    mono(),
+                );
             });
         }
         ui.finish();
@@ -202,7 +194,7 @@ fn highlight_2x55_warm_rich(bencher: divan::Bencher) {
             ui.with(NodeSpec::column().fill().clip(), |ui| {
                 for ln in 0..LINES_PER_PANE {
                     let runs = line_runs(ln, 0);
-                    ui.with(NodeSpec::row().height(Sizing::Fixed(LH)), |ui| {
+                    ui.with(NodeSpec::row().height(LH), |ui| {
                         let spans: Vec<Span<'_>> =
                             runs.iter().map(|(t, c)| Span::new(t).color(*c)).collect();
                         ui.rich_text(&spans, mono());

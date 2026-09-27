@@ -22,7 +22,7 @@
 
 use kui_devtools::{Drive, Example};
 use kui_native::widgets;
-use kui_native::{Align, App, Core, FloatConfig, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
+use kui_native::{Align, App, Core, FloatConfig, NodeSpec, TextStyle, Ui, UiEvent, Value};
 
 #[derive(Default)]
 struct Page {
@@ -51,7 +51,7 @@ impl App for Page {
                     widgets::button(ui, "open dialog", Value::str("open"));
                     widgets::button(ui, "another button", Value::str("noop"));
                 });
-                ui.with(NodeSpec::column().width(Sizing::Fixed(260.0)), |ui| {
+                ui.with(NodeSpec::column().width(260.0), |ui| {
                     widgets::text_input(ui, "form field", "");
                 });
                 if let Some(s) = &self.saved {
@@ -64,15 +64,11 @@ impl App for Page {
             ui.with_keyed(
                 "dialog",
                 NodeSpec::column()
-                    .float(
-                        FloatConfig::viewport()
-                            .at(Align::Center, Align::Center)
-                            .self_at(Align::Center, Align::Center),
-                    )
-                    .modal(Value::str("dialog"))
+                    .float(FloatConfig::viewport().inside(Align::Center, Align::Center))
+                    .modal("dialog")
                     .role(kui_native::Role::Dialog)
                     .label("Edit")
-                    .width(Sizing::Fixed(320.0))
+                    .width(320.0)
                     .pad(18.0)
                     .gap(12.0)
                     .bg(t.raised)
@@ -83,17 +79,14 @@ impl App for Page {
                     let name = widgets::text_input(ui, "name", "");
                     draft = ui.edit_text(name);
                     ui.with(
-                        NodeSpec::row()
-                            .width(Sizing::Grow(1.0))
-                            .gap(8.0)
-                            .main_align(Align::End),
+                        NodeSpec::row().grow_width().gap(8.0).main_align(Align::End),
                         |ui| {
                             widgets::button(ui, "discard", Value::str("discard"));
                             // `initial_focus`: the dialog opens here, not on the
                             // field — the entry precedence of ADR 0003 / 0007.
                             let spec = widgets::button_spec(&ui.theme(), &ui.metrics())
                                 .accent()
-                                .on_click(Value::str("save"))
+                                .on_click("save")
                                 .initial_focus();
                             widgets::button_with(ui, "save", "save", spec, None);
                         },
@@ -104,15 +97,11 @@ impl App for Page {
                         ui.with_keyed(
                             "confirm",
                             NodeSpec::column()
-                                .float(
-                                    FloatConfig::viewport()
-                                        .at(Align::Center, Align::Center)
-                                        .self_at(Align::Center, Align::Center),
-                                )
-                                .modal(Value::str("confirm"))
+                                .float(FloatConfig::viewport().inside(Align::Center, Align::Center))
+                                .modal("confirm")
                                 .role(kui_native::Role::Dialog)
                                 .label("Discard changes?")
-                                .width(Sizing::Fixed(240.0))
+                                .width(240.0)
                                 .pad(16.0)
                                 .gap(10.0)
                                 .bg(t.raised)
@@ -121,10 +110,7 @@ impl App for Page {
                             |ui| {
                                 ui.text("discard changes?", TextStyle::new(14.0).color(t.fg));
                                 ui.with(
-                                    NodeSpec::row()
-                                        .width(Sizing::Grow(1.0))
-                                        .gap(8.0)
-                                        .main_align(Align::End),
+                                    NodeSpec::row().grow_width().gap(8.0).main_align(Align::End),
                                     |ui| {
                                         widgets::button(ui, "keep editing", Value::str("keep"));
                                         widgets::button(ui, "discard them", Value::str("really"));
@@ -142,10 +128,10 @@ impl App for Page {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        let kind = ev.payload.get("kind").and_then(Value::as_str);
+        let kind = ev.kind();
         if kind == Some("dismiss") {
             // Which modal asked: the tag is the node's.
-            match ev.payload.get("tag").and_then(Value::as_str) {
+            match ev.payload.get_str("tag") {
                 Some("confirm") => self.confirm = false,
                 Some("dialog") if self.draft.is_empty() => self.dialog = false,
                 Some("dialog") => self.confirm = true,
@@ -212,9 +198,9 @@ impl Example for Page {
         let evs = d.click_key(self, other);
         let outside = evs.len() == 1
             && evs[0].key != other
-            && evs[0].payload.get("kind").and_then(Value::as_str) == Some("dismiss")
-            && evs[0].payload.get("tag").and_then(Value::as_str) == Some("dialog")
-            && evs[0].payload.get("reason").and_then(Value::as_str) == Some("outside");
+            && evs[0].kind() == Some("dismiss")
+            && evs[0].payload.get_str("tag") == Some("dialog")
+            && evs[0].payload.get_str("reason") == Some("outside");
         d.check(
             outside,
             "the form under the dialog is inert: the click is the press outside",
@@ -264,8 +250,8 @@ impl Example for Page {
         let evs = d.click_key(self, save);
         let outside = evs.len() == 1
             && evs[0].key != save
-            && evs[0].payload.get("kind").and_then(Value::as_str) == Some("dismiss")
-            && evs[0].payload.get("tag").and_then(Value::as_str) == Some("confirm");
+            && evs[0].kind() == Some("dismiss")
+            && evs[0].payload.get_str("tag") == Some("confirm");
         d.check(
             outside,
             "the dialog under the confirm is inert: the click asks the confirm",

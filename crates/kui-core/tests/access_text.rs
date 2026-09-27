@@ -5,8 +5,8 @@
 //! requests it alone can honour coming back as events.
 
 use kui_core::{
-    AccessAction, AccessRequest, Core, EditOptions, InputEvent, Key, NodeSpec, Role, Size, Sizing,
-    TextPos, TextStyle, Value,
+    AccessAction, AccessRequest, Core, EditOptions, InputEvent, Key, NodeSpec, Role, Size, TextPos,
+    TextStyle, Value,
 };
 
 fn editor_frame(core: &mut Core, initial: &str) -> Key {
@@ -20,10 +20,7 @@ fn editor_frame(core: &mut Core, initial: &str) -> Key {
             autofocus: true,
             ..Default::default()
         },
-        NodeSpec::column()
-            .width(Sizing::Fixed(300.0))
-            .pad(4.0)
-            .label("Doc"),
+        NodeSpec::column().width(300.0).pad(4.0).label("Doc"),
     );
     ui.finish();
     key
@@ -161,10 +158,7 @@ fn selection_requests_move_the_caret_and_type_over_it() {
         AccessRequest::new(key, AccessAction::ReplaceSelectedText).with_value("there"),
     ));
     assert_eq!(evs.len(), 1);
-    assert_eq!(
-        evs[0].payload.get("kind").and_then(Value::as_str),
-        Some("changed")
-    );
+    assert_eq!(evs[0].kind(), Some("changed"));
     assert_eq!(core.edit_text(key).as_deref(), Some("hello there line"));
     editor_frame(&mut core, "");
     let node = core.access_tree().get(key).unwrap().clone();
@@ -220,7 +214,7 @@ fn custom_frame(
         "sink",
         NodeSpec::column()
             .fill()
-            .on_key(Value::str("ed"))
+            .on_key("ed")
             .role(Role::MultilineTextInput)
             .label("Doc"),
         |ui| {
@@ -354,14 +348,8 @@ fn a_custom_editor_declares_its_lines_caret_and_selection() {
     let evs = core.handle_input(InputEvent::Access(
         AccessRequest::new(sink, AccessAction::SetValue).with_value("all new"),
     ));
-    assert_eq!(
-        evs[0].payload.get("action").and_then(Value::as_str),
-        Some("setValue")
-    );
-    assert_eq!(
-        evs[0].payload.get("text").and_then(Value::as_str),
-        Some("all new")
-    );
+    assert_eq!(evs[0].payload.get_str("action"), Some("setValue"));
+    assert_eq!(evs[0].payload.get_str("text"), Some("all new"));
 
     // No caret declared: no positions, value still there.
     let mut core = Core::new();
@@ -378,10 +366,7 @@ fn a_key_sink_is_a_focusable_group() {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     let sink = ui.leaf_keyed(
         "canvas",
-        NodeSpec::column()
-            .fill()
-            .on_key(Value::Null)
-            .label("Canvas"),
+        NodeSpec::column().fill().key_sink().label("Canvas"),
     );
     ui.finish();
     let tree = core.access_tree().clone();

@@ -4,8 +4,7 @@
 //! (`docs/adr/0017-selection-as-a-scope.md`).
 
 use kui_core::{
-    Core, EditKey, InputEvent, Key, Mods, MouseButton, NodeSpec, QuadKind, Size, Sizing, TextStyle,
-    Vec2,
+    Core, EditKey, InputEvent, Key, Mods, MouseButton, NodeSpec, QuadKind, Size, TextStyle, Vec2,
 };
 
 fn style() -> TextStyle {
@@ -16,15 +15,11 @@ fn style() -> TextStyle {
 fn three_labels(core: &mut Core) -> Key {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    let scope = ui.with_keyed(
-        "card",
-        NodeSpec::column().width(Sizing::Grow(1.0)).selectable(),
-        |ui| {
-            ui.text("one", style());
-            ui.text("two", style());
-            ui.text("three", style());
-        },
-    );
+    let scope = ui.with_keyed("card", NodeSpec::column().grow_width().selectable(), |ui| {
+        ui.text("one", style());
+        ui.text("two", style());
+        ui.text("three", style());
+    });
     ui.finish();
     scope
 }
@@ -83,10 +78,11 @@ fn a_word_is_the_run_of_like_characters_around_the_point() {
     // different word on a different machine.
     let lead = ui.measure_text("hello ", &style(), None).width;
     let word = ui.measure_text("brave", &style(), None).width;
-    let scope = ui.with_keyed(
+    let scope = ui.text_in_keyed(
         "card",
-        NodeSpec::column().width(Sizing::Grow(1.0)).selectable(),
-        |ui| ui.text("hello brave world", style()),
+        NodeSpec::column().grow_width().selectable(),
+        "hello brave world",
+        style(),
     );
     ui.finish();
     assert!(
@@ -105,8 +101,8 @@ fn a_run_scrolled_out_of_view_still_copies() {
     let scope = ui.with_keyed(
         "scroll",
         NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Fixed(50.0))
+            .grow_width()
+            .height(50.0)
             .scroll_y()
             .selectable(),
         |ui| {
@@ -146,20 +142,16 @@ fn a_long_line_joins_the_concatenation() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    let scope = ui.with_keyed(
-        "card",
-        NodeSpec::column().width(Sizing::Grow(1.0)).selectable(),
-        |ui| {
-            ui.text("head", style());
-            ui.text(
-                &long,
-                TextStyle {
-                    wrap: kui_core::spec::TextWrap::None,
-                    ..style()
-                },
-            );
-        },
-    );
+    let scope = ui.with_keyed("card", NodeSpec::column().grow_width().selectable(), |ui| {
+        ui.text("head", style());
+        ui.text(
+            &long,
+            TextStyle {
+                wrap: kui_core::spec::TextWrap::None,
+                ..style()
+            },
+        );
+    });
     ui.finish();
     assert!(core.select_all_in(scope));
     let text = core.selection_text().expect("a selection");
@@ -173,22 +165,18 @@ fn a_selection_is_the_windows_and_an_editor_gives_it_up() {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
     let mut edit = Key::ROOT;
-    let scope = ui.with_keyed(
-        "card",
-        NodeSpec::column().width(Sizing::Grow(1.0)).selectable(),
-        |ui| {
-            ui.text("static text", style());
-            edit = ui.text_edit(
-                "field",
-                "typed text",
-                &kui_core::EditOptions {
-                    autofocus: true,
-                    ..Default::default()
-                },
-                NodeSpec::column().width(Sizing::Grow(1.0)),
-            );
-        },
-    );
+    let scope = ui.with_keyed("card", NodeSpec::column().grow_width().selectable(), |ui| {
+        ui.text("static text", style());
+        edit = ui.text_edit(
+            "field",
+            "typed text",
+            &kui_core::EditOptions {
+                autofocus: true,
+                ..Default::default()
+            },
+            NodeSpec::column().grow_width(),
+        );
+    });
     ui.finish();
     core.handle_input(InputEvent::Key(EditKey::SelectAll, Mods::default()));
     assert_eq!(core.copy_selection().as_deref(), Some("typed text"));
@@ -206,13 +194,7 @@ fn a_selection_is_the_windows_and_an_editor_gives_it_up() {
     // Shift+arrow the same; a bare arrow collapses the editor's and
     // leaves the scope's alone.
     assert!(core.select_all_in(scope));
-    core.handle_input(InputEvent::Key(
-        EditKey::Left,
-        Mods {
-            shift: true,
-            ..Default::default()
-        },
-    ));
+    core.handle_input(InputEvent::Key(EditKey::Left, Mods::NONE.with_shift()));
     assert!(core.selection().is_none());
     assert!(core.select_all_in(scope));
     core.handle_input(InputEvent::Key(EditKey::Left, Mods::default()));
@@ -265,10 +247,11 @@ fn a_double_press_takes_the_word_and_a_triple_the_run() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    ui.with_keyed(
+    ui.text_in_keyed(
         "card",
-        NodeSpec::column().width(Sizing::Grow(1.0)).selectable(),
-        |ui| ui.text("hello brave world", style()),
+        NodeSpec::column().grow_width().selectable(),
+        "hello brave world",
+        style(),
     );
     ui.finish();
     core.handle_input(InputEvent::CursorMoved(Vec2::new(60.0, 8.0)));
@@ -289,20 +272,17 @@ fn a_press_on_a_button_inside_a_scope_clicks_it() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    ui.with_keyed(
-        "card",
-        NodeSpec::column().width(Sizing::Grow(1.0)).selectable(),
-        |ui| {
-            ui.with_keyed(
-                "go",
-                NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Fixed(30.0))
-                    .on_click(kui_core::Value::str("go")),
-                |ui| ui.text("press me", style()),
-            );
-        },
-    );
+    ui.with_keyed("card", NodeSpec::column().grow_width().selectable(), |ui| {
+        ui.text_in_keyed(
+            "go",
+            NodeSpec::column()
+                .grow_width()
+                .height(30.0)
+                .on_click(kui_core::Value::str("go")),
+            "press me",
+            style(),
+        );
+    });
     ui.finish();
     core.handle_input(InputEvent::CursorMoved(Vec2::new(50.0, 10.0)));
     core.handle_input(InputEvent::MouseDown {
@@ -328,13 +308,14 @@ fn a_scope_inside_a_scope_is_warned_about() {
         ui.configure_root(NodeSpec::column().fill());
         ui.with_keyed(
             "outer",
-            NodeSpec::column().width(Sizing::Grow(1.0)).selectable(),
+            NodeSpec::column().grow_width().selectable(),
             |ui| {
                 ui.text("outside", style());
-                ui.with_keyed(
+                ui.text_in_keyed(
                     "inner",
-                    NodeSpec::column().width(Sizing::Grow(1.0)).selectable(),
-                    |ui| ui.text("inside", style()),
+                    NodeSpec::column().grow_width().selectable(),
+                    "inside",
+                    style(),
                 );
             },
         );
@@ -353,21 +334,17 @@ fn a_copy_carries_the_formatting_the_text_declared() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    let scope = ui.with_keyed(
-        "card",
-        NodeSpec::column().width(Sizing::Grow(1.0)).selectable(),
-        |ui| {
-            ui.rich_text(
-                &[
-                    Span::new("plain "),
-                    Span::new("bold").bold(),
-                    Span::new(" & "),
-                    Span::new("green").color(kui_core::Color::rgb8(0, 0x80, 0)),
-                ],
-                style(),
-            );
-        },
-    );
+    let scope = ui.with_keyed("card", NodeSpec::column().grow_width().selectable(), |ui| {
+        ui.rich_text(
+            &[
+                Span::new("plain "),
+                Span::new("bold").bold(),
+                Span::new(" & "),
+                Span::new("green").color(kui_core::Color::rgb8(0, 0x80, 0)),
+            ],
+            style(),
+        );
+    });
     ui.finish();
     assert!(core.select_all_in(scope));
     assert_eq!(core.selection_text().as_deref(), Some("plain bold & green"));
@@ -400,16 +377,12 @@ fn a_copy_reads_bold_against_the_familys_regular() {
     for (font, want_bold) in [(semi, true), (heavy, false)] {
         let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
         ui.configure_root(NodeSpec::column().fill());
-        let scope = ui.with_keyed(
-            "card",
-            NodeSpec::column().width(Sizing::Grow(1.0)).selectable(),
-            |ui| {
-                ui.rich_text(
-                    &[Span::new("plain "), Span::new("bold").bold()],
-                    style().font(font),
-                );
-            },
-        );
+        let scope = ui.with_keyed("card", NodeSpec::column().grow_width().selectable(), |ui| {
+            ui.rich_text(
+                &[Span::new("plain "), Span::new("bold").bold()],
+                style().font(font),
+            );
+        });
         ui.finish();
         assert!(core.select_all_in(scope));
         let html = core.selection_html().unwrap_or_default();
@@ -445,10 +418,11 @@ fn a_held_double_press_drags_by_words() {
     let x_brave = at("hello ", &mut ui) + at("brave", &mut ui) / 2.0;
     let x_world = at("hello brave ", &mut ui) + at("world", &mut ui) / 2.0;
     let x_hello = at("hell", &mut ui);
-    ui.with_keyed(
+    ui.text_in_keyed(
         "card",
-        NodeSpec::column().width(Sizing::Grow(1.0)).selectable(),
-        |ui| ui.text("hello brave world", style()),
+        NodeSpec::column().grow_width().selectable(),
+        "hello brave world",
+        style(),
     );
     ui.finish();
 
@@ -499,10 +473,11 @@ fn a_single_press_still_drags_by_characters() {
     ui.configure_root(NodeSpec::column().fill());
     let lead = ui.measure_text("hello ", &style(), None).width;
     let two = ui.measure_text("hello br", &style(), None).width;
-    ui.with_keyed(
+    ui.text_in_keyed(
         "card",
-        NodeSpec::column().width(Sizing::Grow(1.0)).selectable(),
-        |ui| ui.text("hello brave world", style()),
+        NodeSpec::column().grow_width().selectable(),
+        "hello brave world",
+        style(),
     );
     ui.finish();
     core.handle_input(InputEvent::CursorMoved(Vec2::new(lead, 8.0)));
@@ -529,10 +504,7 @@ fn shift_motions_on_a_focused_scope_select_its_text() {
         ui.configure_root(NodeSpec::column().fill());
         let scope = ui.with_keyed(
             "card",
-            NodeSpec::column()
-                .width(Sizing::Grow(1.0))
-                .selectable()
-                .focusable(),
+            NodeSpec::column().grow_width().selectable().focusable(),
             |ui| {
                 ui.text("one two", style());
                 ui.text("three", style());
@@ -545,15 +517,8 @@ fn shift_motions_on_a_focused_scope_select_its_text() {
     core.set_focus(Some(scope));
     frame(&mut core);
     let key = |core: &mut Core, k: EditKey, mods: Mods| core.handle_input(InputEvent::Key(k, mods));
-    let shift = Mods {
-        shift: true,
-        ..Mods::default()
-    };
-    let shift_word = Mods {
-        shift: true,
-        word: true,
-        ..Mods::default()
-    };
+    let shift = Mods::NONE.with_shift();
+    let shift_word = Mods::NONE.with_shift().with_word();
     // Nothing selected: Shift-Right starts at the scope's first byte.
     key(&mut core, EditKey::Right, shift);
     assert_eq!(core.selection_text().as_deref(), Some("o"));
@@ -588,20 +553,15 @@ fn shift_motions_on_a_focused_scope_select_its_text() {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
     let mut button = Key::ROOT;
-    ui.with_keyed(
-        "card",
-        NodeSpec::column().width(Sizing::Grow(1.0)).selectable(),
-        |ui| {
-            ui.text("one two", style());
-            button = ui.leaf_keyed(
-                "copy",
-                NodeSpec::row()
-                    .width(Sizing::Fixed(20.0))
-                    .height(Sizing::Fixed(20.0))
-                    .on_click(kui_core::Value::str("copy")),
-            );
-        },
-    );
+    ui.with_keyed("card", NodeSpec::column().grow_width().selectable(), |ui| {
+        ui.text("one two", style());
+        button = ui.leaf_keyed(
+            "copy",
+            NodeSpec::row()
+                .size(20.0, 20.0)
+                .on_click(kui_core::Value::str("copy")),
+        );
+    });
     ui.finish();
     core.set_focus(Some(button));
     key(&mut core, EditKey::End, shift);

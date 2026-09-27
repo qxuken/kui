@@ -44,14 +44,14 @@ impl App for Buttons {
                         ui,
                         "accent",
                         "accent",
-                        widgets::button_spec(&ui.theme(), &ui.metrics()).accent().on_click(Value::str("accent")),
+                        widgets::button_spec(&ui.theme(), &ui.metrics()).accent().on_click("accent"),
                         None,
                     );
                     widgets::button_with(
                         ui,
                         "disabled",
                         "disabled",
-                        widgets::button_spec(&ui.theme(), &ui.metrics()).disabled(true).on_click(Value::str("disabled")),
+                        widgets::button_spec(&ui.theme(), &ui.metrics()).disabled(true).on_click("disabled"),
                         None,
                     );
                 });
@@ -63,7 +63,7 @@ impl App for Buttons {
                         ui,
                         "add",
                         "＋",
-                        widgets::button_spec(&ui.theme(), &ui.metrics()).on_click(Value::str("add")).label("add a row"),
+                        widgets::button_spec(&ui.theme(), &ui.metrics()).on_click("add").label("add a row"),
                         None,
                     );
                     // A `description` is what a reader says after the
@@ -74,7 +74,7 @@ impl App for Buttons {
                         "delete",
                         "delete",
                         widgets::button_spec(&ui.theme(), &ui.metrics())
-                            .on_click(Value::str("delete"))
+                            .on_click("delete")
                             .apply_tooltip("removes the row for good — no undo"),
                         Some("removes the row for good — no undo"),
                     );
@@ -96,9 +96,7 @@ impl App for Buttons {
                         // Readable on the base, whichever it is — the rule
                         // the stock button applies to its own.
                         let fg = widgets::readable_on(rest);
-                        ui.with_keyed(name, spec, |ui| {
-                            ui.text(name, TextStyle::new(widgets::BUTTON_TEXT).color(fg));
-                        });
+                        ui.text_in_keyed(name, spec, name, TextStyle::new(widgets::BUTTON_TEXT).color(fg));
                     }
                 });
 

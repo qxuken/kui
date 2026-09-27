@@ -9,7 +9,7 @@
 //! rounded, clipping card is fully painted in the middle of an edge and
 //! gone in the corner it used to poke out of.
 
-use kui_core::{Clip, Color, Core, NodeSpec, Quad, Size, Sizing};
+use kui_core::{Clip, Color, Core, NodeSpec, Quad, Size};
 
 mod wgsl;
 use wgsl::inside;
@@ -27,22 +27,12 @@ fn child_of_rounded_card(radius: NodeSpec) -> (Quad, Clip) {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(200.0, 200.0), 1.0);
     ui.configure_root(NodeSpec::column().pad(20.0));
-    ui.with_keyed(
-        "card",
-        radius
-            .width(Sizing::Fixed(CARD))
-            .height(Sizing::Fixed(CARD))
-            .clip(),
-        |ui| {
-            ui.leaf_keyed(
-                "child",
-                NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Grow(1.0))
-                    .bg(Color::rgb8(20, 20, 30)),
-            );
-        },
-    );
+    ui.with_keyed("card", radius.size(CARD, CARD).clip(), |ui| {
+        ui.leaf_keyed(
+            "child",
+            NodeSpec::column().fill().bg(Color::rgb8(20, 20, 30)),
+        );
+    });
     ui.finish();
     let dl = core.output().0;
     let q = dl.quads[0];
@@ -156,8 +146,7 @@ fn the_clip_shape_is_the_clippers_box_not_the_quad_being_clipped() {
     ui.with_keyed(
         "card",
         NodeSpec::column()
-            .width(Sizing::Fixed(CARD))
-            .height(Sizing::Fixed(CARD))
+            .size(CARD, CARD)
             .radius(R)
             .clip()
             .pad(30.0),
@@ -165,8 +154,7 @@ fn the_clip_shape_is_the_clippers_box_not_the_quad_being_clipped() {
             ui.leaf_keyed(
                 "inner",
                 NodeSpec::column()
-                    .width(Sizing::Fixed(20.0))
-                    .height(Sizing::Fixed(20.0))
+                    .size(20.0, 20.0)
                     .bg(Color::rgb8(200, 30, 30)),
             );
         },

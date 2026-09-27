@@ -231,7 +231,7 @@ mod tests {
             f[1],
             Keyframe::default()
                 .at(1.0)
-                .width(Sizing::Grow(1.0))
+                .grow_width()
                 .bg(Color::hex(0xff0000ff))
                 .radius(3.0)
         );

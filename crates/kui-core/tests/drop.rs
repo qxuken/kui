@@ -4,7 +4,7 @@
 //! zone the view stops declaring mid-drag hearing its prepared `leave`.
 //! The resolver's cases are the `drop` corpus scene's.
 
-use kui_core::{Color, Core, InputEvent, Key, NodeSpec, Size, Sizing, Value, Vec2};
+use kui_core::{Color, Core, InputEvent, Key, NodeSpec, Size, Vec2};
 
 const BASE: Color = Color {
     r: 0.1,
@@ -35,12 +35,11 @@ fn frame(core: &mut Core, declare: bool) -> Key {
             ui.leaf_keyed(
                 "zone",
                 NodeSpec::column()
-                    .width(Sizing::Fixed(100.0))
-                    .height(Sizing::Fixed(100.0))
+                    .size(100.0, 100.0)
                     .bg(BASE)
                     .hover_bg(HOVER)
                     .drop_bg(LIT)
-                    .on_drop(Value::str("files")),
+                    .on_drop("files"),
             );
         }
     });

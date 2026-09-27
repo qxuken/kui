@@ -5,7 +5,7 @@
 //! warnings.
 
 use kui_core::diag::{ALIGN_IGNORED, ASPECT_IGNORED};
-use kui_core::spec::{Align, FloatConfig, NodeSpec, Sizing};
+use kui_core::spec::{Align, FloatConfig, NodeSpec};
 use kui_core::testing::codes;
 use kui_core::{Core, Size, TextStyle};
 
@@ -49,11 +49,7 @@ fn warnings_for(spec: NodeSpec) -> Vec<kui_core::diag::Warning> {
     let mut core = Core::new();
     frame(&mut core, |ui| {
         ui.with(spec, |ui| {
-            ui.leaf(
-                NodeSpec::column()
-                    .width(Sizing::Fixed(10.0))
-                    .height(Sizing::Fixed(10.0)),
-            );
+            ui.leaf(NodeSpec::column().size(10.0, 10.0));
         });
     });
     core.take_warnings()
@@ -100,16 +96,11 @@ fn an_alignment_where_it_means_something_says_nothing() {
 fn a_ratio_with_no_fit_axis_to_size_warns() {
     for (spec, says) in [
         (
-            NodeSpec::column()
-                .width(Sizing::Fixed(40.0))
-                .height(Sizing::Fixed(40.0))
-                .aspect_ratio(2.0),
+            NodeSpec::column().size(40.0, 40.0).aspect_ratio(2.0),
             "both axes are declared",
         ),
         (
-            NodeSpec::column()
-                .height(Sizing::Grow(1.0))
-                .aspect_ratio(2.0),
+            NodeSpec::column().grow_height().aspect_ratio(2.0),
             "resolved only after every width",
         ),
     ] {
@@ -118,12 +109,8 @@ fn a_ratio_with_no_fit_axis_to_size_warns() {
         assert!(ws[0].message.contains(says), "{}", ws[0].message);
     }
     for spec in [
-        NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .aspect_ratio(2.0),
-        NodeSpec::column()
-            .height(Sizing::Fixed(10.0))
-            .aspect_ratio(2.0),
+        NodeSpec::column().grow_width().aspect_ratio(2.0),
+        NodeSpec::column().height(10.0).aspect_ratio(2.0),
     ] {
         assert!(warnings_for(spec).is_empty());
     }

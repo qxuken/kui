@@ -31,8 +31,8 @@ use kui_devtools::Example;
 use kui_ffi::CExtension;
 use kui_native::widgets;
 use kui_native::{
-    Align, App, Core, Extension, Extensions, InputEvent, NodeSpec, OriginId, Size, Sizing,
-    TextStyle, Ui, UiEvent, Value, Vec2,
+    Align, App, Core, Extension, Extensions, InputEvent, NodeSpec, OriginId, Size, TextStyle, Ui,
+    UiEvent, Value, Vec2,
 };
 
 #[derive(Default)]
@@ -56,8 +56,7 @@ impl App for Host {
 
         ui.with(
             NodeSpec::column()
-                .width(Sizing::Grow(1.0))
-                .height(Sizing::Grow(1.0))
+                .fill()
                 .pad(24.0)
                 .gap(16.0)
                 .bg(t.surface)
@@ -94,7 +93,7 @@ impl App for Host {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.payload.get("kind").and_then(Value::as_str) {
+        match ev.kind() {
             Some("click") => self.clicks += 1,
             // A reply the panel made from its own click: the origin says
             // which extension, the key which of its nodes.

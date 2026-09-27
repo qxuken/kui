@@ -36,7 +36,7 @@
 
 use kui_devtools::Example;
 use kui_native::{
-    App, Color, CursorShape, NodeSpec, Rect, Sizing, TextStyle, Ui, UiEvent, Value, WindowConfig,
+    App, Color, CursorShape, NodeSpec, Rect, TextStyle, Ui, UiEvent, Value, WindowConfig,
 };
 
 /// The list is twelve rows of 24 plus the panel's padding — deliberately
@@ -100,8 +100,7 @@ impl App for Combo {
                 // `Fit` column would paint its background around the text
                 // and leave the rest of the window whatever the renderer
                 // cleared it to.
-                .width(Sizing::Grow(1.0))
-                .height(Sizing::Grow(1.0))
+                .fill()
                 .bg(t.bg),
             |ui| {
                 ui.text("Alloy", TextStyle::new(12.0).color(t.muted));
@@ -113,13 +112,13 @@ impl App for Combo {
                     NodeSpec::row()
                         .pad_xy(10.0, 6.0)
                         .gap(8.0)
-                        .width(Sizing::Fixed(MENU_W))
+                        .width(MENU_W)
                         .bg(t.sunken)
                         .hover_bg(t.sunken.mix(t.accent, 0.10))
                         .radius(5.0)
                         .focusable()
                         .label("Alloy")
-                        .on_layout(Value::str("field"))
+                        .on_layout("field")
                         // Two ways in, and both of them *open*. `on_drag`
                         // is the press: its `start` phase arrives on
                         // mouse-down, before any slop, which is what makes
@@ -135,7 +134,7 @@ impl App for Combo {
                         .cursor(CursorShape::Pointer),
                     |ui| {
                         ui.text(ITEMS[self.chosen], TextStyle::new(14.0).color(t.fg));
-                        ui.leaf(NodeSpec::row().width(Sizing::Grow(1.0)));
+                        ui.leaf(NodeSpec::row().grow_width());
                         ui.text("v", TextStyle::new(11.0).color(t.muted));
                     },
                 );
@@ -152,7 +151,7 @@ impl App for Combo {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        let kind = ev.payload.get("kind").and_then(Value::as_str);
+        let kind = ev.kind();
         match kind {
             // The field's rect, every time layout changes it. Stored, not
             // acted on: it is what the *next* declaration will carry.
@@ -165,7 +164,7 @@ impl App for Combo {
             // stationary release both land here, and assigning rather than
             // toggling is what lets them: neither has to know which press
             // it is answering.
-            Some("drag") if ev.payload.get("phase").and_then(Value::as_str) == Some("start") => {
+            Some("drag") if ev.payload.get_str("phase") == Some("start") => {
                 self.open = true;
                 self.cursor = self.chosen;
             }
@@ -179,7 +178,7 @@ impl App for Combo {
             // The core closed nothing; this line is what closes it.
             Some("dismiss") => self.open = false,
             Some("choose") => {
-                if let Some(i) = ev.payload.get("i").and_then(Value::as_int) {
+                if let Some(i) = ev.payload.get_int("i") {
                     self.chosen = i as usize;
                 }
                 self.open = false;
@@ -188,7 +187,7 @@ impl App for Combo {
             // routes the owner's keyboard there while a non-activating
             // popup is up. The field keeps its ring throughout.
             // Presses only: the list's sink never asked for releases.
-            Some("key") => match ev.payload.get("code").and_then(Value::as_str) {
+            Some("key") => match ev.payload.get_str("code") {
                 Some("down") => self.cursor = (self.cursor + 1) % ITEMS.len(),
                 Some("up") => self.cursor = (self.cursor + ITEMS.len() - 1) % ITEMS.len(),
                 Some("enter") => {
@@ -213,8 +212,7 @@ impl Combo {
                 // The popup's window *is* the panel, so its root fills it:
                 // the rows grow across, and there is nothing else to share
                 // the height with.
-                .width(Sizing::Grow(1.0))
-                .height(Sizing::Grow(1.0))
+                .fill()
                 // A popup window is a float that got its own surface, so
                 // it takes the role a menu or a tooltip takes.
                 .bg(t.raised)
@@ -231,8 +229,8 @@ impl Combo {
                         item,
                         NodeSpec::row()
                             .pad_xy(10.0, 4.0)
-                            .height(Sizing::Fixed(ROW_H))
-                            .width(Sizing::Grow(1.0))
+                            .height(ROW_H)
+                            .grow_width()
                             // The cursor row is a wash, not a fill, for
                             // the reason the stock menu's is: the label's
                             // colour is chosen before the core resolves a

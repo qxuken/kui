@@ -319,7 +319,7 @@ impl Zone {
             Zone::Center => (Align::Center, Align::Center, 0.5, 0.5),
         };
         NodeSpec::column()
-            .float(FloatConfig::parent().at(ax, ay).self_at(ax, ay))
+            .float(FloatConfig::parent().inside(ax, ay))
             .width(Sizing::Percent(w))
             .height(Sizing::Percent(h))
     }
@@ -523,8 +523,8 @@ impl Splitmux {
         let pal = self.pal;
         ui.with(
             NodeSpec::row()
-                .width(Sizing::Grow(1.0))
-                .height(Sizing::Fixed(TABBAR_H))
+                .grow_width()
+                .height(TABBAR_H)
                 .bg(pal.bg2)
                 .pad_xy(8.0, 0.0)
                 .gap(4.0)
@@ -603,20 +603,16 @@ impl Splitmux {
                                 NodeSpec::column()
                                     .float(FloatConfig::parent().at(Align::Start, Align::End))
                                     .width(Sizing::Percent(1.0))
-                                    .height(Sizing::Fixed(column_h))
+                                    .height(column_h)
                                     .hoverable());
                         }
                     });
                 }
-                ui.with_keyed(
-                    "tab+",
-                    NodeSpec::row()
+                ui.text_in_keyed("tab+", NodeSpec::row()
                         .pad_xy(8.0, 4.0)
                         .radius(6.0)
-                        .on_click(Msg::TabNew),
-                    |ui| ui.text("+", TextStyle::new(12.0).color(pal.faint)),
-                );
-                ui.leaf(NodeSpec::row().width(Sizing::Grow(1.0)));
+                        .on_click(Msg::TabNew), "+", TextStyle::new(12.0).color(pal.faint));
+                ui.leaf(NodeSpec::row().grow_width());
                 ui.text(
                     &format!(
                         "{ALT}v/{ALT}s split · {ALT}o hop · {ALT}w close · {ALT}t tab · {PRIMARY}drag moves a pane"
@@ -662,12 +658,8 @@ impl Splitmux {
                     let dragging = self.dragging.as_deref() == Some(path);
                     let grow = |f: f32| {
                         let spec = match dir {
-                            SplitDir::H => NodeSpec::column()
-                                .width(Sizing::Grow(f))
-                                .height(Sizing::Grow(1.0)),
-                            SplitDir::V => NodeSpec::column()
-                                .width(Sizing::Grow(1.0))
-                                .height(Sizing::Grow(f)),
+                            SplitDir::H => NodeSpec::column().width(Sizing::Grow(f)).grow_height(),
+                            SplitDir::V => NodeSpec::column().grow_width().height(Sizing::Grow(f)),
                         };
                         if dragging {
                             spec
@@ -686,12 +678,8 @@ impl Splitmux {
                         || ui.is_pressed(divider)
                         || self.dragging.as_deref() == Some(path);
                     let bar = match dir {
-                        SplitDir::H => NodeSpec::column()
-                            .width(Sizing::Fixed(5.0))
-                            .height(Sizing::Grow(1.0)),
-                        SplitDir::V => NodeSpec::column()
-                            .width(Sizing::Grow(1.0))
-                            .height(Sizing::Fixed(5.0)),
+                        SplitDir::H => NodeSpec::column().width(5.0).grow_height(),
+                        SplitDir::V => NodeSpec::column().grow_width().height(5.0),
                     };
                     ui.leaf_keyed(
                         "divider",
@@ -797,8 +785,7 @@ impl Splitmux {
             FloatConfig::viewport().offset(x + 14.0, y + 14.0)
         } else {
             FloatConfig::viewport()
-                .at(Align::End, Align::Start)
-                .self_at(Align::End, Align::Start)
+                .inside(Align::End, Align::Start)
                 .offset(x - vw - 14.0, y + 14.0)
         }
         .fit();
@@ -856,14 +843,9 @@ impl App for Splitmux {
             // The view names the drop target from hover; start each frame blank
             // so a cursor that left every zone means "nowhere".
             self.drop_target = None;
-            let sink = ui.with_keyed(
-                "main",
-                NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Grow(1.0))
-                    .on_key(Value::Null),
-                |ui| self.render_node(ui, &root, ""),
-            );
+            let sink = ui.with_keyed("main", NodeSpec::column().fill().key_sink(), |ui| {
+                self.render_node(ui, &root, "")
+            });
             ui.take_key_focus(sink);
             if std::mem::take(&mut self.reclaim_keys) {
                 ui.focus(sink);
@@ -874,28 +856,20 @@ impl App for Splitmux {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.payload.get("kind").and_then(Value::as_str) {
+        match ev.kind() {
             // Presses only — the sink never asked for releases (`key_up`),
             // so a chord fires once.
             Some("key") => {
                 // The chord map: Alt (⌥ Option on macOS) + a letter or digit.
-                let alt = ev
-                    .payload
-                    .get("alt")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false);
-                let ctrl = ev
-                    .payload
-                    .get("ctrl")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false);
+                let alt = ev.payload.get_bool("alt").unwrap_or(false);
+                let ctrl = ev.payload.get_bool("ctrl").unwrap_or(false);
                 if alt
                     && !ctrl
-                    && let Some(code) = ev.payload.get("code").and_then(Value::as_str)
+                    && let Some(code) = ev.payload.get_str("code")
                 {
                     let code = code.to_string();
                     self.chord(&code);
-                } else if ev.payload.get("code").and_then(Value::as_str) == Some("escape") {
+                } else if ev.payload.get_str("code") == Some("escape") {
                     // Abandon a pane drag; the pointer capture runs on
                     // until release, but its end lands on nothing.
                     self.pane_drag = None;
@@ -911,15 +885,10 @@ impl App for Splitmux {
                 };
             }
             Some("drag") => match ev.message::<Msg>() {
-                Some(Msg::TabDrag { tab }) => match ev.payload.get("phase").and_then(Value::as_str)
-                {
+                Some(Msg::TabDrag { tab }) => match ev.payload.get_str("phase") {
                     Some("start") => self.tab_drag = Some((tab, 0.0, 0.0)),
                     Some("move") => {
-                        let dx = ev
-                            .payload
-                            .get("dx")
-                            .and_then(Value::as_float)
-                            .unwrap_or(0.0);
+                        let dx = ev.payload.get_float("dx").unwrap_or(0.0);
                         // `dx` is measured from the press point, so the
                         // direction of this move is the change since the
                         // last one.
@@ -961,7 +930,7 @@ impl Splitmux {
     /// hover bookkeeping names the target, and release performs the move.
     fn pane_drag_event(&mut self, ev: &UiEvent, pane: u64) {
         let num = |k| ev.payload.get(k).and_then(Value::as_float).unwrap_or(0.0) as f32;
-        match ev.payload.get("phase").and_then(Value::as_str) {
+        match ev.payload.get_str("phase") {
             Some("start") => self.pane_drag = Some((pane, num("x"), num("y"))),
             Some("move") => {
                 if let Some((_, x, y)) = self.pane_drag.as_mut() {
@@ -983,7 +952,7 @@ impl Splitmux {
     /// Divider drags: absolute cursor position over the split's own rect
     /// (carried in the payload) is the new ratio directly.
     fn split_drag(&mut self, ev: &UiEvent, path: String, dir: SplitDir) {
-        match ev.payload.get("phase").and_then(Value::as_str) {
+        match ev.payload.get_str("phase") {
             Some("end") => self.dragging = None,
             Some(_) => {
                 // Absolute cursor position over the split's own rect
@@ -1037,10 +1006,7 @@ impl Example for Splitmux {
     fn headless(&mut self, core: &mut Core) -> Result<(), String> {
         use kui_devtools::Drive;
         use kui_native::{InputEvent, Vec2};
-        let alt = KeyMods {
-            alt: true,
-            ..KeyMods::default()
-        };
+        let alt = KeyMods::NONE.with_alt();
         let mut d = Drive::new(core, 1100.0, 720.0);
         d.frame(self);
         let panes = |app: &Splitmux| {
@@ -1189,10 +1155,7 @@ mod tests {
     /// the key, `physical` which key it was, exactly as a driver reports the
     /// pair. `KeyPress::from_layout` resolves the `code` the keymap sees.
     fn chord_on(core: &mut Core, app: &mut Splitmux, layout: char, physical: char) {
-        let mods = KeyMods {
-            alt: true,
-            ..KeyMods::default()
-        };
+        let mods = KeyMods::NONE.with_alt();
         let kp = KeyPress::from_layout(KeyCode::Char(layout), KeyCode::Char(physical), mods);
         feed(core, app, InputEvent::KeyDown(kp));
     }

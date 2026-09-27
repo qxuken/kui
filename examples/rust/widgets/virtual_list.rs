@@ -32,8 +32,8 @@
 
 use kui_devtools::{Drive, Example};
 use kui_native::{
-    Align, App, Color, Core, Key, NodeSpec, Role, Sizing, TextStyle, TextWrap, Theme, Ui, UiEvent,
-    Value, widgets,
+    Align, App, Color, Core, Key, NodeSpec, Role, TextStyle, TextWrap, Theme, Ui, UiEvent, Value,
+    widgets,
 };
 
 const ROWS: usize = 10_000;
@@ -179,9 +179,7 @@ impl VirtualList {
                 // with the row as the window slides over it.
                 ui.with_indexed(
                     i as u64,
-                    NodeSpec::column()
-                        .width(Sizing::Grow(1.0))
-                        .height(Sizing::Fixed(ROW_H)),
+                    NodeSpec::column().grow_width().height(ROW_H),
                     |ui| row(ui, i, selected),
                 );
             }
@@ -194,9 +192,7 @@ impl VirtualList {
 }
 
 fn spacer(h: f32) -> NodeSpec {
-    NodeSpec::column()
-        .width(Sizing::Grow(1.0))
-        .height(Sizing::Fixed(h))
+    NodeSpec::column().grow_width().height(h)
 }
 
 impl VirtualList {
@@ -223,7 +219,7 @@ impl VirtualList {
                 first = first.min(i);
                 last = i + 1;
                 let bg = row_bg(&t, i, selected);
-                ui.with(
+                ui.text_in(
                     NodeSpec::column()
                         .fill()
                         .pad(6.0)
@@ -235,7 +231,8 @@ impl VirtualList {
                         ]))
                         .role(Role::ListItem)
                         .label(format!("row {i} of {ROWS}")),
-                    |ui| ui.text(&line_of(i), body(&t)),
+                    &line_of(i),
+                    body(&t),
                 );
             },
         );
@@ -253,20 +250,13 @@ impl App for VirtualList {
                 Mode::ByHand => "by hand",
                 Mode::Variable => "list",
             };
-            ui.with(
-                NodeSpec::row()
-                    .width(Sizing::Grow(1.0))
-                    .pad(8.0)
-                    .bg(t.surface),
-                |ui| {
-                    ui.text(
-                        &format!(
-                            "{ROWS} rows, {built} built ({how}) — row {} selected",
-                            self.selected
-                        ),
-                        TextStyle::new(14.0).color(t.fg),
-                    );
-                },
+            ui.text_in(
+                NodeSpec::row().grow_width().pad(8.0).bg(t.surface),
+                &format!(
+                    "{ROWS} rows, {built} built ({how}) — row {} selected",
+                    self.selected
+                ),
+                TextStyle::new(14.0).color(t.fg),
             );
 
             match self.mode {
@@ -279,7 +269,7 @@ impl App for VirtualList {
 
     fn on_event(&mut self, ev: UiEvent) {
         // A row's `on_click` payload arrives verbatim: the row it named.
-        if let Some(i) = ev.payload.get("row").and_then(Value::as_int) {
+        if let Some(i) = ev.payload.get_int("row") {
             self.selected = i as usize;
         }
     }

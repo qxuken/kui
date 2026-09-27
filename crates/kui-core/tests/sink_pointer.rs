@@ -11,7 +11,7 @@
 use kui_core::testing::{press, release};
 use kui_core::{
     ClipboardMarks, Core, InputEvent, Key, KeyCode, KeyMods, KeyPress, MenuAction, NodeSpec, Role,
-    Size, Sizing, TextStyle, UiEvent, Value, Vec2,
+    Size, TextStyle, UiEvent, Value, Vec2,
 };
 
 const LH: f32 = 20.0;
@@ -31,36 +31,25 @@ fn frame(core: &mut Core, lines: &[&str]) -> Key {
     let sink = ui.with_keyed(
         "editor",
         NodeSpec::row()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Grow(1.0))
-            .on_key(Value::Null)
-            .on_drag(Value::str("sel"))
+            .fill()
+            .key_sink()
+            .on_drag("sel")
             .on_click(Value::map([("kind", Value::str("hit"))]))
             .role(Role::MultilineTextInput),
         |ui| {
-            ui.with(
-                NodeSpec::column()
-                    .width(Sizing::Fixed(GUTTER))
-                    .role(Role::None),
-                |ui| {
-                    for (n, _) in lines.iter().enumerate() {
-                        ui.with(NodeSpec::row().height(Sizing::Fixed(LH)), |ui| {
-                            ui.text(&format!("{}", n + 1), mono());
-                        });
-                    }
-                },
-            );
-            ui.with(NodeSpec::column().width(Sizing::Grow(1.0)), |ui| {
+            ui.with(NodeSpec::column().width(GUTTER).role(Role::None), |ui| {
+                for (n, _) in lines.iter().enumerate() {
+                    ui.text_in(NodeSpec::row().height(LH), &format!("{}", n + 1), mono());
+                }
+            });
+            ui.with(NodeSpec::column().grow_width(), |ui| {
                 for line in lines {
-                    ui.with(
-                        NodeSpec::row().height(Sizing::Fixed(LH)).role(Role::Line),
-                        |ui| {
-                            // Two runs, as a line with a caret in it has.
-                            let (a, b) = line.split_at(line.len() / 2);
-                            ui.text(a, mono());
-                            ui.text(b, mono());
-                        },
-                    );
+                    ui.with(NodeSpec::row().height(LH).role(Role::Line), |ui| {
+                        // Two runs, as a line with a caret in it has.
+                        let (a, b) = line.split_at(line.len() / 2);
+                        ui.text(a, mono());
+                        ui.text(b, mono());
+                    });
                 }
             });
         },
@@ -79,10 +68,7 @@ fn field_of(ev: &UiEvent, name: &str) -> Option<Value> {
 }
 
 fn kind(ev: &UiEvent) -> Option<String> {
-    ev.payload
-        .get("kind")
-        .and_then(Value::as_str)
-        .map(str::to_string)
+    ev.payload.get_str("kind").map(str::to_string)
 }
 
 #[test]
@@ -161,13 +147,11 @@ fn below_the_last_line_is_the_last_line_and_a_sink_without_lines_adds_nothing() 
     // A sink that draws no lines: the payload is as it was.
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    let sink = ui.with_keyed(
+    let sink = ui.text_in_keyed(
         "plain",
-        NodeSpec::column()
-            .fill()
-            .on_key(Value::Null)
-            .on_drag(Value::str("d")),
-        |ui| ui.text("no lines here", mono()),
+        NodeSpec::column().fill().key_sink().on_drag("d"),
+        "no lines here",
+        mono(),
     );
     ui.take_key_focus(sink);
     ui.finish();
@@ -242,17 +226,14 @@ fn an_editors_changed_under_the_sink_gains_nothing() {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill().pad(10.0));
     let mut field = Key::ROOT;
-    ui.with_keyed(
-        "shell",
-        NodeSpec::column().fill().on_key(Value::Null),
-        |ui| {
-            ui.with(
-                NodeSpec::row().height(Sizing::Fixed(LH)).role(Role::Line),
-                |ui| ui.text("a line", mono()),
-            );
-            field = kui_core::widgets::text_input(ui, "minibuffer", "");
-        },
-    );
+    ui.with_keyed("shell", NodeSpec::column().fill().key_sink(), |ui| {
+        ui.text_in(
+            NodeSpec::row().height(LH).role(Role::Line),
+            "a line",
+            mono(),
+        );
+        field = kui_core::widgets::text_input(ui, "minibuffer", "");
+    });
     ui.finish();
     // A click on the line row first — the count it leaves behind is what
     // the old pass read for every event after it — then focus into the
@@ -285,14 +266,11 @@ fn a_click_payload_named_like_a_core_event_still_gains_its_line() {
         "editor",
         NodeSpec::column()
             .fill()
-            .on_key(Value::Null)
+            .key_sink()
             .on_click(Value::map([("kind", Value::str("click"))])),
         |ui| {
             for line in ["one", "two"] {
-                ui.with(
-                    NodeSpec::row().height(Sizing::Fixed(LH)).role(Role::Line),
-                    |ui| ui.text(line, mono()),
-                );
+                ui.text_in(NodeSpec::row().height(LH).role(Role::Line), line, mono());
             }
         },
     );
@@ -362,7 +340,7 @@ fn the_sink_yanks_to_the_clipboard_and_a_paste_comes_back_as_text() {
 fn a_root_sink_hears_a_paste_with_nothing_focused() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
-    ui.configure_root(NodeSpec::column().fill().on_key(Value::str("shell")));
+    ui.configure_root(NodeSpec::column().fill().on_key("shell"));
     ui.text("nothing focusable", mono());
     ui.finish();
     assert_eq!(core.focus(), None);
@@ -493,13 +471,7 @@ fn a_paste_carries_the_pasteboards_markers_to_the_sink() {
 fn a_sink_hears_the_paste_chord_and_never_a_bare_text() {
     let mut core = Core::new();
     let sink = frame(&mut core, &["hello"]);
-    let cmd_v = KeyPress::new(
-        KeyCode::Char('v'),
-        KeyMods {
-            super_key: true,
-            ..KeyMods::default()
-        },
-    );
+    let cmd_v = KeyPress::new(KeyCode::Char('v'), KeyMods::NONE.with_super());
     let evs = core.handle_input(InputEvent::KeyDown(cmd_v));
     assert!(
         evs.iter()

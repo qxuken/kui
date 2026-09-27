@@ -5,7 +5,7 @@
 //!
 //! Run: cargo bench -p kui-core --bench long_line
 
-use kui_core::{Color, Core, Key, NodeSpec, Size, Sizing, Span, TextStyle, TextWrap, Vec2};
+use kui_core::{Color, Core, Key, NodeSpec, Size, Span, TextStyle, TextWrap, Vec2};
 
 const N: usize = 100_000;
 
@@ -32,20 +32,16 @@ fn frame(core: &mut Core, text: &str, scroll_x: f32) -> usize {
     ui.configure_root(NodeSpec::column().fill().bg(Color::rgb8(0, 0, 0)));
     ui.with_keyed(
         "view",
-        NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Fixed(300.0))
-            .scroll_x(),
+        NodeSpec::column().grow_width().height(300.0).scroll_x(),
         |ui| {
-            ui.with(NodeSpec::row().height(Sizing::Fixed(18.0)), |ui| {
-                ui.text(
-                    text,
-                    TextStyle::new(13.0)
-                        .mono()
-                        .line_height(18.0)
-                        .wrap(TextWrap::None),
-                )
-            });
+            ui.text_in(
+                NodeSpec::row().height(18.0),
+                text,
+                TextStyle::new(13.0)
+                    .mono()
+                    .line_height(18.0)
+                    .wrap(TextWrap::None),
+            );
         },
     );
     ui.finish();
@@ -113,20 +109,16 @@ fn wrapped_frame(core: &mut Core, text: &str, scroll_y: f32) -> usize {
     ui.configure_root(NodeSpec::column().fill().bg(Color::rgb8(0, 0, 0)));
     ui.with_keyed(
         "view",
-        NodeSpec::column()
-            .width(Sizing::Fixed(1100.0))
-            .height(Sizing::Fixed(300.0))
-            .scroll_y(),
+        NodeSpec::column().size(1100.0, 300.0).scroll_y(),
         |ui| {
-            ui.with(NodeSpec::column().width(Sizing::Fixed(1100.0)), |ui| {
-                ui.text(
-                    text,
-                    TextStyle::new(13.0)
-                        .mono()
-                        .line_height(18.0)
-                        .wrap(TextWrap::Word),
-                )
-            });
+            ui.text_in(
+                NodeSpec::column().width(1100.0),
+                text,
+                TextStyle::new(13.0)
+                    .mono()
+                    .line_height(18.0)
+                    .wrap(TextWrap::Word),
+            );
         },
     );
     ui.finish();
@@ -178,12 +170,9 @@ fn rich_frame(core: &mut Core, text: &str, at: usize, scroll_x: f32) -> usize {
     ];
     ui.with_keyed(
         "view",
-        NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Fixed(300.0))
-            .scroll_x(),
+        NodeSpec::column().grow_width().height(300.0).scroll_x(),
         |ui| {
-            ui.with(NodeSpec::row().height(Sizing::Fixed(18.0)), |ui| {
+            ui.with(NodeSpec::row().height(18.0), |ui| {
                 ui.rich_text(
                     &spans,
                     TextStyle::new(13.0)
@@ -237,27 +226,18 @@ fn rows_frame(core: &mut Core, rows: &[String]) -> usize {
     core.set_scroll(view, Vec2::ZERO);
     let mut ui = core.frame(Size::new(1200.0, 800.0), 2.0);
     ui.configure_root(NodeSpec::column().fill());
-    ui.with_keyed(
-        "view",
-        NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Grow(1.0))
-            .clip()
-            .scroll_x(),
-        |ui| {
-            for r in rows {
-                ui.with(NodeSpec::row().height(Sizing::Fixed(18.0)), |ui| {
-                    ui.text(
-                        r,
-                        TextStyle::new(13.0)
-                            .mono()
-                            .line_height(18.0)
-                            .wrap(TextWrap::None),
-                    )
-                });
-            }
-        },
-    );
+    ui.with_keyed("view", NodeSpec::column().fill().clip().scroll_x(), |ui| {
+        for r in rows {
+            ui.text_in(
+                NodeSpec::row().height(18.0),
+                r,
+                TextStyle::new(13.0)
+                    .mono()
+                    .line_height(18.0)
+                    .wrap(TextWrap::None),
+            );
+        }
+    });
     ui.finish();
     let (dl, _) = core.output();
     dl.quads.len()

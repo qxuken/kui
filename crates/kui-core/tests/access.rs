@@ -7,12 +7,12 @@ use kui_core::diag::{CONTROL_WITHOUT_NAME, IMAGE_WITHOUT_LABEL, SLIDER_VALUE_OUT
 use kui_core::testing::codes;
 use kui_core::{
     AccessAction, AccessRequest, AccessTree, Core, EditOptions, InputEvent, Key, NodeSpec, Role,
-    Size, Sizing, TextStyle, UiEvent, Value, WindowButton, WindowCommand,
+    Size, TextStyle, UiEvent, Value, WindowButton, WindowCommand,
 };
 
 fn kinds(evs: &[UiEvent]) -> Vec<String> {
     evs.iter()
-        .map(|ev| match ev.payload.get("kind").and_then(Value::as_str) {
+        .map(|ev| match ev.kind() {
             Some(k) => k.to_string(),
             None => format!("{:?}", ev.payload),
         })
@@ -34,20 +34,18 @@ fn app_frame(core: &mut Core, focus_edit: bool) -> (Key, Key, Key) {
     ui.window_title("Demo");
     ui.configure_root(NodeSpec::column().fill());
     ui.with_keyed("titlebar", NodeSpec::row().window_drag(), |ui| {
-        ui.with_keyed(
+        ui.text_in_keyed(
             "close",
             NodeSpec::row().window_button(WindowButton::Close),
-            |ui| ui.text("×", TextStyle::new(12.0)),
+            "×",
+            TextStyle::new(12.0),
         );
     });
-    ui.leaf_keyed(
-        "icon",
-        NodeSpec::row().on_click(Value::str("save")).label("Save"),
-    );
+    ui.leaf_keyed("icon", NodeSpec::row().on_click("save").label("Save"));
     let mut button = Key::ROOT;
     ui.with_keyed("wrap", NodeSpec::column().pad(4.0), |ui| {
         ui.with(NodeSpec::column(), |ui| {
-            button = ui.with_keyed("go", NodeSpec::row().on_click(Value::str("go")), |ui| {
+            button = ui.with_keyed("go", NodeSpec::row().on_click("go"), |ui| {
                 ui.text("Go", TextStyle::new(14.0));
                 ui.text("now", TextStyle::new(14.0));
             });
@@ -63,22 +61,18 @@ fn app_frame(core: &mut Core, focus_edit: bool) -> (Key, Key, Key) {
             autofocus: focus_edit,
             ..Default::default()
         },
-        NodeSpec::column().width(Sizing::Fixed(200.0)).label("Name"),
+        NodeSpec::column().width(200.0).label("Name"),
     );
     let list = ui.with_keyed(
         "list",
-        NodeSpec::column()
-            .height(Sizing::Fixed(100.0))
-            .scroll_y()
-            .role(Role::List),
+        NodeSpec::column().height(100.0).scroll_y().role(Role::List),
         |ui| {
             for i in 0..10 {
-                ui.with_keyed(
+                ui.text_in_keyed(
                     &format!("row-{i}"),
-                    NodeSpec::row()
-                        .height(Sizing::Fixed(30.0))
-                        .role(Role::ListItem),
-                    |ui| ui.text(&format!("Row {i}"), TextStyle::new(12.0)),
+                    NodeSpec::row().height(30.0).role(Role::ListItem),
+                    &format!("Row {i}"),
+                    TextStyle::new(12.0),
                 );
             }
         },
@@ -194,13 +188,14 @@ fn the_tree_is_built_once_per_frame_and_hashes_its_content() {
 fn explicit_roles_win_and_carry_their_state() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
-    let check = ui.with_keyed(
+    let check = ui.text_in_keyed(
         "check",
         NodeSpec::row()
             .role(Role::Checkbox)
             .checked(true)
-            .on_click(Value::str("toggle")),
-        |ui| ui.text("Remember me", TextStyle::new(12.0)),
+            .on_click("toggle"),
+        "Remember me",
+        TextStyle::new(12.0),
     );
     let slider = ui.leaf_keyed(
         "vol",
@@ -210,7 +205,7 @@ fn explicit_roles_win_and_carry_their_state() {
             .value_now(0.4)
             .value_min(0.0)
             .value_max(1.0)
-            .on_drag(Value::str("vol")),
+            .on_drag("vol"),
     );
     // The same control naming its own reading: 25 in [5..60] is "36
     // percent" to a reader with only the numbers, which is the bug F8
@@ -225,14 +220,18 @@ fn explicit_roles_win_and_carry_their_state() {
             .value_max(60.0)
             .value_text("25 minutes"),
     );
-    let heading = ui.with_keyed("h", NodeSpec::row().role(Role::Heading), |ui| {
-        ui.text("Settings", TextStyle::new(20.0))
-    });
+    let heading = ui.text_in_keyed(
+        "h",
+        NodeSpec::row().role(Role::Heading),
+        "Settings",
+        TextStyle::new(20.0),
+    );
     // A button whose click payload is overridden by a role.
-    let tab = ui.with_keyed(
+    let tab = ui.text_in_keyed(
         "tab",
         NodeSpec::row().role(Role::Tab).on_click(Value::Int(1)),
-        |ui| ui.text("General", TextStyle::new(12.0)),
+        "General",
+        TextStyle::new(12.0),
     );
     ui.finish();
     let tree = core.access_tree().clone();
@@ -288,33 +287,39 @@ fn selected_marks_the_current_one_of_a_set() {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     let tabs = ui.with_keyed("tabs", NodeSpec::row().role(Role::TabList), |ui| {
         for (i, name) in ["General", "Network", "About"].iter().enumerate() {
-            ui.with_keyed(
+            ui.text_in_keyed(
                 name,
                 NodeSpec::row()
                     .role(Role::Tab)
                     .selected(i == 1)
                     .on_click(Value::Int(i as i64)),
-                |ui| ui.text(name, TextStyle::new(12.0)),
+                name,
+                TextStyle::new(12.0),
             );
         }
     });
     let list = ui.with_keyed("rows", NodeSpec::column().role(Role::List), |ui| {
         for (i, name) in ["one", "two"].iter().enumerate() {
-            ui.with_keyed(
+            ui.text_in_keyed(
                 name,
                 NodeSpec::row().role(Role::ListItem).selected(i == 0),
-                |ui| ui.text(name, TextStyle::new(12.0)),
+                name,
+                TextStyle::new(12.0),
             );
         }
     });
     // A link that is not the current page, and one that is.
-    let away = ui.with_keyed("away", NodeSpec::row().role(Role::Link), |ui| {
-        ui.text("Docs", TextStyle::new(12.0))
-    });
-    let here = ui.with_keyed(
+    let away = ui.text_in_keyed(
+        "away",
+        NodeSpec::row().role(Role::Link),
+        "Docs",
+        TextStyle::new(12.0),
+    );
+    let here = ui.text_in_keyed(
         "here",
         NodeSpec::row().role(Role::Link).selected(true),
-        |ui| ui.text("Home", TextStyle::new(12.0)),
+        "Home",
+        TextStyle::new(12.0),
     );
     ui.finish();
     let tree = core.access_tree().clone();
@@ -348,23 +353,24 @@ fn selected_marks_the_current_one_of_a_set() {
 fn expanded_is_three_state_so_a_shut_disclosure_can_say_so() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
-    let shut = ui.with_keyed(
+    let shut = ui.text_in_keyed(
         "shut",
-        NodeSpec::row()
-            .expanded(false)
-            .on_click(Value::str("toggle")),
-        |ui| ui.text("Advanced", TextStyle::new(12.0)),
+        NodeSpec::row().expanded(false).on_click("toggle"),
+        "Advanced",
+        TextStyle::new(12.0),
     );
-    let open = ui.with_keyed(
+    let open = ui.text_in_keyed(
         "open",
-        NodeSpec::row()
-            .expanded(true)
-            .on_click(Value::str("toggle")),
-        |ui| ui.text("Network", TextStyle::new(12.0)),
+        NodeSpec::row().expanded(true).on_click("toggle"),
+        "Network",
+        TextStyle::new(12.0),
     );
-    let plain = ui.with_keyed("plain", NodeSpec::row().on_click(Value::str("go")), |ui| {
-        ui.text("Save", TextStyle::new(12.0))
-    });
+    let plain = ui.text_in_keyed(
+        "plain",
+        NodeSpec::row().on_click("go"),
+        "Save",
+        TextStyle::new(12.0),
+    );
     ui.finish();
     let tree = core.access_tree().clone();
 
@@ -385,18 +391,27 @@ fn a_list_numbers_its_own_items() {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     let list = ui.with_keyed("rows", NodeSpec::column().role(Role::List), |ui| {
         for name in ["one", "two", "three"] {
-            ui.with_keyed(name, NodeSpec::row().role(Role::ListItem), |ui| {
-                ui.text(name, TextStyle::new(12.0))
-            });
+            ui.text_in_keyed(
+                name,
+                NodeSpec::row().role(Role::ListItem),
+                name,
+                TextStyle::new(12.0),
+            );
         }
         // A caption inside the list is not an item, so it is not counted.
-        ui.with_keyed("caption", NodeSpec::row().role(Role::Heading), |ui| {
-            ui.text("3 rows", TextStyle::new(12.0))
-        });
+        ui.text_in_keyed(
+            "caption",
+            NodeSpec::row().role(Role::Heading),
+            "3 rows",
+            TextStyle::new(12.0),
+        );
     });
-    let loose = ui.with_keyed("loose", NodeSpec::row().role(Role::ListItem), |ui| {
-        ui.text("orphan", TextStyle::new(12.0))
-    });
+    let loose = ui.text_in_keyed(
+        "loose",
+        NodeSpec::row().role(Role::ListItem),
+        "orphan",
+        TextStyle::new(12.0),
+    );
     ui.finish();
     let tree = core.access_tree().clone();
 
@@ -534,7 +549,7 @@ fn slider_nudges_reach_the_app_as_access_events() {
         NodeSpec::row()
             .role(Role::Slider)
             .label("Volume")
-            .on_drag(Value::str("vol")),
+            .on_drag("vol"),
     );
     let untagged = ui.leaf_keyed("bare", NodeSpec::row().role(Role::Slider).label("x"));
     ui.finish();
@@ -628,44 +643,34 @@ fn requests_behind_a_modal_or_on_a_disabled_node_do_nothing() {
             "name",
             "before",
             &EditOptions::default(),
-            NodeSpec::row()
-                .width(Sizing::Fixed(100.0))
-                .height(Sizing::Fixed(20.0)),
+            NodeSpec::row().size(100.0, 20.0),
         );
         let slider = ui.leaf_keyed(
             "vol",
             NodeSpec::row()
-                .width(Sizing::Fixed(100.0))
-                .height(Sizing::Fixed(20.0))
+                .size(100.0, 20.0)
                 .role(Role::Slider)
                 .label("Volume")
-                .on_drag(Value::str("vol")),
+                .on_drag("vol"),
         );
         let off = ui.leaf_keyed(
             "off",
             NodeSpec::row()
-                .width(Sizing::Fixed(100.0))
-                .height(Sizing::Fixed(20.0))
+                .size(100.0, 20.0)
                 .role(Role::Slider)
                 .label("Muted")
                 .disabled(true)
-                .on_drag(Value::str("off")),
+                .on_drag("off"),
         );
         let list = ui.with_keyed(
             "list",
             NodeSpec::column()
-                .width(Sizing::Fixed(100.0))
-                .height(Sizing::Fixed(40.0))
+                .size(100.0, 40.0)
                 .scroll_y()
                 .label("List"),
             |ui| {
                 for i in 0..10 {
-                    ui.leaf_keyed(
-                        &format!("row-{i}"),
-                        NodeSpec::row()
-                            .width(Sizing::Fixed(100.0))
-                            .height(Sizing::Fixed(20.0)),
-                    );
+                    ui.leaf_keyed(&format!("row-{i}"), NodeSpec::row().size(100.0, 20.0));
                 }
             },
         );
@@ -673,18 +678,13 @@ fn requests_behind_a_modal_or_on_a_disabled_node_do_nothing() {
             ui.with_keyed(
                 "dialog",
                 NodeSpec::column()
-                    .width(Sizing::Fixed(120.0))
-                    .height(Sizing::Fixed(80.0))
-                    .modal(Value::str("dlg"))
+                    .size(120.0, 80.0)
+                    .modal("dlg")
                     .label("Settings"),
                 |ui| {
                     ui.leaf_keyed(
                         "ok",
-                        NodeSpec::row()
-                            .width(Sizing::Fixed(80.0))
-                            .height(Sizing::Fixed(20.0))
-                            .on_click(Value::str("ok"))
-                            .label("OK"),
+                        NodeSpec::row().size(80.0, 20.0).on_click("ok").label("OK"),
                     );
                 },
             );
@@ -754,24 +754,21 @@ fn a_click_behind_a_modal_fires_nothing_and_asks_the_modal_to_go() {
         let close = ui.leaf_keyed(
             "close",
             NodeSpec::row()
-                .width(Sizing::Fixed(20.0))
-                .height(Sizing::Fixed(20.0))
+                .size(20.0, 20.0)
                 .window_button(WindowButton::Close)
                 .label("Close"),
         );
         let save = ui.leaf_keyed(
             "save",
             NodeSpec::row()
-                .width(Sizing::Fixed(100.0))
-                .height(Sizing::Fixed(20.0))
+                .size(100.0, 20.0)
                 .on_click(Value::map([("kind", Value::str("save"))]))
                 .label("Save"),
         );
         let off = ui.leaf_keyed(
             "off",
             NodeSpec::row()
-                .width(Sizing::Fixed(100.0))
-                .height(Sizing::Fixed(20.0))
+                .size(100.0, 20.0)
                 .on_click(Value::map([("kind", Value::str("off"))]))
                 .disabled(true)
                 .label("Off"),
@@ -779,16 +776,14 @@ fn a_click_behind_a_modal_fires_nothing_and_asks_the_modal_to_go() {
         let dialog = ui.with_keyed(
             "dialog",
             NodeSpec::column()
-                .width(Sizing::Fixed(120.0))
-                .height(Sizing::Fixed(80.0))
-                .modal(Value::str("dlg"))
+                .size(120.0, 80.0)
+                .modal("dlg")
                 .label("Settings"),
             |ui| {
                 ui.leaf_keyed(
                     "ok",
                     NodeSpec::row()
-                        .width(Sizing::Fixed(80.0))
-                        .height(Sizing::Fixed(20.0))
+                        .size(80.0, 20.0)
                         .on_click(Value::map([("kind", Value::str("ok"))]))
                         .label("OK"),
                 );
@@ -812,14 +807,8 @@ fn a_click_behind_a_modal_fires_nothing_and_asks_the_modal_to_go() {
     let evs = click(&mut core, save);
     assert_eq!(kinds(&evs), ["dismiss"]);
     assert_eq!(evs[0].key, dialog);
-    assert_eq!(
-        evs[0].payload.get("reason").and_then(Value::as_str),
-        Some("outside")
-    );
-    assert_eq!(
-        evs[0].payload.get("tag").and_then(Value::as_str),
-        Some("dlg")
-    );
+    assert_eq!(evs[0].payload.get_str("reason"), Some("outside"));
+    assert_eq!(evs[0].payload.get_str("tag"), Some("dlg"));
     assert_eq!(core.focus(), Some(ok));
     // A disabled one behind it is outside all the same — the pointer's
     // press there finds no region either.
@@ -843,8 +832,7 @@ fn a_click_behind_a_modal_fires_nothing_and_asks_the_modal_to_go() {
     let save = ui.leaf_keyed(
         "save",
         NodeSpec::row()
-            .width(Sizing::Fixed(100.0))
-            .height(Sizing::Fixed(20.0))
+            .size(100.0, 20.0)
             .on_click(Value::map([("kind", Value::str("save"))]))
             .label("Save"),
     );
@@ -864,9 +852,12 @@ fn missing_names_are_warnings_raised_once() {
         // An icon button with nothing to read.
         ui.leaf_keyed("icon", NodeSpec::row().on_click(Value::Int(1)));
         // A named one, and a plain box that is not a control at all.
-        ui.with_keyed("ok", NodeSpec::row().on_click(Value::Int(2)), |ui| {
-            ui.text("OK", TextStyle::new(12.0))
-        });
+        ui.text_in_keyed(
+            "ok",
+            NodeSpec::row().on_click(Value::Int(2)),
+            "OK",
+            TextStyle::new(12.0),
+        );
         ui.leaf(NodeSpec::row());
         // An editor without a label.
         ui.text_edit("q", "", &EditOptions::default(), NodeSpec::column());
@@ -975,10 +966,7 @@ fn a_hovered_control_keeps_its_name_and_its_hint_is_the_description() {
         ui.configure_root(NodeSpec::column().gap(60.0));
         // A box the way every binding lowers `<box onClick tooltip>`.
         let mut p = PropsOut::new();
-        p.spec = NodeSpec::row()
-            .width(Sizing::Fixed(100.0))
-            .height(Sizing::Fixed(40.0))
-            .on_click(Value::str("skip"));
+        p.spec = NodeSpec::row().size(100.0, 40.0).on_click("skip");
         p.key = Some("skip".into());
         p.apply_tooltip("KEY S");
         ui.core().open_from(p, Content::Box);
@@ -987,10 +975,7 @@ fn a_hovered_control_keeps_its_name_and_its_hint_is_the_description() {
         // A group is not named from its content, but it read the hint
         // there too, as a text of its own after its description.
         let mut p = PropsOut::new();
-        p.spec = NodeSpec::row()
-            .width(Sizing::Fixed(100.0))
-            .height(Sizing::Fixed(40.0))
-            .role(Role::Group);
+        p.spec = NodeSpec::row().size(100.0, 40.0).role(Role::Group);
         p.key = Some("badge".into());
         p.apply_tooltip("a hint");
         ui.core().open_from(p, Content::Box);
@@ -999,7 +984,7 @@ fn a_hovered_control_keeps_its_name_and_its_hint_is_the_description() {
         // The stock button, which floats its hint inside its own body —
         // given only the hint, with no `apply_tooltip` on the spec, and
         // still describing itself with it.
-        let spec = widgets::button_spec(&ui.theme(), &ui.metrics()).on_click(Value::str("go"));
+        let spec = widgets::button_spec(&ui.theme(), &ui.metrics()).on_click("go");
         widgets::button_with(&mut ui, "go", "Go", spec, Some("Starts it"));
         ui.finish();
     };

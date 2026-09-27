@@ -5,7 +5,7 @@
 use kui_core::testing::{click_at, drive, key_press as press, key_release as release};
 use kui_core::{
     Align, Core, EditKey, EditOptions, FloatConfig, InputEvent, Key, KeyCode, KeyMods, KeyPress,
-    Mods, NodeSpec, Size, Sizing, UiEvent, Value, Vec2,
+    Mods, NodeSpec, Size, UiEvent, Value, Vec2,
 };
 
 /// Two side-by-side key sinks (think: two editor panes), left one focused.
@@ -16,15 +16,13 @@ fn frame(core: &mut Core, focus_left: bool) -> (Key, Key) {
     ui.configure_root(NodeSpec::row().fill());
     let left = ui.leaf(
         NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Grow(1.0))
+            .fill()
             .on_key(Value::map([("pane", Value::Int(0))]))
             .key_up(),
     );
     let right = ui.leaf(
         NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Grow(1.0))
+            .fill()
             .on_key(Value::map([("pane", Value::Int(1))]))
             .key_up(),
     );
@@ -36,7 +34,7 @@ fn frame(core: &mut Core, focus_left: bool) -> (Key, Key) {
 /// The `(phase, code)` of every key event in a batch, in order.
 fn keys(evs: &[UiEvent]) -> Vec<(String, String)> {
     evs.iter()
-        .filter(|e| e.payload.get("kind").and_then(Value::as_str) == Some("key"))
+        .filter(|e| e.kind() == Some("key"))
         .map(|e| {
             let at = |k: &str| {
                 e.payload
@@ -58,9 +56,9 @@ fn focused_sink_receives_keys_as_data() {
     assert_eq!(evs.len(), 1);
     assert_eq!(evs[0].key, left);
     let p = &evs[0].payload;
-    assert_eq!(p.get("kind").and_then(Value::as_str), Some("key"));
-    assert_eq!(p.get("code").and_then(Value::as_str), Some("i"));
-    assert_eq!(p.get("ctrl").and_then(Value::as_bool), Some(false));
+    assert_eq!(p.get_str("kind"), Some("key"));
+    assert_eq!(p.get_str("code"), Some("i"));
+    assert_eq!(p.get_bool("ctrl"), Some(false));
     // The sink's on_key payload rides along under "tag".
     assert_eq!(
         p.get("tag")
@@ -74,24 +72,15 @@ fn focused_sink_receives_keys_as_data() {
 fn modifiers_and_text_cross_as_data() {
     let mut core = Core::new();
     frame(&mut core, true);
-    let kp = KeyPress::new(
-        KeyCode::Char('w'),
-        KeyMods {
-            ctrl: true,
-            ..Default::default()
-        },
-    );
+    let kp = KeyPress::new(KeyCode::Char('w'), KeyMods::NONE.with_ctrl());
     let evs = drive(&mut core, &[InputEvent::KeyDown(kp)]);
     let p = &evs[0].payload;
-    assert_eq!(p.get("ctrl").and_then(Value::as_bool), Some(true));
+    assert_eq!(p.get_bool("ctrl"), Some(true));
     assert_eq!(p.get("text"), Some(&Value::Null));
 
     let typed = KeyPress::new(KeyCode::Char('w'), KeyMods::default()).with_text("w");
     let evs = drive(&mut core, &[InputEvent::KeyDown(typed)]);
-    assert_eq!(
-        evs[0].payload.get("text").and_then(Value::as_str),
-        Some("w")
-    );
+    assert_eq!(evs[0].payload.get_str("text"), Some("w"));
 }
 
 #[test]
@@ -109,10 +98,7 @@ fn clicking_a_sink_moves_key_focus() {
             press(KeyCode::Escape),
         ],
     );
-    let key_evs: Vec<_> = evs
-        .iter()
-        .filter(|e| e.payload.get("kind").and_then(Value::as_str) == Some("key"))
-        .collect();
+    let key_evs: Vec<_> = evs.iter().filter(|e| e.kind() == Some("key")).collect();
     assert_eq!(key_evs.len(), 1);
     assert_eq!(key_evs[0].key, right);
     assert_eq!(
@@ -130,7 +116,7 @@ fn no_focus_no_events() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(100.0, 100.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    ui.leaf(NodeSpec::column().fill().on_key(Value::Null));
+    ui.leaf(NodeSpec::column().fill().key_sink());
     ui.finish(); // sink declared, but nothing took focus
     assert!(drive(&mut core, &[press(KeyCode::Char('x'))]).is_empty());
 }
@@ -140,15 +126,12 @@ fn null_tag_omitted_from_payload() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(100.0, 100.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    let sink = ui.leaf(NodeSpec::column().fill().on_key(Value::Null));
+    let sink = ui.leaf(NodeSpec::column().fill().key_sink());
     ui.take_key_focus(sink);
     ui.finish();
     let evs = drive(&mut core, &[press(KeyCode::Enter)]);
     assert_eq!(evs.len(), 1);
-    assert_eq!(
-        evs[0].payload.get("code").and_then(Value::as_str),
-        Some("enter")
-    );
+    assert_eq!(evs[0].payload.get_str("code"), Some("enter"));
     assert_eq!(evs[0].payload.get("tag"), None);
 }
 
@@ -156,16 +139,13 @@ fn null_tag_omitted_from_payload() {
 fn modifier_changes_reach_the_host_as_data_and_are_queryable() {
     let mut core = Core::new();
     frame(&mut core, true);
-    let cmd = KeyMods {
-        super_key: true,
-        ..Default::default()
-    };
+    let cmd = KeyMods::NONE.with_super();
     let evs = core.handle_input(InputEvent::Modifiers(cmd));
     assert_eq!(evs.len(), 1);
     let p = &evs[0].payload;
-    assert_eq!(p.get("kind").and_then(Value::as_str), Some("modifiers"));
-    assert_eq!(p.get("super").and_then(Value::as_bool), Some(true));
-    assert_eq!(p.get("shift").and_then(Value::as_bool), Some(false));
+    assert_eq!(p.get_str("kind"), Some("modifiers"));
+    assert_eq!(p.get_bool("super"), Some(true));
+    assert_eq!(p.get_bool("shift"), Some(false));
     assert_eq!(evs[0].key, Key::ROOT);
     assert_eq!(core.modifiers(), cmd);
     // Unchanged state is not re-reported.
@@ -173,10 +153,7 @@ fn modifier_changes_reach_the_host_as_data_and_are_queryable() {
     // Release reports again.
     let evs = core.handle_input(InputEvent::Modifiers(KeyMods::default()));
     assert_eq!(evs.len(), 1);
-    assert_eq!(
-        evs[0].payload.get("super").and_then(Value::as_bool),
-        Some(false)
-    );
+    assert_eq!(evs[0].payload.get_bool("super"), Some(false));
 }
 
 // -- Press and release ---------------------------------------------------
@@ -219,7 +196,7 @@ fn a_sink_without_key_up_hears_presses_only() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    let sink = ui.leaf(NodeSpec::column().fill().on_key(Value::Null));
+    let sink = ui.leaf(NodeSpec::column().fill().key_sink());
     ui.take_key_focus(sink);
     ui.finish();
     let down = |repeat| {
@@ -265,10 +242,7 @@ fn a_release_never_carries_text_or_repeat() {
             }),
         ],
     );
-    assert_eq!(
-        evs[0].payload.get("text").and_then(Value::as_str),
-        Some("w")
-    );
+    assert_eq!(evs[0].payload.get_str("text"), Some("w"));
     assert_eq!(evs[0].payload.get("repeat"), Some(&Value::Bool(true)));
     assert_eq!(evs[1].payload.get("text"), Some(&Value::Null));
     assert_eq!(evs[1].payload.get("repeat"), Some(&Value::Bool(false)));
@@ -335,22 +309,16 @@ fn focus_moving_releases_what_the_old_sink_held() {
             InputEvent::mouse_up(),
         ],
     );
-    let ups: Vec<_> = evs
-        .iter()
-        .filter(|e| e.payload.get("kind").and_then(Value::as_str) == Some("key"))
-        .collect();
+    let ups: Vec<_> = evs.iter().filter(|e| e.kind() == Some("key")).collect();
     assert_eq!(ups.len(), 2);
     assert!(ups.iter().all(|e| e.key == left));
     assert_eq!(
         ups.iter()
-            .map(|e| e.payload.get("code").and_then(Value::as_str).unwrap())
+            .map(|e| e.payload.get_str("code").unwrap())
             .collect::<Vec<_>>(),
         ["w", "a"]
     );
-    assert!(
-        ups.iter()
-            .all(|e| e.payload.get("phase").and_then(Value::as_str) == Some("up"))
-    );
+    assert!(ups.iter().all(|e| e.payload.get_str("phase") == Some("up")));
     // The physical release lands after the move: the new sink never saw the
     // press, so it hears nothing.
     let evs = drive(&mut core, &[release(KeyCode::Char('w'))]);
@@ -381,7 +349,7 @@ fn a_key_held_over_an_editor_taking_focus_is_not_delivered_twice() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    let sink = ui.leaf(NodeSpec::column().fill().on_key(Value::Null).key_up());
+    let sink = ui.leaf(NodeSpec::column().fill().key_sink().key_up());
     ui.take_key_focus(sink);
     ui.finish();
     drive(&mut core, &[press(KeyCode::Char('w'))]);
@@ -436,33 +404,15 @@ fn the_second_channel_of_a_press_is_one_table() {
     // Shift-Tab is the same key carrying the modifier the ring reads, and
     // Alt is `word`, the platform primary `doc` — the whole of what the
     // editing vocabulary normalizes.
-    let shift = KeyMods {
-        shift: true,
-        ..Default::default()
-    };
+    let shift = KeyMods::NONE.with_shift();
     assert_eq!(
         KeyPress::new(KeyCode::Tab, shift).edit_event(),
-        Some(InputEvent::Key(
-            EditKey::Tab,
-            Mods {
-                shift: true,
-                ..Default::default()
-            }
-        ))
+        Some(InputEvent::Key(EditKey::Tab, Mods::NONE.with_shift()))
     );
-    let alt = KeyMods {
-        alt: true,
-        ..Default::default()
-    };
+    let alt = KeyMods::NONE.with_alt();
     assert_eq!(
         KeyPress::new(KeyCode::Left, alt).edit_event(),
-        Some(InputEvent::Key(
-            EditKey::Left,
-            Mods {
-                word: true,
-                ..Default::default()
-            }
-        ))
+        Some(InputEvent::Key(EditKey::Left, Mods::NONE.with_word()))
     );
     // Space is the text channel, not an `EditKey`: it presses a focused
     // control and inserts into a focused editor.
@@ -492,31 +442,24 @@ fn sink_in_a_modal(core: &mut Core) -> (Key, Key) {
     ui.leaf_keyed(
         "behind",
         NodeSpec::row()
-            .width(Sizing::Fixed(60.0))
-            .height(Sizing::Fixed(20.0))
-            .on_click(Value::str("behind"))
+            .size(60.0, 20.0)
+            .on_click("behind")
             .label("Behind"),
     );
     let mut sink = Key::ROOT;
     let dialog = ui.with_keyed(
         "dialog",
         NodeSpec::column()
-            .width(Sizing::Fixed(120.0))
-            .height(Sizing::Fixed(60.0))
-            .float(
-                FloatConfig::viewport()
-                    .at(Align::End, Align::End)
-                    .self_at(Align::End, Align::End),
-            )
-            .modal(Value::str("editor"))
+            .size(120.0, 60.0)
+            .float(FloatConfig::viewport().inside(Align::End, Align::End))
+            .modal("editor")
             .label("Editor"),
         |ui| {
             sink = ui.leaf_keyed(
                 "notes",
                 NodeSpec::column()
-                    .width(Sizing::Fixed(100.0))
-                    .height(Sizing::Fixed(40.0))
-                    .on_key(Value::str("notes"))
+                    .size(100.0, 40.0)
+                    .on_key("notes")
                     .label("Notes"),
             );
         },
@@ -528,9 +471,7 @@ fn sink_in_a_modal(core: &mut Core) -> (Key, Key) {
 
 /// The `kind` of every event in a batch, in order.
 fn kinds(evs: &[UiEvent]) -> Vec<&str> {
-    evs.iter()
-        .map(|e| e.payload.get("kind").and_then(Value::as_str).unwrap_or(""))
-        .collect()
+    evs.iter().map(|e| e.kind().unwrap_or("")).collect()
 }
 
 #[test]
@@ -551,10 +492,7 @@ fn a_press_reaches_the_sink_and_the_core_both() {
     assert_eq!(kinds(&evs), ["key", "dismiss"]);
     assert_eq!(evs[0].key, sink);
     assert_eq!(evs[1].key, dialog);
-    assert_eq!(
-        evs[1].payload.get("reason").and_then(Value::as_str),
-        Some("escape")
-    );
+    assert_eq!(evs[1].payload.get_str("reason"), Some("escape"));
 
     // The release is one channel, because only one has a second half. This
     // sink never asked for `key_up`, so it hears nothing at all.
@@ -572,23 +510,18 @@ fn a_press_walks_the_ring_presses_a_control_and_nudges_a_slider() {
     ui.configure_root(NodeSpec::column().fill());
     let go = ui.leaf_keyed(
         "go",
-        NodeSpec::row()
-            .width(Sizing::Fixed(60.0))
-            .height(Sizing::Fixed(20.0))
-            .on_click(Value::str("go"))
-            .label("Go"),
+        NodeSpec::row().size(60.0, 20.0).on_click("go").label("Go"),
     );
     let vol = ui.leaf_keyed(
         "vol",
         NodeSpec::row()
-            .width(Sizing::Fixed(100.0))
-            .height(Sizing::Fixed(10.0))
+            .size(100.0, 10.0)
             .role(Role::Slider)
             .label("Volume")
             .value_now(3.0)
             .value_min(0.0)
             .value_max(10.0)
-            .on_drag(Value::str("vol")),
+            .on_drag("vol"),
     );
     ui.finish();
 
@@ -609,10 +542,7 @@ fn a_press_walks_the_ring_presses_a_control_and_nudges_a_slider() {
     let evs = press(&mut core, KeyCode::Right);
     assert_eq!(kinds(&evs), ["access"]);
     assert_eq!(evs[0].key, vol);
-    assert_eq!(
-        evs[0].payload.get("action").and_then(Value::as_str),
-        Some("increment")
-    );
+    assert_eq!(evs[0].payload.get_str("action"), Some("increment"));
 }
 
 /// splitmux's shape: one sink wrapping the panes, each pane clickable so a
@@ -624,13 +554,12 @@ fn multiplexer(core: &mut Core) -> (Key, Key) {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
     let mut pane = None;
-    let sink = ui.with_keyed("main", NodeSpec::row().fill().on_key(Value::Null), |ui| {
+    let sink = ui.with_keyed("main", NodeSpec::row().fill().key_sink(), |ui| {
         pane = Some(
             ui.leaf_keyed(
                 "pane1",
                 NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Grow(1.0))
+                    .fill()
                     .on_click(Value::map([("kind", Value::str("focus"))])),
             ),
         );
@@ -647,9 +576,8 @@ fn a_click_inside_a_sink_leaves_the_keyboard_on_the_sink() {
     // The click still reaches the pane as a click...
     let evs = click_at(&mut core, 200.0, 150.0);
     assert!(
-        evs.iter().any(
-            |e| e.key == pane && e.payload.get("kind").and_then(Value::as_str) == Some("focus")
-        ),
+        evs.iter()
+            .any(|e| e.key == pane && e.kind() == Some("focus")),
         "the pane still hears its own click"
     );
     // ...but the keyboard stayed put, without the view asking again.
@@ -666,7 +594,7 @@ fn an_editor_inside_a_sink_still_takes_the_keyboard() {
     let mut edit = None;
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    let sink = ui.with_keyed("main", NodeSpec::row().fill().on_key(Value::Null), |ui| {
+    let sink = ui.with_keyed("main", NodeSpec::row().fill().key_sink(), |ui| {
         edit = Some(ui.text_edit(
             "field",
             "hi",
@@ -692,12 +620,9 @@ fn pressing_window_chrome_leaves_the_keyboard_where_it_was() {
     // app draws it.
     ui.leaf_keyed(
         "bar",
-        NodeSpec::row()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Fixed(40.0))
-            .window_drag(),
+        NodeSpec::row().grow_width().height(40.0).window_drag(),
     );
-    let sink = ui.leaf_keyed("main", NodeSpec::row().fill().on_key(Value::Null));
+    let sink = ui.leaf_keyed("main", NodeSpec::row().fill().key_sink());
     ui.take_key_focus(sink);
     ui.finish();
     // Grabbing the window to move it is the platform's business; the app
@@ -738,10 +663,7 @@ fn a_non_latin_layout_reports_the_position_as_code() {
 /// the same press — the upper-case letter, the shifted symbol.
 #[test]
 fn shift_under_the_fallback_is_the_us_shifted_symbol() {
-    let shift = KeyMods {
-        shift: true,
-        ..KeyMods::default()
-    };
+    let shift = KeyMods::NONE.with_shift();
     for (layout, physical, want) in [
         ('О', 'j', 'J'),
         ('Ж', ';', ':'),
@@ -784,11 +706,7 @@ fn shift_under_the_fallback_is_the_us_shifted_symbol() {
 /// agrees, and `mods` still says Shift was held.
 #[test]
 fn alt_keeps_the_stand_in_unshifted() {
-    let alt_shift = KeyMods {
-        alt: true,
-        shift: true,
-        ..KeyMods::default()
-    };
+    let alt_shift = KeyMods::NONE.with_alt().with_shift();
     for (layout, physical) in [
         (KeyCode::Char('Ô'), 'j'),
         (KeyCode::Char('О'), 'j'),
@@ -800,11 +718,7 @@ fn alt_keeps_the_stand_in_unshifted() {
         assert_eq!(kp.mods, alt_shift, "the chord keeps its Shift");
     }
     // Ctrl and Super do not compose, so Shift still shifts under them.
-    let cmd_shift = KeyMods {
-        super_key: true,
-        shift: true,
-        ..KeyMods::default()
-    };
+    let cmd_shift = KeyMods::NONE.with_super().with_shift();
     let kp = KeyPress::from_layout(KeyCode::Char('О'), KeyCode::Char('j'), cmd_shift);
     assert_eq!(kp.code, KeyCode::Char('J'));
 }
@@ -815,10 +729,7 @@ fn alt_keeps_the_stand_in_unshifted() {
 /// key or one the layout could not name.
 #[test]
 fn a_key_types_what_the_layout_named() {
-    let shift = KeyMods {
-        shift: true,
-        ..KeyMods::default()
-    };
+    let shift = KeyMods::NONE.with_shift();
     let kp = KeyPress::from_layout(KeyCode::Char('Ж'), KeyCode::Char(';'), shift);
     assert_eq!(kp.code, KeyCode::Char(':'));
     assert_eq!(KeyCode::Char('Ж').typed(shift).as_deref(), Some("Ж"));
@@ -895,14 +806,14 @@ fn both_codes_cross_as_data() {
     assert_eq!(evs.len(), 1);
     assert_eq!(evs[0].key, left);
     let p = &evs[0].payload;
-    assert_eq!(p.get("code").and_then(Value::as_str), Some("v"));
-    assert_eq!(p.get("physical").and_then(Value::as_str), Some("v"));
+    assert_eq!(p.get_str("code"), Some("v"));
+    assert_eq!(p.get_str("physical"), Some("v"));
     // `text` is the typing view and stays the layout's own character.
-    assert_eq!(p.get("text").and_then(Value::as_str), Some("м"));
+    assert_eq!(p.get_str("text"), Some("м"));
     let evs = drive(&mut core, &[InputEvent::KeyUp(ru.released())]);
     let p = &evs[0].payload;
-    assert_eq!(p.get("code").and_then(Value::as_str), Some("v"));
-    assert_eq!(p.get("physical").and_then(Value::as_str), Some("v"));
+    assert_eq!(p.get_str("code"), Some("v"));
+    assert_eq!(p.get_str("physical"), Some("v"));
 }
 
 /// AR9, the WASD case ADR 0002 sells `keyUp` for: hold `w`, press Shift
@@ -916,10 +827,7 @@ fn shift_moving_under_a_held_key_does_not_make_it_a_second_key() {
     let mut core = Core::new();
     frame(&mut core, true);
     let w = KeyPress::new(KeyCode::Char('w'), KeyMods::default());
-    let shift = KeyMods {
-        shift: true,
-        ..KeyMods::default()
-    };
+    let shift = KeyMods::NONE.with_shift();
     let big_w = KeyPress {
         code: KeyCode::Char('W'),
         physical: KeyCode::Char('w'),
@@ -990,8 +898,8 @@ fn a_focused_sink_outside_the_clip_still_hears_the_keyboard() {
                     ui.leaf_keyed(
                         &format!("col{i}"),
                         NodeSpec::column()
-                            .width(Sizing::Fixed(400.0))
-                            .height(Sizing::Grow(1.0))
+                            .width(400.0)
+                            .grow_height()
                             .on_key(Value::map([("pane", Value::Int(i))])),
                     ),
                 );
@@ -1040,18 +948,16 @@ fn a_sink_a_modal_shuts_out_hears_nothing_wherever_it_is_drawn() {
         let sink = ui.leaf_keyed(
             "sink",
             NodeSpec::column()
-                .width(Sizing::Grow(1.0))
-                .height(Sizing::Grow(1.0))
+                .fill()
                 .on_key(Value::map([("pane", Value::Int(0))])),
         );
         if modal {
             ui.leaf_keyed(
                 "dialog",
                 NodeSpec::column()
-                    .width(Sizing::Fixed(100.0))
-                    .height(Sizing::Fixed(50.0))
+                    .size(100.0, 50.0)
                     .float(FloatConfig::parent().at(Align::Center, Align::Center))
-                    .modal(Value::str("dlg")),
+                    .modal("dlg"),
             );
         }
         ui.take_key_focus(sink);

@@ -4,9 +4,7 @@
 //! (`docs/adr/0003-modal-surfaces.md`).
 
 use kui_core::testing::tab;
-use kui_core::{
-    Align, Core, EditOptions, FloatConfig, InputEvent, Key, NodeSpec, Size, Sizing, Value,
-};
+use kui_core::{Align, Core, EditOptions, FloatConfig, InputEvent, Key, NodeSpec, Size, Value};
 
 /// Three single-line fields and one multiline, in order.
 fn frame(core: &mut Core, autofocus_first: bool) -> Vec<Key> {
@@ -22,7 +20,7 @@ fn frame(core: &mut Core, autofocus_first: bool) -> Vec<Key> {
                 autofocus: autofocus_first && label == "a",
                 ..Default::default()
             },
-            NodeSpec::column().width(Sizing::Grow(1.0)),
+            NodeSpec::column().grow_width(),
         ));
     }
     ui.finish();
@@ -81,7 +79,7 @@ fn key_sink_owns_tab_when_no_edit_is_focused() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    let sink = ui.with_keyed("app", NodeSpec::column().fill().on_key(Value::Null), |ui| {
+    let sink = ui.with_keyed("app", NodeSpec::column().fill().key_sink(), |ui| {
         ui.text_edit("field", "x", &EditOptions::default(), NodeSpec::column());
     });
     ui.take_key_focus(sink);
@@ -114,33 +112,24 @@ enum Entry {
 fn modal_frame_with(core: &mut Core, dialog: bool, confirm: bool, entry: Entry) -> Vec<Key> {
     let mut ui = core.frame(Size::new(200.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    let row = || {
-        NodeSpec::row()
-            .width(Sizing::Fixed(100.0))
-            .height(Sizing::Fixed(20.0))
-    };
+    let row = || NodeSpec::row().size(100.0, 20.0);
     let mut keys = vec![
-        ui.leaf_keyed("open", row().on_click(Value::str("open"))),
-        ui.leaf_keyed("other", row().on_click(Value::str("other"))),
+        ui.leaf_keyed("open", row().on_click("open")),
+        ui.leaf_keyed("other", row().on_click("other")),
     ];
     if dialog {
         let dlg = ui.with_keyed(
             "dialog",
             NodeSpec::column()
-                .width(Sizing::Fixed(100.0))
-                .height(Sizing::Fixed(40.0))
-                .float(
-                    FloatConfig::viewport()
-                        .at(Align::End, Align::End)
-                        .self_at(Align::End, Align::End),
-                )
-                .modal(Value::str("dlg"))
+                .size(100.0, 40.0)
+                .float(FloatConfig::viewport().inside(Align::End, Align::End))
+                .modal("dlg")
                 .label("Settings"),
             |ui| {
                 // The destructive one first, so declaration order alone
                 // would open the dialog on it.
-                ui.leaf_keyed("ok", row().on_click(Value::str("ok")));
-                let mut cancel = row().on_click(Value::str("cancel"));
+                ui.leaf_keyed("ok", row().on_click("ok"));
+                let mut cancel = row().on_click("cancel");
                 if entry == Entry::Cancel {
                     cancel = cancel.initial_focus();
                 }
@@ -149,23 +138,19 @@ fn modal_frame_with(core: &mut Core, dialog: bool, confirm: bool, entry: Entry) 
                     // Declared, and skipped by the ring anyway.
                     ui.leaf_keyed(
                         "gone",
-                        row()
-                            .on_click(Value::str("gone"))
-                            .disabled(true)
-                            .initial_focus(),
+                        row().on_click("gone").disabled(true).initial_focus(),
                     );
                 }
                 if confirm {
                     ui.with_keyed(
                         "confirm",
                         NodeSpec::column()
-                            .width(Sizing::Fixed(100.0))
-                            .height(Sizing::Fixed(20.0))
+                            .size(100.0, 20.0)
                             .float(FloatConfig::viewport())
                             .modal(Value::Null)
                             .label("Sure?"),
                         |ui| {
-                            ui.leaf_keyed("yes", row().on_click(Value::str("yes")));
+                            ui.leaf_keyed("yes", row().on_click("yes"));
                         },
                     );
                 }
@@ -268,12 +253,11 @@ fn a_modal_with_no_controls_holds_focus_by_holding_none() {
     core.set_focus(Some(k[0]));
     let mut ui = core.frame(Size::new(200.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    ui.leaf_keyed("open", NodeSpec::row().on_click(Value::str("open")));
+    ui.leaf_keyed("open", NodeSpec::row().on_click("open"));
     ui.leaf_keyed(
         "note",
         NodeSpec::column()
-            .width(Sizing::Fixed(100.0))
-            .height(Sizing::Fixed(20.0))
+            .size(100.0, 20.0)
             .float(FloatConfig::viewport())
             .modal(Value::Null)
             .label("Working"),

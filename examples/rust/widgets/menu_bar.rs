@@ -22,8 +22,8 @@
 use kui_devtools::{Drive, Example};
 use kui_native::widgets;
 use kui_native::{
-    Align, App, BarMenu, Core, MenuBar, MenuItem, MenuRole, NodeSpec, Sizing, Span, TextStyle,
-    TextWrap, Ui, UiEvent, Value,
+    Align, App, BarMenu, Core, MenuBar, MenuItem, MenuRole, NodeSpec, Span, TextStyle, TextWrap,
+    Ui, UiEvent, Value,
 };
 
 #[derive(Default)]
@@ -106,8 +106,7 @@ impl App for Demo {
             widgets::menu_bar(ui, self.menu());
             ui.with(
                 NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Grow(1.0))
+                    .fill()
                     .pad(24.0)
                     .gap(12.0)
                     .cross_align(Align::Center),
@@ -117,7 +116,7 @@ impl App for Demo {
                     // something to act on.
                     ui.with(
                         NodeSpec::column()
-                            .width(Sizing::Grow(1.0))
+                            .grow_width()
                             .max_width(560.0)
                             .pad(20.0)
                             .gap(10.0)
@@ -164,10 +163,7 @@ impl App for Demo {
                         },
                     );
                     ui.with(
-                        NodeSpec::row()
-                            .width(Sizing::Grow(1.0))
-                            .max_width(560.0)
-                            .gap(8.0),
+                        NodeSpec::row().grow_width().max_width(560.0).gap(8.0),
                         |ui| {
                             ui.text("last menu event —", TextStyle::new(12.0).color(t.muted));
                             ui.text(
@@ -184,14 +180,14 @@ impl App for Demo {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        if ev.payload.get("kind").and_then(Value::as_str) != Some("menu") {
+        if ev.kind() != Some("menu") {
             return;
         }
         // Every chosen row, standard or not, arrives here with the role it
         // played; a custom row hands back whatever its `id` carried.
-        let role = ev.payload.get("role").and_then(Value::as_str).unwrap_or("");
+        let role = ev.payload.get_str("role").unwrap_or("");
         let item = ev.payload.get("item").cloned().unwrap_or(Value::Null);
-        let did = item.get("do").and_then(Value::as_str);
+        let did = item.get_str("do");
         match did {
             Some("about") => self.abouts += 1,
             Some("note") => self.notes.push(format!("note {}", self.notes.len() + 1)),

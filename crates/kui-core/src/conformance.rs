@@ -485,13 +485,7 @@ impl Step {
             },
             Step::Scroll(x, y) => InputEvent::Scroll(Vec2::new(x as f32, y as f32)),
             Step::Tab => InputEvent::Key(EditKey::Tab, Mods::default()),
-            Step::ShiftTab => InputEvent::Key(
-                EditKey::Tab,
-                Mods {
-                    shift: true,
-                    ..Default::default()
-                },
-            ),
+            Step::ShiftTab => InputEvent::Key(EditKey::Tab, Mods::NONE.with_shift()),
             Step::Modifiers(m) => InputEvent::Modifiers(KeyMods::from_bits(m)),
             Step::Escape => InputEvent::Key(EditKey::Escape, Mods::default()),
             Step::Arrow(d) => InputEvent::Key(ARROWS[d as usize], Mods::default()),
@@ -3011,8 +3005,7 @@ fn build_virtual(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     ui.with_keyed(
         "list",
         NodeSpec::column()
-            .width(Sizing::Fixed(120.0))
-            .height(Sizing::Fixed(60.0))
+            .size(120.0, 60.0)
             .gap(0.0)
             .scroll_y()
             .bg(Color::hex(0x101018ff))
@@ -3027,8 +3020,8 @@ fn build_virtual(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 ui.leaf_indexed(
                     i,
                     NodeSpec::column()
-                        .width(Sizing::Grow(1.0))
-                        .height(Sizing::Fixed(20.0))
+                        .grow_width()
+                        .height(20.0)
                         .bg(Color::hex(0x30344aff))
                         .role(Role::ListItem)
                         .label(match i {
@@ -3044,9 +3037,7 @@ fn build_virtual(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 }
 
 fn virtual_spacer(h: f32) -> NodeSpec {
-    NodeSpec::column()
-        .width(Sizing::Grow(1.0))
-        .height(Sizing::Fixed(h))
+    NodeSpec::column().grow_width().height(h)
 }
 
 fn build_layout(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
@@ -3074,8 +3065,7 @@ fn build_layout(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                     .shadow_blur(8.0)
                     .shadow_y(3.0)
                     .shadow_spread(1.0)
-                    .width(Sizing::Fixed(180.0))
-                    .height(Sizing::Fixed(40.0)),
+                    .size(180.0, 40.0),
                 |ui| {
                     ui.text("ab", TextStyle::new(12.0));
                     ui.text("cd", TextStyle::new(12.0));
@@ -3123,17 +3113,10 @@ fn build_sizing(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
         |ui| {
             ui.with_keyed(
                 "bar",
-                NodeSpec::row()
-                    .width(Sizing::Fixed(200.0))
-                    .height(Sizing::Fixed(40.0))
-                    .bg(Color::hex(0x101018ff)),
+                NodeSpec::row().size(200.0, 40.0).bg(Color::hex(0x101018ff)),
                 |ui| {
-                    let cell = |bg: u32| {
-                        NodeSpec::column()
-                            .height(Sizing::Fixed(20.0))
-                            .bg(Color::hex(bg))
-                    };
-                    ui.leaf(cell(0x30344aff).width(Sizing::Fixed(30.0)));
+                    let cell = |bg: u32| NodeSpec::column().height(20.0).bg(Color::hex(bg));
+                    ui.leaf(cell(0x30344aff).width(30.0));
                     ui.with(cell(0x3b5bd4ff).width(Sizing::Percent(0.25)), |ui| {
                         // Nothing inside: a percent is the parent's, not
                         // the content's.
@@ -3142,12 +3125,11 @@ fn build_sizing(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                     ui.with(cell(0x73d98cff).width(Sizing::Fit), |ui| {
                         ui.leaf(
                             NodeSpec::column()
-                                .width(Sizing::Fixed(20.0))
-                                .height(Sizing::Fixed(10.0))
+                                .size(20.0, 10.0)
                                 .bg(Color::hex(0xff0000ff)),
                         );
                     });
-                    ui.leaf(cell(0xffcc00ff).width(Sizing::Grow(1.0)));
+                    ui.leaf(cell(0xffcc00ff).grow_width());
                 },
             );
         },
@@ -3164,16 +3146,11 @@ fn build_wrap(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             .pad(4.0)
             .gap(6.0)
             .cross_gap(10.0)
-            .width(Sizing::Fixed(100.0))
+            .width(100.0)
             .bg(Color::hex(0x101018ff)),
         |ui| {
             for (w, h) in WRAP_BOXES {
-                ui.leaf(
-                    NodeSpec::column()
-                        .width(Sizing::Fixed(*w))
-                        .height(Sizing::Fixed(*h))
-                        .bg(Color::hex(0x30344aff)),
-                );
+                ui.leaf(NodeSpec::column().size(*w, *h).bg(Color::hex(0x30344aff)));
             }
         },
     );
@@ -3185,26 +3162,22 @@ pub const ALIGN_SPREADS: [Align; 3] = [Align::SpaceBetween, Align::SpaceAround, 
 fn build_align(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     let square = || {
         NodeSpec::column()
-            .width(Sizing::Fixed(10.0))
-            .height(Sizing::Fixed(10.0))
+            .size(10.0, 10.0)
             .bg(Color::hex(0x30344aff))
     };
     ui.with(
         NodeSpec::column()
             .pad(4.0)
             .gap(6.0)
-            .width(Sizing::Fixed(128.0))
+            .width(128.0)
             .bg(Color::hex(0x101018ff)),
         |ui| {
             for a in ALIGN_SPREADS {
-                ui.with(
-                    NodeSpec::row().width(Sizing::Fixed(120.0)).main_align(a),
-                    |ui| {
-                        for _ in 0..3 {
-                            ui.leaf(square());
-                        }
-                    },
-                );
+                ui.with(NodeSpec::row().width(120.0).main_align(a), |ui| {
+                    for _ in 0..3 {
+                        ui.leaf(square());
+                    }
+                });
             }
             ui.with(
                 NodeSpec::row().gap(4.0).cross_align(Align::Baseline),
@@ -3216,13 +3189,13 @@ fn build_align(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             );
             ui.leaf(
                 NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
+                    .grow_width()
                     .aspect_ratio(4.0)
                     .bg(Color::hex(0x3b5bd4ff)),
             );
             ui.leaf(
                 NodeSpec::column()
-                    .height(Sizing::Fixed(12.0))
+                    .height(12.0)
                     .aspect_ratio(2.0)
                     .bg(Color::hex(0x73d98cff)),
             );
@@ -3238,7 +3211,7 @@ fn build_stock_controls(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             ui,
             "Volume",
             widgets::slider_spec(&m)
-                .width(Sizing::Fixed(216.0))
+                .width(216.0)
                 .value_now(30.0)
                 .value_min(0.0)
                 .value_max(100.0)
@@ -3276,7 +3249,7 @@ fn build_table(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     ui.with_keyed(
         "table",
         NodeSpec::table()
-            .width(Sizing::Fixed(200.0))
+            .width(200.0)
             .pad(4.0)
             .gap(2.0)
             .bg(Color::hex(0x101018ff)),
@@ -3287,18 +3260,13 @@ fn build_table(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 ui.text("w", TextStyle::new(12.0));
             });
             for (label, w, h) in TABLE_ROWS {
-                ui.with(NodeSpec::row().width(Sizing::Grow(1.0)).gap(6.0), |ui| {
+                ui.with(NodeSpec::row().grow_width().gap(6.0), |ui| {
                     ui.text(label, TextStyle::new(12.0));
+                    ui.leaf(NodeSpec::column().size(*w, *h).bg(Color::hex(0x30344aff)));
                     ui.leaf(
                         NodeSpec::column()
-                            .width(Sizing::Fixed(*w))
-                            .height(Sizing::Fixed(*h))
-                            .bg(Color::hex(0x30344aff)),
-                    );
-                    ui.leaf(
-                        NodeSpec::column()
-                            .width(Sizing::Grow(1.0))
-                            .height(Sizing::Fixed(*h))
+                            .grow_width()
+                            .height(*h)
                             .bg(Color::hex(0x3b5bd4ff)),
                     );
                 });
@@ -3315,7 +3283,7 @@ fn build_selection(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     ui.with_keyed(
         "card",
         NodeSpec::column()
-            .width(Sizing::Fixed(200.0))
+            .width(200.0)
             .pad(8.0)
             .gap(4.0)
             .bg(Color::hex(0x14161eff))
@@ -3329,24 +3297,14 @@ fn build_selection(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 }
 
 fn build_tabs(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
-    let bar = || {
-        NodeSpec::row()
-            .width(Sizing::Fixed(200.0))
-            .height(Sizing::Fixed(20.0))
-            .bg(Color::hex(0x101018ff))
-    };
+    let bar = || NodeSpec::row().size(200.0, 20.0).bg(Color::hex(0x101018ff));
     let tab = || {
         NodeSpec::column()
-            .width(Sizing::Grow(1.0))
+            .grow_width()
             .min_width(Min::FIT)
             .bg(Color::hex(0x30344aff))
     };
-    let label = |w: f32, h: f32| {
-        NodeSpec::column()
-            .width(Sizing::Fixed(w))
-            .height(Sizing::Fixed(h))
-            .bg(Color::hex(0x3b5bd4ff))
-    };
+    let label = |w: f32, h: f32| NodeSpec::column().size(w, h).bg(Color::hex(0x3b5bd4ff));
     ui.with(NodeSpec::column().pad(4.0).gap(4.0), |ui| {
         ui.with_keyed("roomy", bar(), |ui| {
             for (w, h) in TAB_ROOMY {
@@ -3360,7 +3318,7 @@ fn build_tabs(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
         });
         ui.with_keyed("crowded", bar().scroll_x(), |ui| {
             for w in TAB_CROWDED {
-                ui.with(tab().height(Sizing::Grow(1.0)), |ui| {
+                ui.with(tab().grow_height(), |ui| {
                     ui.leaf(label(*w, 12.0));
                 });
             }
@@ -3373,8 +3331,7 @@ fn build_overflow(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
         ui.with_keyed(
             "list",
             NodeSpec::column()
-                .width(Sizing::Fixed(120.0))
-                .height(Sizing::Fixed(60.0))
+                .size(120.0, 60.0)
                 .gap(4.0)
                 .scroll_y()
                 // Rounded and clipping: the items inside inherit the
@@ -3388,8 +3345,7 @@ fn build_overflow(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                     ui.leaf_keyed(
                         key,
                         NodeSpec::column()
-                            .width(Sizing::Fixed(100.0))
-                            .height(Sizing::Fixed(20.0))
+                            .size(100.0, 20.0)
                             .bg(Color::hex(0x30344aff)),
                     );
                 }
@@ -3410,8 +3366,7 @@ fn build_scrollbar(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     ui.with(NodeSpec::row().pad(10.0).gap(10.0), |ui| {
         for (n, key) in SCROLLBAR_KEYS.iter().enumerate() {
             let list = NodeSpec::column()
-                .width(Sizing::Fixed(90.0))
-                .height(Sizing::Fixed(60.0))
+                .size(90.0, 60.0)
                 .gap(0.0)
                 .scroll_y()
                 .bg(Color::hex(0x101018ff));
@@ -3428,8 +3383,7 @@ fn build_scrollbar(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                     ui.leaf_keyed(
                         item,
                         NodeSpec::column()
-                            .width(Sizing::Fixed(80.0))
-                            .height(Sizing::Fixed(20.0))
+                            .size(80.0, 20.0)
                             .bg(Color::hex(0x30344aff)),
                     );
                 }
@@ -3508,9 +3462,7 @@ fn build_tokens(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     let big = ui.token_length("big").expect("declared");
     let radius = ui.token_length("radius").expect("a role");
     let cell = |bg: Option<Color>| {
-        let spec = NodeSpec::column()
-            .width(Sizing::Fixed(side_w))
-            .height(Sizing::Fixed(30.0));
+        let spec = NodeSpec::column().size(side_w, 30.0);
         match bg {
             Some(bg) => spec.bg(bg),
             None => spec,
@@ -3549,8 +3501,7 @@ fn build_anchor(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
     ui.with(NodeSpec::row().pad(10.0).gap(10.0), |ui| {
         for (n, key) in ANCHOR_KEYS.iter().enumerate() {
             let list = NodeSpec::column()
-                .width(Sizing::Fixed(90.0))
-                .height(Sizing::Fixed(60.0))
+                .size(90.0, 60.0)
                 .scroll_y()
                 .bg(Color::hex(0x101018ff));
             let list = if n == 0 { list.anchor() } else { list };
@@ -3558,10 +3509,7 @@ fn build_anchor(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
                 let row = |ui: &mut Ui<'_>, key: &str, h: f32| {
                     ui.leaf_keyed(
                         key,
-                        NodeSpec::column()
-                            .width(Sizing::Fixed(80.0))
-                            .height(Sizing::Fixed(h))
-                            .bg(Color::hex(0x30344aff)),
+                        NodeSpec::column().size(80.0, h).bg(Color::hex(0x30344aff)),
                     );
                 };
                 if phase >= 1 {
@@ -3594,8 +3542,7 @@ fn build_selection_scroll(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     ui.with_keyed(
         "card",
         NodeSpec::column()
-            .width(Sizing::Fixed(200.0))
-            .height(Sizing::Fixed(SELECTION_SCROLL_HEIGHT))
+            .size(200.0, SELECTION_SCROLL_HEIGHT)
             .pad(8.0)
             .gap(4.0)
             .bg(Color::hex(0x14161eff))
@@ -3650,15 +3597,13 @@ fn build_float(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
         ui.with_keyed(
             "anchor",
             NodeSpec::column()
-                .width(Sizing::Fixed(80.0))
-                .height(Sizing::Fixed(24.0))
+                .size(80.0, 24.0)
                 .bg(Color::hex(0x333333ff)),
             |ui| {
                 ui.leaf(
                     NodeSpec::column()
                         .float(FloatConfig::below())
-                        .width(Sizing::Fixed(40.0))
-                        .height(Sizing::Fixed(12.0))
+                        .size(40.0, 12.0)
                         .bg(Color::hex(0xff0000ff)),
                 );
             },
@@ -3670,8 +3615,7 @@ fn build_float(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
         ui.with_keyed(
             "nudged",
             NodeSpec::column()
-                .width(Sizing::Fixed(60.0))
-                .height(Sizing::Fixed(20.0))
+                .size(60.0, 20.0)
                 .bg(Color::hex(0x444444ff)),
             |ui| {
                 ui.leaf(
@@ -3685,8 +3629,7 @@ fn build_float(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                             false,
                             false,
                         ))
-                        .width(Sizing::Fixed(30.0))
-                        .height(Sizing::Fixed(10.0))
+                        .size(30.0, 10.0)
                         .bg(Color::hex(0x0000ffff)),
                 );
             },
@@ -3707,8 +3650,7 @@ fn build_float(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                         .offset(-6.0, 14.0)
                         .fit(),
                 )
-                .width(Sizing::Fixed(10.0))
-                .height(Sizing::Fixed(10.0))
+                .size(10.0, 10.0)
                 .bg(Color::hex(0x00ff00ff)),
         );
     });
@@ -3745,8 +3687,7 @@ fn build_tooltip(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
         ui.with_keyed(
             "tip",
             NodeSpec::row()
-                .width(Sizing::Fixed(100.0))
-                .height(Sizing::Fixed(40.0))
+                .size(100.0, 40.0)
                 .bg(Color::hex(0x333333ff))
                 .role(Role::Group)
                 .hoverable()
@@ -3760,8 +3701,7 @@ fn build_tooltip(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
         );
         ui.leaf(
             NodeSpec::row()
-                .width(Sizing::Fixed(100.0))
-                .height(Sizing::Fixed(20.0))
+                .size(100.0, 20.0)
                 .role(Role::Button)
                 .label("Save")
                 .description("Nothing to save yet"),
@@ -3795,7 +3735,7 @@ fn build_menu_bar(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     // Grow, because the bar is a full-width strip: in a `fit` parent it
     // would be squeezed to the widest thing beside it and its titles would
     // wrap, which is ordinary flex and worth a scene not tripping over.
-    ui.with(NodeSpec::column().gap(6.0).width(Sizing::Grow(1.0)), |ui| {
+    ui.with(NodeSpec::column().gap(6.0).grow_width(), |ui| {
         widgets::menu_bar(ui, bar);
         ui.text("body", TextStyle::new(12.0));
     });
@@ -3822,15 +3762,11 @@ fn build_chrome(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
         // element under test is the cluster, and a drag handle would derive
         // a second `titleBar` role, which is a thing to tell a screen reader
         // rather than a side effect of where the corpus put a box.
-        ui.with(
-            NodeSpec::row().width(Sizing::Grow(1.0)),
-            widgets::window_buttons,
-        );
+        ui.with(NodeSpec::row().grow_width(), widgets::window_buttons);
         let sink = ui.open_keyed(
             "sink",
             NodeSpec::column()
-                .width(Sizing::Fixed(40.0))
-                .height(Sizing::Fixed(16.0))
+                .size(40.0, 16.0)
                 .bg(Color::hex(0x22242cff))
                 .focusable()
                 .label("Sink"),
@@ -3885,7 +3821,7 @@ fn build_controls(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 wrap: true,
                 ..Default::default()
             },
-            NodeSpec::column().width(Sizing::Fixed(160.0)).label("Note"),
+            NodeSpec::column().width(160.0).label("Note"),
         );
         // A slider that says what its position reads as. Without
         // `value_text` a reader has only the three numbers and says a
@@ -3902,8 +3838,7 @@ fn build_controls(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 .value_min(5.0)
                 .value_max(60.0)
                 .value_text("25 minutes")
-                .width(Sizing::Fixed(120.0))
-                .height(Sizing::Fixed(12.0)),
+                .size(120.0, 12.0),
         );
     });
 }
@@ -3918,20 +3853,17 @@ fn build_ime(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
         ui.with_keyed(
             "buffer",
             NodeSpec::column()
-                .width(Sizing::Fixed(200.0))
-                .height(Sizing::Fixed(24.0))
+                .size(200.0, 24.0)
                 .bg(Color::hex(0x1b1d27ff))
                 .on_key(Value::map([("kind", Value::str("ed"))]))
                 .role(Role::MultilineTextInput)
                 .label("Buffer"),
             |ui| {
-                ui.with_keyed(
+                ui.text_in_keyed(
                     "l0",
-                    NodeSpec::row()
-                        .height(Sizing::Fixed(20.0))
-                        .role(Role::Line)
-                        .caret(1),
-                    |ui| ui.text("ab", TextStyle::new(13.0).mono()),
+                    NodeSpec::row().height(20.0).role(Role::Line).caret(1),
+                    "ab",
+                    TextStyle::new(13.0).mono(),
                 );
             },
         );
@@ -3942,7 +3874,7 @@ fn build_ime(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 style: TextStyle::new(13.0),
                 ..Default::default()
             },
-            NodeSpec::column().width(Sizing::Fixed(200.0)).label("Note"),
+            NodeSpec::column().width(200.0).label("Note"),
         );
     });
 }
@@ -3975,8 +3907,7 @@ fn build_cells(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 fn build_keys(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     let sink = |label: &str| {
         NodeSpec::row()
-            .width(Sizing::Fixed(100.0))
-            .height(Sizing::Fixed(24.0))
+            .size(100.0, 24.0)
             .bg(Color::hex(0x1b1d27ff))
             .on_key(Value::Int(1))
             .role(Role::Group)
@@ -3991,8 +3922,7 @@ fn build_keys(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             let go = ui.leaf_keyed(
                 "go",
                 NodeSpec::row()
-                    .width(Sizing::Fixed(80.0))
-                    .height(Sizing::Fixed(16.0))
+                    .size(80.0, 16.0)
                     .bg(Color::hex(0x3b5bd4ff))
                     .on_click(Value::map([("kind", Value::str("go"))]))
                     .label("Go"),
@@ -4010,10 +3940,7 @@ fn build_keys(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 fn build_media(ui: &mut Ui<'_>, f: &Fixtures, phase: u32) {
     use crate::resources::{ImageFit, ImageOpts, Sampling};
     ui.with(NodeSpec::column().pad(6.0).gap(4.0), |ui| {
-        ui.image(
-            f.image,
-            NodeSpec::column().width(Sizing::Fixed(16.0)).radius(2.0),
-        );
+        ui.image(f.image, NodeSpec::column().width(16.0).radius(2.0));
         // The 4×4 icon in a 32×16 box: `contain` paints a 16×16 rect,
         // centred, and the box (the access rect, the hit region) stays 32.
         ui.image_with(
@@ -4022,24 +3949,16 @@ fn build_media(ui: &mut Ui<'_>, f: &Fixtures, phase: u32) {
                 fit: ImageFit::Contain,
                 ..ImageOpts::default()
             },
-            NodeSpec::column()
-                .width(Sizing::Fixed(32.0))
-                .height(Sizing::Fixed(16.0))
-                .label("Icon"),
+            NodeSpec::column().size(32.0, 16.0).label("Icon"),
         );
-        ui.image(
-            f.stream,
-            NodeSpec::column()
-                .width(Sizing::Fixed(16.0))
-                .label("Stream"),
-        );
+        ui.image(f.stream, NodeSpec::column().width(16.0).label("Stream"));
         ui.image_with(
             f.stream,
             ImageOpts {
                 sampling: Sampling::Nearest,
                 ..ImageOpts::default()
             },
-            NodeSpec::column().width(Sizing::Fixed(16.0)).label("Crisp"),
+            NodeSpec::column().width(16.0).label("Crisp"),
         );
         // The 8×2 stream in a 12×12 box: `cover` keeps the box and shows
         // the middle 2×2 texels — `texture 2 3 0 2 2` in the report.
@@ -4049,10 +3968,7 @@ fn build_media(ui: &mut Ui<'_>, f: &Fixtures, phase: u32) {
                 fit: ImageFit::Cover,
                 ..ImageOpts::default()
             },
-            NodeSpec::column()
-                .width(Sizing::Fixed(12.0))
-                .height(Sizing::Fixed(12.0))
-                .label("Cropped"),
+            NodeSpec::column().size(12.0, 12.0).label("Cropped"),
         );
         ui.audio_keyed("music", AudioSpec::new(f.sound).volume(0.5).looped());
         widgets::latency_graph(ui);
@@ -4102,8 +4018,7 @@ fn polygon_points(pts: &[(f32, f32)]) -> Vec<Vec2> {
 fn build_polygon(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     ui.with(
         NodeSpec::column()
-            .width(Sizing::Fixed(200.0))
-            .height(Sizing::Fixed(120.0))
+            .size(200.0, 120.0)
             .bg(Color::hex(0x14161eff)),
         |ui| {
             ui.polygon(
@@ -4139,72 +4054,62 @@ fn build_polygon(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 /// is. The curve's chords are 44.7, 50 and 82.5, which
 /// `line::flatten_curve` cuts into 8, 9 and 14 pieces at `CURVE_STEP` 6.
 fn build_drop(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
-    ui.with(
-        NodeSpec::row()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Grow(1.0)),
-        |ui| {
-            ui.with_keyed(
-                "files",
-                NodeSpec::column()
-                    .width(Sizing::Fixed(200.0))
-                    .height(Sizing::Grow(1.0))
-                    .pad(10.0)
-                    .bg(Color::hex(0x22242cff))
-                    .drop_bg(Color::hex(0x2b3350ff))
-                    .on_drop(Value::map([("kind", Value::str("files"))])),
-                |ui| {
-                    // Inside the zone: files over it are the zone's.
-                    ui.leaf_keyed(
-                        "pick",
-                        NodeSpec::row()
-                            .width(Sizing::Fixed(60.0))
-                            .height(Sizing::Fixed(40.0))
-                            .bg(Color::hex(0x3b5bd4ff))
-                            .on_click(Value::map([("kind", Value::str("pick"))]))
-                            .label("Pick"),
-                    );
-                },
-            );
+    ui.with(NodeSpec::row().fill(), |ui| {
+        ui.with_keyed(
+            "files",
+            NodeSpec::column()
+                .width(200.0)
+                .grow_height()
+                .pad(10.0)
+                .bg(Color::hex(0x22242cff))
+                .drop_bg(Color::hex(0x2b3350ff))
+                .on_drop(Value::map([("kind", Value::str("files"))])),
+            |ui| {
+                // Inside the zone: files over it are the zone's.
+                ui.leaf_keyed(
+                    "pick",
+                    NodeSpec::row()
+                        .size(60.0, 40.0)
+                        .bg(Color::hex(0x3b5bd4ff))
+                        .on_click(Value::map([("kind", Value::str("pick"))]))
+                        .label("Pick"),
+                );
+            },
+        );
+        ui.leaf_keyed(
+            "other",
+            NodeSpec::column()
+                .fill()
+                .bg(Color::hex(0x30344aff))
+                .on_drop(Value::map([("kind", Value::str("other"))])),
+        );
+        let over = FloatConfig::viewport()
+            .inside(Align::Start, Align::Start)
+            .offset(20.0, 20.0);
+        // What an app shows in answer to `enter`: a hoverable float
+        // over the zone that takes no files, and is looked past.
+        if phase == 1 {
             ui.leaf_keyed(
-                "other",
+                "overlay",
                 NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Grow(1.0))
-                    .bg(Color::hex(0x30344aff))
-                    .on_drop(Value::map([("kind", Value::str("other"))])),
+                    .float(over)
+                    .size(160.0, 160.0)
+                    .hoverable(),
             );
-            let over = FloatConfig::viewport()
-                .at(Align::Start, Align::Start)
-                .self_at(Align::Start, Align::Start)
-                .offset(20.0, 20.0);
-            // What an app shows in answer to `enter`: a hoverable float
-            // over the zone that takes no files, and is looked past.
-            if phase == 1 {
-                ui.leaf_keyed(
-                    "overlay",
-                    NodeSpec::column()
-                        .float(over)
-                        .width(Sizing::Fixed(160.0))
-                        .height(Sizing::Fixed(160.0))
-                        .hoverable(),
-                );
-            }
-            // A modal over the zone: the zone's region is not emitted, so
-            // the files find nothing there.
-            if phase == 2 {
-                ui.leaf_keyed(
-                    "confirm",
-                    NodeSpec::column()
-                        .float(over)
-                        .width(Sizing::Fixed(160.0))
-                        .height(Sizing::Fixed(160.0))
-                        .bg(Color::hex(0x101018ff))
-                        .modal(Value::map([("kind", Value::str("dismiss"))])),
-                );
-            }
-        },
-    );
+        }
+        // A modal over the zone: the zone's region is not emitted, so
+        // the files find nothing there.
+        if phase == 2 {
+            ui.leaf_keyed(
+                "confirm",
+                NodeSpec::column()
+                    .float(over)
+                    .size(160.0, 160.0)
+                    .bg(Color::hex(0x101018ff))
+                    .modal(Value::map([("kind", Value::str("dismiss"))])),
+            );
+        }
+    });
 }
 
 fn build_underlines(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
@@ -4253,8 +4158,7 @@ fn build_underlines(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 fn build_lines(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     ui.with(
         NodeSpec::column()
-            .width(Sizing::Fixed(200.0))
-            .height(Sizing::Fixed(120.0))
+            .size(200.0, 120.0)
             .bg(Color::hex(0x14161eff)),
         |ui| {
             ui.line(
@@ -4288,8 +4192,7 @@ fn build_lines(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             );
             ui.leaf(
                 NodeSpec::column()
-                    .width(Sizing::Fixed(40.0))
-                    .height(Sizing::Fixed(20.0))
+                    .size(40.0, 20.0)
                     .bg(Color::hex(0x202030ff)),
             );
         },
@@ -4309,17 +4212,14 @@ fn build_lines(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 fn build_fragments(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
     ui.with(
         NodeSpec::column()
-            .width(Sizing::Fixed(200.0))
-            .height(Sizing::Fixed(120.0))
+            .size(200.0, 120.0)
             .gap(4.0)
             .bg(Color::hex(0x14161eff)),
         |ui| {
             ui.fragment(
                 f.fragment,
                 &FRAGMENT_PARAMS,
-                NodeSpec::column()
-                    .width(Sizing::Fixed(80.0))
-                    .height(Sizing::Fixed(40.0)),
+                NodeSpec::column().size(80.0, 40.0),
             );
             // Rounded, faded, and holding a child that paints over it —
             // the child's own solid is the one the fade multiplies too.
@@ -4328,16 +4228,14 @@ fn build_fragments(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
                 f.fragment,
                 &FRAGMENT_PARAMS,
                 NodeSpec::column()
-                    .width(Sizing::Fixed(80.0))
-                    .height(Sizing::Fixed(40.0))
+                    .size(80.0, 40.0)
                     .pad(6.0)
                     .radius(8.0)
                     .opacity(0.5),
                 |ui| {
                     ui.leaf(
                         NodeSpec::column()
-                            .width(Sizing::Fixed(20.0))
-                            .height(Sizing::Fixed(10.0))
+                            .size(20.0, 10.0)
                             .bg(Color::hex(0x202030ff)),
                     );
                 },
@@ -4346,17 +4244,13 @@ fn build_fragments(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
             ui.fragment(
                 crate::resources::FragmentId::from_ffi(0),
                 &FRAGMENT_PARAMS,
-                NodeSpec::column()
-                    .width(Sizing::Fixed(20.0))
-                    .height(Sizing::Fixed(10.0)),
+                NodeSpec::column().size(20.0, 10.0),
             );
             // Eighteen params: the last two are dropped, with a warning.
             ui.fragment(
                 f.fragment,
                 &FRAGMENT_PARAMS_LONG,
-                NodeSpec::column()
-                    .width(Sizing::Fixed(30.0))
-                    .height(Sizing::Fixed(12.0)),
+                NodeSpec::column().size(30.0, 12.0),
             );
             // The image input: the atlas-backed icon, the texture-backed
             // stream, and an image live in no session (draws nothing).
@@ -4364,16 +4258,12 @@ fn build_fragments(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
                 ui.fragment(
                     f.sampler.with_image(f.image),
                     &FRAGMENT_IMAGE_PARAMS,
-                    NodeSpec::column()
-                        .width(Sizing::Fixed(24.0))
-                        .height(Sizing::Fixed(24.0)),
+                    NodeSpec::column().size(24.0, 24.0),
                 );
                 ui.fragment(
                     f.sampler.with_image(f.stream),
                     &FRAGMENT_IMAGE_PARAMS,
-                    NodeSpec::column()
-                        .width(Sizing::Fixed(32.0))
-                        .height(Sizing::Fixed(8.0)),
+                    NodeSpec::column().size(32.0, 8.0),
                 );
                 // The removed fixture rather than a raw number: 0 is "no
                 // image" at the C, Lua and Node doors, and every other
@@ -4382,9 +4272,7 @@ fn build_fragments(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
                 ui.fragment(
                     f.sampler.with_image(f.dead),
                     &FRAGMENT_IMAGE_PARAMS,
-                    NodeSpec::column()
-                        .width(Sizing::Fixed(24.0))
-                        .height(Sizing::Fixed(24.0)),
+                    NodeSpec::column().size(24.0, 24.0),
                 );
             });
         },
@@ -4394,8 +4282,7 @@ fn build_fragments(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
 fn build_modal(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
     let button = |kind: &str, label: &str| {
         NodeSpec::row()
-            .width(Sizing::Fixed(100.0))
-            .height(Sizing::Fixed(24.0))
+            .size(100.0, 24.0)
             .bg(Color::hex(0x3b5bd4ff))
             .on_click(Value::map([("kind", Value::str(kind))]))
             .label(label)
@@ -4403,15 +4290,14 @@ fn build_modal(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
     // Grow, not fit: the titlebar is a full-width drag strip, and a fit
     // column would shrink it to its content and leave (160, 16) on
     // nothing at all — which reads as inert chrome.
-    ui.with(NodeSpec::column().gap(6.0).width(Sizing::Grow(1.0)), |ui| {
+    ui.with(NodeSpec::column().gap(6.0).grow_width(), |ui| {
         widgets::titlebar_with(ui, |ui| {
             ui.text("app", TextStyle::new(12.0));
         });
         let open = ui.leaf_keyed(
             "open",
             NodeSpec::row()
-                .width(Sizing::Fixed(100.0))
-                .height(Sizing::Fixed(20.0))
+                .size(100.0, 20.0)
                 .bg(Color::hex(0x30344aff))
                 .on_click(Value::map([("kind", Value::str("open"))]))
                 .label("Open"),
@@ -4424,8 +4310,7 @@ fn build_modal(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
             let note = ui.leaf_keyed(
                 "note",
                 NodeSpec::row()
-                    .width(Sizing::Fixed(100.0))
-                    .height(Sizing::Fixed(20.0))
+                    .size(100.0, 20.0)
                     .bg(Color::hex(0x30344aff))
                     .on_click(Value::map([("kind", Value::str("note"))]))
                     .label("Note"),
@@ -4443,16 +4328,11 @@ fn build_modal(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
         ui.with_keyed(
             "dialog",
             NodeSpec::column()
-                .width(Sizing::Fixed(120.0))
-                .height(Sizing::Fixed(100.0))
+                .size(120.0, 100.0)
                 .pad(8.0)
                 .gap(6.0)
                 .bg(Color::hex(0x202030ff))
-                .float(
-                    FloatConfig::viewport()
-                        .at(Align::End, Align::End)
-                        .self_at(Align::End, Align::End),
-                )
+                .float(FloatConfig::viewport().inside(Align::End, Align::End))
                 .modal(Value::map([("kind", Value::str("dlg"))]))
                 .label("Settings"),
             |ui| {
@@ -4468,7 +4348,7 @@ fn build_modal(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
 /// stop. The tabs are a row and the list a column, so the two derived
 /// orientations differ.
 fn build_composite(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
-    ui.with(NodeSpec::column().gap(6.0).width(Sizing::Grow(1.0)), |ui| {
+    ui.with(NodeSpec::column().gap(6.0).grow_width(), |ui| {
         ui.with_keyed("tabs", NodeSpec::row().role(Role::TabList).gap(4.0), |ui| {
             for (i, name) in ["One", "Two", "Three"].iter().enumerate() {
                 ui.with_keyed(
@@ -4478,8 +4358,7 @@ fn build_composite(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                         // The view's own selection, and the entry the
                         // ring takes: the second tab, not the first.
                         .selected(i == 1)
-                        .width(Sizing::Fixed(60.0))
-                        .height(Sizing::Fixed(20.0))
+                        .size(60.0, 20.0)
                         .bg(Color::hex(0x30344aff))
                         .on_click(Value::map([("kind", Value::str(name.to_lowercase()))])),
                     |ui| ui.text(name, TextStyle::new(12.0)),
@@ -4489,8 +4368,7 @@ fn build_composite(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
         ui.leaf_keyed(
             "add",
             NodeSpec::row()
-                .width(Sizing::Fixed(40.0))
-                .height(Sizing::Fixed(20.0))
+                .size(40.0, 20.0)
                 .bg(Color::hex(0x3b5bd4ff))
                 .on_click(Value::map([("kind", Value::str("add"))]))
                 .label("Add"),
@@ -4505,8 +4383,7 @@ fn build_composite(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                         // what makes this list a composite.
                         .role(Role::ListItem)
                         .focusable()
-                        .width(Sizing::Fixed(80.0))
-                        .height(Sizing::Fixed(18.0))
+                        .size(80.0, 18.0)
                         .bg(Color::hex(0x202030ff))
                         .on_click(Value::map([("kind", Value::str(name.to_lowercase()))])),
                     |ui| ui.text(name, TextStyle::new(12.0)),
@@ -4545,24 +4422,17 @@ pub const EXIT_ROWS: usize = 600;
 /// - `bulk` (phase 1) is one node past [`crate::depart::MAX_NODES`], so it
 ///   is refused whole, with an `exit-budget` warning and no ghost.
 fn build_exit(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
-    let slot = |h: f32| {
-        NodeSpec::column()
-            .width(Sizing::Fixed(140.0))
-            .height(Sizing::Fixed(h))
-            .bg(Color::hex(0x101018ff))
-    };
+    let slot = |h: f32| NodeSpec::column().size(140.0, h).bg(Color::hex(0x101018ff));
     let keep = |label: &'static str| {
         NodeSpec::row()
-            .width(Sizing::Fixed(60.0))
-            .height(Sizing::Fixed(16.0))
+            .size(60.0, 16.0)
             .bg(Color::hex(0x22242cff))
             .focusable()
             .label(label)
     };
     ui.with(
         NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Grow(1.0))
+            .fill()
             .pad(8.0)
             .gap(6.0)
             .bg(Color::hex(0x14161eff)),
@@ -4570,20 +4440,18 @@ fn build_exit(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
             ui.leaf_keyed("a", keep("A"));
             ui.with_keyed("slotFade", slot(40.0), |ui| {
                 if phase == 0 {
-                    ui.with_keyed(
+                    ui.text_in_keyed(
                         "fade",
                         NodeSpec::column()
-                            .width(Sizing::Fixed(100.0))
-                            .height(Sizing::Fixed(24.0))
+                            .size(100.0, 24.0)
                             .bg(Color::hex(0x3b5bd4ff))
                             .transition(400.0)
                             .exit(Enter::from(40.0, 0.0).opacity(0.0))
                             .focusable()
                             .label("Fade")
                             .on_click(Value::map([("kind", Value::str("hit"))])),
-                        |ui| {
-                            ui.text("bye", TextStyle::new(12.0));
-                        },
+                        "bye",
+                        TextStyle::new(12.0),
                     );
                 }
             });
@@ -4592,8 +4460,7 @@ fn build_exit(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
                     ui.leaf_keyed(
                         "blink",
                         NodeSpec::column()
-                            .width(Sizing::Fixed(100.0))
-                            .height(Sizing::Fixed(12.0))
+                            .size(100.0, 12.0)
                             .bg(Color::hex(0x73d98cff))
                             .transition(50.0)
                             .exit(Enter::from(20.0, 0.0)),
@@ -4605,8 +4472,7 @@ fn build_exit(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
                     ui.leaf_keyed(
                         "flash",
                         NodeSpec::column()
-                            .width(Sizing::Fixed(100.0))
-                            .height(Sizing::Fixed(12.0))
+                            .size(100.0, 12.0)
                             .bg(Color::hex(0xffcc00ff))
                             .transition(400.0)
                             .exit(Enter::from(-20.0, 0.0)),
@@ -4618,18 +4484,14 @@ fn build_exit(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
             // half a pixel wide, in a slot that keeps its size when they go.
             ui.with_keyed(
                 "slotRows",
-                NodeSpec::row()
-                    .width(Sizing::Fixed(300.0))
-                    .height(Sizing::Fixed(4.0))
-                    .bg(Color::hex(0x101018ff)),
+                NodeSpec::row().size(300.0, 4.0).bg(Color::hex(0x101018ff)),
                 |ui| {
                     if phase < 4 {
                         for i in 0..EXIT_ROWS {
                             ui.leaf_indexed(
                                 i as u64,
                                 NodeSpec::column()
-                                    .width(Sizing::Fixed(0.5))
-                                    .height(Sizing::Fixed(4.0))
+                                    .size(0.5, 4.0)
                                     .bg(Color::hex(0x8a8fa3ff))
                                     .transition(400.0)
                                     .exit(Enter::default().opacity(0.0)),
@@ -4681,14 +4543,10 @@ fn build_popup(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
     if phase == 0 {
         ui.window("menu", WindowConfig::popup(POPUP_ANCHOR, 160.0, 320.0));
     }
-    ui.with(
+    ui.text_in(
         NodeSpec::column().pad(8.0).bg(Color::hex(0x14161eff)),
-        |ui| {
-            ui.text(
-                if phase == 0 { "menu" } else { "closed" },
-                TextStyle::new(12.0),
-            );
-        },
+        if phase == 0 { "menu" } else { "closed" },
+        TextStyle::new(12.0),
     );
 }
 
@@ -4699,8 +4557,7 @@ fn build_drag(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     ui.leaf_keyed(
         "handle",
         NodeSpec::column()
-            .width(Sizing::Fixed(80.0))
-            .height(Sizing::Fixed(40.0))
+            .size(80.0, 40.0)
             .bg(Color::hex(0x30344aff))
             .on_drag(Value::map([("kind", Value::str("split"))])),
     );
@@ -4952,7 +4809,7 @@ fn observe(core: &Core, cov: &mut Coverage) {
             .events()
             .on_click
             .as_ref()
-            .is_some_and(|v| v.get("select").and_then(Value::as_bool) == Some(true))
+            .is_some_and(|v| v.get_bool("select") == Some(true))
         {
             cov.elements.insert("select");
         }
@@ -5239,11 +5096,7 @@ fn rows(tree: &AccessTree) -> Vec<NodeRow> {
 /// `kind` inside its `tag` when the core merged one in. Anything richer
 /// would need a map walker in the C API, which there is none of.
 fn event_row(payload: &Value) -> (String, String) {
-    let kind = payload
-        .get("kind")
-        .and_then(Value::as_str)
-        .unwrap_or("-")
-        .to_string();
+    let kind = payload.get_str("kind").unwrap_or("-").to_string();
     // The second column is the event's tag. The two window-level events
     // carry none — they are on the window and not on a node — and without
     // a fallback two `window` lines or two `dismiss` lines are the same
@@ -5267,16 +5120,13 @@ fn event_row(payload: &Value) -> (String, String) {
     // out (ADR 0034), the arithmetic being what is pinned. The corpus
     // steps land on whole values, so they print as integers.
     if kind == "change" {
-        let phase = payload.get("phase").and_then(Value::as_str).unwrap_or("-");
-        let v = payload
-            .get("value")
-            .and_then(Value::as_float)
-            .unwrap_or(0.0) as i64;
+        let phase = payload.get_str("phase").unwrap_or("-");
+        let v = payload.get_float("value").unwrap_or(0.0) as i64;
         let _ = write!(tag, " {phase} {v}");
     }
     if kind == "drag" {
         let num = |k: &str| payload.get(k).and_then(Value::as_float).unwrap_or(0.0) as i64;
-        let phase = payload.get("phase").and_then(Value::as_str).unwrap_or("-");
+        let phase = payload.get_str("phase").unwrap_or("-");
         let _ = write!(tag, " {phase} {} {}", num("dx"), num("dy"));
     }
     // A scroll's lines ride the same way (`scroll term 2`): the whole
@@ -5284,7 +5134,7 @@ fn event_row(payload: &Value) -> (String, String) {
     // carried fraction between two notches would agree on the kind and
     // disagree here. `-` for a node that is not a grid.
     if kind == "scroll" {
-        match payload.get("lines").and_then(Value::as_int) {
+        match payload.get_int("lines") {
             Some(n) => {
                 let _ = write!(tag, " {n}");
             }
@@ -5296,7 +5146,7 @@ fn event_row(payload: &Value) -> (String, String) {
     // decision 1), and a binding that dropped the list on the wire would
     // agree on the kind and disagree here.
     if kind == "drop" {
-        let phase = payload.get("phase").and_then(Value::as_str).unwrap_or("-");
+        let phase = payload.get_str("phase").unwrap_or("-");
         let n = payload
             .get("paths")
             .and_then(Value::as_list)
@@ -5722,8 +5572,7 @@ fn build_sampler(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
     let tag = |k: &str| Value::map([("kind", Value::str(k))]);
     ui.with(NodeSpec::column().pad(8.0).gap(6.0), |ui| {
         let card = NodeSpec::row()
-            .width(Sizing::Fixed(120.0))
-            .height(Sizing::Fixed(40.0))
+            .size(120.0, 40.0)
             .max_width(100.0)
             .max_height(30.0)
             .center()
@@ -5771,14 +5620,11 @@ fn build_sampler(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
             // the state to itself — so the row shows the flag landed.
             .role(Role::Tab)
             .label("Card");
-        ui.with_keyed("card", card, |ui| {
-            ui.text("ab", TextStyle::new(12.0));
-        });
+        ui.text_in_keyed("card", card, "ab", TextStyle::new(12.0));
         ui.leaf_keyed(
             "strip",
             NodeSpec::row()
-                .width(Sizing::Fixed(60.0))
-                .height(Sizing::Fixed(10.0))
+                .size(60.0, 10.0)
                 .bg(Color::hex(0x3a3f52ff))
                 .window_drag(),
         );
@@ -5787,15 +5633,14 @@ fn build_sampler(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
             NodeSpec::row()
                 .focus_region()
                 .gap(4.0)
-                .height(Sizing::Fixed(30.0))
+                .height(30.0)
                 .main_align(Align::Center)
                 .cross_align(Align::End),
             |ui| {
                 ui.leaf_keyed(
                     "stop",
                     NodeSpec::row()
-                        .width(Sizing::Fixed(20.0))
-                        .height(Sizing::Fixed(20.0))
+                        .size(20.0, 20.0)
                         .bg(Color::hex(0x2a2d3aff))
                         .focusable()
                         .role(Role::Button)
@@ -5803,28 +5648,26 @@ fn build_sampler(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
                 );
             },
         );
-        ui.with(NodeSpec::column().width(Sizing::Fixed(60.0)), |ui| {
-            ui.text(
-                "a long line that is cut short",
-                TextStyle::new(12.0)
-                    .max_lines(1)
-                    .ellipsis()
-                    .underline()
-                    .strikethrough()
-                    .features(crate::spec::FontFeatures::parse("liga=0")),
-            );
-        });
-        ui.with_keyed(
+        ui.text_in(
+            NodeSpec::column().width(60.0),
+            "a long line that is cut short",
+            TextStyle::new(12.0)
+                .max_lines(1)
+                .ellipsis()
+                .underline()
+                .strikethrough()
+                .features(crate::spec::FontFeatures::parse("liga=0")),
+        );
+        ui.text_in_keyed(
             "line",
             NodeSpec::row()
-                .height(Sizing::Fixed(16.0))
+                .height(16.0)
                 .role(Role::Line)
                 .caret(2)
                 .selection_anchor(0)
                 .caret_solid(),
-            |ui| {
-                ui.text("sel", TextStyle::new(12.0));
-            },
+            "sel",
+            TextStyle::new(12.0),
         );
     });
 }
@@ -5832,78 +5675,52 @@ fn build_sampler(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
 fn build_clip_access(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     let button = |w: f32, h: f32, kind: &str, label: &str, bg: u32| {
         NodeSpec::column()
-            .width(Sizing::Fixed(w))
-            .height(Sizing::Fixed(h))
+            .size(w, h)
             .bg(Color::hex(bg))
             .on_click(Value::map([("kind", Value::str(kind))]))
             .label(label)
     };
-    ui.with(
-        NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Grow(1.0)),
-        |ui| {
-            ui.leaf_keyed(
-                "toolbar",
-                button(0.0, 40.0, "toolbar", "Toolbar", 0x3a3f52ff).width(Sizing::Grow(1.0)),
-            );
-            ui.with(
-                NodeSpec::row()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Grow(1.0)),
+    ui.with(NodeSpec::column().fill(), |ui| {
+        ui.leaf_keyed(
+            "toolbar",
+            button(0.0, 40.0, "toolbar", "Toolbar", 0x3a3f52ff).grow_width(),
+        );
+        ui.with(NodeSpec::row().fill(), |ui| {
+            ui.with_keyed(
+                "canvas",
+                NodeSpec::column().fill().clip().bg(Color::hex(0x101018ff)),
                 |ui| {
-                    ui.with_keyed(
-                        "canvas",
-                        NodeSpec::column()
-                            .width(Sizing::Grow(1.0))
-                            .height(Sizing::Grow(1.0))
-                            .clip()
-                            .bg(Color::hex(0x101018ff)),
-                        |ui| {
-                            // 20 px past the canvas's top, 60 px past it,
-                            // and 60 px past it escaping.
-                            for (key, label, dx, dy, clip) in [
-                                ("cut", "Cut", 20.0, -20.0, true),
-                                ("past", "Past", 100.0, -60.0, true),
-                                ("free", "Free", 140.0, -60.0, false),
-                            ] {
-                                let float = FloatConfig::parent().offset(dx, dy);
-                                let float = if clip { float.clipped() } else { float };
-                                ui.leaf_keyed(
-                                    key,
-                                    button(60.0, 40.0, key, label, 0x3b5bd4ff).float(float),
-                                );
-                            }
-                        },
-                    );
-                    ui.with_keyed(
-                        "list",
-                        NodeSpec::column()
-                            .width(Sizing::Fixed(100.0))
-                            .height(Sizing::Fixed(50.0))
-                            .scroll_y()
-                            .bg(Color::hex(0x202030ff)),
-                        |ui| {
-                            for (key, label) in
-                                [("row0", "Row 0"), ("row1", "Row 1"), ("row2", "Row 2")]
-                            {
-                                ui.leaf_keyed(key, button(100.0, 30.0, key, label, 0x73d98cff));
-                            }
-                        },
-                    );
+                    // 20 px past the canvas's top, 60 px past it,
+                    // and 60 px past it escaping.
+                    for (key, label, dx, dy, clip) in [
+                        ("cut", "Cut", 20.0, -20.0, true),
+                        ("past", "Past", 100.0, -60.0, true),
+                        ("free", "Free", 140.0, -60.0, false),
+                    ] {
+                        let float = FloatConfig::parent().offset(dx, dy);
+                        let float = if clip { float.clipped() } else { float };
+                        ui.leaf_keyed(key, button(60.0, 40.0, key, label, 0x3b5bd4ff).float(float));
+                    }
                 },
             );
-        },
-    );
+            ui.with_keyed(
+                "list",
+                NodeSpec::column()
+                    .size(100.0, 50.0)
+                    .scroll_y()
+                    .bg(Color::hex(0x202030ff)),
+                |ui| {
+                    for (key, label) in [("row0", "Row 0"), ("row1", "Row 1"), ("row2", "Row 2")] {
+                        ui.leaf_keyed(key, button(100.0, 30.0, key, label, 0x73d98cff));
+                    }
+                },
+            );
+        });
+    });
 }
 
 fn build_pixel_snap(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
-    let cell = |bg: u32| {
-        NodeSpec::column()
-            .width(Sizing::Fixed(40.5))
-            .height(Sizing::Fixed(20.25))
-            .bg(Color::hex(bg))
-    };
+    let cell = |bg: u32| NodeSpec::column().size(40.5, 20.25).bg(Color::hex(bg));
     ui.with(NodeSpec::row(), |ui| {
         ui.leaf(
             cell(0xd9738cff)
@@ -5916,116 +5733,93 @@ fn build_pixel_snap(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 }
 
 fn build_clip_float(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
-    ui.with(
-        NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Grow(1.0)),
-        |ui| {
-            ui.leaf_keyed(
-                "toolbar",
-                NodeSpec::row()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Fixed(40.0))
-                    .bg(Color::hex(0x3a3f52ff))
-                    .on_click(Value::map([("kind", Value::str("toolbar"))]))
-                    .label("Toolbar"),
-            );
-            ui.with_keyed(
-                "canvas",
-                NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Grow(1.0))
-                    .clip()
-                    .bg(Color::hex(0x101018ff)),
-                |ui| {
-                    // 20 px above the canvas's top: half past its edge.
-                    ui.leaf_keyed(
-                        "node",
-                        NodeSpec::column()
-                            .float(FloatConfig::parent().offset(40.0, -20.0).clipped())
-                            .width(Sizing::Fixed(80.0))
-                            .height(Sizing::Fixed(40.0))
-                            .bg(Color::hex(0x3b5bd4ff))
-                            .on_click(Value::map([("kind", Value::str("node"))]))
-                            .label("Node"),
-                    );
-                    ui.leaf_keyed(
-                        "free",
-                        NodeSpec::column()
-                            .float(FloatConfig::parent().offset(160.0, -20.0))
-                            .width(Sizing::Fixed(80.0))
-                            .height(Sizing::Fixed(40.0))
-                            .bg(Color::hex(0x73d98cff))
-                            .on_click(Value::map([("kind", Value::str("free"))]))
-                            .label("Free"),
-                    );
-                },
-            );
-        },
-    );
+    ui.with(NodeSpec::column().fill(), |ui| {
+        ui.leaf_keyed(
+            "toolbar",
+            NodeSpec::row()
+                .grow_width()
+                .height(40.0)
+                .bg(Color::hex(0x3a3f52ff))
+                .on_click(Value::map([("kind", Value::str("toolbar"))]))
+                .label("Toolbar"),
+        );
+        ui.with_keyed(
+            "canvas",
+            NodeSpec::column().fill().clip().bg(Color::hex(0x101018ff)),
+            |ui| {
+                // 20 px above the canvas's top: half past its edge.
+                ui.leaf_keyed(
+                    "node",
+                    NodeSpec::column()
+                        .float(FloatConfig::parent().offset(40.0, -20.0).clipped())
+                        .size(80.0, 40.0)
+                        .bg(Color::hex(0x3b5bd4ff))
+                        .on_click(Value::map([("kind", Value::str("node"))]))
+                        .label("Node"),
+                );
+                ui.leaf_keyed(
+                    "free",
+                    NodeSpec::column()
+                        .float(FloatConfig::parent().offset(160.0, -20.0))
+                        .size(80.0, 40.0)
+                        .bg(Color::hex(0x73d98cff))
+                        .on_click(Value::map([("kind", Value::str("free"))]))
+                        .label("Free"),
+                );
+            },
+        );
+    });
 }
 
 fn build_layers(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
     // One wrapper the size of the window, as every binding's scene returns
     // one node; the page fills it and the floats hang off the viewport.
-    ui.with(
-        NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Grow(1.0)),
-        |ui| {
-            ui.with_keyed(
-                "page",
-                NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Grow(1.0))
-                    .scroll_y()
-                    .bg(Color::hex(0x101018ff)),
-                |ui| {
-                    for i in 0..LAYERS_ROWS {
-                        ui.leaf_keyed(
-                            &format!("row{i}"),
-                            NodeSpec::row()
-                                .width(Sizing::Grow(1.0))
-                                .height(Sizing::Fixed(30.0))
-                                .bg(if i % 2 == 0 {
-                                    Color::hex(0x22242cff)
-                                } else {
-                                    Color::hex(0x30344aff)
-                                }),
-                        );
-                    }
-                },
-            );
-            let at = |x: f32, y: f32| {
-                FloatConfig::viewport()
-                    .at(Align::Start, Align::Start)
-                    .self_at(Align::Start, Align::Start)
-                    .offset(x, y)
-            };
-            // Closed in phase 1, back in phase 2: the reopening is what
-            // puts it over the toast, whatever the tree says.
-            if phase != 1 {
-                ui.leaf_keyed(
-                    "popover",
-                    NodeSpec::column()
-                        .float(at(200.0, 40.0))
-                        .width(Sizing::Fixed(120.0))
-                        .height(Sizing::Fixed(80.0))
-                        .bg(Color::hex(0x3b5bd4ff))
-                        .on_click(Value::map([("kind", Value::str("popover"))]))
-                        .label("Popover"),
-                );
-            }
+    ui.with(NodeSpec::column().fill(), |ui| {
+        ui.with_keyed(
+            "page",
+            NodeSpec::column()
+                .fill()
+                .scroll_y()
+                .bg(Color::hex(0x101018ff)),
+            |ui| {
+                for i in 0..LAYERS_ROWS {
+                    ui.leaf_keyed(
+                        &format!("row{i}"),
+                        NodeSpec::row().grow_width().height(30.0).bg(if i % 2 == 0 {
+                            Color::hex(0x22242cff)
+                        } else {
+                            Color::hex(0x30344aff)
+                        }),
+                    );
+                }
+            },
+        );
+        let at = |x: f32, y: f32| {
+            FloatConfig::viewport()
+                .inside(Align::Start, Align::Start)
+                .offset(x, y)
+        };
+        // Closed in phase 1, back in phase 2: the reopening is what
+        // puts it over the toast, whatever the tree says.
+        if phase != 1 {
             ui.leaf_keyed(
-                "toast",
+                "popover",
                 NodeSpec::column()
-                    .float(at(140.0, 60.0))
-                    .width(Sizing::Fixed(120.0))
-                    .height(Sizing::Fixed(80.0))
-                    .bg(Color::hex(0x73d98cff))
-                    .on_click(Value::map([("kind", Value::str("toast"))]))
-                    .label("Toast"),
+                    .float(at(200.0, 40.0))
+                    .size(120.0, 80.0)
+                    .bg(Color::hex(0x3b5bd4ff))
+                    .on_click(Value::map([("kind", Value::str("popover"))]))
+                    .label("Popover"),
             );
-        },
-    );
+        }
+        ui.leaf_keyed(
+            "toast",
+            NodeSpec::column()
+                .float(at(140.0, 60.0))
+                .size(120.0, 80.0)
+                .bg(Color::hex(0x73d98cff))
+                .on_click(Value::map([("kind", Value::str("toast"))]))
+                .label("Toast"),
+        );
+    });
 }

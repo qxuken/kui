@@ -12,7 +12,7 @@ fn frame(core: &mut Core, w: f32, h: f32, scale: f32) {
 /// `(width, height, scale)` of every resize event in `evs`.
 fn resizes(evs: &[UiEvent]) -> Vec<(f64, f64, f64)> {
     evs.iter()
-        .filter(|ev| ev.payload.get("kind").and_then(Value::as_str) == Some("resize"))
+        .filter(|ev| ev.kind() == Some("resize"))
         .map(|ev| {
             let f = |k| ev.payload.get(k).and_then(Value::as_float).unwrap();
             (f("width"), f("height"), f("scale"))

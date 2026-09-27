@@ -182,8 +182,7 @@ impl FileDialog {
         if let Some(list) = v.get("filters").and_then(Value::as_list) {
             for f in list {
                 let name = f
-                    .get("name")
-                    .and_then(Value::as_str)
+                    .get_str("name")
                     .ok_or("a filter needs a `name`")?
                     .to_string();
                 let extensions = f
@@ -202,7 +201,7 @@ impl FileDialog {
         }
         Ok(FileDialog {
             mode,
-            multiple: v.get("multiple").and_then(Value::as_bool).unwrap_or(false),
+            multiple: v.get_bool("multiple").unwrap_or(false),
             title: s("title"),
             filters,
             directory: s("directory"),

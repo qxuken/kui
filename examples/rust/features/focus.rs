@@ -23,7 +23,7 @@
 
 use kui_devtools::{Drive, Example};
 use kui_native::widgets;
-use kui_native::{Align, App, Core, Key, NodeSpec, Role, Sizing, TextStyle, Ui, UiEvent, Value};
+use kui_native::{Align, App, Core, Key, NodeSpec, Role, TextStyle, Ui, UiEvent, Value};
 
 #[derive(Default)]
 struct Focus {
@@ -99,7 +99,7 @@ impl App for Focus {
                         "three (disabled)",
                         widgets::button_spec(&ui.theme(), &ui.metrics())
                             .disabled(true)
-                            .on_click(Value::str("three")),
+                            .on_click("three"),
                         None,
                     );
                     widgets::button(ui, "four", Value::str("four"));
@@ -110,7 +110,7 @@ impl App for Focus {
                     TextStyle::new(12.0).color(t.muted),
                 );
                 ui.with(NodeSpec::row().gap(10.0).cross_align(Align::Center), |ui| {
-                    ui.with(NodeSpec::row().width(Sizing::Fixed(160.0)), |ui| {
+                    ui.with(NodeSpec::row().width(160.0), |ui| {
                         self.field = Some(widgets::text_input(ui, "field", ""));
                     });
                     // The stock switch: a control role, so in the ring
@@ -119,7 +119,7 @@ impl App for Focus {
                     widgets::switch(ui, "mute", on, Value::str("mute"));
                     // A plain row, in the ring because it says so, with a
                     // `focus_bg` instead of the ring.
-                    ui.with_keyed(
+                    ui.text_in_keyed(
                         "row",
                         NodeSpec::row()
                             .pad_xy(12.0, 8.0)
@@ -128,24 +128,22 @@ impl App for Focus {
                             .border(1.0, t.border)
                             .focusable()
                             .focus_bg(t.accent_soft)
-                            .on_click(Value::str("row")),
-                        |ui| {
-                            ui.text("focusable row · focus_bg", TextStyle::new(13.0));
-                        },
+                            .on_click("row"),
+                        "focusable row · focus_bg",
+                        TextStyle::new(13.0),
                     );
                     // Decoration: `role = none` keeps it out of the ring
                     // and the access tree, `on_click` or not.
-                    ui.with_keyed(
+                    ui.text_in_keyed(
                         "deco",
                         NodeSpec::row()
                             .pad_xy(12.0, 8.0)
                             .radius(8.0)
                             .bg(t.sunken)
                             .role(Role::None)
-                            .on_click(Value::str("deco")),
-                        |ui| {
-                            ui.text("role: none — skipped", TextStyle::new(13.0).color(t.muted));
-                        },
+                            .on_click("deco"),
+                        "role: none — skipped",
+                        TextStyle::new(13.0).color(t.muted),
                     );
                 });
 

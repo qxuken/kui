@@ -2,19 +2,14 @@
 //! live `Core`, including the badge-inside-a-floating-HUD arrangement that
 //! motivated the flag.
 
-use kui_core::{Align, Core, FloatConfig, InputEvent, Key, NodeSpec, Size, Sizing, Value, Vec2};
+use kui_core::{Align, Core, FloatConfig, InputEvent, Key, NodeSpec, Size, Value, Vec2};
 
 fn frame(core: &mut Core, badge_spec: NodeSpec) -> Key {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     let mut badge = Key(0);
     ui.with(NodeSpec::column(), |ui| {
         badge = ui.child_key("badge");
-        ui.leaf_keyed(
-            "badge",
-            badge_spec
-                .width(Sizing::Fixed(20.0))
-                .height(Sizing::Fixed(20.0)),
-        );
+        ui.leaf_keyed("badge", badge_spec.size(20.0, 20.0));
     });
     ui.finish();
     badge
@@ -53,7 +48,7 @@ fn plain_node_is_not_hover_tracked() {
 #[test]
 fn on_click_still_emits_and_hover_tracks() {
     let mut core = Core::new();
-    let badge = frame(&mut core, NodeSpec::column().on_click(Value::str("hit")));
+    let badge = frame(&mut core, NodeSpec::column().on_click("hit"));
     core.handle_input(InputEvent::CursorMoved(Vec2::new(10.0, 10.0)));
     assert!(core.is_hovered(badge));
     core.handle_input(InputEvent::mouse_down(1));
@@ -71,21 +66,11 @@ fn hoverable_badge_inside_viewport_float_hovers() {
     let mut badge = Key(0);
     ui.with(
         NodeSpec::column()
-            .float(
-                FloatConfig::viewport()
-                    .at(Align::End, Align::End)
-                    .self_at(Align::End, Align::End),
-            )
+            .float(FloatConfig::viewport().inside(Align::End, Align::End))
             .pad(10.0),
         |ui| {
             badge = ui.child_key("badge");
-            ui.leaf_keyed(
-                "badge",
-                NodeSpec::column()
-                    .width(Sizing::Fixed(20.0))
-                    .height(Sizing::Fixed(20.0))
-                    .hoverable(),
-            );
+            ui.leaf_keyed("badge", NodeSpec::column().size(20.0, 20.0).hoverable());
         },
     );
     ui.finish();
@@ -130,13 +115,7 @@ fn pair_frame(core: &mut Core, spec: impl Fn(&str) -> NodeSpec) -> (Key, Key) {
     let (mut a, mut b) = (Key(0), Key(0));
     for (label, out) in [("a", &mut a), ("b", &mut b)] {
         *out = ui.child_key(label);
-        ui.leaf_keyed(
-            label,
-            spec(label)
-                .bg(BASE)
-                .width(Sizing::Fixed(50.0))
-                .height(Sizing::Fixed(50.0)),
-        );
+        ui.leaf_keyed(label, spec(label).bg(BASE).size(50.0, 50.0));
     }
     ui.finish();
     (a, b)
@@ -235,17 +214,8 @@ fn hover_group_id_is_stable_and_named() {
 
 fn hover_phases(evs: &[kui_core::UiEvent]) -> Vec<(Key, String)> {
     evs.iter()
-        .filter(|e| e.payload.get("kind").and_then(Value::as_str) == Some("hover"))
-        .map(|e| {
-            (
-                e.key,
-                e.payload
-                    .get("phase")
-                    .and_then(Value::as_str)
-                    .unwrap_or("?")
-                    .to_string(),
-            )
-        })
+        .filter(|e| e.kind() == Some("hover"))
+        .map(|e| (e.key, e.payload.get_str("phase").unwrap_or("?").to_string()))
         .collect()
 }
 
@@ -257,10 +227,7 @@ fn on_hover_emits_enter_and_leave_with_tag() {
 
     let enter = core.handle_input(InputEvent::CursorMoved(Vec2::new(10.0, 10.0)));
     assert_eq!(hover_phases(&enter), [(a, "enter".to_string())]);
-    assert_eq!(
-        enter[0].payload.get("tag").and_then(Value::as_str),
-        Some("a")
-    );
+    assert_eq!(enter[0].payload.get_str("tag"), Some("a"));
 
     // Moving within the node is silent; crossing to the neighbour leaves
     // then enters.

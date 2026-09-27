@@ -13,7 +13,7 @@ use kui_core::diag::{DUPLICATE_TAB, UNKNOWN_SLOT};
 use kui_core::testing::{click_at, codes};
 use kui_core::{
     Core, DevtoolsDock, Extension, Extensions, InputEvent, Key, KeyCode, KeyMods, KeyPress,
-    NodeSpec, Sizing, Slot, TextStyle, Ui, UiEvent, Value, widgets,
+    NodeSpec, Slot, TextStyle, Ui, UiEvent, Value, widgets,
 };
 
 const VIEWPORT: kui_core::Size = kui_core::Size {
@@ -24,19 +24,14 @@ const VIEWPORT: kui_core::Size = kui_core::Size {
 /// The app: a button, then the declared tab. `built` counts the closure's
 /// runs, which is the laziness under test.
 fn view(ui: &mut Ui<'_>, built: &Rc<RefCell<u32>>) {
-    ui.with(
-        NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Grow(1.0)),
-        |ui| {
-            widgets::button(ui, "press", Value::map([("kind", Value::str("pressed"))]));
-            ui.devtools_tab_with("syntax", "Tree-sitter", |ui| {
-                *built.borrow_mut() += 1;
-                ui.text("identifier 12:4", TextStyle::new(12.0));
-                widgets::button(ui, "jump", Value::map([("kind", Value::str("jump"))]));
-            });
-        },
-    );
+    ui.with(NodeSpec::column().fill(), |ui| {
+        widgets::button(ui, "press", Value::map([("kind", Value::str("pressed"))]));
+        ui.devtools_tab_with("syntax", "Tree-sitter", |ui| {
+            *built.borrow_mut() += 1;
+            ui.text("identifier 12:4", TextStyle::new(12.0));
+            widgets::button(ui, "jump", Value::map([("kind", Value::str("jump"))]));
+        });
+    });
 }
 
 fn frame(core: &mut Core, built: &Rc<RefCell<u32>>) {
@@ -48,11 +43,7 @@ fn frame(core: &mut Core, built: &Rc<RefCell<u32>>) {
 fn chord(c: char) -> InputEvent {
     InputEvent::KeyDown(KeyPress::new(
         KeyCode::Char(c),
-        KeyMods {
-            ctrl: true,
-            shift: true,
-            ..Default::default()
-        },
+        KeyMods::NONE.with_ctrl().with_shift(),
     ))
 }
 
@@ -139,10 +130,7 @@ fn a_host_form_tab_is_lazy_and_lands_over_the_body() {
     // Its events are the host's: a click on the tab's button comes out.
     let evs = click_at(&mut core, content.x + 2.0, content.y + 2.0);
     assert_eq!(evs.len(), 1, "one event, the host's: {evs:?}");
-    assert_eq!(
-        evs[0].payload.get("kind").and_then(Value::as_str),
-        Some("jump")
-    );
+    assert_eq!(evs[0].kind(), Some("jump"));
     assert_eq!(evs[0].key, core.key_of("jump").unwrap());
 
     // The content is the dock's region, not the app's ring: Tab from the
@@ -497,7 +485,7 @@ fn a_cancelled_tab_pick_and_a_stale_tab_leave_nothing_behind() {
     let runs = *built.borrow();
     let plain = |core: &mut Core| {
         let mut ui = core.frame(VIEWPORT, 1.0);
-        ui.with(NodeSpec::column().width(Sizing::Grow(1.0)), |ui| {
+        ui.with(NodeSpec::column().grow_width(), |ui| {
             widgets::button(ui, "press", Value::map([("kind", Value::str("pressed"))]));
         });
         ui.finish();
@@ -556,7 +544,7 @@ fn a_tab_declared_twice_warns_and_keeps_the_first() {
     core.set_inspect(true);
     let build = |core: &mut Core| {
         let mut ui = core.frame(VIEWPORT, 1.0);
-        ui.with(NodeSpec::column().width(Sizing::Grow(1.0)), |ui| {
+        ui.with(NodeSpec::column().grow_width(), |ui| {
             ui.devtools_tab_with("x", "First", |_| {});
             ui.devtools_tab("x", "Second", "ext/x");
             ui.devtools_tab("y", "Other", "ext/y");
@@ -621,15 +609,10 @@ impl Extension for Ext {
 }
 
 fn host_view(ui: &mut Ui<'_>) {
-    ui.with(
-        NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Grow(1.0)),
-        |ui| {
-            widgets::button(ui, "press", Value::map([("kind", Value::str("pressed"))]));
-            ui.devtools_tab("syntax", "Tree-sitter", "ts/panel");
-        },
-    );
+    ui.with(NodeSpec::column().fill(), |ui| {
+        widgets::button(ui, "press", Value::map([("kind", Value::str("pressed"))]));
+        ui.devtools_tab("syntax", "Tree-sitter", "ts/panel");
+    });
 }
 
 fn frame_with(core: &mut Core, exts: &mut Extensions) {
@@ -694,9 +677,6 @@ fn an_extension_form_tab_is_a_slot_the_panel_declares_when_shown() {
     exts.route(evs, |ev| out.push(ev));
     assert_eq!(heard.borrow().len(), 1, "the extension heard its click");
     assert_eq!(out.len(), 1, "one reply for the host: {out:?}");
-    assert_eq!(
-        out[0].payload.get("kind").and_then(Value::as_str),
-        Some("reply")
-    );
+    assert_eq!(out[0].kind(), Some("reply"));
     let _ = Key::ROOT;
 }

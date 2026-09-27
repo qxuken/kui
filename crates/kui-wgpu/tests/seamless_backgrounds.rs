@@ -11,7 +11,7 @@
 //! The core's rects are evaluated through `shade`'s coverage (mirrored in
 //! `tests/wgsl`) and composited the way the blend does, pixel by pixel.
 
-use kui_core::{Align, Clip, Color, Core, NodeSpec, Quad, QuadKind, Size, Sizing, Span, TextStyle};
+use kui_core::{Align, Clip, Color, Core, NodeSpec, Quad, QuadKind, Size, Span, TextStyle};
 
 mod wgsl;
 use wgsl::{inside, quad_coverage};
@@ -33,7 +33,7 @@ fn selected_rows(scale: f32) -> Vec<(Quad, Clip)> {
     ui.configure_root(NodeSpec::column().pad(10.3));
     let style = TextStyle::new(13.0).mono().nowrap().line_height(20.0);
     for _ in 0..ROWS {
-        ui.with(NodeSpec::row().height(Sizing::Fixed(20.0)), |ui| {
+        ui.with(NodeSpec::row().height(20.0), |ui| {
             ui.rich_text(
                 &[
                     Span::new("let ").color(Color::rgb8(255, 160, 60)).bg(sel()),
@@ -123,21 +123,13 @@ fn editor_rows(lh: f32, top: f32, scale: f32) -> Vec<(Quad, Clip)> {
     let style = TextStyle::new(16.0).mono().nowrap().line_height(lh);
     for i in 0..30 {
         ui.with(
-            NodeSpec::row()
-                .height(Sizing::Fixed(lh))
-                .cross_align(Align::Center),
+            NodeSpec::row().height(lh).cross_align(Align::Center),
             |ui| {
                 let text = ["    }", "}", ""][i % 3];
                 if !text.is_empty() {
                     ui.rich_text(&[Span::new(text).bg(sel())], style);
                 }
-                ui.leaf(
-                    NodeSpec::column()
-                        .width(Sizing::Fixed(9.63))
-                        .height(Sizing::Fixed(lh))
-                        .bg(sel())
-                        .pixel_snap(),
-                );
+                ui.leaf(NodeSpec::column().size(9.63, lh).bg(sel()).pixel_snap());
             },
         );
     }
@@ -198,8 +190,7 @@ fn a_square_rect_on_whole_pixels_is_solid_to_its_edge_and_a_rounded_one_still_ra
     ui.configure_root(NodeSpec::row().pad(10.0).gap(10.0));
     let fill = |r: f32| {
         NodeSpec::column()
-            .width(Sizing::Fixed(40.0))
-            .height(Sizing::Fixed(40.0))
+            .size(40.0, 40.0)
             .radius(r)
             .bg(Color::rgb8(20, 20, 30))
     };
@@ -244,12 +235,7 @@ fn a_one_pixel_gap_between_boxes_is_there_at_any_scale() {
                 let mut ui = core.frame(Size::new(600.0, 40.0), scale);
                 ui.configure_root(NodeSpec::row().pad_xy(off, 5.0).gap(1.0));
                 for _ in 0..20 {
-                    ui.leaf(
-                        NodeSpec::column()
-                            .width(Sizing::Fixed(w))
-                            .height(Sizing::Fixed(10.0))
-                            .bg(Color::WHITE),
-                    );
+                    ui.leaf(NodeSpec::column().size(w, 10.0).bg(Color::WHITE));
                 }
                 ui.finish();
                 let dl = core.output().0;
@@ -287,14 +273,11 @@ fn band_rows(scale: f32, snap: bool) -> Vec<Quad> {
     let mut ui = core.frame(Size::new(100.0, 400.0), scale);
     ui.configure_root(NodeSpec::column().pad_xy(3.3, 7.7));
     for i in 0..12 {
-        let mut spec = NodeSpec::column()
-            .width(Sizing::Fixed(50.5))
-            .height(Sizing::Fixed(21.75))
-            .bg(if i % 2 == 0 {
-                Color::rgb8(40, 40, 60)
-            } else {
-                Color::rgb8(60, 40, 40)
-            });
+        let mut spec = NodeSpec::column().size(50.5, 21.75).bg(if i % 2 == 0 {
+            Color::rgb8(40, 40, 60)
+        } else {
+            Color::rgb8(60, 40, 40)
+        });
         if snap {
             spec = spec.pixel_snap();
         }
@@ -374,9 +357,7 @@ fn fragment_rows(scale: f32, snap: bool) -> Vec<Quad> {
     let mut ui = core.frame(Size::new(100.0, 400.0), scale);
     ui.configure_root(NodeSpec::column().pad_xy(3.3, 7.7));
     for _ in 0..12 {
-        let mut spec = NodeSpec::column()
-            .width(Sizing::Fixed(50.5))
-            .height(Sizing::Fixed(21.75));
+        let mut spec = NodeSpec::column().size(50.5, 21.75);
         if snap {
             spec = spec.pixel_snap();
         }

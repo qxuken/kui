@@ -219,14 +219,14 @@ fn two_grow_columns_split_by_factor_and_a_clamped_one_is_frozen() {
     let mut t = T::new(NodeSpec::table().width(px(300.0)));
     let r = t.row(0, row_spec());
     let a = t.boxed(r, 60.0, 10.0);
-    let b = t.node(r, NodeSpec::row().width(Sizing::Grow(1.0)).height(px(10.0)));
+    let b = t.node(r, NodeSpec::row().grow_width().height(px(10.0)));
     let c = t.node(r, NodeSpec::row().width(Sizing::Grow(2.0)).height(px(10.0)));
     let r2 = t.row(0, row_spec());
     t.boxed(r2, 20.0, 10.0);
     t.node(
         r2,
         NodeSpec::row()
-            .width(Sizing::Grow(1.0))
+            .grow_width()
             .max_width(40.0)
             .height(px(10.0)),
     );
@@ -493,14 +493,10 @@ fn a_wrapping_table_row_warns_and_lays_out_as_a_row() {
     let mut core = Core::new();
     {
         let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
-        ui.with(NodeSpec::table().width(Sizing::Fixed(100.0)), |ui| {
+        ui.with(NodeSpec::table().width(100.0), |ui| {
             ui.with(NodeSpec::row().wrap().width(grow()), |ui| {
                 for _ in 0..3 {
-                    ui.leaf(
-                        NodeSpec::column()
-                            .width(Sizing::Fixed(60.0))
-                            .height(Sizing::Fixed(20.0)),
-                    );
+                    ui.leaf(NodeSpec::column().size(60.0, 20.0));
                 }
             });
         });
@@ -602,19 +598,15 @@ fn a_floating_row_under_a_table_wraps_and_is_not_warned_about() {
     let mut core = Core::new();
     {
         let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
-        ui.with(NodeSpec::table().width(Sizing::Fixed(100.0)), |ui| {
+        ui.with(NodeSpec::table().width(100.0), |ui| {
             ui.with(
                 NodeSpec::row()
                     .wrap()
-                    .width(Sizing::Fixed(100.0))
+                    .width(100.0)
                     .float(kui_core::spec::FloatConfig::default()),
                 |ui| {
                     for _ in 0..3 {
-                        ui.leaf(
-                            NodeSpec::column()
-                                .width(Sizing::Fixed(60.0))
-                                .height(Sizing::Fixed(20.0)),
-                        );
+                        ui.leaf(NodeSpec::column().size(60.0, 20.0));
                     }
                 },
             );

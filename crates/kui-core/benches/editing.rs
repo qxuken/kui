@@ -3,7 +3,7 @@
 //!
 //! Run: cargo bench -p kui-core --bench editing
 
-use kui_core::{Core, EditOptions, FontFamily, InputEvent, NodeSpec, Size, Sizing, TextStyle};
+use kui_core::{Core, EditOptions, FontFamily, InputEvent, NodeSpec, Size, TextStyle};
 
 fn doc(lines: usize) -> String {
     let mut s = String::new();
@@ -27,7 +27,7 @@ fn frame(core: &mut Core, initial: &str) {
             autofocus: true,
             ..Default::default()
         },
-        NodeSpec::column().width(Sizing::Grow(1.0)).pad(20.0),
+        NodeSpec::column().grow_width().pad(20.0),
     );
     ui.finish();
 }

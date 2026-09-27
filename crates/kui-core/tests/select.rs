@@ -78,14 +78,8 @@ fn a_click_opens_the_menu_under_the_field_and_a_row_posts_the_choice_on_it() {
     let evs = click(&mut core, center(row));
     assert_eq!(evs.len(), 1, "{evs:?}");
     assert_eq!(evs[0].key, key);
-    assert_eq!(
-        evs[0].payload.get("kind").and_then(Value::as_str),
-        Some("menu")
-    );
-    assert_eq!(
-        evs[0].payload.get("item").and_then(Value::as_str),
-        Some("light")
-    );
+    assert_eq!(evs[0].kind(), Some("menu"));
+    assert_eq!(evs[0].payload.get_str("item"), Some("light"));
     assert!(core.menu().is_none(), "and the menu is closed");
 
     // The view draws the new choice; nothing else is retained.
@@ -227,10 +221,7 @@ fn a_disabled_option_cannot_be_chosen_through_the_door() {
         .expect("the enabled one is taken");
     assert_eq!(evs.len(), 1);
     assert_eq!(evs[0].key, key);
-    assert_eq!(
-        evs[0].payload.get("item").and_then(Value::as_str),
-        Some("English")
-    );
+    assert_eq!(evs[0].payload.get_str("item"), Some("English"));
     assert!(core.menu().is_none());
 }
 

@@ -27,7 +27,7 @@
 
 use kui_devtools::{Drive, Example};
 use kui_native::{
-    App, Color, Core, FragmentId, ImageId, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value, widgets,
+    App, Color, Core, FragmentId, ImageId, NodeSpec, TextStyle, Ui, UiEvent, Value, widgets,
 };
 
 /// One colour as the four floats a `params` slot is. Fragment parameters
@@ -242,10 +242,7 @@ impl App for Demo {
                                 [0.0; 4],
                                 [0.0; 4],
                             ]),
-                            NodeSpec::column()
-                                .width(Sizing::Fixed(150.0))
-                                .height(Sizing::Fixed(96.0))
-                                .radius(10.0),
+                            NodeSpec::column().size(150.0, 96.0).radius(10.0),
                         );
                     });
 
@@ -258,9 +255,7 @@ impl App for Demo {
                                 rgba(t.border),                 // the track
                                 [10.0, 5.0, 0.0, 0.0],          // inset, half-width
                             ]),
-                            NodeSpec::column()
-                                .width(Sizing::Fixed(96.0))
-                                .height(Sizing::Fixed(96.0)),
+                            NodeSpec::column().size(96.0, 96.0),
                         );
                     });
 
@@ -273,11 +268,7 @@ impl App for Demo {
                                 [0.35, 0.22, 0.0, 0.0], // turns per second, width
                                 [0.0; 4],
                             ]),
-                            NodeSpec::column()
-                                .width(Sizing::Fixed(150.0))
-                                .height(Sizing::Fixed(96.0))
-                                .radius(10.0)
-                                .animate(),
+                            NodeSpec::column().size(150.0, 96.0).radius(10.0).animate(),
                         );
                     });
                 });
@@ -295,11 +286,7 @@ impl App for Demo {
                                 [0.0; 4],
                                 [0.0; 4],
                             ]),
-                            NodeSpec::column()
-                                .width(Sizing::Fixed(256.0))
-                                .height(Sizing::Fixed(64.0))
-                                .radius(6.0)
-                                .animate(),
+                            NodeSpec::column().size(256.0, 64.0).radius(6.0).animate(),
                         );
                     });
 
@@ -314,10 +301,7 @@ impl App for Demo {
                                 [0.0; 4],
                                 [0.0; 4],
                             ]),
-                            NodeSpec::column()
-                                .width(Sizing::Fixed(96.0))
-                                .height(Sizing::Fixed(96.0))
-                                .animate(),
+                            NodeSpec::column().size(96.0, 96.0).animate(),
                         );
                     });
                 });
@@ -334,7 +318,7 @@ impl App for Demo {
                             [0.0; 4],
                         ]),
                         NodeSpec::column()
-                            .width(Sizing::Fixed(320.0))
+                            .width(320.0)
                             .pad(18.0)
                             .gap(12.0)
                             .radius(12.0),

@@ -3,13 +3,10 @@
 //! ancestors a script cannot spell — is not known (backlog F5).
 
 use kui_core::diag::AMBIGUOUS_KEY;
-use kui_core::{Core, EditOptions, Key, NodeSpec, Size, Sizing};
+use kui_core::{Core, EditOptions, Key, NodeSpec, Size};
 
 fn cell() -> NodeSpec {
-    NodeSpec::column()
-        .width(Sizing::Fixed(40.0))
-        .height(Sizing::Fixed(20.0))
-        .focusable()
+    NodeSpec::column().size(40.0, 20.0).focusable()
 }
 
 /// Two auto-keyed levels, then labelled leaves: `alpha`, `beta`, and

@@ -5,7 +5,7 @@
 
 use std::time::Instant;
 
-use kui_core::{Color, Core, Extension, NodeSpec, OriginId, Size, Sizing, Slot, TextStyle};
+use kui_core::{Color, Core, Extension, NodeSpec, OriginId, Size, Slot, TextStyle};
 use kui_lua::LuaExtension;
 
 const ROWS: usize = 300;
@@ -43,8 +43,7 @@ fn rust_frame(core: &mut Core) {
                 ui.text(&format!("row {i}"), TextStyle::new(14.0));
                 ui.leaf(
                     NodeSpec::column()
-                        .width(Sizing::Fixed(40.0))
-                        .height(Sizing::Fixed(12.0))
+                        .size(40.0, 12.0)
                         .bg(Color::hex(0x3b5bd4ff)),
                 );
             });

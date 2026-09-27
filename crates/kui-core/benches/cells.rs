@@ -5,7 +5,7 @@
 //! Run: cargo bench -p kui-core --bench cells
 
 use kui_core::cells::{Cell, CellGrid, flags};
-use kui_core::{Color, Core, NodeSpec, Size, Sizing, TextStyle};
+use kui_core::{Color, Core, NodeSpec, Size, TextStyle};
 
 const ROWS: usize = 50;
 const COLS: usize = 200;
@@ -102,15 +102,14 @@ fn cells_200x50_as_text_nodes(bencher: divan::Bencher) {
         ui.configure_root(NodeSpec::column().fill().bg(Color::rgb8(0, 0, 0)));
         let mut buf = [0u8; 4];
         for row in 0..ROWS {
-            ui.with(NodeSpec::row().height(Sizing::Fixed(18.0)), |ui| {
+            ui.with(NodeSpec::row().height(18.0), |ui| {
                 for col in 0..COLS {
                     let c = cells[row * COLS + col];
                     let s: &str = c.ch.encode_utf8(&mut buf);
-                    ui.with(
-                        NodeSpec::row()
-                            .width(Sizing::Fixed(8.0))
-                            .height(Sizing::Fixed(18.0)),
-                        |ui| ui.text(s, mono().color(Color::hex(c.fg))),
+                    ui.text_in(
+                        NodeSpec::row().size(8.0, 18.0),
+                        s,
+                        mono().color(Color::hex(c.fg)),
                     );
                 }
             });

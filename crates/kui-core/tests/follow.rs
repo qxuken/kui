@@ -9,8 +9,8 @@
 use kui_core::runtime::follow::{AUTOSCROLL_RATE, CLOCKLESS_FRAME};
 use kui_core::testing::{press, release};
 use kui_core::{
-    Cell, CellGrid, Core, EditOptions, InputEvent, Key, KeyMods, NodeSpec, Size, Sizing, TextStyle,
-    Value, Vec2,
+    Cell, CellGrid, Core, EditOptions, InputEvent, Key, KeyMods, NodeSpec, Size, TextStyle, Value,
+    Vec2,
 };
 
 const ROW_H: f32 = 20.0;
@@ -27,18 +27,17 @@ fn list(core: &mut Core) -> Key {
     let scope = ui.with_keyed(
         "list",
         NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Fixed(VIEW_H))
+            .grow_width()
+            .height(VIEW_H)
             .scroll_y()
             .selectable(),
         |ui| {
             for i in 0..10 {
-                ui.with_keyed(
+                ui.text_in_keyed(
                     &format!("r{i}"),
-                    NodeSpec::column()
-                        .width(Sizing::Grow(1.0))
-                        .height(Sizing::Fixed(ROW_H)),
-                    |ui| ui.text(&format!("row {i}"), style()),
+                    NodeSpec::column().grow_width().height(ROW_H),
+                    &format!("row {i}"),
+                    style(),
                 );
             }
         },
@@ -202,7 +201,7 @@ fn editor(core: &mut Core) -> Key {
         "field",
         "one two three",
         &EditOptions::default(),
-        NodeSpec::column().width(Sizing::Fixed(300.0)),
+        NodeSpec::column().width(300.0),
     );
     ui.finish();
     key
@@ -244,39 +243,25 @@ fn handlers(core: &mut Core) -> (Key, Key, Key) {
     let mut canvas = Key::ROOT;
     let outer = ui.with_keyed(
         "outer",
-        NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Fixed(100.0))
-            .scroll_y(),
+        NodeSpec::column().grow_width().height(100.0).scroll_y(),
         |ui| {
             canvas = ui.with_keyed(
                 "canvas",
                 NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Fixed(80.0))
-                    .on_scroll(Value::str("zoom")),
+                    .grow_width()
+                    .height(80.0)
+                    .on_scroll("zoom"),
                 |ui| {
                     inner = ui.with_keyed(
                         "inner",
-                        NodeSpec::column()
-                            .width(Sizing::Grow(1.0))
-                            .height(Sizing::Fixed(30.0))
-                            .scroll_y(),
+                        NodeSpec::column().grow_width().height(30.0).scroll_y(),
                         |ui| {
-                            ui.leaf(
-                                NodeSpec::column()
-                                    .width(Sizing::Grow(1.0))
-                                    .height(Sizing::Fixed(200.0)),
-                            );
+                            ui.leaf(NodeSpec::column().grow_width().height(200.0));
                         },
                     );
                 },
             );
-            ui.leaf(
-                NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Fixed(200.0)),
-            );
+            ui.leaf(NodeSpec::column().grow_width().height(200.0));
         },
     );
     ui.finish();
@@ -294,20 +279,17 @@ fn an_on_scroll_node_takes_the_wheel_and_a_scroller_inside_it_still_wins() {
     assert_eq!(out.len(), 1);
     let ev = &out[0];
     assert_eq!(ev.key, canvas);
-    assert_eq!(
-        ev.payload.get("kind").and_then(Value::as_str),
-        Some("scroll")
-    );
-    assert_eq!(ev.payload.get("dx").and_then(Value::as_float), Some(3.0));
-    assert_eq!(ev.payload.get("dy").and_then(Value::as_float), Some(-12.0));
-    assert_eq!(ev.payload.get("x").and_then(Value::as_float), Some(50.0));
-    assert_eq!(ev.payload.get("y").and_then(Value::as_float), Some(60.0));
+    assert_eq!(ev.kind(), Some("scroll"));
+    assert_eq!(ev.payload.get_float("dx"), Some(3.0));
+    assert_eq!(ev.payload.get_float("dy"), Some(-12.0));
+    assert_eq!(ev.payload.get_float("x"), Some(50.0));
+    assert_eq!(ev.payload.get_float("y"), Some(60.0));
     assert_eq!(
         ev.payload.get("lines"),
         Some(&Value::Null),
         "no grid, no lines"
     );
-    assert_eq!(ev.payload.get("tag").and_then(Value::as_str), Some("zoom"));
+    assert_eq!(ev.payload.get_str("tag"), Some("zoom"));
     handlers(&mut core);
     assert_eq!(
         core.scroll_offset(outer).y,
@@ -360,10 +342,9 @@ fn grid(core: &mut Core, origin: u64) -> Key {
         "term",
         &grid,
         NodeSpec::column()
-            .width(Sizing::Fixed(200.0))
-            .height(Sizing::Fixed(3.0 * 17.0))
+            .size(200.0, 3.0 * 17.0)
             .selectable()
-            .on_scroll(Value::str("term")),
+            .on_scroll("term"),
     );
     ui.finish();
     key
@@ -388,28 +369,19 @@ fn the_wheel_over_a_grid_is_whole_lines_with_the_fraction_carried() {
     let out = core.handle_input(InputEvent::Scroll(Vec2::new(0.0, -2.5 * h)));
     assert_eq!(out.len(), 1);
     assert_eq!(out[0].key, key);
-    assert_eq!(out[0].payload.get("lines").and_then(Value::as_int), Some(2));
-    assert_eq!(
-        out[0].payload.get("tag").and_then(Value::as_str),
-        Some("term")
-    );
+    assert_eq!(out[0].payload.get_int("lines"), Some(2));
+    assert_eq!(out[0].payload.get_str("tag"), Some("term"));
     // Another half: the carried half makes a whole line.
     let out = core.handle_input(InputEvent::Scroll(Vec2::new(0.0, -0.5 * h)));
-    assert_eq!(out[0].payload.get("lines").and_then(Value::as_int), Some(1));
+    assert_eq!(out[0].payload.get_int("lines"), Some(1));
     // Up by a line and a bit: earlier history is negative.
     let out = core.handle_input(InputEvent::Scroll(Vec2::new(0.0, 1.2 * h)));
-    assert_eq!(
-        out[0].payload.get("lines").and_then(Value::as_int),
-        Some(-1)
-    );
+    assert_eq!(out[0].payload.get_int("lines"), Some(-1));
     // A notch too small for a line still arrives, with zero lines and the
     // pixels, so an app that wants the delta has it.
     let out = core.handle_input(InputEvent::Scroll(Vec2::new(0.0, -1.0)));
-    assert_eq!(out[0].payload.get("lines").and_then(Value::as_int), Some(0));
-    assert_eq!(
-        out[0].payload.get("dy").and_then(Value::as_float),
-        Some(-1.0)
-    );
+    assert_eq!(out[0].payload.get_int("lines"), Some(0));
+    assert_eq!(out[0].payload.get_float("dy"), Some(-1.0));
 }
 
 #[test]
@@ -429,11 +401,8 @@ fn a_drag_held_past_a_grids_edge_asks_the_app_for_lines_and_the_ends_survive() {
         assert!(core.animating());
         for ev in core.take_pending_events() {
             assert_eq!(ev.key, key);
-            assert_eq!(
-                ev.payload.get("kind").and_then(Value::as_str),
-                Some("scroll")
-            );
-            let n = ev.payload.get("lines").and_then(Value::as_int).unwrap();
+            assert_eq!(ev.kind(), Some("scroll"));
+            let n = ev.payload.get_int("lines").unwrap();
             lines += n;
             // The app answers by moving its screen.
             origin = (origin as i64 + n) as u64;
@@ -490,17 +459,9 @@ fn document(core: &mut Core) -> Key {
     };
     ui.with_keyed(
         "doc-scroll",
-        NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Fixed(VIEW_H))
-            .scroll_y(),
+        NodeSpec::column().grow_width().height(VIEW_H).scroll_y(),
         |ui| {
-            ui.text_edit(
-                "doc",
-                &text,
-                &opts,
-                NodeSpec::column().width(Sizing::Fixed(300.0)),
-            );
+            ui.text_edit("doc", &text, &opts, NodeSpec::column().width(300.0));
         },
     );
     ui.finish();

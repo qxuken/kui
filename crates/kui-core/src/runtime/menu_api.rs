@@ -191,7 +191,7 @@ impl Core {
         }
         let mut clicked: Option<Key> = None;
         out.retain(|ev| {
-            let is = ev.payload.get("select").and_then(Value::as_bool) == Some(true)
+            let is = ev.payload.get_bool("select") == Some(true)
                 && self.selects.iter().any(|(k, _)| *k == ev.key);
             if is {
                 clicked = Some(ev.key);
@@ -373,7 +373,7 @@ impl Core {
             if ev.origin != origin {
                 return true;
             }
-            if ev.payload.get("kind").and_then(Value::as_str) == Some("dismiss") {
+            if ev.kind() == Some("dismiss") {
                 taken.dismissed = true;
             } else if let Some(i) = index(&ev.payload, "row") {
                 taken.row = Some(i);

@@ -38,8 +38,8 @@
 use kui_devtools::{Drive, Example};
 use kui_native::widgets;
 use kui_native::{
-    Align, App, Core, EditKey, EditOptions, MenuAction, Mods, NodeSpec, Role, Sizing, Span,
-    TextStyle, Theme, Ui, UiEvent, Value,
+    Align, App, Core, EditKey, EditOptions, MenuAction, Mods, NodeSpec, Role, Span, TextStyle,
+    Theme, Ui, UiEvent, Value,
 };
 
 const ROWS: usize = 2000;
@@ -110,7 +110,7 @@ impl Clipboard {
 
 fn card(t: &Theme) -> NodeSpec {
     NodeSpec::column()
-        .width(Sizing::Grow(1.0))
+        .grow_width()
         .max_width(600.0)
         .pad(14.0)
         .gap(8.0)
@@ -161,7 +161,7 @@ impl App for Clipboard {
                         "Select some of this and copy it; paste lands as typing.",
                         &EditOptions::default(),
                         NodeSpec::column()
-                            .width(Sizing::Grow(1.0))
+                            .grow_width()
                             .pad(8.0)
                             .radius(6.0)
                             .bg(t.bg)
@@ -199,8 +199,8 @@ impl App for Clipboard {
                         ui,
                         "log",
                         NodeSpec::column()
-                            .width(Sizing::Grow(1.0))
-                            .height(Sizing::Fixed(4.0 * ROW_H))
+                            .grow_width()
+                            .height(4.0 * ROW_H)
                             .bg(t.sunken)
                             .radius(6.0)
                             .selectable()
@@ -209,15 +209,13 @@ impl App for Clipboard {
                         ROWS,
                         ROW_H,
                         |ui, i| {
-                            ui.with(
+                            ui.text_in(
                                 NodeSpec::row()
-                                    .width(Sizing::Grow(1.0))
-                                    .height(Sizing::Grow(1.0))
+                                    .fill()
                                     .pad_xy(8.0, 0.0)
                                     .cross_align(Align::Center),
-                                |ui| {
-                                    ui.text(&Self::row(i), TextStyle::new(12.0).mono().color(t.fg));
-                                },
+                                &Self::row(i),
+                                TextStyle::new(12.0).mono().color(t.fg),
                             );
                         },
                     );
@@ -229,7 +227,7 @@ impl App for Clipboard {
                 let sink = ui.with_keyed(
                     "register",
                     card(&t)
-                        .on_key(Value::Null)
+                        .key_sink()
                         .focusable()
                         .role(Role::Group)
                         .label("register"),
@@ -240,15 +238,14 @@ impl App for Clipboard {
                             "an on_key sink: y → set_clipboard, p → request_paste",
                         );
                         for (i, line) in lines.iter().enumerate() {
-                            ui.with(
+                            ui.text_in(
                                 NodeSpec::row()
-                                    .width(Sizing::Grow(1.0))
+                                    .grow_width()
                                     .pad_xy(8.0, 3.0)
                                     .radius(4.0)
                                     .bg(if i == cursor { t.selection } else { t.surface }),
-                                |ui| {
-                                    ui.text(line, TextStyle::new(13.0).mono().color(t.fg));
-                                },
+                                line,
+                                TextStyle::new(13.0).mono().color(t.fg),
                             );
                         }
                     },
@@ -259,10 +256,7 @@ impl App for Clipboard {
 
                 // The readout: the app's side of the queue.
                 ui.with(
-                    NodeSpec::column()
-                        .width(Sizing::Grow(1.0))
-                        .max_width(600.0)
-                        .gap(2.0),
+                    NodeSpec::column().grow_width().max_width(600.0).gap(2.0),
                     |ui| {
                         ui.text(
                             &format!("→ clipboard: {}", self.sent),
@@ -279,8 +273,8 @@ impl App for Clipboard {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.payload.get("kind").and_then(Value::as_str) {
-            Some("key") => match ev.payload.get("code").and_then(Value::as_str) {
+        match ev.kind() {
+            Some("key") => match ev.payload.get_str("code") {
                 Some("j") | Some("down") => {
                     self.cursor = (self.cursor + 1).min(self.lines.len() - 1);
                 }
@@ -299,7 +293,7 @@ impl App for Clipboard {
             // sink has no use for.
             Some("text") if self.awaiting_paste => {
                 self.awaiting_paste = false;
-                let text = ev.payload.get("text").and_then(Value::as_str).unwrap_or("");
+                let text = ev.payload.get_str("text").unwrap_or("");
                 self.received = format!("{text:?}");
                 self.lines.push(text.to_string());
                 self.cursor = self.lines.len() - 1;
@@ -464,13 +458,7 @@ impl Example for Clipboard {
         d.frame(self);
         // A Shift-click keeps the anchor: the selection still starts on
         // row 0 and now ends where the click landed.
-        d.input(
-            self,
-            InputEvent::Modifiers(KeyMods {
-                shift: true,
-                ..KeyMods::default()
-            }),
-        );
+        d.input(self, InputEvent::Modifiers(KeyMods::NONE.with_shift()));
         d.input(
             self,
             InputEvent::CursorMoved(kui_native::Vec2::new(r.x + 100.0, r.y + 1.5 * ROW_H)),

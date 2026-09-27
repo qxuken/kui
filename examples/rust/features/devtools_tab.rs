@@ -25,9 +25,7 @@
 
 use kui_devtools::{Drive, Example};
 use kui_native::widgets;
-use kui_native::{
-    Align, App, Color, Core, Key, NodeSpec, Sizing, TextStyle, Theme, Ui, UiEvent, Value,
-};
+use kui_native::{Align, App, Color, Core, Key, NodeSpec, TextStyle, Theme, Ui, UiEvent, Value};
 
 /// One node of the syntax tree: its kind, the highlight group a token
 /// carries (`None` for an inner node), the line it starts on, its
@@ -227,8 +225,7 @@ impl App for Page {
 
         ui.with(
             NodeSpec::column()
-                .width(Sizing::Grow(1.0))
-                .height(Sizing::Grow(1.0))
+                .fill()
                 .pad(16.0)
                 .gap(4.0),
             |ui| {
@@ -239,11 +236,11 @@ impl App for Page {
                 for (line, indent) in INDENT.iter().enumerate() {
                     ui.with(
                         NodeSpec::row()
-                            .width(Sizing::Grow(1.0))
+                            .grow_width()
                             .cross_align(Align::Center),
                         |ui| {
                             ui.leaf(
-                                NodeSpec::row().width(Sizing::Fixed(8.0 * *indent as f32)));
+                                NodeSpec::row().width(8.0 * *indent as f32));
                             let mut first = true;
                             for (i, n) in TREE.iter().enumerate() {
                                 let Some(text) = n.text else { continue };
@@ -255,7 +252,7 @@ impl App for Page {
                                 // leaves.
                                 let word = text.chars().next().is_some_and(|c| c.is_alphanumeric());
                                 if !first && (word || matches!(text, "=" | "{")) {
-                                    ui.leaf(NodeSpec::row().width(Sizing::Fixed(7.0)));
+                                    ui.leaf(NodeSpec::row().width(7.0));
                                 }
                                 first = false;
                                 let on = lit(i);
@@ -263,25 +260,17 @@ impl App for Page {
                                     ("kind", Value::str("tok")),
                                     ("id", Value::Int(i as i64)),
                                 ]);
-                                ui.with_keyed(
-                                    &format!("tok:{i}"),
-                                    NodeSpec::row()
+                                ui.text_in_keyed(&format!("tok:{i}"), NodeSpec::row()
                                         .pad_xy(1.0, 2.0)
                                         .radius(3.0)
                                         .bg(if on { t.accent_soft } else { Color::TRANSPARENT })
                                         .hover_bg(t.hover)
                                         .on_hover(tag.clone())
                                         .on_click(tag)
-                                        .label(n.kind),
-                                    |ui| {
-                                        ui.text(
-                                            text,
+                                        .label(n.kind), text,
                                             TextStyle::new(14.0)
                                                 .mono()
-                                                .color(group_color(&t, n.group.unwrap_or(""))),
-                                        );
-                                    },
-                                );
+                                                .color(group_color(&t, n.group.unwrap_or(""))));
                             }
                         },
                     );
@@ -333,8 +322,7 @@ impl App for Page {
             }
             ui.with(
                 NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Grow(1.0))
+                    .fill()
                     .gap(4.0),
                 |ui| {
                     ui.with(
@@ -365,8 +353,7 @@ impl App for Page {
                     );
                     ui.with(
                         NodeSpec::column()
-                            .width(Sizing::Grow(1.0))
-                            .height(Sizing::Grow(1.0))
+                            .fill()
                             .scroll_y(),
                         |ui| {
                             for (i, n) in TREE.iter().enumerate() {
@@ -382,7 +369,7 @@ impl App for Page {
                                 ui.with_keyed(
                                     &format!("node:{i}"),
                                     NodeSpec::row()
-                                        .width(Sizing::Grow(1.0))
+                                        .grow_width()
                                         .pad_xy(6.0, 2.0)
                                         .gap(6.0)
                                         .radius(3.0)
@@ -395,7 +382,7 @@ impl App for Page {
                                     |ui| {
                                         ui.leaf(
                                             NodeSpec::row()
-                                                .width(Sizing::Fixed(10.0 * depth(i) as f32)));
+                                                .width(10.0 * depth(i) as f32));
                                         let one_line = |size: f32| {
                                             TextStyle::new(size).mono().wrap(kui_native::TextWrap::None)
                                         };
@@ -409,7 +396,7 @@ impl App for Page {
                                         if let Some(text) = n.text {
                                             ui.text(text, one_line(11.0).color(t.faint));
                                         }
-                                        ui.leaf(NodeSpec::row().width(Sizing::Grow(1.0)));
+                                        ui.leaf(NodeSpec::row().grow_width());
                                         ui.text(
                                             &format!("{}", n.line + 1),
                                             TextStyle::new(10.0).color(t.faint),
@@ -425,11 +412,11 @@ impl App for Page {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        let phase = ev.payload.get("phase").and_then(Value::as_str);
+        let phase = ev.payload.get_str("phase");
         // A hover carries its node's tag under `tag`; a click is the tag.
         let tag = ev.payload.get("tag").unwrap_or(&ev.payload);
-        let id = tag.get("id").and_then(Value::as_int).map(|i| i as usize);
-        match (tag.get("kind").and_then(Value::as_str), phase) {
+        let id = tag.get_int("id").map(|i| i as usize);
+        match (tag.get_str("kind"), phase) {
             (Some("tok"), Some("enter")) => self.hover_tok = id,
             (Some("tok"), Some("leave")) => {
                 if self.hover_tok == id {
@@ -489,15 +476,7 @@ impl Example for Page {
         let listed = d.key_of("kui-devtools/tab-custom:inspector").is_some();
         d.check(listed, "and the strip lists it")?;
         let chord = |d: &mut Drive<'_>, app: &mut Page| {
-            d.key(
-                app,
-                "n",
-                kui_native::KeyMods {
-                    ctrl: true,
-                    shift: true,
-                    ..Default::default()
-                },
-            );
+            d.key(app, "n", kui_native::KeyMods::NONE.with_ctrl().with_shift());
         };
         chord(&mut d, self); // tree
         chord(&mut d, self); // Inspector

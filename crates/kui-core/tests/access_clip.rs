@@ -5,8 +5,8 @@
 //! edge, so a reader's hover over whatever is drawn there never finds it.
 
 use kui_core::{
-    AccessAction, Core, EditOptions, FloatConfig, Key, NodeSpec, Rect, Role, Size, Sizing,
-    TextStyle, Value, Vec2,
+    AccessAction, Core, EditOptions, FloatConfig, Key, NodeSpec, Rect, Role, Size, TextStyle,
+    Value, Vec2,
 };
 
 fn rect_of(core: &mut Core, key: Key) -> Rect {
@@ -15,8 +15,7 @@ fn rect_of(core: &mut Core, key: Key) -> Rect {
 
 fn button(w: f32, h: f32, name: &str) -> NodeSpec {
     NodeSpec::column()
-        .width(Sizing::Fixed(w))
-        .height(Sizing::Fixed(h))
+        .size(w, h)
         .on_click(Value::str(name))
         .label(name)
 }
@@ -27,10 +26,7 @@ fn button(w: f32, h: f32, name: &str) -> NodeSpec {
 fn canvas_with_a_node(core: &mut Core, float: FloatConfig, dy: f32) -> Key {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    ui.leaf_keyed(
-        "toolbar",
-        button(400.0, 40.0, "toolbar").width(Sizing::Grow(1.0)),
-    );
+    ui.leaf_keyed("toolbar", button(400.0, 40.0, "toolbar").grow_width());
     let mut node = Key::ROOT;
     ui.with(NodeSpec::column().fill().clip(), |ui| {
         node = ui.leaf_keyed(
@@ -88,13 +84,9 @@ fn a_child_of_a_clip_box_is_cut_at_its_side() {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
     let mut wide = Key::ROOT;
-    ui.with(
-        NodeSpec::column()
-            .width(Sizing::Fixed(100.0))
-            .height(Sizing::Fixed(50.0))
-            .clip(),
-        |ui| wide = ui.leaf_keyed("wide", button(160.0, 30.0, "wide")),
-    );
+    ui.with(NodeSpec::column().size(100.0, 50.0).clip(), |ui| {
+        wide = ui.leaf_keyed("wide", button(160.0, 30.0, "wide"))
+    });
     ui.finish();
     assert_eq!(rect_of(&mut core, wide), Rect::new(0.0, 0.0, 100.0, 30.0));
 }
@@ -107,10 +99,7 @@ fn scroller(core: &mut Core) -> (Key, [Key; 3]) {
     let mut rows = [Key::ROOT; 3];
     let list = ui.with_keyed(
         "list",
-        NodeSpec::column()
-            .width(Sizing::Fixed(120.0))
-            .height(Sizing::Fixed(50.0))
-            .scroll_y(),
+        NodeSpec::column().size(120.0, 50.0).scroll_y(),
         |ui| {
             for (i, row) in rows.iter_mut().enumerate() {
                 let name = format!("row {i}");
@@ -167,13 +156,9 @@ fn a_clip_that_moved_moves_the_tree() {
         let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
         ui.configure_root(NodeSpec::column().fill());
         let mut key = Key::ROOT;
-        ui.with(
-            NodeSpec::column()
-                .width(Sizing::Fixed(w))
-                .height(Sizing::Fixed(50.0))
-                .clip(),
-            |ui| key = ui.leaf_keyed("b", button(160.0, 30.0, "b")),
-        );
+        ui.with(NodeSpec::column().size(w, 50.0).clip(), |ui| {
+            key = ui.leaf_keyed("b", button(160.0, 30.0, "b"))
+        });
         ui.finish();
         core.access_tree().get(key).unwrap().rect
     };
@@ -190,24 +175,17 @@ fn an_editors_runs_are_cut_and_their_characters_stay_put() {
         let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
         ui.configure_root(NodeSpec::column().fill());
         let mut edit = Key::ROOT;
-        let list = ui.with_keyed(
-            "h",
-            NodeSpec::column()
-                .width(Sizing::Fixed(100.0))
-                .height(Sizing::Fixed(60.0))
-                .scroll_x(),
-            |ui| {
-                edit = ui.text_edit(
-                    "doc",
-                    "hello world, a line wider than the scroller",
-                    &EditOptions {
-                        multiline: true,
-                        ..Default::default()
-                    },
-                    NodeSpec::column().width(Sizing::Fixed(400.0)).label("Doc"),
-                );
-            },
-        );
+        let list = ui.with_keyed("h", NodeSpec::column().size(100.0, 60.0).scroll_x(), |ui| {
+            edit = ui.text_edit(
+                "doc",
+                "hello world, a line wider than the scroller",
+                &EditOptions {
+                    multiline: true,
+                    ..Default::default()
+                },
+                NodeSpec::column().width(400.0).label("Doc"),
+            );
+        });
         ui.finish();
         (list, edit)
     };
@@ -246,25 +224,20 @@ fn a_custom_editors_runs_are_cut_by_their_lines_clip() {
     let sink = ui.with_keyed(
         "doc",
         NodeSpec::column()
-            .on_key(Value::str("doc"))
+            .on_key("doc")
             .role(Role::MultilineTextInput)
             .label("Doc"),
         |ui| {
-            ui.with(
-                NodeSpec::column()
-                    .width(Sizing::Fixed(200.0))
-                    .height(Sizing::Fixed(20.0))
-                    .scroll_y(),
-                |ui| {
-                    for i in 0..2 {
-                        ui.with_keyed(
-                            &format!("l{i}"),
-                            NodeSpec::row().role(Role::Line).height(Sizing::Fixed(20.0)),
-                            |ui| ui.text(&format!("line {i}"), style),
-                        );
-                    }
-                },
-            );
+            ui.with(NodeSpec::column().size(200.0, 20.0).scroll_y(), |ui| {
+                for i in 0..2 {
+                    ui.text_in_keyed(
+                        &format!("l{i}"),
+                        NodeSpec::row().role(Role::Line).height(20.0),
+                        &format!("line {i}"),
+                        style,
+                    );
+                }
+            });
         },
     );
     ui.finish();

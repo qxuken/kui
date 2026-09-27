@@ -28,9 +28,7 @@
 //! Run: cargo run -p kui-native --example exit_budget
 
 use kui_devtools::Example;
-use kui_native::{
-    Align, App, Color, Enter, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value, widgets,
-};
+use kui_native::{Align, App, Color, Enter, NodeSpec, TextStyle, Ui, UiEvent, Value, widgets};
 
 /// Cells per grid. One grid is under the budget; both together are over it.
 const CELLS_PER_ROW: usize = 20;
@@ -52,8 +50,7 @@ impl BulkExit {
         ui.with_keyed(
             key,
             NodeSpec::column()
-                .width(Sizing::Fixed(CELLS_PER_ROW as f32 * 14.0 - 2.0))
-                .height(Sizing::Fixed(ROWS as f32 * 14.0 - 2.0))
+                .size(CELLS_PER_ROW as f32 * 14.0 - 2.0, ROWS as f32 * 14.0 - 2.0)
                 .gap(2.0),
             |ui| {
                 if !filled {
@@ -65,8 +62,7 @@ impl BulkExit {
                             ui.leaf_indexed(
                                 c as u64,
                                 NodeSpec::column()
-                                    .width(Sizing::Fixed(12.0))
-                                    .height(Sizing::Fixed(12.0))
+                                    .size(12.0, 12.0)
                                     .bg(color)
                                     .radius(2.0)
                                     .transition(360.0)
@@ -89,8 +85,7 @@ impl BulkExit {
             ui,
             "list",
             NodeSpec::column()
-                .width(Sizing::Fixed(200.0))
-                .height(Sizing::Fixed(ROWS as f32 * 14.0 - 2.0))
+                .size(200.0, ROWS as f32 * 14.0 - 2.0)
                 .bg(t.raised)
                 .radius(6.0)
                 .transition(360.0)
@@ -98,9 +93,11 @@ impl BulkExit {
             LIST_ROWS,
             ROW_H,
             |ui, i| {
-                ui.with(NodeSpec::row().pad(4.0).cross_align(Align::Center), |ui| {
-                    ui.text(&format!("row {i}"), TextStyle::new(12.0));
-                });
+                ui.text_in(
+                    NodeSpec::row().pad(4.0).cross_align(Align::Center),
+                    &format!("row {i}"),
+                    TextStyle::new(12.0),
+                );
             },
         );
     }
@@ -142,7 +139,7 @@ impl App for BulkExit {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.payload.get("kind").and_then(Value::as_str) {
+        match ev.kind() {
             Some("fill") => {
                 self.a = true;
                 self.b = true;

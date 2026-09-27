@@ -4,8 +4,7 @@
 //! it lands in; and the two text queries answer through the chunks.
 
 use kui_core::{
-    Color, Core, Key, LONG_LINE_BYTES, NodeSpec, QuadKind, Size, Sizing, Span, TextStyle, TextWrap,
-    Vec2,
+    Color, Core, Key, LONG_LINE_BYTES, NodeSpec, QuadKind, Size, Span, TextStyle, TextWrap, Vec2,
 };
 
 const LH: f32 = 18.0;
@@ -47,14 +46,9 @@ fn frame(core: &mut Core, text: &str, scroll_x: Option<f32>) -> (Key, Key, usize
     ui.configure_root(NodeSpec::column().fill().bg(Color::rgb8(0, 0, 0)));
     ui.with_keyed(
         "view",
-        NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Fixed(100.0))
-            .scroll_x(),
+        NodeSpec::column().grow_width().height(100.0).scroll_x(),
         |ui| {
-            ui.with_keyed("row", NodeSpec::row().height(Sizing::Fixed(LH)), |ui| {
-                ui.text(text, mono())
-            });
+            ui.text_in_keyed("row", NodeSpec::row().height(LH), text, mono());
         },
     );
     ui.finish();
@@ -227,16 +221,9 @@ fn wrapped_frame(
     ui.configure_root(NodeSpec::column().fill().bg(Color::rgb8(0, 0, 0)));
     ui.with_keyed(
         "view",
-        NodeSpec::column()
-            .width(Sizing::Fixed(VIEW_W))
-            .height(Sizing::Fixed(100.0))
-            .scroll_y(),
+        NodeSpec::column().size(VIEW_W, 100.0).scroll_y(),
         |ui| {
-            ui.with_keyed(
-                "row",
-                NodeSpec::column().width(Sizing::Fixed(VIEW_W)),
-                |ui| ui.text(text, wrapped(wrap)),
-            );
+            ui.text_in_keyed("row", NodeSpec::column().width(VIEW_W), text, wrapped(wrap));
         },
     );
     ui.finish();
@@ -443,12 +430,9 @@ fn rich_frame(
     ui.configure_root(NodeSpec::column().fill().bg(Color::rgb8(0, 0, 0)));
     ui.with_keyed(
         "view",
-        NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Fixed(100.0))
-            .scroll_x(),
+        NodeSpec::column().grow_width().height(100.0).scroll_x(),
         |ui| {
-            ui.with_keyed("row", NodeSpec::row().height(Sizing::Fixed(LH)), |ui| {
+            ui.with_keyed("row", NodeSpec::row().height(LH), |ui| {
                 ui.rich_text(spans, mono())
             });
         },
@@ -586,16 +570,11 @@ fn a_wrapped_rich_line_draws_a_background_on_every_row_it_covers() {
     ui.configure_root(NodeSpec::column().fill().bg(Color::rgb8(0, 0, 0)));
     ui.with_keyed(
         "view",
-        NodeSpec::column()
-            .width(Sizing::Fixed(VIEW_W))
-            .height(Sizing::Fixed(100.0))
-            .scroll_y(),
+        NodeSpec::column().size(VIEW_W, 100.0).scroll_y(),
         |ui| {
-            ui.with_keyed(
-                "row",
-                NodeSpec::column().width(Sizing::Fixed(VIEW_W)),
-                |ui| ui.rich_text(&spans, wrapped(TextWrap::Word)),
-            );
+            ui.with_keyed("row", NodeSpec::column().width(VIEW_W), |ui| {
+                ui.rich_text(&spans, wrapped(TextWrap::Word))
+            });
         },
     );
     ui.finish();

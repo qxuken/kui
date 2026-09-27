@@ -16,7 +16,7 @@
 
 use kui_devtools::{Drive, Example};
 use kui_native::widgets;
-use kui_native::{Align, App, Color, Core, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
+use kui_native::{Align, App, Color, Core, NodeSpec, TextStyle, Ui, UiEvent, Value};
 
 /// The alignments the buttons pick, in `schema::ALIGNS` order; `baseline`
 /// is a cross-axis value and has no button here.
@@ -54,7 +54,7 @@ impl Page {
         ui.with_keyed(
             "track",
             NodeSpec::row()
-                .width(Sizing::Grow(1.0))
+                .grow_width()
                 .pad(8.0)
                 .gap(4.0)
                 .radius(m.radius)
@@ -65,8 +65,7 @@ impl Page {
                     ui.leaf_keyed(
                         &format!("chip{i}"),
                         NodeSpec::column()
-                            .width(Sizing::Fixed(w))
-                            .height(Sizing::Fixed(24.0))
+                            .size(w, 24.0)
                             .radius(m.radius_inner)
                             .bg(t.accent),
                     );
@@ -108,19 +107,18 @@ impl Page {
     fn aspect_panel(&self, ui: &mut Ui<'_>) {
         let t = ui.theme();
         ui.text("aspectRatio", TextStyle::new(15.0).color(t.fg));
-        ui.with(NodeSpec::row().width(Sizing::Grow(1.0)).gap(12.0), |ui| {
-            ui.with_keyed(
+        ui.with(NodeSpec::row().grow_width().gap(12.0), |ui| {
+            ui.text_in_keyed(
                 "video",
                 NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
+                    .grow_width()
                     .max_width(360.0)
                     .aspect_ratio(16.0 / 9.0)
                     .radius(ui.metrics().radius)
                     .bg(t.raised)
                     .center(),
-                |ui| {
-                    ui.text("16 : 9", TextStyle::new(14.0).color(t.muted));
-                },
+                "16 : 9",
+                TextStyle::new(14.0).color(t.muted),
             );
             ui.with(NodeSpec::row().gap(6.0), |ui| {
                 for (i, c) in [0x3b5bd4ffu32, 0x73d98cff, 0xffcc00ff]
@@ -130,7 +128,7 @@ impl Page {
                     ui.leaf_keyed(
                         &format!("square{i}"),
                         NodeSpec::column()
-                            .height(Sizing::Fixed(40.0))
+                            .height(40.0)
                             .aspect_ratio(1.0)
                             .bg(Color::hex(c)),
                     );

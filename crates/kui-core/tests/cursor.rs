@@ -4,9 +4,7 @@
 //! that declared nothing included. The stock button is the one node that
 //! declares a hand for itself.
 
-use kui_core::{
-    Core, CursorShape, EditOptions, InputEvent, NodeSpec, Size, Sizing, Value, Vec2, widgets,
-};
+use kui_core::{Core, CursorShape, EditOptions, InputEvent, NodeSpec, Size, Vec2, widgets};
 
 const W: f32 = 400.0;
 const H: f32 = 400.0;
@@ -19,7 +17,7 @@ fn in_band(i: usize) -> Vec2 {
 }
 
 fn band(spec: NodeSpec) -> NodeSpec {
-    spec.width(Sizing::Grow(1.0)).height(Sizing::Fixed(BAND))
+    spec.grow_width().height(BAND)
 }
 
 /// One band per thing a cursor can be over, stacked in a column.
@@ -136,10 +134,7 @@ fn the_stock_button_declares_the_hand() {
     // Each centred in a band of its own, so `in_band` lands on it.
     let band = |ui: &mut kui_core::Ui<'_>, body: &dyn Fn(&mut kui_core::Ui<'_>)| {
         ui.with(
-            NodeSpec::column()
-                .width(Sizing::Grow(1.0))
-                .height(Sizing::Fixed(BAND))
-                .center(),
+            NodeSpec::column().grow_width().height(BAND).center(),
             |ui| body(ui),
         );
     };
@@ -273,9 +268,8 @@ fn the_topmost_node_answers() {
             ui.leaf_keyed(
                 "button",
                 NodeSpec::column()
-                    .width(Sizing::Fixed(100.0))
-                    .height(Sizing::Fixed(30.0))
-                    .on_click(Value::str("go"))
+                    .size(100.0, 30.0)
+                    .on_click("go")
                     .cursor(CursorShape::Pointer),
             );
         },

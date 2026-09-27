@@ -1,4 +1,4 @@
-use kui_core::{Color, Core, InputEvent, NodeSpec, Size, Sizing, TextStyle, Vec2};
+use kui_core::{Color, Core, InputEvent, NodeSpec, Size, TextStyle, Vec2};
 
 #[test]
 fn root_scroll_works() {
@@ -8,7 +8,7 @@ fn root_scroll_works() {
         ui.configure_root(NodeSpec::column().fill().pad(24.0).scroll_y());
         ui.with(
             NodeSpec::column()
-                .width(Sizing::Grow(1.0))
+                .grow_width()
                 .max_width(560.0)
                 .pad(36.0)
                 .gap(18.0)

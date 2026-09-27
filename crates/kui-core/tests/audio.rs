@@ -5,8 +5,8 @@
 //! still playing comes back as a `truncated-playback` warning on the node.
 
 use kui_core::{
-    AudioCommand, AudioSpec, Core, InputEvent, Key, NodeSpec, PlayOptions, Size, Sizing, SoundId,
-    Value, Vec2,
+    AudioCommand, AudioSpec, Core, InputEvent, Key, NodeSpec, PlayOptions, Size, SoundId, Value,
+    Vec2,
 };
 
 /// One frame: a button-sized node with `spec`, and optionally an `audio`
@@ -16,10 +16,7 @@ fn frame(core: &mut Core, spec: NodeSpec, audio: Option<AudioSpec>) -> (Key, Key
     let mut keys = (Key(0), Key(0));
     ui.with(NodeSpec::column(), |ui| {
         keys.0 = ui.child_key("btn");
-        ui.leaf_keyed(
-            "btn",
-            spec.width(Sizing::Fixed(40.0)).height(Sizing::Fixed(20.0)),
-        );
+        ui.leaf_keyed("btn", spec.size(40.0, 20.0));
         if let Some(a) = audio {
             keys.1 = ui.audio_keyed("music", a);
         }
@@ -48,9 +45,7 @@ fn click_sound_plays_on_click_alongside_the_click_event() {
     let s = sound(&mut core);
     frame(
         &mut core,
-        NodeSpec::column()
-            .click_sound(s)
-            .on_click(Value::str("hit")),
+        NodeSpec::column().click_sound(s).on_click("hit"),
         None,
     );
     core.handle_input(InputEvent::CursorMoved(Vec2::new(10.0, 10.0)));
@@ -182,13 +177,10 @@ fn tagged_playback_reports_ended_as_a_pending_event() {
     let evs = core.take_pending_events();
     assert_eq!(evs.len(), 1);
     let p = &evs[0].payload;
-    assert_eq!(p.get("kind").and_then(Value::as_str), Some("sound"));
-    assert_eq!(p.get("phase").and_then(Value::as_str), Some("ended"));
-    assert_eq!(p.get("tag").and_then(Value::as_str), Some("chime"));
-    assert_eq!(
-        p.get("playback").and_then(Value::as_int),
-        Some(playback.0 as i64)
-    );
+    assert_eq!(p.get_str("kind"), Some("sound"));
+    assert_eq!(p.get_str("phase"), Some("ended"));
+    assert_eq!(p.get_str("tag"), Some("chime"));
+    assert_eq!(p.get_int("playback"), Some(playback.0 as i64));
     // Untagged playbacks stay silent, stopped ones too.
     let quiet = core.play(s, PlayOptions::default());
     core.audio_ended(quiet);
@@ -215,10 +207,7 @@ fn audio_node_tag_rides_the_ended_event_on_the_node_key() {
     let evs = core.take_pending_events();
     assert_eq!(evs.len(), 1);
     assert_eq!(evs[0].key, music, "the event lands on the audio node's key");
-    assert_eq!(
-        evs[0].payload.get("tag").and_then(Value::as_str),
-        Some("done")
-    );
+    assert_eq!(evs[0].payload.get_str("tag"), Some("done"));
     // A finished one-shot stays mounted silently: re-rendering does not
     // replay it, and its node going away emits a (harmless) stop.
     frame(

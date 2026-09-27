@@ -165,26 +165,22 @@ impl MenuItem {
         let Value::Map(_) = v else {
             return Err("each menu item is an object".into());
         };
-        let role = match v.get("role").and_then(Value::as_str) {
+        let role = match v.get_str("role") {
             None => MenuRole::Custom,
             Some(name) => MenuRole::from_name(name)
                 .ok_or_else(|| format!("unknown menu item role {name:?}"))?,
         };
-        let label = v
-            .get("label")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
+        let label = v.get_str("label").unwrap_or_default().to_string();
         if label.is_empty() && role == MenuRole::Custom {
             return Err("a custom menu item needs a label".into());
         }
         Ok(MenuItem {
             label,
             role,
-            enabled: v.get("enabled").and_then(Value::as_bool).unwrap_or(true),
-            checked: v.get("checked").and_then(Value::as_bool).unwrap_or(false),
+            enabled: v.get_bool("enabled").unwrap_or(true),
+            checked: v.get_bool("checked").unwrap_or(false),
             id: v.get("id").filter(|id| **id != Value::Null).cloned(),
-            accel: v.get("accel").and_then(Value::as_str).map(str::to_string),
+            accel: v.get_str("accel").map(str::to_string),
         })
     }
 
@@ -465,8 +461,7 @@ impl MenuBar {
                 return Err("each menu is an object { label, items }".into());
             };
             let label = entry
-                .get("label")
-                .and_then(Value::as_str)
+                .get_str("label")
                 .ok_or("each menu needs a label")?
                 .to_string();
             let items = entry
@@ -475,10 +470,7 @@ impl MenuBar {
             out.push(BarMenu {
                 label,
                 items: MenuItem::list_from_value(items)?,
-                enabled: entry
-                    .get("enabled")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(true),
+                enabled: entry.get_bool("enabled").unwrap_or(true),
             });
         }
         Ok(Self::new(out))
@@ -744,11 +736,7 @@ mod tests {
             a,
             Accel {
                 code: KeyCode::Char('S'),
-                mods: KeyMods {
-                    shift: true,
-                    super_key: true,
-                    ..KeyMods::default()
-                },
+                mods: KeyMods::NONE.with_shift().with_super(),
             }
         );
     }

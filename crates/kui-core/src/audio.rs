@@ -690,15 +690,9 @@ mod tests {
         assert_eq!(a.take_commands().len(), 2);
         assert!(a.ended(quiet).is_none());
         let ev = a.ended(loud).expect("tagged playback reports ended");
-        assert_eq!(
-            ev.payload.get("kind").and_then(Value::as_str),
-            Some("sound")
-        );
-        assert_eq!(ev.payload.get("tag").and_then(Value::as_str), Some("t"));
-        assert_eq!(
-            ev.payload.get("playback").and_then(Value::as_int),
-            Some(loud.0 as i64)
-        );
+        assert_eq!(ev.kind(), Some("sound"));
+        assert_eq!(ev.payload.get_str("tag"), Some("t"));
+        assert_eq!(ev.payload.get_int("playback"), Some(loud.0 as i64));
         // Reported once.
         assert!(a.ended(loud).is_none());
     }
@@ -794,7 +788,7 @@ mod tests {
         assert_eq!(a.take_commands(), vec![]);
         let ev = a.ended(p).expect("a released playback still reports ended");
         assert_eq!(ev.key, k);
-        assert_eq!(ev.payload.get("tag").and_then(Value::as_str), Some("chime"));
+        assert_eq!(ev.payload.get_str("tag"), Some("chime"));
     }
 
     /// F35: the device refuses a play past its 128 voices, and the
@@ -816,20 +810,14 @@ mod tests {
         let (event, warning) = a.refused(p);
         let ev = event.expect("a tagged playback hears the refusal");
         assert_eq!(ev.key, k);
+        assert_eq!(ev.kind(), Some("sound"));
         assert_eq!(
-            ev.payload.get("kind").and_then(Value::as_str),
-            Some("sound")
-        );
-        assert_eq!(
-            ev.payload.get("phase").and_then(Value::as_str),
+            ev.payload.get_str("phase"),
             Some("refused"),
             "told apart from the `ended` that will never come"
         );
-        assert_eq!(ev.payload.get("tag").and_then(Value::as_str), Some("chime"));
-        assert_eq!(
-            ev.payload.get("playback").and_then(Value::as_int),
-            Some(p.0 as i64)
-        );
+        assert_eq!(ev.payload.get_str("tag"), Some("chime"));
+        assert_eq!(ev.payload.get_int("playback"), Some(p.0 as i64));
         assert_eq!(warning.code, crate::diag::PLAYBACK_REFUSED);
         assert_eq!(warning.key, k);
 
@@ -882,10 +870,7 @@ mod tests {
         let (event, warning) = a.refused(p);
         let ev = event.expect("a released playback still hears the refusal");
         assert_eq!(ev.key, k);
-        assert_eq!(
-            ev.payload.get("phase").and_then(Value::as_str),
-            Some("refused")
-        );
+        assert_eq!(ev.payload.get_str("phase"), Some("refused"));
         assert_eq!(warning.key, k);
     }
 

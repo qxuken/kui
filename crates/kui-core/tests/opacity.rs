@@ -2,7 +2,7 @@
 //! quad it and its subtree emit, it compounds down the tree, and it leaves
 //! layout, hit-testing and the access tree alone.
 
-use kui_core::{Color, Core, InputEvent, NodeSpec, Size, Sizing, TextStyle, Value, Vec2};
+use kui_core::{Color, Core, InputEvent, NodeSpec, Size, TextStyle, Vec2};
 
 const VIEW: Size = Size { w: 200.0, h: 100.0 };
 
@@ -16,17 +16,16 @@ fn alphas(core: &mut Core, outer: f32, inner: f32) -> Vec<f32> {
             .opacity(outer)
             .bg(Color::WHITE)
             .border(2.0, Color::WHITE)
-            .width(Sizing::Fixed(80.0))
-            .height(Sizing::Fixed(40.0)),
+            .size(80.0, 40.0),
         |ui| {
-            ui.with_keyed(
+            ui.text_in_keyed(
                 "inner",
                 NodeSpec::column()
                     .opacity(inner)
                     .bg(Color::WHITE)
-                    .width(Sizing::Fixed(20.0))
-                    .height(Sizing::Fixed(10.0)),
-                |ui| ui.text("hi", TextStyle::new(12.0).color(Color::WHITE)),
+                    .size(20.0, 10.0),
+                "hi",
+                TextStyle::new(12.0).color(Color::WHITE),
             );
         },
     );
@@ -58,8 +57,7 @@ fn opacity_fades_the_border_too() {
         NodeSpec::column()
             .opacity(0.25)
             .border(2.0, Color::WHITE)
-            .width(Sizing::Fixed(80.0))
-            .height(Sizing::Fixed(40.0)),
+            .size(80.0, 40.0),
     );
     ui.finish();
     let (dl, _) = core.output();
@@ -78,10 +76,9 @@ fn a_faded_subtree_still_lays_out_and_still_takes_clicks() {
             ui.leaf_keyed(
                 "btn",
                 NodeSpec::column()
-                    .on_click(Value::str("hit"))
+                    .on_click("hit")
                     .label("Save")
-                    .width(Sizing::Fixed(40.0))
-                    .height(Sizing::Fixed(20.0)),
+                    .size(40.0, 20.0),
             );
         });
         ui.finish();
@@ -120,8 +117,7 @@ fn a_transition_eases_opacity_and_enter_fades_a_panel_in() {
                 .enter(kui_core::Enter::default().opacity(0.0))
                 .opacity(o)
                 .bg(Color::WHITE)
-                .width(Sizing::Fixed(40.0))
-                .height(Sizing::Fixed(20.0)),
+                .size(40.0, 20.0),
         );
         ui.finish();
         let (dl, _) = core.output();

@@ -1416,9 +1416,7 @@ impl Core {
             NIL,
             Key::ROOT,
             OriginId::HOST,
-            NodeSpec::column()
-                .width(Sizing::Grow(1.0))
-                .height(Sizing::Grow(1.0)),
+            NodeSpec::column().fill(),
             NodeContent::Container,
         );
         self.stack.clear();

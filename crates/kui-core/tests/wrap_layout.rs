@@ -196,10 +196,7 @@ fn grow_fills_the_rest_of_its_own_line() {
     let mut t = T::new(NodeSpec::row().wrap().width(px(100.0)));
     let a = t.boxed(0, 60.0, 10.0);
     let b = t.boxed(0, 60.0, 10.0);
-    let c = t.node(
-        0,
-        NodeSpec::column().width(Sizing::Grow(1.0)).height(px(10.0)),
-    );
+    let c = t.node(0, NodeSpec::column().grow_width().height(px(10.0)));
     t.run();
     // a alone, then b and the grow child: the grow takes the 40 left of
     // *that* line, not of the container.
@@ -214,10 +211,7 @@ fn cross_grow_fills_its_line_not_the_container() {
     let mut t = T::new(NodeSpec::row().wrap().width(px(100.0)).height(px(200.0)));
     let a = t.boxed(0, 60.0, 20.0);
     let b = t.boxed(0, 60.0, 40.0);
-    let c = t.node(
-        0,
-        NodeSpec::column().width(px(30.0)).height(Sizing::Grow(1.0)),
-    );
+    let c = t.node(0, NodeSpec::column().width(px(30.0)).grow_height());
     t.run();
     // Content extents 20 and 40; 140 left over, split evenly between the
     // two lines, so they are 90 and 110 tall.
@@ -275,14 +269,8 @@ fn a_row_that_fits_lays_out_exactly_like_an_unwrapped_one() {
         let mut t = T::new(root);
         let a = t.boxed(0, 40.0, 10.0);
         let b = t.boxed(0, 40.0, 30.0);
-        let c = t.node(
-            0,
-            NodeSpec::column().width(px(20.0)).height(Sizing::Grow(1.0)),
-        );
-        let d = t.node(
-            0,
-            NodeSpec::column().width(Sizing::Grow(1.0)).height(px(12.0)),
-        );
+        let c = t.node(0, NodeSpec::column().width(px(20.0)).grow_height());
+        let d = t.node(0, NodeSpec::column().grow_width().height(px(12.0)));
         t.run();
         [a, b, c, d].map(|n| (t.size(n), t.pos(n)))
     };
@@ -452,11 +440,7 @@ fn frame(core: &mut Core, root: NodeSpec) {
     let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
     ui.configure_root(root);
     for _ in 0..3 {
-        ui.leaf(
-            NodeSpec::column()
-                .width(Sizing::Fixed(60.0))
-                .height(Sizing::Fixed(20.0)),
-        );
+        ui.leaf(NodeSpec::column().size(60.0, 20.0));
     }
     ui.finish();
 }

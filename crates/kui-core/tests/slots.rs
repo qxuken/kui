@@ -14,8 +14,8 @@ use kui_core::diag::{
 };
 use kui_core::testing::codes;
 use kui_core::{
-    ANY_SLOT, Core, Extension, Extensions, Key, NodeSpec, OriginId, Size, Sizing, Slot, Ui,
-    UiEvent, Value, split_name,
+    ANY_SLOT, Core, Extension, Extensions, Key, NodeSpec, OriginId, Size, Slot, Ui, UiEvent, Value,
+    split_name,
 };
 
 /// A stand-in extension: opens one keyed, focusable cell (so it is in the
@@ -37,10 +37,7 @@ struct Ext {
 }
 
 fn cell() -> NodeSpec {
-    NodeSpec::column()
-        .width(Sizing::Fixed(40.0))
-        .height(Sizing::Fixed(20.0))
-        .focusable()
+    NodeSpec::column().size(40.0, 20.0).focusable()
 }
 
 impl Extension for Ext {

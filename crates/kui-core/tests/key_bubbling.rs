@@ -4,7 +4,7 @@
 //! and the controls in the ring keep the keys the core presses them with.
 
 use kui_core::{
-    Core, EditKey, InputEvent, Key, KeyCode, KeyMods, KeyPress, Mods, NodeSpec, Role, Size, Sizing,
+    Core, EditKey, InputEvent, Key, KeyCode, KeyMods, KeyPress, Mods, NodeSpec, Role, Size,
     UiEvent, Value,
 };
 
@@ -26,33 +26,29 @@ struct Shell {
 fn shell(core: &mut Core, disabled_shell: bool) -> Shell {
     let mut ui = core.frame(Size::new(200.0, 200.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    let row = || {
-        NodeSpec::row()
-            .width(Sizing::Fixed(100.0))
-            .height(Sizing::Fixed(H))
-    };
+    let row = || NodeSpec::row().size(100.0, H);
     let mut keys = (Key::ROOT, Key::ROOT, Key::ROOT, Key::ROOT);
     let shell = ui.with_keyed(
         "shell",
         NodeSpec::column()
             .fill()
-            .on_key(Value::str("shell"))
+            .on_key("shell")
             .key_up()
             .disabled(disabled_shell),
         |ui| {
-            keys.0 = ui.leaf_keyed("go", row().on_click(Value::str("go")).label("Go"));
+            keys.0 = ui.leaf_keyed("go", row().on_click("go").label("Go"));
             keys.1 = ui.leaf_keyed(
                 "vol",
                 row()
                     .role(Role::Slider)
-                    .on_drag(Value::str("vol"))
+                    .on_drag("vol")
                     .label("Volume")
                     .value_now(3.0)
                     .value_min(0.0)
                     .value_max(10.0),
             );
-            keys.2 = ui.with_keyed("inner", row().on_key(Value::str("inner")), |ui| {
-                keys.3 = ui.leaf_keyed("deep", row().on_click(Value::str("deep")).label("Deep"));
+            keys.2 = ui.with_keyed("inner", row().on_key("inner"), |ui| {
+                keys.3 = ui.leaf_keyed("deep", row().on_click("deep").label("Deep"));
             });
         },
     );
@@ -71,19 +67,9 @@ fn shell(core: &mut Core, disabled_shell: bool) -> Shell {
 fn bare(core: &mut Core) -> (Key, Key) {
     let mut ui = core.frame(Size::new(200.0, 200.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    let row = || {
-        NodeSpec::row()
-            .width(Sizing::Fixed(100.0))
-            .height(Sizing::Fixed(H))
-    };
-    let go = ui.leaf_keyed("go", row().on_click(Value::str("go")).label("Go"));
-    let vol = ui.leaf_keyed(
-        "vol",
-        row()
-            .role(Role::Slider)
-            .on_drag(Value::str("vol"))
-            .label("V"),
-    );
+    let row = || NodeSpec::row().size(100.0, H);
+    let go = ui.leaf_keyed("go", row().on_click("go").label("Go"));
+    let vol = ui.leaf_keyed("vol", row().role(Role::Slider).on_drag("vol").label("V"));
     ui.finish();
     (go, vol)
 }
@@ -139,7 +125,7 @@ fn named(core: &mut Core, code: KeyCode, ek: EditKey) -> Vec<UiEvent> {
 /// which phase, which key.
 fn sink_events(evs: &[UiEvent]) -> Vec<(Key, String, String)> {
     evs.iter()
-        .filter(|e| e.payload.get("kind").and_then(Value::as_str) == Some("key"))
+        .filter(|e| e.kind() == Some("key"))
         .map(|e| {
             let at = |k: &str| {
                 e.payload
@@ -211,10 +197,7 @@ fn a_slider_keeps_its_arrows() {
     assert_eq!(sink_events(&evs), vec![]);
     assert_eq!(evs.len(), 1);
     assert_eq!(evs[0].key, k.vol);
-    assert_eq!(
-        evs[0].payload.get("action").and_then(Value::as_str),
-        Some("increment")
-    );
+    assert_eq!(evs[0].payload.get_str("action"), Some("increment"));
 }
 
 #[test]
@@ -238,10 +221,7 @@ fn a_chord_bubbles_even_when_the_bare_key_is_the_controls() {
     let mut core = Core::new();
     let k = shell(&mut core, false);
     core.set_focus(Some(k.go));
-    let cmd = KeyMods {
-        super_key: true,
-        ..Default::default()
-    };
+    let cmd = KeyMods::NONE.with_super();
     let evs = window_press(&mut core, KeyCode::Enter, cmd, Some(EditKey::Enter), None);
     assert_eq!(
         sink_events(&evs),
@@ -258,15 +238,9 @@ fn a_chord_bubbles_even_when_the_bare_key_is_the_controls() {
 /// away.
 fn non_primary() -> KeyMods {
     if cfg!(target_os = "macos") {
-        KeyMods {
-            ctrl: true,
-            ..Default::default()
-        }
+        KeyMods::NONE.with_ctrl()
     } else {
-        KeyMods {
-            super_key: true,
-            ..Default::default()
-        }
+        KeyMods::NONE.with_super()
     }
 }
 
@@ -306,13 +280,7 @@ fn a_chord_on_the_non_primary_modifier_does_not_also_press_the_control() {
 fn space_under_a_modifier_is_a_chord_and_types_nothing() {
     let ctrl_space = KeyPress::new(KeyCode::Space, non_primary());
     assert_eq!(ctrl_space.edit_event(), None, "no text channel for a chord");
-    let shift_space = KeyPress::new(
-        KeyCode::Space,
-        KeyMods {
-            shift: true,
-            ..Default::default()
-        },
-    );
+    let shift_space = KeyPress::new(KeyCode::Space, KeyMods::NONE.with_shift());
     assert_eq!(
         shift_space.edit_event(),
         Some(InputEvent::Text(" ".into())),
@@ -485,38 +453,25 @@ fn modal_over_a_shell(core: &mut Core) -> (Key, Key) {
     let mut ui = core.frame(Size::new(200.0, 200.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
     let mut ok = Key::ROOT;
-    let shell = ui.with_keyed(
-        "shell",
-        NodeSpec::column().fill().on_key(Value::str("shell")),
-        |ui| {
-            ui.leaf_keyed(
-                "go",
-                NodeSpec::row()
-                    .width(Sizing::Fixed(100.0))
-                    .height(Sizing::Fixed(H))
-                    .on_click(Value::str("go"))
-                    .label("Go"),
-            );
-            ui.with_keyed(
-                "dialog",
-                NodeSpec::column()
-                    .width(Sizing::Fixed(120.0))
-                    .height(Sizing::Fixed(80.0))
-                    .modal(Value::str("dlg"))
-                    .label("Settings"),
-                |ui| {
-                    ok = ui.leaf_keyed(
-                        "ok",
-                        NodeSpec::row()
-                            .width(Sizing::Fixed(80.0))
-                            .height(Sizing::Fixed(H))
-                            .on_click(Value::str("ok"))
-                            .label("OK"),
-                    );
-                },
-            );
-        },
-    );
+    let shell = ui.with_keyed("shell", NodeSpec::column().fill().on_key("shell"), |ui| {
+        ui.leaf_keyed(
+            "go",
+            NodeSpec::row().size(100.0, H).on_click("go").label("Go"),
+        );
+        ui.with_keyed(
+            "dialog",
+            NodeSpec::column()
+                .size(120.0, 80.0)
+                .modal("dlg")
+                .label("Settings"),
+            |ui| {
+                ok = ui.leaf_keyed(
+                    "ok",
+                    NodeSpec::row().size(80.0, H).on_click("ok").label("OK"),
+                );
+            },
+        );
+    });
     ui.finish();
     (shell, ok)
 }

@@ -56,12 +56,12 @@ fn window_events(ctx: *mut KuiCtx) -> Vec<(String, String)> {
     let mut ev = KuiEvent::default();
     while kui_poll_event(ctx, &raw mut ev) {
         let payload = unsafe { &(*ev.payload).0 };
-        let kind = payload.get("kind").and_then(Value::as_str).unwrap_or("-");
+        let kind = payload.get_str("kind").unwrap_or("-");
         if kind != "window" {
             continue;
         }
-        let phase = payload.get("phase").and_then(Value::as_str).unwrap_or("-");
-        let name = payload.get("name").and_then(Value::as_str).unwrap_or("-");
+        let phase = payload.get_str("phase").unwrap_or("-");
+        let name = payload.get_str("name").unwrap_or("-");
         out.push((phase.to_string(), name.to_string()));
     }
     out

@@ -2687,9 +2687,9 @@ mod tests {
         ]);
         let lua_v = value_to_lua(&lua, &original).unwrap();
         let back = lua_to_value(&lua_v).unwrap();
-        assert_eq!(back.get("kind").and_then(Value::as_str), Some("inc"));
-        assert_eq!(back.get("by").and_then(Value::as_int), Some(2));
-        assert_eq!(back.get("enabled").and_then(Value::as_bool), Some(true));
+        assert_eq!(back.get_str("kind"), Some("inc"));
+        assert_eq!(back.get_int("by"), Some(2));
+        assert_eq!(back.get_bool("enabled"), Some(true));
         match back.get("weights") {
             Some(Value::List(items)) => assert_eq!(items.len(), 2),
             other => panic!("expected list, got {other:?}"),
@@ -2732,7 +2732,7 @@ mod tests {
         );
         let p = parse_props(&t, true, &mut test_refs()).unwrap();
         let expected = NodeSpec::row()
-            .width(Sizing::Grow(1.0))
+            .grow_width()
             .height(Sizing::Percent(0.5))
             .min_width(10.0)
             .max_width(500.0)
@@ -2755,8 +2755,7 @@ mod tests {
             .scroll_x()
             .float(
                 FloatConfig::viewport()
-                    .at(Align::End, Align::End)
-                    .self_at(Align::End, Align::End)
+                    .inside(Align::End, Align::End)
                     .offset(-8.0, -8.0)
                     .fit(),
             )
@@ -2982,11 +2981,7 @@ mod tests {
         let chord = || {
             kui_core::InputEvent::KeyDown(kui_core::KeyPress::new(
                 kui_core::KeyCode::Char('N'),
-                kui_core::KeyMods {
-                    ctrl: true,
-                    shift: true,
-                    ..Default::default()
-                },
+                kui_core::KeyMods::NONE.with_ctrl().with_shift(),
             ))
         };
         core.handle_input(chord());
@@ -3020,10 +3015,7 @@ mod tests {
         let evs = kui_core::testing::click_at(&mut core, jump.x + 2.0, jump.y + 2.0);
         assert_eq!(evs.len(), 1);
         assert_eq!(evs[0].origin, OriginId(1), "the script's own event");
-        assert_eq!(
-            evs[0].payload.get("kind").and_then(Value::as_str),
-            Some("jump")
-        );
+        assert_eq!(evs[0].kind(), Some("jump"));
     }
 
     /// The root table's `windows` list is `Ui::window` per entry: a name
@@ -3625,10 +3617,7 @@ mod tests {
         assert_eq!(evs.len(), 1);
         assert_eq!(evs[0].origin, OriginId(1));
         let p = &evs[0].payload;
-        assert_eq!(
-            p.get("action").and_then(Value::as_str),
-            Some("setTextSelection")
-        );
+        assert_eq!(p.get_str("action"), Some("setTextSelection"));
         let at = |k: &str, f: &str| p.get(k).and_then(|v| v.get(f)).and_then(Value::as_int);
         assert_eq!(
             (at("anchor", "line"), at("anchor", "offset")),
@@ -3638,7 +3627,7 @@ mod tests {
             (at("focus", "line"), at("focus", "offset")),
             (Some(1), Some(0))
         );
-        assert_eq!(p.get("tag").and_then(Value::as_str), Some("keys"));
+        assert_eq!(p.get_str("tag"), Some("keys"));
     }
 
     /// Editors: autofocus, typing produces a "changed" event carrying the
@@ -3676,10 +3665,7 @@ mod tests {
             1,
             "typing into the autofocused editor emits one event"
         );
-        assert_eq!(
-            events[0].payload.get("kind").and_then(Value::as_str),
-            Some("changed")
-        );
+        assert_eq!(events[0].kind(), Some("changed"));
         for ev in &events {
             ext.on_event(ev);
         }
@@ -4577,10 +4563,7 @@ mod tests {
             paths: paths.clone(),
             at: Vec2::new(50.0, 30.0),
         });
-        assert_eq!(
-            evs[0].payload.get("tag").and_then(Value::as_str),
-            Some("files")
-        );
+        assert_eq!(evs[0].payload.get_str("tag"), Some("files"));
         frame(&mut core, &mut ext);
         assert!(over(&ext), "the files are over the zone");
         assert_eq!(target(&ext), Some(zone.0 as i64));
@@ -5284,10 +5267,7 @@ mod tests {
         core.handle_input(InputEvent::mouse_down(1));
         let events = core.handle_input(InputEvent::mouse_up());
         assert_eq!(events.len(), 1, "{events:?}");
-        assert_eq!(
-            events[0].payload.get("item").and_then(Value::as_str),
-            Some("inspect")
-        );
+        assert_eq!(events[0].payload.get_str("item"), Some("inspect"));
         assert_eq!(
             events[0].origin,
             OriginId(1),

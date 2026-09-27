@@ -4,8 +4,7 @@
 //! blanks that make a screenful paste like a rectangle instead of text.
 
 use kui_core::{
-    Cell, CellGrid, Color, Core, InputEvent, Key, MouseButton, NodeSpec, Size, Sizing, TextStyle,
-    Vec2,
+    Cell, CellGrid, Color, Core, InputEvent, Key, MouseButton, NodeSpec, Size, TextStyle, Vec2,
 };
 
 const COLS: usize = 10;
@@ -38,14 +37,7 @@ fn frame(core: &mut Core, origin: u64) -> Key {
         origin_line: origin,
     };
     let key = ui.child_key("term");
-    ui.cells_keyed(
-        "term",
-        &grid,
-        NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Grow(1.0))
-            .selectable(),
-    );
+    ui.cells_keyed("term", &grid, NodeSpec::column().fill().selectable());
     ui.finish();
     key
 }
@@ -137,22 +129,18 @@ fn a_grid_never_joins_the_text_scope_around_it() {
     let cells = screen();
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    let outer = ui.with_keyed(
-        "card",
-        NodeSpec::column().width(Sizing::Grow(1.0)).selectable(),
-        |ui| {
-            ui.text("a label", TextStyle::new(14.0));
-            let grid = CellGrid {
-                rows: ROWS,
-                cols: COLS,
-                cells: &cells,
-                style: TextStyle::new(14.0).family(kui_core::FontFamily::Mono),
-                cursor: None,
-                origin_line: 0,
-            };
-            ui.cells_keyed("term", &grid, NodeSpec::column().width(Sizing::Grow(1.0)));
-        },
-    );
+    let outer = ui.with_keyed("card", NodeSpec::column().grow_width().selectable(), |ui| {
+        ui.text("a label", TextStyle::new(14.0));
+        let grid = CellGrid {
+            rows: ROWS,
+            cols: COLS,
+            cells: &cells,
+            style: TextStyle::new(14.0).family(kui_core::FontFamily::Mono),
+            cursor: None,
+            origin_line: 0,
+        };
+        ui.cells_keyed("term", &grid, NodeSpec::column().grow_width());
+    });
     ui.finish();
     // Selecting the card takes its text and none of the screen: the grid
     // is not part of the paragraph around it.
@@ -166,10 +154,11 @@ fn one_selection_per_window_holds_across_the_two_kinds() {
     let cells = screen();
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    let card = ui.with_keyed(
+    let card = ui.text_in_keyed(
         "card",
-        NodeSpec::column().width(Sizing::Grow(1.0)).selectable(),
-        |ui| ui.text("a label", TextStyle::new(14.0)),
+        NodeSpec::column().grow_width().selectable(),
+        "a label",
+        TextStyle::new(14.0),
     );
     let grid = CellGrid {
         rows: ROWS,
@@ -183,10 +172,7 @@ fn one_selection_per_window_holds_across_the_two_kinds() {
     ui.cells_keyed(
         "term",
         &grid,
-        NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Fixed(60.0))
-            .selectable(),
+        NodeSpec::column().grow_width().height(60.0).selectable(),
     );
     ui.finish();
     core.select_all_in(card);
@@ -286,10 +272,7 @@ fn a_padded_grid_counts_its_rows_from_inside_the_padding() {
     ui.cells_keyed(
         "term",
         &grid,
-        NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .pad(PAD)
-            .selectable(),
+        NodeSpec::column().grow_width().pad(PAD).selectable(),
     );
     ui.finish();
     // The middle of row 1, column 1 — measured from the padded corner.
@@ -428,10 +411,7 @@ fn a_wide_glyph_copies_as_itself_and_selects_with_its_spacer() {
             cursor: None,
             origin_line: 0,
         },
-        NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Grow(1.0))
-            .selectable(),
+        NodeSpec::column().fill().selectable(),
     );
     ui.finish();
     assert!(core.select_all_in(key));
@@ -483,14 +463,7 @@ fn a_view_can_read_the_grid_selection_while_it_builds_the_next_frame() {
         cursor: None,
         origin_line: 0,
     };
-    ui.cells_keyed(
-        "term",
-        &grid,
-        NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Grow(1.0))
-            .selectable(),
-    );
+    ui.cells_keyed("term", &grid, NodeSpec::column().fill().selectable());
     ui.finish();
     assert_eq!(core.copy_selection().as_deref(), Some("brave"));
 }

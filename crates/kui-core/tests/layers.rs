@@ -6,7 +6,7 @@
 
 use kui_core::{
     Align, Color, Core, CursorShape, EditKey, FloatConfig, InputEvent, Mods, MouseButton, NodeSpec,
-    QuadKind, Size, Sizing, Value, Vec2,
+    QuadKind, Size, Vec2,
 };
 
 const VIEW: Size = Size { w: 400.0, h: 200.0 };
@@ -67,16 +67,11 @@ fn painted(core: &mut Core) -> Vec<&'static str> {
 
 /// A 200×100 float at (`x`, 50) in the viewport.
 fn float_at(x: f32, bg: Color) -> NodeSpec {
-    NodeSpec::column()
-        .width(Sizing::Fixed(200.0))
-        .height(Sizing::Fixed(100.0))
-        .bg(bg)
-        .float(
-            FloatConfig::viewport()
-                .at(Align::Start, Align::Start)
-                .self_at(Align::Start, Align::Start)
-                .offset(x, 50.0),
-        )
+    NodeSpec::column().size(200.0, 100.0).bg(bg).float(
+        FloatConfig::viewport()
+            .inside(Align::Start, Align::Start)
+            .offset(x, 50.0),
+    )
 }
 
 /// A scroller filling the window with twenty grey rows (600 of content in
@@ -88,18 +83,15 @@ fn scroller_and_float(core: &mut Core, modal: bool) {
         for i in 0..20 {
             ui.leaf_keyed(
                 &format!("row{i}"),
-                NodeSpec::row()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Fixed(30.0))
-                    .bg(GREY),
+                NodeSpec::row().grow_width().height(30.0).bg(GREY),
             );
         }
     });
     let mut spec = float_at(250.0, RED)
-        .on_click(Value::str("menu"))
+        .on_click("menu")
         .cursor(CursorShape::Pointer);
     if modal {
-        spec = spec.modal(Value::str("menu"));
+        spec = spec.modal("menu");
     }
     ui.leaf_keyed("menu", spec);
     ui.finish();
@@ -168,7 +160,7 @@ fn a_press_on_a_float_over_the_bar_reaches_the_float() {
 fn bar_and_body(core: &mut Core, dropdown: bool, tooltip: bool) {
     let mut ui = core.frame(VIEW, 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    ui.with_keyed("bar", NodeSpec::row().height(Sizing::Fixed(24.0)), |ui| {
+    ui.with_keyed("bar", NodeSpec::row().height(24.0), |ui| {
         if dropdown {
             ui.leaf_keyed("dropdown", float_at(100.0, RED));
         }
@@ -176,10 +168,9 @@ fn bar_and_body(core: &mut Core, dropdown: bool, tooltip: bool) {
     ui.leaf_keyed(
         "btn",
         NodeSpec::row()
-            .width(Sizing::Fixed(80.0))
-            .height(Sizing::Fixed(30.0))
+            .size(80.0, 30.0)
             .bg(GREEN)
-            .on_click(Value::str("btn"))
+            .on_click("btn")
             .focusable(),
     );
     if tooltip {
@@ -227,12 +218,9 @@ fn the_hit_list_is_the_stack() {
         let mut ui = core.frame(VIEW, 1.0);
         ui.configure_root(NodeSpec::column().fill());
         if dropdown {
-            ui.leaf_keyed(
-                "dropdown",
-                float_at(100.0, RED).on_click(Value::str("dropdown")),
-            );
+            ui.leaf_keyed("dropdown", float_at(100.0, RED).on_click("dropdown"));
         }
-        ui.leaf_keyed("tip", float_at(150.0, BLUE).on_click(Value::str("tip")));
+        ui.leaf_keyed("tip", float_at(150.0, BLUE).on_click("tip"));
         ui.finish();
     };
     let click = |core: &mut Core| -> Option<String> {
@@ -287,10 +275,9 @@ fn a_ring_inside_a_float_ends_that_layer() {
             ui.leaf_keyed(
                 "ok",
                 NodeSpec::row()
-                    .width(Sizing::Fixed(40.0))
-                    .height(Sizing::Fixed(20.0))
+                    .size(40.0, 20.0)
                     .bg(GREEN)
-                    .on_click(Value::str("ok"))
+                    .on_click("ok")
                     .focusable(),
             );
         });
@@ -317,10 +304,7 @@ fn a_scroller_inside_a_float_bars_at_that_layers_end() {
         for i in 0..10 {
             ui.leaf_keyed(
                 &format!("row{i}"),
-                NodeSpec::row()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Fixed(30.0))
-                    .bg(GREY),
+                NodeSpec::row().grow_width().height(30.0).bg(GREY),
             );
         }
     });
@@ -345,13 +329,7 @@ fn a_nested_float_is_above_the_float_it_is_in() {
             if sub {
                 ui.leaf_keyed("submenu", float_at(120.0, BLUE));
             }
-            ui.leaf_keyed(
-                "item",
-                NodeSpec::row()
-                    .width(Sizing::Fixed(40.0))
-                    .height(Sizing::Fixed(20.0))
-                    .bg(GREEN),
-            );
+            ui.leaf_keyed("item", NodeSpec::row().size(40.0, 20.0).bg(GREEN));
         });
         ui.finish();
     };
@@ -379,9 +357,7 @@ fn a_float_over_a_modal_from_outside_it_warns_when_it_holds_a_control() {
         ui.configure_root(NodeSpec::column().fill());
         ui.leaf_keyed(
             "dialog",
-            float_at(100.0, RED)
-                .modal(Value::str("dialog"))
-                .label("Dialog"),
+            float_at(100.0, RED).modal("dialog").label("Dialog"),
         );
         if hud {
             ui.with_keyed("hud", float_at(150.0, BLUE), |ui| {
@@ -389,9 +365,8 @@ fn a_float_over_a_modal_from_outside_it_warns_when_it_holds_a_control() {
                     ui.leaf_keyed(
                         "close",
                         NodeSpec::row()
-                            .width(Sizing::Fixed(20.0))
-                            .height(Sizing::Fixed(20.0))
-                            .on_click(Value::str("close"))
+                            .size(20.0, 20.0)
+                            .on_click("close")
                             .label("Close"),
                     );
                 }

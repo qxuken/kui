@@ -16,9 +16,7 @@
 //! Run: cargo run -p kui-native --example polygon [-- --headless]
 
 use kui_devtools::{Drive, Example};
-use kui_native::{
-    App, Color, Core, FloatConfig, NodeSpec, QuadKind, Sizing, Stroke, TextStyle, Ui, Vec2,
-};
+use kui_native::{App, Color, Core, FloatConfig, NodeSpec, QuadKind, Stroke, TextStyle, Ui, Vec2};
 
 /// A wedge of `frac` of the circle starting at `from` turns: the centre,
 /// then the arc flattened into as many points as eight allows. Coarse for
@@ -68,8 +66,7 @@ impl App for Demo {
                 // The pie: each wedge is hoverable in its own outline, and
                 // its fill eases toward the accent.
                 let pie = NodeSpec::column()
-                    .width(Sizing::Fixed(220.0))
-                    .height(Sizing::Fixed(220.0))
+                    .size(220.0, 220.0)
                     .bg(t.surface)
                     .border(1.0, t.border)
                     .radius(12.0);
@@ -97,8 +94,7 @@ impl App for Demo {
                     // Arrowheads: a stroke to the base, a triangle at the
                     // tip, both in the panel's box space.
                     let graph = NodeSpec::column()
-                        .width(Sizing::Fixed(300.0))
-                        .height(Sizing::Fixed(102.0))
+                        .size(300.0, 102.0)
                         .bg(t.surface)
                         .border(1.0, t.border)
                         .radius(12.0);
@@ -123,8 +119,7 @@ impl App for Demo {
                             ui.leaf(
                                 NodeSpec::column()
                                     .float(FloatConfig::parent().offset(n.x - 12.0, n.y - 12.0))
-                                    .width(Sizing::Fixed(24.0))
-                                    .height(Sizing::Fixed(24.0))
+                                    .size(24.0, 24.0)
                                     .bg(t.raised)
                                     .border(1.0, t.border)
                                     .radius(12.0));
@@ -135,8 +130,7 @@ impl App for Demo {
                     // per span, so no polygon needs more than four points
                     // and the outline is the stroke over it.
                     let chart = NodeSpec::column()
-                        .width(Sizing::Fixed(300.0))
-                        .height(Sizing::Fixed(102.0))
+                        .size(300.0, 102.0)
                         .bg(t.surface)
                         .border(1.0, t.border)
                         .radius(12.0);
@@ -164,8 +158,7 @@ impl App for Demo {
                 // A concave outline fills correctly: the polygon SDF, not
                 // a convex hull.
                 let card = NodeSpec::column()
-                    .width(Sizing::Fixed(120.0))
-                    .height(Sizing::Fixed(220.0))
+                    .size(120.0, 220.0)
                     .bg(t.surface)
                     .border(1.0, t.border)
                     .radius(12.0);

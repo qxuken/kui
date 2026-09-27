@@ -12,7 +12,7 @@
 use crate::color::Color;
 use crate::geom::Vec2;
 use crate::line::Stroke;
-use crate::spec::{NodeSpec, Sizing};
+use crate::spec::NodeSpec;
 use crate::ui::Ui;
 
 /// The glyphs the panel has. Each is one picture at one size.
@@ -46,46 +46,41 @@ pub(super) fn draw(ui: &mut Ui<'_>, icon: Icon, color: Color, fill: Color) {
     let hair = Stroke::new(1.0, color);
     let v = Vec2::new;
     let spec = || NodeSpec::column();
-    ui.with(
-        NodeSpec::column()
-            .width(Sizing::Fixed(SIZE))
-            .height(Sizing::Fixed(SIZE)),
-        |ui| match icon {
-            Icon::DockLeft | Icon::DockRight | Icon::DockBottom => {
-                // The window frame, then the pane as a fill inside it.
-                frame(ui, stroke, 1.5, 1.5, 14.5, 14.5);
-                let (x0, y0, x1, y1) = match icon {
-                    Icon::DockLeft => (2.5, 2.5, 6.5, 13.5),
-                    Icon::DockRight => (9.5, 2.5, 13.5, 13.5),
-                    _ => (2.5, 9.5, 13.5, 13.5),
-                };
-                ui.polygon(
-                    &[v(x0, y0), v(x1, y0), v(x1, y1), v(x0, y1)],
-                    spec().bg(fill),
-                );
-            }
-            Icon::DockWindow => {
-                // The back window, then the front one shaded over it.
-                frame(ui, stroke, 1.5, 1.5, 10.5, 10.5);
-                ui.polygon(
-                    &[v(6.0, 6.0), v(14.5, 6.0), v(14.5, 14.5), v(6.0, 14.5)],
-                    spec().bg(fill),
-                );
-                frame(ui, stroke, 6.0, 6.0, 14.5, 14.5);
-            }
-            Icon::Close => {
-                ui.line(v(4.0, 4.0), v(12.0, 12.0), stroke, spec());
-                ui.line(v(12.0, 4.0), v(4.0, 12.0), stroke, spec());
-            }
-            Icon::Pick => {
-                ui.polyline(&circle(8.0, 8.0, 4.5), hair, spec());
-                ui.line(v(8.0, 1.0), v(8.0, 5.0), stroke, spec());
-                ui.line(v(8.0, 11.0), v(8.0, 15.0), stroke, spec());
-                ui.line(v(1.0, 8.0), v(5.0, 8.0), stroke, spec());
-                ui.line(v(11.0, 8.0), v(15.0, 8.0), stroke, spec());
-            }
-        },
-    );
+    ui.with(NodeSpec::column().size(SIZE, SIZE), |ui| match icon {
+        Icon::DockLeft | Icon::DockRight | Icon::DockBottom => {
+            // The window frame, then the pane as a fill inside it.
+            frame(ui, stroke, 1.5, 1.5, 14.5, 14.5);
+            let (x0, y0, x1, y1) = match icon {
+                Icon::DockLeft => (2.5, 2.5, 6.5, 13.5),
+                Icon::DockRight => (9.5, 2.5, 13.5, 13.5),
+                _ => (2.5, 9.5, 13.5, 13.5),
+            };
+            ui.polygon(
+                &[v(x0, y0), v(x1, y0), v(x1, y1), v(x0, y1)],
+                spec().bg(fill),
+            );
+        }
+        Icon::DockWindow => {
+            // The back window, then the front one shaded over it.
+            frame(ui, stroke, 1.5, 1.5, 10.5, 10.5);
+            ui.polygon(
+                &[v(6.0, 6.0), v(14.5, 6.0), v(14.5, 14.5), v(6.0, 14.5)],
+                spec().bg(fill),
+            );
+            frame(ui, stroke, 6.0, 6.0, 14.5, 14.5);
+        }
+        Icon::Close => {
+            ui.line(v(4.0, 4.0), v(12.0, 12.0), stroke, spec());
+            ui.line(v(12.0, 4.0), v(4.0, 12.0), stroke, spec());
+        }
+        Icon::Pick => {
+            ui.polyline(&circle(8.0, 8.0, 4.5), hair, spec());
+            ui.line(v(8.0, 1.0), v(8.0, 5.0), stroke, spec());
+            ui.line(v(8.0, 11.0), v(8.0, 15.0), stroke, spec());
+            ui.line(v(1.0, 8.0), v(5.0, 8.0), stroke, spec());
+            ui.line(v(11.0, 8.0), v(15.0, 8.0), stroke, spec());
+        }
+    });
 }
 
 /// A closed rectangle outline.

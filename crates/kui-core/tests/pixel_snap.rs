@@ -6,8 +6,7 @@
 //! gap between a card's left edge and its first glyph, frame by frame.
 
 use kui_core::{
-    Color, Core, Easing, Enter, Key, NodeSpec, Quad, QuadKind, Size, Sizing, TextStyle, Transition,
-    Vec2,
+    Color, Core, Easing, Enter, Key, NodeSpec, Quad, QuadKind, Size, TextStyle, Transition, Vec2,
 };
 
 fn is_glyph(q: &Quad) -> bool {
@@ -41,15 +40,12 @@ fn slide_frame(core: &mut Core, t: f64, pad_l: f32) -> (Vec2, Vec2) {
         ..kui_core::Edges::all(0.0)
     }));
     let spec = NodeSpec::column()
-        .width(Sizing::Fixed(200.0))
-        .height(Sizing::Fixed(60.0))
+        .size(200.0, 60.0)
         .pad(14.0)
         .bg(Color::WHITE)
         .transition_with(Transition::ms(SLIDE as f32 * 1000.0).easing(Easing::Linear))
         .enter(Enter::from(-100.0, 0.0));
-    ui.with_keyed("card", spec, |ui| {
-        ui.text("Hi", TextStyle::new(14.0));
-    });
+    ui.text_in_keyed("card", spec, "Hi", TextStyle::new(14.0));
     ui.finish();
     box_and_glyph(core)
 }
@@ -102,13 +98,8 @@ fn scroll_frame(core: &mut Core, off: f32) -> (Vec2, Vec2) {
     ui.configure_root(NodeSpec::column().fill());
     ui.with_keyed("list", NodeSpec::column().fill().scroll_y(), |ui| {
         for i in 0..8 {
-            let row = NodeSpec::column()
-                .width(Sizing::Fixed(200.0))
-                .height(Sizing::Fixed(30.0))
-                .bg(Color::WHITE);
-            ui.with_keyed(&format!("row{i}"), row, |ui| {
-                ui.text("Hi", TextStyle::new(14.0));
-            });
+            let row = NodeSpec::column().size(200.0, 30.0).bg(Color::WHITE);
+            ui.text_in_keyed(&format!("row{i}"), row, "Hi", TextStyle::new(14.0));
         }
     });
     ui.finish();
@@ -143,15 +134,12 @@ fn text_does_not_wobble_inside_a_departing_box() {
         ui.configure_root(NodeSpec::row().fill());
         if present {
             let spec = NodeSpec::column()
-                .width(Sizing::Fixed(200.0))
-                .height(Sizing::Fixed(60.0))
+                .size(200.0, 60.0)
                 .pad(14.0)
                 .bg(Color::WHITE)
                 .transition_with(Transition::ms(260.0).easing(Easing::Linear))
                 .exit(Enter::from(101.0, 0.0));
-            ui.with_keyed("card", spec, |ui| {
-                ui.text("Hi", TextStyle::new(14.0));
-            });
+            ui.text_in_keyed("card", spec, "Hi", TextStyle::new(14.0));
         }
         ui.finish();
     };

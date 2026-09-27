@@ -5,7 +5,7 @@
 //! window at the window's origin. Now both arrive on the sink as data and
 //! the candidate window is anchored at the `line`'s caret.
 
-use kui_core::{Color, Core, InputEvent, Key, NodeSpec, Role, Size, Sizing, TextStyle, Value};
+use kui_core::{Color, Core, InputEvent, Key, NodeSpec, Role, Size, TextStyle, Value};
 
 const LH: f32 = 20.0;
 
@@ -21,21 +21,19 @@ fn frame(core: &mut Core, caret: u32) -> (Key, Key) {
     let sink = ui.with_keyed(
         "editor",
         NodeSpec::column()
-            .on_key(Value::str("ed"))
+            .on_key("ed")
             .role(Role::MultilineTextInput)
             .label("Buffer"),
         |ui| {
-            ui.with_keyed(
+            ui.text_in_keyed(
                 "l0",
-                NodeSpec::row().height(Sizing::Fixed(LH)).role(Role::Line),
-                |ui| ui.text("first line", mono()),
+                NodeSpec::row().height(LH).role(Role::Line),
+                "first line",
+                mono(),
             );
             ui.with_keyed(
                 "l1",
-                NodeSpec::row()
-                    .height(Sizing::Fixed(LH))
-                    .role(Role::Line)
-                    .caret(caret),
+                NodeSpec::row().height(LH).role(Role::Line).caret(caret),
                 |ui| {
                     ui.text("let ", mono().color(Color::rgb8(200, 100, 255)));
                     ui.text("value", mono());
@@ -161,7 +159,7 @@ fn a_stock_editor_takes_the_commit_itself() {
             autofocus: true,
             ..Default::default()
         },
-        NodeSpec::column().width(Sizing::Grow(1.0)),
+        NodeSpec::column().grow_width(),
     );
     ui.finish();
     let events = core.handle_input(InputEvent::Commit("日本語".into()));

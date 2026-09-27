@@ -32,7 +32,7 @@ fn build(
     ui.with_keyed("set", NodeSpec::row().role(container).gap(4.0), |ui| {
         for (i, name) in names.iter().enumerate() {
             keys.push(
-                ui.with_keyed(
+                ui.text_in_keyed(
                     name,
                     NodeSpec::row()
                         .role(item)
@@ -40,15 +40,13 @@ fn build(
                         .selected(i == selected)
                         .on_click(Value::str(*name))
                         .pad(4.0),
-                    |ui| ui.text(name, TextStyle::new(12.0)),
+                    name,
+                    TextStyle::new(12.0),
                 ),
             );
         }
     });
-    let after = ui.leaf_keyed(
-        "after",
-        NodeSpec::row().on_click(Value::str("after")).label("After"),
-    );
+    let after = ui.leaf_keyed("after", NodeSpec::row().on_click("after").label("After"));
     (keys, after)
 }
 
@@ -98,13 +96,7 @@ fn a_composite_is_one_tab_stop() {
     assert_eq!(core.focus(), Some(after));
     // And back: the stop is where the user was, so Shift-Tab returns to
     // the item focus left from rather than to the selected one.
-    core.handle_input(InputEvent::Key(
-        EditKey::Tab,
-        Mods {
-            shift: true,
-            ..Default::default()
-        },
-    ));
+    core.handle_input(InputEvent::Key(EditKey::Tab, Mods::NONE.with_shift()));
     assert_eq!(core.focus(), Some(tabs[1]));
 }
 
@@ -280,9 +272,12 @@ fn a_column_composite_reports_vertical() {
     ui.configure_root(NodeSpec::column().fill());
     ui.with_keyed("set", NodeSpec::column().role(Role::Menu), |ui| {
         for name in ["a", "b"] {
-            ui.with_keyed(name, NodeSpec::row().role(Role::MenuItem), |ui| {
-                ui.text(name, TextStyle::new(12.0))
-            });
+            ui.text_in_keyed(
+                name,
+                NodeSpec::row().role(Role::MenuItem),
+                name,
+                TextStyle::new(12.0),
+            );
         }
     });
     ui.finish();
@@ -411,19 +406,14 @@ fn a_composite_inside_a_modal_collapses_too() {
     let mut core = Core::new();
     let mut ui = core.frame(VIEW, 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    ui.leaf_keyed(
-        "behind",
-        NodeSpec::row()
-            .on_click(Value::str("behind"))
-            .label("Behind"),
-    );
+    ui.leaf_keyed("behind", NodeSpec::row().on_click("behind").label("Behind"));
     let mut tabs = Vec::new();
     let mut ok = Key::ROOT;
     ui.with_keyed(
         "dialog",
         NodeSpec::column()
             .float(FloatConfig::viewport().at(Align::Center, Align::Center))
-            .modal(Value::str("d"))
+            .modal("d")
             .label("Pick"),
         |ui| {
             ui.with_keyed("tabs", NodeSpec::row().role(Role::TabList), |ui| {
@@ -434,7 +424,7 @@ fn a_composite_inside_a_modal_collapses_too() {
                     ));
                 }
             });
-            ok = ui.leaf_keyed("ok", NodeSpec::row().on_click(Value::str("ok")).label("OK"));
+            ok = ui.leaf_keyed("ok", NodeSpec::row().on_click("ok").label("OK"));
         },
     );
     ui.finish();
@@ -468,16 +458,10 @@ fn focusable_inside_an_item_is_reported_and_beside_one_is_not() {
                 .focusable()
                 .label("Row"),
             |ui| {
-                buried = ui.leaf_keyed(
-                    "delete",
-                    NodeSpec::row().on_click(Value::str("del")).label("Delete"),
-                );
+                buried = ui.leaf_keyed("delete", NodeSpec::row().on_click("del").label("Delete"));
             },
         );
-        plus = ui.leaf_keyed(
-            "add",
-            NodeSpec::row().on_click(Value::str("add")).label("Add"),
-        );
+        plus = ui.leaf_keyed("add", NodeSpec::row().on_click("add").label("Add"));
     });
     ui.finish();
     let warnings = core.take_warnings();
@@ -538,10 +522,7 @@ fn a_radio_or_tab_outside_its_container_is_reported() {
                 ui.with(NodeSpec::row(), |ui| {
                     ui.leaf_keyed(
                         "t",
-                        NodeSpec::row()
-                            .role(Role::Tab)
-                            .on_click(Value::str("t"))
-                            .label("T"),
+                        NodeSpec::row().role(Role::Tab).on_click("t").label("T"),
                     );
                 });
             },

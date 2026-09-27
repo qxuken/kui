@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use kui_devtools::Example;
-use kui_native::{App, NodeSpec, Sizing, TextStyle, Ui, Waker, WindowCommand};
+use kui_native::{App, NodeSpec, TextStyle, Ui, Waker, WindowCommand};
 
 struct Feed {
     lines: Arc<Mutex<Vec<String>>>,
@@ -75,9 +75,11 @@ impl App for Feed {
                     TextStyle::new(13.0).mono().color(t.muted),
                 );
                 for line in lines.iter().rev().take(10).rev() {
-                    ui.with(NodeSpec::row().height(Sizing::Fixed(18.0)), |ui| {
-                        ui.text(line, TextStyle::new(13.0).mono().color(t.fg))
-                    });
+                    ui.text_in(
+                        NodeSpec::row().height(18.0),
+                        line,
+                        TextStyle::new(13.0).mono().color(t.fg),
+                    );
                 }
             },
         );

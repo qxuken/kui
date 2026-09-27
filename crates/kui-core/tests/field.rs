@@ -285,7 +285,7 @@ fn a_field_with_wrap_folds_to_its_width_and_still_submits() {
 
     let mut core = Core::new();
     let opts = folding(16.0, TextWrap::Word);
-    let spec = NodeSpec::column().pad(PAD).width(Sizing::Fixed(LABEL_W));
+    let spec = NodeSpec::column().pad(PAD).width(LABEL_W);
     let (key, rect) = frame_with(&mut core, LABEL, &opts, spec.clone());
     // How many lines the label folds onto is the sans-serif face's to
     // say (two on Windows, three on a fontconfig CI); folded is what the
@@ -347,7 +347,7 @@ fn a_folded_field_admits_no_newline_by_any_door() {
     // and a paste all drop the newline, whatever the box's height.
     let mut core = Core::new();
     let opts = folding(16.0, TextWrap::Word);
-    let spec = NodeSpec::column().pad(PAD).width(Sizing::Fixed(LABEL_W));
+    let spec = NodeSpec::column().pad(PAD).width(LABEL_W);
     let (key, _) = frame_with(&mut core, "one\ntwo", &opts, spec.clone());
     assert_eq!(core.edit_text(key).as_deref(), Some("onetwo"));
     core.set_edit_text(key, "three\nfour");
@@ -364,7 +364,7 @@ fn wrap_none_on_a_field_is_the_field() {
     // takes one line and scrolls it, exactly as one that never said.
     let mut core = Core::new();
     let opts = folding(16.0, TextWrap::None);
-    let spec = NodeSpec::column().pad(PAD).width(Sizing::Fixed(LABEL_W));
+    let spec = NodeSpec::column().pad(PAD).width(LABEL_W);
     let (key, rect) = frame_with(&mut core, LABEL, &opts, spec);
     assert_eq!(lines(&mut core, key), 1);
     let head = glyphs(&mut core)[0].0.rect.x;
@@ -381,7 +381,7 @@ fn a_folded_field_breaks_by_glyph_when_asked() {
     // word that `wrap="word"` carries whole onto the next line, so the
     // glyph break fills the first line further.
     let text = "abcdefghijklmnop abcdefghijklmnop";
-    let spec = || NodeSpec::column().pad(PAD).width(Sizing::Fixed(LABEL_W));
+    let spec = || NodeSpec::column().pad(PAD).width(LABEL_W);
     let first_line_w = |core: &mut Core, key: Key| {
         core.access_tree()
             .nodes

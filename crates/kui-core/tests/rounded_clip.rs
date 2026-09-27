@@ -8,7 +8,7 @@
 //! the shader draws the shape the core described, is
 //! `crates/kui-wgpu/tests/rounded_clip_coverage.rs`.
 
-use kui_core::{Clip, Color, Core, NodeSpec, Quad, Rect, Size, Sizing, Vec2};
+use kui_core::{Clip, Color, Core, NodeSpec, Quad, Rect, Size, Vec2};
 
 const CARD: f32 = 100.0;
 const CHILD: f32 = 60.0;
@@ -25,21 +25,12 @@ fn card_and_child(
 ) -> (Vec<Quad>, Vec<Clip>) {
     let mut ui = core.frame(Size::new(300.0, 200.0), scale);
     ui.configure_root(NodeSpec::column().pad(10.0));
-    ui.with_keyed(
-        "card",
-        card.width(Sizing::Fixed(CARD))
-            .height(Sizing::Fixed(CARD))
-            .bg(Color::WHITE),
-        |ui| {
-            ui.leaf_keyed(
-                "child",
-                child
-                    .width(Sizing::Fixed(CHILD))
-                    .height(Sizing::Fixed(CHILD))
-                    .bg(Color::rgb8(20, 20, 30)),
-            );
-        },
-    );
+    ui.with_keyed("card", card.size(CARD, CARD).bg(Color::WHITE), |ui| {
+        ui.leaf_keyed(
+            "child",
+            child.size(CHILD, CHILD).bg(Color::rgb8(20, 20, 30)),
+        );
+    });
     ui.finish();
     let dl = core.output().0;
     dl.quads.iter().map(|q| (*q, dl.clip_of(q))).unzip()
@@ -143,14 +134,10 @@ fn glyphs_and_images_inherit_the_rounded_clip_too() {
     ui.configure_root(NodeSpec::column().pad(10.0));
     ui.with_keyed(
         "card",
-        NodeSpec::column()
-            .width(Sizing::Fixed(CARD))
-            .height(Sizing::Fixed(CARD))
-            .radius(9.0)
-            .clip(),
+        NodeSpec::column().size(CARD, CARD).radius(9.0).clip(),
         |ui| {
             ui.text("hello", kui_core::TextStyle::new(14.0));
-            ui.image(img, NodeSpec::column().width(Sizing::Fixed(20.0)));
+            ui.image(img, NodeSpec::column().width(20.0));
         },
     );
     ui.finish();
@@ -176,8 +163,7 @@ fn a_float_escapes_the_rounded_clip_with_the_rest_of_it() {
     ui.with_keyed(
         "card",
         NodeSpec::column()
-            .width(Sizing::Fixed(CARD))
-            .height(Sizing::Fixed(CARD))
+            .size(CARD, CARD)
             .radius(12.0)
             .clip()
             .bg(Color::WHITE),
@@ -186,8 +172,7 @@ fn a_float_escapes_the_rounded_clip_with_the_rest_of_it() {
                 "tip",
                 NodeSpec::column()
                     .float(kui_core::FloatConfig::below())
-                    .width(Sizing::Fixed(40.0))
-                    .height(Sizing::Fixed(20.0))
+                    .size(40.0, 20.0)
                     .bg(Color::rgb8(255, 0, 0)),
             );
         },
@@ -258,18 +243,14 @@ fn a_scrolled_child_keeps_the_containers_corners_not_its_own_position() {
         ui.configure_root(NodeSpec::column().pad(10.0));
         ui.with_keyed(
             "list",
-            NodeSpec::column()
-                .width(Sizing::Fixed(CARD))
-                .height(Sizing::Fixed(CARD))
-                .radius(12.0)
-                .scroll_y(),
+            NodeSpec::column().size(CARD, CARD).radius(12.0).scroll_y(),
             |ui| {
                 for i in 0..8 {
                     ui.leaf_indexed(
                         i,
                         NodeSpec::column()
-                            .width(Sizing::Grow(1.0))
-                            .height(Sizing::Fixed(30.0))
+                            .grow_width()
+                            .height(30.0)
                             .bg(Color::rgb8(40, 40, 60)),
                     );
                 }

@@ -2,9 +2,7 @@
 //! the frame that still had it and replayed — frozen, in its place, inert —
 //! until its transition ends. `docs/adr/0005-the-paint-vocabulary.md`.
 
-use kui_core::{
-    Color, Core, Easing, Enter, InputEvent, Key, NodeSpec, Size, Sizing, TextStyle, Value, Vec2,
-};
+use kui_core::{Color, Core, Easing, Enter, InputEvent, Key, NodeSpec, Size, TextStyle, Vec2};
 
 const VIEW: Size = Size { w: 200.0, h: 120.0 };
 
@@ -14,18 +12,18 @@ fn frame(core: &mut Core, now: f64, show: bool) {
     core.set_time(now);
     let mut ui = core.frame(VIEW, 1.0);
     if show {
-        ui.with_keyed(
+        ui.text_in_keyed(
             "panel",
             NodeSpec::column()
-                .width(Sizing::Fixed(80.0))
-                .height(Sizing::Fixed(40.0))
+                .size(80.0, 40.0)
                 .bg(Color::WHITE)
-                .on_click(Value::str("panel"))
+                .on_click("panel")
                 .focusable()
                 .transition(100.0)
                 .easing(Easing::Linear)
                 .exit(Enter::from(40.0, 0.0).opacity(0.0)),
-            |ui| ui.text("bye", TextStyle::new(12.0).color(Color::WHITE)),
+            "bye",
+            TextStyle::new(12.0).color(Color::WHITE),
         );
     }
     ui.finish();
@@ -90,15 +88,15 @@ fn a_ghost_keeps_its_own_text() {
         // is id 1 only while the panel is declared.
         ui.text("live", TextStyle::new(12.0).color(Color::WHITE));
         if show {
-            ui.with_keyed(
+            ui.text_in_keyed(
                 "panel",
                 NodeSpec::column()
-                    .width(Sizing::Fixed(80.0))
-                    .height(Sizing::Fixed(40.0))
+                    .size(80.0, 40.0)
                     .transition(100.0)
                     .easing(Easing::Linear)
                     .exit(Enter::from(0.0, 40.0)),
-                |ui| ui.text("bye", TextStyle::new(12.0).color(Color::WHITE)),
+                "bye",
+                TextStyle::new(12.0).color(Color::WHITE),
             );
         }
         ui.finish();
@@ -182,13 +180,7 @@ fn without_both_halves_a_removed_node_still_vanishes_at_once() {
             core.set_time(now);
             let mut ui = core.frame(VIEW, 1.0);
             if show {
-                ui.leaf_keyed(
-                    "panel",
-                    spec.clone()
-                        .width(Sizing::Fixed(80.0))
-                        .height(Sizing::Fixed(40.0))
-                        .bg(Color::WHITE),
-                );
+                ui.leaf_keyed("panel", spec.clone().size(80.0, 40.0).bg(Color::WHITE));
             }
             ui.finish();
         };
@@ -211,8 +203,7 @@ fn a_driver_without_a_clock_gets_the_disappearance_it_always_had() {
             ui.leaf_keyed(
                 "panel",
                 NodeSpec::column()
-                    .width(Sizing::Fixed(80.0))
-                    .height(Sizing::Fixed(40.0))
+                    .size(80.0, 40.0)
                     .bg(Color::WHITE)
                     .transition(100.0)
                     .exit(Enter::from(40.0, 0.0)),
@@ -239,8 +230,7 @@ fn a_ghost_escapes_its_ancestors_clip_and_keeps_its_place() {
         ui.with_keyed(
             "clipper",
             NodeSpec::column()
-                .width(Sizing::Fixed(50.0))
-                .height(Sizing::Fixed(20.0))
+                .size(50.0, 20.0)
                 .clip()
                 .bg(Color::rgb8(1, 2, 3)),
             |ui| {
@@ -248,8 +238,7 @@ fn a_ghost_escapes_its_ancestors_clip_and_keeps_its_place() {
                     ui.leaf_keyed(
                         "inner",
                         NodeSpec::column()
-                            .width(Sizing::Fixed(40.0))
-                            .height(Sizing::Fixed(10.0))
+                            .size(40.0, 10.0)
                             .bg(Color::WHITE)
                             .transition(100.0)
                             .easing(Easing::Linear)
@@ -301,8 +290,7 @@ fn a_ghost_keeps_the_clips_its_own_subtree_established() {
             ui.with_keyed(
                 "box",
                 NodeSpec::column()
-                    .width(Sizing::Fixed(50.0))
-                    .height(Sizing::Fixed(20.0))
+                    .size(50.0, 20.0)
                     .clip()
                     .bg(Color::rgb8(1, 2, 3))
                     .transition(100.0)
@@ -310,19 +298,9 @@ fn a_ghost_keeps_the_clips_its_own_subtree_established() {
                     .exit(Enter::from(200.0, 0.0)),
                 |ui| {
                     // Taller than the box: its bottom third is clipped.
-                    ui.leaf(
-                        NodeSpec::column()
-                            .width(Sizing::Fixed(40.0))
-                            .height(Sizing::Fixed(30.0))
-                            .bg(Color::WHITE),
-                    );
+                    ui.leaf(NodeSpec::column().size(40.0, 30.0).bg(Color::WHITE));
                     // Entirely past the box's edge: never painted.
-                    ui.leaf(
-                        NodeSpec::column()
-                            .width(Sizing::Fixed(40.0))
-                            .height(Sizing::Fixed(10.0))
-                            .bg(Color::WHITE),
-                    );
+                    ui.leaf(NodeSpec::column().size(40.0, 10.0).bg(Color::WHITE));
                 },
             );
         }
@@ -369,8 +347,7 @@ fn list(core: &mut Core, now: f64, from: usize, rows: usize) {
         ui.leaf_indexed(
             i as u64,
             NodeSpec::column()
-                .width(Sizing::Fixed(10.0))
-                .height(Sizing::Fixed(1.0))
+                .size(10.0, 1.0)
                 .bg(Color::WHITE)
                 .transition(100.0)
                 .exit(Enter::default().opacity(0.0)),
@@ -427,8 +404,7 @@ fn a_new_removal_outranks_the_ghosts_already_in_flight() {
                 ui.leaf_indexed(
                     i as u64,
                     NodeSpec::column()
-                        .width(Sizing::Fixed(10.0))
-                        .height(Sizing::Fixed(1.0))
+                        .size(10.0, 1.0)
                         .bg(Color::WHITE)
                         .transition(100.0)
                         .exit(Enter::default().opacity(0.0)),
@@ -482,26 +458,22 @@ fn a_whole_toast_stack_departs_at_once_and_plays_out() {
         let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
         ui.with(
             NodeSpec::column()
-                .float(
-                    FloatConfig::viewport()
-                        .at(Align::End, Align::End)
-                        .self_at(Align::End, Align::End),
-                )
+                .float(FloatConfig::viewport().inside(Align::End, Align::End))
                 .gap(10.0),
             |ui| {
                 for i in 0..count {
-                    ui.with_keyed(
+                    ui.text_in_keyed(
                         &format!("toast-{i}"),
                         NodeSpec::column()
-                            .width(Sizing::Fixed(120.0))
-                            .height(Sizing::Fixed(30.0))
+                            .size(120.0, 30.0)
                             .bg(Color::WHITE)
                             .transition(100.0)
                             .easing(Easing::Linear)
                             .enter(Enter::from(200.0, 0.0))
                             .exit(Enter::from(200.0, 0.0).opacity(0.0))
                             .slide(),
-                        |ui| ui.text("saved", TextStyle::new(12.0).color(Color::WHITE)),
+                        "saved",
+                        TextStyle::new(12.0).color(Color::WHITE),
                     );
                 }
             },
@@ -622,8 +594,7 @@ fn a_float_leaves_under_the_floats_that_were_above_it() {
                 leaving(
                     NodeSpec::column()
                         .float(FloatConfig::viewport())
-                        .width(Sizing::Fixed(60.0))
-                        .height(Sizing::Fixed(120.0))
+                        .size(60.0, 120.0)
                         .bg(PANEL),
                 ),
             );
@@ -633,8 +604,7 @@ fn a_float_leaves_under_the_floats_that_were_above_it() {
         ui.leaf(
             NodeSpec::column()
                 .float(FloatConfig::viewport().at(Align::Start, Align::End))
-                .width(Sizing::Fixed(80.0))
-                .height(Sizing::Fixed(20.0))
+                .size(80.0, 20.0)
                 .bg(HUD),
         );
         ui.finish();
@@ -672,12 +642,7 @@ fn an_in_flow_ghost_keeps_its_place_between_its_siblings() {
     let build = |core: &mut Core, now: f64, b: bool| {
         core.set_time(now);
         let mut ui = core.frame(VIEW, 1.0);
-        let cell = |bg| {
-            NodeSpec::column()
-                .width(Sizing::Fixed(30.0))
-                .height(Sizing::Fixed(10.0))
-                .bg(bg)
-        };
+        let cell = |bg| NodeSpec::column().size(30.0, 10.0).bg(bg);
         ui.leaf_keyed("a", cell(A));
         if b {
             ui.leaf_keyed("b", leaving(cell(B)));
@@ -705,14 +670,7 @@ fn a_ghost_whose_neighbour_leaves_too_keeps_the_order_they_had() {
     let build = |core: &mut Core, now: f64, a: bool, b: bool| {
         core.set_time(now);
         let mut ui = core.frame(VIEW, 1.0);
-        let cell = |bg| {
-            leaving(
-                NodeSpec::column()
-                    .width(Sizing::Fixed(30.0))
-                    .height(Sizing::Fixed(10.0))
-                    .bg(bg),
-            )
-        };
+        let cell = |bg| leaving(NodeSpec::column().size(30.0, 10.0).bg(bg));
         if a {
             ui.leaf_keyed("a", cell(A));
         }
@@ -750,12 +708,7 @@ fn a_ghost_that_lost_its_place_ends_its_pass_under_the_floats() {
     let build = |core: &mut Core, now: f64, phase: u32| {
         core.set_time(now);
         let mut ui = core.frame(VIEW, 1.0);
-        let cell = |bg| {
-            NodeSpec::column()
-                .width(Sizing::Fixed(30.0))
-                .height(Sizing::Fixed(10.0))
-                .bg(bg)
-        };
+        let cell = |bg| NodeSpec::column().size(30.0, 10.0).bg(bg);
         ui.leaf_keyed("a", cell(A));
         if phase < 1 {
             ui.leaf_keyed("b", leaving(cell(B)));
@@ -796,8 +749,7 @@ fn a_float_that_opened_over_another_leaves_over_it() {
                 leaving(
                     NodeSpec::column()
                         .float(FloatConfig::viewport())
-                        .width(Sizing::Fixed(60.0))
-                        .height(Sizing::Fixed(120.0))
+                        .size(60.0, 120.0)
                         .bg(PANEL),
                 ),
             );
@@ -805,8 +757,7 @@ fn a_float_that_opened_over_another_leaves_over_it() {
         ui.leaf(
             NodeSpec::column()
                 .float(FloatConfig::viewport().at(Align::Start, Align::End))
-                .width(Sizing::Fixed(80.0))
-                .height(Sizing::Fixed(20.0))
+                .size(80.0, 20.0)
                 .bg(HUD),
         );
         ui.finish();
@@ -837,18 +788,12 @@ fn a_ghost_inside_a_float_stays_in_that_layer() {
     let build = |core: &mut Core, now: f64, b: bool| {
         core.set_time(now);
         let mut ui = core.frame(VIEW, 1.0);
-        let cell = |bg| {
-            NodeSpec::column()
-                .width(Sizing::Fixed(30.0))
-                .height(Sizing::Fixed(10.0))
-                .bg(bg)
-        };
+        let cell = |bg| NodeSpec::column().size(30.0, 10.0).bg(bg);
         ui.with_keyed(
             "panel",
             NodeSpec::column()
                 .float(FloatConfig::viewport())
-                .width(Sizing::Fixed(60.0))
-                .height(Sizing::Fixed(60.0))
+                .size(60.0, 60.0)
                 .bg(PANEL),
             |ui| {
                 ui.leaf_keyed("a", cell(A));

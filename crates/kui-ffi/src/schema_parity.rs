@@ -478,7 +478,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
     };
     let expected = NodeSpec::row()
         .width(Sizing::Grow(2.0))
-        .height(Sizing::Fixed(120.0))
+        .height(120.0)
         .min_width(10.0)
         .max_width(500.0)
         .min_height(5.0)
@@ -502,8 +502,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .scroll_y()
         .float(
             FloatConfig::viewport()
-                .at(Align::End, Align::End)
-                .self_at(Align::End, Align::End)
+                .inside(Align::End, Align::End)
                 .offset(-8.0, -8.0)
                 .fit()
                 .clipped(),
@@ -513,14 +512,14 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .pixel_snap()
         .accent()
         .selectable()
-        .on_force_click(Value::str("cm"))
-        .on_scroll(Value::str("cm"))
-        .on_drop(Value::str("cm"))
+        .on_force_click("cm")
+        .on_scroll("cm")
+        .on_drop("cm")
         .drop_bg(Color::hex(0x2b3350ff))
         .aspect_ratio(1.5)
         .mixed(true)
         .value_step(2.5)
-        .on_change(Value::str("cm"))
+        .on_change("cm")
         .focus_region()
         .scrollbar(kui_core::ScrollbarMode::Auto)
         .scrollbar_width(8.0)
@@ -568,16 +567,16 @@ fn fully_populated_spec_matches_the_rust_builder() {
                 .bg(Color::hex(0x11_22_33_ff)),
             Keyframe::default()
                 .at(0.75)
-                .width(Sizing::Grow(1.0))
+                .grow_width()
                 .height(Sizing::Percent(0.5))
                 .radius(9.0),
         ])
-        .on_click(Value::str("c"))
-        .on_drag(Value::str("d"))
-        .on_key(Value::str("k"))
-        .on_hover(Value::str("h"))
-        .modal(Value::str("m"))
-        .on_context_menu(Value::str("cm"))
+        .on_click("c")
+        .on_drag("d")
+        .on_key("k")
+        .on_hover("h")
+        .modal("m")
+        .on_context_menu("cm")
         .cursor(kui_core::CursorShape::EwResize);
     let got = spec_of(
         &s,

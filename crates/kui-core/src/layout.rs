@@ -1952,19 +1952,16 @@ mod tests {
     #[test]
     fn a_grow_childs_clamp_is_its_siblings_room() {
         let mut t = T::new(NodeSpec::column().width(px(100.0)).height(px(600.0)));
-        let a = t.node(0, NodeSpec::row().height(Sizing::Grow(1.0)));
-        let b = t.node(
-            0,
-            NodeSpec::row().height(Sizing::Grow(1.0)).max_height(100.0),
-        );
+        let a = t.node(0, NodeSpec::row().grow_height());
+        let b = t.node(0, NodeSpec::row().grow_height().max_height(100.0));
         t.run(1000.0, 1000.0);
         assert_eq!(t.size(b).h, 100.0);
         assert_eq!(t.size(a).h, 500.0);
 
         let mut t = T::new(NodeSpec::row().width(px(300.0)).height(px(50.0)));
-        let a = t.node(0, NodeSpec::row().width(Sizing::Grow(1.0)));
-        let b = t.node(0, NodeSpec::row().width(Sizing::Grow(1.0)).min_width(200.0));
-        let c = t.node(0, NodeSpec::row().width(Sizing::Grow(1.0)).max_width(20.0));
+        let a = t.node(0, NodeSpec::row().grow_width());
+        let b = t.node(0, NodeSpec::row().grow_width().min_width(200.0));
+        let c = t.node(0, NodeSpec::row().grow_width().max_width(20.0));
         t.run(1000.0, 1000.0);
         assert_eq!(t.size(b).w, 200.0);
         assert_eq!(t.size(c).w, 20.0);
@@ -1984,17 +1981,9 @@ mod tests {
     #[test]
     fn a_pass_freezes_only_the_violators_of_the_dominant_sign() {
         let mut t = T::new(NodeSpec::column().width(px(100.0)).height(px(600.0)));
-        let a = t.node(
-            0,
-            NodeSpec::row().height(Sizing::Grow(1.0)).max_height(100.0),
-        );
-        let b = t.node(
-            0,
-            NodeSpec::row()
-                .height(Sizing::Grow(1.0))
-                .min_height(Min::px(500.0)),
-        );
-        let c = t.node(0, NodeSpec::row().height(Sizing::Grow(1.0)));
+        let a = t.node(0, NodeSpec::row().grow_height().max_height(100.0));
+        let b = t.node(0, NodeSpec::row().grow_height().min_height(Min::px(500.0)));
+        let c = t.node(0, NodeSpec::row().grow_height());
         t.run(1000.0, 1000.0);
         assert_eq!(t.size(a).h, 50.0);
         assert_eq!(t.size(b).h, 500.0);
@@ -2002,17 +1991,9 @@ mod tests {
         assert_eq!(t.pos(c).y, 550.0);
 
         let mut t = T::new(NodeSpec::column().width(px(100.0)).height(px(600.0)));
-        let a = t.node(
-            0,
-            NodeSpec::row().height(Sizing::Grow(1.0)).max_height(100.0),
-        );
-        let b = t.node(
-            0,
-            NodeSpec::row()
-                .height(Sizing::Grow(1.0))
-                .min_height(Min::px(210.0)),
-        );
-        let c = t.node(0, NodeSpec::row().height(Sizing::Grow(1.0)));
+        let a = t.node(0, NodeSpec::row().grow_height().max_height(100.0));
+        let b = t.node(0, NodeSpec::row().grow_height().min_height(Min::px(210.0)));
+        let c = t.node(0, NodeSpec::row().grow_height());
         t.run(1000.0, 1000.0);
         assert_eq!(t.size(a).h, 100.0);
         assert_eq!(t.size(b).h, 250.0);
@@ -2044,10 +2025,7 @@ mod tests {
     fn grow_splits_remaining_space_by_factor() {
         let mut t = T::new(NodeSpec::row().width(px(300.0)).height(px(100.0)).gap(10.0));
         let a = t.node(0, NodeSpec::column().width(px(50.0)).height(px(10.0)));
-        let b = t.node(
-            0,
-            NodeSpec::column().width(Sizing::Grow(1.0)).height(px(10.0)),
-        );
+        let b = t.node(0, NodeSpec::column().grow_width().height(px(10.0)));
         let c = t.node(
             0,
             NodeSpec::column().width(Sizing::Grow(2.0)).height(px(10.0)),
@@ -2082,7 +2060,7 @@ mod tests {
                 .height(px(200.0))
                 .pad(8.0),
         );
-        let a = t.node(0, NodeSpec::row().width(Sizing::Grow(1.0)).height(px(30.0)));
+        let a = t.node(0, NodeSpec::row().grow_width().height(px(30.0)));
         t.run(1000.0, 1000.0);
         assert_eq!(t.size(a).w, 104.0);
     }
@@ -2214,7 +2192,7 @@ mod tests {
                 .main_align(Align::SpaceBetween),
         );
         let a = t.node(0, NodeSpec::row().width(px(10.0)).height(px(10.0)));
-        let b = t.node(0, NodeSpec::row().width(Sizing::Grow(1.0)).height(px(10.0)));
+        let b = t.node(0, NodeSpec::row().grow_width().height(px(10.0)));
         let c = t.node(0, NodeSpec::row().width(px(10.0)).height(px(10.0)));
         t.run(1000.0, 1000.0);
         assert_eq!((t.pos(a).x, t.pos(b).x, t.pos(c).x), (0.0, 15.0, 90.0));
@@ -2323,7 +2301,7 @@ mod tests {
                 .cross_align(Align::Baseline),
         );
         let txt = t.text(0, 3);
-        let g = t.node(0, NodeSpec::row().width(px(10.0)).height(Sizing::Grow(1.0)));
+        let g = t.node(0, NodeSpec::row().width(px(10.0)).grow_height());
         t.run(1000.0, 1000.0);
         assert_eq!((t.pos(g).y, t.size(g).h), (0.0, 50.0));
         assert_eq!(t.pos(txt).y, 0.0);
@@ -2347,12 +2325,7 @@ mod tests {
     #[test]
     fn a_ratio_sizes_a_fit_height_from_the_final_width() {
         let mut t = T::new(NodeSpec::column().width(px(320.0)));
-        let v = t.node(
-            0,
-            NodeSpec::column()
-                .width(Sizing::Grow(1.0))
-                .aspect_ratio(16.0 / 9.0),
-        );
+        let v = t.node(0, NodeSpec::column().grow_width().aspect_ratio(16.0 / 9.0));
         t.node(v, NodeSpec::row().width(px(10.0)).height(px(500.0)));
         t.run(1000.0, 1000.0);
         assert_eq!(t.size(v), Size::new(320.0, 180.0));
@@ -2372,12 +2345,7 @@ mod tests {
     #[test]
     fn a_ratio_s_derived_height_is_not_shrunk() {
         let mut t = T::new(NodeSpec::column().width(px(100.0)).height(px(100.0)));
-        let r = t.node(
-            0,
-            NodeSpec::column()
-                .width(Sizing::Grow(1.0))
-                .aspect_ratio(1.25),
-        );
+        let r = t.node(0, NodeSpec::column().grow_width().aspect_ratio(1.25));
         let other = t.node(0, NodeSpec::column().height(Sizing::Fit));
         t.node(other, NodeSpec::row().width(px(10.0)).height(px(60.0)));
         t.run(1000.0, 1000.0);
@@ -2392,7 +2360,7 @@ mod tests {
         let r = t.node(
             0,
             NodeSpec::column()
-                .width(Sizing::Grow(1.0))
+                .grow_width()
                 .aspect_ratio(4.0)
                 .min_height(Min::FIT),
         );
@@ -2436,10 +2404,7 @@ mod tests {
     fn grow_with_no_space_left_gets_zero() {
         let mut t = T::new(NodeSpec::row().width(px(100.0)).height(px(50.0)));
         let a = t.node(0, NodeSpec::column().width(px(120.0)).height(px(10.0)));
-        let b = t.node(
-            0,
-            NodeSpec::column().width(Sizing::Grow(1.0)).height(px(10.0)),
-        );
+        let b = t.node(0, NodeSpec::column().grow_width().height(px(10.0)));
         t.run(1000.0, 1000.0);
         assert_eq!(t.size(a).w, 120.0); // no shrinking in v0
         assert_eq!(t.size(b).w, 0.0);
@@ -2462,7 +2427,7 @@ mod tests {
         let a = t.node(
             0,
             NodeSpec::column()
-                .width(Sizing::Grow(1.0))
+                .grow_width()
                 .max_width(560.0)
                 .height(px(10.0)),
         );
@@ -2473,7 +2438,7 @@ mod tests {
         let a = t.node(
             0,
             NodeSpec::column()
-                .width(Sizing::Grow(1.0))
+                .grow_width()
                 .max_width(560.0)
                 .height(px(10.0)),
         );
@@ -2618,7 +2583,7 @@ mod tests {
         let bar = || NodeSpec::row().width(px(600.0)).height(px(30.0)).scroll_x();
         let tab = || {
             NodeSpec::column()
-                .width(Sizing::Grow(1.0))
+                .grow_width()
                 .min_width(80.0)
                 .height(px(30.0))
         };

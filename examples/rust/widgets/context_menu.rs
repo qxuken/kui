@@ -24,8 +24,8 @@
 
 use kui_devtools::{Drive, Example};
 use kui_native::{
-    Align, App, Core, EditOptions, Key, Menu, MenuItem, MenuRole, NodeSpec, Sizing, Span,
-    TextStyle, Theme, Ui, UiEvent, Value, Vec2,
+    Align, App, Core, EditOptions, Key, Menu, MenuItem, MenuRole, NodeSpec, Span, TextStyle, Theme,
+    Ui, UiEvent, Value, Vec2,
 };
 
 const ROWS: [&str; 4] = ["alpha", "bravo", "charlie", "delta"];
@@ -62,10 +62,7 @@ impl App for Demo {
                 .scroll_y(),
             |ui| {
                 ui.with(
-                    NodeSpec::column()
-                        .width(Sizing::Grow(1.0))
-                        .max_width(620.0)
-                        .gap(16.0),
+                    NodeSpec::column().grow_width().max_width(620.0).gap(16.0),
                     |ui| {
                         self.article(ui, &t);
                         self.list(ui, &t);
@@ -78,17 +75,17 @@ impl App for Demo {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.payload.get("kind").and_then(Value::as_str) {
+        match ev.kind() {
             // Every chosen row, standard or not, arrives here — on the
             // node the menu was about, with the role it played.
             Some("menu") => {
-                let role = ev.payload.get("role").and_then(Value::as_str).unwrap_or("");
+                let role = ev.payload.get_str("role").unwrap_or("");
                 let item = ev.payload.get("item").cloned().unwrap_or(Value::Null);
                 // A custom row says what it is *and* what it is about: the
                 // core hands back whatever the item carried, so a menu
                 // needs no lookup from the key to the thing.
-                let did = item.get("do").and_then(Value::as_str);
-                let row = item.get("row").and_then(Value::as_str).unwrap_or("");
+                let did = item.get_str("do");
+                let row = item.get_str("row").unwrap_or("");
                 if did == Some("archive") && !self.archived.iter().any(|a| a == row) {
                     self.archived.push(row.to_string());
                 }
@@ -101,12 +98,7 @@ impl App for Demo {
             // standard items it wants, plus its own two.
             Some("contextmenu") => {
                 let at = Vec2::new(num(&ev, "x"), num(&ev, "y"));
-                let tag = ev
-                    .payload
-                    .get("tag")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_string();
+                let tag = ev.payload.get_str("tag").unwrap_or_default().to_string();
                 self.pending = Some((ev.key, at, tag));
             }
             _ => {}
@@ -144,7 +136,7 @@ impl Demo {
                 ui.with_keyed(
                     name,
                     NodeSpec::row()
-                        .width(Sizing::Grow(1.0))
+                        .grow_width()
                         .pad_xy(10.0, 8.0)
                         .radius(6.0)
                         .hover_bg(t.hover)
@@ -156,7 +148,7 @@ impl Demo {
                             TextStyle::new(14.0).color(if archived { t.muted } else { t.fg });
                         ui.text(name, style);
                         if archived {
-                            ui.leaf(NodeSpec::row().width(Sizing::Grow(1.0)));
+                            ui.leaf(NodeSpec::row().grow_width());
                             ui.text("archived", TextStyle::new(12.0).color(t.muted));
                         }
                     },
@@ -176,7 +168,7 @@ impl Demo {
                 "Cut, Copy, Paste, Select All — none of it declared.",
                 &EditOptions::default(),
                 NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
+                    .grow_width()
                     .pad(10.0)
                     .radius(6.0)
                     .bg(t.bg)
@@ -192,14 +184,11 @@ impl Demo {
             .clone()
             .unwrap_or_else(|| "right-click anything above".into());
         ui.with(
-            NodeSpec::row()
-                .width(Sizing::Grow(1.0))
-                .pad_xy(4.0, 2.0)
-                .gap(8.0),
+            NodeSpec::row().grow_width().pad_xy(4.0, 2.0).gap(8.0),
             |ui| {
                 ui.text("last menu event —", TextStyle::new(12.0).color(t.muted));
                 ui.text(&said, TextStyle::new(12.0).color(t.accent));
-                ui.leaf(NodeSpec::row().width(Sizing::Grow(1.0)));
+                ui.leaf(NodeSpec::row().grow_width());
                 ui.text(
                     "a plain box: right-click here opens nothing",
                     TextStyle::new(12.0).color(t.faint),
@@ -237,7 +226,7 @@ impl Demo {
 /// A card in the theme's own surface and edge.
 fn card(t: &Theme) -> NodeSpec {
     NodeSpec::column()
-        .width(Sizing::Grow(1.0))
+        .grow_width()
         .bg(t.surface)
         .radius(10.0)
         .border(1.0, t.border)

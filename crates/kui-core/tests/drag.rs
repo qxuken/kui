@@ -8,32 +8,22 @@ fn drag_frame(core: &mut Core) {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::row().fill());
     // A 100px left panel, a draggable 10px divider, the rest.
-    ui.leaf(
-        NodeSpec::column()
-            .width(Sizing::Fixed(100.0))
-            .height(Sizing::Grow(1.0)),
-    );
+    ui.leaf(NodeSpec::column().width(100.0).grow_height());
     ui.leaf_keyed(
         "divider",
         NodeSpec::column()
-            .width(Sizing::Fixed(10.0))
-            .height(Sizing::Grow(1.0))
-            .on_click(Value::str("clicked"))
-            .on_drag(Value::str("split")),
+            .width(10.0)
+            .grow_height()
+            .on_click("clicked")
+            .on_drag("split"),
     );
     ui.finish();
 }
 
 fn phases(evs: &[UiEvent]) -> Vec<String> {
     evs.iter()
-        .filter(|e| e.payload.get("kind").and_then(Value::as_str) == Some("drag"))
-        .map(|e| {
-            e.payload
-                .get("phase")
-                .and_then(Value::as_str)
-                .unwrap_or("?")
-                .to_string()
-        })
+        .filter(|e| e.kind() == Some("drag"))
+        .map(|e| e.payload.get_str("phase").unwrap_or("?").to_string())
         .collect()
 }
 
@@ -51,13 +41,13 @@ fn drag_emits_start_move_end_with_geometry() {
 
     assert_eq!(phases(&all), ["start", "move", "move", "end"]);
     let mv = &all[1].payload;
-    assert_eq!(mv.get("x").and_then(Value::as_float), Some(150.0));
-    assert_eq!(mv.get("dx").and_then(Value::as_float), Some(45.0));
-    assert_eq!(mv.get("tag").and_then(Value::as_str), Some("split"));
+    assert_eq!(mv.get_float("x"), Some(150.0));
+    assert_eq!(mv.get_float("dx"), Some(45.0));
+    assert_eq!(mv.get_str("tag"), Some("split"));
     // Parent rect: the root, i.e. the whole viewport.
     let parent = mv.get("parent").unwrap();
-    assert_eq!(parent.get("w").and_then(Value::as_float), Some(400.0));
-    assert_eq!(parent.get("h").and_then(Value::as_float), Some(300.0));
+    assert_eq!(parent.get_float("w"), Some(400.0));
+    assert_eq!(parent.get_float("h"), Some(300.0));
     // The real drag suppressed the click.
     assert!(!all.iter().any(|e| e.payload.as_str() == Some("clicked")));
 }
@@ -90,17 +80,10 @@ fn scroll_frame(core: &mut Core) -> kui_core::Key {
     ui.configure_root(NodeSpec::column().fill());
     let key = ui.with_keyed(
         "list",
-        NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Fixed(100.0))
-            .scroll_y(),
+        NodeSpec::column().grow_width().height(100.0).scroll_y(),
         |ui| {
             for _ in 0..20 {
-                ui.leaf(
-                    NodeSpec::column()
-                        .width(Sizing::Grow(1.0))
-                        .height(Sizing::Fixed(30.0)),
-                );
+                ui.leaf(NodeSpec::column().grow_width().height(30.0));
             }
         },
     );
@@ -120,8 +103,7 @@ fn hover_keeps_tracking_other_nodes_during_a_drag() {
             ui.leaf_keyed(
                 label,
                 NodeSpec::column()
-                    .width(Sizing::Fixed(100.0))
-                    .height(Sizing::Fixed(30.0))
+                    .size(100.0, 30.0)
                     .on_drag(Value::str(label)),
             );
         }
@@ -148,7 +130,7 @@ fn hover_keeps_tracking_other_nodes_during_a_drag() {
     );
     assert!(
         evs.iter()
-            .any(|e| e.key == a && e.payload.get("phase").and_then(Value::as_str) == Some("move")),
+            .any(|e| e.key == a && e.payload.get_str("phase") == Some("move")),
         "drag events keep landing on the pressed node"
     );
     core.handle_input(InputEvent::mouse_up());
@@ -213,10 +195,9 @@ fn hoverable_added_below_a_pressed_node_keeps_the_click() {
         ui.with_keyed(
             "tab",
             NodeSpec::row()
-                .width(Sizing::Fixed(100.0))
-                .height(Sizing::Fixed(30.0))
-                .on_click(Value::str("clicked"))
-                .on_drag(Value::str("lift")),
+                .size(100.0, 30.0)
+                .on_click("clicked")
+                .on_drag("lift"),
             |ui| {
                 if with_column {
                     ui.leaf_keyed(
@@ -227,7 +208,7 @@ fn hoverable_added_below_a_pressed_node_keeps_the_click() {
                                     .at(kui_core::Align::Start, kui_core::Align::End),
                             )
                             .width(Sizing::Percent(1.0))
-                            .height(Sizing::Fixed(300.0))
+                            .height(300.0)
                             .hoverable(),
                     );
                 }
@@ -305,10 +286,9 @@ fn a_captured_drag_keeps_its_hover_group_pressed() {
         ui.leaf_keyed(
             "handle",
             NodeSpec::column()
-                .width(Sizing::Fixed(100.0))
-                .height(Sizing::Fixed(30.0))
+                .size(100.0, 30.0)
                 .hover_group("split")
-                .on_drag(Value::str("split")),
+                .on_drag("split"),
         );
         ui.finish();
     };
@@ -349,8 +329,8 @@ fn drag_deltas_are_measured_from_the_press_point() {
     all.extend(core.handle_input(InputEvent::CursorMoved(Vec2::new(113.0, 50.0))));
     all.extend(core.handle_input(InputEvent::mouse_up()));
 
-    let dx = |e: &UiEvent| e.payload.get("dx").and_then(Value::as_float).unwrap();
-    let dy = |e: &UiEvent| e.payload.get("dy").and_then(Value::as_float).unwrap();
+    let dx = |e: &UiEvent| e.payload.get_float("dx").unwrap();
+    let dy = |e: &UiEvent| e.payload.get_float("dy").unwrap();
     // The slop is measured from the press: 2 px is inside it, 4 px is not,
     // and the move that leaves it reports the whole distance so far.
     assert_eq!(phases(&all), ["start", "move", "move", "end"]);
@@ -370,10 +350,7 @@ fn drag_deltas_are_measured_from_the_press_point() {
         8.0,
         "end is the total, so an app can commit from it"
     );
-    assert_eq!(
-        all[3].payload.get("x").and_then(Value::as_float),
-        Some(113.0)
-    );
+    assert_eq!(all[3].payload.get_float("x"), Some(113.0));
     // And a click it was not.
     assert!(!all.iter().any(|e| e.payload.as_str() == Some("clicked")));
 }
@@ -396,7 +373,7 @@ fn a_slow_drag_still_leaves_the_slop() {
     assert_eq!(phases(&all), ["start", "move", "move", "end"]);
     let dx: Vec<f64> = all
         .iter()
-        .filter_map(|e| e.payload.get("dx").and_then(Value::as_float))
+        .filter_map(|e| e.payload.get_float("dx"))
         .collect();
     assert_eq!(dx, [0.0, 4.0, 5.0, 5.0]);
     assert!(!all.iter().any(|e| e.payload.as_str() == Some("clicked")));
@@ -418,7 +395,7 @@ fn a_drag_released_off_window_ends_at_the_last_seen_point() {
 
     assert_eq!(phases(&all), ["start", "move", "end"]);
     let end = &all[2].payload;
-    assert_eq!(end.get("x").and_then(Value::as_float), Some(125.0));
-    assert_eq!(end.get("dx").and_then(Value::as_float), Some(20.0));
-    assert_eq!(end.get("dy").and_then(Value::as_float), Some(10.0));
+    assert_eq!(end.get_float("x"), Some(125.0));
+    assert_eq!(end.get_float("dx"), Some(20.0));
+    assert_eq!(end.get_float("dy"), Some(10.0));
 }

@@ -18,11 +18,11 @@ fn frame_bg(core: &mut Core, ratio: f32, transition: Option<Transition>) -> f32 
     ui.configure_root(NodeSpec::row().fill());
     let mut left = NodeSpec::column()
         .width(Sizing::Grow(ratio))
-        .height(Sizing::Grow(1.0))
+        .grow_height()
         .bg(kui_core::Color::WHITE);
     let mut right = NodeSpec::column()
         .width(Sizing::Grow(1.0 - ratio))
-        .height(Sizing::Grow(1.0));
+        .grow_height();
     if let Some(t) = transition {
         left = left.transition_with(t);
         right = right.transition_with(t);
@@ -97,8 +97,7 @@ fn colors_ease_too() {
         ui.leaf_keyed(
             "chip",
             NodeSpec::column()
-                .width(Sizing::Fixed(10.0))
-                .height(Sizing::Fixed(10.0))
+                .size(10.0, 10.0)
                 .bg(kui_core::Color::rgba(1.0, 1.0, 1.0, a))
                 .transition_with(t),
         );
@@ -121,8 +120,7 @@ fn tab_xs(core: &mut Core, order: [&str; 2], slide: bool) -> Vec<(String, f32)> 
     ui.configure_root(NodeSpec::row().fill().gap(10.0));
     for label in order {
         let mut spec = NodeSpec::column()
-            .width(Sizing::Fixed(50.0))
-            .height(Sizing::Fixed(20.0))
+            .size(50.0, 20.0)
             .bg(kui_core::Color::WHITE)
             .transition_with(Transition::ms(100.0).easing(Easing::Linear));
         if slide {
@@ -205,7 +203,7 @@ fn an_animate_node_owes_a_frame_while_it_is_declared() {
     let mut core = Core::new();
     let frame = |core: &mut Core, animate: bool| {
         let mut ui = core.frame(Size::new(100.0, 100.0), 1.0);
-        let mut spec = NodeSpec::column().width(Sizing::Fixed(10.0));
+        let mut spec = NodeSpec::column().width(10.0);
         if animate {
             spec = spec.animate();
         }
@@ -238,16 +236,14 @@ fn frame_keyframed(core: &mut Core, now: Option<f64>, repeat: Repeat) -> f32 {
     ui.configure_root(NodeSpec::row().fill());
     let left = NodeSpec::column()
         .width(Sizing::Grow(0.0))
-        .height(Sizing::Grow(1.0))
+        .grow_height()
         .bg(Color::WHITE)
         .transition_with(Transition::ms(1000.0).easing(Easing::Linear).repeat(repeat))
         .keyframes(vec![
             Keyframe::default().width(Sizing::Grow(0.0)),
-            Keyframe::default().width(Sizing::Grow(1.0)),
+            Keyframe::default().grow_width(),
         ]);
-    let right = NodeSpec::column()
-        .width(Sizing::Grow(1.0))
-        .height(Sizing::Grow(1.0));
+    let right = NodeSpec::column().fill();
     ui.leaf_keyed("left", left);
     ui.leaf_keyed("right", right);
     ui.finish();
@@ -293,11 +289,11 @@ fn a_slot_the_keyframes_skip_still_tweens() {
         let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
         ui.configure_root(NodeSpec::row().fill());
         let spec = NodeSpec::column()
-            .width(Sizing::Fixed(100.0))
-            .height(Sizing::Grow(1.0))
+            .width(100.0)
+            .grow_height()
             .bg(bg)
             .transition_with(Transition::ms(1000.0).easing(Easing::Linear))
-            .keyframes(vec![Keyframe::default().width(Sizing::Fixed(200.0))]);
+            .keyframes(vec![Keyframe::default().width(200.0)]);
         ui.leaf_keyed("k", spec);
         ui.finish();
         let (dl, _) = core.output();
@@ -329,15 +325,15 @@ fn what_is_owed_is_readable_by_kind() {
         let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
         ui.configure_root(NodeSpec::row().fill());
         let spec = NodeSpec::column()
-            .width(Sizing::Fixed(100.0))
-            .height(Sizing::Grow(1.0))
+            .width(100.0)
+            .grow_height()
             .bg(bg)
             .transition_with(
                 Transition::ms(1000.0)
                     .easing(Easing::Linear)
                     .repeat(Repeat::Alternate),
             )
-            .keyframes(vec![Keyframe::default().width(Sizing::Fixed(200.0))]);
+            .keyframes(vec![Keyframe::default().width(200.0)]);
         ui.leaf_keyed("k", spec);
         ui.finish();
         core.owed()
@@ -380,8 +376,7 @@ fn float_x(core: &mut Core, dx: f32, spec: NodeSpec) -> f32 {
     let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
     ui.configure_root(NodeSpec::row().fill());
     let spec = spec
-        .width(Sizing::Fixed(50.0))
-        .height(Sizing::Fixed(20.0))
+        .size(50.0, 20.0)
         .bg(Color::WHITE)
         .float(FloatConfig::viewport().offset(dx, 0.0));
     ui.leaf_keyed("toast", spec);
@@ -483,8 +478,7 @@ fn enter_fades_a_background_in() {
         let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
         ui.configure_root(NodeSpec::row().fill());
         let spec = NodeSpec::column()
-            .width(Sizing::Fixed(50.0))
-            .height(Sizing::Fixed(20.0))
+            .size(50.0, 20.0)
             .bg(Color::WHITE)
             .transition_with(linear(100.0))
             .enter(enter);

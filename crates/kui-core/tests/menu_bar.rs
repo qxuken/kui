@@ -6,7 +6,7 @@
 use kui_core::testing::click;
 use kui_core::{
     BarMenu, Core, EditOptions, InputEvent, Key, MenuBar, MenuItem, MenuRole, NodeSpec, Role, Size,
-    Sizing, TextStyle, Value, Vec2,
+    TextStyle, Value, Vec2,
 };
 
 fn bar() -> MenuBar {
@@ -39,10 +39,11 @@ fn frame(core: &mut Core) -> Key {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
     kui_core::widgets::menu_bar(&mut ui, bar());
-    let card = ui.with_keyed(
+    let card = ui.text_in_keyed(
         "card",
-        NodeSpec::column().width(Sizing::Grow(1.0)).selectable(),
-        |ui| ui.text("one two", TextStyle::new(14.0)),
+        NodeSpec::column().grow_width().selectable(),
+        "one two",
+        TextStyle::new(14.0),
     );
     ui.finish();
     card
@@ -176,11 +177,8 @@ fn choosing_a_row_posts_the_items_payload_and_closes() {
         "one event, not a raw click too: {events:?}"
     );
     let ev = &events[0];
-    assert_eq!(ev.payload.get("kind").and_then(Value::as_str), Some("menu"));
-    assert_eq!(
-        ev.payload.get("item").and_then(Value::as_str),
-        Some("file.close")
-    );
+    assert_eq!(ev.kind(), Some("menu"));
+    assert_eq!(ev.payload.get_str("item"), Some("file.close"));
     assert_eq!(core.menu_bar_open(), None, "choosing closes the menu");
 }
 
@@ -197,9 +195,7 @@ fn escape_closes_the_open_menu_and_the_app_hears_nothing() {
     ));
     assert_eq!(core.menu_bar_open(), None);
     assert!(
-        events
-            .iter()
-            .all(|e| e.payload.get("kind").and_then(Value::as_str) != Some("dismiss")),
+        events.iter().all(|e| e.kind() != Some("dismiss")),
         "the bar's own dismissal is the bar's: {events:?}"
     );
 }
@@ -235,10 +231,7 @@ fn an_edit_menus_copy_acts_on_the_selection_the_press_did_not_clear() {
         }],
         "the standard role is performed exactly as the context menu's is"
     );
-    assert_eq!(
-        events[0].payload.get("role").and_then(Value::as_str),
-        Some("copy")
-    );
+    assert_eq!(events[0].payload.get_str("role"), Some("copy"));
 }
 
 #[test]
@@ -252,10 +245,7 @@ fn the_platforms_bar_reports_a_choice_through_one_call() {
     );
     let events = core.activate_menu_bar_item(0, 2);
     assert_eq!(events.len(), 1);
-    assert_eq!(
-        events[0].payload.get("item").and_then(Value::as_str),
-        Some("file.close")
-    );
+    assert_eq!(events[0].payload.get_str("item"), Some("file.close"));
     assert_eq!(
         events[0].key,
         Key::ROOT,
@@ -278,7 +268,7 @@ fn frame_with_field(core: &mut Core) -> Key {
         "note",
         "hello",
         &EditOptions::default(),
-        NodeSpec::column().width(Sizing::Fixed(200.0)).label("Note"),
+        NodeSpec::column().width(200.0).label("Note"),
     );
     ui.finish();
     core.key_of("note").expect("the editor is keyed")

@@ -2,7 +2,7 @@
 //! `TextStyle` through a live `Core` (real shaping), checked on the emitted
 //! glyph quads and on the boxes around them.
 
-use kui_core::{Clip, Color, Core, NodeSpec, Quad, QuadKind, Size, Sizing, TextStyle};
+use kui_core::{Clip, Color, Core, NodeSpec, Quad, QuadKind, Size, TextStyle};
 
 const LONG: &str = "A window title that is far too long to fit inside a narrow header strip";
 const BOX_W: f32 = 160.0;
@@ -15,9 +15,7 @@ const LINE_H: f32 = 22.0; // TextStyle::new(16.0) rounds 16 * 1.35
 fn glyphs(core: &mut Core, style: TextStyle) -> (Vec<Quad>, Vec<Clip>) {
     let mut ui = core.frame(Size::new(800.0, 600.0), 1.0);
     ui.configure_root(NodeSpec::column());
-    ui.with(NodeSpec::column().width(Sizing::Fixed(BOX_W)), |ui| {
-        ui.text(LONG, style)
-    });
+    ui.text_in(NodeSpec::column().width(BOX_W), LONG, style);
     ui.finish();
     let (dl, _) = core.output();
     dl.quads
@@ -122,9 +120,7 @@ fn max_lines_clamps_wrapped_text() {
 fn parent_width(core: &mut Core, row: NodeSpec, style: TextStyle) -> f32 {
     let mut ui = core.frame(Size::new(800.0, 600.0), 1.0);
     ui.configure_root(NodeSpec::column());
-    ui.with(row.bg(Color::rgb8(0x20, 0x20, 0x20)), |ui| {
-        ui.text(LONG, style)
-    });
+    ui.text_in(row.bg(Color::rgb8(0x20, 0x20, 0x20)), LONG, style);
     ui.finish();
     let (dl, _) = core.output();
     dl.quads

@@ -18,7 +18,7 @@
 //! Run: cargo run -p kui-native --example hover [-- --headless]
 
 use kui_devtools::{Drive, Example};
-use kui_native::{Align, App, Core, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
+use kui_native::{Align, App, Core, NodeSpec, TextStyle, Ui, UiEvent, Value};
 
 const ROWS: [(&str, &str); 3] = [("◆", "inbox"), ("●", "drafts"), ("▲", "sent")];
 
@@ -50,7 +50,7 @@ impl App for Hover {
                         ("accent", t.accent, t.accent_hover),
                         ("danger", t.danger, t.danger.with_alpha(0.7)),
                     ] {
-                        ui.with_keyed(
+                        ui.text_in_keyed(
                             name,
                             NodeSpec::row()
                                 .pad_xy(16.0, 10.0)
@@ -58,13 +58,8 @@ impl App for Hover {
                                 .bg(bg)
                                 .hover_bg(hover)
                                 .border(1.0, t.border),
-                            |ui| {
-                                ui.text(
-                                    name,
-                                    TextStyle::new(13.0)
-                                        .color(kui_native::widgets::readable_on(bg)),
-                                );
-                            },
+                            name,
+                            TextStyle::new(13.0).color(kui_native::widgets::readable_on(bg)),
                         );
                     }
                 });
@@ -75,7 +70,7 @@ impl App for Hover {
                 );
                 let badge = ui.child_key("badge");
                 let hovered = ui.is_hovered(badge);
-                ui.with_keyed(
+                ui.text_in_keyed(
                     "badge",
                     NodeSpec::row()
                         .pad_xy(14.0, 8.0)
@@ -83,16 +78,12 @@ impl App for Hover {
                         .bg(t.raised)
                         .border(1.0, if hovered { t.accent } else { t.border })
                         .hoverable(),
-                    |ui| {
-                        ui.text(
-                            if hovered {
-                                "hovered — the border is the view's doing"
-                            } else {
-                                "hover me"
-                            },
-                            TextStyle::new(13.0),
-                        );
+                    if hovered {
+                        "hovered — the border is the view's doing"
+                    } else {
+                        "hover me"
                     },
+                    TextStyle::new(13.0),
                 );
 
                 ui.text(
@@ -101,7 +92,7 @@ impl App for Hover {
                 );
                 ui.with(
                     NodeSpec::column()
-                        .width(Sizing::Fixed(260.0))
+                        .width(260.0)
                         .gap(2.0)
                         .pad(6.0)
                         .bg(t.surface)
@@ -116,33 +107,31 @@ impl App for Hover {
                             // — the group is who lights together, not who
                             // reports — so the count below moves as the
                             // pointer crosses from the icon to the label.
-                            ui.with(NodeSpec::row().width(Sizing::Grow(1.0)).gap(0.0), |ui| {
-                                ui.with_keyed(
+                            ui.with(NodeSpec::row().grow_width().gap(0.0), |ui| {
+                                ui.text_in_keyed(
                                     &format!("{label}-icon"),
                                     NodeSpec::row()
-                                        .width(Sizing::Fixed(36.0))
+                                        .width(36.0)
                                         .pad_xy(0.0, 6.0)
                                         .main_align(Align::Center)
                                         .bg(bg)
                                         .radius(4.0)
                                         .hover_group(label)
                                         .on_hover(Value::str(label)),
-                                    |ui| {
-                                        ui.text(icon, TextStyle::new(13.0).color(t.accent));
-                                    },
+                                    icon,
+                                    TextStyle::new(13.0).color(t.accent),
                                 );
-                                ui.with_keyed(
+                                ui.text_in_keyed(
                                     &format!("{label}-text"),
                                     NodeSpec::row()
-                                        .width(Sizing::Grow(1.0))
+                                        .grow_width()
                                         .pad_xy(8.0, 6.0)
                                         .bg(bg)
                                         .radius(4.0)
                                         .hover_group(label)
                                         .on_hover(Value::str(label)),
-                                    |ui| {
-                                        ui.text(label, TextStyle::new(13.0));
-                                    },
+                                    label,
+                                    TextStyle::new(13.0),
                                 );
                             });
                         }
@@ -163,15 +152,11 @@ impl App for Hover {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        if ev.payload.get("kind").and_then(Value::as_str) != Some("hover") {
+        if ev.kind() != Some("hover") {
             return;
         }
-        let tag = ev
-            .payload
-            .get("tag")
-            .and_then(Value::as_str)
-            .map(str::to_string);
-        match ev.payload.get("phase").and_then(Value::as_str) {
+        let tag = ev.payload.get_str("tag").map(str::to_string);
+        match ev.payload.get_str("phase") {
             Some("enter") => {
                 self.enters += 1;
                 self.over = tag;

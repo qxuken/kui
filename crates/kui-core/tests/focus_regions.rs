@@ -8,7 +8,7 @@
 
 use kui_core::testing::{click_at, key_down, tab, tags};
 use kui_core::{
-    Core, EditKey, InputEvent, Key, KeyCode, KeyMods, KeyPress, Mods, NodeSpec, Size, Sizing, Value,
+    Core, EditKey, InputEvent, Key, KeyCode, KeyMods, KeyPress, Mods, NodeSpec, Size, Value,
 };
 
 const H: f32 = 20.0;
@@ -44,13 +44,12 @@ fn frame(core: &mut Core, shape: Shape) -> Keys {
     let mut ui = core.frame(Size::new(200.0, 300.0), 1.0);
     let mut root = NodeSpec::column().fill();
     if shape.root_sink {
-        root = root.on_key(Value::str("root"));
+        root = root.on_key("root");
     }
     ui.configure_root(root);
     let row = |label: &str| {
         NodeSpec::row()
-            .width(Sizing::Fixed(100.0))
-            .height(Sizing::Fixed(H))
+            .size(100.0, H)
             .on_click(Value::str(label))
             .label(label)
     };
@@ -61,10 +60,7 @@ fn frame(core: &mut Core, shape: Shape) -> Keys {
     if shape.dock {
         dock = ui.with_keyed(
             "dock",
-            NodeSpec::column()
-                .width(Sizing::Fixed(200.0))
-                .height(Sizing::Fixed(100.0))
-                .focus_region(),
+            NodeSpec::column().size(200.0, 100.0).focus_region(),
             |ui| {
                 d1 = ui.leaf_keyed("d1", row("d1"));
                 let mut second = row("d2");
@@ -80,9 +76,8 @@ fn frame(core: &mut Core, shape: Shape) -> Keys {
             "dlg",
             NodeSpec::column()
                 .float(kui_core::FloatConfig::default())
-                .width(Sizing::Fixed(100.0))
-                .height(Sizing::Fixed(H))
-                .modal(Value::str("dlg")),
+                .size(100.0, H)
+                .modal("dlg"),
             |ui| {
                 ui.leaf_keyed("ok", row("ok"));
             },
@@ -385,11 +380,7 @@ fn keys_bubble_through_the_region_boundary_to_the_root_sink() {
     core.focus_region(Some(k.dock));
     frame(&mut core, shape);
     assert_eq!(core.focus(), Some(k.d1));
-    let chord = KeyMods {
-        ctrl: true,
-        shift: true,
-        ..Default::default()
-    };
+    let chord = KeyMods::NONE.with_ctrl().with_shift();
     let evs = key_down(&mut core, KeyCode::Char('i'), chord);
     assert_eq!(
         tags(&evs),
@@ -413,11 +404,7 @@ fn a_root_sink_hears_what_nothing_claims_when_nothing_is_focused() {
     };
     frame(&mut core, shape);
     assert_eq!(core.focus(), None);
-    let chord = KeyMods {
-        ctrl: true,
-        shift: true,
-        ..Default::default()
-    };
+    let chord = KeyMods::NONE.with_ctrl().with_shift();
     let evs = key_down(&mut core, KeyCode::Char('i'), chord);
     assert_eq!(
         tags(&evs),

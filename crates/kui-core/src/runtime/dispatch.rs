@@ -683,9 +683,7 @@ impl Core {
                 if button == MouseButton::Secondary
                     && let Some(p) = self.interaction.cursor()
                 {
-                    let claimed = out.iter().any(|e| {
-                        e.payload.get("kind").and_then(Value::as_str) == Some("contextmenu")
-                    });
+                    let claimed = out.iter().any(|e| e.kind() == Some("contextmenu"));
                     self.auto_menu(p, claimed);
                 }
             }
@@ -1529,9 +1527,7 @@ mod access_cache {
     fn frame(core: &mut Core, spec: NodeSpec) -> (u64, u64) {
         let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
         ui.configure_root(NodeSpec::column());
-        ui.with_keyed("node", spec, |ui| {
-            ui.text("hello", TextStyle::new(12.0));
-        });
+        ui.text_in_keyed("node", spec, "hello", TextStyle::new(12.0));
         ui.finish();
         let hash = core.access_tree().hash;
         (core.access_rebuilds, hash)
@@ -1540,8 +1536,7 @@ mod access_cache {
     /// The base node: a button, so it is a semantic node with a name.
     fn base() -> NodeSpec {
         NodeSpec::column()
-            .width(Sizing::Fixed(40.0))
-            .height(Sizing::Fixed(20.0))
+            .size(40.0, 20.0)
             .on_click(Value::from(1.0))
             .label("Save")
     }
@@ -1597,7 +1592,7 @@ mod access_cache {
         value_text:   base().role(Role::Slider) => base().role(Role::Slider).value_text("three");
         focusable:    NodeSpec::column().role(Role::Group).label("g")
                           => NodeSpec::column().role(Role::Group).label("g").focusable();
-        rect:         base() => base().width(Sizing::Fixed(80.0));
+        rect:         base() => base().width(80.0);
     }
 
     /// The text a node is named by is not in its spec at all — it is the
@@ -1627,10 +1622,7 @@ mod access_cache {
         let mut draw = |w: f32| {
             let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
             ui.configure_root(NodeSpec::column());
-            let clipper = NodeSpec::column()
-                .width(Sizing::Fixed(w))
-                .height(Sizing::Fixed(40.0))
-                .clip();
+            let clipper = NodeSpec::column().size(w, 40.0).clip();
             ui.with(clipper, |ui| {
                 ui.leaf_keyed("node", base());
             });
@@ -1659,18 +1651,12 @@ mod access_cache {
     fn a_scroll_offset_moves_the_tree() {
         let mut core = Core::new();
         // Tall content, or the offset clamps to zero and nothing moved.
-        let scroller = || {
-            NodeSpec::column()
-                .width(Sizing::Fixed(40.0))
-                .height(Sizing::Fixed(20.0))
-                .scroll_y()
-                .label("list")
-        };
+        let scroller = || NodeSpec::column().size(40.0, 20.0).scroll_y().label("list");
         let draw = |core: &mut Core| {
             let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
             ui.configure_root(NodeSpec::column());
             ui.with_keyed("node", scroller(), |ui| {
-                ui.leaf_keyed("tall", NodeSpec::column().height(Sizing::Fixed(400.0)));
+                ui.leaf_keyed("tall", NodeSpec::column().height(400.0));
             });
             ui.finish();
             let h = core.access_tree().hash;
@@ -1694,9 +1680,7 @@ mod access_cache {
                 "name",
                 text,
                 &Default::default(),
-                NodeSpec::column()
-                    .width(Sizing::Fixed(120.0))
-                    .height(Sizing::Fixed(20.0)),
+                NodeSpec::column().size(120.0, 20.0),
             );
             ui.finish();
             let h = core.access_tree().hash;

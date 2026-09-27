@@ -1,7 +1,7 @@
 //! End-to-end text editing through a live `Core`: focus, typing, motion,
 //! selection, deletion, click-to-position, and event emission.
 
-use kui_core::{Core, EditKey, EditOptions, InputEvent, Key, Mods, NodeSpec, Size, Sizing, Vec2};
+use kui_core::{Core, EditKey, EditOptions, InputEvent, Key, Mods, NodeSpec, Size, Vec2};
 
 const SHIFT: Mods = Mods {
     shift: true,
@@ -55,7 +55,7 @@ fn frame(core: &mut Core, initial: &str, multiline: bool) -> Key {
             autofocus: true,
             ..Default::default()
         },
-        NodeSpec::column().width(Sizing::Grow(1.0)).pad(5.0),
+        NodeSpec::column().grow_width().pad(5.0),
     );
     ui.finish();
     key

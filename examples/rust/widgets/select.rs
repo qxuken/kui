@@ -15,7 +15,7 @@
 
 use kui_devtools::{Drive, Example};
 use kui_native::widgets;
-use kui_native::{Align, App, Core, MenuItem, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
+use kui_native::{Align, App, Core, MenuItem, NodeSpec, TextStyle, Ui, UiEvent, Value};
 
 const LANGUAGES: [&str; 4] = ["English", "Deutsch", "Français", "日本語"];
 const SIZES: [u32; 4] = [11, 13, 15, 18];
@@ -43,13 +43,15 @@ impl App for Select {
         let row = |ui: &mut Ui<'_>, label: &str, f: &mut dyn FnMut(&mut Ui<'_>)| {
             ui.with(
                 NodeSpec::row()
-                    .width(Sizing::Grow(1.0))
+                    .grow_width()
                     .gap(12.0)
                     .cross_align(Align::Center),
                 |ui| {
-                    ui.with(NodeSpec::row().width(Sizing::Fixed(90.0)), |ui| {
-                        ui.text(label, TextStyle::new(13.0).color(t.muted));
-                    });
+                    ui.text_in(
+                        NodeSpec::row().width(90.0),
+                        label,
+                        TextStyle::new(13.0).color(t.muted),
+                    );
                     f(ui);
                 },
             );
@@ -79,7 +81,7 @@ impl App for Select {
                         .collect();
                     widgets::select_items(ui, "size", &items, Some(self.size));
                 });
-                ui.leaf(NodeSpec::column().height(Sizing::Fixed(10.0)));
+                ui.leaf(NodeSpec::column().height(10.0));
                 ui.text(
                     &format!("{} at {} pt", LANGUAGES[self.language], SIZES[self.size]),
                     TextStyle::new(SIZES[self.size] as f32),
@@ -97,7 +99,7 @@ impl App for Select {
 
     fn on_event(&mut self, ev: UiEvent) {
         // `{kind: "menu", role: "custom", item: …}` on the field's key.
-        if ev.payload.get("kind").and_then(Value::as_str) != Some("menu") {
+        if ev.kind() != Some("menu") {
             return;
         }
         let Some(item) = ev.payload.get("item") else {

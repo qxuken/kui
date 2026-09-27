@@ -9,8 +9,8 @@
 
 use kui_core::diag::FOREIGN_RESOURCE;
 use kui_core::{
-    AudioCommand, AudioSpec, Core, Key, NodeSpec, QuadKind, Session, Size, Sizing, TextStyle,
-    Value, Warning, WindowId,
+    AudioCommand, AudioSpec, Core, Key, NodeSpec, QuadKind, Session, Size, TextStyle, Value,
+    Warning, WindowId,
 };
 
 /// The `foreign-resource` lines among a drain (the unlabeled test images
@@ -45,7 +45,7 @@ fn image_quads(core: &mut Core, id: kui_core::ImageId) -> usize {
 
 fn glyph_quads(core: &mut Core, style: TextStyle) -> usize {
     let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
-    ui.with(NodeSpec::column(), |ui| ui.text("Fonts", style));
+    ui.text_in(NodeSpec::column(), "Fonts", style);
     ui.finish();
     let (dl, _) = core.output();
     dl.quads
@@ -373,10 +373,7 @@ fn a_tagged_playback_s_ended_event_names_the_window_that_declared_it() {
     let evs = a.take_pending_events();
     assert_eq!(evs.len(), 1);
     assert_eq!(evs[0].window, WindowId(2));
-    assert_eq!(
-        evs[0].payload.get("phase").and_then(Value::as_str),
-        Some("refused")
-    );
+    assert_eq!(evs[0].payload.get_str("phase"), Some("refused"));
 }
 
 #[test]
@@ -391,12 +388,7 @@ fn core_new_is_a_session_of_one() {
     // b's registry never heard of the handle, so its image node draws
     // nothing rather than somebody else's pixels.
     let mut ui = b.frame(Size::new(400.0, 300.0), 1.0);
-    ui.image(
-        id,
-        NodeSpec::column()
-            .width(Sizing::Fixed(40.0))
-            .height(Sizing::Fixed(20.0)),
-    );
+    ui.image(id, NodeSpec::column().size(40.0, 20.0));
     ui.finish();
     let (dl, _) = b.output();
     assert!(dl.quads.iter().all(|q| q.kind != QuadKind::Image));

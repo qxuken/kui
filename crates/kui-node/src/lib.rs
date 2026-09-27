@@ -4239,7 +4239,7 @@ mod frame_stats_tests {
 mod readback_pins {
     use super::*;
     use kui_core::{
-        AccessAction, AccessRequest, EditOptions, NodeSpec, Role, Sizing, TextPos, TextStyle,
+        AccessAction, AccessRequest, EditOptions, NodeSpec, Role, TextPos, TextStyle,
         WindowCommand, WindowConfig, WindowId, WindowKind, tree::OriginId,
     };
     use std::collections::BTreeSet;
@@ -4290,11 +4290,7 @@ mod readback_pins {
             let mut doc = Key::ROOT;
             ui.with_keyed(
                 "scroller",
-                NodeSpec::column()
-                    .scroll_y()
-                    .width(Sizing::Fixed(300.0))
-                    .height(Sizing::Fixed(60.0))
-                    .pad(4.0),
+                NodeSpec::column().scroll_y().size(300.0, 60.0).pad(4.0),
                 |ui| {
                     doc = ui.text_edit(
                         "doc",
@@ -4304,7 +4300,7 @@ mod readback_pins {
                             autofocus: true,
                             ..Default::default()
                         },
-                        NodeSpec::column().width(Sizing::Fixed(280.0)).label("Doc"),
+                        NodeSpec::column().width(280.0).label("Doc"),
                     );
                 },
             );
@@ -4316,16 +4312,17 @@ mod readback_pins {
                     .value_now(0.4)
                     .value_min(0.0)
                     .value_max(1.0)
-                    .on_drag(Value::str("vol")),
+                    .on_drag("vol"),
             );
-            ui.with_keyed(
+            ui.text_in_keyed(
                 "remember",
                 NodeSpec::row()
                     .role(Role::Checkbox)
                     .checked(true)
-                    .on_click(Value::str("toggle"))
-                    .on_hover(Value::str("hov")),
-                |ui| ui.text("Remember me", TextStyle::new(12.0)),
+                    .on_click("toggle")
+                    .on_hover("hov"),
+                "Remember me",
+                TextStyle::new(12.0),
             );
             ui.finish();
             doc

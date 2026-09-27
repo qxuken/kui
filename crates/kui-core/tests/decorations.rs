@@ -3,7 +3,7 @@
 //! run of a span per line so a background follows the span across a wrap
 //! the way a box around a run cannot.
 
-use kui_core::{Color, Core, NodeSpec, QuadKind, Size, Sizing, Span, TextStyle};
+use kui_core::{Color, Core, NodeSpec, QuadKind, Size, Span, TextStyle};
 
 const LH: f32 = 20.0;
 
@@ -133,7 +133,7 @@ fn a_wrapped_span_background_follows_it_onto_the_next_line() {
     let w = core.measure_text("M", &mono(), None).width;
     let mut ui = core.frame(Size::new(300.0, 100.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    ui.with(NodeSpec::column().width(Sizing::Fixed(8.5 * w)), |ui| {
+    ui.with(NodeSpec::column().width(8.5 * w), |ui| {
         ui.rich_text(
             &[
                 Span::new("ab "),

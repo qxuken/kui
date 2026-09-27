@@ -8,7 +8,7 @@
 //! quad the core actually emitted, so the two halves are checked against
 //! each other rather than each against itself.
 
-use kui_core::{Color, Core, NodeSpec, Quad, QuadKind, Shadow, Size, Sizing};
+use kui_core::{Color, Core, NodeSpec, Quad, QuadKind, Shadow, Size};
 
 mod wgsl;
 use wgsl::{AA, sd_rounded_box, smoothstep};
@@ -28,10 +28,7 @@ fn card_shadow(spec: NodeSpec) -> Quad {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
     ui.configure_root(NodeSpec::column().pad(20.0));
-    ui.leaf_keyed(
-        "card",
-        spec.width(Sizing::Fixed(80.0)).height(Sizing::Fixed(40.0)),
-    );
+    ui.leaf_keyed("card", spec.size(80.0, 40.0));
     ui.finish();
     let q = core.output().0.quads[0];
     assert_eq!(q.kind, QuadKind::Shadow);

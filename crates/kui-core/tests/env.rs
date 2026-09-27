@@ -123,13 +123,13 @@ fn the_accent_prop_paints_from_the_env_or_keeps_its_bg() {
 /// feature painting an unreadable button.
 #[test]
 fn an_accent_button_repaints_its_whole_palette() {
-    use kui_core::{Color, Value, widgets};
+    use kui_core::{Color, widgets};
     let palette = |core: &mut Core, accent: Option<Color>| -> (Color, Color, Color) {
         core.env.system.accent = accent;
         let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
         let spec = widgets::button_spec(&ui.theme(), &ui.metrics())
             .accent()
-            .on_click(Value::str("ok"));
+            .on_click("ok");
         widgets::button_with(&mut ui, "ok", "OK", spec, None);
         ui.finish();
         let (list, _) = core.output();
@@ -199,12 +199,12 @@ fn a_changed_system_reading_becomes_an_event() {
     assert_eq!(kinds(&evs), vec!["system"], "one event, on the root");
     let p = &evs[0].payload;
     assert_eq!(evs[0].key, kui_core::Key::ROOT);
-    assert_eq!(p.get("appearance").and_then(Value::as_str), Some("dark"));
-    assert_eq!(p.get("motion").and_then(Value::as_str), Some("reduced"));
+    assert_eq!(p.get_str("appearance"), Some("dark"));
+    assert_eq!(p.get_str("motion"), Some("reduced"));
     // The whole reading, in `env().system`'s own spellings and nulls.
     assert!(matches!(p.get("accent"), Some(Value::Null)));
     assert!(matches!(p.get("locale"), Some(Value::Null)));
-    assert_eq!(p.get("assistive").and_then(Value::as_str), Some("unknown"));
+    assert_eq!(p.get_str("assistive"), Some("unknown"));
 
     // And once only: a reading that stops changing stops reporting.
     assert!(kinds(&frame(&mut core)).is_empty());
@@ -235,14 +235,11 @@ fn assistive_technology_attaching_is_a_system_event() {
     let evs = frame(&mut core);
     assert_eq!(kinds(&evs), vec!["system"]);
     let p = &evs[0].payload;
-    assert_eq!(
-        p.get("assistive").and_then(Value::as_str),
-        Some("listening")
-    );
+    assert_eq!(p.get_str("assistive"), Some("listening"));
     // The other four ride along unchanged, so a handler keeps the whole
     // reading as it does for any other `system` event.
-    assert_eq!(p.get("appearance").and_then(Value::as_str), Some("unknown"));
-    assert_eq!(p.get("motion").and_then(Value::as_str), Some("unknown"));
+    assert_eq!(p.get_str("appearance"), Some("unknown"));
+    assert_eq!(p.get_str("motion"), Some("unknown"));
     assert!(kinds(&frame(&mut core)).is_empty(), "reported once");
 
     // Where the adapter reports deactivation (AT-SPI), the fall is a
@@ -250,16 +247,11 @@ fn assistive_technology_attaching_is_a_system_event() {
     core.env.system.assistive = Assistive::None;
     let evs = frame(&mut core);
     assert_eq!(kinds(&evs), vec!["system"]);
-    assert_eq!(
-        evs[0].payload.get("assistive").and_then(Value::as_str),
-        Some("none")
-    );
+    assert_eq!(evs[0].payload.get_str("assistive"), Some("none"));
 }
 
 fn kinds(evs: &[kui_core::UiEvent]) -> Vec<&str> {
-    evs.iter()
-        .filter_map(|e| e.payload.get("kind").and_then(Value::as_str))
-        .collect()
+    evs.iter().filter_map(|e| e.kind()).collect()
 }
 
 /// A launcher's pinned reading is a `SystemEnv` laid *over* the OS's, every
@@ -340,8 +332,8 @@ fn the_system_event_carries_the_pinned_reading() {
     let evs = frame(&mut core, real, pinned);
     assert_eq!(kinds(&evs), vec!["system"]);
     let p = &evs[0].payload;
-    assert_eq!(p.get("appearance").and_then(Value::as_str), Some("dark"));
-    assert_eq!(p.get("motion").and_then(Value::as_str), Some("reduced"));
+    assert_eq!(p.get_str("appearance"), Some("dark"));
+    assert_eq!(p.get_str("motion"), Some("reduced"));
 
     // The user turns reduce-motion on for real: nothing the view can see
     // changed, so nothing is reported — and off again, likewise.

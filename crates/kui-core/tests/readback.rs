@@ -49,10 +49,7 @@ fn draw(core: &mut Core) -> Key {
     let mut doc = Key::ROOT;
     ui.with_keyed(
         "scroller",
-        NodeSpec::column()
-            .scroll_y()
-            .width(Sizing::Fixed(300.0))
-            .height(Sizing::Fixed(40.0)),
+        NodeSpec::column().scroll_y().size(300.0, 40.0),
         |ui| {
             doc = ui.text_edit(
                 "doc",
@@ -62,11 +59,11 @@ fn draw(core: &mut Core) -> Key {
                     autofocus: true,
                     ..Default::default()
                 },
-                NodeSpec::column().width(Sizing::Fixed(280.0)),
+                NodeSpec::column().width(280.0),
             );
         },
     );
-    ui.with_keyed(
+    ui.text_in_keyed(
         "vol",
         NodeSpec::row()
             .role(Role::Slider)
@@ -74,8 +71,9 @@ fn draw(core: &mut Core) -> Key {
             .value_now(0.4)
             .value_min(0.0)
             .value_max(1.0)
-            .on_drag(Value::str("vol")),
-        |ui| ui.text("vol", TextStyle::new(12.0)),
+            .on_drag("vol"),
+        "vol",
+        TextStyle::new(12.0),
     );
     ui.finish();
     doc

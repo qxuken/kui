@@ -16,7 +16,6 @@ use crate::display::{Quad, QuadKind};
 use crate::geom::Vec2;
 use crate::input::{EditKey, InputEvent, KeyCode, KeyMods, KeyPress, Mods, UiEvent};
 use crate::runtime::Core;
-use crate::value::Value;
 
 /// A primary click at `at`: the pointer moves there, presses once and
 /// releases. Every event the three inputs produced, in order — a test
@@ -82,7 +81,7 @@ pub fn drive(core: &mut Core, events: &[InputEvent]) -> Vec<UiEvent> {
 /// a bare string payload as itself, and `"?"` for anything else.
 pub fn kinds(evs: &[UiEvent]) -> Vec<&str> {
     evs.iter()
-        .map(|e| match e.payload.get("kind").and_then(Value::as_str) {
+        .map(|e| match e.kind() {
             Some(k) => k,
             None => e.payload.as_str().unwrap_or("?"),
         })

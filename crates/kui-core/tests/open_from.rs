@@ -5,13 +5,13 @@
 //! core, rather than once per binding.
 
 use kui_core::schema::PropsOut;
-use kui_core::{Content, Core, InputEvent, Key, NodeSpec, QuadKind, Size, Sizing, Vec2};
+use kui_core::{Content, Core, InputEvent, Key, NodeSpec, QuadKind, Size, Vec2};
 
 const VIEW: Size = Size { w: 300.0, h: 200.0 };
 
 fn props(spec: NodeSpec) -> PropsOut {
     let mut p = PropsOut::new();
-    p.spec = spec.width(Sizing::Fixed(100.0)).height(Sizing::Fixed(40.0));
+    p.spec = spec.size(100.0, 40.0);
     p
 }
 

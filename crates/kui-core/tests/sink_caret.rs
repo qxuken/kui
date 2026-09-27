@@ -4,7 +4,7 @@
 //! it moves so the clock re-arms solid, and the phase the driver sets is
 //! what `caret_visible` reads back in the view.
 
-use kui_core::{Core, EditOptions, Key, NodeSpec, Role, Size, Sizing, TextStyle, Value};
+use kui_core::{Core, EditOptions, Key, NodeSpec, Role, Size, TextStyle};
 
 fn mono() -> TextStyle {
     TextStyle::new(14.0).mono().line_height(20.0)
@@ -19,12 +19,12 @@ fn frame(core: &mut Core, caret: Option<(usize, u32)>, draw_caret: bool) -> Key 
         "editor",
         NodeSpec::column()
             .fill()
-            .on_key(Value::Null)
+            .key_sink()
             .role(Role::MultilineTextInput)
             .label("buf"),
         |ui| {
             for (n, text) in ["first line", "second"].iter().enumerate() {
-                let mut row = NodeSpec::row().height(Sizing::Fixed(20.0)).role(Role::Line);
+                let mut row = NodeSpec::row().height(20.0).role(Role::Line);
                 if let Some((l, b)) = caret
                     && l == n
                 {
@@ -35,12 +35,7 @@ fn frame(core: &mut Core, caret: Option<(usize, u32)>, draw_caret: bool) -> Key 
                     // The drawn caret: on the phase, and only when the
                     // app draws one at all.
                     if draw_caret && visible && caret.is_some_and(|(l, _)| l == n) {
-                        ui.leaf_keyed(
-                            "caret",
-                            NodeSpec::column()
-                                .width(Sizing::Fixed(2.0))
-                                .height(Sizing::Fixed(16.0)),
-                        );
+                        ui.leaf_keyed("caret", NodeSpec::column().size(2.0, 16.0));
                     }
                 });
             }
@@ -111,7 +106,7 @@ fn a_stock_editor_and_a_sink_share_the_stamp_and_the_phase() {
         "note",
         "hello",
         &EditOptions::default(),
-        NodeSpec::column().width(Sizing::Grow(1.0)).label("note"),
+        NodeSpec::column().grow_width().label("note"),
     );
     ui.finish();
     let note = core.key_of("note").unwrap();
@@ -153,18 +148,15 @@ fn a_solid_caret_anchors_and_reads_but_does_not_blink() {
             "editor",
             NodeSpec::column()
                 .fill()
-                .on_key(Value::Null)
+                .key_sink()
                 .role(Role::MultilineTextInput)
                 .label("buf"),
             |ui| {
-                let mut row = NodeSpec::row()
-                    .height(Sizing::Fixed(20.0))
-                    .role(Role::Line)
-                    .caret(3);
+                let mut row = NodeSpec::row().height(20.0).role(Role::Line).caret(3);
                 if solid {
                     row = row.caret_solid();
                 }
-                ui.with(row, |ui| ui.text("first line", mono()));
+                ui.text_in(row, "first line", mono());
             },
         );
         ui.take_key_focus(sink);
@@ -215,35 +207,32 @@ fn the_caret_is_the_enclosing_sinks_wherever_focus_sits_inside_it() {
             "editor",
             NodeSpec::column()
                 .fill()
-                .on_key(Value::Null)
+                .key_sink()
                 .role(Role::MultilineTextInput)
                 .label("buf"),
             |ui| {
                 // A gutter the access tree skips, with a line of its own
                 // that must not count — and a button inside the editor.
                 ui.with(NodeSpec::row().role(Role::None), |ui| {
-                    ui.with(
-                        NodeSpec::row()
-                            .height(Sizing::Fixed(20.0))
-                            .role(Role::Line)
-                            .caret(9),
-                        |ui| ui.text("gutter", mono()),
+                    ui.text_in(
+                        NodeSpec::row().height(20.0).role(Role::Line).caret(9),
+                        "gutter",
+                        mono(),
                     );
                 });
                 button = ui.leaf_keyed(
                     "wrap",
                     NodeSpec::row()
-                        .width(Sizing::Fixed(20.0))
-                        .height(Sizing::Fixed(20.0))
-                        .on_click(Value::str("wrap"))
+                        .size(20.0, 20.0)
+                        .on_click("wrap")
                         .label("Wrap"),
                 );
                 for (n, text) in ["first line", "second"].iter().enumerate() {
-                    let mut row = NodeSpec::row().height(Sizing::Fixed(20.0)).role(Role::Line);
+                    let mut row = NodeSpec::row().height(20.0).role(Role::Line);
                     if let Some(b) = carets[n] {
                         row = row.caret(b);
                     }
-                    ui.with(row, |ui| ui.text(text, mono()));
+                    ui.text_in(row, text, mono());
                 }
             },
         );

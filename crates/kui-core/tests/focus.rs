@@ -10,7 +10,7 @@
 use kui_core::testing::{click_at, tab};
 use kui_core::{
     AccessAction, AccessRequest, Align, Color, Core, EditKey, EditOptions, FloatConfig, InputEvent,
-    Key, Mods, NodeSpec, Role, Size, Sizing, TextStyle, UiEvent, Value, Vec2, WindowButton,
+    Key, Mods, NodeSpec, Role, Size, TextStyle, UiEvent, Value, Vec2, WindowButton,
 };
 
 const H: f32 = 20.0;
@@ -46,40 +46,36 @@ fn frame(core: &mut Core, declare_pane: bool, autofocus_edit: bool) -> Keys {
     let mut ui = core.frame(Size::new(200.0, 300.0), 1.0);
     ui.window_title("Focus");
     ui.configure_root(NodeSpec::column().fill());
-    let row = || {
-        NodeSpec::row()
-            .width(Sizing::Fixed(100.0))
-            .height(Sizing::Fixed(H))
-    };
+    let row = || NodeSpec::row().size(100.0, H);
     ui.with_keyed("titlebar", row().window_drag(), |ui| {
         ui.leaf_keyed(
             "close",
             NodeSpec::row()
-                .width(Sizing::Fixed(H))
-                .height(Sizing::Fixed(H))
+                .size(H, H)
                 .window_button(WindowButton::Close),
         );
     });
-    ui.with_keyed("heading", row().role(Role::Heading), |ui| {
-        ui.text("Controls", TextStyle::new(12.0))
-    });
-    let go = ui.with_keyed("go", row().on_click(Value::str("go")), |ui| {
-        ui.text("Go", TextStyle::new(12.0))
-    });
-    let save = ui.leaf_keyed("save", row().on_click(Value::str("save")).label("Save"));
+    ui.text_in_keyed(
+        "heading",
+        row().role(Role::Heading),
+        "Controls",
+        TextStyle::new(12.0),
+    );
+    let go = ui.text_in_keyed("go", row().on_click("go"), "Go", TextStyle::new(12.0));
+    let save = ui.leaf_keyed("save", row().on_click("save").label("Save"));
     let mute = ui.leaf_keyed(
         "mute",
         row()
             .role(Role::Switch)
             .checked(true)
-            .on_click(Value::str("mute"))
+            .on_click("mute")
             .label("Mute"),
     );
     let vol = ui.leaf_keyed(
         "vol",
         row()
             .role(Role::Slider)
-            .on_drag(Value::str("vol"))
+            .on_drag("vol")
             .label("Volume")
             .value_now(3.0)
             .value_min(0.0)
@@ -88,20 +84,14 @@ fn frame(core: &mut Core, declare_pane: bool, autofocus_edit: bool) -> Keys {
     let off = ui.leaf_keyed(
         "off",
         row()
-            .on_click(Value::str("nope"))
+            .on_click("nope")
             .disabled(true)
             .hover_bg(Color::WHITE)
             .label("Off"),
     );
     let mut hidden = Key::ROOT;
     ui.with_keyed("deco", row().role(Role::None), |ui| {
-        hidden = ui.leaf_keyed(
-            "hidden",
-            NodeSpec::row()
-                .width(Sizing::Fixed(H))
-                .height(Sizing::Fixed(H))
-                .on_click(Value::str("hidden")),
-        );
+        hidden = ui.leaf_keyed("hidden", NodeSpec::row().size(H, H).on_click("hidden"));
     });
     ui.leaf_keyed("plain", row());
     let row_key = ui.leaf_keyed("row", row().focusable().label("Row"));
@@ -114,16 +104,13 @@ fn frame(core: &mut Core, declare_pane: bool, autofocus_edit: bool) -> Keys {
         },
         row().label("Name"),
     );
-    let pane = ui.leaf_keyed("pane", row().on_key(Value::str("pane")));
+    let pane = ui.leaf_keyed("pane", row().on_key("pane"));
     if declare_pane {
         ui.take_key_focus(pane);
     }
     let styled = ui.leaf_keyed(
         "styled",
-        row()
-            .on_click(Value::str("styled"))
-            .bg(Color::BLACK)
-            .focus_bg(FOCUS_BG),
+        row().on_click("styled").bg(Color::BLACK).focus_bg(FOCUS_BG),
     );
     ui.finish();
     Keys {
@@ -150,11 +137,8 @@ fn payloads(evs: &[UiEvent]) -> Vec<String> {
             Some(s) => s.to_string(),
             None => format!(
                 "{}:{}",
-                e.payload.get("kind").and_then(Value::as_str).unwrap_or("?"),
-                e.payload
-                    .get("action")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
+                e.kind().unwrap_or("?"),
+                e.payload.get_str("action").unwrap_or("")
             ),
         })
         .collect()
@@ -221,13 +205,7 @@ fn a_view_steps_focus_onto_the_frame_it_is_declaring() {
             None => {}
         }
         for name in ["a", "b", "c"] {
-            ui.leaf_keyed(
-                name,
-                NodeSpec::row()
-                    .focusable()
-                    .width(Sizing::Fixed(100.0))
-                    .height(Sizing::Fixed(H)),
-            );
+            ui.leaf_keyed(name, NodeSpec::row().focusable().size(100.0, H));
         }
         ui.finish();
     };
@@ -241,13 +219,7 @@ fn a_view_steps_focus_onto_the_frame_it_is_declaring() {
         let mut ui = immediate.frame(Size::new(200.0, 200.0), 1.0);
         ui.core().focus_next(true);
         for name in ["a", "b", "c"] {
-            ui.leaf_keyed(
-                name,
-                NodeSpec::row()
-                    .focusable()
-                    .width(Sizing::Fixed(100.0))
-                    .height(Sizing::Fixed(H)),
-            );
+            ui.leaf_keyed(name, NodeSpec::row().focusable().size(100.0, H));
         }
         ui.finish();
     }
@@ -264,13 +236,7 @@ fn a_view_steps_focus_onto_the_frame_it_is_declaring() {
         ui.focus(a);
         ui.focus_prev();
         for name in ["a", "b", "c"] {
-            ui.leaf_keyed(
-                name,
-                NodeSpec::row()
-                    .focusable()
-                    .width(Sizing::Fixed(100.0))
-                    .height(Sizing::Fixed(H)),
-            );
+            ui.leaf_keyed(name, NodeSpec::row().focusable().size(100.0, H));
         }
         ui.finish();
     }
@@ -304,11 +270,9 @@ fn enter_and_space_press_the_focused_control() {
     // data and is never "pressed".
     core.set_focus(Some(k.name));
     assert!(
-        key(&mut core, EditKey::Enter).iter().all(|e| e
-            .payload
-            .get("kind")
-            .and_then(Value::as_str)
-            == Some("submit"))
+        key(&mut core, EditKey::Enter)
+            .iter()
+            .all(|e| e.payload.get_str("kind") == Some("submit"))
     );
     core.set_focus(Some(k.pane));
     assert!(key(&mut core, EditKey::Enter).is_empty());
@@ -327,10 +291,7 @@ fn arrows_nudge_a_focused_slider_like_assistive_technology_does() {
     let up = key(&mut core, EditKey::Right);
     assert_eq!(payloads(&up), ["access:increment"]);
     assert_eq!(up[0].key, k.vol);
-    assert_eq!(
-        up[0].payload.get("tag").and_then(Value::as_str),
-        Some("vol")
-    );
+    assert_eq!(up[0].payload.get_str("tag"), Some("vol"));
     assert_eq!(payloads(&key(&mut core, EditKey::Up)), ["access:increment"]);
     assert_eq!(
         payloads(&key(&mut core, EditKey::Left)),
@@ -620,35 +581,24 @@ fn modal_frame(core: &mut Core, dialog: bool) -> Modal {
     let mut ui = core.frame(Size::new(200.0, 300.0), 1.0);
     ui.window_title("Modal");
     ui.configure_root(NodeSpec::column().fill());
-    let row = || {
-        NodeSpec::row()
-            .width(Sizing::Fixed(100.0))
-            .height(Sizing::Fixed(H))
-    };
+    let row = || NodeSpec::row().size(100.0, H);
     ui.with_keyed("titlebar", row().window_drag(), |ui| {
         ui.leaf_keyed(
             "close",
             NodeSpec::row()
-                .width(Sizing::Fixed(H))
-                .height(Sizing::Fixed(H))
+                .size(H, H)
                 .window_button(WindowButton::Close),
         );
     });
-    let open = ui.leaf_keyed("open", row().on_click(Value::str("open")).label("Open"));
+    let open = ui.leaf_keyed("open", row().on_click("open").label("Open"));
     // A scroll container two rows tall holding four: it overflows, so it
     // has a scrollbar and somewhere for the wheel to go.
     let list = ui.with_keyed(
         "list",
-        NodeSpec::column()
-            .width(Sizing::Fixed(100.0))
-            .height(Sizing::Fixed(2.0 * H))
-            .scroll_y(),
+        NodeSpec::column().size(100.0, 2.0 * H).scroll_y(),
         |ui| {
             for n in 0..4 {
-                ui.leaf_keyed(
-                    ["a", "b", "c", "d"][n],
-                    row().on_click(Value::str("row")).label("Row"),
-                );
+                ui.leaf_keyed(["a", "b", "c", "d"][n], row().on_click("row").label("Row"));
             }
         },
     );
@@ -661,17 +611,12 @@ fn modal_frame(core: &mut Core, dialog: bool) -> Modal {
         dlg = ui.with_keyed(
             "dialog",
             NodeSpec::column()
-                .width(Sizing::Fixed(100.0))
-                .height(Sizing::Fixed(3.0 * H))
-                .float(
-                    FloatConfig::viewport()
-                        .at(Align::End, Align::End)
-                        .self_at(Align::End, Align::End),
-                )
-                .modal(Value::str("dlg"))
+                .size(100.0, 3.0 * H)
+                .float(FloatConfig::viewport().inside(Align::End, Align::End))
+                .modal("dlg")
                 .label("Settings"),
             |ui| {
-                ok = ui.leaf_keyed("ok", row().on_click(Value::str("ok")).label("OK"));
+                ok = ui.leaf_keyed("ok", row().on_click("ok").label("OK"));
                 reason = ui.text_edit("reason", "", &EditOptions::default(), row().label("Reason"));
             },
         );
@@ -705,10 +650,7 @@ fn everything_outside_the_modal_is_inert() {
     // only the modal's dismiss — and does not move focus.
     let out = click_at(&mut core, BEHIND.0, BEHIND.1);
     assert_eq!(payloads(&out), ["dismiss:"], "no `open`, one dismiss");
-    assert_eq!(
-        out[0].payload.get("reason").and_then(Value::as_str),
-        Some("outside")
-    );
+    assert_eq!(out[0].payload.get_str("reason"), Some("outside"));
     assert_eq!(out[0].key, m.dialog);
     assert_eq!(core.focus(), Some(m.ok), "focus stays in the modal");
 
@@ -770,12 +712,9 @@ fn escape_asks_the_modal_to_go_away_and_does_nothing_else() {
     let out = key(&mut core, EditKey::Escape);
     assert_eq!(payloads(&out), ["dismiss:"]);
     assert_eq!(out[0].key, m.dialog);
+    assert_eq!(out[0].payload.get_str("reason"), Some("escape"));
     assert_eq!(
-        out[0].payload.get("reason").and_then(Value::as_str),
-        Some("escape")
-    );
-    assert_eq!(
-        out[0].payload.get("tag").and_then(Value::as_str),
+        out[0].payload.get_str("tag"),
         Some("dlg"),
         "the modal's tag rides along"
     );
@@ -815,8 +754,7 @@ fn a_modal_without_a_tag_still_dismisses() {
     let menu = ui.leaf_keyed(
         "menu",
         NodeSpec::column()
-            .width(Sizing::Fixed(100.0))
-            .height(Sizing::Fixed(H))
+            .size(100.0, H)
             .float(FloatConfig::viewport())
             .modal(Value::Null)
             .label("Menu"),
@@ -825,10 +763,7 @@ fn a_modal_without_a_tag_still_dismisses() {
     let out = key(&mut core, EditKey::Escape);
     assert_eq!(out.len(), 1);
     assert_eq!(out[0].key, menu);
-    assert_eq!(
-        out[0].payload.get("kind").and_then(Value::as_str),
-        Some("dismiss")
-    );
+    assert_eq!(out[0].kind(), Some("dismiss"));
     assert_eq!(out[0].payload.get("tag"), None, "a null tag carries none");
 }
 
@@ -866,10 +801,9 @@ fn a_modal_without_a_name_warns() {
         let mut ui = core.frame(Size::new(200.0, 300.0), 1.0);
         ui.configure_root(NodeSpec::column().fill());
         let mut spec = NodeSpec::column()
-            .width(Sizing::Fixed(100.0))
-            .height(Sizing::Fixed(2.0 * H))
+            .size(100.0, 2.0 * H)
             .float(FloatConfig::viewport())
-            .modal(Value::str("dlg"));
+            .modal("dlg");
         if let Some(label) = label {
             spec = spec.label(label);
         }
@@ -907,12 +841,11 @@ fn a_modal_that_is_not_floated_warns() {
     let sheet = ui.leaf_keyed(
         "sheet",
         NodeSpec::column()
-            .width(Sizing::Fixed(100.0))
-            .height(Sizing::Fixed(H))
+            .size(100.0, H)
             .modal(Value::Null)
             .label("Sheet"),
     );
-    ui.leaf_keyed("after", NodeSpec::row().height(Sizing::Fixed(H)));
+    ui.leaf_keyed("after", NodeSpec::row().height(H));
     ui.finish();
     let ws = core.take_warnings();
     let modal: Vec<_> = ws
@@ -975,16 +908,12 @@ fn a_float_declared_before_a_modal_paints_over_it_too() {
     ui.configure_root(NodeSpec::column().fill());
     ui.leaf_keyed(
         "hud",
-        NodeSpec::row()
-            .width(Sizing::Fixed(50.0))
-            .height(Sizing::Fixed(H))
-            .float(FloatConfig::viewport()),
+        NodeSpec::row().size(50.0, H).float(FloatConfig::viewport()),
     );
     let sheet = ui.leaf_keyed(
         "sheet",
         NodeSpec::column()
-            .width(Sizing::Fixed(100.0))
-            .height(Sizing::Fixed(H))
+            .size(100.0, H)
             .modal(Value::Null)
             .label("Sheet"),
     );
@@ -1005,17 +934,13 @@ fn a_float_declared_before_a_modal_paints_over_it_too() {
     ui.with_keyed(
         "sheet",
         NodeSpec::column()
-            .width(Sizing::Fixed(100.0))
-            .height(Sizing::Fixed(H))
+            .size(100.0, H)
             .modal(Value::Null)
             .label("Sheet"),
         |ui| {
             ui.leaf_keyed(
                 "menu",
-                NodeSpec::row()
-                    .width(Sizing::Fixed(50.0))
-                    .height(Sizing::Fixed(H))
-                    .float(FloatConfig::viewport()),
+                NodeSpec::row().size(50.0, H).float(FloatConfig::viewport()),
             );
         },
     );
@@ -1033,28 +958,19 @@ fn a_float_declared_before_a_modal_paints_over_it_too() {
 fn drag_frame(core: &mut Core, dialog: bool) -> (Key, Key) {
     let mut ui = core.frame(Size::new(200.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    let row = || {
-        NodeSpec::row()
-            .width(Sizing::Fixed(100.0))
-            .height(Sizing::Fixed(H))
-    };
-    let handle = ui.leaf_keyed("handle", row().on_drag(Value::str("split")));
-    let button = ui.leaf_keyed("button", row().on_click(Value::str("go")));
+    let row = || NodeSpec::row().size(100.0, H);
+    let handle = ui.leaf_keyed("handle", row().on_drag("split"));
+    let button = ui.leaf_keyed("button", row().on_click("go"));
     if dialog {
         ui.with_keyed(
             "dialog",
             NodeSpec::column()
-                .width(Sizing::Fixed(100.0))
-                .height(Sizing::Fixed(H))
-                .float(
-                    FloatConfig::viewport()
-                        .at(Align::End, Align::End)
-                        .self_at(Align::End, Align::End),
-                )
+                .size(100.0, H)
+                .float(FloatConfig::viewport().inside(Align::End, Align::End))
                 .modal(Value::Null)
                 .label("Wait"),
             |ui| {
-                ui.leaf_keyed("ok", row().on_click(Value::str("ok")));
+                ui.leaf_keyed("ok", row().on_click("ok"));
             },
         );
     }
@@ -1064,14 +980,8 @@ fn drag_frame(core: &mut Core, dialog: bool) -> (Key, Key) {
 
 fn drag_phases(evs: &[UiEvent]) -> Vec<String> {
     evs.iter()
-        .filter(|e| e.payload.get("kind").and_then(Value::as_str) == Some("drag"))
-        .map(|e| {
-            e.payload
-                .get("phase")
-                .and_then(Value::as_str)
-                .unwrap_or("?")
-                .to_string()
-        })
+        .filter(|e| e.kind() == Some("drag"))
+        .map(|e| e.payload.get_str("phase").unwrap_or("?").to_string())
         .collect()
 }
 
@@ -1139,11 +1049,7 @@ fn rename_frame(
 ) -> Vec<Key> {
     let mut ui = core.frame(Size::new(200.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    let row = || {
-        NodeSpec::row()
-            .width(Sizing::Fixed(100.0))
-            .height(Sizing::Fixed(H))
-    };
+    let row = || NodeSpec::row().size(100.0, H);
     let keys: Vec<Key> = nodes
         .iter()
         .map(|n| ui.leaf_keyed(n, row().focusable().label(*n)))
@@ -1159,14 +1065,9 @@ fn rename_frame(
         ui.with_keyed(
             "rename",
             NodeSpec::column()
-                .width(Sizing::Fixed(100.0))
-                .height(Sizing::Fixed(2.0 * H))
-                .float(
-                    FloatConfig::viewport()
-                        .at(Align::End, Align::End)
-                        .self_at(Align::End, Align::End),
-                )
-                .modal(Value::str("rename"))
+                .size(100.0, 2.0 * H)
+                .float(FloatConfig::viewport().inside(Align::End, Align::End))
+                .modal("rename")
                 .label("Rename"),
             |ui| {
                 ui.text_edit("field", "", &EditOptions::default(), row().label("Name"));
@@ -1256,11 +1157,7 @@ fn an_imperative_focus_beats_the_focus_the_modal_gives_back() {
     rename_frame(&mut core, &["a", "b"], true, None);
     let mut ui = core.frame(Size::new(200.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    let row = || {
-        NodeSpec::row()
-            .width(Sizing::Fixed(100.0))
-            .height(Sizing::Fixed(H))
-    };
+    let row = || NodeSpec::row().size(100.0, H);
     ui.leaf_keyed("a", row().focusable().label("a"));
     ui.leaf_keyed("b", row().focusable().label("b"));
     ui.focus(b);
@@ -1351,13 +1248,8 @@ fn the_root_is_never_a_tab_stop() {
     let mut go = Key::ROOT;
     let build = |core: &mut Core, go: &mut Key| {
         let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
-        ui.configure_root(NodeSpec::column().fill().on_key(Value::str("root")));
-        *go = ui.leaf_keyed(
-            "go",
-            NodeSpec::row()
-                .height(Sizing::Fixed(H))
-                .on_click(Value::str("go")),
-        );
+        ui.configure_root(NodeSpec::column().fill().on_key("root"));
+        *go = ui.leaf_keyed("go", NodeSpec::row().height(H).on_click("go"));
         ui.finish();
     };
     build(&mut core, &mut go);
@@ -1377,7 +1269,7 @@ fn the_root_is_never_a_tab_stop() {
         Default::default(),
     )));
     assert_eq!(
-        evs[0].payload.get("tag").and_then(Value::as_str),
+        evs[0].payload.get_str("tag"),
         Some("root"),
         "a focused root sink keeps the keyboard"
     );

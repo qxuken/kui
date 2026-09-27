@@ -8,7 +8,7 @@ use crate::env::Appearance;
 use crate::menu::MenuItem;
 use crate::runtime::inspect::NodeInfo;
 use crate::spec::TextStyle;
-use crate::spec::{Align, Min, NodeSpec, Sizing};
+use crate::spec::{Align, Min, NodeSpec};
 use crate::theme::Theme;
 use crate::tree::OriginId;
 use crate::ui::Ui;
@@ -23,9 +23,7 @@ pub(super) fn build(ui: &mut Ui<'_>, st: &mut State, nodes: &[NodeInfo], place: 
     match place {
         Place::Window => {
             ui.window_title(&format!("kui devtools — {}", st.facts.title));
-            let spec = NodeSpec::column()
-                .width(Sizing::Grow(1.0))
-                .height(Sizing::Grow(1.0));
+            let spec = NodeSpec::column().fill();
             panel(ui, st, nodes, &t, place, spec);
         }
         Place::Main(dock) if dock.docked() => {
@@ -35,13 +33,13 @@ pub(super) fn build(ui: &mut Ui<'_>, st: &mut State, nodes: &[NodeInfo], place: 
             let vp = st.facts.viewport;
             let spec = if dock.is_side() {
                 NodeSpec::row()
-                    .width(Sizing::Fixed(super::pane_w(st.side_w, vp.w)))
+                    .width(super::pane_w(st.side_w, vp.w))
                     .min_width(super::SIDE_MIN_W)
-                    .height(Sizing::Grow(1.0))
+                    .grow_height()
             } else {
                 NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Fixed(super::pane_h(st.bottom_h, vp.h)))
+                    .grow_width()
+                    .height(super::pane_h(st.bottom_h, vp.h))
                     .min_height(super::BOTTOM_MIN_H)
             }
             // A Tab ring of its own that the app's never enters, and a
@@ -54,13 +52,9 @@ pub(super) fn build(ui: &mut Ui<'_>, st: &mut State, nodes: &[NodeInfo], place: 
             // Nothing docked: a zero-size holder for the outlines and the
             // picker to float from, so everything the panel declares is
             // still under one key.
-            ui.with_keyed(
-                DEVTOOLS_KEY,
-                NodeSpec::row()
-                    .width(Sizing::Fixed(0.0))
-                    .height(Sizing::Fixed(0.0)),
-                |ui| tree::overlays(ui, st, nodes, &t, place),
-            );
+            ui.with_keyed(DEVTOOLS_KEY, NodeSpec::row().size(0.0, 0.0), |ui| {
+                tree::overlays(ui, st, nodes, &t, place)
+            });
         }
     }
 }
@@ -124,36 +118,22 @@ fn panel(
     if matches!(docked, Some(Dock::Right | Dock::Bottom)) {
         handle(ui, t, docked.unwrap());
     }
-    ui.open(
-        NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Grow(1.0))
-            .pad(10.0)
-            .gap(8.0)
-            .clip(),
-    );
+    ui.open(NodeSpec::column().fill().pad(10.0).gap(8.0).clip());
     fixed(ui, |ui| header(ui, st, t));
     fixed(ui, |ui| tabs(ui, st, t));
     match st.shown() {
         Shown::Custom(i) => tab_body(ui, st, i, place),
         Shown::Builtin(Tab::Facts) => {
-            ui.with(
-                NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Grow(1.0))
-                    .gap(10.0)
-                    .scroll_y(),
-                |ui| {
-                    // The graph is this window's frame timing, which is
-                    // the app's only where the dock shares its window.
-                    if matches!(place, Place::Main(_)) {
-                        fixed(ui, widgets::latency_graph);
-                    }
-                    facts(ui, st, t);
-                    fixed(ui, |ui| tokens(ui, st, t));
-                    fixed(ui, |ui| legend(ui, st, t));
-                },
-            );
+            ui.with(NodeSpec::column().fill().gap(10.0).scroll_y(), |ui| {
+                // The graph is this window's frame timing, which is
+                // the app's only where the dock shares its window.
+                if matches!(place, Place::Main(_)) {
+                    fixed(ui, widgets::latency_graph);
+                }
+                facts(ui, st, t);
+                fixed(ui, |ui| tokens(ui, st, t));
+                fixed(ui, |ui| legend(ui, st, t));
+            });
         }
         Shown::Builtin(Tab::Events) => stream::events_tab(ui, st, t),
         Shown::Builtin(Tab::Tree) => tree::tree_tab(ui, st, nodes, t, place),
@@ -179,11 +159,7 @@ fn tab_body(ui: &mut Ui<'_>, st: &State, i: usize, place: Place) {
     ui.open_with_key(
         key,
         &format!("{DEVTOOLS_KEY}/tab/{}", decl.name),
-        NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Grow(1.0))
-            .clip()
-            .label(decl.label.as_str()),
+        NodeSpec::column().fill().clip().label(decl.label.as_str()),
     );
     if place == Place::Window && decl.slot.is_none() {
         let t = ink(ui.theme());
@@ -200,13 +176,13 @@ fn tab_body(ui: &mut Ui<'_>, st: &State, i: usize, place: Place) {
 fn handle(ui: &mut Ui<'_>, t: &Theme, dock: Dock) {
     let spec = if dock.is_side() {
         NodeSpec::row()
-            .width(Sizing::Fixed(6.0))
-            .height(Sizing::Grow(1.0))
+            .width(6.0)
+            .grow_height()
             .cursor(crate::cursor::CursorShape::EwResize)
     } else {
         NodeSpec::row()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Fixed(6.0))
+            .grow_width()
+            .height(6.0)
             .cursor(crate::cursor::CursorShape::NsResize)
     };
     ui.leaf_keyed(
@@ -225,7 +201,7 @@ fn handle(ui: &mut Ui<'_>, t: &Theme, dock: Dock) {
 fn header(ui: &mut Ui<'_>, st: &State, t: &Theme) {
     ui.with(
         NodeSpec::row()
-            .width(Sizing::Grow(1.0))
+            .grow_width()
             .cross_align(Align::Center)
             .gap(6.0),
         |ui| {
@@ -243,7 +219,7 @@ fn header(ui: &mut Ui<'_>, st: &State, t: &Theme) {
             // the same walk `Ctrl+Shift+D` makes, one press at a time.
             // Closing is not a placement, so it is a button after them:
             // an arrow never closes the panel.
-            ui.leaf(NodeSpec::row().width(Sizing::Grow(1.0)));
+            ui.leaf(NodeSpec::row().grow_width());
             let walk = "Ctrl+Shift+D walks left → right → bottom → window → off";
             ui.with(
                 NodeSpec::row()
@@ -290,7 +266,7 @@ fn header(ui: &mut Ui<'_>, st: &State, t: &Theme) {
 fn tabs(ui: &mut Ui<'_>, st: &State, t: &Theme) {
     ui.with(
         NodeSpec::row()
-            .width(Sizing::Grow(1.0))
+            .grow_width()
             .gap(2.0)
             .cross_gap(2.0)
             .wrap()
@@ -318,7 +294,7 @@ fn tabs(ui: &mut Ui<'_>, st: &State, t: &Theme) {
             });
             for (id, label, which) in own.chain(declared) {
                 let on = which == shown;
-                ui.with_keyed(
+                ui.text_in_keyed(
                     &format!("kui-devtools/tab-{id}"),
                     NodeSpec::row()
                         .pad_xy(10.0, 4.0)
@@ -330,14 +306,10 @@ fn tabs(ui: &mut Ui<'_>, st: &State, t: &Theme) {
                         .selected(on)
                         .label(label.as_str())
                         .apply_tooltip("Ctrl+Shift+N · the next tab"),
-                    |ui| {
-                        ui.text(
-                            &label,
-                            TextStyle::new(11.0)
-                                .color(if on { t.fg } else { t.muted })
-                                .nowrap(),
-                        );
-                    },
+                    &label,
+                    TextStyle::new(11.0)
+                        .color(if on { t.fg } else { t.muted })
+                        .nowrap(),
                 );
             }
         },
@@ -353,22 +325,21 @@ fn tabs(ui: &mut Ui<'_>, st: &State, t: &Theme) {
 /// chords (`Ctrl+Shift+T` / `A` / `M`) cycle the same choices.
 fn facts(ui: &mut Ui<'_>, st: &State, t: &Theme) {
     ui.with(
-        NodeSpec::table()
-            .width(Sizing::Grow(1.0))
-            .min_height(Min::FIT)
-            .gap(3.0),
+        NodeSpec::table().grow_width().min_height(Min::FIT).gap(3.0),
         |ui| {
             for (k, v) in &st.facts.rows {
                 ui.with(
                     NodeSpec::row()
-                        .width(Sizing::Grow(1.0))
+                        .grow_width()
                         .gap(8.0)
                         .cross_align(Align::Center),
                     |ui| {
                         ui.text(k, TextStyle::new(11.0).color(t.muted));
-                        ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |ui| {
-                            ui.text(v, TextStyle::new(11.0).color(t.fg).mono().nowrap());
-                        });
+                        ui.text_in(
+                            NodeSpec::row().grow_width(),
+                            v,
+                            TextStyle::new(11.0).color(t.fg).mono().nowrap(),
+                        );
                         match *k {
                             "theme" => override_select(ui, st, "base"),
                             "accent" => override_select(ui, st, "accent"),
@@ -453,7 +424,7 @@ fn tokens(ui: &mut Ui<'_>, st: &State, t: &Theme) {
         return;
     }
     let dark = t.is_dark();
-    ui.with(NodeSpec::column().width(Sizing::Grow(1.0)).gap(2.0), |ui| {
+    ui.with(NodeSpec::column().grow_width().gap(2.0), |ui| {
         let mut last_origin = None;
         let mut open = false;
         for tok in &st.facts.tokens {
@@ -468,12 +439,12 @@ fn tokens(ui: &mut Ui<'_>, st: &State, t: &Theme) {
                     format!("tokens · origin {}", tok.origin.0)
                 };
                 ui.text(&who, TextStyle::new(11.0).color(t.muted));
-                ui.open(NodeSpec::table().width(Sizing::Grow(1.0)).gap(2.0));
+                ui.open(NodeSpec::table().grow_width().gap(2.0));
                 open = true;
             }
             ui.with(
                 NodeSpec::row()
-                    .width(Sizing::Grow(1.0))
+                    .grow_width()
                     .gap(6.0)
                     .cross_align(Align::Center)
                     .padding(crate::geom::Edges {
@@ -533,8 +504,7 @@ fn tokens(ui: &mut Ui<'_>, st: &State, t: &Theme) {
 fn swatch(ui: &mut Ui<'_>, c: Color, t: &Theme) {
     ui.leaf(
         NodeSpec::row()
-            .width(Sizing::Fixed(12.0))
-            .height(Sizing::Fixed(12.0))
+            .size(12.0, 12.0)
             .radius(2.0)
             .bg(c)
             .border(1.0, t.border),
@@ -547,9 +517,9 @@ fn legend(ui: &mut Ui<'_>, st: &State, t: &Theme) {
     if st.legend.is_empty() {
         return;
     }
-    ui.with(NodeSpec::table().width(Sizing::Grow(1.0)).gap(2.0), |ui| {
+    ui.with(NodeSpec::table().grow_width().gap(2.0), |ui| {
         for (keys, what) in &st.legend {
-            ui.with(NodeSpec::row().width(Sizing::Grow(1.0)).gap(8.0), |ui| {
+            ui.with(NodeSpec::row().grow_width().gap(8.0), |ui| {
                 ui.text(keys, TextStyle::new(11.0).color(t.accent));
                 ui.text(what, TextStyle::new(11.0).color(t.muted));
             });
@@ -559,12 +529,7 @@ fn legend(ui: &mut Ui<'_>, st: &State, t: &Theme) {
 
 /// A section of the panel that keeps its height whatever the window's.
 pub(super) fn fixed(ui: &mut Ui<'_>, f: impl FnOnce(&mut Ui<'_>)) {
-    ui.with(
-        NodeSpec::column()
-            .width(Sizing::Grow(1.0))
-            .min_height(Min::FIT),
-        f,
-    );
+    ui.with(NodeSpec::column().grow_width().min_height(Min::FIT), f);
 }
 
 /// One of the header's placement radios, a choice among several: `Some(on)`
@@ -585,8 +550,7 @@ fn icon_lit(ui: &mut Ui<'_>, t: &Theme, what: &str, glyph: Icon, radio: Option<b
     }
     ui.with_keyed(
         &label,
-        spec.width(Sizing::Fixed(22.0))
-            .height(Sizing::Fixed(22.0))
+        spec.size(22.0, 22.0)
             .center()
             .radius(4.0)
             .bg(if on { t.accent_soft } else { t.surface })
@@ -703,7 +667,7 @@ pub(super) fn filter_field(ui: &mut Ui<'_>, t: &Theme, what: &str, name: &str) -
             ..Default::default()
         },
         NodeSpec::column()
-            .width(Sizing::Grow(1.0))
+            .grow_width()
             .pad_xy(6.0, 1.0)
             .bg(t.sunken)
             .radius(4.0)

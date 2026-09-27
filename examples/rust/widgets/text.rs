@@ -12,7 +12,7 @@
 //! Run: cargo run -p kui-native --example text
 
 use kui_devtools::Example;
-use kui_native::{Align, App, FontFamily, NodeSpec, Sizing, Span, TextStyle, Theme, Ui};
+use kui_native::{Align, App, FontFamily, NodeSpec, Span, TextStyle, Theme, Ui};
 
 struct Text;
 
@@ -20,7 +20,7 @@ struct Text;
 fn card(t: &Theme, title: &str, ui: &mut Ui<'_>, body: impl FnOnce(&mut Ui<'_>)) {
     ui.with(
         NodeSpec::column()
-            .width(Sizing::Grow(1.0))
+            .grow_width()
             .max_width(560.0)
             .pad(24.0)
             .gap(12.0)
@@ -125,19 +125,20 @@ impl App for Text {
                         // edge; in a fit row a growing column has no width.
                         ui.with(
                             NodeSpec::row()
-                                .width(Sizing::Grow(1.0))
+                                .grow_width()
                                 .gap(12.0)
                                 .cross_align(Align::Center),
                             |ui| {
-                                ui.with(NodeSpec::row().width(Sizing::Fixed(44.0)), |ui| {
-                                    ui.text(name, TextStyle::new(11.0).color(t.muted));
-                                });
-                                ui.with(NodeSpec::column().width(Sizing::Grow(1.0)), |ui| {
-                                    ui.text(
-                                        "The quick brown fox jumps over the lazy dog 0123456789",
-                                        TextStyle::new(15.0).family(family),
-                                    );
-                                });
+                                ui.text_in(
+                                    NodeSpec::row().width(44.0),
+                                    name,
+                                    TextStyle::new(11.0).color(t.muted),
+                                );
+                                ui.text_in(
+                                    NodeSpec::column().grow_width(),
+                                    "The quick brown fox jumps over the lazy dog 0123456789",
+                                    TextStyle::new(15.0).family(family),
+                                );
                             },
                         );
                     }

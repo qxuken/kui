@@ -8,7 +8,7 @@
 
 use kui_core::{
     Color, Core, EditOptions, Key, MAX_UNDECLARED_EDITS, MAX_UNDECLARED_SCROLLS, NodeSpec, Size,
-    Sizing, Vec2,
+    Vec2,
 };
 
 /// One frame declaring editors `first..last`, each seeded with its index.
@@ -21,7 +21,7 @@ fn edit_frame(core: &mut Core, range: std::ops::Range<usize>) -> Vec<Key> {
                 &format!("f{i}"),
                 &format!("draft {i}"),
                 &EditOptions::default(),
-                NodeSpec::column().width(Sizing::Grow(1.0)),
+                NodeSpec::column().grow_width(),
             )
         })
         .collect();
@@ -38,20 +38,15 @@ fn scroll_frame(core: &mut Core, range: std::ops::Range<usize>) -> Vec<Key> {
             ui.with_keyed(
                 &format!("s{i}"),
                 NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Fixed(10.0))
+                    .grow_width()
+                    .height(10.0)
                     .bg(Color::rgb8(20, 20, 20))
                     .scroll_y(),
                 // Something to scroll: an offset the layout cannot clamp
                 // to zero is how a surviving entry proves it is the same
                 // entry.
                 |ui| {
-                    ui.leaf_keyed(
-                        "tall",
-                        NodeSpec::column()
-                            .width(Sizing::Grow(1.0))
-                            .height(Sizing::Fixed(100.0)),
-                    );
+                    ui.leaf_keyed("tall", NodeSpec::column().grow_width().height(100.0));
                 },
             )
         })

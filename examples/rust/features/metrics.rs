@@ -14,7 +14,7 @@
 use kui_devtools::{Drive, Example};
 use kui_native::menu::MenuItem;
 use kui_native::widgets;
-use kui_native::{Align, App, Core, Metrics, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
+use kui_native::{Align, App, Core, Metrics, NodeSpec, TextStyle, Ui, UiEvent, Value};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Density {
@@ -92,7 +92,7 @@ impl App for Page {
 
                 // The stock widgets, as the metrics build them.
                 ui.with(NodeSpec::row().gap(16.0).cross_align(Align::Center), |ui| {
-                    let spec = widgets::button_spec(&t, &m).on_click(Value::str("noop"));
+                    let spec = widgets::button_spec(&t, &m).on_click("noop");
                     widgets::button_with(
                         ui,
                         "a stock button",
@@ -100,7 +100,7 @@ impl App for Page {
                         spec,
                         Some("a stock tooltip, in the hint metrics"),
                     );
-                    ui.with(NodeSpec::column().width(Sizing::Fixed(200.0)), |ui| {
+                    ui.with(NodeSpec::column().width(200.0), |ui| {
                         widgets::text_input(ui, "field", "a stock field");
                     });
                 });
@@ -155,7 +155,7 @@ impl App for Page {
             Some("large") => self.density = Density::Large,
             _ => {}
         }
-        match ev.payload.get("kind").and_then(Value::as_str) {
+        match ev.kind() {
             Some("contextmenu") => {
                 let at = |k| ev.payload.get(k).and_then(Value::as_float).unwrap_or(0.0) as f32;
                 self.menu = Some((at("x"), at("y")));

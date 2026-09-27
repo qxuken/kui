@@ -12,7 +12,7 @@
 
 use kui_devtools::{Drive, Example};
 use kui_native::{
-    App, Core, ImageFit, ImageId, ImageOpts, NodeSpec, Sampling, Sizing, TextStyle, Ui, UiEvent,
+    App, Core, ImageFit, ImageId, ImageOpts, NodeSpec, Sampling, TextStyle, Ui, UiEvent,
 };
 
 /// A procedural "photo": vertical sky gradient with a sun disc.
@@ -131,7 +131,7 @@ impl App for Gallery {
                 ui.image(
                     sky_id,
                     NodeSpec::column()
-                        .width(Sizing::Grow(1.0))
+                        .grow_width()
                         .max_width(720.0)
                         .radius(12.0)
                         .label("a generated sky gradient"),
@@ -157,8 +157,7 @@ impl App for Gallery {
                         ui.image(
                             checker_id,
                             NodeSpec::column()
-                                .width(Sizing::Fixed(48.0))
-                                .height(Sizing::Fixed(96.0))
+                                .size(48.0, 96.0)
                                 .radius(8.0)
                                 .label("the same checkerboard, stretched to 48x96"),
                         );
@@ -176,8 +175,7 @@ impl App for Gallery {
                     ui.with_keyed(
                         "stream-box",
                         NodeSpec::column()
-                            .width(Sizing::Fixed(240.0))
-                            .height(Sizing::Fixed(135.0))
+                            .size(240.0, 135.0)
                             .on_layout(kui_native::Value::str("stream"))
                             .animate(),
                         |ui| {
@@ -197,8 +195,7 @@ impl App for Gallery {
                             ..ImageOpts::default()
                         },
                         NodeSpec::column()
-                            .width(Sizing::Fixed(240.0))
-                            .height(Sizing::Fixed(135.0))
+                            .size(240.0, 135.0)
                             .radius(8.0)
                             .label("the same stream, nearest-sampled"),
                     );
@@ -216,8 +213,7 @@ impl App for Gallery {
                     ] {
                         ui.with(
                             NodeSpec::column()
-                                .width(Sizing::Fixed(140.0))
-                                .height(Sizing::Fixed(140.0))
+                                .size(140.0, 140.0)
                                 .bg(t.surface)
                                 .border(1.0, t.border)
                                 .radius(10.0),

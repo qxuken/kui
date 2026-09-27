@@ -122,8 +122,8 @@ mod widgets_headless {
         assert!(kui_poll_event(ctx, &raw mut ev));
         assert_eq!(ev.key, key);
         let payload = unsafe { &(*ev.payload).0 };
-        assert_eq!(payload.get("kind").and_then(Value::as_str), Some("menu"));
-        assert_eq!(payload.get("item").and_then(Value::as_str), Some("la"));
+        assert_eq!(payload.get_str("kind"), Some("menu"));
+        assert_eq!(payload.get_str("item"), Some("la"));
         assert!(!kui_poll_event(ctx, &raw mut ev), "one event, no more");
         assert_eq!(kui_menu_item_count(ctx, &mut target, &mut x, &mut y), 0);
         kui_value_free(la);
@@ -849,23 +849,15 @@ mod window_commands_headless {
         // The frame's own `{kind:"window", phase:"opened"}` comes first.
         let mut ev = KuiEvent::default();
         assert!(kui_poll_event(ctx, &raw mut ev));
-        assert_eq!(
-            unsafe { &(*ev.payload).0 }
-                .get("kind")
-                .and_then(Value::as_str),
-            Some("window")
-        );
+        assert_eq!(unsafe { &(*ev.payload).0 }.get_str("kind"), Some("window"));
         assert!(!kui_poll_event(ctx, &raw mut ev));
 
         kui_window_dismissed(ctx, 1, KUI_DISMISS_ESCAPE);
         assert!(kui_poll_event(ctx, &raw mut ev));
         let payload = unsafe { &(*ev.payload).0 };
-        assert_eq!(payload.get("kind").and_then(Value::as_str), Some("dismiss"));
-        assert_eq!(
-            payload.get("reason").and_then(Value::as_str),
-            Some("escape")
-        );
-        assert_eq!(payload.get("name").and_then(Value::as_str), Some("menu"));
+        assert_eq!(payload.get_str("kind"), Some("dismiss"));
+        assert_eq!(payload.get_str("reason"), Some("escape"));
+        assert_eq!(payload.get_str("name"), Some("menu"));
         assert!(!kui_poll_event(ctx, &raw mut ev), "one event, no more");
         assert!(
             !kui_take_window_command(ctx, &raw mut cmd),
@@ -936,12 +928,9 @@ mod audio_headless {
         let mut ev = KuiEvent::default();
         assert!(kui_poll_event(ctx, &mut ev));
         let payload = unsafe { &*ev.payload };
-        assert_eq!(payload.0.get("kind").and_then(Value::as_str), Some("sound"));
-        assert_eq!(payload.0.get("tag").and_then(Value::as_str), Some("music"));
-        assert_eq!(
-            payload.0.get("playback").and_then(Value::as_int),
-            Some(music as i64)
-        );
+        assert_eq!(payload.0.get_str("kind"), Some("sound"));
+        assert_eq!(payload.0.get_str("tag"), Some("music"));
+        assert_eq!(payload.0.get_int("playback"), Some(music as i64));
         kui_ctx_free(ctx);
     }
 
@@ -1024,12 +1013,9 @@ mod audio_headless {
         let mut ev = KuiEvent::default();
         assert!(kui_poll_event(ctx, &mut ev));
         let payload = unsafe { &*ev.payload };
-        assert_eq!(payload.0.get("kind").and_then(Value::as_str), Some("sound"));
-        assert_eq!(
-            payload.0.get("phase").and_then(Value::as_str),
-            Some("refused")
-        );
-        assert_eq!(payload.0.get("tag").and_then(Value::as_str), Some("jingle"));
+        assert_eq!(payload.0.get_str("kind"), Some("sound"));
+        assert_eq!(payload.0.get_str("phase"), Some("refused"));
+        assert_eq!(payload.0.get_str("tag"), Some("jingle"));
         assert!(!kui_poll_event(ctx, &mut ev), "one event");
         assert_eq!(codes(ctx, &mut warnings), ["playback-refused"]);
         assert_eq!(warnings[0].key, node);
@@ -1373,13 +1359,7 @@ mod queries_headless {
         assert_eq!(kstr(text).as_ref(), "hello there");
         let mut ev = KuiEvent::default();
         assert!(kui_poll_event(ctx, &mut ev));
-        assert_eq!(
-            unsafe { &*ev.payload }
-                .0
-                .get("kind")
-                .and_then(Value::as_str),
-            Some("changed")
-        );
+        assert_eq!(unsafe { &*ev.payload }.0.get_str("kind"), Some("changed"));
         kui_ctx_free(ctx);
     }
 
@@ -1817,14 +1797,8 @@ mod queries_headless {
         );
         assert!(kui_poll_event(ctx, &mut ev));
         let payload = unsafe { &*ev.payload };
-        assert_eq!(
-            payload.0.get("kind").and_then(Value::as_str),
-            Some("access")
-        );
-        assert_eq!(
-            payload.0.get("action").and_then(Value::as_str),
-            Some("increment")
-        );
+        assert_eq!(payload.0.get_str("kind"), Some("access"));
+        assert_eq!(payload.0.get_str("action"), Some("increment"));
         assert!(!kui_poll_event(ctx, &mut ev));
         // An unknown action bit is ignored, not a crash.
         kui_input_access(ctx, out[1].key, 1 << 30, ks(""));
@@ -1880,12 +1854,9 @@ mod queries_headless {
         assert!(kui_poll_event(ctx, &mut ev));
         assert_eq!(ev.key, key);
         let payload = unsafe { &*ev.payload };
-        assert_eq!(
-            payload.0.get("kind").and_then(Value::as_str),
-            Some("layout")
-        );
-        assert_eq!(payload.0.get("w").and_then(Value::as_float), Some(300.0));
-        assert_eq!(payload.0.get("tag").and_then(Value::as_str), Some("panel"));
+        assert_eq!(payload.0.get_str("kind"), Some("layout"));
+        assert_eq!(payload.0.get_float("w"), Some(300.0));
+        assert_eq!(payload.0.get_str("tag"), Some("panel"));
         // The same rect as a query (backlog C26 step 2), and nothing for
         // a key that declared no on_layout.
         let mut rect = KuiLayoutRect::default();
@@ -2950,7 +2921,7 @@ mod run_config_headless {
     /// 0` and a host scheduling on the bits does not freeze mid-glide.
     #[test]
     fn an_eased_scroll_is_its_own_owed_bit() {
-        use kui_core::{Easing, NodeSpec, Size, Sizing, Transition};
+        use kui_core::{Easing, NodeSpec, Size, Transition};
         let ctx = kui_ctx_new();
         let c = unsafe { &mut *ctx };
         let build = |core: &mut kui_core::Core, reveal: bool| {
@@ -2963,9 +2934,7 @@ mod run_config_headless {
             let mut last = None;
             ui.with_keyed("row", spec, |ui| {
                 for i in 0..4 {
-                    let w = NodeSpec::column()
-                        .width(Sizing::Fixed(100.0))
-                        .height(Sizing::Grow(1.0));
+                    let w = NodeSpec::column().width(100.0).grow_height();
                     last = Some(ui.leaf_keyed(&format!("b{i}"), w));
                 }
             });
