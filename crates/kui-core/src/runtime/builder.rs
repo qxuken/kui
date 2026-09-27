@@ -421,6 +421,13 @@ impl Core {
         self.tree.row_counts.push((at, n));
     }
 
+    /// Opens a node under a key the caller built; see `Ui::open_key`.
+    #[inline]
+    pub fn open_key(&mut self, key: Key, spec: NodeSpec) -> Key {
+        self.open_with_key(key, spec);
+        key
+    }
+
     #[inline]
     pub(crate) fn open_with_key(&mut self, key: Key, spec: NodeSpec) {
         self.open_content(key, spec, NodeContent::Container);

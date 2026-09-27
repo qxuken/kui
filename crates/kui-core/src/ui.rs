@@ -578,6 +578,35 @@ impl<'a> Ui<'a> {
         self.core.open_keyed(label, spec)
     }
 
+    /// Opens a node under a key the caller built rather than a label:
+    /// `ui.child_key("gap").index(id)` is a label and an index with no
+    /// string formatted and no clash with the sibling-index keys
+    /// `open_indexed` gives, and a key kept from an earlier `child_key` —
+    /// read for `is_hovered` first — is opened as it is instead of spelled
+    /// twice. Build it from this parent's `child_key`: two nodes under one
+    /// key in a frame are a `duplicate-key` warning, as two labels are.
+    /// It has no label, so `key_of` does not find it.
+    #[inline]
+    pub fn open_key(&mut self, key: Key, spec: NodeSpec) -> Key {
+        self.core.open_key(key, spec)
+    }
+
+    /// Scoped [`Self::open_key`].
+    pub fn with_key(&mut self, key: Key, spec: NodeSpec, f: impl FnOnce(&mut Ui<'_>)) -> Key {
+        self.open_key(key, spec);
+        f(self);
+        self.close();
+        key
+    }
+
+    /// [`Self::leaf`] under a key the caller built; see [`Self::open_key`].
+    #[inline]
+    pub fn leaf_key(&mut self, key: Key, spec: NodeSpec) -> Key {
+        self.open_key(key, spec);
+        self.close();
+        key
+    }
+
     /// `open` under a key the caller chose — the panel's own nodes, whose
     /// keys another node anchors to by name before they exist.
     #[inline]

@@ -182,3 +182,47 @@ fn a_button_given_a_hint_and_a_spec_tooltip_floats_one_hint() {
     let both = frame(&mut hovered(), NodeSpec::row().tooltip("a hint"));
     assert_eq!(both, one, "the widget's hint, and not the spec's as well");
 }
+
+/// DX8: a label and an index as one key, with no string made. Before,
+/// kawoosh formatted `gap{id}` (twice, once for `child_key` and once for
+/// `with_keyed`) or offset its indexes (`2000 + i`) to stay clear of the
+/// sibling-index keys.
+#[test]
+fn a_built_key_opens_as_built_and_clashes_with_nothing() {
+    let mut core = Core::new();
+    let mut ui = core.frame(VIEW, 1.0);
+    let row = ui.with_keyed("row", NodeSpec::row(), |ui| {
+        let first = ui.leaf_indexed(0, NodeSpec::row().size(10.0, 10.0));
+        let gaps: Vec<_> = (0..3u64)
+            .map(|i| {
+                let k = ui.child_key("gap").index(i);
+                assert_eq!(ui.leaf_key(k, NodeSpec::row().size(10.0, 10.0)), k);
+                k
+            })
+            .collect();
+        let tabs = ui.child_key("tabs").index(0);
+        ui.with_key(tabs, NodeSpec::row(), |ui| {
+            ui.text("t", TextStyle::new(12.0))
+        });
+        assert!(!gaps.contains(&first) && !gaps.contains(&tabs));
+        assert_eq!(
+            gaps[1],
+            ui.child_key("gap").index(1),
+            "the same key each time"
+        );
+    });
+    ui.finish();
+    assert_eq!(row, kui_core::Key::ROOT.str("row"));
+    let codes: Vec<_> = core.take_warnings().iter().map(|w| w.code).collect();
+    assert!(!codes.contains(&"duplicate-key"), "{codes:?}");
+    assert_eq!(core.key_of("gap"), None, "a built key has no label");
+
+    // The same key twice in a frame is the warning two labels are.
+    let mut ui = core.frame(VIEW, 1.0);
+    let k = ui.child_key("gap").index(0);
+    ui.leaf_key(k, NodeSpec::row());
+    ui.leaf_key(k, NodeSpec::row());
+    ui.finish();
+    let codes: Vec<_> = core.take_warnings().iter().map(|w| w.code).collect();
+    assert!(codes.contains(&"duplicate-key"), "{codes:?}");
+}
