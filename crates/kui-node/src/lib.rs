@@ -713,7 +713,7 @@ impl Ctx {
     /// only that one presses, drags, places the caret and clicks;
     /// "secondary" asks the node under the pointer for a context menu and
     /// moves nothing else, and every button but the primary reaches a node
-    /// that claims it with `onButton`, press to release (backlog F104).
+    /// that claims it with `onButton`, press to release (backlog F105).
     #[napi(ts_args_type = "down: boolean, clicks?: number, button?: MouseButtonName")]
     pub fn mouse(&mut self, down: bool, clicks: Option<u32>, button: Option<String>) -> Result<()> {
         let button = match &button {

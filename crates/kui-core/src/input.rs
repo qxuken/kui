@@ -202,7 +202,7 @@ impl ClipboardMarks {
 /// focus, not the caret, not a scrollbar thumb — because a right-click on
 /// a selection has to leave that selection alone. Every non-primary
 /// button, the secondary one included, reaches a node that claims it with
-/// `NodeSpec::on_button` (backlog F104): its press, the motion while it is
+/// `NodeSpec::on_button` (backlog F105): its press, the motion while it is
 /// held and its release, captured by that node; a claimed secondary press
 /// is that node's instead of a context menu. A non-primary press moves no
 /// focus, caret, selection or scrollbar either way.
@@ -269,7 +269,7 @@ impl MouseButton {
     }
 
     /// The value a `button` event carries for this button (backlog
-    /// F104): its name for a named one, its [`MouseButton::code`] for an
+    /// F105): its name for a named one, its [`MouseButton::code`] for an
     /// `Other`.
     pub fn to_value(self) -> Value {
         match self.name() {
@@ -280,7 +280,7 @@ impl MouseButton {
 }
 
 /// Which of the non-primary buttons a node's `on_button` claims (backlog
-/// F104): [`Buttons::SECONDARY`], [`Buttons::MIDDLE`] and
+/// F105): [`Buttons::SECONDARY`], [`Buttons::MIDDLE`] and
 /// [`Buttons::OTHER`] (every button past the named three), or-ed together.
 /// A node declaring `on_button` claims [`Buttons::ALL`] unless it says
 /// otherwise. The primary button is never in it: that one presses, drags
@@ -1082,7 +1082,7 @@ pub struct MenuOwner {
 pub type DropOwner = MenuOwner;
 
 /// The node a non-primary button's press went to and whose capture it is
-/// until the release (backlog F104): the nearest node at or above the
+/// until the release (backlog F105): the nearest node at or above the
 /// region pressed whose `on_button` claims that button. The same three
 /// fields as [`MenuOwner`], resolved by the core at the press rather than
 /// carried on every region — a middle press is one event in a session,
@@ -1421,7 +1421,7 @@ impl DragState {
     }
 }
 
-/// A non-primary button held on the node that claimed it (backlog F104):
+/// A non-primary button held on the node that claimed it (backlog F105):
 /// its motion and its release go to `owner` wherever the pointer is.
 #[derive(Clone, Debug)]
 struct ButtonCapture {
@@ -1461,7 +1461,7 @@ pub struct Interaction {
     /// Pointer-captured drag on an `on_drag` node.
     drag: Option<DragState>,
     /// The non-primary buttons held on the node that claimed each with
-    /// `on_button` (backlog F104), one capture per button, in press order.
+    /// `on_button` (backlog F105), one capture per button, in press order.
     /// Empty — and unallocated — in an app that declares none.
     held_buttons: Vec<ButtonCapture>,
     /// Pointer-captured slide on a slider that declared `on_change`: the
@@ -1738,7 +1738,7 @@ impl Interaction {
     }
 
     /// `{kind="button", phase, button, x, y, clicks?, tag}` on the owner
-    /// (backlog F104); `clicks` on the press only.
+    /// (backlog F105); `clicks` on the press only.
     fn button_event(
         owner: &ButtonOwner,
         button: MouseButton,
@@ -1760,7 +1760,7 @@ impl Interaction {
     }
 
     /// A non-primary press the core found an `on_button` owner for
-    /// (backlog F104): the owner hears `press`, and the button is captured
+    /// (backlog F105): the owner hears `press`, and the button is captured
     /// by it — every move while it is held and its release go to the same
     /// node wherever the pointer is. A second press of a button already
     /// held (its release lost to another window) starts over. Nothing else
@@ -1788,7 +1788,7 @@ impl Interaction {
     }
 
     /// Lets go of every held button whose owner `alive` says is gone from
-    /// the frame (backlog F104): nothing is left to hear its release.
+    /// the frame (backlog F105): nothing is left to hear its release.
     pub(crate) fn drop_gone_buttons(&mut self, alive: impl Fn(Key) -> bool) {
         if !self.held_buttons.is_empty() {
             self.held_buttons.retain(|h| alive(h.owner.key));
@@ -1796,7 +1796,7 @@ impl Interaction {
     }
 
     /// The node holding `button`'s capture, if a claimed press of it is
-    /// held (backlog F104).
+    /// held (backlog F105).
     pub fn button_owner(&self, button: MouseButton) -> Option<Key> {
         self.held_buttons
             .iter()
@@ -1842,7 +1842,7 @@ impl Interaction {
                     }
                 }
                 // Every held button's owner hears the motion, with no
-                // slop: a terminal reports a drag of one cell (F104).
+                // slop: a terminal reports a drag of one cell (F105).
                 for held in &mut self.held_buttons {
                     if p != held.last {
                         held.last = p;

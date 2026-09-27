@@ -3301,7 +3301,7 @@ test('onContextMenu answers the secondary button and nothing else', () => {
   assert.throws(() => ctx.mouse(true, 1, 'left'), /unknown mouse button/);
 });
 
-// Backlog F104: the non-primary buttons on the node that claims them,
+// Backlog F105: the non-primary buttons on the node that claims them,
 // captured from press to release, the secondary one left to the menu when
 // the mask says so.
 test('onButton hears the middle button from press to release, wherever it goes', () => {
@@ -4943,7 +4943,7 @@ function sceneReport(name, env, steps, { ctx, events, commands, audio }) {
     // covers, `-` off a grid — so a lost carry disagrees here (ADR 0029).
     if (p?.kind === 'scroll') tag += ` ${p.lines ?? '-'}`;
     // A held button's phase and which button ride the same way (backlog
-    // F104): a binding that lost the mask claims the secondary presses.
+    // F105): a binding that lost the mask claims the secondary presses.
     if (p?.kind === 'button') tag += ` ${p.phase} ${p.button ?? '-'}`;
     // A drop's phase and its path count ride the same way (ADR 0031).
     if (p?.kind === 'drop') tag += ` ${p.phase} ${p.paths.length}`;

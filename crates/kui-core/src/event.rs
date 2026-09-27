@@ -71,7 +71,7 @@ impl Drag {
 }
 
 /// Which part of a held non-primary button an event reports (backlog
-/// F104).
+/// F105).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ButtonPhase {
     Press,
@@ -80,7 +80,7 @@ pub enum ButtonPhase {
 }
 
 /// A `{kind:"button"}` event: a non-primary button an `onButton` node
-/// claimed, captured by it from press to release (backlog F104).
+/// claimed, captured by it from press to release (backlog F105).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ButtonEvent {
     pub phase: ButtonPhase,
@@ -202,7 +202,7 @@ impl UiEvent {
     }
 
     /// This event as a held non-primary button's press, move or release,
-    /// if it is one (backlog F104).
+    /// if it is one (backlog F105).
     pub fn button(&self) -> Option<ButtonEvent> {
         let p = &self.payload;
         if self.kind()? != "button" {

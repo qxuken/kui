@@ -294,7 +294,7 @@ pub enum Step {
     SecondaryDown,
     SecondaryUp,
     /// The middle button, which only an `onButton` node hears (backlog
-    /// F104).
+    /// F105).
     MiddleDown,
     MiddleUp,
     /// Wheel delta in logical px; positive y scrolls up.
@@ -1516,7 +1516,7 @@ pub const SCENES: &[Scene] = &[
               menu of its own, since an unclaimed press reaches the \
               enclosing menu as an unclaimed key reaches the enclosing sink \
               (backlog T1). The panel claims the middle button with \
-              `onButton` and `buttons=\"middle\"` (backlog F104), so the \
+              `onButton` and `buttons=\"middle\"` (backlog F105), so the \
               secondary presses stay its context menu's while a middle \
               press over the button reaches the panel, and the pointer \
               moved while it is held and its release go there too — the \
@@ -5253,7 +5253,7 @@ fn event_row(payload: &Value) -> (String, String) {
     // carried fraction between two notches would agree on the kind and
     // disagree here. `-` for a node that is not a grid.
     // A held button's phase and which button ride the same way
-    // (`button panel press middle`, backlog F104): the capture is the
+    // (`button panel press middle`, backlog F105): the capture is the
     // contract — a move and a release on the owner wherever the pointer
     // went — and a binding that lost the mask would claim the secondary
     // presses and disagree here.

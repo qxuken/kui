@@ -48,10 +48,10 @@ was the first bare bump to break an app in five releases).
   of it without `..` needs the field.
 - C: `KuiSpec` gains `keep_focus`, `on_focus`, `rules`, `rule_w`,
   `on_button` and `buttons` after `pixel_snap`, under the same ABI 20
-  (under Added, DX10, DX18, DX21 and F104); its 64-bit size is 640 bytes.
+  (under Added, DX10, DX18, DX21 and F105); its 64-bit size is 640 bytes.
   Recompile; zeroed, a press focuses as it did, nothing hears focus, a
   table draws no rules and no node hears the middle button.
-- Rust: `EventSpec` gains `on_button` and `buttons` (under Added, F104),
+- Rust: `EventSpec` gains `on_button` and `buttons` (under Added, F105),
   so a struct literal of it without `..` needs the fields.
 - Rust: `UiEvent::hover()` answers a `Hover { phase, by }`, where it
   answered the `HoverPhase` (under Added, DX20); read `.phase`.
@@ -411,7 +411,7 @@ Twelve readings change:
   frames after.
 
 - **`onButton`: the middle and secondary buttons, press to release**
-  (backlog F104, from kawoosh, 2026-09-28; `on_button` and `buttons` in
+  (backlog F105, from kawoosh, 2026-09-28; `on_button` and `buttons` in
   Lua, Rust and on `KuiSpec`). A node declaring `onButton` hears the
   non-primary buttons pressed over it, or over anything inside it that
   claims none: `{kind:"button", phase:"press", button, x, y, clicks,

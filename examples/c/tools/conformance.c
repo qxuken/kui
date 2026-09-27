@@ -837,7 +837,7 @@ static void conf_controls(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)phase;
     KuiValue *menu = kui_value_map();
     kui_value_map_set(menu, KUI_STR("kind"), kui_value_str(KUI_STR("menu")));
-    /* The panel claims the middle button (backlog F104) and leaves the
+    /* The panel claims the middle button (backlog F105) and leaves the
      * secondary one to its menu. */
     KuiValue *panel = kui_value_map();
     kui_value_map_set(panel, KUI_STR("kind"), kui_value_str(KUI_STR("panel")));
@@ -2120,7 +2120,7 @@ static void conf_drain(KuiCtx *ctx, Rep *events) {
             repf(events, " %.*s %lld %lld", (int)phase.len, phase.ptr, (long long)dx, (long long)dy);
         }
         /* A held button's phase and which button ride the same way
-         * (backlog F104): a lost mask claims the secondary presses. */
+         * (backlog F105): a lost mask claims the secondary presses. */
         if (kind.len == 6 && memcmp(kind.ptr, "button", 6) == 0) {
             KuiStr phase = KUI_STR("-");
             const KuiValue *p = kui_value_get(ev.payload, KUI_STR("phase"));

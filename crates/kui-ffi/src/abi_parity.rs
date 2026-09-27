@@ -1383,7 +1383,7 @@ fn an_in_struct_s_size_is_the_abi_s() {
         // ABI 20: `pixel_snap` appended, after ABI 19's `float_clip`,
         // `aspect_ratio`, `mixed`, `value_step` and `on_change`; then
         // `keep_focus`, `on_focus`, `rules` and `rule_w`; then
-        // `on_button` and `buttons` (backlog F104).
+        // `on_button` and `buttons` (backlog F105).
         ("KuiSpec", 640, 20),
         ("KuiSizing", 8, 16),
         ("KuiKeyframe", 36, 16),

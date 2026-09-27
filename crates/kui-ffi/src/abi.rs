@@ -248,7 +248,7 @@
 /// did. Then `on_focus` (backlog DX18): focus entering and leaving the
 /// node's subtree, as an event; NULL hears nothing. Then `rules` and
 /// `rule_w` (backlog DX21): a table's grid lines; zeroed, none. Then
-/// `on_button` and `buttons` (backlog F104): the non-primary buttons as
+/// `on_button` and `buttons` (backlog F105): the non-primary buttons as
 /// events on the node that claims them, captured from press to release;
 /// NULL hears nothing, and a zeroed `buttons` with `on_button` set claims
 /// all three kinds. The 64-bit size is 640. Recompile.

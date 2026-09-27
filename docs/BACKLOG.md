@@ -64,7 +64,7 @@ the same day, the day they were filed, and F101 — a span's rounded
 background joined with the ones it meets — from the kawoosh
 rounded-selection report of 2026-09-27, the day it was filed, and F102
 — a frame the surface skipped asked for again — from the kawoosh ⌘-Tab
-report of the same day, the day it was filed, and F104 — the
+report of the same day, the day it was filed, and F105 — the
 non-primary buttons on the node that claims them — from the kawoosh
 mouse-buttons report of 2026-09-28, the day it was filed. The index
 at the bottom of this file names every one of them, so an id cited by an open
@@ -493,7 +493,7 @@ Four kui-facing claims were checked against the tree:
   feature is a two-line change, and nobody has asked — under "Rows, when
   a view asks".
 - "the middle mouse button routes nowhere" — true and already parked
-  (C2, same paragraph); answered by F104 (2026-09-28), `onButton`.
+  (C2, same paragraph); answered by F105 (2026-09-28), `onButton`.
 - "no gradients" — ADR 0005 declined them with the reasoning written
   down; "no z-index" and "one shadow" are the same ADR's paint vocabulary.
 - "`Value::as_str` can fail at runtime where iced's `match` cannot" —
@@ -856,7 +856,7 @@ better one later, each parked until a view asks:
   2026-09-15**: this is K4 below, with its shape.
 - **The middle button** (C2: "reaches the core and routes nowhere") —
   a Linux terminal's paste and an editor's close-tab. **A view asked on
-  2026-09-28**: this is F104, `onButton`, built the same day.
+  2026-09-28**: this is F105, `onButton`, built the same day.
 - **Window position**, declared and read (the README's Status names
   it) — an editor restoring its last geometry. Today: the size, not
   the place.
@@ -1434,7 +1434,7 @@ presses, the motion while one is held, and the releases. kui routed the
 secondary button to a context menu and nothing else, and the middle
 button and every button past it reached the core and went nowhere — the
 wish parked under the editor-and-mux round's three (C2) and in "Rows,
-when a view asks" until a view asked. One entry, F104, **built
+when a view asks" until a view asked. One entry, F105, **built
 2026-09-28**, the day it was filed, and in the archive.
 
 ## From the regression pass of 2026-09-19
@@ -2984,7 +2984,7 @@ Nothing of the kawoosh Berkeley-bold report is open (F100 **built
 2026-09-26**, the day it was filed).
 Nothing of the kawoosh rounded-selection report is open (F101 **built
 2026-09-27**, the day it was filed).
-Nothing of the kawoosh mouse-buttons report is open (F104 **built
+Nothing of the kawoosh mouse-buttons report is open (F105 **built
 2026-09-28**, the day it was filed).
 Nothing of the Windows regression round of 2026-09-26 is open
 (RG38–RG46 **built 2026-09-26**, the day they were filed).
@@ -3243,7 +3243,7 @@ have the API behind it, and AccessKit's whole event surface is a tree diff.
 it). `required` / `invalid` and heading `level` (ADR 0001 follow-ups).
 Per-button `on_click` and middle-button routing (C2 left them "reach the
 core and route nowhere"; the bake-off noticed the same) — the routing
-answered by F104 (2026-09-28): `onButton` hears every non-primary button,
+answered by F105 (2026-09-28): `onButton` hears every non-primary button,
 press to release, on the node that claims it; a click stays the primary
 button's. A `clipboard`
 feature beside `audio` and `accesskit`, so a build that wants no `arboard`
@@ -3816,9 +3816,9 @@ move.
 
 - `!` **F102** — [A window brought back shows its last frame: a frame the surface skipped is never asked for again, and being uncovered asks for none](backlog/closed-2026-09.md#-f102--a-window-brought-back-shows-its-last-frame-a-frame-the-surface-skipped-is-never-asked-for-again-and-being-uncovered-asks-for-none--done-2026-09-27) — done (2026-09-27) — a skipped frame is owed (`retry::Retry`): asked for again 16 ms apart, 60 times, until one lands; `Occluded(false)` asks for one at once, `Occluded(true)` owes none
 
-**From the kawoosh mouse-buttons report (2026-09-28)** — F104, filed and built the same day
+**From the kawoosh mouse-buttons report (2026-09-28)** — F105, filed and built the same day
 
-- `~` **F104** — [The middle and secondary buttons reach no node: a terminal pane cannot paste on a middle click or report the mouse to the program in it](backlog/closed-2026-09.md#-f104--the-middle-and-secondary-buttons-reach-no-node-a-terminal-pane-cannot-paste-on-a-middle-click-or-report-the-mouse-to-the-program-in-it--done-2026-09-28) — done (2026-09-28) — `onButton` (`on_button`, `KuiSpec.on_button`) hears the non-primary buttons as `{kind:"button", phase:"press"|"move"|"release", button, x, y, clicks, tag}` on the nearest node claiming them, captured from press to release; `buttons` (`Buttons`, `KUI_BUTTONS_*`) narrows which, and a claimed secondary press is the event instead of the context menu
+- `~` **F105** — [The middle and secondary buttons reach no node: a terminal pane cannot paste on a middle click or report the mouse to the program in it](backlog/closed-2026-09.md#-f105--the-middle-and-secondary-buttons-reach-no-node-a-terminal-pane-cannot-paste-on-a-middle-click-or-report-the-mouse-to-the-program-in-it--done-2026-09-28) — done (2026-09-28) — `onButton` (`on_button`, `KuiSpec.on_button`) hears the non-primary buttons as `{kind:"button", phase:"press"|"move"|"release", button, x, y, clicks, tag}` on the nearest node claiming them, captured from press to release; `buttons` (`Buttons`, `KUI_BUTTONS_*`) narrows which, and a claimed secondary press is the event instead of the context menu
 
 **From the regression pass of 2026-09-25** — RG17–RG36 built the same day, before the alpha.17 tag; RG37 the same day, after it
 

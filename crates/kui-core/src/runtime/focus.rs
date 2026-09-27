@@ -626,7 +626,7 @@ impl Core {
     }
 
     /// The node a non-primary press of `button` on node `i` goes to
-    /// (backlog F104): `i` itself when its live `on_button` claims the
+    /// (backlog F105): `i` itself when its live `on_button` claims the
     /// button, else the nearest enclosing node whose does — the walk
     /// `enclosing_menu` takes, stopping at the modal boundary and skipping
     /// a disabled node's own. For the secondary button a nearer live

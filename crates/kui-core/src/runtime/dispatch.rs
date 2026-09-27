@@ -166,7 +166,7 @@ impl Core {
                 .hit_at(self.tree.keys[l], point, self.building)
                 .map_or(0, |h| h.byte);
             // A `button` event's press carries its own count and its move
-            // and release none (backlog F104): `clicks` here is the last
+            // and release none (backlog F105): `clicks` here is the last
             // primary press's.
             let own_count = ev.kind() == Some("button");
             if let Value::Map(entries) = &mut ev.payload {
@@ -573,7 +573,7 @@ impl Core {
                 // focus, the caret and the scrollbars exactly as they were
                 // (a right-click on a selection has to keep it). Any
                 // non-primary press an `on_button` node claims is that
-                // node's instead, and captured by it (backlog F104).
+                // node's instead, and captured by it (backlog F105).
                 let primary = button == MouseButton::Primary;
                 let mut owner = None;
                 // A scrollbar wins what it was painted over — its own
@@ -795,7 +795,7 @@ impl Core {
     }
 
     /// The node a non-primary press on region `key` goes to, with the tag
-    /// its event carries (backlog F104): see `enclosing_button`. Read off
+    /// its event carries (backlog F105): see `enclosing_button`. Read off
     /// the tree at the press, as a force click's tag is.
     fn button_owner(&self, key: Key, button: MouseButton) -> Option<crate::input::ButtonOwner> {
         let i = self.tree.index_of(key)?;

@@ -1,4 +1,4 @@
-//! `onButton` (backlog F104): the non-primary buttons as events on the
+//! `onButton` (backlog F105): the non-primary buttons as events on the
 //! node that claims them — a terminal's middle-click paste, and the mouse
 //! reports a program in it asked for. A claimed press is captured by its
 //! owner until the release; the secondary button claimed is the owner's

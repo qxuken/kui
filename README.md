@@ -1496,7 +1496,7 @@ after every width is.
 **Input.** Pointer buttons: the secondary one is routed to `on_context_menu`
 (C2); every non-primary button — secondary, middle, back, forward — reaches a
 node that claims it with `on_button` as press, move and release events,
-captured by that node until the release (F104), which is a terminal's
+captured by that node until the release (F105), which is a terminal's
 middle-click paste and its mouse reporting, a middle-click-to-close and a
 right-drag. There is no per-button `on_click`: a click is the primary
 button's. Touch and pen are not input modes

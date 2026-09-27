@@ -1047,7 +1047,7 @@ impl Core {
         let shapes = std::mem::take(&mut self.hit_shapes);
         self.interaction.set_hits_shaped(hits, shapes);
         // A button held on a node this frame no longer declares has no one
-        // to hear its release (backlog F104).
+        // to hear its release (backlog F105).
         let tree = &self.tree;
         self.interaction
             .drop_gone_buttons(|key| tree.index_of(key).is_some());

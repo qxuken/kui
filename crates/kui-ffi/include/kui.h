@@ -260,7 +260,7 @@ extern "C" {
  * on_focus (backlog DX18): focus entering and leaving the node's subtree,
  * as an event; NULL hears nothing. Then rules and rule_w (backlog DX21):
  * a table's grid lines; zeroed, none. Then on_button and buttons
- * (backlog F104): the non-primary buttons as events on the node that
+ * (backlog F105): the non-primary buttons as events on the node that
  * claims them, captured from press to release; NULL hears nothing, and a
  * zeroed buttons with on_button set claims all three kinds. The 64-bit
  * size is 640. Recompile.
@@ -999,7 +999,7 @@ typedef struct KuiSpec {
      * their width in logical px, 0 meaning 1. ABI 20. */
     uint32_t rules;
     float rule_w;
-    /* The non-primary buttons as events (onButton, backlog F104): a press
+    /* The non-primary buttons as events (onButton, backlog F105): a press
      * of a button in `buttons` over this node, or over a descendant that
      * claims no such button, emits {kind:"button", phase:"press", button,
      * x, y, clicks, tag} on it, and the button is captured by it until
@@ -1720,7 +1720,7 @@ void kui_input_mouse(KuiCtx *ctx, bool down, uint32_t clicks);
  * places the caret and clicks; the secondary one asks the node under it
  * for a context menu (KuiSpec.on_context_menu) and moves nothing else.
  * Every non-primary button reaches a node claiming it with
- * KuiSpec.on_button (backlog F104), which a claimed secondary press is
+ * KuiSpec.on_button (backlog F105), which a claimed secondary press is
  * instead of the menu; pass 3 + n for a further button n. */
 enum {
     KUI_MOUSE_PRIMARY = 0,
