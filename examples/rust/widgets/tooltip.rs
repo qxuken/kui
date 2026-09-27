@@ -5,10 +5,11 @@
 //!   (`hoverable` + `is_hovered`) — the float, drawn by the view when the
 //!   view decides, which is also how a tooltip shows on a click or a
 //!   first frame;
-//! - `NodeSpec::apply_tooltip(hint)`: the prop half — the node tracks hover
-//!   and the hint is its accessible `description`, what a screen reader
-//!   says after the name — and the stock button's `hint` argument, which
-//!   floats it while hovered;
+//! - `NodeSpec::tooltip(hint)`: the prop — the node tracks hover, the
+//!   hint is its accessible `description` (what a screen reader says
+//!   after the name), and the core floats it while hovered. On any node;
+//!   `apply_tooltip` is the first two alone, for a view that floats its
+//!   own;
 //! - `tooltip_with`: the same chrome around anything — a legend, a
 //!   shortcut hint with its own layout.
 //!
@@ -58,21 +59,21 @@ impl App for Tooltip {
                     },
                 );
 
-                ui.text("the prop's: `apply_tooltip` — hover tracking and the accessible description in one", TextStyle::new(12.0).color(t.muted));
+                ui.text("the prop's: `tooltip` — hover tracking, the accessible description and the float in one", TextStyle::new(12.0).color(t.muted));
                 ui.with(NodeSpec::row().gap(10.0), |ui| {
                     widgets::button_with(
                         ui,
                         "save",
                         "save",
-                        widgets::button_spec(&ui.theme(), &ui.metrics()).on_click("save").apply_tooltip("⌘S · write the file"),
-                        Some("⌘S · write the file"),
+                        widgets::button_spec(&ui.theme(), &ui.metrics()).on_click("save").tooltip("⌘S · write the file"),
+                        None,
                     );
                     widgets::button_with(
                         ui,
                         "run",
                         "run",
-                        widgets::button_spec(&ui.theme(), &ui.metrics()).accent().on_click("run").apply_tooltip("⌘R · run the current file"),
-                        Some("⌘R · run the current file"),
+                        widgets::button_spec(&ui.theme(), &ui.metrics()).accent().on_click("run").tooltip("⌘R · run the current file"),
+                        None,
                     );
                 });
 

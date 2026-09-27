@@ -2326,6 +2326,301 @@ with `rfd` (behind a `dialogs` feature beside `audio`), answered by one
 (ADR 0031) delivers. One door per binding. It stays parked until an app
 on kui wants to open a file it was not handed.
 
+## From the DX sweep (2026-09-27)
+
+`Ui::leaf` (2026-09-27, before this sweep) removed 452 `with(spec, |_|
+{})` closures from the repo and 34 from kawoosh. It prompted a
+search for more friction of that kind. Three read-only passes looked
+at kawoosh's Rust views, at kui's own Rust (examples, tests, benches,
+widgets, devtools), and at what kawoosh wrote down about kui in its
+design notes and comments, checked against this file. Every count below
+is `rg` over the tree as it stood at `1529e57`, or kawoosh at `94bfc0a`.
+
+The sweep found three things. Everything kawoosh has asked for by name
+(K1–K4, F76–F101) is built. Most of what is left is spelling, and six
+entries of it were **built the same day** (DX1–DX6, `2852e9a`, the
+repo migrated in `20a1988`). The rest is filed here, DX7–DX21, parked
+until a view asks unless the entry says otherwise.
+
+Kawoosh can already delete some code without kui changing: the
+non-breaking-space padding in its Lua plugins (K3, alpha.13), string
+payloads that `#[derive(Message)]` (C50) replaces, and stale notes on
+long lines and K1/K2. That cleanup belongs to kawoosh.
+
+### `.` DX1 — `Sizing::Fixed(` and `Sizing::Grow(1.0)` were 1,046 of the repo's calls — **built 2026-09-27**
+
+There were 329 `.width(Sizing::Fixed(`, 370 `.height(Sizing::Fixed(`,
+265 `.width(Sizing::Grow(1.0))` and 82 heights like it. 238 of them
+were a fixed width and height in a row. Kawoosh had about 160 more.
+`min_width` already took a number (`impl Into<Min>`); `width` took only a
+`Sizing`. **Built:** `From<f32> for Sizing` (a number is px), `width`
+and `height` take `impl Into<Sizing>` on a spec and on a keyframe,
+entrance or exit, and `size(w, h)`, `grow_width()`, `grow_height()`,
+`Sizing::GROW` were added. Migrated: `Sizing::Fixed(` went from 943 to
+47 in the tree and `Sizing::Grow(1.0)` from 430 to 15 (334 `size`, 65
+`fill`, 291 `grow_*`, the rest a bare number). One trap, caught by
+`bench-check.sh`: `grow_width()` calls the generic `width`, so rustc
+would not inline it across crates on its own, and `frame_10k_rects`
+measured +13.7% until the new builders were `#[inline]` (`ca5f1aa`;
+then −2.3%, every guarded row green against `1529e57`).
+
+### `.` DX2 — A text has no box, so every text with a width, a background or a key sat in a `with` — **built 2026-09-27**
+
+`text_node` pushes `NodeSpec::default()`, so padding, a width, a
+background, a click, a role or a key needs a wrapper. kui had 156
+`with*` calls whose closure was one `ui.text`, and kawoosh had 59.
+**Built:** `Ui::text_in(spec, s, style)`, `text_in_keyed` and
+`text_in_indexed`, each returning the box's key. This is sugar for the
+same tree, not a text node with a spec: layout, hit testing and the
+access tree see what they saw. 158 sites were migrated.
+
+### `.` DX3 — Payloads were built and read the long way — **built 2026-09-27**
+
+About 230 `get("k").and_then(Value::as_*)` reads in kui and 113 in
+kawoosh. `ev.payload.get("kind").and_then(Value::as_str)` opened about
+20 of the 33 example `on_event`s. There were 58 `x as i64` conversions
+into `Value`, 22 `modal(Value::str(..))` (the only tag row that did not
+take `impl Into<Value>`), 21 `on_key(Value::Null)`, and 175
+`on_*(Value::str("x"))` where `"x"` already compiled. **Built:**
+- `Value` from `i32`, `u32`, `usize` (saturating) and `f32`.
+- `get_str`, `get_int`, `get_float`, `get_f32` and `get_bool`.
+- `UiEvent::kind()`.
+- `modal(impl Into<Value>)` and `NodeSpec::key_sink()`.
+
+Migrated: 251 reads, 83 kinds, about 190 tags, 22 sinks. `#[derive(Message)]`
+stays the answer for an app's own messages. Kawoosh does not use it
+yet: 38 `Value::map([("kind", …)])` payloads.
+
+### `.` DX4 — Floats, modifiers and centres were spelled out — **built 2026-09-27**
+
+- 44 of 44 `.at(x, y).self_at(x, y)` pairs in kui and kawoosh repeated
+  the same point.
+- 85 `KeyMods { shift: true, ..Default::default() }`-style literals.
+  `KeyMods::SHIFT` is a `u32` bit for the wire.
+- 25 hand-written rect centres, and two local `fn center`.
+
+**Built:** `FloatConfig::inside(x, y)`;
+`KeyMods::NONE.with_shift()` and `with_ctrl`, `with_alt`, `with_super`
+and `with_primary`; `Mods::NONE.with_shift()` and `with_word`,
+`with_doc`; `Rect::center()`. Migrated: 37 floats and 45 literals.
+
+### `.` DX5 — The node verbs had holes, and four doc comments sat on the wrong method — **built 2026-09-27**
+
+- `fragment` and `fragment_with` had `_keyed` and no `_indexed`, though
+  `Core::open_fragment_indexed` existed.
+- `line` had no `_indexed`.
+- `child_key_index` was the one `_index` among `_indexed`s.
+- The doc comments for `rich_text`, `cells_keyed`, `polyline_keyed` and
+  `env` sat on the method before each.
+
+**Built:** `fragment_indexed`, `fragment_with_indexed`, `line_indexed`,
+the rename (an alpha break, under What breaks), the docs moved.
+
+**Declined:** making `text`, `line` and the buttons return their `Key`.
+A closure whose tail is one of them — `|ui| ui.text(…)`, kawoosh's
+reload button among them — would stop being `()` and fail to compile,
+for a key `child_key` already gives.
+
+### `!` DX6 — A Rust view's `apply_tooltip` never floated its hint — **built 2026-09-27**
+
+`NodeSpec::apply_tooltip` is the prop's spec half: hover tracking and
+the description. The float is the parsers' (`PropsOut::apply_tooltip`)
+and `kui_close`'s, and a Rust view had no door for it. So kawoosh's
+reload button (`settings.rs:729`) never showed its hint, and kui's
+tooltip example passed each hint twice. **Built:**
+`NodeSpec::tooltip(hint)`, which is all three: `AccessSpec::tooltip` is
+read in `open_content`, and the hint is recorded for `close` while the
+node is hovered, the same path the prop takes. A stock widget given a
+`hint` clears the flag and floats its own. Pinned both ways (see the
+changelog).
+
+### `.` DX7 — The core's own event fields are untyped
+
+Kawoosh reads about 25 fields out of `Value`:
+- a drag's `phase`, `x`, `y`, `parent`, `cell`, `line`, `byte` and
+  `clicks`;
+- a scroll's `lines`;
+- the `modifiers` event;
+- a key payload, from which it rebuilds `KeyStroke` by hand
+  (`app.rs:1488-1502`, `1868-1889`, `2007-2016`; `notify.rs:763`).
+
+`message::<M>()` covers the app's tag and not the core's half.
+
+**Do.** Typed views on `UiEvent`: `drag()`, `scroll()`, `key()`,
+`text()`, `modifiers()`, `layout_rect()`. Each returns `Option<…>` of a
+plain struct with a `DragPhase` enum, read from the payload the
+bindings already share. The payload stays the wire; this is a Rust
+reading of it.
+
+### `.` DX8 — A key made from a label and an index is a `format!`, and indexes collide by hand
+
+- 11 `&format!("gap{}", id)` labels in kawoosh. Two of them are built
+  twice, once for `child_key` and once for `with_keyed`
+  (`panes.rs:626/644`, `684/698`).
+- 42 more in kui.
+- To keep `_indexed` from colliding with auto keys, kawoosh adds its own
+  offsets: `2000 + i`, `1000 + i`, `1 << 32 | gi`, `1 << 33 | pi`
+  (`chrome.rs:106`, `:337`; `notify.rs:995`, `:1040`).
+- `open_with_key` is `pub(crate)`, so a key computed once cannot be
+  opened.
+
+**Do.** The keyed verbs take `impl Into<ChildLabel>`, where `&str` stays
+as it is and `("gap", i)` hashes as `parent.str("gap").index(i)`: no
+allocation, and no collision with the sibling-index namespace. Add a
+public `with_key(key, spec, f)` and `leaf_key`.
+
+### `.` DX9 — `App::on_event` has no context, so every effect waits a frame
+
+Kawoosh parks work for the next `view`:
+- the clipboard write (`clip_out`, "on_event has no Ui", `app.rs:191`);
+- taking focus back (`reclaim_focus`, `app.rs:224`);
+- devtools requests (`app.rs:137`, `:253`);
+- `kawoosh.copy` for Lua commands.
+
+ADR 0008 and the closed C18 and C33 each note the gap; none filed it.
+
+**Do.** `on_event(&mut self, ev, cx: &mut EventCx)`, where `cx` queues
+`set_clipboard`, `request_paste`, `focus`, `reveal` and `request_frame`,
+applied before the next view. Wants an ADR (the `App` trait is every
+Rust app's), and a door per binding.
+
+### `.` DX10 — A click on any `on_click` node takes keyboard focus
+
+Kawoosh sets `reclaim_focus = true` in 10 handlers and keeps a
+`focus_sink` to take focus back (`app.rs:481`, `2456-2517`;
+`settings.rs:841-878`; `confirm.rs:50`). An `on_click` node is focusable
+(`spec.rs`, `on_click`), and there is no opt-out.
+
+**Do.** `NodeSpec::focus_on_click(false)`: the press does not move
+focus, and the node stays in the Tab ring (AppKit's
+`refusesFirstResponder`, the web's `preventDefault` on `mousedown`). A
+prop in every binding.
+
+### `.` DX11 — No test driver an app can use, and kui's own tests bypass `testing`
+
+Kawoosh's `harness.rs` is 477 lines and "mirrors kui-devtools's
+`Drive` (not a published crate)". In kui:
+- 53 of about 84 test files define their own `fn *frame*`.
+- 177 raw `handle_input(InputEvent::CursorMoved`.
+- 42 inline quad filters, where `testing::quads_of` has no users.
+- Four tests redefine `testing::kinds`.
+- `Drive` and `testing` spell the same verbs differently.
+
+**Do.** Publish `kui_native::testing::Drive`, owning `Core` and
+`Extensions`, with:
+- `frame(app)`;
+- `key`, `keys`, `text`, `click`, `double_click`, `drag`, `wheel` and
+  `hover`;
+- `rect_of(label)`, `texts_under(label)` and `warnings()`.
+
+Then add `kui_core::testing::frame(core, |ui| …)` and `drag`,
+`move_to`, `click_key`, `rect_of` beside it, make the devtools `Drive`
+delegate to them, and migrate the tests.
+
+### `.` DX12 — Revealing a virtual list's row and a resizable divider are written by hand, three times each
+
+- Kawoosh reveals a `uniform_list` row three times:
+  `child_key("rows")`, `scroll_geometry`, an in-view test, then
+  `set_scroll` to centre (`memory.rs:1447`, `undo.rs:357`,
+  `inspector.rs:407`). The docs point there because `reveal` of an
+  unbuilt row finds nothing.
+- Each of those lists also wraps every row in a second node, for the
+  click, the zebra stripe and the hover.
+- Its divider is written three times too: hover or press or drag
+  colouring, a resize cursor, an `on_drag`, and a handler turning `x`
+  and `parent` into a ratio (`panes.rs:772`, `684`; `app.rs:2308`,
+  `2003`).
+
+**Do.** Four pieces:
+- `widgets::reveal_row(ui, label, i, row_h)`;
+- a row spec on `uniform_list` (`uniform_list_with(…, row_spec)`);
+- `widgets::splitter(ui, label, axis, thickness, tag)`;
+- a drag payload that carries `ratio` within the parent.
+
+### `.` DX13 — The innermost scroller takes both wheel axes
+
+`dispatch.rs` gives the whole wheel delta to the innermost scroller, so
+a vertical scroller inside a horizontal one never passes x on. Kawoosh
+owns its horizontal offset and sets it every frame
+(`panes.rs:1653-1658`, `2285-2295`). **Do.** A container that scrolls
+on one axis passes the other axis's delta to the next scroller up, or to
+its `on_scroll`.
+
+### `.` DX14 — A paste answer cannot be told from typing
+
+`request_paste` answers `{kind:"text"}`, the same event as a keystroke,
+and only one request can be outstanding. Kawoosh juggles `clip_probe`
+and `awaiting_paste` to read the clipboard into a register
+(`app.rs:193-196`, `1089-1100`; its `docs/design/keys.md:503`).
+**Do.** `pasted = true` on the answer, as F84 added `concealed`, and a
+tag on the request.
+
+### `.` DX15 — Lua's `reveal` and `set_scroll` by a label not yet declared fail
+
+On a pane's first frame the label is not declared yet. Kawoosh wraps
+the calls in `pcall` and retries over several frames
+(`lua/themes.lua:66-73`, `:222`; `lua/fonts.lua:275`;
+`lua/theme_lab.lua:291`). **Do.** Resolve a string label when the frame
+finishes, as `focus_next` already does.
+
+### `.` DX16 — A theme colour cannot be a fragment param
+
+Kawoosh's `boot.lua:596-599` decodes `#rrggbbaa` into four floats by
+hand to feed the rounded-selection fragment. **Do.** `env.rgba(c)`,
+returning four numbers from a hex string, an integer or a `$token`, or
+let a colour in `params` expand to four.
+
+### `.` DX17 — A font cannot be named by its family
+
+`family` takes `sans`, `serif` or `mono`. An installed face needs a host
+`add_system_font` and a handle passed down. Kawoosh registers all 613
+families up front so no frame draws in the wrong face (`fonts.rs:7-12`,
+`docs/design/fonts.md:48-60`). **Do.** `family = "Berkeley Mono"`,
+resolved against the font database, with an `unknown-family` warning.
+Wants an ADR (it moves font loading into the view's frame).
+
+### `.` DX18 — Focus is facts to diff, not events
+
+Kawoosh diffs window focus per frame in three places (`app.rs:211`,
+`disk.rs:44`, `moments.rs:153`) and kui's key focus in two
+(`app.rs:202`, `panes.rs:1153`). **Do.** An `on_focus` tag with
+`{kind:"focus", phase, by}`, and a window-focus event beside the
+existing window events.
+
+### `~` DX19 — `exit` replays when only an ancestor went away
+
+A column closed on a tab switch fades out every time the tab comes
+back, so kawoosh dropped `exit` from closing columns
+(`docs/design/scrolling-tab.md:270-272`). **Do.** Play an exit only when
+the node's parent survives the frame, or add an `exit_scope` on a
+container.
+
+### `.` DX20 — Hover cannot tell a moved pointer from content moving under a still one
+
+Kawoosh's picker keeps its own `hover_top` and `hover_hits`, because
+"kui says which node is under the pointer, not that it moved"
+(`lua/picker.lua:1146-1151`). **Do.** `by = "pointer" | "content"` on
+hover events.
+
+### `.` DX21 — A table has no grid rules
+
+Kawoosh's markdown tables fake borders with `2n + 1` cells, 1 px rule
+cells between the real ones, and a separate edge row
+(`rows.rs:927-1030`). **Do.** `column_rule(width, colour)` and
+`row_rule(width, colour)` on a table: collapsed borders drawn between
+the columns layout already aligns.
+
+Seen in the sweep and not filed, each wanting a check on this tree
+first:
+- A raw NUL in text laid out at infinite width once overflowed the
+  glyph cache (kawoosh `tests/editor_pane.rs:478`). Kawoosh escapes
+  control characters now.
+- A second `reveal` during a smooth scroll measures from mid-scroll and
+  stops short.
+- Kawoosh draws its own bar caret three ways, one of them a frame late
+  on wrapped rows.
+- OSC 8 hyperlinks per terminal cell (kawoosh R4.6).
+
 ## After alpha.20
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After

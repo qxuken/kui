@@ -29,6 +29,15 @@ was the first bare bump to break an app in five releases).
   `KUI_ABI_VERSION` is 20: an [in] append. Recompile against the new
   header; a zeroed field is a box drawn as before. The frame stays at
   v16 (a new generic prop rides the wire by its id), and no door changes.
+- Rust: `Ui::child_key_index` and `Core::child_key_index` are
+  `child_key_indexed`, the spelling of every other `_indexed` (under
+  Added, DX5).
+- Rust: `NodeSpec::width` / `height` / `modal`, and `width` / `height` on
+  a `Keyframe`, `Enter` or `Exit`, take `impl Into<…>` (under Added,
+  DX1 and DX3). A call that passed `x.into()` no longer infers its
+  target: drop the `.into()`.
+- Rust: `AccessSpec` gains `tooltip` (under Added), so a struct literal
+  of it without `..` needs the field.
 
 Four readings change:
 
@@ -99,6 +108,61 @@ Four readings change:
   in Lua, `kui_open` then `kui_close` in C. No door changes.
   *What you can delete:* the `|_| {}` on every childless `with`,
   `with_keyed` and `with_indexed`.
+
+- **`NodeSpec::tooltip`: a Rust view's hint floats** (backlog DX6, from
+  kawoosh, 2026-09-27). `apply_tooltip` is the `tooltip` prop's spec half
+  — hover tracking and the accessible description — and floats nothing:
+  the parsers and `kui_close` float the hint themselves, and a Rust view
+  had no door for the third effect. So kawoosh's "reload settings" hint
+  was never seen, and kui's own tooltip example passed each hint twice,
+  once to the spec and once to `button_with`. `.tooltip(hint)` is the
+  prop whole: the core floats the hint below the node as it closes,
+  while it is hovered, as it does the prop's (`AccessSpec::tooltip`,
+  read where every node opens; one pointer check for a node with no
+  access group). A stock widget given a `hint` floats its own and clears
+  the flag, so one hint shows. `apply_tooltip` is unchanged, for a
+  caller that floats its own. Pinned by
+  `a_spec_tooltip_floats_while_hovered_and_apply_tooltip_alone_does_not`
+  and `a_button_given_a_hint_and_a_spec_tooltip_floats_one_hint`, each
+  failing without its half.
+  *What you can delete:* the `is_hovered` check and `widgets::tooltip`
+  call a Rust view wrote beside `apply_tooltip` to float the hint.
+
+- **Rust shorthands for what views spell most** (backlog DX1–DX5, the
+  DX sweep of 2026-09-27 over kui's own code and kawoosh's). Each is
+  pinned in `tests/conveniences.rs` to the long form it stands for, and
+  the repo's own code moved onto them in the same round (about 2,100
+  sites; `bench-check.sh` green against the commit before). Nothing reaches the other bindings: each is a spelling of a
+  Rust call that already existed. No door changes.
+  - *Sizing (DX1).* `width` and `height` take a number of px, as
+    `min_width` did (`From<f32> for Sizing`); `size(w, h)` sets both;
+    `grow_width()`, `grow_height()` and `Sizing::GROW` are `Grow(1.0)`.
+    The same on a keyframe, entrance or exit. Before, `Sizing::Fixed(`
+    and `Sizing::Grow(1.0)` were 1,046 of the repo's calls.
+  - *A text in a box (DX2).* `ui.text_in(spec, s, style)`, `text_in_keyed`
+    and `text_in_indexed`: a box holding one text, returning the box's
+    key — the width, padding, background, click or role a text has no
+    rows for. The same tree `with(spec, |ui| ui.text(…))` builds.
+  - *Values (DX3).* `Value` from `i32`, `u32`, `usize` (saturating at
+    `i64::MAX`) and `f32`; `get_str`, `get_int`, `get_float`, `get_f32`
+    and `get_bool` for `get(k).and_then(Value::as_*)`; `UiEvent::kind()`
+    for the payload's `kind`; `modal` takes `impl Into<Value>` as every
+    other tag row did; `NodeSpec::key_sink()` for `on_key(Value::Null)`.
+    `#[derive(Message)]` (C50) remains the answer for an app's own
+    messages; these are for the core's payloads and a quick tag.
+  - *Placement and input (DX4).* `FloatConfig::inside(x, y)` is
+    `.at(x, y).self_at(x, y)`, which is how all 44 pairs in kui and
+    kawoosh were written; `KeyMods::NONE.with_shift().with_ctrl()` (and
+    `with_alt`, `with_super`, `with_primary`) and `Mods::NONE.with_word()`
+    for the struct literals; `Rect::center()`.
+  - *The node verbs (DX5).* `fragment_indexed`, `fragment_with_indexed`
+    and `line_indexed`, which the core had and `Ui` did not;
+    `child_key_indexed` (under What breaks); four doc comments in `ui.rs`
+    that sat on the neighbouring method moved to their own.
+  *What you can delete:* `Sizing::Fixed(` around a number, a
+  `with(spec, |ui| ui.text(…))` wrapper, `x as i64` into a `Value`,
+  `.and_then(Value::as_str)` after a `get`, `Value::str("…")` around a
+  tag, and `.self_at(…)` repeating `.at(…)`.
 
 ### Fixed
 

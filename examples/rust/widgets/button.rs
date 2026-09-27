@@ -68,15 +68,16 @@ impl App for Buttons {
                     );
                     // A `description` is what a reader says after the
                     // name; a tooltip hint *is* one, so a button says it
-                    // once and both the float and the reader have it.
+                    // once (`tooltip`) and both the float and the reader
+                    // have it.
                     widgets::button_with(
                         ui,
                         "delete",
                         "delete",
                         widgets::button_spec(&ui.theme(), &ui.metrics())
                             .on_click("delete")
-                            .apply_tooltip("removes the row for good — no undo"),
-                        Some("removes the row for good — no undo"),
+                            .tooltip("removes the row for good — no undo"),
+                        None,
                     );
                 });
 
