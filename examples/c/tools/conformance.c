@@ -690,6 +690,29 @@ static void conf_clip_float(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* conformance::build_pixel_snap: a row of three boxes at 40.5 by 20.25,
+ * the first two painted on whole pixels (pixel_snap, ABI 20) and the first
+ * with a hard shadow, the third drawn where layout put it. */
+static void conf_pixel_snap(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiSpec row = {.dir = KUI_ROW};
+    kui_open(ui, &row, NULL);
+    KuiSpec first = {.width = {KUI_FIXED, 40.5f}, .height = {KUI_FIXED, 20.25f},
+                     .bg = 0xd9738cff, .pixel_snap = 1, .shadow_color = 0x000000ff};
+    kui_open(ui, &first, NULL);
+    kui_close(ui);
+    KuiSpec second = {.width = {KUI_FIXED, 40.5f}, .height = {KUI_FIXED, 20.25f},
+                      .bg = 0x73d98cff, .pixel_snap = 1};
+    kui_open(ui, &second, NULL);
+    kui_close(ui);
+    KuiSpec third = {.width = {KUI_FIXED, 40.5f}, .height = {KUI_FIXED, 20.25f},
+                     .bg = 0x3b5bd4ff};
+    kui_open(ui, &third, NULL);
+    kui_close(ui);
+    kui_close(ui);
+}
+
 /* A fixed box that posts `key` when clicked and is named `label`: the
  * nodes and rows of conf_clip_access. */
 static KuiSpec conf_clip_access_button(float w, float h, uint32_t bg, const char *label) {
@@ -1799,6 +1822,7 @@ static const ConfScene CONF_SCENES[] = {
     {"overflow", conf_overflow},
     {"float", conf_float},
     {"clip-float", conf_clip_float},
+    {"pixel-snap", conf_pixel_snap},
     {"clip-access", conf_clip_access},
     {"tooltip", conf_tooltip},
     {"select", conf_select},

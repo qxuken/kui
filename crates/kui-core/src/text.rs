@@ -1974,6 +1974,9 @@ impl TextSystem {
         let scale = self.scale;
         let ox = crate::geom::snap_px(origin.x * scale);
         let oy = crate::geom::snap_px(origin.y * scale);
+        // Where layout put the text, less where it is drawn: what a
+        // background's edges are snapped from (`on_pixels`).
+        let nudge = Vec2::new(origin.x * scale - ox, origin.y * scale - oy);
         // A long line owns its box the way a no-wrap line does, and draws
         // the chunks inside the clip plus one either side, shaping them
         // now if this is the first time they show (backlog C19).
@@ -1986,10 +1989,12 @@ impl TextSystem {
             let clip_id = crate::display::intern_clip(clips, clip);
             if let Some(((from, to), tint)) = sel {
                 let rects = self.long_highlight(line, from, to);
-                push_highlight(&rects, ox, oy, tint, clip_id, out);
+                push_highlight(&rects, ox, oy, nudge, tint, clip_id, out);
             }
             if let Some(w) = line.wrap_w {
-                self.emit_long_rows(key, w, ox, oy, color, clip, clip_id, res, fs, atlas, out);
+                self.emit_long_rows(
+                    key, w, ox, oy, nudge, color, clip, clip_id, res, fs, atlas, out,
+                );
                 return;
             }
             let (first, last) = {
@@ -2021,6 +2026,7 @@ impl TextSystem {
                     entry,
                     ox + x,
                     oy,
+                    nudge,
                     color,
                     clip,
                     clip_id,
@@ -2051,10 +2057,29 @@ impl TextSystem {
         };
         if let Some(((from, to), tint)) = sel {
             let rects = Self::run_highlight(entry, from, to);
-            push_highlight(&rects, ox, oy, tint, clip_id, out);
+            push_highlight(&rects, ox, oy, nudge, tint, clip_id, out);
         }
-        emit_entry(entry, ox, oy, color, clip, clip_id, raster, fs, atlas, out);
+        emit_entry(
+            entry, ox, oy, nudge, color, clip, clip_id, raster, fs, atlas, out,
+        );
     }
+}
+
+/// A text's background rect at physical (`x`, `y`) with each edge
+/// snapped to a whole pixel, so it meets another text's — the next run's,
+/// the next row's — on a pixel line and not inside one, where each drew
+/// part of the pixel and the two left a seam. A box is drawn where layout
+/// put it, so a gap between two boxes is there at any scale, unless it
+/// asks for this too (`pixelSnap`), from its layout rect.
+///
+/// The edges are snapped from where layout put them, `nudge` (layout's
+/// origin less the drawn, snapped one) past `x` and `y`, so the next
+/// text's edge, snapped from its own layout origin, lands on the same
+/// pixel. From the drawn origin a row's rect ended a pixel into the next
+/// row wherever their pitch was not whole pixels, and the join drew
+/// twice.
+fn on_pixels(x: f32, y: f32, w: f32, h: f32, nudge: Vec2) -> Rect {
+    Rect::new(x + nudge.x, y + nudge.y, w, h).on_pixels()
 }
 
 /// Pushes selection rects as quads at a run's origin — before its glyphs,
@@ -2063,13 +2088,14 @@ fn push_highlight(
     rects: &[Rect],
     ox: f32,
     oy: f32,
+    nudge: Vec2,
     tint: Color,
     clip: ClipId,
     out: &mut Vec<Quad>,
 ) {
     for r in rects {
         out.push(Quad {
-            rect: Rect::new(ox + r.x, oy + r.y, r.w, r.h),
+            rect: on_pixels(ox + r.x, oy + r.y, r.w, r.h, nudge),
             color: tint,
             border_color: Color::TRANSPARENT,
             radius: [0.0; 4],
@@ -2093,6 +2119,7 @@ impl TextSystem {
         w: f32,
         ox: f32,
         oy: f32,
+        nudge: Vec2,
         color: Color,
         clip: Clip,
         clip_id: ClipId,
@@ -2142,6 +2169,7 @@ impl TextSystem {
                 entry,
                 ox,
                 oy + row0 as f32 * line.line_h,
+                nudge,
                 head_x,
                 &chunk.rows,
                 line.line_h,
@@ -2166,6 +2194,7 @@ fn emit_entry_rows(
     entry: &mut CachedText,
     ox: f32,
     oy: f32,
+    nudge: Vec2,
     head_x: f32,
     rows: &[RowStart],
     line_h: f32,
@@ -2205,7 +2234,11 @@ fn emit_entry_rows(
                 continue;
             }
             let quad = Quad {
-                rect: Rect::new(x, y, b - a, d.h),
+                rect: if d.under {
+                    on_pixels(x, y, b - a, d.h, nudge)
+                } else {
+                    Rect::new(x, y, b - a, d.h)
+                },
                 color: d.color.unwrap_or(color),
                 border_color: Color::TRANSPARENT,
                 radius: [0.0; 4],
@@ -2418,6 +2451,7 @@ fn emit_entry(
     entry: &mut CachedText,
     ox: f32,
     oy: f32,
+    nudge: Vec2,
     color: Color,
     clip: Clip,
     clip_id: ClipId,
@@ -2445,13 +2479,17 @@ fn emit_entry(
             clip: clip_id,
             uv: [0; 4],
         };
-        // A span's background goes under its glyphs; its lines go over.
+        // A span's background goes under its glyphs, on whole pixels;
+        // its lines go over.
         out.extend(
             entry
                 .deco
                 .iter()
                 .filter(|d| d.under && inside(d.x, d.y, d.w, d.h))
-                .map(deco_quad),
+                .map(|d| Quad {
+                    rect: on_pixels(ox + d.x, oy + d.y, d.w, d.h, nudge),
+                    ..deco_quad(d)
+                }),
         );
 
         // Glyph templates are in layout order; skip everything above the clip
@@ -2526,13 +2564,19 @@ fn has_line_break(content: &str) -> bool {
 /// is the face's own recommendation — swash's `underline_offset`,
 /// `strikeout_offset` and `stroke_size`, scaled to the glyph's size — read
 /// from the run's first glyph, so a fallback glyph in the middle of a
-/// span does not move the line.
+/// span does not move the line. Neighbouring spans of one background are
+/// one rect: an editor's selection is its syntax runs, a span each, and
+/// a rect each drew a seam between every two of them wherever the join
+/// fell inside a pixel.
 fn build_decorations(
     run: &cosmic_text::LayoutRun<'_>,
     spans: &[SpanDeco],
     fs: &mut FontSystem,
     out: &mut Vec<DecoTemplate>,
 ) {
+    // The background rect the last group drew, which the next one of the
+    // same colour starting where it ends extends.
+    let mut last_bg: Option<usize> = None;
     let mut i = 0;
     while i < run.glyphs.len() {
         let span_no = run.glyphs[i].metadata;
@@ -2549,16 +2593,25 @@ fn build_decorations(
                 .map(|g| g.x + g.w)
                 .fold(f32::NEG_INFINITY, f32::max);
             let w = (x1 - x0).max(0.0);
-            if let Some(bg) = deco.bg {
-                out.push(DecoTemplate {
-                    x: x0,
-                    y: run.line_top,
-                    w,
-                    h: run.line_height,
-                    color: Some(bg),
-                    under: true,
-                    style: UnderlineStyle::Solid,
-                });
+            match (deco.bg, last_bg.map(|k| &mut out[k])) {
+                (Some(bg), Some(prev))
+                    if prev.color == Some(bg) && (prev.x + prev.w - x0).abs() < 0.01 =>
+                {
+                    prev.w = (x1 - prev.x).max(prev.w);
+                }
+                (Some(bg), _) => {
+                    last_bg = Some(out.len());
+                    out.push(DecoTemplate {
+                        x: x0,
+                        y: run.line_top,
+                        w,
+                        h: run.line_height,
+                        color: Some(bg),
+                        under: true,
+                        style: UnderlineStyle::Solid,
+                    });
+                }
+                (None, _) => last_bg = None,
             }
             if deco.underline || deco.strikethrough {
                 let first = &group[0];
@@ -2606,6 +2659,8 @@ fn build_decorations(
                     });
                 }
             }
+        } else {
+            last_bg = None;
         }
         i = j;
     }

@@ -137,6 +137,16 @@ impl Rect {
         }
     }
 
+    /// This physical rect with each edge snapped to a whole pixel
+    /// ([`snap_px`]) on its own, so two rects that share an edge land it
+    /// on the same pixel line: `pixelSnap` boxes, and a text's
+    /// backgrounds (`text::emit`).
+    pub(crate) fn on_pixels(&self) -> Rect {
+        let (x0, y0) = (snap_px(self.x), snap_px(self.y));
+        let (x1, y1) = (snap_px(self.x + self.w), snap_px(self.y + self.h));
+        Rect::new(x0, y0, x1 - x0, y1 - y0)
+    }
+
     /// The smallest rect holding both. What a selection spanning several
     /// runs is anchored by (ADR 0017's Look Up panel).
     pub fn union(&self, other: &Rect) -> Rect {

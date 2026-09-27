@@ -23,9 +23,25 @@ was the first bare bump to break an app in five releases).
 
 ## 0.1.0-alpha.22 (unreleased)
 
-**What breaks.** No door changes, the ABI stays at 19 and the frame at
-v16. Two readings change:
+**What breaks.**
 
+- C: `KuiSpec` gains `pixel_snap` at its end (under Added), so
+  `KUI_ABI_VERSION` is 20: an [in] append. Recompile against the new
+  header; a zeroed field is a box drawn as before. The frame stays at
+  v16 (a new generic prop rides the wire by its id), and no door changes.
+
+Four readings change:
+
+- A square-cornered quad (a `bg`, a span's background, an image with no
+  `radius`, a solid underline) covers each pixel by the area of it inside
+  the rect (under Fixed). On whole pixels it is solid to its edge, where
+  its outermost pixels drew at 93%, so its edge is a pixel crisper. At a
+  fractional edge the pixel it falls in is part-covered as before. A
+  rounded quad keeps its ramp.
+- A text's span backgrounds are one quad per line for each run of spans
+  of one background, where they were one per span, and each edge is on a
+  whole pixel (under Fixed). A background can draw up to half a pixel
+  from where it did. Boxes are drawn where layout put them, as before.
 - A family registered with no 400 face, one face lighter than 400 and
   one between 400 and 500 — a Light and a Medium — is asked for regular
   at the heavier one, where it was asked at the lighter one (under
@@ -38,7 +54,70 @@ v16. Two readings change:
   from the next frame, where it stayed synthesized until the text left
   the cache.
 
+### Added
+
+- **`pixelSnap`: a box painted on whole pixels.** A flag on any node
+  (`pixelSnap` in JSX, `pixel_snap` in Lua and on `KuiSpec`,
+  `NodeSpec::pixel_snap()` in Rust). The node's background, border and
+  shadow are painted with each edge on a whole physical pixel, each edge
+  rounded on its own from where layout put it (`snap_px(x)` and
+  `snap_px(x + w)`), the rounding a text's span backgrounds use. Boxes that
+  share an edge in layout then meet on one pixel line. So do a box and a
+  text's background, which is what an editor needs: its selection past a
+  line's end is a box beside the line's text. So are bands and code-block
+  rows stacked at a pitch that is not whole pixels. Unflagged, two such
+  boxes each draw part of the pixel their join falls in, and it shows as
+  a line. Opt-in because snapping every box closed a 1 px `gap` below 1×
+  (see Fixed); a box that does not ask is drawn where layout put it, as
+  every box was. Layout, hit-testing, the clip and the children are
+  untouched. A snapped box can draw up to half a pixel from its layout
+  edge and its size can differ by a pixel, so a snapped hairline is 1 or
+  2 px thick by where it sits. The corpus gains `pixel-snap`, re-expressed
+  in Lua, C and Node: three boxes at 40.5 by 20.25, two snapped (one with
+  a shadow) and one not. Pinned in kui-wgpu by a column of snapped boxes
+  at a 21.75 pitch covering every pixel exactly once at nine scales from
+  0.5× to 3×, and by an unflagged column keeping its exact rects; both
+  fail with the flag ignored.
+  *What you can delete:* a box that stood in for a background as a text
+  of its own (a space with the colour behind it), so its edge would round
+  the way the text beside it does.
+
 ### Fixed
+
+- **Text backgrounds that adjoin showed a seam at every join** (from
+  kawoosh, 2026-09-26). An editor's selection is a translucent `bg` on
+  each span of its syntax runs, row after row, and it drew as stripes.
+  Three things made them. *The shader ramped every edge*, square corners
+  included, over 1.5 px, so a rect on whole pixels still drew its
+  outermost pixels at 93%, and two rects sharing an edge left a 2 px band
+  of what lay under them. A square-cornered quad now covers each pixel by
+  the area of it inside the rect. *A background was a rect per span*, its
+  ends wherever the glyphs put them, so a join inside a pixel was drawn
+  in two halves, and two halves of a translucent colour do not add up to
+  the whole. Neighbouring spans of one background are now one rect, and
+  a text's backgrounds (a span's, the ADR 0017 highlight) have each edge
+  snapped to a whole pixel. *They are snapped from where layout put the
+  text*, not from its drawn origin, which is rounded already: from there
+  a row's rect reached a pixel into the next row wherever the rows'
+  pitch was not whole pixels, and every other join was drawn twice.
+  Snapping every box's edges the same way was tried and taken back. It
+  put kawoosh's newline box on the text's grid, but below 1× it closed a
+  1 px `gap` between two boxes (their edges rounded to the same pixel)
+  and at 1.5× made it 1 or 2 px. A box is drawn where layout put it, so
+  the gap is there at any scale, and one that has to meet a text's
+  background or another box without a seam asks for it: `pixelSnap`
+  (under Added). Pinned by
+  `tests/seamless_backgrounds.rs` in kui-wgpu, which composites through
+  the shader's coverage. A five-row selection from a fractional offset,
+  at eight scales from 1× to 2.175×, is the selection's own alpha at
+  every pixel. Editor-shaped rows (a line's text, then its newline as a
+  `pixelSnap` box, an empty line's box alone), at three line heights,
+  three offsets and six scales, have no pixel drawn twice and no gap. A
+  1 px gap between boxes is drawn at twelve scales from 0.5× to 3×. Each
+  was seen failing with its part taken out, and the gap with every box
+  snapped.
+  *What you can delete:* a selection or highlight drawn as one box behind
+  a line to hide the seams between its spans' backgrounds.
 
 - **A glyph the atlas refused for room on a page that began the frame
   empty stayed blank for as long as the page lived** (backlog RG56,

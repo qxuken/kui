@@ -704,6 +704,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         mixed: u32 => "uint32_t",
         value_step: f32 => "float",
         on_change: *const KuiValue => "const KuiValue *",
+        pixel_snap: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiAccessNode {
@@ -1369,9 +1370,9 @@ fn an_in_struct_s_size_is_the_abi_s() {
     use std::collections::BTreeMap;
     // (name, size in bytes, the ABI the size is from)
     const IN_LAYOUTS: &[(&str, usize, u32)] = &[
-        // ABI 19: `float_clip`, `aspect_ratio`, `mixed`, `value_step` and
-        // `on_change` appended.
-        ("KuiSpec", 600, 19),
+        // ABI 20: `pixel_snap` appended, after ABI 19's `float_clip`,
+        // `aspect_ratio`, `mixed`, `value_step` and `on_change`.
+        ("KuiSpec", 608, 20),
         ("KuiSizing", 8, 16),
         ("KuiKeyframe", 36, 16),
         ("KuiEnter", 40, 16),

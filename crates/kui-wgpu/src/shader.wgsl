@@ -196,7 +196,19 @@ fn shade(in: VsOut) -> Shaded {
     }
 
     let d = sd_rounded_box(in.local - half, half, in.radii);
-    let coverage = 1.0 - smoothstep(-AA, AA, d);
+    // A square-cornered quad covers a pixel by the area of it inside the
+    // rect, so one on whole pixels is solid to its edge and two that share
+    // an edge add up to one there. The SDF ramp left a rect's outermost
+    // pixels at 93%, and every join of two rects — a selection's spans and
+    // rows, a list's bands — was a 2 px seam of what lay under them.
+    let lo = max(in.local - vec2<f32>(0.5, 0.5), vec2<f32>(0.0, 0.0));
+    let hi = min(in.local + vec2<f32>(0.5, 0.5), in.size);
+    let area = clamp(hi - lo, vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 1.0));
+    let coverage = select(
+        1.0 - smoothstep(-AA, AA, d),
+        area.x * area.y,
+        all(in.radii <= vec4<f32>(0.0)),
+    );
 
     if kind == 3u {
         // Registered image tinted by color (white = as-is). Both samplers

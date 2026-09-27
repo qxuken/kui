@@ -193,6 +193,9 @@ pub(crate) fn spec_of(
     if s.animate != 0 {
         spec = spec.animate();
     }
+    if s.pixel_snap != 0 {
+        spec = spec.pixel_snap();
+    }
     if s.selectable != 0 {
         spec = spec.selectable();
     }

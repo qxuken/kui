@@ -216,6 +216,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             "bg" => s.bg = C,
             "hoverable" => s.hoverable = 1,
             "animate" => s.animate = 1,
+            "pixelSnap" => s.pixel_snap = 1,
             "accent" => s.accent = 1,
             "selectable" => s.selectable = 1,
             "focusRegion" => s.focus_region = 1,
@@ -405,6 +406,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         mixed: 1,
         value_step: 2.5,
         on_change: &menu_tag,
+        pixel_snap: 1,
         window_role: 1,
         transition_ms: 150.0,
         easing: 3,
@@ -508,6 +510,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         )
         .hoverable()
         .animate()
+        .pixel_snap()
         .accent()
         .selectable()
         .on_force_click(Value::str("cm"))

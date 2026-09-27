@@ -1834,8 +1834,11 @@ impl Painter<'_> {
         if !is_line
             && (style.bg.is_visible() || (style.border_w > 0.0 && style.border_color.is_visible()))
         {
+            // Where layout put it, or on whole pixels when it asked
+            // (`pixelSnap`), from the same numbers a text's backgrounds are.
+            let px = rect.scaled(scale);
             self.display.quads.push(Quad {
-                rect: rect.scaled(scale),
+                rect: if style.pixel_snap { px.on_pixels() } else { px },
                 color: style.bg,
                 border_color: style.border_color,
                 radius: style.radius.map(|r| r * scale),
@@ -2213,13 +2216,21 @@ fn shadow_quad(style: &crate::spec::VisualStyle, rect: Rect, clip_id: ClipId, sc
         (rect.w + 2.0 * sh.spread).max(0.0),
         (rect.h + 2.0 * sh.spread).max(0.0),
     );
-    Quad {
-        rect: Rect::new(
+    let rect = if style.pixel_snap {
+        // Snapped with its box, so it stays under it; the blur around it.
+        let s = shape.scaled(scale).on_pixels();
+        let b = blur * scale;
+        Rect::new(s.x - b, s.y - b, s.w + 2.0 * b, s.h + 2.0 * b)
+    } else {
+        Rect::new(
             (shape.x - blur) * scale,
             (shape.y - blur) * scale,
             (shape.w + 2.0 * blur) * scale,
             (shape.h + 2.0 * blur) * scale,
-        ),
+        )
+    };
+    Quad {
+        rect,
         color: sh.color,
         border_color: Color::TRANSPARENT,
         radius: style.radius.map(|r| (r + sh.spread).max(0.0) * scale),

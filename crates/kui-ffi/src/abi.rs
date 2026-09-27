@@ -238,7 +238,12 @@
 /// `KUI_SPACE_BETWEEN`, `KUI_SPACE_AROUND`,
 /// `KUI_SPACE_EVENLY` and `KUI_BASELINE` (backlog C13) are new values of
 /// `main_align` / `cross_align`, which moved nothing.
-pub const KUI_ABI_VERSION: u32 = 19;
+///
+/// ABI 20 appends `pixel_snap` to `KuiSpec`: a box that sets it is painted
+/// with each edge on a whole pixel, so it meets a text's background or
+/// another snapped box without a seam. An [in] append; recompile. A zeroed
+/// field is the box drawn where layout put it, which is what every box was.
+pub const KUI_ABI_VERSION: u32 = 20;
 
 /// The ABI version this library implements, for a host to compare against
 /// the `KUI_ABI_VERSION` of the header it compiled against, before its

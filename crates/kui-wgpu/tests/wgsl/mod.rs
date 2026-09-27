@@ -38,6 +38,25 @@ pub fn sd_segment(p: [f32; 2], a: [f32; 2], b: [f32; 2], r: f32) -> f32 {
     (d[0] * d[0] + d[1] * d[1]).sqrt() - r
 }
 
+/// `shade`'s `coverage` for a solid or an image quad at the fragment
+/// centred on (`x`, `y`): the area of that pixel inside the rect while
+/// the radii are all zero, the rounded SDF's ramp otherwise.
+pub fn quad_coverage(q: &kui_core::Quad, x: f32, y: f32) -> f32 {
+    let local = [x - q.rect.x, y - q.rect.y];
+    let size = [q.rect.w, q.rect.h];
+    if q.radius.iter().all(|v| *v <= 0.0) {
+        let span = |i: usize| {
+            let lo = (local[i] - 0.5).max(0.0);
+            let hi = (local[i] + 0.5).min(size[i]);
+            (hi - lo).clamp(0.0, 1.0)
+        };
+        return span(0) * span(1);
+    }
+    let half = [size[0] * 0.5, size[1] * 0.5];
+    let d = sd_rounded_box([local[0] - half[0], local[1] - half[1]], half, q.radius);
+    1.0 - smoothstep(-AA, AA, d)
+}
+
 pub fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
     let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)

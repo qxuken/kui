@@ -1180,6 +1180,34 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "pixel-snap",
+        doc: "Boxes painted on whole pixels (`pixelSnap`): a row of three               at 40.5 by 20.25, the first two snapped and the first with a               hard shadow, the third drawn where layout put it. The               snapped two meet on one pixel line, 41 px from the row's               start, and are 20 tall, and the shadow is snapped with its               box. The third keeps its fractional rect, which is what               every box was. A binding that drops the flag draws the first               two at 40.5 as well.",
+        custom: &["dir"],
+        elements: &["box"],
+        build: build_pixel_snap,
+        env: NATIVE_CHROME,
+        steps: &[],
+        expect: Expect {
+            solid: 3,
+            shadows: 1,
+            images: 0,
+            segments: 0,
+            segments_follow_text: false,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 0,
+            access: &["0 window ||"],
+            events: &[],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+            secure_input: false,
+        },
+    },
+    Scene {
         name: "clip-access",
         doc: "An access rect is what is drawn (backlog F93): a toolbar over \
               a `clip` canvas beside a scroller. On the canvas, a `clip` \
@@ -5906,6 +5934,25 @@ fn build_clip_access(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             );
         },
     );
+}
+
+fn build_pixel_snap(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    let cell = |bg: u32| {
+        NodeSpec::column()
+            .width(Sizing::Fixed(40.5))
+            .height(Sizing::Fixed(20.25))
+            .bg(Color::hex(bg))
+    };
+    ui.with(NodeSpec::row(), |ui| {
+        ui.with(
+            cell(0xd9738cff)
+                .pixel_snap()
+                .shadow_color(Color::hex(0x000000ff)),
+            |_| {},
+        );
+        ui.with(cell(0x73d98cff).pixel_snap(), |_| {});
+        ui.with(cell(0x3b5bd4ff), |_| {});
+    });
 }
 
 fn build_clip_float(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {

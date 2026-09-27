@@ -3833,6 +3833,16 @@ const SCENE_TREES = {
       ),
     ])]);
   },
+  // Boxes on whole pixels (`pixelSnap`): two snapped, the first with a
+  // hard shadow, and one drawn where layout put it.
+  'pixel-snap': () => {
+    const cell = (bg, extra = {}) => box({ width: 40.5, height: 20.25, bg, ...extra });
+    return root({}, [box({ dir: 'row' }, [
+      cell('#d9738c', { pixelSnap: true, shadowColor: '#000000' }),
+      cell('#73d98c', { pixelSnap: true }),
+      cell('#3b5bd4'),
+    ])]);
+  },
   // Access rects cut to the clip (backlog F93): three nodes on a `clip`
   // canvas past its top, three rows in a short scroller.
   'clip-access': () => {

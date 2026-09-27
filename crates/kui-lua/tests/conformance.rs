@@ -215,6 +215,20 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
+        // Boxes on whole pixels: two snapped, the first with a hard shadow,
+        // and one drawn where layout put it.
+        "pixel-snap" => r#"
+            local function cell(bg, snap, shadow)
+              return column { width = 40.5, height = 20.25, bg = bg, pixel_snap = snap,
+                              shadow_color = shadow }
+            end
+            return row {
+              cell(0xd9738cff, true, 0x000000ff),
+              cell(0x73d98cff, true),
+              cell(0x3b5bd4ff, false),
+            }
+        "#
+        .to_string(),
         // Backlog F93: access rects cut to the clip — three nodes on a
         // `clip` canvas past its top, three rows in a short scroller.
         "clip-access" => r#"

@@ -250,8 +250,13 @@ extern "C" {
  * kui_take_file_request, kui_file_request_filter and kui_input_files.
  * Still at 19, since nothing a host had laid out moved: KuiSystemFont, a
  * new [out[]] struct, with kui_system_fonts (backlog F97).
+ *
+ * ABI 20 appends pixel_snap to KuiSpec: a box that sets it is painted with
+ * each edge on a whole pixel, so it meets a text's background or another
+ * snapped box without a seam. An [in] append; recompile. A zeroed field is
+ * the box drawn where layout put it, which is what every box was.
  */
-#define KUI_ABI_VERSION 19u
+#define KUI_ABI_VERSION 20u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -575,7 +580,7 @@ typedef struct KuiSpec {
     float pad_l, pad_r, pad_t, pad_b;
     float gap;
     uint32_t main_align, cross_align;
-    uint32_t bg;
+    uint32_t bg; /* (pixel_snap, on whole pixels, is appended at the end: ABI 20.) */
     uint32_t border_color;
     float border_w;
     float radius;
@@ -953,6 +958,15 @@ typedef struct KuiSpec {
      * Proposed, never applied: declare the value as value_now. Borrowed
      * while the node opens. ABI 19. */
     const KuiValue *on_change;
+    /* Non-zero: paint the background, border and shadow with each edge on
+     * a whole physical pixel (pixelSnap), rounded on its own from where
+     * layout put it, as a text's span backgrounds are. Snapped boxes that
+     * share an edge in layout, and one beside a text's background, meet
+     * on one pixel line with no seam. Zero, the default, draws the box
+     * where layout put it, so a 1 px gap between boxes is there at any
+     * scale. Layout, hit-testing, the clip and the children are untouched.
+     * ABI 20. */
+    uint32_t pixel_snap;
 } KuiSpec;
 
 /* When a scrolling node's bars are drawn (KuiSpec.scrollbar): the schema

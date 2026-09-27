@@ -172,6 +172,7 @@ pub const P_ASPECT_RATIO: u32 = 107;
 pub const P_MIXED: u32 = 108;
 pub const P_VALUE_STEP: u32 = 109;
 pub const P_ON_CHANGE: u32 = 110;
+pub const P_PIXEL_SNAP: u32 = 111;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -608,6 +609,13 @@ pub const PROPS: &[PropDef] = &[
         kind: Kind::F32,
         apply: Apply::SpecF32(|s, v| s.opacity(v)),
         doc: "Group opacity 0..1 (default 1): fades this node and its whole subtree. A per-quad alpha multiply rather than an offscreen composite, so overlapping pieces of one subtree show their seams through the fade. Layout, hit-testing and the access tree are untouched; eases with `transition`, and `enter: { opacity: 0 }` fades a panel in.",
+    },
+    PropDef {
+        name: "pixelSnap",
+        id: P_PIXEL_SNAP,
+        kind: Kind::Flag,
+        apply: Apply::SpecFlag(|s| s.pixel_snap()),
+        doc: "Paint this node's background, border and shadow with each edge on a whole physical pixel: `x` and `x + width` rounded on their own, from where layout put them, as a text's span backgrounds are. Off by default, and a box is drawn where layout put it, so a 1 px `gap` between boxes is there at any scale. On, boxes that share an edge in layout meet on one pixel line, where a join inside a pixel was drawn by halves and left a seam — rows of a band stacked at a pitch that is not whole pixels, or a box that continues a text's selection. Layout, hit-testing, the clip and the children are untouched. A snapped box can draw up to half a pixel from its layout edge and its size can differ by a pixel, so a snapped hairline is 1 or 2 px thick by where it sits.",
     },
     PropDef {
         name: "shadowColor",
