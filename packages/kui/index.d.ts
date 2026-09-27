@@ -730,6 +730,14 @@ export type WarningCode =
    *  with a name the view spells differently, or naming a node that is not a
    *  region (`docs/adr/0022-focus-regions.md`, decision 4). */
   | 'focus-region-without-node'
+  /** A `reveal` or `setScroll` by label (`env.reveal("rows")`,
+   *  `win.reveal("rows")`, `Core::reveal_label`) named a label the frame it
+   *  resolved against did not declare, so nothing moved. A label is resolved
+   *  when the frame finishes, so a view may name a node it is declaring right
+   *  now, or one the next frame declares; this is the name spelled differently
+   *  from the `key` that declares it, or the node not declared at all (backlog
+   *  DX15). */
+  | 'label-without-node'
   /** A `selectable` node inside another `selectable` node. Selection scopes do
    *  not nest: the innermost one owns every run under it, so the outer scope
    *  selects only the text outside the inner one — and a drag that crosses the
@@ -2845,9 +2853,11 @@ export declare class Ctx {
    * or nothing above it scrolls, it is a no-op and is not kept for a
    * later frame; two reveals before one frame are contradictory, so
    * the last wins. `key` is a hex key or a declared label, as for
-   * `focus` — a label resolves through the *last* frame, so a row
-   * the coming frame declares for the first time is reachable by
-   * its hex key only.
+   * `focus`. A label the last frame did not declare is resolved
+   * when the coming frame finishes, so a row that frame declares
+   * for the first time is reachable by name too; one it does not
+   * declare either is a `label-without-node` warning (backlog
+   * DX15).
    */
   reveal(key: string): void
   /**
@@ -3977,9 +3987,11 @@ export declare class KuiWindow {
    * or nothing above it scrolls, it is a no-op and is not kept for a
    * later frame; two reveals before one frame are contradictory, so
    * the last wins. `key` is a hex key or a declared label, as for
-   * `focus` — a label resolves through the *last* frame, so a row
-   * the coming frame declares for the first time is reachable by
-   * its hex key only.
+   * `focus`. A label the last frame did not declare is resolved
+   * when the coming frame finishes, so a row that frame declares
+   * for the first time is reachable by name too; one it does not
+   * declare either is a `label-without-node` warning (backlog
+   * DX15).
    */
   reveal(key: string): void
   /**

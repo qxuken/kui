@@ -834,7 +834,6 @@ test('focus, isFocused and access resolve a declared label', () => {
   // typo the app wants told about. A query answers instead (C25), which is
   // its own test below.
   assert.throws(() => ctx.focus('gamma'), /no node is keyed "gamma".*`key` prop.*hex key/);
-  assert.throws(() => ctx.reveal('gamma'), /no node is keyed/);
   assert.throws(() => ctx.access('gamma', 'click'), /no node is keyed/);
   assert.equal(ctx.isFocused('gamma'), false);
   assert.deepEqual(ctx.warnings(), []);
@@ -5432,7 +5431,13 @@ test('reveal of a key the next frame does not declare is a no-op', () => {
   // not find it, so a later frame does not act on it.
   render();
   assert.deepEqual(ctx.scrollOffset(list), { x: 0, y: 0 });
-  assert.throws(() => ctx.reveal('nope'), /no node is keyed "nope"/);
+  // A label no frame declared waits for the coming one, and that frame not
+  // declaring it either is a warning naming it (backlog DX15).
+  ctx.warnings();
+  ctx.reveal('nope');
+  render();
+  assert.deepEqual(ctx.warnings().map((w) => w.code), ['label-without-node']);
+  assert.deepEqual(ctx.scrollOffset(list), { x: 0, y: 0 });
 });
 
 test('reveal reaches a row the coming frame declares for the first time', () => {
@@ -5901,8 +5906,15 @@ test('a query answers for a label no frame declared; a command still throws', ()
   assert.equal(ctx.caretRect('nothing', 0), null);
   // A command is a typo the app wants named.
   assert.throws(() => ctx.focus('nothing'), /no node is keyed/);
-  assert.throws(() => ctx.reveal('nothing'), /no node is keyed/);
-  assert.throws(() => ctx.setScroll('nothing', 0, 0), /no node is keyed/);
+  // Except the two a view makes before the node exists — the list it is
+  // about to show, a row it grows into — which wait for the frame and
+  // name the typo as a warning when that frame declares nothing under it
+  // (backlog DX15).
+  ctx.warnings();
+  ctx.reveal('nothing');
+  ctx.setScroll('nothing', 0, 0);
+  ctx.frame(320, 240, 1, box({ width: 'grow', height: 'grow' }));
+  assert.deepEqual(ctx.warnings().map((w) => w.code), ['label-without-node', 'label-without-node']);
 });
 
 test('index keys a node the way auto-keying would have, wherever it sits', () => {

@@ -139,6 +139,14 @@ warnings! {
     /// differently, or naming a node that is not a region
     /// (`docs/adr/0022-focus-regions.md`, decision 4).
     pub const FOCUS_REGION_WITHOUT_NODE: &str = "focus-region-without-node";
+    /// A `reveal` or `setScroll` by label (`env.reveal("rows")`,
+    /// `win.reveal("rows")`, `Core::reveal_label`) named a label the frame
+    /// it resolved against did not declare, so nothing moved. A label is
+    /// resolved when the frame finishes, so a view may name a node it is
+    /// declaring right now, or one the next frame declares; this is the
+    /// name spelled differently from the `key` that declares it, or the
+    /// node not declared at all (backlog DX15).
+    pub const LABEL_WITHOUT_NODE: &str = "label-without-node";
     /// A `selectable` node inside another `selectable` node. Selection
     /// scopes do not nest: the innermost one owns every run under it, so
     /// the outer scope selects only the text outside the inner one — and
@@ -718,6 +726,19 @@ pub(crate) fn focus_region_without_node(target: &crate::runtime::RegionTarget) -
             "`focus_region` named {named}, and the frame after it declared no `focusRegion` node \
              there, so nothing was entered; the name is the label the region's `key` prop \
              declares, on a node that carries the `focusRegion` row"
+        ),
+    }
+}
+
+/// The [`LABEL_WITHOUT_NODE`] warning for a deferred `verb` by `label`.
+/// Keyed by the verb and the label, so a call repeated every frame costs
+/// one line, and a `reveal` and a `set_scroll` of one typo are two.
+pub(crate) fn label_without_node(verb: &str, label: &str) -> Warning {
+    Warning {
+        code: LABEL_WITHOUT_NODE,
+        key: Key::ROOT.str(verb).str(label),
+        message: format!(
+            "`{verb}` named the label {label:?}, and the frame it resolved against declared no              node under it, so nothing moved; the name is the label a node's `key` declares"
         ),
     }
 }

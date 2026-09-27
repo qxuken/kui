@@ -371,6 +371,9 @@ impl Core {
         self.counters.truncate(1);
 
         self.tree.host_area = self.dt_area;
+        if !self.pending_scroll_labels.is_empty() {
+            self.resolve_scroll_labels();
+        }
         {
             let sess = &mut *self.session.state();
             let mut measure = Measure {

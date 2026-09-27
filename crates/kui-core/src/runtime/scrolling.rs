@@ -45,6 +45,49 @@ impl Core {
         self.request_frame();
     }
 
+    /// [`Self::reveal`] by the label a node declares, resolved when the
+    /// frame finishes — against the frame being built, or the next one
+    /// when none is — so a view may name a row it is declaring right now,
+    /// or one the frame after declares (backlog DX15). A label that frame
+    /// does not declare raises `label-without-node` and moves nothing.
+    pub fn reveal_label(&mut self, label: &str) {
+        self.pending_reveal_labels
+            .push((label.to_string(), self.origin));
+        self.request_frame();
+    }
+
+    /// [`Self::set_scroll`] by label, resolved like [`Self::reveal_label`]
+    /// but before layout, so the frame that resolves it lays out at the
+    /// offset.
+    pub fn set_scroll_label(&mut self, label: &str, offset: Vec2) {
+        self.pending_scroll_labels
+            .push((label.to_string(), self.origin, offset));
+        if !self.building {
+            self.request_frame();
+        }
+    }
+
+    /// A deferred label, found as the origin that asked would find it
+    /// (`find_label` answers per origin), in this frame alone.
+    fn find_label_as(&mut self, label: &str, origin: crate::tree::OriginId) -> Option<Key> {
+        let at = std::mem::replace(&mut self.origin, origin);
+        let key = self.find_label(label, false);
+        self.origin = at;
+        key
+    }
+
+    /// Before layout: the `set_scroll_label` asks, as `set_scroll`s.
+    pub(crate) fn resolve_scroll_labels(&mut self) {
+        for (label, origin, offset) in std::mem::take(&mut self.pending_scroll_labels) {
+            match self.find_label_as(&label, origin) {
+                Some(key) => self.scroll.set_smooth(key, offset),
+                None => self
+                    .diag
+                    .raise(crate::diag::label_without_node("set_scroll", &label)),
+            }
+        }
+    }
+
     /// The retained scroll offset of the container `key`, as the last
     /// layout clamped it (positive = content moved up / left) — the
     /// target: while a container with a `transition` eases to it (F80) the
@@ -186,6 +229,14 @@ impl Core {
     /// declares it. Like the caret, the positions pass re-runs, so this
     /// frame already draws the node in view.
     pub(crate) fn apply_pending_reveal(&mut self) {
+        for (label, origin) in std::mem::take(&mut self.pending_reveal_labels) {
+            match self.find_label_as(&label, origin) {
+                Some(key) => self.pending_reveal.push(key),
+                None => self
+                    .diag
+                    .raise(crate::diag::label_without_node("reveal", &label)),
+            }
+        }
         let asks = std::mem::take(&mut self.pending_reveal);
         if asks.is_empty() {
             return;

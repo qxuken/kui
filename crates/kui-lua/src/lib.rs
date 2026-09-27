@@ -734,13 +734,25 @@ fn env_table<'scope, 'env: 'scope>(
     // against *this* frame's layout when it finishes — which is what lets
     // a script reveal a row it is declaring right now. A key the frame
     // does not declare, or one with nothing scrollable above it, is a
-    // no-op; the request is not kept for a later frame.
+    // no-op; the request is not kept for a later frame. A label no node
+    // has declared yet — the row this `view` declares further down, or a
+    // pane's first frame — is resolved when the frame finishes, and one
+    // that frame does not declare either is a `label-without-node`
+    // warning (backlog DX15), where it was an error scripts wrapped in
+    // `pcall` and retried.
     t.set(
         "reveal",
         scope.create_function(move |_, key: mlua::Value| {
             let mut ui = ui.borrow_mut();
-            let key = key_arg(&mut ui, key)?;
-            ui.reveal(key);
+            match key {
+                mlua::Value::String(s) if ui.key_of(&s.to_str()?).is_none() => {
+                    ui.reveal_label(&s.to_str()?);
+                }
+                key => {
+                    let key = key_arg(&mut ui, key)?;
+                    ui.reveal(key);
+                }
+            }
             Ok(())
         })?,
     )?;
@@ -1039,8 +1051,18 @@ fn env_table<'scope, 'env: 'scope>(
         "set_scroll",
         scope.create_function(move |_, (key, x, y): (mlua::Value, f32, f32)| {
             let mut ui = ui.borrow_mut();
-            let key = key_arg(&mut ui, key)?;
-            ui.set_scroll(key, kui_core::Vec2::new(x, y));
+            let at = kui_core::Vec2::new(x, y);
+            // A label not declared yet waits for the frame's end, as
+            // `reveal`'s does (backlog DX15).
+            match key {
+                mlua::Value::String(s) if ui.key_of(&s.to_str()?).is_none() => {
+                    ui.set_scroll_label(&s.to_str()?, at);
+                }
+                key => {
+                    let key = key_arg(&mut ui, key)?;
+                    ui.set_scroll(key, at);
+                }
+            }
             Ok(())
         })?,
     )?;
@@ -6106,7 +6128,7 @@ mod tests {
                   focused = env.is_focused("nothing")
                   hit = env.text_hit("nothing", 1, 1)
                   caret = env.caret_rect("nothing", 0)
-                  refused = not pcall(function() env.set_scroll("nothing", 0, 0) end)
+                  deferred = pcall(function() env.set_scroll("nothing", 0, 0) end)
                   refused_focus = not pcall(function() env.set_focus("nothing") end)
                   return column { width = "grow", height = "grow" }
                 end
@@ -6126,10 +6148,11 @@ mod tests {
         assert!(!g.get::<bool>("focused").unwrap());
         let off: Table = g.get("off").unwrap();
         assert_eq!(off.get::<f32>("y").unwrap(), 0.0);
-        assert!(
-            g.get::<bool>("refused").unwrap(),
-            "set_scroll named nothing"
-        );
+        // `set_scroll` waits for the frame's end (backlog DX15), and the
+        // frame not declaring the label is the warning that names it.
+        assert!(g.get::<bool>("deferred").unwrap());
+        let codes: Vec<_> = core.take_warnings().iter().map(|w| w.code).collect();
+        assert_eq!(codes, ["label-without-node"]);
         assert!(g.get::<bool>("refused_focus").unwrap());
     }
 

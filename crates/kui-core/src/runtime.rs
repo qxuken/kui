@@ -481,6 +481,12 @@ pub struct Core {
     /// ancestor to show it, then clears them. Within one container the
     /// last ask wins; asks aimed at different containers all land (F82).
     pending_reveal: Vec<Key>,
+    /// `reveal_label` and `set_scroll_label` asks, with the origin that
+    /// asked: resolved when the frame finishes, where a label named before
+    /// its node is declared — later in the same build, or by the next
+    /// frame — has a node to find (backlog DX15).
+    pending_reveal_labels: Vec<(String, crate::tree::OriginId)>,
+    pending_scroll_labels: Vec<(String, crate::tree::OriginId, Vec2)>,
     /// Type-ahead inside a composite (`docs/adr/0007`, decision 9): the
     /// characters typed so far, and the frame clock reading of the last
     /// keystroke. The buffer is cleared at the start of the first frame
@@ -911,6 +917,8 @@ impl Core {
             ghost_rect: Vec::new(),
             frame_requested: false,
             pending_reveal: Vec::new(),
+            pending_reveal_labels: Vec::new(),
+            pending_scroll_labels: Vec::new(),
             pending_focus_step: None,
             region: None,
             region_held: false,

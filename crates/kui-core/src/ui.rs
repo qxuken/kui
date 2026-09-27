@@ -1061,6 +1061,18 @@ impl<'a> Ui<'a> {
         self.core.reveal(key);
     }
 
+    /// [`Self::reveal`] by label, resolved when this frame finishes; see
+    /// `Core::reveal_label`.
+    pub fn reveal_label(&mut self, label: &str) {
+        self.core.reveal_label(label);
+    }
+
+    /// `set_scroll` by label, resolved before this frame lays out; see
+    /// `Core::set_scroll_label`.
+    pub fn set_scroll_label(&mut self, label: &str, offset: Vec2) {
+        self.core.set_scroll_label(label, offset);
+    }
+
     /// A scroll container's retained offset, clamped as of the last
     /// layout — the number to stash in a model and hand back to
     /// `set_scroll` later. Zero for a node that never scrolled.

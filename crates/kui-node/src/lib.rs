@@ -3152,14 +3152,18 @@ macro_rules! core_methods {
             /// or nothing above it scrolls, it is a no-op and is not kept for a
             /// later frame; two reveals before one frame are contradictory, so
             /// the last wins. `key` is a hex key or a declared label, as for
-            /// `focus` — a label resolves through the *last* frame, so a row
-            /// the coming frame declares for the first time is reachable by
-            /// its hex key only.
+            /// `focus`. A label the last frame did not declare is resolved
+            /// when the coming frame finishes, so a row that frame declares
+            /// for the first time is reachable by name too; one it does not
+            /// declare either is a `label-without-node` warning (backlog
+            /// DX15).
             #[napi]
             pub fn reveal(&mut self, key: String) -> Result<()> {
                 let core = self.$core();
-                let key = resolve_key(core, &key)?;
-                core.reveal(key);
+                match hex_key(&key).or_else(|| core.key_of(&key)) {
+                    Some(k) => core.reveal(k),
+                    None => core.reveal_label(&key),
+                }
                 self.$redraw();
                 Ok(())
             }
@@ -3661,8 +3665,14 @@ macro_rules! core_methods {
             /// the end without knowing the content height.
             #[napi]
             pub fn set_scroll(&mut self, key: String, x: f64, y: f64) -> Result<()> {
-                let key = resolve_key(self.$core(), &key)?;
-                self.$core().set_scroll(key, Vec2::new(x as f32, y as f32));
+                let core = self.$core();
+                let at = Vec2::new(x as f32, y as f32);
+                // A label not declared yet waits for the coming frame, as
+                // `reveal`'s does (backlog DX15).
+                match hex_key(&key).or_else(|| core.key_of(&key)) {
+                    Some(k) => core.set_scroll(k, at),
+                    None => core.set_scroll_label(&key, at),
+                }
                 self.$redraw();
                 Ok(())
             }
