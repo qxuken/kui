@@ -93,6 +93,7 @@ impl Core {
         use cosmic_text::fontdb::Source;
         let id = {
             let sess = &mut *self.session.state();
+            sess.share_faces_once();
             let db = sess.fonts.db_mut();
             let ids = db.load_font_source(Source::Binary(std::sync::Arc::new(data)));
             let ids = crate::text::keep_measurable(db, ids.to_vec());
@@ -120,6 +121,7 @@ impl Core {
         use cosmic_text::fontdb::Source;
         let id = {
             let sess = &mut *self.session.state();
+            sess.share_faces_once();
             let db = sess.fonts.db_mut();
             let ids = db.load_font_source(Source::File(path.into()));
             let ids = crate::text::keep_measurable(db, ids.to_vec());
@@ -561,6 +563,7 @@ impl crate::session::Session {
     pub(crate) fn register_family(&self, name: &str) -> Option<crate::resources::FontId> {
         use cosmic_text::fontdb::{Family, Query};
         let sess = &mut *self.state();
+        sess.share_faces_once();
         let db = sess.fonts.db();
         let query = Query {
             families: &[Family::Name(name)],
@@ -584,5 +587,93 @@ impl crate::session::Session {
             sess.weights_rev += 1;
         }
         Some(id)
+    }
+}
+
+impl crate::session::SessionState {
+    /// [`share_faces`], the first time an app registers a font of its own
+    /// — by name, from bytes or from a file — and never again.
+    pub(crate) fn share_faces_once(&mut self) {
+        if !self.faces_shared {
+            self.faces_shared = true;
+            share_faces(self.fonts.db_mut());
+        }
+    }
+}
+
+/// Maps every file-backed face in the database once and shares the
+/// mapping, as cosmic-text does for each face it loads (backlog DX24).
+///
+/// The first time a text shapes in a family (a weight, a style) it has not
+/// shaped in, cosmic-text ranks every face in the database against it, and
+/// for each face of another weight it reads that face's `wght` axis — with
+/// the face unshared, opening and mapping its file for that one read. On a
+/// Mac's 1,311 faces that was 9.7 ms a new family, in release; kawoosh's
+/// fonts pane, drawing each of 613 families in itself, warmed them ahead of
+/// time to keep it off the frames. Shared, the read is a slice of a mapping
+/// already made: 0.42 ms a family, for 30 ms once. Done on the first font
+/// an app registers — a family by name, bytes or a file — where the
+/// per-family cost starts to add up; an app on the stock three pays what it
+/// always did.
+///
+/// The mapping is what fontdb's `make_shared_face_data` documents as
+/// unsafe: a font file another process rewrites while it is mapped can
+/// show the change, and may crash the read. cosmic-text already takes that
+/// risk for every face it shapes with; this takes it for every installed
+/// face, which on a desktop are the system's and the user's fonts.
+pub(crate) fn share_faces(db: &mut cosmic_text::fontdb::Database) -> usize {
+    use cosmic_text::fontdb::Source;
+    let ids: Vec<_> = db
+        .faces()
+        .filter(|f| matches!(f.source, Source::File(_)))
+        .map(|f| f.id)
+        .collect();
+    let mut shared = 0;
+    for id in ids {
+        // A face whose file was shared through a sibling face is skipped by
+        // fontdb itself: `make_shared_face_data` updates every face of the
+        // file at once and answers the existing mapping after that.
+        // SAFETY: see the function's doc — the mapping cosmic-text makes
+        // for every face it loads, made for the rest.
+        if unsafe { db.make_shared_face_data(id) }.is_some() {
+            shared += 1;
+        }
+    }
+    shared
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// DX24: naming a family shares the database's file-backed faces, once;
+    /// before it, an app on the stock families has mapped nothing.
+    #[test]
+    fn the_first_named_family_shares_the_faces_once() {
+        use cosmic_text::fontdb::Source;
+        let mut core = Core::new();
+        let file_backed = |core: &Core| {
+            let sess = core.session.state();
+            sess.fonts
+                .db()
+                .faces()
+                .filter(|f| matches!(f.source, Source::File(_)))
+                .count()
+        };
+        let before = file_backed(&core);
+        assert!(!core.session.state().faces_shared);
+        let name = core.system_fonts().into_iter().map(|f| f.family).next();
+        let Some(name) = name else {
+            return; // a machine with no installed fonts has nothing to share
+        };
+        core.add_system_font(&name);
+        assert!(core.session.state().faces_shared);
+        assert_eq!(
+            file_backed(&core),
+            0,
+            "all {before} file-backed faces shared"
+        );
+        // A second name does not walk them again.
+        assert_eq!(share_faces(core.session.state().fonts.db_mut()), 0);
     }
 }

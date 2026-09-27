@@ -91,6 +91,11 @@ pub(crate) struct SessionState {
     /// under it — a face of it loaded or removed (RG59) — so each `Core`
     /// drops the text it shaped at the old ones.
     pub(crate) weights_rev: u64,
+    /// Whether the database's file-backed faces have been mapped once and
+    /// shared (`share_faces`, backlog DX24): done on the first family an
+    /// app names, so an app that only ever shapes the stock families never
+    /// pays for it.
+    pub(crate) faces_shared: bool,
     /// Bumped by every image removal, so a `Core` can tell whether its
     /// atlas still holds a slot for an image the registry no longer has
     /// (AR8). The atlas is per window, so every core re-checks its own.
@@ -119,6 +124,7 @@ impl SessionState {
             audio: AudioStore::default(),
             fonts_rev: 0,
             weights_rev: 0,
+            faces_shared: false,
             images_rev: 0,
             dropped: Dropped::default(),
             windows: WindowRegistry::new(),
