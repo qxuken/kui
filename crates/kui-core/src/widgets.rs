@@ -1180,6 +1180,46 @@ pub fn slider_with(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, hint: Option<&s
     })
 }
 
+// -- Splitter ---------------------------------------------------------------
+
+/// A divider between two panes that the pointer drags (backlog DX12):
+/// `thickness` px across, growing along the rest of its parent, in the
+/// theme's border colour and its accent while hovered or held, with the
+/// resize arrows, and `tag` as its `on_drag`. `dir` is the parent's: in a
+/// `Dir::Row` the panes sit side by side and the bar stands between them;
+/// in a `Dir::Column` it lies across. A press on it leaves the keyboard
+/// where it was (`keep_focus`), as a divider beside an editor should.
+///
+/// The split is the app's: `ev.drag()` on the tag's event, and
+/// `Drag::ratio()` is the pointer's place across the parent — `.x` for a
+/// row's split, `.y` for a column's — which is the new fraction as it is.
+/// Returns the bar's key.
+pub fn splitter(
+    ui: &mut Ui<'_>,
+    label: &str,
+    dir: crate::spec::Dir,
+    thickness: f32,
+    tag: impl Into<Value>,
+) -> Key {
+    let t = ui.theme();
+    let bar = match dir {
+        crate::spec::Dir::Row => NodeSpec::column()
+            .size(thickness, Sizing::GROW)
+            .cursor(CursorShape::EwResize),
+        crate::spec::Dir::Column => NodeSpec::column()
+            .size(Sizing::GROW, thickness)
+            .cursor(CursorShape::NsResize),
+    };
+    ui.leaf_keyed(
+        label,
+        bar.bg(t.border)
+            .hover_bg(t.accent)
+            .pressed_bg(t.accent)
+            .on_drag(tag)
+            .keep_focus(),
+    )
+}
+
 // -- Context menus ----------------------------------------------------------
 // The menu every app was writing for itself (ADR 0017, decision 5). It is
 // exported rather than hidden inside the core's automatic path, and the
@@ -1585,6 +1625,24 @@ pub fn uniform_list(
     spec: NodeSpec,
     rows: usize,
     row_h: f32,
+    row: impl FnMut(&mut Ui<'_>, usize),
+) -> Key {
+    uniform_list_with(ui, label, spec, rows, row_h, |_| NodeSpec::column(), row)
+}
+
+/// [`uniform_list`] with each row's own node spelled by `row_spec(i)` —
+/// the click, the zebra stripe, the hover background, the role a row
+/// carries — where the plain form's rows are bare and the callback nests
+/// a second node inside each to carry them (backlog DX12). The height is
+/// forced to `row_h`, the stride the arithmetic assumes, and a width the
+/// spec leaves `fit` grows across the list.
+pub fn uniform_list_with(
+    ui: &mut Ui<'_>,
+    label: &str,
+    spec: NodeSpec,
+    rows: usize,
+    row_h: f32,
+    mut row_spec: impl FnMut(usize) -> NodeSpec,
     mut row: impl FnMut(&mut Ui<'_>, usize),
 ) -> Key {
     const OVERSCAN: usize = 2;
@@ -1615,7 +1673,11 @@ pub fn uniform_list(
             ui.leaf_keyed("lead", spacer_spec(lead));
         }
         for i in range.clone() {
-            ui.with_indexed(i as u64, row_spec(row_h), |ui| row(ui, i));
+            let mut spec = row_spec(i).height(row_h);
+            if spec.layout.width == Sizing::Fit {
+                spec = spec.grow_width();
+            }
+            ui.with_indexed(i as u64, spec, |ui| row(ui, i));
         }
         let tail = (rows - range.end) as f32 * row_h;
         if tail > 0.0 {
@@ -1629,9 +1691,42 @@ pub fn uniform_list(
     key
 }
 
-/// Each row's own node: the wrapper the callback builds inside, sized to the
-/// stride the arithmetic assumes. A clickable row puts `on_click` on a
-/// `.fill()` child of it.
+/// Scrolls the [`uniform_list`] labelled `label` so row `i` shows, when
+/// it does not already: to the middle of the list, so a jump lands with
+/// rows on both sides of it (backlog DX12). Call it before the list is
+/// declared, in the same parent — the frame that scrolls then slices its
+/// rows by the offset it scrolls to, instead of a frame late. Returns
+/// whether it scrolled. The first frame, before the list has laid out,
+/// has no geometry and scrolls nothing; the row arithmetic assumes the
+/// list's rows start at its content top, as they do without top padding.
+///
+/// `Ui::reveal` cannot do this for a row that is not built, and a
+/// virtual list builds only what shows.
+pub fn reveal_row(ui: &mut Ui<'_>, label: &str, i: usize, row_h: f32) -> bool {
+    let key = ui.child_key(label);
+    let Some(g) = ui.scroll_geometry(key) else {
+        return false;
+    };
+    let y = i as f32 * row_h;
+    if g.offset.y <= y && y + row_h <= g.offset.y + g.rect.h {
+        return false;
+    }
+    let to = (y + row_h / 2.0 - g.rect.h / 2.0).max(0.0);
+    ui.set_scroll(key, Vec2::new(g.offset.x, to));
+    true
+}
+
+/// How many whole rows of `row_h` the [`uniform_list`] labelled `label`
+/// shows as of the last layout — a PageDown's stride. 0 before it has
+/// laid out.
+pub fn rows_in_view(ui: &mut Ui<'_>, label: &str, row_h: f32) -> usize {
+    let key = ui.child_key(label);
+    ui.scroll_geometry(key)
+        .map_or(0, |g| (g.rect.h / row_h).floor().max(0.0) as usize)
+}
+
+/// Each row's own node in the variable-height `list`: the wrapper the
+/// callback builds inside, sized to the height the arithmetic assumes.
 fn row_spec(h: f32) -> NodeSpec {
     NodeSpec::column().grow_width().height(h)
 }
