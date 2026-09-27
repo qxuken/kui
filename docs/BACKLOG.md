@@ -2355,8 +2355,8 @@ entries of it were **built the same day** (DX1–DX6, `2852e9a`, the
 repo migrated in `20a1988`). The rest was filed here, DX7–DX21, and
 seven of those were built the same day too (DX7, DX8, DX10, DX11, DX13,
 DX14, DX15), and DX12 in Rust after it (its other bindings are DX22);
-and DX22 the same day; DX16 was declined. Open: DX9 and DX17, which want
-an ADR each, and DX18–DX21.
+and DX22 the same day, and DX18–DX21 after them; DX16 was declined.
+Open: DX9 and DX17, which want an ADR each.
 
 Kawoosh can already delete some code without kui changing: the
 non-breaking-space padding in its Lua plugins (K3, alpha.13), string
@@ -2647,7 +2647,13 @@ families up front so no frame draws in the wrong face (`fonts.rs:7-12`,
 resolved against the font database, with an `unknown-family` warning.
 Wants an ADR (it moves font loading into the view's frame).
 
-### `.` DX18 — Focus is facts to diff, not events
+### `.` DX18 — Focus is facts to diff, not events — **built 2026-09-27**
+
+**Built 2026-09-27** (`7827baf`): `onFocus`, focus-within, with `by`
+from the input being handled (`pointer`, `keyboard`, `assistive`) or
+`program` at a frame's end; `report_focus` diffs the path's `onFocus`
+nodes and clones tags only on a change. The window's `focused` and
+`blurred` phases ride the existing `window` event.
 
 Kawoosh diffs window focus per frame in three places (`app.rs:211`,
 `disk.rs:44`, `moments.rs:153`) and kui's key focus in two
@@ -2655,7 +2661,13 @@ Kawoosh diffs window focus per frame in three places (`app.rs:211`,
 `{kind:"focus", phase, by}`, and a window-focus event beside the
 existing window events.
 
-### `~` DX19 — `exit` replays when only an ancestor went away
+### `~` DX19 — `exit` replays when only an ancestor went away — **built 2026-09-27**
+
+**Built 2026-09-27** (`41b68e8`) as the rule rather than an
+`exit_scope`: a candidate whose parent also left, and whose ancestor
+declared no exit to carry it, does not depart. The exit_budget example
+kept its grid rows declared so its cells still depart; the corpus was
+already written that way.
 
 A column closed on a tab switch fades out every time the tab comes
 back, so kawoosh dropped `exit` from closing columns
@@ -2663,14 +2675,23 @@ back, so kawoosh dropped `exit` from closing columns
 the node's parent survives the frame, or add an `exit_scope` on a
 container.
 
-### `.` DX20 — Hover cannot tell a moved pointer from content moving under a still one
+### `.` DX20 — Hover cannot tell a moved pointer from content moving under a still one — **built 2026-09-27**
+
+**Built 2026-09-27** (`469d805`): `by: "pointer" | "content"` on every
+hover event; `refresh_hover` knows which from its caller, and a
+pre-built `leave` is stamped as it goes out.
 
 Kawoosh's picker keeps its own `hover_top` and `hover_hits`, because
 "kui says which node is under the pointer, not that it moved"
 (`lua/picker.lua:1146-1151`). **Do.** `by = "pointer" | "content"` on
 hover events.
 
-### `.` DX21 — A table has no grid rules
+### `.` DX21 — A table has no grid rules — **built 2026-09-27**
+
+**Built 2026-09-27** (`1adb41e`) as `rules` + `ruleWidth`, one colour for
+both directions, in `InteractSpec` so `NodeSpec` did not grow, emitted by
+a cold `emit_rules` beside the table's box. Separate column and row
+colours were not asked for.
 
 Kawoosh's markdown tables fake borders with `2n + 1` cells, 1 px rule
 cells between the real ones, and a separate edge row

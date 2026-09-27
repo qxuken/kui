@@ -46,16 +46,17 @@ was the first bare bump to break an app in five releases).
   target: drop the `.into()`.
 - Rust: `AccessSpec` gains `tooltip` (under Added), so a struct literal
   of it without `..` needs the field.
-- C: `KuiSpec` gains `keep_focus` after `pixel_snap`, under the same
-  ABI 20 (under Added, DX10). On a 64-bit target it takes the struct's
-  tail padding, so the size holds at 608 bytes, but a host that did not
-  recompile leaves those bytes to chance. Recompile; zeroed, a press
-  focuses as it did.
+- C: `KuiSpec` gains `keep_focus`, `on_focus`, `rules` and `rule_w`
+  after `pixel_snap`, under the same ABI 20 (under Added, DX10, DX18 and
+  DX21); its 64-bit size is 624 bytes. Recompile; zeroed, a press focuses
+  as it did, nothing hears focus and a table draws no rules.
+- Rust: `UiEvent::hover()` answers a `Hover { phase, by }`, where it
+  answered the `HoverPhase` (under Added, DX20); read `.phase`.
 - kui-devtools' `Drive<'c>` is an alias for the published
   `kui_native::testing::Drive` over `&mut Core` (under Added, DX11); a
   drive written against it compiles as it was.
 
-Seven readings change:
+Ten readings change:
 
 - A square-cornered quad (a `bg`, a span's background, an image with no
   `radius`, a solid underline, a `fragment` node's box) covers each pixel
@@ -85,6 +86,15 @@ Seven readings change:
 - The wheel over a scroller that scrolls on one axis passes the other
   axis to the scroller or `onScroll` node under it (under Added, DX13),
   where the inner one swallowed it and nothing moved.
+- An `exit` plays only when its node's parent is still declared (under
+  Added, DX19). A node that goes because an ancestor went — a tab
+  switched away, a panel closed around it — goes at once, where every
+  node with an `exit` inside it faded out; put the `exit` on the node
+  that goes, or keep its parent declared and empty it.
+- A hover event carries `by: "pointer" | "content"` (under Added, DX20),
+  and the window's `window` event has two more phases, `focused` and
+  `blurred`, raised when `env.focused` changes (under Added, DX18). A
+  handler matching either payload exactly sees the new field or events.
 - `reveal` and `setScroll` by a label no frame has declared — Lua's
   `env.reveal` / `env.set_scroll`, Node's `reveal` / `setScroll` — wait
   for the frame to finish (under Added, DX15), where they threw "no node
@@ -310,6 +320,36 @@ Seven readings change:
   ratio arithmetic; `scroll_geometry` plus an in-view test plus
   `set_scroll` to reach a list's row; a second node inside every row to
   carry its click.
+
+- **Focus as events** (backlog DX18). `onFocus` (`on_focus` in Lua,
+  Rust and on `KuiSpec`) hears keyboard focus entering and leaving the
+  node's subtree as `{kind:"focus", phase:"in"|"out", by, tag}`, `by`
+  being `pointer`, `keyboard`, `assistive` or `program` — reported after
+  the input that moved it or at the end of the frame that declared it.
+  The window raises `{kind:"window", phase:"focused"|"blurred"}` when it
+  gains and loses the keyboard. The corpus's chrome scenes declare it.
+  *What you can delete:* the focused key or `env.focused` kept from last
+  frame to diff against.
+
+- **An `exit` plays where its node was removed** (backlog DX19). A node
+  whose parent left the frame too goes at once with it, unless that
+  ancestor's own `exit` carries it — React's `AnimatePresence` rule. A
+  tab switched away no longer fades out every column in it.
+  *What you can delete:* an `exit` dropped from nodes because it played
+  when their container went.
+
+- **A hover says what moved** (backlog DX20): `by: "pointer"` when the
+  pointer moved, `by: "content"` when a frame put something else under a
+  still one. `ev.hover()` is a `Hover { phase, by }`.
+  *What you can delete:* bookkeeping to tell a row sliding under a still
+  pointer — the keys scrolling a picker — from the pointer moving.
+
+- **A table's grid rules** (backlog DX21). `rules` (a colour) and
+  `ruleWidth` on a table draw a line down each gap between its columns
+  and across each gap between its rows, under its cells and on whole
+  pixels. The corpus's table scene declares them.
+  *What you can delete:* rule cells between a table's cells and an edge
+  row, built to draw its grid.
 
 - **`reveal` and `setScroll` by a label the frame has not declared
   yet** (backlog DX15). `Core::reveal_label` / `set_scroll_label` (and
