@@ -486,6 +486,10 @@ pub struct Core {
     /// its node is declared — later in the same build, or by the next
     /// frame — has a node to find (backlog DX15).
     pending_reveal_labels: Vec<(String, crate::tree::OriginId)>,
+    /// The `on_focus` nodes the focus was last reported inside, outermost
+    /// first, with each one's origin and tag — what `report_focus` diffs
+    /// the focus against (backlog DX18).
+    focus_reported: Vec<(Key, crate::tree::OriginId, Value)>,
     pending_scroll_labels: Vec<(String, crate::tree::OriginId, Vec2)>,
     /// Type-ahead inside a composite (`docs/adr/0007`, decision 9): the
     /// characters typed so far, and the frame clock reading of the last
@@ -918,6 +922,7 @@ impl Core {
             frame_requested: false,
             pending_reveal: Vec::new(),
             pending_reveal_labels: Vec::new(),
+            focus_reported: Vec::new(),
             pending_scroll_labels: Vec::new(),
             pending_focus_step: None,
             region: None,

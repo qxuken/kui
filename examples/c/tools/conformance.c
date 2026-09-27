@@ -819,9 +819,13 @@ static void conf_chrome(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_open(ui, &strip, NULL);
     kui_window_buttons(ui);
     kui_close(ui);
+    KuiValue *sink_tag = kui_value_map();
+    kui_value_map_set(sink_tag, KUI_STR("kind"), kui_value_str(KUI_STR("sink")));
     KuiSpec sink = {.width = {KUI_FIXED, 40}, .height = {KUI_FIXED, 16},
-                    .bg = 0x22242cff, .focusable = 1, .label = KUI_STR("Sink")};
+                    .bg = 0x22242cff, .focusable = 1, .label = KUI_STR("Sink"),
+                    .on_focus = sink_tag};
     uint64_t key = kui_open_keyed(ui, KUI_STR("sink"), &sink, NULL);
+    kui_value_free(sink_tag);
     kui_set_key_focus(ui, key);
     kui_close(ui);
     kui_close(ui);

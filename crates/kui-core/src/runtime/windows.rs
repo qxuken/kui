@@ -218,7 +218,7 @@ impl Core {
     /// driver to route after the frame (or with the next input). `id` is
     /// in the payload because `UiEvent::window` says which core reported
     /// it, and the diff runs on whichever core finished its frame.
-    fn push_window_event(&mut self, phase: &str, name: &str, id: WindowId) {
+    pub(crate) fn push_window_event(&mut self, phase: &str, name: &str, id: WindowId) {
         self.pending.push(UiEvent {
             origin: OriginId::HOST,
             window: WindowId::MAIN,

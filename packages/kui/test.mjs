@@ -688,17 +688,19 @@ test('the window losing the keyboard releases the keys its sink held', () => {
   ctx.keyDown('w');
   const [down] = ctx.pollEvents();
   ctx.setEnv({ focused: false });
-  const ups = ctx.pollEvents();
+  const evs = ctx.pollEvents();
   assert.deepEqual(
-    ups.map((e) => [e.key, e.payload.phase, e.payload.code]),
+    evs.filter((e) => e.payload.kind === 'key').map((e) => [e.key, e.payload.phase, e.payload.code]),
     [[down.key, 'up', 'w']],
   );
+  // And the app hears the window go, once (backlog DX18).
+  assert.deepEqual(evs.filter((e) => e.payload.kind === 'window').map((e) => e.payload.phase), ['blurred']);
   assert.equal(ctx.env().focused, false);
   // Saying it again changes nothing, and getting the keyboard back
-  // releases nothing: there is nothing held.
+  // releases nothing: there is nothing held — only the window's return.
   ctx.setEnv({ focused: false });
   ctx.setEnv({ focused: true });
-  assert.equal(ctx.pollEvents().length, 0);
+  assert.deepEqual(ctx.pollEvents().map((e) => e.payload.kind + ' ' + e.payload.phase), ['window focused']);
   ctx.keyUp('w');
   assert.equal(ctx.pollEvents().length, 0, 'the physical release is not a second one');
 });
@@ -3925,7 +3927,7 @@ const SCENE_TREES = {
         // the `<windowButtons>` element, in a strip laid out by hand.
         el('titlebar', {}, [text('app', { size: 12 })]),
         box({ dir: 'row', width: 'grow', keepFocus: true }, [el('windowButtons')]),
-        box({ width: 40, height: 16, bg: '#22242c', focusable: true, keyFocus: true, label: 'Sink' }, [], 'sink'),
+        box({ width: 40, height: 16, bg: '#22242c', focusable: true, keyFocus: true, onFocus: { kind: 'sink' }, label: 'Sink' }, [], 'sink'),
       ]),
     ]),
   controls: () =>

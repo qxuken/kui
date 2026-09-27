@@ -256,10 +256,10 @@ extern "C" {
  * snapped box without a seam. An [in] append; recompile. A zeroed field is
  * the box drawn where layout put it, which is what every box was. The same
  * bump appends keep_focus after it (backlog DX10): a press that leaves
- * keyboard focus where it was; zeroed, a press focuses as it did. On a
- * 64-bit target it takes what was the struct's tail padding, so the size
- * did not move there, but a host that did not recompile leaves those
- * bytes to chance. Recompile.
+ * keyboard focus where it was; zeroed, a press focuses as it did. Then
+ * on_focus (backlog DX18): focus entering and leaving the node's subtree,
+ * as an event; NULL hears nothing. With it the 64-bit size is 616.
+ * Recompile.
  * The same bump appends bg_radius to KuiSpan (backlog F101): a span's
  * background rounded and joined with the ones it meets. On a 64-bit target
  * it takes what was the struct's tail padding, so the stride did not move
@@ -984,6 +984,11 @@ typedef struct KuiSpec {
      * that had it. Its click, drag and hover are unchanged; Tab and
      * assistive technology still reach it. ABI 20. */
     uint32_t keep_focus;
+    /* Focus entering or leaving this node's subtree - the node, or anything
+     * focused inside it - emits {kind:"focus", phase:"in"|"out", by, tag},
+     * by being "pointer", "keyboard", "assistive" or "program" (onFocus).
+     * Makes nothing focusable. Borrowed while the node opens. ABI 20. */
+    const KuiValue *on_focus;
 } KuiSpec;
 
 /* When a scrolling node's bars are drawn (KuiSpec.scrollbar): the schema

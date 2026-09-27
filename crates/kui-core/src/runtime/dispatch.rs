@@ -12,6 +12,22 @@ impl Core {
     /// Feeds one input event; returns any UI events it resolved to,
     /// hit-tested against the previous frame's layout.
     pub fn handle_input(&mut self, ev: InputEvent) -> Vec<UiEvent> {
+        // What a focus move this input makes is reported as (DX18).
+        let by = match &ev {
+            InputEvent::CursorMoved(_)
+            | InputEvent::CursorLeft
+            | InputEvent::MouseDown { .. }
+            | InputEvent::MouseUp { .. }
+            | InputEvent::Scroll(_) => "pointer",
+            InputEvent::Access(_) => "assistive",
+            InputEvent::Key(..)
+            | InputEvent::KeyDown(_)
+            | InputEvent::KeyUp(_)
+            | InputEvent::Text(_)
+            | InputEvent::Commit(_)
+            | InputEvent::Preedit(..) => "keyboard",
+            _ => "program",
+        };
         // The devtools' chords are acted on before anything is routed
         // (ADR 0024, decision 4): the press goes no further, and what
         // was pending still goes out.
@@ -24,6 +40,7 @@ impl Core {
         // releases a focus move forces — belongs to this batch, not to the
         // next frame's drain.
         out.append(&mut self.pending);
+        self.report_focus(by, &mut out);
         // A click on a select field opens its menu and is nobody's
         // (`widgets::select`); before the menu's own consumer, since the
         // menu it opens is that one's from here on.
@@ -1193,6 +1210,10 @@ impl Core {
             return;
         }
         self.env.focused = focused;
+        // The app hears it as a window event rather than diffing
+        // `env.focused` every frame (backlog DX18).
+        let (name, id) = (self.window_name(), self.env.window.id);
+        self.push_window_event(if focused { "focused" } else { "blurred" }, &name, id);
         if !focused {
             self.release_held_keys();
             // The modifiers go with the keys: a Shift released in another

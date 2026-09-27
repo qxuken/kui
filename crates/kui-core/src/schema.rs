@@ -174,6 +174,7 @@ pub const P_VALUE_STEP: u32 = 109;
 pub const P_ON_CHANGE: u32 = 110;
 pub const P_PIXEL_SNAP: u32 = 111;
 pub const P_KEEP_FOCUS: u32 = 112;
+pub const P_ON_FOCUS: u32 = 113;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -1168,6 +1169,13 @@ pub const PROPS: &[PropDef] = &[
         doc: "How far one arrow key moves a `slider` role, and the grid a value the pointer sets snaps to (ADR 0034). Unset, a hundredth of the range. PageUp / PageDown move ten steps. Read by the core only where the slider declares `onChange`; reported to assistive technology either way.",
     },
     PropDef {
+        name: "onFocus",
+        id: P_ON_FOCUS,
+        kind: Kind::Tag,
+        apply: Apply::SpecMsg(|s, v| s.on_focus(v)),
+        doc: "Keyboard focus entering or leaving this node's subtree — the node itself, or anything focused inside it — emits `{kind:\"focus\", phase:\"in\"|\"out\", by, tag}` (backlog DX18). `by` is what moved it: `pointer` (a press), `keyboard` (Tab, a key a control answered), `assistive` (a screen reader's request) or `program` (the view or the app — `keyFocus`, `setFocus`, a modal's entry). Reported once the move settles, after the input that made it or at the end of the frame that declared it, so an app hears a pane taking the keyboard instead of diffing the focused key every frame. Leaving is reported innermost first, entering outermost first. It makes nothing focusable or interactive.",
+    },
+    PropDef {
         name: "onChange",
         id: P_ON_CHANGE,
         kind: Kind::Tag,
@@ -1974,6 +1982,11 @@ pub const EVENTS: &[EventDef] = &[
         doc: "The wheel over an `onScroll` node, or a drag-select held past a `cells` grid's top or bottom edge: `dx`/`dy` the delta in logical px as the driver reported it (positive `dy` is the wheel rolling up, toward earlier content), `x`/`y` the pointer in logical viewport coordinates, `lines` the whole lines a `cells` grid's `dy` covers — positive is later history, the sign `originLine` grows in, the fraction carried to the next notch — and null on any other node. The core scrolls nothing for it: the app re-declares the grid's `originLine`, or zooms its canvas. From the edge drag it comes once a frame while the pointer is held past the edge, with the lines that frame's step covers, and the selection's absolute lines survive the scroll the app answers with (`docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md`).",
     },
     EventDef {
+        kind: "focus",
+        payload: "`{ kind: \"focus\", phase: \"in\" | \"out\", by: \"pointer\" | \"keyboard\" | \"assistive\" | \"program\", tag }`",
+        doc: "Keyboard focus entered or left an `onFocus` node's subtree (backlog DX18). `by` is what moved it — a press, a key, a screen reader's request, or the view and the app — so a pane that follows a click into its sink tells that apart from a move the app made itself.",
+    },
+    EventDef {
         kind: "hover",
         payload: "`{ kind: \"hover\", phase: \"enter\" | \"leave\", by: \"pointer\" | \"content\", tag }`",
         doc: "The pointer entered or left an `onHover` node — also when a new frame moved it under a still cursor. `by` says which (backlog DX20): `pointer` when the pointer moved or left the window, `content` when it stayed and what is under it changed — a list scrolled by the wheel or the keys, a row that grew, a float that opened. A picker whose selection follows the pointer ignores `content`, or the rows sliding under a still pointer as the keys scroll the list drag the selection with them.",
@@ -2000,8 +2013,8 @@ pub const EVENTS: &[EventDef] = &[
     },
     EventDef {
         kind: "window",
-        payload: "`{ kind: \"window\", phase: \"opened\" | \"closed\", name, id }`",
-        doc: "A declared window opened (the diff queued its `Open`) or closed — because nothing declares it any more, or because the user closed it, in which case it stays closed while still declared: stop declaring `name`, then declare it again to reopen. `id` is what its events carry; the event itself is on the root of whichever window's frame noticed.",
+        payload: "`{ kind: \"window\", phase: \"opened\" | \"closed\" | \"focused\" | \"blurred\", name, id }`",
+        doc: "A declared window opened (the diff queued its `Open`) or closed — because nothing declares it any more, or because the user closed it, in which case it stays closed while still declared: stop declaring `name`, then declare it again to reopen. `id` is what its events carry; the event itself is on the root of whichever window's frame noticed. `focused` and `blurred` are this window gaining and losing the keyboard (backlog DX18) — `env.focused` changing, as the driver reports it — so an app that saves on blur or re-reads the clipboard on return hears it once instead of diffing `env.focused` every frame.",
     },
     EventDef {
         kind: "system",

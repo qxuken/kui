@@ -690,6 +690,69 @@ impl Core {
         self.move_focus(key);
     }
 
+    /// Emits `focus` events for the `on_focus` nodes the focus left and
+    /// entered since the last report, `by` what moved it: the input being
+    /// handled, or `"program"` at a frame's end (backlog DX18). A node
+    /// hears focus anywhere in its subtree; leaving is reported innermost
+    /// first, entering outermost first, as the focus crosses them.
+    pub(crate) fn report_focus(&mut self, by: &'static str, out: &mut Vec<UiEvent>) {
+        // The `on_focus` nodes on the focused node's path, outermost first,
+        // by index: the tags are cloned only when the set changed, so a
+        // frame where the focus stayed put costs the walk and nothing else.
+        let mut path = Vec::new();
+        if let Some(mut i) = self.focus.and_then(|k| self.tree.index_of(k)) {
+            loop {
+                if self.tree.specs[i].events().on_focus.is_some() {
+                    path.push(i);
+                }
+                let p = self.tree.parent[i];
+                if p == crate::tree::NIL {
+                    break;
+                }
+                i = p as usize;
+            }
+            path.reverse();
+        }
+        if path.len() == self.focus_reported.len()
+            && path
+                .iter()
+                .zip(&self.focus_reported)
+                .all(|(&i, r)| self.tree.keys[i] == r.0)
+        {
+            return;
+        }
+        let now: Vec<_> = path
+            .iter()
+            .map(|&i| {
+                let tag = self.tree.specs[i]
+                    .events()
+                    .on_focus
+                    .clone()
+                    .unwrap_or_default();
+                (self.tree.keys[i], self.tree.origins[i], tag)
+            })
+            .collect();
+        let event = |(key, origin, tag): &(Key, crate::tree::OriginId, Value), phase: &str| {
+            let payload = Value::map([
+                ("kind", Value::str("focus")),
+                ("phase", Value::str(phase)),
+                ("by", Value::str(by)),
+            ]);
+            UiEvent::on(*origin, *key, payload).tagged(Some(tag))
+        };
+        for r in self.focus_reported.iter().rev() {
+            if !now.iter().any(|n| n.0 == r.0) {
+                out.push(event(r, "out"));
+            }
+        }
+        for n in &now {
+            if !self.focus_reported.iter().any(|r| r.0 == n.0) {
+                out.push(event(n, "in"));
+            }
+        }
+        self.focus_reported = now;
+    }
+
     /// The one writer of `focus`: the edit store mirrors it for editor
     /// keys, a landing editor scrolls its caret into view, the region
     /// follows.

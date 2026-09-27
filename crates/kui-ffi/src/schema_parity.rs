@@ -274,6 +274,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             "hoverGroup" => s.hover_group = name,
             "focusable" => s.focusable = 1,
             "keepFocus" => s.keep_focus = 1,
+            "onFocus" => s.on_focus = &layout_tag,
             "initialFocus" => s.initial_focus = 1,
             "disabled" => s.disabled = 1,
             "focusBg" => s.focus_bg = C,
@@ -449,6 +450,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         selection_anchor: 0,
         focusable: 1,
         keep_focus: 1,
+        on_focus: &menu_tag,
         disabled: 1,
         focus_bg: 0x11_22_33_ff,
         tooltip: KuiStr {
@@ -537,6 +539,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .hover_group("grp")
         .focusable()
         .keep_focus()
+        .on_focus("cm")
         .initial_focus()
         .disabled(true)
         .focus_bg(Color::hex(0x11_22_33_ff))

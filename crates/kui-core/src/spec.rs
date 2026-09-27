@@ -864,6 +864,15 @@ pub struct EventSpec {
     /// and assistive technology still reach a focusable node in it — it
     /// is the pointer's press alone that stops moving focus.
     pub keep_focus: bool,
+    /// Keyboard focus entering or leaving this node's subtree — the node
+    /// itself or anything focused inside it — emits `{kind="focus",
+    /// phase="in"|"out", by, tag}` with this payload under `tag`, where
+    /// `by` is `"pointer"`, `"keyboard"`, `"assistive"` or `"program"`:
+    /// what moved it (backlog DX18). Reported once the move has settled —
+    /// after the input that made it, or at the end of the frame that
+    /// declared it — so a view reads a change instead of diffing
+    /// `key_focus` every frame. Declares nothing interactive.
+    pub on_focus: Option<Value>,
 }
 
 impl EventSpec {
@@ -883,6 +892,7 @@ impl EventSpec {
         on_change: None,
         modal: None,
         keep_focus: false,
+        on_focus: None,
     };
 }
 
@@ -1726,6 +1736,13 @@ impl NodeSpec {
     /// Puts this node in the Tab ring (see the `focusable` field).
     pub fn focusable(mut self) -> Self {
         self.focusable = true;
+        self
+    }
+
+    /// Hears focus entering and leaving this subtree (see the `on_focus`
+    /// field).
+    pub fn on_focus(mut self, tag: impl Into<Value>) -> Self {
+        self.events_mut().on_focus = Some(tag.into());
         self
     }
 

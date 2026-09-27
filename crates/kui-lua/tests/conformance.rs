@@ -277,7 +277,7 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
               titlebar { text("app", { size = 12 }) },
               row { width = { grow = 1 }, keep_focus = true, window_buttons() },
               column { key = "sink", width = 40, height = 16, bg = 0x22242cff,
-                       focusable = true, key_focus = true, label = "Sink" },
+                       focusable = true, key_focus = true, on_focus = { kind = "sink" }, label = "Sink" },
             }
         "#
         .to_string(),

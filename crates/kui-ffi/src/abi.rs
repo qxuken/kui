@@ -245,9 +245,9 @@
 /// field is the box drawn where layout put it, which is what every box was.
 /// The same bump appends `keep_focus` after it (backlog DX10): a press
 /// that leaves keyboard focus where it was; zeroed, a press focuses as it
-/// did. On a 64-bit target it takes what was the struct's tail padding, so
-/// the size did not move there, but a host that did not recompile leaves
-/// those bytes to chance. Recompile.
+/// did. Then `on_focus` (backlog DX18): focus entering and leaving the
+/// node's subtree, as an event; NULL hears nothing. With it the 64-bit
+/// size is 616. Recompile.
 /// The same bump appends `bg_radius` to `KuiSpan` (backlog F101): a
 /// span's background rounded and joined with the ones it meets. On a
 /// 64-bit target it takes what was the struct's tail padding, so the

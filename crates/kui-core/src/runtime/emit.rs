@@ -352,6 +352,11 @@ impl Core {
         self.layout_frame();
         self.emit_frame();
         self.building = false;
+        // A focus the view moved, or a focused node the frame declared
+        // `on_focus` on or dropped (backlog DX18).
+        let mut out = std::mem::take(&mut self.pending);
+        self.report_focus("program", &mut out);
+        self.pending = out;
         self.snapshot_nodes();
         self.devtools_after_frame();
         // Between frames the host is who talks to the core: a driver that

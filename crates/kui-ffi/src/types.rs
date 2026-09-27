@@ -654,6 +654,10 @@ pub struct KuiSpec {
     /// Non-zero: a press on this node or inside it leaves keyboard focus
     /// where it was (`keepFocus`, backlog DX10). ABI 20.
     pub keep_focus: u32,
+    /// Focus entering or leaving this node's subtree emits `{kind:"focus",
+    /// phase, by, tag}` (`onFocus`, backlog DX18). Borrowed while the node
+    /// opens, like every other tag. ABI 20.
+    pub on_focus: *const KuiValue,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a

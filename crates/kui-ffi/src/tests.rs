@@ -1144,6 +1144,7 @@ mod queries_headless {
 
         let mut ev = KuiEvent::default();
         let mut seen = Vec::new();
+        let mut window = Vec::new();
         while kui_poll_event(ctx, &mut ev) {
             let get = |k: &str| {
                 let v = kui_value_get(ev.payload, ks(k));
@@ -1153,6 +1154,11 @@ mod queries_headless {
                 };
                 kui_value_as_str(v, &mut out).then(|| kstr(out).into_owned())
             };
+            // Losing the keyboard is the window's event too (DX18).
+            if get("kind").as_deref() == Some("window") {
+                window.push(get("phase").unwrap_or_default());
+                continue;
+            }
             assert_eq!(ev.key, sink);
             assert_eq!(get("kind").as_deref(), Some("key"));
             assert_eq!(get("tag").as_deref(), Some("keys"));
@@ -1184,6 +1190,7 @@ mod queries_headless {
                 ("up".into(), "f5".into(), None, true, false),
             ]
         );
+        assert_eq!(window, ["blurred"]);
         kui_ctx_free(ctx);
     }
 

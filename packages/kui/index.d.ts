@@ -166,6 +166,15 @@ export type SelectionRangeMsg = {
   to: { index: number; byte: number };
 };
 
+/** Keyboard focus entered or left an `onFocus` node's subtree, and what
+ *  moved it (backlog DX18). */
+export type FocusMsg<T = AppMsg> = {
+  kind: 'focus';
+  phase: 'in' | 'out';
+  by: 'pointer' | 'keyboard' | 'assistive' | 'program';
+  tag?: T;
+};
+
 /** The pointer entered or left an `onHover` node — also when a new frame
  *  moved it under a still cursor, which `by` tells apart. */
 export type HoverMsg<T = AppMsg> = {
@@ -317,7 +326,9 @@ export type SystemMsg = {
  *  on the root of whichever window's frame noticed. */
 export type WindowMsg = {
   kind: 'window';
-  phase: 'opened' | 'closed';
+  /** `focused` / `blurred`: this window gained or lost the keyboard
+   *  (backlog DX18). */
+  phase: 'opened' | 'closed' | 'focused' | 'blurred';
   name: string;
   id: number;
 };
@@ -420,6 +431,7 @@ export type CoreMsg =
   | MenuMsg
   | SelectionRangeMsg
   | HoverMsg
+  | FocusMsg
   | DropMsg
   | LayoutMsg
   | ForceClickMsg

@@ -199,6 +199,9 @@ pub(crate) fn spec_of(
     if s.keep_focus != 0 {
         spec = spec.keep_focus();
     }
+    if let Some(tag) = unsafe { s.on_focus.as_ref() } {
+        spec = spec.on_focus(tag.0.clone());
+    }
     if s.selectable != 0 {
         spec = spec.selectable();
     }

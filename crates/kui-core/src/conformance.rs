@@ -1437,7 +1437,9 @@ pub const SCENES: &[Scene] = &[
                 "1 button Close||",
                 "1 group Sink||",
             ],
-            events: &[],
+            // The sink takes the keyboard as the view declares it, and
+            // its `onFocus` hears it (backlog DX18).
+            events: &["focus sink"],
             announcements: &[],
             warnings: &[],
             commands: &[],
@@ -1480,7 +1482,9 @@ pub const SCENES: &[Scene] = &[
                 "2 staticText app||",
                 "1 group Sink||",
             ],
-            events: &[],
+            // The sink takes the keyboard as the view declares it, and
+            // its `onFocus` hears it (backlog DX18).
+            events: &["focus sink"],
             announcements: &[],
             warnings: &[],
             commands: &[],
@@ -3820,6 +3824,7 @@ fn build_chrome(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 .size(40.0, 16.0)
                 .bg(Color::hex(0x22242cff))
                 .focusable()
+                .on_focus(Value::map([("kind", Value::str("sink"))]))
                 .label("Sink"),
         );
         ui.take_key_focus(sink);
