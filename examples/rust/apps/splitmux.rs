@@ -36,8 +36,8 @@
 use kui_devtools::Example;
 use kui_native::widgets;
 use kui_native::{
-    Align, App, Color, Core, Easing, FloatConfig, KeyMods, Message, NodeSpec, Sizing, TextStyle,
-    Theme, Ui, UiEvent, Value, WindowCommand,
+    Align, App, Color, Core, Drag, DragPhase, Easing, FloatConfig, KeyCode, KeyMods, Message,
+    NodeSpec, Sizing, TextStyle, Theme, Ui, UiEvent, WindowCommand,
 };
 
 const TABBAR_H: f32 = 30.0;
@@ -856,57 +856,48 @@ impl App for Splitmux {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
+        // Presses only — the sink never asked for releases (`key_up`), so
+        // a chord fires once.
+        if let Some((_, k)) = ev.key_press() {
+            // The chord map: Alt (⌥ Option on macOS) + a letter or digit.
+            if k.mods.alt && !k.mods.ctrl {
+                self.chord(&k.code.name());
+            } else if k.code == KeyCode::Escape {
+                // Abandon a pane drag; the pointer capture runs on until
+                // release, but its end lands on nothing.
+                self.pane_drag = None;
+            }
+            return;
+        }
+        if let Some(mods) = ev.modifiers() {
+            self.mods = mods;
+            return;
+        }
         match ev.kind() {
-            // Presses only — the sink never asked for releases (`key_up`),
-            // so a chord fires once.
-            Some("key") => {
-                // The chord map: Alt (⌥ Option on macOS) + a letter or digit.
-                let alt = ev.payload.get_bool("alt").unwrap_or(false);
-                let ctrl = ev.payload.get_bool("ctrl").unwrap_or(false);
-                if alt
-                    && !ctrl
-                    && let Some(code) = ev.payload.get_str("code")
-                {
-                    let code = code.to_string();
-                    self.chord(&code);
-                } else if ev.payload.get_str("code") == Some("escape") {
-                    // Abandon a pane drag; the pointer capture runs on
-                    // until release, but its end lands on nothing.
-                    self.pane_drag = None;
+            Some("drag") => {
+                let Some(d) = ev.drag() else { return };
+                match ev.message::<Msg>() {
+                    Some(Msg::TabDrag { tab }) => match d.phase {
+                        DragPhase::Start => self.tab_drag = Some((tab, 0.0, 0.0)),
+                        DragPhase::Move => {
+                            // `delta` is measured from the press point, so
+                            // the direction of this move is the change
+                            // since the last one.
+                            if let Some((_, sign, last)) = self.tab_drag.as_mut() {
+                                let step = d.delta.x - *last;
+                                if step != 0.0 {
+                                    *sign = step;
+                                }
+                                *last = d.delta.x;
+                            }
+                        }
+                        DragPhase::End => self.tab_drag = None,
+                    },
+                    Some(Msg::Split { path, dir }) => self.split_drag(d, path, dir),
+                    Some(Msg::PaneDrag { pane, .. }) => self.pane_drag_event(d, pane),
+                    _ => {}
                 }
             }
-            Some("modifiers") => {
-                let flag = |k| ev.payload.get(k).and_then(Value::as_bool).unwrap_or(false);
-                self.mods = KeyMods {
-                    shift: flag("shift"),
-                    ctrl: flag("ctrl"),
-                    alt: flag("alt"),
-                    super_key: flag("super"),
-                };
-            }
-            Some("drag") => match ev.message::<Msg>() {
-                Some(Msg::TabDrag { tab }) => match ev.payload.get_str("phase") {
-                    Some("start") => self.tab_drag = Some((tab, 0.0, 0.0)),
-                    Some("move") => {
-                        let dx = ev.payload.get_float("dx").unwrap_or(0.0);
-                        // `dx` is measured from the press point, so the
-                        // direction of this move is the change since the
-                        // last one.
-                        if let Some((_, sign, last)) = self.tab_drag.as_mut() {
-                            let step = dx as f32 - *last;
-                            if step != 0.0 {
-                                *sign = step;
-                            }
-                            *last = dx as f32;
-                        }
-                    }
-                    Some("end") => self.tab_drag = None,
-                    _ => {}
-                },
-                Some(Msg::Split { path, dir }) => self.split_drag(&ev, path, dir),
-                Some(Msg::PaneDrag { pane, .. }) => self.pane_drag_event(&ev, pane),
-                _ => {}
-            },
             // Everything else the app hung on a node arrives as its payload.
             _ => match ev.message::<Msg>() {
                 Some(Msg::Focus { pane }) => self.focused = pane,
@@ -928,55 +919,39 @@ impl App for Splitmux {
 impl Splitmux {
     /// ⌘-drag of a pane: the payload's cursor drives the ghost, the view's
     /// hover bookkeeping names the target, and release performs the move.
-    fn pane_drag_event(&mut self, ev: &UiEvent, pane: u64) {
-        let num = |k| ev.payload.get(k).and_then(Value::as_float).unwrap_or(0.0) as f32;
-        match ev.payload.get_str("phase") {
-            Some("start") => self.pane_drag = Some((pane, num("x"), num("y"))),
-            Some("move") => {
+    fn pane_drag_event(&mut self, d: Drag, pane: u64) {
+        match d.phase {
+            DragPhase::Start => self.pane_drag = Some((pane, d.pos.x, d.pos.y)),
+            DragPhase::Move => {
                 if let Some((_, x, y)) = self.pane_drag.as_mut() {
-                    *x = num("x");
-                    *y = num("y");
+                    *x = d.pos.x;
+                    *y = d.pos.y;
                 }
             }
-            Some("end") => {
+            DragPhase::End => {
                 if let (Some((src, ..)), Some((dst, zone))) = (self.pane_drag, self.drop_target) {
                     self.move_pane(src, dst, zone);
                 }
                 self.pane_drag = None;
                 self.drop_target = None;
             }
-            _ => {}
         }
     }
 
     /// Divider drags: absolute cursor position over the split's own rect
     /// (carried in the payload) is the new ratio directly.
-    fn split_drag(&mut self, ev: &UiEvent, path: String, dir: SplitDir) {
-        match ev.payload.get_str("phase") {
-            Some("end") => self.dragging = None,
-            Some(_) => {
-                // Absolute cursor position over the split's own rect
-                // (carried in the payload) is the new ratio directly.
-                let horizontal = dir == SplitDir::H;
-                let parent = ev.payload.get("parent");
-                let get = |m: Option<&Value>, k| {
-                    m.and_then(|v| v.get(k))
-                        .and_then(Value::as_float)
-                        .unwrap_or(0.0)
-                };
-                let ratio = if horizontal {
-                    let w = get(parent, "w").max(1.0);
-                    (get(Some(&ev.payload), "x") - get(parent, "x")) / w
-                } else {
-                    let h = get(parent, "h").max(1.0);
-                    (get(Some(&ev.payload), "y") - get(parent, "y")) / h
-                };
-                self.dragging = Some(path.clone());
-                if let Some(r) = self.tabs[self.tab].root.ratio_mut(&path) {
-                    *r = (ratio as f32).clamp(0.05, 0.95);
-                }
-            }
-            None => {}
+    fn split_drag(&mut self, d: Drag, path: String, dir: SplitDir) {
+        if d.phase == DragPhase::End {
+            self.dragging = None;
+            return;
+        }
+        let ratio = match dir {
+            SplitDir::H => d.ratio().x,
+            SplitDir::V => d.ratio().y,
+        };
+        self.dragging = Some(path.clone());
+        if let Some(r) = self.tabs[self.tab].root.ratio_mut(&path) {
+            *r = ratio.clamp(0.05, 0.95);
         }
     }
 }
