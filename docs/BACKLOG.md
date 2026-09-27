@@ -2356,7 +2356,7 @@ repo migrated in `20a1988`). The rest was filed here, DX7–DX21, and
 seven of those were built the same day too (DX7, DX8, DX10, DX11, DX13,
 DX14, DX15), and DX12 in Rust after it (its other bindings are DX22);
 and DX22 the same day, and DX18–DX21 after them; DX16 was declined.
-Open: DX9 and DX17, each drafted as a proposed ADR (0036, 0037).
+DX9 was built as ADR 0036. Open: DX17, as ADR 0037.
 
 Kawoosh can already delete some code without kui changing: the
 non-breaking-space padding in its Lua plugins (K3, alpha.13), string
@@ -2498,10 +2498,11 @@ as it is and `("gap", i)` hashes as `parent.str("gap").index(i)`: no
 allocation, and no collision with the sibling-index namespace. Add a
 public `with_key(key, spec, f)` and `leaf_key`.
 
-### `.` DX9 — `App::on_event` has no context, so every effect waits a frame
+### `.` DX9 — `App::on_event` has no context, so every effect waits a frame — **built 2026-09-27**
 
-**Proposed 2026-09-27** as [ADR 0036](adr/0036-an-event-handler-gets-its-window.md), for review before
-anything is built.
+**Built 2026-09-27** as [ADR 0036](adr/0036-an-event-handler-gets-its-window.md), accepted the day it
+was proposed: `App::on_event_with(ev, &mut Core)`, defaulting to
+`on_event`.
 
 Kawoosh parks work for the next `view`:
 - the clipboard write (`clip_out`, "on_event has no Ui", `app.rs:191`);

@@ -17,10 +17,11 @@
 //!     app's — and `Ui::answer_selection_range` is what reaches the
 //!     clipboard (ADR 0017, tier 3).
 //!   * **The register.** An `on_key` sink that owns its lines: the runner
-//!     leaves the chords to it, and it binds `y` to `Ui::set_clipboard`
-//!     and `p` to `Ui::request_paste` (backlog C33). The paste comes back
-//!     as the `{kind="text"}` event an IME's commit arrives on, and the
-//!     sink appends it as a line.
+//!     leaves the chords to it, and its handler binds `y` to
+//!     `Core::set_clipboard` and `p` to `Core::request_paste` on the core
+//!     `on_event_with` lends it (ADR 0036; backlog C33). The paste comes
+//!     back as the `{kind="text"}` event an IME's commit arrives on,
+//!     marked `pasted` (DX14), and the sink appends it as a line.
 //!
 //! And two things every selection does on the way to a copy (ADR 0029):
 //! a Shift-click extends it from its anchor instead of starting over, and
@@ -49,13 +50,6 @@ struct Clipboard {
     /// The register's lines and its highlighted one.
     lines: Vec<String>,
     cursor: usize,
-    /// What `y` chose, handed to `ui.set_clipboard` by the next view —
-    /// `on_event` has no `Ui`, and the runner draws right after an event.
-    clip_out: Option<String>,
-    /// `p` asked: the next `text` event is the paste.
-    awaiting_paste: bool,
-    /// A `selectionrange` ask the log has to answer, as the rows it named.
-    answer: Option<String>,
     /// The readout.
     sent: String,
     received: String,
@@ -70,9 +64,6 @@ impl Clipboard {
                 "so the clipboard is two calls on Ui".into(),
             ],
             cursor: 0,
-            clip_out: None,
-            awaiting_paste: false,
-            answer: None,
             sent: "nothing yet".into(),
             received: "nothing yet".into(),
         }
@@ -126,21 +117,6 @@ fn caption(ui: &mut Ui<'_>, t: &Theme, s: &str) {
 impl App for Clipboard {
     fn view(&mut self, ui: &mut Ui<'_>) {
         let t = ui.theme();
-        // The app's half of the queue: what the keymap chose, the paste it
-        // asked for, and the answer the log owes — all through `Ui`.
-        if let Some(text) = self.clip_out.take() {
-            ui.set_clipboard(text, None);
-        }
-        // Asked on every frame the answer is outstanding: the core queues
-        // one ask at a time, so this is one paste and not one per frame
-        // (backlog AR34).
-        if self.awaiting_paste {
-            ui.request_paste();
-        }
-        if let Some(text) = self.answer.take() {
-            self.sent = format!("the log's rows: {} bytes", text.len());
-            ui.answer_selection_range(&text);
-        }
         ui.with(
             NodeSpec::column()
                 .fill()
@@ -272,36 +248,43 @@ impl App for Clipboard {
         );
     }
 
-    fn on_event(&mut self, ev: UiEvent) {
-        match ev.kind() {
-            Some("key") => match ev.payload.get_str("code") {
-                Some("j") | Some("down") => {
-                    self.cursor = (self.cursor + 1).min(self.lines.len() - 1);
-                }
-                Some("k") | Some("up") => self.cursor = self.cursor.saturating_sub(1),
-                Some("y") => {
+    // The app's half of the queue — what the keymap chose, the paste it
+    // asks for, the answer the log owes — done in answer to the event, on
+    // the core of the window it came from (ADR 0036).
+    fn on_event_with(&mut self, ev: UiEvent, core: &mut Core) {
+        if let Some((_, k)) = ev.key_press() {
+            match k.code.name().as_str() {
+                "j" | "down" => self.cursor = (self.cursor + 1).min(self.lines.len() - 1),
+                "k" | "up" => self.cursor = self.cursor.saturating_sub(1),
+                "y" => {
                     let line = self.lines[self.cursor].clone();
                     self.sent = format!("the register's line: {line:?}");
-                    self.clip_out = Some(line);
+                    core.set_clipboard(line, None);
                 }
-                Some("p") => {
-                    self.awaiting_paste = true;
-                }
+                // One ask at a time: the core drops a second while this one
+                // is out (backlog AR34).
+                "p" => core.request_paste(),
                 _ => {}
-            },
-            // The paste `p` asked for — or an IME's commit, which this
-            // sink has no use for.
-            Some("text") if self.awaiting_paste => {
-                self.awaiting_paste = false;
-                let text = ev.payload.get_str("text").unwrap_or("");
-                self.received = format!("{text:?}");
-                self.lines.push(text.to_string());
-                self.cursor = self.lines.len() - 1;
             }
-            // The log's copy reached rows no frame built: the app knows
-            // its own rows, and answers from them in the next view.
-            Some("selectionrange") => self.answer = Self::range_text(&ev.payload),
-            _ => {}
+            return;
+        }
+        // The paste `p` asked for, and not an IME's commit, which this
+        // sink has no use for (DX14).
+        if let Some(t) = ev.text()
+            && t.pasted
+        {
+            self.received = format!("{:?}", t.text);
+            self.lines.push(t.text.to_string());
+            self.cursor = self.lines.len() - 1;
+            return;
+        }
+        // The log's copy reached rows no frame built: the app knows its
+        // own rows, and answers from them now.
+        if ev.kind() == Some("selectionrange")
+            && let Some(text) = Self::range_text(&ev.payload)
+        {
+            self.sent = format!("the log's rows: {} bytes", text.len());
+            core.answer_selection_range(&text);
         }
     }
 }
@@ -496,12 +479,11 @@ impl Example for Clipboard {
             asked,
             "a copy over rows the frame never built is asked of the app",
         )?;
-        d.frame(self); // the ask reaches `on_event`
+        d.frame(self); // the ask reaches the handler, which answers it
         d.check(
-            self.answer.is_some(),
-            "as a `selectionrange` the log can answer from its rows",
+            self.sent.starts_with("the log's rows"),
+            "as a `selectionrange` the log answers from its rows",
         )?;
-        d.frame(self); // the view answers
         let queued = d.core.take_menu_actions();
         // The press landed a few bytes into row 0, so the answer starts
         // mid-row; the drag ended on row 2.
@@ -572,7 +554,7 @@ impl Example for Clipboard {
             self.lines.last().map(String::as_str) == Some("from another app"),
             "and the paste comes back as the sink's text event",
         )?;
-        d.check(!self.awaiting_paste, "once")
+        d.check(!d.core.awaiting_paste(), "once")
     }
 }
 

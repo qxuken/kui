@@ -78,6 +78,20 @@ pub trait App {
     /// `ui.window_name()` says which (`"main"` for the launcher's).
     fn view(&mut self, ui: &mut Ui<'_>);
     fn on_event(&mut self, _ev: UiEvent) {}
+    /// [`Self::on_event`] with the core of the window the event came from
+    /// (`docs/adr/0036-an-event-handler-gets-its-window.md`): what the app
+    /// does about an event beyond its model — write the clipboard, ask for
+    /// a paste, move focus, reveal or scroll to a row, ask for a frame —
+    /// is a call on it here, as Node's `update` makes on its surface,
+    /// rather than a field parked for the next `view`. The verbs land
+    /// where they say: a clipboard write goes out with this turn's
+    /// actions, a focus move or a reveal is seen by the next frame, which
+    /// the verb asks for. Building a frame (`frame`) is the runner's, not
+    /// the handler's. The default calls `on_event`, so an app that
+    /// overrides only that one is unchanged.
+    fn on_event_with(&mut self, ev: UiEvent, _core: &mut Core) {
+        self.on_event(ev)
+    }
     /// Called once, before the window opens, with the one thing the loop
     /// hands out: a [`Waker`] the app can clone into any thread. A PTY
     /// reader, a file watcher, an LSP client or a socket calls
@@ -1093,15 +1107,26 @@ impl<A: App> PumpRunner<A> {
     /// an access action, a drained `take_pending_events` — produces events
     /// the loop never saw, and pushing those at the app would hand it a
     /// plugin's clicks and leave the plugin deaf to them.
+    ///
+    /// `to_app` is lent the core of the window each event came from, as
+    /// the runner's own loop lends it to `App::on_event_with` (ADR 0036).
     pub fn route_events(
         &mut self,
         events: impl IntoIterator<Item = UiEvent>,
-        mut to_app: impl FnMut(&mut A, UiEvent),
+        mut to_app: impl FnMut(&mut A, UiEvent, &mut Core),
     ) {
         let Shell {
-            extensions, app, ..
+            extensions,
+            app,
+            panes,
+            main_core,
+            ..
         } = &mut **self.shell;
-        extensions.route(events, |ev| to_app(app, ev));
+        extensions.route(events, |ev| {
+            if let Some(core) = window_core(panes, main_core, ev.window) {
+                to_app(app, ev, core);
+            }
+        });
     }
 
     /// The main window's core. Every window of the app shares its session,
@@ -1529,6 +1554,25 @@ struct Shell<A: App + ?Sized> {
 /// crate's (backlog C49), and an app that borrows is still an app.
 type DynShell<'a> = Shell<dyn App + 'a>;
 
+/// The core of window `id`, from a shell's two homes for one: the panes,
+/// and the main window's core before its pane exists — the main window's
+/// for a window that has closed since its event was made. Over the fields
+/// rather than `&mut Shell`, so the app can be lent beside it.
+fn window_core<'a>(
+    panes: &'a mut [Pane],
+    main_core: &'a mut Option<Core>,
+    id: WindowId,
+) -> Option<&'a mut Core> {
+    let at = panes
+        .iter()
+        .position(|p| p.id == id)
+        .or_else(|| panes.iter().position(|p| p.id == WindowId::MAIN));
+    match at {
+        Some(i) => Some(&mut panes[i].core),
+        None => main_core.as_mut(),
+    }
+}
+
 /// What winit's loop drives: it wants a sized handler, and a `DynShell`
 /// is not one.
 struct Handler<'s, 'a>(&'s mut DynShell<'a>);
@@ -1794,11 +1838,19 @@ impl DynShell<'_> {
         // receiver is this host; for one a guest placed, it is the guest,
         // and `route` is the walk up.
         let Shell {
-            extensions, app, ..
+            extensions,
+            app,
+            panes,
+            main_core,
+            ..
         } = self;
         extensions.route(events, |ev| {
             reached_app = true;
-            app.on_event(ev);
+            // Lent the core of the window the event came from (ADR 0036).
+            match window_core(panes, main_core, ev.window) {
+                Some(core) => app.on_event_with(ev, core),
+                None => app.on_event(ev),
+            }
         });
         // One app, one model, N windows: a handler that ran in answer to
         // input in *this* window can change what *another* window declares

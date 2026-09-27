@@ -94,3 +94,59 @@ fn a_borrowing_drive_frames_only_when_asked() {
     assert_eq!(d.texts_under("add"), ["clicked 1"]);
     assert_eq!(d.frames(), 2);
 }
+
+/// ADR 0036: a handler lent its window's core copies and moves focus in
+/// answer to the event, where kawoosh parked `clip_out` and
+/// `reclaim_focus` in its model for the next `view`.
+#[test]
+fn a_handler_acts_on_the_core_its_event_came_from() {
+    use kui_native::MenuAction;
+
+    struct Copier;
+    impl App for Copier {
+        fn view(&mut self, ui: &mut Ui<'_>) {
+            ui.with(NodeSpec::row(), |ui| {
+                ui.leaf_keyed("copy", NodeSpec::row().size(80.0, 30.0).on_click("copy"));
+                ui.leaf_keyed("sink", NodeSpec::row().size(80.0, 30.0).on_key("keys"));
+            });
+        }
+        fn on_event_with(&mut self, ev: UiEvent, core: &mut Core) {
+            if ev.payload.as_str() == Some("copy") {
+                core.set_clipboard("copied", None);
+                let sink = core.key_of("sink");
+                core.set_key_focus(sink);
+            }
+        }
+    }
+
+    let mut app = Copier;
+    let mut d = Drive::new(Core::new(), 400.0, 300.0);
+    d.frame(&mut app);
+    let copy = d.key_of("copy").unwrap();
+    d.click_key(&mut app, copy);
+    let actions = d.core.take_menu_actions();
+    assert!(
+        actions
+            .iter()
+            .any(|a| matches!(a, MenuAction::SetClipboard { text, .. } if text == "copied")),
+        "the write goes out with this turn: {actions:?}"
+    );
+    d.frame(&mut app);
+    let sink = d.key_of("sink");
+    assert_eq!(
+        d.core.key_focus(),
+        sink,
+        "the focus lands for the next frame"
+    );
+}
+
+/// An app that overrides only `on_event` hears everything as before.
+#[test]
+fn the_plain_handler_still_hears_everything() {
+    let mut app = Pad::default();
+    let mut d = Drive::new(Core::new(), 400.0, 300.0);
+    d.frame(&mut app);
+    let add = d.key_of("add").unwrap();
+    d.click_key(&mut app, add);
+    assert_eq!(app.clicks, 1);
+}

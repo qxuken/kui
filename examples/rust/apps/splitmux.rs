@@ -358,13 +358,6 @@ struct Splitmux {
     /// Where the pane drag would land, recomputed by the view from which
     /// zone overlay is hovered (hover is last frame's layout, as always).
     drop_target: Option<(u64, Zone)>,
-    /// Set when a click on the tab bar took the keyboard: the tab bar's
-    /// buttons sit outside the key sink, so pressing one moves focus to a
-    /// real control the way pressing any button does. This app owns the
-    /// whole keyboard, so it asks for it back on the next frame —
-    /// `take_key_focus` only fires on the frame the declaration starts,
-    /// which is what keeps a Tab press from being clobbered.
-    reclaim_keys: bool,
     quit: bool,
 }
 
@@ -396,7 +389,6 @@ impl Splitmux {
             mods: KeyMods::default(),
             pane_drag: None,
             drop_target: None,
-            reclaim_keys: false,
             quit: false,
         }
     }
@@ -528,7 +520,10 @@ impl Splitmux {
                 .bg(pal.bg2)
                 .pad_xy(8.0, 0.0)
                 .gap(4.0)
-                .cross_align(Align::Center),
+                .cross_align(Align::Center)
+                // A tab or the `+` acts and leaves the keyboard with the
+                // sink: this app owns the whole keyboard (DX10).
+                .keep_focus(),
             |ui| {
                 // Live reorder: while a tab drags, hovering another tab in
                 // the direction of motion moves it there. Hover comes from
@@ -847,9 +842,6 @@ impl App for Splitmux {
                 self.render_node(ui, &root, "")
             });
             ui.take_key_focus(sink);
-            if std::mem::take(&mut self.reclaim_keys) {
-                ui.focus(sink);
-            }
             self.tabs[self.tab].root.settle();
             self.render_ghost(ui);
         });
@@ -904,12 +896,8 @@ impl App for Splitmux {
                 Some(Msg::Tab { tab }) => {
                     self.tab = tab;
                     self.refocus();
-                    self.reclaim_keys = true;
                 }
-                Some(Msg::TabNew) => {
-                    self.new_tab();
-                    self.reclaim_keys = true;
-                }
+                Some(Msg::TabNew) => self.new_tab(),
                 _ => {}
             },
         }
@@ -1176,8 +1164,8 @@ mod tests {
         assert!(splits(&mut core, &mut app));
     }
 
-    /// A tab is a real control outside the sink, so pressing one does take
-    /// the keyboard — and the app asks for it back.
+    /// A tab is a real control outside the sink, and pressing one leaves
+    /// the keyboard with the sink (`keep_focus` on the bar, DX10).
     #[test]
     fn chords_survive_clicking_a_tab() {
         let (mut core, mut app) = started();

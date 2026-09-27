@@ -52,6 +52,9 @@ was the first bare bump to break an app in five releases).
   as it did, nothing hears focus and a table draws no rules.
 - Rust: `UiEvent::hover()` answers a `Hover { phase, by }`, where it
   answered the `HoverPhase` (under Added, DX20); read `.phase`.
+- Rust: `PumpRunner::route_events`' closure takes the core of the event's
+  window as a third argument, `FnMut(&mut A, UiEvent, &mut Core)` (under
+  Added, ADR 0036). Add the parameter; `|app, ev, _|` keeps what it did.
 - kui-devtools' `Drive<'c>` is an alias for the published
   `kui_native::testing::Drive` over `&mut Core` (under Added, DX11); a
   drive written against it compiles as it was.
@@ -320,6 +323,18 @@ Ten readings change:
   ratio arithmetic; `scroll_geometry` plus an in-view test plus
   `set_scroll` to reach a list's row; a second node inside every row to
   carry its click.
+
+- **An event handler gets its window's core** (ADR 0036, backlog DX9).
+  `App::on_event_with(&mut self, ev, core: &mut Core)` is lent the core
+  of the window the event came from, as Node's `update` has its surface,
+  so a handler writes the clipboard, asks for a paste, moves focus,
+  reveals or scrolls in answer to the event. It defaults to `on_event`,
+  so an app that overrides only that one is unchanged. The runner, the
+  pumped runner and `testing::Drive` all lend it. The clipboard example
+  copies, pastes and answers the log's selection there.
+  *What you can delete:* a model field parked for the next `view` to
+  carry out — the text to copy, a paste asked for, a focus to take back,
+  an answer owed — and the branch in `view` that did it.
 
 - **Focus as events** (backlog DX18). `onFocus` (`on_focus` in Lua,
   Rust and on `KuiSpec`) hears keyboard focus entering and leaving the

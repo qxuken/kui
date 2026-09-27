@@ -3884,7 +3884,7 @@ impl KuiWindow {
     /// `events_mut`; it does not pass through here.)
     fn take_events(&mut self, events: Vec<UiEvent>) {
         self.runner
-            .route_events(events, |app, ev| app.events.push(ev));
+            .route_events(events, |app, ev, _| app.events.push(ev));
     }
 
     fn request_redraw(&mut self) {

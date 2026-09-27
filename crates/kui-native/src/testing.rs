@@ -315,6 +315,7 @@ impl<C: BorrowMut<Core>> Drive<C> {
                 crate::devtools::fmt_value(&ev.payload)
             ));
         }
-        self.exts.route(events, |ev| app.on_event(ev));
+        let core = self.core.borrow_mut();
+        self.exts.route(events, |ev| app.on_event_with(ev, core));
     }
 }

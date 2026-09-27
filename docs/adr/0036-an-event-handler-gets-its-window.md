@@ -1,13 +1,21 @@
 ---
-status: proposed
+status: accepted
 date: 2026-09-27
 ---
 
 # An event handler gets the window its event came from
 
-> **Proposed 2026-09-27** (backlog DX9, from the DX sweep of kawoosh's
-> views). Nothing is built. The shape below is for review. The one thing
-> it leaves open is the method's name (decision 1).
+> **Accepted and built 2026-09-27**, the day it was proposed (backlog
+> DX9, from the DX sweep of kawoosh's views). The user chose the name
+> `on_event_with`. What the building added: a window that closed after
+> its event was made lends the main window's core, not none, so no
+> event is dropped. The clipboard example moved its copy, paste and
+> selection answer into the handler and lost three model fields. Two
+> things were not built as planned. The runner has no two-window test,
+> since a pane needs a real window; `testing::Drive` pins the handler's
+> core, and `window_core` is the one lookup. The debug assertion against
+> `frame()` in a handler was not added, and the trait's doc says it
+> instead.
 
 A Rust app hears its events in `App::on_event(&mut self, ev: UiEvent)`
 and has nothing else in hand. Everything it wants to *do* about an event
