@@ -245,13 +245,13 @@ impl<'a> Ui<'a> {
         self.core.viewport()
     }
 
-    /// Host facts pushed by the frame driver (refresh rate, focus).
     /// The env reading's inputs, the frame's facts included
     /// (`Core::env_facts`): what a binding's `env` table is filled from.
     pub fn env_facts(&self) -> crate::schema::EnvFacts {
         self.core.env_facts()
     }
 
+    /// Host facts pushed by the frame driver (refresh rate, focus).
     pub fn env(&self) -> Env {
         self.core.env
     }
@@ -376,8 +376,8 @@ impl<'a> Ui<'a> {
     }
 
     /// The key the `i`th child gets from auto-keying; see `open_indexed`.
-    pub fn child_key_index(&self, i: u64) -> Key {
-        self.core.child_key_index(i)
+    pub fn child_key_indexed(&self, i: u64) -> Key {
+        self.core.child_key_indexed(i)
     }
 
     pub fn is_hovered(&self, key: Key) -> bool {
@@ -564,11 +564,15 @@ impl<'a> Ui<'a> {
         self.core.measure_rich_text(spans, base, max_w)
     }
 
+    /// Opens a node under the next auto key; its children follow until
+    /// [`Self::close`]. [`Self::with`] is the scoped form.
     #[inline]
     pub fn open(&mut self, spec: NodeSpec) -> Key {
         self.core.open(spec)
     }
 
+    /// [`Self::open`] under a label key: stable across frames whatever
+    /// the siblings before it, and what `key_of(label)` finds.
     #[inline]
     pub fn open_keyed(&mut self, label: &str, spec: NodeSpec) -> Key {
         self.core.open_keyed(label, spec)
@@ -590,6 +594,7 @@ impl<'a> Ui<'a> {
         self.core.open_indexed(i, spec)
     }
 
+    /// Closes the node the last `open*` opened.
     #[inline]
     pub fn close(&mut self) {
         self.core.close();
@@ -603,6 +608,7 @@ impl<'a> Ui<'a> {
         key
     }
 
+    /// Scoped [`Self::open_keyed`].
     pub fn with_keyed(&mut self, label: &str, spec: NodeSpec, f: impl FnOnce(&mut Ui<'_>)) -> Key {
         let key = self.open_keyed(label, spec);
         f(self);
@@ -650,27 +656,68 @@ impl<'a> Ui<'a> {
         key
     }
 
+    /// A paragraph of plain text in one style. A text has no box of its
+    /// own — no padding, background, key or click; [`Self::text_in`] puts
+    /// it in one.
     pub fn text(&mut self, content: &str, style: TextStyle) {
         self.core.text_node(content, style);
     }
 
-    /// A paragraph of styled spans, shaped and wrapped as one flow.
+    /// A box of `spec` holding one text: `with(spec, |ui| ui.text(…))` for
+    /// the label, the cell, the badge that needs a width, a background, a
+    /// click or a role. Returns the box's key.
+    pub fn text_in(&mut self, spec: NodeSpec, content: &str, style: TextStyle) -> Key {
+        let key = self.open(spec);
+        self.text(content, style);
+        self.close();
+        key
+    }
+
+    /// [`Self::text_in`] under a label key.
+    pub fn text_in_keyed(
+        &mut self,
+        label: &str,
+        spec: NodeSpec,
+        content: &str,
+        style: TextStyle,
+    ) -> Key {
+        let key = self.open_keyed(label, spec);
+        self.text(content, style);
+        self.close();
+        key
+    }
+
+    /// [`Self::text_in`] under a data index; see [`Self::open_indexed`].
+    pub fn text_in_indexed(
+        &mut self,
+        i: u64,
+        spec: NodeSpec,
+        content: &str,
+        style: TextStyle,
+    ) -> Key {
+        let key = self.open_indexed(i, spec);
+        self.text(content, style);
+        self.close();
+        key
+    }
+
     /// A cell grid — a terminal's screen — as one node; see
     /// `crate::cells` (backlog C20). The spec is the node's own.
     pub fn cells(&mut self, grid: &crate::cells::CellGrid<'_>, spec: NodeSpec) {
         self.core.cells(grid, spec);
     }
 
-    /// [`Self::cells`] under a declared key.
     /// [`Self::cells`] under a data index; see [`Self::open_indexed`].
     pub fn cells_indexed(&mut self, i: u64, grid: &crate::cells::CellGrid<'_>, spec: NodeSpec) {
         self.core.cells_indexed(i, grid, spec);
     }
 
+    /// [`Self::cells`] under a declared key.
     pub fn cells_keyed(&mut self, label: &str, grid: &crate::cells::CellGrid<'_>, spec: NodeSpec) {
         self.core.cells_keyed(label, grid, spec);
     }
 
+    /// A paragraph of styled spans, shaped and wrapped as one flow.
     pub fn rich_text(&mut self, spans: &[Span<'_>], base: TextStyle) {
         self.core.rich_text_node(spans, base);
     }
@@ -749,6 +796,34 @@ impl<'a> Ui<'a> {
         key
     }
 
+    /// [`Self::fragment`] under a data index; see [`Self::open_indexed`].
+    pub fn fragment_indexed(
+        &mut self,
+        i: u64,
+        frag: impl Into<crate::fragment::FragmentRef>,
+        params: &[f32],
+        spec: NodeSpec,
+    ) -> Key {
+        let key = self.core.open_fragment_indexed(i, frag, params, spec);
+        self.core.close();
+        key
+    }
+
+    /// [`Self::fragment_with`] under a data index.
+    pub fn fragment_with_indexed(
+        &mut self,
+        i: u64,
+        frag: impl Into<crate::fragment::FragmentRef>,
+        params: &[f32],
+        spec: NodeSpec,
+        f: impl FnOnce(&mut Ui<'_>),
+    ) -> Key {
+        let key = self.core.open_fragment_indexed(i, frag, params, spec);
+        f(self);
+        self.core.close();
+        key
+    }
+
     /// A round-capped segment from `from` to `to`, in the parent's box
     /// space; see `Core::line_node` for what it is and is not.
     pub fn line(&mut self, from: Vec2, to: Vec2, stroke: Stroke, spec: NodeSpec) {
@@ -767,18 +842,23 @@ impl<'a> Ui<'a> {
         self.core.line_node_keyed(label, &[from, to], stroke, spec);
     }
 
+    /// [`Self::line`] under a data index; see [`Self::open_indexed`].
+    pub fn line_indexed(&mut self, i: u64, from: Vec2, to: Vec2, stroke: Stroke, spec: NodeSpec) {
+        self.core.line_node_indexed(i, &[from, to], stroke, spec);
+    }
+
     /// A stroke through `points`: a polyline, or a smooth curve through
     /// them with [`Stroke::curve`]; see `Core::line_node`.
     pub fn polyline(&mut self, points: &[Vec2], stroke: Stroke, spec: NodeSpec) {
         self.core.line_node(points, stroke, spec);
     }
 
-    /// [`Self::polyline`] under a label key.
     /// [`Self::polyline`] under a data index; see [`Self::open_indexed`].
     pub fn polyline_indexed(&mut self, i: u64, points: &[Vec2], stroke: Stroke, spec: NodeSpec) {
         self.core.line_node_indexed(i, points, stroke, spec);
     }
 
+    /// [`Self::polyline`] under a label key.
     pub fn polyline_keyed(&mut self, label: &str, points: &[Vec2], stroke: Stroke, spec: NodeSpec) {
         self.core.line_node_keyed(label, points, stroke, spec);
     }

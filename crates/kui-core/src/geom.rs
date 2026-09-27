@@ -124,6 +124,14 @@ impl Rect {
         }
     }
 
+    /// The point halfway across and halfway down.
+    pub fn center(&self) -> Vec2 {
+        Vec2 {
+            x: self.x + self.w / 2.0,
+            y: self.y + self.h / 2.0,
+        }
+    }
+
     pub fn contains(&self, p: Vec2) -> bool {
         p.x >= self.x && p.x < self.x + self.w && p.y >= self.y && p.y < self.y + self.h
     }

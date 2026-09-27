@@ -130,14 +130,26 @@ pub(crate) fn one(v: f32) -> [f32; 4] {
 macro_rules! slot_builders {
     ($ty:ty) => {
         impl $ty {
-            pub fn width(mut self, width: crate::spec::Sizing) -> Self {
-                self.slots = self.slots.width(width);
+            /// A [`crate::spec::Sizing`], or a number of px, as on a spec.
+            pub fn width(mut self, width: impl Into<crate::spec::Sizing>) -> Self {
+                self.slots = self.slots.width(width.into());
                 self
             }
 
-            pub fn height(mut self, height: crate::spec::Sizing) -> Self {
-                self.slots = self.slots.height(height);
+            /// A [`crate::spec::Sizing`], or a number of px, as on a spec.
+            pub fn height(mut self, height: impl Into<crate::spec::Sizing>) -> Self {
+                self.slots = self.slots.height(height.into());
                 self
+            }
+
+            /// `width(Sizing::GROW)`, as on a spec.
+            pub fn grow_width(self) -> Self {
+                self.width(crate::spec::Sizing::GROW)
+            }
+
+            /// `height(Sizing::GROW)`, as on a spec.
+            pub fn grow_height(self) -> Self {
+                self.height(crate::spec::Sizing::GROW)
             }
 
             pub fn bg(mut self, bg: crate::color::Color) -> Self {
@@ -178,11 +190,11 @@ pub(crate) fn sizing_value(v: &Value) -> Result<Sizing, String> {
         Value::Int(_) | Value::Float(_) => Ok(Sizing::Fixed(v.as_float().unwrap_or(0.0) as f32)),
         Value::Str(s) => crate::schema::sizing_str(s),
         Value::Map(_) => {
-            if let Some(g) = v.get("grow").and_then(Value::as_float) {
+            if let Some(g) = v.get_float("grow") {
                 Ok(Sizing::Grow(g as f32))
-            } else if let Some(p) = v.get("percent").and_then(Value::as_float) {
+            } else if let Some(p) = v.get_float("percent") {
                 Ok(Sizing::Percent(p as f32))
-            } else if let Some(p) = v.get("pct").and_then(Value::as_float) {
+            } else if let Some(p) = v.get_float("pct") {
                 // The Lua spelling.
                 Ok(Sizing::Percent(p as f32 / 100.0))
             } else {

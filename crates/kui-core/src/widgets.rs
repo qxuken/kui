@@ -758,6 +758,14 @@ enum Ident<'a> {
     Index(u64),
 }
 
+/// A widget that takes a `hint` floats it itself, so a spec that also
+/// declared [`NodeSpec::tooltip`] does not float a second one.
+fn own_hint(spec: &mut NodeSpec, hint: Option<&str>) {
+    if hint.is_some() && spec.access().tooltip {
+        spec.access_mut().tooltip = false;
+    }
+}
+
 fn button_body(ui: &mut Ui<'_>, ident: Ident<'_>, text: &str, spec: NodeSpec, hint: Option<&str>) {
     let theme = ui.theme();
     // `accent` asks for the whole family, not just the background the
@@ -794,17 +802,18 @@ fn button_body(ui: &mut Ui<'_>, ident: Ident<'_>, text: &str, spec: NodeSpec, hi
     // heard only as the description: a caller that passed one without
     // `apply_tooltip` on the spec still has it said. A declared
     // description stands, as it does over the prop.
-    let spec = match hint {
+    let mut spec = match hint {
         Some(hint) if spec.access().description.is_none() => spec.apply_tooltip(hint),
         _ => spec,
     };
+    own_hint(&mut spec, hint);
     // Whatever the background ended up being: white on the stock blue as
     // it has always been, black on an accent light enough to need it.
     let label = readable_on(spec.style.bg);
     let size = ui.metrics().control_text;
     let node = match ident {
         Ident::Label(key) => ui.child_key(key),
-        Ident::Index(i) => ui.child_key_index(i),
+        Ident::Index(i) => ui.child_key_indexed(i),
     };
     let body = |ui: &mut Ui<'_>| {
         ui.text(text, TextStyle::new(size).color(label));
@@ -946,6 +955,7 @@ pub fn toggle_with(
     let disabled = spec.disabled;
     let hovered = !disabled && ui.is_hovered(node);
     let mut spec = spec.role(kind.role());
+    own_hint(&mut spec, hint);
     if disabled {
         let o = spec.style.opacity * t.disabled_opacity;
         spec = spec.opacity(o);
@@ -1171,6 +1181,7 @@ pub fn slider_with(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, hint: Option<&s
     let named = ax.label.is_some();
     let disabled = spec.disabled;
     let mut spec = spec.role(Role::Slider);
+    own_hint(&mut spec, hint);
     if !named {
         spec = spec.label(label);
     }

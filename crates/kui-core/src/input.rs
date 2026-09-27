@@ -369,6 +369,31 @@ pub struct Mods {
     pub doc: bool,
 }
 
+impl Mods {
+    /// No modifier held: what the `with_*` steps start from —
+    /// `Mods::NONE.with_shift().with_word()`.
+    pub const NONE: Mods = Mods {
+        shift: false,
+        word: false,
+        doc: false,
+    };
+
+    pub const fn with_shift(mut self) -> Self {
+        self.shift = true;
+        self
+    }
+
+    pub const fn with_word(mut self) -> Self {
+        self.word = true;
+        self
+    }
+
+    pub const fn with_doc(mut self) -> Self {
+        self.doc = true;
+        self
+    }
+}
+
 /// A physical key press: the full keyboard, decoupled from any windowing
 /// library. [`EditKey`] is the input widget's closed navigation vocabulary;
 /// this is what apps that own their own text model bind against — an editor
@@ -537,6 +562,45 @@ impl KeyMods {
     pub const CTRL: u32 = 1 << 1;
     pub const ALT: u32 = 1 << 2;
     pub const SUPER: u32 = 1 << 3;
+
+    /// No modifier held: what the `with_*` steps start from —
+    /// `KeyMods::NONE.with_shift().with_ctrl()`.
+    pub const NONE: KeyMods = KeyMods {
+        shift: false,
+        ctrl: false,
+        alt: false,
+        super_key: false,
+    };
+
+    pub const fn with_shift(mut self) -> Self {
+        self.shift = true;
+        self
+    }
+
+    pub const fn with_ctrl(mut self) -> Self {
+        self.ctrl = true;
+        self
+    }
+
+    pub const fn with_alt(mut self) -> Self {
+        self.alt = true;
+        self
+    }
+
+    pub const fn with_super(mut self) -> Self {
+        self.super_key = true;
+        self
+    }
+
+    /// The platform primary shortcut modifier held: Command on macOS,
+    /// Control elsewhere — the one [`Self::primary`] reads.
+    pub const fn with_primary(self) -> Self {
+        if cfg!(target_os = "macos") {
+            self.with_super()
+        } else {
+            self.with_ctrl()
+        }
+    }
 
     pub fn from_bits(bits: u32) -> Self {
         Self {
@@ -886,6 +950,13 @@ impl UiEvent {
     /// Merges the node's tag into a map payload. A `Null` tag declares the
     /// behaviour and names nothing, so it is the one value left out — the
     /// rule every row with a tag reads by, stated once.
+    /// The payload's `kind`: what a core event says it is — `"drag"`,
+    /// `"key"`, `"scroll"` — or the `kind` of an app's own map tag. None
+    /// for a payload that is not a map or has no string `kind`.
+    pub fn kind(&self) -> Option<&str> {
+        self.payload.get_str("kind")
+    }
+
     pub fn tagged(mut self, tag: Option<&Value>) -> Self {
         if let Some(tag) = tag
             && *tag != Value::Null

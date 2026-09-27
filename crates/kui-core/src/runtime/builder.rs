@@ -186,7 +186,7 @@ impl Core {
 
     /// The key the `i`th child gets from auto-keying — what `open_indexed`
     /// opens with, usable before the node exists.
-    pub fn child_key_index(&self, i: u64) -> Key {
+    pub fn child_key_indexed(&self, i: u64) -> Key {
         self.parent_key().index(i)
     }
 
@@ -395,7 +395,7 @@ impl Core {
     /// tweens follow the row instead of the slot it happens to occupy.
     #[inline]
     pub fn open_indexed(&mut self, i: u64, spec: NodeSpec) -> Key {
-        let key = self.child_key_index(i);
+        let key = self.child_key_indexed(i);
         let at = self.tree.len() as u32;
         self.open_with_key(key, spec);
         // Remembered for the node that was actually pushed, so a selection
@@ -446,10 +446,30 @@ impl Core {
             return;
         }
         self.prepare_spec(key, &mut spec);
+        // `NodeSpec::tooltip`: the hint floats on this node's `close`, the
+        // way a parsed `tooltip` prop's does. One pointer check for a node
+        // that declares no access group.
+        let tip = match spec.access.as_deref() {
+            Some(a) if a.tooltip => a.description.clone(),
+            _ => None,
+        };
         let parent = self.current();
         let idx = self.tree.push(parent, key, self.origin, spec, content);
         self.stack.push(idx);
         self.counters.push(0);
+        if let Some(tip) = tip {
+            self.spec_hint(key, &tip);
+        }
+    }
+
+    /// The hint of a node that declared [`NodeSpec::tooltip`], recorded
+    /// only while it is hovered — `close` would drop it otherwise.
+    #[cold]
+    #[inline(never)]
+    fn spec_hint(&mut self, key: Key, tip: &str) {
+        if self.is_hovered(key) {
+            self.hint(key, tip);
+        }
     }
 
     /// What every node's spec goes through between the door and the tree,
@@ -565,7 +585,7 @@ impl Core {
         let key = match identity {
             Identity::Auto => self.auto_key(),
             Identity::Label(l) => self.child_key(l),
-            Identity::Index(i) => self.child_key_index(i),
+            Identity::Index(i) => self.child_key_indexed(i),
         };
         let at = self.tree.len() as u32;
         let leaf = match content {
@@ -687,7 +707,7 @@ impl Core {
 
     /// [`Self::cells`] under a data index; see [`Self::open_indexed`].
     pub fn cells_indexed(&mut self, i: u64, grid: &crate::cells::CellGrid<'_>, spec: NodeSpec) {
-        let key = self.child_key_index(i);
+        let key = self.child_key_indexed(i);
         self.cells_at(key, grid, spec);
     }
 
@@ -887,7 +907,7 @@ impl Core {
         if self.tree.is_empty() {
             return Key::ROOT;
         }
-        let key = self.child_key_index(i);
+        let key = self.child_key_indexed(i);
         self.fragment_with_key(key, frag.into(), params, spec);
         key
     }
@@ -971,7 +991,7 @@ impl Core {
         if self.tree.is_empty() {
             return;
         }
-        let key = self.child_key_index(i);
+        let key = self.child_key_indexed(i);
         self.line_with_key(key, points, stroke, spec);
     }
 
@@ -1040,7 +1060,7 @@ impl Core {
         if self.tree.is_empty() {
             return;
         }
-        let key = self.child_key_index(i);
+        let key = self.child_key_indexed(i);
         self.polygon_with_key(key, points, spec);
     }
 

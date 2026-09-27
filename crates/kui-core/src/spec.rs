@@ -68,6 +68,20 @@ impl From<f32> for Min {
     }
 }
 
+/// A number is that many logical px, so `.width(120.0)` is
+/// `.width(Sizing::Fixed(120.0))`, the way `min_width(120.0)` already read.
+impl From<f32> for Sizing {
+    fn from(px: f32) -> Self {
+        Sizing::Fixed(px)
+    }
+}
+
+impl Sizing {
+    /// `Grow(1.0)`: an equal share of the leftover space, the weight
+    /// nearly every grow declares.
+    pub const GROW: Sizing = Sizing::Grow(1.0);
+}
+
 impl Sizing {
     /// The sizing the way a spec spells it — `fit`, `grow(1)`, `120px`,
     /// `50%` — for a reader: the devtools' inspector and a `nodes()` row.
@@ -281,6 +295,13 @@ impl FloatConfig {
     pub fn self_at(mut self, x: Align, y: Align) -> Self {
         self.self_point = (x, y);
         self
+    }
+
+    /// [`Self::at`] and [`Self::self_at`] at the same point: the float sits
+    /// inside the anchor against that edge or corner — `(End, End)` is a
+    /// toast in the viewport's bottom-right, `(Center, Center)` a dialog.
+    pub fn inside(self, x: Align, y: Align) -> Self {
+        self.at(x, y).self_at(x, y)
     }
 
     pub fn offset(mut self, x: f32, y: f32) -> Self {
@@ -956,6 +977,11 @@ pub struct AccessSpec {
     /// the offset still anchors the IME and reads to assistive
     /// technology. Without it a declared caret is a caret to blink.
     pub caret_solid: bool,
+    /// Float `description` below the node while it is hovered — the
+    /// `tooltip` prop's third effect, set by [`NodeSpec::tooltip`]. The core
+    /// reads it as the node opens (`Core::hint`); a binding that lowers the
+    /// prop floats the hint itself and leaves this off.
+    pub tooltip: bool,
     /// When the text inside this node changes, a reader reads the change
     /// without being asked (ARIA's `aria-live`). Off by default; a node
     /// that declares it is semantic, so a plain box marked live is not
@@ -982,6 +1008,7 @@ impl AccessSpec {
         caret: None,
         selection_anchor: None,
         caret_solid: false,
+        tooltip: false,
         live: Live::Off,
     };
 }
@@ -1293,19 +1320,37 @@ impl NodeSpec {
         }
     }
 
-    pub fn width(mut self, s: Sizing) -> Self {
-        self.layout.width = s;
+    /// A [`Sizing`], or a number of px (`.width(120.0)`).
+    pub fn width(mut self, s: impl Into<Sizing>) -> Self {
+        self.layout.width = s.into();
         self
     }
 
-    pub fn height(mut self, s: Sizing) -> Self {
-        self.layout.height = s;
+    /// A [`Sizing`], or a number of px (`.height(24.0)`).
+    pub fn height(mut self, s: impl Into<Sizing>) -> Self {
+        self.layout.height = s.into();
         self
+    }
+
+    /// Both axes at once: `.size(20.0, 20.0)` for a fixed box,
+    /// `.size(Sizing::GROW, 24.0)` for a strip.
+    pub fn size(self, w: impl Into<Sizing>, h: impl Into<Sizing>) -> Self {
+        self.width(w).height(h)
+    }
+
+    /// An equal share of the leftover width: `.width(Sizing::GROW)`.
+    pub fn grow_width(self) -> Self {
+        self.width(Sizing::GROW)
+    }
+
+    /// An equal share of the leftover height: `.height(Sizing::GROW)`.
+    pub fn grow_height(self) -> Self {
+        self.height(Sizing::GROW)
     }
 
     /// Grow along both axes.
     pub fn fill(self) -> Self {
-        self.width(Sizing::Grow(1.0)).height(Sizing::Grow(1.0))
+        self.grow_width().grow_height()
     }
 
     /// A number of px, or [`Min::FIT`] for the node's own fit width.
@@ -1377,12 +1422,23 @@ impl NodeSpec {
         self
     }
 
+    /// The `tooltip` prop whole, for a Rust view: the node tracks hover,
+    /// the hint is its accessible description, and the core floats the
+    /// hint below it while it is hovered (`widgets::hover_hint`, the float
+    /// every binding's tooltip is). What `tooltip="…"` is in JSX and Lua
+    /// and `KuiSpec.tooltip` in C.
+    pub fn tooltip(self, hint: &str) -> Self {
+        let mut spec = self.apply_tooltip(hint);
+        spec.access_mut().tooltip = true;
+        spec
+    }
+
     /// The spec half of the `tooltip` prop: the hint is hover-gated, so the
     /// node tracks hover, and it is what assistive technology should say, so
-    /// it is the accessible description too. The third effect — floating the
-    /// hint itself — is [`crate::schema::PropsOut::apply_tooltip`] for the
-    /// parsers and `kui_close` for C, because only they know when the node
-    /// is open.
+    /// it is the accessible description too — and nothing floats. For a
+    /// caller that floats the hint itself: [`crate::schema::PropsOut::apply_tooltip`]
+    /// for the parsers, `kui_close` for C, a widget that draws its own. A
+    /// Rust view wants [`Self::tooltip`], which is all three.
     pub fn apply_tooltip(self, hint: &str) -> Self {
         self.hoverable().description(hint)
     }
@@ -1671,8 +1727,8 @@ impl NodeSpec {
     }
 
     /// Makes this node the frame's modal surface (see the `modal` field).
-    pub fn modal(mut self, tag: Value) -> Self {
-        self.events_mut().modal = Some(tag);
+    pub fn modal(mut self, tag: impl Into<Value>) -> Self {
+        self.events_mut().modal = Some(tag.into());
         self
     }
 
@@ -1840,6 +1896,12 @@ impl NodeSpec {
     pub fn on_key(mut self, tag: impl Into<Value>) -> Self {
         self.events_mut().on_key = Some(tag.into());
         self
+    }
+
+    /// A key sink with no tag — `on_key(Value::Null)`, for a handler that
+    /// knows the node by its key.
+    pub fn key_sink(self) -> Self {
+        self.on_key(Value::Null)
     }
 
     /// Delivers releases to this key sink as well as presses (see the

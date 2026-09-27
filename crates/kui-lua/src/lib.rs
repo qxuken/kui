@@ -2766,7 +2766,7 @@ mod tests {
             .on_drag("d")
             .on_key(Value::Int(7))
             .key_up()
-            .modal("dlg".into())
+            .modal("dlg")
             .initial_focus()
             .on_context_menu(Value::map([("kind", "menu".into())]));
         assert_eq!(p.spec, expected);

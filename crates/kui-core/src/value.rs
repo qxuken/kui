@@ -83,6 +83,32 @@ impl Value {
             _ => None,
         }
     }
+
+    /// `get(key)` then `as_str`: a map entry read as a string.
+    pub fn get_str(&self, key: &str) -> Option<&str> {
+        self.get(key).and_then(Value::as_str)
+    }
+
+    /// `get(key)` then `as_int`.
+    pub fn get_int(&self, key: &str) -> Option<i64> {
+        self.get(key).and_then(Value::as_int)
+    }
+
+    /// `get(key)` then `as_float`.
+    pub fn get_float(&self, key: &str) -> Option<f64> {
+        self.get(key).and_then(Value::as_float)
+    }
+
+    /// `get(key)` then `as_float`, as the `f32` geometry is in — a drag's
+    /// `x`, a scroll's `dy`.
+    pub fn get_f32(&self, key: &str) -> Option<f32> {
+        self.get_float(key).map(|v| v as f32)
+    }
+
+    /// `get(key)` then `as_bool`.
+    pub fn get_bool(&self, key: &str) -> Option<bool> {
+        self.get(key).and_then(Value::as_bool)
+    }
 }
 
 /// How a binding spells the handles inside a readback — a node key, a
@@ -168,6 +194,32 @@ impl From<String> for Value {
 impl From<i64> for Value {
     fn from(v: i64) -> Self {
         Value::Int(v)
+    }
+}
+
+impl From<i32> for Value {
+    fn from(v: i32) -> Self {
+        Value::Int(v.into())
+    }
+}
+
+impl From<u32> for Value {
+    fn from(v: u32) -> Self {
+        Value::Int(v.into())
+    }
+}
+
+/// An index or a count. One past `i64::MAX` cannot be a payload's number,
+/// so it saturates there rather than wrapping negative.
+impl From<usize> for Value {
+    fn from(v: usize) -> Self {
+        Value::Int(i64::try_from(v).unwrap_or(i64::MAX))
+    }
+}
+
+impl From<f32> for Value {
+    fn from(v: f32) -> Self {
+        Value::float(v)
     }
 }
 
