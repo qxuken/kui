@@ -46,10 +46,13 @@ was the first bare bump to break an app in five releases).
   target: drop the `.into()`.
 - Rust: `AccessSpec` gains `tooltip` (under Added), so a struct literal
   of it without `..` needs the field.
-- C: `KuiSpec` gains `keep_focus`, `on_focus`, `rules` and `rule_w`
-  after `pixel_snap`, under the same ABI 20 (under Added, DX10, DX18 and
-  DX21); its 64-bit size is 624 bytes. Recompile; zeroed, a press focuses
-  as it did, nothing hears focus and a table draws no rules.
+- C: `KuiSpec` gains `keep_focus`, `on_focus`, `rules`, `rule_w`,
+  `on_button` and `buttons` after `pixel_snap`, under the same ABI 20
+  (under Added, DX10, DX18, DX21 and F104); its 64-bit size is 640 bytes.
+  Recompile; zeroed, a press focuses as it did, nothing hears focus, a
+  table draws no rules and no node hears the middle button.
+- Rust: `EventSpec` gains `on_button` and `buttons` (under Added, F104),
+  so a struct literal of it without `..` needs the fields.
 - Rust: `UiEvent::hover()` answers a `Hover { phase, by }`, where it
   answered the `HoverPhase` (under Added, DX20); read `.phase`.
 - Node: the binary frame is v18. `family` is a string, a stock name or an
@@ -406,6 +409,34 @@ Twelve readings change:
   `label-without-node` warning.
   *What you can delete:* `pcall` around `env.reveal` and a retry on the
   frames after.
+
+- **`onButton`: the middle and secondary buttons, press to release**
+  (backlog F104, from kawoosh, 2026-09-28; `on_button` and `buttons` in
+  Lua, Rust and on `KuiSpec`). A node declaring `onButton` hears the
+  non-primary buttons pressed over it, or over anything inside it that
+  claims none: `{kind:"button", phase:"press", button, x, y, clicks,
+  tag}`, and then the button is the node's until it comes up — every
+  pointer move while it is held is `phase:"move"`, its release
+  `phase:"release"`, on that node wherever the pointer went. `button` is
+  `"secondary"`, `"middle"` or a further button's number; on a `cells`
+  grid each event carries `cell: {row, col}`, clamped to the grid, as a
+  click does. `buttons` narrows what it claims — `"middle"`, `"secondary
+  middle"`; `Buttons::MIDDLE` in Rust, `KUI_BUTTONS_*` bits in C — and
+  unset it is all three kinds. A claimed secondary press is the button
+  event instead of `contextmenu` and the stock menu, so a terminal whose
+  program asked for mouse reports takes the right button from the menu
+  for as long as it says `buttons` with `secondary` in it. Several
+  buttons can be held at once, each its own capture; a primary drag is
+  untouched; and no non-primary press moves focus, the caret, a
+  selection or a scrollbar, as before. A press nothing claims routes as
+  it did. `UiEvent::button()` reads the event in Rust (`ButtonEvent`),
+  `ButtonMsg` in TypeScript. The corpus's controls scene claims the
+  middle button on its panel in all four bindings and holds it across a
+  move, beside the secondary presses its menu still takes.
+  *What you can delete:* nothing an app could have written: the middle
+  button reached the core and went no further, so a terminal pane had no
+  middle-click paste and reported only the primary button to a program
+  that asked for the mouse.
 
 ### Fixed
 
