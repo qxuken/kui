@@ -33,8 +33,8 @@ was the first bare bump to break an app in five releases).
 Four readings change:
 
 - A square-cornered quad (a `bg`, a span's background, an image with no
-  `radius`, a solid underline) covers each pixel by the area of it inside
-  the rect (under Fixed). On whole pixels it is solid to its edge, where
+  `radius`, a solid underline, a `fragment` node's box) covers each pixel
+  by the area of it inside the rect (under Fixed). On whole pixels it is solid to its edge, where
   its outermost pixels drew at 93%, so its edge is a pixel crisper. At a
   fractional edge the pixel it falls in is part-covered as before. A
   rounded quad keeps its ramp.
@@ -58,8 +58,9 @@ Four readings change:
 
 - **`pixelSnap`: a box painted on whole pixels.** A flag on any node
   (`pixelSnap` in JSX, `pixel_snap` in Lua and on `KuiSpec`,
-  `NodeSpec::pixel_snap()` in Rust). The node's background, border and
-  shadow are painted with each edge on a whole physical pixel, each edge
+  `NodeSpec::pixel_snap()` in Rust). The node's background, border,
+  shadow and, on a `fragment` node, its fragment's quad are painted with
+  each edge on a whole physical pixel, each edge
   rounded on its own from where layout put it (`snap_px(x)` and
   `snap_px(x + w)`), the rounding a text's span backgrounds use. Boxes that
   share an edge in layout then meet on one pixel line. So do a box and a
@@ -72,7 +73,13 @@ Four readings change:
   every box was. Layout, hit-testing, the clip and the children are
   untouched. A snapped box can draw up to half a pixel from its layout
   edge and its size can differ by a pixel, so a snapped hairline is 1 or
-  2 px thick by where it sits. The corpus gains `pixel-snap`, re-expressed
+  2 px thick by where it sits. A fragment's quad is covered as a solid's
+  is, by area when square, so a stack of snapped fragments meets on
+  pixel lines too: an editor that draws each row's part of a rounded
+  selection as a fragment under its text gets one seamless shape (kawoosh,
+  2026-09-27; `snapped_fragments_stack_on_whole_pixels_and_others_where_
+  layout_put_them` pins the rects, and fails without the snap). The
+  corpus gains `pixel-snap`, re-expressed
   in Lua, C and Node: three boxes at 40.5 by 20.25, two snapped (one with
   a shadow) and one not. Pinned in kui-wgpu by a column of snapped boxes
   at a 21.75 pitch covering every pixel exactly once at nine scales from

@@ -363,3 +363,54 @@ fn a_box_that_does_not_ask_is_drawn_where_layout_put_it() {
         }
     }
 }
+
+/// A column of `fragment` nodes 21.75 tall from a fractional offset at
+/// `scale`, `pixelSnap` or not: their quads, top to bottom.
+fn fragment_rows(scale: f32, snap: bool) -> Vec<Quad> {
+    let mut core = Core::new();
+    let id = core
+        .add_fragment(
+            "fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32> {\n    return vec4<f32>(1.0);\n}\n",
+        )
+        .expect("a trivial fragment compiles");
+    let mut ui = core.frame(Size::new(100.0, 400.0), scale);
+    ui.configure_root(NodeSpec::column().pad_xy(3.3, 7.7));
+    for _ in 0..12 {
+        let mut spec = NodeSpec::column()
+            .width(Sizing::Fixed(50.5))
+            .height(Sizing::Fixed(21.75));
+        if snap {
+            spec = spec.pixel_snap();
+        }
+        ui.fragment(id, &[], spec);
+    }
+    ui.finish();
+    let dl = core.output().0;
+    dl.quads
+        .iter()
+        .filter(|q| q.kind == QuadKind::Fragment)
+        .copied()
+        .collect()
+}
+
+#[test]
+fn snapped_fragments_stack_on_whole_pixels_and_others_where_layout_put_them() {
+    for scale in [0.75, 1.0, 1.25, 1.5, 2.0, 2.175] {
+        let snapped = fragment_rows(scale, true);
+        assert_eq!(snapped.len(), 12);
+        for w in snapped.windows(2) {
+            let (a, b) = (w[0].rect, w[1].rect);
+            assert_eq!(a.y + a.h, b.y, "they meet, {scale}×");
+            assert_eq!(b.y.fract(), 0.0, "on a pixel line, {scale}×");
+        }
+        let exact = fragment_rows(scale, false);
+        for (i, q) in exact.iter().enumerate() {
+            let y = 7.7 * scale + i as f32 * 21.75 * scale;
+            assert!(
+                (q.rect.y - y).abs() < 1e-3,
+                "{scale}×, row {i}: {:?}",
+                q.rect
+            );
+        }
+    }
+}

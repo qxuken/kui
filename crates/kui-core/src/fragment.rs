@@ -229,8 +229,9 @@ fn kui_sd_rounded_box(p: vec2<f32>, half: vec2<f32>, radii: vec4<f32>) -> f32 {
 ///
 /// The locations are `VsOut`'s in `kui-wgpu/src/shader.wgsl`, because the
 /// vertex stage of a fragment pipeline is that file's `vs_main`. The
-/// coverage math is `shade`'s, for the solid case: one rounded-box SDF for
-/// the node and one for a rounded clip, each ramped over `KUI_AA`.
+/// coverage math is `shade`'s, for the solid case: a square node covers a
+/// pixel by the area of it inside the quad, a rounded one by its SDF
+/// ramped over `KUI_AA`, and a rounded clip the same way.
 pub const EPILOGUE: &str = r#"
 // The sixteen params, then the image's texel rect — one slot per draw,
 // laid out as `kui_wgpu`'s `FragmentParams`.
@@ -257,10 +258,20 @@ fn kui_fs_fragment(
     kui_image_rect = kui_fragment_params.image;
     let kui_c = fragment(kui_in, kui_fragment_params.p);
 
-    // The node's own rounded box, exactly as a solid gets it.
+    // The node's own box, exactly as a solid gets it: a square one by the
+    // area of the pixel inside it, so one on whole pixels is solid to its
+    // edge and a stack of them meets without a seam; a rounded one by its
+    // SDF.
     let kui_half = size * 0.5;
     let kui_d = kui_sd_rounded_box(local - kui_half, kui_half, radii);
-    let kui_cov = 1.0 - smoothstep(-KUI_AA, KUI_AA, kui_d);
+    let kui_lo = max(local - vec2<f32>(0.5, 0.5), vec2<f32>(0.0, 0.0));
+    let kui_hi = min(local + vec2<f32>(0.5, 0.5), size);
+    let kui_area = clamp(kui_hi - kui_lo, vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 1.0));
+    let kui_cov = select(
+        1.0 - smoothstep(-KUI_AA, KUI_AA, kui_d),
+        kui_area.x * kui_area.y,
+        all(radii <= vec4<f32>(0.0)),
+    );
 
     // The inherited clip, in framebuffer space, rounded when rounded.
     let kui_p = frag_pos.xy;

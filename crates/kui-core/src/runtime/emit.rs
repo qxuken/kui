@@ -2008,12 +2008,15 @@ impl Painter<'_> {
                 }
             }
             Leaf::Fragment(draw) => {
+                // On whole pixels when the node asked (`pixelSnap`), as its
+                // background is, so a stack of fragments meets seamlessly.
+                let px = rect.scaled(scale);
                 push_fragment(
                     self.display,
                     self.atlas,
                     &self.session.state().resources,
                     draw,
-                    rect.scaled(scale),
+                    if style.pixel_snap { px.on_pixels() } else { px },
                     style.radius.map(|r| r * scale),
                     clip_id,
                     Color::WHITE,

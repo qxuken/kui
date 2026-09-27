@@ -577,8 +577,8 @@ pub struct VisualStyle {
     pub opacity: f32,
     /// The drop shadow cast behind this node (see [`Shadow`]).
     pub shadow: Shadow,
-    /// Paint the background, border and shadow with each edge on a whole
-    /// physical pixel (`pixelSnap`). Off by default: a box is drawn where
+    /// Paint the background, border, shadow and fragment with each edge on
+    /// a whole physical pixel (`pixelSnap`). Off by default: a box is drawn where
     /// layout put it, so a gap between two boxes is there at any scale.
     /// On, its edges land where a text's backgrounds' do and where every
     /// other snapped box's do, so snapped boxes that share an edge in
@@ -1506,7 +1506,7 @@ impl NodeSpec {
         self
     }
 
-    /// Paints this node's background, border and shadow on whole pixels
+    /// Paints this node's background, border, shadow and fragment on whole pixels
     /// (see `VisualStyle::pixel_snap`).
     pub fn pixel_snap(mut self) -> Self {
         self.style.pixel_snap = true;

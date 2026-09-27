@@ -958,8 +958,8 @@ typedef struct KuiSpec {
      * Proposed, never applied: declare the value as value_now. Borrowed
      * while the node opens. ABI 19. */
     const KuiValue *on_change;
-    /* Non-zero: paint the background, border and shadow with each edge on
-     * a whole physical pixel (pixelSnap), rounded on its own from where
+    /* Non-zero: paint the background, border, shadow and fragment with
+     * each edge on a whole physical pixel (pixelSnap), rounded on its own from where
      * layout put it, as a text's span backgrounds are. Snapped boxes that
      * share an edge in layout, and one beside a text's background, meet
      * on one pixel line with no seam. Zero, the default, draws the box

@@ -645,7 +645,7 @@ pub struct KuiSpec {
     /// `{kind:"change", value, phase, tag}`. Borrowed while the node
     /// opens, like every other tag. ABI 19.
     pub on_change: *const KuiValue,
-    /// Non-zero: paint the background, border and shadow with each edge
+    /// Non-zero: paint the background, border, shadow and fragment with each edge
     /// on a whole physical pixel (`pixelSnap`), so snapped boxes that
     /// share an edge in layout, and one beside a text's background, meet
     /// without a seam. A zeroed field is a box drawn where layout put it.
