@@ -2355,8 +2355,8 @@ entries of it were **built the same day** (DX1–DX6, `2852e9a`, the
 repo migrated in `20a1988`). The rest was filed here, DX7–DX21, and
 seven of those were built the same day too (DX7, DX8, DX10, DX11, DX13,
 DX14, DX15), and DX12 in Rust after it (its other bindings are DX22);
-DX16 was declined. Open: DX9 and DX17, which want an ADR each, DX18–DX21
-and DX22.
+and DX22 the same day; DX16 was declined. Open: DX9 and DX17, which want
+an ADR each, and DX18–DX21.
 
 Kawoosh can already delete some code without kui changing: the
 non-breaking-space padding in its Lua plugins (K3, alpha.13), string
@@ -2678,7 +2678,14 @@ cells between the real ones, and a separate edge row
 `row_rule(width, colour)` on a table: collapsed borders drawn between
 the columns layout already aligns.
 
-### `.` DX22 — `splitter`, `reveal_row` and a list's row spec are Rust's alone
+### `.` DX22 — `splitter`, `reveal_row` and a list's row spec are Rust's alone — **built 2026-09-27**
+
+**Built 2026-09-27**: the prelude's `reveal_row`, `rows_in_view`,
+`splitter` and `row_props`, typed in the Lua meta (the two readings
+return a boolean and an integer, not a node); Node's `revealRow`,
+`rowsInView`, `splitter` and `rowProps`, in `index.d.ts` and through the
+examples' typecheck. Each pinned by a test that reveals row 40 of 50,
+clicks it through its own node and drags the bar to 0.75.
 
 DX12 built them in kui-core's widgets. Lua's prelude `uniform_list` and
 Node's `uniformList` each wrap a row in a box of their own too, and

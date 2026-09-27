@@ -289,7 +289,8 @@ Seven readings change:
   *What you can delete:* a flag of the app's own, set on the ask and
   cleared on the next `text`, to tell the clipboard's text from typing.
 
-- **A divider, a revealed row and a row spec, in Rust** (backlog DX12).
+- **A divider, a revealed row and a row spec** (backlog DX12 in Rust,
+  DX22 in Lua and Node).
   `widgets::splitter(ui, label, dir, thickness, tag)` is a divider
   between two panes: the theme's border colour, its accent while hovered
   or held, the resize arrows, `on_drag(tag)` and `keep_focus`; the
@@ -298,8 +299,13 @@ Seven readings change:
   show — called before the list, so that frame builds the rows it
   scrolled to, where `reveal` finds nothing for a row the list has not
   built — and `rows_in_view` is a page's stride. `uniform_list_with`
-  takes `row_spec(i)` for each row's own node. Rust only for now: Lua's
-  and Node's lists and the two helpers are DX22.
+  takes `row_spec(i)` for each row's own node. Lua's prelude has
+  `reveal_row(env, key, i, row_h)`, `rows_in_view`, `splitter(env, { key,
+  dir, thickness, on_drag })` and `row_props = function(i)` on
+  `uniform_list`; Node exports `revealRow(ctx, key, i, rowH)`,
+  `rowsInView`, `splitter(ctx, { key, dir, thickness, onDrag })` and takes
+  `rowProps: (i) => props` on `uniformList`, typed in `index.d.ts` and
+  typechecked through the examples' `types.tsx`.
   *What you can delete:* a divider's hover-or-pressed colouring and its
   ratio arithmetic; `scroll_geometry` plus an in-view test plus
   `set_scroll` to reach a list's row; a second node inside every row to

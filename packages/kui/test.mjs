@@ -13,7 +13,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { constants as osConstants, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Ctx, KuiWindow, RowHeights, clipStride, createApp, createEncoder, decodeQuads, defineTokens, list, protocol, quadStride, roles, runWindowed, uniformList, windowOptions, withEffects } from './index.js';
+import { Ctx, KuiWindow, RowHeights, clipStride, createApp, createEncoder, decodeQuads, defineTokens, list, protocol, quadStride, revealRow, roles, rowsInView, runWindowed, splitter, uniformList, windowOptions, withEffects } from './index.js';
 
 const box = (props, children = [], key) => ({ type: 'box', key, props, children });
 const text = (children, props = {}) => ({ type: 'text', props, children: [].concat(children) });
@@ -5764,6 +5764,52 @@ test('a uniformList row is keyed by its data index, so a full list agrees', () =
   for (const n of named) {
     assert.equal(n.key, fullKeys.get(n.name), `${n.name} is keyed differently than in a full list`);
   }
+});
+
+// DX22: the row spec, the row reveal and the divider Rust has as
+// `uniform_list_with`, `widgets::reveal_row` and `widgets::splitter`.
+test('revealRow centres an unbuilt row, rowProps styles each row, and a splitter drags', () => {
+  const ctx = new Ctx();
+  let target = null;
+  let scrolled = null;
+  const tree = () => {
+    if (target !== null) scrolled = revealRow(ctx, 'list', target, 20);
+    return box({ dir: 'row', width: 300, height: 100 }, [
+      uniformList(
+        ctx,
+        {
+          key: 'list', rows: 50, rowH: 20, width: 200, height: 100,
+          rowProps: (i) => ({ onClick: { kind: 'pick', row: i } }),
+        },
+        (i) => [text(`row ${i}`)],
+      ),
+      splitter(ctx, { key: 'bar', onDrag: { kind: 'split' } }),
+      box({ width: 'grow', height: 'grow' }),
+    ]);
+  };
+  ctx.frame(300, 100, 1, tree());
+  ctx.frame(300, 100, 1, tree());
+  assert.equal(rowsInView(ctx, 'list', 20), 5);
+  assert.deepEqual(ctx.warnings(), [], 'every prop the helpers spell is known');
+
+  target = 40;
+  ctx.frame(300, 100, 1, tree());
+  assert.equal(scrolled, true);
+  assert.deepEqual(ctx.scrollOffset('list'), { x: 0, y: 760 }, 'row 40 to the middle');
+  ctx.pollEvents();
+  ctx.cursor(10, 45);
+  ctx.mouse(true);
+  ctx.mouse(false);
+  const pick = ctx.pollEvents().map((e) => e.payload).find((p) => p.kind === 'pick');
+  assert.deepEqual(pick, { kind: 'pick', row: 40 }, 'the row under the pointer, clicked through its own node');
+
+  // The bar sits at 200..204; its drag reports the split in its parent.
+  ctx.cursor(202, 50);
+  ctx.mouse(true);
+  ctx.cursor(225, 50);
+  ctx.mouse(false);
+  const end = ctx.pollEvents().map((e) => e.payload).filter((p) => p.kind === 'drag').pop();
+  assert.equal((end.x - end.parent.x) / end.parent.w, 0.75);
 });
 
 test('a uniformList whose rows shrank under it lands in one frame', () => {

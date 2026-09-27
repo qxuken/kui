@@ -5874,6 +5874,69 @@ mod tests {
         );
     }
 
+    /// DX22: the prelude's row spec, row reveal and divider, the three
+    /// Rust gained as `uniform_list_with`, `reveal_row` and `splitter`.
+    #[test]
+    fn the_prelude_reveals_a_row_styles_rows_and_splits() {
+        let mut ext = LuaExtension::from_source(
+            "dx22",
+            r#"
+                target, scrolled, page = nil, nil, nil
+                function view(env)
+                  if target then scrolled = reveal_row(env, "list", target, 20) end
+                  page = rows_in_view(env, "list", 20)
+                  return row { width = 300, height = 100,
+                    uniform_list(env,
+                      { key = "list", rows = 50, row_h = 20, width = 200, height = 100,
+                        row_props = function(i) return { on_click = { kind = "pick", row = i } } end },
+                      function(i) return text("row " .. i) end),
+                    splitter(env, { key = "bar", on_drag = { kind = "split" } }),
+                    column { width = "grow", height = "grow" },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        let frame = |core: &mut Core, ext: &mut LuaExtension| {
+            let mut ui = core.frame(Size::new(300.0, 100.0), 1.0);
+            ui.set_origin(OriginId(1));
+            ext.view(&Slot::root(), &mut ui).unwrap();
+            ui.finish();
+        };
+        frame(&mut core, &mut ext);
+        frame(&mut core, &mut ext);
+        assert_eq!(ext.lua.globals().get::<i64>("page").unwrap(), 5);
+        assert!(
+            core.take_warnings().is_empty(),
+            "every prop the three spell is known"
+        );
+
+        ext.lua.globals().set("target", 40).unwrap();
+        frame(&mut core, &mut ext);
+        assert!(ext.lua.globals().get::<bool>("scrolled").unwrap());
+        let list = core.key_of("list").unwrap();
+        assert_eq!(
+            core.scroll_offset(list),
+            Vec2::new(0.0, 760.0),
+            "row 40 to the middle"
+        );
+        // Built for that offset in the same frame, each row clickable
+        // through its own node.
+        core.handle_input(InputEvent::CursorMoved(Vec2::new(10.0, 45.0)));
+        core.handle_input(InputEvent::mouse_down(1));
+        let up = core.handle_input(InputEvent::mouse_up());
+        assert_eq!(up.iter().find_map(|e| e.payload.get_int("row")), Some(40));
+
+        // The bar sits at 200..204; dragging it reports its parent's split.
+        core.handle_input(InputEvent::CursorMoved(Vec2::new(202.0, 50.0)));
+        core.handle_input(InputEvent::mouse_down(1));
+        core.handle_input(InputEvent::CursorMoved(Vec2::new(225.0, 50.0)));
+        let end = core.handle_input(InputEvent::mouse_up());
+        let d = end.iter().find_map(|e| e.drag()).expect("the drag's end");
+        assert_eq!(d.ratio().x, 0.75);
+    }
+
     /// The same clamp as the JSX widget's: a list that shrank while scrolled
     /// slices past its own new end, and an unclamped `first` builds a lead
     /// spacer taller than the whole list with no rows in it.

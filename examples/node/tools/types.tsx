@@ -7,7 +7,7 @@
 // 0.1.0-alpha.5 did). A tool, not an example: nothing here is a subject.
 //
 //   node dist/tools/types.mjs --headless
-import { createApp, decodeQuads, defineTokens, roles, Ctx } from '@qxuken/kui';
+import { createApp, decodeQuads, defineTokens, revealRow, roles, rowsInView, splitter, uniformList, Ctx } from '@qxuken/kui';
 import type { App, ColorToken, CoreMsg, KeyMsg, Theme, UiEvent } from '@qxuken/kui';
 
 // Tokens (ADR 0027): the names typed at the declaration. `T.peach` is the
@@ -166,7 +166,25 @@ const kevs = modal.pollEvents<KeyMsg<{ tool: string }>>().filter((e) => e.payloa
 const p = kevs[0]?.payload;
 const up = kevs[1]?.payload;
 
+// DX22: a list's row props, the row reveal and the divider.
+const lists = new Ctx();
+const listTree = () => (
+  <box dir="row" width={300} height={100}>
+    {uniformList(
+      lists,
+      { key: 'l', rows: 50, rowH: 20, width: 200, height: 100, rowProps: (i) => ({ onClick: { kind: 'select', row: i } }) },
+      (i) => <text>row {i}</text>,
+    )}
+    {splitter(lists, { key: 'bar', onDrag: { kind: 'pan' } })}
+  </box>
+);
+lists.frame(300, 100, 1, listTree());
+lists.frame(300, 100, 1, listTree());
+const revealed = revealRow(lists, 'l', 40, 20);
+const page = rowsInView(lists, 'l', 20);
+
 const checks: [boolean, string][] = [
+  [revealed && page === 5, 'revealRow scrolls to a row the list has not built; rowsInView is a page'],
   [app.model.count === -1, 'clicks by quad, a reset, and a decrement nudge through the slider\'s own tag'],
   [app.model.note === 'hello from jsx', 'typing, and a word-wise backspace'],
   [imageQuads === 1, 'an image is one image quad'],

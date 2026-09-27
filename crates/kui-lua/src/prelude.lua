@@ -275,14 +275,17 @@ end
 -- `row_h` tall and keyed by the row's data `index`, so a row keeps its
 -- hover, focus, edit buffer and tweens as the built range slides over it,
 -- and a virtualised list and a full one agree on identity. A clickable row
--- puts its on_click on a `fill = true` child, as above.
+-- puts its on_click on a `fill = true` child, as above -- or on the row's
+-- own node: `row_props = function(i) return { on_click = ..., bg = ... } end`
+-- in `opts` gives each row's node its props (backlog DX22), its `index`
+-- and `height` staying the widget's.
 --
 -- The geometry is the previous frame's, so the first frame -- before any
 -- layout has resolved the container -- slices by the viewport, and a resize
 -- is one frame late and covered by `overscan` (two rows each side).
 --
--- To reach a row that is not built, scroll to it:
--- `env.set_scroll(key, 0, i * row_h)` puts row i at the top.
+-- To reach a row that is not built, `reveal_row(env, key, i, row_h)`
+-- before the list scrolls it to the middle when it does not show.
 function uniform_list(env, opts, row)
   local key = opts.key
   if type(key) ~= "string" or key == "" then
@@ -321,9 +324,10 @@ function uniform_list(env, opts, row)
   local last = math.min(n, math.ceil((top + math.max(vh, 0)) / row_h) + overscan)
   if last < first then last = first end
 
+  local row_props = opts.row_props
   local t = {}
   for k, v in pairs(opts) do t[k] = v end
-  t.rows, t.row_h, t.overscan = nil, nil, nil
+  t.rows, t.row_h, t.overscan, t.row_props = nil, nil, nil, nil
   t.type = "column"
   t.scroll_y = true
   t.gap = 0
@@ -339,13 +343,73 @@ function uniform_list(env, opts, row)
     at = at + 1
   end
   for i = first, last - 1 do
-    t[at] = column { index = i, width = "grow", height = row_h, row(i) }
+    local r = { width = "grow" }
+    if row_props then
+      for k, v in pairs(row_props(i)) do
+        if type(k) == "string" then r[k] = v end
+      end
+    end
+    r.index, r.height, r[1] = i, row_h, row(i)
+    t[at] = column(r)
     at = at + 1
   end
   if last < n then
     t[at] = column { key = "kui:tail", width = "grow", height = (n - last) * row_h }
   end
   return t
+end
+
+-- reveal_row(env, "log", i, 28)
+--
+-- Scrolls the `uniform_list` keyed "log" so row i shows, when it does
+-- not: to the middle, so a jump lands with rows on both sides (backlog
+-- DX22, Rust's `widgets::reveal_row`). Call it before the list, so the
+-- frame that scrolls builds the rows it scrolled to; `env.reveal` finds
+-- nothing for a row the list has not built. True when it scrolled; the
+-- first frame, before the list has laid out, scrolls nothing. Assumes the
+-- rows start at the list's content top, as they do without top padding.
+function reveal_row(env, key, i, row_h)
+  local g = env.scroll_geometry(key)
+  if not g then return false end
+  local y = i * row_h
+  if g.offset.y <= y and y + row_h <= g.offset.y + g.h then return false end
+  env.set_scroll(key, g.offset.x, math.max(0, y + row_h / 2 - g.h / 2))
+  return true
+end
+
+-- How many whole rows of `row_h` the list keyed `key` shows as of the last
+-- layout -- a page's stride; 0 before it has laid out.
+function rows_in_view(env, key, row_h)
+  local g = env.scroll_geometry(key)
+  if not g then return 0 end
+  return math.max(0, math.floor(g.h / row_h))
+end
+
+-- splitter(env, { key = "divider", dir = "row", thickness = 4, on_drag = { kind = "split" } })
+--
+-- A divider between two panes that the pointer drags (backlog DX22, Rust's
+-- `widgets::splitter`): `thickness` px across (4 unless said) and growing
+-- along the rest of its parent, in the theme's border colour and its accent
+-- while hovered or held, with the resize arrows, and `keep_focus`, so a
+-- press on it leaves the keyboard with the editor beside it. `dir` is the
+-- parent's: "row" (the default) for panes side by side, "column" for panes
+-- stacked. The split is the handler's: a `drag` event carries `x`, `y` and
+-- `parent`, and `(x - parent.x) / parent.w` is a row's new fraction.
+function splitter(env, t)
+  local th = env.theme
+  local across = (t.dir or "row") == "row"
+  local n = t.thickness or 4
+  return column {
+    key = t.key,
+    width = across and n or "grow",
+    height = across and "grow" or n,
+    cursor = across and "ewResize" or "nsResize",
+    bg = th.border,
+    hover_bg = th.accent,
+    pressed_bg = th.accent,
+    on_drag = t.on_drag,
+    keep_focus = true,
+  }
 end
 
 -- local heights = row_heights(#lines, 20)

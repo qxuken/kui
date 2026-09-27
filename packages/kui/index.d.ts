@@ -4634,6 +4634,10 @@ export interface UniformListProps extends Omit<BoxProps, 'children' | 'scrollY' 
   /** Rows built past each edge of the window, covering the frame of lag on
    *  a resize or a wheel jump. Two by default. */
   overscan?: number;
+  /** Each row's own node's props — its `onClick`, stripe, hover — where
+   *  the row's contents would otherwise nest a node to carry them. Its
+   *  `index` and `height` stay the list's (backlog DX22). */
+  rowProps?: (i: number) => BoxProps;
 }
 
 /**
@@ -4667,6 +4671,47 @@ export declare function uniformList(
   opts: UniformListProps,
   row: (i: number) => KuiNode,
 ): KuiNode;
+
+/**
+ * Scrolls the `uniformList` keyed `key` so row `i` shows, when it does not:
+ * to the middle (backlog DX22). Call it before the list is built, so the
+ * frame that scrolls builds the rows it scrolled to — `reveal` finds
+ * nothing for a row the list has not built. True when it scrolled; before
+ * the list has laid out it scrolls nothing.
+ */
+export declare function revealRow(
+  ctx: Pick<Ctx, 'scrollGeometry' | 'setScroll'>,
+  key: string,
+  i: number,
+  rowH: number,
+): boolean;
+
+/** How many whole rows of `rowH` the list keyed `key` shows as of the last
+ *  layout — a page's stride; 0 before it has laid out. */
+export declare function rowsInView(
+  ctx: Pick<Ctx, 'scrollGeometry'>,
+  key: string,
+  rowH: number,
+): number;
+
+/** What `splitter` draws: the parent's direction, the bar's thickness and
+ *  the drag's tag. */
+export interface SplitterProps {
+  key?: string;
+  /** The parent's direction: `'row'` (the default) for panes side by side. */
+  dir?: 'row' | 'column';
+  /** Across the bar, in logical px; 4 by default. */
+  thickness?: number;
+  onDrag?: AppMsg;
+}
+
+/**
+ * A divider between two panes that the pointer drags (backlog DX22): the
+ * theme's border colour, its accent while hovered or held, the resize
+ * arrows, and `keepFocus`. The drag's `x` against its `parent` rect is the
+ * new fraction.
+ */
+export declare function splitter(ctx: Pick<Ctx, 'theme'>, opts?: SplitterProps): KuiNode;
 
 /** What `list` reads before it slices, handed to `RowHeights.sliceBegin`:
  *  the container's last layout (null on the first frame), where its scroll

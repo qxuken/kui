@@ -99,6 +99,12 @@ const UNIFORM_LIST: &[(&str, bool, &str, &str)] = &[
         "number",
         "Rows built past each end of the viewport; two when left out.",
     ),
+    (
+        "row_props",
+        false,
+        "fun(i: integer): kui.Props",
+        "Each row's own node's props — its click, stripe, hover; its `index` and `height` stay the list's.",
+    ),
 ];
 
 /// What `list` reads off its `opts` beyond a container's props, as
@@ -244,13 +250,22 @@ pub fn luals_meta() -> String {
                 "s" => ("", "string|number|table".into()),
                 "env" => ("", "table".into()),
                 "row" => ("", "fun(i: integer): kui.Node".into()),
+                "key" => ("", "string|integer".into()),
+                "i" => ("", "integer".into()),
+                "row_h" => ("", "number".into()),
                 _ => ("", "any".into()),
             };
             let _ = writeln!(out, "---@param {p}{opt} {ty}");
         }
+        // Most of the prelude builds a node; the two list readings answer.
+        let ret = match f.name.as_str() {
+            "reveal_row" => "boolean",
+            "rows_in_view" => "integer",
+            _ => "kui.Node",
+        };
         let _ = writeln!(
             out,
-            "---@return kui.Node\nfunction {}({}) end\n",
+            "---@return {ret}\nfunction {}({}) end\n",
             f.name,
             f.params.join(", ")
         );
@@ -781,7 +796,13 @@ mod tests {
                 .iter()
                 .filter(|(n, ..)| n != name)
                 .map(|(n, _, ty, _)| {
-                    let v = if *ty == "string" { "\"log\"" } else { "4" };
+                    let v = if *ty == "string" {
+                        "\"log\""
+                    } else if ty.starts_with("fun") {
+                        "function() return {} end"
+                    } else {
+                        "4"
+                    };
                     format!("{n} = {v}")
                 })
                 .collect();

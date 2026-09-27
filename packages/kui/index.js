@@ -1128,7 +1128,7 @@ const spacer = (h, key) => ({
  * nothing, because nothing declared it.
  */
 export function uniformList(ctx, opts, row) {
-  const { key, rows, rowH, overscan = 2, ...box } = opts ?? {};
+  const { key, rows, rowH, overscan = 2, rowProps, ...box } = opts ?? {};
   if (typeof key !== 'string' || key === '') {
     throw new Error('kui: uniformList needs a string `key` — its geometry is read back by that name');
   }
@@ -1175,9 +1175,12 @@ export function uniformList(ctx, opts, row) {
   // already occupy that namespace at their data indices.
   if (first > 0) children.push(spacer(first * rowH, 'kui:lead'));
   for (let i = first; i < last; i++) {
+    // A row's own node takes `rowProps(i)` — its click, stripe, hover —
+    // with its `index` and `height` staying the list's (backlog DX22).
+    const own = rowProps ? rowProps(i) : null;
     children.push({
       type: 'box',
-      props: { index: i, width: 'grow', height: rowH },
+      props: { width: 'grow', ...own, index: i, height: rowH },
       children: row(i),
     });
   }
@@ -1190,6 +1193,60 @@ export function uniformList(ctx, opts, row) {
     // inside a `selectable` list spans (ADR 0017, tier 3).
     props: { ...box, scrollY: true, gap: 0, rowCount: n },
     children,
+  };
+}
+
+/**
+ * Scrolls the `uniformList` keyed `key` so row `i` shows, when it does not:
+ * to the middle, so a jump lands with rows on both sides (backlog DX22,
+ * Rust's `widgets::reveal_row`). Call it before the list is built, so the
+ * frame that scrolls builds the rows it scrolled to; `ctx.reveal` finds
+ * nothing for a row the list has not built. True when it scrolled; before
+ * the list has laid out it scrolls nothing. Assumes the rows start at the
+ * list's content top, as they do without top padding.
+ */
+export function revealRow(ctx, key, i, rowH) {
+  const g = ctx.scrollGeometry(key);
+  if (!g) return false;
+  const y = i * rowH;
+  if (g.offset.y <= y && y + rowH <= g.offset.y + g.h) return false;
+  ctx.setScroll(key, g.offset.x, Math.max(0, y + rowH / 2 - g.h / 2));
+  return true;
+}
+
+/** How many whole rows of `rowH` the list keyed `key` shows as of the last
+ *  layout — a page's stride; 0 before it has laid out. */
+export function rowsInView(ctx, key, rowH) {
+  const g = ctx.scrollGeometry(key);
+  return g ? Math.max(0, Math.floor(g.h / rowH)) : 0;
+}
+
+/**
+ * A divider between two panes that the pointer drags (backlog DX22, Rust's
+ * `widgets::splitter`): `thickness` px across (4 unless said) and growing
+ * along the rest of its parent, in the theme's border colour and its accent
+ * while hovered or held, with the resize arrows, and `keepFocus`. `dir` is
+ * the parent's: `'row'` (the default) for panes side by side, `'column'` for
+ * panes stacked. The split is the handler's: the drag's `x` against its
+ * `parent` rect is the new fraction.
+ */
+export function splitter(ctx, { key, dir = 'row', thickness = 4, onDrag } = {}) {
+  const t = ctx.theme();
+  const across = dir === 'row';
+  return {
+    type: 'box',
+    key,
+    props: {
+      width: across ? thickness : 'grow',
+      height: across ? 'grow' : thickness,
+      cursor: across ? 'ewResize' : 'nsResize',
+      bg: t.border,
+      hoverBg: t.accent,
+      pressedBg: t.accent,
+      onDrag,
+      keepFocus: true,
+    },
+    children: [],
   };
 }
 
