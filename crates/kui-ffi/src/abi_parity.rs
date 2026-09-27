@@ -415,6 +415,9 @@ fn asserts() -> (String, Vec<&'static str>) {
             KUI_MENU_ACTION_SET_CLIPBOARD_SECRET,
             KUI_PASTE_CONCEALED,
             KUI_PASTE_TRANSIENT,
+            KUI_BUTTONS_SECONDARY,
+            KUI_BUTTONS_MIDDLE,
+            KUI_BUTTONS_OTHER,
             KUI_COPY_READY,
             KUI_COPY_ASKED,
             KUI_COPY_NOTHING,
@@ -709,6 +712,8 @@ fn asserts() -> (String, Vec<&'static str>) {
         on_focus: *const KuiValue => "const KuiValue *",
         rules: u32 => "uint32_t",
         rule_w: f32 => "float",
+        on_button: *const KuiValue => "const KuiValue *",
+        buttons: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiAccessNode {
@@ -1377,8 +1382,9 @@ fn an_in_struct_s_size_is_the_abi_s() {
     const IN_LAYOUTS: &[(&str, usize, u32)] = &[
         // ABI 20: `pixel_snap` appended, after ABI 19's `float_clip`,
         // `aspect_ratio`, `mixed`, `value_step` and `on_change`; then
-        // `keep_focus`, `on_focus`, `rules` and `rule_w`.
-        ("KuiSpec", 624, 20),
+        // `keep_focus`, `on_focus`, `rules` and `rule_w`; then
+        // `on_button` and `buttons` (backlog F104).
+        ("KuiSpec", 640, 20),
         ("KuiSizing", 8, 16),
         ("KuiKeyframe", 36, 16),
         ("KuiEnter", 40, 16),

@@ -165,10 +165,16 @@ impl Core {
                 .text
                 .hit_at(self.tree.keys[l], point, self.building)
                 .map_or(0, |h| h.byte);
+            // A `button` event's press carries its own count and its move
+            // and release none (backlog F104): `clicks` here is the last
+            // primary press's.
+            let own_count = ev.kind() == Some("button");
             if let Value::Map(entries) = &mut ev.payload {
                 entries.push(("line".to_string(), Value::Int(line as i64)));
                 entries.push(("byte".to_string(), Value::Int(byte as i64)));
-                entries.push(("clicks".to_string(), Value::Int(clicks as i64)));
+                if !own_count {
+                    entries.push(("clicks".to_string(), Value::Int(clicks as i64)));
+                }
             }
         }
     }
@@ -565,8 +571,11 @@ impl Core {
                 // Only the primary button moves anything: a secondary
                 // press asks for a context menu where it landed and leaves
                 // focus, the caret and the scrollbars exactly as they were
-                // (a right-click on a selection has to keep it).
+                // (a right-click on a selection has to keep it). Any
+                // non-primary press an `on_button` node claims is that
+                // node's instead, and captured by it (backlog F104).
                 let primary = button == MouseButton::Primary;
+                let mut owner = None;
                 // A scrollbar wins what it was painted over — its own
                 // scroller's content, not a float over it (ADR 0023): a
                 // thumb press starts a drag, a track press jumps there
@@ -713,19 +722,28 @@ impl Core {
                             }
                         }
                         self.focus_visible = false;
+                    } else if let Some((key, ..)) = hit {
+                        owner = self.button_owner(key, button);
                     }
                 }
-                let n = self
-                    .interaction
-                    .handle(InputEvent::MouseDown { button, clicks }, &mut out);
+                let claimed_button = owner.is_some();
+                let n = match owner {
+                    Some(owner) => self
+                        .interaction
+                        .press_button(button, clicks, owner, &mut out),
+                    None => self
+                        .interaction
+                        .handle(InputEvent::MouseDown { button, clicks }, &mut out),
+                };
                 self.attach_pointer(&mut out, n);
                 // A right-click the app did not claim with `onContextMenu`
-                // gets the stock menu, where there is anything standard to
-                // put in one (ADR 0017, decision 5).
+                // or `onButton` gets the stock menu, where there is
+                // anything standard to put in one (ADR 0017, decision 5).
                 if button == MouseButton::Secondary
                     && let Some(p) = self.interaction.cursor()
                 {
-                    let claimed = out.iter().any(|e| e.kind() == Some("contextmenu"));
+                    let claimed =
+                        claimed_button || out.iter().any(|e| e.kind() == Some("contextmenu"));
                     self.auto_menu(p, claimed);
                 }
             }
@@ -774,6 +792,19 @@ impl Core {
         // derived earlier this frame no longer describes it.
         self.access_built = 0;
         out
+    }
+
+    /// The node a non-primary press on region `key` goes to, with the tag
+    /// its event carries (backlog F104): see `enclosing_button`. Read off
+    /// the tree at the press, as a force click's tag is.
+    fn button_owner(&self, key: Key, button: MouseButton) -> Option<crate::input::ButtonOwner> {
+        let i = self.tree.index_of(key)?;
+        let j = self.enclosing_button(i, button)?;
+        Some(crate::input::ButtonOwner {
+            key: self.tree.keys[j],
+            origin: self.tree.origins[j],
+            tag: self.tree.specs[j].events().on_button.clone()?,
+        })
     }
 
     /// A force click (ADR 0017, decision 6). Over text — an editor or a

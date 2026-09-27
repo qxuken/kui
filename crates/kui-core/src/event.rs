@@ -20,7 +20,7 @@
 //! changes what an event carries.
 
 use crate::geom::{Rect, Vec2};
-use crate::input::{KeyCode, KeyMods, KeyPhase, KeyPress, UiEvent};
+use crate::input::{KeyCode, KeyMods, KeyPhase, KeyPress, MouseButton, UiEvent};
 use crate::value::Value;
 
 /// Which part of a drag an event reports.
@@ -68,6 +68,30 @@ impl Drag {
             along(self.pos.y, self.parent.y, self.parent.h),
         )
     }
+}
+
+/// Which part of a held non-primary button an event reports (backlog
+/// F104).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ButtonPhase {
+    Press,
+    Move,
+    Release,
+}
+
+/// A `{kind:"button"}` event: a non-primary button an `onButton` node
+/// claimed, captured by it from press to release (backlog F104).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ButtonEvent {
+    pub phase: ButtonPhase,
+    pub button: MouseButton,
+    /// Where the pointer is.
+    pub pos: Vec2,
+    /// The driver's click count, on the press only.
+    pub clicks: Option<u32>,
+    /// On a `cells` grid: the `(row, col)` under the pointer, clamped to
+    /// the grid.
+    pub cell: Option<(u32, u32)>,
 }
 
 /// A `{kind:"scroll"}` event: the wheel over an `onScroll` node.
@@ -174,6 +198,36 @@ impl UiEvent {
             line: small(p, "line"),
             byte: p.get_int("byte").and_then(|v| usize::try_from(v).ok()),
             clicks: small(p, "clicks"),
+        })
+    }
+
+    /// This event as a held non-primary button's press, move or release,
+    /// if it is one (backlog F104).
+    pub fn button(&self) -> Option<ButtonEvent> {
+        let p = &self.payload;
+        if self.kind()? != "button" {
+            return None;
+        }
+        let phase = match p.get_str("phase")? {
+            "press" => ButtonPhase::Press,
+            "move" => ButtonPhase::Move,
+            "release" => ButtonPhase::Release,
+            _ => return None,
+        };
+        let button = match p.get("button")? {
+            Value::Str(name) => MouseButton::from_name(name)?,
+            Value::Int(code) => MouseButton::from_code(u32::try_from(*code).ok()?),
+            _ => return None,
+        };
+        let cell = p
+            .get("cell")
+            .and_then(|c| Some((small(c, "row")?, small(c, "col")?)));
+        Some(ButtonEvent {
+            phase,
+            button,
+            pos: point(p)?,
+            clicks: small(p, "clicks"),
+            cell,
         })
     }
 

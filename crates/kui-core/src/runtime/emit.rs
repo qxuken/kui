@@ -1046,6 +1046,11 @@ impl Core {
 
         let shapes = std::mem::take(&mut self.hit_shapes);
         self.interaction.set_hits_shaped(hits, shapes);
+        // A button held on a node this frame no longer declares has no one
+        // to hear its release (backlog F104).
+        let tree = &self.tree;
+        self.interaction
+            .drop_gone_buttons(|key| tree.index_of(key).is_some());
         // A new frame can move a hover-sound node under a still cursor.
         self.flush_sound_requests();
         // Against this window's mounts only (AR7): a popup or a second

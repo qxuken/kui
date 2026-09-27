@@ -663,6 +663,14 @@ pub struct KuiSpec {
     pub rules: u32,
     /// Their width in logical px (`ruleWidth`); 0 is 1. ABI 20.
     pub rule_w: f32,
+    /// The non-primary buttons as `{kind:"button", phase, button, x, y,
+    /// clicks, tag}` events on the node that claims them, captured from
+    /// press to release (`onButton`, backlog F104). Borrowed while the
+    /// node opens, like every other tag. ABI 20.
+    pub on_button: *const KuiValue,
+    /// Which buttons `on_button` claims, as `KUI_BUTTONS_*` bits
+    /// (`Buttons::bits`); 0 is all three. ABI 20.
+    pub buttons: u32,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a
@@ -2239,6 +2247,13 @@ pub const KUI_MENU_ACTION_SET_CLIPBOARD_SECRET: u32 = 3;
 /// (`kui_input_paste`, backlog F84) — `ClipboardMarks::bits`.
 pub const KUI_PASTE_CONCEALED: u32 = 1 << 0;
 pub const KUI_PASTE_TRANSIENT: u32 = 1 << 1;
+
+/// `KUI_BUTTONS_*`: the buttons `KuiSpec.on_button` claims
+/// (`KuiSpec.buttons`, backlog F104) — `Buttons::bits`, where none set is
+/// all three.
+pub const KUI_BUTTONS_SECONDARY: u32 = kui_core::Buttons::SECONDARY.bits();
+pub const KUI_BUTTONS_MIDDLE: u32 = kui_core::Buttons::MIDDLE.bits();
+pub const KUI_BUTTONS_OTHER: u32 = kui_core::Buttons::OTHER.bits();
 
 /// `KUI_OWED_*`: the bits of what `kui_owed` returns — `kui_animating`
 /// by kind (backlog F64).

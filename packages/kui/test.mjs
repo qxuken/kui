@@ -75,7 +75,8 @@ const SAMPLE = {
  *  a sample above 1 clamps straight back to it. */
 // The align rows' last value is `baseline`, which means nothing on the
 // main axis or a column's cross axis, so they take a value that does.
-const SAMPLE_BY_NAME = { opacity: 0.5, mainAlign: 'spaceEvenly', crossAlign: 'end' };
+// `buttons` is a list of names, and the shared string sample names none.
+const SAMPLE_BY_NAME = { opacity: 0.5, mainAlign: 'spaceEvenly', crossAlign: 'end', buttons: 'middle' };
 
 test('protocol exports a version and the schema rows', () => {
   const p = protocol();
@@ -123,6 +124,7 @@ const READBACK = {
   onHover: (n) => n.events.hover?.kind === 't',
   onContextMenu: (n) => n.events['context-menu']?.kind === 't',
   onForceClick: (n) => n.events['force-click']?.kind === 't',
+  onButton: (n) => n.events.button?.kind === 't',
   onLayout: (n) => n.events.layout?.kind === 't',
   modal: (n) => n.events.modal?.kind === 't',
   role: (n) => n.role === 'terminal',
@@ -3292,11 +3294,57 @@ test('onContextMenu answers the secondary button and nothing else', () => {
   assert.notEqual(evs[0].key, rowKey);
   ctx.mouse(false, 1, 'secondary');
 
-  // Nothing routes the middle button yet.
+  // A middle press no `onButton` claims routes nowhere.
   ctx.mouse(true, 1, 'middle');
   ctx.mouse(false, 1, 'middle');
   assert.deepEqual(ctx.pollEvents(), []);
   assert.throws(() => ctx.mouse(true, 1, 'left'), /unknown mouse button/);
+});
+
+// Backlog F104: the non-primary buttons on the node that claims them,
+// captured from press to release, the secondary one left to the menu when
+// the mask says so.
+test('onButton hears the middle button from press to release, wherever it goes', () => {
+  const ctx = new Ctx();
+  const tree = box({ width: 'grow', height: 'grow', onContextMenu: { kind: 'menu' } }, [
+    box({ width: 100, height: 50, onButton: { kind: 'pane' }, buttons: 'middle' }, [], 'pane'),
+  ]);
+  ctx.frame(320, 240, 1, tree);
+  ctx.cursor(20, 30);
+  ctx.pollEvents();
+  ctx.mouse(true, 1, 'middle');
+  ctx.cursor(200, 100);
+  ctx.mouse(false, 1, 'middle');
+  const evs = ctx.pollEvents();
+  assert.deepEqual(
+    evs.map((e) => e.payload),
+    [
+      { kind: 'button', phase: 'press', button: 'middle', x: 20, y: 30, clicks: 1, tag: { kind: 'pane' } },
+      { kind: 'button', phase: 'move', button: 'middle', x: 200, y: 100, tag: { kind: 'pane' } },
+      { kind: 'button', phase: 'release', button: 'middle', x: 200, y: 100, tag: { kind: 'pane' } },
+    ],
+  );
+  assert.ok(evs.every((e) => e.key === evs[0].key), 'the release is the pane\'s, off it');
+
+  // `buttons: 'middle'` leaves the secondary button to the menu around it.
+  ctx.cursor(20, 30);
+  ctx.mouse(true, 1, 'secondary');
+  assert.deepEqual(ctx.pollEvents().map((e) => e.payload.kind), ['contextmenu']);
+  ctx.mouse(false, 1, 'secondary');
+  ctx.pollEvents();
+
+  // Claimed, it is the pane's instead.
+  const all = box({ width: 'grow', height: 'grow', onContextMenu: { kind: 'menu' } }, [
+    box({ width: 100, height: 50, onButton: { kind: 'pane' } }, [], 'pane'),
+  ]);
+  ctx.frame(320, 240, 1, all);
+  ctx.pollEvents();
+  ctx.mouse(true, 1, 'secondary');
+  assert.deepEqual(
+    ctx.pollEvents().map((e) => [e.payload.kind, e.payload.phase, e.payload.button]),
+    [['button', 'press', 'secondary']],
+  );
+  ctx.mouse(false, 1, 'secondary');
 });
 
 test('a right-click leaves keyboard focus where it was', () => {
@@ -3933,7 +3981,7 @@ const SCENE_TREES = {
     ]),
   controls: () =>
     root({}, [
-      box({ pad: 10, gap: 6, onContextMenu: { kind: 'menu' } }, [
+      box({ pad: 10, gap: 6, onContextMenu: { kind: 'menu' }, onButton: { kind: 'panel' }, buttons: 'middle' }, [
         el('button', { onClick: { kind: 'go' }, description: 'Starts the run' }, ['go']),
         el('button', { onClick: { kind: 'stop' }, label: 'Stop the run', disabled: true, tooltip: 'Nothing is running' }, ['stop']),
         el('edit', { initial: 'hello, on two lines in a narrow field', size: 13, width: 160, wrap: 'word', label: 'Note' }, [], 'note'),
@@ -4735,6 +4783,8 @@ function driveScene(env, steps, build) {
     else if (step[0] === 'mouseup') ctx.mouse(false);
     else if (step[0] === 'secondarydown') ctx.mouse(true, 1, 'secondary');
     else if (step[0] === 'secondaryup') ctx.mouse(false, 1, 'secondary');
+    else if (step[0] === 'middledown') ctx.mouse(true, 1, 'middle');
+    else if (step[0] === 'middleup') ctx.mouse(false, 1, 'middle');
     else if (step[0] === 'scroll') ctx.scroll(step[1], step[2]);
     else if (step[0] === 'tab') ctx.key('tab');
     else if (step[0] === 'shifttab') ctx.key('tab', { shift: true });
@@ -4892,6 +4942,9 @@ function sceneReport(name, env, steps, { ctx, events, commands, audio }) {
     // A scroll's lines ride the same way — the whole lines a grid's notch
     // covers, `-` off a grid — so a lost carry disagrees here (ADR 0029).
     if (p?.kind === 'scroll') tag += ` ${p.lines ?? '-'}`;
+    // A held button's phase and which button ride the same way (backlog
+    // F104): a binding that lost the mask claims the secondary presses.
+    if (p?.kind === 'button') tag += ` ${p.phase} ${p.button ?? '-'}`;
     // A drop's phase and its path count ride the same way (ADR 0031).
     if (p?.kind === 'drop') tag += ` ${p.phase} ${p.paths.length}`;
     // A paste's markers ride the same way, each only when set (backlog F84).

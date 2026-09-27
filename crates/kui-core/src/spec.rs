@@ -5,6 +5,7 @@ use crate::color::Color;
 use crate::cursor::CursorShape;
 use crate::enter::Enter;
 use crate::geom::Edges;
+use crate::input::Buttons;
 use crate::keyframes::Keyframe;
 use crate::value::Value;
 use crate::window::{WindowButton, WindowRole};
@@ -800,6 +801,34 @@ pub struct EventSpec {
     /// what the core cannot guess — a force click on a chart, a map, a
     /// timeline.
     pub on_force_click: Option<Value>,
+    /// The non-primary buttons as events (backlog F104): a press of a
+    /// button in [`buttons`](Self::buttons) over this node emits
+    /// `{kind="button", phase="press", button, x, y, clicks, tag}` on it
+    /// with this payload under `tag`, and the button is then captured by
+    /// the node — every pointer move while it is held arrives as
+    /// `phase="move"` and its release as `phase="release"`, on this node
+    /// wherever the pointer is. `button` is `"secondary"`, `"middle"` or,
+    /// for a button past those, its [`crate::MouseButton::code`]; `x`/`y`
+    /// are logical viewport coordinates, and on a `cells` grid the events
+    /// carry `cell: {row, col}` as a click does. Several buttons may be
+    /// held at once, each its own capture; a primary drag is untouched.
+    ///
+    /// Asked of the topmost node under the pointer, and when that node
+    /// claims no such button the press reaches the nearest enclosing node
+    /// that does, as a context menu's does: a disabled node's own is
+    /// skipped and the walk stops at the modal boundary. A claimed
+    /// secondary press is this event *instead of* a `contextmenu` event
+    /// and the stock menu — a nearer `on_context_menu` still wins, being
+    /// the nested declaration. Like every non-primary press it moves no
+    /// focus, places no caret and touches no selection or scrollbar. What
+    /// it is for: a terminal's middle-click paste, and the mouse reports a
+    /// program in it asked for. Null = the behaviour without a tag.
+    pub on_button: Option<Value>,
+    /// Which non-primary buttons [`on_button`](Self::on_button) claims:
+    /// all three kinds unless the node says otherwise. A pane that wants
+    /// the middle button and leaves the secondary one to its context menu
+    /// says [`Buttons::MIDDLE`].
+    pub buttons: Buttons,
     /// Scroll events: the wheel over this node emits `{kind="scroll", x,
     /// y, dx, dy, lines, tag}` with this payload under `tag` — the delta
     /// in logical px as the driver reported it (positive `dy` is the wheel
@@ -885,6 +914,8 @@ impl EventSpec {
         key_up: false,
         on_context_menu: None,
         on_force_click: None,
+        on_button: None,
+        buttons: Buttons::ALL,
         on_scroll: None,
         on_hover: None,
         on_drop: None,
@@ -1271,6 +1302,7 @@ impl NodeSpec {
                     || e.on_key.is_some()
                     || e.on_context_menu.is_some()
                     || e.on_force_click.is_some()
+                    || e.on_button.is_some()
                     || e.on_hover.is_some()
                     || e.on_drop.is_some()
                     || e.on_change.is_some()
@@ -1980,6 +2012,23 @@ impl NodeSpec {
     /// `on_force_click` field).
     pub fn on_force_click(mut self, tag: impl Into<Value>) -> Self {
         self.events_mut().on_force_click = Some(tag.into());
+        self
+    }
+
+    /// Asks for the non-primary buttons pressed over this node as events,
+    /// each captured by it until its release (see the `on_button` field):
+    /// `{kind="button", phase, button, x, y, tag}`. Every such button
+    /// unless [`NodeSpec::buttons`] narrows it.
+    pub fn on_button(mut self, tag: impl Into<Value>) -> Self {
+        self.events_mut().on_button = Some(tag.into());
+        self
+    }
+
+    /// Which non-primary buttons `on_button` claims (see the `buttons`
+    /// field): `Buttons::MIDDLE`, `Buttons::SECONDARY | Buttons::MIDDLE`.
+    /// Meaningless without `on_button`.
+    pub fn buttons(mut self, buttons: Buttons) -> Self {
+        self.events_mut().buttons = buttons;
         self
     }
 

@@ -160,6 +160,10 @@ fn every_schema_prop_has_a_c_counterpart() {
             // KUI_MIN_FIT sentinel.
             Kind::Min => Parsed::Min(Min::FIT),
             Kind::Msg | Kind::Tag => Parsed::Msg(Value::Int(7)),
+            // `buttons` is a list of three names, and a string of none of
+            // them claims nothing, which the C bits cannot say (zero is
+            // all three): its sample is one of the names.
+            Kind::Str if def.name == "buttons" => Parsed::Str("middle".into()),
             Kind::Str => Parsed::Str("name".into()),
             // C names the stock three by index (`KUI_FONT_*`) and an
             // installed family by its handle (`kui_font_add_system`), so
@@ -281,6 +285,8 @@ fn every_schema_prop_has_a_c_counterpart() {
             "onFocus" => s.on_focus = &layout_tag,
             "rules" => s.rules = C,
             "ruleWidth" => s.rule_w = F,
+            "onButton" => s.on_button = &layout_tag,
+            "buttons" => s.buttons = KUI_BUTTONS_MIDDLE,
             "initialFocus" => s.initial_focus = 1,
             "disabled" => s.disabled = 1,
             "focusBg" => s.focus_bg = C,
@@ -459,6 +465,8 @@ fn fully_populated_spec_matches_the_rust_builder() {
         on_focus: &menu_tag,
         rules: 0x2b_33_50_ff,
         rule_w: 2.0,
+        on_button: &menu_tag,
+        buttons: KUI_BUTTONS_SECONDARY | KUI_BUTTONS_MIDDLE,
         disabled: 1,
         focus_bg: 0x11_22_33_ff,
         tooltip: KuiStr {
@@ -550,6 +558,8 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .on_focus("cm")
         .rules(Color::hex(0x2b3350ff))
         .rule_width(2.0)
+        .on_button("cm")
+        .buttons(kui_core::Buttons::SECONDARY | kui_core::Buttons::MIDDLE)
         .initial_focus()
         .disabled(true)
         .focus_bg(Color::hex(0x11_22_33_ff))

@@ -330,6 +330,7 @@ impl Core {
                 ("drop", &ev.on_drop),
                 ("context-menu", &ev.on_context_menu),
                 ("force-click", &ev.on_force_click),
+                ("button", &ev.on_button),
                 ("layout", &ev.on_layout),
                 ("modal", &ev.modal),
             ] {

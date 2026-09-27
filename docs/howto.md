@@ -737,6 +737,31 @@ input and every frame; headless, `takeMenuActions()` hands them out and
 [`drag` and `text` events](props.md#events) ·
 [alpha.12](../CHANGELOG.md#010-alpha12-2026-09-14)
 
+### How do I hear the middle button, or give a terminal's program the mouse?
+
+Declare `onButton` on the pane. A middle press over it — or over anything
+inside it that claims no button of its own — is `{kind:"button",
+phase:"press", button:"middle", x, y, clicks, tag}` on the pane, and the
+button is then the pane's until it comes up: every move while it is held
+is `phase:"move"` and the release `phase:"release"`, on the pane wherever
+the pointer went, so a drag that leaves the pane still ends there. On a
+`cells` grid each carries `cell: {row, col}`, clamped to the grid, which
+is what a terminal's mouse report needs; a paste is the middle press
+answered with `requestPaste()`.
+
+The secondary button is claimed too unless you narrow it: `buttons:
+"middle"` leaves the right button to the pane's `onContextMenu` and the
+stock menu, and `buttons: "secondary middle"` takes both, which is what a
+terminal whose program turned mouse reporting on wants — declare the one
+or the other each frame from that mode. A further button (back, forward)
+is `"other"`, and its events carry its number. None of these presses
+moves focus or the caret; the primary button presses, drags and clicks as
+it always did.
+
+[`onButton` and `buttons` rows](props.md#container-props) ·
+[`button` event](props.md#events) ·
+[alpha.22 `### Added`](../CHANGELOG.md#010-alpha22-unreleased)
+
 ### How do I keep a pasted password out of my editor's history, and copy one?
 
 Read the markers on the paste. A password manager copies a secret with

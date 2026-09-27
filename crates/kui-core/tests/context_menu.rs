@@ -266,8 +266,9 @@ fn a_secondary_press_does_not_break_a_drag() {
     );
 }
 
-/// Nothing routes the middle button yet — but it must not be mistaken for
-/// a primary press on the way through.
+/// A middle press no `on_button` claims routes nowhere (backlog F104 is
+/// the node that claims it) — and it must not be mistaken for a primary
+/// press on the way through.
 #[test]
 fn the_middle_button_routes_nowhere() {
     let mut core = Core::new();

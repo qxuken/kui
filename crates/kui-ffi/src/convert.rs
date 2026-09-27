@@ -208,6 +208,14 @@ pub(crate) fn spec_of(
     if s.rule_w != 0.0 {
         spec = spec.rule_width(s.rule_w);
     }
+    if let Some(tag) = unsafe { s.on_button.as_ref() } {
+        spec = spec.on_button(tag.0.clone());
+    }
+    // A zeroed field is all three, the field a host that never set it
+    // left; `Buttons::from_bits` reads zero as none.
+    if s.buttons != 0 {
+        spec = spec.buttons(kui_core::Buttons::from_bits(s.buttons));
+    }
     if s.selectable != 0 {
         spec = spec.selectable();
     }

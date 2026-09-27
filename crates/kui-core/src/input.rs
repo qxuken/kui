@@ -200,8 +200,12 @@ impl ClipboardMarks {
 /// [`MouseButton::Secondary`] press asks the node under it for a context
 /// menu (`NodeSpec::on_context_menu`) and touches nothing else — not
 /// focus, not the caret, not a scrollbar thumb — because a right-click on
-/// a selection has to leave that selection alone. Nothing routes the
-/// remaining buttons yet; they arrive so a driver need not drop them.
+/// a selection has to leave that selection alone. Every non-primary
+/// button, the secondary one included, reaches a node that claims it with
+/// `NodeSpec::on_button` (backlog F104): its press, the motion while it is
+/// held and its release, captured by that node; a claimed secondary press
+/// is that node's instead of a context menu. A non-primary press moves no
+/// focus, caret, selection or scrollbar either way.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum MouseButton {
     /// The button that clicks and drags. The OS has already applied a
@@ -262,6 +266,100 @@ impl MouseButton {
     /// strings: the inverse of [`Self::name`].
     pub fn from_name(name: &str) -> Option<Self> {
         Self::NAMED.into_iter().find(|b| b.name() == Some(name))
+    }
+
+    /// The value a `button` event carries for this button (backlog
+    /// F104): its name for a named one, its [`MouseButton::code`] for an
+    /// `Other`.
+    pub fn to_value(self) -> Value {
+        match self.name() {
+            Some(name) => Value::str(name),
+            None => Value::Int(self.code() as i64),
+        }
+    }
+}
+
+/// Which of the non-primary buttons a node's `on_button` claims (backlog
+/// F104): [`Buttons::SECONDARY`], [`Buttons::MIDDLE`] and
+/// [`Buttons::OTHER`] (every button past the named three), or-ed together.
+/// A node declaring `on_button` claims [`Buttons::ALL`] unless it says
+/// otherwise. The primary button is never in it: that one presses, drags
+/// and clicks for every node.
+///
+/// The C ABI's spelling is the same bits (`KuiSpec.buttons`: 1 secondary,
+/// 2 middle, 4 other), a zeroed field meaning all three; the schema's is
+/// the names, `"secondary middle"`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Buttons(u8);
+
+impl Buttons {
+    /// Claims nothing: an `on_button` that hears no press.
+    pub const NONE: Self = Self(0);
+    /// The context-menu button. Claimed, its press is the owner's
+    /// `button` event instead of a `contextmenu` event or the stock menu.
+    pub const SECONDARY: Self = Self(1);
+    pub const MIDDLE: Self = Self(2);
+    /// Every button past the named three (back, forward, thumb buttons).
+    pub const OTHER: Self = Self(4);
+    pub const ALL: Self = Self(7);
+
+    /// Whether `button` is in the set. The primary button never is.
+    pub fn contains(self, button: MouseButton) -> bool {
+        let bit = match button {
+            MouseButton::Primary => return false,
+            MouseButton::Secondary => Self::SECONDARY,
+            MouseButton::Middle => Self::MIDDLE,
+            MouseButton::Other(_) => Self::OTHER,
+        };
+        self.0 & bit.0 != 0
+    }
+
+    /// As bits, the C ABI's spelling: 1 secondary, 2 middle, 4 other.
+    pub const fn bits(self) -> u32 {
+        self.0 as u32
+    }
+
+    /// From [`Buttons::bits`]; unknown bits are ignored. Zero is
+    /// [`Buttons::NONE`] here: it is the C binding that reads a zeroed
+    /// field as all three, being a field the host never set.
+    pub fn from_bits(bits: u32) -> Self {
+        Self((bits & Self::ALL.0 as u32) as u8)
+    }
+
+    /// From the schema's spelling: names separated by spaces or commas —
+    /// `"middle"`, `"secondary middle"`, `"secondary, middle, other"`. A
+    /// word that is none of the three is skipped, so a string of none of
+    /// them claims nothing: a typo never takes the secondary button away
+    /// from a context menu.
+    pub fn parse(names: &str) -> Self {
+        names.split(|c: char| c == ',' || c.is_whitespace()).fold(
+            Self::NONE,
+            |set, name| match name {
+                "secondary" => set | Self::SECONDARY,
+                "middle" => set | Self::MIDDLE,
+                "other" => set | Self::OTHER,
+                _ => set,
+            },
+        )
+    }
+}
+
+impl Default for Buttons {
+    fn default() -> Self {
+        Self::ALL
+    }
+}
+
+impl std::ops::BitOr for Buttons {
+    type Output = Self;
+    fn bitor(self, rhs: Self) -> Self {
+        Self(self.0 | rhs.0)
+    }
+}
+
+impl std::ops::BitOrAssign for Buttons {
+    fn bitor_assign(&mut self, rhs: Self) {
+        self.0 |= rhs.0;
     }
 }
 
@@ -983,6 +1081,15 @@ pub struct MenuOwner {
 /// same three fields as [`MenuOwner`], resolved by the same walk.
 pub type DropOwner = MenuOwner;
 
+/// The node a non-primary button's press went to and whose capture it is
+/// until the release (backlog F104): the nearest node at or above the
+/// region pressed whose `on_button` claims that button. The same three
+/// fields as [`MenuOwner`], resolved by the core at the press rather than
+/// carried on every region — a middle press is one event in a session,
+/// and a tag on `HitRegion` would be a clone on every region of every
+/// frame (C15).
+pub type ButtonOwner = MenuOwner;
+
 /// The shape inside a region's rect that a point has to be in to hit it
 /// (`docs/adr/0026-hit-testing-by-shape.md`). The rect is always tested
 /// first, so a shape is evaluated only for the few regions under the
@@ -1314,6 +1421,18 @@ impl DragState {
     }
 }
 
+/// A non-primary button held on the node that claimed it (backlog F104):
+/// its motion and its release go to `owner` wherever the pointer is.
+#[derive(Clone, Debug)]
+struct ButtonCapture {
+    button: MouseButton,
+    owner: ButtonOwner,
+    /// Where the pointer was last seen: a repeat at the same point is not
+    /// a `move`, and a release with the cursor outside the window happens
+    /// here.
+    last: Vec2,
+}
+
 #[derive(Default)]
 pub struct Interaction {
     /// In paint order: later entries are on top.
@@ -1341,6 +1460,10 @@ pub struct Interaction {
     pub(crate) sound_requests: Vec<crate::resources::SoundId>,
     /// Pointer-captured drag on an `on_drag` node.
     drag: Option<DragState>,
+    /// The non-primary buttons held on the node that claimed each with
+    /// `on_button` (backlog F104), one capture per button, in press order.
+    /// Empty — and unallocated — in an app that declares none.
+    held_buttons: Vec<ButtonCapture>,
     /// Pointer-captured slide on a slider that declared `on_change`: the
     /// node, its track, and the last value proposed, so a move that lands
     /// on the same step proposes nothing.
@@ -1614,6 +1737,73 @@ impl Interaction {
         UiEvent::on(state.origin, state.key, payload).tagged(Some(&state.tag))
     }
 
+    /// `{kind="button", phase, button, x, y, clicks?, tag}` on the owner
+    /// (backlog F104); `clicks` on the press only.
+    fn button_event(
+        owner: &ButtonOwner,
+        button: MouseButton,
+        phase: &str,
+        p: Vec2,
+        clicks: Option<u8>,
+    ) -> UiEvent {
+        let mut fields = vec![
+            ("kind", Value::str("button")),
+            ("phase", Value::str(phase)),
+            ("button", button.to_value()),
+            ("x", Value::Float(p.x as f64)),
+            ("y", Value::Float(p.y as f64)),
+        ];
+        if let Some(clicks) = clicks {
+            fields.push(("clicks", Value::Int(clicks as i64)));
+        }
+        UiEvent::on(owner.origin, owner.key, Value::map(fields)).tagged(Some(&owner.tag))
+    }
+
+    /// A non-primary press the core found an `on_button` owner for
+    /// (backlog F104): the owner hears `press`, and the button is captured
+    /// by it — every move while it is held and its release go to the same
+    /// node wherever the pointer is. A second press of a button already
+    /// held (its release lost to another window) starts over. Nothing else
+    /// happens: no pressed state, no focus, no context menu. Returns how
+    /// many pointer-made events it pushed, as `handle` does.
+    pub(crate) fn press_button(
+        &mut self,
+        button: MouseButton,
+        clicks: u8,
+        owner: ButtonOwner,
+        out: &mut Vec<UiEvent>,
+    ) -> usize {
+        out.append(&mut self.pending);
+        let Some(p) = self.cursor else {
+            return 0;
+        };
+        out.push(Self::button_event(&owner, button, "press", p, Some(clicks)));
+        self.held_buttons.retain(|h| h.button != button);
+        self.held_buttons.push(ButtonCapture {
+            button,
+            owner,
+            last: p,
+        });
+        1
+    }
+
+    /// Lets go of every held button whose owner `alive` says is gone from
+    /// the frame (backlog F104): nothing is left to hear its release.
+    pub(crate) fn drop_gone_buttons(&mut self, alive: impl Fn(Key) -> bool) {
+        if !self.held_buttons.is_empty() {
+            self.held_buttons.retain(|h| alive(h.owner.key));
+        }
+    }
+
+    /// The node holding `button`'s capture, if a claimed press of it is
+    /// held (backlog F104).
+    pub fn button_owner(&self, button: MouseButton) -> Option<Key> {
+        self.held_buttons
+            .iter()
+            .find(|h| h.button == button)
+            .map(|h| h.owner.key)
+    }
+
     /// Returns how many of the events at the end of `out` a press made —
     /// a drag in any phase, a click on the release — as against the
     /// hover, context-menu and modifier events it also raises. That is
@@ -1651,6 +1841,15 @@ impl Interaction {
                         pointer_made += 1;
                     }
                 }
+                // Every held button's owner hears the motion, with no
+                // slop: a terminal reports a drag of one cell (F104).
+                for held in &mut self.held_buttons {
+                    if p != held.last {
+                        held.last = p;
+                        out.push(Self::button_event(&held.owner, held.button, "move", p, None));
+                        pointer_made += 1;
+                    }
+                }
             }
             InputEvent::CursorLeft => {
                 self.cursor = None;
@@ -1661,6 +1860,8 @@ impl Interaction {
                 // state, so a release cannot become a click, and a drag
                 // already in flight keeps its capture. A secondary press
                 // asks whatever is under the pointer for a context menu.
+                // A press an `on_button` node claimed never gets here: the
+                // core resolves it and calls `press_button` instead.
                 if button == MouseButton::Secondary
                     && let Some(p) = self.cursor
                     && let Some(ev) = self.hit_at(p).and_then(|h| Self::context_menu_event(h, p))
@@ -1735,7 +1936,16 @@ impl Interaction {
             InputEvent::DragCancel => self.drag_cancel(out),
             // The core's, answered before the pointer is asked.
             InputEvent::Files(_) => {}
-            InputEvent::MouseUp { button } if button != MouseButton::Primary => {}
+            // A non-primary release resolves no click; it ends the capture
+            // its press began, if an `on_button` node claimed that press.
+            InputEvent::MouseUp { button } if button != MouseButton::Primary => {
+                if let Some(i) = self.held_buttons.iter().position(|h| h.button == button) {
+                    let held = self.held_buttons.remove(i);
+                    let p = self.cursor.unwrap_or(held.last);
+                    out.push(Self::button_event(&held.owner, button, "release", p, None));
+                    pointer_made += 1;
+                }
+            }
             InputEvent::MouseUp { .. } => {
                 let dragged = self.drag.take().inspect(|drag| {
                     let p = self.cursor.unwrap_or(drag.last);
