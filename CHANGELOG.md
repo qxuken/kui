@@ -46,8 +46,16 @@ was the first bare bump to break an app in five releases).
   target: drop the `.into()`.
 - Rust: `AccessSpec` gains `tooltip` (under Added), so a struct literal
   of it without `..` needs the field.
+- C: `KuiSpec` gains `keep_focus` after `pixel_snap`, under the same
+  ABI 20 (under Added, DX10). On a 64-bit target it takes the struct's
+  tail padding, so the size holds at 608 bytes, but a host that did not
+  recompile leaves those bytes to chance. Recompile; zeroed, a press
+  focuses as it did.
+- kui-devtools' `Drive<'c>` is an alias for the published
+  `kui_native::testing::Drive` over `&mut Core` (under Added, DX11); a
+  drive written against it compiles as it was.
 
-Four readings change:
+Seven readings change:
 
 - A square-cornered quad (a `bg`, a span's background, an image with no
   `radius`, a solid underline, a `fragment` node's box) covers each pixel
@@ -70,6 +78,18 @@ Four readings change:
   synthesized before the family's Bold was loaded draws in that Bold
   from the next frame, where it stayed synthesized until the text left
   the cache.
+- A sink's `text` event that answers a paste carries `pasted: true`
+  (under Added, DX14) — a host's paste reply, or any commit while a paste
+  is outstanding. A handler that matches the payload exactly sees one more
+  field.
+- The wheel over a scroller that scrolls on one axis passes the other
+  axis to the scroller or `onScroll` node under it (under Added, DX13),
+  where the inner one swallowed it and nothing moved.
+- `reveal` and `setScroll` by a label no frame has declared — Lua's
+  `env.reveal` / `env.set_scroll`, Node's `reveal` / `setScroll` — wait
+  for the frame to finish (under Added, DX15), where they threw "no node
+  is keyed". A label that frame does not declare either is the
+  `label-without-node` warning. `focus` and `access` still throw.
 
 ### Added
 
@@ -208,6 +228,75 @@ Four readings change:
   `with(spec, |ui| ui.text(…))` wrapper, `x as i64` into a `Value`,
   `.and_then(Value::as_str)` after a `get`, `Value::str("…")` around a
   tag, and `.self_at(…)` repeating `.at(…)`.
+
+- **Typed views of the core's own events, in Rust** (backlog DX7).
+  `ev.drag()`, `ev.key_press()`, `ev.text()`, `ev.scroll()`, `ev.hover()`,
+  `ev.modifiers()` and `ev.layout()` read a core event's payload into a
+  struct (`Drag`, `(KeyPhase, KeyPress)`, `TextInput`, `Scroll`,
+  `HoverPhase`, `KeyMods`, `Layout`), `None` for an event of another
+  kind; `ev.tag()` is the app's tag inside one, and `Drag::ratio()` the
+  pointer's place across the parent, 0 to 1 — a divider's split. The
+  payload stays the wire. `#[derive(Message)]` reads the app's half;
+  these are the core's. splitmux reads its keymap, modifiers and three
+  drags through them. Pinned against events real input produced.
+  *What you can delete:* a `KeyPress` rebuilt from `code`, `shift`,
+  `ctrl`, `alt`, `super` and `text`; `get("phase")` matched as strings;
+  a ratio worked out from `x` and `parent`.
+
+- **A key built from a label and an index** (backlog DX8).
+  `ui.open_key(key, spec)`, `with_key` and `leaf_key` open a node under
+  a key the caller built — `ui.child_key("gap").index(id)` — with no
+  string formatted and no clash with the sibling-index keys `_indexed`
+  gives. Two nodes under one key are `duplicate-key`, as two labels are;
+  a built key has no label for `key_of`.
+  *What you can delete:* `&format!("gap{id}")` labels, one of them
+  built twice for `child_key` and `with_keyed`; index offsets (`2000 +
+  i`, `1 << 32 | i`) kept to stay clear of the auto keys.
+
+- **`keepFocus`: a press that leaves the keyboard where it was**
+  (backlog DX10; `keep_focus` in Lua, Rust and on `KuiSpec`). A press on
+  the node or anywhere inside it acts — the click, the drag, the hover —
+  and keyboard focus stays with the editor or key sink that had it: a
+  toolbar, a tab strip, a divider. The node stays a Tab stop. The
+  corpus's chrome scene declares it on its window-button strip in all
+  four bindings.
+  *What you can delete:* taking focus back after a click on a toolbar
+  button — kawoosh's `reclaim_focus`, set in ten handlers.
+
+- **`kui_native::testing::Drive`: the headless driver, published**
+  (backlog DX11). The driver every example's `--headless` runs on, for
+  an app's own tests: it owns a `Core` (or borrows one), routes events
+  through its `Extensions` as the runner does, turns the node snapshot
+  on, and has `frame`, `click`, `click_key`, `double_click`, `drag`,
+  `wheel`, `move_to`, `hover`, `key`, `keys`, `text`, `commit`,
+  `focus`, `rect_of`, `texts_under`, `warnings`, `log` and `check`.
+  `framing()` frames after every gesture and once while a drag is held.
+  `key` gives a plain character or the space its text, as a keyboard
+  does.
+  *What you can delete:* a copy of kui-devtools' `Drive` (kawoosh's
+  `harness.rs`, 477 lines) — keep only the readings of your own tree.
+
+- **The wheel passes the axis a scroller does not scroll** (backlog
+  DX13). A `scrollY` list inside a `scrollX` strip moves the strip on a
+  sideways swipe; a diagonal notch moves each on its own axis. An
+  `onScroll` node still takes the whole notch.
+  *What you can delete:* a horizontal offset kept by the app and
+  re-set every frame because the list under the pointer ate the swipe.
+
+- **A paste's answer says it is one** (backlog DX14). The sink's `text`
+  event carries `pasted: true` when it answers a paste the app asked
+  for; an IME's commit never does. `TextInput::pasted` reads it in Rust.
+  *What you can delete:* a flag of the app's own, set on the ask and
+  cleared on the next `text`, to tell the clipboard's text from typing.
+
+- **`reveal` and `setScroll` by a label the frame has not declared
+  yet** (backlog DX15). `Core::reveal_label` / `set_scroll_label` (and
+  `Ui`'s) resolve when the frame finishes — the scroll before layout, so
+  that frame lays out at it — and Lua's and Node's string forms fall
+  back to them. A label the frame does not declare is the new
+  `label-without-node` warning.
+  *What you can delete:* `pcall` around `env.reveal` and a retry on the
+  frames after.
 
 ### Fixed
 

@@ -2352,8 +2352,11 @@ is `rg` over the tree as it stood at `1529e57`, or kawoosh at `94bfc0a`.
 The sweep found three things. Everything kawoosh has asked for by name
 (K1–K4, F76–F101) is built. Most of what is left is spelling, and six
 entries of it were **built the same day** (DX1–DX6, `2852e9a`, the
-repo migrated in `20a1988`). The rest is filed here, DX7–DX21, parked
-until a view asks unless the entry says otherwise.
+repo migrated in `20a1988`). The rest was filed here, DX7–DX21, and
+seven of those were built the same day too (DX7, DX8, DX10, DX11, DX13,
+DX14, DX15); DX16 was declined. Open: DX9 and DX17, which want an ADR
+each; DX12, whose home — Rust widgets or a door per binding — is the
+user's call; and DX18–DX21.
 
 Kawoosh can already delete some code without kui changing: the
 non-breaking-space padding in its Lua plugins (K3, alpha.13), string
@@ -2447,7 +2450,13 @@ node is hovered, the same path the prop takes. A stock widget given a
 `hint` clears the flag and floats its own. Pinned both ways (see the
 changelog).
 
-### `.` DX7 — The core's own event fields are untyped
+### `.` DX7 — The core's own event fields are untyped — **built 2026-09-27**
+
+**Built 2026-09-27** (`814e50e`) as `event.rs`: `drag()`, `key_press()`
+(named so because `key` is the node the event is about), `text()`,
+`scroll()`, `hover()`, `modifiers()`, `layout()` and `tag()`, with
+`Drag::ratio()`. splitmux moved onto them. Pinned against events real
+input produced (`tests/event_views.rs`).
 
 Kawoosh reads about 25 fields out of `Value`:
 - a drag's `phase`, `x`, `y`, `parent`, `cell`, `line`, `byte` and
@@ -2465,7 +2474,14 @@ plain struct with a `DragPhase` enum, read from the payload the
 bindings already share. The payload stays the wire; this is a Rust
 reading of it.
 
-### `.` DX8 — A key made from a label and an index is a `format!`, and indexes collide by hand
+### `.` DX8 — A key made from a label and an index is a `format!`, and indexes collide by hand — **built 2026-09-27**
+
+**Built 2026-09-27** (`86dd633`) as the smaller half:
+`Ui::open_key` / `with_key` / `leaf_key` over a key the caller built with
+`child_key(label).index(i)`, which `Key` already composed. Making every
+keyed verb generic over `("gap", i)` was not done — a built key has no
+label for `key_of` to find, so the tuple would have been a second
+spelling with a hole in it.
 
 - 11 `&format!("gap{}", id)` labels in kawoosh. Two of them are built
   twice, once for `child_key` and once for `with_keyed`
@@ -2497,7 +2513,13 @@ ADR 0008 and the closed C18 and C33 each note the gap; none filed it.
 applied before the next view. Wants an ADR (the `App` trait is every
 Rust app's), and a door per binding.
 
-### `.` DX10 — A click on any `on_click` node takes keyboard focus
+### `.` DX10 — A click on any `on_click` node takes keyboard focus — **built 2026-09-27**
+
+**Built 2026-09-27** (`e379aee`) as `keepFocus` / `keep_focus`, a flag
+rather than `focusOnClick={false}` because the schema's flags are
+positive. It holds for a press anywhere inside the node, so a toolbar
+opts out once. `press_focus` takes the chrome's exit; the flag lives in
+`EventSpec`. C: under ABI 20, into `KuiSpec`'s tail padding.
 
 Kawoosh sets `reclaim_focus = true` in 10 handlers and keeps a
 `focus_sink` to take focus back (`app.rs:481`, `2456-2517`;
@@ -2509,7 +2531,13 @@ focus, and the node stays in the Tab ring (AppKit's
 `refusesFirstResponder`, the web's `preventDefault` on `mousedown`). A
 prop in every binding.
 
-### `.` DX11 — No test driver an app can use, and kui's own tests bypass `testing`
+### `.` DX11 — No test driver an app can use, and kui's own tests bypass `testing` — **built 2026-09-27**
+
+**Built 2026-09-27** (`49f614f`) as the app-level half:
+`kui_native::testing::Drive`, generic over owning or borrowing the `Core`,
+with `Extensions` routing and `framing()`; kui-devtools' `Drive<'c>` is an
+alias. The core-level half — `kui_core::testing::frame` and moving kui's
+own 53 test files onto it — is not done: open, and cost only.
 
 Kawoosh's `harness.rs` is 477 lines and "mirrors kui-devtools's
 `Drive` (not a published crate)". In kui:
@@ -2550,7 +2578,12 @@ delegate to them, and migrate the tests.
 - `widgets::splitter(ui, label, axis, thickness, tag)`;
 - a drag payload that carries `ratio` within the parent.
 
-### `.` DX13 — The innermost scroller takes both wheel axes
+### `.` DX13 — The innermost scroller takes both wheel axes — **built 2026-09-27**
+
+**Built 2026-09-27** (`94033c9`): the notch walks the scroll regions
+under the pointer from the top, each scroller taking its own axes; a
+handler still takes all of it. No chaining at a scroller's end — an
+axis a scroller scrolls is its, at the end or not.
 
 `dispatch.rs` gives the whole wheel delta to the innermost scroller, so
 a vertical scroller inside a horizontal one never passes x on. Kawoosh
@@ -2559,7 +2592,11 @@ owns its horizontal offset and sets it every frame
 on one axis passes the other axis's delta to the next scroller up, or to
 its `on_scroll`.
 
-### `.` DX14 — A paste answer cannot be told from typing
+### `.` DX14 — A paste answer cannot be told from typing — **built 2026-09-27**
+
+**Built 2026-09-27** (`c0cd662`): `pasted: true` on the sink's `text`
+event for a `Paste`, or any commit while a paste is outstanding. The
+tagged request was not needed once the answer says what it is.
 
 `request_paste` answers `{kind:"text"}`, the same event as a keystroke,
 and only one request can be outstanding. Kawoosh juggles `clip_probe`
@@ -2568,7 +2605,14 @@ and `awaiting_paste` to read the clipboard into a register
 **Do.** `pasted = true` on the answer, as F84 added `concealed`, and a
 tag on the request.
 
-### `.` DX15 — Lua's `reveal` and `set_scroll` by a label not yet declared fail
+### `.` DX15 — Lua's `reveal` and `set_scroll` by a label not yet declared fail — **built 2026-09-27**
+
+**Built 2026-09-27** (`2f2cbe3`): `Core::reveal_label` /
+`set_scroll_label`, resolved at the frame's end per asking origin; Lua's
+and Node's string forms fall back to them, and a label the frame does
+not declare is `label-without-node` — C25's typo, a warning now rather
+than an error. Node gets it too: its `reveal` resolved through the last
+frame only.
 
 On a pane's first frame the label is not declared yet. Kawoosh wraps
 the calls in `pcall` and retries over several frames
@@ -2576,7 +2620,11 @@ the calls in `pcall` and retries over several frames
 `lua/theme_lab.lua:291`). **Do.** Resolve a string label when the frame
 finishes, as `focus_next` already does.
 
-### `.` DX16 — A theme colour cannot be a fragment param
+### `.` DX16 — A theme colour cannot be a fragment param — declined with a condition
+
+**Declined 2026-09-27, until a second view asks.** One site, four lines
+of Lua. A function on `env` is a verb-table row (`schema::DOORS`) with a
+C and a Node cell, which costs more than the four lines it removes.
 
 Kawoosh's `boot.lua:596-599` decodes `#rrggbbaa` into four floats by
 hand to feed the rounded-selection fragment. **Do.** `env.rgba(c)`,
