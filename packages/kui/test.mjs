@@ -4187,7 +4187,7 @@ const SCENE_TREES = {
   // docs/adr/0005-the-paint-vocabulary.md: three subtrees the view stops
   // declaring in phase 1 — `fade` still in flight at the end, `blink`
   // already over, `flash` back in phase 2 while its own exit runs — then
-  // `bulk`, one node past the budget, in phase 3 and 600 one-node rows in
+  // `bulk`, one node past the budget, in phase 3 and 4200 one-node rows in
   // phase 4, each frame refused whole (docs/adr/0012-the-exit-budget.md);
   // and two that never leave, so two Tabs say whether the ring has a place
   // for a ghost.
@@ -4538,10 +4538,10 @@ SCENE_TREES.drag = () =>
 
 /** `conformance::EXIT_BULK_ROWS`: with its own root, one node past
  *  `kui_core::depart::MAX_NODES`, so the whole subtree is refused. */
-const EXIT_BULK_ROWS = 512;
+const EXIT_BULK_ROWS = 4096;
 /** `conformance::EXIT_ROWS`: more one-node subtrees than the budget,
  *  dropped in one frame and refused whole (ADR 0012). */
-const EXIT_ROWS = 600;
+const EXIT_ROWS = 4200;
 /** A fixed-size box holding at most one departing node, so dropping that
  *  node moves nothing else on the frame the ghost is compared on. */
 const slot = (key, h, child) =>

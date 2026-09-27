@@ -557,15 +557,23 @@ fn frame_10k_rects_one_exit(bencher: divan::Bencher) {
     bencher.bench_local(|| frame(&mut core));
 }
 
-/// The mass removal the budget is for: 1000 rows, every one declaring an
-/// `exit`, dropped in a single frame. What is measured is that frame — the
-/// key diff that notices them all gone, the count of what they come to,
-/// and — since ADR 0012 judges a removal whole and this one is over the
-/// budget — the refusal of the lot: no subtree is copied. Before that ADR
-/// this row also paid for 512 copies, which is why it fell.
+/// 1000 rows, every one declaring an `exit`, dropped in a single frame:
+/// the key diff that notices them all gone, the count of what they come
+/// to, and 1000 subtree copies into the store. It was the refusal of the
+/// lot while the budget was 512 (ADR 0012); since it is 4096 (backlog
+/// DX23) the rows fit, and `drop_5k_rows_declaring_exit` is the refusal.
 #[divan::bench]
 fn drop_1k_rows_declaring_exit(bencher: divan::Bencher) {
     bench_drop(bencher, 1000, true)
+}
+
+/// The mass removal the budget is for: 5000 rows declaring an `exit`,
+/// over the 4096-node budget, dropped in one frame — the diff, the count,
+/// and the refusal of the lot, since ADR 0012 judges a removal whole: no
+/// subtree is copied.
+#[divan::bench]
+fn drop_5k_rows_declaring_exit(bencher: divan::Bencher) {
+    bench_drop(bencher, 5000, true)
 }
 
 /// The same pair of frames with no `exit` on the rows: what dropping a
@@ -648,7 +656,8 @@ fn frame_1k_typical_with_100_floats(bencher: divan::Bencher) {
 }
 
 /// The frame *after* a mass removal: nothing left to diff, and the budget's
-/// worth of frozen subtrees replayed on top of an empty view.
+/// worth of frozen subtrees — 4096 since backlog DX23, 512 before —
+/// replayed on top of an empty view.
 #[divan::bench]
 fn replay_a_full_depart_store(bencher: divan::Bencher) {
     let mut core = Core::new();

@@ -1013,9 +1013,10 @@ that prop costs.
 | `frame_10k_rects_all_declaring_exit` | every cell also declares an `exit`, so the whole frame is kept for the next one to diff against | ~2.88 ms |
 | `frame_10k_rects_one_exit` | the same 10k grid with a single cell declaring an `exit` | ~748 µs |
 | `drop_1k_rows_plain` | 1k rows removed from the tree in one frame, no exits declared | ~63.4 µs |
-| `drop_1k_rows_declaring_exit` | the same removal with exits declared — over the 512-node budget, so ADR 0012 refuses it whole: the diff and the count, and no copies | ~151 µs |
+| `drop_1k_rows_declaring_exit` | the same removal with exits declared — under the 4096-node budget (512 until backlog DX23), so all 1000 are copied into the store | ~288 µs |
+| `drop_5k_rows_declaring_exit` | 5000 rows with exits declared — over the budget, so ADR 0012 refuses it whole: the diff and the count, and no copies | ~880 µs |
 | `drop_500_rows_declaring_exit` | 500 rows with exits declared, under the budget, so all 500 are copied into the store | ~134 µs |
-| `replay_a_full_depart_store` | replaying a saturated depart store (the 512-node budget) for one frame | ~16.1 µs |
+| `replay_a_full_depart_store` | replaying a saturated depart store (the 4096-node budget; 512 until backlog DX23) for one frame | ~140 µs |
 | `frame_10k_chips_unwrapped` | 10k chips in 100 rows, one line per row | ~649 µs |
 | `frame_10k_chips_wrapped` | the same tree with every row breaking onto several lines | ~831 µs |
 | `deep_nesting_64_levels` | 16 chains nested 64 levels deep | ~87.0 µs |

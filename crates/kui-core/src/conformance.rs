@@ -2150,9 +2150,9 @@ pub const SCENES: &[Scene] = &[
               of it, not two. The budget is judged per frame and whole \
               (`docs/adr/0012-the-exit-budget.md`): `bulk`, one subtree a \
               node past it, leaves in a frame of its own and is refused \
-              whole — no ghost, an `exit-budget` warning — and then 600 \
+              whole — no ghost, an `exit-budget` warning — and then 4200 \
               one-node rows leave together and are refused the same way, \
-              where admitting subtrees one at a time would have kept 512 \
+              where admitting subtrees one at a time would have kept 4096 \
               of them. Neither refusal touches `fade`'s ghost, which is \
               smaller than the room either would have needed.",
         custom: &["key", "size"],
@@ -2182,11 +2182,11 @@ pub const SCENES: &[Scene] = &[
             // The ring is `A`, `B` and nothing between them.
             Step::Tab,
             Step::Tab,
-            // `bulk` leaves alone: 513 nodes in one subtree, refused whole.
+            // `bulk` leaves alone: 4097 nodes in one subtree, refused whole.
             Step::Phase(3),
-            // The rows leave together: 600 nodes in 600 subtrees, refused
+            // The rows leave together: 4200 nodes in 4200 subtrees, refused
             // whole — the frame that separates whole-or-nothing admission
-            // from the per-subtree kind, which would keep 512 of them.
+            // from the per-subtree kind, which would keep 4096 of them.
             Step::Phase(4),
         ],
         expect: Expect {
@@ -2194,7 +2194,7 @@ pub const SCENES: &[Scene] = &[
             // ghost: `flash`'s was retired by its return and `blink`'s
             // expired, so a store that kept either would count eleven,
             // both twelve — and one that admitted the rows one at a time
-            // would count 522.
+            // would count 4106.
             solid: 10,
             shadows: 0,
             images: 0,
@@ -4478,7 +4478,7 @@ pub const EXIT_BULK_ROWS: usize = crate::depart::MAX_NODES;
 /// admission the first `MAX_NODES` of them would become ghosts and the
 /// rest blink away; under ADR 0012's decision 2 the frame's removal is
 /// judged whole and none of them do. The difference is a solid count.
-pub const EXIT_ROWS: usize = 600;
+pub const EXIT_ROWS: usize = crate::depart::MAX_NODES + 104;
 
 /// The `exit` scene. Four departing nodes and two that stay, laid out so
 /// that dropping one moves nothing else: each departing node sits alone in
@@ -4737,11 +4737,23 @@ pub const UNDERIVED: &[(&str, &str)] = &[];
 /// a tree node behind — so the search runs past the sibling count. Its
 /// exact length does not matter: only a hash collision could put a label
 /// key inside the range.
-fn is_label_keyed(t: &Tree, i: usize) -> bool {
+///
+/// `auto` holds each parent's auto-range keys once per frame: asked node by
+/// node, the sibling count and the range's hashes were a parent's size
+/// squared, and the exit scene's 4200 rows under one parent (backlog DX23)
+/// took the suite from 8 s to 46 s.
+fn is_label_keyed(
+    t: &Tree,
+    i: usize,
+    auto: &mut HashMap<u32, std::collections::HashSet<Key>>,
+) -> bool {
     let parent = t.parent[i];
-    let parent_key = t.keys[parent as usize];
-    let siblings = t.children(parent).count() as u64;
-    !(0..siblings + 16).any(|j| parent_key.index(j) == t.keys[i])
+    let keys = auto.entry(parent).or_insert_with(|| {
+        let parent_key = t.keys[parent as usize];
+        let siblings = t.children(parent).count() as u64;
+        (0..siblings + 16).map(|j| parent_key.index(j)).collect()
+    });
+    !keys.contains(&t.keys[i])
 }
 
 /// Whether node `i` was opened at a data index the *view* chose rather than
@@ -4774,6 +4786,8 @@ fn is_far_indexed(t: &Tree, i: usize) -> bool {
 /// exercises, unioning into `cov` (a scene is driven over several frames,
 /// and a hover-gated tooltip only exists on some of them).
 fn observe(core: &Core, cov: &mut Coverage) {
+    // Each parent's auto-range keys, built on first ask (`is_label_keyed`).
+    let mut auto = HashMap::new();
     if core.window_title().is_some() {
         cov.custom.insert("title");
     }
@@ -4946,7 +4960,7 @@ fn observe(core: &Core, cov: &mut Coverage) {
         // index-keyed row must not be credited to `key`. Nesting them also
         // keeps `is_far_indexed`'s scan off the auto-keyed nodes, which are
         // nearly all of them and cannot be far-indexed by construction.
-        if i > 0 && is_label_keyed(t, i) {
+        if i > 0 && is_label_keyed(t, i, &mut auto) {
             if is_far_indexed(t, i) {
                 cov.custom.insert("index");
             } else {

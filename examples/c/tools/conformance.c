@@ -1246,10 +1246,10 @@ static void conf_modal(KuiCtx *ui, const Fixtures *f, int phase) {
 
 /* conformance::EXIT_BULK_ROWS: with its own root that is one node past
  * kui_core::depart::MAX_NODES, so the whole subtree is refused. */
-#define CONF_EXIT_BULK_ROWS 512
+#define CONF_EXIT_BULK_ROWS 4096
 /* conformance::EXIT_ROWS: more one-node subtrees than the budget, dropped
  * in one frame and refused whole (docs/adr/0012-the-exit-budget.md). */
-#define CONF_EXIT_ROWS 600
+#define CONF_EXIT_ROWS 4200
 
 /* One of the exit scene's fixed-size slots: dropping the node inside it
  * moves nothing else, so the only geometry that changes between phases is

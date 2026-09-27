@@ -358,7 +358,7 @@ fn list(core: &mut Core, now: f64, from: usize, rows: usize) {
 
 /// The budget, ADR 0012 decision 2: a frame that removes more nodes than
 /// the store holds gets *none* of them animated — every row vanishes at
-/// once, as a node without an `exit` does — rather than the first 512
+/// once, as a node without an `exit` does — rather than the first budget's worth
 /// sliding out and the rest blinking. And the core says so, naming the
 /// frame's count, rather than leaving it to look like a bug.
 #[test]
@@ -394,13 +394,17 @@ fn a_removal_over_the_budget_animates_nothing_and_says_so() {
 /// got twelve rows of two hundred.
 #[test]
 fn a_new_removal_outranks_the_ghosts_already_in_flight() {
+    use kui_core::depart::MAX_NODES;
+    // Two lists side by side of `rows` each, together 88 past the budget:
+    // one keyed 0.., the other 100_000...
+    let rows = MAX_NODES / 2 + 44;
+    const SECOND: usize = 100_000;
     let mut core = Core::new();
-    // Two lists side by side: 300 rows keyed 0.., 300 keyed 1000...
     let both = |core: &mut Core, now: f64, first: usize, second: usize| {
         core.set_time(now);
         let mut ui = core.frame(Size::new(400.0, 400.0), 1.0);
-        for (from, rows) in [(0, first), (1000, second)] {
-            for i in from..from + rows {
+        for (from, n) in [(0, first), (SECOND, second)] {
+            for i in from..from + n {
                 ui.leaf_indexed(
                     i as u64,
                     NodeSpec::column()
@@ -413,29 +417,32 @@ fn a_new_removal_outranks_the_ghosts_already_in_flight() {
         }
         ui.finish();
     };
-    both(&mut core, 0.0, 300, 300);
+    both(&mut core, 0.0, rows, rows);
     core.take_warnings();
-    // The first list goes: 300 ghosts, in flight.
-    both(&mut core, 0.01, 0, 300);
-    assert_eq!(core.depart.node_count(), 300);
-    // 20 ms later the second goes too: 300 + 300 is over the budget, so
-    // the oldest 88 of the first list's ghosts give way and every row of
-    // the second animates.
+    // The first list goes: its ghosts, in flight.
+    both(&mut core, 0.01, 0, rows);
+    assert_eq!(core.depart.node_count(), rows);
+    // 20 ms later the second goes too: the two are over the budget, so the
+    // oldest 88 of the first list's ghosts give way and every row of the
+    // second animates.
     both(&mut core, 0.03, 0, 0);
     assert_eq!(
         core.depart.node_count(),
-        kui_core::depart::MAX_NODES,
+        MAX_NODES,
         "full, with the new removal whole"
     );
     let keys: Vec<Key> = core.depart.keys().collect();
-    assert_eq!(keys.len(), kui_core::depart::MAX_NODES);
+    assert_eq!(keys.len(), MAX_NODES);
     assert_eq!(keys[0], Key::ROOT.index(88), "the oldest 88 went, in order");
     assert_eq!(
-        keys[212],
-        Key::ROOT.index(1000),
+        keys[rows - 88],
+        Key::ROOT.index(SECOND as u64),
         "then the whole second list"
     );
-    assert_eq!(keys[511], Key::ROOT.index(1299));
+    assert_eq!(
+        keys[MAX_NODES - 1],
+        Key::ROOT.index((SECOND + rows - 1) as u64)
+    );
     assert!(
         core.take_warnings().is_empty(),
         "eviction is the policy, not a warning"

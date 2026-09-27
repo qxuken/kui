@@ -71,10 +71,15 @@ use crate::tree::{NIL, NodeContent, Tree};
 /// the behaviour of a node with no `exit` at all — rather than the first
 /// of them sliding out and the rest blinking (ADR 0012, decision 2). The
 /// number is a decision with a curve behind it: with the departing frame
-/// linear (decision 5), 2048 nodes cost 187 µs to depart and 59 µs a frame
-/// to replay, so it could be raised; nothing has asked for more than six
-/// toasts, and this project waits for the view.
-pub const MAX_NODES: usize = 512;
+/// linear (decision 5), and measured again on 2026-09-27 (release, M3 Pro,
+/// a pane of rows of a box and a text), a departing subtree costs about
+/// 0.065 µs a node in the frame it leaves and 0.021 µs a node a frame while
+/// it plays — 4096 nodes are 267 µs, then 87 µs a frame, where the same
+/// pane cost 404 µs a frame alive. So a fade costs less than the frames it
+/// follows, and the bound is on memory and on a removal nobody meant to
+/// animate, not on time. It was 512 until kawoosh's fonts and themes panes
+/// (1,500–1,800 nodes) could not fade out (backlog DX23).
+pub const MAX_NODES: usize = 4096;
 
 /// Whether a node can depart at all: it declared an `exit`, and a
 /// `transition` with a duration to run it over. The diff counts a frame's
@@ -840,25 +845,35 @@ mod tests {
     fn a_new_removal_evicts_the_oldest_ghosts_until_it_fits() {
         let mut d = DepartStore::default();
         let mut frame = Frames(0);
-        // 20 subtrees of 16 = 320 nodes in flight, keyed ROOT[0..20].
+        // Subtrees of 16 in flight, keyed ROOT[0..n], filling the store to
+        // 192 short of the budget.
+        let n = (MAX_NODES - 192) / 16;
         d.begin_frame(frame.next());
-        assert!(d.admit(20 * 16));
-        depart_sixteens(&mut d, 0, 20, 0.0);
-        assert_eq!(d.node_count(), 320);
-        // A frame wants 15 more of 16 = 240: 320 + 240 = 560, so 48 nodes
-        // (three ghosts) have to go, and they are ROOT[0], [1], [2].
+        assert!(d.admit(n * 16));
+        depart_sixteens(&mut d, 0, n as u64, 0.0);
+        assert_eq!(d.node_count(), MAX_NODES - 192);
+        // A frame wants 15 more of 16 = 240, 48 past the budget, so three
+        // ghosts have to go, and they are ROOT[0], [1], [2].
         d.begin_frame(frame.next());
         assert!(d.admit(15 * 16));
-        assert_eq!(d.node_count(), 320 - 48, "three evicted, not four, not two");
+        assert_eq!(
+            d.node_count(),
+            MAX_NODES - 192 - 48,
+            "three evicted, not four, not two"
+        );
         assert_eq!(
             d.keys().next(),
             Some(Key::ROOT.index(3)),
             "the oldest went first"
         );
-        depart_sixteens(&mut d, 100, 15, 0.1);
-        assert_eq!(d.node_count(), 512, "full, with the new removal whole");
-        assert_eq!(d.keys().count(), 17 + 15);
-        assert!(d.held.contains(&Key::ROOT.index(114)));
+        depart_sixteens(&mut d, 100_000, 15, 0.1);
+        assert_eq!(
+            d.node_count(),
+            MAX_NODES,
+            "full, with the new removal whole"
+        );
+        assert_eq!(d.keys().count(), n - 3 + 15);
+        assert!(d.held.contains(&Key::ROOT.index(100_014)));
         assert!(!d.held.contains(&Key::ROOT.index(2)), "and `held` followed");
     }
 
