@@ -438,6 +438,7 @@ export function createEncoder(P) {
               strRef(JSON.stringify(v));
               break;
             case 'str':
+            case 'family':
             case 'resource':
               strRef(String(v));
               break;

@@ -94,7 +94,9 @@ use crate::{Result, err, value_of};
 /// v17: a span carries a fifth slot after its underline colour, its
 /// background's radius in logical px (backlog F101), 0 for the square
 /// background every span had. A slot in the middle of an op again.
-pub const VERSION: u32 = 17;
+/// v18: `family` is a strref, a stock name or an installed family's
+/// (ADR 0037), where it was the index into `schema::FAMILIES`.
+pub const VERSION: u32 = 18;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a
 /// token index rather than a value (`docs/adr/0027-tokens-beside-the-theme.md`,
@@ -387,6 +389,8 @@ struct Refs<'a> {
 struct Missed {
     by_index: Vec<(TokenKind, u32)>,
     by_name: Vec<kui_core::TokenError>,
+    /// `family` names nothing installed or loaded matched (ADR 0037).
+    families: Vec<String>,
 }
 
 impl<'a> Refs<'a> {
@@ -402,6 +406,7 @@ impl<'a> Refs<'a> {
         Missed {
             by_index: std::mem::take(&mut self.missed),
             by_name: self.names.take_missed(),
+            families: self.names.take_missed_families(),
         }
     }
 
@@ -428,6 +433,9 @@ impl<'a> Refs<'a> {
 fn warn_missed(core: &mut kui_core::Core, missed: Missed) {
     for e in &missed.by_name {
         core.warn_unknown_token(e);
+    }
+    for name in &missed.families {
+        core.warn_unknown_family(name);
     }
     for (kind, index) in missed.by_index {
         core.warn(Warning {
@@ -700,6 +708,9 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut, refs: &mut Refs<'_>) -
                     }
                     Kind::Msg | Kind::Tag => Parsed::Msg(payload(r.req_str()?)?),
                     Kind::Str => Parsed::Str(r.req_str()?.to_string()),
+                    // A strref since v18: a stock family or an installed
+                    // one by name, registered as it is read (ADR 0037).
+                    Kind::Family => Parsed::Family(refs.names.family(r.req_str()?)),
                     Kind::Resource => Parsed::Resource(crate::parse_u64(r.req_str()?)?),
                     // Carried as JSON like a message; the core reads the stops.
                     // A `$name` in a stop resolves in the core through
@@ -1351,6 +1362,12 @@ mod tests {
                 Kind::Str => {
                     stream.extend([0.0, 1.0]);
                     Parsed::Str("7".into())
+                }
+                // "7" names no family, so it is sans — and the stream
+                // still reads as one strref.
+                Kind::Family => {
+                    stream.extend([0.0, 1.0]);
+                    Parsed::Family(kui_core::FontFamily::Sans)
                 }
                 Kind::Resource => {
                     stream.extend([0.0, 1.0]);

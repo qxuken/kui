@@ -353,6 +353,8 @@ fn type_of(kind: &Kind) -> String {
         Kind::Min => "kui.Min".into(),
         Kind::Msg | Kind::Tag => "any".into(),
         Kind::Str => "string".into(),
+        // The stock three, for an editor to offer, or any installed name.
+        Kind::Family => "\"sans\"|\"serif\"|\"mono\"|string".into(),
         Kind::Resource => "integer".into(),
         Kind::Keyframes | Kind::Enter => "table".into(),
     }

@@ -161,6 +161,10 @@ fn every_schema_prop_has_a_c_counterpart() {
             Kind::Min => Parsed::Min(Min::FIT),
             Kind::Msg | Kind::Tag => Parsed::Msg(Value::Int(7)),
             Kind::Str => Parsed::Str("name".into()),
+            // C names the stock three by index (`KUI_FONT_*`) and an
+            // installed family by its handle (`kui_font_add_system`), so
+            // its sample is the stock one at index 1 (ADR 0037).
+            Kind::Family => Parsed::Family(kui_core::FontFamily::Serif),
             Kind::Resource => Parsed::Resource(7),
             Kind::Keyframes => Parsed::Keyframes(vec![Keyframe::default().at(0.5).radius(F)]),
             Kind::Enter => Parsed::Enter(Enter::from(-F, 0.0).radius(F)),

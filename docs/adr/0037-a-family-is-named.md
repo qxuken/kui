@@ -1,13 +1,23 @@
 ---
-status: proposed
+status: accepted
 date: 2026-09-27
 ---
 
 # A family is named where the text declares it
 
-> **Proposed 2026-09-27** (backlog DX17, from the DX sweep of kawoosh's
-> views). Nothing is built. Decision 4 changes the Node frame and wants
-> a look before anything else.
+> **Accepted and built 2026-09-27**, the day it was proposed (backlog
+> DX17, from the DX sweep of kawoosh's views). The user chose frame v18
+> for decision 4. What the building settled: the parser resolves the
+> name. `NameRefs::family`, over a token lookup that now carries the
+> session, registers it through `Session::register_family`, the body
+> `add_system_font` always had, moved where a parse holding the core's
+> lookup can reach it. So Lua and Node resolve it in the one step they
+> already resolve a `$token` in. A miss is remembered beside the token
+> misses and raised by the same code. The schema gained `Kind::Family`
+> and `Parsed::Family`. C keeps the index and the handle door (decision
+> 5), and its parity sample is the stock family at index 1. `font` and
+> `family` write the same field, so the last one declared wins, and the
+> row's doc says so rather than "the handle wins".
 
 `family` takes `sans`, `serif` or `mono`. Any other face is drawn with a
 handle: the host registers the family by name (`Core::add_system_font`,

@@ -774,7 +774,25 @@ impl Core {
             host,
             theme: &self.theme,
             metrics: &self.metrics,
+            session: Some(&self.session),
         }
+    }
+
+    /// A binding lowered a `family` that names nothing installed or
+    /// loaded: raise `unknown-family`, once per name (ADR 0037). The text
+    /// shapes as sans, which is what the message says.
+    pub fn warn_unknown_family(&mut self, name: &str) {
+        self.diag.raise(Warning {
+            code: crate::diag::UNKNOWN_FAMILY,
+            key: Key::ROOT.str(crate::diag::UNKNOWN_FAMILY).str(name),
+            message: format!(
+                "`family` named {name:?}, and no installed or loaded font family has that name, \
+                 so the text shapes as sans; `systemFonts()` lists the names there are, and \
+                 `sans`, `serif` and `mono` are kui's own"
+            ),
+        });
+        // A family a sibling prop registered in the same parse is listed
+        // by the next frame's sync; nothing to do here.
     }
 
     /// A binding lowered a reference that did not resolve: raise

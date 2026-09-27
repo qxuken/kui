@@ -2295,13 +2295,16 @@ fn with_refs<R>(
     ui: &mut Ui<'_>,
     f: impl FnOnce(&mut Refs<'_>) -> mlua::Result<R>,
 ) -> mlua::Result<R> {
-    let (r, errors) = {
+    let (r, errors, families) = {
         let mut refs = Refs::new(ui.core().token_lookup());
         let r = f(&mut refs);
-        (r, refs.take_missed())
+        (r, refs.take_missed(), refs.take_missed_families())
     };
     for e in errors {
         ui.core().warn_unknown_token(&e);
+    }
+    for name in families {
+        ui.core().warn_unknown_family(&name);
     }
     r
 }
@@ -2493,6 +2496,14 @@ fn parse_value(kind: &Kind, v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Resul
                 return Err(bad("expected a string"));
             };
             Parsed::Str(s.to_str()?.to_string())
+        }
+        // A stock family or an installed one by name, registered as it is
+        // parsed (ADR 0037).
+        Kind::Family => {
+            let mlua::Value::String(s) = v else {
+                return Err(bad("expected a family name"));
+            };
+            Parsed::Family(refs.family(&s.to_str()?))
         }
         Kind::Resource => match v {
             mlua::Value::Integer(n) => Parsed::Resource(*n as u64),
@@ -5872,6 +5883,53 @@ mod tests {
                 .any(|n| n.key == list.index(300).index(0)),
             "row 300 is not keyed by its data index"
         );
+    }
+
+    /// ADR 0037: a Lua view draws an installed family by naming it, with
+    /// no host door, in the frame that names it — the face the host's
+    /// handle draws, not sans — and a name nothing matches warns.
+    #[test]
+    fn a_view_names_a_family_and_draws_in_it() {
+        let mut ext = LuaExtension::from_source(
+            "fam",
+            r#"
+                named, sans, missed = nil, nil, nil
+                function view(env)
+                  named = env.measure_text("iiiWWW", { family = "Fixture Mono", size = 20 }).width
+                  sans = env.measure_text("iiiWWW", { family = "sans", size = 20 }).width
+                  return column {
+                    text("iiiWWW", { family = "Fixture Mono", size = 20 }),
+                    text("x", { family = "No Such Family 7" }),
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        core.add_font_data(kui_core::testing::font_face(
+            "Fixture Mono",
+            400,
+            false,
+            true,
+        ))
+        .unwrap();
+        let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+        ui.set_origin(OriginId(1));
+        ext.view(&Slot::root(), &mut ui).unwrap();
+        ui.finish();
+        let handle = core.add_system_font("Fixture Mono").unwrap();
+        let expected = core
+            .measure_text("iiiWWW", &kui_core::TextStyle::new(20.0).font(handle), None)
+            .width;
+        let g = ext.lua.globals();
+        let (named, sans) = (
+            g.get::<f32>("named").unwrap(),
+            g.get::<f32>("sans").unwrap(),
+        );
+        assert_eq!(named, expected, "the face the host's handle draws");
+        assert_ne!(named, sans, "and not sans");
+        let codes: Vec<_> = core.take_warnings().iter().map(|w| w.code).collect();
+        assert_eq!(codes, ["unknown-family"]);
     }
 
     /// DX22: the prelude's row spec, row reveal and divider, the three

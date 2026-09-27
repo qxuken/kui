@@ -753,6 +753,11 @@ export type WarningCode =
    *  from the `key` that declares it, or the node not declared at all (backlog
    *  DX15). */
   | 'label-without-node'
+  /** A text's `family` named a family no installed or loaded font has (ADR
+   *  0037), so it shaped as sans. `sans`, `serif` and `mono` are kui's own; any
+   *  other name is matched as `addSystemFont` matches it, and `systemFonts()`
+   *  lists the names a machine has. */
+  | 'unknown-family'
   /** A `selectable` node inside another `selectable` node. Selection scopes do
    *  not nest: the innermost one owns every run under it, so the outer scope
    *  selects only the text outside the inner one — and a drag that crosses the

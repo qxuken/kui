@@ -40,6 +40,8 @@ pub fn protocol_props() -> Json {
             Kind::Msg => ("msg", None),
             Kind::Tag => ("tag", None),
             Kind::Str => ("str", None),
+            // A string on the wire; the stock three listed for the types.
+            Kind::Family => ("family", Some(kui_core::schema::FAMILIES)),
             Kind::Resource => ("resource", None),
             Kind::Keyframes => ("keyframes", None),
             Kind::Enter => ("enter", None),

@@ -384,8 +384,8 @@ export interface GeneratedStyleProps {
   color?: ColorProp;
   /** End the last line with an ellipsis when the text is cut off: a single line unless `maxLines` says otherwise. */
   ellipsis?: boolean;
-  /** Font family. */
-  family?: 'sans' | 'serif' | 'mono';
+  /** Font family: `sans`, `serif` or `mono`, kui's own, or the name of an installed family or one loaded with `loadFontsDir` / `loadFontFile` — `"Berkeley Mono"` — drawn in its face in the frame that names it (ADR 0037). A name is matched as `addSystemFont` matches it and registered in the session on first sight, which reads the font database's scan and opens no file; `systemFonts()` lists the names there are. A name nothing matches shapes as sans and raises `unknown-family`. It and `font` set the same thing, so declare one. */
+  family?: 'sans' | 'serif' | 'mono' | (string & {});
   /** OpenType features for the shaper, as `tag=value` pairs separated by spaces or commas — a bare `tag` is 1, `-tag` is 0: `"liga=0 calt=0"` keeps a coding font from joining `->` and `!=` (what a terminal built on runs needs to hold its grid), `"tnum"` lines figures up in a gutter, `"ss01"` picks a stylistic set. Unset, the font's own defaults apply. At most 8; part of what the text is shaped as, so two texts differing only here are shaped twice. */
   features?: string;
   /** A registered font handle (addFont / addSystemFont); overrides `family`. */

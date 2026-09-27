@@ -1061,6 +1061,14 @@ impl<'a> Ui<'a> {
         self.core.reveal(key);
     }
 
+    /// The handle for an installed or loaded font family by name — what
+    /// `family = "Name"` resolves to in the declarative bindings (ADR
+    /// 0037) — so a Rust view names a face without reaching for the core.
+    /// `None` when no face matches. Idempotent.
+    pub fn system_font(&mut self, name: &str) -> Option<crate::resources::FontId> {
+        self.core.add_system_font(name)
+    }
+
     /// [`Self::reveal`] by label, resolved when this frame finishes; see
     /// `Core::reveal_label`.
     pub fn reveal_label(&mut self, label: &str) {

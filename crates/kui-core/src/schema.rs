@@ -391,6 +391,10 @@ pub enum Kind {
     Tag,
     /// A plain string (a name, not a message). Binary: strref.
     Str,
+    /// A font family: one of the stock names (`FAMILIES`) or an installed
+    /// or loaded family's name, which the parser registers and turns into
+    /// its handle (ADR 0037). Binary: strref (v18).
+    Family,
     /// A registered resource handle (a font or sound id): the integer form
     /// of the slotmap key. JSON/binary carry it as the 16-hex string the
     /// addon hands out; Lua as an integer; C as a `uint64_t`.
@@ -423,6 +427,7 @@ pub enum Apply {
     StyleFlag(fn(TextStyle) -> TextStyle),
     StyleResource(fn(TextStyle, u64) -> TextStyle),
     StyleStr(fn(TextStyle, &str) -> TextStyle),
+    StyleFamily(fn(TextStyle, FontFamily) -> TextStyle),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -450,7 +455,8 @@ impl PropDef {
             | Apply::StyleEnum(_)
             | Apply::StyleFlag(_)
             | Apply::StyleResource(_)
-            | Apply::StyleStr(_) => Target::Style,
+            | Apply::StyleStr(_)
+            | Apply::StyleFamily(_) => Target::Style,
             _ => Target::Spec,
         }
     }
@@ -1022,9 +1028,9 @@ pub const PROPS: &[PropDef] = &[
     PropDef {
         name: "family",
         id: P_FAMILY,
-        kind: Kind::Enum(FAMILIES),
-        apply: Apply::StyleEnum(|t, i| t.family(FontFamily::from_index(i))),
-        doc: "Font family.",
+        kind: Kind::Family,
+        apply: Apply::StyleFamily(|t, f| t.family(f)),
+        doc: "Font family: `sans`, `serif` or `mono`, kui's own, or the name of an installed family or one loaded with `loadFontsDir` / `loadFontFile` — `\"Berkeley Mono\"` — drawn in its face in the frame that names it (ADR 0037). A name is matched as `addSystemFont` matches it and registered in the session on first sight, which reads the font database's scan and opens no file; `systemFonts()` lists the names there are. A name nothing matches shapes as sans and raises `unknown-family`. It and `font` set the same thing, so declare one.",
     },
     PropDef {
         name: "font",
@@ -2892,6 +2898,8 @@ pub enum Parsed {
     Resource(u64),
     Keyframes(Vec<Keyframe>),
     Enter(Enter),
+    /// A family, already resolved by the parser (`NameRefs::family`).
+    Family(FontFamily),
 }
 
 /// Everything a prop list can carry; elements pick the parts they use.
@@ -3039,6 +3047,10 @@ pub fn apply(def: &PropDef, value: Parsed, out: &mut PropsOut) -> Result<(), Str
         (Apply::StyleStr(f), Parsed::Str(v)) => {
             out.spec = spec;
             out.style = f(style, &v);
+        }
+        (Apply::StyleFamily(f), Parsed::Family(v)) => {
+            out.spec = spec;
+            out.style = f(style, v);
         }
         _ => {
             out.spec = spec;
@@ -3688,6 +3700,7 @@ mod tests {
                 Kind::Min => Parsed::Min(Min::FIT),
                 Kind::Msg | Kind::Tag => Parsed::Msg(Value::Int(1)),
                 Kind::Str => Parsed::Str("name".into()),
+                Kind::Family => Parsed::Family(FontFamily::Mono),
                 Kind::Resource => Parsed::Resource(7),
                 Kind::Keyframes => Parsed::Keyframes(vec![Keyframe::default().radius(7.0)]),
                 Kind::Enter => Parsed::Enter(Enter::from(-7.0, 0.0)),

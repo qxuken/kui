@@ -52,6 +52,14 @@ was the first bare bump to break an app in five releases).
   as it did, nothing hears focus and a table draws no rules.
 - Rust: `UiEvent::hover()` answers a `Hover { phase, by }`, where it
   answered the `HoverPhase` (under Added, DX20); read `.phase`.
+- Node: the binary frame is v18. `family` is a string, a stock name or an
+  installed family's, where it was the index into `schema::FAMILIES`
+  (under Added, ADR 0037). The encoder and the addon ship together, so
+  this breaks only a stale prebuilt addon, which refuses the stream by
+  its version.
+- Rust: `schema::Kind` gains `Family` and `schema::Parsed` gains
+  `Family(FontFamily)`, so an exhaustive match on either in a binding of
+  your own needs the arm; `TokenLookup` carries the session.
 - Rust: `PumpRunner::route_events`' closure takes the core of the event's
   window as a third argument, `FnMut(&mut A, UiEvent, &mut Core)` (under
   Added, ADR 0036). Add the parameter; `|app, ev, _|` keeps what it did.
@@ -323,6 +331,21 @@ Ten readings change:
   ratio arithmetic; `scroll_geometry` plus an in-view test plus
   `set_scroll` to reach a list's row; a second node inside every row to
   carry its click.
+
+- **A family by name** (ADR 0037, backlog DX17). `family = "Berkeley
+  Mono"` in Lua and `family="Berkeley Mono"` in JSX draw an installed
+  family, or one loaded with `loadFontsDir` / `loadFontFile`, in the frame
+  that names it: the parser registers the name in the session (a query of
+  the font database's scan, no file opened) and gives the text the handle
+  `addSystemFont` gives. `sans`, `serif` and `mono` stay kui's own. A
+  name nothing matches shapes as sans and raises the new
+  `unknown-family`. `Ui::system_font(name)` is the Rust pass-through; C
+  keeps `kui_font_add_system`. The TS type offers the stock three and
+  takes any string.
+  *What you can delete:* a host door that registers a family for a
+  script and hands the handle down — kawoosh's `kawoosh.fonts.face` and
+  its registration of all 613 families at once — and the `font =` a
+  view passed where it meant a family.
 
 - **An event handler gets its window's core** (ADR 0036, backlog DX9).
   `App::on_event_with(&mut self, ev, core: &mut Core)` is lent the core

@@ -2356,7 +2356,8 @@ repo migrated in `20a1988`). The rest was filed here, DX7–DX21, and
 seven of those were built the same day too (DX7, DX8, DX10, DX11, DX13,
 DX14, DX15), and DX12 in Rust after it (its other bindings are DX22);
 and DX22 the same day, and DX18–DX21 after them; DX16 was declined.
-DX9 was built as ADR 0036. Open: DX17, as ADR 0037.
+DX9 and DX17 were built as ADRs 0036 and 0037 the same day. Nothing
+filed by the sweep is open.
 
 Kawoosh can already delete some code without kui changing: the
 non-breaking-space padding in its Lua plugins (K3, alpha.13), string
@@ -2642,10 +2643,11 @@ hand to feed the rounded-selection fragment. **Do.** `env.rgba(c)`,
 returning four numbers from a hex string, an integer or a `$token`, or
 let a colour in `params` expand to four.
 
-### `.` DX17 — A font cannot be named by its family
+### `.` DX17 — A font cannot be named by its family — **built 2026-09-27**
 
-**Proposed 2026-09-27** as [ADR 0037](adr/0037-a-family-is-named.md), for review before
-anything is built.
+**Built 2026-09-27** as [ADR 0037](adr/0037-a-family-is-named.md), accepted the day it was
+proposed: `family` takes a name, resolved by the parser to the handle,
+and Node's frame is v18.
 
 `family` takes `sans`, `serif` or `mono`. An installed face needs a host
 `add_system_font` and a handle passed down. Kawoosh registers all 613

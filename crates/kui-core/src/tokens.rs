@@ -565,6 +565,9 @@ pub struct TokenLookup<'a> {
     pub(crate) host: Option<&'a Tokens>,
     pub(crate) theme: &'a Theme,
     pub(crate) metrics: &'a Metrics,
+    /// The session a named `family` registers in (ADR 0037); none for a
+    /// lookup built without a core.
+    pub(crate) session: Option<&'a crate::session::Session>,
 }
 
 impl<'a> TokenLookup<'a> {
@@ -732,6 +735,7 @@ pub fn reference(s: &str) -> Option<&str> {
 pub struct NameRefs<'a> {
     look: TokenLookup<'a>,
     missed: Vec<TokenError>,
+    missed_families: Vec<String>,
 }
 
 impl<'a> NameRefs<'a> {
@@ -739,7 +743,35 @@ impl<'a> NameRefs<'a> {
         Self {
             look,
             missed: Vec::new(),
+            missed_families: Vec::new(),
         }
+    }
+
+    /// The `family` a text names (ADR 0037): a stock one by its spelling
+    /// (`sans`, `serif`, `mono`), else an installed or loaded family,
+    /// registered in the session and drawn by its handle. A name nothing
+    /// matches is sans, and remembered for the caller to raise as
+    /// `unknown-family` (`Core::warn_unknown_family`).
+    pub fn family(&mut self, name: &str) -> crate::spec::FontFamily {
+        use crate::spec::FontFamily;
+        if let Some(stock) = FontFamily::ALL.iter().find(|f| f.name() == Some(name)) {
+            return *stock;
+        }
+        match self.look.session.and_then(|s| s.register_family(name)) {
+            Some(id) => FontFamily::Custom(id),
+            None => {
+                if !self.missed_families.iter().any(|m| m == name) {
+                    self.missed_families.push(name.to_string());
+                }
+                FontFamily::Sans
+            }
+        }
+    }
+
+    /// The family names that matched nothing, taken; each one line of
+    /// `unknown-family` for the caller to raise.
+    pub fn take_missed_families(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.missed_families)
     }
 
     /// The lookup itself, for a caller that reads a token without the
@@ -834,6 +866,7 @@ mod tests {
             host: None,
             theme: &theme,
             metrics: &metrics,
+            session: None,
         };
         assert_eq!(look.colors(), vec![]);
         assert_eq!(look.lengths(), vec![("gap", 6.0)]);
@@ -1035,6 +1068,7 @@ mod tests {
             host: None,
             theme: &theme,
             metrics: &metrics,
+            session: None,
         };
         let want = PEACH.mix(Color::WHITE, 0.3);
         assert!(same(look.color("lit").unwrap(), want));

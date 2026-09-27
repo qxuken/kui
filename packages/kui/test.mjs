@@ -61,6 +61,7 @@ const SAMPLE = {
   msg: { kind: 'm', n: 1, list: [1, 'two', null] },
   tag: { kind: 't' },
   str: 'group-a',
+  family: 'mono',
   resource: '0000000000000007',
   keyframes: [
     { width: { grow: 0 }, bg: '#112233' },
@@ -5770,6 +5771,24 @@ test('a uniformList row is keyed by its data index, so a full list agrees', () =
 
 // DX22: the row spec, the row reveal and the divider Rust has as
 // `uniform_list_with`, `widgets::reveal_row` and `widgets::splitter`.
+// ADR 0037: a family by name, carried on the wire as a string (v18) and
+// resolved by the addon to the handle `addSystemFont` gives.
+test('family names an installed face, measured as its handle measures it', () => {
+  const ctx = new Ctx();
+  const stock = ['sans', 'serif', 'mono'];
+  const fam = ctx.systemFonts().find((f) => !stock.includes(f.family))?.family;
+  const w = (props) => ctx.measureText('iiiWWW', { size: 20, ...props }).width;
+  ctx.warnings();
+  if (fam) {
+    const handle = ctx.addSystemFont(fam);
+    assert.equal(w({ family: fam }), w({ font: handle }), `${fam} by name and by handle`);
+  }
+  assert.equal(w({ family: 'mono' }), w({ family: 'mono' }), 'a stock name is still stock');
+  assert.deepEqual(ctx.warnings(), [], 'nothing missed yet');
+  assert.equal(w({ family: 'No Such Family 7' }), w({ family: 'sans' }), 'a miss is sans');
+  assert.deepEqual(ctx.warnings().map((x) => x.code), ['unknown-family']);
+});
+
 test('revealRow centres an unbuilt row, rowProps styles each row, and a splitter drags', () => {
   const ctx = new Ctx();
   let target = null;

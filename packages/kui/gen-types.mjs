@@ -65,7 +65,14 @@ const TS_BY_KIND = {
 };
 
 function field([name, def]) {
-  const ts = def.kind === 'enum' ? def.values.map((v) => `'${v}'`).join(' | ') : TS_BY_KIND[def.kind];
+  // A family is the stock three or any installed name (ADR 0037); `string
+  // & {}` keeps the three offered by an editor beside the open case.
+  const ts =
+    def.kind === 'enum'
+      ? def.values.map((v) => `'${v}'`).join(' | ')
+      : def.kind === 'family'
+        ? `${def.values.map((v) => `'${v}'`).join(' | ')} | (string & {})`
+        : TS_BY_KIND[def.kind];
   return `  /** ${def.doc} */\n  ${name}?: ${ts};`;
 }
 
@@ -154,7 +161,12 @@ const TYPE_DOC = {
 const cell = (s) => String(s).replace(/\|/g, '\\|');
 // A warning's doc is the const's doc comment, line breaks and all.
 const oneLine = (s) => String(s).replace(/\s+/g, ' ').trim();
-const typeOf = (def) => (def.kind === 'enum' ? def.values.map((v) => `\`${v}\``).join(' \\| ') : TYPE_DOC[def.kind]);
+const typeOf = (def) =>
+  def.kind === 'enum'
+    ? def.values.map((v) => `\`${v}\``).join(' \\| ')
+    : def.kind === 'family'
+      ? `${def.values.map((v) => `\`${v}\``).join(' \\| ')} \\| a family name`
+      : TYPE_DOC[def.kind];
 const tableOf = (header, rows) =>
   [`| ${header.join(' | ')} |`, `|${header.map(() => '---').join('|')}|`, ...rows.map((r) => `| ${r.map(cell).join(' | ')} |`)].join('\n');
 

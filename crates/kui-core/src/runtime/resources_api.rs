@@ -166,33 +166,7 @@ impl Core {
     /// `system_font_families`). Idempotent: the same family gets the same
     /// handle, so views can call it every frame.
     pub fn add_system_font(&mut self, name: &str) -> Option<crate::resources::FontId> {
-        use cosmic_text::fontdb::{Family, Query};
-        let id = {
-            let sess = &mut *self.session.state();
-            let db = sess.fonts.db();
-            let query = Query {
-                families: &[Family::Name(name)],
-                ..Default::default()
-            };
-            let id = db.query(&query)?;
-            // The canonical spelling, so the style matches the way fontdb does.
-            let family = db.face(id)?.families.first()?.0.clone();
-            if let Some((id, _)) = sess
-                .resources
-                .fonts
-                .iter()
-                .find(|(_, f)| f.faces.is_empty() && f.family == family)
-            {
-                return Some(id);
-            }
-            sess.fonts_rev += 1;
-            let touched = std::iter::once(family.clone()).collect();
-            let id = sess.resources.add_font(family, Vec::new());
-            if sess.resources.reweigh(sess.fonts.db(), &touched, Some(id)) {
-                sess.weights_rev += 1;
-            }
-            id
-        };
+        let id = self.session.register_family(name)?;
         self.sync_font_names();
         Some(id)
     }
@@ -576,4 +550,39 @@ fn families_of(
         .filter_map(|&id| db.face(id))
         .flat_map(|face| face.families.iter().map(|(name, _)| name.clone()))
         .collect()
+}
+
+impl crate::session::Session {
+    /// `Core::add_system_font`'s registration, on the session every window
+    /// shares: a query against the font database's scan and an idempotent
+    /// registry entry, with no file opened. Here rather than on `Core` so
+    /// a binding's prop parser, which holds the token lookup's borrow of
+    /// the core, can name a family while it parses (ADR 0037).
+    pub(crate) fn register_family(&self, name: &str) -> Option<crate::resources::FontId> {
+        use cosmic_text::fontdb::{Family, Query};
+        let sess = &mut *self.state();
+        let db = sess.fonts.db();
+        let query = Query {
+            families: &[Family::Name(name)],
+            ..Default::default()
+        };
+        let id = db.query(&query)?;
+        // The canonical spelling, so the style matches the way fontdb does.
+        let family = db.face(id)?.families.first()?.0.clone();
+        if let Some((id, _)) = sess
+            .resources
+            .fonts
+            .iter()
+            .find(|(_, f)| f.faces.is_empty() && f.family == family)
+        {
+            return Some(id);
+        }
+        sess.fonts_rev += 1;
+        let touched = std::iter::once(family.clone()).collect();
+        let id = sess.resources.add_font(family, Vec::new());
+        if sess.resources.reweigh(sess.fonts.db(), &touched, Some(id)) {
+            sess.weights_rev += 1;
+        }
+        Some(id)
+    }
 }
