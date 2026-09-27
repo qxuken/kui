@@ -93,9 +93,12 @@ impl Core {
         use cosmic_text::fontdb::Source;
         let id = {
             let sess = &mut *self.session.state();
-            sess.share_faces_once();
+            let ids = sess
+                .fonts
+                .db_mut()
+                .load_font_source(Source::Binary(std::sync::Arc::new(data)));
+            sess.share_loaded_faces();
             let db = sess.fonts.db_mut();
-            let ids = db.load_font_source(Source::Binary(std::sync::Arc::new(data)));
             let ids = crate::text::keep_measurable(db, ids.to_vec());
             let family = db.face(*ids.first()?)?.families.first()?.0.clone();
             sess.fonts_rev += 1;
@@ -121,9 +124,13 @@ impl Core {
         use cosmic_text::fontdb::Source;
         let id = {
             let sess = &mut *self.session.state();
-            sess.share_faces_once();
+            let ids = sess
+                .fonts
+                .db_mut()
+                .load_font_source(Source::File(path.into()));
+            // Its own faces too, not only the ones before it (DX25).
+            sess.share_loaded_faces();
             let db = sess.fonts.db_mut();
-            let ids = db.load_font_source(Source::File(path.into()));
             let ids = crate::text::keep_measurable(db, ids.to_vec());
             let family = db.face(*ids.first()?)?.families.first()?.0.clone();
             sess.fonts_rev += 1;
@@ -148,6 +155,8 @@ impl Core {
         let db = sess.fonts.db_mut();
         let before: rustc_hash::FxHashSet<_> = db.faces().map(|face| face.id).collect();
         db.load_fonts_dir(dir);
+        sess.share_loaded_faces();
+        let db = sess.fonts.db_mut();
         let added = db
             .faces()
             .map(|face| face.id)
@@ -591,13 +600,26 @@ impl crate::session::Session {
 }
 
 impl crate::session::SessionState {
-    /// [`share_faces`], the first time an app registers a font of its own
-    /// — by name, from bytes or from a file — and never again.
+    /// [`share_faces`], the first time an app names a family, unless a
+    /// load has shared them already, and never again.
     pub(crate) fn share_faces_once(&mut self) {
         if !self.faces_shared {
-            self.faces_shared = true;
-            share_faces(self.fonts.db_mut());
+            self.share_loaded_faces();
         }
+    }
+
+    /// [`share_faces`] after a load, so the faces it added are shared with
+    /// the rest (backlog DX25). Sharing before the load, as DX24 first did,
+    /// left every face a file brought in reading its file again each time
+    /// a text shaped in a new family, weight or style: kawoosh loads 167
+    /// files it ships, and each new family cost a frame ~5 ms in opens.
+    /// The walk maps only what is unshared, so a load after the first
+    /// maps its own faces and nothing else. Not for `register_family`,
+    /// which runs every frame a view names a family: `db_mut` empties
+    /// cosmic-text's match cache.
+    pub(crate) fn share_loaded_faces(&mut self) {
+        self.faces_shared = true;
+        share_faces(self.fonts.db_mut());
     }
 }
 
@@ -612,9 +634,10 @@ impl crate::session::SessionState {
 /// fonts pane, drawing each of 613 families in itself, warmed them ahead of
 /// time to keep it off the frames. Shared, the read is a slice of a mapping
 /// already made: 0.42 ms a family, for 30 ms once. Done on the first font
-/// an app registers — a family by name, bytes or a file — where the
-/// per-family cost starts to add up; an app on the stock three pays what it
-/// always did.
+/// an app registers — a family by name, bytes, a file or a folder — where
+/// the per-family cost starts to add up, and after every load from then on
+/// so a loaded file's own faces are shared too (DX25); an app on the stock
+/// three pays what it always did.
 ///
 /// The mapping is what fontdb's `make_shared_face_data` documents as
 /// unsafe: a font file another process rewrites while it is mapped can
@@ -675,5 +698,42 @@ mod tests {
         );
         // A second name does not walk them again.
         assert_eq!(share_faces(core.session.state().fonts.db_mut()), 0);
+    }
+
+    /// DX25: a file loaded by path or in a folder is shared with the rest,
+    /// its own faces too, whether it is the first font or a later one.
+    /// Sharing before the load left them reading their file each time a
+    /// text shaped in a new family.
+    #[test]
+    fn a_loaded_file_is_shared_too() {
+        use cosmic_text::fontdb::Source;
+        let file_backed = |core: &Core| {
+            let sess = core.session.state();
+            sess.fonts
+                .db()
+                .faces()
+                .filter(|f| matches!(f.source, Source::File(_)))
+                .count()
+        };
+        let dir = std::env::temp_dir().join(format!("kui-dx25-{}", std::process::id()));
+        let (one, two) = (dir.join("one"), dir.join("two"));
+        for d in [&one, &two] {
+            std::fs::create_dir_all(d).unwrap();
+            std::fs::write(d.join("face.ttf"), crate::testing::liga_font()).unwrap();
+        }
+
+        let mut core = Core::new();
+        core.load_font_file(one.join("face.ttf"))
+            .expect("the first font");
+        assert_eq!(file_backed(&core), 0, "the first file's faces shared");
+        core.load_font_file(two.join("face.ttf"))
+            .expect("a later font");
+        assert_eq!(file_backed(&core), 0, "a later file's faces shared");
+
+        let mut fresh = Core::new();
+        assert!(fresh.load_fonts_dir(&one) >= 1);
+        assert!(fresh.session.state().faces_shared);
+        assert_eq!(file_backed(&fresh), 0, "a folder's faces shared");
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

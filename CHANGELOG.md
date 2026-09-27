@@ -106,10 +106,11 @@ Twelve readings change:
   A removal of 513 to 4096 nodes declaring `exit` now animates, where it
   vanished at once with an `exit-budget` warning; one past 4096 is
   refused as before.
-- The first font an app registers — by name, from bytes or from a file —
-  maps the database's installed font files once (under Fixed, DX24): ~30
-  ms at that call on a Mac with 1,311 faces, after which a family's first
-  shaping costs ~0.4 ms where it cost ~9.7 ms.
+- The first font an app registers — by name, from bytes, from a file or
+  a folder — maps the database's installed font files once (under Fixed,
+  DX24): ~30 ms at that call on a Mac with 1,311 faces, after which a
+  family's first shaping costs ~0.4 ms where it cost ~9.7 ms. Every file
+  loaded after it maps its own faces the same way (DX25).
 - A hover event carries `by: "pointer" | "content"` (under Added, DX20),
   and the window's `window` event has two more phases, `focused` and
   `blurred`, raised when `env.focused` changes (under Added, DX18). A
@@ -427,6 +428,15 @@ Twelve readings change:
   ms. An app on the stock families pays nothing new.
   *What you can delete:* warming families ahead of time to keep their
   first shaping off the frames (kawoosh's `warm`).
+
+- **A font loaded from a file was left unshared** (backlog DX25, from
+  kawoosh, 2026-09-28). DX24 shared the installed faces before the load
+  that asked for it, so the file being loaded, and every one after,
+  still opened and mapped itself each time a text shaped in a new
+  family, weight or style. `load_font_file`, `add_font_data` and
+  `load_fonts_dir` now share what they add. kawoosh loads 167 files it
+  ships, and its fonts pane's frame that first shows a family went from
+  6.6 ms to 2.0 ms (worst 16 → 7.4 ms, none over 8 ms).
 
 - **Text backgrounds that adjoin showed a seam at every join** (from
   kawoosh, 2026-09-26). An editor's selection is a translucent `bg` on

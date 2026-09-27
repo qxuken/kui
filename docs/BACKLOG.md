@@ -2389,7 +2389,8 @@ seven of those were built the same day too (DX7, DX8, DX10, DX11, DX13,
 DX14, DX15), and DX12 in Rust after it (its other bindings are DX22);
 and DX22 the same day, and DX18–DX21 after them; DX16 was declined.
 DX23 and DX24 came from kawoosh's report on moving onto the round, and
-were built the same day.
+were built the same day. DX25 came from kawoosh's windowed probe of its
+fonts pane the day after, and was built that day.
 DX9 and DX17 were built as ADRs 0036 and 0037 the same day. Nothing
 filed by the sweep is open.
 
@@ -2804,6 +2805,36 @@ cosmic-text does for each face it loads): 30 ms once, and then 0.42 ms a
 family's first shaping. An app on the stock families pays nothing new.
 **Not done:** the upstream fix — the axis read once per face when the
 database loads, in cosmic-text — which would make the share unnecessary.
+
+### `.` DX25 — A loaded font file was left unshared — **built 2026-09-28**
+
+From kawoosh, 2026-09-28: its fonts pane, walked a card a frame in a
+window (release, `scripts/probe-fonts.nu`), paid ~6 ms in the frame
+that first showed a family, where DX24 had measured 0.42 ms. Profiled
+here on a build with symbols: 60% of the main thread's samples were
+`get_font_matches` → `FontMatchKey::new` → `with_face_data` →
+`File::open`, the path DX24 took away. DX24 shared the database's faces
+on the first registration, *before* the load that made it, so the file
+being loaded, and every file loaded after, stayed file-backed. kawoosh
+loads the 167 files it ships with `load_font_file`, and each new family,
+weight or style opened and mapped every one of them again to read its
+`wght` axis. `load_fonts_dir` did not share at all.
+
+**Built 2026-09-28:** `load_font_file`, `add_font_data` and
+`load_fonts_dir` share after they load (`share_loaded_faces`), so the
+faces they add are shared with the rest. The walk maps only what is
+unshared, so a later load maps its own faces and nothing else.
+`register_family` still shares only once: it runs every frame a view
+names a family, and `db_mut` empties cosmic-text's match cache. kawoosh's
+probe, two runs each, the same build settings, against kui main and this
+fix: a first-sight frame 6.6 ms mean → 1.96, p95 8.1 → 2.6, worst
+14.8–16.0 → 7.2–7.4, frames over 8 ms 33 of 620 → 0. Frames showing no
+new family cost ~1.0 ms in both. Pinned by `a_loaded_file_is_shared_too`
+(a first file, a later file and a folder, no face left file-backed).
+**Not done:** a first sight still costs ~1 ms over a frame without one,
+and a few faces take 4–5.5 ms in layout (Brush Script MT, Silom,
+Mishafi, SF Pro Display), not profiled. The upstream fix (DX24's) would
+make both shares unnecessary.
 
 Seen in the sweep and not filed, each wanting a check on this tree
 first:
