@@ -953,6 +953,7 @@ impl UiEvent {
     /// The payload's `kind`: what a core event says it is — `"drag"`,
     /// `"key"`, `"scroll"` — or the `kind` of an app's own map tag. None
     /// for a payload that is not a map or has no string `kind`.
+    #[inline]
     pub fn kind(&self) -> Option<&str> {
         self.payload.get_str("kind")
     }

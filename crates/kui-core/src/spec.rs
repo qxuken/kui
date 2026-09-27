@@ -300,6 +300,7 @@ impl FloatConfig {
     /// [`Self::at`] and [`Self::self_at`] at the same point: the float sits
     /// inside the anchor against that edge or corner — `(End, End)` is a
     /// toast in the viewport's bottom-right, `(Center, Center)` a dialog.
+    #[inline]
     pub fn inside(self, x: Align, y: Align) -> Self {
         self.at(x, y).self_at(x, y)
     }
@@ -1321,12 +1322,14 @@ impl NodeSpec {
     }
 
     /// A [`Sizing`], or a number of px (`.width(120.0)`).
+    #[inline]
     pub fn width(mut self, s: impl Into<Sizing>) -> Self {
         self.layout.width = s.into();
         self
     }
 
     /// A [`Sizing`], or a number of px (`.height(24.0)`).
+    #[inline]
     pub fn height(mut self, s: impl Into<Sizing>) -> Self {
         self.layout.height = s.into();
         self
@@ -1334,21 +1337,25 @@ impl NodeSpec {
 
     /// Both axes at once: `.size(20.0, 20.0)` for a fixed box,
     /// `.size(Sizing::GROW, 24.0)` for a strip.
+    #[inline]
     pub fn size(self, w: impl Into<Sizing>, h: impl Into<Sizing>) -> Self {
         self.width(w).height(h)
     }
 
     /// An equal share of the leftover width: `.width(Sizing::GROW)`.
+    #[inline]
     pub fn grow_width(self) -> Self {
         self.width(Sizing::GROW)
     }
 
     /// An equal share of the leftover height: `.height(Sizing::GROW)`.
+    #[inline]
     pub fn grow_height(self) -> Self {
         self.height(Sizing::GROW)
     }
 
     /// Grow along both axes.
+    #[inline]
     pub fn fill(self) -> Self {
         self.grow_width().grow_height()
     }
@@ -1427,6 +1434,7 @@ impl NodeSpec {
     /// hint below it while it is hovered (`widgets::hover_hint`, the float
     /// every binding's tooltip is). What `tooltip="…"` is in JSX and Lua
     /// and `KuiSpec.tooltip` in C.
+    #[inline]
     pub fn tooltip(self, hint: &str) -> Self {
         let mut spec = self.apply_tooltip(hint);
         spec.access_mut().tooltip = true;
@@ -1727,6 +1735,7 @@ impl NodeSpec {
     }
 
     /// Makes this node the frame's modal surface (see the `modal` field).
+    #[inline]
     pub fn modal(mut self, tag: impl Into<Value>) -> Self {
         self.events_mut().modal = Some(tag.into());
         self
@@ -1900,6 +1909,7 @@ impl NodeSpec {
 
     /// A key sink with no tag — `on_key(Value::Null)`, for a handler that
     /// knows the node by its key.
+    #[inline]
     pub fn key_sink(self) -> Self {
         self.on_key(Value::Null)
     }

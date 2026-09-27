@@ -131,23 +131,27 @@ macro_rules! slot_builders {
     ($ty:ty) => {
         impl $ty {
             /// A [`crate::spec::Sizing`], or a number of px, as on a spec.
+            #[inline]
             pub fn width(mut self, width: impl Into<crate::spec::Sizing>) -> Self {
                 self.slots = self.slots.width(width.into());
                 self
             }
 
             /// A [`crate::spec::Sizing`], or a number of px, as on a spec.
+            #[inline]
             pub fn height(mut self, height: impl Into<crate::spec::Sizing>) -> Self {
                 self.slots = self.slots.height(height.into());
                 self
             }
 
             /// `width(Sizing::GROW)`, as on a spec.
+            #[inline]
             pub fn grow_width(self) -> Self {
                 self.width(crate::spec::Sizing::GROW)
             }
 
             /// `height(Sizing::GROW)`, as on a spec.
+            #[inline]
             pub fn grow_height(self) -> Self {
                 self.height(crate::spec::Sizing::GROW)
             }
