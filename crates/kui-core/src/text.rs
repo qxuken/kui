@@ -3313,14 +3313,31 @@ impl TextSystem {
             let lo = floor_boundary(content, from.saturating_sub(start));
             let hi = floor_boundary(content, (to - start).min(content.len()));
             match run.text {
-                // A long line is shaped in chunks and holds one style
-                // throughout, so its selection is plain escaped text.
-                Entry::Long(_) => escape_into(&content[lo..hi], &mut out),
+                Entry::Long(line) => self.long_html(line, lo, hi, &mut out),
                 Entry::Run(entry) => html_of_run(entry, lo, hi, &mut out),
             }
             prev_run = Some(run);
         }
         out
+    }
+
+    /// `html_of_run` for `lo..hi` of a long line: each chunk the range
+    /// touches through its own shaped run, so a rich line's spans copy as
+    /// a short rich text's do — every `break-spaces` text is a long line,
+    /// and one copied as plain text until backlog RG71. A chunk that never
+    /// showed, or whose run the cache dropped, is plain escaped text: its
+    /// spans are the line's, but shaping it is not a copy's to do.
+    fn long_html(&self, line: &LongLine, lo: usize, hi: usize, out: &mut String) {
+        for c in &line.chunks {
+            let (a, b) = (lo.max(c.start), hi.min(c.end));
+            if a >= b {
+                continue;
+            }
+            match c.width.and_then(|_| self.run(c.key)) {
+                Some(e) => html_of_run(e, a - c.start, b - c.start, out),
+                None => escape_into(&line.content[a..b], out),
+            }
+        }
     }
 
     /// Where a platform panel about the selection `from..to` should point:

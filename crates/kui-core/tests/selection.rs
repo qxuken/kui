@@ -358,6 +358,48 @@ fn a_copy_carries_the_formatting_the_text_declared() {
     );
 }
 
+#[test]
+fn a_copy_of_a_long_line_carries_its_formatting_too() {
+    // Every `break-spaces` text is a long line, shaped in chunks, and so is
+    // any text past 4 KB: their spans copy as a short rich text's do
+    // (backlog RG71), across a chunk's edge as well.
+    use kui_core::{Color, Span, TextWrap};
+    let filler = "word ".repeat(1000);
+    for (lead, wrap) in [
+        ("plain ", TextWrap::BreakSpaces),
+        (filler.as_str(), TextWrap::Word),
+        (filler.as_str(), TextWrap::BreakSpaces),
+    ] {
+        let mut core = Core::new();
+        let mut ui = core.frame(Size::new(400.0, 4000.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        let scope = ui.with_keyed("card", NodeSpec::column().grow_width().selectable(), |ui| {
+            ui.rich_text(
+                &[
+                    Span::new(lead),
+                    Span::new("bold").bold(),
+                    Span::new(" & "),
+                    Span::new("green").color(Color::rgb8(0, 0x80, 0)),
+                ],
+                style().wrap(wrap),
+            );
+        });
+        ui.finish();
+        assert!(core.select_all_in(scope));
+        let n = lead.len();
+        let html = core.selection_html().expect("formatting to carry");
+        assert!(html.contains("<b>bold</b>"), "{wrap:?} {n}: {html}");
+        assert!(html.contains("color:#008000"), "{wrap:?} {n}: {html}");
+        assert!(html.contains("&amp;"), "{wrap:?} {n}: {html}");
+        assert!(!html.contains("plain</b>"), "{wrap:?} {n}: {html}");
+        assert_eq!(
+            html.matches("word").count(),
+            lead.matches("word").count(),
+            "{wrap:?} {n}"
+        );
+    }
+}
+
 /// A copy's bold is read against the family's own regular (the
 /// regression pass over F100): a family of a Regular and a SemiBold bolds
 /// at 600, and one whose only face is a Bold is regular at 700.
