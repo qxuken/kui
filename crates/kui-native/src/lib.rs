@@ -2429,7 +2429,8 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                     self.dispatch(event_loop, i, InputEvent::ForceClick(at));
                 }
             }
-            WindowEvent::MouseWheel { delta, .. } => {
+            WindowEvent::MouseWheel { delta, phase, .. } => {
+                let started = phase == winit::event::TouchPhase::Started;
                 let pane = &mut self.panes[i];
                 let scale = pane.window.scale_factor() as f32;
                 let now = std::time::Instant::now();
@@ -2451,14 +2452,14 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                 // The gesture it is part of keeps the targets it began
                 // with (`mod scroll_gesture`, backlog F107).
                 if d != Vec2::ZERO {
-                    let begins = pane.scroll_gesture.begins(kind, now);
+                    let begins = pane.scroll_gesture.begins(kind, started, now);
                     self.dispatch(
                         event_loop,
                         i,
                         InputEvent::ScrollGesture { delta: d, begins },
                     );
                 } else {
-                    pane.scroll_gesture.note(kind, now);
+                    pane.scroll_gesture.note(kind, started, now);
                 }
             }
             WindowEvent::MouseInput { state, button, .. } => {
