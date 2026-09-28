@@ -382,12 +382,20 @@ impl ScrollStore {
     fn set_from(&mut self, key: Key, offset: Vec2, smooth: bool) {
         let frame_no = self.frame_no;
         let e = self.entries.entry(key).or_default();
+        e.last_declared = frame_no;
+        // Asked again for where a leg under way is already going — a view
+        // that calls `reveal_row` every frame until the row shows — the
+        // leg goes on. Asked anew, it would start over from where it is
+        // drawn, sampled at the same instant: the content never moved and
+        // every frame asked for the next (the alpha.22 regression pass).
+        if smooth && e.smooth.is_some() && e.offset == offset {
+            return;
+        }
         e.asked_smooth = smooth;
         if !smooth {
             e.smooth = None;
         }
         e.offset = offset;
-        e.last_declared = frame_no;
     }
 
     /// The clock the eased offsets read, fed by `Core::set_time` beside

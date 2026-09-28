@@ -953,7 +953,7 @@ pub const PROPS: &[PropDef] = &[
         id: P_ON_SCROLL,
         kind: Kind::Tag,
         apply: Apply::SpecMsg(|s, v| s.on_scroll(v)),
-        doc: "Scroll tag: the wheel over this node emits {kind:\"scroll\", x, y, dx, dy, lines, tag} on it instead of scrolling anything — `dx`/`dy` the delta in logical px as the driver reported it (positive `dy` is the wheel rolling up, toward earlier content), `x`/`y` the pointer, and `lines` on a `cells` grid the whole lines the delta covers (positive = later history, the sign `originLine` grows in; the fraction is carried to the next notch so a trackpad's small steps add up) and null on any other node. The node takes the wheel on the axes `scrollAxes` names (both unless it narrows them): a gesture that starts over it is its own whether or not it has anywhere to go, and stays its own until it ends, wherever the pointer goes (backlog F107); it reaches no scroll container above it, and a scroller inside it that can move still takes the axes it scrolls, by paint order, passing this node the rest. The core moves nothing — a grid re-declares `originLine`, a canvas zooms. A drag-select held past a `cells` grid's top or bottom edge arrives here too, once a frame with the lines that frame scrolled by (`docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md`).",
+        doc: "Scroll tag: the wheel over this node emits {kind:\"scroll\", x, y, dx, dy, lines, tag} on it instead of scrolling anything — `dx`/`dy` the delta in logical px as the driver reported it (positive `dy` is the wheel rolling up, toward earlier content), `x`/`y` the pointer, and `lines` on a `cells` grid the whole lines the delta covers (positive = later history, the sign `originLine` grows in; the fraction is carried to the next notch so a trackpad's small steps add up) and null on any other node. The node takes the wheel on the axes `scrollAxes` names (both unless it narrows them): a gesture that starts over it is its own whether or not it has anywhere to go, and stays its own until it ends, wherever the pointer goes (backlog F107); it reaches no scroll container above it, and a scroller inside it still takes the axes it scrolls while it can move that way, passing this node the rest — the other axis, and a gesture that begins with that scroller at its limit (`overscroll: \"contain\"` on the scroller keeps it there). The core moves nothing — a grid re-declares `originLine`, a canvas zooms. A drag-select held past a `cells` grid's top or bottom edge arrives here too, once a frame with the lines that frame scrolled by (`docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md`).",
     },
     PropDef {
         name: "scrollAxes",
@@ -1522,6 +1522,19 @@ pub const C_FIELDS: &[(&str, &str)] = &[
         "`on_scroll` (a borrowed `KuiValue*`, cloned while the node opens)",
     ),
     ("onHover", "`on_hover` argument of `kui_open_with`"),
+    (
+        "onFocus",
+        "`on_focus` (a borrowed `KuiValue*`, cloned while the node opens)",
+    ),
+    ("ruleWidth", "`rule_w`"),
+    (
+        "overscroll",
+        "`overscroll` (`KUI_OVERSCROLL_*`; zeroed, auto)",
+    ),
+    (
+        "scrollAxes",
+        "`scroll_axes` (`KUI_SCROLL_AXES_*`; zeroed, both)",
+    ),
     (
         "onDrop",
         "`on_drop` (a borrowed `KuiValue*`, cloned while the node opens)",

@@ -384,3 +384,114 @@ fn a_latched_gesture_follows_its_target_not_the_pointer() {
     strip(&mut core, ScrollAxes::Both);
     assert_eq!(core.scroll_offset(list), Vec2::new(0.0, 20.0));
 }
+
+/// A page scrolling y, and floated over it — declared beside it, not in
+/// it — a 100 px list scrolling y, modal or not.
+fn page_and_popover(core: &mut Core, modal: bool) {
+    use kui_core::{Align, FloatConfig};
+    let mut ui = core.frame(VIEW, 1.0);
+    ui.with_keyed(
+        "page",
+        NodeSpec::column().size(300.0, 200.0).scroll_y(),
+        |ui| {
+            ui.leaf(NodeSpec::column().size(300.0, 800.0));
+        },
+    );
+    let pop = NodeSpec::column()
+        .float(
+            FloatConfig::viewport()
+                .inside(Align::Start, Align::Start)
+                .offset(50.0, 50.0),
+        )
+        .size(100.0, 100.0)
+        .scroll_y();
+    ui.with_keyed("pop", if modal { pop.modal("m") } else { pop }, |ui| {
+        ui.leaf(NodeSpec::column().size(100.0, 400.0));
+    });
+    ui.finish();
+}
+
+/// Chaining goes to the scroller *around* the one at its limit, by the
+/// tree: a list at its end in a popover floated over a page it was not
+/// declared in leaves that page alone, where the walk by paint order
+/// scrolled it (the alpha.22 regression pass).
+#[test]
+fn a_popover_list_at_its_end_does_not_chain_to_the_page_it_floats_over() {
+    let mut core = Core::new();
+    page_and_popover(&mut core, false);
+    page_and_popover(&mut core, false);
+    let page = core.key_of("page").unwrap();
+    let pop = core.key_of("pop").unwrap();
+    core.set_scroll(pop, Vec2::new(0.0, 1e9));
+    page_and_popover(&mut core, false);
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(100.0, 100.0)));
+    core.handle_input(InputEvent::Scroll(Vec2::new(0.0, -30.0)));
+    page_and_popover(&mut core, false);
+    assert_eq!(core.scroll_offset(page), Vec2::ZERO);
+    // Over the page itself it is the page's.
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(250.0, 180.0)));
+    core.handle_input(InputEvent::Scroll(Vec2::new(0.0, -30.0)));
+    page_and_popover(&mut core, false);
+    assert_eq!(core.scroll_offset(page), Vec2::new(0.0, 30.0));
+}
+
+/// A wheel event between `begin_frame` and `finish` — a C host feeding
+/// input mid-build — routes by what the last finished frame drew; it read
+/// the half-built tree by index and panicked (the alpha.22 regression
+/// pass).
+#[test]
+fn a_wheel_during_a_build_routes_by_the_last_frame() {
+    let mut core = Core::new();
+    page_and_popover(&mut core, false);
+    page_and_popover(&mut core, false);
+    let page = core.key_of("page").unwrap();
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(250.0, 180.0)));
+    core.begin_frame(VIEW, 1.0);
+    core.handle_input(InputEvent::Scroll(Vec2::new(0.0, -10.0)));
+    assert_eq!(core.scroll_offset(page), Vec2::new(0.0, 10.0));
+}
+
+/// A glide latched on the page goes to the sheet a modal opened under
+/// the pointer mid-gesture: the latched target is outside the modal's
+/// scope, so the gesture picks again (ADR 0038, decision 3).
+#[test]
+fn a_latched_target_behind_a_new_modal_is_picked_again() {
+    use kui_core::{Align, FloatConfig};
+    let frame = |core: &mut Core, modal: bool| {
+        let mut ui = core.frame(VIEW, 1.0);
+        ui.with_keyed(
+            "page",
+            NodeSpec::column().size(300.0, 200.0).scroll_y(),
+            |ui| {
+                ui.leaf(NodeSpec::column().size(300.0, 800.0));
+            },
+        );
+        if modal {
+            ui.with_keyed(
+                "sheet",
+                NodeSpec::column()
+                    .float(FloatConfig::viewport().inside(Align::Start, Align::Start))
+                    .size(300.0, 200.0)
+                    .scroll_y()
+                    .modal("m"),
+                |ui| {
+                    ui.leaf(NodeSpec::column().size(300.0, 800.0));
+                },
+            );
+        }
+        ui.finish();
+    };
+    let mut core = Core::new();
+    frame(&mut core, false);
+    frame(&mut core, false);
+    let page = core.key_of("page").unwrap();
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(100.0, 100.0)));
+    gesture(&mut core, 0.0, -10.0, true);
+    frame(&mut core, true);
+    frame(&mut core, true);
+    let sheet = core.key_of("sheet").unwrap();
+    gesture(&mut core, 0.0, -10.0, false);
+    frame(&mut core, true);
+    assert_eq!(core.scroll_offset(page), Vec2::new(0.0, 10.0));
+    assert_eq!(core.scroll_offset(sheet), Vec2::new(0.0, 10.0));
+}

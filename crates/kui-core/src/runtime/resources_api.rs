@@ -669,6 +669,29 @@ pub(crate) fn share_faces(db: &mut cosmic_text::fontdb::Database) -> usize {
 mod tests {
     use super::*;
 
+    /// DX26's kept page lives for the frame it was kept for and no longer:
+    /// `finish` drops it, where the next `begin_frame` did — on a window
+    /// that goes idle after emptying a 4096 page, never (the alpha.22
+    /// regression pass).
+    #[test]
+    fn the_emptied_atlas_page_is_dropped_when_its_frame_finishes() {
+        let frame = |core: &mut Core| {
+            let mut ui = core.frame(crate::Size::new(200.0, 100.0), 1.0);
+            ui.text("kept for a frame", crate::TextStyle::new(14.0));
+            ui.finish();
+        };
+        let mut core = Core::new();
+        frame(&mut core);
+        core.atlas.reset_next_frame();
+        core.begin_frame(crate::Size::new(200.0, 100.0), 1.0);
+        assert!(
+            core.atlas.keeps_prev(),
+            "the frame that emptied it keeps it"
+        );
+        core.finish_frame();
+        assert!(!core.atlas.keeps_prev());
+    }
+
     /// DX24: naming a family shares the database's file-backed faces, once;
     /// before it, an app on the stock families has mapped nothing.
     #[test]

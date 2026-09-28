@@ -888,9 +888,9 @@ export type WarningCode =
    *  text, or ask by a nearer key. */
   | 'text-beyond-line'
   /** One frame removed more nodes declaring `exit` than the exit store will
-   *  hold (512, `depart::MAX_NODES`), so none of that frame's removal animated:
-   *  every departing node of it vanished at once, as a node with no `exit`
-   *  does, rather than some sliding out and the rest blinking
+   *  hold (4096, `depart::MAX_NODES`), so none of that frame's removal
+   *  animated: every departing node of it vanished at once, as a node with no
+   *  `exit` does, rather than some sliding out and the rest blinking
    *  (`docs/adr/0012-the-exit-budget.md`, decision 2). Correct, and invisible
    *  from the outside, which is the whole reason it is a line here: a list that
    *  drops a thousand rows wants `exit` on the list, not on every row. A
@@ -2085,6 +2085,13 @@ export declare class Ctx {
    */
   mouse(down: boolean, clicks?: number, button?: MouseButtonName): void
   scroll(dx: number, dy: number): void
+  /**
+   * One event of a scroll gesture (backlog F107, ADR 0038): `begins`
+   * on its first, then the rest go to the target it picked, wherever
+   * the pointer or the content has gone since — the latching a native
+   * swipe gets, for a headless test. `scroll` is a gesture of its own.
+   */
+  scrollGesture(dx: number, dy: number, begins: boolean): void
   /** Committed text input (typing, paste); routed to the focused editor. */
   text(text: string): void
   /**

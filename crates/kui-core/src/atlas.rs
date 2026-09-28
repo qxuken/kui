@@ -292,6 +292,29 @@ impl GlyphAtlas {
         }
     }
 
+    /// The frame's glyphs are all looked up: the page `begin_frame`
+    /// emptied has served it. Dropped here rather than at the next
+    /// `begin_frame`, which on an idle window may never come — the frame
+    /// that shrinks an extended page, or empties a full 4096 one, would
+    /// otherwise hold up to 64 MiB for as long as nothing redraws (the
+    /// alpha.22 regression pass).
+    pub(crate) fn end_frame(&mut self) {
+        self.prev = None;
+    }
+
+    /// For a frame-level test: the next `begin_frame` empties the page,
+    /// keeping the old one, as a refusal would.
+    #[cfg(test)]
+    pub(crate) fn reset_next_frame(&mut self) {
+        self.short = true;
+    }
+
+    /// For a frame-level test: whether an emptied page is still kept.
+    #[cfg(test)]
+    pub(crate) fn keeps_prev(&self) -> bool {
+        self.prev.is_some()
+    }
+
     /// Whether this frame was refused room (see `short`), or wanted a
     /// glyph refused earlier while its set fits the page (RG56): it drew
     /// without some glyph, and the next frame, on an empty page, draws it.
@@ -1183,8 +1206,10 @@ mod tests {
             "only what was looked up is placed"
         );
 
-        // The next frame: the old page is gone, and a glyph the reset
-        // frame did not ask for is rasterized.
+        // The frame's end: the old page is gone, and in the next frame a
+        // glyph the reset frame did not ask for is rasterized.
+        atlas.end_frame();
+        assert!(atlas.prev.is_none(), "not held past its frame");
         atlas.begin_frame();
         atlas.get_or_insert(fake_key(1), || {
             rasterized += 1;

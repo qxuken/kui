@@ -1362,6 +1362,20 @@ pub struct ScrollRegion {
     /// the app asked to hear the wheel, and hearing it *and* having the
     /// content move under it would be two answers to one notch.
     pub handler: bool,
+    /// The axes a gesture may take here: a container's `scroll_x` /
+    /// `scroll_y`, a handler's `scroll_axes`. Carried from the frame that
+    /// drew the region, with `contain` and `parent`, so the wheel never
+    /// reads the tree by `node` — a tree a build under way may have
+    /// cleared or refilled (the alpha.22 regression pass).
+    pub(crate) takes_x: bool,
+    pub(crate) takes_y: bool,
+    /// `overscroll: contain`: a gesture starting here stays here.
+    pub(crate) contain: bool,
+    /// The index in the frame's region list of the nearest scroll region
+    /// around this one in the tree, [`crate::tree::NIL`] for none: where
+    /// a gesture this one passes goes next (ADR 0038's "the scroller
+    /// around it"), whatever else is painted under the pointer.
+    pub(crate) parent: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

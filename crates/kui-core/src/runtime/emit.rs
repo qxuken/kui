@@ -233,6 +233,23 @@ impl Core {
         });
     }
 
+    /// The index in `regions` of the nearest scroll region around node
+    /// `i` in the tree, [`NIL`] for none. Ancestors are emitted before
+    /// their descendants — a float's layer comes after the one its
+    /// declaring node is in — so the one around is already in the list.
+    /// Off `emit_node`'s straight path: only a scroller pays for it (C48).
+    #[inline(never)]
+    fn enclosing_scroll_region(&self, i: usize, regions: &[ScrollRegion]) -> u32 {
+        let mut a = self.tree.parent[i];
+        while a != NIL {
+            if let Some(r) = regions.iter().rposition(|r| r.node == a) {
+                return r as u32;
+            }
+            a = self.tree.parent[a as usize];
+        }
+        NIL
+    }
+
     /// Emits one node's quads and registers its hit/scroll regions.
     fn emit_node(
         &mut self,
@@ -275,6 +292,12 @@ impl Core {
         if spec.layout.scroll_x || spec.layout.scroll_y || handler {
             // A container behind a modal keeps its scrollbar drawn and
             // refuses the wheel and the thumb.
+            let (takes_x, takes_y) = if handler {
+                let axes = spec.events().scroll_axes;
+                (axes.takes(true), axes.takes(false))
+            } else {
+                (spec.layout.scroll_x, spec.layout.scroll_y)
+            };
             scroll_regions.push(ScrollRegion {
                 key: self.tree.keys[i],
                 node: i as u32,
@@ -282,6 +305,10 @@ impl Core {
                 clip: clip.rect,
                 inert: !interactive,
                 handler,
+                takes_x,
+                takes_y,
+                contain: spec.interact().overscroll == crate::spec::Overscroll::Contain,
+                parent: self.enclosing_scroll_region(i, scroll_regions),
             });
         }
         if let NodeContent::Edit(key) = self.tree.content[i]
@@ -1062,6 +1089,7 @@ impl Core {
         self.interaction.scrollbars = scrollbars;
         self.ime_rect = self.focused_caret_rect();
         self.note_sink_caret();
+        self.atlas.end_frame();
         // The atlas refused a glyph for room this frame rather than drop
         // a slot the frame had already used (F99): the next frame starts
         // on an empty page and draws it, and has to come — an

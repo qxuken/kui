@@ -13,6 +13,12 @@ date: 2026-09-28
 > list already at its end moved nothing, where the scroller around it
 > could have moved. And a swipe over a scroller did not always go the
 > scroller's way.
+>
+> **Amended by the alpha.22 regression pass (2026-09-28):** the pick
+> walks the scroller's ancestors in the tree, not the regions painted
+> under the pointer (decision 3), and reads what it needs off the region
+> the last finished frame drew rather than off the tree, so a wheel
+> event that arrives during a build routes by that frame.
 
 ## Context
 
@@ -68,8 +74,12 @@ date: 2026-09-28
      beginning it carried is owed to the next one that is.
 3. **The target is picked per axis, when the gesture first moves on
    that axis, and latched.**
-   - Picking walks the regions under the pointer, innermost first. The
-     first to take the axis is the target:
+   - Picking starts at the topmost region under the pointer and walks
+     out through the regions around it in the tree (amended by the
+     alpha.22 regression pass: it walked every region under the pointer
+     by paint order, so a list at its end in a popover chained to a
+     page it merely floated over). The first to take the axis is the
+     target:
      - an `on_scroll` node takes it if its `scroll_axes` names it,
        whether or not it has anywhere to go;
      - a container takes it if it scrolls on that axis and can still

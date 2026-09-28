@@ -1753,6 +1753,34 @@ test('onScroll takes the wheel as a message, in lines on a cells grid', () => {
   assert.equal(ctx.scrollOffset('outer').y, 12);
 });
 
+// A scroll gesture keeps the target it began on (backlog F107, ADR 0038):
+// `scrollGesture` is the headless door to latching, as C's
+// `kui_input_scroll_gesture` is. A sideways swipe begun over the list
+// moves the strip on when the terminal comes under the still pointer.
+test('scrollGesture latches: a swipe that moved the strip keeps it past a terminal', () => {
+  const ctx = new Ctx();
+  const strip = box({ dir: 'row', width: 300, height: 200, scrollX: true }, [
+    box({ width: 150, height: 200, scrollY: true }, [box({ width: 150, height: 800 })], 'list'),
+    box({ width: 150, height: 200, onScroll: { kind: 'term' } }, [], 'term'),
+    box({ width: 600, height: 200 }),
+  ], 'strip');
+  const tree = box({ width: 'grow', height: 'grow' }, [strip]);
+  ctx.frame(300, 200, 1, tree);
+  ctx.frame(300, 200, 1, tree);
+  ctx.cursor(130, 50);
+  ctx.scrollGesture(-30, 0, true);
+  ctx.frame(300, 200, 1, tree);
+  for (let i = 0; i < 3; i++) {
+    ctx.scrollGesture(-30, 0, false);
+    assert.deepEqual(ctx.pollEvents(), [], 'latched: not the terminal\'s');
+    ctx.frame(300, 200, 1, tree);
+  }
+  assert.equal(ctx.scrollOffset('strip').x, 120);
+  // A new gesture over the terminal is the terminal's.
+  ctx.scrollGesture(-30, 0, true);
+  assert.deepEqual(ctx.pollEvents().map((e) => e.payload.tag), [{ kind: 'term' }]);
+});
+
 // A point on the text a keyed node drew is a byte offset, and a byte
 // offset is a caret rect (backlog C18): the `line` row of a custom editor
 // answers across its token runs, so a click becomes a caret with one call.
@@ -7306,7 +7334,7 @@ test('the two classes are the verb table\'s Node column, both ways (B1a)', () =>
     'frameBinary', 'setViewBinary', 'setView', 'measureTextBinary', 'setTokensRaw',
     'warnUnknownProps', 'warnUnknownTokens', 'clips', 'fragmentDraws', 'textureDraws', 'stats',
     // The input injection, one per `InputEvent` (the table's `handle_input` row).
-    'cursor', 'cursorLeft', 'mouse', 'scroll', 'text', 'commit', 'paste', 'preedit', 'key', 'keyDown', 'keyUp',
+    'cursor', 'cursorLeft', 'mouse', 'scroll', 'scrollGesture', 'text', 'commit', 'paste', 'preedit', 'key', 'keyDown', 'keyUp',
     'press', 'release', 'access', 'dragFiles', 'dropFiles', 'dragCancel', 'answerFiles',
     // The two-class mechanics: the window's own loop and its lifetime.
     'useWindow', 'pump', 'pumpUntil', 'nextDeadlineMs', 'size', 'frameStats', 'close',

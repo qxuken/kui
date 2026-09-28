@@ -798,7 +798,7 @@ typedef struct KuiSpec {
      * dismissed and re-shown never doubles. `set` = 0, or no transition_ms,
      * leaves a removed node vanishing at once as before. Needs a stable key.
      * width/height resize the departing node's own box only: what is inside
-     * it is a picture and is not laid out again. The store holds 512 nodes
+     * it is a picture and is not laid out again. The store holds 4096 nodes
      * and a frame's removal is judged whole: one that does not fit takes
      * the room from the oldest exits still in flight, and one larger than
      * the budget on its own animates nothing (every node of it vanishes at
@@ -1017,13 +1017,13 @@ typedef struct KuiSpec {
      * field) is all three. ABI 20. */
     uint32_t buttons;
     /* A scroll gesture that starts over this scroller while it is at its
-     * limit that way (backlog F107): KUI_OVERSCROLL_AUTO (0, the zeroed
-     * field) passes it on to the scroller around it, KUI_OVERSCROLL_CONTAIN
-     * keeps it here, moving nothing. Only on the axes the node scrolls.
+     * limit that way (backlog F107): 0 (the zeroed field) or
+     * KUI_OVERSCROLL_AUTO passes it on to the scroller around it in the
+     * tree, KUI_OVERSCROLL_CONTAIN keeps it here, moving nothing. Only on the axes the node scrolls.
      * ABI 20. */
     uint32_t overscroll;
-    /* Which axes on_scroll takes (backlog F107): KUI_SCROLL_AXES_BOTH (0,
-     * the zeroed field), _X or _Y. A gesture on an axis the node does not
+    /* Which axes on_scroll takes (backlog F107): 0 (the zeroed field) or
+     * KUI_SCROLL_AXES_BOTH, _X or _Y. A gesture on an axis the node does not
      * take passes it by, to the scroller around it - a terminal scrolling
      * its history says Y. ABI 20. */
     uint32_t scroll_axes;

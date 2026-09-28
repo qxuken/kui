@@ -73,3 +73,37 @@ fn reveal_row_centres_a_row_the_list_has_not_built_and_leaves_a_shown_one() {
     assert_eq!(widgets::rows_in_view(&mut ui, "rows", 20.0), 5);
     ui.finish();
 }
+
+/// `reveal_row` called every frame, as a view calls it until the row
+/// shows, on a list with a `transition`: the ease goes on to the row.
+/// Each call asked for the same offset anew, the leg started over from
+/// where it was drawn at that same instant, and the list never moved
+/// while it asked for frame after frame (the alpha.22 regression pass).
+#[test]
+fn reveal_row_every_frame_on_an_eased_list_arrives() {
+    let mut core = Core::new();
+    let mut revealing = true;
+    for f in 0..40 {
+        core.set_time(f as f64 * 0.016);
+        let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
+        revealing = widgets::reveal_row(&mut ui, "rows", 40, 20.0);
+        ui.with_keyed(
+            "rows",
+            NodeSpec::column()
+                .size(200.0, 100.0)
+                .scroll_y()
+                .transition(200.0),
+            |ui| {
+                for _ in 0..50 {
+                    ui.leaf(NodeSpec::row().size(200.0, 20.0));
+                }
+            },
+        );
+        ui.finish();
+    }
+    let rows = core.key_of("rows").unwrap();
+    // Row 40 centred in 100 px: 40 * 20 + 10 - 50.
+    assert_eq!(core.scroll_geometry(rows).unwrap().offset.y, 760.0);
+    assert!(!revealing, "shown, so the last call scrolled nothing");
+    assert!(!core.animating(), "and the ease is over");
+}

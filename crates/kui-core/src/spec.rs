@@ -839,9 +839,12 @@ pub struct EventSpec {
     /// names: a scroll gesture that starts over it is its own, and stays
     /// its own until it ends wherever the pointer goes (backlog F107); it
     /// reaches no scroll container above it, and a container inside it
-    /// that can move still wins over it, by paint order like any
-    /// scroller. The core moves nothing — a grid's `origin_line` and a
-    /// canvas's zoom are the app's to change. A drag-select held past a
+    /// still takes the axes it scrolls while it can move that way,
+    /// passing this node the rest: the other axis, and a gesture that
+    /// begins with the container at its limit (unless it says
+    /// [`Overscroll::Contain`]). The core moves nothing — a grid's
+    /// `origin_line` and a canvas's zoom are the app's to change. A
+    /// drag-select held past a
     /// grid's top or bottom edge arrives here too, as the lines the frame
     /// scrolled by (ADR 0029, decision 4).
     pub on_scroll: Option<Value>,

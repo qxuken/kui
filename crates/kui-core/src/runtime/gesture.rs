@@ -21,7 +21,7 @@
 
 use super::*;
 use crate::input::ScrollRegion;
-use crate::spec::Overscroll;
+use crate::tree::NIL;
 
 /// How close to its limit a scroller has to be to count as there, logical
 /// px: a sub-pixel remainder is no room to move.
@@ -73,9 +73,14 @@ impl Core {
     }
 
     /// The region the gesture's `x` (or `y`) goes to: the latched one
-    /// while it is still declared and outside any modal, else the first
-    /// under the pointer, innermost by paint order, that takes a delta
-    /// of sign `d` on that axis — latched from here on.
+    /// while it is still declared and outside any modal, else — from the
+    /// topmost region under the pointer out through the ones around it in
+    /// the tree — the first that takes a delta of sign `d` on that axis,
+    /// latched from here on. The walk goes by the tree, not by what else
+    /// is painted under the pointer: a list at its end in a popover
+    /// passes the gesture to the scroller the popover was declared in,
+    /// not to the page it happens to float over (the alpha.22
+    /// regression pass).
     fn scroll_target(&mut self, x: bool, d: f32) -> Option<ScrollRegion> {
         let latched = if x {
             self.scroll_latch.x
@@ -95,10 +100,27 @@ impl Core {
                 return Some(*r);
             }
         }
-        let regions: Vec<ScrollRegion> = self.interaction.scroll_regions_at().copied().collect();
-        let picked = regions
-            .into_iter()
-            .find(|r| matches!(self.answer(r, x, d), Answer::Take));
+        let regions = &self.interaction.scroll_regions;
+        let mut at = self
+            .interaction
+            .scroll_regions_at()
+            .next()
+            .map(|r| r.node)
+            .and_then(|node| regions.iter().rposition(|r| r.node == node));
+        let mut picked = None;
+        while let Some(i) = at {
+            let r = regions[i];
+            // Out through a modal's edge is out of its scope: the one
+            // around is inert, and so is everything past it.
+            if r.inert {
+                break;
+            }
+            if matches!(self.answer(&r, x, d), Answer::Take) {
+                picked = Some(r);
+                break;
+            }
+            at = (r.parent != NIL).then_some(r.parent as usize);
+        }
         let key = picked.map(|r| r.key);
         if x {
             self.scroll_latch.x = key;
@@ -112,25 +134,14 @@ impl Core {
     /// `x` (or `y`) is `r`'s. A handler's on the axes it takes, whether
     /// or not it has anywhere to go — the core cannot ask it; a
     /// container's on the axes it scrolls, while it can still move that
-    /// way or when it says `contain`.
+    /// way or when it says `contain`. Read off the region, as the frame
+    /// that drew it left it, never off the tree.
     fn answer(&self, r: &ScrollRegion, x: bool, d: f32) -> Answer {
-        let spec = &self.tree.specs[r.node as usize];
-        if r.handler {
-            return if spec.events().scroll_axes.takes(x) {
-                Answer::Take
-            } else {
-                Answer::Pass
-            };
-        }
-        let scrolls = if x {
-            spec.layout.scroll_x
-        } else {
-            spec.layout.scroll_y
-        };
-        if !scrolls {
+        let takes = if x { r.takes_x } else { r.takes_y };
+        if !takes {
             return Answer::Pass;
         }
-        if spec.interact().overscroll == Overscroll::Contain {
+        if r.handler || r.contain {
             return Answer::Take;
         }
         // Positive `d` is the wheel rolling up (or left): toward the

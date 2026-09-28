@@ -265,7 +265,7 @@ warnings! {
     /// the row and its text, or ask by a nearer key.
     pub const TEXT_BEYOND_LINE: &str = "text-beyond-line";
     /// One frame removed more nodes declaring `exit` than the exit store
-    /// will hold (512, `depart::MAX_NODES`), so none of that frame's removal
+    /// will hold (4096, `depart::MAX_NODES`), so none of that frame's removal
     /// animated: every departing node of it vanished at once, as a node with
     /// no `exit` does, rather than some sliding out and the rest blinking
     /// (`docs/adr/0012-the-exit-budget.md`, decision 2). Correct, and

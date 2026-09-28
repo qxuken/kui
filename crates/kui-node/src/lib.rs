@@ -737,6 +737,18 @@ impl Ctx {
         self.input(InputEvent::Scroll(Vec2::new(dx as f32, dy as f32)));
     }
 
+    /// One event of a scroll gesture (backlog F107, ADR 0038): `begins`
+    /// on its first, then the rest go to the target it picked, wherever
+    /// the pointer or the content has gone since — the latching a native
+    /// swipe gets, for a headless test. `scroll` is a gesture of its own.
+    #[napi]
+    pub fn scroll_gesture(&mut self, dx: f64, dy: f64, begins: bool) {
+        self.input(InputEvent::ScrollGesture {
+            delta: Vec2::new(dx as f32, dy as f32),
+            begins,
+        });
+    }
+
     /// Committed text input (typing, paste); routed to the focused editor.
     #[napi]
     pub fn text(&mut self, text: String) {
