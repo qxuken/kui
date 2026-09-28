@@ -263,6 +263,12 @@ pub(crate) struct CachedText {
     span_deco: Vec<SpanDeco>,
     /// (wrap, atlas stamp) the template cache was built for.
     glyphs_built_for: Option<(Option<u32>, u64)>,
+    /// The frame a node last wrapped this run for, and the wrap it asked:
+    /// a second node of that frame asking another width wraps a copy of
+    /// its own ([`TextSystem::own_wrap`]), since the queries read the
+    /// buffer as it was left (backlog RG72).
+    claimed: u64,
+    claimed_wrap: Option<f32>,
 }
 
 struct GlyphTemplate {
@@ -2148,10 +2154,46 @@ impl TextSystem {
         self.run_mut(key).expect("frame text missing from cache")
     }
 
+    /// Wraps text `id`'s run to `max_w_logical`: layout at the node's
+    /// width, and emission again, since the run is shared by every node
+    /// drawing the same text. The first node of a frame claims it; one
+    /// asking another width the same frame moves to a copy of its own.
     fn ensure_wrap(&mut self, id: TextId, max_w_logical: f32, fs: &mut FontSystem) {
-        let scale = self.scale;
+        let (scale, frame_no) = (self.scale, self.frame_no);
         let entry = self.entry_mut(id);
         let target = wrap_target(entry, Some(max_w_logical), scale);
+        if entry.claimed == frame_no && wrap_differs(entry.claimed_wrap, target) {
+            self.own_wrap(id, target, fs);
+            return;
+        }
+        entry.claimed = frame_no;
+        entry.claimed_wrap = target;
+        wrap_entry(entry, fs, target);
+    }
+
+    /// `ensure_wrap` for a node drawing a run another node of this frame
+    /// wrapped to another width — the same label in two panes: the node
+    /// takes the copy of the run at its width, made the first time and
+    /// found by width after, so each answers `text_hit` and `caret_rect`
+    /// at its own rows and neither re-wraps the other's (backlog RG72; a
+    /// long line's twin is [`Self::claim_long`]). Off the path every other
+    /// text takes: a copy costs a buffer clone once and a lookup a frame.
+    #[inline(never)]
+    fn own_wrap(&mut self, id: TextId, target: Option<f32>, fs: &mut FontSystem) {
+        let frame_no = self.frame_no;
+        let key = self.frame[id.0 as usize].cache_key;
+        // By the half pixel `wrap_differs` tells widths apart by.
+        let slot = target.map_or(u64::MAX, |t| (t * 2.0).round() as u64);
+        let copy = crate::key::fnv(key ^ COPY_SALT, &slot.to_le_bytes());
+        if self.run(copy).is_none() {
+            let fork = self.run(key).expect("frame text").fork(frame_no);
+            self.insert(copy, Entry::Run(fork));
+        }
+        self.frame[id.0 as usize].cache_key = copy;
+        let entry = self.run_mut(copy).expect("just made");
+        entry.last_used = frame_no;
+        entry.claimed = frame_no;
+        entry.claimed_wrap = target;
         wrap_entry(entry, fs, target);
     }
 
@@ -4099,6 +4141,30 @@ impl CachedText {
             deco: Vec::new(),
             span_deco,
             glyphs_built_for: None,
+            claimed: u64::MAX,
+            claimed_wrap: None,
+        }
+    }
+
+    /// A copy laid out as this one is, for a second node that draws the
+    /// same text at another width ([`TextSystem::own_wrap`]): the shaped
+    /// buffer, not the templates, which the copy builds when drawn.
+    fn fork(&self, frame_no: u64) -> Self {
+        Self {
+            buffer: self.buffer.clone(),
+            content: self.content.clone(),
+            wrap: self.wrap,
+            intrinsic: self.intrinsic,
+            max_lines: self.max_lines,
+            clamp_w: self.clamp_w,
+            last_used: frame_no,
+            bytes: self.bytes,
+            glyphs: Vec::new(),
+            deco: Vec::new(),
+            span_deco: self.span_deco.clone(),
+            glyphs_built_for: None,
+            claimed: u64::MAX,
+            claimed_wrap: None,
         }
     }
 }

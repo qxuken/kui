@@ -341,3 +341,48 @@ fn a_space_a_word_break_swallows_ends_the_row_it_broke() {
     let r = core.caret_rect(key, 11).unwrap();
     assert!((r.y - (20.0 + 2.0 * LH)).abs() < 0.01, "last row: {}", r.y);
 }
+
+#[test]
+fn one_text_at_two_widths_answers_at_each() {
+    // The same label in two boxes of different widths shares one shaped
+    // run; each node answers `caret_rect` and `text_hit` at its own
+    // width, not at the one drawn last (backlog RG72).
+    let mut core = Core::new();
+    let w = cell(&mut core);
+    let text = "aaa bbb ccc";
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let at = |cells: f32| NodeSpec::row().width(Sizing::Fixed(cells * w + 0.5));
+    let narrow = ui.text_in_keyed("narrow", at(6.0), text, mono()).index(0);
+    ui.leaf(NodeSpec::column().height(100.0));
+    let wide = ui.text_in_keyed("wide", at(20.0), text, mono()).index(0);
+    ui.finish();
+    let row_x = |r: kui_core::Rect, y0: f32| (((r.y - y0) / LH).round(), (r.x / w).round());
+    // "aaa ", "bbb ", "ccc" in six cells; one row in twenty.
+    assert_eq!(row_x(core.caret_rect(narrow, 8).unwrap(), 0.0), (2.0, 0.0));
+    assert_eq!(row_x(core.caret_rect(wide, 8).unwrap(), 160.0), (0.0, 8.0));
+    assert_eq!(
+        core.text_hit(narrow, Vec2::new(1.2 * w, LH + 5.0)),
+        Some(TextHit { byte: 5, line: 1 })
+    );
+    assert_eq!(
+        core.text_hit(wide, Vec2::new(9.2 * w, 165.0)),
+        Some(TextHit { byte: 9, line: 0 })
+    );
+    // The glyphs were drawn at each width all along.
+    let (dl, _) = core.output();
+    let rows = |y0: f32, y1: f32| {
+        let mut r: Vec<i32> = dl
+            .quads
+            .iter()
+            .filter(|q| {
+                q.kind == kui_core::QuadKind::GlyphMask && q.rect.y >= y0 && q.rect.y < y1
+            })
+            .map(|q| ((q.rect.y - y0) / LH).floor() as i32)
+            .collect();
+        r.dedup();
+        r
+    };
+    assert_eq!(rows(0.0, 100.0), [0, 1, 2]);
+    assert_eq!(rows(160.0, 300.0), [0]);
+}
