@@ -264,6 +264,19 @@ pub fn fixtures(core: &mut Core) -> Fixtures {
     }
 }
 
+/// The named keys a [`Step::KeyAtDown`] / [`Step::KeyAtUp`] step names,
+/// by index — the way [`ARROWS`] spells an arrow (backlog F108). A
+/// binding's adapter keeps the same list.
+pub const STEP_KEYS: &[&str] = &["shift", "enter", "capslock"];
+
+/// The press a key-at step makes: `STEP_KEYS[k]` at location `l`.
+fn step_key(k: u32, l: u32) -> KeyPress {
+    let code = KeyCode::from_name(STEP_KEYS[k as usize]).expect("a step key");
+    KeyPress::new(code, KeyMods::default()).with_location(crate::input::KeyLocation::from_bits(
+        l << crate::input::KeyLocation::SHIFT,
+    ))
+}
+
 /// The arrow keys [`Step::Arrow`] indexes, in the order a step line
 /// carries. Left / Up move to the previous item of a composite, Right /
 /// Down to the next; in a wrapped container the cross-axis pair moves by
@@ -335,6 +348,12 @@ pub enum Step {
     /// no modifiers, no repeat.
     KeyDown(u32),
     KeyUp(u32),
+    /// A named key going down or up at a place on the keyboard (backlog
+    /// F108): the key as an index into [`STEP_KEYS`], the place as
+    /// [`KeyLocation::bits`]'s number (0 standard, 1 left, 2 right, 3
+    /// numpad) — integers, as every argument is. No modifiers, no text.
+    KeyAtDown(u32, u32),
+    KeyAtUp(u32, u32),
     /// An IME composing one character (its Unicode scalar value, the caret
     /// at its end) on whatever holds focus — a stock editor shows it
     /// inline, an `on_key` sink hears `{kind="preedit"}` (backlog C17).
@@ -432,6 +451,12 @@ impl Step {
             Step::KeyUp(c) => {
                 let _ = writeln!(out, "step keyup {c}");
             }
+            Step::KeyAtDown(k, l) => {
+                let _ = writeln!(out, "step keyatdown {k} {l}");
+            }
+            Step::KeyAtUp(k, l) => {
+                let _ = writeln!(out, "step keyatup {k} {l}");
+            }
             Step::Preedit(c) => {
                 let _ = writeln!(out, "step preedit {c}");
             }
@@ -517,6 +542,8 @@ impl Step {
                 KeyCode::Char(char::from_u32(c).expect("a printable step character")),
                 KeyMods::default(),
             )),
+            Step::KeyAtDown(k, l) => InputEvent::KeyDown(step_key(k, l)),
+            Step::KeyAtUp(k, l) => InputEvent::KeyUp(step_key(k, l)),
             Step::Preedit(0) => InputEvent::Preedit(String::new(), None),
             Step::Preedit(c) => {
                 let s = char::from_u32(c)
@@ -1642,6 +1669,65 @@ pub const SCENES: &[Scene] = &[
             ],
             events: &[
                 "key down", "key up", "go -", "key down", "key down", "key up",
+            ],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+            secure_input: false,
+        },
+    },
+    Scene {
+        name: "modifier-keys",
+        doc: "Where a key is, and the modifier keys as keys (backlog F108). \
+              Two key sinks asking for releases, clicked into focus in \
+              turn; the second also says `modifier_keys`. Each is pressed \
+              the left Shift, the keypad's Enter and Caps Lock. The first \
+              hears the Enter alone, both halves, its place said \
+              (`numpad`) while its code stays `enter`; to it the Shift and \
+              the lock are only ever held. The second hears the Shift's \
+              press and release with its side (`left`), the lock's press, \
+              and the Enter.",
+        custom: &["key"],
+        elements: &["box"],
+        build: build_modifier_keys,
+        env: NATIVE_CHROME,
+        steps: &[
+            Step::Cursor(60, 22),
+            Step::MouseDown,
+            Step::MouseUp,
+            Step::KeyAtDown(0, 1),
+            Step::KeyAtDown(1, 3),
+            Step::KeyAtUp(1, 3),
+            Step::KeyAtUp(0, 1),
+            Step::KeyAtDown(2, 0),
+            Step::Cursor(60, 52),
+            Step::MouseDown,
+            Step::MouseUp,
+            Step::KeyAtDown(0, 1),
+            Step::KeyAtUp(0, 1),
+            Step::KeyAtDown(2, 0),
+            Step::KeyAtDown(1, 3),
+        ],
+        expect: Expect {
+            solid: 2,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            segments_follow_text: false,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 0,
+            access: &["0 window ||", "1 group plain||", "1 group mods||"],
+            events: &[
+                "key plain down enter numpad",
+                "key plain up enter numpad",
+                "key mods down shift left",
+                "key mods up shift left",
+                "key mods",
+                "key mods down enter numpad",
             ],
             announcements: &[],
             warnings: &[],
@@ -4167,6 +4253,24 @@ fn build_keys(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     });
 }
 
+/// Two sinks asking for releases, tagged by kind so the report tells
+/// them apart; the second asks for the modifier keys (backlog F108).
+fn build_modifier_keys(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    let sink = |label: &str| {
+        NodeSpec::row()
+            .size(100.0, 24.0)
+            .bg(Color::hex(0x1b1d27ff))
+            .on_key(Value::map([("kind", Value::str(label))]))
+            .key_up()
+            .role(Role::Group)
+            .label(label)
+    };
+    ui.with(NodeSpec::column().pad(10.0).gap(6.0), |ui| {
+        ui.leaf_keyed("plain", sink("plain"));
+        ui.leaf_keyed("mods", sink("mods").modifier_keys());
+    });
+}
+
 /// The three playbacks are declared in this order, so the ids the report
 /// names are 1 (`music`), 2 (`chime`) and 3 (`blip`) in every binding.
 /// Phase 1 stops declaring the last two, which is the scene's whole point:
@@ -5433,6 +5537,18 @@ fn event_row(payload: &Value) -> (String, String) {
                 let _ = write!(tag, " {phase} -");
             }
         }
+    }
+    // A key from one of a key's twins says which, with its phase and
+    // code (`key mods down shift left`, backlog F108): the place is the
+    // contract, and a binding that dropped it would agree on the kind and
+    // disagree here. A key from the standard place prints as it did.
+    if kind == "key"
+        && let Some(loc) = payload.get_str("location")
+        && loc != "standard"
+    {
+        let phase = payload.get_str("phase").unwrap_or("-");
+        let code = payload.get_str("code").unwrap_or("-");
+        let _ = write!(tag, " {phase} {code} {loc}");
     }
     if kind == "scroll" {
         match payload.get_int("lines") {

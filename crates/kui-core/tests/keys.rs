@@ -368,6 +368,7 @@ fn key_names_round_trip_through_from_name() {
         KeyCode::Char('$'),
         KeyCode::F(5),
         KeyCode::F(24),
+        KeyCode::F(35),
         KeyCode::Left,
         KeyCode::PageDown,
         KeyCode::Backspace,
@@ -379,7 +380,12 @@ fn key_names_round_trip_through_from_name() {
         assert_eq!(KeyCode::from_name(&code.name()), Some(code));
     }
     assert_eq!(KeyCode::from_name("f0"), None);
-    assert_eq!(KeyCode::from_name("f25"), None);
+    assert_eq!(KeyCode::from_name("f36"), None);
+    // Every named key, the ones backlog F108 added among them.
+    for (code, name) in KeyCode::named() {
+        assert_eq!(code.name(), *name);
+        assert_eq!(KeyCode::from_name(name), Some(*code));
+    }
     assert_eq!(KeyCode::from_name("nonsense"), None);
 }
 
@@ -830,10 +836,8 @@ fn shift_moving_under_a_held_key_does_not_make_it_a_second_key() {
     let shift = KeyMods::NONE.with_shift();
     let big_w = KeyPress {
         code: KeyCode::Char('W'),
-        physical: KeyCode::Char('w'),
-        mods: shift,
-        text: None,
         repeat: true,
+        ..KeyPress::new(KeyCode::Char('W'), shift)
     };
     let evs = drive(&mut core, &[InputEvent::KeyDown(w)]);
     assert_eq!(keys(&evs), [("down".into(), "w".into())]);
@@ -971,4 +975,142 @@ fn a_sink_a_modal_shuts_out_hears_nothing_wherever_it_is_drawn() {
     build(&mut core, true);
     let evs = drive(&mut core, &[press(KeyCode::Char('b'))]);
     assert!(keys(&evs).is_empty(), "the modal has the keyboard: {evs:?}");
+}
+
+// -- Where a key is, the modifier keys, the locks (backlog F108) ------------
+
+use kui_core::{KeyLocation, KeyLocks};
+
+/// One sink, focused, asking for releases and — when `modifier_keys` —
+/// for the modifier keys themselves.
+fn one_sink(core: &mut Core, modifier_keys: bool) -> Key {
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::row().fill());
+    let mut spec = NodeSpec::column().fill().on_key(Value::Null).key_up();
+    if modifier_keys {
+        spec = spec.modifier_keys();
+    }
+    let sink = ui.leaf(spec);
+    ui.take_key_focus(sink);
+    ui.finish();
+    sink
+}
+
+#[test]
+fn a_press_says_where_the_key_is_and_what_the_locks_hold() {
+    let mut core = Core::new();
+    one_sink(&mut core, false);
+    let kp = KeyPress::new(KeyCode::Char('1'), KeyMods::NONE)
+        .with_location(KeyLocation::Numpad)
+        .with_locks(KeyLocks {
+            caps: true,
+            num: true,
+        });
+    let evs = drive(&mut core, &[InputEvent::KeyDown(kp.clone())]);
+    let p = &evs[0].payload;
+    assert_eq!(p.get_str("code"), Some("1"), "the keypad's 1 is still a 1");
+    assert_eq!(p.get_str("location"), Some("numpad"));
+    assert_eq!(p.get_bool("caps_lock"), Some(true));
+    assert_eq!(p.get_bool("num_lock"), Some(true));
+    // The event reads back as the press it was made from.
+    assert_eq!(evs[0].key_press().map(|(_, k)| k), Some(kp));
+    // A plain press: the standard key, no lock.
+    let evs = drive(&mut core, &[press(KeyCode::Char('2'))]);
+    let p = &evs[0].payload;
+    assert_eq!(p.get_str("location"), Some("standard"));
+    assert_eq!(p.get_bool("caps_lock"), Some(false));
+}
+
+#[test]
+fn the_keypads_key_and_the_main_blocks_are_two_keys() {
+    let mut core = Core::new();
+    one_sink(&mut core, false);
+    let main = KeyPress::new(KeyCode::Char('1'), KeyMods::NONE);
+    let pad = main.clone().with_location(KeyLocation::Numpad);
+    drive(&mut core, &[InputEvent::KeyDown(main.clone())]);
+    drive(&mut core, &[InputEvent::KeyDown(pad.clone())]);
+    // The keypad's release lets go of the keypad's 1, not the main one.
+    let evs = drive(&mut core, &[InputEvent::KeyUp(pad.released())]);
+    assert_eq!(evs.len(), 1);
+    assert_eq!(evs[0].payload.get_str("location"), Some("numpad"));
+    let evs = drive(&mut core, &[InputEvent::KeyUp(main.released())]);
+    assert_eq!(evs.len(), 1, "the main block's 1 was still held");
+    assert_eq!(evs[0].payload.get_str("location"), Some("standard"));
+}
+
+#[test]
+fn the_modifier_keys_reach_only_a_sink_that_asks() {
+    let shift =
+        KeyPress::new(KeyCode::Shift, KeyMods::NONE.with_shift()).with_location(KeyLocation::Left);
+    let caps = KeyPress::new(KeyCode::CapsLock, KeyMods::NONE);
+    // Not asked: a Shift between two keys is no key at all, and nothing
+    // is held for its release or a focus change to deliver.
+    let mut core = Core::new();
+    one_sink(&mut core, false);
+    let evs = drive(
+        &mut core,
+        &[
+            press(KeyCode::Char('g')),
+            InputEvent::KeyDown(shift.clone()),
+            InputEvent::KeyDown(caps.clone()),
+            InputEvent::KeyUp(shift.clone().released()),
+            press(KeyCode::Char('d')),
+        ],
+    );
+    assert_eq!(
+        keys(&evs),
+        [("down".into(), "g".into()), ("down".into(), "d".into())]
+    );
+    // Asked: both halves of each, the side said.
+    let mut core = Core::new();
+    one_sink(&mut core, true);
+    let evs = drive(
+        &mut core,
+        &[
+            InputEvent::KeyDown(shift.clone()),
+            InputEvent::KeyUp(shift.clone().released()),
+            InputEvent::KeyDown(caps),
+        ],
+    );
+    assert_eq!(
+        keys(&evs),
+        [
+            ("down".into(), "shift".into()),
+            ("up".into(), "shift".into()),
+            ("down".into(), "capslock".into()),
+        ]
+    );
+    assert_eq!(evs[0].payload.get_str("location"), Some("left"));
+    // The right Shift is another key: its release does not let go of
+    // the left one held.
+    let right = shift.clone().with_location(KeyLocation::Right);
+    drive(&mut core, &[InputEvent::KeyDown(shift.clone())]);
+    let evs = drive(&mut core, &[InputEvent::KeyUp(right.released())]);
+    assert!(evs.is_empty(), "the right Shift was never down");
+}
+
+#[test]
+fn the_new_keys_are_keys_to_every_sink() {
+    // F13–F35, the system keys and the media keys are keys like any
+    // other: no asking.
+    let mut core = Core::new();
+    one_sink(&mut core, false);
+    let evs = drive(
+        &mut core,
+        &[
+            press(KeyCode::F(13)),
+            press(KeyCode::MediaPlayPause),
+            press(KeyCode::PrintScreen),
+            press(KeyCode::Menu),
+        ],
+    );
+    assert_eq!(
+        keys(&evs),
+        [
+            ("down".into(), "f13".into()),
+            ("down".into(), "mediaplaypause".into()),
+            ("down".into(), "printscreen".into()),
+            ("down".into(), "menu".into()),
+        ]
+    );
 }

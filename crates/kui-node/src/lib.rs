@@ -938,7 +938,9 @@ impl Ctx {
     }
 
     /// One press from the `{shift, ctrl, alt, super}` shape both key calls
-    /// take, with the text a plain key would insert already resolved.
+    /// take — with `location` ("left", "right", "numpad"; "standard" when
+    /// absent) and `capsLock` / `numLock` beside them (backlog F108) — and
+    /// the text a plain key would insert already resolved.
     fn key_press(
         &self,
         code: &str,
@@ -964,8 +966,18 @@ impl Ctx {
         // What the press types is the layout's key, not the US stand-in
         // in `code`: ⇧ on the key printed `;` on a Russian layout types
         // `Ж`, not `:` (RG28).
+        let location = match m.get("location").and_then(Json::as_str) {
+            None => kui_core::KeyLocation::Standard,
+            Some(l) => kui_core::KeyLocation::from_name(l)
+                .ok_or_else(|| err(format!("unknown key location {l:?}")))?,
+        };
         Ok(KeyPress {
             text: layout.typed(kmods),
+            location,
+            locks: kui_core::KeyLocks {
+                caps: bool_prop(m, "capsLock"),
+                num: bool_prop(m, "numLock"),
+            },
             ..press
         })
     }

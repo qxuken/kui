@@ -297,7 +297,11 @@ pointing into the other three.
   to the sink and hears releases too, as the same shape with
   `phase: 'up'`. `repeat` marks an auto-repeat, and a release carries a
   null `text`. A key only comes up where it went down — focus moving
-  delivers the release first — so nothing is left stuck.
+  delivers the release first — so nothing is left stuck. `location`
+  (`'numpad'`, `'left'`, `'right'`, else `'standard'`) says which of a
+  key's twins it was, `caps_lock` and `num_lock` what was locked, and a
+  sink that adds `modifierKeys` hears the modifier keys themselves
+  (`'shift'`, `'capslock'`, …).
   `onKey={null}` is a sink whose events carry no `tag` (the same goes for
   `onDrag`, `onHover` and `onLayout`), so a root sink needs no inert
   message in the app's union.

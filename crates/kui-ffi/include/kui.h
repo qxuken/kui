@@ -272,8 +272,19 @@ extern "C" {
  * there, but a host that did not recompile leaves those bytes to chance
  * (on a 32-bit one the stride moved, as ABI 8's did). Recompile; a zeroed
  * field is the square background every span had.
+ *
+ * ABI 21 appends modifier_keys to KuiSpec (backlog F108): with on_key, the
+ * modifier and lock keys arrive as keys of their own, the side in the
+ * payload's new `location`; zeroed, a modifier is only ever held, as it
+ * was. On a 64-bit target it takes what was the struct's tail padding, so
+ * the size stays 648, but a host that did not recompile leaves those bytes
+ * to chance (on a 32-bit one the size moved), as ABI 20's bg_radius did.
+ * Recompile. The kmods word of
+ * kui_input_key_down and its siblings carries two more things in bits that
+ * were zero: the lock state (KUI_KLOCK_*) and which of a key's twins it was
+ * (KUI_KLOC_*); a host passing only KUI_KMOD_* sends what it sent.
  */
-#define KUI_ABI_VERSION 20u
+#define KUI_ABI_VERSION 21u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -472,6 +483,17 @@ enum {
     KUI_KMOD_CTRL = 1u << 1,
     KUI_KMOD_ALT = 1u << 2,
     KUI_KMOD_SUPER = 1u << 3,
+};
+/* Beside them in kui_input_key_down's kmods (backlog F108): the lock state
+ * at the press, and which of a key's twins it was - the left or right
+ * modifier, the keypad's digit or the main block's. Zero is no lock and the
+ * standard key. */
+enum {
+    KUI_KLOCK_CAPS = 1u << 4,
+    KUI_KLOCK_NUM = 1u << 5,
+    KUI_KLOC_LEFT = 1u << 8,
+    KUI_KLOC_RIGHT = 2u << 8,
+    KUI_KLOC_NUMPAD = 3u << 8,
 };
 /* Text edit flags (kui_text_edit). AUTOFOCUS asks once: the editor takes
  * focus on the frame the flag starts being declared, and only while
@@ -1027,6 +1049,13 @@ typedef struct KuiSpec {
      * take passes it by, to the scroller around it - a terminal scrolling
      * its history says Y. ABI 20. */
     uint32_t scroll_axes;
+    /* Non-zero, with on_key: the modifier and lock keys arrive as keys of
+     * their own (backlog F108) - codes "shift", "ctrl", "alt", "super",
+     * "capslock", "numlock", "scrolllock", the side in `location`
+     * ("left" / "right"). Zero: a modifier is only ever held, in the next
+     * key's shift/ctrl/alt/super and the modifiers event, so a keymap
+     * mid-sequence never reads a Shift as a key. ABI 21. */
+    uint32_t modifier_keys;
 } KuiSpec;
 
 /* When a scrolling node's bars are drawn (KuiSpec.scrollbar): the schema
@@ -1806,10 +1835,11 @@ void kui_input_key(KuiCtx *ctx, uint32_t key, uint32_t mods); /* KUI_KEY_* + KUI
  * lower-case letter for a letter, `code` for everything else - the pair a
  * window reports for shift-Z is code "Z", physical "z"; backlog F65);
  * `kmods` is
- * KUI_KMOD_* bits; `text` is what the press inserts, or {NULL, 0} to derive
- * it from `code`; `repeat` marks an auto-repeat. The focused sink polls
+ * KUI_KMOD_* bits, with KUI_KLOCK_* and one KUI_KLOC_* beside them (backlog
+ * F108); `text` is what the press inserts, or {NULL, 0} to derive it from
+ * `code`; `repeat` marks an auto-repeat. The focused sink polls
  * {kind="key", phase="down", code, physical, ctrl, alt, shift, super, text,
- * repeat, tag} for each press; a sink whose KuiSpec set key_up hears the
+ * repeat, location, caps_lock, num_lock, tag} for each press; a sink whose KuiSpec set key_up hears the
  * release too, as the same payload with phase="up" and a null `text`. A
  * release whose press the sink never got resolves nothing, and moving focus
  * while a key is held delivers the "up" first, so a held-key binding (WASD,

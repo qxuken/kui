@@ -536,7 +536,7 @@ pub enum KeyCode {
     /// and `docs/adr/0002` decision 11 for why the layout still wins
     /// whenever it speaks ASCII.
     Char(char),
-    /// Function key: `F(1)` .. `F(24)`.
+    /// Function key: `F(1)` .. `F(35)`.
     F(u8),
     Left,
     Right,
@@ -553,10 +553,91 @@ pub enum KeyCode {
     Escape,
     Space,
     Insert,
+    /// Print Screen / SysRq.
+    PrintScreen,
+    /// Pause / Break.
+    Pause,
+    /// The context-menu key (the one beside the right-hand Ctrl).
+    Menu,
+    /// The keypad's middle key with Num Lock off (X11's `KP_Begin`), and
+    /// Clear where a keyboard has one.
+    Clear,
+    /// The modifier keys themselves, which side in [`KeyPress::location`].
+    /// Heard only by a sink that asked for them
+    /// ([`crate::NodeSpec::modifier_keys`]): to every other sink a
+    /// modifier is only ever held, in [`KeyMods`], and a Shift pressed
+    /// between two keys of a sequence must not read as a key between
+    /// them.
+    Shift,
+    Ctrl,
+    Alt,
+    /// Command on a Mac, the Windows key, Super.
+    Super,
+    /// The lock keys, as keys; what they lock is [`KeyPress::locks`].
+    /// Modifier keys as far as delivery goes (see [`KeyCode::Shift`]).
+    CapsLock,
+    NumLock,
+    ScrollLock,
+    MediaPlay,
+    MediaPause,
+    MediaPlayPause,
+    MediaStop,
+    MediaNext,
+    MediaPrev,
+    MediaRecord,
+    MediaFastForward,
+    MediaRewind,
+    VolumeUp,
+    VolumeDown,
+    VolumeMute,
     /// A key this vocabulary doesn't name; `KeyPress::text` may still carry
     /// what it would insert.
     Unknown,
 }
+
+/// Every named key with its payload name, in one table so
+/// [`KeyCode::name`] and [`KeyCode::from_name`] cannot drift apart —
+/// all but `Char` and `F`, which are spelled by rule.
+const NAMED_KEYS: [(KeyCode, &str); 38] = [
+    (KeyCode::Left, "left"),
+    (KeyCode::Right, "right"),
+    (KeyCode::Up, "up"),
+    (KeyCode::Down, "down"),
+    (KeyCode::Home, "home"),
+    (KeyCode::End, "end"),
+    (KeyCode::PageUp, "pageup"),
+    (KeyCode::PageDown, "pagedown"),
+    (KeyCode::Backspace, "backspace"),
+    (KeyCode::Delete, "delete"),
+    (KeyCode::Enter, "enter"),
+    (KeyCode::Tab, "tab"),
+    (KeyCode::Escape, "escape"),
+    (KeyCode::Space, "space"),
+    (KeyCode::Insert, "insert"),
+    (KeyCode::PrintScreen, "printscreen"),
+    (KeyCode::Pause, "pause"),
+    (KeyCode::Menu, "menu"),
+    (KeyCode::Clear, "clear"),
+    (KeyCode::Shift, "shift"),
+    (KeyCode::Ctrl, "ctrl"),
+    (KeyCode::Alt, "alt"),
+    (KeyCode::Super, "super"),
+    (KeyCode::CapsLock, "capslock"),
+    (KeyCode::NumLock, "numlock"),
+    (KeyCode::ScrollLock, "scrolllock"),
+    (KeyCode::MediaPlay, "mediaplay"),
+    (KeyCode::MediaPause, "mediapause"),
+    (KeyCode::MediaPlayPause, "mediaplaypause"),
+    (KeyCode::MediaStop, "mediastop"),
+    (KeyCode::MediaNext, "medianext"),
+    (KeyCode::MediaPrev, "mediaprev"),
+    (KeyCode::MediaRecord, "mediarecord"),
+    (KeyCode::MediaFastForward, "mediafastforward"),
+    (KeyCode::MediaRewind, "mediarewind"),
+    (KeyCode::VolumeUp, "volumeup"),
+    (KeyCode::VolumeDown, "volumedown"),
+    (KeyCode::VolumeMute, "volumemute"),
+];
 
 impl KeyCode {
     /// Stable lowercase name for the data payload: `"a"`, `"f5"`, `"pageup"`.
@@ -565,29 +646,41 @@ impl KeyCode {
         match self {
             KeyCode::Char(c) => c.to_string(),
             KeyCode::F(n) => format!("f{n}"),
-            KeyCode::Left => "left".into(),
-            KeyCode::Right => "right".into(),
-            KeyCode::Up => "up".into(),
-            KeyCode::Down => "down".into(),
-            KeyCode::Home => "home".into(),
-            KeyCode::End => "end".into(),
-            KeyCode::PageUp => "pageup".into(),
-            KeyCode::PageDown => "pagedown".into(),
-            KeyCode::Backspace => "backspace".into(),
-            KeyCode::Delete => "delete".into(),
-            KeyCode::Enter => "enter".into(),
-            KeyCode::Tab => "tab".into(),
-            KeyCode::Escape => "escape".into(),
-            KeyCode::Space => "space".into(),
-            KeyCode::Insert => "insert".into(),
             KeyCode::Unknown => "unknown".into(),
+            named => NAMED_KEYS
+                .iter()
+                .find(|(k, _)| *k == named)
+                .map_or("unknown", |(_, n)| n)
+                .into(),
         }
+    }
+
+    /// Every key this vocabulary names but `Char` and `F`, with its
+    /// payload name — for a binding that lists them (the generated key
+    /// name types) and a test that walks them.
+    pub fn named() -> &'static [(KeyCode, &'static str)] {
+        &NAMED_KEYS
+    }
+
+    /// Whether this is a modifier or lock key — heard only by a sink
+    /// that asked for them ([`crate::NodeSpec::modifier_keys`]).
+    pub fn is_modifier(self) -> bool {
+        matches!(
+            self,
+            KeyCode::Shift
+                | KeyCode::Ctrl
+                | KeyCode::Alt
+                | KeyCode::Super
+                | KeyCode::CapsLock
+                | KeyCode::NumLock
+                | KeyCode::ScrollLock
+        )
     }
 
     /// The inverse of [`KeyCode::name`]: the name a binding spells a key
     /// with. A single character is that character (already
     /// layout-resolved, so `"W"` and `"$"` arrive as themselves), `"f1"`
-    /// .. `"f24"` a function key, and the rest are the names above.
+    /// .. `"f35"` a function key, and the rest are the names above.
     /// `None` for a name this vocabulary does not know — every binding
     /// that takes keys as strings parses them here, so they cannot drift
     /// apart.
@@ -597,29 +690,14 @@ impl KeyCode {
             return Some(KeyCode::Char(c));
         }
         if let Some(n) = s.strip_prefix('f').and_then(|n| n.parse::<u8>().ok())
-            && (1..=24).contains(&n)
+            && (1..=35).contains(&n)
         {
             return Some(KeyCode::F(n));
         }
-        Some(match s {
-            "left" => KeyCode::Left,
-            "right" => KeyCode::Right,
-            "up" => KeyCode::Up,
-            "down" => KeyCode::Down,
-            "home" => KeyCode::Home,
-            "end" => KeyCode::End,
-            "pageup" => KeyCode::PageUp,
-            "pagedown" => KeyCode::PageDown,
-            "backspace" => KeyCode::Backspace,
-            "delete" => KeyCode::Delete,
-            "enter" => KeyCode::Enter,
-            "tab" => KeyCode::Tab,
-            "escape" => KeyCode::Escape,
-            "space" => KeyCode::Space,
-            "insert" => KeyCode::Insert,
-            "unknown" => KeyCode::Unknown,
-            _ => return None,
-        })
+        if s == "unknown" {
+            return Some(KeyCode::Unknown);
+        }
+        NAMED_KEYS.iter().find(|(_, n)| *n == s).map(|(k, _)| *k)
     }
 
     /// What a press of this key types, for a door whose host did not say:
@@ -659,6 +737,97 @@ impl KeyPhase {
         match self {
             KeyPhase::Down => "down",
             KeyPhase::Up => "up",
+        }
+    }
+}
+
+/// Where on the keyboard a key sits, for the keys that have twins: the
+/// left or right Shift, Ctrl, Alt or Super, and the keypad's digits,
+/// operators, Enter and (with Num Lock off) arrows beside the main
+/// block's. Everything else is `Standard`. `code` stays what the key is
+/// — the keypad's `1` is `Char('1')`, its Enter is `Enter` — so a keymap
+/// that does not care reads nothing new, and one that does (a terminal
+/// speaking kitty's keyboard protocol, a game) reads this.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum KeyLocation {
+    #[default]
+    Standard,
+    Left,
+    Right,
+    Numpad,
+}
+
+impl KeyLocation {
+    /// The payload spelling: `"standard"`, `"left"`, `"right"`, `"numpad"`.
+    pub fn name(self) -> &'static str {
+        match self {
+            KeyLocation::Standard => "standard",
+            KeyLocation::Left => "left",
+            KeyLocation::Right => "right",
+            KeyLocation::Numpad => "numpad",
+        }
+    }
+
+    pub fn from_name(s: &str) -> Option<Self> {
+        Some(match s {
+            "standard" => KeyLocation::Standard,
+            "left" => KeyLocation::Left,
+            "right" => KeyLocation::Right,
+            "numpad" => KeyLocation::Numpad,
+            _ => return None,
+        })
+    }
+
+    /// The C door's spelling, two bits above the modifiers in the same
+    /// word (`KUI_KLOC_*`): 0 standard, 1 left, 2 right, 3 numpad, at
+    /// [`KeyLocation::SHIFT`].
+    pub const SHIFT: u32 = 8;
+    pub const MASK: u32 = 3 << Self::SHIFT;
+
+    pub fn bits(self) -> u32 {
+        (match self {
+            KeyLocation::Standard => 0,
+            KeyLocation::Left => 1,
+            KeyLocation::Right => 2,
+            KeyLocation::Numpad => 3,
+        }) << Self::SHIFT
+    }
+
+    pub fn from_bits(bits: u32) -> Self {
+        match (bits & Self::MASK) >> Self::SHIFT {
+            1 => KeyLocation::Left,
+            2 => KeyLocation::Right,
+            3 => KeyLocation::Numpad,
+            _ => KeyLocation::Standard,
+        }
+    }
+}
+
+/// What the lock keys hold at a press: Caps Lock and Num Lock on or off.
+/// Not a modifier held — [`KeyMods`] is only what is down, which
+/// accelerators and chords compare exactly — but state a press was made
+/// under, which a terminal speaking kitty's keyboard protocol reports
+/// and a keypad reading needs (its `1` is an End with Num Lock off).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct KeyLocks {
+    pub caps: bool,
+    pub num: bool,
+}
+
+impl KeyLocks {
+    /// The C door's spelling, beside the modifiers in the same word:
+    /// `KUI_KLOCK_CAPS`, `KUI_KLOCK_NUM`.
+    pub const CAPS: u32 = 1 << 4;
+    pub const NUM: u32 = 1 << 5;
+
+    pub fn bits(self) -> u32 {
+        (if self.caps { Self::CAPS } else { 0 }) | (if self.num { Self::NUM } else { 0 })
+    }
+
+    pub fn from_bits(bits: u32) -> Self {
+        KeyLocks {
+            caps: bits & Self::CAPS != 0,
+            num: bits & Self::NUM != 0,
         }
     }
 }
@@ -822,6 +991,11 @@ pub struct KeyPress {
     pub text: Option<String>,
     /// Set when the press came from OS key repeat.
     pub repeat: bool,
+    /// Which of a key's twins this is: the left or right modifier, the
+    /// keypad's digit or the main block's (see [`KeyLocation`]).
+    pub location: KeyLocation,
+    /// Caps Lock and Num Lock as the press found them.
+    pub locks: KeyLocks,
 }
 
 impl KeyPress {
@@ -844,7 +1018,22 @@ impl KeyPress {
             mods,
             text: None,
             repeat: false,
+            location: KeyLocation::Standard,
+            locks: KeyLocks::default(),
         }
+    }
+
+    /// Says which of a key's twins this is (`Numpad` for the keypad's,
+    /// `Left` / `Right` for a modifier's).
+    pub fn with_location(mut self, location: KeyLocation) -> Self {
+        self.location = location;
+        self
+    }
+
+    /// Says what the lock keys held at the press.
+    pub fn with_locks(mut self, locks: KeyLocks) -> Self {
+        self.locks = locks;
+        self
     }
 
     /// Says which physical key produced this press, when the layout put a
@@ -881,10 +1070,10 @@ impl KeyPress {
     /// composed character lands here instead. Folding Shift here too is
     /// what makes the two agree; `mods` still says Shift was held.
     ///
-    /// Caps Lock is not modelled: [`KeyMods`] has no bit for it, so the
-    /// stand-in follows Shift alone and a Caps-Locked non-Latin key stands
-    /// in as the lower-case letter, where US-QWERTY would print the
-    /// upper-case one.
+    /// Caps Lock is not read here: it is [`KeyPress::locks`], set after,
+    /// so the stand-in follows Shift alone and a Caps-Locked non-Latin
+    /// key stands in as the lower-case letter, where US-QWERTY would
+    /// print the upper-case one.
     ///
     /// `physical` is reported either way, for a keymap that would rather
     /// bind the finger than the label. See `docs/adr/0002` decision 11.
@@ -904,6 +1093,8 @@ impl KeyPress {
             mods,
             text: None,
             repeat: false,
+            location: KeyLocation::Standard,
+            locks: KeyLocks::default(),
         }
     }
 
@@ -919,13 +1110,16 @@ impl KeyPress {
     /// and the OS repeat arrives as `W`, which by `code` would be a second
     /// key held, with the first stuck down until focus moved (AR9). A
     /// press whose position the vocabulary could not name is matched on
-    /// `code`, which is all it has.
+    /// `code`, which is all it has. And by [`KeyPress::location`] too:
+    /// the keypad's `1` and the main block's share a position's name,
+    /// as the two Shifts do, and are two keys.
     pub fn same_key(&self, other: &KeyPress) -> bool {
-        if self.physical != KeyCode::Unknown && other.physical != KeyCode::Unknown {
-            self.physical == other.physical
-        } else {
-            self.code == other.code
-        }
+        self.location == other.location
+            && if self.physical != KeyCode::Unknown && other.physical != KeyCode::Unknown {
+                self.physical == other.physical
+            } else {
+                self.code == other.code
+            }
     }
 
     /// The **second** event a real key press produces, after its
@@ -1004,7 +1198,8 @@ impl KeyPress {
 
     /// The payload form crossing into events, C, and Lua:
     /// `{kind="key", phase="down"|"up", code="w", physical="w", shift=,
-    /// ctrl=, alt=, super=, text=, repeat=}`.
+    /// ctrl=, alt=, super=, text=, repeat=, location="standard",
+    /// caps_lock=, num_lock=}`.
     pub fn to_value(&self, phase: KeyPhase) -> Value {
         Value::map([
             ("kind", Value::str("key")),
@@ -1023,6 +1218,9 @@ impl KeyPress {
                 },
             ),
             ("repeat", Value::Bool(self.repeat)),
+            ("location", Value::str(self.location.name())),
+            ("caps_lock", Value::Bool(self.locks.caps)),
+            ("num_lock", Value::Bool(self.locks.num)),
         ])
     }
 }

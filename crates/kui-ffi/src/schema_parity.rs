@@ -272,6 +272,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             "onDrag" => drag = msg(Value::Int(7)),
             "onKey" => key = msg(Value::Int(7)),
             "keyUp" => s.key_up = 1,
+            "modifierKeys" => s.modifier_keys = 1,
             "onHover" => hover = msg(Value::Int(7)),
             "onLayout" => s.on_layout = &layout_tag,
             "modal" => s.modal = &layout_tag,
@@ -471,6 +472,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         buttons: KUI_BUTTONS_SECONDARY | KUI_BUTTONS_MIDDLE,
         overscroll: KUI_OVERSCROLL_CONTAIN,
         scroll_axes: KUI_SCROLL_AXES_Y,
+        modifier_keys: 1,
         disabled: 1,
         focus_bg: 0x11_22_33_ff,
         tooltip: KuiStr {
@@ -566,6 +568,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .buttons(kui_core::Buttons::SECONDARY | kui_core::Buttons::MIDDLE)
         .overscroll(kui_core::Overscroll::Contain)
         .scroll_axes(kui_core::ScrollAxes::Y)
+        .modifier_keys()
         .initial_focus()
         .disabled(true)
         .focus_bg(Color::hex(0x11_22_33_ff))

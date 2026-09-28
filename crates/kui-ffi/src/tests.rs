@@ -1194,6 +1194,83 @@ mod queries_headless {
         kui_ctx_free(ctx);
     }
 
+    /// Where a key is and what the locks hold cross in the same `kmods`
+    /// word as the modifiers (`KUI_KLOC_*`, `KUI_KLOCK_*`, backlog F108),
+    /// and a sink whose spec sets `modifier_keys` hears the modifier keys
+    /// themselves.
+    #[test]
+    fn a_keys_place_and_the_locks_cross_in_the_modifier_word() {
+        let ctx = kui_ctx_new();
+        let mut spec = unsafe { std::mem::zeroed::<KuiSpec>() };
+        spec.width = KuiSizing {
+            tag: 2,
+            value: 100.0,
+        };
+        spec.height = KuiSizing {
+            tag: 2,
+            value: 50.0,
+        };
+        spec.modifier_keys = 1;
+        kui_frame_begin(ctx, 200.0, 100.0, 1.0);
+        let sink = kui_open_with(ctx, ks("sink"), &spec, NONE, NONE, kui_value_int(1), NONE);
+        kui_close(ctx);
+        kui_set_key_focus(ctx, sink);
+        kui_frame_finish(ctx);
+        let null = KuiStr {
+            ptr: std::ptr::null(),
+            len: 0,
+        };
+        kui_input_key_down(
+            ctx,
+            ks("1"),
+            null,
+            KUI_KLOC_NUMPAD | KUI_KLOCK_NUM | KUI_KLOCK_CAPS,
+            null,
+            false,
+        );
+        kui_input_key_down(
+            ctx,
+            ks("shift"),
+            null,
+            KUI_KMOD_SHIFT | KUI_KLOC_RIGHT,
+            null,
+            false,
+        );
+        kui_input_key_down(ctx, ks("a"), null, 0, null, false);
+        let mut ev = KuiEvent::default();
+        let mut seen = Vec::new();
+        while kui_poll_event(ctx, &mut ev) {
+            let str_of = |k: &str| {
+                let mut out = KuiStr {
+                    ptr: std::ptr::null(),
+                    len: 0,
+                };
+                kui_value_as_str(kui_value_get(ev.payload, ks(k)), &mut out);
+                kstr(out).into_owned()
+            };
+            let bool_of = |k: &str| {
+                let mut b = false;
+                kui_value_as_bool(kui_value_get(ev.payload, ks(k)), &mut b);
+                b
+            };
+            seen.push((
+                str_of("code"),
+                str_of("location"),
+                bool_of("caps_lock"),
+                bool_of("num_lock"),
+            ));
+        }
+        assert_eq!(
+            seen,
+            [
+                ("1".into(), "numpad".into(), true, true),
+                ("shift".into(), "right".into(), false, false),
+                ("a".into(), "standard".into(), false, false),
+            ]
+        );
+        kui_ctx_free(ctx);
+    }
+
     /// The US stand-in F76 made Shift-aware is for the keymap alone: a
     /// NULL `text` is what the layout's key types (Russian shift-Ж types
     /// `Ж`, where it typed the stand-in's `:`; RG28), and under Alt the

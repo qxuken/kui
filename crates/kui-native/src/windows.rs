@@ -413,6 +413,7 @@ impl DynShell<'_> {
             awaits_device: false,
             applied_title: String::new(),
             modifiers: ModifiersState::empty(),
+            locks: Default::default(),
             last_titlebar_press: None,
             cursor: Vec2::ZERO,
             last_click: None,

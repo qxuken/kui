@@ -1144,6 +1144,17 @@ impl Core {
         {
             return false;
         }
+        // A modifier or lock key reaches only a sink that asked for them
+        // (`modifier_keys`, backlog F108): to any other it is held, not
+        // pressed, and never held as a key either — so its release has
+        // nothing to find.
+        if kp.code.is_modifier()
+            && !self
+                .sink_node(target)
+                .is_some_and(|i| self.tree.specs[i].events().modifier_keys)
+        {
+            return false;
+        }
         self.deliver_to_sink(target, kp.to_value(phase), out)
     }
 

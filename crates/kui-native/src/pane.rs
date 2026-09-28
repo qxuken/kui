@@ -252,6 +252,10 @@ pub(crate) struct Pane {
     /// is the case the report exists for.
     pub(crate) level_supported: bool,
     pub(crate) modifiers: ModifiersState,
+    /// Caps Lock and Num Lock as this window's key presses have toggled
+    /// them — what a press reports where the OS is not asked
+    /// (`keys::lock_state`, backlog F108).
+    pub(crate) locks: kui_core::KeyLocks,
     /// Time of the last titlebar press, for double-click maximize.
     pub(crate) last_titlebar_press: Option<std::time::Instant>,
     /// Last cursor position (logical px), for multi-click distance checks.

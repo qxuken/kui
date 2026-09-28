@@ -382,6 +382,17 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                 origin = conformance::CELLS_SCROLL_ORIGIN
             )
         }
+        // Two sinks asking for releases, tagged by kind; the second asks
+        // for the modifier keys (backlog F108).
+        "modifier-keys" => r#"
+            local function sink(name, mods)
+              return row { key = name, width = 100, height = 24, bg = 0x1b1d27ff,
+                           on_key = { kind = name }, key_up = true, modifier_keys = mods,
+                           role = "group", label = name }
+            end
+            return column { pad = 10, gap = 6, sink("plain", false), sink("mods", true) }
+        "#
+        .to_string(),
         "keys" => r#"
             local function sink(name, key_up, child)
               return row { key = name, width = 100, height = 24, bg = 0x1b1d27ff,

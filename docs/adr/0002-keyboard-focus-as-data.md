@@ -363,3 +363,62 @@ take focus on the root. All three are
 `docs/adr/0022-focus-regions.md`; decisions 2, 3, 5 and 8 here are
 otherwise unchanged.
 
+
+## Amendment: where a key is, the modifier keys, the locks, built (2026-09-28)
+
+A terminal speaking kitty's keyboard protocol asked for the keyboard
+whole (backlog F108, from kawoosh): the protocol reports the keypad's
+digits apart from the main block's, the left Shift apart from the
+right, the modifier keys pressed and released on their own, Caps Lock
+and Num Lock, F13 to F35, and the media keys. A press carried none of
+it — the keypad's `1` was the main block's `1` in both codes, the
+modifiers were only ever held, nothing said what was locked, and the
+runner dropped every key it had no name for.
+
+14. **A key says which of its twins it is.** `location` —
+    `"standard"`, `"left"`, `"right"`, `"numpad"` (`KeyLocation`) — rides
+    on every key payload, as winit and the DOM report it. `code` and
+    `physical` stay what the key is: the keypad's `1` is still `"1"` and
+    its Enter `"enter"`, so every keymap written against decision 11 is
+    unchanged, and one that cares reads the place. A press and its
+    release are matched by place as well as position, so the two Shifts
+    and the two `1`s are two keys held.
+15. **The modifier keys are keys only to a sink that asks.** `shift`,
+    `ctrl`, `alt`, `super`, `capslock`, `numlock`, `scrolllock` are codes
+    of their own, delivered to a sink that says `modifierKeys`
+    (`NodeSpec::modifier_keys`, `KuiSpec.modifier_keys`) with the side in
+    `location`, and to no other. A keymap is the common case, and a
+    keymap reading `<leader>F` would see Space, Shift, F — the Shift a
+    key between two others, the sequence broken — so the default is the
+    old reading: a modifier is held, in the next key's `shift` / `ctrl` /
+    `alt` / `super` and the `modifiers` event, and never pressed.
+16. **The lock state is the press's, not a modifier.** `caps_lock` and
+    `num_lock` (`KeyLocks`) ride on every key payload beside `location`.
+    `KeyMods` stays what is held down: an accelerator and the devtools
+    chord compare it exactly, and a Caps Lock left on must not make
+    ⇧⌘I miss. The runner asks the OS where it answers cheaply — macOS's
+    `NSEvent.modifierFlags` (a Mac has no Num Lock, so it reads on) and
+    Windows' `GetKeyState` — and elsewhere tracks the lock keys' own
+    presses, which knows nothing of a lock set before the window opened.
+
+The keys past the editing block — F13–F35, `printscreen`, `pause`,
+`menu`, `clear`, and the media keys (`mediaplaypause`, `volumeup`, …) —
+are named and delivered like any other; their names join the one table
+`KeyCode::name` and `KeyCode::from_name` share. The doors take the place
+and the locks with the key: C in bits of the `kmods` word that were
+zero (`KUI_KLOC_*`, `KUI_KLOCK_*`), so a host passing only `KUI_KMOD_*`
+sends what it sent; Node in the mods object; Rust as `with_location` and
+`with_locks`.
+
+### Rejected
+
+- **Keypad codes of their own** (`"kp1"`, `"kpenter"`). Every keymap that
+  binds `1` or Enter would miss the keypad's until it learned a second
+  name, which is the breakage decision 11 exists to avoid. The place is
+  the new fact; the key is the same key.
+- **The modifier keys to every sink.** The browser model, where every
+  app filters Shift out of its keydown handler. Here it breaks every
+  sequence keymap on upgrade, silently, for a fact few sinks want.
+- **Lock bits in `KeyMods`.** One word for the C door, and exact
+  comparisons of held modifiers — accelerators, chords — start failing
+  whenever Caps Lock is on.

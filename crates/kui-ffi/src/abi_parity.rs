@@ -722,6 +722,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         buttons: u32 => "uint32_t",
         overscroll: u32 => "uint32_t",
         scroll_axes: u32 => "uint32_t",
+        modifier_keys: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiAccessNode {
@@ -1392,8 +1393,9 @@ fn an_in_struct_s_size_is_the_abi_s() {
         // `aspect_ratio`, `mixed`, `value_step` and `on_change`; then
         // `keep_focus`, `on_focus`, `rules` and `rule_w`; then
         // `on_button` and `buttons` (backlog F105); then `overscroll` and
-        // `scroll_axes` (backlog F107).
-        ("KuiSpec", 648, 20),
+        // `scroll_axes` (backlog F107). ABI 21: `modifier_keys` (backlog
+        // F108).
+        ("KuiSpec", 648, 21),
         ("KuiSizing", 8, 16),
         ("KuiKeyframe", 36, 16),
         ("KuiEnter", 40, 16),

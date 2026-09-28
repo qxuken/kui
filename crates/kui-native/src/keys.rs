@@ -11,9 +11,9 @@ use super::*;
 /// characters, punctuation the character US-QWERTY prints there, and the
 /// named keys their names — no layout is consulted, which is the point.
 ///
-/// The numeric keypad reports the digit and operator it always bears; kui
-/// has no separate numpad vocabulary, and `code` already conflates the two
-/// (winit's logical key for `Numpad1` is `"1"`).
+/// The numeric keypad reports the digit and operator it always bears, as
+/// winit's logical key for `Numpad1` is `"1"`: which of the two it was is
+/// the press's [`kui_core::KeyLocation`] (backlog F108), not its code.
 pub(crate) fn physical_code(key: winit::keyboard::PhysicalKey) -> KeyCode {
     use winit::keyboard::{KeyCode as Phys, PhysicalKey};
     let PhysicalKey::Code(c) = key else {
@@ -122,7 +122,156 @@ pub(crate) fn physical_code(key: winit::keyboard::PhysicalKey) -> KeyCode {
         Phys::F10 => KeyCode::F(10),
         Phys::F11 => KeyCode::F(11),
         Phys::F12 => KeyCode::F(12),
+        Phys::F13 => KeyCode::F(13),
+        Phys::F14 => KeyCode::F(14),
+        Phys::F15 => KeyCode::F(15),
+        Phys::F16 => KeyCode::F(16),
+        Phys::F17 => KeyCode::F(17),
+        Phys::F18 => KeyCode::F(18),
+        Phys::F19 => KeyCode::F(19),
+        Phys::F20 => KeyCode::F(20),
+        Phys::F21 => KeyCode::F(21),
+        Phys::F22 => KeyCode::F(22),
+        Phys::F23 => KeyCode::F(23),
+        Phys::F24 => KeyCode::F(24),
+        Phys::F25 => KeyCode::F(25),
+        Phys::F26 => KeyCode::F(26),
+        Phys::F27 => KeyCode::F(27),
+        Phys::F28 => KeyCode::F(28),
+        Phys::F29 => KeyCode::F(29),
+        Phys::F30 => KeyCode::F(30),
+        Phys::F31 => KeyCode::F(31),
+        Phys::F32 => KeyCode::F(32),
+        Phys::F33 => KeyCode::F(33),
+        Phys::F34 => KeyCode::F(34),
+        Phys::F35 => KeyCode::F(35),
+        Phys::PrintScreen => KeyCode::PrintScreen,
+        Phys::Pause => KeyCode::Pause,
+        Phys::ContextMenu => KeyCode::Menu,
+        Phys::NumpadClear => KeyCode::Clear,
+        Phys::ShiftLeft | Phys::ShiftRight => KeyCode::Shift,
+        Phys::ControlLeft | Phys::ControlRight => KeyCode::Ctrl,
+        Phys::AltLeft | Phys::AltRight => KeyCode::Alt,
+        Phys::SuperLeft | Phys::SuperRight => KeyCode::Super,
+        Phys::CapsLock => KeyCode::CapsLock,
+        Phys::NumLock => KeyCode::NumLock,
+        Phys::ScrollLock => KeyCode::ScrollLock,
+        Phys::MediaPlayPause => KeyCode::MediaPlayPause,
+        Phys::MediaStop => KeyCode::MediaStop,
+        Phys::MediaTrackNext => KeyCode::MediaNext,
+        Phys::MediaTrackPrevious => KeyCode::MediaPrev,
+        Phys::AudioVolumeUp => KeyCode::VolumeUp,
+        Phys::AudioVolumeDown => KeyCode::VolumeDown,
+        Phys::AudioVolumeMute => KeyCode::VolumeMute,
         _ => KeyCode::Unknown,
+    }
+}
+
+/// The named keys past the editing block, as winit's logical key names
+/// them (backlog F108): F13–F35, the system keys, the modifier and lock
+/// keys themselves, and the media keys.
+fn named_code(n: &NamedKey) -> KeyCode {
+    let f = [
+        NamedKey::F13,
+        NamedKey::F14,
+        NamedKey::F15,
+        NamedKey::F16,
+        NamedKey::F17,
+        NamedKey::F18,
+        NamedKey::F19,
+        NamedKey::F20,
+        NamedKey::F21,
+        NamedKey::F22,
+        NamedKey::F23,
+        NamedKey::F24,
+        NamedKey::F25,
+        NamedKey::F26,
+        NamedKey::F27,
+        NamedKey::F28,
+        NamedKey::F29,
+        NamedKey::F30,
+        NamedKey::F31,
+        NamedKey::F32,
+        NamedKey::F33,
+        NamedKey::F34,
+        NamedKey::F35,
+    ];
+    if let Some(i) = f.iter().position(|k| k == n) {
+        return KeyCode::F(13 + i as u8);
+    }
+    match n {
+        NamedKey::PrintScreen => KeyCode::PrintScreen,
+        NamedKey::Pause => KeyCode::Pause,
+        NamedKey::ContextMenu => KeyCode::Menu,
+        NamedKey::Clear => KeyCode::Clear,
+        NamedKey::Shift => KeyCode::Shift,
+        NamedKey::Control => KeyCode::Ctrl,
+        NamedKey::Alt => KeyCode::Alt,
+        NamedKey::Super | NamedKey::Meta => KeyCode::Super,
+        NamedKey::CapsLock => KeyCode::CapsLock,
+        NamedKey::NumLock => KeyCode::NumLock,
+        NamedKey::ScrollLock => KeyCode::ScrollLock,
+        NamedKey::MediaPlay => KeyCode::MediaPlay,
+        NamedKey::MediaPause => KeyCode::MediaPause,
+        NamedKey::MediaPlayPause => KeyCode::MediaPlayPause,
+        NamedKey::MediaStop => KeyCode::MediaStop,
+        NamedKey::MediaTrackNext => KeyCode::MediaNext,
+        NamedKey::MediaTrackPrevious => KeyCode::MediaPrev,
+        NamedKey::MediaRecord => KeyCode::MediaRecord,
+        NamedKey::MediaFastForward => KeyCode::MediaFastForward,
+        NamedKey::MediaRewind => KeyCode::MediaRewind,
+        NamedKey::AudioVolumeUp => KeyCode::VolumeUp,
+        NamedKey::AudioVolumeDown => KeyCode::VolumeDown,
+        NamedKey::AudioVolumeMute => KeyCode::VolumeMute,
+        _ => KeyCode::Unknown,
+    }
+}
+
+/// Which of a key's twins winit says this is.
+fn location_of(l: winit::keyboard::KeyLocation) -> KeyLocation {
+    use winit::keyboard::KeyLocation as L;
+    match l {
+        L::Standard => KeyLocation::Standard,
+        L::Left => KeyLocation::Left,
+        L::Right => KeyLocation::Right,
+        L::Numpad => KeyLocation::Numpad,
+    }
+}
+
+/// Caps Lock and Num Lock at a press (backlog F108). winit reports
+/// neither, so the OS is asked where it answers cheaply — macOS's
+/// `NSEvent.modifierFlags` (a Mac has no Num Lock: its keypad types
+/// digits, so Num Lock reads on), Windows' `GetKeyState` — and anywhere
+/// else the state is `tracked` from the lock keys' own presses, which
+/// knows nothing of a lock set before the window opened.
+pub(crate) fn lock_state(tracked: KeyLocks) -> KeyLocks {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2_app_kit::{NSEvent, NSEventModifierFlags};
+        let flags = NSEvent::modifierFlags_class();
+        let _ = tracked;
+        KeyLocks {
+            caps: flags.contains(NSEventModifierFlags::CapsLock),
+            num: true,
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+            GetKeyState, VK_CAPITAL, VK_NUMLOCK,
+        };
+        let _ = tracked;
+        // SAFETY: GetKeyState reads the calling thread's key state and
+        // takes a virtual-key code; any value is sound.
+        let on = |vk: u16| unsafe { GetKeyState(vk as i32) } & 1 != 0;
+        KeyLocks {
+            caps: on(VK_CAPITAL),
+            num: on(VK_NUMLOCK),
+        }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        tracked
     }
 }
 
@@ -186,7 +335,7 @@ impl DynShell<'_> {
                     NamedKey::F10 => KeyCode::F(10),
                     NamedKey::F11 => KeyCode::F(11),
                     NamedKey::F12 => KeyCode::F(12),
-                    _ => KeyCode::Unknown,
+                    other => named_code(other),
                 },
                 (plain && *n == NamedKey::Space).then(|| " ".to_string()),
             ),
@@ -201,9 +350,23 @@ impl DynShell<'_> {
         // its own windowing gets the same rule as this one. `ktext` is the
         // layout's own character, never the stand-in.
         let kp = KeyPress::from_layout(logical_code, physical, kmods);
+        // The lock keys' own presses turn what is tracked where the OS
+        // is not asked (`lock_state`); the press reports the state it
+        // was made under, so Caps Lock's own press says what it found.
+        let found = lock_state(self.panes[i].locks);
+        if pressed && !event.repeat {
+            let t = &mut self.panes[i].locks;
+            match kp.code {
+                KeyCode::CapsLock => t.caps = !t.caps,
+                KeyCode::NumLock => t.num = !t.num,
+                _ => {}
+            }
+        }
         let kp = KeyPress {
             text: ktext,
             repeat: event.repeat,
+            location: location_of(event.location),
+            locks: found,
             ..kp
         };
         // Rebound after each dispatch: a chord the app answers by closing
@@ -428,5 +591,56 @@ impl DynShell<'_> {
         if let Some(i) = self.pane_of(here) {
             self.panes[i].window.request_redraw();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use winit::keyboard::{KeyCode as Phys, KeyLocation as L, PhysicalKey};
+
+    /// The keys backlog F108 named, as winit reports them: the modifier
+    /// and lock keys, F13 onward, the system and media keys — by position
+    /// and by the layout's name alike — and each place a key can be.
+    #[test]
+    fn the_whole_keyboard_has_a_name() {
+        for (p, k) in [
+            (Phys::ShiftLeft, KeyCode::Shift),
+            (Phys::ShiftRight, KeyCode::Shift),
+            (Phys::ControlRight, KeyCode::Ctrl),
+            (Phys::AltLeft, KeyCode::Alt),
+            (Phys::SuperRight, KeyCode::Super),
+            (Phys::CapsLock, KeyCode::CapsLock),
+            (Phys::NumLock, KeyCode::NumLock),
+            (Phys::F13, KeyCode::F(13)),
+            (Phys::F35, KeyCode::F(35)),
+            (Phys::PrintScreen, KeyCode::PrintScreen),
+            (Phys::ContextMenu, KeyCode::Menu),
+            (Phys::NumpadClear, KeyCode::Clear),
+            (Phys::MediaPlayPause, KeyCode::MediaPlayPause),
+            (Phys::AudioVolumeMute, KeyCode::VolumeMute),
+            (Phys::Numpad1, KeyCode::Char('1')),
+            (Phys::NumpadEnter, KeyCode::Enter),
+        ] {
+            assert_eq!(physical_code(PhysicalKey::Code(p)), k, "{p:?}");
+        }
+        for (n, k) in [
+            (NamedKey::Shift, KeyCode::Shift),
+            (NamedKey::Control, KeyCode::Ctrl),
+            (NamedKey::Super, KeyCode::Super),
+            (NamedKey::ScrollLock, KeyCode::ScrollLock),
+            (NamedKey::F24, KeyCode::F(24)),
+            (NamedKey::F35, KeyCode::F(35)),
+            (NamedKey::Pause, KeyCode::Pause),
+            (NamedKey::Clear, KeyCode::Clear),
+            (NamedKey::MediaTrackNext, KeyCode::MediaNext),
+            (NamedKey::AudioVolumeUp, KeyCode::VolumeUp),
+        ] {
+            assert_eq!(named_code(&n), k, "{n:?}");
+        }
+        assert_eq!(location_of(L::Numpad), KeyLocation::Numpad);
+        assert_eq!(location_of(L::Left), KeyLocation::Left);
+        assert_eq!(location_of(L::Right), KeyLocation::Right);
+        assert_eq!(location_of(L::Standard), KeyLocation::Standard);
     }
 }

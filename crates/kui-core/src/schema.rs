@@ -181,6 +181,7 @@ pub const P_ON_BUTTON: u32 = 116;
 pub const P_BUTTONS: u32 = 117;
 pub const P_OVERSCROLL: u32 = 118;
 pub const P_SCROLL_AXES: u32 = 119;
+pub const P_MODIFIER_KEYS: u32 = 120;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -919,6 +920,13 @@ pub const PROPS: &[PropDef] = &[
         kind: Kind::Flag,
         apply: Apply::SpecFlag(|s| s.key_up()),
         doc: "With `onKey`: releases arrive too, as the same payload with phase:\"up\" (`text` null, `repeat` false) — for a held-key interaction (WASD, press-and-hold, a key that arms a mode while it is down). A key only comes up where it went down: a release whose press the sink never got is dropped, and focus leaving while a key is held delivers the `up` first, so nothing is left stuck down. Without it a sink hears presses only, which is what a keymap wants — one that heard both halves would run every binding twice.",
+    },
+    PropDef {
+        name: "modifierKeys",
+        id: P_MODIFIER_KEYS,
+        kind: Kind::Flag,
+        apply: Apply::SpecFlag(|s| s.modifier_keys()),
+        doc: "With `onKey`: the modifier and lock keys arrive as keys of their own (backlog F108) — `code` \"shift\", \"ctrl\", \"alt\", \"super\", \"capslock\", \"numlock\", \"scrolllock\", which side in `location` (\"left\" / \"right\"), releases too with `keyUp`. Without it a modifier is only ever held — the next key's `shift`, `ctrl`, … and the `modifiers` event — so a keymap mid-sequence never reads a Shift as a key between two others. For a terminal speaking kitty's keyboard protocol, or a game that binds a lone Shift.",
     },
     PropDef {
         name: "onContextMenu",
@@ -2028,8 +2036,8 @@ pub const EVENTS: &[EventDef] = &[
     },
     EventDef {
         kind: "key",
-        payload: "`{ kind: \"key\", phase: \"down\" | \"up\", code, physical, shift, ctrl, alt, super, text, repeat, tag }`",
-        doc: "A key press or release on the focused `onKey` sink; `code` is a character or a name (`\"left\"`, `\"f5\"`) and is what a keymap binds against. `physical` is the US-QWERTY key at that *position*, spelled the same way — bind it instead when you want the finger rather than the label (WASD stays a square on every layout). `code` follows the layout while the layout speaks ASCII, so a chord lands on the key the user can see (Dvorak's `⌥v` on the key printed V); on a layout that does not (Cyrillic, Greek, Hebrew, Arabic) the position's US key stands in, as Shift prints it (`J`, `:`; unshifted under Alt, as a chord reads it), so a Latin keymap keeps matching instead of matching nothing. A shifted letter arrives as the upper-case letter — `Z` with `shift` set for ⇧⌘Z, `physical` staying `z` — so a keymap that binds letters folds a one-character `code` to lower case under a chord; a headless press is spelled the same way, since no door re-spells it (`\"z\"` with `shift` is a chord no keyboard produces). `repeat` marks a press the OS auto-repeated; `text` is what the press would insert — always the layout's own character — and is null on every release. A key only comes up where it went down: a release whose press the sink never got is dropped, and focus leaving while a key is held delivers the `up` first, so a held-key binding (WASD, press-and-hold) cannot be left stuck down.",
+        payload: "`{ kind: \"key\", phase: \"down\" | \"up\", code, physical, shift, ctrl, alt, super, text, repeat, location, caps_lock, num_lock, tag }`",
+        doc: "A key press or release on the focused `onKey` sink; `code` is a character or a name (`\"left\"`, `\"f5\"`) and is what a keymap binds against. `physical` is the US-QWERTY key at that *position*, spelled the same way — bind it instead when you want the finger rather than the label (WASD stays a square on every layout). `code` follows the layout while the layout speaks ASCII, so a chord lands on the key the user can see (Dvorak's `⌥v` on the key printed V); on a layout that does not (Cyrillic, Greek, Hebrew, Arabic) the position's US key stands in, as Shift prints it (`J`, `:`; unshifted under Alt, as a chord reads it), so a Latin keymap keeps matching instead of matching nothing. A shifted letter arrives as the upper-case letter — `Z` with `shift` set for ⇧⌘Z, `physical` staying `z` — so a keymap that binds letters folds a one-character `code` to lower case under a chord; a headless press is spelled the same way, since no door re-spells it (`\"z\"` with `shift` is a chord no keyboard produces). `repeat` marks a press the OS auto-repeated; `text` is what the press would insert — always the layout's own character — and is null on every release. A key only comes up where it went down: a release whose press the sink never got is dropped, and focus leaving while a key is held delivers the `up` first, so a held-key binding (WASD, press-and-hold) cannot be left stuck down. `location` says which of a key's twins it was (backlog F108): `\"left\"` or `\"right\"` for a modifier, `\"numpad\"` for the keypad's digits, operators, Enter and (Num Lock off) arrows — `code` still `\"1\"`, `\"enter\"` — else `\"standard\"`; `caps_lock` and `num_lock` what the lock keys held. The keys F13–F35, `printscreen`, `pause`, `menu`, `clear` and the media keys (`mediaplaypause`, `volumeup`, …) are keys like any other; the modifier and lock keys themselves (`shift`, `ctrl`, `alt`, `super`, `capslock`, `numlock`, `scrolllock`) reach only a sink that says `modifierKeys`.",
     },
     EventDef {
         kind: "text",

@@ -678,6 +678,11 @@ pub struct KuiSpec {
     /// Which axes `on_scroll` takes (`scrollAxes`, backlog F107):
     /// `KUI_SCROLL_AXES_*`, the row's index plus one; 0 is both. ABI 20.
     pub scroll_axes: u32,
+    /// Non-zero, with `on_key`: the modifier and lock keys arrive as keys
+    /// of their own (`modifierKeys`, backlog F108) — codes "shift",
+    /// "ctrl", "alt", "super", "capslock", "numlock", "scrolllock", the
+    /// side in `location`. Zero: a modifier is only ever held. ABI 21.
+    pub modifier_keys: u32,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a
@@ -2191,6 +2196,17 @@ pub const KUI_KMOD_SHIFT: u32 = kui_core::KeyMods::SHIFT;
 pub const KUI_KMOD_CTRL: u32 = kui_core::KeyMods::CTRL;
 pub const KUI_KMOD_ALT: u32 = kui_core::KeyMods::ALT;
 pub const KUI_KMOD_SUPER: u32 = kui_core::KeyMods::SUPER;
+
+/// `KUI_KLOCK_*` and `KUI_KLOC_*` (backlog F108): what the lock keys held
+/// and which of a key's twins it was, in the same word as the
+/// `KUI_KMOD_*` bits `kui_input_key_down` and its siblings take — the
+/// core's `KeyLocks::bits` and `KeyLocation::bits`. Zero is no lock on
+/// and the standard key, which is what every press was.
+pub const KUI_KLOCK_CAPS: u32 = kui_core::KeyLocks::CAPS;
+pub const KUI_KLOCK_NUM: u32 = kui_core::KeyLocks::NUM;
+pub const KUI_KLOC_LEFT: u32 = 1 << kui_core::KeyLocation::SHIFT;
+pub const KUI_KLOC_RIGHT: u32 = 2 << kui_core::KeyLocation::SHIFT;
+pub const KUI_KLOC_NUMPAD: u32 = 3 << kui_core::KeyLocation::SHIFT;
 
 /// `KUI_EDIT_*`: the flags `kui_text_edit` takes. `WRAP` is the `wrap`
 /// row declared on a field (the mode is `KuiTextStyle.wrap`, whose zero

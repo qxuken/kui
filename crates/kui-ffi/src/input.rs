@@ -207,7 +207,15 @@ fn key_press_of(
         false => Some(kstr(text).into_owned()),
         true => layout.typed(mods),
     };
-    Some(kui_core::KeyPress { text, ..press })
+    // The same word's upper bits: the lock state and the key's location
+    // (`KUI_KLOCK_*`, `KUI_KLOC_*`, backlog F108), zero for what every
+    // press was before.
+    Some(kui_core::KeyPress {
+        text,
+        location: kui_core::KeyLocation::from_bits(kmods),
+        locks: kui_core::KeyLocks::from_bits(kmods),
+        ..press
+    })
 }
 
 /// A raw key press for `on_key` sinks (the editing keys go through
@@ -215,10 +223,12 @@ fn key_press_of(
 /// ("W", "$") or a name ("left", "enter", "escape", "f5", ...); `physical`
 /// is the US-QWERTY key at that *position*, spelled the same way, or NULL
 /// when the host does not track positions (then it equals `code`); `kmods`
-/// is KUI_KMOD_* bits; `text` is what the press inserts, or NULL to derive
+/// is KUI_KMOD_* bits, with KUI_KLOCK_* and one KUI_KLOC_* beside them
+/// (backlog F108); `text` is what the press inserts, or NULL to derive
 /// it from `code`; `repeat` marks an auto-repeat. The focused sink polls
 /// `{kind="key", phase="down", code, physical, ctrl, alt, shift, super,
-/// text, repeat, tag}`. An unknown `code` or `physical` is ignored.
+/// text, repeat, location, caps_lock, num_lock, tag}`. An unknown `code`
+/// or `physical` is ignored.
 ///
 /// Passing both is what makes a keymap portable: a layout that produces
 /// something outside ASCII (Cyrillic, Greek, Hebrew, Arabic) would leave a
