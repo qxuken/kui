@@ -645,7 +645,17 @@ impl Core {
                                     && (self.selection.map(|s| s.scope) == *scope
                                         || self.cell_selection.map(|c| c.node) == *scope)
                             });
-                        if origin != Some(OriginId::MENU) && !in_bar && !extends {
+                        // A press on a `keepFocus` node — a toolbar's Copy
+                        // or Bold, acting on what the sink or editor has —
+                        // is spared on the same terms as the menus (backlog
+                        // DX10): it leaves the selection, the focus and the
+                        // ring as they are. An editor inside one is its own
+                        // keyboard owner and takes its caret as ever.
+                        let keep = match hit {
+                            Some((_, Some(_), true, _, _)) | None => false,
+                            Some((key, ..)) => self.keeps_focus(key),
+                        };
+                        if origin != Some(OriginId::MENU) && !in_bar && !extends && !keep {
                             self.clear_selection();
                         }
                         // And the field a menu-bar menu will be about: this
@@ -674,6 +684,12 @@ impl Core {
                                 self.edit.dragging = Some((key, origin));
                                 self.arm_follow(key, p);
                             }
+                            // The press acts (its click is resolved on the
+                            // release, as any) and moves nothing: not the
+                            // focus, not the region Tab walks next — the
+                            // keyboard's ring is still the one it is in —
+                            // and no drag-select of its own.
+                            Some(_) if keep => {}
                             // Inside a selection scope, with nothing else
                             // claiming the press: start a drag-select.
                             // One click places both ends together, two

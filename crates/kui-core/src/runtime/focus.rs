@@ -529,6 +529,28 @@ impl Core {
         self.focus_asked = false;
     }
 
+    /// Whether a primary press on node `key` leaves the keyboard alone:
+    /// `keepFocus` on the node or an ancestor (backlog DX10). Such a press
+    /// acts and touches nothing the keyboard has — not the focus, not the
+    /// ring Tab walks next (ADR 0022's press settling the region is a
+    /// press *taking* the keyboard), and not the selection, which is what
+    /// a toolbar's Copy or Bold acts on (the alpha.22 regression pass: it
+    /// cleared it, as ADR 0017 spares the core's menu and menu bar from
+    /// doing). One walk per press.
+    pub(crate) fn keeps_focus(&self, key: Key) -> bool {
+        let Some(i) = self.tree.index_of(key) else {
+            return false;
+        };
+        let mut n = i as u32;
+        while n != crate::tree::NIL {
+            if self.tree.specs[n as usize].events().keep_focus {
+                return true;
+            }
+            n = self.tree.parent[n as usize];
+        }
+        false
+    }
+
     /// Where a primary press on node `key` puts the keyboard: the node
     /// itself when it is focusable, and nothing when it is not — except
     /// on window chrome, which leaves focus alone, and inside a key sink,
@@ -542,7 +564,8 @@ impl Core {
     /// click anywhere in a multiplexer kills every chord, permanently,
     /// because `take_key_focus` is edge-triggered and will not ask twice.
     /// An editor or a nested sink is its own keyboard owner and still
-    /// takes focus (the editor through the caret arm above).
+    /// takes focus (the editor through the caret arm above). A press on a
+    /// `keepFocus` node never gets here: see [`Self::keeps_focus`].
     pub(crate) fn press_focus(&self, key: Key, focusable: bool) -> Option<Key> {
         let Some(i) = self.tree.index_of(key) else {
             return focusable.then_some(key);
@@ -553,15 +576,6 @@ impl Core {
         // to give up its keyboard.
         if self.tree.specs[i].window.is_some() {
             return self.focus;
-        }
-        // `keepFocus` on the node or an ancestor: the press acts and the
-        // keyboard stays where it was (backlog DX10). One walk per press.
-        let mut n = i as u32;
-        while n != crate::tree::NIL {
-            if self.tree.specs[n as usize].events().keep_focus {
-                return self.focus;
-            }
-            n = self.tree.parent[n as usize];
         }
         if self.tree.specs[i].events().on_key.is_some() {
             return Some(key);
