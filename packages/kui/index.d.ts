@@ -131,8 +131,15 @@ export type ButtonMsg<T = AppMsg> = {
   button: 'secondary' | 'middle' | number;
   x: number;
   y: number;
-  /** On the press only. */
+  /** On the press only: the driver's count; the native runner counts
+   *  the primary button alone, so 1. */
   clicks?: number;
+  /** On a `cells` grid: the cell under the pointer, clamped to the grid. */
+  cell?: { row: number; col: number };
+  /** Inside an `onKey` sink that draws `role="line"` rows: the line and
+   *  the byte in its text, as a drag carries them. */
+  line?: number;
+  byte?: number;
   tag?: T;
 };
 

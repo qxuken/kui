@@ -73,7 +73,9 @@ whitespace that takes its room — from the kawoosh wrapped-space report
 of the same day, the day it was filed, and F107 — a scroll gesture
 latching its target and chaining past a scroller at its limit — from
 the kawoosh scroll-gestures report of the same day, the day it was
-filed. The index
+filed, and with the alpha.22 tag DX1–DX15 and DX17–DX26 from the DX
+sweep of 2026-09-27 and RG60–RG69 from the regression pass of
+2026-09-28, built the days they were filed. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -103,7 +105,10 @@ two entries, C42 and C43 — `rich_text` shaped whole past the long-line
 threshold, and a long line's key hashed a byte at a time every frame —
 were built the day they were filed; the "thousands of spans" the report
 blamed measured as a factor of 1.5 and not the cause), the "theirs, not ours" lists the field reports left
-behind, and C45–C51 from the second bake-off of 2026-09-25. Everything else that has been filed has
+behind, and C45–C51 from the second bake-off of 2026-09-25, F103 from the kawoosh
+⌘-Tab report (an animating hidden window spinning on skipped frames),
+DX16 from the DX sweep (declined with a condition), and RG70–RG75 from
+the regression pass of 2026-09-28. Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
 they were filed (2026-09-07), F25–F31 from the alpha.8 ones by the day
@@ -117,7 +122,7 @@ architecture review (forty-four entries under ten decisions, every one
 built on 2026-09-14), the standard-menus round, and the pre-tag round's
 own two finds. C26 was the last split entry, and it closed on 2026-09-11.
 
-Ordered by area, not by priority. What to do next is under "After alpha.20".
+Ordered by area, not by priority. What to do next is under "After alpha.21".
 
 **Legend** — `!` a defect that ships today · `~` a gap with no workaround ·
 `.` cost without correctness risk.
@@ -441,7 +446,7 @@ moved whole to
 before the alpha.10 tag, W7 last — the one that wanted a decision rather
 than a patch, settled as: a displacement moves a subtree by whole physical
 pixels, scrolling included. Nothing from the round is open; what it did
-not cover is in "After alpha.20" below.
+not cover is in "After alpha.21" below.
 
 ## From two alpha.9 field reports and a bake-off (2026-09-08)
 
@@ -1903,7 +1908,7 @@ Beside the report, reading the tree for this round turned up one gap of
 kui's own: the variable-height list is Rust-only (C46). Two further
 entries came from the comparison's table: typed messages (C50) and file
 dialogs (C51). The distribution recommendation is unchanged (see
-*Distribution* under *After alpha.20*).
+*Distribution* under *After alpha.21*).
 
 ### `~` C45 — Checkbox, radio group, switch and slider are roles only; every app draws them — **built 2026-09-25**
 
@@ -2450,283 +2455,13 @@ were built the same day. DX25 came from kawoosh's windowed probe of its
 fonts pane the day after, and was built that day, and DX26 from
 profiling what was left of it, built the same day.
 DX9 and DX17 were built as ADRs 0036 and 0037 the same day. Nothing
-filed by the sweep is open.
+filed by the sweep is open: the twenty-five built entries went to the
+archive with the alpha.22 tag, and DX16, declined, stays below.
 
 Kawoosh can already delete some code without kui changing: the
 non-breaking-space padding in its Lua plugins (K3, alpha.13), string
 payloads that `#[derive(Message)]` (C50) replaces, and stale notes on
 long lines and K1/K2. That cleanup belongs to kawoosh.
-
-### `.` DX1 — `Sizing::Fixed(` and `Sizing::Grow(1.0)` were 1,046 of the repo's calls — **built 2026-09-27**
-
-There were 329 `.width(Sizing::Fixed(`, 370 `.height(Sizing::Fixed(`,
-265 `.width(Sizing::Grow(1.0))` and 82 heights like it. 238 of them
-were a fixed width and height in a row. Kawoosh had about 160 more.
-`min_width` already took a number (`impl Into<Min>`); `width` took only a
-`Sizing`. **Built:** `From<f32> for Sizing` (a number is px), `width`
-and `height` take `impl Into<Sizing>` on a spec and on a keyframe,
-entrance or exit, and `size(w, h)`, `grow_width()`, `grow_height()`,
-`Sizing::GROW` were added. Migrated: `Sizing::Fixed(` went from 943 to
-47 in the tree and `Sizing::Grow(1.0)` from 430 to 15 (334 `size`, 65
-`fill`, 291 `grow_*`, the rest a bare number). One trap, caught by
-`bench-check.sh`: `grow_width()` calls the generic `width`, so rustc
-would not inline it across crates on its own, and `frame_10k_rects`
-measured +13.7% until the new builders were `#[inline]` (`ca5f1aa`;
-then −2.3%, every guarded row green against `1529e57`).
-
-### `.` DX2 — A text has no box, so every text with a width, a background or a key sat in a `with` — **built 2026-09-27**
-
-`text_node` pushes `NodeSpec::default()`, so padding, a width, a
-background, a click, a role or a key needs a wrapper. kui had 156
-`with*` calls whose closure was one `ui.text`, and kawoosh had 59.
-**Built:** `Ui::text_in(spec, s, style)`, `text_in_keyed` and
-`text_in_indexed`, each returning the box's key. This is sugar for the
-same tree, not a text node with a spec: layout, hit testing and the
-access tree see what they saw. 158 sites were migrated.
-
-### `.` DX3 — Payloads were built and read the long way — **built 2026-09-27**
-
-About 230 `get("k").and_then(Value::as_*)` reads in kui and 113 in
-kawoosh. `ev.payload.get("kind").and_then(Value::as_str)` opened about
-20 of the 33 example `on_event`s. There were 58 `x as i64` conversions
-into `Value`, 22 `modal(Value::str(..))` (the only tag row that did not
-take `impl Into<Value>`), 21 `on_key(Value::Null)`, and 175
-`on_*(Value::str("x"))` where `"x"` already compiled. **Built:**
-- `Value` from `i32`, `u32`, `usize` (saturating) and `f32`.
-- `get_str`, `get_int`, `get_float`, `get_f32` and `get_bool`.
-- `UiEvent::kind()`.
-- `modal(impl Into<Value>)` and `NodeSpec::key_sink()`.
-
-Migrated: 251 reads, 83 kinds, about 190 tags, 22 sinks. `#[derive(Message)]`
-stays the answer for an app's own messages. Kawoosh does not use it
-yet: 38 `Value::map([("kind", …)])` payloads.
-
-### `.` DX4 — Floats, modifiers and centres were spelled out — **built 2026-09-27**
-
-- 44 of 44 `.at(x, y).self_at(x, y)` pairs in kui and kawoosh repeated
-  the same point.
-- 85 `KeyMods { shift: true, ..Default::default() }`-style literals.
-  `KeyMods::SHIFT` is a `u32` bit for the wire.
-- 25 hand-written rect centres, and two local `fn center`.
-
-**Built:** `FloatConfig::inside(x, y)`;
-`KeyMods::NONE.with_shift()` and `with_ctrl`, `with_alt`, `with_super`
-and `with_primary`; `Mods::NONE.with_shift()` and `with_word`,
-`with_doc`; `Rect::center()`. Migrated: 37 floats and 45 literals.
-
-### `.` DX5 — The node verbs had holes, and four doc comments sat on the wrong method — **built 2026-09-27**
-
-- `fragment` and `fragment_with` had `_keyed` and no `_indexed`, though
-  `Core::open_fragment_indexed` existed.
-- `line` had no `_indexed`.
-- `child_key_index` was the one `_index` among `_indexed`s.
-- The doc comments for `rich_text`, `cells_keyed`, `polyline_keyed` and
-  `env` sat on the method before each.
-
-**Built:** `fragment_indexed`, `fragment_with_indexed`, `line_indexed`,
-the rename (an alpha break, under What breaks), the docs moved.
-
-**Declined:** making `text`, `line` and the buttons return their `Key`.
-A closure whose tail is one of them — `|ui| ui.text(…)`, kawoosh's
-reload button among them — would stop being `()` and fail to compile,
-for a key `child_key` already gives.
-
-### `!` DX6 — A Rust view's `apply_tooltip` never floated its hint — **built 2026-09-27**
-
-`NodeSpec::apply_tooltip` is the prop's spec half: hover tracking and
-the description. The float is the parsers' (`PropsOut::apply_tooltip`)
-and `kui_close`'s, and a Rust view had no door for it. So kawoosh's
-reload button (`settings.rs:729`) never showed its hint, and kui's
-tooltip example passed each hint twice. **Built:**
-`NodeSpec::tooltip(hint)`, which is all three: `AccessSpec::tooltip` is
-read in `open_content`, and the hint is recorded for `close` while the
-node is hovered, the same path the prop takes. A stock widget given a
-`hint` clears the flag and floats its own. Pinned both ways (see the
-changelog).
-
-### `.` DX7 — The core's own event fields are untyped — **built 2026-09-27**
-
-**Built 2026-09-27** (`814e50e`) as `event.rs`: `drag()`, `key_press()`
-(named so because `key` is the node the event is about), `text()`,
-`scroll()`, `hover()`, `modifiers()`, `layout()` and `tag()`, with
-`Drag::ratio()`. splitmux moved onto them. Pinned against events real
-input produced (`tests/event_views.rs`).
-
-Kawoosh reads about 25 fields out of `Value`:
-- a drag's `phase`, `x`, `y`, `parent`, `cell`, `line`, `byte` and
-  `clicks`;
-- a scroll's `lines`;
-- the `modifiers` event;
-- a key payload, from which it rebuilds `KeyStroke` by hand
-  (`app.rs:1488-1502`, `1868-1889`, `2007-2016`; `notify.rs:763`).
-
-`message::<M>()` covers the app's tag and not the core's half.
-
-**Do.** Typed views on `UiEvent`: `drag()`, `scroll()`, `key()`,
-`text()`, `modifiers()`, `layout_rect()`. Each returns `Option<…>` of a
-plain struct with a `DragPhase` enum, read from the payload the
-bindings already share. The payload stays the wire; this is a Rust
-reading of it.
-
-### `.` DX8 — A key made from a label and an index is a `format!`, and indexes collide by hand — **built 2026-09-27**
-
-**Built 2026-09-27** (`86dd633`) as the smaller half:
-`Ui::open_key` / `with_key` / `leaf_key` over a key the caller built with
-`child_key(label).index(i)`, which `Key` already composed. Making every
-keyed verb generic over `("gap", i)` was not done — a built key has no
-label for `key_of` to find, so the tuple would have been a second
-spelling with a hole in it.
-
-- 11 `&format!("gap{}", id)` labels in kawoosh. Two of them are built
-  twice, once for `child_key` and once for `with_keyed`
-  (`panes.rs:626/644`, `684/698`).
-- 42 more in kui.
-- To keep `_indexed` from colliding with auto keys, kawoosh adds its own
-  offsets: `2000 + i`, `1000 + i`, `1 << 32 | gi`, `1 << 33 | pi`
-  (`chrome.rs:106`, `:337`; `notify.rs:995`, `:1040`).
-- `open_with_key` is `pub(crate)`, so a key computed once cannot be
-  opened.
-
-**Do.** The keyed verbs take `impl Into<ChildLabel>`, where `&str` stays
-as it is and `("gap", i)` hashes as `parent.str("gap").index(i)`: no
-allocation, and no collision with the sibling-index namespace. Add a
-public `with_key(key, spec, f)` and `leaf_key`.
-
-### `.` DX9 — `App::on_event` has no context, so every effect waits a frame — **built 2026-09-27**
-
-**Built 2026-09-27** as [ADR 0036](adr/0036-an-event-handler-gets-its-window.md), accepted the day it
-was proposed: `App::on_event_with(ev, &mut Core)`, defaulting to
-`on_event`.
-
-Kawoosh parks work for the next `view`:
-- the clipboard write (`clip_out`, "on_event has no Ui", `app.rs:191`);
-- taking focus back (`reclaim_focus`, `app.rs:224`);
-- devtools requests (`app.rs:137`, `:253`);
-- `kawoosh.copy` for Lua commands.
-
-ADR 0008 and the closed C18 and C33 each note the gap; none filed it.
-
-**Do.** `on_event(&mut self, ev, cx: &mut EventCx)`, where `cx` queues
-`set_clipboard`, `request_paste`, `focus`, `reveal` and `request_frame`,
-applied before the next view. Wants an ADR (the `App` trait is every
-Rust app's), and a door per binding.
-
-### `.` DX10 — A click on any `on_click` node takes keyboard focus — **built 2026-09-27**
-
-**Built 2026-09-27** (`e379aee`) as `keepFocus` / `keep_focus`, a flag
-rather than `focusOnClick={false}` because the schema's flags are
-positive. It holds for a press anywhere inside the node, so a toolbar
-opts out once. `press_focus` takes the chrome's exit; the flag lives in
-`EventSpec`. C: under ABI 20, into `KuiSpec`'s tail padding.
-
-Kawoosh sets `reclaim_focus = true` in 10 handlers and keeps a
-`focus_sink` to take focus back (`app.rs:481`, `2456-2517`;
-`settings.rs:841-878`; `confirm.rs:50`). An `on_click` node is focusable
-(`spec.rs`, `on_click`), and there is no opt-out.
-
-**Do.** `NodeSpec::focus_on_click(false)`: the press does not move
-focus, and the node stays in the Tab ring (AppKit's
-`refusesFirstResponder`, the web's `preventDefault` on `mousedown`). A
-prop in every binding.
-
-### `.` DX11 — No test driver an app can use, and kui's own tests bypass `testing` — **built 2026-09-27**
-
-**Built 2026-09-27** (`49f614f`) as the app-level half:
-`kui_native::testing::Drive`, generic over owning or borrowing the `Core`,
-with `Extensions` routing and `framing()`; kui-devtools' `Drive<'c>` is an
-alias. The core-level half — `kui_core::testing::frame` and moving kui's
-own 53 test files onto it — is not done: open, and cost only.
-
-Kawoosh's `harness.rs` is 477 lines and "mirrors kui-devtools's
-`Drive` (not a published crate)". In kui:
-- 53 of about 84 test files define their own `fn *frame*`.
-- 177 raw `handle_input(InputEvent::CursorMoved`.
-- 42 inline quad filters, where `testing::quads_of` has no users.
-- Four tests redefine `testing::kinds`.
-- `Drive` and `testing` spell the same verbs differently.
-
-**Do.** Publish `kui_native::testing::Drive`, owning `Core` and
-`Extensions`, with:
-- `frame(app)`;
-- `key`, `keys`, `text`, `click`, `double_click`, `drag`, `wheel` and
-  `hover`;
-- `rect_of(label)`, `texts_under(label)` and `warnings()`.
-
-Then add `kui_core::testing::frame(core, |ui| …)` and `drag`,
-`move_to`, `click_key`, `rect_of` beside it, make the devtools `Drive`
-delegate to them, and migrate the tests.
-
-### `.` DX12 — Revealing a virtual list's row and a resizable divider are written by hand, three times each — **built 2026-09-27** (Rust)
-
-**Built 2026-09-27** in kui-core's widgets, Rust only, on the user's
-go-ahead to put it where it fit: `splitter`, `reveal_row` with
-`rows_in_view`, and `uniform_list_with`. `reveal_row` centres, as all
-three of kawoosh's did; it assumes no top padding on the list. The drag
-payload already carried the parent, so the ratio is `Drag::ratio()`
-(DX7) rather than a new field. The other bindings are DX22.
-
-- Kawoosh reveals a `uniform_list` row three times:
-  `child_key("rows")`, `scroll_geometry`, an in-view test, then
-  `set_scroll` to centre (`memory.rs:1447`, `undo.rs:357`,
-  `inspector.rs:407`). The docs point there because `reveal` of an
-  unbuilt row finds nothing.
-- Each of those lists also wraps every row in a second node, for the
-  click, the zebra stripe and the hover.
-- Its divider is written three times too: hover or press or drag
-  colouring, a resize cursor, an `on_drag`, and a handler turning `x`
-  and `parent` into a ratio (`panes.rs:772`, `684`; `app.rs:2308`,
-  `2003`).
-
-**Do.** Four pieces:
-- `widgets::reveal_row(ui, label, i, row_h)`;
-- a row spec on `uniform_list` (`uniform_list_with(…, row_spec)`);
-- `widgets::splitter(ui, label, axis, thickness, tag)`;
-- a drag payload that carries `ratio` within the parent.
-
-### `.` DX13 — The innermost scroller takes both wheel axes — **built 2026-09-27**
-
-**Built 2026-09-27** (`94033c9`): the notch walks the scroll regions
-under the pointer from the top, each scroller taking its own axes; a
-handler still takes all of it. No chaining at a scroller's end — an
-axis a scroller scrolls is its, at the end or not. (Since F107, on
-2026-09-28, a gesture that *starts* over a scroller at its end chains to
-the one around it, and a handler takes the axes its `scrollAxes`
-names.)
-
-`dispatch.rs` gives the whole wheel delta to the innermost scroller, so
-a vertical scroller inside a horizontal one never passes x on. Kawoosh
-owns its horizontal offset and sets it every frame
-(`panes.rs:1653-1658`, `2285-2295`). **Do.** A container that scrolls
-on one axis passes the other axis's delta to the next scroller up, or to
-its `on_scroll`.
-
-### `.` DX14 — A paste answer cannot be told from typing — **built 2026-09-27**
-
-**Built 2026-09-27** (`c0cd662`): `pasted: true` on the sink's `text`
-event for a `Paste`, or any commit while a paste is outstanding. The
-tagged request was not needed once the answer says what it is.
-
-`request_paste` answers `{kind:"text"}`, the same event as a keystroke,
-and only one request can be outstanding. Kawoosh juggles `clip_probe`
-and `awaiting_paste` to read the clipboard into a register
-(`app.rs:193-196`, `1089-1100`; its `docs/design/keys.md:503`).
-**Do.** `pasted = true` on the answer, as F84 added `concealed`, and a
-tag on the request.
-
-### `.` DX15 — Lua's `reveal` and `set_scroll` by a label not yet declared fail — **built 2026-09-27**
-
-**Built 2026-09-27** (`2f2cbe3`): `Core::reveal_label` /
-`set_scroll_label`, resolved at the frame's end per asking origin; Lua's
-and Node's string forms fall back to them, and a label the frame does
-not declare is `label-without-node` — C25's typo, a warning now rather
-than an error. Node gets it too: its `reveal` resolved through the last
-frame only.
-
-On a pane's first frame the label is not declared yet. Kawoosh wraps
-the calls in `pcall` and retries over several frames
-(`lua/themes.lua:66-73`, `:222`; `lua/fonts.lua:275`;
-`lua/theme_lab.lua:291`). **Do.** Resolve a string label when the frame
-finishes, as `focus_next` already does.
 
 ### `.` DX16 — A theme colour cannot be a fragment param — declined with a condition
 
@@ -2739,213 +2474,91 @@ hand to feed the rounded-selection fragment. **Do.** `env.rgba(c)`,
 returning four numbers from a hex string, an integer or a `$token`, or
 let a colour in `params` expand to four.
 
-### `.` DX17 — A font cannot be named by its family — **built 2026-09-27**
+## From the regression pass of 2026-09-28
 
-**Built 2026-09-27** as [ADR 0037](adr/0037-a-family-is-named.md), accepted the day it was
-proposed: `family` takes a name, resolved by the parser to the handle,
-and Node's frame is v18.
+The pre-tag pass over the forty-three commits after the alpha.21 tag —
+F101–F107, the DX sweep (DX1–DX26), RG56/RG59 and ADRs 0036–0038 — run
+the way the 2026-09-26 pass was: the mechanical round first (all
+green), a probe window driving the new input by CGEvents (a swipe's
+axis lock and latching, the middle button's capture, focus events,
+`break-spaces`, table rules — all as documented), then five read-only
+reviews (scroll, input, text and atlas, layout and widgets, the release
+notes), each claim probed with a test before anything was changed.
+Sixteen entries. RG60–RG69 were **built 2026-09-28**, the day they
+were filed, and are in the archive; the headline was F106's
+`break-spaces` meeting the long line's limits on every short text
+(RG68). RG70–RG75 are open.
 
-`family` takes `sans`, `serif` or `mono`. An installed face needs a host
-`add_system_font` and a handle passed down. Kawoosh registers all 613
-families up front so no frame draws in the wrong face (`fonts.rs:7-12`,
-`docs/design/fonts.md:48-60`). **Do.** `family = "Berkeley Mono"`,
-resolved against the font database, with an `unknown-family` warning.
-Wants an ADR (it moves font loading into the view's frame).
+### `.` RG70 — A break-spaces paragraph past 4 KB lays out its first frame on estimated rows
 
-### `.` DX18 — Focus is facts to diff, not events — **built 2026-09-27**
+A line long only by `break-spaces` shapes every chunk when it is built
+(RG68), but one past 4 KB still lays out on C19's estimate and asks for
+no frame when emission's rows differ, as a `word` long line always has;
+an idle view keeps its last rows clipped until the next input. Asking
+for a frame whenever the rows change could loop while the chunk cache
+is over budget, so it wants a bounded rule. Found by the text review.
 
-**Built 2026-09-27** (`7827baf`): `onFocus`, focus-within, with `by`
-from the input being handled (`pointer`, `keyboard`, `assistive`) or
-`program` at a frame's end; `report_focus` diffs the path's `onFocus`
-nodes and clones tags only on a change. The window's `focused` and
-`blurred` phases ride the existing `window` event.
+### `.` RG71 — Copying a rich break-spaces text copies plain text
 
-Kawoosh diffs window focus per frame in three places (`app.rs:211`,
-`disk.rs:44`, `moments.rs:153`) and kui's key focus in two
-(`app.rs:202`, `panes.rs:1153`). **Do.** An `on_focus` tag with
-`{kind:"focus", phase, by}`, and a window-focus event beside the
-existing window events.
+`selection_html` treats a long line as one style, so a rich
+`break-spaces` text in a `selectable` scope copies as escaped plain
+text. The fix is walking the chunk runs through `html_of_run`. Found
+building RG68.
 
-### `~` DX19 — `exit` replays when only an ancestor went away — **built 2026-09-27**
+### `.` RG72 — Two identical word texts at different widths answer text_hit and caret_rect from the width drawn last
 
-**Built 2026-09-27** (`41b68e8`) as the rule rather than an
-`exit_scope`: a candidate whose parent also left, and whose ancestor
-declared no exit to carry it, does not depart. The exit_budget example
-kept its grid rows declared so its cells still depart; the corpus was
-already written that way.
+The run path's twin of RG68's first claim: drawing is right (each node
+re-wraps at emission), but the shared run's rows are the last width's,
+so the hit test and the caret of the other node answer from them.
+Found building RG68; pre-existing.
 
-A column closed on a tab switch fades out every time the tab comes
-back, so kawoosh dropped `exit` from closing columns
-(`docs/design/scrolling-tab.md:270-272`). **Do.** Play an exit only when
-the node's parent survives the frame, or add an `exit_scope` on a
-container.
+### `.` RG73 — A wheel that reports pixel deltas never ends its gesture when the pointer moves
 
-### `.` DX20 — Hover cannot tell a moved pointer from content moving under a still one — **built 2026-09-27**
+The runner takes any `PixelDelta` for a swipe, and only a line
+gesture ends on a pointer move (`scroll_gesture.rs`), but winit reports
+mouse wheels as pixels on Wayland and with some smooth-scrolling
+drivers: spinning over pane A, moving to B and spinning again within
+200 ms keeps scrolling A, against ADR 0038 decision 2. Unverified; wants
+a Wayland round.
 
-**Built 2026-09-27** (`469d805`): `by: "pointer" | "content"` on every
-hover event; `refresh_hover` knows which from its caller, and a
-pre-built `leave` is stamped as it goes out.
+### `.` RG74 — Once F102's retries run out, a later skipped frame is never retried
 
-Kawoosh's picker keeps its own `hover_top` and `hover_hits`, because
-"kui says which node is under the pointer, not that it moved"
-(`lua/picker.lua:1146-1151`). **Do.** `by = "pointer" | "content"` on
-hover events.
+`retry::Retry` ignores skips while its tries are spent, and only a
+present or `Occluded(false)` resets them. On a platform that sends no
+`Occluded` (Windows; likely Wayland) a window away long enough to spend
+the tries and brought back behind a skipped frame shows the stale one,
+F102's symptom. A skip well after the last try could start a fresh run.
+Speculative; pinned as intended by `the_tries_run_out_and_stay_out`.
 
-### `.` DX21 — A table has no grid rules — **built 2026-09-27**
+### `.` RG75 — Small readings from the reviews
 
-**Built 2026-09-27** (`1adb41e`) as `rules` + `ruleWidth`, one colour for
-both directions, in `InteractSpec` so `NodeSpec` did not grow, emitted by
-a cold `emit_rules` beside the table's box. Separate column and row
-colours were not asked for.
+- `rows_in_view` with `row_h <= 0` answers `usize::MAX` in Rust and
+  infinity in Lua and Node; it and `reveal_row` measure the list's box
+  with its padding; `reveal_row` has no row count, so an index past the
+  end scrolls to the end every call; Rust's `uniform_list_with` turns a
+  `Fit` row width into grow where Lua's and Node's keep it.
+- `NodeSpec::tooltip` floats its hint only on nodes opened through
+  `open_content` (boxes, fragments), not on `image`, `text_edit` or
+  `cells`, though its doc says the core floats it.
+- `clicks` is left off a pointer-made event whose payload kind is
+  `"button"` — an app's `onClick` of `{kind: "button"}` inside a
+  line-drawing sink too (`dispatch.rs`, `own_count`).
+- Rust's `ButtonEvent` has `cell` and not `line` / `byte`; Node's
+  `ctx.mouse` and Lua's headless input cannot drive a button past the
+  middle one.
+- The window losing the keyboard ends button captures (RG65) but not a
+  primary `on_drag` or a slider's slide under way.
+- Tab stops on a long line are measured from each chunk's start.
 
-Kawoosh's markdown tables fake borders with `2n + 1` cells, 1 px rule
-cells between the real ones, and a separate edge row
-(`rows.rs:927-1030`). **Do.** `column_rule(width, colour)` and
-`row_rule(width, colour)` on a table: collapsed borders drawn between
-the columns layout already aligns.
-
-### `.` DX22 — `splitter`, `reveal_row` and a list's row spec are Rust's alone — **built 2026-09-27**
-
-**Built 2026-09-27**: the prelude's `reveal_row`, `rows_in_view`,
-`splitter` and `row_props`, typed in the Lua meta (the two readings
-return a boolean and an integer, not a node); Node's `revealRow`,
-`rowsInView`, `splitter` and `rowProps`, in `index.d.ts` and through the
-examples' typecheck. Each pinned by a test that reveals row 40 of 50,
-clicks it through its own node and drags the bar to 0.75.
-
-DX12 built them in kui-core's widgets. Lua's prelude `uniform_list` and
-Node's `uniformList` each wrap a row in a box of their own too, and
-neither has a divider or a row reveal. **Do.** In each binding: a row
-spec on the list (`row_props = function(i)` in Lua, `rowProps: (i) =>
-props` in Node), `reveal_row` / `revealRow` as the same arithmetic over
-`scroll_geometry` and `set_scroll`, and a `splitter` helper returning
-the element, over the theme's colours and `keepFocus`.
-
-### `.` DX23 — A pane of more than 512 nodes cannot fade out — **built 2026-09-27**
-
-Filed from kawoosh's report on moving onto this round (2026-09-27): with
-DX19 an `exit` on its closing columns plays only when the column is what
-closed, so it put the fade back — and closing the fonts or the themes
-pane, 1,500–1,800 nodes each, raised `exit-budget` and vanished. It
-reverted and wrote the reason into `docs/design/scrolling-tab.md`. ADR
-0012 had said the 512 "could be raised" once a view asked.
-
-**Measured (release, M3 Pro, a pane of rows of a box and a text):** a
-departing subtree costs ~0.065 µs a node in the frame it leaves and
-~0.021 µs a node a frame while it plays, linear to 8192. 4096 nodes are
-267 µs, then 87 µs a frame, where the same pane cost 404 µs a frame
-alive, so a fade costs less than the frames before it.
-
-**Built 2026-09-27** (`2c1df2b`): `depart::MAX_NODES` is 4096. Everything
-that spelled 512 follows the constant or moved with it: the corpus's exit
-scene in four adapters (`bulk` the budget's rows plus its root, the
-together-removal 4200 rows), the depart and exit tests, the exit_budget
-example (2 × 2100 cells, a 5000-row list, and a headless drive for its
-three rules), and the benches (`drop_5k_rows_declaring_exit` is the
-refusal `drop_1k` was). The bigger scene found the corpus observer
-quadratic in a parent's children (`is_label_keyed`, 8 s → 46 s), now a
-set built once per parent per frame. **Not done:** a departing pane as
-one texture, which would make the budget moot but needs every renderer to
-learn it; nothing asks for more than 4096.
-
-### `.` DX24 — A family's first shaping costs 9.7 ms — **built 2026-09-27**
-
-Filed from the same report: kawoosh keeps warming families ahead of
-time, because cosmic-text's first shaping in a family cost 8–10 ms.
-Measured here: 9.7 ms a family in release, 0.02 ms after, and 0.04 ms to
-register it. The time is cosmic-text's `get_font_matches`, which ranks
-every face in the database for a new family, weight or style and reads
-the `wght` axis of each face of another weight, opening and mapping that
-face's file each time while it is unshared (1,311 faces on the Mac it
-was measured on). Its cache also holds only 256 of those rankings.
-
-**Built 2026-09-27** (`d88b758`): the first font an app registers — by
-name, from bytes or from a file — maps the database's file-backed faces
-once and shares them (`share_faces`, `make_shared_face_data`, as
-cosmic-text does for each face it loads): 30 ms once, and then 0.42 ms a
-family's first shaping. An app on the stock families pays nothing new.
-**Not done:** the upstream fix — the axis read once per face when the
-database loads, in cosmic-text — which would make the share unnecessary.
-
-### `.` DX25 — A loaded font file was left unshared — **built 2026-09-28**
-
-From kawoosh, 2026-09-28: its fonts pane, walked a card a frame in a
-window (release, `scripts/probe-fonts.nu`), paid ~6 ms in the frame
-that first showed a family, where DX24 had measured 0.42 ms. Profiled
-here on a build with symbols: 60% of the main thread's samples were
-`get_font_matches` → `FontMatchKey::new` → `with_face_data` →
-`File::open`, the path DX24 took away. DX24 shared the database's faces
-on the first registration, *before* the load that made it, so the file
-being loaded, and every file loaded after, stayed file-backed. kawoosh
-loads the 167 files it ships with `load_font_file`, and each new family,
-weight or style opened and mapped every one of them again to read its
-`wght` axis. `load_fonts_dir` did not share at all.
-
-**Built 2026-09-28:** `load_font_file`, `add_font_data` and
-`load_fonts_dir` share after they load (`share_loaded_faces`), so the
-faces they add are shared with the rest. The walk maps only what is
-unshared, so a later load maps its own faces and nothing else.
-`register_family` still shares only once: it runs every frame a view
-names a family, and `db_mut` empties cosmic-text's match cache. kawoosh's
-probe, two runs each, the same build settings, against kui main and this
-fix: a first-sight frame 6.6 ms mean → 1.96, p95 8.1 → 2.6, worst
-14.8–16.0 → 7.2–7.4, frames over 8 ms 33 of 620 → 0. Frames showing no
-new family cost ~1.0 ms in both. Pinned by `a_loaded_file_is_shared_too`
-(a first file, a later file and a folder, no face left file-backed).
-**Not done:** a first sight still costs ~1 ms over a frame without one,
-and a few faces take 4–5.5 ms in layout (Brush Script MT, Silom,
-Mishafi, SF Pro Display), not profiled. The upstream fix (DX24's) would
-make both shares unnecessary. (The layout frames were profiled the same
-day: DX26.)
-
-### `.` DX26 — The frame after an atlas reset rasterized the whole window — **built 2026-09-28**
-
-What was left of DX25's fonts-pane frames: a few took 4–7 ms, nearly all
-of it layout, and a different family was named each run. Profiled with
-counters on the glyph rasterizer in kawoosh's probe: a first sight
-rasterizes its own ~52 glyphs in ~0.24 ms. The slow frames were 16
-across the walk, every ~40 families, each rasterizing ~600 glyphs in
-2.5–5.3 ms (3.5 mean) — kawoosh's own interface among them (Helvetica
-Neue ~1 ms, Iosevka ~0.5 ms). A list scrolling through fonts turns the
-atlas's set over a little each frame; `begin_frame` sees the page
-about to fill and empties it (F99), and the frame that begins on the
-empty page looks up the whole visible set at once and rasterized all of
-it. The new family was whichever one that frame happened to show.
-
-**Built 2026-09-28:** the emptied page is kept for the frame that begins
-on the empty one (`atlas::Prev`). A glyph or synthesized shape that
-frame looks up and the old page held is copied across — texels, offsets
-and kind — rather than rasterized; only what the frame looks up is
-placed, so the page still holds that frame's set alone, and it resets
-exactly when it did. The old page is dropped at the next `begin_frame`,
-so a reset frame holds two pages, one frame. A `None` in the old map may
-be a refusal, and is not carried. `clear` (a raster mode that changed)
-keeps nothing. kawoosh's probe, two runs each against DX25: layout's
-worst frame 5.4–5.5 ms → 2.0, frames with layout over 3 ms 8 → 0, the
-worst frame 6.6 → 4.4–4.5 ms, the mean unchanged (2.1). Pinned by
-`the_frame_after_a_reset_copies_what_the_old_page_held`; F99's
-mid-frame fill test now asserts the copy where it asserted the
-re-raster.
-**Not done:** the page still empties every ~40 frames of such a walk, so
-the reset frame pays the copy and the view's own work; a page that
-evicts what went unused, rather than emptying, would not reset at all.
-And a first sight's ~1 ms of view is cosmic-text ranking every face for
-each new family, weight and style (DX24's upstream fix).
-
-Seen in the sweep and not filed, each wanting a check on this tree
-first:
-- A raw NUL in text laid out at infinite width once overflowed the
-  glyph cache (kawoosh `tests/editor_pane.rs:478`). Kawoosh escapes
-  control characters now.
-- A second `reveal` during a smooth scroll measures from mid-scroll and
-  stops short.
-- Kawoosh draws its own bar caret three ways, one of them a frame late
-  on wrapped rows.
-- OSC 8 hyperlinks per terminal cell (kawoosh R4.6).
-
-## After alpha.20
+## After alpha.21
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
+alpha.20" until 2026-09-28, when the rounds between the alpha.21 and
+alpha.22 tags — RG56 and RG59 left from the last pass, the kawoosh
+reports of 2026-09-26 to 28 (F101–F107), the DX sweep (DX1–DX26, DX16
+declined, ADRs 0036 and 0037) and the regression pass over them
+(RG60–RG69 built, RG70–RG75 left open) — had landed, and the heading
+moved with the tag; "After
 alpha.19" until 2026-09-26, when the rounds between the alpha.20 and
 alpha.21 tags — W20 from the Windows–Mac bench comparison, the kawoosh
 fonts reports (F97–F100) and the regression pass over them (RG53–RG59,
@@ -3383,7 +2996,7 @@ Every closed entry, all in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) and all verbatim — one heading
 per id, and `tests/docs.rs` holds every id to one entry across both files.
 This index is here so an id resolves without opening that file: the open items
-above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.20" and
+above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.21" and
 the hygiene note cite C2, C5(b), P3, R4 and R7, and code comments, ADRs and
 commit messages cite ids of their own. All of them are whole in the
 archive. **C11**, **W2** and **C15** were each split for a while — an entry
@@ -3859,6 +3472,58 @@ move.
 
 - `~` **F101** — [A selection's backgrounds cannot be one rounded shape: an app draws the outline a frame late, and not at all over a wrapped paragraph](backlog/closed-2026-09.md#-f101--a-selections-backgrounds-cannot-be-one-rounded-shape-an-app-draws-the-outline-a-frame-late-and-not-at-all-over-a-wrapped-paragraph--done-2026-09-27) — done (2026-09-27) — `Span::bg_radius` (`bgRadius`, `bg_radius`, `KuiSpan.bg_radius`): rounded backgrounds of one colour and radius that meet, in any text, are joined after emission (`join::shape`) and painted by the stock `fragment::JOIN`; ADR 0035
 
+**From the DX sweep (2026-09-27)** — DX1–DX15 and DX17–DX26, filed and built 2026-09-27 and 2026-09-28; DX16 declined, open
+
+- `.` **DX1** — [`Sizing::Fixed(` and `Sizing::Grow(1.0)` were 1,046 of the repo's calls](backlog/closed-2026-09.md#-dx1--sizingfixed-and-sizinggrow10-were-1046-of-the-repos-calls--done-2026-09-27) — done (2026-09-27)
+
+- `.` **DX2** — [A text has no box, so every text with a width, a background or a key sat in a `with`](backlog/closed-2026-09.md#-dx2--a-text-has-no-box-so-every-text-with-a-width-a-background-or-a-key-sat-in-a-with--done-2026-09-27) — done (2026-09-27)
+
+- `.` **DX3** — [Payloads were built and read the long way](backlog/closed-2026-09.md#-dx3--payloads-were-built-and-read-the-long-way--done-2026-09-27) — done (2026-09-27)
+
+- `.` **DX4** — [Floats, modifiers and centres were spelled out](backlog/closed-2026-09.md#-dx4--floats-modifiers-and-centres-were-spelled-out--done-2026-09-27) — done (2026-09-27)
+
+- `.` **DX5** — [The node verbs had holes, and four doc comments sat on the wrong method](backlog/closed-2026-09.md#-dx5--the-node-verbs-had-holes-and-four-doc-comments-sat-on-the-wrong-method--done-2026-09-27) — done (2026-09-27)
+
+- `!` **DX6** — [A Rust view's `apply_tooltip` never floated its hint](backlog/closed-2026-09.md#-dx6--a-rust-views-applytooltip-never-floated-its-hint--done-2026-09-27) — done (2026-09-27)
+
+- `.` **DX7** — [The core's own event fields are untyped](backlog/closed-2026-09.md#-dx7--the-cores-own-event-fields-are-untyped--done-2026-09-27) — done (2026-09-27)
+
+- `.` **DX8** — [A key made from a label and an index is a `format!`, and indexes collide by hand](backlog/closed-2026-09.md#-dx8--a-key-made-from-a-label-and-an-index-is-a-format-and-indexes-collide-by-hand--done-2026-09-27) — done (2026-09-27)
+
+- `.` **DX9** — [`App::on_event` has no context, so every effect waits a frame](backlog/closed-2026-09.md#-dx9--apponevent-has-no-context-so-every-effect-waits-a-frame--done-2026-09-27) — done (2026-09-27)
+
+- `.` **DX10** — [A click on any `on_click` node takes keyboard focus](backlog/closed-2026-09.md#-dx10--a-click-on-any-onclick-node-takes-keyboard-focus--done-2026-09-27) — done (2026-09-27)
+
+- `.` **DX11** — [No test driver an app can use, and kui's own tests bypass `testing`](backlog/closed-2026-09.md#-dx11--no-test-driver-an-app-can-use-and-kuis-own-tests-bypass-testing--done-2026-09-27) — done (2026-09-27)
+
+- `.` **DX12** — [Revealing a virtual list's row and a resizable divider are written by hand, three times each](backlog/closed-2026-09.md#-dx12--revealing-a-virtual-lists-row-and-a-resizable-divider-are-written-by-hand-three-times-each--done-2026-09-27) — done (2026-09-27)
+
+- `.` **DX13** — [The innermost scroller takes both wheel axes](backlog/closed-2026-09.md#-dx13--the-innermost-scroller-takes-both-wheel-axes--done-2026-09-27) — done (2026-09-27)
+
+- `.` **DX14** — [A paste answer cannot be told from typing](backlog/closed-2026-09.md#-dx14--a-paste-answer-cannot-be-told-from-typing--done-2026-09-27) — done (2026-09-27)
+
+- `.` **DX15** — [Lua's `reveal` and `set_scroll` by a label not yet declared fail](backlog/closed-2026-09.md#-dx15--luas-reveal-and-setscroll-by-a-label-not-yet-declared-fail--done-2026-09-27) — done (2026-09-27)
+
+- `.` **DX17** — [A font cannot be named by its family](backlog/closed-2026-09.md#-dx17--a-font-cannot-be-named-by-its-family--done-2026-09-27) — done (2026-09-27)
+
+- `.` **DX18** — [Focus is facts to diff, not events](backlog/closed-2026-09.md#-dx18--focus-is-facts-to-diff-not-events--done-2026-09-27) — done (2026-09-27)
+
+- `~` **DX19** — [`exit` replays when only an ancestor went away](backlog/closed-2026-09.md#-dx19--exit-replays-when-only-an-ancestor-went-away--done-2026-09-27) — done (2026-09-27)
+
+- `.` **DX20** — [Hover cannot tell a moved pointer from content moving under a still one](backlog/closed-2026-09.md#-dx20--hover-cannot-tell-a-moved-pointer-from-content-moving-under-a-still-one--done-2026-09-27) — done (2026-09-27)
+
+- `.` **DX21** — [A table has no grid rules](backlog/closed-2026-09.md#-dx21--a-table-has-no-grid-rules--done-2026-09-27) — done (2026-09-27)
+
+- `.` **DX22** — [`splitter`, `reveal_row` and a list's row spec are Rust's alone](backlog/closed-2026-09.md#-dx22--splitter-revealrow-and-a-lists-row-spec-are-rusts-alone--done-2026-09-27) — done (2026-09-27)
+
+- `.` **DX23** — [A pane of more than 512 nodes cannot fade out](backlog/closed-2026-09.md#-dx23--a-pane-of-more-than-512-nodes-cannot-fade-out--done-2026-09-27) — done (2026-09-27)
+
+- `.` **DX24** — [A family's first shaping costs 9.7 ms](backlog/closed-2026-09.md#-dx24--a-familys-first-shaping-costs-97-ms--done-2026-09-27) — done (2026-09-27)
+
+- `.` **DX25** — [A loaded font file was left unshared](backlog/closed-2026-09.md#-dx25--a-loaded-font-file-was-left-unshared--done-2026-09-28) — done (2026-09-28)
+
+- `.` **DX26** — [The frame after an atlas reset rasterized the whole window](backlog/closed-2026-09.md#-dx26--the-frame-after-an-atlas-reset-rasterized-the-whole-window--done-2026-09-28) — done (2026-09-28)
+
 **From the kawoosh ⌘-Tab report (2026-09-27)** — F102, filed and built the same day
 
 - `!` **F102** — [A window brought back shows its last frame: a frame the surface skipped is never asked for again, and being uncovered asks for none](backlog/closed-2026-09.md#-f102--a-window-brought-back-shows-its-last-frame-a-frame-the-surface-skipped-is-never-asked-for-again-and-being-uncovered-asks-for-none--done-2026-09-27) — done (2026-09-27) — a skipped frame is owed (`retry::Retry`): asked for again 16 ms apart, 60 times, until one lands; `Occluded(false)` asks for one at once, `Occluded(true)` owes none
@@ -3951,3 +3616,25 @@ move.
 - `!` **RG57** — [Plain text and editors are asked at 400, not the family's regular: a family with no 400 face draws in two families](backlog/closed-2026-09.md#-rg57--plain-text-and-editors-are-asked-at-400-not-the-familys-regular-a-family-with-no-400-face-draws-in-two-families--done-2026-09-26) — done (2026-09-26) — plain text, rich text's defaults and editors are asked at the family's regular through `Weights::apply`
 - `.` **RG58** — [A copy reads bold as 700 and up: a SemiBold bold copies plain, and a Bold-only family copies everything bold](backlog/closed-2026-09.md#-rg58--a-copy-reads-bold-as-700-and-up-a-semibold-bold-copies-plain-and-a-bold-only-family-copies-everything-bold--done-2026-09-26) — done (2026-09-26) — a copy's run is bold when heavier than the line's default (the family's regular) or `SYNTHETIC_BOLD`
 - `.` **RG59** — [Four readings of F100 the regression pass left: an OS/2 weight over a named instance, the mapped weight handed to fallback faces, shaped text kept across a reweigh, and the nearest face's lean](backlog/closed-2026-09.md#-rg59--four-readings-of-f100-the-regression-pass-left-an-os2-weight-over-a-named-instance-the-mapped-weight-handed-to-fallback-faces-shaped-text-kept-across-a-reweigh-and-the-nearest-faces-lean--done-2026-09-26) — done (2026-09-26) — named instances before the `OS/2` point; a reweigh of a family registered before drops each window's shaped text and cell tables and re-attributes its editors; CSS Fonts 4's matching order; Skia's fallback weight written down as a limit
+
+**From the regression pass of 2026-09-28** — RG60–RG69, filed and built the same day; RG70–RG75 open
+
+- `!` **RG60** — [A gesture at a scroller's limit chained to whatever was painted under the pointer, not to the scroller around it](backlog/closed-2026-09.md#-rg60--a-gesture-at-a-scrollers-limit-chained-to-whatever-was-painted-under-the-pointer-not-to-the-scroller-around-it--done-2026-09-28) — done (2026-09-28)
+
+- `!` **RG61** — [A wheel event during a build read the half-built tree by index and panicked](backlog/closed-2026-09.md#-rg61--a-wheel-event-during-a-build-read-the-half-built-tree-by-index-and-panicked--done-2026-09-28) — done (2026-09-28)
+
+- `!` **RG62** — [`set_scroll` for the offset an ease is already going to restarts the ease, so `reveal_row` every frame holds an eased list still](backlog/closed-2026-09.md#-rg62--setscroll-for-the-offset-an-ease-is-already-going-to-restarts-the-ease-so-revealrow-every-frame-holds-an-eased-list-still--done-2026-09-28) — done (2026-09-28)
+
+- `.` **RG63** — [The atlas page DX26 keeps for one frame lived until the next frame began](backlog/closed-2026-09.md#-rg63--the-atlas-page-dx26-keeps-for-one-frame-lived-until-the-next-frame-began--done-2026-09-28) — done (2026-09-28)
+
+- `!` **RG64** — [A table's rules drew outside a scrolled table, vanished from its ghost, and crossed a child that is no row](backlog/closed-2026-09.md#-rg64--a-tables-rules-drew-outside-a-scrolled-table-vanished-from-its-ghost-and-crossed-a-child-that-is-no-row--done-2026-09-28) — done (2026-09-28)
+
+- `!` **RG65** — [An onButton capture outlived the window losing the keyboard, and a second press dropped the first owner silently](backlog/closed-2026-09.md#-rg65--an-onbutton-capture-outlived-the-window-losing-the-keyboard-and-a-second-press-dropped-the-first-owner-silently--done-2026-09-28) — done (2026-09-28)
+
+- `.` **RG66** — [A focus move the program made was reported with the next input's by](backlog/closed-2026-09.md#-rg66--a-focus-move-the-program-made-was-reported-with-the-next-inputs-by--done-2026-09-28) — done (2026-09-28)
+
+- `!` **RG67** — [A press on a keepFocus node cleared the selection it was meant to act on and moved the Tab ring's region](backlog/closed-2026-09.md#-rg67--a-press-on-a-keepfocus-node-cleared-the-selection-it-was-meant-to-act-on-and-moved-the-tab-rings-region--done-2026-09-28) — done (2026-09-28)
+
+- `!` **RG68** — [break-spaces met the long line's limits on every short text](backlog/closed-2026-09.md#-rg68--break-spaces-met-the-long-lines-limits-on-every-short-text--done-2026-09-28) — done (2026-09-28)
+
+- `.` **RG69** — [Doors, docs and types the new features left behind](backlog/closed-2026-09.md#-rg69--doors-docs-and-types-the-new-features-left-behind--done-2026-09-28) — done (2026-09-28)

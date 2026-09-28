@@ -42,6 +42,9 @@ face. The fix it shipped registers all 613 installed families at once,
   when a text first uses it, as for any face. Resolving a name in the
   frame that declares it costs a lookup. The frame of mono in kawoosh
   came from its host deferring the registration a frame, not from kui.
+  (Since DX24 the session's first registration of any font also maps
+  the installed files once, ~30 ms on a Mac, so the first frame to name
+  a family pays that; noted by the alpha.22 regression pass.)
 - **`TextStyle` is `Copy`,** and views rely on that everywhere (a
   closure capturing a style, `style` passed by value). A name cannot
   live in it. A handle can, which is why `FontFamily::Custom(FontId)`

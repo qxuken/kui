@@ -750,7 +750,7 @@ pub const PROPS: &[PropDef] = &[
         id: P_KEEP_FOCUS,
         kind: Kind::Flag,
         apply: Apply::SpecFlag(|s| s.keep_focus()),
-        doc: "A press on this node, or anywhere inside it, leaves keyboard focus where it was: a toolbar button, a tab or a divider that acts without taking the keyboard from the editor or key sink that had it. Without it a press on an `onClick` node focuses the node, and the app's keys stop reaching the sink until it takes focus back. The click, drag and hover are unchanged, and Tab and assistive technology still reach the node.",
+        doc: "A press on this node, or anywhere inside it, leaves keyboard focus where it was: a toolbar button, a tab or a divider that acts without taking the keyboard from the editor or key sink that had it. Without it a press on an `onClick` node focuses the node, and the app's keys stop reaching the sink until it takes focus back. The press also leaves a text or cell selection and the Tab ring where they were, so a Copy button copies what was selected. An `<edit>` inside still takes its caret and focus, as the keyboard's own owner. The click, drag and hover are unchanged, and Tab and assistive technology still reach the node.",
     },
     PropDef {
         name: "focusRegion",
@@ -1071,7 +1071,7 @@ pub const PROPS: &[PropDef] = &[
         id: P_FAMILY,
         kind: Kind::Family,
         apply: Apply::StyleFamily(|t, f| t.family(f)),
-        doc: "Font family: `sans`, `serif` or `mono`, kui's own, or the name of an installed family or one loaded with `loadFontsDir` / `loadFontFile` — `\"Berkeley Mono\"` — drawn in its face in the frame that names it (ADR 0037). A name is matched as `addSystemFont` matches it and registered in the session on first sight, which reads the font database's scan and opens no file; `systemFonts()` lists the names there are. A name nothing matches shapes as sans and raises `unknown-family`. It and `font` set the same thing, so declare one.",
+        doc: "Font family: `sans`, `serif` or `mono`, kui's own, or the name of an installed family or one loaded with `loadFontsDir` / `loadFontFile` — `\"Berkeley Mono\"` — drawn in its face in the frame that names it (ADR 0037). A name is matched as `addSystemFont` matches it and registered in the session on first sight, exactly as the font database spells it (`\"menlo\"` is not `\"Menlo\"`); the session's first registration of any font maps the installed font files once (~30 ms on a Mac, backlog DX24), which a family named in a view pays in that frame. `systemFonts()` lists the names there are. A name nothing matches shapes as sans and raises `unknown-family`. It and `font` set the same thing, so declare one.",
     },
     PropDef {
         name: "font",
@@ -2063,8 +2063,8 @@ pub const EVENTS: &[EventDef] = &[
     },
     EventDef {
         kind: "button",
-        payload: "`{ kind: \"button\", phase: \"press\" | \"move\" | \"release\", button: \"secondary\" | \"middle\" | number, x, y, clicks, tag }`",
-        doc: "A non-primary button on an `onButton` node that claims it (`buttons`), backlog F105: `press` where it went down — with the driver's click count, `clicks` — then `move` for every pointer move while it is held and `release` where it came up, both on the same node wherever the pointer went, since the press captured the button. `button` is the button's name, or for one past the middle button its number (`3 + n`, as `ctx.mouse` / `kui_input_mouse_button` take it); `x`/`y` are logical viewport coordinates. On a `cells` grid each carries `cell: {row, col}`, clamped to the grid, and inside an `onKey` sink that draws `role=\"line\"` rows `line` and `byte` as a drag does. A claimed secondary press is this event instead of `contextmenu`; the press moves no focus, caret, selection or scrollbar.",
+        payload: "`{ kind: \"button\", phase: \"press\" | \"move\" | \"release\", button: \"secondary\" | \"middle\" | number, x, y, clicks, cell?: { row, col }, line?, byte?, tag }`",
+        doc: "A non-primary button on an `onButton` node that claims it (`buttons`), backlog F105: `press` where it went down — with the driver's click count, `clicks`, which the native runner keeps for the primary button alone and so always reports as 1 here — then `move` for every pointer move while it is held and `release` where it came up, both on the same node wherever the pointer went, since the press captured the button. `button` is the button's name, or for one past the middle button its number (`3 + n`, as `kui_input_mouse_button` takes it; Node's `ctx.mouse` takes the three names only); `x`/`y` are logical viewport coordinates. On a `cells` grid each carries `cell: {row, col}`, clamped to the grid, and inside an `onKey` sink that draws `role=\"line\"` rows `line` and `byte` as a drag does. A claimed secondary press is this event instead of `contextmenu`; the press moves no focus, caret, selection or scrollbar.",
     },
     EventDef {
         kind: "scroll",

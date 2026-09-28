@@ -361,7 +361,8 @@ that are hard to reverse and would look arbitrary without their context.
   shaped as they are and the rows are broken from their positions, each
   chunk's first row starting where the last one's ended, so a 100k-character
   paragraph costs the rows it shows (backlog C19, C42). Line breaking
-  is a style choice: `wrap` (word / glyph / none), `max_lines`, and
+  is a style choice: `wrap` (word / glyph / none / break-spaces, where
+  every space takes its room and wraps like a glyph), `max_lines`, and
   `ellipsis` (a single "…"-terminated line unless `max_lines` says
   otherwise); unwrapped text takes its box's width and clips to it.
 - **Text editing is retained state, not captured state.** An edit node's
@@ -554,8 +555,9 @@ that are hard to reverse and would look arbitrary without their context.
   `widgets::button`, `<button>` and `kui_button` are all that same data
   (`widgets::button_spec()`). When hover must change *layout* — a close
   button that appears — `on_hover` emits `{kind="hover", phase="enter"|
-  "leave", tag}` events like any other interaction, including when a new
-  frame moves a node under a still cursor (`Core::take_pending_events`,
+  "leave", by, tag}` events like any other interaction, including when a new
+  frame moves a node under a still cursor (`by: "content"` then, `"pointer"`
+  when the pointer moved; `Core::take_pending_events`,
   routed by every driver after a frame). `is_hovered` / `is_pressed` stay
   as queries for Rust and Lua views and are mirrored on `KuiWindow`.
   Files dragged in from the OS are the same shape one row over
@@ -607,8 +609,10 @@ that are hard to reverse and would look arbitrary without their context.
   comes back, so a toast dismissed and re-shown never doubles. It is opt-in
   per node and needs a `transition`; without both, a removed node vanishes
   at once as it always did, and no more than
-  [512 nodes](docs/adr/0005-the-paint-vocabulary.md) may be departing at
-  once. That budget is judged [per frame and whole](docs/adr/0012-the-exit-budget.md):
+  [4096 nodes](docs/adr/0005-the-paint-vocabulary.md) may be departing at
+  once. An `exit` plays when its own node is removed — a node that goes
+  because an ancestor went goes at once, as React's `AnimatePresence`
+  has it — so put it on the node that leaves, under a parent that stays. That budget is judged [per frame and whole](docs/adr/0012-the-exit-budget.md):
   a removal that does not fit beside earlier exits takes the room from the
   oldest of them, and a removal larger than the budget on its own does not
   animate at all — every node of it vanishes at once, rather than half a
@@ -697,7 +701,10 @@ that are hard to reverse and would look arbitrary without their context.
   which are monospaced, their weights and italics); all hand back a `FontId`
   slotmap handle for `TextStyle::font(id)` — JSX `<text font={id}>` via
   `ctx.addFont` / `addSystemFont`, Lua `font = id`, C `KuiTextStyle.font`
-  via `kui_font_add*`. The shaping cache keys on the handle, editors shape
+  via `kui_font_add*`. A view can also name the family itself — JSX
+  `family="Antonio"`, Lua `family = "Antonio"` (ADR 0037) — resolved to
+  the same handle; a name nothing matches (exactly, as fontdb spells it)
+  draws sans with an `unknown-family` warning. The shaping cache keys on the handle, editors shape
   through it too, and a removed font's stale handle shapes as sans rather
   than aliasing whatever took its slot.
 - **Audio is data too.** Sounds are registered resources
@@ -898,7 +905,13 @@ splitmux example's pane dividers). A drag past the click slop (3 px from
 the press) suppresses the node's `on_click`.
 
 Pointer buttons: only the primary one presses, drags, places the caret and
-clicks. A secondary (right) press goes to `on_context_menu`, which emits
+clicks. A node that declares `on_button` (JSX `onButton`) claims the others
+— the middle, the secondary and any further button, narrowed by `buttons` —
+and hears each claimed button as `{kind="button", phase="press"|"move"|
+"release", button, x, y, tag}`, captured by it from the press to the
+release wherever the pointer goes; a claimed secondary press is that
+instead of a context menu (backlog F105). Otherwise a secondary (right)
+press goes to `on_context_menu`, which emits
 `{kind="contextmenu", x, y, tag}` — logical viewport coordinates, i.e. where
 the menu goes — and moves nothing else: no focus, no caret, no click, so
 right-clicking a selection keeps it. It is routed like a click, so the
@@ -1418,7 +1431,7 @@ else here.
 Transitions cover sizing, colors, radius, opacity, shadows, position (`slide`,
 `enter`) and departure (`exit`) — a node the view stops declaring is copied out
 of the last frame that had it and replayed frozen, in its place and inert
-until its transition ends. `exit` is opt-in per node, capped at 512 departing nodes at
+until its transition ends. `exit` is opt-in per node, capped at 4096 departing nodes at
 once — a frame's removal past that animates whole or not at all (ADR 0012) — and a
 ghost cannot be re-laid-out: `exit`'s `width`/`height` resize the
 departing node's own box and nothing inside it moves.

@@ -23,20 +23,32 @@ was the first bare bump to break an app in five releases).
 
 ## 0.1.0-alpha.22 (unreleased)
 
-**What breaks.**
+**What breaks.** The ABI is 20 and the Node frame v18. C gains one door,
+`kui_input_scroll_gesture`, and `KuiSpec` grows to 648 bytes; Rust gains
+fields on four spec structs, an `InputEvent` and a `TextWrap` variant.
+Seventeen readings change.
 
-- C: `KuiSpec` gains `pixel_snap` at its end (under Added), so
-  `KUI_ABI_VERSION` is 20: an [in] append. Recompile against the new
-  header; a zeroed field is a box drawn as before. No door changes.
+- C: `KuiSpec` gains `pixel_snap`, `keep_focus`, `on_focus`, `rules`,
+  `rule_w`, `on_button`, `buttons`, `overscroll` and `scroll_axes` at its
+  end, so `KUI_ABI_VERSION` is 20: an [in] append (under Added,
+  `pixelSnap`, DX10, DX18, DX21, F105 and F107); its 64-bit size is 648
+  bytes. Recompile against the new header; zeroed, a box is drawn as
+  before, a press focuses as it did, nothing hears focus, a table draws
+  no rules, no node hears the middle button, a scroller at its limit
+  passes a gesture on and an `on_scroll` node takes both axes.
 - C: `KuiSpan` gains `bg_radius` at its end under the same ABI 20
   (under Added). On a 64-bit target it takes what was the struct's tail
   padding, so the stride holds at 40 bytes, but a host that did not
   recompile leaves those bytes to chance; on a 32-bit one the stride
   moves. Recompile; a zeroed field is the square background.
-- Node: the binary frame is v17. A span carries one more slot, its
-  background's radius (`bgRadius`, under Added); `pixelSnap` rode v16
-  by its id. The encoder and the addon ship together, so this breaks
-  only a stale prebuilt addon, which refuses the stream by its version.
+- C: `kui_input_scroll_gesture(ctx, dx, dy, begins)` is a new door
+  (under Added, F107); `kui_input_scroll` is unchanged.
+- Node: the binary frame is v18. A span carries one more slot, its
+  background's radius (`bgRadius`, under Added), and `family` is a
+  string, a stock name or an installed family's, where it was the index
+  into `schema::FAMILIES` (under Added, ADR 0037); `pixelSnap` rides by
+  its id. The encoder and the addon ship together, so this breaks only a
+  stale prebuilt addon, which refuses the stream by its version.
 - Rust: `Ui::child_key_index` and `Core::child_key_index` are
   `child_key_indexed`, the spelling of every other `_indexed` (under
   Added, DX5).
@@ -44,43 +56,27 @@ was the first bare bump to break an app in five releases).
   a `Keyframe`, `Enter` or `Exit`, take `impl Into<…>` (under Added,
   DX1 and DX3). A call that passed `x.into()` no longer infers its
   target: drop the `.into()`.
-- Rust: `AccessSpec` gains `tooltip` (under Added), so a struct literal
-  of it without `..` needs the field.
-- C: `KuiSpec` gains `keep_focus`, `on_focus`, `rules`, `rule_w`,
-  `on_button`, `buttons`, `overscroll` and `scroll_axes` after
-  `pixel_snap`, under the same ABI 20 (under Added, DX10, DX18, DX21,
-  F105 and F107); its 64-bit size is 648 bytes. Recompile; zeroed, a
-  press focuses as it did, nothing hears focus, a table draws no rules,
-  no node hears the middle button, a scroller at its limit passes a
-  gesture on and an `on_scroll` node takes both axes.
-- Rust: `EventSpec` gains `on_button`, `buttons` and `scroll_axes`, and
-  `InteractSpec` gains `overscroll` (under Added, F105 and F107), so a
-  struct literal of either without `..` needs the fields.
+- Rust: `VisualStyle` gains `pixel_snap`, `AccessSpec` gains `tooltip`,
+  `EventSpec` gains `keep_focus`, `on_focus`, `on_button`, `buttons` and
+  `scroll_axes`, and `InteractSpec` gains `rules`, `rule_w` and
+  `overscroll` (under Added, `pixelSnap`, DX6, DX10, DX18, DX21, F105
+  and F107), so a struct literal of any of them without `..` needs the
+  fields.
 - Rust: `InputEvent` gains `ScrollGesture { delta, begins }` (under
   Added, F107), so an exhaustive match on it in a driver of your own
   needs the arm. `InputEvent::Scroll` is unchanged, and is a gesture of
   its own.
-- Rust: `UiEvent::hover()` answers a `Hover { phase, by }`, where it
-  answered the `HoverPhase` (under Added, DX20); read `.phase`.
-- Node: the binary frame is v18. `family` is a string, a stock name or an
-  installed family's, where it was the index into `schema::FAMILIES`
-  (under Added, ADR 0037). The encoder and the addon ship together, so
-  this breaks only a stale prebuilt addon, which refuses the stream by
-  its version.
 - Rust: `schema::Kind` gains `Family` and `schema::Parsed` gains
   `Family(FontFamily)`, so an exhaustive match on either in a binding of
   your own needs the arm; `TokenLookup` carries the session.
 - Rust: `PumpRunner::route_events`' closure takes the core of the event's
   window as a third argument, `FnMut(&mut A, UiEvent, &mut Core)` (under
   Added, ADR 0036). Add the parameter; `|app, ev, _|` keeps what it did.
-- kui-devtools' `Drive<'c>` is an alias for the published
-  `kui_native::testing::Drive` over `&mut Core` (under Added, DX11); a
-  drive written against it compiles as it was.
 - Rust: `TextWrap` gains `BreakSpaces` (under Added, F106), so an
   exhaustive match on it needs the arm. C's `KUI_WRAP_BREAK_SPACES` is
   3, a new value of the `wrap` field the ABI already has.
 
-Thirteen readings change:
+The readings:
 
 - A square-cornered quad (a `bg`, a span's background, an image with no
   `radius`, a solid underline, a `fragment` node's box) covers each pixel
@@ -151,7 +147,20 @@ Thirteen readings change:
 - `caret_rect` on a space a `word` break swallowed — the whitespace the
   row broke at, which has no glyph — answers the end of the row it
   broke (under Fixed, F106), where it answered the end of the
-  paragraph's last row.
+  paragraph's last row; `text_hit` on that row's end answers the same
+  place.
+- `setScroll` asking an eased container (one with a `transition`) for
+  the offset its ease is already going to lets the ease go on (under
+  Fixed, RG62), where it started it again from where it was drawn: a
+  view that asks every frame until a row shows now scrolls to it, where
+  the content stood still and frames were asked for without end.
+- A `word` or `glyph` line past 4 KB, drawn in chunks, can start a row
+  with a chunk's first word (under Fixed, RG68), where that word split
+  after its first glyph and the glyph hung past the box.
+- A `family` string other than `sans`, `serif` or `mono` — in JSX or a
+  Lua view — draws the installed or loaded family of that name (under
+  Added, ADR 0037), where it threw "bad value … for family". A name that
+  matches nothing draws sans and raises `unknown-family` once.
 
 ### Added
 
@@ -295,7 +304,7 @@ Thirteen readings change:
   `ev.drag()`, `ev.key_press()`, `ev.text()`, `ev.scroll()`, `ev.hover()`,
   `ev.modifiers()` and `ev.layout()` read a core event's payload into a
   struct (`Drag`, `(KeyPhase, KeyPress)`, `TextInput`, `Scroll`,
-  `HoverPhase`, `KeyMods`, `Layout`), `None` for an event of another
+  `Hover`, `KeyMods`, `Layout`), `None` for an event of another
   kind; `ev.tag()` is the app's tag inside one, and `Drag::ratio()` the
   pointer's place across the parent, 0 to 1 — a divider's split. The
   payload stays the wire. `#[derive(Message)]` reads the app's half;
@@ -347,7 +356,10 @@ Thirteen readings change:
 
 - **A paste's answer says it is one** (backlog DX14). The sink's `text`
   event carries `pasted: true` when it answers a paste the app asked
-  for; an IME's commit never does. `TextInput::pasted` reads it in Rust.
+  for — the host's paste reply, or any commit while the ask is
+  outstanding, since a bare commit is how some hosts answer; an IME
+  commit that lands in that window is marked too. `TextInput::pasted`
+  reads it in Rust.
   *What you can delete:* a flag of the app's own, set on the ask and
   cleared on the next `text`, to tell the clipboard's text from typing.
 
@@ -711,6 +723,60 @@ Thirteen readings change:
   runner's `scroll_gesture.rs` (3), `surface.c` and the corpus.
   *What you can delete:* a check an app made on the `scroll` event for
   whether its node was where the swipe began.
+
+
+- **The regression pass before the tag** (backlog RG60–RG69, found and
+  built 2026-09-28, each pinned by a test seen failing without its
+  fix). Five read-only reviews of the diff since alpha.21, every claim
+  probed before it was fixed:
+  - A gesture over a scroller at its limit chained to whatever scroller
+    was painted under the pointer — a list at its end in a popover moved
+    the page it floated over. It walks out through the scrollers around
+    it in the tree now (RG60, F107; ADR 0038 amended). And the wheel read
+    the tree by a region's index, so an event between `begin_frame` and
+    `finish` panicked; a region carries what the pick needs (RG61).
+  - `setScroll` for the offset an ease was already going to started the
+    ease over, so `reveal_row` called every frame held an eased list
+    still (RG62).
+  - The atlas page DX26 keeps for one frame lived until the next
+    `begin_frame`, which an idle window may never reach: up to 64 MiB
+    held. It goes as its frame finishes (RG63).
+  - A scrolled table drew its `rules` over what was above and below it;
+    a departing table lost them on its first ghost frame; and a
+    `column` section between rows had the rules drawn through it. The
+    rules take the table's own clip, fade with its ghost, and go around
+    a child that is no row, as a `colspan` cell (RG64, DX21).
+  - An `onButton` capture outlived the window losing the keyboard — the
+    owner heard every later move as a drag — and a second press of the
+    held button dropped the first owner without a `release`. Both end
+    in a `release` now (RG65, F105).
+  - A focus move the program made was reported with the next input's
+    `by`; it is `"program"`, ahead of that input's events (RG66, DX18).
+  - A press on a `keepFocus` node cleared the text and cell selection
+    it was meant to act on, and moved the Tab ring's region under the
+    pointer; it leaves both (RG67, DX10).
+  - `break-spaces` sent short texts down the long line's path and met
+    its limits there: one text at two widths drew and answered at the
+    width laid out last, a custom editor's lines had no accessibility
+    runs or caret, a key holding several texts answered from the last,
+    a word at a chunk edge could not start its row, a right-to-left
+    paragraph drew almost empty, a paragraph past a chunk laid out its
+    first frame on estimated rows, the text was clipped to its box, its
+    selection box and baseline were a line's rather than the box's, and
+    a hit past a row's end named that row with the next row's byte
+    (RG68, F106). Each node now has its own copy of the line, the long
+    line answers through the same queries as a run, and an RTL
+    paragraph wraps as `word` does.
+  - Node gains `Ctx.scrollGesture(dx, dy, begins)` beside C's
+    `kui_input_scroll_gesture`; props.md names the C fields `rule_w`,
+    `on_focus`, `overscroll` and `scroll_axes`; the `button` event's docs
+    say the runner counts clicks for the primary button alone and that
+    `ctx.mouse` takes names; `ButtonMsg` declares `cell`, `line` and
+    `byte`; and the 512-node budget, `KUI_OVERSCROLL_AUTO`'s value and
+    the `family` doc's "opens no file" are corrected (RG69).
+  Six smaller findings are filed open, RG70–RG75.
+  *What you can delete:* a `requestCopy` an app issued on the press
+  rather than the click of a `keepFocus` button, to beat the clear.
 
 ## 0.1.0-alpha.21 (2026-09-26)
 

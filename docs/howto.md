@@ -23,10 +23,14 @@ are JSX; the Lua and C spellings of every row named here are in the same
 Give the node a stable `key` and a `transition`, then declare `exit` —
 where it should end up — and the frame after the view stops declaring it the
 subtree is copied out of the last frame that had it and replayed frozen in
-its place, inert, while those slots ease. A frame that removes more than 512
-nodes declaring `exit` animates none of them, because the removal is judged
-whole rather than half-animated, and the `exit-budget` warning names the
-frame's count.
+its place, inert, while those slots ease. It plays when that node is
+removed and its parent stays: a node that goes because an ancestor went —
+a tab switched away, a panel closed around it — goes at once, so put `exit` on the node that leaves. The rule reads the parent's
+key, so give the tab bodies you swap in one slot keys of their own; two
+bodies that share an auto key look like one parent that stayed. A frame
+that removes more than 4096 nodes declaring `exit` animates none of them,
+because the removal is judged whole rather than half-animated, and the
+`exit-budget` warning names the frame's count.
 
 [`exit` row](props.md#container-props) ·
 [ADR 0012](adr/0012-the-exit-budget.md) ·
@@ -178,7 +182,9 @@ lists every family the core can see, installed or loaded, sorted by
 name, each as `{family, monospaced, weights, italic}`: `monospaced` when
 every face says it is fixed-pitch, the weights its faces come in (400
 regular, 700 bold) and whether one is italic. Filter or sort on
-`monospaced` and hand the chosen `family` to `addSystemFont`. It is read
+`monospaced` and hand the chosen `family` to `addSystemFont`, or name it
+in the view — `family="JetBrains Mono"` (ADR 0037) — which resolves to
+the same handle. The name is matched exactly as the list spells it. It is read
 from what the font database recorded when it scanned each face, so six
 hundred families answer at once; measuring an `i` against an `M` in each
 instead loads and shapes every file — seconds — and calls a symbol font
@@ -306,7 +312,9 @@ characters. Nothing to declare; a headless test sees the nudge as
 frame with no clock, the clock's own share with one (`app.advance(ms)` in
 Node, `Drive::advance` in Rust). The wheel over any node that declares
 `onScroll` is a message instead — `{kind:"scroll", x, y, dx, dy, lines,
-tag}` — and the node takes it from the scroller above; a `cells` grid
+tag}` — and the node takes it from the scroller above, on the axes its
+`scrollAxes` names; a gesture that began over it stays its own, and one
+that began over a scroller inside it at its limit comes to it; a `cells` grid
 gets its edge drag the same way, since its history is yours.
 
 [`onScroll` row](props.md#container-props) ·
@@ -794,7 +802,10 @@ is `phase:"move"` and the release `phase:"release"`, on the pane wherever
 the pointer went, so a drag that leaves the pane still ends there. On a
 `cells` grid each carries `cell: {row, col}`, clamped to the grid, which
 is what a terminal's mouse report needs; a paste is the middle press
-answered with `requestPaste()`.
+answered with `requestPaste()`. The answer goes to the focused sink, and
+no non-primary press moves focus, so when the pane pressed may not be
+the one focused, focus it first (`focus(label)` in the handler) or
+insert the `text` event's text into the pane that was pressed.
 
 The secondary button is claimed too unless you narrow it: `buttons:
 "middle"` leaves the right button to the pane's `onContextMenu` and the
@@ -1438,7 +1449,9 @@ view: a font id belongs to the session that registered it, and a core from
 another one shapes it as sans and raises `foreign-resource`. A helper that
 re-points that global at each core before rendering it is the shape this
 answer replaces — it leaves the cores rendered earlier holding an id from a
-session they are not in.
+session they are not in. Since ADR 0037 the view can skip the id and name
+the family — `family="Antonio"` — which every core resolves in its own
+session, once the file is loaded there (`setup` still loads it).
 
 It is also what makes a baseline portable. Headless text is shaped against
 the machine's installed fonts — a text that names no font gets the first
