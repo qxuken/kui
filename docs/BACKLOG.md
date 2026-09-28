@@ -75,7 +75,9 @@ latching its target and chaining past a scroller at its limit — from
 the kawoosh scroll-gestures report of the same day, the day it was
 filed, and with the alpha.22 tag DX1–DX15 and DX17–DX26 from the DX
 sweep of 2026-09-27 and RG60–RG69 from the regression pass of
-2026-09-28, built the days they were filed. The index
+2026-09-28, built the days they were filed, and with the alpha.23 tag
+RG70–RG75 from the same pass, built the same day after the alpha.22
+tag. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -122,7 +124,7 @@ architecture review (forty-four entries under ten decisions, every one
 built on 2026-09-14), the standard-menus round, and the pre-tag round's
 own two finds. C26 was the last split entry, and it closed on 2026-09-11.
 
-Ordered by area, not by priority. What to do next is under "After alpha.21".
+Ordered by area, not by priority. What to do next is under "After alpha.22".
 
 **Legend** — `!` a defect that ships today · `~` a gap with no workaround ·
 `.` cost without correctness risk.
@@ -446,7 +448,7 @@ moved whole to
 before the alpha.10 tag, W7 last — the one that wanted a decision rather
 than a patch, settled as: a displacement moves a subtree by whole physical
 pixels, scrolling included. Nothing from the round is open; what it did
-not cover is in "After alpha.21" below.
+not cover is in "After alpha.22" below.
 
 ## From two alpha.9 field reports and a bake-off (2026-09-08)
 
@@ -1908,7 +1910,7 @@ Beside the report, reading the tree for this round turned up one gap of
 kui's own: the variable-height list is Rust-only (C46). Two further
 entries came from the comparison's table: typed messages (C50) and file
 dialogs (C51). The distribution recommendation is unchanged (see
-*Distribution* under *After alpha.21*).
+*Distribution* under *After alpha.22*).
 
 ### `~` C45 — Checkbox, radio group, switch and slider are roles only; every app draws them — **built 2026-09-25**
 
@@ -2500,9 +2502,13 @@ are in the archive too; RG76 holds what two of them left.
 - A `measure_text` between frames re-wraps the shared run of a text
   drawn at another width (RG72's copy is taken only within a frame).
 
-## After alpha.21
+## After alpha.22
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
+alpha.21" until later on 2026-09-28, when the round between the alpha.22
+and alpha.23 tags — RG70–RG75, the six the alpha.22 regression pass
+left open, built the same day, with RG76 filed for what two of them
+left — had landed, and the heading moved with the tag; "After
 alpha.20" until 2026-09-28, when the rounds between the alpha.21 and
 alpha.22 tags — RG56 and RG59 left from the last pass, the kawoosh
 reports of 2026-09-26 to 28 (F101–F107), the DX sweep (DX1–DX26, DX16
@@ -2946,7 +2952,7 @@ Every closed entry, all in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) and all verbatim — one heading
 per id, and `tests/docs.rs` holds every id to one entry across both files.
 This index is here so an id resolves without opening that file: the open items
-above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.21" and
+above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.22" and
 the hygiene note cite C2, C5(b), P3, R4 and R7, and code comments, ADRs and
 commit messages cite ids of their own. All of them are whole in the
 archive. **C11**, **W2** and **C15** were each split for a while — an entry

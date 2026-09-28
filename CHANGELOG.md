@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.23 (unreleased)
+## 0.1.0-alpha.23 (2026-09-28)
 
 **What breaks.** No door changes; the ABI stays at 20 and the frame at
 v18. Rust gains fields on one event view; Node's `ctx.mouse` takes a
@@ -119,6 +119,44 @@ Eight readings change:
   more than half a window still measures from its chunk's start.
   *What you can delete:* ending a splitter's drag by hand on the
   window's `blurred` event.
+
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), on 2026-09-28 — the
+twelve commits after the alpha.22 tag, RG70–RG75, the six the alpha.22
+regression pass left open. This round ran on the Mac alone; Windows and
+Linux were not in it, and RG73's Wayland half and RG74's are the
+platforms it could not reach.
+
+**macOS 27.0 on an M3 Pro MacBook Pro, rustc 1.98.0, Node 26.8.1**, on
+`3a8d96e`. `cargo fmt --all --check` and `cargo clippy --workspace
+--all-targets -- -D warnings` are clean. `cargo test --workspace
+--features kui-core/conformance`: **1561 tests over 121 suites, 0
+failed** (3 ignored). The C round passes its five checks, the corpus
+its **49 scenes** in four adapters, the ABI still **20**; Node's `npm
+test` **198 of 198**, the frame still **v18**. `npm run gen` leaves no
+diff, the examples typecheck, and the headless round passes all **32
+drives**.
+
+**The windowed round**: **38 Rust examples and the eleven Node
+examples, each on both bases, 120 frames each, every one exiting 0 with
+nothing on stderr** — 98 windows — and `counter`, `host`, `c_panel` and
+`lua_panel` by hand the same way: **102 windows over five hosts.** The
+AX audit: **106/106**, the fixture silent. RG73 was checked in a window
+driven by CGEvents before the tag: phaseless precise pixels over a list
+re-aimed at a terminal when the pointer moved, where a phased swipe the
+same way kept the list.
+
+**The bench guard** against the alpha.22 tag, alone on a quiet
+machine: **green**, no guarded row more than 2.6% slower
+(`deep_nesting_64_levels`), the worst guarded spread 1.4%.
+`KUI_BENCH=long_line` against alpha.22: `long_line_100k_edit` +4.7%
+(±1.7%), in pieces each inside its own noise — RG70–RG72 +1.7% (±3.0%)
+and the tab cut +2.1% (±1.9%) after it was made one pass (it read +4.6%
+walking each window twice) — about 55 µs on an edit frame of a
+100k-character line; every other row within its noise. README's table
+is kept at alpha.22's numbers.
 
 ## 0.1.0-alpha.22 (2026-09-28)
 
