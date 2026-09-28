@@ -835,13 +835,23 @@ pub struct EventSpec {
     /// rolling up, toward earlier content), the pointer's position, and
     /// on a `cells` grid the whole lines the delta covers (`null` on any
     /// other node), the fraction carried to the next notch. The node
-    /// *takes* the wheel: it reaches no scroll container above it, and a
-    /// container inside it still wins over it, by paint order like any
+    /// *takes* the wheel on the axes [`scroll_axes`](Self::scroll_axes)
+    /// names: a scroll gesture that starts over it is its own, and stays
+    /// its own until it ends wherever the pointer goes (backlog F107); it
+    /// reaches no scroll container above it, and a container inside it
+    /// that can move still wins over it, by paint order like any
     /// scroller. The core moves nothing — a grid's `origin_line` and a
     /// canvas's zoom are the app's to change. A drag-select held past a
     /// grid's top or bottom edge arrives here too, as the lines the frame
     /// scrolled by (ADR 0029, decision 4).
     pub on_scroll: Option<Value>,
+    /// Which axes [`on_scroll`](Self::on_scroll) takes (backlog F107):
+    /// both unless the node says otherwise. A scroll gesture on an axis
+    /// the node does not take passes it by, to the scroller around it —
+    /// a terminal that scrolls its history on `y` says
+    /// [`ScrollAxes::Y`], and a sideways swipe that meets it goes on
+    /// moving the strip it sits in. Meaningless without `on_scroll`.
+    pub scroll_axes: ScrollAxes,
     /// Hover events: the pointer entering or leaving this node emits
     /// `{kind="hover", phase="enter"|"leave", tag}` with this payload under
     /// `tag` — for hover-dependent *layout* (a close button that appears)
@@ -917,6 +927,7 @@ impl EventSpec {
         on_button: None,
         buttons: Buttons::ALL,
         on_scroll: None,
+        scroll_axes: ScrollAxes::Both,
         on_hover: None,
         on_drop: None,
         on_layout: None,
@@ -1127,6 +1138,11 @@ pub struct InteractSpec {
     /// chrome is emitted, which is why it lives in this box rather than
     /// beside `scroll_y` on every node.
     pub scrollbar: Scrollbar,
+    /// Whether a scroll gesture that starts over this scroller while it
+    /// is at its limit that way goes on to the scroller around it (see
+    /// [`Overscroll`], backlog F107). Cold like `scrollbar`: read once
+    /// per scroller a gesture starts over.
+    pub overscroll: Overscroll,
     /// On a table (ADR 0033): lines of this colour between its columns and
     /// between its rows, drawn with the table's own box, under its cells,
     /// down the middle of each gap — so a table with a `gap` of at least
@@ -1200,6 +1216,65 @@ impl ScrollbarMode {
     ];
 }
 
+/// What a scroll gesture that starts over a scroller already at its limit
+/// does (backlog F107) — CSS's `overscroll-behavior`, spelled by the
+/// `overscroll` row (`crate::schema::OVERSCROLLS`, in this order).
+///
+/// A gesture picks its target when it starts: the innermost scroller
+/// under the pointer that can still move the way it goes. One at its
+/// limit is passed by, to the scroller around it — *chaining* — and
+/// `Contain` stops that: the gesture is this scroller's, and moves
+/// nothing until it turns back. Only on the axes the node scrolls, so a
+/// `scroll_y` list that contains still passes a sideways swipe to the
+/// strip it sits in (DX13), where CSS would stop that too. Decided at
+/// the start only: a gesture that reaches a limit midway stops there
+/// whatever this says, as a browser's does.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Overscroll {
+    /// The gesture goes on to the scroller around this one when this one
+    /// is at its limit that way.
+    #[default]
+    Auto,
+    /// A gesture that starts here stays here: a panel, a popup's list or
+    /// a sheet whose scrolling must never move the page behind it.
+    Contain,
+}
+
+impl Overscroll {
+    /// Every value, in the `overscroll` row's order (C's
+    /// `KUI_OVERSCROLL_*` are these plus one).
+    pub const ALL: [Overscroll; 2] = [Overscroll::Auto, Overscroll::Contain];
+}
+
+/// Which axes an `on_scroll` node takes (backlog F107), spelled by the
+/// `scrollAxes` row (`crate::schema::SCROLL_AXES`, in this order).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ScrollAxes {
+    /// Both: the node hears every scroll gesture that starts over it.
+    #[default]
+    Both,
+    /// Only sideways; a vertical gesture passes it by.
+    X,
+    /// Only vertical; a sideways gesture passes it by — a terminal's
+    /// history, a log.
+    Y,
+}
+
+impl ScrollAxes {
+    /// Every value, in the `scrollAxes` row's order (C's
+    /// `KUI_SCROLL_AXES_*` are these plus one).
+    pub const ALL: [ScrollAxes; 3] = [ScrollAxes::Both, ScrollAxes::X, ScrollAxes::Y];
+
+    /// Whether the node takes `x` (true) or `y` (false).
+    pub fn takes(self, x: bool) -> bool {
+        match self {
+            ScrollAxes::Both => true,
+            ScrollAxes::X => x,
+            ScrollAxes::Y => !x,
+        }
+    }
+}
+
 impl InteractSpec {
     /// The group as a node that declares none of it — what
     /// `NodeSpec`'s accessor hands back when the box is `None`.
@@ -1214,6 +1289,7 @@ impl InteractSpec {
         selectable: false,
         focus_region: false,
         scrollbar: Scrollbar::DEFAULT,
+        overscroll: Overscroll::Auto,
         rules: None,
         rule_w: 0.0,
     };
@@ -1749,6 +1825,14 @@ impl NodeSpec {
         self
     }
 
+    /// Whether a scroll gesture starting over this scroller at its limit
+    /// goes on to the one around it (see [`Overscroll`]):
+    /// `Overscroll::Contain` keeps it here.
+    pub fn overscroll(mut self, o: Overscroll) -> Self {
+        self.interact_mut().overscroll = o;
+        self
+    }
+
     /// When this node's scrollbars are drawn (see [`ScrollbarMode`]).
     /// Scrolling itself is unchanged whatever the mode.
     pub fn scrollbar(mut self, mode: ScrollbarMode) -> Self {
@@ -2036,6 +2120,14 @@ impl NodeSpec {
     /// field): `{kind="scroll", x, y, dx, dy, lines, tag}`.
     pub fn on_scroll(mut self, tag: impl Into<Value>) -> Self {
         self.events_mut().on_scroll = Some(tag.into());
+        self
+    }
+
+    /// Which axes `on_scroll` takes (see the `scroll_axes` field):
+    /// `ScrollAxes::Y` for a terminal's history, so a sideways gesture
+    /// passes it by. Meaningless without `on_scroll`.
+    pub fn scroll_axes(mut self, axes: ScrollAxes) -> Self {
+        self.events_mut().scroll_axes = axes;
         self
     }
 

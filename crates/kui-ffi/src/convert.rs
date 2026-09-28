@@ -216,6 +216,16 @@ pub(crate) fn spec_of(
     if s.buttons != 0 {
         spec = spec.buttons(kui_core::Buttons::from_bits(s.buttons));
     }
+    if s.overscroll != 0
+        && let Some(o) = kui_core::Overscroll::ALL.get(s.overscroll as usize - 1)
+    {
+        spec = spec.overscroll(*o);
+    }
+    if s.scroll_axes != 0
+        && let Some(a) = kui_core::ScrollAxes::ALL.get(s.scroll_axes as usize - 1)
+    {
+        spec = spec.scroll_axes(*a);
+    }
     if s.selectable != 0 {
         spec = spec.selectable();
     }

@@ -57,6 +57,7 @@ mod emit;
 mod fills;
 mod focus;
 pub mod follow;
+mod gesture;
 pub mod inspect;
 mod menu_api;
 mod menubar_api;
@@ -390,6 +391,9 @@ pub struct Core {
     /// was over: the next delta on the same grid adds to it (ADR 0029,
     /// decision 4).
     line_carry: Option<(Key, f32)>,
+    /// The targets the scroll gesture under way latched, per axis
+    /// (backlog F107, `mod gesture`).
+    scroll_latch: gesture::ScrollLatch,
     sel_ords: Vec<u32>,
     sel_ends: Option<crate::select::Ends>,
     /// Per-node innermost enclosing selection scope — the key of the
@@ -924,6 +928,7 @@ impl Core {
             drag_follow: None,
             last_frame_time: None,
             line_carry: None,
+            scroll_latch: Default::default(),
             sel_ords: Vec::new(),
             sel_ends: None,
             scopes: Vec::new(),

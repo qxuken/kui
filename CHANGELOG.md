@@ -47,12 +47,19 @@ was the first bare bump to break an app in five releases).
 - Rust: `AccessSpec` gains `tooltip` (under Added), so a struct literal
   of it without `..` needs the field.
 - C: `KuiSpec` gains `keep_focus`, `on_focus`, `rules`, `rule_w`,
-  `on_button` and `buttons` after `pixel_snap`, under the same ABI 20
-  (under Added, DX10, DX18, DX21 and F105); its 64-bit size is 640 bytes.
-  Recompile; zeroed, a press focuses as it did, nothing hears focus, a
-  table draws no rules and no node hears the middle button.
-- Rust: `EventSpec` gains `on_button` and `buttons` (under Added, F105),
-  so a struct literal of it without `..` needs the fields.
+  `on_button`, `buttons`, `overscroll` and `scroll_axes` after
+  `pixel_snap`, under the same ABI 20 (under Added, DX10, DX18, DX21,
+  F105 and F107); its 64-bit size is 648 bytes. Recompile; zeroed, a
+  press focuses as it did, nothing hears focus, a table draws no rules,
+  no node hears the middle button, a scroller at its limit passes a
+  gesture on and an `on_scroll` node takes both axes.
+- Rust: `EventSpec` gains `on_button`, `buttons` and `scroll_axes`, and
+  `InteractSpec` gains `overscroll` (under Added, F105 and F107), so a
+  struct literal of either without `..` needs the fields.
+- Rust: `InputEvent` gains `ScrollGesture { delta, begins }` (under
+  Added, F107), so an exhaustive match on it in a driver of your own
+  needs the arm. `InputEvent::Scroll` is unchanged, and is a gesture of
+  its own.
 - Rust: `UiEvent::hover()` answers a `Hover { phase, by }`, where it
   answered the `HoverPhase` (under Added, DX20); read `.phase`.
 - Node: the binary frame is v18. `family` is a string, a stock name or an
@@ -103,6 +110,16 @@ Thirteen readings change:
 - The wheel over a scroller that scrolls on one axis passes the other
   axis to the scroller or `onScroll` node under it (under Added, DX13),
   where the inner one swallowed it and nothing moved.
+- A scroll gesture keeps the target it started on, and one that starts
+  over a scroller already at its limit that way goes to the scroller
+  around it (under Fixed, F107). The native runner's swipe and its glide,
+  or a wheel spun without a pause or a pointer move, is one gesture: a
+  swipe that moved the strip goes on moving it when a terminal or a list
+  comes under the pointer, where the new node took the rest. A notch or
+  swipe over a list at its end moves the page around it, where it moved
+  nothing; `overscroll: "contain"` keeps the old stop. A gesture that
+  reaches a limit midway still stops there. A bare `Scroll` from a
+  driver of your own is a gesture of its own.
 - A trackpad swipe keeps to one axis (under Fixed, F104): the other
   axis's delta is dropped while the swipe and its glide last, so a
   diagonal swipe moves a two-axis scroller one axis at a time, and an
@@ -472,6 +489,30 @@ Thirteen readings change:
   *What you can delete:* padding an app kept at a wrapped text's right
   edge so a hanging space's caret stayed inside it.
 
+- **`overscroll` and `scrollAxes`: where a scroll gesture may go**
+  (backlog F107, ADR 0038, from kawoosh, 2026-09-28; `overscroll` and
+  `scroll_axes` in Lua and on `KuiSpec`, `NodeSpec::overscroll` and
+  `NodeSpec::scroll_axes` in Rust). A scroll gesture picks its target
+  when it starts: the innermost scroller under the pointer that can
+  still move the way it goes (see the gesture entry under Fixed).
+  `overscroll: "contain"` (`Overscroll::Contain`,
+  `KUI_OVERSCROLL_CONTAIN`) keeps a gesture that starts over a scroller
+  at its limit there instead of passing it to the one around it, on the
+  axes the scroller scrolls: a popup's list or a sheet whose scrolling
+  must never move what is behind it. `scrollAxes: "x" | "y"`
+  (`ScrollAxes`, `KUI_SCROLL_AXES_*`) says which axes an `onScroll`
+  node takes, both unless it narrows them; a gesture on the other
+  passes it by — a terminal that scrolls its history says `"y"`, and a
+  sideways swipe over it moves the strip it sits in. Drivers of their
+  own say where gestures begin with `InputEvent::ScrollGesture { delta,
+  begins }` (`kui_input_scroll_gesture(ctx, dx, dy, begins)` in C); a
+  bare `Scroll` is a gesture of its own. The corpus's `scroll-gestures`
+  scene holds a contained list at its end and a `y`-only handler met by
+  a sideways notch in all four bindings.
+  *What you can delete:* nothing an app could have written: the core
+  picked the node under the pointer for every delta, and a node that
+  takes the wheel could not decline an axis.
+
 ### Fixed
 
 - **A pane of more than 512 nodes could not fade out** (backlog DX23,
@@ -646,6 +687,30 @@ Thirteen readings change:
   the same place. Pinned by
   `a_space_a_word_break_swallows_ends_the_row_it_broke`.
   *What you can delete:* nothing an app could have written.
+
+- **A swipe across the strip stopped hard at a terminal, and a list at
+  its end kept a swipe the scroller around it could use** (backlog F107,
+  ADR 0038, from kawoosh, 2026-09-28). The wheel's delta went to
+  whatever scroller was under the pointer when it came, and a two-finger
+  swipe does not move the pointer: a swipe that moved kawoosh's pane
+  strip carried a terminal under it, and the terminal, an `onScroll`
+  node taking every delta for its history, took the rest of the swipe.
+  A scroll gesture now latches: the native runner begins one after a
+  200 ms pause (F104's gap), on a switch between a wheel's notches and a
+  trackpad's pixels, and for a wheel when the pointer moves (`mod
+  scroll_gesture` in kui-native), and the core keeps each axis's target
+  from the gesture's first event on that axis to its end, found by key
+  wherever the pointer or the content has gone (`runtime::gesture`). The
+  pick chains: a container at its limit that way (within half a pixel)
+  is passed for the one around it, unless it says `overscroll:
+  "contain"`; an `onScroll` node takes the axes its `scrollAxes` names
+  whether or not it can move. Nothing chains midway, as in a browser. A
+  latched target gone from the frame or behind a modal is picked again.
+  Programmatic scrolls, scrollbars, keys, `reveal` and a drag's edge
+  scrolling are untouched. Pinned by `tests/scroll_gestures.rs` (10), the
+  runner's `scroll_gesture.rs` (3), `surface.c` and the corpus.
+  *What you can delete:* a check an app made on the `scroll` event for
+  whether its node was where the swipe began.
 
 ## 0.1.0-alpha.21 (2026-09-26)
 

@@ -262,8 +262,10 @@ extern "C" {
  * a table's grid lines; zeroed, none. Then on_button and buttons
  * (backlog F105): the non-primary buttons as events on the node that
  * claims them, captured from press to release; NULL hears nothing, and a
- * zeroed buttons with on_button set claims all three kinds. The 64-bit
- * size is 640. Recompile.
+ * zeroed buttons with on_button set claims all three kinds. Then overscroll and scroll_axes
+ * (backlog F107): whether a scroll gesture starting over a scroller at its
+ * limit goes on to the one around it, and which axes on_scroll takes;
+ * zeroed, auto and both. The 64-bit size is 648. Recompile.
  * The same bump appends bg_radius to KuiSpan (backlog F101): a span's
  * background rounded and joined with the ones it meets. On a 64-bit target
  * it takes what was the struct's tail padding, so the stride did not move
@@ -1014,6 +1016,17 @@ typedef struct KuiSpec {
     /* Which buttons on_button claims, as KUI_BUTTONS_* bits; 0 (the zeroed
      * field) is all three. ABI 20. */
     uint32_t buttons;
+    /* A scroll gesture that starts over this scroller while it is at its
+     * limit that way (backlog F107): KUI_OVERSCROLL_AUTO (0, the zeroed
+     * field) passes it on to the scroller around it, KUI_OVERSCROLL_CONTAIN
+     * keeps it here, moving nothing. Only on the axes the node scrolls.
+     * ABI 20. */
+    uint32_t overscroll;
+    /* Which axes on_scroll takes (backlog F107): KUI_SCROLL_AXES_BOTH (0,
+     * the zeroed field), _X or _Y. A gesture on an axis the node does not
+     * take passes it by, to the scroller around it - a terminal scrolling
+     * its history says Y. ABI 20. */
+    uint32_t scroll_axes;
 } KuiSpec;
 
 /* When a scrolling node's bars are drawn (KuiSpec.scrollbar): the schema
@@ -1030,6 +1043,18 @@ enum {
     KUI_SCROLLBAR_VISIBLE = 1,
     KUI_SCROLLBAR_HIDDEN = 2,
     KUI_SCROLLBAR_AUTO = 3,
+};
+
+/* KuiSpec.overscroll and KuiSpec.scroll_axes (backlog F107): the schema
+ * index plus one, so zero is the default - auto, and both axes. */
+enum {
+    KUI_OVERSCROLL_AUTO = 1,
+    KUI_OVERSCROLL_CONTAIN = 2,
+};
+enum {
+    KUI_SCROLL_AXES_BOTH = 1,
+    KUI_SCROLL_AXES_X = 2,
+    KUI_SCROLL_AXES_Y = 3,
 };
 
 /* Disclosure state (KuiSpec.expanded): the schema index plus one, so zero
@@ -1738,7 +1763,16 @@ enum {
 /* kui_input_mouse for a named button (KUI_MOUSE_*). */
 void kui_input_mouse_button(KuiCtx *ctx, bool down, uint32_t button,
                             uint32_t clicks);
+/* A wheel/trackpad delta, a scroll gesture of its own: it goes to the
+ * innermost scroller under the pointer that can move that way, one at its
+ * limit passing it to the one around it (backlog F107). */
 void kui_input_scroll(KuiCtx *ctx, float dx, float dy); /* +y = scroll up */
+/* A delta that is part of a scroll gesture (backlog F107): `begins` on its
+ * first event; the rest go on to the targets that one picked, wherever the
+ * pointer or the content under it has gone since. For a host with its own
+ * event loop that can tell one swipe from the next (kui_run's runner
+ * begins one after a 200 ms pause). */
+void kui_input_scroll_gesture(KuiCtx *ctx, float dx, float dy, bool begins);
 void kui_input_text(KuiCtx *ctx, KuiStr text);   /* typing/paste -> focused editor */
 /* Text an IME committed at the end of a composition: a focused editor takes
  * it as kui_input_text would; otherwise the focused on_key sink hears

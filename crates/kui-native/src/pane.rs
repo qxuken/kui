@@ -263,6 +263,9 @@ pub(crate) struct Pane {
     /// The trackpad swipe under way and the axis it keeps to (`mod
     /// axis_lock`, backlog F104).
     pub(crate) axis_lock: crate::axis_lock::AxisLock,
+    /// Where the scroll gesture under way began, for the core's latch
+    /// (`mod scroll_gesture`, backlog F107).
+    pub(crate) scroll_gesture: crate::scroll_gesture::Gesture,
     /// The paths winit's per-file drag events built this batch, and
     /// whether the batch was a drop (`Some(true)`), a hover
     /// (`Some(false)`) or nothing (`None`) — dispatched at the batch's

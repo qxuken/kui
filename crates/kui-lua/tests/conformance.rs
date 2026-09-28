@@ -186,6 +186,33 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         "#
             )
         }
+        "scroll-gestures" => {
+            let items = conformance::ITEM_KEYS
+                .iter()
+                .map(|k| {
+                    format!("column {{ key = \"{k}\", width = 90, height = 20, bg = 0x30344aff }},")
+                })
+                .collect::<Vec<_>>()
+                .join("\n                    ");
+            format!(
+                r#"
+            return column {{ pad = 4,
+              column {{ key = "page", width = 200, height = 100, scroll_y = true, bg = 0x101018ff,
+                row {{ key = "strip", width = 200, height = 80, scroll_x = true,
+                  column {{ key = "list", width = 100, height = 80, gap = 4, scroll_y = true,
+                           overscroll = "contain", bg = 0x161820ff,
+                    {items}
+                  }},
+                  column {{ key = "term", width = 100, height = 80, bg = 0x3b5bd4ff,
+                           on_scroll = {{ kind = "term" }}, scroll_axes = "y" }},
+                  column {{ width = 100, height = 80, bg = 0x2a2d3aff }},
+                }},
+                column {{ width = 200, height = 60, bg = 0x22252fff }},
+              }},
+            }}
+        "#
+            )
+        }
         "float" => r#"
             return column { pad = 20, gap = 4,
               column { key = "anchor", width = 80, height = 24, bg = 0x333333ff,

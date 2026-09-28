@@ -179,6 +179,8 @@ pub const P_RULES: u32 = 114;
 pub const P_RULE_WIDTH: u32 = 115;
 pub const P_ON_BUTTON: u32 = 116;
 pub const P_BUTTONS: u32 = 117;
+pub const P_OVERSCROLL: u32 = 118;
+pub const P_SCROLL_AXES: u32 = 119;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -199,6 +201,15 @@ pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
 /// changed. C spells it as the index plus one (`KUI_SCROLLBAR_*`), so a
 /// zeroed field is "unset".
 pub const SCROLLBARS: &[&str] = &["visible", "hidden", "auto"];
+/// The `overscroll` row, in `Overscroll::ALL`'s order (backlog F107): a
+/// scroll gesture starting over a scroller at its limit goes on to the one
+/// around it, or stays. C spells it as the index plus one
+/// (`KUI_OVERSCROLL_*`), a zeroed field being `auto`.
+pub const OVERSCROLLS: &[&str] = &["auto", "contain"];
+/// The `scrollAxes` row, in `ScrollAxes::ALL`'s order (backlog F107): the
+/// axes an `onScroll` node takes. C spells it as the index plus one
+/// (`KUI_SCROLL_AXES_*`), a zeroed field being `both`.
+pub const SCROLL_AXES: &[&str] = &["both", "x", "y"];
 /// The stock families (`FontFamily::name` spellings, in `FontFamily::ALL`
 /// order); a registered font travels as the `font` row's handle instead.
 pub const FAMILIES: &[&str] = &["sans", "serif", "mono"];
@@ -784,6 +795,13 @@ pub const PROPS: &[PropDef] = &[
         doc: "The thumb under the pointer or while dragged; the default is the theme's `scrollbar_active` role.",
     },
     PropDef {
+        name: "overscroll",
+        id: P_OVERSCROLL,
+        kind: Kind::Enum(OVERSCROLLS),
+        apply: Apply::SpecEnum(|s, i| s.overscroll(crate::spec::Overscroll::ALL[i])),
+        doc: "What a scroll gesture that starts over this scroller does when it is already at its limit that way (backlog F107, CSS's `overscroll-behavior`): `auto` (the default) passes the gesture on to the scroller around it, `contain` keeps it here, moving nothing until it turns back. A gesture picks its target once, when it starts — the innermost scroller under the pointer that can still move the way it goes — and keeps it until it ends, wherever the pointer or the content has gone; one that reaches a limit midway stops there, whatever this says. Only on the axes the node scrolls: a `scrollY` list that contains still passes a sideways swipe to the strip around it. For a panel or a popup's list whose scrolling must never move what is behind it.",
+    },
+    PropDef {
         name: "disabled",
         id: P_DISABLED,
         kind: Kind::Flag,
@@ -935,7 +953,14 @@ pub const PROPS: &[PropDef] = &[
         id: P_ON_SCROLL,
         kind: Kind::Tag,
         apply: Apply::SpecMsg(|s, v| s.on_scroll(v)),
-        doc: "Scroll tag: the wheel over this node emits {kind:\"scroll\", x, y, dx, dy, lines, tag} on it instead of scrolling anything — `dx`/`dy` the delta in logical px as the driver reported it (positive `dy` is the wheel rolling up, toward earlier content), `x`/`y` the pointer, and `lines` on a `cells` grid the whole lines the delta covers (positive = later history, the sign `originLine` grows in; the fraction is carried to the next notch so a trackpad's small steps add up) and null on any other node. The node takes the wheel: it reaches no scroll container above it, and a scroller inside it still takes the axes it scrolls, by paint order, passing this node the rest. The core moves nothing — a grid re-declares `originLine`, a canvas zooms. A drag-select held past a `cells` grid's top or bottom edge arrives here too, once a frame with the lines that frame scrolled by (`docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md`).",
+        doc: "Scroll tag: the wheel over this node emits {kind:\"scroll\", x, y, dx, dy, lines, tag} on it instead of scrolling anything — `dx`/`dy` the delta in logical px as the driver reported it (positive `dy` is the wheel rolling up, toward earlier content), `x`/`y` the pointer, and `lines` on a `cells` grid the whole lines the delta covers (positive = later history, the sign `originLine` grows in; the fraction is carried to the next notch so a trackpad's small steps add up) and null on any other node. The node takes the wheel on the axes `scrollAxes` names (both unless it narrows them): a gesture that starts over it is its own whether or not it has anywhere to go, and stays its own until it ends, wherever the pointer goes (backlog F107); it reaches no scroll container above it, and a scroller inside it that can move still takes the axes it scrolls, by paint order, passing this node the rest. The core moves nothing — a grid re-declares `originLine`, a canvas zooms. A drag-select held past a `cells` grid's top or bottom edge arrives here too, once a frame with the lines that frame scrolled by (`docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md`).",
+    },
+    PropDef {
+        name: "scrollAxes",
+        id: P_SCROLL_AXES,
+        kind: Kind::Enum(SCROLL_AXES),
+        apply: Apply::SpecEnum(|s, i| s.scroll_axes(crate::spec::ScrollAxes::ALL[i])),
+        doc: "Which axes `onScroll` takes (backlog F107): `both` (the default), `x` or `y`. A scroll gesture on an axis the node does not take passes it by, to the scroller around it, and hears nothing here: a terminal that scrolls its history says `y`, and a sideways swipe that starts over it moves the strip it sits in. (A swipe that started elsewhere is not the node's either way: a gesture keeps the target it started with.) Meaningless without `onScroll`.",
     },
     PropDef {
         name: "window",
@@ -1317,7 +1342,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`clip`, `scrollX`, `scrollY`",
         lua: "`clip`, `scroll_x`, `scroll_y` (`scroll` = `scroll_y`)",
         c: "`overflow` bits `KUI_CLIP` | `KUI_SCROLL_X` | `KUI_SCROLL_Y`",
-        doc: "Clip children; scroll (implies clip) with retained offsets and live scrollbars. A `radius` on the same node rounds the clip, so a rounded card does not show square corners poking out of it; nesting two rounded clippers keeps only the corners neither of them moved, and hit-testing stays rectangular. Every frontend ORs the same bits and hands them to `NodeSpec::overflow_bits`. The wheel goes to the scroller under the pointer on the axes it scrolls, and the rest of the notch to the one around it: a `scrollY` list inside a `scrollX` strip moves the strip on a sideways swipe (backlog DX13). An offset is kept while the key is declared; an undeclared one is kept until the budget needs the room (1024 undeclared entries, longest-undeclared evicted first).",
+        doc: "Clip children; scroll (implies clip) with retained offsets and live scrollbars. A `radius` on the same node rounds the clip, so a rounded card does not show square corners poking out of it; nesting two rounded clippers keeps only the corners neither of them moved, and hit-testing stays rectangular. Every frontend ORs the same bits and hands them to `NodeSpec::overflow_bits`. The wheel goes to the scroller under the pointer on the axes it scrolls, and the rest of the notch to the one around it: a `scrollY` list inside a `scrollX` strip moves the strip on a sideways swipe (backlog DX13). A scroll gesture — a swipe and its glide, a wheel spun without a pause — picks that scroller when it starts, skipping one already at its limit that way for the one around it (unless it says `overscroll: contain`), and keeps it until it ends, so content moving under a still pointer does not hand the rest of a swipe to what came under it (backlog F107). An offset is kept while the key is declared; an undeclared one is kept until the budget needs the room (1024 undeclared entries, longest-undeclared evicted first).",
     },
     CustomProp {
         name: "float",

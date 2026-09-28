@@ -422,6 +422,7 @@ impl DynShell<'_> {
             resize_edge: None,
             pressure_stage: 0,
             axis_lock: Default::default(),
+            scroll_gesture: Default::default(),
             file_drag: Vec::new(),
             file_drag_pending: None,
             cursor_icon: CursorIcon::Default,

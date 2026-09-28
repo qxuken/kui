@@ -251,7 +251,10 @@
 /// `on_button` and `buttons` (backlog F105): the non-primary buttons as
 /// events on the node that claims them, captured from press to release;
 /// NULL hears nothing, and a zeroed `buttons` with `on_button` set claims
-/// all three kinds. The 64-bit size is 640. Recompile.
+/// all three kinds. Then `overscroll` and `scroll_axes` (backlog F107):
+/// whether a scroll gesture starting over a scroller at its limit goes on
+/// to the one around it, and which axes `on_scroll` takes; zeroed, `auto`
+/// and both. The 64-bit size is 648. Recompile.
 /// The same bump appends `bg_radius` to `KuiSpan` (backlog F101): a
 /// span's background rounded and joined with the ones it meets. On a
 /// 64-bit target it takes what was the struct's tail padding, so the

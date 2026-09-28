@@ -287,6 +287,12 @@ fn asserts() -> (String, Vec<&'static str>) {
     abi_enum!(o, kui_core::schema::SCROLLBARS, 1 => [
         "KUI_SCROLLBAR_VISIBLE", "KUI_SCROLLBAR_HIDDEN", "KUI_SCROLLBAR_AUTO",
     ]);
+    abi_enum!(o, kui_core::schema::OVERSCROLLS, 1 => [
+        "KUI_OVERSCROLL_AUTO", "KUI_OVERSCROLL_CONTAIN",
+    ]);
+    abi_enum!(o, kui_core::schema::SCROLL_AXES, 1 => [
+        "KUI_SCROLL_AXES_BOTH", "KUI_SCROLL_AXES_X", "KUI_SCROLL_AXES_Y",
+    ]);
     abi_enum!(o, kui_core::schema::WINDOW_ROLES, 1 => [
         "KUI_WINDOW_DRAG", "KUI_WINDOW_CLOSE", "KUI_WINDOW_MINIMIZE",
         "KUI_WINDOW_MAXIMIZE",
@@ -714,6 +720,8 @@ fn asserts() -> (String, Vec<&'static str>) {
         rule_w: f32 => "float",
         on_button: *const KuiValue => "const KuiValue *",
         buttons: u32 => "uint32_t",
+        overscroll: u32 => "uint32_t",
+        scroll_axes: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiAccessNode {
@@ -1383,8 +1391,9 @@ fn an_in_struct_s_size_is_the_abi_s() {
         // ABI 20: `pixel_snap` appended, after ABI 19's `float_clip`,
         // `aspect_ratio`, `mixed`, `value_step` and `on_change`; then
         // `keep_focus`, `on_focus`, `rules` and `rule_w`; then
-        // `on_button` and `buttons` (backlog F105).
-        ("KuiSpec", 640, 20),
+        // `on_button` and `buttons` (backlog F105); then `overscroll` and
+        // `scroll_axes` (backlog F107).
+        ("KuiSpec", 648, 20),
         ("KuiSizing", 8, 16),
         ("KuiKeyframe", 36, 16),
         ("KuiEnter", 40, 16),

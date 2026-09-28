@@ -671,6 +671,13 @@ pub struct KuiSpec {
     /// Which buttons `on_button` claims, as `KUI_BUTTONS_*` bits
     /// (`Buttons::bits`); 0 is all three. ABI 20.
     pub buttons: u32,
+    /// Whether a scroll gesture starting over this scroller at its limit
+    /// goes on to the one around it (`overscroll`, backlog F107):
+    /// `KUI_OVERSCROLL_*`, the row's index plus one; 0 is `auto`. ABI 20.
+    pub overscroll: u32,
+    /// Which axes `on_scroll` takes (`scrollAxes`, backlog F107):
+    /// `KUI_SCROLL_AXES_*`, the row's index plus one; 0 is both. ABI 20.
+    pub scroll_axes: u32,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a
@@ -825,6 +832,17 @@ pub const KUI_EXPANDED_EXPANDED: u32 = 2;
 pub const KUI_SCROLLBAR_VISIBLE: u32 = 1;
 pub const KUI_SCROLLBAR_HIDDEN: u32 = 2;
 pub const KUI_SCROLLBAR_AUTO: u32 = 3;
+
+/// KUI_OVERSCROLL_* is the position in `schema::OVERSCROLLS` plus one (0 =
+/// unset, which is `auto`), backlog F107.
+pub const KUI_OVERSCROLL_AUTO: u32 = 1;
+pub const KUI_OVERSCROLL_CONTAIN: u32 = 2;
+
+/// KUI_SCROLL_AXES_* is the position in `schema::SCROLL_AXES` plus one (0
+/// = unset, which is both), backlog F107.
+pub const KUI_SCROLL_AXES_BOTH: u32 = 1;
+pub const KUI_SCROLL_AXES_X: u32 = 2;
+pub const KUI_SCROLL_AXES_Y: u32 = 3;
 
 /// KUI_LIVE_* is the position in `schema::LIVE` itself, not the position
 /// plus one: unlike a disclosure, a live region's zero *is* a value —
