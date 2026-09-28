@@ -14,19 +14,19 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0-alpha.21"
+version = "0.1.0-alpha.22"
 edition = "2024"
 license = "MIT"
 repository = "https://drydock9.qxuken.dev/qxuken/kui"
 
 [workspace.dependencies]
-kui-core = { path = "crates/kui-core", version = "0.1.0-alpha.21", registry = "forgejo" }
-kui-derive = { path = "crates/kui-derive", version = "0.1.0-alpha.21", registry = "forgejo" }
-kui-wgpu = { path = "crates/kui-wgpu", version = "0.1.0-alpha.21", registry = "forgejo" }
-kui-native = { path = "crates/kui-native", version = "0.1.0-alpha.21", registry = "forgejo" }
+kui-core = { path = "crates/kui-core", version = "0.1.0-alpha.22", registry = "forgejo" }
+kui-derive = { path = "crates/kui-derive", version = "0.1.0-alpha.22", registry = "forgejo" }
+kui-wgpu = { path = "crates/kui-wgpu", version = "0.1.0-alpha.22", registry = "forgejo" }
+kui-native = { path = "crates/kui-native", version = "0.1.0-alpha.22", registry = "forgejo" }
 # `default-features = false` here so a member asks for the windowed C entry
 # points explicitly; the cdylib build gets them from kui-ffi's own manifest.
-kui-ffi = { path = "crates/kui-ffi", version = "0.1.0-alpha.21", registry = "forgejo", default-features = false }
+kui-ffi = { path = "crates/kui-ffi", version = "0.1.0-alpha.22", registry = "forgejo", default-features = false }
 kui-devtools = { path = "examples/devtools" }
 
 slotmap = "1.1.1"

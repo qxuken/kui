@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.22 (unreleased)
+## 0.1.0-alpha.22 (2026-09-28)
 
 **What breaks.** The ABI is 20 and the Node frame v18. C gains one door,
 `kui_input_scroll_gesture`, and `KuiSpec` grows to 648 bytes; Rust gains
@@ -777,6 +777,63 @@ The readings:
   Six smaller findings are filed open, RG70–RG75.
   *What you can delete:* a `requestCopy` an app issued on the press
   rather than the click of a `keepFocus` button, to beat the clear.
+
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), on 2026-09-28 —
+forty-three commits after the alpha.21 tag (F101–F107, the DX sweep,
+RG56/RG59, ADRs 0036–0038) and the regression pass over them (backlog
+RG60–RG69, built before the tag and folded in above; RG70–RG75 open).
+This round ran on the Mac alone; Windows and Linux were not in it.
+
+**macOS 27.0 on an M3 Pro MacBook Pro, rustc 1.98.0, Node 26.8.1**, in
+a cold worktree. `cargo fmt --all --check` and `cargo clippy
+--workspace --all-targets -- -D warnings` are clean. `cargo test
+--workspace --features kui-core/conformance`: **1549 tests over 121
+suites, 0 failed** (3 ignored). The scene corpus runs in all four
+adapters against one reference report: Rust and Lua through `cargo
+test`, C through `target/debug/conformance` (**49 scenes**, the ABI
+**20**), Node through `npm test` (**198 of 198**, the frame at
+**version 18**). The C round, `cbuild --run`, passes its five checks,
+and the no-ABI panel is refused as "this build is 20". `npm run gen`
+leaves no diff; `npm run typecheck` on `examples/node` is clean and its
+lockfile installs. The headless round, `smoke -- --headless`, passes
+all **32 drives**.
+
+**The windowed round**, `cargo run -p kui-devtools --bin smoke --
+--node`: **38 Rust examples and the eleven Node examples, each on both
+bases, 120 frames each, every one exiting 0 with nothing on stderr** —
+98 windows. The C and Lua hosts by hand under `KUI_SMOKE_FRAMES=120`:
+`counter`, `host`, `c_panel` and `lua_panel` each opened a window and
+exited 0 with nothing on stderr — **102 windows over five hosts.** The
+AX audit (`scripts/ax-audit.swift`, compiled) against the
+`accessibility` example: **106/106**, the fixture silent on stderr.
+
+**The new input, in a window.** No example exercises most of it, so a
+probe app driven by CGEvents (continuous pixel swipes with their phases
+and momentum, line notches, the middle and secondary buttons) checked,
+before and after the regression pass: a swipe with sideways drift keeps
+to its axis (F104); a sideways swipe begun over a list keeps moving the
+strip while a two-axis `onScroll` terminal comes under the pointer, and
+a new swipe after a pause is the terminal's (F107); a middle press is
+captured press–move–release, the release past the window's edge, and a
+claimed secondary press is a `button` event, not a context menu (F105);
+a press into a pane reports `focus in` by the pointer, a `keepFocus`
+button clicks without moving it (DX18, DX10); hover says `content` when
+rows scroll under a still pointer (DX20); `break-spaces` carries a run
+of spaces onto the next row where `word` drops two at the break (F106);
+a table's rules draw in its gaps (DX21).
+
+**The bench guard** against the alpha.21 tag, alone on a quiet
+machine: **green**, no guarded row more than 2.5% slower
+(`list_10k_rows_virtual`), the worst guarded spread 6.2%.
+`replay_a_full_depart_store` (+775%) and `drop_1k_rows_declaring_exit`
+(+82%) measure DX23's larger budget — a full store is eight times the
+nodes, and a thousand-row drop is now copied rather than refused.
+`KUI_BENCH=long_line`, the path RG68 reworked, is flat within its
+noise. README's table is refreshed from rows whose two runs agreed
+within 5%.
 
 ## 0.1.0-alpha.21 (2026-09-26)
 

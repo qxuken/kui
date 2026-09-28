@@ -173,7 +173,7 @@ gap, to keep it apart.
 
 [`text` element](props.md#elements) ·
 [ADR 0035](adr/0035-a-rounded-background-is-joined-by-meeting.md) ·
-[alpha.22 `### Added`](../CHANGELOG.md#010-alpha22-unreleased)
+[alpha.22 `### Added`](../CHANGELOG.md#010-alpha22-2026-09-28)
 
 ### How do I list the installed fonts, the monospaced ones first?
 
@@ -654,7 +654,7 @@ are not locked: they come one axis at a time already, and Shift turns
 them sideways on purpose. An `onScroll` node hears the locked delta.
 
 [`scroll` event](props.md#events) ·
-[alpha.22](../CHANGELOG.md#010-alpha22-unreleased)
+[alpha.22](../CHANGELOG.md#010-alpha22-2026-09-28)
 
 ### Which scroller does a swipe move, and how does a terminal let a sideways one through?
 
@@ -683,7 +683,7 @@ own sends `ScrollGesture { delta, begins }` (C's
 
 [`overscroll` / `scrollAxes` rows](props.md#container-props) ·
 [ADR 0038](adr/0038-a-scroll-gesture-latches-its-target.md) ·
-[alpha.22](../CHANGELOG.md#010-alpha22-unreleased)
+[alpha.22](../CHANGELOG.md#010-alpha22-2026-09-28)
 
 ### Does a pane off the edge of a scroller still hear its keys?
 
@@ -818,7 +818,7 @@ it always did.
 
 [`onButton` and `buttons` rows](props.md#container-props) ·
 [`button` event](props.md#events) ·
-[alpha.22 `### Added`](../CHANGELOG.md#010-alpha22-unreleased)
+[alpha.22 `### Added`](../CHANGELOG.md#010-alpha22-2026-09-28)
 
 ### How do I keep a pasted password out of my editor's history, and copy one?
 
@@ -877,7 +877,7 @@ space is. A text with its own line breaks, a `maxLines` or an
 `ellipsis` wraps as `word`, and so does an `edit`.
 
 [`wrap` row](props.md#text-props) ·
-[alpha.22](../CHANGELOG.md#010-alpha22-unreleased)
+[alpha.22](../CHANGELOG.md#010-alpha22-2026-09-28)
 
 ### How do I make the caret I draw blink?
 
