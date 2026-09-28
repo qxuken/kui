@@ -31,6 +31,15 @@ use std::time::{Duration, Instant};
 pub(crate) const RETRY: Duration = Duration::from_millis(16);
 pub(crate) const RETRIES: u32 = 60;
 
+/// How long the skips must have stopped for the next one to be a new
+/// frame asked for, not the same surface still insisting (backlog RG74).
+/// A window away long enough to spend its tries, brought back on a
+/// platform that sends no `Occluded` (Windows, Wayland), skips the frame
+/// its focus asks for as it comes up; that skip follows a quiet spell,
+/// and gets tries of its own. A window skipping without pause — an
+/// animation in a hidden window (F103) — never has one, and stays spent.
+pub(crate) const REST: Duration = Duration::from_millis(500);
+
 /// One window's owed frame.
 #[derive(Debug)]
 pub(crate) struct Retry {
@@ -42,6 +51,8 @@ pub(crate) struct Retry {
     hidden: bool,
     /// A frame has been presented, ever.
     presented: bool,
+    /// When the surface last skipped a frame.
+    last_skip: Option<Instant>,
 }
 
 impl Retry {
@@ -51,6 +62,7 @@ impl Retry {
             owed: Some((RETRIES, now)),
             hidden: false,
             presented: false,
+            last_skip: None,
         }
     }
 
@@ -66,10 +78,20 @@ impl Retry {
     }
 
     /// The surface skipped a frame: the next is owed a retry from now,
-    /// unless one already is or the window is covered.
+    /// unless one already is or the window is covered. Tries spent are
+    /// given again to a skip that follows a [`REST`] with none.
     pub(crate) fn skipped(&mut self, now: Instant) {
-        if !self.hidden && self.owed.is_none() {
-            self.owed = Some((RETRIES, now + RETRY));
+        let rested = self
+            .last_skip
+            .is_none_or(|last| now.saturating_duration_since(last) >= REST);
+        self.last_skip = Some(now);
+        if self.hidden {
+            return;
+        }
+        match self.owed {
+            None => self.owed = Some((RETRIES, now + RETRY)),
+            Some((0, _)) if rested => self.owed = Some((RETRIES, now + RETRY)),
+            Some(_) => {}
         }
     }
 
@@ -151,12 +173,46 @@ mod tests {
             now += RETRY;
             if asks(&mut r, now) {
                 n += 1;
-                r.skipped(now);
             }
+            // The surface goes on refusing every frame asked of it.
+            r.skipped(now);
         }
         assert_eq!(n, RETRIES);
         r.skipped(now);
         assert_eq!(r.poll(now + RETRY), (false, None), "spent");
+        // Skipping on without a pause — an animation in a hidden window
+        // — stays spent.
+        for i in 1..100u32 {
+            r.skipped(now + RETRY * i);
+        }
+        assert_eq!(r.poll(now + RETRY * 100), (false, None), "still spent");
+    }
+
+    /// RG74: spent tries come back for a skip after a quiet spell. On a
+    /// platform with no `Occluded`, a window away long enough to spend
+    /// them came back behind a skipped frame and showed the stale one,
+    /// F102's own symptom.
+    #[test]
+    fn a_skip_after_a_rest_is_owed_tries_of_its_own() {
+        let t = Instant::now();
+        let mut r = Retry::new(t);
+        r.presented();
+        r.skipped(t);
+        let mut now = t;
+        for _ in 0..RETRIES {
+            now += RETRY;
+            assert!(asks(&mut r, now));
+            r.skipped(now);
+        }
+        assert_eq!(r.poll(now + RETRY), (false, None), "spent");
+        // Seconds later the window comes back, and the frame its focus
+        // asks for is skipped.
+        let back = now + Duration::from_secs(10);
+        r.skipped(back);
+        assert!(!asks(&mut r, back + RETRY / 2));
+        assert!(asks(&mut r, back + RETRY), "asked for again");
+        r.presented();
+        assert_eq!(r.poll(back + RETRY * 2), (false, None));
     }
 
     /// Covered, a skip owes nothing; uncovered, a frame is owed at once,
