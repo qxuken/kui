@@ -538,6 +538,21 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
+        // Backlog F109: four bars sized by expressions, spelled and as data.
+        "size-expressions" => r#"
+            local function bar(t)
+              t.height = 10
+              t.bg = 0x3b5bd4ff
+              return column(t)
+            end
+            return column { width = 400, gap = 4,
+              bar { width = "clamp(100px, 50%, 150px)" },
+              bar { width = { min = { { pct = 80 }, 300 } } },
+              bar { width = 900, max_width = "25%" },
+              bar { min_width = { max = { "40%", 50 } } },
+            }
+        "#
+        .to_string(),
         // docs/adr/0010-a-segment-primitive.md: three strokes and a box in
         // a 200×120 canvas; the elbow takes a click, hit by its stroke.
         "lines" => r#"

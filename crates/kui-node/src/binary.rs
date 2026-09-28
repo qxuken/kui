@@ -32,7 +32,7 @@ use serde_json::{Map as JsonMap, Value as Json};
 use crate::schema::{
     self, Kind, P_ALWAYS_ON_TOP, P_BORDER, P_DIR, P_FLOAT, P_INDEX, P_KEY, P_KEY_FOCUS, P_OVERFLOW,
     P_PAD, P_ROW_COUNT, P_SECURE_INPUT, P_SIZE, P_TITLE, P_TOOLTIP, P_WINDOWS, Parsed, PropsOut,
-    align_idx, color_num, min_num, sizing_num,
+    SIZE_MODE_CALC, SIZE_MODE_TREE, align_idx, color_num, min_num, sizing_num,
 };
 use crate::{Result, err, value_of};
 
@@ -96,7 +96,12 @@ use crate::{Result, err, value_of};
 /// background every span had. A slot in the middle of an op again.
 /// v18: `family` is a strref, a stock name or an installed family's
 /// (ADR 0037), where it was the index into `schema::FAMILIES`.
-pub const VERSION: u32 = 18;
+/// v19: size expressions (backlog F109). A sizing, a min or a max whose
+/// mode is `SIZE_MODE_CALC` (4) is followed by a strref, the spelling,
+/// and one whose mode is `SIZE_MODE_TREE` (5) by a count and the
+/// expression in prefix code (`calc::from_code`); `maxWidth` and
+/// `maxHeight` are two slots, (mode, value), where they were one.
+pub const VERSION: u32 = 19;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a
 /// token index rather than a value (`docs/adr/0027-tokens-beside-the-theme.md`,
@@ -338,6 +343,18 @@ impl<'a> Reader<'a> {
     fn req_str(&mut self) -> Result<&'a str> {
         self.str_ref()?
             .ok_or_else(|| err("missing required string"))
+    }
+
+    /// A counted run of slots: the count, then that many (a size
+    /// expression's prefix code, v19).
+    fn code(&mut self) -> Result<&'a [f64]> {
+        let n = self.u()? as usize;
+        let run = self
+            .s
+            .get(self.i..self.i + n)
+            .ok_or_else(|| err("binary frame truncated"))?;
+        self.i += n;
+        Ok(run)
     }
 }
 
@@ -654,7 +671,7 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut, refs: &mut Refs<'_>) -
             _ if is_ref
                 && !matches!(
                     schema::by_id(id).map(|d| &d.kind),
-                    Some(Kind::F32 | Kind::Color | Kind::Sizing | Kind::Min)
+                    Some(Kind::F32 | Kind::Color | Kind::Sizing | Kind::Min | Kind::Max)
                 ) =>
             {
                 return Err(err(format!(
@@ -684,8 +701,8 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut, refs: &mut Refs<'_>) -
                     },
                     // A min reference is one slot too: a fixed clamp of
                     // that many px (v11, AR14).
-                    Kind::Min if is_ref => match refs.length(r.f()?) {
-                        Some(px) => Parsed::Min(kui_core::Min::px(px)),
+                    Kind::Min | Kind::Max if is_ref => match refs.length(r.f()?) {
+                        Some(px) => Parsed::Bound(kui_core::Bound::Px(px)),
                         None => continue,
                     },
                     Kind::F32 => Parsed::F32(r.f()? as f32),
@@ -698,14 +715,21 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut, refs: &mut Refs<'_>) -
                         }
                         Parsed::Enum(i)
                     }
-                    Kind::Sizing => {
-                        let (m, v) = (r.u()?, r.f()?);
-                        Parsed::Sizing(sizing_num(m, v))
-                    }
-                    Kind::Min => {
-                        let (m, v) = (r.u()?, r.f()?);
-                        Parsed::Min(min_num(m, v))
-                    }
+                    // A size expression (v19): its spelling as a strref, or
+                    // as data in prefix code after a count (backlog F109).
+                    Kind::Sizing => Parsed::Sizing(match r.u()? {
+                        SIZE_MODE_CALC => schema::sizing_str(r.req_str()?).map_err(err)?,
+                        SIZE_MODE_TREE => kui_core::calc::sizing_code(r.code()?).map_err(err)?,
+                        m => sizing_num(m, r.f()?),
+                    }),
+                    Kind::Min | Kind::Max => Parsed::Bound(match r.u()? {
+                        SIZE_MODE_CALC if matches!(def.kind, Kind::Min) => {
+                            schema::min_str(r.req_str()?).map_err(err)?
+                        }
+                        SIZE_MODE_CALC => schema::max_str(r.req_str()?).map_err(err)?,
+                        SIZE_MODE_TREE => kui_core::calc::bound_code(r.code()?).map_err(err)?,
+                        m => min_num(m, r.f()?),
+                    }),
                     Kind::Msg | Kind::Tag => Parsed::Msg(payload(r.req_str()?)?),
                     Kind::Str => Parsed::Str(r.req_str()?.to_string()),
                     // A strref since v18: a stock family or an installed
@@ -1353,7 +1377,11 @@ mod tests {
                 }
                 Kind::Min => {
                     stream.extend([1.0, 0.0]);
-                    Parsed::Min(kui_core::Min::FIT)
+                    Parsed::Bound(kui_core::Bound::Fit)
+                }
+                Kind::Max => {
+                    stream.extend([0.0, 37.0]);
+                    Parsed::Bound(kui_core::Bound::Px(37.0))
                 }
                 Kind::Msg | Kind::Tag => {
                     stream.extend([0.0, 1.0]);

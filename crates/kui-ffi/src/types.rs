@@ -244,7 +244,9 @@ pub struct KuiStr {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct KuiSizing {
-    /// 0 = fit, 1 = grow(value), 2 = fixed(value px), 3 = percent(value 0..1)
+    /// 0 = fit, 1 = grow(value), 2 = fixed(value px), 3 = percent(value
+    /// 0..1), 4 = calc (value the expression's number, from `kui_size_*`;
+    /// backlog F109)
     pub tag: u32,
     pub value: f32,
 }
@@ -683,6 +685,14 @@ pub struct KuiSpec {
     /// "ctrl", "alt", "super", "capslock", "numlock", "scrolllock", the
     /// side in `location`. Zero: a modifier is only ever held. ABI 21.
     pub modifier_keys: u32,
+    /// The clamps as size expressions (backlog F109): a `KUI_FIXED`,
+    /// `KUI_PERCENT` or `KUI_CALC` sizing (`kui_size_*`) here replaces the
+    /// float of the same name, resolved by layout against the parent's
+    /// content box; zeroed (`KUI_FIT`), the float holds. ABI 22.
+    pub min_w_size: KuiSizing,
+    pub max_w_size: KuiSizing,
+    pub min_h_size: KuiSizing,
+    pub max_h_size: KuiSizing,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a

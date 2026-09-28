@@ -1076,6 +1076,42 @@ static void conf_break_spaces(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* conformance::build_size_expressions (backlog F109): four bars in a 400 px
+ * column sized by expressions, built from parts with kui_size_* - nothing
+ * parsed but the clamp, which goes through kui_size_parse. */
+static void conf_size_expressions(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiSpec column = {.width = {KUI_FIXED, 400}, .gap = 4};
+    kui_open(ui, &column, NULL);
+    KuiSpec bar = {.height = {KUI_FIXED, 10}, .bg = 0x3b5bd4ff};
+
+    KuiSpec clamp = bar;
+    kui_size_parse(KUI_STR("clamp(100px, 50%, 150px)"), &clamp.width);
+    kui_open(ui, &clamp, NULL);
+    kui_close(ui);
+
+    KuiSpec smaller = bar;
+    KuiSizing min_of[] = {kui_size_pct(80), kui_size_px(300)};
+    smaller.width = kui_size_min(min_of, 2);
+    kui_open(ui, &smaller, NULL);
+    kui_close(ui);
+
+    KuiSpec held = bar;
+    held.width = kui_size_px(900);
+    held.max_w_size = kui_size_pct(25);
+    kui_open(ui, &held, NULL);
+    kui_close(ui);
+
+    KuiSpec floored = bar;
+    KuiSizing max_of[] = {kui_size_pct(40), kui_size_px(50)};
+    floored.min_w_size = kui_size_max(max_of, 2);
+    kui_open(ui, &floored, NULL);
+    kui_close(ui);
+
+    kui_close(ui);
+}
+
 static void conf_lines(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
     (void)phase;
@@ -1966,6 +2002,7 @@ static const ConfScene CONF_SCENES[] = {
     {"underlines", conf_underlines},
     {"joined-backgrounds", conf_joined_backgrounds},
     {"break-spaces", conf_break_spaces},
+    {"size-expressions", conf_size_expressions},
     {"media", conf_media},
     {"lines", conf_lines},
     {"polygon", conf_polygon},

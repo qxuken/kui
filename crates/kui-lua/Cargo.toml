@@ -18,6 +18,7 @@ mlua.workspace = true
 kui-ffi.workspace = true
 
 [dev-dependencies]
+divan.workspace = true
 kui-native.workspace = true
 # The examples' devtools (docs/adr/0021), for the Rust host of the panel.
 kui-devtools.workspace = true
@@ -41,3 +42,7 @@ path = "../../examples/lua/tools/bench.rs"
 [[example]]
 name = "lua_panel"
 path = "../../examples/lua/features/slots/panel.rs"
+
+[[bench]]
+name = "sizes"
+harness = false

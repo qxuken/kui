@@ -119,6 +119,10 @@ pub struct Tree {
     // predicted branch (C15).
     /// Whether any node declares `float`.
     pub any_float: bool,
+    /// Whether any node declares a size expression as a clamp (a
+    /// negative `max_w`, a `Min::calc`; backlog F109): layout resolves
+    /// them only then.
+    pub any_calc_bound: bool,
     /// Whether any float is anchored to a node by key
     /// (`FloatAnchor::Node`): the sixth layout pass runs only then.
     pub any_node_float: bool,
@@ -266,6 +270,7 @@ impl Tree {
         self.line.clear();
         self.baseline.clear();
         self.any_float = false;
+        self.any_calc_bound = false;
         self.any_baseline = false;
         self.any_node_float = false;
         self.any_wrap = false;
@@ -316,6 +321,11 @@ impl Tree {
             self.any_node_float |= matches!(f.anchor, crate::spec::FloatAnchor::Node(_));
         }
         self.any_wrap |= spec.layout.wrap;
+        let l = &spec.layout;
+        self.any_calc_bound |= l.max_w < 0.0
+            || l.max_h < 0.0
+            || l.min_w.as_calc().is_some()
+            || l.min_h.as_calc().is_some();
         self.any_table |= spec.layout.is_table();
         self.any_baseline |= spec.layout.cross_align == crate::spec::Align::Baseline;
         self.any_text |= matches!(

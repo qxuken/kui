@@ -10,6 +10,7 @@ pub mod access;
 pub mod anim;
 pub mod atlas;
 pub mod audio;
+pub mod calc;
 pub mod cells;
 pub mod color;
 pub(crate) mod composite;
@@ -70,6 +71,7 @@ pub use access::{
 };
 pub use anim::{Easing, Repeat, Transition};
 pub use audio::{AudioCommand, AudioSpec, AudioStore, PlayOptions, PlaybackId, Why};
+pub use calc::{Calc, Expr as SizeExpr};
 pub use cells::{Cell, CellGrid, CellStore, CellsId, CursorShape as CellCursor};
 pub use color::Color;
 pub use cursor::CursorShape;
@@ -120,10 +122,10 @@ pub use slot::{
     ANY_SLOT, Extensions, Fill, NAMESPACE_SEPARATOR, ROOT_SLOT, Slot, full_name, split_name,
 };
 pub use spec::{
-    Align, Dir, FLOAT_PRESETS, FloatAnchor, FloatConfig, FontFamily, FontFeatures, Min, NodeSpec,
-    OVERFLOW_CLIP, OVERFLOW_SCROLL_X, OVERFLOW_SCROLL_Y, Overscroll, PadShorthand, ScrollAxes,
-    Scrollbar, ScrollbarMode, Shadow, Sizing, TextStyle, TextWrap, UnderlineStyle, Vec2Offset,
-    corner,
+    Align, Bound, Dir, FLOAT_PRESETS, FloatAnchor, FloatConfig, FontFamily, FontFeatures, Min,
+    NodeSpec, OVERFLOW_CLIP, OVERFLOW_SCROLL_X, OVERFLOW_SCROLL_Y, Overscroll, PadShorthand,
+    ScrollAxes, Scrollbar, ScrollbarMode, Shadow, Sizing, TextStyle, TextWrap, UnderlineStyle,
+    Vec2Offset, corner,
 };
 pub use stats::{FrameSample, FrameStats};
 pub use text::{DEFAULT_TEXT_CACHE_BYTES, LONG_LINE_BYTES, Span, TextHit, TextMetrics};

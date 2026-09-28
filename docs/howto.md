@@ -94,6 +94,24 @@ declared the ratio has nothing to set and warns (`aspect-ignored`).
 [`examples/rust/features/align.rs`](../examples/rust/features/align.rs)
 shows all three.
 
+### How do I make a box 80% of its parent, but never under 400 or over 1000?
+
+Write it as CSS does: `width="clamp(400px, 80%, 1000px)"`. `min(…)`,
+`max(…)` and `clamp(MIN, TARGET, MAX)` take lengths and percentages and
+nest, and layout resolves them against the parent's content box — the box
+a `"50%"` takes its cut of, padding off — so a column inside a row gets
+the row's room, not the window's, and nothing is measured in the view.
+They work on `minWidth` / `maxWidth` / `minHeight` / `maxHeight` too:
+`maxWidth="90%"` is never wider than nine tenths of the parent. As in CSS
+the minimum wins when it is over the maximum, and a percentage clamp is
+no clamp until the parent is sized (a fit parent is not held back by it).
+The same expression as data is never parsed —
+`width={{ clamp: [400, { percent: 80 }, 1000] }}` in JSX, `width = {
+clamp = { 400, { pct = 80 }, 1000 } }` in Lua, `kui_size_clamp(kui_size_px(400),
+kui_size_pct(80), kui_size_px(1000))` in C — though a spelling is cheap
+too: it is parsed the first frame it is seen and found by its text after
+that. A `calc` does not ease under `transition`.
+
 ### How do I line up the columns of a key/value list, or any table?
 
 `<box dir="table">`, `grid { }` (Lua's `table` is its own), a `KuiSpec`

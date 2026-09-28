@@ -1,5 +1,5 @@
 use super::*;
-use kui_core::Min;
+use kui_core::Bound;
 use kui_core::schema::{Kind, PROPS, Parsed, PropsOut, Target, apply};
 
 fn zeroed_spec() -> KuiSpec {
@@ -158,7 +158,8 @@ fn every_schema_prop_has_a_c_counterpart() {
             Kind::Sizing => Parsed::Sizing(Sizing::Percent(0.5)),
             // The form a number cannot stand in for: the C side is the
             // KUI_MIN_FIT sentinel.
-            Kind::Min => Parsed::Min(Min::FIT),
+            Kind::Min => Parsed::Bound(Bound::Fit),
+            Kind::Max => Parsed::Bound(Bound::Px(F)),
             Kind::Msg | Kind::Tag => Parsed::Msg(Value::Int(7)),
             // `buttons` is a list of three names, and a string of none of
             // them claims nothing, which the C bits cannot say (zero is
@@ -473,6 +474,10 @@ fn fully_populated_spec_matches_the_rust_builder() {
         overscroll: KUI_OVERSCROLL_CONTAIN,
         scroll_axes: KUI_SCROLL_AXES_Y,
         modifier_keys: 1,
+        min_w_size: KuiSizing { tag: 0, value: 0.0 },
+        max_w_size: KuiSizing { tag: 0, value: 0.0 },
+        min_h_size: KuiSizing { tag: 0, value: 0.0 },
+        max_h_size: KuiSizing { tag: 0, value: 0.0 },
         disabled: 1,
         focus_bg: 0x11_22_33_ff,
         tooltip: KuiStr {
@@ -857,6 +862,9 @@ fn the_verb_table_names_every_c_verb_and_nothing_else() {
             "kui_run_with",
         ];
         name.starts_with("kui_value_")
+            // A size expression's builders make values, as `kui_value_*`
+            // do; the rows they fill are `width` and the clamps.
+            || name.starts_with("kui_size_")
             || name.starts_with("kui_env_set")
             || name.starts_with("kui_input_")
             || name == "kui_access_runs"

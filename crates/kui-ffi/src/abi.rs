@@ -274,7 +274,14 @@
 /// bits that were zero: the lock state (`KUI_KLOCK_*`) and which of a
 /// key's twins it was (`KUI_KLOC_*`); a host passing only `KUI_KMOD_*`
 /// sends what it sent.
-pub const KUI_ABI_VERSION: u32 = 21;
+///
+/// ABI 22 appends `min_w_size`, `max_w_size`, `min_h_size` and
+/// `max_h_size` to `KuiSpec` (backlog F109): a clamp as a size
+/// expression, from the new `kui_size_*` builders or `kui_size_parse`,
+/// resolved by layout against the parent's content box; zeroed, the float
+/// clamps hold as before. `KuiSizing` takes a fifth tag, `KUI_CALC`, whose
+/// value is an expression's number. The 64-bit size is 680. Recompile.
+pub const KUI_ABI_VERSION: u32 = 22;
 
 /// The ABI version this library implements, for a host to compare against
 /// the `KUI_ABI_VERSION` of the header it compiled against, before its

@@ -3174,6 +3174,41 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "size-expressions",
+        doc: "Size expressions (backlog F109), resolved against the \
+              parent's content box: in a column 400 px wide, four bars 10 \
+              px tall — `clamp(100px, 50%, 150px)` (150), `min(80%, 300px)` \
+              (300), a 900 px bar under a `25%` `maxWidth` (100), and a fit \
+              bar under a `max(40%, 50px)` `minWidth` (160). Each binding \
+              writes some as spellings and some as data; the quads' \
+              digest holds the four widths. A binding that drops an \
+              expression draws a bar of another width, or none.",
+        custom: &[],
+        elements: &["box"],
+        build: build_size_expressions,
+        env: NATIVE_CHROME,
+        steps: &[],
+        expect: Expect {
+            solid: 4,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            segments_follow_text: false,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 0,
+            access: &["0 window ||"],
+            events: &[],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+            secure_input: false,
+        },
+    },
+    Scene {
         name: "sampler",
         doc: "The generic rows no other scene declares, on four nodes \
               (backlog AR47): a card carrying the size ceilings, `center`, \
@@ -4505,6 +4540,28 @@ fn build_joined_backgrounds(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             &[Span::new("find").bg(Color::hex(0xd9738c66)).bg_radius(4.0)],
             mono,
         );
+    });
+}
+
+fn build_size_expressions(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    use crate::schema::{max_str, min_str, sizing_str};
+    let bar = |spec: NodeSpec| spec.height(10.0).bg(Color::hex(0x3b5bd4ff));
+    ui.with(NodeSpec::column().width(400.0).gap(4.0), |ui| {
+        let clamp = sizing_str("clamp(100px, 50%, 150px)").unwrap();
+        ui.with(bar(NodeSpec::column().width(clamp)), |_| {});
+        let min = crate::calc::sizing_of(crate::calc::Expr::Min(vec![
+            crate::calc::Expr::Pct(0.8),
+            crate::calc::Expr::Px(300.0),
+        ]))
+        .unwrap();
+        ui.with(bar(NodeSpec::column().width(min)), |_| {});
+        let quarter = max_str("25%").unwrap();
+        ui.with(
+            bar(NodeSpec::column().width(900.0).max_width(quarter)),
+            |_| {},
+        );
+        let floor = min_str("max(40%, 50px)").unwrap();
+        ui.with(bar(NodeSpec::column().min_width(floor)), |_| {});
     });
 }
 

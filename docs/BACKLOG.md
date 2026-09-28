@@ -80,7 +80,9 @@ RG70–RG75 from the same pass, built the same day after the alpha.22
 tag, and with the alpha.24 tag F108 — a key's place, the modifier keys
 as keys, the lock state and the rest of the keyboard — from the kawoosh
 kitty-keyboard review of the same day, filed and built after the
-alpha.23 tag. The index
+alpha.23 tag, and F109 — size expressions, `clamp()` and its kin
+resolved against the parent's box — from the kawoosh launcher-sizes
+review of 2026-09-29, the day it was filed. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -1489,6 +1491,16 @@ under the still pointer, and the terminal, an `onScroll` node taking
 every delta, took the rest of the swipe. One entry, F107, **built
 2026-09-28**, the day it was filed, and in the archive, with ADR 0038.
 
+## From the kawoosh launcher-sizes review (2026-09-29)
+
+kawoosh's launcher takes its width from a setting, and the user asked
+for `clamp(400px, 80%, 1000px)`. kawoosh's first cut resolved the
+expression in Lua against the width it was handed and passed px to
+kui — against the wrong room for a column in a row, and arithmetic
+every plugin would repeat. The user asked for the size to be resolved
+by whoever owns the room. One entry, F109, **built 2026-09-29**, the
+day it was filed, and in the archive.
+
 ## From the kawoosh kitty-keyboard review (2026-09-28)
 
 kawoosh's terminal is to speak kitty's keyboard protocol, which reports
@@ -2622,6 +2634,8 @@ Nothing of the kawoosh scroll-gestures report is open (F107 **built
 2026-09-28**, the day it was filed).
 Nothing of the kawoosh kitty-keyboard review is open (F108 **built
 2026-09-28**, the day it was filed).
+Nothing of the kawoosh launcher-sizes review is open (F109 **built
+2026-09-29**, the day it was filed).
 Nothing of the Windows regression round of 2026-09-26 is open
 (RG38–RG46 **built 2026-09-26**, the day they were filed).
 Nothing of the Linux round under WSLg is open (RG47–RG49 **built
@@ -3519,6 +3533,10 @@ move.
 **From the kawoosh scroll-gestures report (2026-09-28)** — F107, filed and built the same day
 
 - `~` **F107** — [A swipe across the strip stops hard at a terminal, and a scroller at its limit keeps a gesture the one around it could use](backlog/closed-2026-09.md#-f107--a-swipe-across-the-strip-stops-hard-at-a-terminal-and-a-scroller-at-its-limit-keeps-a-gesture-the-one-around-it-could-use--done-2026-09-28) — done (2026-09-28) — a scroll gesture (the runner's: a 200 ms gap, a wheel/trackpad switch, a wheel's pointer move; `InputEvent::ScrollGesture`) latches each axis's target at its start, the innermost scroller under the pointer that can move that way; `overscroll` `contain` stops the chaining, `scrollAxes` narrows an `onScroll` node; ADR 0038
+
+**From the kawoosh launcher-sizes review (2026-09-29)** — F109, filed and built the same day
+
+- `~` **F109** — [A size bounded by its parent is a view's arithmetic, a frame late and off by the padding](backlog/closed-2026-09.md#-f109--a-size-bounded-by-its-parent-is-a-views-arithmetic-a-frame-late-and-off-by-the-padding--done-2026-09-29) — done (2026-09-29) — `width`, `height` and the four clamps take `min()`, `max()`, `clamp()` over lengths and percentages, nested (`Sizing::Calc`, `Bound`, `calc`), resolved by layout against the parent's content box; as data in every binding (`{ clamp: [...] }`, `kui_size_*`), never parsed; a spelling parsed once; ABI 22, wire v19
 
 **From the kawoosh kitty-keyboard review (2026-09-28)** — F108, filed and built the same day
 
