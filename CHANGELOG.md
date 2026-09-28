@@ -21,6 +21,105 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.23 (unreleased)
+
+**What breaks.** No door changes; the ABI stays at 20 and the frame at
+v18. Rust gains fields on one event view; Node's `ctx.mouse` takes a
+number too.
+
+- Rust: `ButtonEvent` gains `line` and `byte` (under Fixed, RG75), so a
+  struct literal of it needs the fields.
+
+Eight readings change:
+
+- A paragraph past 4 KB whose first frame laid out on estimated rows
+  asks for the frame that lays it out on its shaped ones (under Fixed,
+  RG70): an idle view draws one or two more frames after first showing
+  one, where its last rows stayed clipped until the next input.
+- Copying a rich line past 4 KB, or a rich `break-spaces` text, puts
+  its spans' formatting on the clipboard's HTML (under Fixed, RG71),
+  where it put plain escaped text.
+- Two identical texts drawn at two widths in one frame answer
+  `textHit` and `caretRect` each at its own width (under Fixed, RG72),
+  where both answered at the width laid out last.
+- A `break-spaces` line under 4 KB is shaped whole, and a line past it
+  is cut at a tab where one falls near a cut (under Fixed, RG75): a tab
+  in it stops where the line's stops are, where one after the first
+  kilobyte stopped up to a tab width off.
+- A pixel scroll gesture no touch began — a mouse whose driver scrolls
+  smoothly on macOS, a high-resolution wheel between notches on Wayland
+  — ends when the pointer moves, as a wheel's does (under Fixed, RG73):
+  spun over one pane and then over another within 200 ms, it scrolls the
+  second, where it went on scrolling the first. A trackpad's swipe and
+  its glide keep their target as before.
+- The window losing the keyboard mid-drag ends the drag (under Fixed,
+  RG75): an `onDrag` node hears `end` and a slider its slide's `end`
+  where the pointer was, and a press held across the blur clicks
+  nothing, where the drag went on after the window came back.
+- `revealRow` for an index past the list's end, or with a stride that
+  is not positive, scrolls nothing and answers false (under Fixed,
+  RG75), where it scrolled to the end and answered true; `rowsInView`
+  of such a stride is 0.
+- Once a window's frame retries are spent, a skipped frame after half a
+  second with none gets fresh ones (under Fixed, RG74), where nothing
+  but a presented frame or being uncovered asked again.
+
+### Fixed
+
+- **A long paragraph's first frame kept its estimated rows** (backlog
+  RG70). C19 lays a paragraph past 4 KB out on an estimate before its
+  chunks are shaped, and asked for no frame when emission's rows came
+  out otherwise, so an idle view kept its last rows clipped. Emission
+  now asks for one when a chunk it shaped moved the rows, and only for
+  a row count it has not asked for already, so a chunk cache over its
+  budget cannot ask forever.
+
+- **Copying a long rich line lost its formatting** (backlog RG71).
+  `selection_html` took a long line for one style; each chunk the
+  selection touches now goes through the run's HTML as a short text's
+  does (a chunk never shown, or evicted, is still plain).
+
+- **One text at two widths answered at one** (backlog RG72). Identical
+  texts share a shaped run, re-wrapped for each node as it draws, so
+  the hit test and the caret answered at the width last laid out. A
+  second node asking another width in the frame takes its own copy
+  (`own_wrap`), which its drawing and its queries read.
+
+- **Spent frame retries never came back** (backlog RG74). F102 asks for
+  a skipped frame again, sixty times, and a window away long enough to
+  spend them — on a platform that says nothing about being covered,
+  Windows and likely Wayland — came back behind a skipped frame and
+  showed the stale one. A skip after a rest (`REST`, 500 ms) is a new
+  frame asked for and gets tries of its own; a window skipping without
+  pause (F103's animation) stays spent.
+  *What you can delete:* a redraw an app asked for on its window's
+  `focused` event to paint over a stale frame.
+
+- **A smooth-scrolling mouse's gesture followed nothing the pointer
+  did** (backlog RG73). The runner took every pixel delta for a
+  trackpad's, whose glide a pointer move must not re-aim. winit does not
+  say which device sent them but does say the phase, and a touch
+  surface's stream opens with `Started` where a wheel's never does, so a
+  pixel gesture is a swipe once it has said so and a wheel's until then.
+
+- **Readings the regression pass filed** (backlog RG75).
+  `revealRow` / `reveal_row` / `widgets::reveal_row` past the end and
+  `rowsInView` of a zero stride (above). An app's `onClick` payload of
+  kind `"button"` inside a line-drawing sink lost its `clicks`; the
+  core's own `button` event is told by its fields. `UiEvent::button()`
+  reads `line` and `byte`. Node's `ctx.mouse` takes a button's number
+  (`3 + n`), so a test drives the buttons past the middle one.
+  `testing::Drive` gains `button_click` and `scroll_gesture`. The window
+  losing the keyboard ends a primary drag, slide, caret, selection or
+  scrollbar drag, and clicks nothing (above). The `tooltip` docs say
+  its hint floats on a box or a fragment and, on a leaf, is spoken and
+  not drawn. Tab stops on a long line (see the readings): a line under
+  4 KB is one chunk, and one past it is cut after a tab near the cut,
+  so the next chunk starts on a stop; a tab after a tab-free stretch of
+  more than half a window still measures from its chunk's start.
+  *What you can delete:* ending a splitter's drag by hand on the
+  window's `blurred` event.
+
 ## 0.1.0-alpha.22 (2026-09-28)
 
 **What breaks.** The ABI is 20 and the Node frame v18. C gains one door,

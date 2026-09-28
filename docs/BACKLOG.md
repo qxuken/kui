@@ -107,7 +107,7 @@ were built the day they were filed; the "thousands of spans" the report
 blamed measured as a factor of 1.5 and not the cause), the "theirs, not ours" lists the field reports left
 behind, and C45–C51 from the second bake-off of 2026-09-25, F103 from the kawoosh
 ⌘-Tab report (an animating hidden window spinning on skipped frames),
-DX16 from the DX sweep (declined with a condition), and RG70–RG75 from
+DX16 from the DX sweep (declined with a condition), and RG76 from
 the regression pass of 2026-09-28. Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -2487,68 +2487,18 @@ notes), each claim probed with a test before anything was changed.
 Sixteen entries. RG60–RG69 were **built 2026-09-28**, the day they
 were filed, and are in the archive; the headline was F106's
 `break-spaces` meeting the long line's limits on every short text
-(RG68). RG70–RG75 are open.
+(RG68). RG70–RG75 were built the same day after the alpha.22 tag and
+are in the archive too; RG76 holds what two of them left.
 
-### `.` RG70 — A break-spaces paragraph past 4 KB lays out its first frame on estimated rows
+### `.` RG76 — Two leftovers of RG72 and RG75
 
-A line long only by `break-spaces` shapes every chunk when it is built
-(RG68), but one past 4 KB still lays out on C19's estimate and asks for
-no frame when emission's rows differ, as a `word` long line always has;
-an idle view keeps its last rows clipped until the next input. Asking
-for a frame whenever the rows change could loop while the chunk cache
-is over budget, so it wants a bounded rule. Found by the text review.
-
-### `.` RG71 — Copying a rich break-spaces text copies plain text
-
-`selection_html` treats a long line as one style, so a rich
-`break-spaces` text in a `selectable` scope copies as escaped plain
-text. The fix is walking the chunk runs through `html_of_run`. Found
-building RG68.
-
-### `.` RG72 — Two identical word texts at different widths answer text_hit and caret_rect from the width drawn last
-
-The run path's twin of RG68's first claim: drawing is right (each node
-re-wraps at emission), but the shared run's rows are the last width's,
-so the hit test and the caret of the other node answer from them.
-Found building RG68; pre-existing.
-
-### `.` RG73 — A wheel that reports pixel deltas never ends its gesture when the pointer moves
-
-The runner takes any `PixelDelta` for a swipe, and only a line
-gesture ends on a pointer move (`scroll_gesture.rs`), but winit reports
-mouse wheels as pixels on Wayland and with some smooth-scrolling
-drivers: spinning over pane A, moving to B and spinning again within
-200 ms keeps scrolling A, against ADR 0038 decision 2. Unverified; wants
-a Wayland round.
-
-### `.` RG74 — Once F102's retries run out, a later skipped frame is never retried
-
-`retry::Retry` ignores skips while its tries are spent, and only a
-present or `Occluded(false)` resets them. On a platform that sends no
-`Occluded` (Windows; likely Wayland) a window away long enough to spend
-the tries and brought back behind a skipped frame shows the stale one,
-F102's symptom. A skip well after the last try could start a fresh run.
-Speculative; pinned as intended by `the_tries_run_out_and_stay_out`.
-
-### `.` RG75 — Small readings from the reviews
-
-- `rows_in_view` with `row_h <= 0` answers `usize::MAX` in Rust and
-  infinity in Lua and Node; it and `reveal_row` measure the list's box
-  with its padding; `reveal_row` has no row count, so an index past the
-  end scrolls to the end every call; Rust's `uniform_list_with` turns a
-  `Fit` row width into grow where Lua's and Node's keep it.
-- `NodeSpec::tooltip` floats its hint only on nodes opened through
-  `open_content` (boxes, fragments), not on `image`, `text_edit` or
-  `cells`, though its doc says the core floats it.
-- `clicks` is left off a pointer-made event whose payload kind is
-  `"button"` — an app's `onClick` of `{kind: "button"}` inside a
-  line-drawing sink too (`dispatch.rs`, `own_count`).
-- Rust's `ButtonEvent` has `cell` and not `line` / `byte`; Node's
-  `ctx.mouse` and Lua's headless input cannot drive a button past the
-  middle one.
-- The window losing the keyboard ends button captures (RG65) but not a
-  primary `on_drag` or a slider's slide under way.
-- Tab stops on a long line are measured from each chunk's start.
+- A tab after a stretch of more than half a chunk window with no tab,
+  on a line past 4 KB, still measures from its chunk's start (RG75 cuts
+  at a tab near each cut, which covers a line with a tab in every half
+  window). Exact would mean shaping every earlier chunk, which C19
+  exists to avoid, or keying a chunk's run by where it starts.
+- A `measure_text` between frames re-wraps the shared run of a text
+  drawn at another width (RG72's copy is taken only within a frame).
 
 ## After alpha.21
 
@@ -3617,7 +3567,7 @@ move.
 - `.` **RG58** — [A copy reads bold as 700 and up: a SemiBold bold copies plain, and a Bold-only family copies everything bold](backlog/closed-2026-09.md#-rg58--a-copy-reads-bold-as-700-and-up-a-semibold-bold-copies-plain-and-a-bold-only-family-copies-everything-bold--done-2026-09-26) — done (2026-09-26) — a copy's run is bold when heavier than the line's default (the family's regular) or `SYNTHETIC_BOLD`
 - `.` **RG59** — [Four readings of F100 the regression pass left: an OS/2 weight over a named instance, the mapped weight handed to fallback faces, shaped text kept across a reweigh, and the nearest face's lean](backlog/closed-2026-09.md#-rg59--four-readings-of-f100-the-regression-pass-left-an-os2-weight-over-a-named-instance-the-mapped-weight-handed-to-fallback-faces-shaped-text-kept-across-a-reweigh-and-the-nearest-faces-lean--done-2026-09-26) — done (2026-09-26) — named instances before the `OS/2` point; a reweigh of a family registered before drops each window's shaped text and cell tables and re-attributes its editors; CSS Fonts 4's matching order; Skia's fallback weight written down as a limit
 
-**From the regression pass of 2026-09-28** — RG60–RG69, filed and built the same day; RG70–RG75 open
+**From the regression pass of 2026-09-28** — RG60–RG75, filed and built the same day (RG70–RG75 after the alpha.22 tag); RG76 open
 
 - `!` **RG60** — [A gesture at a scroller's limit chained to whatever was painted under the pointer, not to the scroller around it](backlog/closed-2026-09.md#-rg60--a-gesture-at-a-scrollers-limit-chained-to-whatever-was-painted-under-the-pointer-not-to-the-scroller-around-it--done-2026-09-28) — done (2026-09-28)
 
@@ -3638,3 +3588,15 @@ move.
 - `!` **RG68** — [break-spaces met the long line's limits on every short text](backlog/closed-2026-09.md#-rg68--break-spaces-met-the-long-lines-limits-on-every-short-text--done-2026-09-28) — done (2026-09-28)
 
 - `.` **RG69** — [Doors, docs and types the new features left behind](backlog/closed-2026-09.md#-rg69--doors-docs-and-types-the-new-features-left-behind--done-2026-09-28) — done (2026-09-28)
+
+- `.` **RG70** — [A break-spaces paragraph past 4 KB lays out its first frame on estimated rows](backlog/closed-2026-09.md#-rg70--a-break-spaces-paragraph-past-4-kb-lays-out-its-first-frame-on-estimated-rows--done-2026-09-28) — done (2026-09-28)
+
+- `.` **RG71** — [Copying a rich break-spaces text copies plain text](backlog/closed-2026-09.md#-rg71--copying-a-rich-break-spaces-text-copies-plain-text--done-2026-09-28) — done (2026-09-28)
+
+- `.` **RG72** — [Two identical word texts at different widths answer text_hit and caret_rect from the width drawn last](backlog/closed-2026-09.md#-rg72--two-identical-word-texts-at-different-widths-answer-texthit-and-caretrect-from-the-width-drawn-last--done-2026-09-28) — done (2026-09-28)
+
+- `.` **RG73** — [A wheel that reports pixel deltas never ends its gesture when the pointer moves](backlog/closed-2026-09.md#-rg73--a-wheel-that-reports-pixel-deltas-never-ends-its-gesture-when-the-pointer-moves--done-2026-09-28) — done (2026-09-28)
+
+- `.` **RG74** — [Once F102's retries run out, a later skipped frame is never retried](backlog/closed-2026-09.md#-rg74--once-f102s-retries-run-out-a-later-skipped-frame-is-never-retried--done-2026-09-28) — done (2026-09-28)
+
+- `.` **RG75** — [Small readings from the reviews](backlog/closed-2026-09.md#-rg75--small-readings-from-the-reviews--done-2026-09-28) — done (2026-09-28)
