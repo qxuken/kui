@@ -414,6 +414,7 @@ impl DynShell<'_> {
             applied_title: String::new(),
             modifiers: ModifiersState::empty(),
             locks: Default::default(),
+            modifier_keys_down: Vec::new(),
             last_titlebar_press: None,
             cursor: Vec2::ZERO,
             last_click: None,

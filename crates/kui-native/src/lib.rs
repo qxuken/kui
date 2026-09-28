@@ -2338,6 +2338,11 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
             // answer.
             WindowEvent::Focused(focused) => {
                 self.panes[i].os_focused = focused;
+                // A modifier let go elsewhere never comes up here: what
+                // was down is forgotten with the keyboard (backlog F108).
+                if !focused {
+                    self.panes[i].modifier_keys_down.clear();
+                }
                 // Coming back to the app is the cheap, reliable sign that
                 // the user may have been in a settings app: the accent and
                 // the reduce-motion setting have no event to subscribe to

@@ -391,13 +391,19 @@ runner dropped every key it had no name for.
     keymap reading `<leader>F` would see Space, Shift, F — the Shift a
     key between two others, the sequence broken — so the default is the
     old reading: a modifier is held, in the next key's `shift` / `ctrl` /
-    `alt` / `super` and the `modifiers` event, and never pressed.
+    `alt` / `super` and the `modifiers` event, and never pressed. A
+    modifier key's own event carries the state *after* it — Shift's
+    press has `shift`, its release none unless the other Shift is still
+    down — as a terminal speaking kitty's protocol reports it; winit
+    tells the modifiers after the key, so the runner sets that bit
+    itself.
 16. **The lock state is the press's, not a modifier.** `caps_lock` and
     `num_lock` (`KeyLocks`) ride on every key payload beside `location`.
     `KeyMods` stays what is held down: an accelerator and the devtools
     chord compare it exactly, and a Caps Lock left on must not make
     ⇧⌘I miss. The runner asks the OS where it answers cheaply — macOS's
-    `NSEvent.modifierFlags` (a Mac has no Num Lock, so it reads on) and
+    `NSEvent.modifierFlags` (a Mac has no Num Lock, so it reads off, as a
+    Mac terminal reports it) and
     Windows' `GetKeyState` — and elsewhere tracks the lock keys' own
     presses, which knows nothing of a lock set before the window opened.
 

@@ -256,6 +256,10 @@ pub(crate) struct Pane {
     /// them — what a press reports where the OS is not asked
     /// (`keys::lock_state`, backlog F108).
     pub(crate) locks: kui_core::KeyLocks,
+    /// The modifier keys down in this window, by side — what a modifier
+    /// key's release reads its own bit from while its twin is still held
+    /// (`Pane::modifier_key`, backlog F108).
+    pub(crate) modifier_keys_down: Vec<(kui_core::KeyCode, kui_core::KeyLocation)>,
     /// Time of the last titlebar press, for double-click maximize.
     pub(crate) last_titlebar_press: Option<std::time::Instant>,
     /// Last cursor position (logical px), for multi-click distance checks.
@@ -451,6 +455,18 @@ impl Pane {
         } else {
             self.modifiers.control_key()
         }
+    }
+
+    /// `mods` for a key event, with a modifier key's own bit set to
+    /// the state after it (`keys::modifier_after`).
+    pub(crate) fn modifier_key(
+        &mut self,
+        code: kui_core::KeyCode,
+        location: kui_core::KeyLocation,
+        pressed: bool,
+        mods: KeyMods,
+    ) -> KeyMods {
+        crate::keys::modifier_after(&mut self.modifier_keys_down, code, location, pressed, mods)
     }
 
     pub(crate) fn kmods(&self) -> KeyMods {

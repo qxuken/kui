@@ -227,6 +227,36 @@ fn named_code(n: &NamedKey) -> KeyCode {
     }
 }
 
+/// `mods` with a modifier key's own bit set to the state after its
+/// event (backlog F108): on while it or its twin is `down`, which this
+/// keeps. Any other key passes `mods` through.
+pub(crate) fn modifier_after(
+    down: &mut Vec<(KeyCode, KeyLocation)>,
+    code: KeyCode,
+    location: KeyLocation,
+    pressed: bool,
+    mut mods: KeyMods,
+) -> KeyMods {
+    if !matches!(
+        code,
+        KeyCode::Shift | KeyCode::Ctrl | KeyCode::Alt | KeyCode::Super
+    ) {
+        return mods;
+    }
+    down.retain(|k| *k != (code, location));
+    if pressed {
+        down.push((code, location));
+    }
+    let on = down.iter().any(|(c, _)| *c == code);
+    match code {
+        KeyCode::Shift => mods.shift = on,
+        KeyCode::Ctrl => mods.ctrl = on,
+        KeyCode::Alt => mods.alt = on,
+        _ => mods.super_key = on,
+    }
+    mods
+}
+
 /// Which of a key's twins winit says this is.
 fn location_of(l: winit::keyboard::KeyLocation) -> KeyLocation {
     use winit::keyboard::KeyLocation as L;
@@ -240,8 +270,8 @@ fn location_of(l: winit::keyboard::KeyLocation) -> KeyLocation {
 
 /// Caps Lock and Num Lock at a press (backlog F108). winit reports
 /// neither, so the OS is asked where it answers cheaply — macOS's
-/// `NSEvent.modifierFlags` (a Mac has no Num Lock: its keypad types
-/// digits, so Num Lock reads on), Windows' `GetKeyState` — and anywhere
+/// `NSEvent.modifierFlags` (a Mac has no Num Lock, so it reads off, as a
+/// Mac terminal reports it), Windows' `GetKeyState` — and anywhere
 /// else the state is `tracked` from the lock keys' own presses, which
 /// knows nothing of a lock set before the window opened.
 pub(crate) fn lock_state(tracked: KeyLocks) -> KeyLocks {
@@ -252,7 +282,7 @@ pub(crate) fn lock_state(tracked: KeyLocks) -> KeyLocks {
         let _ = tracked;
         KeyLocks {
             caps: flags.contains(NSEventModifierFlags::CapsLock),
-            num: true,
+            num: false,
         }
     }
     #[cfg(target_os = "windows")]
@@ -283,6 +313,7 @@ impl DynShell<'_> {
         event: winit::event::KeyEvent,
     ) {
         let pressed = event.state == ElementState::Pressed;
+
         // Full-keyboard path: every press *and release* travels as data to
         // the key-focused sink (`NodeSpec::on_key`) — the core delivers the
         // release only to a sink that said `key_up`, and drops both when
@@ -349,6 +380,13 @@ impl DynShell<'_> {
         // layout). Every driver goes through it, so a C or Node host with
         // its own windowing gets the same rule as this one. `ktext` is the
         // layout's own character, never the stand-in.
+        // A modifier key's own press and release carry the state after
+        // it (backlog F108): its bit on as it goes down, off as it comes
+        // up unless its twin is still held — what a terminal speaking
+        // kitty's protocol reports. winit's `ModifiersChanged` arrives
+        // after the key, so the mirrored state is the one before it.
+        let location = location_of(event.location);
+        let kmods = self.panes[i].modifier_key(logical_code, location, pressed, kmods);
         let kp = KeyPress::from_layout(logical_code, physical, kmods);
         // The lock keys' own presses turn what is tracked where the OS
         // is not asked (`lock_state`); the press reports the state it
@@ -365,7 +403,7 @@ impl DynShell<'_> {
         let kp = KeyPress {
             text: ktext,
             repeat: event.repeat,
-            location: location_of(event.location),
+            location,
             locks: found,
             ..kp
         };
@@ -642,5 +680,34 @@ mod tests {
         assert_eq!(location_of(L::Left), KeyLocation::Left);
         assert_eq!(location_of(L::Right), KeyLocation::Right);
         assert_eq!(location_of(L::Standard), KeyLocation::Standard);
+    }
+
+    /// A modifier key's own event carries the state after it — Shift's
+    /// press its Shift, its release none, unless the other Shift is still
+    /// down — whatever order winit reported the modifiers in.
+    #[test]
+    fn a_modifier_keys_event_carries_the_state_after_it() {
+        let mut down: Vec<(KeyCode, KeyLocation)> = Vec::new();
+        let mut step = |code, at, pressed: bool, mods: KeyMods| {
+            modifier_after(&mut down, code, at, pressed, mods)
+        };
+        let none = KeyMods::NONE;
+        assert!(step(KeyCode::Shift, KeyLocation::Left, true, none).shift);
+        assert!(step(KeyCode::Shift, KeyLocation::Right, true, none.with_shift()).shift);
+        assert!(
+            step(KeyCode::Shift, KeyLocation::Left, false, none.with_shift()).shift,
+            "the right one still down"
+        );
+        assert!(!step(KeyCode::Shift, KeyLocation::Right, false, none.with_shift()).shift);
+        // Any other key passes through.
+        assert!(
+            step(
+                KeyCode::Char('a'),
+                KeyLocation::Standard,
+                true,
+                none.with_ctrl()
+            )
+            .ctrl
+        );
     }
 }
