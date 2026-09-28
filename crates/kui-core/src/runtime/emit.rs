@@ -375,86 +375,108 @@ impl Core {
         }
     }
 
-    /// The `rules` of table `i` (backlog DX21): a line down the middle of
-    /// each gap between the columns of its widest row, from its first
-    /// row's top to its last row's bottom, and one across the middle of
-    /// each gap between its rows, the content box wide. On whole pixels,
-    /// so a 1 px rule is one crisp pixel line at any scale.
+    /// The `rules` of table `i` (backlog DX21), laid out by [`rule_lines`]
+    /// from its in-flow children as layout reads them — a row is what
+    /// `layout::is_table_row` says is one, so the grid is drawn over the
+    /// rows its columns were laid across and not through a heading or a
+    /// section beside them (the alpha.22 regression pass).
     #[cold]
     #[inline(never)]
     fn emit_rules(&mut self, i: usize, rect: Rect, color: Color, paint: &Paint) {
-        let spec = &self.tree.specs[i];
-        let w = match spec.interact().rule_w {
-            w if w > 0.0 => w,
-            _ => 1.0,
+        let tree = &self.tree;
+        let at = |j: u32| Rect::from_pos_size(tree.pos[j as usize], tree.size[j as usize]);
+        let in_flow = |j: &u32| tree.specs[*j as usize].layout.float.is_none();
+        let children: Vec<RuledChild> = tree
+            .children(i as u32)
+            .filter(in_flow)
+            .map(|c| RuledChild {
+                rect: at(c),
+                cells: crate::layout::is_table_row(tree, c)
+                    .then(|| tree.children(c).filter(in_flow).map(at).collect()),
+            })
+            .collect();
+        let spec = &tree.specs[i];
+        let lines = rule_lines(rect, spec.layout.padding, spec.interact().rule_w, &children);
+        // The clip the table's children get: its own box when it clips or
+        // scrolls, since the rows' places carry its scroll offset and the
+        // rules drawn from them go wherever the rows do.
+        let clip_id = if spec.layout.clips() {
+            let radius = if tree.any_rounded_clip {
+                spec.style.radius
+            } else {
+                crate::display::SQUARE
+            };
+            let clip = paint.clip.intersect(rect, radius);
+            self.display.intern_clip(clip.scaled(paint.scale))
+        } else {
+            paint.clip_id
         };
-        let pad = spec.layout.padding;
-        let row_of = |j: usize| Rect::from_pos_size(self.tree.pos[j], self.tree.size[j]);
-        // The table's rows: its in-flow row children.
-        let mut rows: Vec<usize> = Vec::new();
-        let mut c = self.tree.first_child[i];
-        while c != NIL {
-            let j = c as usize;
-            if self.tree.specs[j].layout.dir == crate::spec::Dir::Row
-                && self.tree.specs[j].layout.float.is_none()
+        push_rules(&mut self.display, &lines, color, paint, clip_id);
+    }
+
+    /// [`Core::emit_rules`] for a departing table's ghost, node `i` of
+    /// `g` drawn at `rect`, its children `offset` from where they were:
+    /// the same rules from the children the ghost copied, under the same
+    /// clip its children get, faded with it by `paint`.
+    #[cold]
+    #[inline(never)]
+    fn emit_ghost_rules(
+        &mut self,
+        g: &Ghost,
+        i: usize,
+        rect: Rect,
+        offset: Vec2,
+        color: Color,
+        paint: &Paint,
+    ) {
+        let at = |node: &crate::depart::GhostNode| {
+            Rect::new(
+                node.rect.x + offset.x,
+                node.rect.y + offset.y,
+                node.rect.w,
+                node.rect.h,
+            )
+        };
+        // The nodes are in preorder, so a grandchild's parent is the most
+        // recent child. A departing `cells` grid, or a fragment whose draw
+        // was gone, is a `Container` here — a `row` one straight under a
+        // table would read as a row of no cells, where layout read it as
+        // no row.
+        let mut children: Vec<RuledChild> = Vec::new();
+        let mut last = NIL;
+        for (j, node) in g.nodes.iter().enumerate().skip(i + 1) {
+            // Past the table's subtree: a node whose parent precedes it.
+            if node.parent == NIL || (node.parent as usize) < i {
+                break;
+            }
+            if node.spec.layout.float.is_some() {
+                continue;
+            }
+            if node.parent as usize == i {
+                let row = crate::layout::row_shaped(
+                    &node.spec.layout,
+                    matches!(node.content, GhostContent::Container),
+                );
+                children.push(RuledChild {
+                    rect: at(node),
+                    cells: row.then(Vec::new),
+                });
+                last = j as u32;
+            } else if node.parent == last
+                && let Some(cells) = children.last_mut().and_then(|c| c.cells.as_mut())
             {
-                rows.push(j);
+                cells.push(at(node));
             }
-            c = self.tree.next_sibling[j];
         }
-        let (Some(&first), Some(&last)) = (rows.first(), rows.last()) else {
-            return;
+        let spec = &g.nodes[i].spec;
+        let lines = rule_lines(rect, spec.layout.padding, spec.interact().rule_w, &children);
+        let clip_id = if spec.layout.clips() {
+            let clip = paint.clip.intersect(rect, spec.style.radius);
+            self.display.intern_clip(clip.scaled(paint.scale))
+        } else {
+            paint.clip_id
         };
-        let mut lines: Vec<Rect> = Vec::new();
-        for pair in rows.windows(2) {
-            let (a, b) = (row_of(pair[0]), row_of(pair[1]));
-            let y = (a.y + a.h + b.y) / 2.0;
-            let x = rect.x + pad.l;
-            lines.push(Rect::new(x, y - w / 2.0, rect.w - pad.l - pad.r, w));
-        }
-        // The columns: the in-flow cells of the row with the most of them.
-        let cells_of = |row: usize| {
-            let mut out = Vec::new();
-            let mut c = self.tree.first_child[row];
-            while c != NIL {
-                let j = c as usize;
-                if self.tree.specs[j].layout.float.is_none() {
-                    out.push(row_of(j));
-                }
-                c = self.tree.next_sibling[j];
-            }
-            out
-        };
-        let widest = rows
-            .iter()
-            .map(|&r| cells_of(r))
-            .max_by_key(|cells| cells.len())
-            .unwrap_or_default();
-        let (top, bottom) = (row_of(first).y, {
-            let r = row_of(last);
-            r.y + r.h
-        });
-        for pair in widest.windows(2) {
-            let x = (pair[0].x + pair[0].w + pair[1].x) / 2.0;
-            lines.push(Rect::new(x - w / 2.0, top, w, bottom - top));
-        }
-        let color = Color {
-            a: color.a * paint.opacity,
-            ..color
-        };
-        for line in lines {
-            self.display.quads.push(Quad {
-                rect: line.scaled(paint.scale).on_pixels(),
-                color,
-                border_color: Color::TRANSPARENT,
-                radius: [0.0; 4],
-                border_w: 0.0,
-                blur: 0.0,
-                kind: QuadKind::Solid,
-                clip: paint.clip_id,
-                uv: [0; 4],
-            });
-        }
+        push_rules(&mut self.display, &lines, color, paint, clip_id);
     }
 
     /// Runs layout and emission into `output()`, and installs this frame's
@@ -1359,6 +1381,12 @@ impl Core {
                 opacity,
             };
             painter!(self).paint_box(rect, &style, &paint, leaf);
+            // A departing table keeps its grid for as long as it fades.
+            if let Some(c) = node.spec.interact().rules
+                && node.spec.layout.is_table()
+            {
+                self.emit_ghost_rules(g, i, rect, offset, c, &paint);
+            }
         }
     }
 
@@ -2453,6 +2481,99 @@ fn thumb_along(
             );
             (thumb, bar)
         }
+    }
+}
+
+/// One in-flow child of a table as its rules read it: its box, and for a
+/// row (`layout::is_table_row`) its in-flow cells' boxes.
+struct RuledChild {
+    rect: Rect,
+    cells: Option<Vec<Rect>>,
+}
+
+/// The rules of a table at `rect` over its in-flow `children` (backlog
+/// DX21), `rule_w` thick (1 when not positive):
+///
+/// - across, one down the middle of each gap between two in-flow
+///   children, the content box wide;
+/// - down, one down the middle of each gap between the columns of the
+///   row with the most cells, over each run of consecutive rows — from
+///   the run's first row's top to its last row's bottom.
+///
+/// A child that is no row — a heading text beside the rows, a `column`
+/// section wrapping a heading over a row (RG7) — is laid out across the
+/// table and has no cells, and is ruled as a row spanning every column,
+/// the way a `colspan` cell of a ruled HTML table is: a rule above and
+/// below it as between rows, and the column rules stop at its edges
+/// instead of crossing it. A table with no row has no grid to rule.
+fn rule_lines(
+    rect: Rect,
+    pad: crate::geom::Edges,
+    rule_w: f32,
+    children: &[RuledChild],
+) -> Vec<Rect> {
+    let w = if rule_w > 0.0 { rule_w } else { 1.0 };
+    let Some(widest) = children
+        .iter()
+        .filter_map(|c| c.cells.as_ref())
+        .max_by_key(|cells| cells.len())
+    else {
+        return Vec::new();
+    };
+    let mut lines: Vec<Rect> = Vec::new();
+    for pair in children.windows(2) {
+        let (a, b) = (pair[0].rect, pair[1].rect);
+        let y = (a.y + a.h + b.y) / 2.0;
+        let x = rect.x + pad.l;
+        lines.push(Rect::new(x, y - w / 2.0, rect.w - pad.l - pad.r, w));
+    }
+    let mut run = 0usize;
+    while run < children.len() {
+        if children[run].cells.is_none() {
+            run += 1;
+            continue;
+        }
+        let mut end = run;
+        while end + 1 < children.len() && children[end + 1].cells.is_some() {
+            end += 1;
+        }
+        let (top, last) = (children[run].rect.y, children[end].rect);
+        let bottom = last.y + last.h;
+        for pair in widest.windows(2) {
+            let x = (pair[0].x + pair[0].w + pair[1].x) / 2.0;
+            lines.push(Rect::new(x - w / 2.0, top, w, bottom - top));
+        }
+        run = end + 1;
+    }
+    lines
+}
+
+/// Pushes a table's `lines` in `color`, faded by `paint`'s opacity, under
+/// `clip_id`. On whole pixels, so a 1 px rule is one crisp pixel line at
+/// any scale.
+fn push_rules(
+    display: &mut DisplayList,
+    lines: &[Rect],
+    color: Color,
+    paint: &Paint,
+    clip_id: ClipId,
+) {
+    let color = Color {
+        a: color.a * paint.opacity,
+        ..color
+    };
+    for line in lines {
+        display.quads.push(Quad {
+            rect: line.scaled(paint.scale).on_pixels(),
+            color,
+            border_color: Color::TRANSPARENT,
+            radius: [0.0; 4],
+            border_w: 0.0,
+            blur: 0.0,
+            kind: QuadKind::Solid,
+            clip: clip_id,
+            uv: [0; 4],
+        });
     }
 }
 

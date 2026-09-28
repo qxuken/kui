@@ -237,18 +237,29 @@ fn wraps(tree: &Tree, i: u32) -> bool {
 /// nested table — has no cells and keeps its own width, and its children
 /// are its own (backlog RG7: a column there had its stacked children
 /// taken as cells 0 and 1). Gated on the tree-level flag first, as
-/// [`is_float`] is.
+/// [`is_float`] is. The rules (`emit_rules`) ask it too, so a table's
+/// grid is drawn over the rows its columns were laid across.
 #[inline]
-fn is_table_row(tree: &Tree, i: u32) -> bool {
+pub(crate) fn is_table_row(tree: &Tree, i: u32) -> bool {
     if !tree.any_table {
         return false;
     }
     let p = tree.parent[i as usize];
     p != NIL
         && tree.specs[p as usize].layout.is_table()
-        && tree.specs[i as usize].layout.dir == Dir::Row
-        && matches!(tree.content[i as usize], NodeContent::Container)
-        && !is_float(tree, i)
+        && row_shaped(
+            &tree.specs[i as usize].layout,
+            matches!(tree.content[i as usize], NodeContent::Container),
+        )
+}
+
+/// The half of [`is_table_row`] a node answers alone: an in-flow `Row`
+/// container (`container` false for a text, an image, any leaf). A
+/// departing table's ghost has no tree to ask, and asks this of the
+/// children it copied.
+#[inline]
+pub(crate) fn row_shaped(spec: &crate::spec::LayoutSpec, container: bool) -> bool {
+    spec.dir == Dir::Row && container && spec.float.is_none()
 }
 
 /// Whether `i` is a cell of a table: an in-flow child of a table row.
