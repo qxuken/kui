@@ -796,14 +796,24 @@ fn chunk_ranges(content: &str) -> Vec<(usize, usize)> {
         } else {
             let window = &content[start..window_end];
             let half = CHUNK_BYTES / 2;
-            let after = |tab: bool| {
-                window
-                    .char_indices()
-                    .filter(|(i, c)| *i >= half && if tab { *c == '\t' } else { c.is_whitespace() })
-                    .map(|(i, c)| i + c.len_utf8())
-                    .next_back()
-            };
-            match after(true).or_else(|| after(false)) {
+            // One pass over the second half, noting the last tab and the
+            // last whitespace: a line re-cut on every edit (C19) must not
+            // walk each window twice, nor its first half at all.
+            let mut from = half.min(window.len());
+            while !window.is_char_boundary(from) {
+                from += 1;
+            }
+            let (mut tab, mut space) = (None, None);
+            for (i, c) in window[from..].char_indices() {
+                if c.is_whitespace() {
+                    let end = from + i + c.len_utf8();
+                    space = Some(end);
+                    if c == '\t' {
+                        tab = Some(end);
+                    }
+                }
+            }
+            match tab.or(space) {
                 Some(i) => start + i,
                 None => {
                     // The last grapheme boundary at or before the window's end.
