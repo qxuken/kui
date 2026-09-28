@@ -940,6 +940,25 @@ static int surface(void) {
         check(sx == 0 && sy >= 0, "kui_scroll_offset reads the clamped offset back");
         kui_scroll_offset(ui, 12345, NULL, &sy);
         check(sy == 0, "a node that never scrolled is 0");
+
+        /* A scroll gesture (backlog F107): its first event picks the card
+         * under the pointer, toward whichever end it has room for from where
+         * it is drawn (the reveal above is still easing it), and the next
+         * goes on to it. */
+        KuiLayoutRect at = KUI_LAYOUT_RECT_INIT;
+        check(kui_layout_of(ui, k.card, &at), "the card has a rect");
+        check(kui_scroll_geometry(ui, k.card, &geo), "and a geometry");
+        float before = geo.offset_y;
+        float way = before >= 5 ? 1.0f : -1.0f; /* +y is toward the start */
+        kui_input_cursor(ui, at.x + 4, at.y + 4);
+        kui_input_scroll_gesture(ui, 0, 3 * way, true);
+        kui_input_scroll_gesture(ui, 0, 2 * way, false);
+        kui_frame_begin(ui, 800, 600, 2.0f);
+        surface_view(&k, ui);
+        kui_frame_finish(ui);
+        kui_scroll_offset(ui, k.card, NULL, &sy);
+        check(geo.max_offset_y < 5 || sy == before - 5 * way,
+              "kui_input_scroll_gesture moves the card it began over");
     }
 
     /* File dialogs (backlog C51): ask, drain as the host, answer, hear it. */

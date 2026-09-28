@@ -4579,6 +4579,27 @@ SCENE_TREES['cells-scroll'] = (_fx, phase) => {
   ]);
 };
 
+// `conformance::build_scroll_gestures` (backlog F107): a page (y) holding a
+// strip (x) holding a list that contains its gestures and a wheel handler
+// that takes only `y`.
+SCENE_TREES['scroll-gestures'] = () =>
+  root({}, [
+    box({ pad: 4 }, [
+      box({ width: 200, height: 100, scrollY: true, bg: '#101018' }, [
+        box({ dir: 'row', width: 200, height: 80, scrollX: true }, [
+          box(
+            { width: 100, height: 80, gap: 4, scrollY: true, overscroll: 'contain', bg: '#161820' },
+            ITEM_KEYS.map((k) => box({ width: 90, height: 20, bg: '#30344a' }, [], k)),
+            'list',
+          ),
+          box({ width: 100, height: 80, bg: '#3b5bd4', onScroll: { kind: 'term' }, scrollAxes: 'y' }, [], 'term'),
+          box({ width: 100, height: 80, bg: '#2a2d3a' }),
+        ], 'strip'),
+        box({ width: 200, height: 60, bg: '#22252f' }),
+      ], 'page'),
+    ]),
+  ]);
+
 // `conformance::build_drag`: one keyed handle whose drag deltas the event
 // rows carry, measured from the press point in every phase.
 SCENE_TREES.drag = () =>

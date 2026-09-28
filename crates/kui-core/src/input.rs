@@ -28,8 +28,33 @@ pub enum InputEvent {
     MouseUp {
         button: MouseButton,
     },
-    /// Wheel/trackpad delta in logical px (positive y = scroll up).
+    /// Wheel/trackpad delta in logical px (positive y = scroll up), a
+    /// scroll gesture of its own: the same as
+    /// [`InputEvent::ScrollGesture`] with `begins: true`. What a driver
+    /// that cannot tell one gesture from the next sends, and what every
+    /// door taking a bare delta (`kui_input_scroll`, Node's `scroll`)
+    /// feeds.
     Scroll(Vec2),
+    /// A wheel or trackpad delta that is part of a scroll *gesture*
+    /// (backlog F107): a swipe and its momentum, or a wheel spun without
+    /// a pause. `begins` is true on a gesture's first event. The target
+    /// is chosen then, per axis — the innermost scroller under the
+    /// pointer that can still move that way, a scroller at its limit
+    /// passing the gesture to the one around it unless it says
+    /// `overscroll: contain`, an `on_scroll` node taking the axes its
+    /// `scroll_axes` names — and the rest of the gesture goes on to that
+    /// target (it is *latched*) wherever the pointer or the content
+    /// under it has gone since, until the next `begins`. An axis the
+    /// gesture had not moved on picks its target the first time it
+    /// does; a target whose node is gone, or behind a modal, is picked
+    /// again. Where gestures begin and end is the driver's to say — the
+    /// core is clock-free: the native runner begins one after a 200 ms
+    /// pause, on a switch between a wheel's notches and a trackpad's
+    /// pixels, and for a wheel on a pointer move.
+    ScrollGesture {
+        delta: Vec2,
+        begins: bool,
+    },
     /// Committed text (typing, paste). Routed to the focused editor; with
     /// none, a printable character presses or searches the focused
     /// control. Never delivered to an `onKey` sink: the raw press already
@@ -1919,6 +1944,7 @@ impl Interaction {
             }
             // Routed by the core (they need the retained stores).
             InputEvent::Scroll(_)
+            | InputEvent::ScrollGesture { .. }
             | InputEvent::Text(_)
             | InputEvent::Commit(_)
             | InputEvent::Paste { .. }

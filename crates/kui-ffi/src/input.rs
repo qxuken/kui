@@ -49,10 +49,28 @@ pub extern "C" fn kui_input_mouse_button(ptr: *mut KuiCtx, down: bool, button: u
     );
 }
 
-/// Wheel/trackpad delta in logical px (positive y = scroll up).
+/// Wheel/trackpad delta in logical px (positive y = scroll up), a scroll
+/// gesture of its own: it goes to the scroller under the pointer that can
+/// move that way (backlog F107).
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_input_scroll(ptr: *mut KuiCtx, dx: f32, dy: f32) {
     push_input(ptr, InputEvent::Scroll(Vec2::new(dx, dy)));
+}
+
+/// A wheel/trackpad delta that is part of a scroll gesture (backlog F107):
+/// `begins` on its first event, after which the rest go on to the targets
+/// that one picked wherever the pointer or the content has gone — for a
+/// host with its own event loop that can tell one swipe from the next
+/// (`kui_run`'s runner begins one after a 200 ms pause).
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_input_scroll_gesture(ptr: *mut KuiCtx, dx: f32, dy: f32, begins: bool) {
+    push_input(
+        ptr,
+        InputEvent::ScrollGesture {
+            delta: Vec2::new(dx, dy),
+            begins,
+        },
+    );
 }
 
 /// Committed text input (typing, paste); routed to the focused editor.

@@ -806,7 +806,12 @@ to press — the wheel still scrolls) or `auto` (shown while the scroll state
 changes or the pointer is on the track, gone a second and a quarter after
 it stops, the way a macOS overlay bar goes; needs the driver's clock);
 `scrollbarWidth`, `scrollbarColor` and `scrollbarActiveColor` restyle the
-thumb, whose defaults are 4 px and the theme's two roles. An app reaches
+thumb, whose defaults are 4 px and the theme's two roles. A scroll
+gesture (a swipe and its glide, a wheel spun without a pause) goes to the
+innermost scroller under the pointer that can still move its way when it
+starts, and stays with it to its end; `overscroll: "contain"` keeps a
+scroller at its limit from passing a new gesture to the one around it
+(ADR 0038). An app reaches
 the same offsets by name:
 `ui.reveal(key)` scrolls whatever contains a node so the node shows (what Tab
 does to the control it lands on), and `ui.scroll_offset(key)` /

@@ -48,6 +48,7 @@ mod pane;
 mod popups;
 mod retarget;
 mod retry;
+mod scroll_gesture;
 mod secure_input;
 /// A headless driver for an `App` (backlog DX11).
 pub mod testing;
@@ -797,6 +798,7 @@ fn input_completes(ev: &InputEvent) -> bool {
         InputEvent::CursorMoved(_)
         | InputEvent::CursorLeft
         | InputEvent::Scroll(_)
+        | InputEvent::ScrollGesture { .. }
         | InputEvent::Preedit(..)
         | InputEvent::Modifiers(_)
         // Files moving over the window is the pointer moving.
@@ -2283,6 +2285,9 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                 if pane.synthesizes_resize() {
                     pane.resize_edge = pane.resize_edge_at(p);
                 }
+                if pane.cursor != p {
+                    pane.scroll_gesture.pointer_moved();
+                }
                 pane.cursor = p;
                 let from = pane.id;
                 self.dispatch(event_loop, i, InputEvent::CursorMoved(p));
@@ -2427,19 +2432,33 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
             WindowEvent::MouseWheel { delta, .. } => {
                 let pane = &mut self.panes[i];
                 let scale = pane.window.scale_factor() as f32;
-                let d = match delta {
+                let now = std::time::Instant::now();
+                let (d, kind) = match delta {
                     winit::event::MouseScrollDelta::LineDelta(x, y) => {
                         pane.axis_lock.line();
-                        Vec2::new(Core::lines_to_px(x), Core::lines_to_px(y))
+                        (
+                            Vec2::new(Core::lines_to_px(x), Core::lines_to_px(y)),
+                            scroll_gesture::Kind::Line,
+                        )
                     }
                     // A trackpad's swipe keeps to its axis (`mod axis_lock`).
-                    winit::event::MouseScrollDelta::PixelDelta(p) => pane.axis_lock.pixel(
-                        Vec2::new(p.x as f32 / scale, p.y as f32 / scale),
-                        std::time::Instant::now(),
+                    winit::event::MouseScrollDelta::PixelDelta(p) => (
+                        pane.axis_lock
+                            .pixel(Vec2::new(p.x as f32 / scale, p.y as f32 / scale), now),
+                        scroll_gesture::Kind::Pixel,
                     ),
                 };
+                // The gesture it is part of keeps the targets it began
+                // with (`mod scroll_gesture`, backlog F107).
                 if d != Vec2::ZERO {
-                    self.dispatch(event_loop, i, InputEvent::Scroll(d));
+                    let begins = pane.scroll_gesture.begins(kind, now);
+                    self.dispatch(
+                        event_loop,
+                        i,
+                        InputEvent::ScrollGesture { delta: d, begins },
+                    );
+                } else {
+                    pane.scroll_gesture.note(kind, now);
                 }
             }
             WindowEvent::MouseInput { state, button, .. } => {

@@ -60,8 +60,8 @@ use crate::menu::{BarMenu, MenuBar, MenuItem, MenuRole};
 use crate::resources::{ImageId, SoundId};
 use crate::runtime::Core;
 use crate::spec::{
-    Align, Dir, FloatAnchor, FloatConfig, Min, NodeSpec, PadShorthand, ScrollbarMode, Sizing,
-    TextStyle,
+    Align, Dir, FloatAnchor, FloatConfig, Min, NodeSpec, Overscroll, PadShorthand, ScrollAxes,
+    ScrollbarMode, Sizing, TextStyle,
 };
 use crate::text::Span;
 use crate::tree::{NodeContent, Tree};
@@ -2673,6 +2673,57 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "scroll-gestures",
+        doc: "Where a wheel goes when a scroller cannot use it (backlog \
+              F107): a page scrolling y holds a strip scrolling x, and in \
+              the strip a list scrolling y that says `overscroll` \
+              `contain` and a terminal-like node hearing the wheel \
+              (`onScroll`) on `y` only (`scrollAxes`). A notch runs the \
+              list to its end, and the next, over the list at its limit, \
+              moves nothing — without `contain` it would move the page. \
+              Over the terminal a vertical notch is its event, and a \
+              sideways one passes it by and moves the strip — without \
+              `scrollAxes` the terminal would hear it too. Each `Scroll` \
+              is a gesture of its own; latching across a gesture is a \
+              driver's gesture boundaries, pinned in kui-core's tests.",
+        custom: &["overflow", "key", "pad"],
+        elements: &["box"],
+        build: build_scroll_gestures,
+        env: NATIVE_CHROME,
+        steps: &[
+            Step::Cursor(30, 30),
+            Step::Scroll(0, -80),
+            Step::Scroll(0, -20),
+            Step::Cursor(150, 30),
+            Step::Scroll(0, -10),
+            Step::Scroll(-30, 0),
+        ],
+        expect: Expect {
+            solid: 12,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            segments_follow_text: false,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 0,
+            access: &[
+                "0 window ||",
+                "1 scrollView ||",
+                "2 scrollView ||",
+                "3 scrollView ||",
+            ],
+            events: &["scroll term -"],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+            secure_input: false,
+        },
+    },
+    Scene {
         name: "cells-scroll",
         doc: "The `cells` screen three rows tall, `selectable` and hearing \
               the wheel (`onScroll`, ADR 0029, decision 4): a notch of two \
@@ -3647,6 +3698,65 @@ pub const CELLS_SCROLL_ORIGIN: u64 = 100;
 
 /// The `cells` screen, three rows, `selectable` and hearing the wheel,
 /// with row 0 at `CELLS_SCROLL_ORIGIN + phase`.
+/// `scroll-gestures`: a page (y) holding a strip (x) holding a contained
+/// list (y) and a y-only wheel handler, then a spacer each.
+fn build_scroll_gestures(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    ui.with(NodeSpec::column().pad(4.0), |ui| {
+        ui.with_keyed(
+            "page",
+            NodeSpec::column()
+                .size(200.0, 100.0)
+                .scroll_y()
+                .bg(Color::hex(0x101018ff)),
+            |ui| {
+                ui.with_keyed(
+                    "strip",
+                    NodeSpec::row().size(200.0, 80.0).scroll_x(),
+                    |ui| {
+                        ui.with_keyed(
+                            "list",
+                            NodeSpec::column()
+                                .size(100.0, 80.0)
+                                .gap(4.0)
+                                .scroll_y()
+                                .overscroll(Overscroll::Contain)
+                                .bg(Color::hex(0x161820ff)),
+                            |ui| {
+                                for key in ITEM_KEYS {
+                                    ui.leaf_keyed(
+                                        key,
+                                        NodeSpec::column()
+                                            .size(90.0, 20.0)
+                                            .bg(Color::hex(0x30344aff)),
+                                    );
+                                }
+                            },
+                        );
+                        ui.leaf_keyed(
+                            "term",
+                            NodeSpec::column()
+                                .size(100.0, 80.0)
+                                .bg(Color::hex(0x3b5bd4ff))
+                                .on_scroll(Value::map([("kind", Value::str("term"))]))
+                                .scroll_axes(ScrollAxes::Y),
+                        );
+                        ui.leaf(
+                            NodeSpec::column()
+                                .size(100.0, 80.0)
+                                .bg(Color::hex(0x2a2d3aff)),
+                        );
+                    },
+                );
+                ui.leaf(
+                    NodeSpec::column()
+                        .size(200.0, 60.0)
+                        .bg(Color::hex(0x22252fff)),
+                );
+            },
+        );
+    });
+}
+
 fn build_cells_scroll(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
     use crate::cells::{Cell, CellGrid};
     let cols = 11;

@@ -648,6 +648,35 @@ them sideways on purpose. An `onScroll` node hears the locked delta.
 [`scroll` event](props.md#events) ·
 [alpha.22](../CHANGELOG.md#010-alpha22-unreleased)
 
+### Which scroller does a swipe move, and how does a terminal let a sideways one through?
+
+The one it started on. A scroll gesture — a swipe and its glide, or a
+wheel spun without a pause — picks its target when it starts and keeps
+it until it ends, so a swipe that moves the strip goes on moving it
+when a terminal comes under the still pointer. The pick is the
+innermost scroller under the pointer that can still move the way the
+gesture goes: a list at its end passes a new gesture to the scroller
+around it, unless it says `overscroll: "contain"`, and a gesture that
+reaches the end midway stops there. An `onScroll` node cannot be asked
+whether it can move, so it takes every gesture that starts over it on
+the axes its `scrollAxes` names. A terminal that scrolls only its
+history says `y`, and a sideways swipe that starts over it moves the
+strip:
+
+```jsx
+<box onScroll={{ kind: 'term' }} scrollAxes="y" />
+```
+
+`scroll_axes = "y"` in Lua, `.scroll_axes(ScrollAxes::Y)` in Rust,
+`KUI_SCROLL_AXES_Y` in C. The native runner begins a new gesture after
+a 200 ms pause, and for a wheel when the pointer moves. A driver of your
+own sends `ScrollGesture { delta, begins }` (C's
+`kui_input_scroll_gesture`); a bare `Scroll` is a gesture of its own.
+
+[`overscroll` / `scrollAxes` rows](props.md#container-props) ·
+[ADR 0038](adr/0038-a-scroll-gesture-latches-its-target.md) ·
+[alpha.22](../CHANGELOG.md#010-alpha22-unreleased)
+
 ### Does a pane off the edge of a scroller still hear its keys?
 
 Yes, since alpha.17. A key reaches a node by holding focus, not by being

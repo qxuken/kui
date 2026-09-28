@@ -121,8 +121,9 @@ pub use slot::{
 };
 pub use spec::{
     Align, Dir, FLOAT_PRESETS, FloatAnchor, FloatConfig, FontFamily, FontFeatures, Min, NodeSpec,
-    OVERFLOW_CLIP, OVERFLOW_SCROLL_X, OVERFLOW_SCROLL_Y, PadShorthand, Scrollbar, ScrollbarMode,
-    Shadow, Sizing, TextStyle, TextWrap, UnderlineStyle, Vec2Offset, corner,
+    OVERFLOW_CLIP, OVERFLOW_SCROLL_X, OVERFLOW_SCROLL_Y, Overscroll, PadShorthand, ScrollAxes,
+    Scrollbar, ScrollbarMode, Shadow, Sizing, TextStyle, TextWrap, UnderlineStyle, Vec2Offset,
+    corner,
 };
 pub use stats::{FrameSample, FrameStats};
 pub use text::{DEFAULT_TEXT_CACHE_BYTES, LONG_LINE_BYTES, Span, TextHit, TextMetrics};

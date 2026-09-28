@@ -318,6 +318,23 @@ impl ScrollStore {
         })
     }
 
+    /// Where `key` stands against its travel, for a scroll gesture asking
+    /// whether it can still move a way (backlog F107): the place a wheel's
+    /// delta would be added to — the drawn place while an eased leg is in
+    /// flight, which the delta ends (RG17), else the stored offset with
+    /// any notch since the last frame in it — clamped to the last
+    /// layout's `max_offset`, and that `max_offset`. `None` for a key no
+    /// layout has resolved as a scroll container. A read that records
+    /// nothing, unlike [`Self::geometry`]'s: a wheel asking is not a view
+    /// slicing rows.
+    pub(crate) fn room(&self, key: Key) -> Option<(Vec2, Vec2)> {
+        let e = self.entries.get(&key)?;
+        let (_, _, max) = e.geom?;
+        let from = if e.smooth.is_some() { e.laid } else { e.offset };
+        let at = Vec2::new(from.x.clamp(0.0, max.x), from.y.clamp(0.0, max.y));
+        Some((at, max))
+    }
+
     /// Adds a delta (positive = scroll content further down/right).
     /// Clamping happens in the next layout pass.
     pub fn scroll_by(&mut self, key: Key, delta: Vec2) {
