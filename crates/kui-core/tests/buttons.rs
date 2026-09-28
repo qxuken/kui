@@ -430,3 +430,89 @@ fn buttons_parse_from_their_names() {
     assert!(!Buttons::ALL.contains(MouseButton::Primary));
     assert!(Buttons::OTHER.contains(MouseButton::Other(7)));
 }
+
+/// Two leaves side by side, "a" (0..100) and "b" (100..200), each
+/// claiming the middle button.
+fn two_owners(core: &mut Core) {
+    let mut ui = core.frame(VIEW, 1.0);
+    ui.configure_root(NodeSpec::row().fill());
+    for name in ["a", "b"] {
+        ui.leaf_keyed(
+            name,
+            NodeSpec::row()
+                .size(100.0, 100.0)
+                .on_button(name)
+                .buttons(Buttons::MIDDLE),
+        );
+    }
+    ui.finish();
+}
+
+/// `phase:tag` of every button event, in order.
+fn buttons_of(evs: &[UiEvent]) -> Vec<String> {
+    evs.iter()
+        .filter_map(|e| {
+            let b = e.button()?;
+            let phase = match b.phase {
+                ButtonPhase::Press => "press",
+                ButtonPhase::Move => "move",
+                ButtonPhase::Release => "release",
+            };
+            Some(format!("{phase}:{}", e.tag()?.as_str()?))
+        })
+        .collect()
+}
+
+#[test]
+fn the_window_losing_the_keyboard_ends_every_capture_with_a_release() {
+    let mut core = Core::new();
+    two_owners(&mut core);
+    to(&mut core, 50.0, 50.0);
+    let press = core.handle_input(down(MouseButton::Middle));
+    assert_eq!(buttons_of(&press), ["press:a"]);
+    core.take_pending_events();
+    // The release will happen in another window, where this one never
+    // hears it: the blur is the owner's release, as a held key's is its up.
+    core.set_focused(false);
+    let pending = core.take_pending_events();
+    assert_eq!(buttons_of(&pending), ["release:a"], "{pending:?}");
+    assert_eq!(core.interaction.button_owner(MouseButton::Middle), None);
+    // And the motion after it is nobody's.
+    assert!(buttons_of(&to(&mut core, 150.0, 50.0)).is_empty());
+    assert!(buttons_of(&core.handle_input(up(MouseButton::Middle))).is_empty());
+
+    // On a grid the release says which cell, as a real one does.
+    let mut core = Core::new();
+    let k = frame(&mut core, Buttons::ALL, true);
+    let w = core.measure_text("M", &mono(), None).width.round();
+    to(&mut core, 2.5 * w, TERM_Y);
+    core.handle_input(down(MouseButton::Middle));
+    core.set_focused(false);
+    let pending = core.take_pending_events();
+    let r = pending
+        .iter()
+        .find(|e| e.button().is_some())
+        .expect("the release");
+    assert_eq!(r.key, k.term);
+    assert_eq!(r.button().unwrap().phase, ButtonPhase::Release);
+    assert_eq!(r.button().unwrap().cell, Some((0, 2)));
+}
+
+#[test]
+fn a_second_press_of_a_held_button_releases_the_first_capture() {
+    let mut core = Core::new();
+    two_owners(&mut core);
+    to(&mut core, 50.0, 50.0);
+    core.handle_input(down(MouseButton::Middle));
+    to(&mut core, 150.0, 50.0);
+    // The release was lost (to another window, say): the new press starts
+    // over, and the old owner hears its capture end first.
+    let press = core.handle_input(down(MouseButton::Middle));
+    assert_eq!(buttons_of(&press), ["release:a", "press:b"], "{press:?}");
+    assert_eq!(
+        core.interaction.button_owner(MouseButton::Middle),
+        core.key_of("b")
+    );
+    let moved = to(&mut core, 160.0, 50.0);
+    assert_eq!(buttons_of(&moved), ["move:b"]);
+}

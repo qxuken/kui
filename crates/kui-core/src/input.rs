@@ -1802,9 +1802,11 @@ impl Interaction {
     /// (backlog F105): the owner hears `press`, and the button is captured
     /// by it — every move while it is held and its release go to the same
     /// node wherever the pointer is. A second press of a button already
-    /// held (its release lost to another window) starts over. Nothing else
-    /// happens: no pressed state, no focus, no context menu. Returns how
-    /// many pointer-made events it pushed, as `handle` does.
+    /// held (its release lost to another window) starts over: the old
+    /// owner hears its capture end in a `release` first, since a capture
+    /// never ends without one. Nothing else happens: no pressed state, no
+    /// focus, no context menu. Returns how many pointer-made events it
+    /// pushed, as `handle` does.
     pub(crate) fn press_button(
         &mut self,
         button: MouseButton,
@@ -1816,14 +1818,39 @@ impl Interaction {
         let Some(p) = self.cursor else {
             return 0;
         };
+        let mut n = 0;
+        if let Some(i) = self.held_buttons.iter().position(|h| h.button == button) {
+            let held = self.held_buttons.remove(i);
+            out.push(Self::button_event(&held.owner, button, "release", p, None));
+            n += 1;
+        }
         out.push(Self::button_event(&owner, button, "press", p, Some(clicks)));
-        self.held_buttons.retain(|h| h.button != button);
         self.held_buttons.push(ButtonCapture {
             button,
             owner,
             last: p,
         });
-        1
+        n + 1
+    }
+
+    /// Lets go of every held button, each owner hearing its `release`
+    /// where the pointer was last seen (backlog F105): the window lost the
+    /// keyboard, and the real releases will happen where this window
+    /// never hears them — as a held key gets its synthetic up. Returns
+    /// how many events it pushed, for the core's `attach_pointer`.
+    pub(crate) fn release_buttons(&mut self, out: &mut Vec<UiEvent>) -> usize {
+        let n = self.held_buttons.len();
+        for held in std::mem::take(&mut self.held_buttons) {
+            let p = self.cursor.unwrap_or(held.last);
+            out.push(Self::button_event(
+                &held.owner,
+                held.button,
+                "release",
+                p,
+                None,
+            ));
+        }
+        n
     }
 
     /// Lets go of every held button whose owner `alive` says is gone from

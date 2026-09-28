@@ -1211,7 +1211,8 @@ impl Core {
     /// never arrive. The rule lives here rather than in each driver so a
     /// Node test's `setEnv({focused: false})` and a C host's `kui_env_set`
     /// do what the windowed runner does, instead of each remembering to.
-    /// The synthetic `up`s are pending, like `release_held_keys`'s.
+    /// The synthetic `up`s are pending, like `release_held_keys`'s, and so
+    /// are the `release`s of the buttons `onButton` nodes held (F105).
     pub fn set_focused(&mut self, focused: bool) {
         if self.env.focused == focused {
             return;
@@ -1233,6 +1234,11 @@ impl Core {
                 InputEvent::Modifiers(crate::input::KeyMods::default()),
                 &mut out,
             );
+            // And the buttons an `onButton` node holds captured (backlog
+            // F105): each owner hears its release now, with the cell it
+            // lands in, rather than every later move as a drag.
+            let n = self.interaction.release_buttons(&mut out);
+            self.attach_pointer(&mut out, n);
             self.pending.append(&mut out);
             // And a held drag's follow: the release will not come here,
             // and a scroller stepping toward a pointer nobody holds any
