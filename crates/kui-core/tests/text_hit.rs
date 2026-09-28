@@ -375,9 +375,7 @@ fn one_text_at_two_widths_answers_at_each() {
         let mut r: Vec<i32> = dl
             .quads
             .iter()
-            .filter(|q| {
-                q.kind == kui_core::QuadKind::GlyphMask && q.rect.y >= y0 && q.rect.y < y1
-            })
+            .filter(|q| q.kind == kui_core::QuadKind::GlyphMask && q.rect.y >= y0 && q.rect.y < y1)
             .map(|q| ((q.rect.y - y0) / LH).floor() as i32)
             .collect();
         r.dedup();
