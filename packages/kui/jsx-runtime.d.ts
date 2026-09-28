@@ -69,22 +69,43 @@ export type LengthToken = `$${string}` & { readonly __kuiToken?: 'length' };
 /** Logical px, or a length token. */
 export type LengthProp = number | LengthToken;
 
-/** number = fixed logical px; "N%" of parent (`{ percent: N }` is the same
- *  number); grow soaks up leftover space; a length token is a fixed px the
- *  core's table resolves. */
-export type SizingProp =
+/** A size expression (backlog F109), resolved against the parent's content
+ *  box — the box a percentage takes its cut of: spelled as CSS spells it
+ *  (`"clamp(400px, 80%, 1000px)"`, `"min(720px, 100%)"`, nested), or as
+ *  data, which crosses to the addon as numbers and is never parsed:
+ *  `{ clamp: [400, "80%", 1000] }`, `{ min: [...] }`, `{ max: [...] }`,
+ *  `{ percent: 80 }`, `{ px: 12 }`. An expression with no percentage in
+ *  it is a length. */
+export type SizeExpr =
   | number
+  | `${number}%`
+  | `${number}px`
+  | `min(${string})`
+  | `max(${string})`
+  | `clamp(${string})`
+  | { percent: number }
+  | { px: number }
+  | { min: SizeExpr[] }
+  | { max: SizeExpr[] }
+  | { clamp: [SizeExpr, SizeExpr, SizeExpr] };
+
+/** number = fixed logical px; "N%" of parent (`{ percent: N }` is the same
+ *  number); grow soaks up leftover space; a size expression (`SizeExpr`);
+ *  a length token is a fixed px the core's table resolves. */
+export type SizingProp =
   | 'fit'
   | 'grow'
-  | `${number}%`
   | { grow: number }
-  | { percent: number }
+  | SizeExpr
   | LengthToken;
 
-/** A lower clamp: logical px, or "fit" for the node's own fit size on that
- *  axis — what lets a `grow` child keep a content floor (a tab never
- *  narrower than its label). */
-export type MinProp = number | 'fit';
+/** A lower clamp: logical px, a size expression, or "fit" for the node's
+ *  own fit size on that axis — what lets a `grow` child keep a content
+ *  floor (a tab never narrower than its label). */
+export type MinProp = 'fit' | SizeExpr | LengthToken;
+
+/** An upper clamp: logical px or a size expression (`"90%"`, a clamp). */
+export type MaxProp = SizeExpr | LengthToken;
 
 /** 0xRRGGBBAA number, "#rgb" / "#rrggbb" / "#rrggbbaa", or a colour
  *  token's reference (`'$peach'`, a theme role's `'$surface'`). */
@@ -253,7 +274,7 @@ export interface GeneratedSpecProps {
   focusable?: boolean;
   /** Space between children along the main axis. */
   gap?: LengthProp;
-  /** Vertical size: px | "fit" | "grow" | "N%". */
+  /** Vertical size: px | "fit" | "grow" | "N%" | a size expression (see `width`). */
   height?: SizingProp;
   /** Background while hovered (or while any node in its hoverGroup is); implies hover tracking, eases with `transition`. */
   hoverBg?: ColorProp;
@@ -277,13 +298,13 @@ export interface GeneratedSpecProps {
   live?: 'off' | 'polite' | 'assertive';
   /** Child alignment along the main axis. `start`, `center` and `end` put the children together; `spaceBetween` deals the free space out between them (none at the ends), `spaceAround` gives each child an equal share split to its two sides, and `spaceEvenly` makes every gap and both ends equal — CSS's `justify-content`. The spread is added to `gap`, and there is none when nothing is free: a `grow` child takes it all, and an overflowing run keeps its gaps. `baseline` means nothing here and lays out as `start`, with a warning. */
   mainAlign?: 'start' | 'center' | 'end' | 'spaceBetween' | 'spaceAround' | 'spaceEvenly' | 'baseline';
-  /** Upper height clamp (logical px). */
-  maxHeight?: LengthProp;
-  /** Upper width clamp; grow+maxWidth is the responsive-width pattern. */
-  maxWidth?: LengthProp;
-  /** Lower height clamp: logical px, or "fit" for the node's own fit height (see `minWidth`). */
+  /** Upper height clamp: logical px or a size expression (see `width`). */
+  maxHeight?: MaxProp;
+  /** Upper width clamp: logical px or a size expression (see `width`); grow+maxWidth is the responsive-width pattern. */
+  maxWidth?: MaxProp;
+  /** Lower height clamp: logical px, a size expression, or "fit" for the node's own fit height (see `minWidth`). */
   minHeight?: MinProp;
-  /** Lower width clamp: logical px, or "fit" for the node's own fit width. "fit" under `width="grow"` is a content floor — CSS's `flex: 1 0 auto` — which is what an i3-style tab bar is: tabs that split the bar evenly while they fit and sit at their label's width, scrolling, once they do not. Opt-in, because a fit width is the unwrapped one: a paragraph in a grow column would stop wrapping under it. */
+  /** Lower width clamp: logical px, a size expression (see `width`; a percentage clamp is none until the parent's width is known, as in CSS), or "fit" for the node's own fit width. "fit" under `width="grow"` is a content floor — CSS's `flex: 1 0 auto` — which is what an i3-style tab bar is: tabs that split the bar evenly while they fit and sit at their label's width, scrolling, once they do not. Opt-in, because a fit width is the unwrapped one: a paragraph in a grow column would stop wrapping under it. */
   minWidth?: MinProp;
   /** A `checkbox` that is neither on nor off — the select-all box over a list some of whose rows are selected (ADR 0034). Read as mixed by assistive technology whatever `checked` says, and drawn as a dash by the stock `<checkbox>`. Meaningful on the checkbox role alone. */
   mixed?: boolean;
@@ -381,7 +402,7 @@ export interface GeneratedSpecProps {
   valueStep?: LengthProp;
   /** What a `slider` role's position reads as (ARIA's `aria-valuetext`). Without one a reader has only `valueNow` and the range and says a percentage — 25 in [5..60] is "36 percent" — so a value whose unit carries the meaning says it here: "25 minutes". It replaces the number in the reading rather than joining it, and a nudge announces the new text. Meaningful on the slider role alone, like the three numbers; putting the reading in `label` instead renames the control on every nudge, which is the wrong attribute. */
   valueText?: string;
-  /** Horizontal size: px | "fit" | "grow" | "N%". */
+  /** Horizontal size: px | "fit" | "grow" | "N%" | a size expression — `"clamp(400px, 80%, 1000px)"`, `"min(720px, 100%)"`, `"max(50%, 300)"`, nested — which layout resolves against the parent's content box, the box a percentage takes its cut of (backlog F109). An expression with no percentage in it is a length; a calc does not ease under `transition`. */
   width?: SizingProp;
   /** Window-chrome role: interactions become window commands, not events. */
   window?: 'drag' | 'close' | 'minimize' | 'maximize';

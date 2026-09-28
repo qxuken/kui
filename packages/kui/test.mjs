@@ -58,6 +58,7 @@ const SAMPLE = {
   flag: true,
   sizing: '50%',
   min: 'fit',
+  max: 12,
   msg: { kind: 'm', n: 1, list: [1, 'two', null] },
   tag: { kind: 't' },
   str: 'group-a',
@@ -165,6 +166,28 @@ test('every generic schema prop reaches the stream, lowers, and reads back where
     }
   }
   assert.equal(readBack, Object.keys(READBACK).length);
+});
+
+// Size expressions (backlog F109): spelled, a string rides as a strref
+// the addon parses once; as data, `{ clamp: [...] }` rides as numbers in
+// prefix code and nothing is parsed. Both lay out alike, against the
+// parent's content box, as a width and as a clamp.
+test('a size expression spelled and as data lays out the same', () => {
+  const widths = (width, maxWidth) => {
+    const ctx = new Ctx();
+    ctx.setInspect(true);
+    ctx.frame(1000, 200, 1, box({ width: 600, pad: 0 }, [
+      box({ width, height: 4 }, [], 'w'),
+      box({ width: 900, maxWidth, height: 4 }, [], 'm'),
+    ]));
+    const n = (k) => ctx.nodes().find((x) => x.label === k).rect.w;
+    return [n('w'), n('m')];
+  };
+  const spelled = widths('clamp(100px, 50%, 250px)', 'min(40%, 500px)');
+  const data = widths({ clamp: [100, { percent: 50 }, 250] }, { min: ['40%', { px: 500 }] });
+  assert.deepEqual(spelled, [250, 240]);
+  assert.deepEqual(data, spelled);
+  assert.throws(() => encoded(box({ width: { clamp: [1, 2] } }, [])), /clamp takes three/);
 });
 
 // `alwaysOnTop` is a root declaration with no node, like `title`, and a
@@ -4010,6 +4033,17 @@ const SCENE_TREES = {
       box({ width: 4 }, [
         text(['ab', el('span', { bg: '#3b5bd4' }, ['  ']), 'c'], mono),
       ]),
+    ])]);
+  },
+  // Size expressions (backlog F109): four bars in a 400 px column, two
+  // widths spelled and two as data, which ride as numbers.
+  'size-expressions': () => {
+    const bar = (props) => box({ height: 10, bg: '#3b5bd4', ...props });
+    return root({}, [box({ width: 400, gap: 4 }, [
+      bar({ width: 'clamp(100px, 50%, 150px)' }),
+      bar({ width: { min: [{ percent: 80 }, 300] } }),
+      bar({ width: 900, maxWidth: '25%' }),
+      bar({ minWidth: { max: ['40%', 50] } }),
     ])]);
   },
   // Access rects cut to the clip (backlog F93): three nodes on a `clip`

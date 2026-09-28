@@ -29,6 +29,9 @@ pub(crate) fn sizing_of(s: KuiSizing) -> Sizing {
         1 => Sizing::Grow(s.value),
         2 => Sizing::Fixed(s.value),
         3 => Sizing::Percent(s.value),
+        // A size expression by its number (`kui_size_*`, backlog F109);
+        // one the table does not have is fit.
+        4 => kui_core::Calc::from_id(s.value as u32).map_or(Sizing::Fit, Sizing::Calc),
         _ => Sizing::Fit,
     }
 }
@@ -135,6 +138,12 @@ pub(crate) fn spec_of(
         } else {
             f32::INFINITY
         })
+        .with_bounds(
+            crate::size::bound_of(s.min_w_size),
+            crate::size::bound_of(s.max_w_size),
+            crate::size::bound_of(s.min_h_size),
+            crate::size::bound_of(s.max_h_size),
+        )
         .padding(Edges {
             l: s.pad_l,
             r: s.pad_r,

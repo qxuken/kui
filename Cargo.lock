@@ -1543,6 +1543,7 @@ dependencies = [
 name = "kui-lua"
 version = "0.1.0-alpha.24"
 dependencies = [
+ "divan",
  "kui-core",
  "kui-devtools",
  "kui-ffi",

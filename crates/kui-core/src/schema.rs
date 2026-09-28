@@ -53,7 +53,7 @@ use crate::cursor::CursorShape;
 use crate::enter::Enter;
 use crate::keyframes::Keyframe;
 use crate::spec::{
-    Align, FontFamily, Min, NodeSpec, PadShorthand, Sizing, TextStyle, TextWrap, UnderlineStyle,
+    Align, Bound, FontFamily, NodeSpec, PadShorthand, Sizing, TextStyle, TextWrap, UnderlineStyle,
 };
 use crate::value::Value;
 use crate::window::{WindowButton, WindowConfig};
@@ -386,14 +386,21 @@ pub enum Kind {
     Flag,
     /// One of a closed name list. Binary: 1 slot (index).
     Enum(&'static [&'static str]),
-    /// A sizing: number | "fit" | "grow" | "N%" | {grow} | {percent}, or
-    /// a `"$length"` token (a fixed length). Binary: 2 slots (mode, value);
-    /// tagged, 1 slot (the index).
+    /// A sizing: number | "fit" | "grow" | "N%" | a size expression
+    /// (`"clamp(400px, 80%, 1000px)"`, [`crate::calc`]) | {grow} |
+    /// {percent}, or a `"$length"` token (a fixed length). Binary: 2 slots
+    /// (mode, value), or with mode [`SIZE_MODE_CALC`] the mode and a
+    /// strref, the expression's spelling (v19); tagged, 1 slot (the index).
     Sizing,
-    /// A lower clamp: number | "fit" (the node's own fit size on that axis),
-    /// or a `"$length"` token. Binary: 2 slots (mode, value), a sizing's
-    /// first two modes; tagged, 1 slot (the index).
+    /// A lower clamp: number | "fit" (the node's own fit size on that axis)
+    /// | a size expression, or a `"$length"` token. Binary: 2 slots (mode,
+    /// value), a sizing's first two modes, or [`SIZE_MODE_CALC`] and a
+    /// strref; tagged, 1 slot (the index).
     Min,
+    /// An upper clamp: number | a size expression, or a `"$length"` token.
+    /// Binary as a `Min` (v19; a plain number before): mode 0 and px, or
+    /// [`SIZE_MODE_CALC`] and a strref; tagged, 1 slot (the index).
+    Max,
     /// An arbitrary message payload (a `Value`). Binary: strref to JSON.
     Msg,
     /// A message merged into the core's own event under `tag` (`onDrag`,
@@ -429,7 +436,7 @@ pub enum Apply {
     SpecFlag(fn(NodeSpec) -> NodeSpec),
     SpecEnum(fn(NodeSpec, usize) -> NodeSpec),
     SpecSizing(fn(NodeSpec, Sizing) -> NodeSpec),
-    SpecMin(fn(NodeSpec, Min) -> NodeSpec),
+    SpecBound(fn(NodeSpec, Bound) -> NodeSpec),
     SpecMsg(fn(NodeSpec, Value) -> NodeSpec),
     SpecStr(fn(NodeSpec, &str) -> NodeSpec),
     SpecKeyframes(fn(NodeSpec, Vec<Keyframe>) -> NodeSpec),
@@ -502,11 +509,13 @@ pub fn align_idx(i: usize) -> Align {
     }
 }
 
-/// Binary min decode: (mode, value) → Min, the first two sizing modes.
-pub fn min_num(mode: u32, value: f64) -> Min {
+/// Binary min or max decode: (mode, value) → a clamp, the first two
+/// sizing modes ([`SIZE_MODE_CALC`] is read by the transport, which
+/// holds the strref).
+pub fn min_num(mode: u32, value: f64) -> Bound {
     match mode {
-        1 => Min::FIT,
-        _ => Min::px(value as f32),
+        1 => Bound::Fit,
+        _ => Bound::Px(value as f32),
     }
 }
 
@@ -526,21 +535,27 @@ pub const PROPS: &[PropDef] = &[
         id: P_WIDTH,
         kind: Kind::Sizing,
         apply: Apply::SpecSizing(|s, v| s.width(v)),
-        doc: "Horizontal size: px | \"fit\" | \"grow\" | \"N%\".",
+        doc: "Horizontal size: px | \"fit\" | \"grow\" | \"N%\" | a size expression — \
+              `\"clamp(400px, 80%, 1000px)\"`, `\"min(720px, 100%)\"`, `\"max(50%, 300)\"`, \
+              nested — which layout resolves against the parent's content box, the box a \
+              percentage takes its cut of (backlog F109). An expression with no percentage \
+              in it is a length; a calc does not ease under `transition`.",
     },
     PropDef {
         name: "height",
         id: P_HEIGHT,
         kind: Kind::Sizing,
         apply: Apply::SpecSizing(|s, v| s.height(v)),
-        doc: "Vertical size: px | \"fit\" | \"grow\" | \"N%\".",
+        doc: "Vertical size: px | \"fit\" | \"grow\" | \"N%\" | a size expression (see `width`).",
     },
     PropDef {
         name: "minWidth",
         id: P_MIN_W,
         kind: Kind::Min,
-        apply: Apply::SpecMin(|s, v| s.min_width(v)),
-        doc: "Lower width clamp: logical px, or \"fit\" for the node's own fit width. \
+        apply: Apply::SpecBound(|s, v| s.min_width(v)),
+        doc: "Lower width clamp: logical px, a size expression (see `width`; a percentage \
+              clamp is none until the parent's width is known, as in CSS), or \"fit\" for \
+              the node's own fit width. \
               \"fit\" under `width=\"grow\"` is a content floor — CSS's `flex: 1 0 auto` — \
               which is what an i3-style tab bar is: tabs that split the bar evenly \
               while they fit and sit at their label's width, scrolling, once they do \
@@ -550,23 +565,24 @@ pub const PROPS: &[PropDef] = &[
     PropDef {
         name: "maxWidth",
         id: P_MAX_W,
-        kind: Kind::F32,
-        apply: Apply::SpecF32(|s, v| s.max_width(v)),
-        doc: "Upper width clamp; grow+maxWidth is the responsive-width pattern.",
+        kind: Kind::Max,
+        apply: Apply::SpecBound(|s, v| s.max_width(v)),
+        doc: "Upper width clamp: logical px or a size expression (see `width`); \
+              grow+maxWidth is the responsive-width pattern.",
     },
     PropDef {
         name: "minHeight",
         id: P_MIN_H,
         kind: Kind::Min,
-        apply: Apply::SpecMin(|s, v| s.min_height(v)),
-        doc: "Lower height clamp: logical px, or \"fit\" for the node's own fit height (see `minWidth`).",
+        apply: Apply::SpecBound(|s, v| s.min_height(v)),
+        doc: "Lower height clamp: logical px, a size expression, or \"fit\" for the node's own fit height (see `minWidth`).",
     },
     PropDef {
         name: "maxHeight",
         id: P_MAX_H,
-        kind: Kind::F32,
-        apply: Apply::SpecF32(|s, v| s.max_height(v)),
-        doc: "Upper height clamp (logical px).",
+        kind: Kind::Max,
+        apply: Apply::SpecBound(|s, v| s.max_height(v)),
+        doc: "Upper height clamp: logical px or a size expression (see `width`).",
     },
     PropDef {
         name: "gap",
@@ -2968,7 +2984,8 @@ pub enum Parsed {
     Flag,
     Enum(usize),
     Sizing(Sizing),
-    Min(Min),
+    /// A `Min` or a `Max` row's clamp.
+    Bound(Bound),
     Msg(Value),
     Str(String),
     Resource(u64),
@@ -3094,7 +3111,7 @@ pub fn apply(def: &PropDef, value: Parsed, out: &mut PropsOut) -> Result<(), Str
         (Apply::SpecFlag(f), Parsed::Flag) => out.spec = f(spec),
         (Apply::SpecEnum(f), Parsed::Enum(v)) => out.spec = f(spec, v),
         (Apply::SpecSizing(f), Parsed::Sizing(v)) => out.spec = f(spec, v),
-        (Apply::SpecMin(f), Parsed::Min(v)) => out.spec = f(spec, v),
+        (Apply::SpecBound(f), Parsed::Bound(v)) => out.spec = f(spec, v),
         (Apply::SpecMsg(f), Parsed::Msg(v)) => out.spec = f(spec, v),
         (Apply::SpecStr(f), Parsed::Str(v)) => out.spec = f(spec, &v),
         (Apply::SpecKeyframes(f), Parsed::Keyframes(v)) => out.spec = f(spec, v),
@@ -3174,26 +3191,40 @@ pub fn color_hex_str(s: &str) -> Result<Color, String> {
     Ok(Color::hex(n))
 }
 
-/// The string forms of a sizing: "fit" | "grow" | "N%".
-/// The string form of a min: only `"fit"`. A number arrives as a number.
-pub fn min_str(s: &str) -> Result<Min, String> {
+/// The mode a sizing's, a min's or a max's first binary slot holds for a
+/// size expression, whose spelling follows as a strref (v19).
+pub const SIZE_MODE_CALC: u32 = 4;
+
+/// The mode for a size expression as data: a count of slots follows,
+/// then the expression in prefix code ([`crate::calc::from_code`]) —
+/// what the Node encoder sends for `{ clamp: [...] }`, so the addon
+/// reads numbers and parses no text (v19).
+pub const SIZE_MODE_TREE: u32 = 5;
+
+/// The string forms of a min: `"fit"`, or a size expression
+/// ([`crate::calc`]). A number arrives as a number.
+pub fn min_str(s: &str) -> Result<Bound, String> {
     match s {
-        "fit" => Ok(Min::FIT),
-        _ => Err(format!("bad min {s:?} (number | \"fit\")")),
+        "fit" => Ok(Bound::Fit),
+        _ => crate::calc::bound(s)
+            .map_err(|e| format!("bad min {s:?} (number | \"fit\" | a size expression): {e}")),
     }
 }
 
+/// The string forms of a max: a size expression.
+pub fn max_str(s: &str) -> Result<Bound, String> {
+    crate::calc::bound(s).map_err(|e| format!("bad max {s:?} (number | a size expression): {e}"))
+}
+
+/// The string forms of a sizing: "fit" | "grow" | "N%" | a size
+/// expression ([`crate::calc`]).
 pub fn sizing_str(s: &str) -> Result<Sizing, String> {
     match s {
         "fit" => Ok(Sizing::Fit),
         "grow" => Ok(Sizing::Grow(1.0)),
-        s if s.ends_with('%') => {
-            let pct: f32 = s[..s.len() - 1]
-                .parse()
-                .map_err(|_| format!("bad percent {s:?}"))?;
-            Ok(Sizing::Percent(pct / 100.0))
-        }
-        _ => Err(format!("bad sizing {s:?} (fit | grow | number | \"N%\")")),
+        _ => crate::calc::sizing(s).map_err(|e| {
+            format!("bad sizing {s:?} (fit | grow | number | \"N%\" | a size expression): {e}")
+        }),
     }
 }
 
@@ -3773,7 +3804,8 @@ mod tests {
                 Kind::Flag => Parsed::Flag,
                 Kind::Enum(_) => Parsed::Enum(1),
                 Kind::Sizing => Parsed::Sizing(Sizing::Percent(0.5)),
-                Kind::Min => Parsed::Min(Min::FIT),
+                Kind::Min => Parsed::Bound(Bound::Fit),
+                Kind::Max => Parsed::Bound(Bound::Px(10.0)),
                 Kind::Msg | Kind::Tag => Parsed::Msg(Value::Int(1)),
                 Kind::Str => Parsed::Str("name".into()),
                 Kind::Family => Parsed::Family(FontFamily::Mono),

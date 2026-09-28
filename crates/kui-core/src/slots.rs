@@ -202,10 +202,13 @@ pub(crate) fn sizing_value(v: &Value) -> Result<Sizing, String> {
                 // The Lua spelling.
                 Ok(Sizing::Percent(p as f32 / 100.0))
             } else {
-                Err("sizing object needs grow or percent".into())
+                // A size expression as data (backlog F109).
+                crate::calc::sizing_value(v).map_err(|e| {
+                    format!("sizing object needs grow, percent or a size expression: {e}")
+                })
             }
         }
-        _ => Err("bad sizing (fit | grow | number | \"N%\")".into()),
+        _ => Err("bad sizing (fit | grow | number | \"N%\" | a size expression)".into()),
     }
 }
 

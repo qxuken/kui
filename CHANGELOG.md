@@ -23,12 +23,52 @@ was the first bare bump to break an app in five releases).
 
 ## 0.1.0-alpha.25 (unreleased)
 
-**What breaks.** A build no longer writes `libkui_ffi.a`.
+**What breaks.** A build no longer writes `libkui_ffi.a`. The ABI is
+22: `KuiSpec` gains four fields. The Node wire is v19. Rust gains a
+`Sizing` variant, and the clamp props take a `Bound`.
 
 - C: `kui-ffi` builds a cdylib and an rlib; the staticlib is no longer
   one of its crate types (under Changed). A host that links
   `target/<profile>/libkui_ffi.a` asks for it:
   `cargo rustc -p kui-ffi --lib --release --crate-type staticlib`.
+- C: `KuiSpec.min_w_size`, `max_w_size`, `min_h_size` and `max_h_size`
+  appended (under Added, F109); the 64-bit size is 680. Recompile — a
+  zeroed field is the float clamp as before. `KuiSizing` takes a fifth
+  tag, `KUI_CALC`.
+- Node: the wire is v19 — `maxWidth` / `maxHeight` are two slots, and a
+  sizing, a min or a max has two new modes (under Added, F109). The
+  encoder and the addon move together; one without the other is refused
+  at the version check.
+- Rust: `Sizing::Calc` (under Added, F109), so an exhaustive match on
+  `Sizing` needs the arm.
+- Rust: `NodeSpec::min_width` / `min_height` take `impl Into<Bound>`
+  and `max_width` / `max_height` too, where the maxes took an `f32` —
+  a number and a `Min` still convert. `schema::Parsed::Min` is
+  `Parsed::Bound`, `Apply::SpecMin` is `Apply::SpecBound`, `min_str` and
+  `min_num` return a `Bound`, and `Kind::Max` is the maxes' kind.
+- Rust: `LayoutSpec::max_w` / `max_h` hold a negative for a calc clamp
+  until layout resolves it (as `min_w` holds `Min::FIT`): a reader
+  before layout wants `max_w_px()`. `Min::is_fit` is exactly `FIT`
+  where it was any negative.
+
+### Added
+
+- **Size expressions** (backlog F109, from kawoosh, 2026-09-29; every
+  binding). `width`, `height` and the four clamps take CSS's `min()`,
+  `max()` and `clamp()` over lengths and percentages, nested —
+  `"clamp(400px, 80%, 1000px)"` — resolved by layout against the
+  parent's content box, the box a percentage takes its cut of. As data
+  it is never parsed: `{ clamp: [400, { percent: 80 }, 1000] }` (Node,
+  sent as numbers), `{ clamp = { 400, { pct = 80 }, 1000 } }` (Lua),
+  `kui_size_clamp(kui_size_px(400), kui_size_pct(80), kui_size_px(1000))`
+  (C, with `kui_size_min`, `kui_size_max` and `kui_size_parse`), and
+  `calc::Expr` with `calc::sizing_of` (Rust). A spelling is parsed once
+  and found by its text after that; `calc::parse` is public, so a host
+  that validates its own settings holds them to the grammar kui draws.
+  **What you can delete:** a view's own arithmetic for a size bounded by
+  its parent — reading the parent's width back (`onLayout`, the window's
+  size) to compute a clamped px for a child, a frame late and wrong by
+  the parent's padding.
 
 ### Changed
 

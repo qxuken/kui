@@ -97,7 +97,7 @@ fn baseline_row(tree: &Tree, i: u32) -> bool {
 fn aligns_by_baseline(tree: &Tree, c: u32) -> bool {
     !matches!(
         child_sizing(tree, c, AxisSel::Height),
-        Sizing::Grow(_) | Sizing::Percent(_)
+        Sizing::Grow(_) | Sizing::Percent(_) | Sizing::Calc(_)
     )
 }
 
@@ -284,6 +284,10 @@ struct Col {
     /// The largest `Percent` among the cells, 0 for none; read only when
     /// nothing grows.
     pct: f32,
+    /// The first size expression among the cells (backlog F109): the
+    /// column is the larger of it and `pct` of the row, once the row's
+    /// width is known.
+    calc: Option<crate::calc::Calc>,
     /// Whether any cell is `Fixed`: a fixed column is never shrunk.
     fixed: bool,
     /// The strictest clamps its cells declared: the largest floor and
@@ -327,12 +331,13 @@ fn table_columns(tree: &Tree, i: u32) -> Vec<Col> {
             match child_sizing(tree, cell, AxisSel::Width) {
                 Sizing::Grow(f) => col.grow = col.grow.max(f.max(0.0)),
                 Sizing::Percent(p) => col.pct = col.pct.max(p),
+                Sizing::Calc(c) => col.calc = col.calc.or(Some(c)),
                 Sizing::Fixed(_) => col.fixed = true,
                 Sizing::Fit => {}
             }
             if !matches!(tree.content[cell as usize], NodeContent::Text(_)) {
                 col.min = col.min.max(spec.min_w.resolved());
-                col.max = col.max.min(spec.max_w);
+                col.max = col.max.min(spec.max_w_px());
             }
             j += 1;
         }
@@ -397,11 +402,11 @@ fn table_apply(tree: &mut Tree, i: u32, cols: &[Col], fitting: bool) {
                     tree.size[row as usize].w = spec.clamp_w(fit);
                 }
                 Sizing::Fixed(_) => {}
-                Sizing::Grow(_) | Sizing::Percent(_) if fitting => {
+                Sizing::Grow(_) | Sizing::Percent(_) | Sizing::Calc(_) if fitting => {
                     let fit = table_row_fit(tree, row, cols);
                     tree.size[row as usize].w = spec.clamp_w(fit);
                 }
-                Sizing::Grow(_) | Sizing::Percent(_) => {}
+                Sizing::Grow(_) | Sizing::Percent(_) | Sizing::Calc(_) => {}
             }
             if scrolls && !fitting {
                 let fit = table_row_fit(tree, row, cols);
@@ -435,6 +440,20 @@ fn table_fit(tree: &mut Tree, i: u32) {
 /// `shrink_axis` compresses a row's children. Then written into every
 /// cell, so the rows have nothing left to distribute.
 fn table_resolve(tree: &mut Tree, i: u32) {
+    // A cell's size-expression clamps, against its row's content box:
+    // the rows are wide by now, and the columns read the clamps next.
+    if tree.any_calc_bound {
+        for row in tree.children(i).collect::<Vec<_>>() {
+            if !is_table_row(tree, row) {
+                continue;
+            }
+            let room =
+                (tree.size[row as usize].w - tree.specs[row as usize].layout.padding.x()).max(0.0);
+            for cell in tree.children(row).collect::<Vec<_>>() {
+                resolve_bounds(tree, cell, AxisSel::Width, room);
+            }
+        }
+    }
     let mut cols = table_columns(tree, i);
     if cols.is_empty() {
         return;
@@ -458,8 +477,9 @@ fn table_resolve(tree: &mut Tree, i: u32) {
         if col.grow > 0.0 {
             grow_total += col.grow;
             col.w = col.clamp(0.0);
-        } else if col.pct > 0.0 {
-            col.w = col.clamp(avail * col.pct);
+        } else if col.pct > 0.0 || col.calc.is_some() {
+            let calc = col.calc.map_or(0.0, |c| c.resolve(avail));
+            col.w = col.clamp((avail * col.pct).max(calc));
             used += col.w;
         } else {
             col.w = col.clamp(col.fit);
@@ -494,7 +514,7 @@ fn table_resolve(tree: &mut Tree, i: u32) {
     let total: f32 = cols.iter().map(|c| c.w).sum();
     let mut deficit = total - avail;
     if deficit > 0.5 && !tree.specs[i as usize].layout.scroll_x {
-        let shrinkable = |c: &Col| !c.fixed && c.grow <= 0.0 && c.pct <= 0.0;
+        let shrinkable = |c: &Col| !c.fixed && c.grow <= 0.0 && c.pct <= 0.0 && c.calc.is_none();
         let mut guard = 0;
         while deficit > 0.5 && guard < 128 {
             guard += 1;
@@ -582,7 +602,7 @@ fn line_extents(tree: &Tree, c: u32, end: u32, gap: f32) -> (f32, f32) {
             main += size.w;
             if !matches!(
                 child_sizing(tree, k, AxisSel::Height),
-                Sizing::Grow(_) | Sizing::Percent(_)
+                Sizing::Grow(_) | Sizing::Percent(_) | Sizing::Calc(_)
             ) {
                 cross = cross.max(size.h);
             }
@@ -776,21 +796,25 @@ fn anchored(
         // resolves to its number; a copy taken before it clamped with a
         // floor of 0 and the float lost its own floor (backlog RG6).
         fit_widths(tree, text, c..end);
+        if tree.any_calc_bound {
+            resolve_bounds(tree, c as u32, AxisSel::Width, anchor.w);
+        }
         let spec = tree.specs[c].layout;
         tree.size[c].w = spec.clamp_w(match spec.width {
             Sizing::Grow(_) => anchor.w,
-            Sizing::Percent(p) => anchor.w * p,
-            _ => tree.size[c].w,
+            s => of_room(s, anchor.w).unwrap_or(tree.size[c].w),
         });
         for i in c..end {
             distribute_axis(tree, i as u32, AxisSel::Width, viewport);
         }
         fit_heights(tree, text, c..end);
+        if tree.any_calc_bound {
+            resolve_bounds(tree, c as u32, AxisSel::Height, anchor.h);
+        }
         let spec = tree.specs[c].layout;
         tree.size[c].h = spec.clamp_h(match spec.height {
             Sizing::Grow(_) => anchor.h,
-            Sizing::Percent(p) => anchor.h * p,
-            _ => tree.size[c].h,
+            s => of_room(s, anchor.h).unwrap_or(tree.size[c].h),
         });
         for i in c..end {
             distribute_axis(tree, i as u32, AxisSel::Height, viewport);
@@ -930,7 +954,7 @@ fn fit_widths(tree: &mut Tree, text: &mut dyn TextMeasure, range: std::ops::Rang
             Sizing::Fixed(px) => px,
             // Resolved against the parent later; contributes nothing to fit
             // beyond its own floor.
-            Sizing::Grow(_) | Sizing::Percent(_) => 0.0,
+            Sizing::Grow(_) | Sizing::Percent(_) | Sizing::Calc(_) => 0.0,
             Sizing::Fit => spec.aspect_width().unwrap_or(fit),
         });
     }
@@ -962,7 +986,7 @@ fn fit_height(tree: &Tree, i: usize, text: &mut dyn TextMeasure, edit: Size) -> 
                 match spec.width {
                     Sizing::Fixed(px) => spec.clamp_w(px),
                     Sizing::Fit => spec.clamp_w(intrinsic.w),
-                    Sizing::Grow(_) | Sizing::Percent(_) => tree.size[i].w,
+                    Sizing::Grow(_) | Sizing::Percent(_) | Sizing::Calc(_) => tree.size[i].w,
                 }
             } else {
                 tree.size[i].w
@@ -1054,7 +1078,7 @@ fn fit_heights(tree: &mut Tree, text: &mut dyn TextMeasure, range: std::ops::Ran
         let spec = &tree.specs[i].layout;
         tree.size[i].h = spec.clamp_h(match height {
             Sizing::Fixed(px) => px,
-            Sizing::Grow(_) | Sizing::Percent(_) => 0.0,
+            Sizing::Grow(_) | Sizing::Percent(_) | Sizing::Calc(_) => 0.0,
             // Width is final by now: a declared ratio reads it (backlog
             // C14), as an image's pixels do below it.
             Sizing::Fit if spec.aspect_height() => tree.size[i].w / spec.aspect,
@@ -1066,6 +1090,9 @@ fn fit_heights(tree: &mut Tree, text: &mut dyn TextMeasure, range: std::ops::Ran
 fn grow_widths(tree: &mut Tree, viewport: Size) {
     for i in 0..tree.len() {
         if tree.parent[i] == NIL {
+            if tree.any_calc_bound {
+                resolve_bounds(tree, i as u32, AxisSel::Width, viewport.w);
+            }
             let spec = tree.specs[i].layout;
             tree.size[i].w = spec.clamp_w(resolve_root(spec.width, tree.size[i].w, viewport.w));
         }
@@ -1076,6 +1103,9 @@ fn grow_widths(tree: &mut Tree, viewport: Size) {
 fn grow_heights(tree: &mut Tree, viewport: Size) {
     for i in 0..tree.len() {
         if tree.parent[i] == NIL {
+            if tree.any_calc_bound {
+                resolve_bounds(tree, i as u32, AxisSel::Height, viewport.h);
+            }
             let spec = tree.specs[i].layout;
             tree.size[i].h = spec.clamp_h(resolve_root(spec.height, tree.size[i].h, viewport.h));
         }
@@ -1087,6 +1117,7 @@ fn resolve_root(sizing: Sizing, fitted: f32, viewport: f32) -> f32 {
     match sizing {
         Sizing::Grow(_) => viewport,
         Sizing::Percent(p) => viewport * p,
+        Sizing::Calc(c) => c.resolve(viewport),
         Sizing::Fixed(px) => px,
         Sizing::Fit => fitted,
     }
@@ -1109,6 +1140,22 @@ fn distribute_axis(tree: &mut Tree, i: u32, axis: AxisSel, viewport: Size) {
     let content = (own - pad).max(0.0);
     let is_main = (spec.dir == Dir::Row) == (axis == AxisSel::Width);
 
+    // Size-expression clamps (backlog F109) against the content box, the
+    // room a percentage takes its cut of, before anything below is sized
+    // by them; a child whose size is its own — fixed, fit — is clamped
+    // again here, since its fit pass ran with no such clamp. A float's
+    // room is its anchor, below.
+    if tree.any_calc_bound {
+        let mut c = tree.first_child[i as usize];
+        while c != NIL {
+            if !is_float(tree, c) && resolve_bounds(tree, c, axis, content) {
+                let now = get_axis(tree, c, axis);
+                set_axis_clamped(tree, c, axis, now);
+            }
+            c = tree.next_sibling[c as usize];
+        }
+    }
+
     if is_main && axis == AxisSel::Width && is_table_row(tree, i) {
         // The cells were sized by the table (`table_resolve`), the same
         // in every row: nothing to grow, cut or shrink here.
@@ -1119,9 +1166,9 @@ fn distribute_axis(tree: &mut Tree, i: u32, axis: AxisSel, viewport: Size) {
         let mut c = tree.first_child[i as usize];
         while c != NIL {
             if !is_float(tree, c)
-                && let Sizing::Percent(p) = child_sizing(tree, c, axis)
+                && let Some(px) = of_room(child_sizing(tree, c, axis), content)
             {
-                set_axis_clamped(tree, c, axis, content * p);
+                set_axis_clamped(tree, c, axis, px);
             }
             c = tree.next_sibling[c as usize];
         }
@@ -1185,8 +1232,11 @@ fn distribute_axis(tree: &mut Tree, i: u32, axis: AxisSel, viewport: Size) {
                 if !is_float(tree, k) {
                     match child_sizing(tree, k, axis) {
                         Sizing::Grow(_) => set_axis_clamped(tree, k, axis, extent),
-                        Sizing::Percent(p) => set_axis_clamped(tree, k, axis, extent * p),
-                        _ => {}
+                        s => {
+                            if let Some(px) = of_room(s, extent) {
+                                set_axis_clamped(tree, k, axis, px);
+                            }
+                        }
                     }
                 }
                 k = tree.next_sibling[k as usize];
@@ -1200,8 +1250,11 @@ fn distribute_axis(tree: &mut Tree, i: u32, axis: AxisSel, viewport: Size) {
             if !is_float(tree, c) {
                 match child_sizing(tree, c, axis) {
                     Sizing::Grow(_) => set_axis_clamped(tree, c, axis, content),
-                    Sizing::Percent(p) => set_axis_clamped(tree, c, axis, content * p),
-                    _ => {}
+                    s => {
+                        if let Some(px) = of_room(s, content) {
+                            set_axis_clamped(tree, c, axis, px);
+                        }
+                    }
                 }
             }
             c = tree.next_sibling[c as usize];
@@ -1231,10 +1284,17 @@ fn distribute_axis(tree: &mut Tree, i: u32, axis: AxisSel, viewport: Size) {
                 // Sized in the sixth pass, once the anchor is placed.
                 (FloatAnchor::Node(_), _) => 0.0,
             };
+            if tree.any_calc_bound && resolve_bounds(tree, c, axis, anchor_dim) {
+                let now = get_axis(tree, c, axis);
+                set_axis_clamped(tree, c, axis, now);
+            }
             match child_sizing(tree, c, axis) {
                 Sizing::Grow(_) => set_axis_clamped(tree, c, axis, anchor_dim),
-                Sizing::Percent(p) => set_axis_clamped(tree, c, axis, anchor_dim * p),
-                _ => {}
+                s => {
+                    if let Some(px) = of_room(s, anchor_dim) {
+                        set_axis_clamped(tree, c, axis, px);
+                    }
+                }
             }
         }
         c = tree.next_sibling[c as usize];
@@ -1478,6 +1538,42 @@ fn shrink_axis(tree: &mut Tree, i: u32, axis: AxisSel, mut deficit: f32, only_li
             break;
         }
     }
+}
+
+/// A sizing that takes its size from the room once the parent's is
+/// known — a `Percent`, or a size expression (backlog F109) — in px of
+/// `room`; `None` for the others.
+#[inline]
+fn of_room(sizing: Sizing, room: f32) -> Option<f32> {
+    match sizing {
+        Sizing::Percent(p) => Some(room * p),
+        Sizing::Calc(c) => Some(c.resolve(room)),
+        _ => None,
+    }
+}
+
+/// Writes node `c`'s size-expression clamps on `axis` as px of `room`
+/// into the spec's (backlog F109), so every later clamp — and every
+/// reader of `min_w` / `max_w` — reads a number, as a `Min::FIT` floor
+/// is written back once its fit pass ran. Before this a calc clamp is
+/// none, as a percentage clamp is in CSS's intrinsic sizing. `true` when
+/// the node had one to write.
+fn resolve_bounds(tree: &mut Tree, c: u32, axis: AxisSel, room: f32) -> bool {
+    let l = &mut tree.specs[c as usize].layout;
+    let (min, max) = match axis {
+        AxisSel::Width => (&mut l.min_w, &mut l.max_w),
+        AxisSel::Height => (&mut l.min_h, &mut l.max_h),
+    };
+    let mut any = false;
+    if let Some(k) = min.as_calc() {
+        *min = Min::px(k.resolve(room));
+        any = true;
+    }
+    if let Some(k) = crate::spec::max_calc(*max) {
+        *max = k.resolve(room);
+        any = true;
+    }
+    any
 }
 
 fn child_sizing(tree: &Tree, c: u32, axis: AxisSel) -> Sizing {

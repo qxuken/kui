@@ -2481,14 +2481,22 @@ fn parse_value(kind: &Kind, v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Resul
             None => return Ok(None),
         },
         // A `$name` is a fixed clamp of that many px, as a sizing's is;
-        // one that misses leaves the row at its default (AR14).
-        Kind::Min => Parsed::Min(match v {
+        // one that misses leaves the row at its default (AR14). A string
+        // is `"fit"` (a min's) or a size expression, a table the same
+        // expression as data (backlog F109).
+        Kind::Min | Kind::Max => Parsed::Bound(match v {
             v if reference(v)?.is_some() => match length_of(v, refs)? {
-                Some(px) => kui_core::Min::px(px),
+                Some(px) => kui_core::Bound::Px(px),
                 None => return Ok(None),
             },
-            mlua::Value::String(s) => schema::min_str(&s.to_str()?).map_err(bad)?,
-            v => kui_core::Min::px(number(v).ok_or_else(|| bad("expected a number or \"fit\""))?),
+            mlua::Value::String(s) if matches!(kind, Kind::Min) => {
+                schema::min_str(&s.to_str()?).map_err(bad)?
+            }
+            mlua::Value::String(s) => schema::max_str(&s.to_str()?).map_err(bad)?,
+            mlua::Value::Table(_) => kui_core::calc::bound_value(&size_value(v)?).map_err(bad)?,
+            v => kui_core::Bound::Px(
+                number(v).ok_or_else(|| bad("expected a number, a string or a size table"))?,
+            ),
         }),
         Kind::Msg | Kind::Tag => Parsed::Msg(lua_to_value(v)?),
         Kind::Str => {
@@ -2542,6 +2550,31 @@ fn parse_color(v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Result<Option<Colo
         .map_err(|_| bad("color must be a 0xRRGGBBAA integer, a \"#hex\" string or a \"$token\""))
 }
 
+/// A size expression as data (backlog F109), as the core reads one — with
+/// a percentage spelled `{ pct = n }` at any depth, Lua's word: `percent`
+/// was the first cut's, refused since (RG33), and a size table taking it
+/// would bring it back one level down.
+fn size_value(v: &mlua::Value) -> mlua::Result<Value> {
+    fn check(v: &Value) -> mlua::Result<()> {
+        match v {
+            Value::Map(m) => {
+                for (k, x) in m {
+                    if k == "percent" {
+                        return Err(bad("a percentage is { pct = n } in Lua"));
+                    }
+                    check(x)?;
+                }
+                Ok(())
+            }
+            Value::List(xs) => xs.iter().try_for_each(check),
+            _ => Ok(()),
+        }
+    }
+    let value = lua_to_value(v)?;
+    check(&value)?;
+    Ok(value)
+}
+
 fn parse_sizing(v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Result<Option<Sizing>> {
     if let Some(name) = reference(v)? {
         return Ok(refs.length(&name).map(Sizing::Fixed));
@@ -2556,7 +2589,13 @@ fn parse_sizing(v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Result<Option<Siz
             } else if let Some(f) = t.get::<Option<f32>>("grow")? {
                 Sizing::Grow(f)
             } else {
-                return Err(bad("sizing table needs pct or grow"));
+                // A size expression as data (backlog F109):
+                // `{ clamp = { 400, { pct = 80 }, 1000 } }`.
+                kui_core::calc::sizing_value(&size_value(v)?).map_err(|e| {
+                    bad(format!(
+                        "sizing table needs pct, grow or a size expression: {e}"
+                    ))
+                })?
             }
         }
         _ => return Err(bad("invalid sizing value")),

@@ -279,6 +279,24 @@ static int surface(void) {
     check(kui_measure_rich_text(ui, spans, 2, &body, 0, &rich), "kui_measure_rich_text");
     check(rich.width > 0 && rich.lines == 1, "spans measure as one line");
 
+    /* Size expressions (backlog F109): built from parts or parsed, one
+     * entry either way; a length reduces to KUI_FIXED, a lone percentage
+     * to KUI_PERCENT, and a part that is no size makes the whole KUI_FIT. */
+    KuiSizing built = kui_size_clamp(kui_size_px(400), kui_size_pct(80), kui_size_px(1000));
+    KuiSizing parsed = {0};
+    check(kui_size_parse(KUI_STR("clamp(400px, 80%, 1000px)"), &parsed), "kui_size_parse");
+    check(built.tag == KUI_CALC && parsed.tag == KUI_CALC && built.value == parsed.value,
+          "a clamp built and spelled is one calc");
+    KuiSizing lengths[] = {kui_size_px(300), kui_size_px(400)};
+    KuiSizing smaller = kui_size_min(lengths, 2);
+    check(smaller.tag == KUI_FIXED && smaller.value == 300, "min of lengths is a length");
+    KuiSizing either[] = {kui_size_pct(50), kui_size_px(300)};
+    check(kui_size_max(either, 2).tag == KUI_CALC, "max over a percentage is a calc");
+    KuiSizing fit = {0};
+    check(kui_size_clamp(fit, kui_size_pct(50), kui_size_px(9)).tag == KUI_FIT,
+          "fit is no size");
+    check(!kui_size_parse(KUI_STR("clamp(1, 2)"), &parsed), "clamp takes three");
+
     /* Resources. Unusable input is a 0 handle, not a crash. */
     const uint8_t junk[4] = {0, 1, 2, 3};
     check(kui_font_add(ui, junk, sizeof junk) == 0, "garbage is not a font");

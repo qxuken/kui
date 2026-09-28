@@ -23,6 +23,61 @@ pub enum Sizing {
     Fixed(f32),
     /// Fraction of the parent's content box (0.0..=1.0).
     Percent(f32),
+    /// A size expression resolved against the parent's content box, the
+    /// box a `Percent` takes its cut of: `"clamp(400px, 80%, 1000px)"`
+    /// (backlog F109, [`crate::calc`]). Layout treats it as it treats a
+    /// `Percent` — nothing in the fit pass, its size once the parent's is
+    /// known — and a parent that overflows shrinks it as it would one.
+    Calc(crate::calc::Calc),
+}
+
+/// What a `minWidth` / `maxWidth` / `minHeight` / `maxHeight` declares:
+/// px, the node's own fit size (a min only), or a size expression that
+/// layout resolves against the parent's content box when it sizes the
+/// node (backlog F109). Until then a calc bound clamps like none, as a
+/// percentage clamp does in CSS's intrinsic sizing.
+///
+/// A calc clamp costs the spec nothing: it rides in the clamp's own
+/// `f32` as a negative, the way [`Min::FIT`] does — `min_w` below −1
+/// ([`Min::calc`]), `max_w` below 0 ([`max_calc`]) — and layout writes
+/// the resolved px over it, so a reader after layout reads a number and
+/// one before it goes through [`LayoutSpec::max_w_px`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Bound {
+    Px(f32),
+    Fit,
+    Calc(crate::calc::Calc),
+}
+
+/// A ceiling that is a size expression, as `max_w` / `max_h` hold it
+/// until layout resolves it: −1 − its number.
+pub fn max_of_calc(c: crate::calc::Calc) -> f32 {
+    -1.0 - c.id() as f32
+}
+
+/// The size expression a `max_w` / `max_h` waits on, if it is one.
+pub fn max_calc(v: f32) -> Option<crate::calc::Calc> {
+    (v < 0.0)
+        .then(|| crate::calc::Calc::from_id((-v - 1.0) as u32))
+        .flatten()
+}
+
+impl From<f32> for Bound {
+    fn from(px: f32) -> Self {
+        Bound::Px(px)
+    }
+}
+
+impl From<Min> for Bound {
+    fn from(m: Min) -> Self {
+        if m.is_fit() {
+            Bound::Fit
+        } else if let Some(c) = m.as_calc() {
+            Bound::Calc(c)
+        } else {
+            Bound::Px(m.resolved())
+        }
+    }
 }
 
 /// A lower clamp on one axis: a number of logical px, or the node's own
@@ -53,11 +108,24 @@ impl Min {
 
     /// Whether this is the unresolved fit floor.
     pub fn is_fit(self) -> bool {
-        self.0 < 0.0
+        self.0 == Min::FIT.0
     }
 
-    /// The clamp as a number: the px it holds, or 0 for a `FIT` layout has
-    /// not resolved yet (nothing to floor at).
+    /// A floor that is a size expression, until layout resolves it
+    /// (backlog F109): −2 − its number, below `FIT`'s −1.
+    pub fn calc(c: crate::calc::Calc) -> Min {
+        Min(-2.0 - c.id() as f32)
+    }
+
+    /// The size expression this floor waits on, if it is one.
+    pub fn as_calc(self) -> Option<crate::calc::Calc> {
+        (self.0 <= -2.0)
+            .then(|| crate::calc::Calc::from_id((-self.0 - 2.0) as u32))
+            .flatten()
+    }
+
+    /// The clamp as a number: the px it holds, or 0 for a `FIT` or a calc
+    /// layout has not resolved yet (nothing to floor at).
     pub fn resolved(self) -> f32 {
         self.0.max(0.0)
     }
@@ -92,22 +160,24 @@ impl Sizing {
             Sizing::Grow(w) => format!("grow({w})"),
             Sizing::Fixed(px) => format!("{px}px"),
             Sizing::Percent(p) => format!("{}%", p * 100.0),
+            Sizing::Calc(c) => c.describe(),
         }
     }
 
     /// The animatable number inside: a grow factor, a px size, a fraction.
-    /// None for `Fit`, which has nothing to ease.
+    /// None for `Fit` and a `Calc`, which have nothing to ease.
     pub fn amount(self) -> Option<f32> {
         match self {
-            Sizing::Fit => None,
+            Sizing::Fit | Sizing::Calc(_) => None,
             Sizing::Grow(v) | Sizing::Fixed(v) | Sizing::Percent(v) => Some(v),
         }
     }
 
-    /// The same form with a different amount (`Fit` stays `Fit`).
+    /// The same form with a different amount (`Fit` and a `Calc` stay).
     pub fn with_amount(self, v: f32) -> Self {
         match self {
             Sizing::Fit => Sizing::Fit,
+            Sizing::Calc(c) => Sizing::Calc(c),
             Sizing::Grow(_) => Sizing::Grow(v),
             Sizing::Fixed(_) => Sizing::Fixed(v),
             Sizing::Percent(_) => Sizing::Percent(v),
@@ -570,12 +640,30 @@ impl LayoutSpec {
 
     pub(crate) fn clamp_w(&self, w: f32) -> f32 {
         let min = self.min_w.resolved();
-        w.clamp(min, self.max_w.max(min))
+        w.clamp(min, self.max_w_px().max(min))
     }
 
     pub(crate) fn clamp_h(&self, h: f32) -> f32 {
         let min = self.min_h.resolved();
-        h.clamp(min, self.max_h.max(min))
+        h.clamp(min, self.max_h_px().max(min))
+    }
+
+    /// `max_w` as px: a calc layout has not resolved yet is no ceiling.
+    pub fn max_w_px(&self) -> f32 {
+        if self.max_w < 0.0 {
+            f32::INFINITY
+        } else {
+            self.max_w
+        }
+    }
+
+    /// `max_h` as px, as [`Self::max_w_px`].
+    pub fn max_h_px(&self) -> f32 {
+        if self.max_h < 0.0 {
+            f32::INFINITY
+        } else {
+            self.max_h
+        }
     }
 }
 
@@ -1510,21 +1598,62 @@ impl NodeSpec {
         self.grow_width().grow_height()
     }
 
-    /// A number of px, or [`Min::FIT`] for the node's own fit width.
-    pub fn min_width(mut self, v: impl Into<Min>) -> Self {
-        self.layout.min_w = v.into();
+    /// A number of px, [`Min::FIT`] for the node's own fit width, or a
+    /// [`Bound::Calc`] (backlog F109).
+    pub fn min_width(mut self, v: impl Into<Bound>) -> Self {
+        self.layout.min_w = match v.into() {
+            Bound::Px(px) => Min::px(px),
+            Bound::Fit => Min::FIT,
+            Bound::Calc(c) => Min::calc(c),
+        };
         self
     }
 
-    pub fn max_width(mut self, v: f32) -> Self {
-        self.layout.max_w = v;
+    /// A number of px, or a [`Bound::Calc`]; a max has no fit size, so
+    /// [`Bound::Fit`] is no clamp.
+    pub fn max_width(mut self, v: impl Into<Bound>) -> Self {
+        self.layout.max_w = match v.into() {
+            Bound::Px(px) => px,
+            Bound::Fit => f32::INFINITY,
+            Bound::Calc(c) => max_of_calc(c),
+        };
         self
     }
 
-    /// A number of px, or [`Min::FIT`] for the node's own fit height.
-    pub fn min_height(mut self, v: impl Into<Min>) -> Self {
-        self.layout.min_h = v.into();
+    /// A number of px, [`Min::FIT`] for the node's own fit height, or a
+    /// [`Bound::Calc`].
+    pub fn min_height(mut self, v: impl Into<Bound>) -> Self {
+        self.layout.min_h = match v.into() {
+            Bound::Px(px) => Min::px(px),
+            Bound::Fit => Min::FIT,
+            Bound::Calc(c) => Min::calc(c),
+        };
         self
+    }
+
+    /// The four clamps where each is given, a transport's shape (C's
+    /// `*_size` fields): `None` leaves that clamp as it is.
+    pub fn with_bounds(
+        self,
+        min_w: Option<Bound>,
+        max_w: Option<Bound>,
+        min_h: Option<Bound>,
+        max_h: Option<Bound>,
+    ) -> Self {
+        let mut s = self;
+        if let Some(b) = min_w {
+            s = s.min_width(b);
+        }
+        if let Some(b) = max_w {
+            s = s.max_width(b);
+        }
+        if let Some(b) = min_h {
+            s = s.min_height(b);
+        }
+        if let Some(b) = max_h {
+            s = s.max_height(b);
+        }
+        s
     }
 
     /// Clip children to this node's rect without scrolling. A `radius` on
@@ -1604,8 +1733,13 @@ impl NodeSpec {
         self.hoverable().description(hint)
     }
 
-    pub fn max_height(mut self, v: f32) -> Self {
-        self.layout.max_h = v;
+    /// A number of px, or a [`Bound::Calc`]; [`Bound::Fit`] is no clamp.
+    pub fn max_height(mut self, v: impl Into<Bound>) -> Self {
+        self.layout.max_h = match v.into() {
+            Bound::Px(px) => px,
+            Bound::Fit => f32::INFINITY,
+            Bound::Calc(c) => max_of_calc(c),
+        };
         self
     }
 

@@ -283,8 +283,14 @@ extern "C" {
  * kui_input_key_down and its siblings carries two more things in bits that
  * were zero: the lock state (KUI_KLOCK_*) and which of a key's twins it was
  * (KUI_KLOC_*); a host passing only KUI_KMOD_* sends what it sent.
+ *
+ * ABI 22 appends min_w_size, max_w_size, min_h_size and max_h_size to
+ * KuiSpec (backlog F109): a clamp as a size expression, from the new
+ * kui_size_* builders or kui_size_parse, resolved by layout against the
+ * parent's content box; zeroed, the float clamps hold as they did.
+ * KuiSizing takes a fifth tag, KUI_CALC. The 64-bit size is 680. Recompile.
  */
-#define KUI_ABI_VERSION 21u
+#define KUI_ABI_VERSION 22u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -374,7 +380,7 @@ static inline bool kui_str_eq(KuiStr s, const char *lit) {
 }
 
 /* Sizing tags */
-enum { KUI_FIT = 0, KUI_GROW = 1, KUI_FIXED = 2, KUI_PERCENT = 3 };
+enum { KUI_FIT = 0, KUI_GROW = 1, KUI_FIXED = 2, KUI_PERCENT = 3, KUI_CALC = 4 };
 /* KuiSpec.min_w / min_h: the node's own fit size as its floor (`minWidth:
  * "fit"` elsewhere) - a grow child that never goes below its content. Any
  * negative min means this; the name is the one to write. */
@@ -1056,7 +1062,34 @@ typedef struct KuiSpec {
      * key's shift/ctrl/alt/super and the modifiers event, so a keymap
      * mid-sequence never reads a Shift as a key. ABI 21. */
     uint32_t modifier_keys;
+    /* The clamps as size expressions (backlog F109): a KUI_FIXED,
+     * KUI_PERCENT or KUI_CALC sizing (kui_size_*) here replaces the float
+     * of the same name, resolved by layout against the parent's content
+     * box - max_w_size = kui_size_pct(90) is "never wider than 90% of my
+     * parent". Zeroed (KUI_FIT), the float holds. ABI 22. */
+    KuiSizing min_w_size, max_w_size, min_h_size, max_h_size;
 } KuiSpec;
+
+/* Size expressions (backlog F109), built from parts so nothing is parsed:
+ *
+ *     s.width = kui_size_clamp(kui_size_px(400), kui_size_pct(80),
+ *                              kui_size_px(1000));
+ *
+ * is 80% of the parent's content box, never under 400 nor over 1000 (the
+ * minimum wins over the maximum, as CSS's clamp() has it). Each returns a
+ * KuiSizing already reduced: a length is KUI_FIXED, a lone percentage
+ * KUI_PERCENT, anything that depends on the room KUI_CALC. An argument
+ * that is not a size (KUI_FIT, KUI_GROW) makes the result KUI_FIT.
+ * kui_size_parse reads a spelling - "fit", "grow", "120", "50%",
+ * "clamp(400px, 80%, 1000px)", nested min()/max() - into *out, false for
+ * one that is not. A KUI_CALC names an entry in a table of at most 65536
+ * distinct expressions: build one per layout, not one per frame. */
+KuiSizing kui_size_px(float px);
+KuiSizing kui_size_pct(float percent);
+KuiSizing kui_size_min(const KuiSizing *args, size_t n);
+KuiSizing kui_size_max(const KuiSizing *args, size_t n);
+KuiSizing kui_size_clamp(KuiSizing lo, KuiSizing target, KuiSizing hi);
+bool kui_size_parse(KuiStr s, KuiSizing *out);
 
 /* When a scrolling node's bars are drawn (KuiSpec.scrollbar): the schema
  * index plus one, so zero is the default. VISIBLE draws the stock overlay

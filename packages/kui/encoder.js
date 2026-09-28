@@ -161,6 +161,59 @@ export function createEncoder(P) {
     return c;
   }
 
+  // A size expression as data (backlog F109): `{ clamp: [400, "80%",
+  // 1000] }`, `{ min: [...] }`, `{ max: [...] }`, `{ percent: 80 }`,
+  // `{ px: 12 }`, a number, or a length / percentage string — into prefix
+  // code (`calc::from_code`: 1 px, 2 fraction, 3 n… min, 4 n… max, 5 a b
+  // c clamp), so the addon reads numbers and parses no text. A spelled
+  // function (`"min(…)"`) inside one is not taken: pass it as the whole
+  // value, where it rides as a string.
+  function sizeCode(v, out) {
+    if (typeof v === 'number') {
+      out.push(1, v);
+    } else if (typeof v === 'string' && /^\s*[\d.]+\s*%\s*$/.test(v)) {
+      out.push(2, parseFloat(v) / 100);
+    } else if (typeof v === 'string' && /^\s*[\d.]+\s*(px)?\s*$/.test(v)) {
+      out.push(1, parseFloat(v));
+    } else if (v && typeof v === 'object' && typeof v.percent === 'number') {
+      out.push(2, v.percent / 100);
+    } else if (v && typeof v === 'object' && typeof v.px === 'number') {
+      out.push(1, v.px);
+    } else if (v && typeof v === 'object' && Array.isArray(v.clamp)) {
+      if (v.clamp.length !== 3) throw new Error('bad size: clamp takes three: clamp(MIN, TARGET, MAX)');
+      out.push(5);
+      for (const a of v.clamp) sizeCode(a, out);
+    } else if (v && typeof v === 'object' && (Array.isArray(v.min) || Array.isArray(v.max))) {
+      const args = v.min || v.max;
+      if (args.length === 0) throw new Error('bad size: min and max take at least one');
+      out.push(v.min ? 3 : 4, args.length);
+      for (const a of args) sizeCode(a, out);
+    } else {
+      throw new Error(`bad size ${JSON.stringify(v)} (a number, "N%", "Npx", { percent }, { px }, { min | max | clamp: [...] })`);
+    }
+    return out;
+  }
+
+  // A size expression that is not one of the plain forms: a string rides
+  // as its spelling (mode 4, a strref), data as prefix code (mode 5, a
+  // count and the slots). True when it wrote one.
+  function sizeExpr(v) {
+    if (typeof v === 'string') {
+      f[fi++] = 4;
+      strRef(v);
+      return true;
+    }
+    if (v && typeof v === 'object' && (v.clamp || v.min || v.max || typeof v.px === 'number' || typeof v.percent === 'number')) {
+      const code = sizeCode(v, []);
+      reserve(code.length + 2);
+      f[fi++] = 5;
+      f[fi++] = code.length;
+      for (const x of code) f[fi++] = x;
+      return true;
+    }
+    return false;
+  }
+
   // Writes (mode, value) for a sizing prop.
   function sizing(v) {
     if (typeof v === 'number') {
@@ -184,8 +237,8 @@ export function createEncoder(P) {
       // 5000%).
       f[fi++] = 3;
       f[fi++] = v.percent / 100;
-    } else {
-      throw new Error(`bad sizing ${JSON.stringify(v)} (fit | grow | number | "N%")`);
+    } else if (!sizeExpr(v)) {
+      throw new Error(`bad sizing ${JSON.stringify(v)} (fit | grow | number | "N%" | a size expression)`);
     }
   }
 
@@ -198,8 +251,19 @@ export function createEncoder(P) {
     } else if (v === 'fit') {
       f[fi++] = 1;
       f[fi++] = 0;
-    } else {
-      throw new Error(`bad min ${JSON.stringify(v)} (number | "fit")`);
+    } else if (!sizeExpr(v)) {
+      throw new Error(`bad min ${JSON.stringify(v)} (number | "fit" | a size expression)`);
+    }
+  }
+
+  // Writes (mode, value) for a max prop (v19: two slots): a number, or a
+  // size expression.
+  function max(v) {
+    if (typeof v === 'number') {
+      f[fi++] = 0;
+      f[fi++] = v;
+    } else if (!sizeExpr(v)) {
+      throw new Error(`bad max ${JSON.stringify(v)} (number | a size expression)`);
     }
   }
 
@@ -401,7 +465,7 @@ export function createEncoder(P) {
           // tagged id and the index, or nothing at all for a name that did
           // not resolve (reported through `unknownTokens`), so the core
           // keeps the row's default (AR14).
-          if (isRef(v) && (def.kind === 'f32' || def.kind === 'color' || def.kind === 'sizing' || def.kind === 'min')) {
+          if (isRef(v) && (def.kind === 'f32' || def.kind === 'color' || def.kind === 'sizing' || def.kind === 'min' || def.kind === 'max')) {
             const i = tokenRef(v, def.kind === 'color' ? 'color' : 'length');
             if (i !== undefined) {
               f[fi++] = def.id | TOKEN_TAG;
@@ -430,6 +494,9 @@ export function createEncoder(P) {
               break;
             case 'min':
               min(v);
+              break;
+            case 'max':
+              max(v);
               break;
             case 'msg':
             case 'tag':

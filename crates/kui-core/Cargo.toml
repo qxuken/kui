@@ -66,6 +66,10 @@ name = "long_line"
 harness = false
 
 [[bench]]
+name = "sizes"
+harness = false
+
+[[bench]]
 name = "cells"
 harness = false
 

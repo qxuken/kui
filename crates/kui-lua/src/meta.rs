@@ -33,8 +33,8 @@ struct Alias {
     strings: &'static [&'static str],
 }
 
-/// `parse_color`, `length_of`, `parse_sizing` and the `Kind::Min` arm
-/// of `parse_value`, in LuaLS's words.
+/// `parse_color`, `length_of`, `parse_sizing` and the `Kind::Min` /
+/// `Kind::Max` arm of `parse_value`, in LuaLS's words.
 const ALIASES: &[Alias] = &[
     Alias {
         name: "kui.Color",
@@ -49,16 +49,34 @@ const ALIASES: &[Alias] = &[
         strings: &["\"$gap\""],
     },
     Alias {
+        name: "kui.SizeArg",
+        doc: "A size expression's part: px, a spelling (`\"80%\"`, `\"min(…)\"`), `{ pct = n }` or `{ px = n }`.",
+        ty: "number|string|{ pct: number }|{ px: number }",
+        strings: &["\"80%\""],
+    },
+    Alias {
+        name: "kui.Size",
+        doc: "A size expression (backlog F109), resolved against the parent's content box: px, `\"Npx\"`, `\"N%\"`, `\"min(…)\"`, `\"max(…)\"`, `\"clamp(MIN, TARGET, MAX)\"`, nested — or the same as data, which is never parsed: `{ pct = n }`, `{ px = n }`, `{ min = { … } }`, `{ max = { … } }`, `{ clamp = { MIN, TARGET, MAX } }` (a part a table again, or a spelling).",
+        ty: "kui.SizeArg|{ min: kui.SizeArg[] }|{ max: kui.SizeArg[] }|{ clamp: kui.SizeArg[] }",
+        strings: &["\"clamp(400px, 80%, 1000px)\""],
+    },
+    Alias {
         name: "kui.Sizing",
-        doc: "A sizing: px, `\"fit\"`, `\"grow\"`, `\"N%\"`, `{ grow = n }`, `{ pct = n }` (n percent), or a `\"$length\"`.",
-        ty: "number|\"fit\"|\"grow\"|string|{ grow: number }|{ pct: number }",
-        strings: &["\"50%\"", "\"$gap\""],
+        doc: "A sizing: px, `\"fit\"`, `\"grow\"`, `\"N%\"`, `{ grow = n }`, `{ pct = n }` (n percent), a size expression (`kui.Size`), or a `\"$length\"`.",
+        ty: "\"fit\"|\"grow\"|{ grow: number }|kui.Size",
+        strings: &["\"50%\"", "\"$gap\"", "\"clamp(400px, 80%, 1000px)\""],
     },
     Alias {
         name: "kui.Min",
-        doc: "A lower clamp: px, `\"fit\"`, or a `\"$length\"`.",
-        ty: "number|\"fit\"|string",
-        strings: &["\"$gap\""],
+        doc: "A lower clamp: px, `\"fit\"`, a size expression (`kui.Size`), or a `\"$length\"`.",
+        ty: "\"fit\"|kui.Size",
+        strings: &["\"$gap\"", "\"50%\""],
+    },
+    Alias {
+        name: "kui.Max",
+        doc: "An upper clamp: px, a size expression (`kui.Size`), or a `\"$length\"`.",
+        ty: "kui.Size",
+        strings: &["\"$gap\"", "\"min(720px, 100%)\""],
     },
 ];
 
@@ -351,6 +369,7 @@ fn type_of(kind: &Kind) -> String {
             .join("|"),
         Kind::Sizing => "kui.Sizing".into(),
         Kind::Min => "kui.Min".into(),
+        Kind::Max => "kui.Max".into(),
         Kind::Msg | Kind::Tag => "any".into(),
         Kind::Str => "string".into(),
         // The stock three, for an editor to offer, or any installed name.
@@ -582,6 +601,12 @@ mod tests {
                         })
                         .collect();
                     out.push(format!("{{ {} }}", fields.join(", ")));
+                }
+                // A list: three of its first member, which is what every
+                // list a size takes (`clamp`'s three, `min`'s any) admits.
+                m if m.ends_with("[]") => {
+                    let one = samples(&m[..m.len() - 2], &[]).into_iter().next().unwrap();
+                    out.push(format!("{{ {one}, {one}, {one} }}"));
                 }
                 m if m.starts_with("kui.") => {
                     let a = alias(m).unwrap_or_else(|| panic!("{m} is no alias"));

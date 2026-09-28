@@ -119,7 +119,7 @@ c_type! {
     u32 => "uint32_t", u64 => "uint64_t", i64 => "int64_t", f32 => "float",
     f64 => "double", usize => "size_t", std::ffi::c_void => "void",
     KuiStr => "KuiStr", KuiCtx => "KuiCtx", KuiValue => "KuiValue",
-    KuiSpec => "KuiSpec", KuiTextStyle => "KuiTextStyle", KuiSpan => "KuiSpan",
+    KuiSpec => "KuiSpec", KuiSizing => "KuiSizing", KuiTextStyle => "KuiTextStyle", KuiSpan => "KuiSpan",
     KuiCell => "KuiCell", KuiMenuItem => "KuiMenuItem", KuiMenu => "KuiMenu",
     KuiMenuAction => "KuiMenuAction", KuiTextHit => "KuiTextHit",
     KuiCaretRect => "KuiCaretRect", KuiLayoutRect => "KuiLayoutRect",
@@ -723,6 +723,10 @@ fn asserts() -> (String, Vec<&'static str>) {
         overscroll: u32 => "uint32_t",
         scroll_axes: u32 => "uint32_t",
         modifier_keys: u32 => "uint32_t",
+        min_w_size: KuiSizing => "KuiSizing",
+        max_w_size: KuiSizing => "KuiSizing",
+        min_h_size: KuiSizing => "KuiSizing",
+        max_h_size: KuiSizing => "KuiSizing",
     });
 
     abi_struct!(o, KuiAccessNode {
@@ -1192,6 +1196,7 @@ fn every_entry_point_is_pinned() {
         include_str!("run.rs"),
         include_str!("scrolling.rs"),
         include_str!("select.rs"),
+        include_str!("size.rs"),
         include_str!("slots.rs"),
         include_str!("value.rs"),
         include_str!("widgets.rs"),
@@ -1394,8 +1399,8 @@ fn an_in_struct_s_size_is_the_abi_s() {
         // `keep_focus`, `on_focus`, `rules` and `rule_w`; then
         // `on_button` and `buttons` (backlog F105); then `overscroll` and
         // `scroll_axes` (backlog F107). ABI 21: `modifier_keys` (backlog
-        // F108).
-        ("KuiSpec", 648, 21),
+        // F108). ABI 22: the four `*_size` clamps (backlog F109).
+        ("KuiSpec", 680, 22),
         ("KuiSizing", 8, 16),
         ("KuiKeyframe", 36, 16),
         ("KuiEnter", 40, 16),

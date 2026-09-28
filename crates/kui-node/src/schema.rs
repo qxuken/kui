@@ -37,6 +37,7 @@ pub fn protocol_props() -> Json {
             Kind::Enum(names) => ("enum", Some(names)),
             Kind::Sizing => ("sizing", None),
             Kind::Min => ("min", None),
+            Kind::Max => ("max", None),
             Kind::Msg => ("msg", None),
             Kind::Tag => ("tag", None),
             Kind::Str => ("str", None),
