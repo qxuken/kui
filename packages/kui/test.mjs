@@ -562,6 +562,38 @@ test('a key sink that asks for releases hears both halves of a held key', () => 
   assert.equal(ctx.pollEvents().length, 0, 'no phantom release');
 });
 
+// Where a key is and what the locks hold ride on every key payload, and
+// the modifier keys themselves reach only a sink that asks (backlog F108).
+test('a key says where it is, the locks, and the modifier keys when asked', () => {
+  const build = (mods) =>
+    box({ onKey: null, keyUp: true, modifierKeys: mods, keyFocus: true, width: 100, height: 50 }, [], 'a');
+  let { ctx } = run(() => build(false));
+  ctx.keyDown('1', { location: 'numpad', capsLock: true, numLock: true });
+  ctx.keyDown('shift', { shift: true, location: 'left' });
+  ctx.keyDown('f13');
+  let evs = ctx.pollEvents().map((e) => e.payload);
+  assert.deepEqual(
+    evs.map((p) => [p.code, p.location, p.caps_lock, p.num_lock]),
+    [
+      ['1', 'numpad', true, true],
+      ['f13', 'standard', false, false],
+    ],
+    'the keypad 1 with its place and locks; no Shift unasked; F13 a key',
+  );
+  ({ ctx } = run(() => build(true)));
+  ctx.keyDown('shift', { shift: true, location: 'right' });
+  ctx.keyUp('shift', { location: 'right' });
+  evs = ctx.pollEvents().map((e) => e.payload);
+  assert.deepEqual(
+    evs.map((p) => [p.phase, p.code, p.location]),
+    [
+      ['down', 'shift', 'right'],
+      ['up', 'shift', 'right'],
+    ],
+  );
+  assert.throws(() => ctx.keyDown('a', { location: 'middle' }), /unknown key location/);
+});
+
 test('a keymap written in Latin survives the layout under it', () => {
   const build = () => box({ onKey: null, keyUp: true, keyFocus: true, width: 100, height: 50 }, [], 'a');
   const { ctx } = run(build);
@@ -4064,6 +4096,15 @@ const SCENE_TREES = {
         ], 'shell'),
       ]),
     ]),
+  // Two sinks asking for releases, tagged by kind so the report tells them
+  // apart; the second asks for the modifier keys (backlog F108).
+  'modifier-keys': () =>
+    root({}, [
+      box({ pad: 10, gap: 6 }, [
+        box({ width: 100, height: 24, bg: '#1b1d27', onKey: { kind: 'plain' }, keyUp: true, role: 'group', label: 'plain' }, [], 'plain'),
+        box({ width: 100, height: 24, bg: '#1b1d27', onKey: { kind: 'mods' }, keyUp: true, modifierKeys: true, role: 'group', label: 'mods' }, [], 'mods'),
+      ]),
+    ]),
   ime: () =>
     root({}, [
       box({ pad: 10, gap: 6 }, [
@@ -4873,6 +4914,14 @@ function driveScene(env, steps, build) {
     // The same spelling for a raw key on an `onKey` sink, down and up.
     else if (step[0] === 'keydown') ctx.keyDown(String.fromCodePoint(step[1]));
     else if (step[0] === 'keyup') ctx.keyUp(String.fromCodePoint(step[1]));
+    // A named key at a place (backlog F108): `conformance::STEP_KEYS` by
+    // index, the place as `KeyLocation::bits`'s number.
+    else if (step[0] === 'keyatdown' || step[0] === 'keyatup') {
+      const code = ['shift', 'enter', 'capslock'][step[1]];
+      const location = ['standard', 'left', 'right', 'numpad'][step[2]];
+      if (step[0] === 'keyatdown') ctx.keyDown(code, { location });
+      else ctx.keyUp(code, { location });
+    }
     // An IME composing one character (its caret at the end, as a byte
     // range) or ending its composition (0), and committing one.
     else if (step[0] === 'preedit') {
@@ -5014,6 +5063,10 @@ function sceneReport(name, env, steps, { ctx, events, commands, audio }) {
     // A held button's phase and which button ride the same way (backlog
     // F105): a binding that lost the mask claims the secondary presses.
     if (p?.kind === 'button') tag += ` ${p.phase} ${p.button ?? '-'}`;
+    // A key from one of a key's twins says which, with its phase and code
+    // (backlog F108); a standard key prints as it did.
+    if (p?.kind === 'key' && p.location && p.location !== 'standard')
+      tag += ` ${p.phase} ${p.code} ${p.location}`;
     // A drop's phase and its path count ride the same way (ADR 0031).
     if (p?.kind === 'drop') tag += ` ${p.phase} ${p.paths.length}`;
     // A paste's markers ride the same way, each only when set (backlog F84).

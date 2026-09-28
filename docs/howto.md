@@ -929,6 +929,24 @@ and a relaunch — what the owner of a modal editor, where `j` held is a
 motion, has usually done already. An app whose keys are commands can say
 so in its README; kui has nothing to offer it beyond that.
 
+### How do I tell the keypad from the main keys, or hear a lone Shift?
+
+Every key payload says which of a key's twins it was, `location`:
+`"numpad"` for the keypad's digits, operators and Enter — `code` still
+`"1"` or `"enter"`, so a keymap that does not care reads nothing new —
+`"left"` or `"right"` for a modifier, else `"standard"`; `caps_lock` and
+`num_lock` say what was locked. The modifier and lock keys themselves
+(`shift`, `ctrl`, `alt`, `super`, `capslock`, `numlock`, `scrolllock`)
+arrive only on a sink that says `modifierKeys` — with `keyUp` for their
+releases — because a keymap in the middle of `Space F` must not read the
+Shift as a key between the two. F13–F35, `printscreen`, `menu` and the
+media keys (`mediaplaypause`, `volumeup`, …) need nothing: they are keys.
+
+[`modifierKeys`](props.md#container-props) ·
+[`key`](props.md#events) ·
+[ADR 0002](adr/0002-keyboard-focus-as-data.md#amendment-where-a-key-is-the-modifier-keys-the-locks-built-2026-09-28) ·
+[alpha.24](../CHANGELOG.md#010-alpha24-unreleased)
+
 ### How do I reset an editor's text?
 
 `initial` seeds a *new* editor only — a key declared again keeps the draft

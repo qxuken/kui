@@ -262,7 +262,19 @@
 /// those bytes to chance (on a 32-bit one the stride moved, as ABI 8's
 /// did). Recompile; a zeroed field is the square background every span
 /// had.
-pub const KUI_ABI_VERSION: u32 = 20;
+///
+/// ABI 21 appends `modifier_keys` to `KuiSpec` (backlog F108): with
+/// `on_key`, the modifier and lock keys arrive as keys of their own, the
+/// side in the payload's new `location`; zeroed, a modifier is only ever
+/// held, as it was. On a 64-bit target it takes what was the struct's
+/// tail padding, so the size stays 648, but a host that did not recompile
+/// leaves those bytes to chance (on a 32-bit one the size moved), as
+/// ABI 20's `bg_radius` did. Recompile. The `kmods` word
+/// of `kui_input_key_down` and its siblings carries two more things in
+/// bits that were zero: the lock state (`KUI_KLOCK_*`) and which of a
+/// key's twins it was (`KUI_KLOC_*`); a host passing only `KUI_KMOD_*`
+/// sends what it sent.
+pub const KUI_ABI_VERSION: u32 = 21;
 
 /// The ABI version this library implements, for a host to compare against
 /// the `KUI_ABI_VERSION` of the header it compiled against, before its

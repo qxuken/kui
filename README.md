@@ -1529,9 +1529,12 @@ and no stylus tilt (X3). v0 is desktop-first.
 Keys are layout-resolved characters and a closed list of names, with the
 US-QWERTY position beside them as `physical`, so a keymap can bind the finger
 rather than the label ([ADR 0002](docs/adr/0002-keyboard-focus-as-data.md),
-decision 11). The modifiers carry no left/right distinction, so a keymap
-cannot tell the two Shifts apart, and a key that neither the layout nor the
-position names is dropped rather than delivered as `unknown`. Presses and
+decision 11). A press says which of a key's twins it was — the left or
+right modifier, the keypad's digit or the main block's — and what Caps Lock
+and Num Lock held, and the modifier keys themselves reach a sink that asks
+for them (`modifierKeys`; decisions 14–16). A key that neither the layout
+nor the position names is still dropped rather than delivered as
+`unknown`. Presses and
 releases route to the key sink and no further (C9): the core keeps no "which
 keys are down" query, since the app that asked for the pair already has one.
 

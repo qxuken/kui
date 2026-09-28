@@ -773,6 +773,15 @@ pub struct EventSpec {
     /// left stuck down. Without it a sink hears presses only, which is
     /// what a keymap wants.
     pub key_up: bool,
+    /// With `on_key`: the modifier and lock keys themselves arrive too
+    /// — Shift, Ctrl, Alt, Super, Caps Lock, Num Lock, Scroll Lock, as
+    /// codes of their own with their side in `location` (backlog F108).
+    /// Without it a modifier is only ever held — in the next key's
+    /// `shift` / `ctrl` / … and the `modifiers` event — so a keymap
+    /// mid-sequence does not read Shift as a key between two others. A
+    /// terminal speaking kitty's keyboard protocol asks, and so does a
+    /// game that binds a lone Shift.
+    pub modifier_keys: bool,
     /// Asks for a context menu: a secondary-button press over this node
     /// emits `{kind="contextmenu", x, y, tag}` on it with this payload
     /// under `tag`, and does nothing else — the press moves no focus,
@@ -925,6 +934,7 @@ impl EventSpec {
         on_drag: None,
         on_key: None,
         key_up: false,
+        modifier_keys: false,
         on_context_menu: None,
         on_force_click: None,
         on_button: None,
@@ -2095,6 +2105,14 @@ impl NodeSpec {
     /// `key_up` field). Meaningless without `on_key`.
     pub fn key_up(mut self) -> Self {
         self.events_mut().key_up = true;
+        self
+    }
+
+    /// Delivers the modifier and lock keys to this key sink as keys of
+    /// their own (see the `modifier_keys` field). Meaningless without
+    /// `on_key`.
+    pub fn modifier_keys(mut self) -> Self {
+        self.events_mut().modifier_keys = true;
         self
     }
 

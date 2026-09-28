@@ -262,6 +262,14 @@ impl UiEvent {
             mods: mods(p),
             text: p.get_str("text").map(str::to_string),
             repeat: p.get_bool("repeat").unwrap_or(false),
+            location: p
+                .get_str("location")
+                .and_then(crate::input::KeyLocation::from_name)
+                .unwrap_or_default(),
+            locks: crate::input::KeyLocks {
+                caps: p.get_bool("caps_lock").unwrap_or(false),
+                num: p.get_bool("num_lock").unwrap_or(false),
+            },
         };
         Some((phase, press))
     }

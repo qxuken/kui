@@ -73,7 +73,9 @@ whitespace that takes its room — from the kawoosh wrapped-space report
 of the same day, the day it was filed, and F107 — a scroll gesture
 latching its target and chaining past a scroller at its limit — from
 the kawoosh scroll-gestures report of the same day, the day it was
-filed, and with the alpha.22 tag DX1–DX15 and DX17–DX26 from the DX
+filed, and F108 — a key's place, the modifier keys as keys, the lock
+state and the rest of the keyboard — from the kawoosh kitty-keyboard
+review of the same day, the day it was filed, and with the alpha.22 tag DX1–DX15 and DX17–DX26 from the DX
 sweep of 2026-09-27 and RG60–RG69 from the regression pass of
 2026-09-28, built the days they were filed, and with the alpha.23 tag
 RG70–RG75 from the same pass, built the same day after the alpha.22
@@ -1486,6 +1488,16 @@ under the still pointer, and the terminal, an `onScroll` node taking
 every delta, took the rest of the swipe. One entry, F107, **built
 2026-09-28**, the day it was filed, and in the archive, with ADR 0038.
 
+## From the kawoosh kitty-keyboard review (2026-09-28)
+
+kawoosh's terminal is to speak kitty's keyboard protocol, which reports
+the keypad apart from the main block, each modifier's side, the
+modifier keys pressed on their own, Caps Lock and Num Lock, F13–F35 and
+the media keys. Reviewing the encoder before writing it, the user asked
+for the kui round first, so the protocol is spoken whole rather than
+with gaps written down. One entry, F108, **built 2026-09-28**, the day
+it was filed, and in the archive, with ADR 0002's amendment of the day.
+
 ## From the regression pass of 2026-09-19
 
 A review of everything since the alpha.15 tag — F67–F75, nine features
@@ -2602,6 +2614,8 @@ Nothing of the kawoosh mouse-buttons report is open (F105 **built
 2026-09-28**, the day it was filed).
 Nothing of the kawoosh scroll-gestures report is open (F107 **built
 2026-09-28**, the day it was filed).
+Nothing of the kawoosh kitty-keyboard review is open (F108 **built
+2026-09-28**, the day it was filed).
 Nothing of the Windows regression round of 2026-09-26 is open
 (RG38–RG46 **built 2026-09-26**, the day they were filed).
 Nothing of the Linux round under WSLg is open (RG47–RG49 **built
@@ -3499,6 +3513,10 @@ move.
 **From the kawoosh scroll-gestures report (2026-09-28)** — F107, filed and built the same day
 
 - `~` **F107** — [A swipe across the strip stops hard at a terminal, and a scroller at its limit keeps a gesture the one around it could use](backlog/closed-2026-09.md#-f107--a-swipe-across-the-strip-stops-hard-at-a-terminal-and-a-scroller-at-its-limit-keeps-a-gesture-the-one-around-it-could-use--done-2026-09-28) — done (2026-09-28) — a scroll gesture (the runner's: a 200 ms gap, a wheel/trackpad switch, a wheel's pointer move; `InputEvent::ScrollGesture`) latches each axis's target at its start, the innermost scroller under the pointer that can move that way; `overscroll` `contain` stops the chaining, `scrollAxes` narrows an `onScroll` node; ADR 0038
+
+**From the kawoosh kitty-keyboard review (2026-09-28)** — F108, filed and built the same day
+
+- `~` **F108** — [A key does not say where it is or what is locked, and the modifier keys and every key past F12 never arrive](backlog/closed-2026-09.md#-f108--a-key-does-not-say-where-it-is-or-what-is-locked-and-the-modifier-keys-and-every-key-past-f12-never-arrive--done-2026-09-28) — done (2026-09-28) — a press says which of a key's twins it is (`location`: `standard`, `left`, `right`, `numpad`; `KeyLocation`) and what the lock keys held (`caps_lock`, `num_lock`; `KeyLocks`); the modifier and lock keys are keys (`shift` … `scrolllock`) to a sink that says `modifierKeys`; F13–F35, `printscreen`, `pause`, `menu`, `clear` and the media keys are named and delivered; ADR 0002's amendment; ABI 21
 
 **From the regression pass of 2026-09-25** — RG17–RG36 built the same day, before the alpha.17 tag; RG37 the same day, after it
 

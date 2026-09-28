@@ -65,8 +65,18 @@ export type KeyMsg<T = AppMsg> = {
   super: boolean;
   text: string | null;
   repeat: boolean;
+  /** Which of a key's twins it was (backlog F108): the left or right
+   *  modifier, the keypad's digit, operator or Enter (`code` is still
+   *  "1", "enter"), else "standard". */
+  location: KeyLocationName;
+  /** Caps Lock and Num Lock as the press found them. */
+  caps_lock: boolean;
+  num_lock: boolean;
   tag?: T;
 };
+
+/** Where a key sits, for the keys that have twins (`KeyMsg.location`). */
+export type KeyLocationName = 'standard' | 'left' | 'right' | 'numpad';
 
 /** Text an IME committed at the end of a composition, on the focused
  *  `onKey` sink (or the nearest one above the focused control) — the one
@@ -1631,6 +1641,12 @@ export interface KeySinkMods {
   alt?: boolean;
   /** Command / Windows key. */
   super?: boolean;
+  /** Which of a key's twins the press was (backlog F108); "standard" when
+   *  omitted. The key doors only — `modifiers` ignores it. */
+  location?: KeyLocationName;
+  /** The lock state the press was made under; the key doors only. */
+  capsLock?: boolean;
+  numLock?: boolean;
 }
 
 // -- generated from the core's input lists; edit EditKey::ALL / MouseButton::NAMED in crates/kui-core/src/input.rs, then `npm run gen` --

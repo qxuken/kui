@@ -405,6 +405,9 @@ pub(crate) fn spec_of(
     if let Some(v) = take_msg(on_drag) {
         spec = spec.on_drag(v);
     }
+    if s.modifier_keys != 0 {
+        spec = spec.modifier_keys();
+    }
     if s.key_up != 0 {
         spec = spec.key_up();
     }

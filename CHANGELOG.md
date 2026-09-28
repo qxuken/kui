@@ -21,6 +21,69 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.24 (unreleased)
+
+**What breaks.** The ABI is 21: `KuiSpec` gains `modifier_keys`. Rust
+gains fields on one struct and variants on one enum.
+
+- C: `KuiSpec.modifier_keys` appended (under Added, F108). On a 64-bit
+  target it takes what was the struct's tail padding, so the size stays
+  648, but a host that did not recompile leaves those bytes to chance;
+  on a 32-bit one the size moved. Recompile.
+- Rust: `KeyPress` gains `location` and `locks` (under Added, F108), so
+  a struct literal of it needs the fields or `..KeyPress::new(..)`.
+- Rust: `KeyCode` gains `PrintScreen`, `Pause`, `Menu`, `Clear`, the
+  modifier and lock keys (`Shift`, `Ctrl`, `Alt`, `Super`, `CapsLock`,
+  `NumLock`, `ScrollLock`) and twelve media keys, and `F(n)` reaches 35
+  (under Added, F108), so an exhaustive match on it needs the arms.
+
+Three readings change:
+
+- The native runner delivers F13–F35, Print Screen, Pause, the menu
+  key, Clear and the media keys to a key sink (under Added, F108): a
+  keymap that heard nothing from them hears their names now.
+- A press and its release are matched by location as well as position
+  (under Added, F108): the keypad's `1` and the main block's, or the
+  two Shifts, are two keys held, where a release of one let go of the
+  other.
+- The key payload carries `location`, `caps_lock` and `num_lock`
+  (under Added, F108); a host that compared payloads whole sees three
+  more fields.
+
+### Added
+
+- **Where a key is, the modifier keys as keys, the lock state, and the
+  rest of the keyboard** (backlog F108, ADR 0002's amendment of
+  2026-09-28, from kawoosh, 2026-09-28; `modifier_keys` in Lua and on
+  `KuiSpec`, `modifierKeys` in Node, `NodeSpec::modifier_keys` in
+  Rust). A key press says which of a key's twins it was —
+  `location: "left" | "right" | "numpad" | "standard"` (`KeyLocation`,
+  `KeyPress::location`) — so the keypad's `1`, still `code: "1"`, is
+  told from the main block's, and the left Shift from the right; and
+  what the lock keys held, `caps_lock` and `num_lock` (`KeyLocks`,
+  `KeyPress::locks`): asked of the OS on macOS and Windows, tracked
+  from the lock keys' own presses elsewhere. A sink that says
+  `modifierKeys` hears the modifier and lock keys themselves —
+  `shift`, `ctrl`, `alt`, `super`, `capslock`, `numlock`, `scrolllock`,
+  the side in `location` — and every other sink still only ever sees a
+  modifier held, so a keymap mid-sequence does not read a Shift as a
+  key. F13–F35, `printscreen`, `pause`, `menu`, `clear` and the media
+  keys (`mediaplaypause`, `mediastop`, `medianext`, `mediaprev`,
+  `mediaplay`, `mediapause`, `mediarecord`, `mediafastforward`,
+  `mediarewind`, `volumeup`, `volumedown`, `volumemute`) are keys like
+  any other, where the runner dropped them. The doors take the place
+  and the locks with the key: C in the `kmods` word beside the
+  modifiers (`KUI_KLOC_LEFT` / `_RIGHT` / `_NUMPAD`, `KUI_KLOCK_CAPS` /
+  `_NUM`), Node in the mods object (`location`, `capsLock`,
+  `numLock`), Rust as `with_location` and `with_locks`. A terminal
+  speaking kitty's keyboard protocol needs all of it; so does a game
+  that binds a lone Shift. The corpus's `modifier-keys` scene, in all
+  four bindings, presses a left Shift, the keypad's Enter and Caps
+  Lock on a sink that asks and one that does not.
+  *What you can delete:* nothing an app could have written: the runner
+  dropped every key it had no name for, and said nothing of where a
+  key was or what was locked.
+
 ## 0.1.0-alpha.23 (2026-09-28)
 
 **What breaks.** No door changes; the ABI stays at 20 and the frame at

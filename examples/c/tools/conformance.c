@@ -1191,6 +1191,28 @@ static void conf_keys_sink(KuiCtx *ui, const char *name, uint32_t key_up) {
     kui_open_with(ui, KUI_STR(name), &spec, NULL, NULL, kui_value_int(1), NULL);
 }
 
+/* Two sinks asking for releases, tagged by kind so the report tells them
+ * apart; the second asks for the modifier keys (backlog F108). */
+static void conf_modkeys_sink(KuiCtx *ui, const char *name, uint32_t modifier_keys) {
+    KuiSpec spec = {.dir = KUI_ROW, .width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 24},
+                    .bg = 0x1b1d27ff, .role = KUI_ROLE_GROUP, .label = KUI_STR(name),
+                    .key_up = 1, .modifier_keys = modifier_keys};
+    KuiValue *tag = kui_value_map();
+    kui_value_map_set(tag, KUI_STR("kind"), kui_value_str(KUI_STR(name)));
+    kui_open_with(ui, KUI_STR(name), &spec, NULL, NULL, tag, NULL);
+    kui_close(ui);
+}
+
+static void conf_modifier_keys(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiSpec outer = {.pad_l = 10, .pad_r = 10, .pad_t = 10, .pad_b = 10, .gap = 6};
+    kui_open(ui, &outer, NULL);
+    conf_modkeys_sink(ui, "plain", 0);
+    conf_modkeys_sink(ui, "mods", 1);
+    kui_close(ui);
+}
+
 static void conf_keys(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
     (void)phase;
@@ -1935,6 +1957,7 @@ static const ConfScene CONF_SCENES[] = {
     {"chrome-inset", conf_chrome},
     {"controls", conf_controls},
     {"keys", conf_keys},
+    {"modifier-keys", conf_modifier_keys},
     {"ime", conf_ime},
     /* The paste scene's tree is the ime scene's: two editors, a paste's
      * markers heard by one and ignored by the other (backlog F84). */
@@ -2099,6 +2122,16 @@ static void conf_apply(KuiCtx *ctx, const ConfStep *s) {
         KuiStr none = {0};
         kui_input_key_up(ctx, (KuiStr){&c, 1}, none, 0);
     }
+    /* A named key at a place (backlog F108): conformance::STEP_KEYS by
+     * index, the place as KUI_KLOC_*'s number (0 standard .. 3 numpad). */
+    else if (strcmp(s->kind, "keyatdown") == 0 || strcmp(s->kind, "keyatup") == 0) {
+        static const char *keys[] = {"shift", "enter", "capslock"};
+        KuiStr code = {(const uint8_t *)keys[s->a], strlen(keys[s->a])};
+        KuiStr none = {0};
+        uint32_t at = (uint32_t)s->b << 8;
+        if (s->kind[5] == 'd') kui_input_key_down(ctx, code, none, at, none, false);
+        else kui_input_key_up(ctx, code, none, at);
+    }
     /* An IME composing one character (any scalar value, so encoded) with
      * its caret at the end, or 0 for the composition ending; and committing
      * one. */
@@ -2185,6 +2218,21 @@ static void conf_drain(KuiCtx *ctx, Rep *events) {
             if (vx) kui_value_as_int(vx, &dx);
             if (vy) kui_value_as_int(vy, &dy);
             repf(events, " %.*s %lld %lld", (int)phase.len, phase.ptr, (long long)dx, (long long)dy);
+        }
+        /* A key from one of a key's twins says which, with its phase and
+         * code (backlog F108); a standard key prints as it did. */
+        if (kind.len == 3 && memcmp(kind.ptr, "key", 3) == 0) {
+            KuiStr loc = KUI_STR("standard"), phase = KUI_STR("-"), code = KUI_STR("-");
+            const KuiValue *l = kui_value_get(ev.payload, KUI_STR("location"));
+            if (l) kui_value_as_str(l, &loc);
+            if (!(loc.len == 8 && memcmp(loc.ptr, "standard", 8) == 0)) {
+                const KuiValue *p = kui_value_get(ev.payload, KUI_STR("phase"));
+                const KuiValue *c = kui_value_get(ev.payload, KUI_STR("code"));
+                if (p) kui_value_as_str(p, &phase);
+                if (c) kui_value_as_str(c, &code);
+                repf(events, " %.*s %.*s %.*s", (int)phase.len, phase.ptr, (int)code.len,
+                     code.ptr, (int)loc.len, loc.ptr);
+            }
         }
         /* A held button's phase and which button ride the same way
          * (backlog F105): a lost mask claims the secondary presses. */
