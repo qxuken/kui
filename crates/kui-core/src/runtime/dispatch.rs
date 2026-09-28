@@ -29,6 +29,13 @@ impl Core {
             | InputEvent::Preedit(..) => "keyboard",
             _ => "program",
         };
+        // A move the app made since the last report — `set_focus`,
+        // `set_key_focus`, a handler's verb (ADR 0036) — with no frame
+        // finished since to report it: the program's, and before this
+        // input's own, which would otherwise carry this input's `by`
+        // (DX18, the alpha.22 regression pass).
+        let mut moved = Vec::new();
+        self.report_focus("program", &mut moved);
         // The devtools' chords are acted on before anything is routed
         // (ADR 0024, decision 4): the press goes no further, and what
         // was pending still goes out.
@@ -37,6 +44,10 @@ impl Core {
         } else {
             self.route_input(ev)
         };
+        if !moved.is_empty() {
+            moved.append(&mut out);
+            out = moved;
+        }
         // Whatever the event itself made pending — the synthetic key
         // releases a focus move forces — belongs to this batch, not to the
         // next frame's drain.

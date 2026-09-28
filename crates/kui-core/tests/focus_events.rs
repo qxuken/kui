@@ -5,7 +5,7 @@
 //! places to learn the window had come back.
 
 use kui_core::testing::{click, tab};
-use kui_core::{Core, NodeSpec, Size, UiEvent, Vec2};
+use kui_core::{Core, InputEvent, NodeSpec, Size, UiEvent, Vec2};
 
 const VIEW: Size = Size { w: 300.0, h: 100.0 };
 
@@ -75,6 +75,30 @@ fn a_subtree_hears_the_keyboard_come_and_go_with_what_moved_it() {
     assert_eq!(focus(&core.take_pending_events()), ["in:pane:program"]);
     frame(&mut core, true);
     assert_eq!(focus(&core.take_pending_events()), ["out:pane:program"]);
+}
+
+#[test]
+fn a_move_the_program_made_is_the_programs_when_an_input_comes_first() {
+    let mut core = Core::new();
+    frame(&mut core, false);
+    frame(&mut core, false);
+    core.take_pending_events();
+    // The app moves focus between inputs, and the next thing to happen is
+    // not a frame but the pointer moving: that input moved nothing, and
+    // the report it carries is the program's.
+    let sink = core.key_of("sink");
+    core.set_key_focus(sink);
+    let evs = core.handle_input(InputEvent::CursorMoved(Vec2::new(200.0, 50.0)));
+    assert_eq!(focus(&evs), ["in:pane:program"]);
+
+    // And one the program made before a press that moves focus again is
+    // reported first, each with its own mover.
+    core.set_key_focus(None);
+    let evs = click(&mut core, Vec2::new(125.0, 50.0));
+    assert_eq!(
+        focus(&evs),
+        ["out:pane:program", "in:pane:pointer", "in:button:pointer"]
+    );
 }
 
 #[test]

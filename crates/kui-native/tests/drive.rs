@@ -140,6 +140,47 @@ fn a_handler_acts_on_the_core_its_event_came_from() {
     );
 }
 
+/// DX18 through ADR 0036's door: a focus move a handler makes is the
+/// program's, even when the next thing the window hears is an input
+/// rather than the frame the move asked for (the alpha.22 regression
+/// pass found it reported with that input's `by`).
+#[test]
+fn a_handlers_focus_move_is_reported_as_the_programs() {
+    struct Mover;
+    impl App for Mover {
+        fn view(&mut self, ui: &mut Ui<'_>) {
+            ui.with(NodeSpec::row(), |ui| {
+                ui.leaf_keyed("go", NodeSpec::row().size(80.0, 30.0).on_click("go"));
+                ui.with_keyed("pane", NodeSpec::row().on_focus("pane"), |ui| {
+                    ui.leaf_keyed("sink", NodeSpec::row().size(80.0, 30.0).on_key("keys"));
+                });
+            });
+        }
+        fn on_event_with(&mut self, ev: UiEvent, core: &mut Core) {
+            if ev.payload.as_str() == Some("go") {
+                let sink = core.key_of("sink");
+                core.set_key_focus(sink);
+            }
+        }
+    }
+
+    let mut app = Mover;
+    let mut d = Drive::new(Core::new(), 400.0, 300.0);
+    d.frame(&mut app);
+    d.frame(&mut app);
+    d.click(&mut app, 40.0, 15.0);
+    let evs = d.move_to(&mut app, 300.0, 200.0);
+    let by: Vec<_> = evs
+        .iter()
+        .filter(|e| e.kind() == Some("focus"))
+        .map(|e| {
+            let phase = e.payload.get_str("phase").unwrap();
+            format!("{phase}:{}", e.payload.get_str("by").unwrap())
+        })
+        .collect();
+    assert_eq!(by, ["in:program"]);
+}
+
 /// An app that overrides only `on_event` hears everything as before.
 #[test]
 fn the_plain_handler_still_hears_everything() {
