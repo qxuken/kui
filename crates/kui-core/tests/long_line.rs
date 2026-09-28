@@ -711,3 +711,65 @@ fn an_over_budget_cache_does_not_ask_for_frames_forever() {
         assert!(seen.iter().any(|s| s.1), "{wrap:?}: never asked: {seen:?}");
     }
 }
+
+// ---- tab stops (backlog RG75) ----------------------------------------------
+
+/// Every byte's caret x in `text`, drawn unwrapped in a viewport wide
+/// enough to shape all of it.
+fn tab_carets(text: &str, wrap: TextWrap) -> Vec<f32> {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(120_000.0, 100.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let key = ui
+        .text_in_keyed("t", NodeSpec::row(), text, mono().wrap(wrap))
+        .index(0);
+    ui.finish();
+    let line = text.split('\n').next().unwrap_or("");
+    (0..=line.len())
+        .map(|b| core.caret_rect(key, b).expect("drawn").x)
+        .collect()
+}
+
+fn assert_same_carets(got: &[f32], want: &[f32], what: &str) {
+    assert_eq!(got.len(), want.len(), "{what}");
+    let off: Vec<_> = (0..got.len())
+        .filter(|&b| (got[b] - want[b]).abs() > 0.5)
+        .map(|b| (b, got[b], want[b]))
+        .take(5)
+        .collect();
+    assert!(off.is_empty(), "{what}: (byte, got, want) {off:?}");
+}
+
+#[test]
+fn a_tab_in_a_later_chunk_stops_on_the_lines_stops() {
+    // Tab stops are measured from where the line starts: a chunk shaped
+    // alone measured them from its own start, so a tab after the first
+    // chunk stopped elsewhere than the same line shaped whole.
+    // A `break-spaces` line past a chunk, with one tab late in it...
+    let text = format!("{}ab\tcd\tef", "abcde ".repeat(190));
+    assert!(text.len() > 1024 && text.len() < LONG_LINE_BYTES);
+    let whole = tab_carets(&text, TextWrap::None);
+    assert_same_carets(
+        &tab_carets(&text, TextWrap::BreakSpaces),
+        &whole,
+        "break-spaces",
+    );
+    // ...and a line past 4 KB, in chunks, with a tab every few words:
+    // what follows each tab starts on a stop measured from the line's
+    // start. (Not against the line shaped whole: over 60 000 px its f32
+    // sum drifts by pixels from the chunks' prefix sums, tabs or none.)
+    let text = "abc\tdefgh ij\tk lmn ".repeat(400);
+    assert!(text.len() > LONG_LINE_BYTES);
+    let stop = tab_carets("\tx", TextWrap::None)[1];
+    let at = tab_carets(&text, TextWrap::None);
+    let off: Vec<_> = text
+        .match_indices('\t')
+        .map(|(b, _)| (b, at[b + 1] % stop))
+        .filter(|(_, r)| r.min(stop - r) > 0.5)
+        .take(5)
+        .collect();
+    assert!(
+        off.is_empty(),
+        "past 4 KB: (tab byte, off a stop by) {off:?}"
+    );
+}

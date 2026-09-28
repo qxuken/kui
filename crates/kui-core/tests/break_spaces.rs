@@ -252,28 +252,28 @@ fn a_line_of_several_texts_answers_across_them() {
 
 #[test]
 fn a_word_at_a_chunk_edge_starts_its_row() {
-    // Ten cells a row, and "aaaaaaaaa " fills one exactly: 1.5 KB is two
-    // chunks, the second's first word starting after a row the first
-    // chunk filled.
+    // Ten cells a row, and "aaaaaaaaa " fills one exactly: 4.5 KB is five
+    // chunks (a line under 4 KB is one since RG75), each after the first
+    // starting its first word after a row the chunk before filled.
     let mut core = Core::new();
     let w = cell(&mut core);
-    let text = "aaaaaaaaa ".repeat(150);
+    let text = "aaaaaaaaa ".repeat(450);
     for _ in 0..2 {
-        let mut ui = core.frame(Size::new(400.0, 3200.0), 1.0);
+        let mut ui = core.frame(Size::new(400.0, 9200.0), 1.0);
         ui.configure_root(NodeSpec::column().fill());
         text_at(&mut ui, "t", &text, 10.0, w, TextWrap::BreakSpaces);
         ui.finish();
     }
     let key = Key::ROOT.str("t").index(0);
-    let g = glyphs(&mut core, -1.0, 3200.0);
-    assert_eq!(g.len(), 1350);
+    let g = glyphs(&mut core, -1.0, 9200.0);
+    assert_eq!(g.len(), 4050);
     let outside: Vec<_> = g.iter().filter(|r| r.x + r.w > 10.0 * w + 1.0).collect();
     assert!(outside.is_empty(), "{outside:?}");
     for b in (0..=text.len()).step_by(7).chain(1015..1026) {
         let r = core.caret_rect(key, b).unwrap();
         let at = ((r.y / LH).round() as usize, (r.x / w).round() as usize);
         let expect = if b == text.len() {
-            (149, 10)
+            (449, 10)
         } else {
             (b / 10, b % 10)
         };

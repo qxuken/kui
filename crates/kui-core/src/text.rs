@@ -763,10 +763,24 @@ impl LongLine {
     }
 }
 
-/// Where a long line is cut: after the last whitespace in the second half
-/// of each window, else at the last grapheme boundary inside it.
+/// Where a long line is cut: after the last tab in the second half of each
+/// window, else after the last whitespace there, else at the last grapheme
+/// boundary inside it. A line under [`LONG_LINE_BYTES`] — long only by its
+/// `break-spaces` — is one chunk, shaped whole as the run it would
+/// otherwise be.
+///
+/// Tab stops are why (backlog RG75): cosmic-text measures them from where
+/// the shaped text starts, so a chunk shaped alone put a tab after its
+/// start at a stop measured from there and not from the line's. A chunk
+/// cut just after a tab ends on a stop, so the next one starts on one and
+/// its stops are the line's: a line with a tab in the second half of every
+/// window lays out its tabs exactly, and one with a stretch longer than
+/// that without any still measures the tabs after it from that chunk.
 fn chunk_ranges(content: &str) -> Vec<(usize, usize)> {
     use unicode_segmentation::UnicodeSegmentation;
+    if content.len() < LONG_LINE_BYTES {
+        return vec![(0, content.len())];
+    }
     let mut out = Vec::with_capacity(content.len() / CHUNK_BYTES + 1);
     let mut start = 0usize;
     while start < content.len() {
@@ -782,12 +796,14 @@ fn chunk_ranges(content: &str) -> Vec<(usize, usize)> {
         } else {
             let window = &content[start..window_end];
             let half = CHUNK_BYTES / 2;
-            let after_space = window
-                .char_indices()
-                .filter(|(i, c)| *i >= half && c.is_whitespace())
-                .map(|(i, c)| i + c.len_utf8())
-                .next_back();
-            match after_space {
+            let after = |tab: bool| {
+                window
+                    .char_indices()
+                    .filter(|(i, c)| *i >= half && if tab { *c == '\t' } else { c.is_whitespace() })
+                    .map(|(i, c)| i + c.len_utf8())
+                    .next_back()
+            };
+            match after(true).or_else(|| after(false)) {
                 Some(i) => start + i,
                 None => {
                     // The last grapheme boundary at or before the window's end.
@@ -1795,18 +1811,10 @@ impl TextSystem {
             + line.content.len()
             + line.chunks.len() * 48
             + line.spans.len() * std::mem::size_of::<OwnedSpan>();
-        let (len, chunks) = (line.content.len(), line.chunks.len());
+        // A line long only by its `break-spaces` is one chunk
+        // (`chunk_ranges`), shaped now: its first frame is laid out on the
+        // rows it has, not on an estimate (RG68).
         self.insert(key, Entry::Long(line));
-        // A line long only by its `break-spaces` is shaped whole, as the
-        // run it would otherwise be: its first frame is laid out on the
-        // rows it has and not on an estimate of the chunks past the first,
-        // which moved the box a frame later with nothing asking for that
-        // frame (the alpha.22 regression pass).
-        if len < LONG_LINE_BYTES {
-            for i in 1..chunks {
-                self.ensure_chunk(key, i, res, fs);
-            }
-        }
         key
     }
 
