@@ -68,7 +68,10 @@ report of the same day, the day it was filed, and F104 — a trackpad
 swipe kept to its axis — from the kawoosh trackpad-drift report of
 2026-09-28, the day it was filed, and F105 — the non-primary buttons
 on the node that claims them — from the kawoosh mouse-buttons report
-of the same day, the day it was filed. The index
+of the same day, the day it was filed, and F107 — a scroll gesture
+latching its target and chaining past a scroller at its limit — from
+the kawoosh scroll-gestures report of the same day, the day it was
+filed. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -1450,6 +1453,19 @@ wish parked under the editor-and-mux round's three (C2) and in "Rows,
 when a view asks" until a view asked. One entry, F105, **built
 2026-09-28**, the day it was filed, and in the archive.
 
+## From the kawoosh scroll-gestures report (2026-09-28)
+
+Three items of kawoosh's todo of 2026-09-28, about where the wheel goes:
+"scroll on a hovered scroller should always be in his direction"; "new
+scroll session inside of a already scrolled container to it's limit
+should try to propagate, unless told otherwise"; and "scroll hard
+stopped by terminal even when it started from other panel. it should
+allow to scroll past it. if possible it should be scrolled when it does
+not need events". A swipe that moved the pane strip carried a terminal
+under the still pointer, and the terminal, an `onScroll` node taking
+every delta, took the rest of the swipe. One entry, F107, **built
+2026-09-28**, the day it was filed, and in the archive, with ADR 0038.
+
 ## From the regression pass of 2026-09-19
 
 A review of everything since the alpha.15 tag — F67–F75, nine features
@@ -2659,7 +2675,10 @@ payload already carried the parent, so the ratio is `Drag::ratio()`
 **Built 2026-09-27** (`94033c9`): the notch walks the scroll regions
 under the pointer from the top, each scroller taking its own axes; a
 handler still takes all of it. No chaining at a scroller's end — an
-axis a scroller scrolls is its, at the end or not.
+axis a scroller scrolls is its, at the end or not. (Since F107, on
+2026-09-28, a gesture that *starts* over a scroller at its end chains to
+the one around it, and a handler takes the axes its `scrollAxes`
+names.)
 
 `dispatch.rs` gives the whole wheel delta to the innermost scroller, so
 a vertical scroller inside a horizontal one never passes x on. Kawoosh
@@ -2998,6 +3017,8 @@ Nothing of the kawoosh Berkeley-bold report is open (F100 **built
 Nothing of the kawoosh rounded-selection report is open (F101 **built
 2026-09-27**, the day it was filed).
 Nothing of the kawoosh mouse-buttons report is open (F105 **built
+2026-09-28**, the day it was filed).
+Nothing of the kawoosh scroll-gestures report is open (F107 **built
 2026-09-28**, the day it was filed).
 Nothing of the Windows regression round of 2026-09-26 is open
 (RG38–RG46 **built 2026-09-26**, the day they were filed).
@@ -3836,6 +3857,10 @@ move.
 **From the kawoosh mouse-buttons report (2026-09-28)** — F105, filed and built the same day
 
 - `~` **F105** — [The middle and secondary buttons reach no node: a terminal pane cannot paste on a middle click or report the mouse to the program in it](backlog/closed-2026-09.md#-f105--the-middle-and-secondary-buttons-reach-no-node-a-terminal-pane-cannot-paste-on-a-middle-click-or-report-the-mouse-to-the-program-in-it--done-2026-09-28) — done (2026-09-28) — `onButton` (`on_button`, `KuiSpec.on_button`) hears the non-primary buttons as `{kind:"button", phase:"press"|"move"|"release", button, x, y, clicks, tag}` on the nearest node claiming them, captured from press to release; `buttons` (`Buttons`, `KUI_BUTTONS_*`) narrows which, and a claimed secondary press is the event instead of the context menu
+
+**From the kawoosh scroll-gestures report (2026-09-28)** — F107, filed and built the same day
+
+- `~` **F107** — [A swipe across the strip stops hard at a terminal, and a scroller at its limit keeps a gesture the one around it could use](backlog/closed-2026-09.md#-f107--a-swipe-across-the-strip-stops-hard-at-a-terminal-and-a-scroller-at-its-limit-keeps-a-gesture-the-one-around-it-could-use--done-2026-09-28) — done (2026-09-28) — a scroll gesture (the runner's: a 200 ms gap, a wheel/trackpad switch, a wheel's pointer move; `InputEvent::ScrollGesture`) latches each axis's target at its start, the innermost scroller under the pointer that can move that way; `overscroll` `contain` stops the chaining, `scrollAxes` narrows an `onScroll` node; ADR 0038
 
 **From the regression pass of 2026-09-25** — RG17–RG36 built the same day, before the alpha.17 tag; RG37 the same day, after it
 
