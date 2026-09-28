@@ -179,8 +179,12 @@ impl Core {
                 .map_or(0, |h| h.byte);
             // A `button` event's press carries its own count and its move
             // and release none (backlog F105): `clicks` here is the last
-            // primary press's.
-            let own_count = ev.kind() == Some("button");
+            // primary press's. The core's is told by its `phase` and
+            // `button` fields, not its kind alone, which an app's click
+            // payload may spell too (backlog RG75).
+            let own_count = ev.kind() == Some("button")
+                && ev.payload.get("phase").is_some()
+                && ev.payload.get("button").is_some();
             if let Value::Map(entries) = &mut ev.payload {
                 entries.push(("line".to_string(), Value::Int(line as i64)));
                 entries.push(("byte".to_string(), Value::Int(byte as i64)));
@@ -1265,6 +1269,17 @@ impl Core {
             // F105): each owner hears its release now, with the cell it
             // lands in, rather than every later move as a drag.
             let n = self.interaction.release_buttons(&mut out);
+            self.attach_pointer(&mut out, n);
+            // And the primary button's hold (backlog RG75): a drag or a
+            // slide ends where the pointer was, a caret drag, a
+            // selection drag and a scrollbar drag stop, and the press
+            // clicks nothing — the release, like the buttons', is not
+            // coming here, and every move after the window came back
+            // went on dragging with no button down.
+            self.edit.dragging = None;
+            self.select_dragging = None;
+            self.interaction.scrollbar_drag = None;
+            let n = self.interaction.release_primary(&mut out);
             self.attach_pointer(&mut out, n);
             self.pending.append(&mut out);
             // And a held drag's follow: the release will not come here,

@@ -107,3 +107,30 @@ fn reveal_row_every_frame_on_an_eased_list_arrives() {
     assert!(!revealing, "shown, so the last call scrolled nothing");
     assert!(!core.animating(), "and the ease is over");
 }
+
+/// RG75: a row past the list's end, or a stride that is not positive,
+/// scrolls nothing and says so — an index past the end scrolled to the
+/// end and answered `true` on every call, and `rows_in_view` of a zero
+/// stride was `usize::MAX`.
+#[test]
+fn reveal_row_past_the_end_and_a_zero_stride_scroll_nothing() {
+    let mut core = Core::new();
+    let run = |core: &mut Core, reveal| {
+        let mut ui = core.frame(VIEW, 1.0);
+        let r = list(&mut ui, reveal);
+        ui.finish();
+        r
+    };
+    run(&mut core, None);
+    run(&mut core, None);
+    let rows = core.key_of("rows").unwrap();
+    assert_eq!(run(&mut core, Some(50)), Some(false), "one past the end");
+    assert_eq!(run(&mut core, Some(500)), Some(false));
+    assert_eq!(core.scroll_offset(rows), Vec2::ZERO);
+    assert_eq!(run(&mut core, Some(49)), Some(true), "the last row is one");
+    let mut ui = core.frame(VIEW, 1.0);
+    assert!(!widgets::reveal_row(&mut ui, "rows", 3, 0.0));
+    assert_eq!(widgets::rows_in_view(&mut ui, "rows", 0.0), 0);
+    assert_eq!(widgets::rows_in_view(&mut ui, "rows", -1.0), 0);
+    ui.finish();
+}

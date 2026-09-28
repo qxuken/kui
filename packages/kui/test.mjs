@@ -3373,6 +3373,16 @@ test('onButton hears the middle button from press to release, wherever it goes',
     [['button', 'press', 'secondary']],
   );
   ctx.mouse(false, 1, 'secondary');
+  ctx.pollEvents();
+
+  // A button past the middle one is its number, as the event names it
+  // (backlog RG75): the back button, 3 + 0.
+  ctx.mouse(true, 1, 3);
+  ctx.mouse(false, 1, 3);
+  assert.deepEqual(
+    ctx.pollEvents().map((e) => [e.payload.phase, e.payload.button]),
+    [['press', 3], ['release', 3]],
+  );
 });
 
 test('a right-click leaves keyboard focus where it was', () => {
@@ -5943,6 +5953,14 @@ test('revealRow centres an unbuilt row, rowProps styles each row, and a splitter
   ctx.mouse(false);
   const end = ctx.pollEvents().map((e) => e.payload).filter((p) => p.kind === 'drag').pop();
   assert.equal((end.x - end.parent.x) / end.parent.w, 0.75);
+
+  // A row past the end, or no stride, scrolls nothing (backlog RG75).
+  target = 500;
+  ctx.frame(300, 100, 1, tree());
+  assert.equal(scrolled, false, 'past the end');
+  assert.deepEqual(ctx.scrollOffset('list'), { x: 0, y: 760 });
+  assert.equal(revealRow(ctx, 'list', 3, 0), false);
+  assert.equal(rowsInView(ctx, 'list', 0), 0);
 });
 
 test('a uniformList whose rows shrank under it lands in one frame', () => {

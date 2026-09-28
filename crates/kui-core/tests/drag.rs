@@ -399,3 +399,45 @@ fn a_drag_released_off_window_ends_at_the_last_seen_point() {
     assert_eq!(end.get_float("dx"), Some(20.0));
     assert_eq!(end.get_float("dy"), Some(10.0));
 }
+
+/// RG75: the window losing the keyboard mid-drag ends the drag where the
+/// pointer was, as it ends a held button's capture (RG65) — the release
+/// is not coming here. Every move after the window came back went on
+/// dragging with no button down. And a press that never dragged clicks
+/// nothing on the blur, nor on a release that does come.
+#[test]
+fn losing_the_keyboard_mid_drag_ends_it_without_a_click() {
+    let mut core = Core::new();
+    drag_frame(&mut core);
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(105.0, 50.0)));
+    core.handle_input(InputEvent::mouse_down(1));
+    let moved = core.handle_input(InputEvent::CursorMoved(Vec2::new(150.0, 55.0)));
+    assert_eq!(phases(&moved), ["move"]);
+    core.set_focused(false);
+    let blur = core.take_pending_events();
+    assert_eq!(phases(&blur), ["end"]);
+    assert_eq!(
+        blur.iter()
+            .find(|e| e.kind() == Some("drag"))
+            .unwrap()
+            .payload
+            .get_float("x"),
+        Some(150.0)
+    );
+    core.set_focused(true);
+    let after = core.handle_input(InputEvent::CursorMoved(Vec2::new(200.0, 60.0)));
+    assert!(phases(&after).is_empty(), "no drag with no button down");
+
+    // A press held on the divider, not dragged, then the blur.
+    drag_frame(&mut core);
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(105.0, 50.0)));
+    core.handle_input(InputEvent::mouse_down(1));
+    core.set_focused(false);
+    let mut evs = core.take_pending_events();
+    core.set_focused(true);
+    evs.extend(core.handle_input(InputEvent::mouse_up()));
+    assert!(
+        !evs.iter().any(|e| e.payload.as_str() == Some("clicked")),
+        "{evs:?}"
+    );
+}

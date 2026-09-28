@@ -714,11 +714,19 @@ impl Ctx {
     /// "secondary" asks the node under the pointer for a context menu and
     /// moves nothing else, and every button but the primary reaches a node
     /// that claims it with `onButton`, press to release (backlog F105).
-    #[napi(ts_args_type = "down: boolean, clicks?: number, button?: MouseButtonName")]
-    pub fn mouse(&mut self, down: bool, clicks: Option<u32>, button: Option<String>) -> Result<()> {
+    /// A button past the middle one is its number, `3 + n` — the code a
+    /// `button` event carries for it (backlog RG75).
+    #[napi(ts_args_type = "down: boolean, clicks?: number, button?: MouseButtonName | number")]
+    pub fn mouse(
+        &mut self,
+        down: bool,
+        clicks: Option<u32>,
+        button: Option<Either<String, u32>>,
+    ) -> Result<()> {
         let button = match &button {
-            Some(name) => MouseButton::from_name(name)
+            Some(Either::A(name)) => MouseButton::from_name(name)
                 .ok_or_else(|| err(format!("unknown mouse button {name:?}")))?,
+            Some(Either::B(code)) => MouseButton::from_code(*code),
             None => MouseButton::Primary,
         };
         self.input(if down {

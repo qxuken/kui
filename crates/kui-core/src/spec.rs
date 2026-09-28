@@ -1573,7 +1573,10 @@ impl NodeSpec {
     /// the hint is its accessible description, and the core floats the
     /// hint below it while it is hovered (`widgets::hover_hint`, the float
     /// every binding's tooltip is). What `tooltip="…"` is in JSX and Lua
-    /// and `KuiSpec.tooltip` in C.
+    /// and `KuiSpec.tooltip` in C. The float is the node's last child, so
+    /// it is drawn for a box or a fragment; on a leaf — an image, an
+    /// editor, a cells grid — the hint is tracked and spoken, not drawn:
+    /// put the tooltip on a box around the leaf (backlog RG75).
     #[inline]
     pub fn tooltip(self, hint: &str) -> Self {
         let mut spec = self.apply_tooltip(hint);

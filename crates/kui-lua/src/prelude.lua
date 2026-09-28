@@ -372,6 +372,8 @@ function reveal_row(env, key, i, row_h)
   local g = env.scroll_geometry(key)
   if not g then return false end
   local y = i * row_h
+  -- A row past the content, or no stride, scrolls nothing (backlog RG75).
+  if not (row_h > 0) or y + row_h > g.content_h + 0.5 then return false end
   if g.offset.y <= y and y + row_h <= g.offset.y + g.h then return false end
   env.set_scroll(key, g.offset.x, math.max(0, y + row_h / 2 - g.h / 2))
   return true
@@ -381,7 +383,7 @@ end
 -- layout -- a page's stride; 0 before it has laid out.
 function rows_in_view(env, key, row_h)
   local g = env.scroll_geometry(key)
-  if not g then return 0 end
+  if not g or not (row_h > 0) then return 0 end
   return math.max(0, math.floor(g.h / row_h))
 end
 

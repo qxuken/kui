@@ -2089,8 +2089,10 @@ export declare class Ctx {
    * "secondary" asks the node under the pointer for a context menu and
    * moves nothing else, and every button but the primary reaches a node
    * that claims it with `onButton`, press to release (backlog F105).
+   * A button past the middle one is its number, `3 + n` — the code a
+   * `button` event carries for it (backlog RG75).
    */
-  mouse(down: boolean, clicks?: number, button?: MouseButtonName): void
+  mouse(down: boolean, clicks?: number, button?: MouseButtonName | number): void
   scroll(dx: number, dy: number): void
   /**
    * One event of a scroll gesture (backlog F107, ADR 0038): `begins`

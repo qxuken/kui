@@ -191,3 +191,46 @@ fn the_plain_handler_still_hears_everything() {
     d.click_key(&mut app, add);
     assert_eq!(app.clicks, 1);
 }
+
+/// RG75: a test drives the middle button and a latched scroll gesture
+/// through the drive's own doors, where it had only `input` for them.
+#[test]
+fn a_drive_presses_the_middle_button_and_scrolls_a_gesture() {
+    use kui_native::{Buttons, MouseButton};
+    #[derive(Default)]
+    struct Pane {
+        heard: Vec<String>,
+    }
+    impl App for Pane {
+        fn view(&mut self, ui: &mut Ui<'_>) {
+            ui.with_keyed(
+                "page",
+                NodeSpec::column().size(200.0, 100.0).scroll_y(),
+                |ui| {
+                    ui.leaf_keyed(
+                        "pane",
+                        NodeSpec::row()
+                            .size(200.0, 400.0)
+                            .on_button("pane")
+                            .buttons(Buttons::MIDDLE),
+                    );
+                },
+            );
+        }
+        fn on_event(&mut self, ev: UiEvent) {
+            if let Some(b) = ev.button() {
+                self.heard.push(format!("{:?}", b.phase));
+            }
+        }
+    }
+    let mut app = Pane::default();
+    let mut d = Drive::new(Core::new(), 400.0, 300.0).framing();
+    d.frame(&mut app);
+    d.frame(&mut app);
+    d.button_click(&mut app, 50.0, 50.0, MouseButton::Middle);
+    assert_eq!(app.heard, ["Press", "Release"]);
+    d.scroll_gesture(&mut app, 50.0, 50.0, Vec2::new(0.0, -20.0), true);
+    d.scroll_gesture(&mut app, 50.0, 50.0, Vec2::new(0.0, -20.0), false);
+    let page = d.key_of("page").unwrap();
+    assert_eq!(d.core.scroll_offset(page), Vec2::new(0.0, 40.0));
+}

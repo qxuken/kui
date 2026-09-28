@@ -28,7 +28,7 @@ use std::borrow::{Borrow, BorrowMut};
 
 use crate::{
     AccessAction, AccessRequest, App, Core, Extension, Extensions, InputEvent, Key, KeyCode,
-    KeyMods, KeyPress, Rect, Size, UiEvent, Vec2,
+    KeyMods, KeyPress, MouseButton, Rect, Size, UiEvent, Vec2,
 };
 
 /// The headless driver; see the module docs.
@@ -227,6 +227,39 @@ impl<C: BorrowMut<Core>> Drive<C> {
     pub fn wheel(&mut self, app: &mut impl App, x: f32, y: f32, dx: f32, dy: f32) -> Vec<UiEvent> {
         let mut out = self.input(app, InputEvent::CursorMoved(Vec2::new(x, y)));
         out.extend(self.input(app, InputEvent::Scroll(Vec2::new(dx, dy))));
+        self.done(app, out)
+    }
+
+    /// One event of a scroll gesture over a point (backlog F107): `begins`
+    /// on its first, and the rest go to the target it picked, wherever
+    /// the pointer or the content has gone since — the latching a native
+    /// swipe gets. [`Self::wheel`] is a gesture of its own.
+    pub fn scroll_gesture(
+        &mut self,
+        app: &mut impl App,
+        x: f32,
+        y: f32,
+        delta: Vec2,
+        begins: bool,
+    ) -> Vec<UiEvent> {
+        let mut out = self.input(app, InputEvent::CursorMoved(Vec2::new(x, y)));
+        out.extend(self.input(app, InputEvent::ScrollGesture { delta, begins }));
+        self.done(app, out)
+    }
+
+    /// A non-primary button pressed and released at a point: what an
+    /// `on_button` node claiming it hears as `press` and `release`
+    /// (backlog F105, RG75).
+    pub fn button_click(
+        &mut self,
+        app: &mut impl App,
+        x: f32,
+        y: f32,
+        button: MouseButton,
+    ) -> Vec<UiEvent> {
+        let mut out = self.input(app, InputEvent::CursorMoved(Vec2::new(x, y)));
+        out.extend(self.input(app, InputEvent::MouseDown { button, clicks: 1 }));
+        out.extend(self.input(app, InputEvent::MouseUp { button }));
         self.done(app, out)
     }
 

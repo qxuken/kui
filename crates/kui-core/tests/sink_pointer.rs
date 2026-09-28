@@ -292,6 +292,45 @@ fn a_click_payload_named_like_a_core_event_still_gains_its_line() {
     assert_eq!(field_of(click, "clicks"), Some(Value::Int(1)));
 }
 
+/// RG75: a `button` event of the core's carries its own `clicks`, so the
+/// pass left a payload of that kind without one — and an app's click
+/// payload spelled `{kind: "button"}` lost its count with it. The core's
+/// is told by its `phase` and `button` fields now.
+#[test]
+fn a_click_payload_named_button_still_gains_its_count() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill().pad(10.0));
+    let sink = ui.with_keyed(
+        "editor",
+        NodeSpec::column().fill().key_sink().on_click(Value::map([
+            ("kind", Value::str("button")),
+            ("id", Value::Int(3)),
+        ])),
+        |ui| {
+            for line in ["one", "two"] {
+                ui.text_in(NodeSpec::row().height(LH).role(Role::Line), line, mono());
+            }
+        },
+    );
+    ui.take_key_focus(sink);
+    ui.finish();
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(12.0, 10.0 + LH + 5.0)));
+    core.handle_input(InputEvent::mouse_down(1));
+    let evs = core.handle_input(InputEvent::mouse_up());
+    let click = evs
+        .iter()
+        .find(|e| kind(e).as_deref() == Some("button"))
+        .expect("the click arrived");
+    assert_eq!(
+        field_of(click, "line"),
+        Some(Value::Int(1)),
+        "{:?}",
+        click.payload
+    );
+    assert_eq!(field_of(click, "clicks"), Some(Value::Int(1)));
+}
+
 #[test]
 fn the_sink_yanks_to_the_clipboard_and_a_paste_comes_back_as_text() {
     let mut core = Core::new();
@@ -484,4 +523,41 @@ fn a_sink_hears_the_paste_chord_and_never_a_bare_text() {
             .any(|e| e.key == sink && kind(e).as_deref() == Some("text")),
         "a bare Text is not the sink's: {evs:?}"
     );
+}
+
+/// RG75: a `button` event inside a sink that draws lines carries `line`
+/// and `byte`, and `UiEvent::button()` reads them, as `drag()` does — it
+/// read the cell and not these.
+#[test]
+fn a_button_press_in_a_sink_reads_its_line_and_byte() {
+    use kui_core::{Buttons, MouseButton};
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill().pad(10.0));
+    let sink = ui.with_keyed(
+        "editor",
+        NodeSpec::column()
+            .fill()
+            .key_sink()
+            .on_button("btn")
+            .buttons(Buttons::MIDDLE),
+        |ui| {
+            for line in ["one", "two"] {
+                ui.text_in(NodeSpec::row().height(LH).role(Role::Line), line, mono());
+            }
+        },
+    );
+    ui.take_key_focus(sink);
+    ui.finish();
+    let w = core.measure_text("M", &mono(), None).width;
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(
+        10.0 + 2.2 * w,
+        10.0 + LH + 5.0,
+    )));
+    let evs = core.handle_input(InputEvent::MouseDown {
+        button: MouseButton::Middle,
+        clicks: 1,
+    });
+    let b = evs.iter().find_map(|e| e.button()).expect("the press");
+    assert_eq!((b.line, b.byte), (Some(1), Some(2)), "{evs:?}");
 }

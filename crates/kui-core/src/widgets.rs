@@ -1698,7 +1698,10 @@ pub fn uniform_list_with(
 /// rows by the offset it scrolls to, instead of a frame late. Returns
 /// whether it scrolled. The first frame, before the list has laid out,
 /// has no geometry and scrolls nothing; the row arithmetic assumes the
-/// list's rows start at its content top, as they do without top padding.
+/// list's rows start at its content top and fill its box, as they do
+/// without padding. A row past the list's content — an index past its
+/// end — scrolls nothing and answers false, as does a `row_h` that is
+/// not positive (backlog RG75).
 ///
 /// `Ui::reveal` cannot do this for a row that is not built, and a
 /// virtual list builds only what shows.
@@ -1708,6 +1711,9 @@ pub fn reveal_row(ui: &mut Ui<'_>, label: &str, i: usize, row_h: f32) -> bool {
         return false;
     };
     let y = i as f32 * row_h;
+    if row_h <= 0.0 || y + row_h > g.content.h + 0.5 {
+        return false;
+    }
     if g.offset.y <= y && y + row_h <= g.offset.y + g.rect.h {
         return false;
     }
@@ -1718,9 +1724,13 @@ pub fn reveal_row(ui: &mut Ui<'_>, label: &str, i: usize, row_h: f32) -> bool {
 
 /// How many whole rows of `row_h` the [`uniform_list`] labelled `label`
 /// shows as of the last layout — a PageDown's stride. 0 before it has
-/// laid out.
+/// laid out, and for a `row_h` that is not positive, where the division
+/// answered `usize::MAX` (backlog RG75).
 pub fn rows_in_view(ui: &mut Ui<'_>, label: &str, row_h: f32) -> usize {
     let key = ui.child_key(label);
+    if row_h <= 0.0 {
+        return 0;
+    }
     ui.scroll_geometry(key)
         .map_or(0, |g| (g.rect.h / row_h).floor().max(0.0) as usize)
 }

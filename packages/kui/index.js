@@ -1209,6 +1209,8 @@ export function revealRow(ctx, key, i, rowH) {
   const g = ctx.scrollGeometry(key);
   if (!g) return false;
   const y = i * rowH;
+  // A row past the content, or no stride, scrolls nothing (backlog RG75).
+  if (!(rowH > 0) || y + rowH > g.contentH + 0.5) return false;
   if (g.offset.y <= y && y + rowH <= g.offset.y + g.h) return false;
   ctx.setScroll(key, g.offset.x, Math.max(0, y + rowH / 2 - g.h / 2));
   return true;
@@ -1218,7 +1220,7 @@ export function revealRow(ctx, key, i, rowH) {
  *  layout — a page's stride; 0 before it has laid out. */
 export function rowsInView(ctx, key, rowH) {
   const g = ctx.scrollGeometry(key);
-  return g ? Math.max(0, Math.floor(g.h / rowH)) : 0;
+  return g && rowH > 0 ? Math.max(0, Math.floor(g.h / rowH)) : 0;
 }
 
 /**

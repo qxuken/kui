@@ -1853,6 +1853,31 @@ impl Interaction {
         n
     }
 
+    /// Lets go of the primary button's hold without a click (backlog
+    /// RG75): an `on_drag` node hears its drag `end` and a slider its
+    /// slide's `end` where the pointer was last seen, and the press is
+    /// forgotten. The window lost the keyboard, and the release will
+    /// happen where it never hears it — a click nobody finished must not
+    /// fire. Returns how many events it pushed, for `attach_pointer`.
+    pub(crate) fn release_primary(&mut self, out: &mut Vec<UiEvent>) -> usize {
+        let mut n = 0;
+        if let Some(drag) = self.drag.take() {
+            let p = self.cursor.unwrap_or(drag.last);
+            out.push(Self::drag_event(&drag, "end", p, drag.displacement(p)));
+            n += 1;
+        }
+        if let Some((key, origin, track, last)) = self.slide.take() {
+            let v = self.cursor.map_or(last, |p| track.value_at(p));
+            out.push(crate::slider::change_event(
+                origin, key, v, "end", &track.tag,
+            ));
+            n += 1;
+        }
+        self.pressed = None;
+        self.pressed_group = None;
+        n
+    }
+
     /// Lets go of every held button whose owner `alive` says is gone from
     /// the frame (backlog F105): nothing is left to hear its release.
     pub(crate) fn drop_gone_buttons(&mut self, alive: impl Fn(Key) -> bool) {

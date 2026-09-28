@@ -1442,7 +1442,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`tooltip=\"hint\"`",
         lua: "`tooltip = \"hint\"`",
         c: "`KuiSpec.tooltip` (`kui_tooltip` / `kui_tooltip_with` draw a hint that is not hover-gated)",
-        doc: "Floats a hint below the node while hovered. All three effects — hover tracking, the accessible description, and the float itself — come from `PropsOut::apply_tooltip`, so no frontend can implement two of them; a Rust view has all three in `NodeSpec::tooltip` (`NodeSpec::apply_tooltip` is the spec half, for a caller that floats the hint itself). The `description` row is that middle effect on its own, for a hint that is spoken and never drawn.",
+        doc: "Floats a hint below the node while hovered. All three effects — hover tracking, the accessible description, and the float itself — come from `PropsOut::apply_tooltip`, so no frontend can implement two of them; a Rust view has all three in `NodeSpec::tooltip` (`NodeSpec::apply_tooltip` is the spec half, for a caller that floats the hint itself). The `description` row is that middle effect on its own, for a hint that is spoken and never drawn. The float is the node's last child, so it is drawn for a box or a `fragment`; on a leaf that holds no children — an `image`, an `edit`, a `cells` grid — the hint is tracked and spoken but not drawn, so put the tooltip on a box around it (backlog RG75).",
     },
 ];
 

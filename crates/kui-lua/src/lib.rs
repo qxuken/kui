@@ -5943,6 +5943,7 @@ mod tests {
                 function view(env)
                   if target then scrolled = reveal_row(env, "list", target, 20) end
                   page = rows_in_view(env, "list", 20)
+                  zero = rows_in_view(env, "list", 0)
                   return row { width = 300, height = 100,
                     uniform_list(env,
                       { key = "list", rows = 50, row_h = 20, width = 200, height = 100,
@@ -5993,6 +5994,13 @@ mod tests {
         let end = core.handle_input(InputEvent::mouse_up());
         let d = end.iter().find_map(|e| e.drag()).expect("the drag's end");
         assert_eq!(d.ratio().x, 0.75);
+
+        // A row past the end, or no stride, scrolls nothing (backlog RG75).
+        ext.lua.globals().set("target", 500).unwrap();
+        frame(&mut core, &mut ext);
+        assert!(!ext.lua.globals().get::<bool>("scrolled").unwrap());
+        assert_eq!(core.scroll_offset(list), Vec2::new(0.0, 760.0));
+        assert_eq!(ext.lua.globals().get::<i64>("zero").unwrap(), 0);
     }
 
     /// The same clamp as the JSX widget's: a list that shrank while scrolled

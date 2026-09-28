@@ -92,6 +92,10 @@ pub struct ButtonEvent {
     /// On a `cells` grid: the `(row, col)` under the pointer, clamped to
     /// the grid.
     pub cell: Option<(u32, u32)>,
+    /// Inside an `onKey` sink that draws `role="line"` rows: the line and
+    /// the byte in its text, as a drag carries them (backlog RG75).
+    pub line: Option<u32>,
+    pub byte: Option<usize>,
 }
 
 /// A `{kind:"scroll"}` event: the wheel over an `onScroll` node.
@@ -228,6 +232,8 @@ impl UiEvent {
             pos: point(p)?,
             clicks: small(p, "clicks"),
             cell,
+            line: small(p, "line"),
+            byte: p.get_int("byte").and_then(|v| usize::try_from(v).ok()),
         })
     }
 
