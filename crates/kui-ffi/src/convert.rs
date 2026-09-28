@@ -426,6 +426,7 @@ pub(crate) fn text_style_of(s: &KuiTextStyle) -> TextStyle {
     style = style.wrap(match s.wrap {
         1 => kui_core::TextWrap::Glyph,
         2 => kui_core::TextWrap::None,
+        3 => kui_core::TextWrap::BreakSpaces,
         _ => kui_core::TextWrap::Word,
     });
     if s.max_lines > 0 {

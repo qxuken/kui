@@ -1210,7 +1210,8 @@ pub struct KuiTextStyle {
     /// A registered font handle (kui_font_add / kui_font_add_system);
     /// non-zero overrides `family`.
     pub font: u64,
-    /// KUI_WRAP_WORD (0, default) / KUI_WRAP_GLYPH / KUI_WRAP_NONE.
+    /// KUI_WRAP_WORD (0, default) / KUI_WRAP_GLYPH / KUI_WRAP_NONE /
+    /// KUI_WRAP_BREAK_SPACES.
     pub wrap: u32,
     /// Lay out at most this many lines; 0 = unlimited.
     pub max_lines: u32,

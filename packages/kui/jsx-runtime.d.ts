@@ -406,8 +406,8 @@ export interface GeneratedStyleProps {
   underlineColor?: ColorProp;
   /** The underline's shape (backlog K4): `solid` (the face's line), `wavy` (three strokes tall around the line, a six-stroke period — a diagnostic's squiggle, a terminal's undercurl) or `dotted` (dots two strokes across, four apart). Implies `underline`. A wave or dots are runs of the segment primitive a `line` draws, so no backend learns a kind; the cost is two quads per period. */
   underlineStyle?: 'solid' | 'wavy' | 'dotted';
-  /** Line breaking at the node's width: between words (default), anywhere, or never (one line per paragraph, clipped to the node). On a single-line `edit` — a field, which otherwise takes one line and scrolls it — declaring it is what makes the field fold to its width like a document, by this mode, while Enter still submits (see `edit`). */
-  wrap?: 'word' | 'glyph' | 'none';
+  /** Line breaking at the node's width: between words (default), anywhere, never (one line per paragraph, clipped to the node), or between words with whitespace taking its room (`break-spaces`: a space that does not fit starts the next row rather than hanging past the edge — an editor's wrapped line). On a single-line `edit` — a field, which otherwise takes one line and scrolls it — declaring it is what makes the field fold to its width like a document, by this mode, while Enter still submits (see `edit`). */
+  wrap?: 'word' | 'glyph' | 'none' | 'break-spaces';
 }
 // -- end generated --
 

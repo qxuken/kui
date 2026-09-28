@@ -1055,6 +1055,27 @@ static void conf_joined_backgrounds(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* conformance::build_break_spaces (backlog F106): `ab  c` in a box 4 px
+ * wide, wrapped KUI_WRAP_BREAK_SPACES, its two spaces under a background. */
+static void conf_break_spaces(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiSpec outer = {.pad_l = 10, .pad_r = 10, .pad_t = 10, .pad_b = 10};
+    kui_open(ui, &outer, NULL);
+    KuiSpec narrow = {.width = {KUI_FIXED, 4}};
+    kui_open(ui, &narrow, NULL);
+    KuiTextStyle mono = {
+        .size = 14, .family = KUI_FONT_MONO, .line_height = 20, .wrap = KUI_WRAP_BREAK_SPACES};
+    KuiSpan spans[] = {
+        {.text = KUI_STR("ab")},
+        {.text = KUI_STR("  "), .bg = 0x3b5bd4ff},
+        {.text = KUI_STR("c")},
+    };
+    kui_rich_text(ui, spans, 3, &mono);
+    kui_close(ui);
+    kui_close(ui);
+}
+
 static void conf_lines(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
     (void)phase;
@@ -1877,6 +1898,7 @@ static const ConfScene CONF_SCENES[] = {
     {"cells", conf_cells},
     {"underlines", conf_underlines},
     {"joined-backgrounds", conf_joined_backgrounds},
+    {"break-spaces", conf_break_spaces},
     {"media", conf_media},
     {"lines", conf_lines},
     {"polygon", conf_polygon},

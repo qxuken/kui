@@ -61,7 +61,7 @@ use crate::resources::{ImageId, SoundId};
 use crate::runtime::Core;
 use crate::spec::{
     Align, Dir, FloatAnchor, FloatConfig, Min, NodeSpec, PadShorthand, ScrollbarMode, Sizing,
-    TextStyle,
+    TextStyle, TextWrap,
 };
 use crate::text::Span;
 use crate::tree::{NodeContent, Tree};
@@ -3003,6 +3003,40 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "break-spaces",
+        doc: "Whitespace that takes its room (backlog F106): a mono text \
+              `ab  c` with `wrap` `break-spaces` in a box 4 px wide, its two \
+              spaces under a background. Every glyph is wider than the box, \
+              so each is a row of its own — the spaces too, which under \
+              `word` hang past the edge of the row before them — and the \
+              background is one solid on each space's row. A binding that \
+              drops the value wraps by word and draws the spaces elsewhere.",
+        custom: &[],
+        elements: &["box", "text"],
+        build: build_break_spaces,
+        env: NATIVE_CHROME,
+        steps: &[],
+        expect: Expect {
+            solid: 2,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            segments_follow_text: false,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 3,
+            access: &["0 window ||", "1 staticText ab  c||"],
+            events: &[],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+            secure_input: false,
+        },
+    },
+    Scene {
         name: "sampler",
         doc: "The generic rows no other scene declares, on four nodes \
               (backlog AR47): a card carrying the size ceilings, `center`, \
@@ -4257,6 +4291,25 @@ fn build_joined_backgrounds(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             &[Span::new("find").bg(Color::hex(0xd9738c66)).bg_radius(4.0)],
             mono,
         );
+    });
+}
+
+fn build_break_spaces(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    let mono = TextStyle::new(14.0)
+        .mono()
+        .line_height(20.0)
+        .wrap(TextWrap::BreakSpaces);
+    ui.with(NodeSpec::column().pad(10.0), |ui| {
+        ui.with(NodeSpec::column().width(4.0), |ui| {
+            ui.rich_text(
+                &[
+                    Span::new("ab"),
+                    Span::new("  ").bg(Color::hex(0x3b5bd4ff)),
+                    Span::new("c"),
+                ],
+                mono,
+            )
+        });
     });
 }
 

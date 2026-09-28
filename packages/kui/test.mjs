@@ -3932,6 +3932,16 @@ const SCENE_TREES = {
       text([el('span', { bg: '#d9738c66', bgRadius: 4 }, ['find'])], mono),
     ])]);
   },
+  // Whitespace that takes its room (backlog F106): `ab  c` in a box 4 px
+  // wide, each glyph a row of its own, the spaces too.
+  'break-spaces': () => {
+    const mono = { size: 14, family: 'mono', lineHeight: 20, wrap: 'break-spaces' };
+    return root({}, [box({ pad: 10 }, [
+      box({ width: 4 }, [
+        text(['ab', el('span', { bg: '#3b5bd4' }, ['  ']), 'c'], mono),
+      ]),
+    ])]);
+  },
   // Access rects cut to the clip (backlog F93): three nodes on a `clip`
   // canvas past its top, three rows in a short scroller.
   'clip-access': () => {

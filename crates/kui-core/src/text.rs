@@ -2425,7 +2425,11 @@ fn emit_entry_rows(
 /// first row starts `head_x` in: greedy, at the break opportunities UAX
 /// #14 gives (what cosmic-text's `WordOrGlyph` takes) or at every glyph
 /// for `Glyph`, a piece wider than a row breaking by glyph, trailing
-/// whitespace hanging past the edge as cosmic-text lets it. Returns the
+/// whitespace hanging past the edge as cosmic-text lets it — except under
+/// `BreakSpaces`, where each whitespace character is a piece of its own
+/// and takes its room like ink, so one that does not fit starts the next
+/// row and none hangs (CSS's `break-spaces`, a break before the run too).
+/// Returns the
 /// row starts — the first is the chunk's own — and the x its last row
 /// ends at. Positions are read left to right: a bidi run breaks by its
 /// glyph order.
@@ -2445,18 +2449,35 @@ fn break_rows(
         text.get(g.start..g.end)
             .is_some_and(|s| s.chars().all(char::is_whitespace))
     };
+    let spaces = wrap == TextWrap::BreakSpaces;
     let mut pieces: Vec<(usize, usize)> = Vec::new();
     match wrap {
-        TextWrap::Word => {
+        TextWrap::Word | TextWrap::BreakSpaces => {
             let mut at = 0usize;
+            let mut piece = |from: usize, to: usize| {
+                if !spaces {
+                    pieces.push((from, to));
+                    return;
+                }
+                // The trailing whitespace a break follows, a piece a
+                // character: the break is before each of them as well.
+                let ink = text[from..to].trim_end_matches(char::is_whitespace).len();
+                if ink > 0 {
+                    pieces.push((from, from + ink));
+                }
+                for (i, c) in text[from + ink..to].char_indices() {
+                    let at = from + ink + i;
+                    pieces.push((at, at + c.len_utf8()));
+                }
+            };
             for (i, _) in unicode_linebreak::linebreaks(text) {
                 if i > at {
-                    pieces.push((at, i));
+                    piece(at, i);
                     at = i;
                 }
             }
             if at < text.len() {
-                pieces.push((at, text.len()));
+                piece(at, text.len());
             }
         }
         TextWrap::Glyph | TextWrap::None => {
@@ -2479,7 +2500,7 @@ fn break_rows(
         let ink_end = piece
             .iter()
             .rev()
-            .find(|g| !blank(g))
+            .find(|g| spaces || !blank(g))
             .map_or(x0, |g| g.x + g.w);
         if ink_end - row_x0 > avail && x0 > row_x0 {
             rows.push(RowStart {
@@ -2492,7 +2513,7 @@ fn break_rows(
         if ink_end - row_x0 > avail {
             // Wider than a row on its own: by glyph.
             for g in piece {
-                if g.x + g.w - row_x0 > avail && g.x > row_x0 && !blank(g) {
+                if g.x + g.w - row_x0 > avail && g.x > row_x0 && (spaces || !blank(g)) {
                     rows.push(RowStart {
                         byte: g.start as u32,
                         x: g.x,
@@ -2675,7 +2696,9 @@ fn emit_entry(
 /// ([`LongLine::starts`]), whatever its `wrap`. Plain or rich alike
 /// (backlog C42).
 fn could_be_long(len: usize, style: &TextStyle) -> bool {
-    len >= LONG_LINE_BYTES && style.max_lines == 0 && !style.ellipsis
+    (len >= LONG_LINE_BYTES || len > 0 && style.wrap == TextWrap::BreakSpaces)
+        && style.max_lines == 0
+        && !style.ellipsis
 }
 
 /// Whether the content breaks lines of its own — a byte scan, since the
@@ -3674,10 +3697,15 @@ fn paragraph_starts<'a>(buffer: &'a Buffer, content: &'a str) -> impl Iterator<I
 /// The visual line (0-based over every wrapped line of the buffer) that
 /// byte `index` of paragraph `line_i` lays out on, and that run's ordinal
 /// in `layout_runs()` (the same number, kept apart for reading): the run
-/// whose glyphs cover the byte, else the paragraph's last run — an index
-/// at the end of the paragraph, or a paragraph with no glyphs.
+/// whose glyphs cover the byte, else the last run that starts before it —
+/// a byte with no glyph inside the paragraph is whitespace a `Word` break
+/// swallowed, which ends the row it broke, and the end of the paragraph
+/// ends its last — else the paragraph's last run, for a paragraph with no
+/// glyphs. The paragraph's last run whatever the byte, as it was, put a
+/// caret on a swallowed space at the end of the whole paragraph.
 fn visual_line(buffer: &Buffer, line_i: usize, index: usize) -> Option<(usize, usize)> {
     let mut last_of_line = None;
+    let mut before = None;
     for (n, run) in buffer.layout_runs().enumerate() {
         if run.line_i != line_i {
             if last_of_line.is_some() {
@@ -3689,8 +3717,17 @@ fn visual_line(buffer: &Buffer, line_i: usize, index: usize) -> Option<(usize, u
         if run.glyphs.iter().any(|g| g.start <= index && index < g.end) {
             return Some((n, n));
         }
+        if run
+            .glyphs
+            .iter()
+            .map(|g| g.start)
+            .min()
+            .is_some_and(|s| s <= index)
+        {
+            before = Some(n);
+        }
     }
-    last_of_line.map(|n| (n, n))
+    before.or(last_of_line).map(|n| (n, n))
 }
 
 /// Where the caret sits for byte `index` inside `run`, physical px from the
@@ -3812,7 +3849,7 @@ fn new_buffer(fs: &mut FontSystem, style: &TextStyle, scale: f32) -> Buffer {
     let metrics = Metrics::new(style.size * scale, style.line_height * scale);
     let mut buffer = Buffer::new(fs, metrics);
     buffer.set_wrap(match style.wrap {
-        TextWrap::Word => Wrap::WordOrGlyph,
+        TextWrap::Word | TextWrap::BreakSpaces => Wrap::WordOrGlyph,
         TextWrap::Glyph => Wrap::Glyph,
         TextWrap::None => Wrap::None,
     });

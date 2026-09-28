@@ -323,3 +323,21 @@ fn a_text_too_deep_under_its_line_is_a_named_diagnostic() {
     ui.finish();
     assert!(core.take_warnings().is_empty());
 }
+
+#[test]
+fn a_space_a_word_break_swallows_ends_the_row_it_broke() {
+    // cosmic-text drops the space a `Word` break falls at: it has no
+    // glyph, and its caret went to the end of the whole paragraph — two
+    // rows down here (backlog F106).
+    let mut core = Core::new();
+    let w = cell(&mut core);
+    let key = frame(&mut core, "aaa bbb ccc", Some(5.5 * w), 1.0);
+    let r = core.caret_rect(key, 3).unwrap();
+    assert!((r.y - 20.0).abs() < 0.01, "first row: {}", r.y);
+    assert!((r.x - (10.0 + 3.0 * w)).abs() < 0.75, "{}", r.x);
+    let r = core.caret_rect(key, 7).unwrap();
+    assert!((r.y - (20.0 + LH)).abs() < 0.01, "second row: {}", r.y);
+    // The end of the paragraph is still the end of its last row.
+    let r = core.caret_rect(key, 11).unwrap();
+    assert!((r.y - (20.0 + 2.0 * LH)).abs() < 0.01, "last row: {}", r.y);
+}

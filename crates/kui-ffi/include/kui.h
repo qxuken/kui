@@ -439,7 +439,7 @@ enum { KUI_FIT_FILL = 0, KUI_FIT_CONTAIN = 1, KUI_FIT_COVER = 2 };
 /* Font families (KuiTextStyle.family) */
 enum { KUI_FONT_SANS = 0, KUI_FONT_SERIF = 1, KUI_FONT_MONO = 2 };
 /* Line breaking (KuiTextStyle.wrap) */
-enum { KUI_WRAP_WORD = 0, KUI_WRAP_GLYPH = 1, KUI_WRAP_NONE = 2 };
+enum { KUI_WRAP_WORD = 0, KUI_WRAP_GLYPH = 1, KUI_WRAP_NONE = 2, KUI_WRAP_BREAK_SPACES = 3 };
 /* Span flags */
 enum {
     KUI_SPAN_BOLD = 1u << 0,

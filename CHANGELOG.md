@@ -69,8 +69,11 @@ was the first bare bump to break an app in five releases).
 - kui-devtools' `Drive<'c>` is an alias for the published
   `kui_native::testing::Drive` over `&mut Core` (under Added, DX11); a
   drive written against it compiles as it was.
+- Rust: `TextWrap` gains `BreakSpaces` (under Added, F106), so an
+  exhaustive match on it needs the arm. C's `KUI_WRAP_BREAK_SPACES` is
+  3, a new value of the `wrap` field the ABI already has.
 
-Twelve readings change:
+Thirteen readings change:
 
 - A square-cornered quad (a `bg`, a span's background, an image with no
   `radius`, a solid underline, a `fragment` node's box) covers each pixel
@@ -128,6 +131,10 @@ Twelve readings change:
   for the frame to finish (under Added, DX15), where they threw "no node
   is keyed". A label that frame does not declare either is the
   `label-without-node` warning. `focus` and `access` still throw.
+- `caret_rect` on a space a `word` break swallowed — the whitespace the
+  row broke at, which has no glyph — answers the end of the row it
+  broke (under Fixed, F106), where it answered the end of the
+  paragraph's last row.
 
 ### Added
 
@@ -443,6 +450,28 @@ Twelve readings change:
   middle-click paste and reported only the primary button to a program
   that asked for the mouse.
 
+- **`wrap="break-spaces"`: whitespace that takes its room** (backlog
+  F106, from kawoosh, 2026-09-28; `TextWrap::BreakSpaces` in Rust,
+  `KUI_WRAP_BREAK_SPACES` in C). CSS's `white-space: break-spaces`: a
+  text wraps between words, and a space is a glyph like any other — one
+  that does not fit starts the next row, before or after its word, so
+  no space hangs past the edge and none vanishes at the break. Every
+  byte has a caret place inside the box and a background on a space is
+  drawn where the space is. An editor's wrapped line wants it: kawoosh
+  typed a space after a full row's last word and saw its caret past the
+  pane, then back on the full stop, then on the next row, because under
+  `word` cosmic-text hangs one space over the edge and drops the next
+  two with the break. The text is laid out by kui's own row breaker —
+  the long line's (C19, C42) at any length — so it is shaped unwrapped
+  and broken at UAX #14's opportunities, each trailing whitespace
+  character a piece of its own; a text with line breaks of its own, a
+  `maxLines` or an `ellipsis` wraps as `word`, and so does an `edit`,
+  which lays its own buffer out. The corpus's `break-spaces` scene sets
+  `ab  c` in a box 4 px wide in all four bindings: each character a row,
+  the two spaces' background two solids.
+  *What you can delete:* padding an app kept at a wrapped text's right
+  edge so a hanging space's caret stayed inside it.
+
 ### Fixed
 
 - **A pane of more than 512 nodes could not fade out** (backlog DX23,
@@ -606,6 +635,17 @@ Twelve readings change:
   line notches pass whole. Pinned by `axis_lock.rs`'s six tests.
   *What you can delete:* a dead zone or axis filter an app put on the
   `scroll` event's `delta` itself.
+
+- **A caret on the space a `word` break swallowed went to the end of the
+  paragraph** (backlog F106, from kawoosh, 2026-09-28). cosmic-text
+  drops the whitespace a word-wrapped row breaks at, and `caret_rect`,
+  finding no glyph for the byte, answered the paragraph's last row —
+  rows below the space. A byte with no glyph now sits at the end of the
+  last row that starts before it, the row it broke; the end of the
+  paragraph is still its last row's end. The hit test's row (AR30) reads
+  the same place. Pinned by
+  `a_space_a_word_break_swallows_ends_the_row_it_broke`.
+  *What you can delete:* nothing an app could have written.
 
 ## 0.1.0-alpha.21 (2026-09-26)
 

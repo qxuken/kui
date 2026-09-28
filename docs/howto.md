@@ -822,6 +822,23 @@ make the call itself.
 [`secureInput`](props.md#composite-props-hand-written-per-binding) ·
 [alpha.17](../CHANGELOG.md#010-alpha17-2026-09-25)
 
+### Why does my caret go past the edge on a wrapped line's trailing space?
+
+Because under `wrap="word"` a space at the end of a row hangs over the
+edge, as a browser's does, and the space a row breaks at is dropped from
+the layout: a caret you place with `caretRect` on those bytes lands
+past the box, or at the end of the row it broke. That suits a label. An
+editor, whose caret stands on every byte, wants `wrap="break-spaces"`
+(Rust `TextWrap::BreakSpaces`, C `KUI_WRAP_BREAK_SPACES`): whitespace
+takes its room like a letter, so a space that does not fit starts the
+next row, every byte's `caretRect` is inside the box, and a background
+you put on a space — a block caret, a selection — is drawn where the
+space is. A text with its own line breaks, a `maxLines` or an
+`ellipsis` wraps as `word`, and so does an `edit`.
+
+[`wrap` row](props.md#text-props) ·
+[alpha.22](../CHANGELOG.md#010-alpha22-unreleased)
+
 ### How do I make the caret I draw blink?
 
 Read `caretVisible()` (Rust `ui.caret_visible()`, Lua `env.caret_visible`,

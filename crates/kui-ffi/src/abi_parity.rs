@@ -299,7 +299,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         "KUI_FONT_SANS", "KUI_FONT_SERIF", "KUI_FONT_MONO",
     ]);
     abi_enum!(o, kui_core::schema::WRAPS, 0 => [
-        "KUI_WRAP_WORD", "KUI_WRAP_GLYPH", "KUI_WRAP_NONE",
+        "KUI_WRAP_WORD", "KUI_WRAP_GLYPH", "KUI_WRAP_NONE", "KUI_WRAP_BREAK_SPACES",
     ]);
     abi_enum!(o, kui_core::schema::UNDERLINE_STYLES, 0 => [
         "KUI_UNDERLINE_SOLID", "KUI_UNDERLINE_WAVY", "KUI_UNDERLINE_DOTTED",
