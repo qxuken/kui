@@ -697,6 +697,14 @@ pub(crate) struct LongLine {
     /// The frame a node last took this line to draw, `u64::MAX` before
     /// one has.
     claimed: u64,
+    /// The rows layout gave the node this frame, and the rows the last
+    /// frame asked for was owed for (`u32::MAX` before any): emission
+    /// breaks the rows again once the chunks it shapes are known, and
+    /// rows that differ from layout's owe a frame laid out on them —
+    /// once per count, so a cache too small to keep the chunks cannot
+    /// ask forever (backlog RG70).
+    laid_rows: u32,
+    asked_rows: u32,
     bytes: usize,
 }
 
@@ -965,6 +973,10 @@ pub struct TextSystem {
     places: Kept<TextPlace>,
     scale: f32,
     frame_no: u64,
+    /// Emission broke a long line into rows other than the ones layout
+    /// used: the frame laid out on them is owed (backlog RG70; see
+    /// `LongLine::asked_rows`). Taken by [`Self::take_owed`].
+    owed: bool,
 }
 
 /// A style's features in cosmic-text's terms. Empty stays empty, which is
@@ -1185,7 +1197,14 @@ impl TextSystem {
             places: Kept::default(),
             scale: 1.0,
             frame_no: 0,
+            owed: false,
         }
+    }
+
+    /// Whether this frame's emission owes another frame (backlog RG70),
+    /// clearing it.
+    pub(crate) fn take_owed(&mut self) -> bool {
+        std::mem::take(&mut self.owed)
     }
 
     /// The rounded backgrounds emitted since the last call: what the
@@ -1764,6 +1783,8 @@ impl TextSystem {
             avg,
             last_used: frame_no,
             claimed: u64::MAX,
+            laid_rows: 1,
+            asked_rows: u32::MAX,
             bytes: 0,
         };
         if let Some(c) = line.chunks.first_mut() {
@@ -2488,8 +2509,15 @@ impl TextSystem {
             fresh |= self.ensure_chunk(key, i, res, fs);
         }
         if fresh {
-            // A chunk shaped now moves every row after it.
+            // A chunk shaped now moves every row after it — and the box
+            // layout gave the line, which was the estimate's.
             self.relayout_long(key, Some(w));
+            let line = self.long_mut(key).expect("checked");
+            let rows = line.rows();
+            if rows != line.laid_rows && rows != line.asked_rows {
+                line.asked_rows = rows;
+                self.owed = true;
+            }
         }
         let frame_no = self.frame_no;
         self.long_mut(key).expect("checked").last_used = frame_no;
@@ -4263,7 +4291,8 @@ impl TextSystem {
             // The box, not the line, is the node's width: emission clips a
             // single row to it, or the rows are broken to it.
             let key = self.frame[id.0 as usize].cache_key;
-            let (size, _) = self.long_size(key, Some(max_w * scale));
+            let (size, rows) = self.long_size(key, Some(max_w * scale));
+            self.long_mut(key).expect("a long line").laid_rows = rows;
             return Size::new(size.w / scale, size.h / scale);
         }
         self.ensure_wrap(id, max_w, fs);

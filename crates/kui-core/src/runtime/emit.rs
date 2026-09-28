@@ -1120,6 +1120,12 @@ impl Core {
         if self.atlas.short() {
             self.frame_requested = true;
         }
+        // A long line's rows came out other than layout's once emission
+        // shaped what shows (backlog RG70): the frame laid out on them is
+        // owed, or an idle view keeps the estimate's box.
+        if self.text.take_owed() {
+            self.frame_requested = true;
+        }
     }
 
     /// The exit diff: every key the previous frame declared an `exit` on

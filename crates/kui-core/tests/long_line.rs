@@ -632,3 +632,82 @@ fn a_multibyte_character_on_a_chunk_edge_is_not_a_panic() {
     rich_frame(&mut core, &spans, None);
     assert_eq!(core.long_lines(), 2);
 }
+
+// ---- the first frame's estimate (backlog RG70) ----------------------------
+
+/// A proportional paragraph whose first chunk is narrow and the rest wide:
+/// the estimate the first chunk gives is far from the rows the rest take.
+fn uneven() -> String {
+    format!("{}{}", "iiii ".repeat(200), "WWWW ".repeat(1000))
+}
+
+/// One frame of `text` in a column 300 wide inside a view `view_h` tall,
+/// a spacer keyed `below` under it; returns the spacer's y and whether
+/// the frame owes another.
+fn paragraph_frame(core: &mut Core, text: &str, wrap: TextWrap, view_h: f32) -> (f32, bool) {
+    let style = TextStyle::new(14.0).line_height(LH).wrap(wrap);
+    let mut ui = core.frame(Size::new(400.0, view_h), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    ui.with_keyed("view", NodeSpec::column().fill().scroll_y(), |ui| {
+        ui.text_in_keyed("t", NodeSpec::column().width(300.0), text, style);
+        ui.leaf_keyed("below", NodeSpec::column().height(10.0).on_layout("l"));
+    });
+    ui.finish();
+    let below = Key::ROOT.str("view").str("below");
+    (core.layout_of(below).unwrap().y, core.animating())
+}
+
+#[test]
+fn a_first_frame_on_estimated_rows_asks_for_the_one_that_corrects_it() {
+    // The first frame lays a long paragraph out on the estimate; emission
+    // shapes what shows and the rows come out otherwise. An idle view kept
+    // them clipped to the estimate's box until the next input: the frame
+    // that lays them out is owed, and a few settle it.
+    let text = uneven();
+    assert!(text.len() > LONG_LINE_BYTES);
+    for wrap in [TextWrap::Word, TextWrap::BreakSpaces] {
+        let mut core = Core::new();
+        let seen: Vec<(f32, bool)> = (0..8)
+            .map(|_| paragraph_frame(&mut core, &text, wrap, 6000.0))
+            .collect();
+        assert!(
+            seen[0].0 != seen[7].0,
+            "{wrap:?}: the estimate was exact: {seen:?}"
+        );
+        for i in 0..7 {
+            if seen[i + 1].0 != seen[i].0 {
+                assert!(
+                    seen[i].1,
+                    "{wrap:?}: frame {i} moved on without asking: {seen:?}"
+                );
+            }
+        }
+        assert!(
+            seen[3..].iter().all(|s| *s == (seen[7].0, false)),
+            "{wrap:?}: {seen:?}"
+        );
+    }
+}
+
+#[test]
+fn an_over_budget_cache_does_not_ask_for_frames_forever() {
+    // A cache far too small for what was shaped drops every chunk the
+    // frame before did not draw, and a scroll shapes what comes in: the
+    // rows move and a frame is asked for, and an idle view stops asking.
+    let text = uneven().repeat(4);
+    let view = Key::ROOT.str("view");
+    for wrap in [TextWrap::Word, TextWrap::BreakSpaces] {
+        let mut core = Core::new();
+        core.set_text_cache_budget(1);
+        let mut seen = Vec::new();
+        for y in [2000.0, 9000.0, 4000.0] {
+            core.set_scroll(view, Vec2::new(0.0, y));
+            let run: Vec<(f32, bool)> = (0..8)
+                .map(|_| paragraph_frame(&mut core, &text, wrap, 300.0))
+                .collect();
+            assert!(run[4..].iter().all(|s| !s.1), "{wrap:?} at {y}: {run:?}");
+            seen.extend(run);
+        }
+        assert!(seen.iter().any(|s| s.1), "{wrap:?}: never asked: {seen:?}");
+    }
+}
