@@ -2192,6 +2192,13 @@ pub enum TextWrap {
     /// Never break at the width: one line per paragraph, clipped to the
     /// node's box (explicit newlines still break).
     None,
+    /// `Word`, but whitespace takes its room like any glyph — CSS's
+    /// `white-space: break-spaces`: a space that does not fit starts the
+    /// next row instead of hanging past the edge or vanishing at the
+    /// break, so every byte has a place inside the box. An editor's
+    /// wrapped line, whose caret stands on each space. A text with line
+    /// breaks of its own, a `max_lines` or an `ellipsis` wraps as `Word`.
+    BreakSpaces,
 }
 
 /// The OpenType features a style asks the shaper for (backlog C23): up to

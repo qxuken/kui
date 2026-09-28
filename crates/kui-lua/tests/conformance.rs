@@ -490,6 +490,16 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
+        // Backlog F106: `ab  c` breaking its spaces in a box 4 px wide.
+        "break-spaces" => r#"
+            return column { pad = 10,
+              column { width = 4,
+                text({ "ab", { "  ", bg = 0x3b5bd4ff }, "c" },
+                     { size = 14, family = "mono", line_height = 20, wrap = "break-spaces" }),
+              },
+            }
+        "#
+        .to_string(),
         // docs/adr/0010-a-segment-primitive.md: three strokes and a box in
         // a 200×120 canvas; the elbow takes a click, hit by its stroke.
         "lines" => r#"

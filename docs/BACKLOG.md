@@ -68,6 +68,8 @@ report of the same day, the day it was filed, and F104 — a trackpad
 swipe kept to its axis — from the kawoosh trackpad-drift report of
 2026-09-28, the day it was filed, and F105 — the non-primary buttons
 on the node that claims them — from the kawoosh mouse-buttons report
+of the same day, the day it was filed, and F106 — `wrap` `break-spaces`,
+whitespace that takes its room — from the kawoosh wrapped-space report
 of the same day, the day it was filed. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
@@ -1449,6 +1451,17 @@ button and every button past it reached the core and went nowhere — the
 wish parked under the editor-and-mux round's three (C2) and in "Rows,
 when a view asks" until a view asked. One entry, F105, **built
 2026-09-28**, the day it was filed, and in the archive.
+
+## From the kawoosh wrapped-space report (2026-09-28)
+
+kawoosh's user typed a space after the last word of a markdown line that
+filled its row, and the caret went past the pane; the next space put it
+back on the full stop, the one after on the next row, and in normal mode
+the block on those spaces drew past the pane or not at all. cosmic-text's
+`word` wrap hangs one trailing space over the edge and drops the
+whitespace a break falls at, so those bytes had no place, and
+`caret_rect` sent a byte with no glyph to the paragraph's end. One entry,
+F106, **built 2026-09-28**, the day it was filed, and in the archive.
 
 ## From the regression pass of 2026-09-19
 
@@ -3836,6 +3849,10 @@ move.
 **From the kawoosh mouse-buttons report (2026-09-28)** — F105, filed and built the same day
 
 - `~` **F105** — [The middle and secondary buttons reach no node: a terminal pane cannot paste on a middle click or report the mouse to the program in it](backlog/closed-2026-09.md#-f105--the-middle-and-secondary-buttons-reach-no-node-a-terminal-pane-cannot-paste-on-a-middle-click-or-report-the-mouse-to-the-program-in-it--done-2026-09-28) — done (2026-09-28) — `onButton` (`on_button`, `KuiSpec.on_button`) hears the non-primary buttons as `{kind:"button", phase:"press"|"move"|"release", button, x, y, clicks, tag}` on the nearest node claiming them, captured from press to release; `buttons` (`Buttons`, `KUI_BUTTONS_*`) narrows which, and a claimed secondary press is the event instead of the context menu
+
+**From the kawoosh wrapped-space report (2026-09-28)** — F106, filed and built the same day
+
+- `~` **F106** — [A wrapped text's trailing space hangs past the edge or vanishes: an editor's caret on it lands outside the box, on the word before, or rows away](backlog/closed-2026-09.md#-f106--a-wrapped-texts-trailing-space-hangs-past-the-edge-or-vanishes-an-editors-caret-on-it-lands-outside-the-box-on-the-word-before-or-rows-away--done-2026-09-28) — done (2026-09-28) — `wrap` `break-spaces` (`TextWrap::BreakSpaces`, `KUI_WRAP_BREAK_SPACES`): each trailing whitespace character a piece of kui's own row breaker, taking its room, so a space that does not fit starts the next row; a byte a `word` break swallowed has its caret at the end of the row it broke
 
 **From the regression pass of 2026-09-25** — RG17–RG36 built the same day, before the alpha.17 tag; RG37 the same day, after it
 

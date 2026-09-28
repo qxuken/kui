@@ -223,7 +223,7 @@ pub fn cursor_idx(i: usize) -> CursorShape {
         .and_then(|n| CursorShape::parse(n))
         .unwrap_or(CursorShape::Default)
 }
-pub const WRAPS: &[&str] = &["word", "glyph", "none"];
+pub const WRAPS: &[&str] = &["word", "glyph", "none", "break-spaces"];
 /// `underlineStyle` / `underline_style` (backlog K4); `UnderlineStyle::NAMES`.
 pub const UNDERLINE_STYLES: &[&str] = UnderlineStyle::NAMES;
 /// `expanded` names its state rather than being a flag: a disclosure that
@@ -1062,9 +1062,10 @@ pub const PROPS: &[PropDef] = &[
         apply: Apply::StyleEnum(|t, i| match i {
             1 => t.wrap(TextWrap::Glyph),
             2 => t.wrap(TextWrap::None),
+            3 => t.wrap(TextWrap::BreakSpaces),
             _ => t.wrap(TextWrap::Word),
         }),
-        doc: "Line breaking at the node's width: between words (default), anywhere, or never (one line per paragraph, clipped to the node). On a single-line `edit` — a field, which otherwise takes one line and scrolls it — declaring it is what makes the field fold to its width like a document, by this mode, while Enter still submits (see `edit`).",
+        doc: "Line breaking at the node's width: between words (default), anywhere, never (one line per paragraph, clipped to the node), or between words with whitespace taking its room (`break-spaces`: a space that does not fit starts the next row rather than hanging past the edge — an editor's wrapped line). On a single-line `edit` — a field, which otherwise takes one line and scrolls it — declaring it is what makes the field fold to its width like a document, by this mode, while Enter still submits (see `edit`).",
     },
     PropDef {
         name: "maxLines",
