@@ -223,6 +223,9 @@ const CHUNK_BYTES: usize = 1024;
 /// Mixed into a long line's key so it never collides with the entry a
 /// short text of the same content would get.
 const LONG_SALT: u64 = 0x5f5f_6c6f_6e67_5f5f;
+/// Mixed into the key of a long line's copies, one for each further node
+/// of a frame drawing the same line ([`TextSystem::claim_long`]).
+const COPY_SALT: u64 = 0x5f5f_636f_7079_5f5f;
 
 /// When the cache is over budget it is evicted down to this fraction of it,
 /// not to the line, so a stream that adds a little every frame walks the
@@ -512,6 +515,7 @@ impl SpanAttrs {
 
 /// One span of a long rich line: its byte range in the content and its
 /// attributes. The ranges are contiguous and cover the content.
+#[derive(Clone)]
 struct OwnedSpan {
     start: usize,
     end: usize,
@@ -618,6 +622,7 @@ impl Entry {
 /// One chunk of a long line: its byte range in the content, the cache key
 /// its shaped entry has (an ordinary `CachedText`, budgeted like any), and
 /// its width once shaped.
+#[derive(Clone)]
 struct Chunk {
     start: usize,
     end: usize,
@@ -645,6 +650,11 @@ struct RowStart {
 /// 100k-character line costs the screenful it shows, a keystroke into it
 /// costs the chunk it lands in, and the width the scrollbar sees can move
 /// a little as chunks fill in, exact under monospace.
+///
+/// Its rows are its own, so a line is laid out for one node a frame: a
+/// second node drawing the same content takes a copy
+/// ([`TextSystem::claim_long`]), which shares the chunks' shaped runs.
+#[derive(Clone)]
 pub(crate) struct LongLine {
     content: String,
     /// The spans, for a rich line (backlog C42): each chunk is shaped as a
@@ -678,6 +688,9 @@ pub(crate) struct LongLine {
     /// unshaped chunk's width is.
     avg: f32,
     last_used: u64,
+    /// The frame a node last took this line to draw, `u64::MAX` before
+    /// one has.
+    claimed: u64,
     bytes: usize,
 }
 
@@ -1442,13 +1455,76 @@ impl TextSystem {
         self.entries.get(&key).map_or("", |e| e.content())
     }
 
-    /// Reads one of this frame's laid-out buffers (the access tree walks
-    /// its runs). A long line has none: its value is readable through
-    /// [`Self::content`] and its chunks are not walked, the way a tall
-    /// document's off-screen lines are not.
-    pub(crate) fn with_buffer<T>(&self, id: TextId, f: impl FnOnce(&Buffer) -> T) -> Option<T> {
-        let ft = self.frame.get(id.0 as usize)?;
-        self.run(ft.cache_key).map(|e| f(&e.buffer))
+    /// Appends the access runs of one of this frame's texts, as `src`
+    /// places them (a custom editor's `line`s are read this way): a run's
+    /// laid-out lines, or a long line's rows of the chunks it has shaped —
+    /// one that never showed is not walked, the way a tall document's
+    /// off-screen lines are not. Every `break-spaces` text is a long line,
+    /// and an editor of them had no runs and no caret until the alpha.22
+    /// regression pass.
+    pub(crate) fn access_runs(
+        &self,
+        id: TextId,
+        src: crate::access::RunSource,
+        run_no: &mut usize,
+        out: &mut Vec<crate::access::AccessRun>,
+    ) {
+        use crate::access::{RowGlyphs, push_row_runs};
+        let Some(ft) = self.frame.get(id.0 as usize) else {
+            return;
+        };
+        let line = match self.entries.get(&ft.cache_key) {
+            Some(Entry::Run(e)) => {
+                crate::access::runs_of_buffer(&e.buffer, src, run_no, out);
+                return;
+            }
+            Some(Entry::Long(line)) => line,
+            None => return,
+        };
+        let whole = [RowStart { byte: 0, x: 0.0 }];
+        for (i, c) in line.chunks.iter().enumerate() {
+            let Some(run) = c
+                .width
+                .and_then(|_| self.run(c.key))
+                .and_then(|e| e.buffer.layout_runs().next())
+            else {
+                continue;
+            };
+            // Wrapped, the chunk's rows from where its first begins;
+            // else one row at its place along the line.
+            let (rows, row0, head_x) = match (line.wrap_w, line.starts.get(i)) {
+                (Some(_), Some(&(row0, head_x))) if !c.rows.is_empty() => {
+                    (&c.rows[..], row0, head_x)
+                }
+                (Some(_), _) => continue,
+                (None, _) => (&whole[..], 0, line.prefix[i]),
+            };
+            for (r, rs) in rows.iter().enumerate() {
+                let hi = rows.get(r + 1).map_or(usize::MAX, |n| n.byte as usize);
+                let a = run.glyphs.partition_point(|g| g.start < rs.byte as usize);
+                let b = run.glyphs.partition_point(|g| g.start < hi).max(a);
+                if a == b {
+                    continue;
+                }
+                let last = i + 1 == line.chunks.len() && r + 1 == rows.len();
+                push_row_runs(
+                    &RowGlyphs {
+                        glyphs: &run.glyphs[a..b],
+                        text: run.text,
+                        line: 0,
+                        top: (row0 as usize + r) as f32 * line.line_h,
+                        height: line.line_h,
+                        rtl: run.rtl,
+                        dx: if r == 0 { head_x } else { 0.0 } - rs.x,
+                        base: c.start,
+                        newline: last && src.newline_after_last,
+                    },
+                    &src,
+                    run_no,
+                    out,
+                );
+            }
+        }
     }
 
     /// The cache key and colour behind one of the *previous* frame's texts
@@ -1470,7 +1546,13 @@ impl TextSystem {
     /// long as something still draws it.
     pub(crate) fn readd(&mut self, cache_key: u64, color: Color) -> Option<TextId> {
         let frame_no = self.frame_no;
-        self.entries.get_mut(&cache_key)?.touch(frame_no);
+        let e = self.entries.get_mut(&cache_key)?;
+        e.touch(frame_no);
+        let cache_key = if e.long().is_some() {
+            self.claim_long(cache_key)
+        } else {
+            cache_key
+        };
         self.frame.push(FrameText { cache_key, color });
         Some(TextId((self.frame.len() - 1) as u32))
     }
@@ -1486,11 +1568,56 @@ impl TextSystem {
         // The one place the long/short decision is made: the entry's
         // variant carries it from here.
         let key = self.intern_any(content, style, res, fs);
+        let key = if could_be_long(content.len(), style) {
+            self.claim_long(key)
+        } else {
+            key
+        };
         self.frame.push(FrameText {
             cache_key: key,
             color: style.color_or_default(),
         });
         TextId((self.frame.len() - 1) as u32)
+    }
+
+    /// The key a node drawing the entry `key` holds it by. A run is
+    /// shared, re-wrapped to each node as it is drawn; a long line's rows
+    /// are the line's own and every query reads them, so the first node
+    /// of a frame takes the line and each further one a copy of its own —
+    /// the n-th node the n-th copy, so a frame like the last finds the
+    /// copies it made laid out already. The copies share the chunks'
+    /// shaped runs. Without it one `break-spaces` file open in two panes
+    /// of different widths drew and answered at the width laid out last
+    /// (the alpha.22 regression pass).
+    #[inline(never)]
+    fn claim_long(&mut self, key: u64) -> u64 {
+        let frame_no = self.frame_no;
+        let mut at = key;
+        let mut n = 0u64;
+        loop {
+            match self.entries.get_mut(&at) {
+                Some(Entry::Long(l)) if l.claimed != frame_no => {
+                    l.claimed = frame_no;
+                    l.last_used = frame_no;
+                    return at;
+                }
+                // A run is never a long line's copy: its key is.
+                Some(Entry::Run(_)) if n == 0 => return key,
+                Some(_) => {}
+                None => {
+                    let Some(line) = self.long(key) else {
+                        return key;
+                    };
+                    let mut copy = line.clone();
+                    copy.claimed = frame_no;
+                    copy.last_used = frame_no;
+                    self.insert(at, Entry::Long(copy));
+                    return at;
+                }
+            }
+            n += 1;
+            at = crate::key::fnv(key ^ COPY_SALT, &n.to_le_bytes());
+        }
     }
 
     /// Interns `content` as the long line it is or the run it is, one
@@ -1519,7 +1646,7 @@ impl TextSystem {
             e.touch(frame_no);
             return key;
         }
-        if has_line_break(content) {
+        if has_line_break(content) || content.len() < LONG_LINE_BYTES && has_rtl(content) {
             self.intern_keyed(key, content, style, res, fs)
         } else {
             self.build_long(long_key, content.to_string(), Vec::new(), style, res, fs)
@@ -1552,7 +1679,9 @@ impl TextSystem {
             e.touch(frame_no);
             return key;
         }
-        if spans.iter().any(|s| has_line_break(s.text)) {
+        if spans.iter().any(|s| has_line_break(s.text))
+            || len < LONG_LINE_BYTES && spans.iter().any(|s| has_rtl(s.text))
+        {
             return self.intern_rich_keyed(key, spans, base, res, fs);
         }
         let mut content = String::with_capacity(len);
@@ -1628,6 +1757,7 @@ impl TextSystem {
             line_h,
             avg,
             last_used: frame_no,
+            claimed: u64::MAX,
             bytes: 0,
         };
         if let Some(c) = line.chunks.first_mut() {
@@ -1638,7 +1768,18 @@ impl TextSystem {
             + line.content.len()
             + line.chunks.len() * 48
             + line.spans.len() * std::mem::size_of::<OwnedSpan>();
+        let (len, chunks) = (line.content.len(), line.chunks.len());
         self.insert(key, Entry::Long(line));
+        // A line long only by its `break-spaces` is shaped whole, as the
+        // run it would otherwise be: its first frame is laid out on the
+        // rows it has and not on an estimate of the chunks past the first,
+        // which moved the box a frame later with nothing asking for that
+        // frame (the alpha.22 regression pass).
+        if len < LONG_LINE_BYTES {
+            for i in 1..chunks {
+                self.ensure_chunk(key, i, res, fs);
+            }
+        }
         key
     }
 
@@ -1819,7 +1960,16 @@ impl TextSystem {
             // Without a width nothing is broken, and the layout the frame
             // holds is left as it is.
             let (size, lines) = match max_w {
-                Some(m) => self.long_size(key, Some(m * scale)),
+                Some(m) => {
+                    // Nor with one: the rows are put back for the node
+                    // that drew the line, which queries read.
+                    let held = self.long(key).expect("checked").wrap_w;
+                    let measured = self.long_size(key, Some(m * scale));
+                    if wrap_differs(held, self.long(key).expect("checked").wrap_w) {
+                        self.relayout_long(key, held);
+                    }
+                    measured
+                }
                 None => {
                     let line = self.long(key).expect("checked");
                     (Size::new(line.width(), line.line_h), 1)
@@ -1877,6 +2027,12 @@ impl TextSystem {
         fs: &mut FontSystem,
     ) -> TextId {
         let key = self.intern_rich_any(spans, base, res, fs);
+        let len = spans.iter().map(|s| s.text.len()).sum();
+        let key = if could_be_long(len, base) {
+            self.claim_long(key)
+        } else {
+            key
+        };
         self.frame.push(FrameText {
             cache_key: key,
             color: base.color_or_default(),
@@ -2028,7 +2184,11 @@ impl TextSystem {
         // The box a long line or an overflowing text clips to, as
         // `emit_text` works it out.
         let key = self.frame[id.0 as usize].cache_key;
-        let clamps = self.long(key).is_some() || self.run(key).is_some_and(|e| e.clamp_w);
+        let clamps = match self.entries.get(&key) {
+            Some(Entry::Long(l)) => l.wrap == TextWrap::None,
+            Some(Entry::Run(e)) => e.clamp_w,
+            None => false,
+        };
         let own = clamps.then(|| {
             let ox = crate::geom::snap_px(origin.x * self.scale);
             (ox, ox + (node.w * self.scale).ceil())
@@ -2036,6 +2196,98 @@ impl TextSystem {
         for j in &mut self.joins[from..] {
             j.outer = clip_id;
             j.own = own;
+        }
+    }
+
+    /// `emit_text` for a long line, kept off the run's path: it draws the
+    /// chunks inside the clip plus one either side, shaping them now if
+    /// this is the first time they show (backlog C19). Layout broke its
+    /// rows at the node's final width (`wrapped`), and the line is this
+    /// node's alone (`claim_long`).
+    #[allow(clippy::too_many_arguments)]
+    #[inline(never)]
+    fn emit_long(
+        &mut self,
+        key: u64,
+        node: Size,
+        ox: f32,
+        oy: f32,
+        nudge: Vec2,
+        color: Color,
+        clip: Clip,
+        clip_id: ClipId,
+        clips: &mut Vec<Clip>,
+        res: &Resources,
+        fs: &mut FontSystem,
+        atlas: &mut GlyphAtlas,
+        out: &mut Vec<Quad>,
+        sel: Option<((usize, usize), Color)>,
+    ) {
+        let scale = self.scale;
+        let line = self.long(key).expect("a long line");
+        // A line that does not wrap owns its box, as a run that does not
+        // does; one that wraps draws under its parent's clip, as a
+        // wrapped run does, so a glyph overhanging a tight row is not cut
+        // (the alpha.22 regression pass: every `break-spaces` text is a
+        // long line).
+        let (clip, clip_id) = if line.wrap == TextWrap::None {
+            let own = Rect::new(ox, oy, (node.w * scale).ceil(), (node.h * scale).ceil());
+            let clip = clip.intersect(own, crate::display::SQUARE);
+            if clip.rect.w <= 0.0 || clip.rect.h <= 0.0 {
+                return;
+            }
+            (clip, crate::display::intern_clip(clips, clip))
+        } else {
+            (clip, clip_id)
+        };
+        if let Some(((from, to), tint)) = sel {
+            let rects = self.long_highlight(line, from, to);
+            push_highlight(&rects, ox, oy, nudge, tint, clip_id, out);
+        }
+        if let Some(w) = line.wrap_w {
+            self.emit_long_rows(
+                key, w, ox, oy, nudge, color, clip, clip_id, res, fs, atlas, out,
+            );
+            return;
+        }
+        let (first, last) = {
+            if line.chunks.is_empty() {
+                return;
+            }
+            let a = line.chunk_at(clip.rect.x - ox).saturating_sub(1);
+            let b = (line.chunk_at(clip.rect.x + clip.rect.w - ox) + 1).min(line.chunks.len() - 1);
+            (a, b)
+        };
+        for i in first..=last {
+            self.ensure_chunk(key, i, res, fs);
+        }
+        let frame_no = self.frame_no;
+        self.long_mut(key).expect("checked").last_used = frame_no;
+        for i in first..=last {
+            let (chunk_key, x) = {
+                let line = self.long(key).expect("checked");
+                (line.chunks[i].key, line.prefix[i])
+            };
+            let raster = &mut self.raster;
+            let entry = self
+                .entries
+                .get_mut(&chunk_key)
+                .and_then(Entry::run_mut)
+                .expect("just ensured");
+            emit_entry(
+                entry,
+                ox + x,
+                oy,
+                nudge,
+                color,
+                clip,
+                clip_id,
+                raster,
+                fs,
+                atlas,
+                out,
+                &mut self.joins,
+            );
         }
     }
 
@@ -2069,66 +2321,12 @@ impl TextSystem {
         // Where layout put the text, less where it is drawn: what a
         // background's edges are snapped from (`on_pixels`).
         let nudge = Vec2::new(origin.x * scale - ox, origin.y * scale - oy);
-        // A long line owns its box the way a no-wrap line does, and draws
-        // the chunks inside the clip plus one either side, shaping them
-        // now if this is the first time they show (backlog C19).
-        if let Some(line) = self.long(key) {
-            let own = Rect::new(ox, oy, (node.w * scale).ceil(), (node.h * scale).ceil());
-            let clip = clip.intersect(own, crate::display::SQUARE);
-            if clip.rect.w <= 0.0 || clip.rect.h <= 0.0 {
-                return;
-            }
-            let clip_id = crate::display::intern_clip(clips, clip);
-            if let Some(((from, to), tint)) = sel {
-                let rects = self.long_highlight(line, from, to);
-                push_highlight(&rects, ox, oy, nudge, tint, clip_id, out);
-            }
-            if let Some(w) = line.wrap_w {
-                self.emit_long_rows(
-                    key, w, ox, oy, nudge, color, clip, clip_id, res, fs, atlas, out,
-                );
-                return;
-            }
-            let (first, last) = {
-                if line.chunks.is_empty() {
-                    return;
-                }
-                let a = line.chunk_at(clip.rect.x - ox).saturating_sub(1);
-                let b =
-                    (line.chunk_at(clip.rect.x + clip.rect.w - ox) + 1).min(line.chunks.len() - 1);
-                (a, b)
-            };
-            for i in first..=last {
-                self.ensure_chunk(key, i, res, fs);
-            }
-            let frame_no = self.frame_no;
-            self.long_mut(key).expect("checked").last_used = frame_no;
-            for i in first..=last {
-                let (chunk_key, x) = {
-                    let line = self.long(key).expect("checked");
-                    (line.chunks[i].key, line.prefix[i])
-                };
-                let raster = &mut self.raster;
-                let entry = self
-                    .entries
-                    .get_mut(&chunk_key)
-                    .and_then(Entry::run_mut)
-                    .expect("just ensured");
-                emit_entry(
-                    entry,
-                    ox + x,
-                    oy,
-                    nudge,
-                    color,
-                    clip,
-                    clip_id,
-                    raster,
-                    fs,
-                    atlas,
-                    out,
-                    &mut self.joins,
-                );
-            }
+        // A long line is drawn by chunks, off the run's path (backlog
+        // C19).
+        if self.long(key).is_some() {
+            self.emit_long(
+                key, node, ox, oy, nudge, color, clip, clip_id, clips, res, fs, atlas, out, sel,
+            );
             return;
         }
         self.ensure_wrap(id, node.w, fs);
@@ -2502,7 +2700,13 @@ fn break_rows(
             .rev()
             .find(|g| spaces || !blank(g))
             .map_or(x0, |g| g.x + g.w);
-        if ink_end - row_x0 > avail && x0 > row_x0 {
+        // A piece at the row's start has nowhere to go — except the
+        // chunk's first, whose row is the one the previous chunk left off
+        // on `head_x` in: that row holds something, so the piece can open
+        // the next (the alpha.22 regression pass; the chunk's first row
+        // is then empty, which the rest reads by byte).
+        let opens = x0 > row_x0 || (rows.len() == 1 && head_x > 0.0);
+        if ink_end - row_x0 > avail && opens {
             rows.push(RowStart {
                 byte: s as u32,
                 x: x0,
@@ -2691,7 +2895,8 @@ fn emit_entry(
 /// Whether a text of `len` bytes in `style` is shaped in chunks, by what
 /// costs nothing to ask: past `LONG_LINE_BYTES`, with no `max_lines` or
 /// `ellipsis`, since a line budget is a property of the whole. The
-/// other half is [`has_line_break`], asked only when the cache has not
+/// other half is [`has_line_break`] — and [`has_rtl`] for a text long
+/// only by its `break-spaces` — asked only when the cache has not
 /// seen the text — a wrapped one breaks its chunks into rows
 /// ([`LongLine::starts`]), whatever its `wrap`. Plain or rich alike
 /// (backlog C42).
@@ -2705,6 +2910,27 @@ fn could_be_long(len: usize, style: &TextStyle) -> bool {
 /// `str` pattern search is per character (backlog C43).
 fn has_line_break(content: &str) -> bool {
     content.bytes().any(|b| b == b'\n' || b == b'\r')
+}
+
+/// Whether the content holds a right-to-left character — a strong one of
+/// the right-to-left scripts' blocks, or a mark or embedding asking for
+/// that direction. A text long only by its `break-spaces` and holding one
+/// is shaped as the run it would otherwise be, wrapping as `word` does
+/// (as one with line breaks of its own does): the long line breaks rows
+/// over glyph positions left to right, which a right-to-left run's are
+/// not, and a Hebrew paragraph that had to wrap drew one glyph (the
+/// alpha.22 regression pass).
+fn has_rtl(content: &str) -> bool {
+    !content.is_ascii()
+        && content.chars().any(|c| {
+            matches!(c as u32,
+                0x0590..=0x08FF
+                | 0x200F | 0x202B | 0x202E | 0x2067
+                | 0xFB1D..=0xFDFF
+                | 0xFE70..=0xFEFF
+                | 0x10800..=0x10FFF
+                | 0x1E800..=0x1EFFF)
+        })
 }
 
 /// The decoration rects for one laid-out line: consecutive glyphs of one
@@ -2849,8 +3075,11 @@ impl TextSystem {
 
     /// The runs `key` names, in tree order, each with its entry and the
     /// byte offset its content starts at in the concatenation — from the
-    /// frame that finished (`prev`) or the one being emitted.
-    fn runs_of(&self, key: Key, prev: bool) -> Vec<(&TextPlace, &CachedText, usize)> {
+    /// frame that finished (`prev`) or the one being emitted. A long line
+    /// is a run among them: every `break-spaces` text is one, and a `line`
+    /// row of several answered with the last one's bytes alone until the
+    /// alpha.22 regression pass.
+    fn runs_of(&self, key: Key, prev: bool) -> Vec<(&TextPlace, &Entry, usize)> {
         let list = if prev {
             self.places.prev()
         } else {
@@ -2859,12 +3088,11 @@ impl TextSystem {
         let mut base = 0usize;
         let mut out = Vec::new();
         for place in list.iter().filter(|p| p.drawn && p.answers_to(key)) {
-            // A long line answers alone, through `long_place`.
-            let Some(entry) = self.run(place.cache_key) else {
+            let Some(entry) = self.entries.get(&place.cache_key) else {
                 continue;
             };
             out.push((place, entry, base));
-            base += entry.content.len();
+            base += entry.content().len();
         }
         out
     }
@@ -2929,10 +3157,30 @@ impl TextSystem {
 
     /// A scoped run's laid-out box, physical px in viewport space.
     fn scope_box(&self, run: &ScopeRun<'_>) -> Rect {
-        let (ox, oy) = self.physical_origin(run.place);
-        match run.text {
-            Entry::Run(e) => self.physical_box(run.place, e),
-            Entry::Long(l) => Rect::new(ox, oy, l.width(), l.line_h * l.rows() as f32),
+        self.entry_box(run.place, run.text)
+    }
+
+    /// A run's laid-out box, physical px in viewport space, whichever way
+    /// it was shaped. A wrapped long line is as wide as its rows were
+    /// broken to — its unwrapped width claimed the text beside it in a
+    /// selection scope (the alpha.22 regression pass).
+    fn entry_box(&self, place: &TextPlace, entry: &Entry) -> Rect {
+        match entry {
+            Entry::Run(e) => self.physical_box(place, e),
+            Entry::Long(l) => {
+                let (ox, oy) = self.physical_origin(place);
+                let w = l.wrap_w.unwrap_or_else(|| l.width());
+                Rect::new(ox, oy, w, l.line_h * l.rows() as f32)
+            }
+        }
+    }
+
+    /// The tops of a run's visual rows, physical px in viewport space.
+    fn row_tops(&self, place: &TextPlace, entry: &Entry) -> Vec<f32> {
+        let (_, oy) = self.physical_origin(place);
+        match entry {
+            Entry::Run(e) => e.buffer.layout_runs().map(|r| oy + r.line_top).collect(),
+            Entry::Long(l) => (0..l.rows()).map(|r| oy + r as f32 * l.line_h).collect(),
         }
     }
 
@@ -3067,12 +3315,9 @@ impl TextSystem {
                 }
                 Entry::Long(l) => {
                     if let Some((x, y)) = self.long_caret_local(l, lo) {
-                        // A long line holds one style, so its baseline is
-                        // the row's height less the descender the metrics
-                        // put under it; `line_h` is all this path knows.
                         return Some(Vec2::new(
                             (ox + x) / self.scale,
-                            (oy + y + l.line_h * 0.8) / self.scale,
+                            (oy + y + self.long_baseline(l)) / self.scale,
                         ));
                     }
                 }
@@ -3178,22 +3423,6 @@ impl TextSystem {
         out
     }
 
-    /// The long line `key` names, if the place that answers to it is one.
-    /// A long line is queried alone — the node that holds a 100k-character
-    /// line holds nothing else — so it does not join `runs_of`'s
-    /// concatenation.
-    fn long_place(&self, key: Key, prev: bool) -> Option<(&TextPlace, &LongLine)> {
-        let list = if prev {
-            self.places.prev()
-        } else {
-            &self.places
-        };
-        list.iter()
-            .rev()
-            .filter(|p| p.drawn && p.answers_to(key))
-            .find_map(|p| Some((p, self.long(p.cache_key)?)))
-    }
-
     /// `hit_at` for a long line: the chunk under the point answers through
     /// its shaped entry, an unshaped one (never on screen) by the mean
     /// advance.
@@ -3279,6 +3508,18 @@ impl TextSystem {
                 b
             }
         };
+        // The byte a row breaks at is the next row's first, and its caret
+        // is drawn there: a point past this row's end answers the byte
+        // before the row's last character, which is on this row, as a
+        // `word` run's hanging space does (the alpha.22 regression pass).
+        let next_row = self
+            .long_caret_local(line, byte)
+            .is_some_and(|(_, y)| y > (row as f32 + 0.5) * line.line_h);
+        let byte = if next_row && byte > 0 {
+            floor_boundary(&line.content, byte - 1)
+        } else {
+            byte
+        };
         Some(TextHit { byte, line: row })
     }
 
@@ -3294,6 +3535,20 @@ impl TextSystem {
             0.0,
             line.line_h / scale,
         ))
+    }
+
+    /// A long line's first baseline, physical px below its top: its first
+    /// chunk's, shaped when the line was built, rounded as its glyphs are
+    /// drawn at it — a fifth of the row above the row's foot only while
+    /// that chunk is not shaped. On that estimate alone a `break-spaces`
+    /// text in a baseline row sat a pixel off a `word` one (the alpha.22
+    /// regression pass).
+    fn long_baseline(&self, line: &LongLine) -> f32 {
+        line.chunks
+            .first()
+            .and_then(|c| self.run(c.key))
+            .and_then(|e| e.buffer.layout_runs().next())
+            .map_or(line.line_h * 0.8, |r| r.line_y.round())
     }
 
     /// The caret for `byte`, in physical px from the long line's own
@@ -3417,9 +3672,6 @@ impl TextSystem {
     /// see `Core::text_hit`. With several runs, the run under the point,
     /// else the nearest one on the point's line, else the nearest line.
     pub(crate) fn hit_at(&self, key: Key, point: Vec2, prev: bool) -> Option<TextHit> {
-        if let Some((place, line)) = self.long_place(key, prev) {
-            return self.long_hit(place, line, point);
-        }
         let runs = self.runs_of(key, prev);
         if runs.is_empty() {
             return None;
@@ -3436,43 +3688,50 @@ impl TextSystem {
         let (place, entry, base) = runs
             .iter()
             .min_by(|a, b| {
-                let ga = gap(&self.physical_box(a.0, a.1));
-                let gb = gap(&self.physical_box(b.0, b.1));
+                let ga = gap(&self.entry_box(a.0, a.1));
+                let gb = gap(&self.entry_box(b.0, b.1));
                 ga.partial_cmp(&gb).unwrap_or(std::cmp::Ordering::Equal)
             })
             .copied()?;
         let (ox, oy) = self.physical_origin(place);
-        // Into the run's box vertically: the nearest run was chosen for a
-        // point outside every run, and cosmic-text answers a point above
-        // its first row with byte 0 whatever the x — so a press in the
-        // padding above a line's text placed the caret at its start
-        // (backlog C34). Clamped, it hits the nearest row at that x.
-        let bx = self.physical_box(place, entry);
-        let py = py.clamp(bx.y, (bx.y + bx.h - 0.01).max(bx.y));
-        let cursor = entry.buffer.hit(px - ox, py - oy)?;
+        let (byte, hit_top) = match entry {
+            Entry::Long(line) => {
+                let hit = self.long_hit(place, line, point)?;
+                (hit.byte, oy + hit.line as f32 * line.line_h)
+            }
+            Entry::Run(entry) => {
+                // Into the run's box vertically: the nearest run was
+                // chosen for a point outside every run, and cosmic-text
+                // answers a point above its first row with byte 0 whatever
+                // the x — so a press in the padding above a line's text
+                // placed the caret at its start (backlog C34). Clamped, it
+                // hits the nearest row at that x.
+                let bx = self.physical_box(place, entry);
+                let py = py.clamp(bx.y, (bx.y + bx.h - 0.01).max(bx.y));
+                let cursor = entry.buffer.hit(px - ox, py - oy)?;
+                let row =
+                    visual_line(&entry.buffer, cursor.line, cursor.index).map_or(0, |(l, _)| l);
+                let top = entry
+                    .buffer
+                    .layout_runs()
+                    .nth(row)
+                    .map_or(0.0, |r| r.line_top);
+                (entry.byte_of(cursor), oy + top)
+            }
+        };
         // The visual row within the node (AR30): the row the hit landed
         // on, placed among every row of every run the key covers by its
         // top edge, so runs side by side share a row and runs stacked
         // count in turn.
-        let row = visual_line(&entry.buffer, cursor.line, cursor.index).map_or(0, |(l, _)| l);
-        let hit_top = oy
-            + entry
-                .buffer
-                .layout_runs()
-                .nth(row)
-                .map_or(0.0, |r| r.line_top);
         let mut tops: Vec<f32> = runs
             .iter()
-            .flat_map(|(p, e, _)| {
-                let (_, oy) = self.physical_origin(p);
-                e.buffer.layout_runs().map(move |r| oy + r.line_top)
-            })
+            .flat_map(|(p, e, _)| self.row_tops(p, e))
             .collect();
         tops.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         tops.dedup_by(|a, b| (*a - *b).abs() < 0.5);
         let line = tops.iter().filter(|t| **t < hit_top - 0.5).count();
         Some(TextHit {
-            byte: base + entry.byte_of(cursor),
+            byte: base + byte,
             line: line as u32,
         })
     }
@@ -3481,19 +3740,20 @@ impl TextSystem {
     /// `Core::caret_rect`. A byte on the seam between two runs is the
     /// start of the later one, except at the very end.
     pub(crate) fn caret_at(&self, key: Key, byte: usize, prev: bool) -> Option<Rect> {
-        if let Some((place, line)) = self.long_place(key, prev) {
-            return self.long_caret(place, line, byte);
-        }
         let runs = self.runs_of(key, prev);
-        let total = runs.last().map(|(_, e, base)| base + e.content.len())?;
+        let total = runs.last().map(|(_, e, base)| base + e.content().len())?;
         let byte = byte.min(total);
         let (place, entry, base) = runs
             .iter()
-            .find(|(_, e, base)| byte < base + e.content.len())
+            .find(|(_, e, base)| byte < base + e.content().len())
             .or_else(|| runs.last())
             .copied()?;
+        let byte = (byte - base).min(entry.content().len());
+        let entry = match entry {
+            Entry::Long(line) => return self.long_caret(place, line, byte),
+            Entry::Run(entry) => entry,
+        };
         let (ox, oy) = self.physical_origin(place);
-        let byte = (byte - base).min(entry.content.len());
         let cursor = entry.cursor_of(byte);
         let (_, run_no) = visual_line(&entry.buffer, cursor.line, cursor.index)?;
         let run = entry.buffer.layout_runs().nth(run_no)?;
@@ -3939,14 +4199,12 @@ impl TextSystem {
     /// The first line's baseline of text `id` as `wrapped` last laid it
     /// out, logical px below its top (backlog C13's `crossAlign:
     /// baseline`). A run's `line_y`, rounded as the glyphs are drawn at
-    /// it; a long line holds one style, and its baseline is the row's
-    /// height less the descender the metrics put under it, as
-    /// `scope_selection_anchor` reads it. An empty text is one line of
-    /// its own metrics.
+    /// it; a long line's is [`Self::long_baseline`]. An empty text is one
+    /// line of its own metrics.
     pub(crate) fn baseline(&mut self, id: TextId) -> f32 {
         let scale = self.scale;
         if let Some(line) = self.long_of(id) {
-            return line.line_h * 0.8 / scale;
+            return self.long_baseline(line) / scale;
         }
         let e = self.entry_mut(id);
         let b = e

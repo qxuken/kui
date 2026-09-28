@@ -1488,21 +1488,19 @@ fn custom_editor(tree: &Tree, src: &Sources<'_>, i: usize, node: &mut AccessNode
             line_text.push_str(src.text.content(id));
             let newline = !last && k + 1 == texts.len();
             let first = node.runs.len();
-            src.text.with_buffer(id, |b| {
-                runs_of_buffer(
-                    b,
-                    RunSource {
-                        key: node.key,
-                        line: ln,
-                        byte_base: base,
-                        origin: tree.pos[t],
-                        scale: src.scale,
-                        newline_after_last: newline,
-                    },
-                    &mut run_no,
-                    &mut node.runs,
-                );
-            });
+            src.text.access_runs(
+                id,
+                RunSource {
+                    key: node.key,
+                    line: ln,
+                    byte_base: base,
+                    origin: tree.pos[t],
+                    scale: src.scale,
+                    newline_after_last: newline,
+                },
+                &mut run_no,
+                &mut node.runs,
+            );
             clip_runs(&mut node.runs[first..], clip_of(src, t));
         }
         if texts.is_empty() {
@@ -1598,24 +1596,76 @@ pub(crate) fn runs_of_buffer(
     run_no: &mut usize,
     out: &mut Vec<AccessRun>,
 ) {
-    let scale = src.scale.max(f32::EPSILON);
     let line_count = buffer.lines.len();
     let runs: Vec<_> = buffer.layout_runs().collect();
     for (r, run) in runs.iter().enumerate() {
         let last_of_line = runs.get(r + 1).is_none_or(|next| next.line_i != run.line_i);
         let newline = last_of_line && (run.line_i + 1 < line_count || src.newline_after_last);
-        // The slice of the line this run lays out.
-        let (start, end) = run.glyphs.iter().fold((usize::MAX, 0usize), |(s, e), g| {
+        push_row_runs(
+            &RowGlyphs {
+                glyphs: run.glyphs,
+                text: run.text,
+                line: run.line_i,
+                top: run.line_top,
+                height: run.line_height,
+                rtl: run.rtl,
+                dx: 0.0,
+                base: 0,
+                newline,
+            },
+            &src,
+            run_no,
+            out,
+        );
+    }
+}
+
+/// One visual row's glyphs, for [`push_row_runs`]: a buffer's laid-out
+/// run, or one row of a long line's chunk (`TextSystem::access_runs`),
+/// whose glyphs sit `dx` physical px from where its unwrapped run put
+/// them and whose `text` starts `base` bytes into the source's.
+pub(crate) struct RowGlyphs<'a> {
+    pub glyphs: &'a [cosmic_text::LayoutGlyph],
+    /// The paragraph the glyphs index into.
+    pub text: &'a str,
+    /// The source's line this row belongs to, less `RunSource::line`.
+    pub line: usize,
+    pub top: f32,
+    pub height: f32,
+    pub rtl: bool,
+    pub dx: f32,
+    pub base: usize,
+    /// Whether the row ends a line that continues into another.
+    pub newline: bool,
+}
+
+/// The runs of one visual row (split past [`RUN_CHARS`] characters),
+/// appended to `out`.
+pub(crate) fn push_row_runs(
+    row: &RowGlyphs<'_>,
+    src: &RunSource,
+    run_no: &mut usize,
+    out: &mut Vec<AccessRun>,
+) {
+    let scale = src.scale.max(f32::EPSILON);
+    let newline = row.newline;
+    {
+        // The slice of the line this row lays out.
+        let (start, end) = row.glyphs.iter().fold((usize::MAX, 0usize), |(s, e), g| {
             (s.min(g.start), e.max(g.end))
         });
-        let (start, end) = if run.glyphs.is_empty() {
+        let (start, end) = if row.glyphs.is_empty() {
             (0, 0)
         } else {
             (start, end)
         };
-        let slice = &run.text[start..end];
+        let slice = &row.text[start..end];
         // Where the run starts: its leftmost glyph (0 for an empty line).
-        let x0 = run.glyphs.iter().map(|g| g.x).fold(f32::INFINITY, f32::min);
+        let x0 = row
+            .glyphs
+            .iter()
+            .map(|g| g.x + row.dx)
+            .fold(f32::INFINITY, f32::min);
         let x0 = if x0.is_finite() { x0 } else { 0.0 };
         // Every character: position and width from the glyph cluster
         // covering it (split evenly by bytes inside a cluster).
@@ -1623,11 +1673,11 @@ pub(crate) fn runs_of_buffer(
         for (rel, c) in slice.char_indices() {
             let idx = start + rel;
             let len = c.len_utf8();
-            let (x, w) = match run.glyphs.iter().find(|g| g.start <= idx && idx < g.end) {
+            let (x, w) = match row.glyphs.iter().find(|g| g.start <= idx && idx < g.end) {
                 Some(g) => {
                     let span = (g.end - g.start).max(1) as f32;
                     (
-                        g.x + g.w * (idx - g.start) as f32 / span,
+                        g.x + row.dx + g.w * (idx - g.start) as f32 / span,
                         g.w * len as f32 / span,
                     )
                 }
@@ -1663,21 +1713,21 @@ pub(crate) fn runs_of_buffer(
                     }
                 })
                 .min(end);
-            let mut text = run.text[byte_start.min(end)..byte_end].to_string();
+            let mut text = row.text[byte_start.min(end)..byte_end].to_string();
             if newline && chunk_end == chars.len() {
                 text.push('\n');
             }
             out.push(AccessRun {
                 key: run_key(src.key, *run_no),
-                line: src.line + run.line_i,
-                start: src.byte_base + byte_start.min(end),
-                end: src.byte_base + byte_end,
+                line: src.line + row.line,
+                start: src.byte_base + row.base + byte_start.min(end),
+                end: src.byte_base + row.base + byte_end,
                 text,
                 rect: Rect::new(
                     src.origin.x + chunk_x / scale,
-                    src.origin.y + run.line_top / scale,
+                    src.origin.y + row.top / scale,
                     (chunk_end_x - chunk_x) / scale,
-                    run.line_height / scale,
+                    row.height / scale,
                 ),
                 char_lengths: chunk.iter().map(|c| c.1).collect(),
                 char_positions: chunk.iter().map(|c| (c.2 - chunk_x) / scale).collect(),
@@ -1687,7 +1737,7 @@ pub(crate) fn runs_of_buffer(
                     .filter(|&&s| s >= at && s < chunk_end)
                     .map(|&s| (s - at) as u8)
                     .collect(),
-                rtl: run.rtl,
+                rtl: row.rtl,
             });
             *run_no += 1;
             at = chunk_end;

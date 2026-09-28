@@ -6,7 +6,7 @@
 
 use kui_core::{
     AccessAction, AccessRequest, Core, EditOptions, InputEvent, Key, NodeSpec, Role, Size, TextPos,
-    TextStyle, Value,
+    TextStyle, TextWrap, Value,
 };
 
 fn editor_frame(core: &mut Core, initial: &str) -> Key {
@@ -207,8 +207,19 @@ fn custom_frame(
     caret: (usize, u32),
     anchor: Option<(usize, u32)>,
 ) -> Key {
-    let style = TextStyle::new(14.0);
-    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    custom_frame_in(core, lines, caret, anchor, TextStyle::new(14.0), 400.0)
+}
+
+/// [`custom_frame`] with the texts in `style`, `width` wide.
+fn custom_frame_in(
+    core: &mut Core,
+    lines: &[&str],
+    caret: (usize, u32),
+    anchor: Option<(usize, u32)>,
+    style: TextStyle,
+    width: f32,
+) -> Key {
+    let mut ui = core.frame(Size::new(width, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
     let sink = ui.with_keyed(
         "sink",
@@ -358,6 +369,69 @@ fn a_custom_editor_declares_its_lines_caret_and_selection() {
     assert_eq!(node.focus, None);
     assert_eq!(node.caret, None);
     assert_eq!(node.value.as_deref(), Some("fn main() {\n    hi\n}"));
+}
+
+#[test]
+fn a_custom_editor_of_break_spaces_lines_declares_them_as_word_ones() {
+    // Every `break-spaces` text is a long line, which has no buffer of its
+    // own to walk: an editor of them had no runs and no caret (the alpha.22
+    // regression pass).
+    let lines = ["fn main() {", "    hi", "}"];
+    let tree = |wrap: TextWrap| {
+        let mut core = Core::new();
+        let style = TextStyle::new(14.0).wrap(wrap);
+        let sink = custom_frame_in(&mut core, &lines, (1, 6), Some((0, 3)), style, 400.0);
+        core.access_tree().get(sink).unwrap().clone()
+    };
+    let word = tree(TextWrap::Word);
+    let spaces = tree(TextWrap::BreakSpaces);
+    assert_eq!(spaces.runs.len(), 6);
+    assert!(spaces.focus.is_some());
+    assert_eq!(spaces.runs, word.runs);
+    assert_eq!(
+        (spaces.focus, spaces.anchor, spaces.caret, spaces.selection),
+        (word.focus, word.anchor, word.caret, word.selection)
+    );
+
+    // Wrapped: a run per row, every byte of the line in one of them.
+    let mut core = Core::new();
+    let long = "aaa bbb ccc ddd eee fff ggg hhh";
+    let style = TextStyle::new(14.0).wrap(TextWrap::BreakSpaces);
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let sink = ui.with_keyed(
+        "sink",
+        NodeSpec::column()
+            .fill()
+            .on_key("ed")
+            .role(Role::MultilineTextInput),
+        |ui| {
+            let line = NodeSpec::column().width(60.0).role(Role::Line);
+            ui.with_keyed("l0", line.clone().caret(30), |ui| ui.text(long, style));
+            ui.with_keyed("l1", line, |ui| ui.text("x", style));
+        },
+    );
+    ui.take_key_focus(sink);
+    ui.finish();
+    let node = core.access_tree().get(sink).unwrap().clone();
+    let first: Vec<_> = node.runs.iter().filter(|r| r.line == 0).collect();
+    assert!(first.len() > 2, "{first:?}");
+    let text: String = first.iter().map(|r| r.text.as_str()).collect();
+    assert_eq!(text, format!("{long}\n"));
+    for pair in first.windows(2) {
+        assert_eq!(pair[0].end, pair[1].start, "{first:?}");
+    }
+    let rows = first
+        .iter()
+        .map(|r| r.rect.y)
+        .fold(Vec::<f32>::new(), |mut v, y| {
+            if v.last() != Some(&y) {
+                v.push(y);
+            }
+            v
+        });
+    assert!(rows.len() > 1, "{first:?}");
+    assert!(node.focus.is_some());
 }
 
 #[test]
