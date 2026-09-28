@@ -945,7 +945,7 @@ media keys (`mediaplaypause`, `volumeup`, …) need nothing: they are keys.
 [`modifierKeys`](props.md#container-props) ·
 [`key`](props.md#events) ·
 [ADR 0002](adr/0002-keyboard-focus-as-data.md#amendment-where-a-key-is-the-modifier-keys-the-locks-built-2026-09-28) ·
-[alpha.24](../CHANGELOG.md#010-alpha24-unreleased)
+[alpha.24](../CHANGELOG.md#010-alpha24-2026-09-28)
 
 ### How do I reset an editor's text?
 

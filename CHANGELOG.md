@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.24 (unreleased)
+## 0.1.0-alpha.24 (2026-09-28)
 
 **What breaks.** The ABI is 21: `KuiSpec` gains `modifier_keys`. Rust
 gains fields on one struct and variants on one enum.
@@ -83,6 +83,52 @@ Three readings change:
   *What you can delete:* nothing an app could have written: the runner
   dropped every key it had no name for, and said nothing of where a
   key was or what was locked.
+
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), on 2026-09-28 — the
+three commits after the alpha.23 tag, F108 from the kawoosh
+kitty-keyboard review, its check on a keyboard and its merge. This
+round ran on the Mac alone; Windows and Linux were not in it, and
+F108's halves there — the lock state asked of Windows, tracked from
+the lock keys' own presses on Linux, and the keys past F12 and the
+media keys as those runners name them — are what it could not reach.
+
+**macOS 27.0 on an M3 Pro MacBook Pro, rustc 1.98.0, Node 25.6.0**, on
+`c884d7b` with the version set, in a cold worktree. `cargo fmt --all
+--check` and `cargo clippy --workspace --all-targets --features
+kui-core/conformance -- -D warnings` are clean. `cargo test --workspace
+--features kui-core/conformance`: **1568 tests over 121 suites, 0
+failed** (3 ignored). The C round, `cbuild --run`, passes its five
+checks, and the no-ABI panel is refused as "this build is 21"; the
+corpus passes its **50 scenes** in four adapters, `modifier-keys` the
+new one, C's through `target/debug/conformance`; the ABI is **21**.
+Node's `node --test test.mjs` under `KUI_CONFORMANCE_REQUIRED=1`: **199
+of 199**, the frame still **v18**. `npm run gen` leaves no diff, the
+examples typecheck and their lockfile installs, and the headless round
+passes all **32 drives**.
+
+**The windowed round**, `smoke -- --node`: **38 Rust examples and the
+eleven Node examples, each on both bases, 120 frames each, every one
+exiting 0 with no warning on stderr** — 98 windows — and `counter`,
+`host`, `c_panel` and `lua_panel` by hand under `KUI_SMOKE_FRAMES=120`,
+each exiting 0 with nothing on stderr: **102 windows over five hosts.**
+The AX audit: **106/106**, the fixture silent. F108 itself was checked
+on a keyboard before the merge (`be89259`), through kawoosh's terminal
+speaking kitty's protocol to a program logging its bytes — the two
+Shifts and Command with their sides, the keypad's `1` and Enter as keys
+of their own, F13 — and the two readings that check found wrong were
+fixed there; this round did not drive a keyboard again.
+
+**The bench guard** against the alpha.23 tag, the machine otherwise
+quiet (the script's busy check silent): **green**, no guarded row more
+than 3.6% slower (`frame_10k_rects`, ±3.0%), the worst guarded spread
+5.1% (`frame_1k_typical`), and no row of the 38 more than 4.4% slower
+(`list_100k_rows_variable`, inside its ±6.5%). No bench drives a key,
+so the dispatch F108 touched is measured by none of them; the frame
+rows see only `EventSpec`'s one new `bool`. README's table is kept at
+alpha.22's numbers.
 
 ## 0.1.0-alpha.23 (2026-09-28)
 
