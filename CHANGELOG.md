@@ -21,6 +21,27 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.25 (unreleased)
+
+**What breaks.** A build no longer writes `libkui_ffi.a`.
+
+- C: `kui-ffi` builds a cdylib and an rlib; the staticlib is no longer
+  one of its crate types (under Changed). A host that links
+  `target/<profile>/libkui_ffi.a` asks for it:
+  `cargo rustc -p kui-ffi --lib --release --crate-type staticlib`.
+
+### Changed
+
+- **The static archive is built on request.** Nothing in the workspace
+  links it, and it was the largest file any build wrote. An archive is
+  every object file of the dependency tree, std's included, not yet
+  dead-stripped and carrying its symbol tables for the link to come:
+  545 MB in debug, 442 MB of it DWARF against 18 MB of machine code, and
+  73 MB in release, where the cdylib linked from the same objects is
+  27 MB and 13.7 MB (aarch64-apple-darwin). Cargo cannot choose a crate
+  type per profile, so the manifest drops it for both and the command
+  above leaves the archive where it was.
+
 ## 0.1.0-alpha.24 (2026-09-28)
 
 **What breaks.** The ABI is 21: `KuiSpec` gains `modifier_keys`. Rust

@@ -4,12 +4,24 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "C API for kui (cdylib/staticlib + include/kui.h)"
+description = "C API for kui (cdylib, staticlib on request, + include/kui.h)"
 publish = ["forgejo"]
 
 [lib]
 name = "kui_ffi"
-crate-type = ["cdylib", "staticlib", "rlib"]
+# No `staticlib` here: nothing in the workspace links one, and it cost every
+# build the most disk of any artifact in it. An archive is every object file
+# of the dependency tree, std's included, never dead-stripped and carrying
+# its symbol tables for the linker to come: 545 MB in debug (442 MB of it
+# DWARF, 18 MB machine code) and 73 MB in release, where the cdylib linked
+# from the same objects is 27 MB and 13.7 MB (aarch64-apple-darwin,
+# 0.1.0-alpha.24). Cargo cannot set a crate type per profile, so a host
+# that links statically asks for the archive when it wants one:
+#
+#     cargo rustc -p kui-ffi --lib --release --crate-type staticlib
+#
+# which leaves `target/release/libkui_ffi.a` where it always was.
+crate-type = ["cdylib", "rlib"]
 
 # The windowed runner is the only thing in this crate that needs `kui-native`, and
 # `kui-native` is the whole GUI runtime: winit, wgpu, kira, accesskit, arboard. Two

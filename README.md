@@ -14,7 +14,7 @@ bundled Lua extension support is table-to-node conversion, not FFI gymnastics.
 | `kui-wgpu` | wgpu backend: one instanced über-pipeline (rounded rects, borders, glyphs), single draw call per frame |
 | `kui-native` | Batteries-included runner: winit + wgpu around a `Core`, `App` trait, widget sugar |
 | `kui-lua` | Lua extensions via mlua: scripts return table trees, receive events as tables |
-| `kui-ffi` | C API (cdylib/staticlib + [include/kui.h](crates/kui-ffi/include/kui.h)): flat builder calls, opaque `KuiValue` payloads, `repr(C)` draw data, windowed runner via callbacks — and `CExtension`, the same contract inverted: a C shared library as a guest in someone else's frame |
+| `kui-ffi` | C API (cdylib, a staticlib on request, + [include/kui.h](crates/kui-ffi/include/kui.h)): flat builder calls, opaque `KuiValue` payloads, `repr(C)` draw data, windowed runner via callbacks — and `CExtension`, the same contract inverted: a C shared library as a guest in someone else's frame |
 | `kui-node` | Node.js addon (napi-rs) + the [`packages/kui`](packages/kui) npm package: JSX views (custom jsx-runtime, no React) lowered into the IR in one call per frame, Elm-style messages as data |
 
 On Linux the build wants `pkg-config` and ALSA's headers (`libasound2-dev`
