@@ -149,4 +149,19 @@ mod tests {
         let bad = kui_size_clamp(FIT, kui_size_pct(50.0), kui_size_px(9.0));
         assert_eq!(bad.tag, 0, "fit is not a size");
     }
+
+    /// A negative `KUI_FIXED` ceiling is a ceiling of 0, not the calc a
+    /// negative `max_w` otherwise stands for (backlog RG78).
+    #[test]
+    fn a_negative_px_ceiling_is_zero() {
+        let l = kui_core::NodeSpec::column()
+            .with_bounds(
+                None,
+                bound_of(kui_size_px(-1.0)),
+                None,
+                bound_of(kui_size_px(f32::NAN)),
+            )
+            .layout;
+        assert_eq!((l.max_w, l.max_h), (0.0, 0.0));
+    }
 }

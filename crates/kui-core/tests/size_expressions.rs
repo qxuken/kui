@@ -256,3 +256,36 @@ fn a_node_anchored_float_s_clamps_take_the_anchor() {
     assert_eq!(t.w(held), 100.0);
     assert_eq!(t.w(in_grow), 200.0);
 }
+
+/// A px ceiling below zero is a ceiling of 0, as it was before size
+/// expressions: the node collapses to its floor. A calc ceiling rides in
+/// the same `f32` as a negative, so a negative px one came out as the
+/// expression at that place in the table — `max_width(-1.0)` as the
+/// first expression interned, and a fixed child held to 50% of its row
+/// rather than to nothing (backlog RG78). `NaN` is 0 the same way, what
+/// `clamp_w` made of it then.
+#[test]
+fn a_negative_px_ceiling_is_no_expression() {
+    // Whatever else this binary interned, the table has an entry at 0.
+    calc::intern(calc::parse("min(50%, 1000px)").unwrap()).unwrap();
+    let mut t = T::new(NodeSpec::row().width(Sizing::Fixed(400.0)));
+    let fixed = || NodeSpec::column().width(Sizing::Fixed(300.0));
+    let minus_one = t.node(0, fixed().max_width(-1.0));
+    let nan = t.node(0, fixed().max_width(f32::NAN));
+    let floored = t.node(0, fixed().max_width(-7.0).min_width(20.0));
+    let tall = t.node(0, fixed().height(Sizing::Fixed(300.0)).max_height(-1.0));
+    let calc = t.node(0, fixed().max_width(max_str("min(50%, 1000px)").unwrap()));
+    t.run(1000.0);
+    assert_eq!(t.w(minus_one), 0.0, "no calc #0");
+    assert_eq!(t.w(nan), 0.0);
+    assert_eq!(t.w(floored), 20.0, "collapsed to its floor");
+    assert_eq!(t.tree.size[tall as usize].h, 0.0);
+    assert_eq!(t.w(calc), 200.0, "the real one still is");
+    assert_eq!(fixed().max_width(-1.0).layout.max_w, 0.0);
+    assert_eq!(fixed().max_height(f32::NAN).layout.max_h, 0.0);
+    assert_eq!(
+        fixed().max_width(f32::INFINITY).layout.max_w,
+        f32::INFINITY,
+        "no ceiling is still none"
+    );
+}

@@ -55,6 +55,22 @@ pub fn max_of_calc(c: crate::calc::Calc) -> f32 {
     -1.0 - c.id() as f32
 }
 
+/// A px ceiling as `max_w` / `max_h` hold it: never below zero, so a
+/// negative there is only ever [`max_of_calc`]'s. Every door a px
+/// ceiling enters by — `NodeSpec::max_width` / `max_height` in Rust, the
+/// schema's `maxWidth` / `maxHeight` rows Node and Lua apply through
+/// (their numbers, their `$name` lengths), C's `max_w` / `max_h` and
+/// `*_size` clamps — reaches the field through those two builders, so
+/// this is the one place it is decided. Before size expressions a
+/// negative ceiling clamped a node to its floor (`clamp_w` took the
+/// larger of the two), and `NaN` did the same; 0 keeps both. Without it
+/// `-1.0` read as the expression interned first — a node held to half
+/// its row by a number that meant "nothing" (backlog RG78).
+pub fn px_ceiling(px: f32) -> f32 {
+    // `f32::max` takes the other operand over a `NaN`.
+    px.max(0.0)
+}
+
 /// The size expression a `max_w` / `max_h` waits on, if it is one.
 pub fn max_calc(v: f32) -> Option<crate::calc::Calc> {
     (v < 0.0)
@@ -522,6 +538,10 @@ pub struct LayoutSpec {
     /// Fixed alike), so "grow but at most N" and "fit but at least N" work.
     /// A min may also be [`Min::FIT`]: "grow but never below my content".
     pub min_w: Min,
+    /// A ceiling in px, or — as a negative — a size expression layout has
+    /// yet to resolve ([`max_of_calc`]); set it through
+    /// [`NodeSpec::max_width`], which keeps a px one at or above zero
+    /// ([`px_ceiling`], backlog RG78). `max_h` is the same.
     pub max_w: f32,
     pub min_h: Min,
     pub max_h: f32,
@@ -1616,10 +1636,11 @@ impl NodeSpec {
     }
 
     /// A number of px, or a [`Bound::Calc`]; a max has no fit size, so
-    /// [`Bound::Fit`] is no clamp.
+    /// [`Bound::Fit`] is no clamp. A px ceiling below zero, or `NaN`, is
+    /// a ceiling of 0 ([`px_ceiling`]).
     pub fn max_width(mut self, v: impl Into<Bound>) -> Self {
         self.layout.max_w = match v.into() {
-            Bound::Px(px) => px,
+            Bound::Px(px) => px_ceiling(px),
             Bound::Fit => f32::INFINITY,
             Bound::Calc(c) => max_of_calc(c),
         };
@@ -1740,9 +1761,10 @@ impl NodeSpec {
     }
 
     /// A number of px, or a [`Bound::Calc`]; [`Bound::Fit`] is no clamp.
+    /// A px ceiling below zero, or `NaN`, is a ceiling of 0.
     pub fn max_height(mut self, v: impl Into<Bound>) -> Self {
         self.layout.max_h = match v.into() {
-            Bound::Px(px) => px,
+            Bound::Px(px) => px_ceiling(px),
             Bound::Fit => f32::INFINITY,
             Bound::Calc(c) => max_of_calc(c),
         };
