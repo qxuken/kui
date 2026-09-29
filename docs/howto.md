@@ -1519,7 +1519,7 @@ after `setFrameTrace(true)`; C as the `KUI_FRAME_CAUSE_*` bits of
 `kui_note_frame_cause`. The trace is off by default and costs nothing
 off; the reasons are always kept.
 
-[alpha.26](../CHANGELOG.md#010-alpha26-unreleased)
+[alpha.26](../CHANGELOG.md#010-alpha26-2026-09-29)
 
 ### How do I use one font in every headless core of a suite?
 

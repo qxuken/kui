@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.26 (unreleased)
+## 0.1.0-alpha.26 (2026-09-29)
 
 **What breaks.** Nothing: readings and doors added, the ABI at 22 and
 the Node wire at v19. `Core::request_frame` and `Ui::request_frame`
@@ -54,6 +54,47 @@ track their caller, which changes no call.
   `request_frame` calls to find the one that keeps `animating()` true,
   and wondering which OS event the runner answered that your app never
   heard.
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), on 2026-09-29 — the
+commits after the alpha.25 tag: F111 from the kawoosh frame-ledger
+round with its merge. This round ran on the Mac alone; Windows and
+Linux were not in it. F111's readings are the core's, the same on every
+platform, and its C and Node doors are what the tests and the C round
+hold; what the round could not reach there is kui-native's notes of a
+frame's cause as the Windows and Linux event loops deliver them.
+
+**macOS 27.0 on an M3 Pro MacBook Pro, rustc 1.98.0, Node 25.6.0**, on
+`81a4bad` with the version set, in a cold worktree. `cargo fmt --all
+--check` and `cargo clippy --workspace --all-targets --features
+kui-core/conformance -- -D warnings` are clean. `cargo test --workspace
+--features kui-core/conformance`: **1591 tests over 124 suites, 0
+failed** (3 ignored), kui-native's `plays_through_a_device_or_degrades_gracefully`
+among the passes. The C round, `cbuild --run`, passes its five checks,
+and the no-ABI panel is refused as "this build is 22"; the corpus
+passes its **52 scenes** in four adapters, C's through
+`target/debug/conformance`; the ABI is **22**. Node's `node --test
+test.mjs` under `KUI_CONFORMANCE_REQUIRED=1`: **201 of 201**, the frame
+**v19**. `npm run gen` leaves no diff, the examples typecheck and their
+lockfile installs, and the headless round passes all **32 drives**.
+
+**The windowed round**, `smoke -- --node`: **38 Rust examples and the
+eleven Node examples, each on both bases, 120 frames each, every one
+exiting 0** — 98 windows — and `counter`, `host`, `c_panel` and
+`lua_panel` by hand under `KUI_SMOKE_FRAMES=120`, each exiting 0 with
+nothing on stderr: **102 windows over five hosts.** The AX audit:
+**106/106**.
+
+**The bench guard** against the alpha.25 tag, the machine otherwise
+quiet (the script's busy check silent): **green**, no guarded row more
+than 0.2% slower (`deep_nesting_64_levels`, ±0.1%, and
+`frame_10k_rects`, ±1.0%), the worst guarded spread 6.2%
+(`frame_1k_curves`), and no row of the 38 more than 3.7% slower
+(`copy_1080p_frame`, inside its ±13.5%); every row reads "same". The
+trace is off in every bench, so what F111 adds to a frame at rest is
+the OR per input and the one `owed()` per frame `begin_frame` takes.
+README's table is kept at alpha.22's numbers.
 
 ## 0.1.0-alpha.25 (2026-09-29)
 
