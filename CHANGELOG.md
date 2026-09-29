@@ -21,6 +21,37 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.27 (unreleased)
+
+**What breaks.** No build: the ABI at 22 and the Node wire at v19.
+
+One drawing changes:
+
+- A `cells` node draws U+E0B4–U+E0BF — the Powerline Extra half circles
+  and wedges — from the cell box, not the font (under Fixed, F112):
+  what those twelve characters draw changes in every grid, and a
+  screenshot pinned against the fallback font's glyphs needs re-taking.
+
+### Fixed
+
+- **A rounded row in a terminal is rounded** (backlog F112, from
+  kawoosh, 2026-09-29; every binding). yazi ends its hovered row with
+  U+E0B6 before it and U+E0B4 after, the Powerline Extra half circles a
+  starship prompt's rounded segments use too; `cells` drew U+E0B0–U+E0B3
+  from the cell box (F66) and sent these to the font, and a face without
+  them fell back to one whose glyph at that codepoint was a squiggle the
+  size of its own line box beside each end of the row. The whole
+  Powerline Extra separator row now comes from the cell box as the
+  arrows do: the filled half circles (U+E0B4, U+E0B6) a half ellipse the
+  cell wide and tall on its flat edge, so it meets the run beside it
+  with no seam, and their arcs (U+E0B5, U+E0B7) in the light stroke; the
+  corner wedges (U+E0B8, U+E0BA, U+E0BC, U+E0BE) a right triangle on
+  the cell's diagonal, two of which tile the cell, and the diagonals
+  between them (U+E0B9, U+E0BB, U+E0BD, U+E0BF). The cells' text and
+  access value are unchanged. **What you can delete:** a Nerd Font
+  symbols face bundled or required so that a TUI's rounded rows do not
+  draw a stray glyph at each end.
+
 ## 0.1.0-alpha.26 (2026-09-29)
 
 **What breaks.** Nothing: readings and doors added, the ABI at 22 and

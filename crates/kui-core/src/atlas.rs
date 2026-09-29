@@ -130,7 +130,7 @@ pub struct GlyphAtlas {
     /// call). Keyed by handle; re-blitted from `Resources` after a reset.
     images: FxHashMap<ImageId, Option<GlyphSlot>>,
     /// Shapes drawn from a cell box rather than a font — box drawing,
-    /// blocks, Powerline (backlog F66) — keyed on the character and the
+    /// blocks, Powerline (backlog F66, F112) — keyed on the character and the
     /// cell size in physical px, so one cell size shares one slot and
     /// another size does not. Plain masks, tinted like a glyph's.
     synth: FxHashMap<(char, u32, u32), Option<GlyphSlot>>,

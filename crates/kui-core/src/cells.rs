@@ -21,10 +21,11 @@
 //! glyph map by the cluster's string, so a 200 × 50 pane stays 160 KB a
 //! frame.
 //!
-//! Box drawing, block elements and the Powerline arrows are not shaped
-//! at all: a font's are its line box's height and the cell is
+//! Box drawing, block elements and the Powerline separators are not
+//! shaped at all: a font's are its line box's height and the cell is
 //! `line_height` tall, so every `│` through the font was a dash with a
-//! gap under it (backlog F66). `boxdraw` rasterizes them from the cell
+//! gap under it (backlog F66), and a rounded cap through a fallback font
+//! was a squiggle beside its row (F112). `boxdraw` rasterizes them from the cell
 //! box into a mask of exactly the cell's size, keyed in the atlas on the
 //! character and that size, and they come through `shape_cell` like any
 //! glyph so `lookup`'s table caches them the same way.

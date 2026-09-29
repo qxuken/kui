@@ -501,6 +501,34 @@ mod boxdraw {
         assert!(solid(&left[0]).len() >= 2, "{:?}", solid(&left[0]));
     }
 
+    /// F112: yazi rounds its hovered row with U+E0B6 before it and
+    /// U+E0B4 after; both are the cell, as `│` is, not a fallback font's
+    /// glyph at its own size — and so are the rest of the Powerline Extra
+    /// row, the arcs and the wedges.
+    #[test]
+    fn rounded_caps_are_the_cell() {
+        let mut core = Core::new();
+        let caps: String = (0xE0B4..=0xE0BFu32)
+            .map(|cp| char::from_u32(cp).unwrap())
+            .collect();
+        let d = draw(&mut core, &caps, 1, 12, 1.0, 20.0);
+        assert_eq!(d.quads.len(), 12);
+        for (i, q) in d.quads.iter().enumerate() {
+            assert_eq!((q.1, q.3), (0.0, 20.0), "U+{:04X}: {q:?}", 0xE0B4 + i);
+        }
+        // The filled caps are solid down their flat side.
+        assert!(
+            d.columns[0][2..18].iter().all(|&a| a == 255),
+            "E0B4's flat side: {:?}",
+            d.columns[0]
+        );
+        assert!(
+            d.columns[2][2..18].iter().all(|&a| a == 255),
+            "E0B6's flat side: {:?}",
+            d.columns[2]
+        );
+    }
+
     /// One cell size, one slot; another size, another.
     #[test]
     fn a_slot_per_cell_size() {
