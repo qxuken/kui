@@ -122,3 +122,44 @@ fn owed_by_names_an_easing_scroller() {
     let by = build(&mut core, false);
     assert!(by.scrolls.is_empty(), "landed: {by:?}");
 }
+
+/// A driver whose view runs before its frame begins (Node's loop) takes
+/// the record first: the view reads the frame it is for, that frame keeps
+/// what was taken, and what arrives in between is the frame after's
+/// (backlog RG81).
+#[test]
+fn begin_frame_cause_hands_a_view_that_runs_first_its_own_frame() {
+    let mut core = Core::new();
+    core.set_frame_trace(true);
+    frame(&mut core, 10.0);
+    core.handle_input(InputEvent::KeyDown(KeyPress::new(
+        KeyCode::Char('a'),
+        KeyMods::default(),
+    )));
+    core.request_frame();
+    assert!(core.frame_cause().is_empty(), "still the last frame's");
+    core.begin_frame_cause();
+    // The view, run before the frame: it reads this frame's reasons and
+    // the line that asked for it.
+    assert_eq!(core.frame_cause(), FrameCause::KEY | FrameCause::OWED);
+    let asked: Vec<_> = core
+        .owed_by()
+        .requests
+        .iter()
+        .map(|r| (r.why, r.at.file()))
+        .collect();
+    assert_eq!(asked, [("request_frame", file!())]);
+    core.begin_frame_cause();
+    assert_eq!(
+        core.frame_cause(),
+        FrameCause::KEY | FrameCause::OWED,
+        "once"
+    );
+    core.note_frame_cause(FrameCause::WAKE);
+    // The frame keeps what was taken.
+    assert_eq!(frame(&mut core, 10.0), FrameCause::KEY | FrameCause::OWED);
+    assert_eq!(core.owed_by().requests.len(), 1);
+    assert_eq!(core.frame_cause(), FrameCause::KEY | FrameCause::OWED);
+    // And the note is the next one's.
+    assert_eq!(frame(&mut core, 10.0), FrameCause::WAKE);
+}

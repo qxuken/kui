@@ -482,6 +482,17 @@ impl Ctx {
         result
     }
 
+    /// Starts the next frame's record before its view runs: from here
+    /// until the frame after it begins, `frameCause()` and `owedBy()`
+    /// answer the frame the next `frame` call builds (backlog RG81). A
+    /// view runs before its frame — it returns the tree `frame` is handed
+    /// — so without this it reads the frame before; `createApp`'s loop
+    /// calls it ahead of every view. Twice before one frame is once.
+    #[napi]
+    pub fn begin_frame_cause(&mut self) {
+        self.core.begin_frame_cause();
+    }
+
     /// Loads a C extension: a shared library exporting the seven
     /// `kui_ext_*` entry points `crates/kui-ffi/include/kui.h` describes
     /// (ADR 0014). `namespace` is the word that fronts every slot name it
@@ -2416,12 +2427,19 @@ macro_rules! core_methods {
                 self.$core().set_frame_trace(on);
             }
 
-            /// Why the frame being built runs — between frames, the last
-            /// one — as the names of its reasons: the input it answers
-            /// (`key`, `pointerMove`, `wheel`, …), what a window's runner
-            /// saw (`wake`, `resize`, `caret`, `retry`, …) and `owed` when
-            /// the frame before left one owed (backlog F111). Empty for a
-            /// frame nothing here asked for.
+            /// Why a frame runs, as the names of its reasons: the input it
+            /// answers (`key`, `pointerMove`, `wheel`, …), what a window's
+            /// runner saw (`wake`, `resize`, `caret`, `retry`, …) and
+            /// `owed` when the frame before left one owed (backlog F111).
+            /// Empty for a frame nothing here asked for.
+            ///
+            /// Which frame: on a `Ctx`, from inside a `createApp` view,
+            /// the one that view is for (the loop calls
+            /// `beginFrameCause()` first), and between frames the last one
+            /// built. On a `KuiWindow`, always the last frame drawn: a
+            /// window's view runs when the model changes, ahead of the
+            /// frame that shows it, and the frames a transition or a
+            /// blink runs call no view at all (backlog RG81).
             #[napi(ts_return_type = "FrameCauseName[]")]
             pub fn frame_cause(&mut self) -> Vec<&'static str> {
                 self.$core().frame_cause().names().collect()
@@ -2431,9 +2449,11 @@ macro_rules! core_methods {
             /// names: the nodes mid-transition (with their slots), the
             /// cycles, the departures, the easing scrollers, the held
             /// drag's scroller, the `animate` nodes, and each line that
-            /// asked for a frame. Read from inside a `view`, the reason
-            /// that frame exists. Empty unless `setFrameTrace(true)`
-            /// (backlog F111).
+            /// asked for a frame. Read from inside a `createApp` view on a
+            /// `Ctx`, the reason that view's frame exists; between frames,
+            /// the last frame built's; on a `KuiWindow`, the last frame
+            /// drawn's, as `frameCause()` says (backlog RG81). Empty
+            /// unless `setFrameTrace(true)` (backlog F111).
             #[napi(ts_return_type = "OwedBy")]
             pub fn owed_by(&mut self) -> Json {
                 owed_by_json(self.$core().owed_by())

@@ -554,6 +554,15 @@ pub const DOORS: &[Door] = &[
         doc: "Why the frame being built runs: the input it answers by kind, what the driver noted, and `owed` after a frame that owed one (backlog F111).",
     },
     Door {
+        rust: "Core::begin_frame_cause",
+        c: No(
+            "a C host's view runs between `kui_frame_begin` and `kui_frame_finish`, inside the frame it builds, so it reads that frame already",
+        ),
+        node: Is("Ctx.beginFrameCause"),
+        lua: No(GUEST),
+        doc: "Starts the next frame's record ahead of its `begin_frame`, for a driver whose view runs before the frame it is for — Node's loop — so `frame_cause` and `owed_by` read from the view answer that frame (backlog RG81).",
+    },
+    Door {
         rust: "Core::note_frame_cause",
         c: Is("kui_note_frame_cause"),
         node: No(

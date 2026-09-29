@@ -2205,6 +2205,37 @@ test('owedBy names who holds an owed frame, frameCause says why a frame ran (F11
   assert.equal(app.ctx.frameUnchanged(), true, 'nothing moved');
 });
 
+test('a view reads the frame it is for: frameCause and owedBy from inside createApp\'s view (RG81)', () => {
+  // A view runs before its frame begins — it returns the tree the frame is
+  // handed — so it read the frame before: `[]` on the key's frame, `key`
+  // only after it.
+  const seen = [];
+  const app = createApp(
+    {
+      init: { wide: false },
+      update: (m, msg) => (msg === 'go' ? { wide: true } : m),
+      view: (m, _name, ctx) => {
+        seen.push({ cause: ctx.frameCause(), held: ctx.owedBy().transitions.map((h) => h.name) });
+        return box({ pad: 0 }, [box({ transition: 200, width: m.wide ? 200 : 20, height: 10, bg: '#ffffff' }, [], 'bar')]);
+      },
+    },
+    { startTime: 0, width: 320, height: 240 },
+  );
+  app.render();
+  app.ctx.setFrameTrace(true);
+  app.ctx.keyDown('a');
+  seen.length = 0;
+  app.render();
+  assert.deepEqual(seen, [{ cause: ['key'], held: [] }], 'the key\'s frame, read from its view');
+  assert.deepEqual(app.ctx.frameCause(), ['key'], 'and between frames, the frame just built');
+  app.dispatch('go');
+  app.advance(16);
+  seen.length = 0;
+  app.advance(16);
+  assert.deepEqual(seen.at(-1), { cause: ['owed'], held: ['bar'] }, 'a transition\'s frame names its holder to the view');
+  assert.deepEqual(app.ctx.frameCause(), ['owed']);
+});
+
 // The windowed half of the same question, which cannot be a loop: a window
 // runs on the wall clock, so a test has no `advance` to run a transition out
 // with and the driver's pump is the only thing that can say a frame

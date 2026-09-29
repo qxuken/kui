@@ -347,6 +347,9 @@ pub(crate) struct Trace {
     /// The departures' names, taken by the exit diff from the frame that
     /// still had them: a ghost's node is in no tree after that frame.
     gone: FxHashMap<Key, String>,
+    /// [`Core::begin_frame_cause`] took the next frame's reasons ahead of
+    /// its `begin_frame`, which keeps them (backlog RG81).
+    begun: bool,
 }
 
 impl Trace {
@@ -387,9 +390,27 @@ impl Core {
 
     /// Why the frame being built runs: every reason that reached the
     /// window between the start of the last frame and the start of this
-    /// one. Between frames, the last frame's. See [`FrameCause`].
+    /// one. Between frames, the last frame's — or, after
+    /// [`Self::begin_frame_cause`], the next one's. See [`FrameCause`].
     pub fn frame_cause(&self) -> FrameCause {
         self.trace.cause
+    }
+
+    /// Starts the next frame's record now rather than at its
+    /// `begin_frame`: its reasons ([`Self::frame_cause`]) and, traced,
+    /// who holds it ([`Self::owed_by`]) — for a driver whose view runs
+    /// before the frame it is for begins (backlog RG81). Node's loop runs
+    /// `view` to a tree and only then hands the tree to a frame, so a
+    /// view reading either would read the frame before; the loop calls
+    /// this first, and the view reads the frame it is building. The
+    /// `begin_frame` that follows keeps what this took, and a second
+    /// call before it is nothing. What reaches the window in between —
+    /// input, a note — is the frame after's, as it is during a build.
+    pub fn begin_frame_cause(&mut self) {
+        if !self.trace.begun {
+            self.take_frame_cause();
+            self.trace.begun = true;
+        }
     }
 
     /// Adds to the next frame's reasons — the driver's door, for what it
@@ -401,7 +422,9 @@ impl Core {
     }
 
     /// Who held the frame the last one left owed, as the frame being
-    /// built found them (see [`OwedBy`]). Empty when the trace is off.
+    /// built found them (see [`OwedBy`]) — or, after
+    /// [`Self::begin_frame_cause`], as the next one will. Empty when the
+    /// trace is off.
     pub fn owed_by(&self) -> &OwedBy {
         &self.trace.owed_by
     }
@@ -450,6 +473,16 @@ impl Core {
     /// and — traced — the holders of what the last frame owed are named
     /// against its tree, which `begin_frame` is about to clear.
     pub(super) fn trace_begin_frame(&mut self) {
+        // Taken already, ahead of a view that ran before this frame did.
+        if std::mem::take(&mut self.trace.begun) {
+            return;
+        }
+        self.take_frame_cause();
+    }
+
+    /// The record itself: [`Self::trace_begin_frame`]'s, or
+    /// [`Self::begin_frame_cause`]'s ahead of it.
+    fn take_frame_cause(&mut self) {
         let owed = self.owed();
         let mut cause = std::mem::take(&mut self.trace.since);
         if owed.any() {

@@ -486,6 +486,11 @@ function createLoop({ init, update, view, tick, windows, teardown }, opts, surfa
   function draw() {
     dirty = false;
     stamp?.(at() / 1000);
+    // A view runs before the frame it is for, so a headless `Ctx` starts
+    // that frame's record first: `frameCause()` and `owedBy()` read from
+    // the view answer this frame, not the last (backlog RG81). A window
+    // has none — its view is not one frame's.
+    surface.beginFrameCause?.();
     const declared = windows ? windows(model) : undefined;
     for (const name of open()) {
       surface.useWindow?.(name);
