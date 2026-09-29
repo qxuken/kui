@@ -16,9 +16,13 @@ use crate::types::{KuiSizing, KuiStr};
 const FIT: KuiSizing = KuiSizing { tag: 0, value: 0.0 };
 
 /// The expression a sizing stands for, when it is one: a length, a
-/// percentage or a calc.
+/// percentage or a calc. A length or percentage that is not a finite
+/// number is none — the core refuses one in a tree it keeps as well, so
+/// a `kui_size_px(NAN)` never adds a table entry per frame (backlog
+/// RG80).
 fn expr_of(s: KuiSizing) -> Option<Expr> {
     match s.tag {
+        2 | 3 if !s.value.is_finite() => None,
         2 => Some(Expr::Px(s.value)),
         3 => Some(Expr::Pct(s.value)),
         4 => Calc::from_id(s.value as u32)
@@ -164,6 +168,24 @@ mod tests {
         }
         assert_eq!(s.tag, 0, "refused past the cap");
         assert_eq!(calcs, kui_core::calc::MAX_DEPTH);
+    }
+
+    /// A `NaN` or infinite length or percentage is not a size: built into
+    /// an expression it is `KUI_FIT`, and as a percentage clamp none, so
+    /// it never adds a table entry per call (backlog RG80).
+    #[test]
+    fn a_number_that_is_not_finite_is_not_a_size() {
+        for n in [f32::NAN, f32::INFINITY] {
+            let xs = [kui_size_px(n), kui_size_pct(50.0)];
+            assert_eq!(kui_size_min(xs.as_ptr(), 2).tag, 0, "{n}");
+            let xs = [kui_size_px(10.0), kui_size_pct(n)];
+            assert_eq!(kui_size_max(xs.as_ptr(), 2).tag, 0, "{n}");
+            assert!(bound_of(kui_size_pct(n)).is_none(), "{n}");
+        }
+        let a = [kui_size_px(-0.0), kui_size_pct(50.0)];
+        let b = [kui_size_px(0.0), kui_size_pct(50.0)];
+        let (a, b) = (kui_size_min(a.as_ptr(), 2), kui_size_min(b.as_ptr(), 2));
+        assert_eq!((a.tag, a.value), (b.tag, b.value), "-0 is 0");
     }
 
     /// A negative `KUI_FIXED` ceiling is a ceiling of 0, not the calc a

@@ -52,20 +52,40 @@ fn too_deep(what: &str) -> String {
     format!("bad size{what}: nested past {MAX_DEPTH}")
 }
 
-/// Refuses a tree nested past [`MAX_DEPTH`], at depth `depth`: the
-/// check [`intern`] and [`norm`] make of a tree built by hand, which
-/// stops at the first level past the cap rather than walking the rest.
-fn check(e: &Expr, depth: u32) -> Result<(), String> {
+/// A number an expression may hold: finite, and `-0` as `0`. The table
+/// finds an entry by its numbers' bits, and `NaN` is equal to nothing —
+/// not even itself — so `{ min = { 0/0, { pct = 50 } } }` declared each
+/// frame was a new entry each frame, towards the cap every view shares;
+/// and `-0` and `0` were two entries for one expression (backlog RG80).
+/// Neither infinity means anything a room can be cut to either.
+fn finite(v: f32) -> Result<f32, String> {
+    if v.is_finite() {
+        // `-0.0 == 0.0`, so this is `0.0` for either.
+        Ok(if v == 0.0 { 0.0 } else { v })
+    } else {
+        Err(format!("bad size: {v} is not a finite number"))
+    }
+}
+
+/// Holds a tree to what the table keeps — nested no deeper than
+/// [`MAX_DEPTH`], its numbers [`finite`] and `-0` made `0` — at depth
+/// `depth`: what [`intern`] and [`norm`] make of a tree built by hand (C's
+/// builders, a Rust `Expr`), stopping at the first level past the cap
+/// rather than walking the rest (backlog RG79).
+fn canon(e: &mut Expr, depth: u32) -> Result<(), String> {
     if depth > MAX_DEPTH {
         return Err(too_deep(""));
     }
     match e {
-        Expr::Px(_) | Expr::Pct(_) => Ok(()),
-        Expr::Min(xs) | Expr::Max(xs) => xs.iter().try_for_each(|x| check(x, depth + 1)),
+        Expr::Px(v) | Expr::Pct(v) => {
+            *v = finite(*v)?;
+            Ok(())
+        }
+        Expr::Min(xs) | Expr::Max(xs) => xs.iter_mut().try_for_each(|x| canon(x, depth + 1)),
         Expr::Clamp(a, b, c) => {
-            check(a, depth + 1)?;
-            check(b, depth + 1)?;
-            check(c, depth + 1)
+            canon(a, depth + 1)?;
+            canon(b, depth + 1)?;
+            canon(c, depth + 1)
         }
     }
 }
@@ -217,10 +237,10 @@ enum Norm {
     Calc(Calc),
 }
 
-fn norm(e: Expr) -> Result<Norm, String> {
+fn norm(mut e: Expr) -> Result<Norm, String> {
     // Before `relative` and `resolve` walk it: a tree from C's builders
     // or a Rust caller has had no cap on the way in.
-    check(&e, 0)?;
+    canon(&mut e, 0)?;
     Ok(match e {
         Expr::Pct(f) => Norm::Pct(f),
         e if !e.relative() => Norm::Px(e.resolve(0.0)),
@@ -274,7 +294,9 @@ fn value_at(v: &crate::value::Value, depth: u32) -> Result<Expr, String> {
         return Err(too_deep(""));
     }
     match v {
-        Value::Int(_) | Value::Float(_) => Ok(Expr::Px(v.as_float().unwrap_or(0.0) as f32)),
+        Value::Int(_) | Value::Float(_) => {
+            Ok(Expr::Px(finite(v.as_float().unwrap_or(0.0) as f32)?))
+        }
         Value::Str(s) => parse(s),
         Value::Map(m) => {
             let mut it = m.iter();
@@ -287,6 +309,7 @@ fn value_at(v: &crate::value::Value, depth: u32) -> Result<Expr, String> {
                 arg.as_float()
                     .map(|n| n as f32)
                     .ok_or_else(|| format!("bad size: {k} takes a number"))
+                    .and_then(finite)
             };
             let args = || -> Result<Vec<Expr>, String> {
                 let Value::List(xs) = arg else {
@@ -298,7 +321,7 @@ fn value_at(v: &crate::value::Value, depth: u32) -> Result<Expr, String> {
                 xs.iter().map(|x| value_at(x, depth + 1)).collect()
             };
             match k.as_str() {
-                "pct" | "percent" => Ok(Expr::Pct(num()? / 100.0)),
+                "pct" | "percent" => Ok(Expr::Pct(finite(num()? / 100.0)?)),
                 "px" => Ok(Expr::Px(num()?)),
                 "min" => Ok(Expr::Min(args()?)),
                 "max" => Ok(Expr::Max(args()?)),
@@ -330,8 +353,8 @@ pub fn from_code(code: &[f64]) -> Result<Expr, String> {
             return Err(too_deep(" code"));
         }
         Ok(match next()? as u32 {
-            1 => Expr::Px(next()? as f32),
-            2 => Expr::Pct(next()? as f32),
+            1 => Expr::Px(finite(next()? as f32)?),
+            2 => Expr::Pct(finite(next()? as f32)?),
             op @ (3 | 4) => {
                 let n = next()? as usize;
                 if n == 0 || n > code.len() {
@@ -424,12 +447,12 @@ fn table() -> &'static RwLock<Table> {
 
 /// The handle for `expr`: the one an equal expression already has, or a
 /// new one.
-pub fn intern(expr: Expr) -> Result<Calc, String> {
-    check(&expr, 0)?;
+pub fn intern(mut expr: Expr) -> Result<Calc, String> {
+    canon(&mut expr, 0)?;
     intern_checked(expr)
 }
 
-/// [`intern`] for a tree [`check`] has passed.
+/// [`intern`] for a tree [`canon`] has passed.
 fn intern_checked(expr: Expr) -> Result<Calc, String> {
     if let Some(&id) = table()
         .read()
@@ -561,8 +584,11 @@ impl Parser<'_> {
                 self.at = start;
                 self.error("a number, \"N%\", \"Npx\", min(…), max(…) or clamp(…)")
             })?;
+        // Digits alone can still overflow an `f32` (forty of them do):
+        // an infinity is refused as `NaN` is from data (backlog RG80).
+        let n = finite(n)?;
         if self.eat("%") {
-            Ok(Expr::Pct(n / 100.0))
+            Ok(Expr::Pct(finite(n / 100.0)?))
         } else {
             self.eat("px");
             Ok(Expr::Px(n))
@@ -720,5 +746,45 @@ mod tests {
         assert_eq!(intern(e.clone()).unwrap_err(), "bad size: nested past 32");
         assert!(sizing_of(e).is_err(), "a tree built by hand is held to it");
         assert!(sizing(&s).is_err());
+    }
+
+    /// `NaN` equals nothing, so an expression holding one was a new entry
+    /// each time it was declared — a view declaring it every frame filled
+    /// the table — and `-0` was an entry apart from `0` (backlog RG80).
+    /// Every way in refuses a number that is not finite and reads `-0`
+    /// as `0`.
+    #[test]
+    fn only_finite_numbers_and_one_zero() {
+        use crate::value::Value;
+        let map = |k: &str, v: Value| Value::Map(vec![(k.to_string(), v)]);
+        let with = |n: f64| {
+            map(
+                "min",
+                Value::List(vec![Value::Float(n), map("pct", Value::Int(50))]),
+            )
+        };
+        for n in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, 1e300] {
+            let e = sizing_value(&with(n)).unwrap_err();
+            assert!(e.contains("not a finite number"), "{n}: {e}");
+            assert!(sizing_value(&map("px", Value::Float(n))).is_err());
+            assert!(sizing_value(&map("pct", Value::Float(n))).is_err());
+            assert!(from_code(&[3.0, 2.0, 1.0, n, 2.0, 0.5]).is_err());
+            assert!(from_code(&[2.0, n]).is_err());
+        }
+        assert!(bound_value(&with(f64::NAN)).is_err());
+        assert!(intern(Expr::Min(vec![Expr::Px(f32::NAN), Expr::Pct(0.5)])).is_err());
+        assert!(sizing_of(Expr::Pct(f32::INFINITY)).is_err());
+        let digits = format!("min(1{}px, 50%)", "0".repeat(40));
+        assert!(parse(&digits).unwrap_err().contains("not a finite number"));
+        assert!(parse(&format!("1{}%", "0".repeat(40))).is_err());
+
+        let zero = sizing_value(&with(0.0)).unwrap();
+        assert_eq!(sizing_value(&with(-0.0)).unwrap(), zero, "-0 is 0");
+        assert_eq!(
+            sizing_of(Expr::Min(vec![Expr::Px(-0.0), Expr::Pct(0.5)])).unwrap(),
+            zero
+        );
+        assert_eq!(sizing_code(&[3.0, 2.0, 1.0, -0.0, 2.0, 0.5]).unwrap(), zero);
+        assert_eq!(zero.describe(), "min(0px, 50%)");
     }
 }
