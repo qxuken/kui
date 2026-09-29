@@ -240,9 +240,18 @@ amended: 2026-09-20
     item's with `flex-shrink: 0`; its default is 1, and the gap
     overflowing was what the user met, in kawoosh's launcher. The table
     keeps its own basis — the row less its gaps, a percent column never
-    shrunk — so the two agree on the number by different roads. A
-    `Fixed` child still keeps its size, and a scrolling row overflows
-    on purpose.
+    shrunk — so the two agree on the number by different roads while
+    the shares sum to 100% or less; past that the table overflows where
+    the row squeezes. A `Fixed` child still keeps its size, and a
+    scrolling row overflows on purpose.
+
+    *Corrected 2026-09-30 (backlog RG87, the regression run over F110):*
+    "`flex-shrink: 1`" above names when a share gives, not how. The
+    compression is the `Fit` children's rule — largest first, down to
+    the next largest, each to its `min` (0 unless declared) — where CSS
+    takes from each in proportion to its size and stops at its content:
+    60% and 40% of 500 beside a `Fixed` 100 are 200 and 200 here, 240
+    and 160 in CSS, and a share holding a 120 px child can go under it.
 
 ## Considered options
 

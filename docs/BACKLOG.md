@@ -121,10 +121,12 @@ two entries, C42 and C43 — `rich_text` shaped whole past the long-line
 threshold, and a long line's key hashed a byte at a time every frame —
 were built the day they were filed; the "thousands of spans" the report
 blamed measured as a factor of 1.5 and not the cause), the "theirs, not ours" lists the field reports left
-behind, and C45–C51 from the second bake-off of 2026-09-25, F103 from the kawoosh
+behind, W21 from the Windows–Mac bench comparison of 2026-09-26 (the
+texture upload's second copy), F103 from the kawoosh
 ⌘-Tab report (an animating hidden window spinning on skipped frames),
-DX16 from the DX sweep (declined with a condition), and RG76 from
-the regression pass of 2026-09-28. Everything else that has been filed has
+DX16 from the DX sweep (declined with a condition), RG76 from
+the regression pass of 2026-09-28, and RG92–RG97 from the regression
+run of 2026-09-30. Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
 they were filed (2026-09-07), F25–F31 from the alpha.8 ones by the day
@@ -177,64 +179,6 @@ column, which is the half that actually needs the extra pass.
 
 Nobody has asked for it. Wait for a view that wants it, and let that view say
 which of the two is enough.
-
-### `.` C13 — `space-between` / `around` / `evenly`, and baseline alignment — **built 2026-09-25**
-
-**Built 2026-09-25**, asked for by the second bake-off (the user: "close
-the gap"). As the entry said, no new pass. `Align` gained four variants at
-the tail of `schema::ALIGNS` (`spaceBetween`, `spaceAround`,
-`spaceEvenly`, `baseline`; C `KUI_SPACE_BETWEEN` .. `KUI_BASELINE`), so
-every binding reads them through the rows it already had.
-`layout::main_spread` deals the free space out per run — per line in a
-wrapping row — and the anchor walk takes the same spread. For the baseline,
-the entry's "third number out of measurement" is `TextMeasure::baseline`
-and `edit_baseline`, stored per node in `Tree::baseline` by `fit_heights`
-and only on a frame that declares a baseline row (`any_baseline`).
-`first_baseline` then reads a container's baseline down its first-child
-chain from sizes alone, so it answers in the fit pass as well as in
-`positions`. A fit-height row is `above + below`, not its tallest child,
-and a `grow` or percent height fills the line from its top. What the entry
-did not foresee: a column's cross axis has no baseline (CSS lays it out as
-start), and a spread on the cross axis or `baseline` on the main one means
-nothing. Both warn `align-ignored`. Per-child `align-self` and
-`align-content` are still absent; neither has been asked for.
-
-Two `Align` variants, and neither needs a new pass.
-
-`Align::SpaceBetween` / `SpaceAround` / `SpaceEvenly` on `main_align` change one
-expression in `positions`: today the free space becomes one offset before the
-first child, and these spread it between them instead. A grow spacer already
-covers `space-between` (`<box width="grow"/>` between two children), which is
-why this stayed low priority — but it does not cover `space-around`, and it
-costs a node. With wrapping in, they apply per line, which is what CSS does.
-
-`Align::Baseline` on `cross_align` is the one with a real dependency: a line's
-baseline is the max ascent of its children, and the core does not carry an
-ascent per node — `TextMeasure` returns a `Size`. It needs a third number out
-of measurement (text nodes have one; a container's is its first baseline-y
-child's, and a box with none falls back to its bottom edge, per CSS). Worth it
-for the case it fixes: two text sizes on one row sit on different lines today,
-which is visible in any label-plus-value row.
-
-### `.` C14 — Aspect ratio — **built 2026-09-25**
-
-**Built 2026-09-25** with C13, as the separate clamp rather than
-`Sizing::Aspect`: `LayoutSpec::aspect` (`aspectRatio` / `aspect_ratio` /
-`KuiSpec.aspect_ratio`, under C ABI 19 with F90's `float_clip`). It sizes the axis left `Fit`: a fit
-height is read off the final width in `fit_heights`, beside the image's
-own aspect, and a fit width is read off a `Fixed` height in `fit_widths`.
-It composes with `Grow`, which is why the clamp won. The derived axis is
-not shrunk. A fit width under a `grow` or percent height would have to
-wait on a pass that runs after every width, so that case warns
-`aspect-ignored`, as does a ratio with both axes declared.
-
-"Square", or "16:9", without knowing either dimension. `Sizing::Aspect(f32)` on
-one axis (the other resolves first, then this multiplies it) is the smaller
-change and reads like the rest of `Sizing`; a separate `aspect` clamp applied
-beside `min`/`max` is the more CSS-like one and composes with `Grow`. Images
-already do half of it — a `Fit` height on an `<image>` preserves the intrinsic
-aspect against a final width (`fit_heights`), so the machinery and the pass
-ordering are proven; this generalises it to a declared ratio on any node.
 
 ### `~` C27 — An idle pumped window costs ~1 ms a pump, and every way out of it is worse
 
@@ -1898,33 +1842,6 @@ Mono moves them under 2%. README's performance section says so now.
 The 1080p image rows were 5–6× slower on Windows and matched the Mac
 on Linux: W20.
 
-### `.` W20 — A streamed image allocated and freed 8 MB a frame, which on Windows is three times the copy — **built 2026-09-26**
-
-**Found.** `copy_1080p_frame` read 734 µs on Windows, 103 on Linux on
-the same CPU, and 139 on the Mac. A probe split Windows' ~870 µs of
-`clone` + drop: 275 µs of memcpy, ~590 of faulting in and zeroing a
-fresh 8 MB block, and ~170 of releasing it. macOS's and glibc's
-allocators hand a freed block of that size straight back, and Windows'
-heap returns it to the OS. Every door paid it. The core took a `Vec`
-and dropped the one it replaced, and the Node and C doors built that
-`Vec` with `to_vec()` on every update. The core could not write in
-place either, because between frames the last display list's
-`texture_pixels` still holds the current buffer's `Arc`. Node's
-`updateImage` of a 1080p frame read **808 µs** in a real window.
-
-**Built.** `Core::update_image_with(id, w, h, fill)` hands `fill` a
-`w × h × 4` buffer to write: the image's own when nothing else holds it
-(an update inside the frame's build), else the one the previous update
-replaced once no display list holds that (between frames), else a new
-one. Each entry keeps one spare, so a stream alternates two buffers and
-allocates nothing from its third frame. Node's `updateImage` and C's
-`kui_image_update` copy into it, and the `image` example renders its
-plasma straight into it. `update_image_1080p_recycled_and_frame`
-**875 → 275 µs** on Windows, the memcpy alone. Node's `updateImage`
-**808 → ~335 µs** in a real window. `tests/images.rs` pins the
-alternation, in-place writes inside the frame, that pixels still held
-are never written under, and resizing. ADR 0025 has the amendment.
-
 ### `.` W21 — `write_texture` costs the memcpy again plus ~100 µs a 1080p frame
 
 **Found** with W20. `queue.write_texture` of a 1080p frame is ~375 µs
@@ -1977,529 +1894,6 @@ kui's own: the variable-height list is Rust-only (C46). Two further
 entries came from the comparison's table: typed messages (C50) and file
 dialogs (C51). The distribution recommendation is unchanged (see
 *Distribution* under *After alpha.26*).
-
-### `~` C45 — Checkbox, radio group, switch and slider are roles only; every app draws them — **built 2026-09-25**
-
-**Built 2026-09-25**, the day ADR 0034 was accepted. Rust has
-`widgets::checkbox`, `radio`, `switch`, `toggle_with`, `radio_group` and
-`radio_group_with`, `slider` and `slider_with`. The elements are
-`<checkbox>`, `<radio>`, `<radioGroup>`, `<switch>` and `<slider>`; Lua
-has `checkbox { }` and the others; C has `kui_checkbox`, `kui_radio`,
-`kui_switch`, `kui_radio_group_open` and `kui_slider`. Three rows were
-added: `mixed`, `valueStep` and `onChange`. `slider.rs` holds the
-arithmetic, and the pointer capture lives in `Interaction` beside the
-drag's. The `stock-controls` corpus scene is replayed by all four
-adapters, `widgets/controls.rs` and its Node twin cover the controls,
-and `tests/controls.rs` tests them. The ADR's "What the building
-changed" records the five differences from the plan. The same day,
-the accessibility and focus examples moved onto the stock controls
-(the platform audit still 106/106). The drag example's slider, the
-devtools' icon toggles and the tools that declare roles by hand stayed,
-each for the reason the ADR gives.
-
-
-**Found** by both bake-offs ("roles only, you draw"; iced ships all four,
-gpui through gpui-component), and by this repo, which draws them five
-different ways. The accessibility example has a radio group, a switch
-that reads "on"/"off" and two sliders that cannot be dragged. The drag
-example has the one slider that follows the pointer and answers no key.
-The focus example has a switch drawn as a button, and the devtools panel
-has icon toggles as radios. The semantics are all in the core already:
-the roles, `checked`, `valueNow/Min/Max/Text`, Space/Enter as a click,
-a radio group's arrows (ADR 0007), and a slider's nudge event.
-
-**Do.** [ADR 0034](adr/0034-stock-controls-over-the-roles.md) (proposed)
-is the plan. The four are compositions in `widgets.rs` with a
-`*_spec`/`*_with` pair each, like the button and the select, drawn from
-existing theme roles and sizes derived from `Metrics::control_text`.
-Toggles keep the click and the app flips its model. A `mixed` flag
-covers the select-all box. A slider gains `valueStep` and `onChange`, and
-the core turns press, drag, arrows, Page keys, Home/End and AT
-Increment/Decrement into `{kind:"change", value, phase, tag}`, clamped
-and snapped, never written back. A slider without `onChange` keeps
-today's nudge. The doors are elements in four bindings (Node frame v16
-or the next free one), a `stock-controls` corpus scene with a slider
-drive, and `widgets/controls.rs` with its Node twin. Accept the ADR
-first: `onChange` is the first event whose value the core computes.
-
-### `.` C46 — The variable-height `list` has no door in Lua or Node — **built 2026-09-25**
-
-**Built 2026-09-25**, with one change from the plan: the arithmetic
-was not ported. The entry asked for a `RowHeights` equivalent in each
-binding. That would mean three copies of the split prefix sums, the
-moving estimate, the galloping search and the two anchors, which is
-what the rule of shared capability in kui-core with a door per binding
-exists to avoid.
-
-- **The slicing is a stepping API on the core's `RowHeights`:**
-  `slice(ListReading)` → `ListSlice`, then `unmeasured`, `reslice` and
-  `finish` → `ListPlan`. `widgets::list` is now that loop around its
-  `measure` (the 50 scroll tests unchanged).
-- **Node's `RowHeights` is a napi class over the same struct,** and
-  Lua's `row_heights(rows, estimate)` is userdata. Each binding's
-  `list` is the loop around the app's callback: a reading in, the rows
-  to measure out, their heights in, the plan out.
-- **The correction is a verb in all four bindings, with a `DOORS`
-  row:** `Ui::shift_scroll`, now public, and `Core::shift_scroll`,
-  which asks for no frame because it belongs to the frame being built.
-  Node has `shiftScroll`, Lua `env.shift_scroll`, and C
-  `kui_shift_scroll`, so a C app composing its own list can keep the
-  glide too.
-
-Node's view runs before the core's frame begins, where Rust's runs
-inside it. The RG18 glide test is what settles that the shift lands on
-the leg all the same. Each port replays the Rust suite's anchor test
-(the row under the pointer stays put while the estimate moves) and the
-RG18 glide. Both fail with the port's `shift_scroll` call taken out.
-The Node `virtual_list` example has a `--variable` mode, and its
-headless drive checks the variable list on every smoke round.
-
-Not done: Lua's `list`, like its `uniform_list`, cannot ask for the
-frame after the first, since a script has no request-frame door. The
-first frame over-builds a screenful by the viewport, and the next view
-the host runs slices by the real geometry.
-
-**Found** renaming the lists for the bake-off. `widgets::list` (was
-`virtual_rows`) is Rust-only. The uniform list has had all four doors
-since C25 (2026-09-09): Node's `uniformList` and Lua's `uniform_list` are
-the arithmetic in each binding over `scroll_geometry` and `row_count`.
-The variable one needs the same port with state: `RowHeights` (heights,
-split prefix sums, the moving estimate), the anchor correction that puts
-the row under the pointer back, and RG18's second anchor for an eased
-leg. It also needs a measure callback, and in Node that is
-`ctx.measureText`. The devtools' events list is the only caller in the
-tree. A chat view or a log of wrapped lines in JSX or Lua has to build it
-by hand, or give every row one height.
-
-**Do.** `list(ctx, { key, rows, heights, estimate }, measure, row)` in
-Node and `list(env, opts, measure, row)` in Lua. A `RowHeights`
-equivalent is owned by the app and handed back each frame, as in Rust,
-since the widgets keep no state. Pin each port with a test that scrolls
-a list whose measured rows move the estimate and checks that the row
-under the pointer stays put, and with the RG18 glide. C is `kui_*`
-calls and composes its own, as it does for the uniform one.
-
-### `.` C47 — kui misses vsync at light load on macOS 27 — **built 2026-09-25**
-
-**Built 2026-09-25.** The cause is the swapchain's depth, not the
-platform stack and not frame cost. The measuring came first, as the
-entry asked. The harness was the bake-off's own `stress.rs` (an N×N
-grid rebuilt every frame by `request_frame`) against this tree, logging
-every frame's interval and the runner's `work_ms` / `wait_ms`. It ran
-10 s after a 3 s warm-up, each run only once no `rustc` was running and
-the load average was under 4.5, on an M3 Pro, macOS 27.0, AC power,
-120 Hz. Frames delivered out of the ~1200 vsyncs:
-
-| boxes | latency 1 (the old default) | latency 2 |
-| --- | --- | --- |
-| 100 | 1181, 1147, 1151, 1126 | 1198, 1199, 1201, 1200 |
-| 2,500 | 1190, 1183, 1187, 1175, 1147, 1151 (and 1161, 1171 as `Fifo`) | 1201, 1201, 1201, 1200, 1199, 1201 (and 1201, 1201 as `Fifo`) |
-| 40,000 | 1198, 1198 | 1201, 1200 |
-
-The frame's work was 0.3 ms at 100 boxes and 0.9 ms at 2,500. The
-thread slept ~7.9 ms blocked on a drawable, and the main thread's own
-cadence jittered about equally under both settings (1–7% of intervals
-over 12.5 ms). With latency 1, `CAMetalLayer.maximumDrawableCount` is
-2, and a thread that woke late found no free drawable and missed the
-vsync. With latency 2 there is a third drawable, and the late wake was
-absorbed. At 40,000 boxes (4.5 ms of work) there is no idle gap to wake
-late from, which is why the report saw kui lock back to 120 under load.
-
-The entry's four levers, in order:
-- **Power:** only AC was available today, and the misses are already
-  there on AC, so battery is a factor of degree. Battery is still
-  unmeasured.
-- **Frame latency:** this is the lever.
-- **`AutoVsync` against `Fifo`:** the same thing on Metal (wgpu-hal 30
-  maps `AutoVsync` to `Fifo` and offers no `Mailbox`).
-- **The redraw's timing:** unchanged. It is the pacing a display link
-  would give, and that stays unfiled until it is wanted.
-
-gpui at the rev the bake-off ran (`6f73c7d`) sets
-`maximumDrawableCount(3)`, which explains its steady 120.0.
-
-Built: `kui_wgpu::DEFAULT_FRAME_LATENCY = 2` and
-`Renderer::set_frame_latency`, applied to every renderer the runner
-makes (the main window, a declared window, a reopened device).
-`Launcher::frame_latency`, `WindowOptions.frameLatency` and
-`KuiRunConfig.frame_latency` (ABI 19, appended) choose per app, and
-`KUI_FRAME_LATENCY` overrides without a rebuild. The default changed
-from 1 to 2, the user's decision between the two.
-
-**The frame back: display-link pacing, built the same day** (the user:
-"lets get that frame back"). The two queued frames cost a frame of latency
-while frames ran back to back: the runner asked for the next frame as soon
-as the last was handed over, so it was built at once and waited out a
-vsync in the queue. It was measured from outside, not assumed. A probe
-drew `mach_absolute_time()` into 32 black/white cells, and a
-ScreenCaptureKit capture of its window decoded each frame against the time
-it was on screen. Three consecutive 4 s captures per launch, two launches,
-median sampling-to-photon in ms:
-
-| config | 100 boxes | 2,500 | 40,000 |
-| --- | --- | --- | --- |
-| latency 1, unpaced (the old default) | 19.2–19.5 | 19.2–19.4 | 19.3–19.4 |
-| latency 2, unpaced (C47 as first built) | 27.5–27.9 | 27.5–27.7 | 27.7 |
-| latency 2, paced | 17.7–18.6 | 17.8–18.7 | 17.5–19.2 |
-
-`kui_native::pacer` puts a `CADisplayLink` on each window's view
-(`-[NSView displayLinkWithTarget:selector:]`, macOS 14+, in common
-modes). A redraw asked for within 20 ms of the last present, at the same
-surface size, is held, and the link's next tick asks for it: the frame is
-built from everything that arrived meanwhile, into a free drawable, and
-presented for the next vsync. A redraw from idle, and one at a new size (a
-live resize wants its frame in AppKit's redraw), draws at once. The link
-pauses three ticks after the last one wanted, and an idle window measured
-at zero CPU time over 8 s, as before. A frame held 50 ms is drawn anyway,
-for a display that stopped firing.
-
-With pacing, every run delivered 1200–1201 of ~1200 vsyncs, the
-drawable wait fell from ~7.9 ms to ~0, and the main thread's own late
-wakes went from 3–7% to 0%. Two of six launches read ~26 ms for their
-first seconds before settling; three captures of one launch showed it
-settling, which is also why single early captures had read anything from
-11 to 25 ms. The tick lands ~3.7 ms after its vsync, and winit hands its
-redraw over in the same turn of the run loop.
-
-A pumped loop is not paced (`Pacer::new`'s `run_loop`). The link fires only
-while the run loop runs, which in Node's `PumpRunner` is only inside a
-pump, so an animating Node window drew 50 frames a second paced against 95
-unpaced. Node keeps the queued frame's cost, and `frameLatency: 1` trades
-back. `KUI_FRAME_PACING=0` turns pacing off anywhere.
-
-
-**Found** by the second bake-off. At 2,500 and 10,000 boxes, and with
-400 static labels, kui runs 105–120 fps with jitter on a 120 Hz panel,
-where gpui holds 120.0. At 40,000 boxes kui locks back to 120. alpha.9
-does the same, and so does iced, which shares winit 0.30.13 but not
-kui's wgpu (27 against 30). That points at the platform stack and away
-from kui's own frame work: a clocked-down GPU or CPU missing the present
-deadline when there is little to do. gpui drives Metal and the display
-link itself. The run cannot separate macOS 27 from battery power. It
-matters for kui more than for most: an editor idles at light load, and a
-cursor blink or a scroll at 112 fps with jitter looks worse than a
-steady 120.
-
-**Do.** Measure before changing anything, in this order: the bake-off's
-2,500-box grid on mains and on battery (one variable), then
-`desired_maximum_frame_latency` 1 against 2
-(`kui-wgpu/src/lib.rs:654`, set to 1 for input latency in the first
-week), then `PresentMode::AutoVsync` against `Fifo`, then the redraw
-request's timing in `about_to_wait`. Record the numbers here. If none of
-those moves it, the remaining lever is a display-link-driven redraw on
-macOS, and that is its own entry.
-
-### `.` C48 — 5.6% more CPU than alpha.9 on 40,000 boxes, on the same OS — **built 2026-09-25**
-
-**Built 2026-09-25.** It was steps, not a slope. Every step was
-codegen: an inlining decision flipped by a change somewhere else, never
-new work on a plain box. The bench's `frame` binary was built at every
-tag from alpha.9 to alpha.18 and then at every tenth commit inside the
-steps. Each binary ran `frame_10k_rects` alone, 300 samples a run, and
-the binaries were interleaved in shuffled order for 5–9 rounds. One M3
-Pro, macOS 27.0, AC power. Medians in µs (the second column is a later
-run):
-
-| ref | `frame_10k_rects` | |
-| --- | --- | --- |
-| alpha.9 | 743 | 747 |
-| alpha.10 | 745 | 736 |
-| alpha.11 | 764 | |
-| alpha.12 | 787 | 783 |
-| alpha.13 – alpha.17 | 779 – 796, flat | |
-| alpha.18 | 786 | 778 |
-| this branch before the fix (`4672d2c`) | 807 | 819 |
-| this branch after it | 755 | 761 |
-
-- **alpha.10 → alpha.11, +20 µs:** two steps of ~12 µs, around
-  `66c108b` and across the canvas and six-entry merges.
-- **alpha.11 → alpha.12, +24 µs:** one commit, `0cd0763` (AR29/AR30:
-  the caret follows the keys, `TextHit.line`). It changes only text and
-  caret code, and the row draws no text. `text_ancestors` was outlined,
-  and `finish_frame` got smaller and slower.
-- **This branch, +23 µs:** C13/C14 (`4c1e610`). It left `NodeSpec` at
-  248 bytes and changed nothing in emission, yet `shadow_quad` was
-  inlined into `emit_node` from then on. Its float arithmetic took two
-  more saved registers (d14/d15) and a larger stack frame for every
-  node, shadow or not. The stock controls then added the slider track
-  to the same function. The branch also cost
-  `frame_10k_rects_with_text_and_hits` +6.6% (1375 against 1290).
-
-**Not code alignment.** Rebuilt with
-`-C llvm-args=-align-all-functions=6`, every step was still there.
-Taking C13's layout additions back out one at a time did not move the
-row either: the spreads, the baseline branches in the fit passes, the
-aspect checks, and a baseline line placed in a cold function of its
-own. Per-function µs, from three 8-second `sample` runs per binary
-scaled to the median frame, put the time in `emit_node`, `positions`,
-and two small helpers that were calls on every node.
-
-**What changed.**
-- **`emit_node` keeps only the plain box's path.** The hit region
-  (`push_hit`) and an editor's region (`push_edit_hit`) are
-  `#[inline(never)]` methods. So are what a leaf draws (`paint_leaf`,
-  split off `paint_box`, which stays `#[inline(always)]` as C15
-  measured) and `shadow_quad`. `emit_node` went from 2,702 instructions
-  to 886, saving d8–d9 where it saved d8–d15.
-- **`layout::wraps` is `#[inline(always)]`.** It had been a call since
-  alpha.12 → alpha.18, asked of every node in three passes, 15 µs a
-  frame.
-- **`set_axis_clamped` is inlined and borrows the spec.** It had been a
-  call since before alpha.9 that copied the whole 104-byte
-  `LayoutSpec`. Borrowing without inlining measured nothing (778
-  against 742–753).
-
-Ablation, each variant against alpha.18 in the same rounds. Removing
-the `emit_node` split costs 17 µs on the grid and 6–15 µs on text with
-hits. Keeping the cold baseline line measured nothing, so it was
-dropped. An `#[inline]` on `hover_tracked` measured nothing, as it did
-in C41, and neither did forcing `Tree::note` inline.
-
-After the fix, run alone, 5 rounds against alpha.18:
-- `frame_10k_rects`: 755 against 784.
-- `frame_10k_rects_with_text_and_hits`: 1305 against 1290.
-- `frame_1k_curves`: 252 against 248.
-- `frame_10k_rects_with_shadows_and_opacity`: 838 against 863.
-
-A last run of the final build read 761 against alpha.9's 746, alpha.18's
-784 and the branch's 819 before the fix.
-
-The bench guard against alpha.18, which runs the whole file in one
-process, passed: `frame_10k_rects` 774 / 789 against 797 / 787, text
-with hits 1.30 / 1.30 ms against 1.31 / 1.30, curves 247 / 253
-against 258 / 250. The conformance dump is byte-identical to
-`4672d2c`'s.
-
-**What is left** is new work, not codegen:
-- `Tree::note` per push: ~30 µs over 10k nodes.
-- The bench's builder: +18 µs, as `NodeSpec` went from 224 to 248
-  bytes between alpha.10 and alpha.12.
-- `hover_tracked` asked per node: ~10 µs.
-
-`emit_node` is now 15 µs *cheaper* than alpha.10's. The lesson is
-C41's, generalised. A per-node function that inlines what only some
-nodes need pays for it on every node. The fix that lasts is keeping
-the rare paths out of line by construction, not pinning whichever
-callee LLVM inlined this time.
-
-**Found** by the second bake-off: 60.0% against 56.8% in both runs, on
-macOS 27, the same afternoon, same bench code. kui's own
-`frame_10k_rects` moved by a similar amount (729 → 778 µs). The
-alpha.17 changelog put that drift on macOS 27; this run holds the OS
-fixed and still sees part of it. At 90,000 boxes alpha.18 is slightly
-faster (81 against 80 fps), so it is small, and C41's register spill
-(`frame_1k_curves`) shows how a change far from the loop can move one.
-
-**Do.** Bisect `frame_10k_rects` between `v0.1.0-alpha.9` and
-`v0.1.0-alpha.18` on one machine and one power state, with the bench
-guard's settle rules, and look for a step rather than a slope. If it is
-a step, profile it as C41 was (Time Profiler, leaf addresses back to the
-binary). If it is a slope, it is `emit_node`'s size, and the entry
-closes with the numbers.
-
-### `.` C49 — The edit-compile loop is 31% slower than alpha.9's — **built 2026-09-25**
-
-**Built 2026-09-25.** The 31% was the **release** loop, and it came from
-the runner being generic over the app. The bake-off's own `b_kui` and
-`b_kui9` crates were copied with their lockfiles, beside this tree's
-counter. Each crate got a `touch src/main.rs` and a `cargo build`,
-interleaved in shuffled rounds, on an M3 Pro, macOS 27.0 and AC power.
-Medians:
-
-| | alpha.9 | alpha.18 | this tree |
-| --- | --- | --- | --- |
-| release (the report's column) | 1.22 s | 1.57–1.59 s | **0.85 s** |
-| debug | 0.63 s | 0.65 s | **0.54 s** |
-
-The report did not name the profile. Its 1.20 / 1.57 s match the
-release loop within 0.02 s. The debug loop had barely moved (+3%).
-
-**Where it went.** Before the change, `-Z time-passes` on the app crate
-(`RUSTC_BOOTSTRAP=1 cargo rustc --release`) read 1.08 s at alpha.9
-and 1.42 s at alpha.18. Linking was 0.21 s in both. The difference was
-LLVM work on the app crate:
-- ThinLTO: 0.46 → 0.63 s.
-- Optimisation passes: 0.25 → 0.34 s.
-- Mono-item collection: 0.09 → 0.15 s.
-
-The app crate's unoptimised IR grew 26% (107k → 135k lines, 2,555 →
-3,111 mono items). The growth was the runner: `Shell<A>`, its
-`ApplicationHandler`, and `PumpRunner<A>` were all generic over
-`A: App`. So every app crate instantiated and optimised again
-`window_event`, `about_to_wait` and `redraw`, and every runner feature
-since alpha.9, on every edit: `reopen_device`, `pump_menu_bar`,
-`pump_file_drag`, `route`, the edit chords, the native menus and audio.
-The drop glue for all of it came along too (+6.5k lines). The `impl
-FnOnce` builders in `widgets.rs` and `Ui` that the entry suspected were
-not in the diff.
-
-**What changed.** The runner is compiled once, in kui.
-- **`Shell<A: App + ?Sized>`** keeps the app as its last field, and
-  everything is written against `DynShell<'a>` = `Shell<dyn App + 'a>`.
-  Generic only in a lifetime, which is erased, so it compiles once, and
-  an app that borrows is still an app (no `'static` bound was added).
-- **The one generic step is `Launcher::shell`,** which boxes the fields
-  and the app. `run` and `open` hand the box on unsized.
-- **winit wants a sized handler,** so a two-field `Handler` forwards the
-  five callbacks the shell implements.
-- **`PumpRunner<A>` is a typed box and a non-generic `PumpState`:**
-  every method is a one-line delegation, and `app_mut` and
-  `route_events` read the typed field, with no cast. The box sits in a
-  `ManuallyDrop` and is dropped unsized (`drop_shell`), because as a
-  plain field its drop glue (every window, core and store) was
-  generated in the app's crate.
-
-After the change, the app crate's IR is 44.6k lines, 58% under
-alpha.9's. rustc on it takes 0.69 s: ThinLTO 0.22, passes 0.14, link
-0.21. The public API is unchanged. The Node addon, whose `TreeApp` is
-the one pumped runner, compiles the same way.
-
-**Left.** Half the remaining IR is drop glue (22.7k lines). The heavy
-part (`Core`, `Tree`, `Renderer`, `Shell<Counter>`) is reached only
-from the unwind edges of `Launcher::shell::<A>` and its `Box::new`.
-The counter built with `panic = "abort"` rebuilds in 0.70 s, so
-removing those edges is worth at most ~0.15 s. That would mean listing
-the shell's ~50 fields twice more (a non-generic parts struct, then a
-move into an allocation made first), so it was not done. Link time,
-0.21 s, is the app's linker's.
-
-**Found** by the second bake-off: a `touch main.rs` rebuild of the
-counter is 1.57 s against alpha.9's 1.20 s. That is still faster than
-iced's 1.75 s and slower than gpui's 0.98 s. Cold builds rose about 3 s.
-`crates/` doubled in the same span (66k → 136k lines of Rust) and the
-dependency count did not move, so the cost is in the app crate's link
-and in the monomorphised kui code it instantiates, not in new crates.
-
-**Do.** `cargo build --timings` and `-Z self-profile` on the counter
-at both tags, and list what the app crate instantiates from kui that it
-did not before: the `impl FnOnce` builders in `widgets.rs` and `Ui`,
-and the runner's generic `App` plumbing. Move what is large and generic
-behind `&mut dyn FnMut` where the call is not hot. The number to beat is
-alpha.9's 1.20 s.
-
-### `.` C50 — Rust apps match messages on `Value` at run time — **built 2026-09-25**
-
-**Built 2026-09-25** as a derive, after the experiment the entry asked
-for. The counter's and splitmux's messages were written by hand first,
-as `From<Msg> for Value` and `TryFrom<&Value>`, in a scratch crate
-against this tree, with a round-trip test:
-- **Counter:** 26 lines for five unit messages. That is longer than
-  the five `Value::map`s and the match it replaces.
-- **splitmux:** 50 lines for six messages, every `kind` and field name
-  spelled twice, once to encode and once to decode. That duplication is
-  the cost that grows with an app.
-
-syn 2 and 3 were both already built in `kui-native`'s tree (through
-zerocopy's and wgpu's derives), so a derive crate costs a cold build
-its own few hundred lines. The user chose the derive, on by default.
-
-- **`kui-derive`**, `#[derive(Message)]`: `From<T> for Value`,
-  `TryFrom<&Value>`, `TryFrom<Value>` and `MessageField` for an enum or
-  a struct.
-  - The kind is the variant's name in snake_case, and `#[message(kind =
-    "…")]` renames it.
-  - Tuple fields are keyed `"0"`, `"1"`, and so on.
-  - `#[message(string)]` makes an all-unit enum a bare string.
-  - `#[message(crate = "…")]` names the path, `::kui` unless said.
-- **kui-core's `message` module:** `MessageField` for the numbers
-  (range-checked, not wrapped), `bool`, `String`, `Value`, `Option`,
-  `Vec` and `Box`; `MessageError` (`NoKind`, `UnknownKind`, `Field`);
-  and `UiEvent::message::<M>()`, which reads the payload and then the
-  `tag` inside a core event. A drag delivers the app's message nested
-  and a click delivers it bare, which a derive alone would have left
-  every handler to untangle.
-- **Features:** `kui-core/derive` is off by default, and `kui-native`'s default
-  `derive` turns it on.
-- **Publishing:** the publish lists (`ci.yml`, `release-local.nu`) put
-  `kui-derive` first.
-
-splitmux moved onto a `Msg` enum. Its headless drive gained four checks
-through real input: a pane click, the `+` tab, a tab click, and a
-divider drag whose message comes out of the drag's tag. The counter
-stayed on `Value`, where the experiment said typing does not pay.
-`NodeSpec::modal` still takes a `Value`. Widening it to `impl
-Into<Value>` like the other tags broke every `.modal("x".into())` by
-inference, so a typed message goes in as `.modal(Msg::X.into())`.
-`crates/kui-native/tests/message.rs` pins the shapes, the round trips, the
-errors and both places a message arrives.
-
-**Found** by both bake-offs ("typed Rust messages: no, a `Value`
-payload"). The IR contract is plain data on purpose: Lua, C and JSX
-share it. A Rust app writes `ev.payload.as_str()` and loses the
-exhaustive `match` iced gives it. Nothing in the contract has to change
-for Rust to get that back, because the conversion can live on the Rust
-side of it.
-
-**Do.** A derive in a small proc-macro crate (`kui-derive`, re-exported
-by `kui-native` behind a default feature): `#[derive(Message)]` on an enum
-gives `Into<Value>` (a map with a `kind` and the fields) and
-`TryFrom<&Value>`, so `on_click(Msg::Save)` and
-`match Msg::try_from(&ev.payload)` both compile. Before building it,
-write the counter and splitmux with it by hand to see whether the
-derive earns its crate. If the hand-written impls are short, a howto
-entry is the answer instead.
-
-### `.` C51 — No file dialogs — **built 2026-09-26**
-
-**Built 2026-09-26**, on the user's ask rather than a view's, in the
-shape the entry planned, with three changes.
-
-- **An ask of its own, not an ADR 0013 effect.** Those effects are ones
-  the app performs; this one the host does, like a paste. `request_files`
-  queues it (one at a time, as AR34 made the paste ask). Hosts drain it
-  with `take_file_requests`, and the answer is input
-  (`InputEvent::Files`). The core pairs the answer with the ask's tag
-  and its origin, so an extension that asked hears it.
-- **A queue of its own beside `MenuAction`,** not a variant of it. A new
-  variant would have broken every Rust host's exhaustive match on the
-  menu drain, and a dialog is not a menu's action.
-- **Async, never modal on the loop.** rfd's async panel is made on the
-  loop's thread (macOS insists) and waited on by a thread of its own,
-  which posts `UserEvent::Files` back through the event-loop proxy. The
-  loop keeps turning, a Node window's pumped loop included. On macOS it
-  is a sheet on the window that asked.
-
-**Doors,** with rows in `DOORS` and an `EVENTS` row for `files`:
-- **Rust:** `Ui` / `Core::request_files`, `awaiting_files`,
-  `take_file_requests`, with `FileDialog` / `FileDialogMode` /
-  `FileFilter` and plain-data `to_value` / `from_value`.
-- **Node:** `requestFiles`, `awaitingFiles`, `takeFileRequests`, and
-  `Ctx.answerFiles` as the input.
-- **Lua:** `env.request_files`, `env.awaiting_files`.
-- **C:** `kui_request_files` with the [in] `KuiFileFilter` /
-  `KuiFileDialog` under the pending ABI 19, `kui_awaiting_files`,
-  `kui_take_file_request` with `kui_file_request_filter`, and
-  `kui_input_files`.
-
-**Features:** `dialogs` in `kui-native`, default-on, rfd 0.17 with the XDG
-portal on Linux (no GTK). The lock gained only rfd and the pollster it
-pins. Without the feature every ask is answered at once with no paths.
-
-**Checked:**
-- **Real windows.** The Rust and Node drop examples got an "Open…"
-  button. In a real window, driven through the accessibility API, the
-  sheet opened titled as asked, a file typed into its go-to field and
-  opened landed in the list, and Cancel answered with no paths and let
-  the next ask through.
-- **Headless drives:** Rust and Node.
-- **Tests:** one each in Lua and Node, and in C's surface walk.
-- **Builds:** clippy over every feature subset of `kui-native`, and on Windows
-  through xwin.
-
-**Not measured:** how the panel feels while a Node window's pump has
-backed off at idle; the scripted pick waited a second between steps.
-
-**Found** by the bake-off's table: gpui has them, iced and kui do not
-(iced apps use `rfd`). A kui app can call `rfd` itself today, from its
-own thread, but a Node or Lua app cannot. Neither can a C app on the
-runner's thread without blocking the loop.
-
-**Do.** Only when a view asks. The shape is ADR 0013's effects: an
-`OpenFile { filters, multiple }` / `SaveFile` effect the runner performs
-with `rfd` (behind a `dialogs` feature beside `audio`), answered by one
-`{kind:"files", paths, tag}` event, the same payload shape the drop zone
-(ADR 0031) delivers. One door per binding. It stays parked until an app
-on kui wants to open a file it was not handed.
 
 ## From the DX sweep (2026-09-27)
 
@@ -2567,6 +1961,131 @@ are in the archive too; RG76 holds what two of them left.
   exists to avoid, or keying a chunk's run by where it starts.
 - A `measure_text` between frames re-wraps the shared run of a text
   drawn at another width (RG72's copy is taken only within a frame).
+
+## From the regression run of 2026-09-30
+
+The pass over the round between the alpha.23 and alpha.27 tags —
+F108–F113 and the static archive on request — run as the 2026-09-28
+one was: the mechanical round first (all green: 1599 tests over 124
+suites, 202 Node, the C round, the dump, `gen` with no diff, the
+typecheck, 32 headless drives), then five read-only reviews (the key
+model with F113, size expressions, the shares that give, why a frame
+runs, the Powerline caps with a docs audit), each claim probed with a
+test or in a window before anything changed. F112's twelve shapes
+checked clean. Twenty-one entries. RG77–RG91 were **built 2026-09-30**,
+the day they were filed, and are in the archive; the headlines were a
+node-anchored float's `maxWidth "50%"` laying out 0 wide (RG77), a
+negative px max read as another view's expression (RG78), a nested
+expression that aborted the process (RG79), a Node view reading the
+frame before's cause (RG81) and an Option released in a popup that
+swallowed every later key (RG83). RG92–RG97 stay open; RG92's numbers
+were probed, RG93–RG97 are the reviews' readings, checked against the
+code but not run.
+
+### `~` RG92 — A share of the room gives by the fit children's rule, not CSS's
+
+F110 made a `Percent` or size-expression child give in an overflowing
+row through `shrink_axis`, the `Fit` children's clay rule: the largest
+pays first, down to the next largest, each to its `min` (0 unless
+declared). Its docs said "as a CSS flex item does" (corrected, RG87).
+Probed:
+
+- 30% and 70% of 600 beside a `Fixed` 300: 150 and 150 (CSS 90 and
+  210) — a large deficit flattens any ratio.
+- A `50%` column holding a `Fixed` 120 child beside a `Fixed` 250 in
+  300: 50, the child spilling 70 out (CSS stops at min-content, 120).
+  Before F110 the column was 150 and the row overflowed.
+- `clamp(400px, 80%, 1000px)` beside a `Fixed` 300 in 500: 200 — the
+  lower bound is a basis, not a floor (as in CSS, whose `width` is not
+  `min-width`, but CSS would stop at content).
+- A `50%` child of a `Fit` row with a `Fixed` 100 and a gap of 10: the
+  row is 110 and the share 0 (55 before F110). The share adds nothing
+  to its parent's fit width and then overflows it; both answers are
+  wrong, and the root is older than F110.
+- A table's percent columns never shrink: `60%` + `60%` in 500 is
+  300/300 overflowing in a table, 250/250 in a row.
+
+**Decide.** Keep clay's rule for shares and say so (done), or give a
+share CSS's: shrink in proportion to its size, with an automatic floor
+at its content (`min: fit`) unless a `minWidth` says otherwise — the
+latter changes F110's own `the_largest_share_pays_first_down_to_its_floor`
+(200/200 would be 240/160) and puts `Fit` children and shares under two
+rules in one row. A diagnostic for a share under a fit-sized parent is
+wanted either way.
+
+### `.` RG93 — The size-expression table is process-wide, never evicts, and a frame fails past it
+
+`calc::intern` holds every distinct expression for the life of the
+process, up to 65 536. A `{ max: [dragX, { percent: 30 }] }` fed by a
+fractional splitter drag makes one entry per distinct value; past the
+cap `intern` errors, and the Node decode (`binary.rs`) and Lua's `bad()`
+propagate it with `?`, so the whole frame fails rather than one prop.
+The cap is in the `calc` rustdoc and `kui.h` only — not howto, props,
+jsx-runtime.d.ts or the LuaLS meta. **Do.** Document the cap where a
+view author reads, and fail the prop, not the frame (warn, fall back to
+`fit`); eviction by last use (the stores' `retain` shape) if an app
+ever meets it.
+
+### `.` RG94 — Size expressions are spelled three ways: the encoder, the parser and the core disagree at the edges
+
+- JS's `sizeCode` refuses a spelled function nested in data
+  (`{ min: ['max(1px, 2%)', 30] }`), which `SizeExpr`'s type allows and
+  the core and Lua take; and a nested `{ pct: n }`, which the core takes.
+- JS takes `{ min: [...], max: [...] }` as `min` without a word;
+  `from_value` refuses two keys.
+- `"1.2.3%"` passes the encoder's regex as 1.2%; the Rust parser
+  refuses it. `"50px%"` in the encoder's `sizing` is 50% (before F109).
+- The parser is looser than CSS: `"80 %"`, `"100 px"` and `"min (1, 2)"`
+  parse (`eat` skips whitespace before units and `(`); function names
+  are case-sensitive.
+- `{ percent: 50 }` is `Percent(50.0)` — 5000% — at the top of a
+  keyframe or enter `width` (`slots.rs`, raw JSON from JS) and 50%
+  nested in a size expression in the same function.
+
+**Do.** One spelling table with a test per row run through all three,
+and pin what the parser accepts in `a_bad_one_says_where`.
+
+### `.` RG95 — A Lua value nests without limit
+
+`kui_lua::lua_to_value` recurses with no depth cap, so a table nested
+deep enough, or one holding itself (`t = {}; t[1] = t`), overflows the
+Rust stack and aborts before `size_value` or `from_value` sees it
+(RG79 capped the size expression behind it). Message payloads cross the
+same function, so it is any Lua view or handler, not sizes alone.
+**Do.** A depth cap with a visited set for tables, erroring as the
+other Lua conversions do.
+
+### `.` RG96 — The key model's readings off the Mac are unconfirmed
+
+Read, not probed; each needs a round on Linux or Windows.
+
+- A lock key's own press: `keys.rs` reports the tracked state before the
+  toggle on Linux ("Caps Lock's own press says what it found"), while
+  macOS's `NSEvent.modifierFlags` and, as far as the code reads,
+  Windows' `GetKeyState` are read after the OS toggled — the same press
+  would say `caps_lock: false` on Linux and `true` on the other two.
+- The tracked locks are per pane and indexed by the key's target: on
+  Linux a popup starts at off whatever its owner tracked, and a toggle
+  in one window never reaches another. ADR 0002 decision 16 admits only
+  "a lock set before the window opened".
+- A modifier key's code comes from the layout's reading (`logical_code`):
+  AltGr is `NamedKey::AltGraph`, which `named_code` maps to `Unknown`, so
+  it is delivered as alt through the physical fallback but never
+  recorded, and its after-state bit is never set; on X11 ⇧ then left Alt
+  may read `Meta_L`, which would record `(Super, Left)` and leave it
+  stuck. Taking a modifier key's code from `physical_code` would answer
+  both.
+- `Accel::parse` accepts `"ctrl+capslock"` now that Caps Lock is a key.
+
+### `.` RG97 — A pane's frame cause keeps what it noted while it could not draw
+
+`redraw_for` ORs a reason into `Pane::cause` whether or not a frame
+follows: a minimized pane, one waiting for its device, or a hidden one
+handed `ELSEWHERE` / `APPEARANCE` keeps them, and the first frame after
+the restore reports `elsewhere | caret | …` from long before. Bounded
+(a bitset) and half meant ("a held frame keeps its reasons"), but a
+frame ledger mislabels the restore frame. **Do.** Clear on a frame that
+could not be drawn, or name the restore (`FrameCause::RESTORED`).
 
 ## After alpha.26
 
@@ -3691,6 +3210,28 @@ move.
 - `.` **RG58** — [A copy reads bold as 700 and up: a SemiBold bold copies plain, and a Bold-only family copies everything bold](backlog/closed-2026-09.md#-rg58--a-copy-reads-bold-as-700-and-up-a-semibold-bold-copies-plain-and-a-bold-only-family-copies-everything-bold--done-2026-09-26) — done (2026-09-26) — a copy's run is bold when heavier than the line's default (the family's regular) or `SYNTHETIC_BOLD`
 - `.` **RG59** — [Four readings of F100 the regression pass left: an OS/2 weight over a named instance, the mapped weight handed to fallback faces, shaped text kept across a reweigh, and the nearest face's lean](backlog/closed-2026-09.md#-rg59--four-readings-of-f100-the-regression-pass-left-an-os2-weight-over-a-named-instance-the-mapped-weight-handed-to-fallback-faces-shaped-text-kept-across-a-reweigh-and-the-nearest-faces-lean--done-2026-09-26) — done (2026-09-26) — named instances before the `OS/2` point; a reweigh of a family registered before drops each window's shaped text and cell tables and re-attributes its editors; CSS Fonts 4's matching order; Skia's fallback weight written down as a limit
 
+**Built entries the open list kept** — C13, C14, C45–C51 and W20, built 2026-09-25/26 and moved 2026-09-30 (RG88)
+
+- `.` **C13** — [`space-between` / `around` / `evenly`, and baseline alignment](backlog/closed-2026-09.md#-c13--space-between--around--evenly-and-baseline-alignment--built-2026-09-25) — built (2026-09-25)
+
+- `.` **C14** — [Aspect ratio](backlog/closed-2026-09.md#-c14--aspect-ratio--built-2026-09-25) — built (2026-09-25)
+
+- `~` **C45** — [Checkbox, radio group, switch and slider are roles only; every app draws them](backlog/closed-2026-09.md#-c45--checkbox-radio-group-switch-and-slider-are-roles-only-every-app-draws-them--built-2026-09-25) — built (2026-09-25)
+
+- `.` **C46** — [The variable-height `list` has no door in Lua or Node](backlog/closed-2026-09.md#-c46--the-variable-height-list-has-no-door-in-lua-or-node--built-2026-09-25) — built (2026-09-25)
+
+- `.` **C47** — [kui misses vsync at light load on macOS 27](backlog/closed-2026-09.md#-c47--kui-misses-vsync-at-light-load-on-macos-27--built-2026-09-25) — built (2026-09-25)
+
+- `.` **C48** — [5.6% more CPU than alpha.9 on 40,000 boxes, on the same OS](backlog/closed-2026-09.md#-c48--56-more-cpu-than-alpha9-on-40000-boxes-on-the-same-os--built-2026-09-25) — built (2026-09-25)
+
+- `.` **C49** — [The edit-compile loop is 31% slower than alpha.9's](backlog/closed-2026-09.md#-c49--the-edit-compile-loop-is-31-slower-than-alpha9s--built-2026-09-25) — built (2026-09-25)
+
+- `.` **C50** — [Rust apps match messages on `Value` at run time](backlog/closed-2026-09.md#-c50--rust-apps-match-messages-on-value-at-run-time--built-2026-09-25) — built (2026-09-25)
+
+- `.` **C51** — [No file dialogs](backlog/closed-2026-09.md#-c51--no-file-dialogs--built-2026-09-26) — built (2026-09-26)
+
+- `.` **W20** — [A streamed image allocated and freed 8 MB a frame, which on Windows is three times the copy](backlog/closed-2026-09.md#-w20--a-streamed-image-allocated-and-freed-8-mb-a-frame-which-on-windows-is-three-times-the-copy--built-2026-09-26) — built (2026-09-26)
+
 **From the regression pass of 2026-09-28** — RG60–RG75, filed and built the same day (RG70–RG75 after the alpha.22 tag); RG76 open
 
 - `!` **RG60** — [A gesture at a scroller's limit chained to whatever was painted under the pointer, not to the scroller around it](backlog/closed-2026-09.md#-rg60--a-gesture-at-a-scrollers-limit-chained-to-whatever-was-painted-under-the-pointer-not-to-the-scroller-around-it--done-2026-09-28) — done (2026-09-28)
@@ -3724,3 +3265,35 @@ move.
 - `.` **RG74** — [Once F102's retries run out, a later skipped frame is never retried](backlog/closed-2026-09.md#-rg74--once-f102s-retries-run-out-a-later-skipped-frame-is-never-retried--done-2026-09-28) — done (2026-09-28)
 
 - `.` **RG75** — [Small readings from the reviews](backlog/closed-2026-09.md#-rg75--small-readings-from-the-reviews--done-2026-09-28) — done (2026-09-28)
+
+**From the regression run of 2026-09-30** — RG77–RG91, filed and built the same day; RG92–RG97 open
+
+- `!` **RG77** — [A node-anchored float's size-expression clamps resolved against 0](backlog/closed-2026-09.md#-rg77--a-node-anchored-floats-size-expression-clamps-resolved-against-0--done-2026-09-30) — done (2026-09-30)
+
+- `!` **RG78** — [A negative px max was read as another view's size expression](backlog/closed-2026-09.md#-rg78--a-negative-px-max-was-read-as-another-views-size-expression--done-2026-09-30) — done (2026-09-30)
+
+- `!` **RG79** — [A size expression nested without limit, and deep enough aborted the process](backlog/closed-2026-09.md#-rg79--a-size-expression-nested-without-limit-and-deep-enough-aborted-the-process--done-2026-09-30) — done (2026-09-30)
+
+- `.` **RG80** — [A NaN in a size expression was a new table entry every frame](backlog/closed-2026-09.md#-rg80--a-nan-in-a-size-expression-was-a-new-table-entry-every-frame--done-2026-09-30) — done (2026-09-30)
+
+- `!` **RG81** — [A Node view read the previous frame's `frameCause()` and `owedBy()`](backlog/closed-2026-09.md#-rg81--a-node-view-read-the-previous-frames-framecause-and-owedby--done-2026-09-30) — done (2026-09-30)
+
+- `.` **RG82** — [kui's own doors that ask for a frame named kui's line](backlog/closed-2026-09.md#-rg82--kuis-own-doors-that-ask-for-a-frame-named-kuis-line--done-2026-09-30) — done (2026-09-30)
+
+- `!` **RG83** — [A modifier held in the owner and let go in a popup left the owner's Option down, and every key after it typed nothing](backlog/closed-2026-09.md#-rg83--a-modifier-held-in-the-owner-and-let-go-in-a-popup-left-the-owners-option-down-and-every-key-after-it-typed-nothing--done-2026-09-30) — done (2026-09-30)
+
+- `.` **RG84** — [Lua `option_as_alt = "none"` took back a side the host declared](backlog/closed-2026-09.md#-rg84--lua-option_as_alt--none-took-back-a-side-the-host-declared--done-2026-09-30) — done (2026-09-30)
+
+- `.` **RG85** — [A modifier key released by a focus change said its own bit was still on](backlog/closed-2026-09.md#-rg85--a-modifier-key-released-by-a-focus-change-said-its-own-bit-was-still-on--done-2026-09-30) — done (2026-09-30)
+
+- `.` **RG86** — [Node's key doors dropped the locks of a press handed back](backlog/closed-2026-09.md#-rg86--nodes-key-doors-dropped-the-locks-of-a-press-handed-back--done-2026-09-30) — done (2026-09-30)
+
+- `.` **RG87** — [The docs said a share gives as a CSS flex item does; it gives by the fit children's rule](backlog/closed-2026-09.md#-rg87--the-docs-said-a-share-gives-as-a-css-flex-item-does-it-gives-by-the-fit-childrens-rule--done-2026-09-30) — done (2026-09-30)
+
+- `.` **RG88** — [Built entries left in the open list, and two releases' breaks unlisted](backlog/closed-2026-09.md#-rg88--built-entries-left-in-the-open-list-and-two-releases-breaks-unlisted--done-2026-09-30) — done (2026-09-30)
+
+- `.` **RG89** — [A wheel between two frames emptied `owed_by().scrolls` while the frame was still owed](backlog/closed-2026-09.md#-rg89--a-wheel-between-two-frames-emptied-owed_byscrolls-while-the-frame-was-still-owed--done-2026-09-30) — done (2026-09-30)
+
+- `.` **RG90** — [A table cell's size-expression clamps took a different room from its width](backlog/closed-2026-09.md#-rg90--a-table-cells-size-expression-clamps-took-a-different-room-from-its-width--done-2026-09-30) — done (2026-09-30)
+
+- `.` **RG91** — [A table column took its first cell's size expression, not its largest](backlog/closed-2026-09.md#-rg91--a-table-column-took-its-first-cells-size-expression-not-its-largest--done-2026-09-30) — done (2026-09-30)

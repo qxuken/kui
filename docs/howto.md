@@ -118,11 +118,21 @@ A percentage is cut from the parent's content box before the gap between
 the children takes its share, so two halves and a 20 px gap ask for 20 px
 more than the row has. A share of the room gives when the room is spent:
 a percentage or a size expression shrinks with the fit children when the
-row overflows, largest first and down to its `minWidth`, as a CSS flex
-item does — 90 and 90 in a row of 200. Write the share you mean (`"50%"`,
-not `"48%"`); give it a `minWidth` where it must not go below one. A px
-width keeps its own, and a `scrollX` row overflows on purpose. A table's
-percent columns already take their cut of the row less its gaps.
+row overflows — 90 and 90 in a row of 200. Write the share you mean
+(`"50%"`, not `"48%"`). The rule is the fit children's, not CSS's: the
+largest pays first, down to the next largest, so two unequal shares
+overflowing by much end up equal (60% and 40% of 500 beside a 100 px
+child are 200 and 200; a CSS flex item gives in proportion to its size,
+240 and 160), and each goes down to its `minWidth` and no further — which
+is 0 unless you give one, not what it holds. Give a share `minWidth:
+"fit"` where it must not go below its content, or a px `minWidth` where
+it must not go below a size; the lower bound of a `clamp()` or `max()`
+width is where it starts, not a floor. Whether shares should give as
+CSS's do instead is backlog RG92. A px width keeps its own, a `scrollX`
+row overflows on purpose, and in a `wrapChildren` row two halves and a
+gap take a line each instead. A table's percent
+columns take their cut of the row less its gaps and never shrink, so
+past 100% a table's overflow and a plain row's squeeze part ways.
 
 ### How do I line up the columns of a key/value list, or any table?
 
@@ -564,7 +574,7 @@ fn on_event(&mut self, ev: UiEvent) {
 ```
 
 [`splitmux.rs`](../examples/rust/apps/splitmux.rs) ·
-[backlog C50](BACKLOG.md)
+[alpha.19 `### Added`](../CHANGELOG.md#010-alpha19-2026-09-26)
 
 ### How do I let the user pick a file, or where to save one?
 
@@ -1178,7 +1188,7 @@ recycles, so a stream stops allocating after its second frame and skips
 your copy too. `updateImage` and `kui_image_update` copy your bytes into
 that same recycled buffer. At 1080p that copy is ~275 µs, where a fresh
 8 MB buffer a frame cost ~870 on Windows, whose heap faults every new
-block in page by page (backlog W20). The upload to the GPU comes on top.
+block in page by page (fixed in alpha.21). The upload to the GPU comes on top.
 
 [`image` element](props.md#elements) ·
 [ADR 0025](adr/0025-the-image-is-the-canvas.md) ·
@@ -1432,7 +1442,7 @@ const mine = decodeQuads(win.quads()).filter((q) =>
 
 ### How do I trade smoothness for latency, or the other way?
 
-You mostly do not have to (backlog C47). A window keeps two frames queued
+You mostly do not have to (since alpha.19). A window keeps two frames queued
 ahead of the one on screen, so every vsync gets a frame even when little
 is drawn. On macOS 14+ the Rust and C runners start frames that run back to
 back (an animation, a drag, a scroll) at the display's vsync, so the queued

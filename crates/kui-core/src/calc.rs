@@ -14,8 +14,9 @@
 //! `Percent`, and only what depends on the room becomes a [`Calc`].
 //!
 //! The same expression as data, for a binding that would rather not
-//! spell it ([`from_value`]): a number is px, `{ pct = N }` or
-//! `{ percent = N }` a percentage, `{ px = N }` a length, and a function
+//! spell it ([`from_value`]): a number is px, `{ pct = N }` (or
+//! `{ percent: N }`, which JS writes and Lua refuses, RG33) a percentage,
+//! `{ px = N }` a length, and a function
 //! a one-key table of its arguments — `{ clamp = { 400, { pct = 80 },
 //! 1000 } }` in Lua, `{ clamp: [400, { percent: 80 }, 1000] }` in JS. A
 //! string may stand anywhere an argument does. C builds one with

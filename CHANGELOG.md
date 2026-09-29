@@ -21,10 +21,85 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.28 (unreleased)
+
+**What breaks.** No build: `Ctx.beginFrameCause()` and
+`Core::begin_frame_cause` are new, the ABI stays 22 and the Node wire
+v19. Five readings change, each a fix:
+
+- A negative px `maxWidth` / `maxHeight` is a ceiling of 0 again, in
+  every binding (under Fixed, RG78): since alpha.25 it could read as
+  another view's size expression.
+- A size expression nested past 32, or holding a `NaN` or an infinity,
+  is refused — "bad size: nested past 32", "bad size: NaN is not a
+  finite number" — where it was taken, and a nesting deep enough
+  aborted the process (RG79, RG80). `-0` is `0`.
+- A table cell's size-expression clamps resolve against the columns'
+  room, as its width does, and a column is its largest expression, not
+  its first (RG90, RG91): such a table can lay out differently.
+- A modifier key let go of because the window lost the keyboard says
+  its own bit is off (`shift: false` for Shift), as a real release does
+  (RG85).
+- `owed_by().requests` names a `reveal`, `set_scroll`, `focus_region`
+  or `request_files` by its door (`why: "reveal"`) at the app's line,
+  not `"request_frame"` at kui's (RG82).
+
+### Fixed
+
+From the regression run of 2026-09-30 over F108–F113 (backlog
+RG77–RG91; RG92–RG97 open).
+
+- **A node-anchored float's `maxWidth "50%"` takes its anchor** (RG77):
+  its size-expression clamps were resolved against 0 before the anchor
+  was placed, and a devtools tab's content laid out 0 wide.
+- **A negative px max is no size expression** (RG78).
+- **A size expression nests at most 32 deep and holds finite numbers**
+  (RG79, RG80): a view declaring a `NaN` each frame no longer fills the
+  process-wide expression table.
+- **A Node view reads the frame it is for** (RG81): `createApp`'s loop
+  takes the frame's cause before the views run
+  (`Ctx.beginFrameCause()`), so `frameCause()` inside a view says `key`
+  on the key's frame, not the frame before's. A `KuiWindow`'s view runs
+  only when the model changes, so there the two answer the last frame
+  drawn, as their docs now say.
+- **kui's own doors that ask for a frame name the line that called
+  them** (RG82).
+- **An Option let go of in a popup no longer swallows every key after
+  it** (RG83): which Option is Alt is read from winit's own flags, the
+  ones it rewrote the press by, and the held modifier keys are the
+  keyboard's window's, not the popup's. A window coming back with
+  Option already held no longer types the key.
+- **Lua `option_as_alt = "none"` leaves a side the host declared**, as
+  Node's does (RG84).
+- **A forced release of a modifier key says the state after** (RG85).
+- **Node's key doors take `caps_lock` / `num_lock` as a `key` event
+  spells them**, so a heard press handed back keeps its locks (RG86).
+- **A wheel between two frames no longer empties
+  `owed_by().scrolls`** while the frame is still owed (RG89).
+- **A table cell's clamps and its column take the columns' room and
+  the largest expression** (RG90, RG91).
+
+### Docs
+
+- A share of the room gives by the fit children's rule — largest
+  first, each to its `minWidth` (0 unless given) — not in proportion
+  as a CSS flex item does, whatever alpha.25's entry below says; the
+  lower bound of a `clamp()` or `max()` width is where it starts, not a
+  floor (howto, ADR 0033; RG87, and RG92 for whether the rule changes).
+- alpha.24's and alpha.27's "What breaks" gained the struct field each
+  left out (`EventSpec::modifier_keys`, `schema::PropsOut::option_as_alt`;
+  RG88), and ten built backlog entries left in the open list went to
+  the archive.
+
 ## 0.1.0-alpha.27 (2026-09-29)
 
-**What breaks.** No build: new functions and a root prop, the ABI at 22
-and the Node wire at v19.
+**What breaks.** New functions and a root prop, the ABI at 22 and the
+Node wire at v19; one Rust struct literal:
+
+- Rust: `schema::PropsOut` gains `option_as_alt` (under Added, F113), so
+  a struct literal of it needs the field or `..Default::default()`.
+  *Listed 2026-09-30*: this section said "No build" until the
+  regression run found it (backlog RG88).
 
 One drawing changes:
 
@@ -332,7 +407,7 @@ numbers.
 ## 0.1.0-alpha.24 (2026-09-28)
 
 **What breaks.** The ABI is 21: `KuiSpec` gains `modifier_keys`. Rust
-gains fields on one struct and variants on one enum.
+gains fields on two structs and variants on one enum.
 
 - C: `KuiSpec.modifier_keys` appended (under Added, F108). On a 64-bit
   target it takes what was the struct's tail padding, so the size stays
@@ -340,6 +415,10 @@ gains fields on one struct and variants on one enum.
   on a 32-bit one the size moved. Recompile.
 - Rust: `KeyPress` gains `location` and `locks` (under Added, F108), so
   a struct literal of it needs the fields or `..KeyPress::new(..)`.
+- Rust: `EventSpec` gains `modifier_keys` (under Added, F108), so a
+  struct literal of it needs the field or `..Default::default()`.
+  *Listed 2026-09-30*: the regression run found it missing (backlog
+  RG88).
 - Rust: `KeyCode` gains `PrintScreen`, `Pause`, `Menu`, `Clear`, the
   modifier and lock keys (`Shift`, `Ctrl`, `Alt`, `Super`, `CapsLock`,
   `NumLock`, `ScrollLock`) and twelve media keys, and `F(n)` reaches 35

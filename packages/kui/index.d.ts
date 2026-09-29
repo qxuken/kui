@@ -1176,7 +1176,9 @@ export interface Owed {
   cycle: boolean;
   /** An exit animation (a ghost) still departing. */
   depart: boolean;
-  /** A frame a view asked for: `requestFrame`, or an `animate` node. */
+  /** A frame asked for: a door that moves something the next frame
+   *  draws (`reveal`, `setScroll`, `focusRegion`, `requestFiles`), or an
+   *  `animate` node. Node has no bare `requestFrame` (backlog RG82). */
   requested: boolean;
   /** A held drag scrolling its container. */
   autoscroll: boolean;
