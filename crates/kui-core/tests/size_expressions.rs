@@ -13,7 +13,7 @@ use kui_core::layout::{TextMeasure, compute};
 use kui_core::resources::ImageId;
 use kui_core::schema::{max_str, min_str, sizing_str};
 use kui_core::scroll::ScrollStore;
-use kui_core::spec::{FloatConfig, NodeSpec, Sizing};
+use kui_core::spec::{FloatAnchor, FloatConfig, NodeSpec, Sizing};
 use kui_core::tree::{NIL, NodeContent, OriginId, TextId, Tree};
 use kui_core::value::Value;
 use kui_core::{Edges, Size};
@@ -189,4 +189,70 @@ fn one_expression_three_ways() {
     assert_eq!(spelled, data);
     assert_eq!(spelled, built);
     assert_eq!(spelled.describe(), "clamp(400px, 80%, 1000px)");
+}
+
+/// A float anchored to a node by key is sized in the sixth pass, against
+/// its anchor's final rect; pass 1 met it with a room of 0 and wrote its
+/// size-expression clamps over as px of that, so the anchored pass found
+/// no expression left and a `maxWidth "50%"` held the float to 0 — and a
+/// `maxWidth "100%"` under it, resolved against the float's 0 in pass 1,
+/// held its child to 0 as well (backlog RG77).
+#[test]
+fn a_node_anchored_float_s_clamps_take_the_anchor() {
+    let mut t = T::new(NodeSpec::column().width(Sizing::Fixed(400.0)));
+    let anchor = t.node(
+        0,
+        NodeSpec::column()
+            .width(Sizing::Fixed(200.0))
+            .height(Sizing::Fixed(10.0)),
+    );
+    let k = t.tree.keys[anchor as usize];
+    let on_node = || FloatConfig {
+        anchor: FloatAnchor::Node(k),
+        ..FloatConfig::parent()
+    };
+    let held = t.node(
+        0,
+        NodeSpec::column()
+            .float(on_node())
+            .width(Sizing::Fixed(300.0))
+            .max_width(max_str("50%").unwrap())
+            .max_height(max_str("min(50%, 100px)").unwrap())
+            .height(Sizing::Fixed(300.0)),
+    );
+    let grow = t.node(0, NodeSpec::column().float(on_node()).width(Sizing::GROW));
+    let in_grow = t.node(
+        grow,
+        NodeSpec::column()
+            .width(Sizing::Fixed(300.0))
+            .max_width(max_str("100%").unwrap()),
+    );
+    let pct = t.node(0, NodeSpec::column().float(on_node()).width(s("100%")));
+    let in_pct = t.node(
+        pct,
+        NodeSpec::column()
+            .width(Sizing::Fixed(300.0))
+            .max_width(max_str("100%").unwrap())
+            .min_width(min_str("clamp(10px, 25%, 90px)").unwrap()),
+    );
+    t.run(1000.0);
+    assert_eq!(t.w(held), 100.0, "300 held to half the anchor's 200");
+    assert_eq!(t.tree.size[held as usize].h, 5.0, "half the anchor's 10");
+    assert_eq!(t.w(grow), 200.0, "a grow float is its anchor's width");
+    assert_eq!(
+        t.w(in_grow),
+        200.0,
+        "held to the float's 200, not pass 1's 0"
+    );
+    assert_eq!(t.w(pct), 200.0);
+    assert_eq!(t.w(in_pct), 200.0);
+    assert_eq!(
+        t.tree.specs[in_pct as usize].layout.min_w.resolved(),
+        50.0,
+        "the floor, 25% of 200, as the anchored pass wrote it"
+    );
+    // Laid out again, as the next frame's tree is: the same numbers.
+    t.run(1000.0);
+    assert_eq!(t.w(held), 100.0);
+    assert_eq!(t.w(in_grow), 200.0);
 }

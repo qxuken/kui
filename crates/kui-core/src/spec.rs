@@ -124,6 +124,12 @@ impl Min {
             .flatten()
     }
 
+    /// Whether layout has yet to resolve this floor — a `FIT` or a calc,
+    /// the negatives — without asking the table which calc it is.
+    pub(crate) fn deferred(self) -> bool {
+        self.0 < 0.0
+    }
+
     /// The clamp as a number: the px it holds, or 0 for a `FIT` or a calc
     /// layout has not resolved yet (nothing to floor at).
     pub fn resolved(self) -> f32 {

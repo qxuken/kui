@@ -733,19 +733,21 @@ pub fn compute(
         return;
     }
     // A `Min::FIT` floor is written back into the spec as the number it
-    // resolved to (`fit_widths`, `fit_heights`), and a node-anchored
-    // float is laid out again in the sixth pass: it would read the
-    // number the first run left — measured before the float had a
-    // width, a paragraph folded into a column of one word — as a
-    // declared floor. Remembered here, put back before the re-run.
-    let floors: Vec<(usize, bool, bool)> = if tree.any_node_float {
-        (0..tree.len())
-            .filter_map(|i| {
-                let l = &tree.specs[i].layout;
-                let (w, h) = (l.min_w.is_fit(), l.min_h.is_fit());
-                (w || h).then_some((i, w, h))
-            })
-            .collect()
+    // resolved to (`fit_widths`, `fit_heights`), and a size-expression
+    // clamp as the px it came to against its room (`resolve_bounds`);
+    // a node-anchored float is laid out again in the sixth pass, and
+    // would read what the first run left as declared numbers. For a fit
+    // floor that is one measured before the float had a width — a
+    // paragraph folded into a column of one word. For a calc clamp it is
+    // one resolved against a room of 0: the first run meets such a float
+    // before its anchor is placed and gives it no room, so a `maxWidth
+    // "50%"` on it — or a `maxWidth "100%"` on a child of it, resolved
+    // against the float's own 0 — came out 0 and the sixth pass, finding
+    // no expression left to resolve, kept it (backlog RG77). Every clamp
+    // in those subtrees that layout writes over is remembered here, as
+    // declared, and put back before the re-run.
+    let declared = if tree.any_node_float {
+        declared_clamps(tree)
     } else {
         Vec::new()
     };
@@ -755,8 +757,30 @@ pub fn compute(
     grow_heights(tree, viewport);
     positions(tree, scroll, viewport, scale, 0..tree.len());
     if tree.any_node_float {
-        anchored(tree, text, scroll, viewport, scale, &floors);
+        anchored(tree, text, scroll, viewport, scale, &declared);
     }
+}
+
+/// The four clamps of a node as its spec declared them, for one layout
+/// writes over (a fit floor, a size expression): `(node, min_w, max_w,
+/// min_h, max_h)`.
+type Declared = (usize, Min, f32, Min, f32);
+
+/// The clamps of every node inside a node-anchored float's subtree that
+/// layout resolves in place — the ones the sixth pass must see again as
+/// declared (backlog RG6, RG77). Read off the raw numbers, a negative
+/// being what both forms are, so no node pays a table lookup.
+fn declared_clamps(tree: &Tree) -> Vec<Declared> {
+    let mut out = Vec::new();
+    for (c, end, _) in node_floats(tree) {
+        for i in c..end {
+            let l = &tree.specs[i].layout;
+            if l.min_w.deferred() || l.min_h.deferred() || l.max_w < 0.0 || l.max_h < 0.0 {
+                out.push((i, l.min_w, l.max_w, l.min_h, l.max_h));
+            }
+        }
+    }
+    out
 }
 
 /// The sixth pass: every float anchored to a node by key, laid out again
@@ -774,7 +798,7 @@ fn anchored(
     scroll: &mut ScrollStore,
     viewport: Size,
     scale: f32,
-    floors: &[(usize, bool, bool)],
+    declared: &[Declared],
 ) {
     for (c, end, key) in node_floats(tree) {
         let Some(a) = tree.index_of(key) else {
@@ -782,14 +806,13 @@ fn anchored(
             continue;
         };
         let anchor = Rect::from_pos_size(tree.pos[a], tree.size[a]);
-        // The fit floors declared in this subtree, as declared again.
-        for &(i, w, h) in floors.iter().filter(|(i, ..)| (c..end).contains(i)) {
-            if w {
-                tree.specs[i].layout.min_w = Min::FIT;
-            }
-            if h {
-                tree.specs[i].layout.min_h = Min::FIT;
-            }
+        // The fit floors and size-expression clamps declared in this
+        // subtree, as declared again.
+        for &(i, min_w, max_w, min_h, max_h) in
+            declared.iter().filter(|(i, ..)| (c..end).contains(i))
+        {
+            let l = &mut tree.specs[i].layout;
+            (l.min_w, l.max_w, l.min_h, l.max_h) = (min_w, max_w, min_h, max_h);
         }
         // The root's spec is read *after* each fit pass, which is where
         // a `Min::FIT` floor of its own — just declared again above —
