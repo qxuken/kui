@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.27 (unreleased)
+## 0.1.0-alpha.27 (2026-09-29)
 
 **What breaks.** No build: new functions and a root prop, the ABI at 22
 and the Node wire at v19.
@@ -74,6 +74,58 @@ One drawing changes:
   access value are unchanged. **What you can delete:** a Nerd Font
   symbols face bundled or required so that a TUI's rounded rows do not
   draw a stray glyph at each end.
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), on 2026-09-29 — the
+commits after the alpha.26 tag: F112 from the kawoosh rounded-row
+report and F113 from the kawoosh settings-pane report, each with its
+merge. This round ran on the Mac alone; Windows and Linux were not in
+it. F112 is the core's drawing of twelve codepoints from the cell box,
+the same on every platform, and its tests hold it (no corpus scene, as
+for F66: the corpus compares trees, not the atlas). F113 acts on a Mac
+alone: its frame state and its four doors are what the tests, the C
+round and the corpus's `chrome` scenes hold, and what it does to a key
+was checked by hand — presses posted to a scratch window logged winit
+rewriting a left ⌥u to `u` with `alt` and leaving a right one `¨`, and
+in a focused window from kawoosh, on kui by path, a left ⌥u arrived as
+the chord. What the round could not reach is the other half of the
+claim: that Windows and Linux, whose Alt composes nothing, are
+unchanged by it.
+
+**macOS 27.0 on an M3 Pro MacBook Pro, rustc 1.98.0, Node 25.6.0**, on
+`ef6a542` with the version set, in a cold worktree. `cargo fmt --all
+--check` and `cargo clippy --workspace --all-targets --features
+kui-core/conformance -- -D warnings` are clean. `cargo test --workspace
+--features kui-core/conformance`: **1599 tests over 124 suites, 0
+failed** (3 ignored), kui-native's `plays_through_a_device_or_degrades_gracefully`
+among the passes. The C round, `cbuild --run`, passes its five checks,
+and the no-ABI panel is refused as "this build is 22"; the corpus
+passes its **52 scenes** in four adapters, C's through
+`target/debug/conformance`; the ABI is **22**. Node's `node --test
+test.mjs` under `KUI_CONFORMANCE_REQUIRED=1`: **202 of 202**, the frame
+**v19**. `npm run gen` leaves no diff, the examples typecheck and their
+lockfile installs, and the headless round passes all **32 drives**.
+
+**The windowed round**, `smoke -- --node`: **38 Rust examples and the
+eleven Node examples, each on both bases, 120 frames each, every one
+exiting 0** — 98 windows — and `counter`, `host`, `c_panel` and
+`lua_panel` by hand under `KUI_SMOKE_FRAMES=120`, each exiting 0 with
+nothing on stderr: **102 windows over five hosts.** The AX audit:
+**106/106**, with the audited window raised to the front first —
+launched from a shell while another app was frontmost it never became
+key, and the eight checks that need a key window read nothing (98/106).
+
+**The bench guard** against the alpha.26 tag, the machine otherwise
+quiet (the script's busy check silent): **green**, no guarded row more
+than 4.0% slower (`deep_nesting_64_levels`, inside its ±5.5%), the
+worst guarded spread 5.8% (`frame_1k_curves`), and no row of the 38
+more than 7.2% slower (`frame_10k_rects_one_exit`, ±7.1%;
+`frame_10k_rects_all_declaring_exit` next at +6.6%, outside its ±2.8%
+but inside the tolerance); every row reads "same". What the two add to
+a frame the benches run is F113's one field that `begin_frame` clears;
+F112 is in the cells' drawing, which no row here reaches. README's
+table is kept at alpha.22's numbers.
 
 ## 0.1.0-alpha.26 (2026-09-29)
 

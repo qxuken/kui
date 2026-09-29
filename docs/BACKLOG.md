@@ -87,11 +87,11 @@ kawoosh launcher-sizes review of 2026-09-29, filed and built after the
 alpha.24 tag, and with the alpha.26 tag F111 — why a frame runs, who
 holds an owed one, and whether it changed what is drawn — from the
 kawoosh frame-ledger round of the same day, filed and built after the
-alpha.25 tag, and after that tag F112 — the Powerline Extra half
-circles and wedges drawn from the cell — from the kawoosh rounded-row
-report of the same day, the day it was filed, and F113 — the Option
-keys as Alt on a Mac — from the kawoosh settings-pane report of the same
-day, the day it was filed. The index
+alpha.25 tag, and with the alpha.27 tag F112 — the Powerline Extra
+half circles and wedges drawn from the cell — from the kawoosh
+rounded-row report of the same day, and F113 — the Option keys as Alt
+on a Mac — from the kawoosh settings-pane report of the same day, filed
+and built after the alpha.26 tag. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -138,7 +138,7 @@ architecture review (forty-four entries under ten decisions, every one
 built on 2026-09-14), the standard-menus round, and the pre-tag round's
 own two finds. C26 was the last split entry, and it closed on 2026-09-11.
 
-Ordered by area, not by priority. What to do next is under "After alpha.25".
+Ordered by area, not by priority. What to do next is under "After alpha.26".
 
 **Legend** — `!` a defect that ships today · `~` a gap with no workaround ·
 `.` cost without correctness risk.
@@ -462,7 +462,7 @@ moved whole to
 before the alpha.10 tag, W7 last — the one that wanted a decision rather
 than a patch, settled as: a displacement moves a subtree by whole physical
 pixels, scrolling included. Nothing from the round is open; what it did
-not cover is in "After alpha.25" below.
+not cover is in "After alpha.26" below.
 
 ## From two alpha.9 field reports and a bake-off (2026-09-08)
 
@@ -1976,7 +1976,7 @@ Beside the report, reading the tree for this round turned up one gap of
 kui's own: the variable-height list is Rust-only (C46). Two further
 entries came from the comparison's table: typed messages (C50) and file
 dialogs (C51). The distribution recommendation is unchanged (see
-*Distribution* under *After alpha.25*).
+*Distribution* under *After alpha.26*).
 
 ### `~` C45 — Checkbox, radio group, switch and slider are roles only; every app draws them — **built 2026-09-25**
 
@@ -2568,9 +2568,15 @@ are in the archive too; RG76 holds what two of them left.
 - A `measure_text` between frames re-wraps the shared run of a text
   drawn at another width (RG72's copy is taken only within a frame).
 
-## After alpha.25
+## After alpha.26
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
+alpha.25" until later still on 2026-09-29, when the round between the
+alpha.26 and alpha.27 tags — F112 from the kawoosh rounded-row report,
+the Powerline Extra half circles and wedges drawn from the cell, and
+F113 from the kawoosh settings-pane report, the Option keys as Alt on a
+Mac, both filed and built the same day — had landed, and the heading
+moved with the tag; "After
 alpha.24" until later on 2026-09-29, when the round between the alpha.25
 and alpha.26 tags — F111 from the kawoosh frame-ledger round, why a
 frame runs, who holds an owed one and whether it changed what is drawn,
@@ -3043,7 +3049,7 @@ Every closed entry, all in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) and all verbatim — one heading
 per id, and `tests/docs.rs` holds every id to one entry across both files.
 This index is here so an id resolves without opening that file: the open items
-above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.25" and
+above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.26" and
 the hygiene note cite C2, C5(b), P3, R4 and R7, and code comments, ADRs and
 commit messages cite ids of their own. All of them are whole in the
 archive. **C11**, **W2** and **C15** were each split for a while — an entry

@@ -912,7 +912,7 @@ read the ask back — what a test asserts on, and what a C host driving its
 own window reads to apply it itself.
 
 [`optionAsAlt`](props.md#composite-props-hand-written-per-binding) ·
-[alpha.27](../CHANGELOG.md#010-alpha27-unreleased)
+[alpha.27](../CHANGELOG.md#010-alpha27-2026-09-29)
 
 ### Why does my caret go past the edge on a wrapped line's trailing space?
 
