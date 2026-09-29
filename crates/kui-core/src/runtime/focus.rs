@@ -231,19 +231,21 @@ impl Core {
     /// toggles a dock on and enters it in one `update` names a node the
     /// last frame did not build. A key the frame does not declare as a
     /// region raises `focus-region-without-node` and moves nothing.
+    #[track_caller]
     pub fn focus_region(&mut self, key: Option<Key>) {
         self.pending_region = Some(match key {
             Some(k) => RegionTarget::Key(k),
             None => RegionTarget::Main,
         });
-        self.request_frame();
+        self.owe_frame("focus_region");
     }
 
     /// `focus_region` by the label the region's node declares — the
     /// spelling a caller has for a node that does not exist yet.
+    #[track_caller]
     pub fn focus_region_by_label(&mut self, label: &str) {
         self.pending_region = Some(RegionTarget::Label(label.to_string()));
-        self.request_frame();
+        self.owe_frame("focus_region_by_label");
     }
 
     /// Settles the region on the one enclosing `key`, for a press that
@@ -838,9 +840,10 @@ impl Core {
     /// frames wants, and exactly what a *view* cannot use, since its own
     /// tree does not exist yet. A view asks with this instead and the step
     /// lands on the frame it is declaring.
+    #[track_caller]
     pub fn request_focus_step(&mut self, forward: bool) {
         self.pending_focus_step = Some(forward);
-        self.request_frame();
+        self.owe_frame("request_focus_step");
     }
 
     /// Declares a node focused this frame (None blurs at once). The

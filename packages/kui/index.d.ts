@@ -1217,10 +1217,13 @@ export interface OwedBy {
   scrolls: FrameHolder[];
   autoscroll: FrameHolder | null;
   animate: FrameHolder[];
-  /** Each line that asked for the frame: `why` is `request_frame` for a
-   *  `requestFrame` call, else what kui asked for itself
-   *  (`scrollbar fade`, `resliced`, …); `file` and `line` are the Rust
-   *  source line that asked. */
+  /** Each line that asked for the frame: `why` is the Rust door a call
+   *  that asks for the frame landing it went through — `reveal`,
+   *  `reveal_label`, `set_scroll`, `set_scroll_label`, `focus_region`,
+   *  `request_focus_step`, `request_files` (backlog RG82) — or what kui
+   *  asked for itself (`scrollbar fade`, `resliced`, `list first frame`,
+   *  …); `file` and `line` are the Rust source line that asked, the
+   *  addon's own for a call made from JS. */
   requests: { why: string; file: string; line: number }[];
 }
 

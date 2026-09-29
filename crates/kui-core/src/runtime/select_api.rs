@@ -727,13 +727,14 @@ impl Core {
     /// returns false, so a view that asks every frame until the answer
     /// lands asks once. Between frames it asks for the frame that hands
     /// the ask to the host.
+    #[track_caller]
     pub fn request_files(&mut self, dialog: crate::dialog::FileDialog) -> bool {
         if self.file_ask.pending() {
             return false;
         }
         self.file_ask = crate::dialog::FileAsk::Queued(dialog, self.origin);
         if !self.building {
-            self.request_frame();
+            self.owe_frame("request_files");
         }
         true
     }

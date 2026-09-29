@@ -259,13 +259,19 @@ pub struct FrameHolder {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FrameRequest {
     /// `"request_frame"` for a call to [`Core::request_frame`] or
-    /// `Ui::request_frame` — the app's, a binding's, or a kui widget's,
-    /// which `at` tells apart. The core's own asks say what they are for:
-    /// `"scrollbar fade"`, `"atlas full"`, `"long line rows"`,
-    /// `"resliced"`, `"devtools"`.
+    /// `Ui::request_frame` — the app's or a binding's, which `at` tells
+    /// apart. A door that asks for the frame that lands it is named for
+    /// itself, `at` its caller's line (backlog RG82): `"reveal"`,
+    /// `"reveal_label"`, `"set_scroll"`, `"set_scroll_label"`,
+    /// `"focus_region"`, `"focus_region_by_label"`,
+    /// `"request_focus_step"` (`Ui::focus_next`, `Ui::focus_prev`),
+    /// `"request_files"`. The core's and its widgets' own asks say what
+    /// they are for: `"scrollbar fade"`, `"atlas full"`,
+    /// `"long line rows"`, `"resliced"`, `"devtools"`,
+    /// `"list first frame"`.
     pub why: &'static str,
     /// The source line that asked (`#[track_caller]`): the app's own for
-    /// its calls, a binding's for a guest's, kui's for its widgets'.
+    /// its calls, a binding's for a guest's, kui's for its own asks.
     pub at: &'static Location<'static>,
 }
 

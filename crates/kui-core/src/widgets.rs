@@ -1685,8 +1685,11 @@ pub fn uniform_list_with(
         }
     });
 
+    // Sliced by a screenful's guess, with no layout of its own yet: the
+    // next frame slices by its geometry. kui's ask, not the app's, so a
+    // trace names it for what it is (backlog RG82).
     if first_frame {
-        ui.request_frame();
+        ui.owe_frame("list first frame");
     }
     key
 }
@@ -2087,8 +2090,9 @@ pub fn list(
         }
     });
 
+    // As `uniform_list`'s first frame (backlog RG82).
     if plan.first_frame {
-        ui.request_frame();
+        ui.owe_frame("list first frame");
     }
     key
 }

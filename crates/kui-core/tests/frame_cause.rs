@@ -4,8 +4,8 @@
 //! (`frame_unchanged`).
 
 use kui_core::{
-    Color, Core, Easing, FrameCause, InputEvent, KeyCode, KeyMods, KeyPress, NodeSpec, Size,
-    Transition, Vec2,
+    Color, Core, Easing, FileDialog, FrameCause, InputEvent, KeyCode, KeyMods, KeyPress, NodeSpec,
+    Size, Transition, Vec2,
 };
 
 const VIEW: Size = Size { w: 200.0, h: 100.0 };
@@ -162,4 +162,64 @@ fn begin_frame_cause_hands_a_view_that_runs_first_its_own_frame() {
     assert_eq!(core.frame_cause(), FrameCause::KEY | FrameCause::OWED);
     // And the note is the next one's.
     assert_eq!(frame(&mut core, 10.0), FrameCause::WAKE);
+}
+
+/// kui's own doors that ask for the frame that lands them — a reveal, a
+/// scroll, a focus move, a file dialog — name the app's line that called
+/// them and what it called, not the line inside kui that asked (backlog
+/// RG82).
+#[test]
+fn a_door_that_asks_for_a_frame_names_the_line_that_called_it() {
+    let mut core = Core::new();
+    core.set_frame_trace(true);
+    fn build(core: &mut Core) -> (kui_core::Ui<'_>, kui_core::Key) {
+        let mut ui = core.frame(VIEW, 1.0);
+        let key = ui.leaf_keyed("box", NodeSpec::column().size(10.0, 10.0));
+        (ui, key)
+    }
+    let (ui, key) = build(&mut core);
+    ui.finish();
+    // From a view, through `Ui`.
+    let (mut ui, _) = build(&mut core);
+    ui.reveal(key);
+    ui.reveal_label("box");
+    ui.focus_region(None);
+    ui.focus_next();
+    ui.finish();
+    // Between frames, on the core: the ones that ask only there.
+    core.set_scroll(key, Vec2::ZERO);
+    core.set_scroll_label("box", Vec2::ZERO);
+    core.focus_region_by_label("box");
+    core.request_files(FileDialog::open());
+    let (mut ui, _) = build(&mut core);
+    let asked: Vec<_> = ui
+        .core()
+        .owed_by()
+        .requests
+        .iter()
+        .map(|r| (r.why, r.at.file()))
+        .collect();
+    ui.finish();
+    let here = file!();
+    assert_eq!(
+        asked,
+        [
+            ("reveal", here),
+            ("reveal_label", here),
+            ("focus_region", here),
+            ("request_focus_step", here),
+            ("set_scroll", here),
+            ("set_scroll_label", here),
+            ("focus_region_by_label", here),
+            ("request_files", here),
+        ]
+    );
+    // A stock widget's own ask is kui's, named for what it is.
+    let mut ui = core.frame(VIEW, 1.0);
+    kui_core::widgets::uniform_list(&mut ui, "rows", NodeSpec::column(), 10, 10.0, |_, _| {});
+    ui.finish();
+    let mut ui = core.frame(VIEW, 1.0);
+    let asked: Vec<_> = ui.core().owed_by().requests.iter().map(|r| r.why).collect();
+    ui.finish();
+    assert_eq!(asked, ["list first frame"]);
 }

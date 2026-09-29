@@ -438,6 +438,13 @@ impl<'a> Ui<'a> {
         self.core.request_frame();
     }
 
+    /// Asks for one more frame on kui's own behalf — a stock widget's, not
+    /// the app's — named `why` in a trace (backlog RG82).
+    #[track_caller]
+    pub(crate) fn owe_frame(&mut self, why: &'static str) {
+        self.core.owe_frame(why);
+    }
+
     /// Measures text the way layout would, without adding a node; see
     /// `Core::measure_text`. Sizing a column to its widest label, or
     /// choosing a tier that fits, is arithmetic on these numbers instead
@@ -538,6 +545,7 @@ impl<'a> Ui<'a> {
     /// Asks the host for a file dialog; the answer is a `files` event to
     /// whoever's view asked. False when one is already outstanding. See
     /// `Core::request_files` (backlog C51).
+    #[track_caller]
     pub fn request_files(&mut self, dialog: crate::dialog::FileDialog) -> bool {
         self.core.request_files(dialog)
     }
@@ -1002,12 +1010,14 @@ impl<'a> Ui<'a> {
     /// a view that declares three rows and asks to step lands on one of
     /// them, without waiting a frame for them to exist. Outside a frame
     /// (a driver handling a key press) `Core::focus_next` steps at once.
+    #[track_caller]
     pub fn focus_next(&mut self) {
         self.core.request_focus_step(true);
     }
 
     /// Shift-Tab: the previous focusable node. Deferred to `finish` for the
     /// reason [`Ui::focus_next`] gives.
+    #[track_caller]
     pub fn focus_prev(&mut self) {
         self.core.request_focus_step(false);
     }
@@ -1020,6 +1030,7 @@ impl<'a> Ui<'a> {
     /// [`Ui::focus_next`], so a view may name the region it is declaring
     /// right now — the dock this frame toggles on. A key the frame does
     /// not declare as a region raises `focus-region-without-node`.
+    #[track_caller]
     pub fn focus_region(&mut self, key: Option<Key>) {
         self.core.focus_region(key);
     }
@@ -1067,6 +1078,7 @@ impl<'a> Ui<'a> {
     /// Resolved when this frame finishes laying out, so a row the view is
     /// declaring right now reveals fine; a key the frame does not declare,
     /// or one nothing scrollable contains, is a no-op. See `Core::reveal`.
+    #[track_caller]
     pub fn reveal(&mut self, key: Key) {
         self.core.reveal(key);
     }
@@ -1081,12 +1093,14 @@ impl<'a> Ui<'a> {
 
     /// [`Self::reveal`] by label, resolved when this frame finishes; see
     /// `Core::reveal_label`.
+    #[track_caller]
     pub fn reveal_label(&mut self, label: &str) {
         self.core.reveal_label(label);
     }
 
     /// `set_scroll` by label, resolved before this frame lays out; see
     /// `Core::set_scroll_label`.
+    #[track_caller]
     pub fn set_scroll_label(&mut self, label: &str, offset: Vec2) {
         self.core.set_scroll_label(label, offset);
     }
@@ -1100,6 +1114,7 @@ impl<'a> Ui<'a> {
 
     /// Sets that offset, the way the wheel would: `Vec2::ZERO` jumps to
     /// the top, a large value to the end (the next layout clamps it).
+    #[track_caller]
     pub fn set_scroll(&mut self, key: Key, offset: Vec2) {
         self.core.set_scroll(key, offset);
     }

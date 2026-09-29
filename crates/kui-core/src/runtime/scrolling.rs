@@ -40,9 +40,12 @@ impl Core {
     /// frame into the *same* container are contradictory, so the last one
     /// wins there; reveals into different containers — a tab strip and
     /// the pane list under it — are not, and each lands (F82).
+    ///
+    /// Traced, the ask is `"reveal"` at the caller's line (backlog RG82).
+    #[track_caller]
     pub fn reveal(&mut self, key: Key) {
         self.pending_reveal.push(key);
-        self.request_frame();
+        self.owe_frame("reveal");
     }
 
     /// [`Self::reveal`] by the label a node declares, resolved when the
@@ -50,20 +53,22 @@ impl Core {
     /// when none is — so a view may name a row it is declaring right now,
     /// or one the frame after declares (backlog DX15). A label that frame
     /// does not declare raises `label-without-node` and moves nothing.
+    #[track_caller]
     pub fn reveal_label(&mut self, label: &str) {
         self.pending_reveal_labels
             .push((label.to_string(), self.origin));
-        self.request_frame();
+        self.owe_frame("reveal_label");
     }
 
     /// [`Self::set_scroll`] by label, resolved like [`Self::reveal_label`]
     /// but before layout, so the frame that resolves it lays out at the
     /// offset.
+    #[track_caller]
     pub fn set_scroll_label(&mut self, label: &str, offset: Vec2) {
         self.pending_scroll_labels
             .push((label.to_string(), self.origin, offset));
         if !self.building {
-            self.request_frame();
+            self.owe_frame("set_scroll_label");
         }
     }
 
@@ -157,13 +162,14 @@ impl Core {
     /// store after the view has run — and a view writing every frame
     /// would otherwise be a window that never idles (found twice building
     /// ADR 0029: the devtools' events list, `widgets::list`).
+    #[track_caller]
     pub fn set_scroll(&mut self, key: Key, offset: Vec2) {
         // Programmatic, so a container with a `transition` eases into it
         // (F80); the wheel and the thumb go through `scroll_by` and
         // `set_scroll_axis`, which do not.
         self.scroll.set_smooth(key, offset);
         if !self.building {
-            self.request_frame();
+            self.owe_frame("set_scroll");
         }
     }
 
