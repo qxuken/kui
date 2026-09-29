@@ -312,3 +312,25 @@ fn a_table_cell_s_clamps_take_the_columns_room() {
     assert_eq!(t.w(half), 200.0, "half of 420 less the gap");
     assert_eq!(t.w(held), 200.0, "the clamp's 50% is the width's");
 }
+
+/// A column whose cells declare different size expressions is the
+/// largest of them, as it is the largest of its percentages; it once
+/// took the first row's and dropped the rest.
+#[test]
+fn a_table_column_is_its_largest_expression() {
+    let mut t = T::new(NodeSpec::column().width(Sizing::Fixed(400.0)));
+    let table = t.node(0, NodeSpec::table().width(Sizing::GROW));
+    let mut cells = Vec::new();
+    for w in [
+        "min(25%, 1000px)",
+        "max(50%, 10px)",
+        "clamp(1px, 10%, 30px)",
+    ] {
+        let row = t.node(table, NodeSpec::row().width(Sizing::GROW));
+        cells.push(t.node(row, NodeSpec::column().width(s(w))));
+    }
+    t.run(1000.0);
+    for c in cells {
+        assert_eq!(t.w(c), 200.0, "50% of 400, the largest");
+    }
+}

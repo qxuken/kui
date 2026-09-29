@@ -284,10 +284,14 @@ struct Col {
     /// The largest `Percent` among the cells, 0 for none; read only when
     /// nothing grows.
     pct: f32,
-    /// The first size expression among the cells (backlog F109): the
-    /// column is the larger of it and `pct` of the row, once the row's
-    /// width is known.
-    calc: Option<crate::calc::Calc>,
+    /// The largest size expression among the cells (backlog F109), in px
+    /// of the room the columns are laid across: the column is the larger
+    /// of it and `pct` of that room. Each cell's is resolved and the
+    /// largest kept, as `pct` keeps the largest percentage — two
+    /// expressions cannot be compared until they are numbers, and the
+    /// first row's once stood for the column. In the fit pass, before
+    /// there is a room, only whether there is one (`Some(0.0)`).
+    calc: Option<f32>,
     /// Whether any cell is `Fixed`: a fixed column is never shrunk.
     fixed: bool,
     /// The strictest clamps its cells declared: the largest floor and
@@ -307,8 +311,9 @@ impl Col {
 /// The columns of table `i`, read off its cells' current widths and
 /// specs: the nth in-flow child of each in-flow row is a cell of column
 /// n, and a row with fewer cells fills the first columns. A text cell
-/// has no spec sizing and reads as `Fit`.
-fn table_columns(tree: &Tree, i: u32) -> Vec<Col> {
+/// has no spec sizing and reads as `Fit`. `room` is what a calc cell
+/// resolves against — `None` in the fit pass, which reads no calc.
+fn table_columns(tree: &Tree, i: u32, room: Option<f32>) -> Vec<Col> {
     let mut cols: Vec<Col> = Vec::new();
     for row in tree.children(i) {
         if !is_table_row(tree, row) {
@@ -331,7 +336,10 @@ fn table_columns(tree: &Tree, i: u32) -> Vec<Col> {
             match child_sizing(tree, cell, AxisSel::Width) {
                 Sizing::Grow(f) => col.grow = col.grow.max(f.max(0.0)),
                 Sizing::Percent(p) => col.pct = col.pct.max(p),
-                Sizing::Calc(c) => col.calc = col.calc.or(Some(c)),
+                Sizing::Calc(c) => {
+                    let px = room.map_or(0.0, |r| c.resolve(r));
+                    col.calc = Some(col.calc.map_or(px, |w| w.max(px)));
+                }
                 Sizing::Fixed(_) => col.fixed = true,
                 Sizing::Fit => {}
             }
@@ -423,7 +431,7 @@ fn table_apply(tree: &mut Tree, i: u32, cols: &[Col], fitting: bool) {
 /// the caller) is the aligned one. A growing column sits at its floor
 /// here, as a grow child of any row does.
 fn table_fit(tree: &mut Tree, i: u32) {
-    let mut cols = table_columns(tree, i);
+    let mut cols = table_columns(tree, i, None);
     for col in &mut cols {
         col.w = col.clamp(col.fit);
     }
@@ -485,7 +493,7 @@ fn table_resolve(tree: &mut Tree, i: u32) {
             }
         }
     }
-    let mut cols = table_columns(tree, i);
+    let mut cols = table_columns(tree, i, Some(avail));
     debug_assert_eq!(cols.len(), n);
     let mut used = 0.0f32;
     let mut grow_total = 0.0f32;
@@ -494,7 +502,7 @@ fn table_resolve(tree: &mut Tree, i: u32) {
             grow_total += col.grow;
             col.w = col.clamp(0.0);
         } else if col.pct > 0.0 || col.calc.is_some() {
-            let calc = col.calc.map_or(0.0, |c| c.resolve(avail));
+            let calc = col.calc.unwrap_or(0.0);
             col.w = col.clamp((avail * col.pct).max(calc));
             used += col.w;
         } else {
