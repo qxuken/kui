@@ -157,18 +157,16 @@ pub(crate) fn option_as_alt_change(
 }
 
 /// Whether the Option key held for this press is Alt under the window's
-/// applied setting (backlog F113): an Alt key down on a side it covers.
+/// applied setting (backlog F113): an Option down on a side it covers.
 /// winit has already given such a press the layout's unmodified character
 /// in place of the composed one; this is what keeps that character from
 /// being typed as text too — an Option that is Alt types nothing, as
-/// Control types nothing. `down` is the modifier keys held, by side
-/// (`Pane::modifier_keys_down`).
-pub(crate) fn option_is_alt(
-    applied: kui_core::OptionAsAlt,
-    down: &[(kui_core::KeyCode, kui_core::KeyLocation)],
-) -> bool {
-    down.iter()
-        .any(|(code, loc)| *code == kui_core::KeyCode::Alt && applied.covers(*loc))
+/// Control types nothing. `held` is which Options are down, left and
+/// right, as winit's own reading says (`Pane::alt_held`) — the one its
+/// rewrite of the press was decided on (backlog RG83).
+pub(crate) fn option_is_alt(applied: kui_core::OptionAsAlt, held: (bool, bool)) -> bool {
+    use kui_core::KeyLocation::{Left, Right};
+    (held.0 && applied.covers(Left)) || (held.1 && applied.covers(Right))
 }
 
 /// Whether the window's platform has a level to set: every backend winit
@@ -298,6 +296,13 @@ pub(crate) struct Pane {
     /// key's release reads its own bit from while its twin is still held
     /// (`Pane::modifier_key`, backlog F108).
     pub(crate) modifier_keys_down: Vec<(kui_core::KeyCode, kui_core::KeyLocation)>,
+    /// Which Option keys are down, left and right, from winit's
+    /// `ModifiersChanged` — the device-dependent flags of the event on
+    /// macOS, which winit rewrites a press under Option-as-Alt by, and
+    /// which it sends before the first key after the window comes back
+    /// with an Option already held (backlog RG83). Mirrored to a popup
+    /// borrowing the keyboard as `modifiers` is.
+    pub(crate) alt_held: (bool, bool),
     /// Time of the last titlebar press, for double-click maximize.
     pub(crate) last_titlebar_press: Option<std::time::Instant>,
     /// Last cursor position (logical px), for multi-click distance checks.
@@ -647,19 +652,15 @@ mod tests {
     /// right Option still types `ü`'s accent while the left one is Alt.
     #[test]
     fn only_a_covered_option_is_alt() {
-        use kui_core::KeyCode::{Alt, Shift};
-        use kui_core::KeyLocation::{Left, Right};
         use kui_core::OptionAsAlt;
-        let left = [(Alt, Left)];
-        let right = [(Alt, Right)];
-        assert!(option_is_alt(OptionAsAlt::Left, &left));
-        assert!(!option_is_alt(OptionAsAlt::Left, &right));
-        assert!(option_is_alt(OptionAsAlt::Right, &right));
-        assert!(option_is_alt(OptionAsAlt::Both, &left));
-        assert!(option_is_alt(OptionAsAlt::Both, &right));
-        assert!(!option_is_alt(OptionAsAlt::None, &left));
-        // A Shift on the covered side is not an Option.
-        assert!(!option_is_alt(OptionAsAlt::Left, &[(Shift, Left)]));
-        assert!(!option_is_alt(OptionAsAlt::Both, &[]));
+        let (left, right, neither) = ((true, false), (false, true), (false, false));
+        assert!(option_is_alt(OptionAsAlt::Left, left));
+        assert!(!option_is_alt(OptionAsAlt::Left, right));
+        assert!(option_is_alt(OptionAsAlt::Right, right));
+        assert!(option_is_alt(OptionAsAlt::Both, left));
+        assert!(option_is_alt(OptionAsAlt::Both, right));
+        assert!(!option_is_alt(OptionAsAlt::None, left));
+        assert!(!option_is_alt(OptionAsAlt::None, (true, true)));
+        assert!(!option_is_alt(OptionAsAlt::Both, neither));
     }
 }

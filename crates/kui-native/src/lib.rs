@@ -2429,6 +2429,10 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                 let t = self.key_target(i);
                 self.panes[i].modifiers = m.state();
                 self.panes[t].modifiers = m.state();
+                use winit::keyboard::ModifiersKeyState::Pressed;
+                let alt = (m.lalt_state() == Pressed, m.ralt_state() == Pressed);
+                self.panes[i].alt_held = alt;
+                self.panes[t].alt_held = alt;
                 let kmods = self.panes[t].kmods();
                 self.dispatch(event_loop, t, InputEvent::Modifiers(kmods));
             }

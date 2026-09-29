@@ -317,15 +317,18 @@ impl DynShell<'_> {
     ) {
         let pressed = event.state == ElementState::Pressed;
         // Whether an Option the window made Alt is held (backlog F113):
-        // `from`'s setting, since winit rewrote the press in that
-        // window's view, and a side held in either window's record, since
-        // a modifier pressed before a popup opened was recorded by its
-        // owner and one pressed after by the popup.
-        let option_alt = cfg!(target_os = "macos") && {
-            let applied = self.panes[from].applied_option_as_alt;
-            crate::pane::option_is_alt(applied, &self.panes[from].modifier_keys_down)
-                || crate::pane::option_is_alt(applied, &self.panes[i].modifier_keys_down)
-        };
+        // `from`'s setting and `from`'s reading of which Options are down,
+        // since winit rewrote the press in that window's view by the
+        // event's own flags. Not the held-key record below: a modifier
+        // pressed in the owner and let go in a popup it lent the keyboard
+        // to, or held while the window was away, left that record wrong,
+        // and a record that says Option is down swallows every key typed
+        // after it (backlog RG83).
+        let option_alt = cfg!(target_os = "macos")
+            && crate::pane::option_is_alt(
+                self.panes[from].applied_option_as_alt,
+                self.panes[from].alt_held,
+            );
 
         // Full-keyboard path: every press *and release* travels as data to
         // the key-focused sink (`NodeSpec::on_key`) — the core delivers the
@@ -399,7 +402,11 @@ impl DynShell<'_> {
         // kitty's protocol reports. winit's `ModifiersChanged` arrives
         // after the key, so the mirrored state is the one before it.
         let location = location_of(event.location);
-        let kmods = self.panes[i].modifier_key(logical_code, location, pressed, kmods);
+        // Recorded on `from`, the window the OS holds the keyboard for:
+        // a popup borrowing it is not a keyboard of its own, and a side
+        // pressed before it opened comes up while it is the target
+        // (backlog RG83); `from` also forgets them all as it loses focus.
+        let kmods = self.panes[from].modifier_key(logical_code, location, pressed, kmods);
         let kp = KeyPress::from_layout(logical_code, physical, kmods);
         // The lock keys' own presses turn what is tracked where the OS
         // is not asked (`lock_state`); the press reports the state it
