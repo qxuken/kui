@@ -121,8 +121,12 @@ pub struct ScrollStore {
     /// The clock an eased offset reads (`Core::set_time`); `None` until
     /// a driver sets one, which is a driver that shows no animation.
     now: Option<f64>,
-    /// Whether the last layout left an eased offset mid-flight.
-    owes: bool,
+    /// The containers whose eased offset the last layout left
+    /// mid-flight, kept as that layout found them: a wheel between two
+    /// frames ends a leg in its entry, but the frame after is still owed
+    /// by that container, and a trace names it (backlog RG89,
+    /// from the F111 regression pass).
+    owing: Vec<Key>,
     /// The frame being built, stamped onto every entry touched.
     frame_no: u64,
     /// The geometries read during this build ([`Self::geometry`]) — what
@@ -158,7 +162,7 @@ impl ScrollStore {
         // begins — Node's, which calls `scrollGeometry` while the JS
         // view builds its tree — reads between two frames, and those
         // reads are this frame's (RG24). `take_resliced` drains them.
-        self.owes = false;
+        self.owing.clear();
         if self.entries.len() > MAX_UNDECLARED_SCROLLS {
             self.evict(frame_no.saturating_sub(1));
         }
@@ -407,19 +411,15 @@ impl ScrollStore {
     /// Whether an eased offset was still mid-flight at the last layout,
     /// so the driver owes another frame.
     pub fn animating(&self) -> bool {
-        self.owes
+        !self.owing.is_empty()
     }
 
     /// The containers whose eased offset the last layout left mid-flight
-    /// — what [`Self::animating`] is made of, read back off the entries
-    /// for a trace (backlog F111): a leg still running on a container
-    /// that frame laid out.
+    /// — what [`Self::animating`] is made of, for a trace (backlog F111).
+    /// As that layout left them, not as the entries read now: a leg a
+    /// wheel ended since still owes the frame it was mid-flight for.
     pub(crate) fn easing(&self) -> impl Iterator<Item = Key> + '_ {
-        let frame_no = self.frame_no;
-        self.entries
-            .iter()
-            .filter(move |(_, e)| e.smooth.is_some() && e.laid_frame == frame_no)
-            .map(|(k, _)| *k)
+        self.owing.iter().copied()
     }
 
     /// How long `key`'s scroll state has been quiet, in seconds of the
@@ -501,7 +501,9 @@ impl ScrollStore {
                             e.smooth = None;
                         } else {
                             e.smooth = Some((from, start, t));
-                            self.owes = true;
+                            if !self.owing.contains(&key) {
+                                self.owing.push(key);
+                            }
                         }
                         at
                     }

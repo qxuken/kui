@@ -5,7 +5,7 @@
 
 use kui_core::{
     Color, Core, Easing, FileDialog, FrameCause, InputEvent, KeyCode, KeyMods, KeyPress, NodeSpec,
-    Size, Transition, Vec2,
+    OwedBy, Size, Transition, Vec2,
 };
 
 const VIEW: Size = Size { w: 200.0, h: 100.0 };
@@ -81,32 +81,37 @@ fn frame_unchanged_compares_what_two_frames_drew() {
     assert_eq!(core.frame_unchanged(), None);
 }
 
+/// A frame of a 100×50 window filled by `ribbon`, four 100 px boxes
+/// scrolling sideways with a 100 ms linear transition; `reveal` reveals
+/// the last. Returns who held the frame, as the view read it.
+fn ribbon(core: &mut Core, reveal: bool) -> OwedBy {
+    let mut ui = core.frame(Size::new(100.0, 50.0), 1.0);
+    let by = ui.core().owed_by().clone();
+    ui.configure_root(NodeSpec::column().fill());
+    let spec = NodeSpec::row()
+        .fill()
+        .scroll_x()
+        .transition_with(Transition::ms(100.0).easing(Easing::Linear));
+    let mut boxes = Vec::new();
+    ui.with_keyed("ribbon", spec, |ui| {
+        for i in 0..4 {
+            boxes.push(ui.leaf_keyed(
+                &format!("b{i}"),
+                NodeSpec::column().width(100.0).grow_height(),
+            ));
+        }
+    });
+    if reveal {
+        ui.reveal(boxes[3]);
+    }
+    ui.finish();
+    by
+}
+
 /// A container easing a programmatic scroll holds the frame, by name.
 #[test]
 fn owed_by_names_an_easing_scroller() {
-    let build = |core: &mut Core, reveal: bool| {
-        let mut ui = core.frame(Size::new(100.0, 50.0), 1.0);
-        let by = ui.core().owed_by().clone();
-        ui.configure_root(NodeSpec::column().fill());
-        let spec = NodeSpec::row()
-            .fill()
-            .scroll_x()
-            .transition_with(Transition::ms(100.0).easing(Easing::Linear));
-        let mut boxes = Vec::new();
-        ui.with_keyed("ribbon", spec, |ui| {
-            for i in 0..4 {
-                boxes.push(ui.leaf_keyed(
-                    &format!("b{i}"),
-                    NodeSpec::column().width(100.0).grow_height(),
-                ));
-            }
-        });
-        if reveal {
-            ui.reveal(boxes[3]);
-        }
-        ui.finish();
-        by
-    };
+    let build = ribbon;
     let mut core = Core::new();
     core.set_frame_trace(true);
     core.set_time(0.0);
@@ -121,6 +126,30 @@ fn owed_by_names_an_easing_scroller() {
     build(&mut core, false);
     let by = build(&mut core, false);
     assert!(by.scrolls.is_empty(), "landed: {by:?}");
+}
+
+/// A wheel between two frames ends a reveal's glide in the store, but
+/// the frame after is still owed by the container the last layout left
+/// easing, and names it: each list names what made its kind true, not
+/// what is easing by the time the next frame reads (backlog RG89,
+/// from the F111 regression pass).
+#[test]
+fn owed_by_names_the_scroller_a_wheel_stopped_between_frames() {
+    let mut core = Core::new();
+    core.set_frame_trace(true);
+    core.set_time(0.0);
+    ribbon(&mut core, false);
+    ribbon(&mut core, true);
+    core.set_time(0.05);
+    ribbon(&mut core, false);
+    assert!(core.owed().scroll, "mid-glide");
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(50.0, 25.0)));
+    core.handle_input(InputEvent::Scroll(Vec2::new(-10.0, 0.0)));
+    assert!(core.owed().scroll, "the last layout left it easing");
+    let by = ribbon(&mut core, false);
+    assert!(core.frame_cause().contains(FrameCause::OWED));
+    let names: Vec<_> = by.scrolls.iter().map(|h| h.name.as_str()).collect();
+    assert_eq!(names, ["ribbon"]);
 }
 
 /// A driver whose view runs before its frame begins (Node's loop) takes
