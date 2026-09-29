@@ -256,6 +256,10 @@ impl Extension for LuaExtension {
         }
         // Which Option keys are Alt on macOS (backlog F113), by name; a
         // name kui does not have is the script's mistake, said as one.
+        // `"none"` declares nothing, as a root that leaves it out and as
+        // Node's `optionAsAlt: 'none'` (`configure_root_from`): a script
+        // writing its setting through does not take back the side a host
+        // or another slot declared this frame (backlog RG84).
         if let Some(name) = root
             .get::<Option<String>>("option_as_alt")
             .map_err(|e| format!("option_as_alt: {e}"))?
@@ -265,7 +269,9 @@ impl Extension for LuaExtension {
                     "option_as_alt: expected \"none\", \"left\", \"right\" or \"both\", got {name:?}"
                 )
             })?;
-            ui.option_as_alt(v);
+            if v != kui_core::OptionAsAlt::None {
+                ui.option_as_alt(v);
+            }
         }
         declare_windows(ui, &root).map_err(|e| format!("windows: {e}"))?;
         build_node(ui, &root).map_err(|e| format!("view table: {e}"))
@@ -3330,6 +3336,29 @@ mod tests {
             err.contains("option_as_alt") && err.contains("\"both\"") && err.contains("meta"),
             "{err}"
         );
+    }
+
+    /// `"none"` declares nothing (backlog RG84): a host's side survives a
+    /// script that writes its own setting through as `"none"`, as it does
+    /// a Node view's `optionAsAlt: 'none'`.
+    #[test]
+    fn option_as_alt_none_leaves_the_hosts_side() {
+        let mut core = Core::new();
+        let mut ext = LuaExtension::from_source(
+            "keys",
+            r#"
+                function view(env)
+                  return column { option_as_alt = "none", text("x") }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
+        ui.option_as_alt(kui_core::OptionAsAlt::Left);
+        ui.set_origin(OriginId(1));
+        ext.view(&Slot::root(), &mut ui).unwrap();
+        ui.finish();
+        assert_eq!(core.option_as_alt(), kui_core::OptionAsAlt::Left);
     }
 
     /// Every node type the prelude offers lowers without error and draws.
