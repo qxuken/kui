@@ -1,6 +1,8 @@
 //! The glyphs a `cells` node draws from the cell box instead of the font
 //! (backlog F66): box drawing (U+2500–U+257F), block elements
-//! (U+2580–U+259F) and the Powerline arrows (U+E0B0–U+E0B3).
+//! (U+2580–U+259F) and the Powerline separators (U+E0B0–U+E0BF): the
+//! arrows, and the Powerline Extra half circles and wedges (backlog
+//! F112).
 //!
 //! A font's box-drawing glyphs span *its* line box — Iosevka's are 1.25 em
 //! tall — and a cell is `line_height` tall, which no font can know, so
@@ -20,7 +22,7 @@
 
 /// Whether `ch` is drawn here rather than shaped.
 pub(crate) fn draws(ch: char) -> bool {
-    matches!(ch as u32, 0x2500..=0x259F | 0xE0B0..=0xE0B3)
+    matches!(ch as u32, 0x2500..=0x259F | 0xE0B0..=0xE0BF)
 }
 
 /// The coverage mask for `ch` in a `w × h` cell, `w * h` bytes, row-major.
@@ -35,6 +37,8 @@ pub(crate) fn raster(ch: char, w: u32, h: u32) -> Vec<u8> {
         0x2571..=0x2573 => diagonal(&mut m, cp),
         0x2580..=0x259F => block(&mut m, cp),
         0xE0B0..=0xE0B3 => powerline(&mut m, cp),
+        0xE0B4..=0xE0B7 => half_circle(&mut m, cp),
+        0xE0B8..=0xE0BF => wedge(&mut m, cp),
         _ => {}
     }
     m.a
@@ -518,6 +522,59 @@ fn powerline(m: &mut Mask, cp: u32) {
     }
 }
 
+/// U+E0B4–U+E0B7: the half circles a rounded tab or a rounded row ends
+/// on (yazi's hovered row, a starship prompt) — a filled half ellipse on
+/// the cell's left edge bulging right, and on the right edge bulging
+/// left, the whole cell wide and tall so it meets the run beside it with
+/// no seam; and the arc of each. Through the font they were whatever
+/// the fallback had, the size of its own line box.
+fn half_circle(m: &mut Mask, cp: u32) {
+    let t = m.pen().light as f32;
+    let (w, h) = (m.w as f32, m.h as f32);
+    let mid = h / 2.0;
+    // The flat side's x: the left edge for the right-bulging pair.
+    let cx = if cp <= 0xE0B5 { 0.0 } else { w };
+    let within = |x: f32, y: f32, rx: f32, ry: f32| {
+        let (dx, dy) = ((x - cx) / rx, (y - mid) / ry);
+        dx * dx + dy * dy <= 1.0
+    };
+    if cp == 0xE0B4 || cp == 0xE0B6 {
+        m.shape(|x, y| within(x, y, w, mid));
+    } else {
+        m.shape(|x, y| within(x, y, w, mid) && !within(x, y, w - t, mid - t));
+    }
+}
+
+/// U+E0B8–U+E0BF: the Powerline Extra wedges — a filled right triangle
+/// in each corner of the cell, its hypotenuse the cell's diagonal, and
+/// that diagonal alone as a line (`╲` for the lower-left and upper-right
+/// pairs, `╱` for the others), in the order the Nerd Fonts table has:
+/// lower left, lower right, upper left, upper right.
+fn wedge(m: &mut Mask, cp: u32) {
+    let half = m.pen().light as f32 / 2.0;
+    let (w, h) = (m.w as f32, m.h as f32);
+    // Each pair's diagonal: `╲` runs (0,0)–(w,h), `╱` runs (0,h)–(w,0).
+    let back = matches!(cp, 0xE0B8 | 0xE0B9 | 0xE0BE | 0xE0BF);
+    if cp % 2 == 1 {
+        if back {
+            m.shape(|x, y| seg_dist(x, y, 0.0, 0.0, w, h) <= half);
+        } else {
+            m.shape(|x, y| seg_dist(x, y, 0.0, h, w, 0.0) <= half);
+        }
+        return;
+    }
+    match cp {
+        // ◣ under `╲`.
+        0xE0B8 => m.shape(|x, y| y * w >= x * h),
+        // ◢ under `╱`.
+        0xE0BA => m.shape(|x, y| y * w >= (w - x) * h),
+        // ◤ over `╱`.
+        0xE0BC => m.shape(|x, y| y * w <= (w - x) * h),
+        // ◥ over `╲`.
+        _ => m.shape(|x, y| y * w <= x * h),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -680,13 +737,65 @@ mod tests {
         assert_eq!(at(&a, w, col, h - 1), 255, "the stem reaches the bottom");
         assert_eq!(at(&a, w, w - 1, row), 255, "the arm reaches the right edge");
         assert_eq!(at(&a, w, 0, 0), 0);
-        for cp in (0x2500..=0x259Fu32).chain(0xE0B0..=0xE0B3) {
+        for cp in (0x2500..=0x259Fu32).chain(0xE0B0..=0xE0BF) {
             let ch = char::from_u32(cp).unwrap();
             assert!(draws(ch));
             let m = raster(ch, w, h);
             assert!(m.iter().any(|&a| a > 0), "U+{cp:04X} drew nothing");
         }
         assert!(!draws('a') && !draws('é') && !draws('😀'));
+    }
+
+    /// F112: a filled half circle is the cell tall at its flat side and
+    /// comes to a point at the far edge's middle, so `` beside a
+    /// highlighted run and `` after it round it off with no seam; its
+    /// arc is empty inside; a wedge fills its corner and leaves the other.
+    #[test]
+    fn half_circles_and_wedges_meet_the_run_beside_them() {
+        let (w, h) = (8, 20);
+        let right = raster('\u{E0B4}', w, h);
+        let left = raster('\u{E0B6}', w, h);
+        for y in 2..h - 2 {
+            assert_eq!(at(&right, w, 0, y), 255, "E0B4 flat side, row {y}");
+            assert_eq!(at(&left, w, w - 1, y), 255, "E0B6 flat side, row {y}");
+        }
+        assert_eq!(
+            at(&right, w, w - 1, h / 2),
+            255,
+            "E0B4 reaches the far edge"
+        );
+        assert_eq!(at(&right, w, w - 1, 0), 0, "and rounds the corners off");
+        assert_eq!(at(&left, w, 0, 0), 0);
+        for y in 0..h {
+            for x in 0..w {
+                assert_eq!(
+                    at(&right, w, x, y),
+                    at(&left, w, w - 1 - x, y),
+                    "E0B6 mirrors E0B4 at ({x}, {y})"
+                );
+            }
+        }
+        let arc = raster('\u{E0B5}', w, h);
+        assert_eq!(at(&arc, w, 0, h / 2), 0, "the arc is hollow");
+        assert_eq!(at(&arc, w, w - 1, h / 2), 255, "and is drawn at its apex");
+        let ll = raster('\u{E0B8}', w, h);
+        assert_eq!(at(&ll, w, 0, h - 1), 255, "◣ fills the lower left");
+        assert_eq!(at(&ll, w, w - 1, 0), 0, "and not the upper right");
+        let ur = raster('\u{E0BE}', w, h);
+        assert_eq!(at(&ur, w, w - 1, 0), 255, "◥ fills the upper right");
+        assert_eq!(at(&ur, w, 0, h - 1), 0);
+        for y in 0..h {
+            for x in 0..w {
+                let (a, b) = (at(&ll, w, x, y) as u32, at(&ur, w, x, y) as u32);
+                assert!(
+                    a + b >= 250 && a + b <= 260,
+                    "◣ and ◥ tile at ({x}, {y}): {a} + {b}"
+                );
+            }
+        }
+        let slash = raster('\u{E0BB}', w, h);
+        assert!(at(&slash, w, 0, h - 1) > 128, "╱ from the lower left");
+        assert_eq!(at(&slash, w, 0, 0), 0);
     }
 
     /// The dash pattern is continuous across cells: the gap at the seam is

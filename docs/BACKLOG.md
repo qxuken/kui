@@ -87,7 +87,9 @@ kawoosh launcher-sizes review of 2026-09-29, filed and built after the
 alpha.24 tag, and with the alpha.26 tag F111 — why a frame runs, who
 holds an owed one, and whether it changed what is drawn — from the
 kawoosh frame-ledger round of the same day, filed and built after the
-alpha.25 tag. The index
+alpha.25 tag, and after that tag F112 — the Powerline Extra half
+circles and wedges drawn from the cell — from the kawoosh rounded-row
+report of the same day, the day it was filed. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -1496,6 +1498,16 @@ under the still pointer, and the terminal, an `onScroll` node taking
 every delta, took the rest of the swipe. One entry, F107, **built
 2026-09-28**, the day it was filed, and in the archive, with ADR 0038.
 
+## From the kawoosh rounded-row report (2026-09-29)
+
+yazi in a kawoosh terminal drew a squiggle before and after its hovered
+row, where WezTerm rounds the row off. yazi ends the row with the
+Powerline Extra half circles U+E0B6 and U+E0B4; `cells` drew only the
+arrows U+E0B0–U+E0B3 from the cell (F66) and sent these to the font,
+whose fallback's glyph at that codepoint was something else at its own
+size. One entry, F112, **built 2026-09-29**, the day it was filed, and
+in the archive.
+
 ## From the kawoosh frame-ledger round (2026-09-29)
 
 kawoosh sometimes drew frames nonstop for seconds after a keystroke,
@@ -2665,6 +2677,8 @@ Nothing of the kawoosh launcher-sizes review is open (F109 and F110
 **built 2026-09-29**, the day they were filed).
 Nothing of the kawoosh frame-ledger round is open (F111 **built
 2026-09-29**, the day it was filed).
+Nothing of the kawoosh rounded-row report is open (F112 **built
+2026-09-29**, the day it was filed).
 Nothing of the Windows regression round of 2026-09-26 is open
 (RG38–RG46 **built 2026-09-26**, the day they were filed).
 Nothing of the Linux round under WSLg is open (RG47–RG49 **built
@@ -3571,6 +3585,10 @@ move.
 **From the kawoosh frame-ledger round (2026-09-29)** — F111, filed and built the same day
 
 - `~` **F111** — [A frame drawn with nothing moving cannot say why: who holds an owed frame, and what woke the window, are kui's alone](backlog/closed-2026-09.md#-f111--a-frame-drawn-with-nothing-moving-cannot-say-why-who-holds-an-owed-frame-and-what-woke-the-window-are-kuis-alone--done-2026-09-29) — done (2026-09-29) — `Core::frame_cause` (`FrameCause`: the input the core was handed by kind, what the driver noted — kui-native's wake, resize, caret, retry, overdue and the rest — and `owed`), `Core::owed_by` (`OwedBy`: the nodes mid-transition with their slots, cycles, departures, easing scrollers, the autoscroller, `animate` nodes, and each `request_frame` line as a `Location`) and `Core::frame_unchanged` (a display-list digest), the last two behind `set_frame_trace`; Node and C mirror all but C's `owed_by`
+
+**From the kawoosh rounded-row report (2026-09-29)** — F112, filed and built the same day
+
+- `!` **F112** — [A terminal's rounded row draws a stray glyph at each end: the Powerline Extra half circles go to the font](backlog/closed-2026-09.md#-f112--a-terminals-rounded-row-draws-a-stray-glyph-at-each-end-the-powerline-extra-half-circles-go-to-the-font--done-2026-09-29) — done (2026-09-29) — `boxdraw` draws U+E0B4–U+E0BF from the cell box as it does the arrows: the filled half circles a half ellipse the cell wide and tall, their arcs, the corner wedges on the cell's diagonal and the diagonals
 
 **From the kawoosh kitty-keyboard review (2026-09-28)** — F108, filed and built the same day
 
