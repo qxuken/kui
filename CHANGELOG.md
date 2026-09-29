@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.25 (unreleased)
+## 0.1.0-alpha.25 (2026-09-29)
 
 **What breaks.** A build no longer writes `libkui_ffi.a`. The ABI is
 22: `KuiSpec` gains four fields. The Node wire is v19. Rust gains a
@@ -100,6 +100,53 @@ One reading changes:
   27 MB and 13.7 MB (aarch64-apple-darwin). Cargo cannot choose a crate
   type per profile, so the manifest drops it for both and the command
   above leaves the archive where it was.
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), on 2026-09-29 — the
+commits after the alpha.24 tag: the static archive built on request,
+and F109 and F110 from the kawoosh launcher-sizes review with their
+merges. This round ran on the Mac alone; Windows and Linux were not in
+it. F109 and F110 are layout, the same on every platform, and their
+doors — the C builders, the wire's new modes — are what the corpus
+holds in four adapters; what the round could not reach there is the
+Windows runner's own build of the new `size.rs` exports.
+
+**macOS 27.0 on an M3 Pro MacBook Pro, rustc 1.98.0, Node 25.6.0**, on
+`8a42ba1` with the version set, in a cold worktree. `cargo fmt --all
+--check` and `cargo clippy --workspace --all-targets --features
+kui-core/conformance -- -D warnings` are clean. `cargo test --workspace
+--features kui-core/conformance`: **1583 tests over 123 suites, 0
+failed** (3 ignored) — kui-native's `plays_through_a_device_or_degrades_gracefully`
+among them, which had failed earlier the same day on main as well as on
+F110's branch (the 30 ms blip reporting no end) and passed here: the
+machine's audio device, not a change. The C round, `cbuild --run`,
+passes its five checks, and the no-ABI panel is refused as "this build
+is 22"; the corpus passes its **52 scenes** in four adapters,
+`size-expressions` and `relative-shrink` the new ones, C's through
+`target/debug/conformance`; the ABI is **22**. Node's `node --test
+test.mjs` under `KUI_CONFORMANCE_REQUIRED=1`: **200 of 200**, the frame
+**v19**. `npm run gen` leaves no diff, the examples typecheck and their
+lockfile installs, and the headless round passes all **32 drives**.
+
+**The windowed round**, `smoke -- --node`: **38 Rust examples and the
+eleven Node examples, each on both bases, 120 frames each, every one
+exiting 0** — 98 windows — and `counter`, `host`, `c_panel` and
+`lua_panel` by hand under `KUI_SMOKE_FRAMES=120`, each exiting 0 with
+nothing on stderr: **102 windows over five hosts.** The AX audit:
+**106/106**.
+
+**The bench guard** against the alpha.24 tag, the machine otherwise
+quiet (the script's busy check silent): **green**, no guarded row more
+than 5.9% slower (`frame_10k_segments`, ±3.0%), the worst guarded spread
+3.0%, and no row of the 38 more than 8.5% slower
+(`frame_10k_rects_square_clip`, inside its ±5.3%); every row reads
+"same". No bench declares a size expression or overflows a row with a
+share, so what F109 and F110 add to a frame at rest is the flag each
+`distribute_axis` reads and the wider match `shrink_axis` makes; what a
+calc costs when declared is in F109's entry (`benches/sizes.rs`, 69.4
+against 61.8 µs for 1000 rows). README's table is kept at alpha.22's
+numbers.
 
 ## 0.1.0-alpha.24 (2026-09-28)
 
