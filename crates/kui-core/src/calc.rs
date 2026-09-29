@@ -39,6 +39,37 @@ use std::sync::{Arc, OnceLock, RwLock};
 /// How many distinct expressions the table keeps.
 pub const MAX_CALCS: usize = 1 << 16;
 
+/// How deep an expression nests: at most this many functions inside one
+/// another, whatever built it — the grammar, data, prefix code, C's
+/// builders or a Rust tree handed to [`intern`]. Every walk of a tree
+/// (evaluating, hashing, comparing, spelling, dropping) recurses, so a
+/// tree the table keeps is one those walks can finish; a spelling of
+/// `"min("` a hundred thousand times aborted the process on the parser's
+/// stack before this (backlog RG79).
+pub const MAX_DEPTH: u32 = 32;
+
+fn too_deep(what: &str) -> String {
+    format!("bad size{what}: nested past {MAX_DEPTH}")
+}
+
+/// Refuses a tree nested past [`MAX_DEPTH`], at depth `depth`: the
+/// check [`intern`] and [`norm`] make of a tree built by hand, which
+/// stops at the first level past the cap rather than walking the rest.
+fn check(e: &Expr, depth: u32) -> Result<(), String> {
+    if depth > MAX_DEPTH {
+        return Err(too_deep(""));
+    }
+    match e {
+        Expr::Px(_) | Expr::Pct(_) => Ok(()),
+        Expr::Min(xs) | Expr::Max(xs) => xs.iter().try_for_each(|x| check(x, depth + 1)),
+        Expr::Clamp(a, b, c) => {
+            check(a, depth + 1)?;
+            check(b, depth + 1)?;
+            check(c, depth + 1)
+        }
+    }
+}
+
 /// A parsed expression: lengths in logical px, percentages as fractions.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
@@ -187,10 +218,13 @@ enum Norm {
 }
 
 fn norm(e: Expr) -> Result<Norm, String> {
+    // Before `relative` and `resolve` walk it: a tree from C's builders
+    // or a Rust caller has had no cap on the way in.
+    check(&e, 0)?;
     Ok(match e {
         Expr::Pct(f) => Norm::Pct(f),
         e if !e.relative() => Norm::Px(e.resolve(0.0)),
-        e => Norm::Calc(intern(e)?),
+        e => Norm::Calc(intern_checked(e)?),
     })
 }
 
@@ -231,7 +265,14 @@ fn norm_bound(n: Norm) -> Result<crate::spec::Bound, String> {
 /// string, `{ pct }` / `{ percent }` / `{ px }`, or a one-key
 /// `{ min | max | clamp = [args] }`.
 pub fn from_value(v: &crate::value::Value) -> Result<Expr, String> {
+    value_at(v, 0)
+}
+
+fn value_at(v: &crate::value::Value, depth: u32) -> Result<Expr, String> {
     use crate::value::Value;
+    if depth > MAX_DEPTH {
+        return Err(too_deep(""));
+    }
     match v {
         Value::Int(_) | Value::Float(_) => Ok(Expr::Px(v.as_float().unwrap_or(0.0) as f32)),
         Value::Str(s) => parse(s),
@@ -254,7 +295,7 @@ pub fn from_value(v: &crate::value::Value) -> Result<Expr, String> {
                 if xs.is_empty() {
                     return Err(format!("bad size: {k} takes at least one"));
                 }
-                xs.iter().map(from_value).collect()
+                xs.iter().map(|x| value_at(x, depth + 1)).collect()
             };
             match k.as_str() {
                 "pct" | "percent" => Ok(Expr::Pct(num()? / 100.0)),
@@ -285,8 +326,8 @@ pub fn from_code(code: &[f64]) -> Result<Expr, String> {
             *at += 1;
             Ok(v)
         };
-        if depth > 32 {
-            return Err("bad size code: nested past 32".into());
+        if depth > MAX_DEPTH {
+            return Err(too_deep(" code"));
         }
         Ok(match next()? as u32 {
             1 => Expr::Px(next()? as f32),
@@ -384,6 +425,12 @@ fn table() -> &'static RwLock<Table> {
 /// The handle for `expr`: the one an equal expression already has, or a
 /// new one.
 pub fn intern(expr: Expr) -> Result<Calc, String> {
+    check(&expr, 0)?;
+    intern_checked(expr)
+}
+
+/// [`intern`] for a tree [`check`] has passed.
+fn intern_checked(expr: Expr) -> Result<Calc, String> {
     if let Some(&id) = table()
         .read()
         .map_err(|e| e.to_string())?
@@ -415,7 +462,7 @@ pub fn parse(s: &str) -> Result<Expr, String> {
         s: s.as_bytes(),
         at: 0,
     };
-    let e = p.expr()?;
+    let e = p.expr(0)?;
     p.skip_ws();
     if p.at < p.s.len() {
         return Err(p.error("the end"));
@@ -466,7 +513,13 @@ impl Parser<'_> {
         }
     }
 
-    fn expr(&mut self) -> Result<Expr, String> {
+    /// One argument, `depth` functions in: past [`MAX_DEPTH`] it is
+    /// refused before it is read, so the recursion is bounded by the cap
+    /// and not by the input (backlog RG79).
+    fn expr(&mut self, depth: u32) -> Result<Expr, String> {
+        if depth > MAX_DEPTH {
+            return Err(too_deep(""));
+        }
         self.skip_ws();
         for name in ["clamp", "min", "max"] {
             if self.s[self.at..].starts_with(name.as_bytes()) {
@@ -474,9 +527,9 @@ impl Parser<'_> {
                 if !self.eat("(") {
                     return Err(self.error("\"(\""));
                 }
-                let mut args = vec![self.expr()?];
+                let mut args = vec![self.expr(depth + 1)?];
                 while self.eat(",") {
-                    args.push(self.expr()?);
+                    args.push(self.expr(depth + 1)?);
                 }
                 if !self.eat(")") {
                     return Err(self.error("\",\" or \")\""));
@@ -628,5 +681,44 @@ mod tests {
         assert!(parse("clamp(1, 2)").unwrap_err().contains("three"));
         assert!(parse("wide").unwrap_err().contains("at \"wide\""));
         assert!(parse("min(1, 2").unwrap_err().contains("at the end"));
+    }
+
+    /// `n` functions nested, spelled, as data and as prefix code.
+    fn nested(n: usize) -> (String, crate::value::Value, Vec<f64>, Expr) {
+        use crate::value::Value;
+        let spelled = format!("{}50%{}", "min(".repeat(n), ")".repeat(n));
+        let mut data = Value::Map(vec![("pct".into(), Value::Int(50))]);
+        let mut code = [3.0, 1.0].repeat(n);
+        code.extend([2.0, 0.5]);
+        let mut built = Expr::Pct(0.5);
+        for _ in 0..n {
+            data = Value::Map(vec![("min".into(), Value::List(vec![data]))]);
+            built = Expr::Min(vec![built]);
+        }
+        (spelled, data, code, built)
+    }
+
+    /// Nesting stops at [`MAX_DEPTH`] whatever builds the tree: the
+    /// parser and data recursed as deep as the input went, and `"min("`
+    /// a hundred thousand times overflowed the stack (backlog RG79).
+    #[test]
+    fn nesting_stops_at_the_cap() {
+        let deep = parse(&"min(".repeat(100_000)).unwrap_err();
+        assert_eq!(deep, "bad size: nested past 32");
+        let (s, v, code, e) = nested(MAX_DEPTH as usize);
+        assert!(parse(&s).is_ok(), "32 is allowed");
+        assert!(from_value(&v).is_ok());
+        assert!(from_code(&code).is_ok());
+        assert!(intern(e).is_ok());
+        let (s, v, code, e) = nested(MAX_DEPTH as usize + 1);
+        assert_eq!(parse(&s).unwrap_err(), "bad size: nested past 32");
+        assert_eq!(from_value(&v).unwrap_err(), "bad size: nested past 32");
+        assert_eq!(
+            from_code(&code).unwrap_err(),
+            "bad size code: nested past 32"
+        );
+        assert_eq!(intern(e.clone()).unwrap_err(), "bad size: nested past 32");
+        assert!(sizing_of(e).is_err(), "a tree built by hand is held to it");
+        assert!(sizing(&s).is_err());
     }
 }

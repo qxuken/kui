@@ -150,6 +150,22 @@ mod tests {
         assert_eq!(bad.tag, 0, "fit is not a size");
     }
 
+    /// Wrapping a calc in `kui_size_min` again and again nests it one
+    /// level a call; past the core's cap it is refused, `KUI_FIT`, rather
+    /// than a tree every later walk recurses through (backlog RG79).
+    #[test]
+    fn nesting_by_hand_stops_at_the_cap() {
+        let mut s = kui_size_pct(50.0);
+        let mut calcs = 0;
+        for _ in 0..40 {
+            let one = [s];
+            s = kui_size_min(one.as_ptr(), 1);
+            calcs += (s.tag == 4) as u32;
+        }
+        assert_eq!(s.tag, 0, "refused past the cap");
+        assert_eq!(calcs, kui_core::calc::MAX_DEPTH);
+    }
+
     /// A negative `KUI_FIXED` ceiling is a ceiling of 0, not the calc a
     /// negative `max_w` otherwise stands for (backlog RG78).
     #[test]
