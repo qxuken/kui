@@ -126,6 +126,14 @@ impl LabelIndex {
             .map(|(_, start, len, _)| &self.text[*start as usize..(*start + *len) as usize])
     }
 
+    /// Every `(key, label)`, in tree order: what a trace indexes once
+    /// rather than scanning per node (backlog F111).
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (Key, &str)> + '_ {
+        self.entries
+            .iter()
+            .map(|(k, start, len, _)| (*k, &self.text[*start as usize..(*start + *len) as usize]))
+    }
+
     /// The keys opened under `label` and the origin each was opened
     /// under, in tree order.
     pub(crate) fn find<'a>(

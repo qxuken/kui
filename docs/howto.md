@@ -1484,6 +1484,43 @@ prop an element does not read.
 
 [Warnings table](props.md#warnings)
 
+### Why is my window drawing frames when nothing moves?
+
+Ask each frame why it runs. `ui.core().frame_cause()` in the view is
+every reason that reached the window since the last frame began: the
+input by kind (`key`, `pointerMove`, `wheel` — a swipe's momentum
+included), what the runner saw and the view never hears (`wake`,
+`resize`, `caret`, `retry`, `overdue`, `appearance`, …), and `owed` when
+the frame before left one owed. Turn on `set_frame_trace(true)` and two
+more readings come with it: `owed_by()` names who held that owed frame —
+the nodes mid-transition by label path and slot, the cycles, the exits,
+the easing scrollers, the `animate` nodes, and the file and line of
+every `request_frame`, kui's own asks (`scrollbar fade`, `resliced`)
+named for what they are — and `frame_unchanged()` says whether the last
+frame drew exactly what the one before did, which is a frame that cost
+you and changed nothing.
+
+```rust
+fn view(&mut self, ui: &mut Ui<'_>) {
+    let core = ui.core();
+    let why = core.frame_cause();
+    if why.contains(FrameCause::OWED) {
+        for h in &core.owed_by().transitions {
+            eprintln!("{why:?}: {} {:?}", h.name, h.slots);
+        }
+    }
+    // …
+}
+```
+
+Node reads the same as `frameCause()`, `owedBy()` and `frameUnchanged()`
+after `setFrameTrace(true)`; C as the `KUI_FRAME_CAUSE_*` bits of
+`kui_frame_cause`, a driver of its own adding what it saw with
+`kui_note_frame_cause`. The trace is off by default and costs nothing
+off; the reasons are always kept.
+
+[alpha.26](../CHANGELOG.md#010-alpha26-unreleased)
+
 ### How do I use one font in every headless core of a suite?
 
 Register it in `setup` and read its id in `init(surface)` into the model, and

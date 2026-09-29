@@ -992,7 +992,7 @@ impl DynShell<'_> {
     fn request_redraw(&self) {
         self.owed.set(false);
         for p in &self.panes {
-            p.window.request_redraw();
+            p.redraw_for(FrameCause::HOST);
         }
     }
 }
@@ -1812,7 +1812,7 @@ impl DynShell<'_> {
         }
         self.route_events(pending);
         for p in &self.panes {
-            p.window.request_redraw();
+            p.redraw_for(FrameCause::AUDIO);
         }
     }
 
@@ -1860,7 +1860,7 @@ impl DynShell<'_> {
         // hover, every keystroke — is exactly what it was.
         if reached_app && self.panes.len() > 1 {
             for p in &self.panes {
-                p.window.request_redraw();
+                p.redraw_for(FrameCause::ELSEWHERE);
             }
         }
         reached_app
@@ -1877,7 +1877,9 @@ impl DynShell<'_> {
         // show what the app made of `changed`.
         let reached_app = self.route_events(events);
         self.owe_for(reached_app);
-        self.panes[i].window.request_redraw();
+        // The one caller is the runner's own ⌘X, which the core never
+        // hears as a key.
+        self.panes[i].redraw_for(FrameCause::KEY);
     }
 
     /// Builds and draws one window's frame.
@@ -1906,6 +1908,9 @@ impl DynShell<'_> {
         let size = window.inner_size();
         let t_view = std::time::Instant::now();
         pane.core.set_time(epoch.elapsed().as_secs_f64());
+        // Why the runner asked, beside the input the core recorded: the
+        // view reads both as `frame_cause` (backlog F111).
+        pane.core.note_frame_cause(pane.cause.take());
         // The extensions fill the slots the host's view declares, in place
         // (`Ui::slot`), and `"root"` after it unless the host placed that
         // too — `finish` below does the latter and reports slots nobody
@@ -2038,7 +2043,7 @@ impl DynShell<'_> {
                 if let Some(r) = pane.renderer.as_mut() {
                     r.resize(size.width, size.height);
                 }
-                window.request_redraw();
+                pane.redraw_for(FrameCause::RETRY);
             }
             // The surface is configured wrong for the window — a size the
             // platform never told us, a swapchain a driver update left
@@ -2055,7 +2060,7 @@ impl DynShell<'_> {
                         if let Some(r) = pane.renderer.as_mut() {
                             r.resize(size.width, size.height);
                         }
-                        window.request_redraw();
+                        pane.redraw_for(FrameCause::RETRY);
                     }
                     Refused::GiveUp { say } => {
                         if say {
@@ -2142,7 +2147,7 @@ impl DynShell<'_> {
                         eprintln!("kui: device reopened");
                     }
                     pane.renderer = Some(r);
-                    pane.window.request_redraw();
+                    pane.redraw_for(FrameCause::DEVICE);
                 }
                 Err(err) => eprintln!("kui: cannot reopen window {}: {err}", pane.id.0),
             }
@@ -2273,10 +2278,10 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                 if let Some(r) = pane.renderer.as_mut() {
                     r.resize(size.width, size.height);
                 }
-                pane.window.request_redraw();
+                pane.redraw_for(FrameCause::RESIZE);
             }
             WindowEvent::ScaleFactorChanged { .. } => {
-                self.panes[i].window.request_redraw();
+                self.panes[i].redraw_for(FrameCause::SCALE);
             }
             WindowEvent::CursorMoved { position, .. } => {
                 let pane = &mut self.panes[i];
@@ -2362,7 +2367,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                     // something else (F40).
                     if before != (self.system, self.panes[i].appearance) {
                         for p in &self.panes {
-                            p.window.request_redraw();
+                            p.redraw_for(FrameCause::APPEARANCE);
                         }
                     }
                 }
@@ -2376,7 +2381,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                     .retry
                     .occluded(covered, std::time::Instant::now());
                 if !covered {
-                    self.panes[i].window.request_redraw();
+                    self.panes[i].redraw_for(FrameCause::OCCLUSION);
                 }
             }
             // The theme changing is the other one, and the only one that
@@ -2386,7 +2391,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
             WindowEvent::ThemeChanged(theme) => {
                 self.panes[i].appearance = theme_appearance(Some(theme));
                 self.system = system_env::query();
-                self.panes[i].window.request_redraw();
+                self.panes[i].redraw_for(FrameCause::APPEARANCE);
             }
             // The four keyboard events go to `key_target`, which is this
             // pane unless it is lending its keyboard to a non-activating
@@ -2530,8 +2535,9 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                         // Choosing in a menu closes it *and* does what it
                         // says: one frame, so this one waits for the host.
                         self.owe_for(reached_app);
+                        // The press the core never saw.
                         for p in &self.panes {
-                            p.window.request_redraw();
+                            p.redraw_for(FrameCause::BUTTON);
                         }
                         return;
                     }
@@ -2641,7 +2647,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                     if self.frames_drawn >= n {
                         self.exit_requested = true;
                     } else {
-                        self.panes[i].window.request_redraw();
+                        self.panes[i].redraw_for(FrameCause::SMOKE);
                     }
                 }
                 self.panes[i].publish_access();
@@ -2666,7 +2672,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                 if !pending.is_empty() {
                     self.route_events(pending);
                     if let Some(p) = self.panes.get(i) {
-                        p.window.request_redraw();
+                        p.redraw_for(FrameCause::AFTER_FRAME);
                     }
                 }
                 // Windows moves and resizes a window inside its own modal
@@ -2714,7 +2720,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
         self.saw_event = true;
         if matches!(event, access_bridge::UserEvent::Wake) {
             for pane in &self.panes {
-                pane.window.request_redraw();
+                pane.redraw_for(FrameCause::WAKE);
             }
             return;
         }
@@ -2741,7 +2747,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
         // the frame has to happen — an app that only redraws on input
         // would otherwise hear it with the next click.
         if bridge.active() != was_listening {
-            self.panes[i].window.request_redraw();
+            self.panes[i].redraw_for(FrameCause::APPEARANCE);
         }
         if let Some(req) = req {
             self.dispatch(event_loop, i, InputEvent::Access(req));
@@ -2798,13 +2804,13 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
             // would only find the device still owed. Nor while it is
             // minimized, on Windows (`Pane::minimized`).
             if pane.core.animating() && !pane.awaits_device && !pane.minimized() {
-                pane.window.request_redraw();
+                pane.redraw_for(FrameCause::OWED);
             }
             // A frame held for a display that stopped firing is drawn
             // anyway once it has waited too long (`mod pacer`).
             if let Some((at, due)) = pane.pacer.overdue(now) {
                 if due {
-                    pane.window.request_redraw();
+                    pane.redraw_for(FrameCause::OVERDUE);
                 } else {
                     deadline = Some(deadline.map_or(at, |d| d.min(at)));
                 }
@@ -2813,7 +2819,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
             // only so many times (`mod retry`).
             let (ask, wake) = pane.retry.poll(now);
             if ask {
-                pane.window.request_redraw();
+                pane.redraw_for(FrameCause::RETRY);
             }
             if let Some(at) = wake {
                 deadline = Some(deadline.map_or(at, |d| d.min(at)));
@@ -2834,7 +2840,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                 if !pane.blink_visible {
                     pane.blink_visible = true;
                     pane.core.set_caret_visible(true);
-                    pane.window.request_redraw();
+                    pane.redraw_for(FrameCause::CARET);
                 }
                 pane.blink_deadline = None;
                 continue;
@@ -2853,7 +2859,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                 if pane.blink_visible {
                     pane.blink_visible = false;
                     pane.core.set_caret_visible(false);
-                    pane.window.request_redraw();
+                    pane.redraw_for(FrameCause::CARET);
                 }
                 pane.blink_deadline = None;
                 continue;
@@ -2865,13 +2871,13 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                 if !pane.blink_visible {
                     pane.blink_visible = true;
                     pane.core.set_caret_visible(true);
-                    pane.window.request_redraw();
+                    pane.redraw_for(FrameCause::CARET);
                 }
             } else if now >= pane.blink_deadline.unwrap() {
                 pane.blink_visible = !pane.blink_visible;
                 pane.core.set_caret_visible(pane.blink_visible);
                 pane.blink_deadline = Some(now + BLINK_INTERVAL);
-                pane.window.request_redraw();
+                pane.redraw_for(FrameCause::CARET);
             }
             if let Some(d) = pane.blink_deadline {
                 deadline = Some(deadline.map_or(d, |e| e.min(d)));

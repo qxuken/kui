@@ -42,7 +42,7 @@ impl DynShell<'_> {
                     // No view to show it over: fall back to the drawn
                     // menu rather than leaving one open that never shows.
                     self.panes[i].core.set_native_menus(false);
-                    self.panes[i].window.request_redraw();
+                    self.panes[i].redraw_for(FrameCause::MENU);
                 }
                 return;
             }
@@ -64,7 +64,7 @@ impl DynShell<'_> {
             self.route_events(events);
             self.apply_menu_actions(event_loop, i);
             self.apply_window_commands(event_loop);
-            self.panes[i].window.request_redraw();
+            self.panes[i].redraw_for(FrameCause::MENU);
         }
         #[cfg(not(target_os = "macos"))]
         let _ = event_loop;
@@ -161,7 +161,7 @@ impl DynShell<'_> {
                     self.owe_for(reached_app);
                     self.apply_menu_actions(event_loop, i);
                     self.apply_window_commands(event_loop);
-                    self.panes[i].window.request_redraw();
+                    self.panes[i].redraw_for(FrameCause::MENU);
                 }
                 // A row of the standard Edit menu is the chord it spells,
                 // and a chord goes to the window with the keyboard.

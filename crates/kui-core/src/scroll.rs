@@ -410,6 +410,18 @@ impl ScrollStore {
         self.owes
     }
 
+    /// The containers whose eased offset the last layout left mid-flight
+    /// — what [`Self::animating`] is made of, read back off the entries
+    /// for a trace (backlog F111): a leg still running on a container
+    /// that frame laid out.
+    pub(crate) fn easing(&self) -> impl Iterator<Item = Key> + '_ {
+        let frame_no = self.frame_no;
+        self.entries
+            .iter()
+            .filter(move |(_, e)| e.smooth.is_some() && e.laid_frame == frame_no)
+            .map(|(k, _)| *k)
+    }
+
     /// How long `key`'s scroll state has been quiet, in seconds of the
     /// driver's clock, as of `now` — zero on the frame the offset or the
     /// travel moved, on the first frame the bar is asked about, and

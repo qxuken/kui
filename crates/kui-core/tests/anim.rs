@@ -193,6 +193,154 @@ fn request_frame_owes_exactly_one_frame() {
     assert!(!core.animating(), "and only one");
 }
 
+/// F111: `owed()` says a frame is owed; `owed_by()` says who holds it,
+/// read from inside the view of the frame it caused. A transition names
+/// its node by the labels from the root and the slots still moving; a
+/// `request_frame` names the line that called it; an `animate` node names
+/// itself; and the frame's cause carries `owed`. Off, the record is empty.
+#[test]
+fn owed_by_names_who_holds_the_frame() {
+    use kui_core::{FrameCause, OwedBy};
+    let mut core = Core::new();
+    core.set_frame_trace(true);
+    let t = Transition::ms(100.0).easing(Easing::Linear);
+    // One frame: `width` for the bar, whether to ask for the next frame,
+    // whether the pulse animates; returns what the view read.
+    let frame = |core: &mut Core, now: f64, width: f32, ask: bool, pulse: bool| {
+        core.set_time(now);
+        let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+        let seen = (ui.core().owed_by().clone(), ui.core().frame_cause());
+        ui.with_keyed("panel", NodeSpec::column().fill(), |ui| {
+            ui.leaf_keyed(
+                "bar",
+                NodeSpec::column()
+                    .width(width)
+                    .height(10.0)
+                    .transition_with(t),
+            );
+            let mut p = NodeSpec::column().width(5.0);
+            if pulse {
+                p = p.animate();
+            }
+            ui.leaf(p);
+        });
+        let line = line!() + 2;
+        if ask {
+            ui.request_frame();
+        }
+        ui.finish();
+        (seen, line)
+    };
+    frame(&mut core, 0.0, 10.0, false, false);
+    frame(&mut core, 0.01, 100.0, true, true);
+    assert!(core.owed().transition && core.owed().requested);
+    let ((by, cause), line) = frame(&mut core, 0.05, 100.0, false, false);
+    assert!(cause.contains(FrameCause::OWED), "{cause:?}");
+    assert_eq!(by.transitions.len(), 1, "{by:?}");
+    assert_eq!(by.transitions[0].name, "panel/bar");
+    assert_eq!(by.transitions[0].slots, vec!["width"]);
+    assert_eq!(by.requests.len(), 1);
+    assert_eq!(by.requests[0].why, "request_frame");
+    assert!(by.requests[0].at.file().ends_with("anim.rs"));
+    assert_eq!(by.requests[0].at.line(), line);
+    assert_eq!(by.animate.len(), 1);
+    assert!(
+        by.animate[0].name.starts_with("panel/#"),
+        "an unlabelled node ends in its key: {}",
+        by.animate[0].name
+    );
+    assert!(by.cycles.is_empty() && by.departures.is_empty() && by.scrolls.is_empty());
+    // Still mid-leg at 0.05 (the leg began at 0.01), and nothing asked.
+    let ((by, _), _) = frame(&mut core, 0.2, 100.0, false, false);
+    assert_eq!(by.transitions.len(), 1);
+    assert!(by.requests.is_empty() && by.animate.is_empty());
+    // The leg ended at 0.11: the frame at 0.2 owed nothing.
+    assert!(!core.owed().any());
+    let ((by, cause), _) = frame(&mut core, 0.3, 100.0, false, false);
+    assert!(by.is_empty(), "{by:?}");
+    assert!(!cause.contains(FrameCause::OWED));
+
+    // Off: the reasons are kept, the holders are not.
+    core.set_frame_trace(false);
+    frame(&mut core, 0.4, 10.0, true, false);
+    let ((by, cause), _) = frame(&mut core, 0.45, 10.0, false, false);
+    assert_eq!(by, OwedBy::default());
+    assert!(cause.contains(FrameCause::OWED));
+}
+
+/// F111: the transition holders are read back off the tweens, not
+/// recorded while they were driven — so they must agree with the flag
+/// `drive` set, frame by frame, to the end of every leg: a linear leg, a
+/// spring's settle, and a slide.
+#[test]
+fn owed_by_transitions_agree_with_owed_every_frame() {
+    for easing in [Easing::Linear, Easing::Spring, Easing::Bouncy] {
+        let mut core = Core::new();
+        core.set_frame_trace(true);
+        let t = Transition::ms(120.0).easing(easing);
+        let mut now = 0.0;
+        let mut owed_before = false;
+        for i in 0..200 {
+            core.set_time(now);
+            let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+            let held = !ui.core().owed_by().transitions.is_empty();
+            assert_eq!(held, owed_before, "{easing:?} frame {i}");
+            let w = if i == 0 { 10.0 } else { 200.0 };
+            ui.leaf_keyed(
+                "k",
+                NodeSpec::column()
+                    .width(w)
+                    .height(10.0)
+                    .bg(Color::WHITE)
+                    .transition_with(t),
+            );
+            ui.finish();
+            owed_before = core.owed().transition;
+            now += 1.0 / 60.0;
+        }
+        assert!(!owed_before, "{easing:?} settled");
+    }
+}
+
+/// F111: a keyframe cycle and a departure are named as well.
+#[test]
+fn owed_by_names_cycles_and_departures() {
+    let mut core = Core::new();
+    core.set_frame_trace(true);
+    let frame = |core: &mut Core, now: f64, show: bool| {
+        core.set_time(now);
+        let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+        let by = ui.core().owed_by().clone();
+        ui.leaf_keyed(
+            "spinner",
+            NodeSpec::column()
+                .size(10.0, 10.0)
+                .transition_with(Transition::ms(1000.0).repeat(Repeat::Normal))
+                .keyframes(vec![Keyframe::default().width(20.0)]),
+        );
+        if show {
+            ui.leaf_keyed(
+                "toast",
+                NodeSpec::column()
+                    .size(80.0, 40.0)
+                    .bg(Color::WHITE)
+                    .transition(100.0)
+                    .exit(Enter::from(40.0, 0.0).opacity(0.0)),
+            );
+        }
+        ui.finish();
+        by
+    };
+    frame(&mut core, 0.0, true);
+    frame(&mut core, 0.01, false);
+    assert!(core.owed().cycle && core.owed().depart);
+    let by = frame(&mut core, 0.02, false);
+    let names =
+        |hs: &[kui_core::FrameHolder]| hs.iter().map(|h| h.name.clone()).collect::<Vec<_>>();
+    assert_eq!(names(&by.cycles), vec!["spinner"]);
+    assert_eq!(names(&by.departures), vec!["toast"]);
+}
+
 /// The `animate` row is `request_frame` as a declaration: the frame owes
 /// another for as long as a declared node carries it, and stops owing the
 /// frame after the last one that does — the class of regression C27

@@ -1185,6 +1185,45 @@ export interface Owed {
   scroll: boolean;
 }
 
+/** A reason a frame runs, as `frameCause()` names it (backlog F111): the
+ *  input it answers, what a window's runner saw, or `owed` — the frame
+ *  before left one owed, and `owedBy()` says who. */
+export type FrameCauseName =
+  | 'pointerMove' | 'pointerLeave' | 'button' | 'wheel' | 'key' | 'modifiers'
+  | 'text' | 'preedit' | 'access' | 'fileDrag' | 'files'
+  | 'first' | 'wake' | 'host' | 'resize' | 'scale' | 'focus' | 'occlusion'
+  | 'appearance' | 'caret' | 'retry' | 'overdue' | 'device' | 'afterFrame'
+  | 'elsewhere' | 'menu' | 'audio' | 'smoke'
+  | 'owed';
+
+/** One thing holding an owed frame (backlog F111). */
+export interface FrameHolder {
+  /** The node's key, as `keyOf` spells it. */
+  key: string;
+  /** The labels from the root, `/`-joined; an unlabelled node ends in its
+   *  accessible name in quotes, or `#` and eight hex digits of its key. */
+  name: string;
+  /** A transition's slots still mid-flight (`width`, `bg`, `position`,
+   *  …); empty for every other holder. */
+  slots: string[];
+}
+
+/** Who held the frame the last one left owed: `owed()` with names
+ *  (backlog F111). Empty unless `setFrameTrace(true)`. */
+export interface OwedBy {
+  transitions: FrameHolder[];
+  cycles: FrameHolder[];
+  departures: FrameHolder[];
+  scrolls: FrameHolder[];
+  autoscroll: FrameHolder | null;
+  animate: FrameHolder[];
+  /** Each line that asked for the frame: `why` is `request_frame` for a
+   *  `requestFrame` call, else what kui asked for itself
+   *  (`scrollbar fade`, `resliced`, …); `file` and `line` are the Rust
+   *  source line that asked. */
+  requests: { why: string; file: string; line: number }[];
+}
+
 /** The window's frame timing: the averages and maxima over the last 120
  *  frames, and two monotonic counts. */
 export interface FrameTiming {
@@ -2426,6 +2465,39 @@ export declare class Ctx {
    */
   owed(): Owed
   /**
+   * Turns on the trace of why frames run (backlog F111): who
+   * holds each owed frame (`owedBy()`) and whether each frame
+   * changed what is drawn (`frameUnchanged()`). Off by default,
+   * where neither costs anything; `frameCause()` is kept either
+   * way.
+   */
+  setFrameTrace(on: boolean): void
+  /**
+   * Why the frame being built runs — between frames, the last
+   * one — as the names of its reasons: the input it answers
+   * (`key`, `pointerMove`, `wheel`, …), what a window's runner
+   * saw (`wake`, `resize`, `caret`, `retry`, …) and `owed` when
+   * the frame before left one owed (backlog F111). Empty for a
+   * frame nothing here asked for.
+   */
+  frameCause(): FrameCauseName[]
+  /**
+   * Who held the frame the last one left owed — `owed()` with
+   * names: the nodes mid-transition (with their slots), the
+   * cycles, the departures, the easing scrollers, the held
+   * drag's scroller, the `animate` nodes, and each line that
+   * asked for a frame. Read from inside a `view`, the reason
+   * that frame exists. Empty unless `setFrameTrace(true)`
+   * (backlog F111).
+   */
+  owedBy(): OwedBy
+  /**
+   * Whether the last finished frame drew exactly what the one
+   * before drew; `null` untraced and on the first traced frame
+   * (backlog F111).
+   */
+  frameUnchanged(): boolean | null
+  /**
    * Byte budget for the shaped-text cache: every text a frame
    * draws is shaped once and kept, and past this many
    * (estimated) bytes the least recently drawn entries go at
@@ -3559,6 +3631,39 @@ export declare class KuiWindow {
    * `cycle` (backlog F64).
    */
   owed(): Owed
+  /**
+   * Turns on the trace of why frames run (backlog F111): who
+   * holds each owed frame (`owedBy()`) and whether each frame
+   * changed what is drawn (`frameUnchanged()`). Off by default,
+   * where neither costs anything; `frameCause()` is kept either
+   * way.
+   */
+  setFrameTrace(on: boolean): void
+  /**
+   * Why the frame being built runs — between frames, the last
+   * one — as the names of its reasons: the input it answers
+   * (`key`, `pointerMove`, `wheel`, …), what a window's runner
+   * saw (`wake`, `resize`, `caret`, `retry`, …) and `owed` when
+   * the frame before left one owed (backlog F111). Empty for a
+   * frame nothing here asked for.
+   */
+  frameCause(): FrameCauseName[]
+  /**
+   * Who held the frame the last one left owed — `owed()` with
+   * names: the nodes mid-transition (with their slots), the
+   * cycles, the departures, the easing scrollers, the held
+   * drag's scroller, the `animate` nodes, and each line that
+   * asked for a frame. Read from inside a `view`, the reason
+   * that frame exists. Empty unless `setFrameTrace(true)`
+   * (backlog F111).
+   */
+  owedBy(): OwedBy
+  /**
+   * Whether the last finished frame drew exactly what the one
+   * before drew; `null` untraced and on the first traced frame
+   * (backlog F111).
+   */
+  frameUnchanged(): boolean | null
   /**
    * Byte budget for the shaped-text cache: every text a frame
    * draws is shaped once and kept, and past this many

@@ -1217,6 +1217,26 @@ static int surface(void) {
         while (kui_poll_event(ui, &dev)) {}
     }
 
+    /* Why a frame runs (backlog F111), on a context of its own: the
+     * input handed in and the host's note are the next frame's reasons,
+     * KUI_FRAME_CAUSE_OWED the one after a frame that owed another, and,
+     * traced, whether a frame drew what the one before drew. */
+    {
+        KuiCtx *why = kui_ctx_new();
+        kui_set_frame_trace(why, true);
+        kui_frame_begin(why, 320, 240, 1);
+        kui_frame_finish(why);
+        check(kui_frame_unchanged(why) == -1, "kui_frame_unchanged: nothing to compare the first frame with");
+        kui_input_cursor(why, 5, 5);
+        kui_note_frame_cause(why, KUI_FRAME_CAUSE_WAKE);
+        kui_frame_begin(why, 320, 240, 1);
+        check(kui_frame_cause(why) == (KUI_FRAME_CAUSE_POINTER_MOVE | KUI_FRAME_CAUSE_WAKE),
+              "kui_frame_cause: the pointer's move and the host's wake");
+        kui_frame_finish(why);
+        check(kui_frame_unchanged(why) == 1, "and it drew what the frame before drew");
+        kui_ctx_free(why);
+    }
+
     /* A standalone context is nobody's slot. */
     {
         KuiStr name = {0};

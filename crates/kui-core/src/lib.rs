@@ -111,6 +111,7 @@ pub use resources::{
     FontId, FragmentId, ImageBacking, ImageFit, ImageId, ImageOpts, Resources, Sampling, SessionId,
     SoundId, SystemFont,
 };
+pub use runtime::cause::{FrameCause, FrameHolder, FrameRequest, OwedBy};
 pub use runtime::devtools;
 pub use runtime::devtools::Dock as DevtoolsDock;
 pub use runtime::inspect::{NodeInfo, NodeKind};

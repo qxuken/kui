@@ -591,6 +591,53 @@ pub extern "C" fn kui_owed(ptr: *mut KuiCtx) -> u32 {
     })
 }
 
+/// Turns the trace of why frames run on or off (backlog F111): here, the
+/// digest `kui_frame_unchanged` compares. `kui_frame_cause` is kept either
+/// way.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_frame_trace(ptr: *mut KuiCtx, on: bool) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().set_frame_trace(on);
+        }
+    })
+}
+
+/// The `KUI_FRAME_CAUSE_*` bits of the frame being built — between
+/// frames, the last one (`Core::frame_cause`, backlog F111).
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_frame_cause(ptr: *mut KuiCtx) -> u32 {
+    guard(0, || {
+        unsafe { ctx(ptr) }.map_or(0, |c| c.core().frame_cause().bits())
+    })
+}
+
+/// Adds `KUI_FRAME_CAUSE_*` bits to the next frame's reasons: the host's
+/// own — a wake, a resize, a blink — beside the input `kui_input`
+/// records (`Core::note_frame_cause`, backlog F111).
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_note_frame_cause(ptr: *mut KuiCtx, cause: u32) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core()
+                .note_frame_cause(kui_core::FrameCause::from_bits(cause));
+        }
+    })
+}
+
+/// 1 when the last finished frame drew exactly what the one before drew,
+/// 0 when not, -1 untraced or on the first traced frame
+/// (`Core::frame_unchanged`, backlog F111).
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_frame_unchanged(ptr: *mut KuiCtx) -> i32 {
+    guard(-1, || {
+        unsafe { ctx(ptr) }.map_or(-1, |c| match c.core().frame_unchanged() {
+            Some(same) => same as i32,
+            None => -1,
+        })
+    })
+}
+
 /// Rasterize outline glyphs as LCD subpixel coverage (`KUI_QUAD_GLYPH_SUBPIXEL`,
 /// atlas rgb = per-channel coverage) instead of alpha masks. Only for
 /// renderers that blend per channel; flipping it re-rasterizes every glyph.

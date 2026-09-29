@@ -107,6 +107,15 @@ impl Core {
         self.drag_follow.is_some_and(|f| f.stepped)
     }
 
+    /// The scroller a held drag stepped this frame, when it did: who
+    /// [`Self::autoscrolling`] names in a trace (backlog F111).
+    pub(crate) fn autoscroller(&self) -> Option<Key> {
+        self.drag_follow
+            .filter(|f| f.stepped)
+            .and_then(|f| f.scroller)
+            .map(Scroller::key)
+    }
+
     /// The nearest ancestor-or-self of `node` that a held drag scrolls,
     /// with its current reading. Self first, because a `uniform_list`
     /// is both the selection's scope and its scroller. A handler beats

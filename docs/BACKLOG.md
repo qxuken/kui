@@ -84,7 +84,9 @@ alpha.23 tag, and with the alpha.25 tag F109 — size expressions,
 `clamp()` and its kin resolved against the parent's box — and F110 —
 a share of the room that gives when the room is spent — from the
 kawoosh launcher-sizes review of 2026-09-29, filed and built after the
-alpha.24 tag. The index
+alpha.24 tag, and after that tag F111 — why a frame runs, who holds an
+owed one, and whether it changed what is drawn — from the kawoosh
+frame-ledger round of the same day, the day it was filed. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -1493,6 +1495,15 @@ under the still pointer, and the terminal, an `onScroll` node taking
 every delta, took the rest of the swipe. One entry, F107, **built
 2026-09-28**, the day it was filed, and in the archive, with ADR 0038.
 
+## From the kawoosh frame-ledger round (2026-09-29)
+
+kawoosh sometimes drew frames nonstop for seconds after a keystroke,
+with no input arriving, and began a ledger of why each frame ran. It
+could name its own wakes and `request_frame` calls, not which
+transition or scroller kept `animating()` true, nor why kui-native
+asked for a frame. One entry, F111, **built 2026-09-29**, the day it
+was filed, and in the archive.
+
 ## From the kawoosh launcher-sizes review (2026-09-29)
 
 kawoosh's launcher takes its width from a setting, and the user asked
@@ -2646,6 +2657,8 @@ Nothing of the kawoosh kitty-keyboard review is open (F108 **built
 2026-09-28**, the day it was filed).
 Nothing of the kawoosh launcher-sizes review is open (F109 and F110
 **built 2026-09-29**, the day they were filed).
+Nothing of the kawoosh frame-ledger round is open (F111 **built
+2026-09-29**, the day it was filed).
 Nothing of the Windows regression round of 2026-09-26 is open
 (RG38–RG46 **built 2026-09-26**, the day they were filed).
 Nothing of the Linux round under WSLg is open (RG47–RG49 **built
@@ -3548,6 +3561,10 @@ move.
 
 - `~` **F109** — [A size bounded by its parent is a view's arithmetic, a frame late and off by the padding](backlog/closed-2026-09.md#-f109--a-size-bounded-by-its-parent-is-a-views-arithmetic-a-frame-late-and-off-by-the-padding--done-2026-09-29) — done (2026-09-29) — `width`, `height` and the four clamps take `min()`, `max()`, `clamp()` over lengths and percentages, nested (`Sizing::Calc`, `Bound`, `calc`), resolved by layout against the parent's content box; as data in every binding (`{ clamp: [...] }`, `kui_size_*`), never parsed; a spelling parsed once; ABI 22, wire v19
 - `~` **F110** — [Two halves and a gap overflow their row: a share of the room never gives](backlog/closed-2026-09.md#-f110--two-halves-and-a-gap-overflow-their-row-a-share-of-the-room-never-gives--done-2026-09-29) — done (2026-09-29) — a `Percent` or a `Calc` child shrinks with the `Fit` children in an overflowing row, largest first and down to its floor (`shrink_axis`), as a CSS flex item does; `Fixed` and a scrolling row as they were; ADR 0033's decision 10 amended
+
+**From the kawoosh frame-ledger round (2026-09-29)** — F111, filed and built the same day
+
+- `~` **F111** — [A frame drawn with nothing moving cannot say why: who holds an owed frame, and what woke the window, are kui's alone](backlog/closed-2026-09.md#-f111--a-frame-drawn-with-nothing-moving-cannot-say-why-who-holds-an-owed-frame-and-what-woke-the-window-are-kuis-alone--done-2026-09-29) — done (2026-09-29) — `Core::frame_cause` (`FrameCause`: the input the core was handed by kind, what the driver noted — kui-native's wake, resize, caret, retry, overdue and the rest — and `owed`), `Core::owed_by` (`OwedBy`: the nodes mid-transition with their slots, cycles, departures, easing scrollers, the autoscroller, `animate` nodes, and each `request_frame` line as a `Location`) and `Core::frame_unchanged` (a display-list digest), the last two behind `set_frame_trace`; Node and C mirror all but C's `owed_by`
 
 **From the kawoosh kitty-keyboard review (2026-09-28)** — F108, filed and built the same day
 
