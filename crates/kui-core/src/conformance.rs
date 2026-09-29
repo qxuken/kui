@@ -3174,6 +3174,39 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "relative-shrink",
+        doc: "A share of the room gives when the room is spent (backlog \
+              F110): a row 200 px wide with a 20 px gap holds two `50%` \
+              bars, 90 each rather than 100 and overflowing; a row 300 px \
+              wide with a 20 px gap holds two `clamp(100px, 60%, 400px)` \
+              bars, 140 each rather than 180. A binding whose layout does \
+              not shrink the shares draws them wider, past their rows.",
+        custom: &[],
+        elements: &["box"],
+        build: build_relative_shrink,
+        env: NATIVE_CHROME,
+        steps: &[],
+        expect: Expect {
+            solid: 4,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            segments_follow_text: false,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 0,
+            access: &["0 window ||"],
+            events: &[],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+            secure_input: false,
+        },
+    },
+    Scene {
         name: "size-expressions",
         doc: "Size expressions (backlog F109), resolved against the \
               parent's content box: in a column 400 px wide, four bars 10 \
@@ -4540,6 +4573,26 @@ fn build_joined_backgrounds(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             &[Span::new("find").bg(Color::hex(0xd9738c66)).bg_radius(4.0)],
             mono,
         );
+    });
+}
+
+fn build_relative_shrink(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    let bar = |w: Sizing| {
+        NodeSpec::column()
+            .width(w)
+            .height(10.0)
+            .bg(Color::hex(0x3b5bd4ff))
+    };
+    ui.with(NodeSpec::column().gap(4.0), |ui| {
+        ui.with(NodeSpec::row().width(200.0).gap(20.0), |ui| {
+            ui.with(bar(Sizing::Percent(0.5)), |_| {});
+            ui.with(bar(Sizing::Percent(0.5)), |_| {});
+        });
+        let clamp = crate::schema::sizing_str("clamp(100px, 60%, 400px)").unwrap();
+        ui.with(NodeSpec::row().width(300.0).gap(20.0), |ui| {
+            ui.with(bar(clamp), |_| {});
+            ui.with(bar(clamp), |_| {});
+        });
     });
 }
 

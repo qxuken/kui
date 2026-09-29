@@ -1438,9 +1438,12 @@ fn distribute_run(
 
 /// The shrink pass: pays off `deficit` (how far in-flow children overflow
 /// the parent's main-axis content box) by compressing Fit-sized children
-/// toward their min (default 0), largest first — so equal children end up
-/// equal, clay-style. Fixed and Percent
-/// keep their declared size; Grow never overflows. Text shrinks in width
+/// and the shares of the room — `Percent` and a size expression (backlog
+/// F110) — toward their min (default 0), largest first, so equal children
+/// end up equal, clay-style. A share was cut from the content box before
+/// the gaps between the children took theirs, so two `"50%"` children and
+/// a gap overflow until this gives, as CSS's flex items shrink. Fixed
+/// keeps its declared size; Grow never overflows. Text shrinks in width
 /// (it rewraps at the new width in fit_heights) but never in height. Scroll
 /// axes skip this entirely — overflow is the point of a scroll container.
 ///
@@ -1450,7 +1453,12 @@ fn distribute_run(
 /// squeezing children that are already comfortable on other ones.
 fn shrink_axis(tree: &mut Tree, i: u32, axis: AxisSel, mut deficit: f32, only_line: Option<u32>) {
     let shrinkable = |tree: &Tree, c: u32| -> Option<f32> {
-        if is_float(tree, c) || child_sizing(tree, c, axis) != Sizing::Fit {
+        if is_float(tree, c)
+            || !matches!(
+                child_sizing(tree, c, axis),
+                Sizing::Fit | Sizing::Percent(_) | Sizing::Calc(_)
+            )
+        {
             return None;
         }
         if only_line.is_some_and(|l| tree.line[c as usize] != l) {

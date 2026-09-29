@@ -4046,6 +4046,18 @@ const SCENE_TREES = {
       bar({ minWidth: { max: ['40%', 50] } }),
     ])]);
   },
+  // Shares that give (backlog F110): two halves and a gap, two clamps and
+  // a gap, each pair fitting its row.
+  'relative-shrink': () => {
+    const bar = (width) => box({ width, height: 10, bg: '#3b5bd4' });
+    return root({}, [box({ gap: 4 }, [
+      box({ dir: 'row', width: 200, gap: 20 }, [bar('50%'), bar('50%')]),
+      box({ dir: 'row', width: 300, gap: 20 }, [
+        bar('clamp(100px, 60%, 400px)'),
+        bar({ clamp: [100, { percent: 60 }, 400] }),
+      ]),
+    ])]);
+  },
   // Access rects cut to the clip (backlog F93): three nodes on a `clip`
   // canvas past its top, three rows in a short scroller.
   'clip-access': () => {

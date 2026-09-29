@@ -112,6 +112,18 @@ kui_size_pct(80), kui_size_px(1000))` in C — though a spelling is cheap
 too: it is parsed the first frame it is seen and found by its text after
 that. A `calc` does not ease under `transition`.
 
+### Why do two `"50%"` columns with a gap fit their row?
+
+A percentage is cut from the parent's content box before the gap between
+the children takes its share, so two halves and a 20 px gap ask for 20 px
+more than the row has. A share of the room gives when the room is spent:
+a percentage or a size expression shrinks with the fit children when the
+row overflows, largest first and down to its `minWidth`, as a CSS flex
+item does — 90 and 90 in a row of 200. Write the share you mean (`"50%"`,
+not `"48%"`); give it a `minWidth` where it must not go below one. A px
+width keeps its own, and a `scrollX` row overflows on purpose. A table's
+percent columns already take their cut of the row less its gaps.
+
 ### How do I line up the columns of a key/value list, or any table?
 
 `<box dir="table">`, `grid { }` (Lua's `table` is its own), a `KuiSpec`

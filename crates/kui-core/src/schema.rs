@@ -539,7 +539,10 @@ pub const PROPS: &[PropDef] = &[
               `\"clamp(400px, 80%, 1000px)\"`, `\"min(720px, 100%)\"`, `\"max(50%, 300)\"`, \
               nested — which layout resolves against the parent's content box, the box a \
               percentage takes its cut of (backlog F109). An expression with no percentage \
-              in it is a length; a calc does not ease under `transition`.",
+              in it is a length; a calc does not ease under `transition`. A percentage \
+              or an expression gives, with the fit children, when its parent overflows \
+              — two `\"50%\"` children and a gap fit their row (backlog F110) — where a \
+              px size keeps its own.",
     },
     PropDef {
         name: "height",

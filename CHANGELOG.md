@@ -51,6 +51,13 @@ was the first bare bump to break an app in five releases).
   before layout wants `max_w_px()`. `Min::is_fit` is exactly `FIT`
   where it was any negative.
 
+One reading changes:
+
+- A percentage child of a row that overflows gives, where it kept its
+  size (under Changed, F110): two `"50%"` children and a gap now fit
+  their row, and whatever overflowed by a share of the room now draws
+  narrower. A `Fixed` child and a scrolling row are as they were.
+
 ### Added
 
 - **Size expressions** (backlog F109, from kawoosh, 2026-09-29; every
@@ -72,6 +79,18 @@ was the first bare bump to break an app in five releases).
 
 ### Changed
 
+- **A share of the room gives when the room is spent** (backlog F110,
+  from kawoosh, 2026-09-29; ADR 0033's decision 10, amended). A
+  `Percent` or a size expression is cut from the content box before the
+  gaps between the children take theirs, so two `"50%"` children and a
+  20 px gap overflowed their row by 20. They now shrink with the `Fit`
+  children when a row overflows, largest first and down to each one's
+  floor, as a CSS flex item does (`flex-shrink: 1`): 90 and 90 in a row
+  of 200, the numbers a table's percent columns already had. A `Fixed`
+  child keeps its size, and a scrolling row overflows on purpose.
+  **What you can delete:** a percentage written short of its share to
+  leave room for the gaps (`"48%"` for half a row with a gap), or a
+  `calc`-style subtraction a view did by hand.
 - **The static archive is built on request.** Nothing in the workspace
   links it, and it was the largest file any build wrote. An archive is
   every object file of the dependency tree, std's included, not yet
