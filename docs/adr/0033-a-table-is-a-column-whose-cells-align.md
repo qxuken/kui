@@ -231,6 +231,19 @@ amended: 2026-09-20
     in `tests/table_layout.rs` pins the table's number beside the plain
     row's.
 
+    *Amended 2026-09-29 (backlog F110, from kawoosh's launcher-sizes
+    review):* a plain row's percent child — and a size expression's —
+    now gives in an overflowing row, compressed toward its floor with
+    the `Fit` children, largest first (`shrink_axis`), so two `50%`
+    children and a gap fill a plain row too, 90 and 90 in 200 with a gap
+    of 20, as the table's columns do. "CSS's answer too" was a flex
+    item's with `flex-shrink: 0`; its default is 1, and the gap
+    overflowing was what the user met, in kawoosh's launcher. The table
+    keeps its own basis — the row less its gaps, a percent column never
+    shrunk — so the two agree on the number by different roads. A
+    `Fixed` child still keeps its size, and a scrolling row overflows
+    on purpose.
+
 ## Considered options
 
 - **A widget over `measure_text`.** `widgets::key_value(ui, rows)`

@@ -538,6 +538,21 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
+        // Backlog F110: two halves and a gap, two clamps and a gap, each
+        // pair fitting its row.
+        "relative-shrink" => r#"
+            local function bar(w)
+              return column { width = w, height = 10, bg = 0x3b5bd4ff }
+            end
+            return column { gap = 4,
+              row { width = 200, gap = 20, bar("50%"), bar("50%") },
+              row { width = 300, gap = 20,
+                bar("clamp(100px, 60%, 400px)"),
+                bar({ clamp = { 100, { pct = 60 }, 400 } }),
+              },
+            }
+        "#
+        .to_string(),
         // Backlog F109: four bars sized by expressions, spelled and as data.
         "size-expressions" => r#"
             local function bar(t)

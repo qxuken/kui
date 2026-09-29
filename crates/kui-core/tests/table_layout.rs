@@ -259,8 +259,8 @@ fn a_percent_column_takes_its_cut_of_the_row() {
     // The basis is the room the columns are laid across — the row's
     // content less its gaps — so two 50% columns with a gap fill the row
     // exactly; a plain row's percent child is its cut of the content
-    // box with the gap on top, as CSS has it, and overflows (ADR 0033,
-    // decision 10).
+    // box with the gap on top, and gives it back in the shrink (ADR 0033,
+    // decision 10 as amended by backlog F110): the same 90 and 90.
     let mut t = T::new(NodeSpec::table().width(px(200.0)));
     let r = t.row(0, row_spec().gap(20.0));
     let a = t.node(
@@ -286,12 +286,12 @@ fn a_percent_column_takes_its_cut_of_the_row() {
         NodeSpec::row().width(Sizing::Percent(0.5)).height(px(10.0)),
     );
     t.run();
-    assert_eq!(t.size(a).w, 100.0);
-    assert_eq!(t.size(b).w, 100.0);
+    assert_eq!(t.size(a).w, 90.0);
+    assert_eq!(t.size(b).w, 90.0);
     assert_eq!(
         t.pos(b).x,
-        120.0,
-        "a plain row: the cut of the content box, the gap on top"
+        110.0,
+        "a plain row: the cut of the content box, given back for the gap"
     );
 }
 

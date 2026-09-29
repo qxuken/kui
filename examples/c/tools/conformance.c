@@ -1076,6 +1076,38 @@ static void conf_break_spaces(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* conformance::build_relative_shrink (backlog F110): two halves and a gap,
+ * two clamps and a gap, each pair fitting its row. */
+static void conf_relative_shrink(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiSpec column = {.gap = 4};
+    kui_open(ui, &column, NULL);
+    KuiSpec bar = {.height = {KUI_FIXED, 10}, .bg = 0x3b5bd4ff};
+
+    KuiSpec halves = {.dir = KUI_ROW, .width = {KUI_FIXED, 200}, .gap = 20};
+    kui_open(ui, &halves, NULL);
+    KuiSpec half = bar;
+    half.width = kui_size_pct(50);
+    kui_open(ui, &half, NULL);
+    kui_close(ui);
+    kui_open(ui, &half, NULL);
+    kui_close(ui);
+    kui_close(ui);
+
+    KuiSpec clamps = {.dir = KUI_ROW, .width = {KUI_FIXED, 300}, .gap = 20};
+    kui_open(ui, &clamps, NULL);
+    KuiSpec clamp = bar;
+    clamp.width = kui_size_clamp(kui_size_px(100), kui_size_pct(60), kui_size_px(400));
+    kui_open(ui, &clamp, NULL);
+    kui_close(ui);
+    kui_open(ui, &clamp, NULL);
+    kui_close(ui);
+    kui_close(ui);
+
+    kui_close(ui);
+}
+
 /* conformance::build_size_expressions (backlog F109): four bars in a 400 px
  * column sized by expressions, built from parts with kui_size_* - nothing
  * parsed but the clamp, which goes through kui_size_parse. */
@@ -2002,6 +2034,7 @@ static const ConfScene CONF_SCENES[] = {
     {"underlines", conf_underlines},
     {"joined-backgrounds", conf_joined_backgrounds},
     {"break-spaces", conf_break_spaces},
+    {"relative-shrink", conf_relative_shrink},
     {"size-expressions", conf_size_expressions},
     {"media", conf_media},
     {"lines", conf_lines},
