@@ -540,6 +540,45 @@ pub const DOORS: &[Door] = &[
         doc: "The same by kind — a finite transition, a keyframe cycle, a departing ghost, a requested frame, an autoscroll — so a test can wait for the transitions to run out under a cycle that never ends; Node's loop has `quiet()` for that wait (backlog F64).",
     },
     Door {
+        rust: "Core::set_frame_trace",
+        c: Is("kui_set_frame_trace"),
+        node: Is("setFrameTrace"),
+        lua: No(GUEST),
+        doc: "Turns on the trace of why frames run: who holds an owed frame, and whether a frame changed what is drawn (backlog F111).",
+    },
+    Door {
+        rust: "Core::frame_cause",
+        c: Is("kui_frame_cause"),
+        node: Is("frameCause"),
+        lua: No(GUEST),
+        doc: "Why the frame being built runs: the input it answers by kind, what the driver noted, and `owed` after a frame that owed one (backlog F111).",
+    },
+    Door {
+        rust: "Core::note_frame_cause",
+        c: Is("kui_note_frame_cause"),
+        node: No(
+            "the drivers that note a reason are kui-native's, which a `KuiWindow` runs on; a `Ctx` driven by hand has nothing but the input the core already records",
+        ),
+        lua: No(GUEST),
+        doc: "A driver adds a reason the core cannot see — a wake, a resize, a blink, a retry — to the next frame's (backlog F111).",
+    },
+    Door {
+        rust: "Core::owed_by",
+        c: No(
+            "lists of named holders are strings the library would own across calls, an [out-array] struct and an ABI bump for a reading that is a debugging aid; a C host reads the kinds from `kui_owed`",
+        ),
+        node: Is("owedBy"),
+        lua: No(GUEST),
+        doc: "Who holds the frame the last one left owed: `owed` with the nodes, slots and calling lines named (backlog F111).",
+    },
+    Door {
+        rust: "Core::frame_unchanged",
+        c: Is("kui_frame_unchanged"),
+        node: Is("frameUnchanged"),
+        lua: No(GUEST),
+        doc: "Whether the last finished frame drew exactly what the one before drew, traced (backlog F111).",
+    },
+    Door {
         rust: "Ui::request_frame",
         c: As("`animate` on a node, and `kui_animating` for the driver to read"),
         node: As("the same form as C's"),

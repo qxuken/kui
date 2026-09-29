@@ -3099,4 +3099,38 @@ mod run_config_headless {
         assert_eq!(kui_owed(ctx), 0, "landed");
         kui_ctx_free(ctx);
     }
+
+    /// F111: a frame's reasons as bits — the input handed in, the host's
+    /// note, `KUI_FRAME_CAUSE_OWED` — and, traced, whether it drew what
+    /// the frame before drew.
+    #[test]
+    fn a_frame_cause_is_bits_and_an_unchanged_frame_is_one() {
+        use kui_core::{NodeSpec, Size};
+        let ctx = kui_ctx_new();
+        let c = unsafe { &mut *ctx };
+        let frame = |core: &mut kui_core::Core, ask: bool| {
+            let mut ui = core.frame(Size::new(100.0, 50.0), 1.0);
+            ui.leaf_keyed("b", NodeSpec::column().size(10.0, 10.0));
+            if ask {
+                ui.request_frame();
+            }
+            ui.finish();
+        };
+        kui_set_frame_trace(ctx, true);
+        frame(c.core(), false);
+        assert_eq!(kui_frame_unchanged(ctx), -1, "nothing to compare with");
+        kui_input_cursor(ctx, 5.0, 5.0);
+        kui_note_frame_cause(ctx, KUI_FRAME_CAUSE_WAKE);
+        frame(c.core(), true);
+        assert_eq!(
+            kui_frame_cause(ctx),
+            KUI_FRAME_CAUSE_POINTER_MOVE | KUI_FRAME_CAUSE_WAKE
+        );
+        assert_eq!(kui_frame_unchanged(ctx), 1);
+        frame(c.core(), false);
+        assert_eq!(kui_frame_cause(ctx), KUI_FRAME_CAUSE_OWED);
+        kui_set_frame_trace(ctx, false);
+        assert_eq!(kui_frame_unchanged(ctx), -1);
+        kui_ctx_free(ctx);
+    }
 }

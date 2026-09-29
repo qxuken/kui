@@ -556,7 +556,7 @@ impl DynShell<'_> {
             'a' => match scope {
                 Some(scope) => {
                     pane.core.select_all_in(scope);
-                    pane.window.request_redraw();
+                    pane.redraw_for(FrameCause::KEY);
                 }
                 None => {
                     self.dispatch(
@@ -627,7 +627,7 @@ impl DynShell<'_> {
         self.apply_menu_actions(event_loop, i);
         self.apply_window_commands(event_loop);
         if let Some(i) = self.pane_of(here) {
-            self.panes[i].window.request_redraw();
+            self.panes[i].redraw_for(FrameCause::KEY);
         }
     }
 }

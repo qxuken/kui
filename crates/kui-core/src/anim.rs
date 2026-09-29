@@ -231,6 +231,47 @@ pub(crate) enum Slot {
 
 const SLOTS: usize = 9;
 
+impl Slot {
+    /// Every slot, at its index.
+    const ALL: [Slot; SLOTS] = [
+        Slot::Width,
+        Slot::Height,
+        Slot::Bg,
+        Slot::Border,
+        Slot::Radius,
+        Slot::Pos,
+        Slot::Opacity,
+        Slot::Shadow,
+        Slot::ShadowColor,
+    ];
+
+    /// The names of the slots set in `mask` (bit `slot as u16`), in slot
+    /// order.
+    pub(crate) fn names(mask: u16) -> Vec<&'static str> {
+        Self::ALL
+            .into_iter()
+            .filter(|s| mask & (1 << *s as u16) != 0)
+            .map(Slot::name)
+            .collect()
+    }
+
+    /// The prop the slot eases, as a person reads it in a trace
+    /// ([`crate::runtime::cause::FrameHolder::slots`], backlog F111).
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Slot::Width => "width",
+            Slot::Height => "height",
+            Slot::Bg => "bg",
+            Slot::Border => "borderColor",
+            Slot::Radius => "radius",
+            Slot::Pos => "position",
+            Slot::Opacity => "opacity",
+            Slot::Shadow => "shadow",
+            Slot::ShadowColor => "shadowColor",
+        }
+    }
+}
+
 /// One slot's retained motion. Nine of these per transitioning node, held
 /// across frames, so what is *not* on it matters: a 10,000-node frame with
 /// a transition on every node walks the lot of them.
@@ -365,6 +406,11 @@ pub struct AnimStore {
     now: Option<f64>,
     /// The core's frame counter as of `begin_frame`.
     frame_no: u64,
+    /// The clock this frame drives at, as of `begin_frame`: what
+    /// [`Self::owing`] reads a leg's progress at once the frame is over,
+    /// since the driver sets the next frame's time before that frame
+    /// begins (backlog F111).
+    drove_at: Option<f64>,
     /// Whether any tween driven this frame is still mid-flight — a
     /// finite leg, or a spring not yet at rest.
     owes_transition: bool,
@@ -405,6 +451,7 @@ impl AnimStore {
     /// frame drives.
     pub(crate) fn begin_frame(&mut self, frame_no: u64) {
         self.frame_no = frame_no;
+        self.drove_at = self.now;
         self.owes_transition = false;
         self.owes_cycle = false;
         // Tweens nothing has driven for a while go (`retain::sweep_cutoff`).
@@ -413,6 +460,35 @@ impl AnimStore {
         {
             self.tweens
                 .retain(|_, slots| slots.iter().flatten().any(|t| t.last_used >= cutoff));
+        }
+    }
+
+    /// Every slot the last frame drove and left mid-flight, by node: what
+    /// [`Self::owes`]'s `transition` half is made of, read back off the
+    /// tweens rather than recorded while they were driven, so a frame
+    /// nobody traces pays nothing for it (backlog F111). Asked between
+    /// frames, or before this store's `begin_frame`: the same test
+    /// `drive` made — a leg short of its end at the frame's clock, a
+    /// spring not yet snapped to rest.
+    pub(crate) fn owing(&self, mut each: impl FnMut(Key, Slot)) {
+        let Some(now) = self.drove_at.or(self.now) else {
+            return;
+        };
+        for (&key, slots) in &self.tweens {
+            for (i, tw) in slots.iter().enumerate() {
+                let Some(tw) = tw else { continue };
+                if tw.last_used != self.frame_no {
+                    continue;
+                }
+                let moving = if tw.easing.damping().is_some() {
+                    tw.value != tw.to || tw.velocity != [0.0; 4]
+                } else {
+                    tw.progress_at(now) < 1.0
+                };
+                if moving {
+                    each(key, Slot::ALL[i]);
+                }
+            }
         }
     }
 

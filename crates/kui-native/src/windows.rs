@@ -117,7 +117,7 @@ impl DynShell<'_> {
                 // reached the app makes of every pane, for one pane.
                 WindowCommand::Redraw(id) => {
                     if let Some(i) = self.pane_of(id) {
-                        self.panes[i].window.request_redraw();
+                        self.panes[i].redraw_for(FrameCause::ELSEWHERE);
                     }
                 }
             }
@@ -433,6 +433,7 @@ impl DynShell<'_> {
             handed_back: false,
             retry: crate::retry::Retry::new(std::time::Instant::now()),
             deferred_frame: false,
+            cause: std::cell::Cell::new(FrameCause::FIRST),
             pacer,
             access,
             #[cfg(target_os = "windows")]
@@ -555,7 +556,7 @@ impl DynShell<'_> {
         self.route_events(events);
         self.apply_commands(event_loop, cmds);
         for p in &self.panes {
-            p.window.request_redraw();
+            p.redraw_for(FrameCause::ELSEWHERE);
         }
     }
 }

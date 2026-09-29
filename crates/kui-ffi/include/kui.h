@@ -2288,6 +2288,51 @@ enum {
     KUI_OWED_SCROLL = 32,     /* a container easing to a reveal or a set_scroll */
 };
 uint32_t kui_owed(KuiCtx *ctx);
+/* Why frames run (backlog F111). kui_frame_cause is the KUI_FRAME_CAUSE_*
+ * bits of the frame being built — between frames, the last one: the input
+ * the kui_input_* calls handed the core since the frame before began, by
+ * kind, what the host noted with kui_note_frame_cause, and
+ * KUI_FRAME_CAUSE_OWED when the frame before left one owed. Kept always; zero is a frame nothing asked
+ * for. kui_set_frame_trace(true) also keeps a digest of every finished
+ * frame's draw data: kui_frame_unchanged is 1 when the last frame drew
+ * exactly what the one before drew, 0 when it did not, -1 untraced or on
+ * the first traced frame. Who holds an owed frame (the Rust and Node
+ * `owed_by`) is not read from C. */
+enum {
+    KUI_FRAME_CAUSE_POINTER_MOVE = 1,      /* the pointer moved over the window */
+    KUI_FRAME_CAUSE_POINTER_LEAVE = 2,     /* the pointer left the window */
+    KUI_FRAME_CAUSE_BUTTON = 4,            /* a mouse button, or a force click */
+    KUI_FRAME_CAUSE_WHEEL = 8,             /* a wheel or trackpad scroll, momentum included */
+    KUI_FRAME_CAUSE_KEY = 16,              /* a key went down or up */
+    KUI_FRAME_CAUSE_MODIFIERS = 32,        /* the modifier keys changed */
+    KUI_FRAME_CAUSE_TEXT = 64,             /* text typed, committed or pasted */
+    KUI_FRAME_CAUSE_PREEDIT = 128,         /* an input method's composition changed */
+    KUI_FRAME_CAUSE_ACCESS = 256,          /* assistive technology asked for an action */
+    KUI_FRAME_CAUSE_FILE_DRAG = 512,       /* files dragged over, dropped, or taken away */
+    KUI_FRAME_CAUSE_FILES = 1024,          /* a file dialog answered */
+    KUI_FRAME_CAUSE_FIRST = 2048,          /* the window's first frame */
+    KUI_FRAME_CAUSE_WAKE = 4096,           /* the app woke the loop from another thread */
+    KUI_FRAME_CAUSE_HOST = 8192,           /* the host asked for a frame */
+    KUI_FRAME_CAUSE_RESIZE = 16384,        /* the window changed size */
+    KUI_FRAME_CAUSE_SCALE = 32768,         /* the window changed scale */
+    KUI_FRAME_CAUSE_FOCUS = 65536,         /* the window gained or lost the keyboard */
+    KUI_FRAME_CAUSE_OCCLUSION = 131072,    /* the window was uncovered */
+    KUI_FRAME_CAUSE_APPEARANCE = 262144,   /* the system's appearance or settings changed */
+    KUI_FRAME_CAUSE_CARET = 524288,        /* the caret's blink changed phase */
+    KUI_FRAME_CAUSE_RETRY = 1048576,       /* the surface refused the last frame; tried again */
+    KUI_FRAME_CAUSE_OVERDUE = 2097152,     /* a frame held for the display, drawn anyway */
+    KUI_FRAME_CAUSE_DEVICE = 4194304,      /* the graphics device was reopened */
+    KUI_FRAME_CAUSE_AFTER_FRAME = 8388608, /* the last frame's own events were answered */
+    KUI_FRAME_CAUSE_ELSEWHERE = 16777216,  /* something reached the app in another window */
+    KUI_FRAME_CAUSE_MENU = 33554432,       /* a menu was answered */
+    KUI_FRAME_CAUSE_AUDIO = 67108864,      /* a sound's event was routed */
+    KUI_FRAME_CAUSE_SMOKE = 134217728,     /* a smoke run's frame counter */
+    KUI_FRAME_CAUSE_OWED = 268435456,      /* the last frame left one owed (kui_owed) */
+};
+void kui_set_frame_trace(KuiCtx *ctx, bool on);
+uint32_t kui_frame_cause(KuiCtx *ctx);
+void kui_note_frame_cause(KuiCtx *ctx, uint32_t cause);
+int32_t kui_frame_unchanged(KuiCtx *ctx);
 /* Rasterize outline glyphs as LCD subpixel coverage (KUI_QUAD_GLYPH_SUBPIXEL)
  * instead of alpha masks. Only turn it on if your renderer blends per
  * channel. Flipping it re-rasterizes every glyph. */

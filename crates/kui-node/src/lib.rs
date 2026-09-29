@@ -1538,6 +1538,42 @@ fn owed_json(o: kui_core::Owed) -> Json {
     Json::Object(m)
 }
 
+/// `OwedBy` as `owedBy()` hands it out: each holder `{key, name, slots}`
+/// with the key as `keyOf` spells it, each request `{why, file, line}`.
+fn owed_by_json(by: &kui_core::OwedBy) -> Json {
+    let holder = |h: &kui_core::FrameHolder| {
+        let mut m = JsonMap::new();
+        m.insert("key".into(), Json::from(key_str(h.key)));
+        m.insert("name".into(), Json::from(h.name.clone()));
+        m.insert("slots".into(), Json::from(h.slots.clone()));
+        Json::Object(m)
+    };
+    let list = |hs: &[kui_core::FrameHolder]| Json::Array(hs.iter().map(holder).collect());
+    let mut o = JsonMap::new();
+    o.insert("transitions".into(), list(&by.transitions));
+    o.insert("cycles".into(), list(&by.cycles));
+    o.insert("departures".into(), list(&by.departures));
+    o.insert("scrolls".into(), list(&by.scrolls));
+    o.insert(
+        "autoscroll".into(),
+        by.autoscroll.as_ref().map_or(Json::Null, holder),
+    );
+    o.insert("animate".into(), list(&by.animate));
+    let requests = by
+        .requests
+        .iter()
+        .map(|r| {
+            let mut m = JsonMap::new();
+            m.insert("why".into(), Json::from(r.why));
+            m.insert("file".into(), Json::from(r.at.file()));
+            m.insert("line".into(), Json::from(r.at.line()));
+            Json::Object(m)
+        })
+        .collect();
+    o.insert("requests".into(), Json::Array(requests));
+    Json::Object(o)
+}
+
 /// The runner's frame-timing ring as `{frames, framesTotal, pumps,
 /// wokenPumps, last, avgTotalMs, maxTotalMs, avgWorkMs, maxWorkMs}`;
 /// `last` is null before the first frame. The same numbers the latency
@@ -2354,6 +2390,47 @@ macro_rules! core_methods {
             #[napi(ts_return_type = "Owed")]
             pub fn owed(&mut self) -> Json {
                 owed_json(self.$core().owed())
+            }
+
+            /// Turns on the trace of why frames run (backlog F111): who
+            /// holds each owed frame (`owedBy()`) and whether each frame
+            /// changed what is drawn (`frameUnchanged()`). Off by default,
+            /// where neither costs anything; `frameCause()` is kept either
+            /// way.
+            #[napi]
+            pub fn set_frame_trace(&mut self, on: bool) {
+                self.$core().set_frame_trace(on);
+            }
+
+            /// Why the frame being built runs — between frames, the last
+            /// one — as the names of its reasons: the input it answers
+            /// (`key`, `pointerMove`, `wheel`, …), what a window's runner
+            /// saw (`wake`, `resize`, `caret`, `retry`, …) and `owed` when
+            /// the frame before left one owed (backlog F111). Empty for a
+            /// frame nothing here asked for.
+            #[napi(ts_return_type = "FrameCauseName[]")]
+            pub fn frame_cause(&mut self) -> Vec<&'static str> {
+                self.$core().frame_cause().names().collect()
+            }
+
+            /// Who held the frame the last one left owed — `owed()` with
+            /// names: the nodes mid-transition (with their slots), the
+            /// cycles, the departures, the easing scrollers, the held
+            /// drag's scroller, the `animate` nodes, and each line that
+            /// asked for a frame. Read from inside a `view`, the reason
+            /// that frame exists. Empty unless `setFrameTrace(true)`
+            /// (backlog F111).
+            #[napi(ts_return_type = "OwedBy")]
+            pub fn owed_by(&mut self) -> Json {
+                owed_by_json(self.$core().owed_by())
+            }
+
+            /// Whether the last finished frame drew exactly what the one
+            /// before drew; `null` untraced and on the first traced frame
+            /// (backlog F111).
+            #[napi]
+            pub fn frame_unchanged(&mut self) -> Option<bool> {
+                self.$core().frame_unchanged()
             }
 
             /// Byte budget for the shaped-text cache: every text a frame

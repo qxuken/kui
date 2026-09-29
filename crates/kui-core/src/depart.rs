@@ -333,6 +333,15 @@ impl DepartStore {
         self.ghosts.iter().map(|g| g.key)
     }
 
+    /// Each departing root's key and the spec it left with — what a
+    /// trace names a departure by, since its node is no longer in any
+    /// tree (backlog F111).
+    pub(crate) fn roots(&self) -> impl Iterator<Item = (Key, &NodeSpec)> + '_ {
+        self.ghosts
+            .iter()
+            .filter_map(|g| g.nodes.first().map(|n| (g.key, &n.spec)))
+    }
+
     fn drop_where(&mut self, mut pred: impl FnMut(&Ghost) -> bool) {
         let nodes = &mut self.nodes;
         let held = &mut self.held;

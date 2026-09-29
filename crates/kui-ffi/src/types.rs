@@ -2309,6 +2309,38 @@ pub const KUI_OWED_REQUESTED: u32 = 1 << 3;
 pub const KUI_OWED_AUTOSCROLL: u32 = 1 << 4;
 pub const KUI_OWED_SCROLL: u32 = 1 << 5;
 
+/// `KUI_FRAME_CAUSE_*`: the bits of what `kui_frame_cause` returns and
+/// `kui_note_frame_cause` takes — `FrameCause::bits` (backlog F111).
+pub const KUI_FRAME_CAUSE_POINTER_MOVE: u32 = kui_core::FrameCause::POINTER_MOVE.bits();
+pub const KUI_FRAME_CAUSE_POINTER_LEAVE: u32 = kui_core::FrameCause::POINTER_LEAVE.bits();
+pub const KUI_FRAME_CAUSE_BUTTON: u32 = kui_core::FrameCause::BUTTON.bits();
+pub const KUI_FRAME_CAUSE_WHEEL: u32 = kui_core::FrameCause::WHEEL.bits();
+pub const KUI_FRAME_CAUSE_KEY: u32 = kui_core::FrameCause::KEY.bits();
+pub const KUI_FRAME_CAUSE_MODIFIERS: u32 = kui_core::FrameCause::MODIFIERS.bits();
+pub const KUI_FRAME_CAUSE_TEXT: u32 = kui_core::FrameCause::TEXT.bits();
+pub const KUI_FRAME_CAUSE_PREEDIT: u32 = kui_core::FrameCause::PREEDIT.bits();
+pub const KUI_FRAME_CAUSE_ACCESS: u32 = kui_core::FrameCause::ACCESS.bits();
+pub const KUI_FRAME_CAUSE_FILE_DRAG: u32 = kui_core::FrameCause::FILE_DRAG.bits();
+pub const KUI_FRAME_CAUSE_FILES: u32 = kui_core::FrameCause::FILES.bits();
+pub const KUI_FRAME_CAUSE_FIRST: u32 = kui_core::FrameCause::FIRST.bits();
+pub const KUI_FRAME_CAUSE_WAKE: u32 = kui_core::FrameCause::WAKE.bits();
+pub const KUI_FRAME_CAUSE_HOST: u32 = kui_core::FrameCause::HOST.bits();
+pub const KUI_FRAME_CAUSE_RESIZE: u32 = kui_core::FrameCause::RESIZE.bits();
+pub const KUI_FRAME_CAUSE_SCALE: u32 = kui_core::FrameCause::SCALE.bits();
+pub const KUI_FRAME_CAUSE_FOCUS: u32 = kui_core::FrameCause::FOCUS.bits();
+pub const KUI_FRAME_CAUSE_OCCLUSION: u32 = kui_core::FrameCause::OCCLUSION.bits();
+pub const KUI_FRAME_CAUSE_APPEARANCE: u32 = kui_core::FrameCause::APPEARANCE.bits();
+pub const KUI_FRAME_CAUSE_CARET: u32 = kui_core::FrameCause::CARET.bits();
+pub const KUI_FRAME_CAUSE_RETRY: u32 = kui_core::FrameCause::RETRY.bits();
+pub const KUI_FRAME_CAUSE_OVERDUE: u32 = kui_core::FrameCause::OVERDUE.bits();
+pub const KUI_FRAME_CAUSE_DEVICE: u32 = kui_core::FrameCause::DEVICE.bits();
+pub const KUI_FRAME_CAUSE_AFTER_FRAME: u32 = kui_core::FrameCause::AFTER_FRAME.bits();
+pub const KUI_FRAME_CAUSE_ELSEWHERE: u32 = kui_core::FrameCause::ELSEWHERE.bits();
+pub const KUI_FRAME_CAUSE_MENU: u32 = kui_core::FrameCause::MENU.bits();
+pub const KUI_FRAME_CAUSE_AUDIO: u32 = kui_core::FrameCause::AUDIO.bits();
+pub const KUI_FRAME_CAUSE_SMOKE: u32 = kui_core::FrameCause::SMOKE.bits();
+pub const KUI_FRAME_CAUSE_OWED: u32 = kui_core::FrameCause::OWED.bits();
+
 /// `KUI_COPY_*`: what `kui_request_copy` returns.
 pub const KUI_COPY_READY: u32 = 0;
 pub const KUI_COPY_ASKED: u32 = 1;

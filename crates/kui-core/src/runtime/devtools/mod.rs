@@ -1621,7 +1621,7 @@ impl Core {
         if let Some(built) = self.dt_built
             && (!on || self.dt_dock != Some(dock) || built != shown)
         {
-            self.frame_requested = true;
+            self.owe_frame("devtools");
         }
         if !on {
             return;
@@ -1649,7 +1649,7 @@ impl Core {
         if !dock.docked() || self.dt_dock == Some(dock) {
             self.build_panel(Place::Main(dock));
         } else {
-            self.frame_requested = true;
+            self.owe_frame("devtools");
         }
     }
 

@@ -2143,6 +2143,40 @@ test('runOut advances until nothing animates and says how long it took (F22)', (
   assert.deepEqual(looping.ctx.owed(), { transition: false, cycle: true, depart: false, requested: false, autoscroll: false, scroll: false });
 });
 
+test('owedBy names who holds an owed frame, frameCause says why a frame ran (F111)', () => {
+  const app = createApp(
+    {
+      init: { wide: false },
+      update: (m, msg) => (msg === 'go' ? { wide: true } : m),
+      view: (m) =>
+        box({ pad: 0 }, [
+          box({ transition: 200, width: m.wide ? 200 : 20, height: 10, bg: '#ffffff' }, [], 'bar'),
+        ]),
+    },
+    { startTime: 0, width: 320, height: 240 },
+  );
+  const empty = { transitions: [], cycles: [], departures: [], scrolls: [], autoscroll: null, animate: [], requests: [] };
+  app.render();
+  assert.deepEqual(app.ctx.owedBy(), empty, 'off by default');
+  assert.equal(app.ctx.frameUnchanged(), null);
+  app.ctx.setFrameTrace(true);
+  app.dispatch('go');
+  app.advance(16);
+  app.advance(16);
+  // Between frames: the one just built, and who held it.
+  assert.ok(app.ctx.frameCause().includes('owed'), JSON.stringify(app.ctx.frameCause()));
+  const by = app.ctx.owedBy();
+  assert.deepEqual(by.transitions.map((h) => [h.name, h.slots]), [['bar', ['width']]]);
+  assert.equal(by.transitions[0].key, app.ctx.keyOf('bar'));
+  assert.equal(app.ctx.frameUnchanged(), false, 'the bar moved');
+  app.runOut();
+  app.advance(16);
+  assert.deepEqual(app.ctx.frameCause(), []);
+  assert.deepEqual(app.ctx.owedBy(), empty);
+  app.advance(16);
+  assert.equal(app.ctx.frameUnchanged(), true, 'nothing moved');
+});
+
 // The windowed half of the same question, which cannot be a loop: a window
 // runs on the wall clock, so a test has no `advance` to run a transition out
 // with and the driver's pump is the only thing that can say a frame

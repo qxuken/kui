@@ -274,7 +274,7 @@ pub struct FragmentDraw {
 /// that one quad — the same swap a [`QuadKind::Texture`] quad asks for.
 /// The core decides between the last two on the image's backing, so a
 /// backend meets the same two cases it already draws.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum FragmentImage {
     /// No `image` row: `kui_sample` returns transparent black.
     #[default]

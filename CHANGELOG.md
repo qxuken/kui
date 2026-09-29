@@ -21,6 +21,40 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.26 (unreleased)
+
+**What breaks.** Nothing: readings and doors added, the ABI at 22 and
+the Node wire at v19. `Core::request_frame` and `Ui::request_frame`
+track their caller, which changes no call.
+
+### Added
+
+- **Why a frame runs** (backlog F111, from kawoosh, 2026-09-29; Rust,
+  Node, C). `Core::frame_cause()` is every reason that reached the
+  window since the last frame began, as a `FrameCause` set: the input
+  the core was handed, by kind, recorded by the core for every driver;
+  what the driver saw and noted with `note_frame_cause` — kui-native
+  notes the wake, the resize, the scale, focus, occlusion, the
+  appearance, the caret's blink, a surface retry, the pacer's overdue
+  frame, the device reopened, a frame's own events answered after it,
+  another window's input, a menu, a sound; and `owed` when the frame
+  before left one owed. `set_frame_trace(true)` adds two readings:
+  `owed_by()`, who held that owed frame (`OwedBy`: the nodes mid-
+  transition by label path and slot, the cycles, the departures, the
+  easing scrollers, the autoscroller, the `animate` nodes, and each
+  `request_frame` line as a `Location` — kui's own asks named for what
+  they are), and `frame_unchanged()`, whether the last frame drew
+  exactly what the one before drew. Read from a view through
+  `ui.core()`. Node: `frameCause()`, `owedBy()`, `frameUnchanged()`,
+  `setFrameTrace()`. C: `kui_frame_cause`, `kui_note_frame_cause`,
+  `kui_set_frame_trace`, `kui_frame_unchanged` and the
+  `KUI_FRAME_CAUSE_*` bits. Off, the trace costs nothing; the reasons
+  are an OR per input. **What you can delete:** the guesswork behind a
+  window that draws with nothing moving — bisecting transitions and
+  `request_frame` calls to find the one that keeps `animating()` true,
+  and wondering which OS event the runner answered that your app never
+  heard.
+
 ## 0.1.0-alpha.25 (2026-09-29)
 
 **What breaks.** A build no longer writes `libkui_ffi.a`. The ABI is

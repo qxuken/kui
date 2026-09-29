@@ -301,6 +301,11 @@ pub(crate) struct Pane {
     /// the wait to a single frame: never two in a row, so no stream of
     /// input and no platform modal loop can stop this window painting.
     pub(crate) deferred_frame: bool,
+    /// Why the runner asked this window for a frame since its last one
+    /// began (backlog F111): handed to the core before the view runs,
+    /// where it joins the input the core recorded itself. A `Cell`, since
+    /// most of the places that ask hold the pane shared.
+    pub(crate) cause: std::cell::Cell<FrameCause>,
     /// Whether a redraw draws now or waits for the display (`mod pacer`).
     pub(crate) pacer: crate::pacer::Pacer,
     /// The platform accessibility bridge.
@@ -324,6 +329,13 @@ impl Pane {
     /// has not been checked to ask for that frame on deminiaturize.
     pub(crate) fn minimized(&self) -> bool {
         cfg!(target_os = "windows") && self.window.is_minimized() == Some(true)
+    }
+
+    /// Asks for a frame, and says why (backlog F111): `why` is among the
+    /// reasons the frame is handed (`Core::frame_cause`).
+    pub(crate) fn redraw_for(&self, why: FrameCause) {
+        self.cause.set(self.cause.get() | why);
+        self.window.request_redraw();
     }
 
     /// Whether a redraw draws now or waits for the display (`mod pacer`).

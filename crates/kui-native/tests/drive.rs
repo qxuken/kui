@@ -234,3 +234,56 @@ fn a_drive_presses_the_middle_button_and_scrolls_a_gesture() {
     let page = d.key_of("page").unwrap();
     assert_eq!(d.core.scroll_offset(page), Vec2::new(0.0, 40.0));
 }
+
+/// Why a frame runs, read where an app reads it — `ui.core()` in its
+/// `view` (backlog F111): the input the frame answers, by kind, and who
+/// held the frame the last one owed, down to the line of the app's own
+/// `request_frame`.
+#[test]
+fn a_view_reads_why_its_frame_runs() {
+    use kui_native::{FrameCause, KeyMods};
+
+    #[derive(Default)]
+    struct Ledger {
+        ask: bool,
+        asked_at: u32,
+        seen: Vec<(FrameCause, Vec<(&'static str, u32)>)>,
+    }
+    impl App for Ledger {
+        fn view(&mut self, ui: &mut Ui<'_>) {
+            let core = ui.core();
+            let asks = core
+                .owed_by()
+                .requests
+                .iter()
+                .map(|r| (r.at.file(), r.at.line()))
+                .collect();
+            self.seen.push((core.frame_cause(), asks));
+            ui.leaf_keyed("sink", NodeSpec::row().size(80.0, 30.0).on_key("keys"));
+            if std::mem::take(&mut self.ask) {
+                self.asked_at = line!() + 1;
+                ui.request_frame();
+            }
+        }
+    }
+
+    let mut app = Ledger::default();
+    let mut d = Drive::new(Core::new(), 200.0, 100.0);
+    d.core.set_frame_trace(true);
+    d.frame(&mut app);
+    let sink = d.key_of("sink").expect("the sink");
+    d.focus(&mut app, sink);
+    d.frame(&mut app);
+    d.key(&mut app, "a", KeyMods::default());
+    app.ask = true;
+    d.frame(&mut app);
+    d.frame(&mut app);
+
+    let (cause, _) = &app.seen[2];
+    assert!(cause.contains(FrameCause::KEY), "{cause:?}");
+    let (cause, asks) = &app.seen[3];
+    assert_eq!(*cause, FrameCause::OWED);
+    assert_eq!(asks.len(), 1);
+    assert!(asks[0].0.ends_with("drive.rs"), "{asks:?}");
+    assert_eq!(asks[0].1, app.asked_at);
+}

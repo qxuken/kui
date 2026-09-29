@@ -424,6 +424,7 @@ impl<'a> Ui<'a> {
     }
 
     /// Asks for one more frame after this one; see `Core::request_frame`.
+    #[track_caller]
     pub fn request_frame(&mut self) {
         self.core.request_frame();
     }

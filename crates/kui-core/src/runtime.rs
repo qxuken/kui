@@ -50,6 +50,7 @@ use crate::window::{WindowConfig, WindowId};
 // what it holds). Children of this module, so the fields stay private.
 mod builder;
 pub use builder::Content;
+pub mod cause;
 mod composites;
 pub mod devtools;
 mod dispatch;
@@ -427,6 +428,10 @@ pub struct Core {
     /// A view asked for one more frame (`request_frame`); cleared by
     /// `begin_frame`, reported through `animating`.
     frame_requested: bool,
+    /// Why frames run: the reasons, and — traced — who held an owed one
+    /// and whether a frame changed anything (`runtime/cause.rs`, backlog
+    /// F111).
+    trace: cause::Trace,
     /// The focused editor's caret rect (logical, viewport coords) as of the
     /// last finish_frame — where drivers should anchor the OS IME window.
     ime_rect: Option<Rect>,
@@ -943,6 +948,7 @@ impl Core {
             ghost_clip_ids: Vec::new(),
             ghost_rect: Vec::new(),
             frame_requested: false,
+            trace: cause::Trace::default(),
             pending_reveal: Vec::new(),
             pending_reveal_labels: Vec::new(),
             focus_reported: Vec::new(),
@@ -1221,8 +1227,14 @@ impl Core {
     /// drawn collapsed so it can slide open) needs the next frame to come
     /// without waiting for input — the starting state itself snaps, so
     /// nothing is mid-flight yet to request it.
+    ///
+    /// Traced ([`Self::set_frame_trace`]), the calling line is kept as
+    /// the frame's [`cause::FrameRequest`], which is why this tracks its
+    /// caller.
+    #[track_caller]
     pub fn request_frame(&mut self) {
         self.frame_requested = true;
+        self.trace_request();
     }
 
     /// Starts a frame. Build the tree through the returned `Ui` (or the
@@ -1295,6 +1307,10 @@ impl Core {
     }
 
     pub fn begin_frame(&mut self, viewport: Size, scale: f32) {
+        // First, while the last frame's tree and every store's reading of
+        // it are still whole: why this frame runs, and who held it
+        // (backlog F111).
+        self.trace_begin_frame();
         // Against the finished frame, before anything below clears it: a
         // held drag re-places its live end where the last layout moved
         // the text under the pointer, and steps its scroller when the
@@ -1464,6 +1480,9 @@ impl Core {
         self.hints.clear();
         self.origin = OriginId::HOST;
         self.frame_requested = false;
+        // And the lines that asked, with it: an ask the reset above
+        // forgets is not one the next frame was held by.
+        self.trace_forget_requests();
         self.devtools_begin_frame();
     }
 }

@@ -498,6 +498,7 @@ impl Core {
         self.pending = out;
         self.snapshot_nodes();
         self.devtools_after_frame();
+        self.trace_finish_frame();
         // Between frames the host is who talks to the core: a driver that
         // tagged the last nodes with an extension's origin by hand (rather
         // than through `fill`, which restores it) must not leave its
@@ -544,7 +545,7 @@ impl Core {
         // built against this layout, or the slice stays a frame behind
         // until the next event (`ScrollStore::resliced`).
         if self.scroll.take_resliced() {
-            self.frame_requested = true;
+            self.owe_frame("resliced");
         }
         if self.tree.any_slide {
             self.ease_positions();
@@ -1118,13 +1119,13 @@ impl Core {
         // input-driven app would keep the short frame until the next
         // event. A page that only grew is right as it is presented.
         if self.atlas.short() {
-            self.frame_requested = true;
+            self.owe_frame("atlas full");
         }
         // A long line's rows came out other than layout's once emission
         // shaped what shows (backlog RG70): the frame laid out on them is
         // owed, or an idle view keeps the estimate's box.
         if self.text.take_owed() {
-            self.frame_requested = true;
+            self.owe_frame("long line rows");
         }
     }
 
@@ -1240,7 +1241,7 @@ impl Core {
         // a frame with one is a frame that changed shape and paid for a
         // layout, and the frames that did not never get here.
         let mut order: Option<PaintOrder> = None;
-        for i in roots {
+        for &i in &roots {
             let place = order
                 .get_or_insert_with(|| PaintOrder::of(&self.prev_tree, &self.tree))
                 .place(&self.prev_tree, i, &self.float_stack);
@@ -1263,6 +1264,8 @@ impl Core {
                 &self.fragments,
             );
         }
+        // Named now, while a tree still has them (backlog F111).
+        self.trace_departures(&roots);
     }
 
     /// One departing subtree's quads: frozen rects moved by however far
@@ -1567,7 +1570,7 @@ impl Core {
                 // Not while held — that is input's to end, and a frame a
                 // hover would ask for every 8 ms is the idle CPU C27 fought.
                 if !held {
-                    self.frame_requested = true;
+                    self.owe_frame("scrollbar fade");
                 }
                 opacity *= shown as f32;
             }

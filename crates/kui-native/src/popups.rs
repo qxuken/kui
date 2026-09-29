@@ -169,7 +169,7 @@ impl DynShell<'_> {
             // keyboard, so the release would never arrive. The synthetic
             // `up`s route out with the pending events.
             pane.core.set_focused(focused);
-            pane.window.request_redraw();
+            pane.redraw_for(FrameCause::FOCUS);
         }
     }
 
