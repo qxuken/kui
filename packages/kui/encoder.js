@@ -23,6 +23,7 @@ export function createEncoder(P) {
   const IMAGE_SAMPLING = indexOf(P.imageSampling);
   const IMAGE_FIT = indexOf(P.imageFit);
   const PRESET_NAMES = P.floatPreset.join(' | ');
+  const OPTION_AS_ALT = P.optionAsAlt;
 
   // The allow-list a view is checked against, straight off the protocol: the
   // schema rows, every JSX spelling of every composite, and — per element —
@@ -299,7 +300,7 @@ export function createEncoder(P) {
   // protocol kind (no names or shapes hardcoded here); only composites (the
   // pad family, border, overflow bits, float) and the constructor-ordering
   // specials (dir, size) have hand-written stanzas, mirroring binary.rs.
-  // `key` rides along as P_KEY; `isRoot` admits `title`, `alwaysOnTop`, `secureInput` and `windows` (and drops `key`);
+  // `key` rides along as P_KEY; `isRoot` admits `title`, `alwaysOnTop`, `secureInput`, `optionAsAlt` and `windows` (and drops `key`);
   // `admit`, when given, is the only names written (a closed composite's
   // rows — the rest were already reported by checkProps).
   function props(p, key, isRoot, admit) {
@@ -431,6 +432,22 @@ export function createEncoder(P) {
             n++;
           }
           break;
+        case 'optionAsAlt': {
+          // Root only; a side by its number, `OptionAsAlt::index` (backlog
+          // F113). "none" is the default and writes nothing, as `false`
+          // does for the flags above.
+          if (!isRoot) break;
+          const side = OPTION_AS_ALT.indexOf(v);
+          if (side < 0) {
+            throw new Error(`bad optionAsAlt ${JSON.stringify(v)} (${OPTION_AS_ALT.join(' | ')})`);
+          }
+          if (side > 0) {
+            f[fi++] = PR.optionAsAlt.id;
+            f[fi++] = side;
+            n++;
+          }
+          break;
+        }
         case 'windows':
           // Root only, like `title`. The list rides as one JSON blob, the
           // way `menuBar`'s does (v12, backlog AR43): the addon hands each

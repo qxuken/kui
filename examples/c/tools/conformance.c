@@ -810,6 +810,8 @@ static void conf_chrome(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_set_always_on_top(ui, true);
     /* And the third: secure keyboard entry (backlog F85). */
     kui_set_secure_input(ui, true);
+    /* And the fourth: the left Option key as Alt (backlog F113). */
+    kui_set_option_as_alt(ui, KUI_OPTION_AS_ALT_LEFT);
     KuiSpec outer = {.gap = 6};
     kui_open(ui, &outer, NULL);
     /* kui_titlebar_with appends its own cluster after the body; the second
@@ -2428,6 +2430,11 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
     else repf(out, "title -\n");
     repf(out, "always-on-top %d\n", kui_always_on_top_get(ctx) ? 1 : 0);
     repf(out, "secure-input %d\n", kui_secure_input_get(ctx) ? 1 : 0);
+    {
+        static const char *const option_as_alt[] = {"none", "left", "right", "both"};
+        uint32_t o = kui_option_as_alt_get(ctx);
+        repf(out, "option-as-alt %s\n", o < 4 ? option_as_alt[o] : "none");
+    }
 
     KuiDrawData dd = KUI_DRAW_DATA_INIT;
     kui_draw_data(ctx, &dd);

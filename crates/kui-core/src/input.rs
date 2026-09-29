@@ -803,6 +803,73 @@ impl KeyLocation {
     }
 }
 
+/// Which Option keys act as Alt on macOS (backlog F113) — what a frame
+/// declares with [`crate::Ui::option_as_alt`]. On a Mac, Option composes:
+/// ⌥m types "µ", and ⌥u, ⌥e, ⌥i, ⌥n and ⌥` are *dead keys* that start
+/// an accent and wait for the next key, so the press never arrives as a
+/// key at all and a keymap that binds `<A-u>` never hears it. An Option
+/// key named here is Alt instead: it composes nothing, types nothing, and
+/// every key under it arrives as a chord of the key the layout prints
+/// unmodified — what a terminal's "Option as Meta" and an editor's Alt
+/// bindings want. `None`, the default, is the Mac's own behaviour; one
+/// side leaves the other composing, so a user keeps `ü` on the right
+/// Option while the left one is Alt. Other platforms have no such
+/// composition on Alt and read nothing here.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum OptionAsAlt {
+    #[default]
+    None,
+    Left,
+    Right,
+    Both,
+}
+
+impl OptionAsAlt {
+    /// Every value, in the order of the C door's numbers.
+    pub const ALL: [OptionAsAlt; 4] = [
+        OptionAsAlt::None,
+        OptionAsAlt::Left,
+        OptionAsAlt::Right,
+        OptionAsAlt::Both,
+    ];
+
+    /// The prop's spelling: `"none"`, `"left"`, `"right"`, `"both"`.
+    pub fn name(self) -> &'static str {
+        match self {
+            OptionAsAlt::None => "none",
+            OptionAsAlt::Left => "left",
+            OptionAsAlt::Right => "right",
+            OptionAsAlt::Both => "both",
+        }
+    }
+
+    pub fn from_name(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|v| v.name() == s)
+    }
+
+    /// The C door's number (`KUI_OPTION_AS_ALT_*`) and the binary IR's: 0
+    /// none, 1 left, 2 right, 3 both.
+    pub fn index(self) -> u32 {
+        self as u32
+    }
+
+    /// The value at `index`; `None` past the four, so a door can refuse
+    /// what it does not know rather than guess.
+    pub fn from_index(index: u32) -> Option<Self> {
+        Self::ALL.get(index as usize).copied()
+    }
+
+    /// Whether an Option key at `location` is Alt under this setting.
+    pub fn covers(self, location: KeyLocation) -> bool {
+        match self {
+            OptionAsAlt::None => false,
+            OptionAsAlt::Left => location == KeyLocation::Left,
+            OptionAsAlt::Right => location == KeyLocation::Right,
+            OptionAsAlt::Both => matches!(location, KeyLocation::Left | KeyLocation::Right),
+        }
+    }
+}
+
 /// What the lock keys hold at a press: Caps Lock and Num Lock on or off.
 /// Not a modifier held — [`KeyMods`] is only what is down, which
 /// accelerators and chords compare exactly — but state a press was made

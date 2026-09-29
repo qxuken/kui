@@ -2337,6 +2337,14 @@ export declare class Ctx {
    */
   secureInput(): boolean
   /**
+   * Which Option keys the last frame asked to act as Alt on macOS (a
+   * root `<box optionAsAlt="left">`, backlog F113): `"none"`, `"left"`,
+   * `"right"` or `"both"`, `"none"` when it did not ask. `runWindowed`
+   * applies it to the window on change; a bare `Ctx` hands the ask back
+   * so a test can assert on it.
+   */
+  optionAsAlt(): 'none' | 'left' | 'right' | 'both'
+  /**
    * A headless context is one window, the main: this answers whether
    * `window` names it (`"main"`, `0`, or left out) and addresses
    * nothing else — the same door `KuiWindow` has, so a loop or a test

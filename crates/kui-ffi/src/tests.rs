@@ -2094,6 +2094,42 @@ mod env_headless {
         kui_ctx_free(ctx);
     }
 
+    /// Option as Alt is frame state (backlog F113): none until a frame
+    /// declares it, none again on the frame that stops, a number the
+    /// header does not name is none, and nothing on a bad context.
+    #[test]
+    fn option_as_alt_is_asked_per_frame() {
+        let ctx = kui_ctx_new();
+        assert_eq!(kui_option_as_alt_get(ctx), KUI_OPTION_AS_ALT_NONE);
+        for want in [
+            KUI_OPTION_AS_ALT_LEFT,
+            KUI_OPTION_AS_ALT_RIGHT,
+            KUI_OPTION_AS_ALT_BOTH,
+        ] {
+            kui_frame_begin(ctx, 100.0, 100.0, 1.0);
+            kui_set_option_as_alt(ctx, want);
+            kui_frame_finish(ctx);
+            assert_eq!(kui_option_as_alt_get(ctx), want);
+        }
+        kui_frame_begin(ctx, 100.0, 100.0, 1.0);
+        kui_frame_finish(ctx);
+        assert_eq!(
+            kui_option_as_alt_get(ctx),
+            KUI_OPTION_AS_ALT_NONE,
+            "a frame that stops asking gives the Option keys back"
+        );
+        kui_frame_begin(ctx, 100.0, 100.0, 1.0);
+        kui_set_option_as_alt(ctx, KUI_OPTION_AS_ALT_BOTH + 1);
+        kui_frame_finish(ctx);
+        assert_eq!(kui_option_as_alt_get(ctx), KUI_OPTION_AS_ALT_NONE);
+        kui_set_option_as_alt(std::ptr::null_mut(), KUI_OPTION_AS_ALT_LEFT);
+        assert_eq!(
+            kui_option_as_alt_get(std::ptr::null_mut()),
+            KUI_OPTION_AS_ALT_NONE
+        );
+        kui_ctx_free(ctx);
+    }
+
     /// The level is two facts with two doors (backlog C30): the frame's
     /// ask, frame-scoped and false by default, which the host reads after
     /// the frame; and what the host did, which it writes back and the

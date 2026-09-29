@@ -77,8 +77,8 @@ use std::rc::Rc;
 use kui_core::{
     Align, Appearance, Assistive, AudioDevice, AudioEnv, Color, Core, DismissReason, Edges,
     EditKey, EditOptions, Enter, FloatConfig, InputEvent, Key, Keyframe, Locale, Mods, MotionPref,
-    MouseButton, NodeSpec, Rect, Size, Sizing, Span, SystemEnv, TextStyle, UiEvent, Value, Vec2,
-    WindowButton, WindowCommand, WindowConfig, WindowId, WindowKind,
+    MouseButton, NodeSpec, OptionAsAlt, Rect, Size, Sizing, Span, SystemEnv, TextStyle, UiEvent,
+    Value, Vec2, WindowButton, WindowCommand, WindowConfig, WindowId, WindowKind,
 };
 
 // ---------------------------------------------------------------------------

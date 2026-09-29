@@ -138,6 +138,39 @@ pub(crate) fn level_change(
     })
 }
 
+/// What a frame's `option_as_alt` ask does to the window (backlog F113):
+/// the setting to hand winit now, or `None` when the window already has
+/// it — so the call reaches the OS once per change and never per frame,
+/// the level's rule. `applied` is the runner's record
+/// (`Pane::applied_option_as_alt`), updated here. Every window starts at
+/// winit's default, which is `None`, so an app that never declares it
+/// never makes the call.
+pub(crate) fn option_as_alt_change(
+    want: kui_core::OptionAsAlt,
+    applied: &mut kui_core::OptionAsAlt,
+) -> Option<kui_core::OptionAsAlt> {
+    if want == *applied {
+        return None;
+    }
+    *applied = want;
+    Some(want)
+}
+
+/// Whether the Option key held for this press is Alt under the window's
+/// applied setting (backlog F113): an Alt key down on a side it covers.
+/// winit has already given such a press the layout's unmodified character
+/// in place of the composed one; this is what keeps that character from
+/// being typed as text too — an Option that is Alt types nothing, as
+/// Control types nothing. `down` is the modifier keys held, by side
+/// (`Pane::modifier_keys_down`).
+pub(crate) fn option_is_alt(
+    applied: kui_core::OptionAsAlt,
+    down: &[(kui_core::KeyCode, kui_core::KeyLocation)],
+) -> bool {
+    down.iter()
+        .any(|(code, loc)| *code == kui_core::KeyCode::Alt && applied.covers(*loc))
+}
+
 /// Whether the window's platform has a level to set: every backend winit
 /// 0.30 supports here but Wayland, which the raw handle tells apart from
 /// X11 on the one target that builds both.
@@ -251,6 +284,11 @@ pub(crate) struct Pane {
     /// `env.window.always_on_top` false however often the app asks — which
     /// is the case the report exists for.
     pub(crate) level_supported: bool,
+    /// Which Option keys are Alt on this window as far as this runner has
+    /// told winit (backlog F113): the frame declares per frame, and
+    /// [`option_as_alt_change`] touches the window only when this differs.
+    /// Kept on every platform, called on macOS only.
+    pub(crate) applied_option_as_alt: kui_core::OptionAsAlt,
     pub(crate) modifiers: ModifiersState,
     /// Caps Lock and Num Lock as this window's key presses have toggled
     /// them — what a press reports where the OS is not asked
@@ -582,5 +620,46 @@ mod tests {
         assert_eq!(level_change(WindowKind::Popup, false, &mut popup), None);
         assert_eq!(level_change(WindowKind::Popup, true, &mut popup), None);
         assert!(popup);
+    }
+
+    /// Option as Alt reaches winit once per change and never per frame
+    /// (backlog F113): a window starts at winit's default and an app that
+    /// never declares it never makes the call; a frame that keeps
+    /// declaring what is applied costs nothing; a frame that stops
+    /// declaring it gives the Option keys back.
+    #[test]
+    fn option_as_alt_is_applied_on_change() {
+        use kui_core::OptionAsAlt::{Both, Left, None as Off};
+        let mut applied = Off;
+        assert_eq!(option_as_alt_change(Off, &mut applied), None);
+        assert_eq!(option_as_alt_change(Left, &mut applied), Some(Left));
+        assert_eq!(applied, Left);
+        assert_eq!(option_as_alt_change(Left, &mut applied), None);
+        assert_eq!(option_as_alt_change(Left, &mut applied), None);
+        assert_eq!(option_as_alt_change(Both, &mut applied), Some(Both));
+        assert_eq!(option_as_alt_change(Off, &mut applied), Some(Off));
+        assert_eq!(applied, Off);
+        assert_eq!(option_as_alt_change(Off, &mut applied), None);
+    }
+
+    /// Which held Option makes a press Alt (backlog F113): the side the
+    /// setting names, both under `Both`, neither under `None` — so the
+    /// right Option still types `ü`'s accent while the left one is Alt.
+    #[test]
+    fn only_a_covered_option_is_alt() {
+        use kui_core::KeyCode::{Alt, Shift};
+        use kui_core::KeyLocation::{Left, Right};
+        use kui_core::OptionAsAlt;
+        let left = [(Alt, Left)];
+        let right = [(Alt, Right)];
+        assert!(option_is_alt(OptionAsAlt::Left, &left));
+        assert!(!option_is_alt(OptionAsAlt::Left, &right));
+        assert!(option_is_alt(OptionAsAlt::Right, &right));
+        assert!(option_is_alt(OptionAsAlt::Both, &left));
+        assert!(option_is_alt(OptionAsAlt::Both, &right));
+        assert!(!option_is_alt(OptionAsAlt::None, &left));
+        // A Shift on the covered side is not an Option.
+        assert!(!option_is_alt(OptionAsAlt::Left, &[(Shift, Left)]));
+        assert!(!option_is_alt(OptionAsAlt::Both, &[]));
     }
 }

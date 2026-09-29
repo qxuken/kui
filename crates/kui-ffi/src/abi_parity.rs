@@ -1038,6 +1038,10 @@ fn asserts() -> (String, Vec<&'static str>) {
         ("KUI_WINDOW_KIND_POPUP", KUI_WINDOW_KIND_POPUP),
         ("KUI_DISMISS_OUTSIDE", KUI_DISMISS_OUTSIDE),
         ("KUI_DISMISS_ESCAPE", KUI_DISMISS_ESCAPE),
+        ("KUI_OPTION_AS_ALT_NONE", KUI_OPTION_AS_ALT_NONE),
+        ("KUI_OPTION_AS_ALT_LEFT", KUI_OPTION_AS_ALT_LEFT),
+        ("KUI_OPTION_AS_ALT_RIGHT", KUI_OPTION_AS_ALT_RIGHT),
+        ("KUI_OPTION_AS_ALT_BOTH", KUI_OPTION_AS_ALT_BOTH),
         ("KUI_WINDOW_MAIN", WindowId::MAIN.0),
     ] {
         writeln!(o, "KUI_ENUM({name}, {value});").unwrap();

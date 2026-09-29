@@ -892,6 +892,28 @@ make the call itself.
 [`secureInput`](props.md#composite-props-hand-written-per-binding) ·
 [alpha.17](../CHANGELOG.md#010-alpha17-2026-09-25)
 
+### How do I make ⌥u reach my keymap on a Mac?
+
+Declare `optionAsAlt` on the root (Rust
+`ui.option_as_alt(OptionAsAlt::Left)`, Lua `option_as_alt = "left"` on
+the root table, C `kui_set_option_as_alt(ctx, KUI_OPTION_AS_ALT_LEFT)`)
+on every frame — from a setting, if your users choose. On a Mac, Option
+composes: ⌥m types `µ`, which still arrives as the chord `<A-m>`, but
+⌥u, ⌥e, ⌥i, ⌥n and ⌥` are dead keys that start an accent and wait for
+the next key, and the press never arrives as a key at all. The Option
+key you name is Alt instead: those presses arrive as `<A-u>` and the
+rest, and a key under it types nothing, as under Control. Name one side
+and the other still composes — a user who types `ü` keeps the right
+Option for it — or `"both"`. The frame that stops declaring it gives the
+keys back to the layout, and the runner applies it on change, so
+declaring it every frame costs nothing. Other platforms' Alt composes
+nothing and they ignore it. `Ctx.optionAsAlt()` / `kui_option_as_alt_get`
+read the ask back — what a test asserts on, and what a C host driving its
+own window reads to apply it itself.
+
+[`optionAsAlt`](props.md#composite-props-hand-written-per-binding) ·
+[alpha.27](../CHANGELOG.md#010-alpha27-unreleased)
+
 ### Why does my caret go past the edge on a wrapped line's trailing space?
 
 Because under `wrap="word"` a space at the end of a row hangs over the

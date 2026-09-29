@@ -1675,6 +1675,14 @@ fn window_config_to_c(c: WindowConfig) -> KuiWindowConfig {
 pub const KUI_DISMISS_OUTSIDE: u32 = 0;
 pub const KUI_DISMISS_ESCAPE: u32 = 1;
 
+/// `KUI_OPTION_AS_ALT_NONE`, `_LEFT`, `_RIGHT`, `_BOTH`: which Option
+/// keys act as Alt on macOS (`kui_set_option_as_alt`, backlog F113) —
+/// `OptionAsAlt::index`.
+pub const KUI_OPTION_AS_ALT_NONE: u32 = 0;
+pub const KUI_OPTION_AS_ALT_LEFT: u32 = 1;
+pub const KUI_OPTION_AS_ALT_RIGHT: u32 = 2;
+pub const KUI_OPTION_AS_ALT_BOTH: u32 = 3;
+
 /// `KUI_CMD_START_DRAG`, `KUI_CMD_CLOSE`, `KUI_CMD_MINIMIZE`,
 /// `KUI_CMD_TOGGLE_MAXIMIZE`: the verbs chrome nodes issue.
 pub const KUI_CMD_START_DRAG: u32 = 1;

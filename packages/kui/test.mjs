@@ -225,6 +225,26 @@ test('secureInput is asked per frame from the root and read back as the ask', ()
   assert.deepEqual(ctx.warnings(), []);
 });
 
+// `optionAsAlt` is the same shape with a side for a value (backlog F113):
+// "none" is the default and the frame that stops saying it goes back to it;
+// a name kui does not have is refused before it crosses.
+test('optionAsAlt is asked per frame from the root and read back as the side', () => {
+  const ctx = new Ctx();
+  assert.equal(ctx.optionAsAlt(), 'none');
+  for (const side of ['left', 'right', 'both']) {
+    ctx.frame(320, 240, 1, box({ optionAsAlt: side }, [text('keys', { size: 12 })]));
+    assert.equal(ctx.optionAsAlt(), side);
+  }
+  ctx.frame(320, 240, 1, box({}, [text('keys', { size: 12 })]));
+  assert.equal(ctx.optionAsAlt(), 'none', 'the frame that stops asking gives the Option keys back');
+  // "none" and a non-root box both encode nothing.
+  ctx.frame(320, 240, 1, box({ optionAsAlt: 'none' }, [box({ optionAsAlt: 'left' })]));
+  assert.equal(ctx.optionAsAlt(), 'none');
+  assert.deepEqual(ctx.warnings(), []);
+  assert.throws(() => ctx.frame(320, 240, 1, box({ optionAsAlt: 'meta' })), /optionAsAlt "meta" \(none \| left \| right \| both\)/);
+  assert.deepEqual(protocol().optionAsAlt, ['none', 'left', 'right', 'both']);
+});
+
 test('the hand-written composites and constructor specials lower', () => {
   const build = () =>
     box({ title: 'frame', pad: 6, gap: 3, bg: '#14161e', keyFocus: true, onKey: 'k' }, [
@@ -4130,7 +4150,7 @@ const SCENE_TREES = {
       ]),
     ]),
   chrome: () =>
-    root({ title: 'kui conformance', alwaysOnTop: true, secureInput: true }, [
+    root({ title: 'kui conformance', alwaysOnTop: true, secureInput: true, optionAsAlt: 'left' }, [
       box({ gap: 6 }, [
         // `<titlebar>` appends its own cluster; the second one goes through
         // the `<windowButtons>` element, in a strip laid out by hand.
@@ -5068,6 +5088,7 @@ function sceneReport(name, env, steps, { ctx, events, commands, audio }) {
   lines.push(`title ${ctx.windowTitle() ?? '-'}`);
   lines.push(`always-on-top ${+ctx.alwaysOnTop()}`);
   lines.push(`secure-input ${+ctx.secureInput()}`);
+  lines.push(`option-as-alt ${ctx.optionAsAlt()}`);
   const quads = Buffer.from(ctx.quads());
   const stride = quadStride();
   const count = quads.byteLength / stride;

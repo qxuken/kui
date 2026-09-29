@@ -306,13 +306,26 @@ pub(crate) fn lock_state(tracked: KeyLocks) -> KeyLocks {
 }
 
 impl DynShell<'_> {
+    /// A key event for pane `i`, which the OS delivered to pane `from` —
+    /// the same pane, or the owner lending its keyboard to a popup.
     pub(super) fn on_key(
         &mut self,
         event_loop: &ActiveEventLoop,
+        from: usize,
         i: usize,
         event: winit::event::KeyEvent,
     ) {
         let pressed = event.state == ElementState::Pressed;
+        // Whether an Option the window made Alt is held (backlog F113):
+        // `from`'s setting, since winit rewrote the press in that
+        // window's view, and a side held in either window's record, since
+        // a modifier pressed before a popup opened was recorded by its
+        // owner and one pressed after by the popup.
+        let option_alt = cfg!(target_os = "macos") && {
+            let applied = self.panes[from].applied_option_as_alt;
+            crate::pane::option_is_alt(applied, &self.panes[from].modifier_keys_down)
+                || crate::pane::option_is_alt(applied, &self.panes[i].modifier_keys_down)
+        };
 
         // Full-keyboard path: every press *and release* travels as data to
         // the key-focused sink (`NodeSpec::on_key`) — the core delivers the
@@ -472,9 +485,15 @@ impl DynShell<'_> {
         // the core's table's business: this is the *composed* character
         // the platform produced, which a chord-view `KeyPress` does not
         // carry — macOS's ⌥o is "ø" here and no text at all there.
+        //
+        // Nor under an Option the window made Alt (backlog F113): winit
+        // hands such a press the layout's unmodified character, which
+        // is the chord's and not something typed — Alt types nothing
+        // there, as Control types nothing anywhere.
         let pane = &self.panes[i];
         if !pane.primary()
             && !pane.modifiers.control_key()
+            && !option_alt
             && let Some(text) = &event.text
             && text.chars().any(|c| !c.is_control())
         {

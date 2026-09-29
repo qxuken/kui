@@ -30,9 +30,10 @@ use kui_core::{
 use serde_json::{Map as JsonMap, Value as Json};
 
 use crate::schema::{
-    self, Kind, P_ALWAYS_ON_TOP, P_BORDER, P_DIR, P_FLOAT, P_INDEX, P_KEY, P_KEY_FOCUS, P_OVERFLOW,
-    P_PAD, P_ROW_COUNT, P_SECURE_INPUT, P_SIZE, P_TITLE, P_TOOLTIP, P_WINDOWS, Parsed, PropsOut,
-    SIZE_MODE_CALC, SIZE_MODE_TREE, align_idx, color_num, min_num, sizing_num,
+    self, Kind, P_ALWAYS_ON_TOP, P_BORDER, P_DIR, P_FLOAT, P_INDEX, P_KEY, P_KEY_FOCUS,
+    P_OPTION_AS_ALT, P_OVERFLOW, P_PAD, P_ROW_COUNT, P_SECURE_INPUT, P_SIZE, P_TITLE, P_TOOLTIP,
+    P_WINDOWS, Parsed, PropsOut, SIZE_MODE_CALC, SIZE_MODE_TREE, align_idx, color_num, min_num,
+    sizing_num,
 };
 use crate::{Result, err, value_of};
 
@@ -285,6 +286,16 @@ pub fn protocol_json() -> Json {
             kui_core::UnderlineStyle::NAMES
                 .iter()
                 .map(|a| Json::String((*a).into()))
+                .collect(),
+        ),
+    );
+    // The root's Option-as-Alt sides, in wire order (backlog F113).
+    o.insert(
+        "optionAsAlt".into(),
+        Json::Array(
+            kui_core::OptionAsAlt::ALL
+                .iter()
+                .map(|v| Json::String(v.name().into()))
                 .collect(),
         ),
     );
@@ -650,6 +661,15 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut, refs: &mut Refs<'_>) -
             P_ALWAYS_ON_TOP => out.always_on_top = true,
             // The same shape (backlog F85).
             P_SECURE_INPUT => out.secure_input = true,
+            // Root only, a side by its number (`OptionAsAlt::index`,
+            // backlog F113); the encoder writes nothing for "none" and
+            // refuses a name it does not know, so a number past the four
+            // is a bad stream.
+            P_OPTION_AS_ALT => {
+                let i = r.u()?;
+                out.option_as_alt = kui_core::OptionAsAlt::from_index(i)
+                    .ok_or_else(|| err(format!("unknown optionAsAlt {i}")))?;
+            }
             // One JSON blob, the list as the view wrote it, each entry
             // read by `WindowConfig::from_value` — the reader Lua's list
             // goes through, so the two cannot disagree on what a zero
@@ -1477,6 +1497,10 @@ mod tests {
                 "keyFocus" => expected.key_focus = true,
                 "alwaysOnTop" => expected.always_on_top = true,
                 "secureInput" => expected.secure_input = true,
+                "optionAsAlt" => {
+                    s.push(2.0);
+                    expected.option_as_alt = kui_core::OptionAsAlt::Right;
+                }
                 "key" => {
                     s.extend([0.0, 3.0]);
                     strings = b"abc";

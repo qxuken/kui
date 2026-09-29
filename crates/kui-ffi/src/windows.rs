@@ -293,6 +293,35 @@ pub extern "C" fn kui_secure_input_get(ptr: *mut KuiCtx) -> bool {
     })
 }
 
+/// Declares which Option keys act as Alt in this window on macOS
+/// (`KUI_OPTION_AS_ALT_*`, backlog F113), so a dead key like ⌥u arrives as
+/// a key with Alt rather than composing an accent. Cleared each
+/// `kui_frame_begin` like `kui_set_always_on_top`: a frame that stops
+/// calling this gives the Option keys back to the layout. A number past
+/// `KUI_OPTION_AS_ALT_BOTH` — a header from a later kui — is
+/// `KUI_OPTION_AS_ALT_NONE`, the Mac's own behaviour. Under `kui_run` the
+/// runner applies it on change; a host driving its own window reads
+/// `kui_option_as_alt_get` and does.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_option_as_alt(ptr: *mut KuiCtx, option_as_alt: u32) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core()
+                .set_option_as_alt(OptionAsAlt::from_index(option_as_alt).unwrap_or_default());
+        }
+    });
+}
+
+/// Which Option keys the frame that just finished asked to act as Alt —
+/// for hosts driving their own window. `KUI_OPTION_AS_ALT_NONE` for a
+/// frame that never asked, and on a bad context.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_option_as_alt_get(ptr: *mut KuiCtx) -> u32 {
+    guard(KUI_OPTION_AS_ALT_NONE, || {
+        unsafe { ctx(ptr) }.map_or(KUI_OPTION_AS_ALT_NONE, |c| c.core().option_as_alt().index())
+    })
+}
+
 /// The window fact for views to read as `env.window.always_on_top`: what
 /// the host actually did about the ask, so a pin button draws the
 /// platform's answer and not the app's guess. Its own setter rather than

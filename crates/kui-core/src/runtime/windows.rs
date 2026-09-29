@@ -332,4 +332,29 @@ impl Core {
     pub fn secure_input(&self) -> bool {
         self.secure_input
     }
+
+    /// Declares which Option keys act as Alt in this window on macOS
+    /// (backlog F113): a dead key under that Option — ⌥u, ⌥e, ⌥i, ⌥n,
+    /// ⌥` — then arrives as the chord `<A-u>` rather than starting an
+    /// accent the app never hears, and a key under it types nothing, as
+    /// under Control. Frame state like `always_on_top`, default
+    /// [`OptionAsAlt::None`](crate::OptionAsAlt::None): a frame that stops
+    /// declaring it gives the Option keys back to the layout, so an app
+    /// declares it on every frame — from a setting, say — and never has
+    /// to undo it.
+    ///
+    /// The runner applies it to the window on change and never per frame.
+    /// A popup never has the keyboard on macOS — its keys come through its
+    /// owner, which stays key — so the owner's declaration is the one a
+    /// popup's keys are read under. Nothing happens on other platforms,
+    /// whose Alt composes nothing.
+    pub fn set_option_as_alt(&mut self, option_as_alt: crate::OptionAsAlt) {
+        self.option_as_alt = option_as_alt;
+    }
+
+    /// Which Option keys this frame asked to act as Alt (for the frame
+    /// driver); `None` for a frame that never said.
+    pub fn option_as_alt(&self) -> crate::OptionAsAlt {
+        self.option_as_alt
+    }
 }

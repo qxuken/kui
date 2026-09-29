@@ -182,6 +182,7 @@ pub const P_BUTTONS: u32 = 117;
 pub const P_OVERSCROLL: u32 = 118;
 pub const P_SCROLL_AXES: u32 = 119;
 pub const P_MODIFIER_KEYS: u32 = 120;
+pub const P_OPTION_AS_ALT: u32 = 121;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -1450,6 +1451,16 @@ pub const CUSTOM: &[CustomProp] = &[
         lua: "`secure_input = true` (root table)",
         c: "`kui_set_secure_input`",
         doc: "Declares that this frame wants the keyboard to this window kept from every other process while the window has it — macOS's Secure Keyboard Entry, what a terminal turns on at a password prompt (backlog F85). Frame state the way `alwaysOnTop` is, default false: declare it on every frame the prompt is up, and the frame that stops is what turns it off, so nothing has to remember to undo it. The runner owns the platform call and its balance: `EnableSecureEventInput` is process-wide and counted, and the runner holds one count while a window whose frame asked has the keyboard, giving it back when that window loses the keyboard, closes or stops asking, and at exit — Apple's rule, since while it is on no other process can read the keyboard at all (a launcher's hotkey, a text expander, an accessibility tool). Nothing on Windows or Linux, which have no such switch. A C host with its own loop reads the ask with `kui_secure_input_get` and makes the call itself.",
+    },
+    CustomProp {
+        name: "optionAsAlt",
+        id: P_OPTION_AS_ALT,
+        jsx_names: &["optionAsAlt"],
+        lua_names: &["option_as_alt"],
+        jsx: "`optionAsAlt=\"left\"` — `\"none\"`, `\"left\"`, `\"right\"`, `\"both\"` (root box only)",
+        lua: "`option_as_alt = \"left\"` (root table)",
+        c: "`kui_set_option_as_alt` (`KUI_OPTION_AS_ALT_*`)",
+        doc: "Declares which Option keys act as Alt in this window on macOS (backlog F113). On a Mac, Option composes: ⌥m types `µ`, and ⌥u, ⌥e, ⌥i, ⌥n and ⌥` are dead keys that start an accent and wait for the next key, so the press never reaches the app as a key and a keymap binding `<A-u>` never hears it. An Option key named here is Alt instead: it composes nothing and types nothing, and a key under it arrives as a chord of the key the layout prints unmodified — a terminal's \"Option as Meta\", an editor's Alt bindings. `\"left\"` or `\"right\"` leaves the other side composing, so a user keeps `ü` on one Option; `\"both\"` takes both; `\"none\"`, the default, is the Mac's own behaviour. Frame state the way `alwaysOnTop` is: declare it on every frame, and the frame that stops gives the Option keys back to the layout; the runner applies it to the window on change, never per frame. A popup's keys arrive through its owner, so the owner's declaration is the one they are read under. Nothing on Windows or Linux, whose Alt composes nothing. A C host with its own loop reads the ask with `kui_option_as_alt_get` and applies it itself.",
     },
     CustomProp {
         name: "windows",
@@ -3017,6 +3028,9 @@ pub struct PropsOut {
     /// `secureInput`: the root asked for secure keyboard entry while the
     /// window has the keyboard (`Core::set_secure_input`, backlog F85).
     pub secure_input: bool,
+    /// `optionAsAlt`: which Option keys the root asked to act as Alt this
+    /// frame (`Core::set_option_as_alt`, backlog F113).
+    pub option_as_alt: crate::OptionAsAlt,
     pub key_focus: bool,
     /// Hover hint: the element lowering floats `widgets::tooltip` below the
     /// node while it is hovered (the parser also marks the spec hoverable).
@@ -3060,6 +3074,7 @@ impl PropsOut {
             title: None,
             always_on_top: false,
             secure_input: false,
+            option_as_alt: crate::OptionAsAlt::None,
             key_focus: false,
             tooltip: None,
             windows: Vec::new(),

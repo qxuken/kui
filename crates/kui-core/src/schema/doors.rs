@@ -833,6 +833,13 @@ pub const DOORS: &[Door] = &[
         doc: "Declares that this frame wants secure keyboard entry while the window has the keyboard — a password prompt (backlog F85).",
     },
     Door {
+        rust: "Ui::option_as_alt",
+        c: Is("kui_set_option_as_alt"),
+        node: As("the root's `optionAsAlt` prop"),
+        lua: As("the root's `option_as_alt` field"),
+        doc: "Declares which Option keys act as Alt in this window on macOS, so a dead key like ⌥u arrives as `<A-u>` (backlog F113).",
+    },
+    Door {
         rust: "Ui::window_command",
         c: As(
             "the chrome roles (`KuiSpec.window_role`) are the door; the verb is what `widgets::window_buttons` lowers to",
@@ -863,6 +870,13 @@ pub const DOORS: &[Door] = &[
         node: Is("Ctx.secureInput"),
         lua: No(GUEST),
         doc: "The same for the secure-input ask: what a driver with its own loop reads to make the platform call; the runner makes it for a `KuiWindow` and `kui_run`.",
+    },
+    Door {
+        rust: "Core::option_as_alt",
+        c: Is("kui_option_as_alt_get"),
+        node: Is("Ctx.optionAsAlt"),
+        lua: No(GUEST),
+        doc: "The same for the Option-as-Alt ask: what a driver with its own loop reads to apply it to its window; the runner applies it for a `KuiWindow` and `kui_run`.",
     },
     Door {
         rust: "Core::take_window_commands",

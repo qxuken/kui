@@ -14,7 +14,7 @@
 //! (`env.request_files(opts)`, `env.awaiting_files()`), text queries (`env.text_hit(key, x, y)`,
 //! `env.caret_rect(key, byte)`) and window requests
 //! (`env.set_window_size(window, w, h)`, `env.focus_window(window)`); the
-//! root table may set `window_title`, `always_on_top` and `secure_input`. Because the IR is data all the way down, the binding is
+//! root table may set `window_title`, `always_on_top`, `secure_input` and `option_as_alt`. Because the IR is data all the way down, the binding is
 //! just table-to-node conversion — no closures cross the boundary. One
 //! global is native rather than the prelude's: `row_heights(rows,
 //! estimate)`, the core's `RowHeights` as userdata the script keeps, which
@@ -253,6 +253,19 @@ impl Extension for LuaExtension {
         // a password prompt declares it on every view the prompt is up.
         if let Ok(Some(true)) = root.get::<Option<bool>>("secure_input") {
             ui.secure_input(true);
+        }
+        // Which Option keys are Alt on macOS (backlog F113), by name; a
+        // name kui does not have is the script's mistake, said as one.
+        if let Some(name) = root
+            .get::<Option<String>>("option_as_alt")
+            .map_err(|e| format!("option_as_alt: {e}"))?
+        {
+            let v = kui_core::OptionAsAlt::from_name(&name).ok_or_else(|| {
+                format!(
+                    "option_as_alt: expected \"none\", \"left\", \"right\" or \"both\", got {name:?}"
+                )
+            })?;
+            ui.option_as_alt(v);
         }
         declare_windows(ui, &root).map_err(|e| format!("windows: {e}"))?;
         build_node(ui, &root).map_err(|e| format!("view table: {e}"))
@@ -3284,6 +3297,41 @@ mod tests {
         );
     }
 
+    /// The root's `option_as_alt` names a side (backlog F113), and a name
+    /// kui does not have is refused with the four it does.
+    #[test]
+    fn option_as_alt_is_a_side_by_name() {
+        let mut core = Core::new();
+        let mut ext = LuaExtension::from_source(
+            "keys",
+            r#"
+                function view(env)
+                  return column { option_as_alt = "left", text("x") }
+                end
+            "#,
+        )
+        .unwrap();
+        frame(&mut core, &mut ext);
+        assert_eq!(core.option_as_alt(), kui_core::OptionAsAlt::Left);
+
+        let mut ext = LuaExtension::from_source(
+            "keys",
+            r#"
+                function view(env)
+                  return column { option_as_alt = "meta", text("x") }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
+        ui.set_origin(OriginId(1));
+        let err = ext.view(&Slot::root(), &mut ui).unwrap_err().to_string();
+        assert!(
+            err.contains("option_as_alt") && err.contains("\"both\"") && err.contains("meta"),
+            "{err}"
+        );
+    }
+
     /// Every node type the prelude offers lowers without error and draws.
     #[test]
     fn every_node_type_lowers() {
@@ -3292,7 +3340,7 @@ mod tests {
             r##"
                 function view(env)
                   return column { gap = 4, window_title = "all nodes", always_on_top = true,
-                    secure_input = true,
+                    secure_input = true, option_as_alt = "right",
                     titlebar { text("custom title"), window_buttons() },
                     titlebar { title = "plain title" },
                     text({ "same IR as ", { "Rust", bold = true, color = "#73d98c" },
@@ -3318,6 +3366,7 @@ mod tests {
         assert_eq!(core.window_title(), Some("all nodes"));
         assert!(core.always_on_top());
         assert!(core.secure_input());
+        assert_eq!(core.option_as_alt(), kui_core::OptionAsAlt::Right);
         // And every key above is one some table claims: this scene is the
         // allow-list's fixture, so a new element prop that nobody adds to
         // `ELEMENTS.lua_own` fails here instead of warning at a user.

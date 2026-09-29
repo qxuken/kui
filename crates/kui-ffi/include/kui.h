@@ -2481,6 +2481,29 @@ void kui_set_secure_input(KuiCtx *ctx, bool on);
  * balances every enable with one disable. False for a frame that never
  * asked. */
 bool kui_secure_input_get(KuiCtx *ctx);
+/* Which Option keys act as Alt in this window on macOS (backlog F113).
+ * On a Mac, Option composes: option-m types a mu, and option-u, -e, -i, -n
+ * and -` are dead keys that start an accent and wait for the next key, so
+ * the press never reaches you as a key and a binding on Alt-u never fires.
+ * An Option key named here is Alt instead: it composes nothing, types
+ * nothing, and a key under it arrives as the layout's unmodified key with
+ * KUI_KMOD_ALT. LEFT or RIGHT leaves the other side composing; NONE, the
+ * default, is the Mac's own behaviour. Cleared each kui_frame_begin like
+ * kui_set_always_on_top: a frame that stops calling this gives the Option
+ * keys back to the layout. Any other number is NONE. Under kui_run the
+ * runner applies it to the window on change. Nothing on Windows or Linux,
+ * whose Alt composes nothing. New functions, ABI unchanged. */
+#define KUI_OPTION_AS_ALT_NONE 0u
+#define KUI_OPTION_AS_ALT_LEFT 1u
+#define KUI_OPTION_AS_ALT_RIGHT 2u
+#define KUI_OPTION_AS_ALT_BOTH 3u
+void kui_set_option_as_alt(KuiCtx *ctx, uint32_t option_as_alt);
+/* What the frame that just finished asked for (a KUI_OPTION_AS_ALT_*) -
+ * for a host with its own window, which applies it on change (on macOS,
+ * winit's set_option_as_alt; NSEvent's charactersIgnoringModifiers for the
+ * named side's Option, where a host reads its own events). NONE for a
+ * frame that never asked. */
+uint32_t kui_option_as_alt_get(KuiCtx *ctx);
 
 /* -- Spec helpers -------------------------------------------------------- */
 /* Fills spec->float_* from a preset name — the same four the JSX and Lua

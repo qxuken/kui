@@ -1,6 +1,6 @@
 //! Env + declared window title: frame-scoped data the driver reconciles.
 
-use kui_core::{Appearance, Assistive, Core, MotionPref, Size, SystemEnv, Value};
+use kui_core::{Appearance, Assistive, Core, MotionPref, OptionAsAlt, Size, SystemEnv, Value};
 
 #[test]
 fn window_title_is_frame_scoped() {
@@ -62,6 +62,53 @@ fn secure_input_is_frame_scoped_and_defaults_off() {
         !core.secure_input(),
         "a frame that stops asking turns it off"
     );
+}
+
+/// Option as Alt is frame state the way the level is (backlog F113):
+/// `None` until a frame declares it — the Mac's own composing Option, so
+/// no app changes by upgrading — and `None` again on the frame that
+/// stops, which is what gives the Option keys back to the layout without
+/// the app remembering to.
+#[test]
+fn option_as_alt_is_frame_scoped_and_defaults_to_none() {
+    let mut core = Core::new();
+    assert_eq!(core.option_as_alt(), OptionAsAlt::None);
+    let mut ui = core.frame(Size::new(100.0, 100.0), 1.0);
+    ui.option_as_alt(OptionAsAlt::Left);
+    ui.finish();
+    assert_eq!(core.option_as_alt(), OptionAsAlt::Left);
+
+    let mut ui = core.frame(Size::new(100.0, 100.0), 1.0);
+    ui.option_as_alt(OptionAsAlt::Both);
+    ui.finish();
+    assert_eq!(core.option_as_alt(), OptionAsAlt::Both);
+
+    let ui = core.frame(Size::new(100.0, 100.0), 1.0);
+    ui.finish();
+    assert_eq!(
+        core.option_as_alt(),
+        OptionAsAlt::None,
+        "a frame that stops declaring it gives the Option keys back"
+    );
+}
+
+/// The four spellings every door shares: the name a prop and a Lua field
+/// write, the number C and the binary IR carry, and which side each
+/// covers.
+#[test]
+fn option_as_alt_names_numbers_and_sides_agree() {
+    for v in OptionAsAlt::ALL {
+        assert_eq!(OptionAsAlt::from_name(v.name()), Some(v));
+        assert_eq!(OptionAsAlt::from_index(v.index()), Some(v));
+    }
+    assert_eq!(OptionAsAlt::from_name("Left"), None);
+    assert_eq!(OptionAsAlt::from_index(4), None);
+    use kui_core::KeyLocation::{Left, Numpad, Right, Standard};
+    assert!(OptionAsAlt::Left.covers(Left) && !OptionAsAlt::Left.covers(Right));
+    assert!(OptionAsAlt::Right.covers(Right) && !OptionAsAlt::Right.covers(Left));
+    assert!(OptionAsAlt::Both.covers(Left) && OptionAsAlt::Both.covers(Right));
+    assert!(!OptionAsAlt::Both.covers(Standard) && !OptionAsAlt::Both.covers(Numpad));
+    assert!(!OptionAsAlt::None.covers(Left) && !OptionAsAlt::None.covers(Right));
 }
 
 #[test]

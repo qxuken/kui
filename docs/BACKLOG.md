@@ -89,7 +89,9 @@ holds an owed one, and whether it changed what is drawn — from the
 kawoosh frame-ledger round of the same day, filed and built after the
 alpha.25 tag, and after that tag F112 — the Powerline Extra half
 circles and wedges drawn from the cell — from the kawoosh rounded-row
-report of the same day, the day it was filed. The index
+report of the same day, the day it was filed, and F113 — the Option
+keys as Alt on a Mac — from the kawoosh settings-pane report of the same
+day, the day it was filed. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -1498,6 +1500,16 @@ under the still pointer, and the terminal, an `onScroll` node taking
 every delta, took the rest of the swipe. One entry, F107, **built
 2026-09-28**, the day it was filed, and in the archive, with ADR 0038.
 
+## From the kawoosh settings-pane report (2026-09-29)
+
+kawoosh's settings pane bound its filters to `<A-m>`, `<A-u>`, `<A-p>`
+and `<A-s>`, and `<A-u>` did nothing on a Mac; neither did kawoosh's
+own `<A-u>`, `<A-i>` and `<A-n>`. ⌥u is a dead key there: the runner
+lets every window compose, so winit took the press for the start of an
+accent and never reported a key. ⌥m arrived because it types a plain
+`µ`. One entry, F113, **built 2026-09-29**, the day it was filed, and in
+the archive.
+
 ## From the kawoosh rounded-row report (2026-09-29)
 
 yazi in a kawoosh terminal drew a squiggle before and after its hovered
@@ -2679,6 +2691,8 @@ Nothing of the kawoosh frame-ledger round is open (F111 **built
 2026-09-29**, the day it was filed).
 Nothing of the kawoosh rounded-row report is open (F112 **built
 2026-09-29**, the day it was filed).
+Nothing of the kawoosh settings-pane report is open (F113 **built
+2026-09-29**, the day it was filed).
 Nothing of the Windows regression round of 2026-09-26 is open
 (RG38–RG46 **built 2026-09-26**, the day they were filed).
 Nothing of the Linux round under WSLg is open (RG47–RG49 **built
@@ -3589,6 +3603,10 @@ move.
 **From the kawoosh rounded-row report (2026-09-29)** — F112, filed and built the same day
 
 - `!` **F112** — [A terminal's rounded row draws a stray glyph at each end: the Powerline Extra half circles go to the font](backlog/closed-2026-09.md#-f112--a-terminals-rounded-row-draws-a-stray-glyph-at-each-end-the-powerline-extra-half-circles-go-to-the-font--done-2026-09-29) — done (2026-09-29) — `boxdraw` draws U+E0B4–U+E0BF from the cell box as it does the arrows: the filled half circles a half ellipse the cell wide and tall, their arcs, the corner wedges on the cell's diagonal and the diagonals
+
+**From the kawoosh settings-pane report (2026-09-29)** — F113, filed and built the same day
+
+- `~` **F113** — [A Mac's dead keys never arrive: ⌥u composes an accent and a keymap's `<A-u>` never hears it](backlog/closed-2026-09.md#-f113--a-macs-dead-keys-never-arrive-u-composes-an-accent-and-a-keymaps-a-u-never-hears-it--done-2026-09-29) — done (2026-09-29) — `Ui::option_as_alt(OptionAsAlt)` (`none`, `left`, `right`, `both`), frame state; the runner hands it to winit's `set_option_as_alt` on change, and an Option that is Alt types nothing
 
 **From the kawoosh kitty-keyboard review (2026-09-28)** — F108, filed and built the same day
 

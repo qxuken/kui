@@ -301,7 +301,7 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         // are driven under, which is the thing being pinned.
         "chrome" | "chrome-inset" => r#"
             return column { window_title = "kui conformance", always_on_top = true,
-                            secure_input = true, gap = 6,
+                            secure_input = true, option_as_alt = "left", gap = 6,
               titlebar { text("app", { size = 12 }) },
               row { width = { grow = 1 }, keep_focus = true, window_buttons() },
               column { key = "sink", width = 40, height = 16, bg = 0x22242cff,

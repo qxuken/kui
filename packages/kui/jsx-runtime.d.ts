@@ -505,6 +505,16 @@ export interface BoxProps extends Keyed, GeneratedSpecProps, CustomSpecProps {
    *  stops is what turns it off. The runner enables it only while the
    *  window has the keyboard and keeps the platform's count balanced. */
   secureInput?: boolean;
+  /** Root box only: which Option keys act as Alt in this window on macOS
+   *  (backlog F113). Option composes on a Mac — ⌥u, ⌥e, ⌥i, ⌥n and ⌥`
+   *  are dead keys that start an accent, so the press never arrives as a
+   *  key — and a side named here is Alt instead: it types nothing and a
+   *  key under it arrives as a chord of the layout's unmodified key, so a
+   *  keymap's `<A-u>` fires. `"left"` or `"right"` leaves the other side
+   *  composing; `"none"`, the default, is the Mac's own behaviour.
+   *  Declare it every frame; the frame that stops gives the Option keys
+   *  back to the layout. Nothing elsewhere. */
+  optionAsAlt?: 'none' | 'left' | 'right' | 'both';
   /** Root box only: which windows exist besides the main one (see
    *  `WindowDecl` in `@qxuken/kui`). `runWindowed` / `createApp` write it
    *  from the loop config's `windows(model)`; a view driving a `Ctx` by
