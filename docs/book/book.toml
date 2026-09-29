@@ -1,0 +1,19 @@
+[book]
+title = "The kui book"
+description = "A first path through kui, one concept per chapter, each chapter a program in examples/rust/tutorial."
+authors = ["The kui authors"]
+language = "en"
+src = "src"
+
+[build]
+build-dir = "book"
+create-missing = false
+
+[output.html]
+default-theme = "light"
+preferred-dark-theme = "navy"
+git-repository-url = "https://drydock9.qxuken.dev/qxuken/kui"
+edit-url-template = "https://drydock9.qxuken.dev/qxuken/kui/_edit/main/docs/book/{path}"
+
+[output.html.fold]
+enable = false

@@ -28,6 +28,39 @@ through the XDG desktop portal. Without one on the session bus, every
 dialog answers as if cancelled. With no system accent colour to read,
 the theme's own accent is used.
 
+## Start here
+
+The whole of kui in one program: an app is a type with a `view` that
+declares the frame from scratch, and a launcher opens a window around it.
+
+```rust
+use kui_native::{App, TextStyle, Ui};
+
+struct Hello;
+
+impl App for Hello {
+    fn view(&mut self, ui: &mut Ui<'_>) {
+        let theme = ui.theme();
+        ui.text("Hello, kui", TextStyle::new(24.0).color(theme.fg));
+    }
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    kui_native::app("Hello").size(360.0, 200.0).run(Hello)
+}
+```
+
+```bash
+cargo run -p kui-native --example tutorial_01_hello
+```
+
+That is the first of ten steps in [**the kui book**](docs/book/src/SUMMARY.md)
+(`mdbook serve docs/book`), each one the last plus one concept — layout,
+messages, controls, keys, floats, motion, effects, a test — and each a
+program under [`examples/rust/tutorial`](examples/rust/tutorial). Read it
+first; the rest of this file is the reference, the design notes and the
+numbers.
+
 ## Testing without a window
 
 The core owns no clock, no window and no device: a frame is a function of
@@ -253,6 +286,13 @@ resolved from the host executable at load, the way a Lua C module resolves
 `--export-dynamic`, which is what `crates/kui-ffi/build.rs` exists for.
 
 ## Reference
+
+[docs/book](docs/book/src/SUMMARY.md) is the path in: fourteen short
+chapters, one concept each, every code block pulled from a step under
+`examples/rust/tutorial` so it cannot go stale
+([ADR 0039](docs/adr/0039-a-tutorial-is-a-sequence.md)). It is written for
+the reader who has none of the names yet; the two documents below are
+for the reader who has.
 
 [docs/howto.md](docs/howto.md) is the task index: about twenty questions a
 developer actually arrives with — "how do I animate a removal", "how do I

@@ -7,13 +7,28 @@
 //! `+1`, `-1` and `reset`; a right-click that declares a `modal` menu on
 //! the next frame — the core opens nothing, it reports the press and the
 //! view puts a float there — with `+10` and `reset` in it; and a headless
-//! drive that clicks all of it and exits non-zero on a wrong answer.
+//! drive that clicks all of it and exits non-zero on a wrong answer. The
+//! messages are a `#[derive(Message)]` enum, the spelling the book's
+//! step 3 teaches (`docs/adr/0039`, decision 6); the other bindings
+//! build the same `{kind}` maps by hand.
 //!
 //! Run: cargo run -p kui-native --example counter [-- --headless]
 
 use kui_devtools::{Drive, Example};
 use kui_native::widgets;
-use kui_native::{Align, App, Core, FloatConfig, NodeSpec, TextStyle, Ui, UiEvent, Value};
+use kui_native::{Align, App, Core, FloatConfig, Message, NodeSpec, TextStyle, Ui, UiEvent};
+
+#[derive(Message, Clone, Debug, PartialEq)]
+enum Msg {
+    Inc,
+    Dec,
+    Reset,
+    Add10,
+    /// The tag on the root's `on_context_menu` and on the menu's `modal`:
+    /// the press that asks for the menu, and the `dismiss` that ends it,
+    /// both arrive under it.
+    Menu,
+}
 
 #[derive(Default)]
 struct Counter {
@@ -33,7 +48,7 @@ impl App for Counter {
                 .fill()
                 .center()
                 .gap(24.0)
-                .on_context_menu(Value::map([("kind", "menu".into())])),
+                .on_context_menu(Msg::Menu),
             |ui| {
                 ui.with(
                     NodeSpec::column()
@@ -48,9 +63,9 @@ impl App for Counter {
                         ui.text("kui counter", TextStyle::new(14.0).color(t.muted));
                         ui.text(&self.count.to_string(), TextStyle::new(56.0));
                         ui.with(NodeSpec::row().gap(12.0), |ui| {
-                            widgets::button(ui, "-1", Value::map([("kind", "dec".into())]));
-                            widgets::button(ui, "+1", Value::map([("kind", "inc".into())]));
-                            widgets::button(ui, "reset", Value::map([("kind", "reset".into())]));
+                            widgets::button(ui, "-1", Msg::Dec);
+                            widgets::button(ui, "+1", Msg::Inc);
+                            widgets::button(ui, "reset", Msg::Reset);
                         });
                     },
                 );
@@ -76,7 +91,7 @@ impl App for Counter {
                             // the window; `fit` mirrors it back instead.
                             .fit(),
                     )
-                    .modal("menu")
+                    .modal(Msg::Menu)
                     .label("Actions")
                     .width(120.0)
                     .pad(4.0)
@@ -85,35 +100,39 @@ impl App for Counter {
                     .border(1.0, t.border_strong)
                     .radius(6.0),
                 |ui| {
-                    widgets::button(ui, "+10", Value::map([("kind", "add10".into())]));
-                    widgets::button(ui, "reset", Value::map([("kind", "reset".into())]));
+                    widgets::button(ui, "+10", Msg::Add10);
+                    widgets::button(ui, "reset", Msg::Reset);
                 },
             );
         }
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.kind() {
-            Some("inc") => self.count += 1,
-            Some("dec") => self.count -= 1,
-            Some("reset") => {
+        match ev.message::<Msg>() {
+            Some(Msg::Inc) => self.count += 1,
+            Some(Msg::Dec) => self.count -= 1,
+            Some(Msg::Reset) => {
                 self.count = 0;
                 self.menu = None;
             }
-            // A right-click: the core reports where it landed and opens
-            // nothing. The next frame's view is what puts a menu there.
-            Some("contextmenu") => {
-                let at = |k| ev.payload.get(k).and_then(Value::as_float).unwrap_or(0.0) as f32;
-                self.menu = Some((at("x"), at("y")));
-            }
-            // Escape, or a press outside the menu. The core asks; the app
-            // decides — this one just closes.
-            Some("dismiss") => self.menu = None,
-            Some("add10") => {
+            Some(Msg::Add10) => {
                 self.count += 10;
                 self.menu = None;
             }
-            _ => {}
+            // The one tag, two events: a right-click — the core reports
+            // where it landed and opens nothing; the next frame's view is
+            // what puts a menu there — and a `dismiss`, Escape or a press
+            // outside the menu, where the core asks and the app decides.
+            // This one just closes.
+            Some(Msg::Menu) => {
+                if ev.kind() == Some("contextmenu") {
+                    let at = |k| ev.payload.get_float(k).unwrap_or(0.0) as f32;
+                    self.menu = Some((at("x"), at("y")));
+                } else {
+                    self.menu = None;
+                }
+            }
+            None => {}
         }
     }
 }

@@ -2568,6 +2568,36 @@ are in the archive too; RG76 holds what two of them left.
 - A `measure_text` between frames re-wraps the shared run of a text
   drawn at another width (RG72's copy is taken only within a frame).
 
+## From the book round (2026-09-29)
+
+The question was "does kui have a human-friendly DX?", asked after the
+alpha.27 tag. The answer was two-sided: the mechanics are friendly — a
+headless test is a list of gestures, a warning names its fix, one model
+runs four bindings, the DX sweep above fixed what the field reports
+found — and the front door is not. The README reaches "Examples" at
+line 122 with no hello-world before it; `howto.md` and `props.md` are
+reference prose for a reader who knows the name of what they want; the
+counter, the one example every binding has, needs the harness and a
+hand-built `Value` before a reader has met `App`; nothing teaches kui
+in order. One entry, **built the same day** as ADR 0039.
+
+### `.` DX27 — A first-time reader has no path through kui — done (2026-09-29)
+
+**Built 2026-09-29**, as [ADR 0039](adr/0039-a-tutorial-is-a-sequence.md).
+`examples/rust/tutorial/` is a fifth kind of example: ten steps,
+`01_hello` to `10_testing`, each a whole program that is the last plus
+one concept, each on the shipped launcher with no harness, registered as
+`tutorial_NN_<name>` (in the windowed round by being an `[[example]]`;
+step 10's `mod tests` under `cargo test`). `docs/book` is an mdBook that
+includes the steps by anchor, fourteen chapters in a voice the repo's
+prose does not have — short sentences, no ids in the body, the links at
+the chapter's end. `apps/counter.rs` moved onto `#[derive(Message)]` so
+the gallery does not contradict the book's step 3; the README has a
+*Start here*; CI builds the book. What it does not do: the README is
+still 1,500 lines with the pitch, the benchmarks and the release history
+in one file — trimming it is a round of its own — and the book is Rust
+alone, with one chapter naming what maps to what in Node, Lua and C.
+
 ## After alpha.26
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After

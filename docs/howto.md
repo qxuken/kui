@@ -3,7 +3,8 @@
 A task index. [`props.md`](props.md) is the reference — every prop, element
 and event, sorted by name — and this page is the other door: the question a
 developer arrives with, two sentences of answer, and the row, the release
-entry or the ADR that says the rest.
+entry or the ADR that says the rest. New to kui, with no question yet?
+[The book](book/src/SUMMARY.md) is the path in, one concept a chapter.
 
 It exists because both field-report apps filed a wish for something that had
 already shipped and was documented in their own `node_modules`. The examples
