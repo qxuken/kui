@@ -440,22 +440,16 @@ fn table_fit(tree: &mut Tree, i: u32) {
 /// `shrink_axis` compresses a row's children. Then written into every
 /// cell, so the rows have nothing left to distribute.
 fn table_resolve(tree: &mut Tree, i: u32) {
-    // A cell's size-expression clamps, against its row's content box:
-    // the rows are wide by now, and the columns read the clamps next.
-    if tree.any_calc_bound {
-        for row in tree.children(i).collect::<Vec<_>>() {
-            if !is_table_row(tree, row) {
-                continue;
-            }
-            let room =
-                (tree.size[row as usize].w - tree.specs[row as usize].layout.padding.x()).max(0.0);
-            for cell in tree.children(row).collect::<Vec<_>>() {
-                resolve_bounds(tree, cell, AxisSel::Width, room);
-            }
-        }
-    }
-    let mut cols = table_columns(tree, i);
-    if cols.is_empty() {
+    // How many columns: the most cells any row has, as `table_columns`
+    // counts them — known before the columns are read, since they read
+    // the clamps resolved just below.
+    let n = tree
+        .children(i)
+        .filter(|&row| is_table_row(tree, row))
+        .map(|row| tree.children(row).filter(|&c| !is_float(tree, c)).count())
+        .max()
+        .unwrap_or(0);
+    if n == 0 {
         return;
     }
     // The widest row's content: what the columns are laid across. Rows
@@ -467,10 +461,32 @@ fn table_resolve(tree: &mut Tree, i: u32) {
             continue;
         }
         let spec = tree.specs[row as usize].layout;
-        let chrome = spec.padding.x() + spec.gap * (cols.len() as f32 - 1.0);
+        let chrome = spec.padding.x() + spec.gap * (n as f32 - 1.0);
         avail = avail.max(tree.size[row as usize].w - chrome);
     }
     let avail = avail.max(0.0);
+    // A cell's size-expression clamps, against the room its column's
+    // width takes its cut of: a `Percent` or calc width resolves against
+    // `avail` below, and in a plain row a child's width and its clamps
+    // share one room, so a cell's do too — `maxWidth "50%"` and `width
+    // "50%"` beside it are one number. They once took the row's content
+    // with the gaps in, and the clamp came out wider than the width. The
+    // rows are wide by now, and the columns read the clamps next. A float
+    // in a row is no cell: its clamps are its anchor's, in `distribute_axis`.
+    if tree.any_calc_bound {
+        for row in tree.children(i).collect::<Vec<_>>() {
+            if !is_table_row(tree, row) {
+                continue;
+            }
+            for cell in tree.children(row).collect::<Vec<_>>() {
+                if !is_float(tree, cell) {
+                    resolve_bounds(tree, cell, AxisSel::Width, avail);
+                }
+            }
+        }
+    }
+    let mut cols = table_columns(tree, i);
+    debug_assert_eq!(cols.len(), n);
     let mut used = 0.0f32;
     let mut grow_total = 0.0f32;
     for col in &mut cols {

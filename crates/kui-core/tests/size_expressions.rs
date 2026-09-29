@@ -289,3 +289,26 @@ fn a_negative_px_ceiling_is_no_expression() {
         "no ceiling is still none"
     );
 }
+
+/// A table's columns are laid across the widest row's content less the
+/// gaps between its cells: a `Percent` column takes its cut of that, and
+/// a cell's size expression — as its width or as its clamp — takes the
+/// same room, as a plain row's percentages, widths and clamps all take
+/// one. A clamp's once took the row's content with the gaps in, so a
+/// `maxWidth "50%"` held a cell to more than a `width "50%"` beside it.
+#[test]
+fn a_table_cell_s_clamps_take_the_columns_room() {
+    let mut t = T::new(NodeSpec::column().width(Sizing::Fixed(420.0)));
+    let table = t.node(0, NodeSpec::table().width(Sizing::GROW));
+    let row = t.node(table, NodeSpec::row().width(Sizing::GROW).gap(20.0));
+    let held = t.node(
+        row,
+        NodeSpec::column()
+            .width(Sizing::Fixed(300.0))
+            .max_width(max_str("50%").unwrap()),
+    );
+    let half = t.node(row, NodeSpec::column().width(s("50%")));
+    t.run(1000.0);
+    assert_eq!(t.w(half), 200.0, "half of 420 less the gap");
+    assert_eq!(t.w(held), 200.0, "the clamp's 50% is the width's");
+}
