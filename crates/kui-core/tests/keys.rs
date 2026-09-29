@@ -1089,6 +1089,41 @@ fn the_modifier_keys_reach_only_a_sink_that_asks() {
     assert!(evs.is_empty(), "the right Shift was never down");
 }
 
+/// A modifier key the window let go of when it lost the keyboard is
+/// released as a real release says it (backlog RG85): its own bit off,
+/// unless its twin is still down to be let go of after it.
+#[test]
+fn a_forced_release_of_a_modifier_key_says_the_state_after() {
+    let left =
+        KeyPress::new(KeyCode::Shift, KeyMods::NONE.with_shift()).with_location(KeyLocation::Left);
+    let right = left.clone().with_location(KeyLocation::Right);
+    let mut core = Core::new();
+    core.set_focused(true);
+    one_sink(&mut core, true);
+    drive(&mut core, &[InputEvent::KeyDown(left.clone())]);
+    core.set_focused(false);
+    let evs = core.take_pending_events();
+    assert_eq!(keys(&evs), [("up".into(), "shift".into())]);
+    let shift = |evs: &[UiEvent]| -> Vec<Option<bool>> {
+        evs.iter()
+            .filter(|e| e.payload.get_str("kind") == Some("key"))
+            .map(|e| e.payload.get_bool("shift"))
+            .collect()
+    };
+    assert_eq!(shift(&evs), [Some(false)]);
+    // Both Shifts: the first let go of leaves the other one's bit on.
+    core.set_focused(true);
+    drive(
+        &mut core,
+        &[InputEvent::KeyDown(left), InputEvent::KeyDown(right)],
+    );
+    core.set_focused(false);
+    assert_eq!(
+        shift(&core.take_pending_events()),
+        [Some(true), Some(false)]
+    );
+}
+
 #[test]
 fn the_new_keys_are_keys_to_every_sink() {
     // F13–F35, the system keys and the media keys are keys like any

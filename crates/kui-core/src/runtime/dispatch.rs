@@ -1238,7 +1238,21 @@ impl Core {
             return;
         }
         let mut out = Vec::new();
-        for kp in std::mem::take(&mut self.keys_held) {
+        let mut held = std::mem::take(&mut self.keys_held);
+        while !held.is_empty() {
+            let mut kp = held.remove(0);
+            // A modifier key's release reports the state after it, as a
+            // real one does (ADR 0002, decision 15): its own bit off
+            // unless its twin is still down to be let go of next. The
+            // press stored it on (backlog RG85).
+            let on = held.iter().any(|h| h.code == kp.code);
+            match kp.code {
+                KeyCode::Shift => kp.mods.shift = on,
+                KeyCode::Ctrl => kp.mods.ctrl = on,
+                KeyCode::Alt => kp.mods.alt = on,
+                KeyCode::Super => kp.mods.super_key = on,
+                _ => {}
+            }
             self.route_key(&kp, KeyPhase::Up, &mut out);
         }
         // Pending rather than returned: the writers are `set_focus` and the
