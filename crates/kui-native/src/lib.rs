@@ -54,7 +54,10 @@ mod secure_input;
 pub mod testing;
 mod windows;
 
-use pane::{Pane, appearance_of, level_change, level_supported, sync_env, theme_appearance};
+use pane::{
+    Pane, appearance_of, level_change, level_supported, option_as_alt_change, sync_env,
+    theme_appearance,
+};
 /// The OS settings winit has no call for, asked once and re-asked when the
 /// user has evidently been in a settings app.
 mod system_env;
@@ -1967,6 +1970,25 @@ impl DynShell<'_> {
             window.set_window_level(level);
         }
 
+        // Which Option keys are Alt, the same way (backlog F113): applied
+        // when it differs from what this window has, never per frame. A
+        // popup's own ask is applied too and never read — it cannot
+        // become key on macOS, so its keys come through its owner.
+        if let Some(_option_as_alt) =
+            option_as_alt_change(pane.core.option_as_alt(), &mut pane.applied_option_as_alt)
+        {
+            #[cfg(target_os = "macos")]
+            {
+                use winit::platform::macos::{OptionAsAlt as Winit, WindowExtMacOS};
+                window.set_option_as_alt(match _option_as_alt {
+                    kui_core::OptionAsAlt::None => Winit::None,
+                    kui_core::OptionAsAlt::Left => Winit::OnlyLeft,
+                    kui_core::OptionAsAlt::Right => Winit::OnlyRight,
+                    kui_core::OptionAsAlt::Both => Winit::Both,
+                });
+            }
+        }
+
         // The floor the app declared is a floor on the *app*: while the
         // devtools are docked in the main window, the pane's extent goes
         // on top of it, so the OS stops the window where the app is at
@@ -2412,7 +2434,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 let t = self.key_target(i);
-                self.on_key(event_loop, t, event)
+                self.on_key(event_loop, i, t, event)
             }
             WindowEvent::Ime(Ime::Commit(text)) => {
                 // Its own channel, not `Text`: a sink hears a commit as a

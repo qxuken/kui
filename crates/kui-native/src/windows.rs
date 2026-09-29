@@ -405,6 +405,7 @@ impl DynShell<'_> {
             anchor: config.anchor,
             // A popup opened on top (see above); everything else opens Normal.
             applied_on_top: config.kind == WindowKind::Popup,
+            applied_option_as_alt: kui_core::OptionAsAlt::None,
             level_supported: level_supported(&window),
             core,
             window,

@@ -93,7 +93,7 @@ pub use geom::{Edges, Rect, Size, Vec2};
 pub use input::ScrollAxis;
 pub use input::{
     Buttons, ClipboardMarks, EditKey, InputEvent, KeyCode, KeyLocation, KeyLocks, KeyMods,
-    KeyPhase, KeyPress, Mods, MouseButton, UiEvent,
+    KeyPhase, KeyPress, Mods, MouseButton, OptionAsAlt, UiEvent,
 };
 pub use key::Key;
 pub use keyframes::Keyframe;

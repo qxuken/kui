@@ -1131,6 +1131,16 @@ impl Ctx {
     pub fn secure_input(&self) -> bool {
         self.core.secure_input()
     }
+
+    /// Which Option keys the last frame asked to act as Alt on macOS (a
+    /// root `<box optionAsAlt="left">`, backlog F113): `"none"`, `"left"`,
+    /// `"right"` or `"both"`, `"none"` when it did not ask. `runWindowed`
+    /// applies it to the window on change; a bare `Ctx` hands the ask back
+    /// so a test can assert on it.
+    #[napi(ts_return_type = "'none' | 'left' | 'right' | 'both'")]
+    pub fn option_as_alt(&self) -> &'static str {
+        self.core.option_as_alt().name()
+    }
 }
 
 /// Window commands as the objects `windowCommands()` hands out.

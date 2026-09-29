@@ -23,7 +23,8 @@ was the first bare bump to break an app in five releases).
 
 ## 0.1.0-alpha.27 (unreleased)
 
-**What breaks.** No build: the ABI at 22 and the Node wire at v19.
+**What breaks.** No build: new functions and a root prop, the ABI at 22
+and the Node wire at v19.
 
 One drawing changes:
 
@@ -31,6 +32,28 @@ One drawing changes:
   and wedges — from the cell box, not the font (under Fixed, F112):
   what those twelve characters draw changes in every grid, and a
   screenshot pinned against the fallback font's glyphs needs re-taking.
+
+### Added
+
+- **The Option keys as Alt on a Mac** (backlog F113, from kawoosh's
+  settings-pane report). `ui.option_as_alt(OptionAsAlt::Left)` / a root
+  `optionAsAlt="left"` / `option_as_alt = "left"` /
+  `kui_set_option_as_alt(ctx, KUI_OPTION_AS_ALT_LEFT)` — `none`, `left`,
+  `right` or `both` — makes that Option key Alt in the window: ⌥u, ⌥e,
+  ⌥i, ⌥n and ⌥`, dead keys on a Mac that started an accent and never
+  arrived as a key, now arrive as `<A-u>` like every other ⌥ chord, and
+  a key under that Option types nothing, as under Control. One side
+  leaves the other composing, so a user keeps `ü` on the right Option.
+  Frame state in `alwaysOnTop`'s shape, default `none` — every app that
+  does not declare it keeps the Mac's own Option — and the frame that
+  stops declaring it gives the keys back; the runner applies it to the
+  window on change through winit's `set_option_as_alt`, never per frame.
+  Nothing on Windows or Linux, whose Alt composes nothing.
+  `Ctx.optionAsAlt()` / `kui_option_as_alt_get` read the ask back.
+  *What you can delete:* a keymap's second spelling of an Alt binding
+  as the character the Mac composes (`µ` for `<A-m>`), and the
+  alternative key a Mac user was told to press because `<A-u>` never
+  fired.
 
 ### Fixed
 

@@ -346,6 +346,15 @@ impl<'a> Ui<'a> {
         self.core.set_secure_input(on);
     }
 
+    /// Declares which Option keys act as Alt in this window on macOS, so
+    /// ⌥u arrives as `<A-u>` rather than composing an accent (backlog
+    /// F113); see [`crate::Core::set_option_as_alt`]. Declare it every
+    /// frame: a frame that does not gives the Option keys back to the
+    /// layout.
+    pub fn option_as_alt(&mut self, option_as_alt: crate::OptionAsAlt) {
+        self.core.set_option_as_alt(option_as_alt);
+    }
+
     /// Declares that a window named `name` exists this frame; see
     /// `Core::declare_window`. It opens on the first frame that declares
     /// it (`config` is read then and never again), stays open while any

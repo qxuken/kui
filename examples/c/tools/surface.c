@@ -44,6 +44,7 @@ static void surface_view(void *user, KuiCtx *ui) {
     kui_window_title(ui, KUI_STR("surface"));
     kui_set_always_on_top(ui, true);
     kui_set_secure_input(ui, true);
+    kui_set_option_as_alt(ui, KUI_OPTION_AS_ALT_LEFT);
 
     /* Window chrome, each piece in its own keyed slot: two titlebars as
      * siblings would share a key, and per-key state (hover, transitions)
@@ -341,6 +342,8 @@ static int surface(void) {
     check(kui_always_on_top_get(ui), "kui_always_on_top_get");
     /* Secure keyboard entry is an ask the same way (backlog F85). */
     check(kui_secure_input_get(ui), "kui_secure_input_get");
+    /* And the Option keys as Alt (backlog F113). */
+    check(kui_option_as_alt_get(ui) == KUI_OPTION_AS_ALT_LEFT, "kui_option_as_alt_get");
     kui_env_set_always_on_top(ui, true);
 
     KuiDrawData dd = KUI_DRAW_DATA_INIT;

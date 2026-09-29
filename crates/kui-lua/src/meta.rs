@@ -344,6 +344,13 @@ fn composite_type(name: &str) -> String {
         "key" | "tooltip" | "window_title" => "string".into(),
         "index" | "row_count" => "number".into(),
         "windows" => "table".into(),
+        "option_as_alt" => {
+            let names: Vec<String> = kui_core::OptionAsAlt::ALL
+                .iter()
+                .map(|v| format!("\"{}\"", v.name()))
+                .collect();
+            names.join("|")
+        }
         "clip" | "scroll" | "scroll_x" | "scroll_y" | "key_focus" | "always_on_top"
         | "secure_input" => "boolean".into(),
         _ => "any".into(),
@@ -521,7 +528,13 @@ mod tests {
     /// The composites the root table carries and `parse_props` never
     /// reads: the parser takes anything under these, so neither
     /// direction below says anything about them.
-    const ROOT_ONLY: &[&str] = &["window_title", "always_on_top", "secure_input", "windows"];
+    const ROOT_ONLY: &[&str] = &[
+        "window_title",
+        "always_on_top",
+        "secure_input",
+        "option_as_alt",
+        "windows",
+    ];
 
     /// `ty`'s union members, split at the top level only.
     fn members(ty: &str) -> Vec<&str> {

@@ -155,6 +155,11 @@ pub struct Core {
     /// has the keyboard (backlog F85). `always_on_top`'s shape: cleared each
     /// `begin_frame`, so a frame that stops asking is what turns it off.
     secure_input: bool,
+    /// Which Option keys this frame asked to act as Alt on macOS (backlog
+    /// F113). `always_on_top`'s shape: cleared each `begin_frame`, so a
+    /// frame that stops declaring it gives the Option keys back to the
+    /// layout's composition.
+    option_as_alt: crate::input::OptionAsAlt,
     /// Keyboard focus: the one node key input goes to — an editor (the
     /// edit store mirrors it), an `on_key` sink, a control Tab landed on
     /// (see `docs/adr/0002-keyboard-focus-as-data.md`). `set_focus` is
@@ -864,6 +869,7 @@ impl Core {
             window_title: None,
             always_on_top: false,
             secure_input: false,
+            option_as_alt: crate::input::OptionAsAlt::None,
             focus: None,
             focus_visible: false,
             declared_focus: Vec::new(),
@@ -1395,6 +1401,7 @@ impl Core {
         self.window_title = None;
         self.always_on_top = false;
         self.secure_input = false;
+        self.option_as_alt = crate::input::OptionAsAlt::None;
         // The drawn menu bar's root is this frame's: a view that stops
         // calling `widgets::menu_bar` leaves nothing behind for the next
         // event to land on. Re-recorded while the widget builds.
