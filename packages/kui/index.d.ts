@@ -1686,6 +1686,10 @@ export interface KeySinkMods {
   /** The lock state the press was made under; the key doors only. */
   capsLock?: boolean;
   numLock?: boolean;
+  /** The same, as a `key` event spells it, so a press heard can be handed
+   *  back as it came (backlog RG86). */
+  caps_lock?: boolean;
+  num_lock?: boolean;
 }
 
 // -- generated from the core's input lists; edit EditKey::ALL / MouseButton::NAMED in crates/kui-core/src/input.rs, then `npm run gen` --

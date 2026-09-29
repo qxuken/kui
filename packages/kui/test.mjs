@@ -635,6 +635,14 @@ test('a key says where it is, the locks, and the modifier keys when asked', () =
     ],
   );
   assert.throws(() => ctx.keyDown('a', { location: 'middle' }), /unknown key location/);
+  // A press heard hands back as it came: the event's `caps_lock` spelling
+  // is taken too (backlog RG86).
+  ({ ctx } = run(() => build(false)));
+  ctx.keyDown('1', { location: 'numpad', capsLock: true, numLock: true });
+  const heard = ctx.pollEvents()[0].payload;
+  ctx.keyDown(heard.code, heard);
+  const again = ctx.pollEvents()[0].payload;
+  assert.deepEqual([again.caps_lock, again.num_lock, again.location], [true, true, 'numpad']);
 });
 
 test('a keymap written in Latin survives the layout under it', () => {

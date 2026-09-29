@@ -939,7 +939,8 @@ impl Ctx {
 
     /// One press from the `{shift, ctrl, alt, super}` shape both key calls
     /// take — with `location` ("left", "right", "numpad"; "standard" when
-    /// absent) and `capsLock` / `numLock` beside them (backlog F108) — and
+    /// absent) and `capsLock` / `numLock` beside them (backlog F108; the
+    /// event's `caps_lock` / `num_lock` too, RG86) — and
     /// the text a plain key would insert already resolved.
     fn key_press(
         &self,
@@ -974,9 +975,12 @@ impl Ctx {
         Ok(KeyPress {
             text: layout.typed(kmods),
             location,
+            // Either spelling: `capsLock` as a caller writes it, and
+            // `caps_lock` as the `key` event it hears spells it, so a press
+            // handed back keeps its locks (backlog RG86).
             locks: kui_core::KeyLocks {
-                caps: bool_prop(m, "capsLock"),
-                num: bool_prop(m, "numLock"),
+                caps: bool_prop(m, "capsLock") || bool_prop(m, "caps_lock"),
+                num: bool_prop(m, "numLock") || bool_prop(m, "num_lock"),
             },
             ..press
         })
