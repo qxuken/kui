@@ -435,7 +435,7 @@ impl DynShell<'_> {
             handed_back: false,
             retry: crate::retry::Retry::new(std::time::Instant::now()),
             deferred_frame: false,
-            cause: std::cell::Cell::new(FrameCause::FIRST),
+            cause: crate::pane::Causes::new(FrameCause::FIRST),
             pacer,
             access,
             #[cfg(target_os = "windows")]

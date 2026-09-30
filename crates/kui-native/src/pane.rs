@@ -348,7 +348,7 @@ pub(crate) struct Pane {
     /// began (backlog F111): handed to the core before the view runs,
     /// where it joins the input the core recorded itself. A `Cell`, since
     /// most of the places that ask hold the pane shared.
-    pub(crate) cause: std::cell::Cell<FrameCause>,
+    pub(crate) cause: Causes,
     /// Whether a redraw draws now or waits for the display (`mod pacer`).
     pub(crate) pacer: crate::pacer::Pacer,
     /// The platform accessibility bridge.
@@ -377,7 +377,14 @@ impl Pane {
     /// Asks for a frame, and says why (backlog F111): `why` is among the
     /// reasons the frame is handed (`Core::frame_cause`).
     pub(crate) fn redraw_for(&self, why: FrameCause) {
-        self.cause.set(self.cause.get() | why);
+        self.cause.note(why);
+        self.window.request_redraw();
+    }
+
+    /// The window is back where it draws, from where it was dark
+    /// ([`Causes::came_back`]): asks for the frame that says `why`.
+    pub(crate) fn came_back(&self, why: FrameCause) {
+        self.cause.came_back(why);
         self.window.request_redraw();
     }
 
@@ -534,9 +541,103 @@ impl Pane {
     }
 }
 
+/// Why the runner asked a window for a frame since its last one began
+/// (backlog F111), and what of that it asked while the window could not
+/// draw (backlog RG97). `Cell`s, since most of the places that ask hold
+/// the pane shared.
+#[derive(Default)]
+pub(crate) struct Causes {
+    noted: std::cell::Cell<FrameCause>,
+    /// Between [`Self::went_dark`] and [`Self::came_back`]: the window is
+    /// covered, minimized or hidden.
+    dark: std::cell::Cell<bool>,
+    /// What was noted while dark that no frame has taken. The platform
+    /// delivers no redraw to a minimized window, so these are for frames
+    /// that never came.
+    noted_dark: std::cell::Cell<FrameCause>,
+}
+
+impl Causes {
+    pub(crate) fn new(first: FrameCause) -> Causes {
+        let c = Causes::default();
+        c.noted.set(first);
+        c
+    }
+
+    /// `why` is among the reasons the next frame is handed.
+    pub(crate) fn note(&self, why: FrameCause) {
+        self.noted.set(self.noted.get() | why);
+        if self.dark.get() {
+            self.noted_dark.set(self.noted_dark.get() | why);
+        }
+    }
+
+    /// The reasons for the frame beginning now, and none left over.
+    pub(crate) fn take(&self) -> FrameCause {
+        self.noted_dark.take();
+        self.noted.take()
+    }
+
+    /// The window went where it may not draw: covered, minimized or
+    /// hidden.
+    pub(crate) fn went_dark(&self) {
+        self.dark.set(true);
+    }
+
+    pub(crate) fn is_dark(&self) -> bool {
+        self.dark.get()
+    }
+
+    /// The window is back where it draws, and the next frame says `why`.
+    /// What was noted while it was dark and no frame took is left out: a
+    /// minimized window noted `elsewhere`, `wake` or `appearance` for
+    /// frames that never came, and the restore frame reported them from
+    /// long before. A frame that ran while it was covered — macOS builds
+    /// them through the minimize animation, and the surface skips — took
+    /// what was noted before it, as any frame does, and what was noted
+    /// before the window went dark stays.
+    pub(crate) fn came_back(&self, why: FrameCause) {
+        let stale = self.noted_dark.take().bits();
+        self.dark.set(false);
+        self.noted
+            .set(FrameCause::from_bits(self.noted.get().bits() & !stale) | why);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The frame that brings a window back names the return, not what was
+    /// asked while it could not draw (backlog RG97); a frame that ran in
+    /// the dark took what came before it, and what was asked before the
+    /// window went dark stays asked.
+    #[test]
+    fn the_frame_back_from_the_dark_names_the_return() {
+        let c = Causes::new(FrameCause::FIRST);
+        assert_eq!(c.take(), FrameCause::FIRST);
+        // Minimized with a key unanswered; another window's input and the
+        // appearance reach it there, and no frame comes.
+        c.note(FrameCause::KEY);
+        c.went_dark();
+        c.note(FrameCause::ELSEWHERE);
+        c.note(FrameCause::APPEARANCE);
+        c.came_back(FrameCause::OCCLUSION);
+        assert_eq!(c.take(), FrameCause::KEY | FrameCause::OCCLUSION);
+        // A frame through the minimize animation takes what was noted
+        // before it; only what came after is left out.
+        c.went_dark();
+        c.note(FrameCause::WAKE);
+        assert_eq!(c.take(), FrameCause::WAKE);
+        c.note(FrameCause::ELSEWHERE);
+        c.came_back(FrameCause::OCCLUSION);
+        assert_eq!(c.take(), FrameCause::OCCLUSION);
+        // Back in the light, a reason is kept as before.
+        assert!(!c.is_dark());
+        c.note(FrameCause::HOST);
+        c.note(FrameCause::HOST);
+        assert_eq!(c.take(), FrameCause::HOST);
+    }
 
     /// The pin is laid over the OS's answer field by field: a launcher that
     /// pinned `motion` reads reduced motion whatever the machine says, and

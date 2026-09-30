@@ -2295,12 +2295,24 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                     self.close_pane(event_loop, id);
                 }
             }
+            // On Windows minimizing and restoring are each a `WM_SIZE`:
+            // the first is where the window went dark, the second the
+            // frame that brings it back (backlog RG97).
             WindowEvent::Resized(size) => {
                 let pane = &mut self.panes[i];
                 if let Some(r) = pane.renderer.as_mut() {
                     r.resize(size.width, size.height);
                 }
-                pane.redraw_for(FrameCause::RESIZE);
+                if pane.minimized() {
+                    pane.cause.went_dark();
+                    pane.redraw_for(FrameCause::RESIZE);
+                } else if pane.cause.is_dark() && cfg!(target_os = "windows") {
+                    pane.came_back(FrameCause::RESIZE);
+                } else {
+                    // Elsewhere a window resized while covered is still
+                    // covered; `Occluded(false)` is its way back.
+                    pane.redraw_for(FrameCause::RESIZE);
+                }
             }
             WindowEvent::ScaleFactorChanged { .. } => {
                 self.panes[i].redraw_for(FrameCause::SCALE);
@@ -2398,12 +2410,16 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
             // uncovered, the window shows what it presented before it was
             // covered, so a frame is owed now (F102); covered, frames the
             // surface skips are not retried.
+            // Covered is where a window goes dark, minimized on macOS
+            // included, and uncovered where it comes back (RG97).
             WindowEvent::Occluded(covered) => {
                 self.panes[i]
                     .retry
                     .occluded(covered, std::time::Instant::now());
-                if !covered {
-                    self.panes[i].redraw_for(FrameCause::OCCLUSION);
+                if covered {
+                    self.panes[i].cause.went_dark();
+                } else {
+                    self.panes[i].came_back(FrameCause::OCCLUSION);
                 }
             }
             // The theme changing is the other one, and the only one that

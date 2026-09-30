@@ -84,7 +84,12 @@ impl FrameCause {
     pub const SCALE: FrameCause = FrameCause(1 << 15);
     /// The window gained or lost the keyboard.
     pub const FOCUS: FrameCause = FrameCause(1 << 16);
-    /// The window was uncovered.
+    /// The window was uncovered, or came back from minimized. The runner
+    /// leaves out of that frame what it noted while the window could not
+    /// draw and no frame took — another window's input, an appearance
+    /// change — so a restore does not report reasons from long before
+    /// (backlog RG97); `resize` is the same edge on Windows, where
+    /// restoring is a resize.
     pub const OCCLUSION: FrameCause = FrameCause(1 << 17);
     /// The system's appearance or settings changed: light or dark, the
     /// accent, reduced motion, assistive technology coming or going.

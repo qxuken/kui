@@ -171,6 +171,13 @@ RG77–RG91; RG93–RG97 open).
   as its builders already reduced it. The cap is in the `width` docs,
   the LuaLS `kui.Size`, howto and kui.h now: declare one expression per
   layout, with the part that moves a px size of its own.
+- **The frame that brings a minimized window back says `occlusion`,
+  not what was asked while it was down** (RG97): a minimized window gets
+  no frames, and what the runner noted for it meanwhile — another
+  window's input (`elsewhere`), an appearance change — rode into the
+  restore frame's `frameCause()` from long before. What was noted
+  before the window went dark, and what arrives with the restore (a
+  waker's queued wakes), still count.
 - **A Lua value or view that holds itself, or nests too deep, is an
   error, not an abort** (RG95): `t = {}; t[1] = t` as a handler's reply, a
   message or a prop said "a table that holds itself", and a view holding

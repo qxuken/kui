@@ -2054,15 +2054,20 @@ Read, not probed; each needs a round on Linux or Windows.
   both.
 - `Accel::parse` accepts `"ctrl+capslock"` now that Caps Lock is a key.
 
-### `.` RG97 — A pane's frame cause keeps what it noted while it could not draw
+### `.` RG98 — An animating window draws unpaced through macOS's minimize animation
 
-`redraw_for` ORs a reason into `Pane::cause` whether or not a frame
-follows: a minimized pane, one waiting for its device, or a hidden one
-handed `ELSEWHERE` / `APPEARANCE` keeps them, and the first frame after
-the restore reports `elsewhere | caret | …` from long before. Bounded
-(a bitset) and half meant ("a held frame keeps its reasons"), but a
-frame ledger mislabels the restore frame. **Do.** Clear on a frame that
-could not be drawn, or name the restore (`FrameCause::RESTORED`).
+Found probing RG97 (2026-09-30): the `waker` example, focused, owes
+frames for about 1.2 s after a focus change, which it draws at the
+display's 120 Hz (139 frames). Minimized through System Events in that
+second, the same animation drew 3 840 frames in 1.25 s — three a
+millisecond — until the window was down, each `owed`: through the genie
+animation the surface's present returns at once and the pacer sees no
+vsync to hold the next frame for. Bounded (the animation is about a
+second, and a minimized window gets no frames after it) and only while
+the core owes one, but a continuous animation spins a core for that
+second on every minimize. **Do.** Hold frames while `Occluded(true)` to
+the pacer's fallback rate, or treat a present faster than the display
+can show as a skip; confirm what Windows and X11 do while minimizing.
 
 ## After alpha.26
 
@@ -3280,3 +3285,5 @@ move.
 - `.` **RG93** — [A frame failed whole once the process-wide size-expression table was full](backlog/closed-2026-09.md#-rg93--a-frame-failed-whole-once-the-process-wide-size-expression-table-was-full--done-2026-09-30) — done (2026-09-30)
 
 - `.` **RG95** — [A Lua value or view nested without limit, and a debug build's view overflowed at 32](backlog/closed-2026-09.md#-rg95--a-lua-value-or-view-nested-without-limit-and-a-debug-builds-view-overflowed-at-32--done-2026-09-30) — done (2026-09-30)
+
+- `.` **RG97** — [A pane's restore frame reported what it noted while it could not draw](backlog/closed-2026-09.md#-rg97--a-panes-restore-frame-reported-what-it-noted-while-it-could-not-draw--done-2026-09-30) — done (2026-09-30)
