@@ -367,6 +367,10 @@ impl DynShell<'_> {
             .flatten();
         #[cfg(target_os = "windows")]
         let anim_timer = windows_anim::AnimTimer::new(&window);
+        // Every window, popups too: each hears the switch on its own copy
+        // of the broadcast, and winit sets each one's dark mode (RG106).
+        #[cfg(target_os = "windows")]
+        windows_theme::install(&window);
         // Ask for the deep-click stage before the window is shown: the
         // press that reaches stage 2 is what a force click *is*, and a
         // view that never asked never gets one (ADR 0017, decision 6).

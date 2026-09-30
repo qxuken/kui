@@ -35,6 +35,9 @@ names of one. Rust gains two `Easing` variants and a `Transition` field.
   `Easing` needs the arms.
 - Rust: `Transition::bounce`, an `Option<Bounce>`, so a `Transition`
   built field by field names it (`Transition::ms` sets it to `None`).
+- On Windows, `env.system.appearance` follows the OS's light/dark switch
+  while the app runs (RG106), where it kept the base the window opened
+  with; a `system` event reports it.
 
 ### Added
 
@@ -60,6 +63,21 @@ names of one. Rust gains two `Easing` variants and a `Transition` field.
   panel on `smooth`, which keeps it on the window's edge. *What you can
   delete:* nothing — a spring had two bounces before this and no way to
   ask for a third.
+
+### Fixed
+
+- **A Windows app follows the OS from light to dark and back** (RG106):
+  winit asks uxtheme's `ShouldAppsUseDarkMode` on each setting change,
+  and that answers from a policy cached per process until
+  `RefreshImmersiveColorPolicyState` is called, which nothing called —
+  so the switch in Settings reached winit as the answer it already had,
+  no `ThemeChanged` went out, and a window kept its base until the app
+  was started again (focus coming back re-read winit's record, the same
+  stale answer). Each window is subclassed to refresh the policy on
+  `ImmersiveColorSet` before winit's own handler runs, which then sends
+  `ThemeChanged` and sets the window's dark mode itself. *What you can
+  delete:* a restart, or a registry read of `AppsUseLightTheme`, to pick
+  up the switch.
 
 ## 0.1.0-alpha.29 (2026-09-30)
 
