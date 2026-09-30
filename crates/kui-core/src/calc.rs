@@ -29,16 +29,51 @@
 //! frame, so the tree it names lives in a process-wide table, one entry
 //! per distinct expression (equal by structure), which a frame that
 //! declares the same expression again finds rather than adds to. The
-//! table holds at most [`MAX_CALCS`] entries: expressions come from a
-//! view's source, so a program that reaches the cap is spelling a new one
-//! per frame (`format!("clamp({n}px, …)")`), which a parse then refuses.
+//! table holds at most [`MAX_CALCS`] entries and never lets one go:
+//! expressions come from a view's source, so a program that reaches the
+//! cap is spelling a new one per frame — `format!("clamp({n}px, …)")`, or
+//! `{ max: [dragX, { percent: 30 }] }` fed a splitter's fractional drag.
+//! Past it a new expression is refused with [`FULL`] in its error, which
+//! every binding reads as the prop left undeclared rather than a frame
+//! failed, and a [`crate::diag::SIZE_EXPRESSIONS_FULL`] warning says so
+//! (backlog RG93). An expression already kept still resolves.
 
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 /// How many distinct expressions the table keeps.
 pub const MAX_CALCS: usize = 1 << 16;
+
+/// What the error of an expression refused for want of room in the table
+/// starts with, under whatever a binding put before it: see [`is_full`].
+pub const FULL: &str = "too many distinct size expressions";
+
+/// Whether `err` is a refusal for want of room ([`FULL`]), not a bad
+/// spelling: a binding leaves the prop at its default on one — the
+/// expression was fine, the process has spelled too many — and fails on
+/// the other.
+pub fn is_full(err: &str) -> bool {
+    err.contains(FULL)
+}
+
+/// How many expressions the full table refused, over the process, and
+/// the last one's spelling: what the warning names.
+static REFUSED: AtomicU64 = AtomicU64::new(0);
+static LAST_REFUSED: Mutex<String> = Mutex::new(String::new());
+
+/// How many new expressions the table has refused since the process
+/// started, with the last one spelled (backlog RG93).
+pub fn refused() -> (u64, String) {
+    let n = REFUSED.load(Ordering::Relaxed);
+    if n == 0 {
+        // Every drain of every core asks; the lock is for the rare answer.
+        return (0, String::new());
+    }
+    let last = LAST_REFUSED.lock().map(|s| s.clone()).unwrap_or_default();
+    (n, last)
+}
 
 /// How deep an expression nests: at most this many functions inside one
 /// another, whatever built it — the grammar, data, prefix code, C's
@@ -468,9 +503,15 @@ fn intern_checked(expr: Expr) -> Result<Calc, String> {
         return Ok(Calc(id));
     }
     if t.exprs.len() >= MAX_CALCS {
+        drop(t);
+        let spelled = expr.to_string();
+        REFUSED.fetch_add(1, Ordering::Relaxed);
+        if let Ok(mut last) = LAST_REFUSED.lock() {
+            last.clone_from(&spelled);
+        }
         return Err(format!(
-            "too many distinct size expressions ({MAX_CALCS}): \"{expr}\" is not kept — declare \
-             one per layout, not one per frame"
+            "{FULL} ({MAX_CALCS}): \"{spelled}\" is not kept — declare one per layout, not one \
+             per frame"
         ));
     }
     let id = t.exprs.len() as u32;

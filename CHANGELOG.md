@@ -25,7 +25,9 @@ was the first bare bump to break an app in five releases).
 
 **What breaks.** No build: `Ctx.beginFrameCause()`,
 `Core::begin_frame_cause`, `Min::AUTO`, `TextMeasure::min_content` (with
-a default) and `KUI_MIN_NONE` are new, the ABI stays 22 and the Node
+a default), `KUI_MIN_NONE`, `calc::FULL`, `calc::is_full`,
+`calc::refused` and the `size-expressions-full` warning code (a new
+member of Node's `WarningCode`) are new, the ABI stays 22 and the Node
 wire v19. One layout rule changes:
 
 - A row or column holding a share of the room — a percentage or a size
@@ -157,6 +159,18 @@ RG77–RG91; RG93–RG97 open).
   `owed_by().scrolls`** while the frame is still owed (RG89).
 - **A table cell's clamps and its column take the columns' room and
   the largest expression** (RG90, RG91).
+- **A frame no longer fails whole once the process has spelled 65 536
+  size expressions** (RG93): the table every window shares never lets
+  one go, so a `{ max: [dragX, { percent: 30 }] }` fed a splitter's
+  fractional drag filled it, and the next new expression failed the
+  Node or Lua frame it was in. It now leaves that one prop at its
+  default — a width fit, a clamp none — and the core warns
+  `size-expressions-full` once, naming the last refused; the
+  expressions kept still resolve, and a bad spelling still fails as
+  before. C's `kui_size_parse` writes `KUI_FIT` and says true for one,
+  as its builders already reduced it. The cap is in the `width` docs,
+  the LuaLS `kui.Size`, howto and kui.h now: declare one expression per
+  layout, with the part that moves a px size of its own.
 - **A Lua value or view that holds itself, or nests too deep, is an
   error, not an abort** (RG95): `t = {}; t[1] = t` as a handler's reply, a
   message or a prop said "a table that holds itself", and a view holding

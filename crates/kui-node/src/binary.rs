@@ -393,6 +393,17 @@ fn payload(s: &str) -> Result<kui_core::Value> {
 /// The binary prop parser —
 /// composites hand-written, everything else read by schema kind and applied
 /// through the shared table.
+/// `Some` of a size expression, `None` for one the full table refused
+/// ([`kui_core::calc::is_full`]) — the prop left undeclared — and the
+/// frame's error for a bad one.
+fn kept<T>(r: std::result::Result<T, String>) -> Result<Option<T>> {
+    match r {
+        Ok(v) => Ok(Some(v)),
+        Err(e) if kui_core::calc::is_full(&e) => Ok(None),
+        Err(e) => Err(err(e)),
+    }
+}
+
 fn read_props(r: &mut Reader<'_>, refs: &mut Refs<'_>) -> Result<PropsOut> {
     read_props_over(r, PropsOut::new(), refs)
 }
@@ -737,17 +748,37 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut, refs: &mut Refs<'_>) -
                     }
                     // A size expression (v19): its spelling as a strref, or
                     // as data in prefix code after a count (backlog F109).
+                    // An expression the full table refused leaves the row
+                    // at its default, as a reference that misses does,
+                    // and the core warns (backlog RG93).
                     Kind::Sizing => Parsed::Sizing(match r.u()? {
-                        SIZE_MODE_CALC => schema::sizing_str(r.req_str()?).map_err(err)?,
-                        SIZE_MODE_TREE => kui_core::calc::sizing_code(r.code()?).map_err(err)?,
+                        SIZE_MODE_CALC => match kept(schema::sizing_str(r.req_str()?))? {
+                            Some(s) => s,
+                            None => continue,
+                        },
+                        SIZE_MODE_TREE => match kept(kui_core::calc::sizing_code(r.code()?))? {
+                            Some(s) => s,
+                            None => continue,
+                        },
                         m => sizing_num(m, r.f()?),
                     }),
                     Kind::Min | Kind::Max => Parsed::Bound(match r.u()? {
-                        SIZE_MODE_CALC if matches!(def.kind, Kind::Min) => {
-                            schema::min_str(r.req_str()?).map_err(err)?
+                        SIZE_MODE_CALC => {
+                            let s = r.req_str()?;
+                            let b = if matches!(def.kind, Kind::Min) {
+                                schema::min_str(s)
+                            } else {
+                                schema::max_str(s)
+                            };
+                            match kept(b)? {
+                                Some(b) => b,
+                                None => continue,
+                            }
                         }
-                        SIZE_MODE_CALC => schema::max_str(r.req_str()?).map_err(err)?,
-                        SIZE_MODE_TREE => kui_core::calc::bound_code(r.code()?).map_err(err)?,
+                        SIZE_MODE_TREE => match kept(kui_core::calc::bound_code(r.code()?))? {
+                            Some(b) => b,
+                            None => continue,
+                        },
                         m => min_num(m, r.f()?),
                     }),
                     Kind::Msg | Kind::Tag => Parsed::Msg(payload(r.req_str()?)?),

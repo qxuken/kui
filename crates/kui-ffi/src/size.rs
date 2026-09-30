@@ -119,8 +119,12 @@ pub extern "C" fn kui_size_clamp(lo: KuiSizing, target: KuiSizing, hi: KuiSizing
 /// untouched) for one that is not.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_size_parse(s: KuiStr, out: *mut KuiSizing) -> bool {
-    let Ok(sizing) = kui_core::schema::sizing_str(&kstr(s)) else {
-        return false;
+    let sizing = match kui_core::schema::sizing_str(&kstr(s)) {
+        Ok(sizing) => sizing,
+        // A size the full table refused is fit, as the builders reduce
+        // it, and not a bad spelling (backlog RG93).
+        Err(e) if kui_core::calc::is_full(&e) => kui_core::Sizing::Fit,
+        Err(_) => return false,
     };
     if !out.is_null() {
         // SAFETY: the caller hands a writable `KuiSizing`.

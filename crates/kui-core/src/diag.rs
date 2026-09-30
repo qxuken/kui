@@ -284,6 +284,17 @@ warnings! {
     /// option, where the key is `enabled` — by the binding that read the
     /// row (backlog RG10).
     pub const UNKNOWN_PROP: &str = "unknown-prop";
+    /// The process has spelled 65 536 distinct size expressions — the most
+    /// the table every window shares keeps, and never lets go of — and one
+    /// more was declared: that prop is left at its default (a `width` is
+    /// fit, a clamp none) instead of failing the frame, and so is every new
+    /// expression after it; the ones kept still resolve. A view that makes
+    /// a new expression per frame reaches it — a `{ max: [dragX, { percent:
+    /// 30 }] }` fed a splitter's fractional drag, a `format!` of the
+    /// pointer — where one expression per layout, with the moving part a px
+    /// size beside it, would not. Raised once per core; the message names
+    /// the last expression refused (backlog RG93).
+    pub const SIZE_EXPRESSIONS_FULL: &str = "size-expressions-full";
     /// One name declared with two different window configs on the frame it
     /// opened. The config is read on the opening edge only, and on that edge
     /// the lowest declaring window wins (the first declaration within one
@@ -561,6 +572,22 @@ pub fn foreign_resource(f: &Foreign) -> Warning {
             .index(f.raw),
         message: f.message(),
     }
+}
+
+/// The [`SIZE_EXPRESSIONS_FULL`] warning, if the table has refused an
+/// expression: one key for the process's one table, so a core says it
+/// once.
+pub fn size_expressions_full() -> Option<Warning> {
+    let (n, last) = crate::calc::refused();
+    (n > 0).then(|| Warning {
+        code: SIZE_EXPRESSIONS_FULL,
+        key: Key::ROOT.str(SIZE_EXPRESSIONS_FULL),
+        message: format!(
+            "{} size expressions are kept, and {n} more were refused, the last \"{last}\": each \
+             is laid out as if undeclared — declare one per layout, not one per frame",
+            crate::calc::MAX_CALCS
+        ),
+    })
 }
 
 /// The [`EDIT_TEXT_WITHOUT_EDITOR`] warning for one label. Keyed by

@@ -56,7 +56,7 @@ const ALIASES: &[Alias] = &[
     },
     Alias {
         name: "kui.Size",
-        doc: "A size expression (backlog F109), resolved against the parent's content box: px, `\"Npx\"`, `\"N%\"`, `\"min(…)\"`, `\"max(…)\"`, `\"clamp(MIN, TARGET, MAX)\"`, nested — or the same as data, which is never parsed: `{ pct = n }`, `{ px = n }`, `{ min = { … } }`, `{ max = { … } }`, `{ clamp = { MIN, TARGET, MAX } }` (a part a table again, or a spelling).",
+        doc: "A size expression (backlog F109), resolved against the parent's content box: px, `\"Npx\"`, `\"N%\"`, `\"min(…)\"`, `\"max(…)\"`, `\"clamp(MIN, TARGET, MAX)\"`, nested — or the same as data, which is never parsed: `{ pct = n }`, `{ px = n }`, `{ min = { … } }`, `{ max = { … } }`, `{ clamp = { MIN, TARGET, MAX } }` (a part a table again, or a spelling). The process keeps 65 536 distinct expressions and never lets one go: past that a new one leaves its prop at its default, with a `size-expressions-full` warning — declare one per layout, not one per frame (backlog RG93).",
         ty: "kui.SizeArg|{ min: kui.SizeArg[] }|{ max: kui.SizeArg[] }|{ clamp: kui.SizeArg[] }",
         strings: &["\"clamp(400px, 80%, 1000px)\""],
     },

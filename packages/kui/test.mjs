@@ -190,6 +190,42 @@ test('a size expression spelled and as data lays out the same', () => {
   assert.throws(() => encoded(box({ width: { clamp: [1, 2] } }, [])), /clamp takes three/);
 });
 
+// The size-expression table is the process's and keeps at most 65 536
+// (backlog RG93), so a view that makes one per frame — a splitter's
+// fractional drag in a `max` — reaches it. Past it a new expression is
+// the prop left at its default and a warning, where the addon failed the
+// frame whole. A process of its own, since the full table is for life.
+test('a size expression past the full table leaves its prop undeclared, not the frame failed', () => {
+  const r = spawnSync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      `import { Ctx } from './index.js';
+       const box = (props, children = [], key) => ({ type: 'box', key, props, children });
+       const ctx = new Ctx();
+       ctx.setInspect(true);
+       const drag = [];
+       for (let i = 0; i < 70000; i++) drag.push(box({ width: { max: [i + 0.5, { percent: 50 }] }, height: 0 }));
+       ctx.frame(1000, 200, 1, box({ width: 400, gap: 0 }, drag));
+       ctx.frame(1000, 200, 1, box({ width: 400, gap: 0 }, [
+         box({ width: { max: [0.5, { percent: 50 }] }, height: 4 }, [], 'kept'),
+         box({ width: 'clamp(1px, 50%, 300px)', height: 4 }, [], 'spelled'),
+         box({ width: { min: [7, { percent: 50 }] }, height: 4 }, [], 'data'),
+         box({ width: 350, maxWidth: 'min(3px, 50%)', height: 4 }, [], 'capped'),
+         box({ width: 10, minWidth: { max: [11, { percent: 50 }] }, height: 4 }, [], 'floored'),
+       ]));
+       const w = (k) => ctx.nodes().find((x) => x.label === k).rect.w;
+       const full = ctx.warnings().filter((x) => x.code === 'size-expressions-full');
+       console.log(JSON.stringify({ w: ['kept', 'spelled', 'data', 'capped', 'floored'].map(w), full: full.length }));`,
+    ],
+    { cwd: dirname(fileURLToPath(import.meta.url)), encoding: 'utf8' },
+  );
+  assert.equal(r.status, 0, `the frame failed: ${r.stderr}`);
+  const out = JSON.parse(r.stdout.trim().split('\n').at(-1));
+  assert.deepEqual(out, { w: [200, 0, 0, 350, 10], full: 1 });
+});
+
 // `alwaysOnTop` is a root declaration with no node, like `title`, and a
 // per-frame one with a default: the frame that stops saying it is the
 // lowering (backlog C30). The ask is what `alwaysOnTop()` answers; what

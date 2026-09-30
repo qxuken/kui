@@ -2013,19 +2013,6 @@ went to CSS's the same day at the user's word and is in the archive
 too. RG93–RG97 stay open, the reviews' readings, checked against the
 code but not run.
 
-### `.` RG93 — The size-expression table is process-wide, never evicts, and a frame fails past it
-
-`calc::intern` holds every distinct expression for the life of the
-process, up to 65 536. A `{ max: [dragX, { percent: 30 }] }` fed by a
-fractional splitter drag makes one entry per distinct value; past the
-cap `intern` errors, and the Node decode (`binary.rs`) and Lua's `bad()`
-propagate it with `?`, so the whole frame fails rather than one prop.
-The cap is in the `calc` rustdoc and `kui.h` only — not howto, props,
-jsx-runtime.d.ts or the LuaLS meta. **Do.** Document the cap where a
-view author reads, and fail the prop, not the frame (warn, fall back to
-`fit`); eviction by last use (the stores' `retain` shape) if an app
-ever meets it.
-
 ### `.` RG94 — Size expressions are spelled three ways: the encoder, the parser and the core disagree at the edges
 
 - JS's `sizeCode` refuses a spelled function nested in data
@@ -3289,5 +3276,7 @@ move.
 - `.` **RG91** — [A table column took its first cell's size expression, not its largest](backlog/closed-2026-09.md#-rg91--a-table-column-took-its-first-cells-size-expression-not-its-largest--done-2026-09-30) — done (2026-09-30)
 
 - `~` **RG92** — [A share of the room gives by the fit children's rule, not CSS's](backlog/closed-2026-09.md#-rg92--a-share-of-the-room-gives-by-the-fit-childrens-rule-not-csss--done-2026-09-30) — done (2026-09-30)
+
+- `.` **RG93** — [A frame failed whole once the process-wide size-expression table was full](backlog/closed-2026-09.md#-rg93--a-frame-failed-whole-once-the-process-wide-size-expression-table-was-full--done-2026-09-30) — done (2026-09-30)
 
 - `.` **RG95** — [A Lua value or view nested without limit, and a debug build's view overflowed at 32](backlog/closed-2026-09.md#-rg95--a-lua-value-or-view-nested-without-limit-and-a-debug-builds-view-overflowed-at-32--done-2026-09-30) — done (2026-09-30)

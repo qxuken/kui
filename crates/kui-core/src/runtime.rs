@@ -1106,6 +1106,9 @@ impl Core {
         for f in self.session.state().resources.take_foreign() {
             self.diag.raise(crate::diag::foreign_resource(&f));
         }
+        if let Some(w) = crate::diag::size_expressions_full() {
+            self.diag.raise(w);
+        }
         self.diag.take()
     }
 

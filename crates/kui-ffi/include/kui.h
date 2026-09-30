@@ -1089,7 +1089,10 @@ typedef struct KuiSpec {
  * kui_size_parse reads a spelling - "fit", "grow", "120", "50%",
  * "clamp(400px, 80%, 1000px)", nested min()/max() - into *out, false for
  * one that is not. A KUI_CALC names an entry in a table of at most 65536
- * distinct expressions: build one per layout, not one per frame. */
+ * distinct expressions, which the process shares and never empties: build
+ * one per layout, not one per frame. Past it a new expression reduces to
+ * KUI_FIT (kui_size_parse says true and writes KUI_FIT), a clamp to none,
+ * and the context warns "size-expressions-full" once (backlog RG93). */
 KuiSizing kui_size_px(float px);
 KuiSizing kui_size_pct(float percent);
 KuiSizing kui_size_min(const KuiSizing *args, size_t n);

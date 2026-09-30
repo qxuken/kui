@@ -113,6 +113,15 @@ kui_size_pct(80), kui_size_px(1000))` in C — though a spelling is cheap
 too: it is parsed the first frame it is seen and found by its text after
 that. A `calc` does not ease under `transition`.
 
+Declare an expression once per layout, not once per frame. Every window
+shares one table of them, which keeps 65 536 and never lets one go, so
+`{ max: [dragX, { percent: 30 }] }` fed a splitter's fractional drag
+spends an entry per pixel moved. Past the cap a new expression leaves its
+prop at its default (a width fit, a clamp none) and warns
+`size-expressions-full` once, while the ones kept still resolve. Give the
+moving part a px size of its own, beside an expression that does not
+move.
+
 ### Why do two `"50%"` columns with a gap fit their row?
 
 A percentage is cut from the parent's content box before the gap between

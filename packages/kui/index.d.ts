@@ -923,6 +923,16 @@ export type WarningCode =
    *  carried that no row reads — `disabled` on a select's option, where the key
    *  is `enabled` — by the binding that read the row (backlog RG10). */
   | 'unknown-prop'
+  /** The process has spelled 65 536 distinct size expressions — the most the
+   *  table every window shares keeps, and never lets go of — and one more was
+   *  declared: that prop is left at its default (a `width` is fit, a clamp
+   *  none) instead of failing the frame, and so is every new expression after
+   *  it; the ones kept still resolve. A view that makes a new expression per
+   *  frame reaches it — a `{ max: [dragX, { percent: 30 }] }` fed a splitter's
+   *  fractional drag, a `format!` of the pointer — where one expression per
+   *  layout, with the moving part a px size beside it, would not. Raised once
+   *  per core; the message names the last expression refused (backlog RG93). */
+  | 'size-expressions-full'
   /** One name declared with two different window configs on the frame it
    *  opened. The config is read on the opening edge only, and on that edge the
    *  lowest declaring window wins (the first declaration within one frame), so

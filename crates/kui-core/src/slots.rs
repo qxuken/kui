@@ -90,8 +90,10 @@ impl Slots {
             }
         }
         match name {
-            "width" => self.width = Some(sizing_value(v)?),
-            "height" => self.height = Some(sizing_value(v)?),
+            // An expression the full table refused leaves the slot
+            // unset, as a prop is left undeclared (backlog RG93).
+            "width" => self.width = kept(sizing_value(v))?,
+            "height" => self.height = kept(sizing_value(v))?,
             "bg" => self.bg = Some(color_value(v)?),
             "radius" => self.radius = Some(num("radius")?),
             "opacity" => self.opacity = Some(num("opacity")?.clamp(0.0, 1.0)),
@@ -187,6 +189,16 @@ macro_rules! slot_builders {
     };
 }
 pub(crate) use slot_builders;
+
+/// `Some` of what parsed, `None` for a size expression the full table
+/// refused ([`crate::calc::is_full`]), the error otherwise.
+fn kept<T>(r: Result<T, String>) -> Result<Option<T>, String> {
+    match r {
+        Ok(v) => Ok(Some(v)),
+        Err(e) if crate::calc::is_full(&e) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
 
 /// A sizing from plain data, in the forms the prop takes.
 pub(crate) fn sizing_value(v: &Value) -> Result<Sizing, String> {

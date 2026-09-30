@@ -546,7 +546,11 @@ pub const PROPS: &[PropDef] = &[
               px size keeps its own. A row holding one gives as CSS's flex items do: \
               every child that can give gives in proportion to its size, and stops at \
               its content — the widest thing in it that cannot wrap, a label's longest \
-              word — unless `minWidth` says otherwise (backlog RG92).",
+              word — unless `minWidth` says otherwise (backlog RG92). The process keeps \
+              65 536 distinct expressions and never lets one go: past that a new one leaves \
+              its prop at its default, with a `size-expressions-full` warning, so declare \
+              one per layout — a px size for the part that moves each frame, a splitter's \
+              drag — not one per frame (backlog RG93).",
     },
     PropDef {
         name: "height",

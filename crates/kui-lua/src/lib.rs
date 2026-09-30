@@ -2575,11 +2575,24 @@ fn parse_value(kind: &Kind, v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Resul
                 Some(px) => kui_core::Bound::Px(px),
                 None => return Ok(None),
             },
-            mlua::Value::String(s) if matches!(kind, Kind::Min) => {
-                schema::min_str(&s.to_str()?).map_err(bad)?
+            // An expression the full table refused leaves the row at its
+            // default too, and the core warns (backlog RG93).
+            mlua::Value::String(s) => {
+                let s = s.to_str()?;
+                let b = if matches!(kind, Kind::Min) {
+                    schema::min_str(&s)
+                } else {
+                    schema::max_str(&s)
+                };
+                match kept(b)? {
+                    Some(b) => b,
+                    None => return Ok(None),
+                }
             }
-            mlua::Value::String(s) => schema::max_str(&s.to_str()?).map_err(bad)?,
-            mlua::Value::Table(_) => kui_core::calc::bound_value(&size_value(v)?).map_err(bad)?,
+            mlua::Value::Table(_) => match kept(kui_core::calc::bound_value(&size_value(v)?))? {
+                Some(b) => b,
+                None => return Ok(None),
+            },
             v => kui_core::Bound::Px(
                 number(v).ok_or_else(|| bad("expected a number, a string or a size table"))?,
             ),
@@ -2661,6 +2674,17 @@ fn size_value(v: &mlua::Value) -> mlua::Result<Value> {
     Ok(value)
 }
 
+/// `Some` of a size expression, `None` for one the full table refused
+/// ([`kui_core::calc::is_full`]) — the prop left undeclared, as a
+/// `$name` that misses is (backlog RG93) — and the error for a bad one.
+fn kept<T>(r: Result<T, String>) -> mlua::Result<Option<T>> {
+    match r {
+        Ok(v) => Ok(Some(v)),
+        Err(e) if kui_core::calc::is_full(&e) => Ok(None),
+        Err(e) => Err(bad(e)),
+    }
+}
+
 fn parse_sizing(v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Result<Option<Sizing>> {
     if let Some(name) = reference(v)? {
         return Ok(refs.length(&name).map(Sizing::Fixed));
@@ -2668,7 +2692,10 @@ fn parse_sizing(v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Result<Option<Siz
     Ok(Some(match v {
         mlua::Value::Number(n) => Sizing::Fixed(*n as f32),
         mlua::Value::Integer(n) => Sizing::Fixed(*n as f32),
-        mlua::Value::String(s) => schema::sizing_str(&s.to_str()?).map_err(bad)?,
+        mlua::Value::String(s) => match kept(schema::sizing_str(&s.to_str()?))? {
+            Some(s) => s,
+            None => return Ok(None),
+        },
         mlua::Value::Table(t) => {
             if let Some(p) = t.get::<Option<f32>>("pct")? {
                 Sizing::Percent(p / 100.0)
@@ -2677,11 +2704,14 @@ fn parse_sizing(v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Result<Option<Siz
             } else {
                 // A size expression as data (backlog F109):
                 // `{ clamp = { 400, { pct = 80 }, 1000 } }`.
-                kui_core::calc::sizing_value(&size_value(v)?).map_err(|e| {
+                match kept(kui_core::calc::sizing_value(&size_value(v)?)).map_err(|e| {
                     bad(format!(
                         "sizing table needs pct, grow or a size expression: {e}"
                     ))
-                })?
+                })? {
+                    Some(s) => s,
+                    None => return Ok(None),
+                }
             }
         }
         _ => return Err(bad("invalid sizing value")),
