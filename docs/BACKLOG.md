@@ -94,9 +94,10 @@ on a Mac — from the kawoosh settings-pane report of the same day, filed
 and built after the alpha.26 tag, and with the alpha.28 tag DX27 — the
 kui book — from the book round of 2026-09-29, and RG77–RG98 from the
 regression run of 2026-09-30, filed and built after the alpha.27 tag, and
-after the alpha.28 tag RG99 — RG96's readings, confirmed in a window on
-Linux and Windows — with RG100–RG104 from that window round the same
-day, the day they were filed, and RG105 from it, withdrawn the same day. The index
+with the alpha.29 tag RG99 — RG96's readings, confirmed in a window on
+Linux and Windows — with RG100–RG104 from that window round, filed and
+built the same day after the alpha.28 tag, and RG105 from it, withdrawn
+the same day. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -144,7 +145,7 @@ architecture review (forty-four entries under ten decisions, every one
 built on 2026-09-14), the standard-menus round, and the pre-tag round's
 own two finds. C26 was the last split entry, and it closed on 2026-09-11.
 
-Ordered by area, not by priority. What to do next is under "After alpha.27".
+Ordered by area, not by priority. What to do next is under "After alpha.28".
 
 **Legend** — `!` a defect that ships today · `~` a gap with no workaround ·
 `.` cost without correctness risk.
@@ -410,7 +411,7 @@ moved whole to
 before the alpha.10 tag, W7 last — the one that wanted a decision rather
 than a patch, settled as: a displacement moves a subtree by whole physical
 pixels, scrolling included. Nothing from the round is open; what it did
-not cover is in "After alpha.27" below.
+not cover is in "After alpha.28" below.
 
 ## From two alpha.9 field reports and a bake-off (2026-09-08)
 
@@ -1897,7 +1898,7 @@ Beside the report, reading the tree for this round turned up one gap of
 kui's own: the variable-height list is Rust-only (C46). Two further
 entries came from the comparison's table: typed messages (C50) and file
 dialogs (C51). The distribution recommendation is unchanged (see
-*Distribution* under *After alpha.27*).
+*Distribution* under *After alpha.28*).
 
 ## From the DX sweep (2026-09-27)
 
@@ -2021,10 +2022,15 @@ window beneath, by a press winit made up as that window gained focus
 (RG100). RG105, filed the same day, was withdrawn the same day and is
 in the archive: the Windows reading it rested on was a US layout's.
 
-## After alpha.27
+## After alpha.28
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
-alpha.26" until 2026-09-30, when the round between the alpha.27 and
+alpha.27" until later on 2026-09-30, when the round between the alpha.28
+and alpha.29 tags — the book's examples part and its publishing, and
+RG99, the key model's window round on Linux and Windows, with what it
+found (RG100–RG104, built the day they were filed; RG105 withdrawn the
+same day) — had landed, and the heading moved with the tag; "After
+alpha.26" until earlier on 2026-09-30, when the round between the alpha.27 and
 alpha.28 tags — the kui book (DX27, ADR 0039), and the regression run
 over F108–F113 with what it filed (RG77–RG98, RG92 a CSS mirror at the
 user's word, all built the day they were filed; RG99 left open) — had
@@ -2507,7 +2513,7 @@ Every closed entry, all in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) and all verbatim — one heading
 per id, and `tests/docs.rs` holds every id to one entry across both files.
 This index is here so an id resolves without opening that file: the open items
-above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.27" and
+above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.28" and
 the hygiene note cite C2, C5(b), P3, R4 and R7, and code comments, ADRs and
 commit messages cite ids of their own. All of them are whole in the
 archive. **C11**, **W2** and **C15** were each split for a while — an entry

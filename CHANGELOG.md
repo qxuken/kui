@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.29 (unreleased)
+## 0.1.0-alpha.29 (2026-09-30)
 
 **What breaks.** No build: `Core::holds_key` is new, the ABI stays 22
 and the Node wire v19. Five readings change on Windows and Linux, each
@@ -72,6 +72,63 @@ a fix:
   knew nothing of a lock turned while another app had the keyboard, and
   under XWayland it disagreed with the text the server typed after a
   focus change.
+
+### Docs
+
+- **The kui book is published** at https://kui-book.qxuken.dev, built
+  on a `v*` tag by the `book` workflow. It carries an Examples part — a
+  page for each of the 39 Rust examples outside `tutorial/`, each
+  including its source when the book is built
+  (`scripts/book-examples.sh`, checked in CI) — and no link leaves it
+  for the repository. Its setup page tells a reader to copy a program
+  into their own project, and its dependency line names the release
+  (`scripts/set-version.sh` writes it; `check-version.sh` refuses a tag
+  whose book names another).
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), on 2026-09-30 — the
+commits after the alpha.28 tag: the book's examples part and its
+publishing, and RG99's window round with what it found (RG100–RG104
+built, RG105 withdrawn), merged from its branch. This round ran on
+Windows and on Linux under WSLg, not on the Mac: what the release
+changes is the key model's Windows and X11 halves, and RG103, the one
+change that runs on macOS too, is pinned by a core test. The AX audit
+(a Mac's) and the four hosts by hand were not run.
+
+**Windows 11 Pro 26200 on an RTX 5080, rustc 1.98.1, Node 25.2.1**, on
+`0530ef3`, the branch's head before the version was set, in its
+worktree (not cold). `cargo fmt --all --check` and `cargo clippy
+--workspace --all-targets --features kui-core/conformance -- -D
+warnings` are clean. `cargo test --workspace --features
+kui-core/conformance`: **1634 tests over 130 suites, 0 failed** (4
+ignored). The C round, `cbuild --run`, passes its six checks. Node's
+`node --test test.mjs` under `KUI_CONFORMANCE_REQUIRED=1`: **204 of
+205**, the RTLD test skipped (win32 has no dlopen flags). `npm run gen`
+leaves no diff but line endings, the examples typecheck and their
+lockfile installs, and the headless round passes all **32 drives** once
+the C round has built `panel.dll` (before it, `c_panel` says so and
+fails). `scripts/book-examples.sh --check` reports every page stale on
+this CRLF checkout, by its line endings alone; it passes on Linux.
+
+**Ubuntu 24.04 under WSLg (X11 on llvmpipe), rustc 1.96.1, Node
+25.2.1**, on a clean clone of `0530ef3`: clippy as above clean; **1632
+tests over 129 suites, 0 failed** (3 ignored); the C round passes its
+five checks and the no-ABI panel is refused as "this build is 22";
+Node **205 of 205**; `gen` no diff; the book's examples check passes;
+the headless round passes all **32 drives**.
+
+**The windowed round**, `smoke -- --node`: **48 Rust examples and the
+eleven Node examples, each on both bases, 120 frames each, every one
+exiting 0** — **118 windows on Windows and 118 on X11**. RG99's probe
+checked the release's own changes in a window on both (RG100–RG104).
+
+**The bench guard** against the alpha.28 tag, on Windows at `0530ef3`:
+**green**, none of the 8 guarded rows more than 10% slower — the worst
+`frame_10k_rects_with_access_tree` at +7.9% inside its own ±8.4%
+run-to-run spread — and every one of the 38 rows' sources "same"; the
+release touches no frame path. README's table is kept at alpha.22's
+numbers.
 
 ## 0.1.0-alpha.28 (2026-09-30)
 
