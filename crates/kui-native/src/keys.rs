@@ -364,15 +364,17 @@ fn twins_let_go(
 /// Caps Lock and Num Lock at a press (backlog F108). winit reports
 /// neither, so the OS is asked where it answers cheaply — macOS's
 /// `NSEvent.modifierFlags` (a Mac has no Num Lock, so it reads off, as a
-/// Mac terminal reports it), Windows' `GetKeyState` — and anywhere
-/// else the state is `tracked` from the lock keys' own presses, which
-/// knows nothing of a lock set before the app's first window opened.
-pub(crate) fn lock_state(tracked: KeyLocks) -> KeyLocks {
+/// Mac terminal reports it), Windows' `GetKeyState`, the X server's
+/// locked modifiers when the app is on X11 (`x11`, backlog RG104) — and
+/// anywhere else (Wayland) the state is `tracked` from the lock keys' own
+/// presses, which knows nothing of a lock set before the app's first
+/// window opened or turned while another app had the keyboard.
+pub(crate) fn lock_state(tracked: KeyLocks, x11: bool) -> KeyLocks {
     #[cfg(target_os = "macos")]
     {
         use objc2_app_kit::{NSEvent, NSEventModifierFlags};
         let flags = NSEvent::modifierFlags_class();
-        let _ = tracked;
+        let _ = (tracked, x11);
         KeyLocks {
             caps: flags.contains(NSEventModifierFlags::CapsLock),
             num: false,
@@ -383,7 +385,7 @@ pub(crate) fn lock_state(tracked: KeyLocks) -> KeyLocks {
         use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
             GetKeyState, VK_CAPITAL, VK_NUMLOCK,
         };
-        let _ = tracked;
+        let _ = (tracked, x11);
         // SAFETY: GetKeyState reads the calling thread's key state and
         // takes a virtual-key code; any value is sound.
         let on = |vk: u16| unsafe { GetKeyState(vk as i32) } & 1 != 0;
@@ -394,7 +396,44 @@ pub(crate) fn lock_state(tracked: KeyLocks) -> KeyLocks {
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
-        tracked
+        x11.then(x11_locks::read).flatten().unwrap_or(tracked)
+    }
+}
+
+/// The X server's lock state (backlog RG104): XKB's locked modifiers,
+/// Lock for Caps Lock and Mod2 for Num Lock, where the stock XKB keymaps
+/// put the NumLock virtual modifier. On a connection of its own, opened
+/// at the first key: one round trip a press, as `GetKeyState` is a call a
+/// press on Windows.
+/// `None` when there is no server to ask or it has no XKB; the caller
+/// falls back on what it tracked.
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+mod x11_locks {
+    use kui_core::KeyLocks;
+    use std::sync::OnceLock;
+    use x11rb::protocol::xkb::{self, ConnectionExt as _};
+    use x11rb::protocol::xproto::ModMask;
+    use x11rb::rust_connection::RustConnection;
+
+    static CONN: OnceLock<Option<RustConnection>> = OnceLock::new();
+
+    pub(super) fn read() -> Option<KeyLocks> {
+        let conn = CONN
+            .get_or_init(|| {
+                let (conn, _) = RustConnection::connect(None).ok()?;
+                let ext = conn.xkb_use_extension(1, 0).ok()?.reply().ok()?;
+                ext.supported.then_some(conn)
+            })
+            .as_ref()?;
+        let state = conn
+            .xkb_get_state(xkb::ID::USE_CORE_KBD.into())
+            .ok()?
+            .reply()
+            .ok()?;
+        Some(KeyLocks {
+            caps: state.locked_mods.contains(ModMask::LOCK),
+            num: state.locked_mods.contains(ModMask::M2),
+        })
     }
 }
 
@@ -518,6 +557,13 @@ impl DynShell<'_> {
             physical,
             location,
         );
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        let x11 = {
+            use winit::platform::x11::ActiveEventLoopExtX11;
+            event_loop.is_x11()
+        };
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        let x11 = false;
         // Rebound after each dispatch: a chord the app answers by closing
         // a window moves every pane behind it down one (backlog AR39).
         let (mut i, mut from) = (i, from);
@@ -534,7 +580,7 @@ impl DynShell<'_> {
                 .into_iter()
                 .map(|(at, side)| KeyPress {
                     location: side,
-                    locks: lock_state(self.locks),
+                    locks: lock_state(self.locks, x11),
                     ..KeyPress::from_layout(
                         KeyCode::Shift,
                         at,
@@ -567,7 +613,7 @@ impl DynShell<'_> {
         // (backlog RG96). One keyboard, so one record for the app: a
         // popup reads what its owner toggled.
         self.locks = locks_after(self.locks, kp.code, pressed && !repeat);
-        let found = lock_state(self.locks);
+        let found = lock_state(self.locks, x11);
         let kp = KeyPress {
             text: ktext,
             repeat,
