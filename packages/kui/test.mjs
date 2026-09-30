@@ -190,6 +190,41 @@ test('a size expression spelled and as data lays out the same', () => {
   assert.throws(() => encoded(box({ width: { clamp: [1, 2] } }, [])), /clamp takes three/);
 });
 
+// The size spellings every binding is run through (backlog RG94): one
+// table, `crates/kui-core/tests/fixtures/size_spellings.json`, read by the
+// core and Lua too. A string rides to the addon as its spelling and is
+// parsed by the core; nested in data it is read by the encoder's own
+// `parseSize`, which must agree with it — `{ min: ['max(1px, 2%)', 30] }`
+// was refused here and taken there. A row marked `"only": "lua"` is Lua's
+// `pct`, which JS spells `percent`.
+test('every size spelling lays out as the shared table says', () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const table = JSON.parse(readFileSync(join(here, '../../crates/kui-core/tests/fixtures/size_spellings.json'), 'utf8'));
+  const laid = (width) => {
+    const ctx = new Ctx();
+    ctx.setInspect(true);
+    ctx.frame(1200, 100, 1, box({ width: 1000, pad: 0 }, [box({ width, height: 4 }, [], 'r')]));
+    return ctx.nodes().find((x) => x.label === 'r').rect.w;
+  };
+  const failures = [];
+  for (const row of table.rows) {
+    const want = row.only === 'lua' ? null : row.px;
+    const check = (how, width) => {
+      let got;
+      try {
+        got = laid(width);
+      } catch (e) {
+        got = null;
+      }
+      const ok = want === null ? got === null : got !== null && Math.abs(got - want) < 1e-3;
+      if (!ok) failures.push(`${JSON.stringify(row.width)} ${how}: ${got}, want ${want}`);
+    };
+    check('as a width', row.width);
+    if (typeof row.width === 'string' || typeof row.width === 'number') check('nested in a max', { max: [row.width] });
+  }
+  assert.deepEqual(failures, []);
+});
+
 // The size-expression table is the process's and keeps at most 65 536
 // (backlog RG93), so a view that makes one per frame — a splitter's
 // fractional drag in a `max` — reaches it. Past it a new expression is

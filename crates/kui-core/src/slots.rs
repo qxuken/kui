@@ -209,7 +209,10 @@ pub(crate) fn sizing_value(v: &Value) -> Result<Sizing, String> {
             if let Some(g) = v.get_float("grow") {
                 Ok(Sizing::Grow(g as f32))
             } else if let Some(p) = v.get_float("percent") {
-                Ok(Sizing::Percent(p as f32))
+                // JS's spelling, as `"50%"` and a size expression's
+                // `{ percent: 50 }` read it: it was the fraction, and a
+                // stop's `{ percent: 50 }` was 5000% (backlog RG94).
+                Ok(Sizing::Percent(p as f32 / 100.0))
             } else if let Some(p) = v.get_float("pct") {
                 // The Lua spelling.
                 Ok(Sizing::Percent(p as f32 / 100.0))

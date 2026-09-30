@@ -42,7 +42,7 @@ wire v19. One layout rule changes:
   `Min::px(0.0)`. C: a `KuiSpec.min_w` of 0 stays undeclared, and
   `KUI_MIN_NONE` declares 0.
 
-Five readings change, each a fix:
+Six readings change, each a fix:
 
 - A negative px `maxWidth` / `maxHeight` is a ceiling of 0 again, in
   every binding (under Fixed, RG78): since alpha.25 it could read as
@@ -54,6 +54,14 @@ Five readings change, each a fix:
 - A table cell's size-expression clamps resolve against the columns'
   room, as its width does, and a column is its largest expression, not
   its first (RG90, RG91): such a table can lay out differently.
+- A size spelling reads as CSS reads it (RG94): a space between a
+  number and its unit or a function and its parenthesis is refused
+  (`"80 %"`, `"100 px"`, `"min (1, 2)"`, taken before), and names and
+  `px` are taken in any case (`"MIN(10PX, 50%)"`, refused before).
+  Node's encoder refuses `"50px%"` (it sent 50%), `"1.2.3%"` (1.2%) and
+  a table naming two functions (`{ min, max }`, which it read as the
+  `min`), and a keyframe or entrance stop's `{ percent: 50 }` is 50%,
+  where it was 5000%.
 - A modifier key let go of because the window lost the keyboard says
   its own bit is off (`shift: false` for Shift), as a real release does
   (RG85).
@@ -171,6 +179,14 @@ RG77–RG91; RG93–RG97 open).
   as its builders already reduced it. The cap is in the `width` docs,
   the LuaLS `kui.Size`, howto and kui.h now: declare one expression per
   layout, with the part that moves a px size of its own.
+- **The Node encoder, the parser and the core read one size grammar**
+  (RG94): a spelled function inside data — `{ min: ['max(1px, 2%)',
+  30] }`, which the type allows and Lua and the core took — is read by
+  the encoder's own copy of the core's grammar and crosses as numbers,
+  where the encoder refused it. The spellings every binding is run
+  through are one table, `crates/kui-core/tests/fixtures/size_spellings.json`,
+  read by the core's, Lua's and Node's tests; the readings it changed
+  are under What breaks.
 - **The frame that brings a minimized window back says `occlusion`,
   not what was asked while it was down** (RG97): a minimized window gets
   no frames, and what the runner noted for it meanwhile — another

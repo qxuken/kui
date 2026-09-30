@@ -3,9 +3,18 @@
 //! content box — the same box a `Percent` sizing takes its cut of.
 //!
 //! ```text
-//! size  := number ["px"] | number "%" | fn "(" size ("," size)* ")"
-//! fn    := "min" | "max" | "clamp"          -- clamp takes exactly three
+//! size   := number ["px"] | number "%" | fn "(" size ("," size)* ")"
+//! fn     := "min" | "max" | "clamp"         -- clamp takes exactly three
+//! number := digits ["." digits] | "." digits  -- no sign, no exponent
 //! ```
+//!
+//! As CSS reads it: a unit straight after its number (`80 %` and `100 px`
+//! are refused), a function's `(` straight after its name (`min (1, 2)`
+//! is refused), names and `px` in any case (`MIN(10PX, 50%)`), and
+//! whitespace free around the commas and inside the parentheses. The Node
+//! encoder reads the same grammar (`encoder.js`'s `parseSize`), and
+//! `tests/fixtures/size_spellings.json` is the one table all three
+//! bindings are run through (backlog RG94).
 //!
 //! `"clamp(400px, 80%, 1000px)"` is 80% of the room, never under 400 nor
 //! over 1000 — and, as CSS has it, the minimum wins when it is over the
@@ -587,11 +596,15 @@ impl Parser<'_> {
         }
         self.skip_ws();
         for name in ["clamp", "min", "max"] {
-            if self.s[self.at..].starts_with(name.as_bytes()) {
-                self.at += name.len();
-                if !self.eat("(") {
-                    return Err(self.error("\"(\""));
-                }
+            // As CSS reads a function: its name in any case, and the
+            // parenthesis straight after it — `min (1, 2)` is no call
+            // (backlog RG94).
+            let rest = &self.s[self.at..];
+            if rest.len() > name.len()
+                && rest[..name.len()].eq_ignore_ascii_case(name.as_bytes())
+                && rest[name.len()] == b'('
+            {
+                self.at += name.len() + 1;
                 let mut args = vec![self.expr(depth + 1)?];
                 while self.eat(",") {
                     args.push(self.expr(depth + 1)?);
@@ -629,10 +642,16 @@ impl Parser<'_> {
         // Digits alone can still overflow an `f32` (forty of them do):
         // an infinity is refused as `NaN` is from data (backlog RG80).
         let n = finite(n)?;
-        if self.eat("%") {
+        // The unit straight after the number, as CSS has it: `80 %` and
+        // `100 px` are a number and a stray word (backlog RG94).
+        let rest = &self.s[self.at..];
+        if rest.first() == Some(&b'%') {
+            self.at += 1;
             Ok(Expr::Pct(finite(n / 100.0)?))
         } else {
-            self.eat("px");
+            if rest.len() >= 2 && rest[..2].eq_ignore_ascii_case(b"px") {
+                self.at += 2;
+            }
             Ok(Expr::Px(n))
         }
     }
@@ -743,9 +762,25 @@ mod tests {
     #[test]
     fn a_bad_one_says_where() {
         assert_eq!(
-            parse("80 %x").unwrap_err(),
+            parse("80%x").unwrap_err(),
             "bad size: the end expected at \"x\""
         );
+        // CSS's spacing (backlog RG94): the unit and a function's
+        // parenthesis sit against what they belong to.
+        assert_eq!(
+            parse("80 %").unwrap_err(),
+            "bad size: the end expected at \"%\""
+        );
+        assert_eq!(
+            parse("100 px").unwrap_err(),
+            "bad size: the end expected at \"px\""
+        );
+        assert!(parse("min (1, 2)").unwrap_err().contains("at \"min (1, 2)\""));
+        assert!(parse("1.2.3%").is_err());
+        assert!(parse("50px%").unwrap_err().contains("at \"%\""));
+        // And its case: names and units in any.
+        assert_eq!(parse("MIN(10PX, 50%)").unwrap(), parse("min(10px, 50%)").unwrap());
+        assert_eq!(parse(" max( 1px ,2% ) ").unwrap(), parse("max(1px, 2%)").unwrap());
         assert!(parse("clamp(1, 2)").unwrap_err().contains("three"));
         assert!(parse("wide").unwrap_err().contains("at \"wide\""));
         assert!(parse("min(1, 2").unwrap_err().contains("at the end"));

@@ -44,6 +44,9 @@ divan.workspace = true
 # Self-dependency: the one way to enable a feature for the tests without
 # gating the test target itself (which `cargo test` would then silently skip).
 kui-core = { path = ".", features = ["conformance"] }
+# Reads `kui-core/tests/fixtures/size_spellings.json`, the size spellings
+# every binding is run through (backlog RG94).
+serde_json = "1"
 
 [[bench]]
 name = "frame"

@@ -2013,25 +2013,6 @@ went to CSS's the same day at the user's word and is in the archive
 too. RG93–RG97 stay open, the reviews' readings, checked against the
 code but not run.
 
-### `.` RG94 — Size expressions are spelled three ways: the encoder, the parser and the core disagree at the edges
-
-- JS's `sizeCode` refuses a spelled function nested in data
-  (`{ min: ['max(1px, 2%)', 30] }`), which `SizeExpr`'s type allows and
-  the core and Lua take; and a nested `{ pct: n }`, which the core takes.
-- JS takes `{ min: [...], max: [...] }` as `min` without a word;
-  `from_value` refuses two keys.
-- `"1.2.3%"` passes the encoder's regex as 1.2%; the Rust parser
-  refuses it. `"50px%"` in the encoder's `sizing` is 50% (before F109).
-- The parser is looser than CSS: `"80 %"`, `"100 px"` and `"min (1, 2)"`
-  parse (`eat` skips whitespace before units and `(`); function names
-  are case-sensitive.
-- `{ percent: 50 }` is `Percent(50.0)` — 5000% — at the top of a
-  keyframe or enter `width` (`slots.rs`, raw JSON from JS) and 50%
-  nested in a size expression in the same function.
-
-**Do.** One spelling table with a test per row run through all three,
-and pin what the parser accepts in `a_bad_one_says_where`.
-
 ### `.` RG96 — The key model's readings off the Mac are unconfirmed
 
 Read, not probed; each needs a round on Linux or Windows.
@@ -3283,6 +3264,8 @@ move.
 - `~` **RG92** — [A share of the room gives by the fit children's rule, not CSS's](backlog/closed-2026-09.md#-rg92--a-share-of-the-room-gives-by-the-fit-childrens-rule-not-csss--done-2026-09-30) — done (2026-09-30)
 
 - `.` **RG93** — [A frame failed whole once the process-wide size-expression table was full](backlog/closed-2026-09.md#-rg93--a-frame-failed-whole-once-the-process-wide-size-expression-table-was-full--done-2026-09-30) — done (2026-09-30)
+
+- `.` **RG94** — [Size expressions were spelled three ways, and the encoder, the parser and the core disagreed at the edges](backlog/closed-2026-09.md#-rg94--size-expressions-were-spelled-three-ways-and-the-encoder-the-parser-and-the-core-disagreed-at-the-edges--done-2026-09-30) — done (2026-09-30)
 
 - `.` **RG95** — [A Lua value or view nested without limit, and a debug build's view overflowed at 32](backlog/closed-2026-09.md#-rg95--a-lua-value-or-view-nested-without-limit-and-a-debug-builds-view-overflowed-at-32--done-2026-09-30) — done (2026-09-30)
 

@@ -164,36 +164,111 @@ export function createEncoder(P) {
 
   // A size expression as data (backlog F109): `{ clamp: [400, "80%",
   // 1000] }`, `{ min: [...] }`, `{ max: [...] }`, `{ percent: 80 }`,
-  // `{ px: 12 }`, a number, or a length / percentage string — into prefix
-  // code (`calc::from_code`: 1 px, 2 fraction, 3 n… min, 4 n… max, 5 a b
-  // c clamp), so the addon reads numbers and parses no text. A spelled
-  // function (`"min(…)"`) inside one is not taken: pass it as the whole
-  // value, where it rides as a string.
+  // `{ px: 12 }`, a number, or a string — into prefix code
+  // (`calc::from_code`: 1 px, 2 fraction, 3 n… min, 4 n… max, 5 a b c
+  // clamp), so the addon reads numbers and parses no text. A string is
+  // read by `parseSize`, the core's grammar, so `"max(1px, 2%)"` nested in
+  // data is taken as the core takes it (backlog RG94). A table names one
+  // function or unit, as the core's `from_value` has it; a percentage is
+  // `{ percent }` here, the word JS spells (Lua's is `pct`).
   function sizeCode(v, out) {
     if (typeof v === 'number') {
       out.push(1, v);
-    } else if (typeof v === 'string' && /^\s*[\d.]+\s*%\s*$/.test(v)) {
-      out.push(2, parseFloat(v) / 100);
-    } else if (typeof v === 'string' && /^\s*[\d.]+\s*(px)?\s*$/.test(v)) {
-      out.push(1, parseFloat(v));
-    } else if (v && typeof v === 'object' && typeof v.percent === 'number') {
-      out.push(2, v.percent / 100);
-    } else if (v && typeof v === 'object' && typeof v.px === 'number') {
-      out.push(1, v.px);
-    } else if (v && typeof v === 'object' && Array.isArray(v.clamp)) {
-      if (v.clamp.length !== 3) throw new Error('bad size: clamp takes three: clamp(MIN, TARGET, MAX)');
-      out.push(5);
-      for (const a of v.clamp) sizeCode(a, out);
-    } else if (v && typeof v === 'object' && (Array.isArray(v.min) || Array.isArray(v.max))) {
-      const args = v.min || v.max;
-      if (args.length === 0) throw new Error('bad size: min and max take at least one');
-      out.push(v.min ? 3 : 4, args.length);
-      for (const a of args) sizeCode(a, out);
+    } else if (typeof v === 'string') {
+      parseSize(v, out);
+    } else if (v && typeof v === 'object' && !Array.isArray(v)) {
+      const keys = Object.keys(v);
+      if (keys.length !== 1) {
+        throw new Error(`bad size ${JSON.stringify(v)}: a table names one of percent, px, min, max, clamp`);
+      }
+      const [k] = keys;
+      const arg = v[k];
+      if (k === 'percent' || k === 'px') {
+        if (typeof arg !== 'number') throw new Error(`bad size: ${k} takes a number`);
+        out.push(k === 'px' ? 1 : 2, k === 'px' ? arg : arg / 100);
+      } else if (k === 'clamp' || k === 'min' || k === 'max') {
+        if (!Array.isArray(arg)) throw new Error(`bad size: ${k} takes a list`);
+        if (k === 'clamp') {
+          if (arg.length !== 3) throw new Error('bad size: clamp takes three: clamp(MIN, TARGET, MAX)');
+          out.push(5);
+        } else {
+          if (arg.length === 0) throw new Error(`bad size: ${k} takes at least one`);
+          out.push(k === 'min' ? 3 : 4, arg.length);
+        }
+        for (const a of arg) sizeCode(a, out);
+      } else if (k === 'pct') {
+        throw new Error('bad size: a percentage is { percent: n } in JS');
+      } else {
+        throw new Error(`bad size: no ${JSON.stringify(k)} (percent, px, min, max, clamp)`);
+      }
     } else {
       throw new Error(`bad size ${JSON.stringify(v)} (a number, "N%", "Npx", { percent }, { px }, { min | max | clamp: [...] })`);
     }
     return out;
   }
+
+  // The core's size grammar (`calc::parse`) into prefix code: a number
+  // with no sign or exponent, `%` or `px` straight after it, `min`, `max`
+  // and `clamp` in any case with `(` straight after the name, whitespace
+  // free around the commas. What it refuses the core refuses; the table
+  // both are run through is `crates/kui-core/tests/fixtures/
+  // size_spellings.json` (backlog RG94).
+  function parseSize(s, out) {
+    let at = 0;
+    const ws = () => {
+      while (at < s.length && ' \t\n\f\r'.includes(s[at])) at++;
+    };
+    const bad = (what) => {
+      const rest = s.slice(at);
+      return new Error(rest ? `bad size: ${what} expected at ${JSON.stringify(rest)}` : `bad size: ${what} expected at the end`);
+    };
+    const expr = (depth) => {
+      if (depth > 32) throw new Error('bad size: nested past 32');
+      ws();
+      const fn = /^(clamp|min|max)\(/i.exec(s.slice(at));
+      if (fn) {
+        at += fn[0].length;
+        const name = fn[1].toLowerCase();
+        const head = out.length;
+        out.push(name === 'clamp' ? 5 : name === 'min' ? 3 : 4);
+        if (name !== 'clamp') out.push(0);
+        let n = 0;
+        for (;;) {
+          expr(depth + 1);
+          n++;
+          ws();
+          if (s[at] === ',') {
+            at++;
+          } else if (s[at] === ')') {
+            at++;
+            break;
+          } else {
+            throw bad('"," or ")"');
+          }
+        }
+        if (name === 'clamp' && n !== 3) throw new Error('bad size: clamp takes three: clamp(MIN, TARGET, MAX)');
+        if (name !== 'clamp') out[head + 1] = n;
+        return;
+      }
+      const num = /^(\d+\.?\d*|\.\d+)/.exec(s.slice(at));
+      if (!num) throw bad('a number, "N%", "Npx", min(…), max(…) or clamp(…)');
+      at += num[0].length;
+      const n = parseFloat(num[0]);
+      if (s[at] === '%') {
+        at++;
+        out.push(2, n / 100);
+      } else {
+        if (s.slice(at, at + 2).toLowerCase() === 'px') at += 2;
+        out.push(1, n);
+      }
+    };
+    expr(0);
+    ws();
+    if (at < s.length) throw bad('the end');
+    return out;
+  }
+
+  const PERCENT = /^[ \t\n\f\r]*(\d+\.?\d*|\.\d+)%[ \t\n\f\r]*$/;
 
   // A size expression that is not one of the plain forms: a string rides
   // as its spelling (mode 4, a strref), data as prefix code (mode 5, a
@@ -204,7 +279,7 @@ export function createEncoder(P) {
       strRef(v);
       return true;
     }
-    if (v && typeof v === 'object' && (v.clamp || v.min || v.max || typeof v.px === 'number' || typeof v.percent === 'number')) {
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
       const code = sizeCode(v, []);
       reserve(code.length + 2);
       f[fi++] = 5;
@@ -226,13 +301,16 @@ export function createEncoder(P) {
     } else if (v === 'grow') {
       f[fi++] = 2;
       f[fi++] = 1;
-    } else if (typeof v === 'string' && v.endsWith('%')) {
+    } else if (typeof v === 'string' && PERCENT.test(v)) {
+      // A bare percentage in the core's grammar; anything else ending in
+      // `%` (`"50px%"`, which this read as 50%) is the core's to refuse
+      // (backlog RG94).
       f[fi++] = 3;
       f[fi++] = parseFloat(v) / 100;
     } else if (v && typeof v === 'object' && typeof v.grow === 'number') {
       f[fi++] = 2;
       f[fi++] = v.grow;
-    } else if (v && typeof v === 'object' && typeof v.percent === 'number') {
+    } else if (v && typeof v === 'object' && typeof v.percent === 'number' && Object.keys(v).length === 1) {
       // The same number `"50%"` spells: a percentage, which the core
       // reads as a fraction (AR25: written raw, `{ percent: 50 }` was
       // 5000%).

@@ -25,6 +25,9 @@ kui-devtools.workspace = true
 # tests/conformance.rs drives the scene corpus, which kui-core keeps behind a
 # feature; on here only, so the published extension does not carry it.
 kui-core = { workspace = true, features = ["conformance"] }
+# Reads `kui-core/tests/fixtures/size_spellings.json`, the size spellings
+# every binding is run through (backlog RG94).
+serde_json = "1"
 
 # See the note in crates/kui-native/Cargo.toml: examples live under examples/ at the
 # root, so cargo needs the path. A Lua extension has no window of its own, so
