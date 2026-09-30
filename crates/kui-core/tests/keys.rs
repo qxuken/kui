@@ -290,6 +290,25 @@ fn a_release_without_a_delivered_press_resolves_nothing() {
     assert!(drive(&mut core, &[release(KeyCode::Char('w'))]).is_empty());
 }
 
+/// What a driver with two cores asks before routing a release (backlog
+/// RG103): the core that delivered the press holds the key until its
+/// release, by position, and a core that never saw the press does not.
+#[test]
+fn a_core_says_whether_it_holds_a_key() {
+    let mut owner = Core::new();
+    frame(&mut owner, true);
+    let mut popup = Core::new();
+    frame(&mut popup, true);
+    let f2 = KeyPress::new(KeyCode::F(2), KeyMods::NONE);
+    assert!(!owner.holds_key(&f2));
+    drive(&mut owner, &[InputEvent::KeyDown(f2.clone())]);
+    assert!(owner.holds_key(&f2));
+    assert!(!popup.holds_key(&f2), "the popup never saw the press");
+    let evs = drive(&mut owner, &[InputEvent::KeyUp(f2.clone())]);
+    assert_eq!(keys(&evs), [("up".into(), "f2".into())]);
+    assert!(!owner.holds_key(&f2));
+}
+
 #[test]
 fn focus_moving_releases_what_the_old_sink_held() {
     let mut core = Core::new();

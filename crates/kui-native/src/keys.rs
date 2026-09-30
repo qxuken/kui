@@ -499,6 +499,10 @@ impl DynShell<'_> {
             locks: found,
             ..kp
         };
+        // A release goes where its press went (backlog RG103).
+        if !pressed {
+            i = self.release_target(i, &kp);
+        }
         if kp.code != KeyCode::Unknown {
             let Some(still) = self.dispatch(
                 event_loop,
