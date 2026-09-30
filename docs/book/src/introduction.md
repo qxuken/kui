@@ -15,12 +15,12 @@ Tell cargo where it is, once per project:
 
 ```toml
 # .cargo/config.toml
-[registries.forgejo]
+[registries.drydock9]
 index = "sparse+https://drydock9.qxuken.dev/api/packages/qxuken/cargo/"
 ```
 
 ```bash
-cargo add kui-native --registry forgejo
+cargo add kui-native --registry drydock9
 ```
 
 Replace `src/main.rs` with this:

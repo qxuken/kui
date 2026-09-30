@@ -6,13 +6,13 @@ repository, and the devtools.
 
 ## The registry
 
-kui's crates publish to a Forgejo cargo registry. Reading from it needs
-no account. Cargo learns about it from a `[registries]` table, in the
+kui's crates publish to a cargo registry named `drydock9`, after the
+host that serves it. Reading from it needs no account. Cargo learns about it from a `[registries]` table, in the
 project's `.cargo/config.toml` or in `~/.cargo/config.toml` for every
 project:
 
 ```toml
-[registries.forgejo]
+[registries.drydock9]
 index = "sparse+https://drydock9.qxuken.dev/api/packages/qxuken/cargo/"
 ```
 
@@ -20,10 +20,10 @@ Then the dependency names the registry:
 
 ```toml
 [dependencies]
-kui-native = { version = "0.1.0-alpha.27", registry = "forgejo" }
+kui-native = { version = "0.1.0-alpha.27", registry = "drydock9" }
 ```
 
-`cargo add kui-native --registry forgejo` writes that line for you.
+`cargo add kui-native --registry drydock9` writes that line for you.
 `kui-native` is the batteries-included crate: a window, a GPU renderer,
 the stock widgets and the `App` trait. Everything the book uses is
 reachable from it.

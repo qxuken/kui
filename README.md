@@ -54,7 +54,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 cargo run -p kui-native --example tutorial_01_hello
 ```
 
-In a project of your own it is `cargo add kui-native --registry forgejo`
+In a project of your own it is `cargo add kui-native --registry drydock9`
 with the registry table from [Releases](#releases) in `.cargo/config.toml`,
 that file as `src/main.rs`, and `cargo run`.
 
@@ -1277,10 +1277,10 @@ for development). Consumers point at the registries once:
 
 ```toml
 # .cargo/config.toml
-[registries.forgejo]
+[registries.drydock9]
 index = "sparse+https://drydock9.qxuken.dev/api/packages/qxuken/cargo/"
 # Cargo.toml
-kui-native = { version = "0.1.0-alpha.1", registry = "forgejo" }  # `use kui_native::…`
+kui-native = { version = "0.1.0-alpha.1", registry = "drydock9" }  # `use kui_native::…`
 ```
 
 ```bash
