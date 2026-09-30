@@ -157,6 +157,14 @@ RG77–RG91; RG93–RG97 open).
   `owed_by().scrolls`** while the frame is still owed (RG89).
 - **A table cell's clamps and its column take the columns' room and
   the largest expression** (RG90, RG91).
+- **A Lua value or view that holds itself, or nests too deep, is an
+  error, not an abort** (RG95): `t = {}; t[1] = t` as a handler's reply, a
+  message or a prop said "a table that holds itself", and a view holding
+  itself "a view node that holds itself", where both recursed off the
+  stack. A value nests at most 64 tables, a view 128 nodes. A debug
+  build's Lua view overflowed its stack at 32 nested columns on a test
+  thread and 128 on the main thread, each level 64 KB; it now nests past
+  the cap either way.
 
 ### Docs
 

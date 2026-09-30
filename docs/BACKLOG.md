@@ -2045,16 +2045,6 @@ ever meets it.
 **Do.** One spelling table with a test per row run through all three,
 and pin what the parser accepts in `a_bad_one_says_where`.
 
-### `.` RG95 — A Lua value nests without limit
-
-`kui_lua::lua_to_value` recurses with no depth cap, so a table nested
-deep enough, or one holding itself (`t = {}; t[1] = t`), overflows the
-Rust stack and aborts before `size_value` or `from_value` sees it
-(RG79 capped the size expression behind it). Message payloads cross the
-same function, so it is any Lua view or handler, not sizes alone.
-**Do.** A depth cap with a visited set for tables, erroring as the
-other Lua conversions do.
-
 ### `.` RG96 — The key model's readings off the Mac are unconfirmed
 
 Read, not probed; each needs a round on Linux or Windows.
@@ -3299,3 +3289,5 @@ move.
 - `.` **RG91** — [A table column took its first cell's size expression, not its largest](backlog/closed-2026-09.md#-rg91--a-table-column-took-its-first-cells-size-expression-not-its-largest--done-2026-09-30) — done (2026-09-30)
 
 - `~` **RG92** — [A share of the room gives by the fit children's rule, not CSS's](backlog/closed-2026-09.md#-rg92--a-share-of-the-room-gives-by-the-fit-childrens-rule-not-csss--done-2026-09-30) — done (2026-09-30)
+
+- `.` **RG95** — [A Lua value or view nested without limit, and a debug build's view overflowed at 32](backlog/closed-2026-09.md#-rg95--a-lua-value-or-view-nested-without-limit-and-a-debug-builds-view-overflowed-at-32--done-2026-09-30) — done (2026-09-30)

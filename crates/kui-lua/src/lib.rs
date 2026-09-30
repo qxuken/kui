@@ -1486,25 +1486,142 @@ fn build_devtools_tab(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
     }
 }
 
+/// How deep a Lua view tree may nest: twice `deep_nesting_64_levels`,
+/// and inside a debug build's 2 MB test thread whatever the nodes on the
+/// way (a chain of tooltips, radio groups and fragments overflowed it
+/// between 128 and 256). Past it, or on a node that is its own ancestor
+/// (`t[1] = t`), [`build_node`] refuses the view rather than recurse off
+/// the stack (backlog RG95).
+pub const MAX_VIEW_DEPTH: usize = 128;
+
+thread_local! {
+    /// The view tables [`build_node`] is inside, outermost first. The
+    /// widget closures between a node and its children cannot carry the
+    /// path as an argument.
+    static VIEW_PATH: std::cell::RefCell<Vec<*const std::ffi::c_void>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
 fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
+    let at = t.to_pointer();
+    VIEW_PATH.with_borrow_mut(|path| {
+        if path.contains(&at) {
+            return Err(bad("a view node that holds itself"));
+        }
+        if path.len() >= MAX_VIEW_DEPTH {
+            return Err(bad(format!("a view nested past {MAX_VIEW_DEPTH} nodes")));
+        }
+        path.push(at);
+        Ok(())
+    })?;
+    let built = build_one(ui, t);
+    VIEW_PATH.with_borrow_mut(|path| path.pop());
+    built
+}
+
+/// One view node. The containers are the path a deep view recurses
+/// down, so their frame stays small: the props are parsed in
+/// [`open_box`] and every other node type in [`build_widget`], each
+/// frame gone before the children are built. One function holding the
+/// whole match was 64 KB of stack a level in a debug build, and 32
+/// nested columns overflowed a test thread (backlog RG95).
+fn build_one(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
     let ty: String = t.get("type")?;
-    if ty == "fill" {
-        return build_fill(ui, t);
-    }
-    if ty == "devtools_tab" {
-        return build_devtools_tab(ui, t);
-    }
-    check_props(ui, t, element_of(&ty))?;
     match ty.as_str() {
+        "fill" => build_fill(ui, t),
+        "devtools_tab" => build_devtools_tab(ui, t),
         "row" | "column" | "grid" => {
-            let mut p = with_refs(ui, |refs| parse_props(t, ty == "row", refs))?;
-            // A grid is a column whose rows' cells line up (ADR 0033).
-            p.spec.layout.table = ty == "grid";
-            ui.core().open_from(p, Content::Box);
+            open_box(ui, t, &ty)?;
             build_children(ui, t)?;
             ui.close();
             Ok(())
         }
+        "fragment" => {
+            open_fragment(ui, t)?;
+            build_children(ui, t)?;
+            ui.close();
+            Ok(())
+        }
+        "titlebar" | "tooltip" | "radio_group" => build_holder(ui, t, &ty),
+        _ => build_widget(ui, t, &ty),
+    }
+}
+
+#[inline(never)]
+fn open_box(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
+    check_props(ui, t, element_of(ty))?;
+    let mut p = with_refs(ui, |refs| parse_props(t, ty == "row", refs))?;
+    // A grid is a column whose rows' cells line up (ADR 0033).
+    p.spec.layout.table = ty == "grid";
+    ui.core().open_from(p, Content::Box);
+    Ok(())
+}
+
+#[inline(never)]
+fn open_fragment(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
+    check_props(ui, t, element_of("fragment"))?;
+    // Handle from the host (kui_fragment_add / Core::add_fragment),
+    // passed to scripts as a plain integer, like an image's — and
+    // `image`, the image handle the function samples (backlog V1),
+    // absent or 0 for none.
+    let id: i64 = t.get("id")?;
+    let image: Option<i64> = t.get("image")?;
+    let params: Vec<f32> = match t.get::<Option<Table>>("params")? {
+        Some(list) => list.sequence_values::<f32>().collect::<mlua::Result<_>>()?,
+        None => Vec::new(),
+    };
+    let p = with_refs(ui, |refs| parse_props(t, false, refs))?;
+    let frag = kui_core::FragmentRef {
+        id: kui_core::FragmentId::from_ffi(id as u64),
+        image: image
+            .filter(|i| *i != 0)
+            .map(|i| kui_core::ImageId::from_ffi(i as u64)),
+    };
+    ui.core().open_from(p, Content::Fragment(frag, &params));
+    Ok(())
+}
+
+/// The widgets that hold children besides the boxes, apart from the
+/// rest for the same reason as [`open_box`].
+#[inline(never)]
+fn build_holder(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
+    check_props(ui, t, element_of(ty))?;
+    match ty {
+        "titlebar" => {
+            if t.raw_len() > 0 {
+                with_children(ui, t, |ui, body| widgets::titlebar_with(ui, body))
+            } else {
+                let title: String = t.get::<Option<String>>("title")?.unwrap_or_default();
+                widgets::titlebar(ui, &title);
+                Ok(())
+            }
+        }
+        "tooltip" => {
+            if t.raw_len() > 0 {
+                with_children(ui, t, |ui, body| widgets::tooltip_with(ui, body))
+            } else {
+                let value: String = t.get("value")?;
+                widgets::tooltip(ui, &value);
+                Ok(())
+            }
+        }
+        "radio_group" => {
+            // Every box row; the role, the name and, with no `gap`, the
+            // stock spacing are the group's (`widgets::radio_group_with`).
+            let label: String = t.get("label")?;
+            let p = with_refs(ui, |refs| parse_props(t, false, refs))?;
+            let mut result = Ok(());
+            widgets::radio_group_with(ui, &label, p.spec, |ui| result = build_children(ui, t));
+            result
+        }
+        other => unreachable!("{other} holds no children"),
+    }
+}
+
+#[inline(never)]
+fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
+    check_props(ui, t, element_of(ty))?;
+    match ty {
         "text" => {
             let style = with_refs(ui, |refs| parse_props(t, false, refs))?.style;
             if let Some(spans) = t.get::<Option<Table>>("spans")? {
@@ -1559,29 +1676,6 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
                 })
                 .collect::<mlua::Result<_>>()?;
             ui.core().open_from(p, Content::Polygon(&points));
-            Ok(())
-        }
-        "fragment" => {
-            // Handle from the host (kui_fragment_add / Core::add_fragment),
-            // passed to scripts as a plain integer, like an image's — and
-            // `image`, the image handle the function samples (backlog V1),
-            // absent or 0 for none.
-            let id: i64 = t.get("id")?;
-            let image: Option<i64> = t.get("image")?;
-            let params: Vec<f32> = match t.get::<Option<Table>>("params")? {
-                Some(list) => list.sequence_values::<f32>().collect::<mlua::Result<_>>()?,
-                None => Vec::new(),
-            };
-            let p = with_refs(ui, |refs| parse_props(t, false, refs))?;
-            let frag = kui_core::FragmentRef {
-                id: kui_core::FragmentId::from_ffi(id as u64),
-                image: image
-                    .filter(|i| *i != 0)
-                    .map(|i| kui_core::ImageId::from_ffi(i as u64)),
-            };
-            ui.core().open_from(p, Content::Fragment(frag, &params));
-            build_children(ui, t)?;
-            ui.close();
             Ok(())
         }
         "line" => {
@@ -1801,15 +1895,6 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             ui.text_edit(&label, &initial, &opts, p.spec);
             Ok(())
         }
-        "titlebar" => {
-            if t.raw_len() > 0 {
-                with_children(ui, t, |ui, body| widgets::titlebar_with(ui, body))
-            } else {
-                let title: String = t.get::<Option<String>>("title")?.unwrap_or_default();
-                widgets::titlebar(ui, &title);
-                Ok(())
-            }
-        }
         "window_buttons" => {
             widgets::window_buttons(ui);
             Ok(())
@@ -1817,15 +1902,6 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
         "menu_bar" => {
             widgets::menu_bar(ui, menu_bar_of(t)?);
             Ok(())
-        }
-        "tooltip" => {
-            if t.raw_len() > 0 {
-                with_children(ui, t, |ui, body| widgets::tooltip_with(ui, body))
-            } else {
-                let value: String = t.get("value")?;
-                widgets::tooltip(ui, &value);
-                Ok(())
-            }
         }
         "latency_graph" => {
             widgets::latency_graph(ui);
@@ -1896,7 +1972,7 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             // the text unless `text` says otherwise, and the rows the
             // toggle admits (`schema::TOGGLE_ROWS_LUA`) are read by name
             // over `widgets::toggle_spec`.
-            let kind = match ty.as_str() {
+            let kind = match ty {
                 "checkbox" => widgets::Toggle::Checkbox,
                 "radio" => widgets::Toggle::Radio,
                 _ => widgets::Toggle::Switch,
@@ -1961,15 +2037,6 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             )?;
             widgets::slider_with(ui, &key, out.spec, out.tooltip.as_deref());
             Ok(())
-        }
-        "radio_group" => {
-            // Every box row; the role, the name and, with no `gap`, the
-            // stock spacing are the group's (`widgets::radio_group_with`).
-            let label: String = t.get("label")?;
-            let p = with_refs(ui, |refs| parse_props(t, false, refs))?;
-            let mut result = Ok(());
-            widgets::radio_group_with(ui, &label, p.spec, |ui| result = build_children(ui, t));
-            result
         }
         other => Err(mlua::Error::runtime(format!("unknown node type '{other}'"))),
     }
@@ -2707,7 +2774,20 @@ fn parse_float(v: &mlua::Value) -> mlua::Result<FloatConfig> {
 // ---------------------------------------------------------------------------
 // Value <-> Lua
 
+/// How deep a Lua value may nest before [`lua_to_value`] refuses it: a
+/// table holding itself, or one nested past any payload a view means,
+/// would otherwise recurse off the Rust stack and abort the process
+/// before anything read the value (backlog RG95).
+pub const MAX_VALUE_DEPTH: usize = 64;
+
 pub fn lua_to_value(v: &mlua::Value) -> mlua::Result<Value> {
+    to_value(v, &mut Vec::new())
+}
+
+/// [`lua_to_value`] with the tables it is inside, outermost first: one
+/// met again on that path holds itself. A table met twice off the path
+/// (the same list under two keys) is copied twice, as before.
+fn to_value(v: &mlua::Value, path: &mut Vec<*const std::ffi::c_void>) -> mlua::Result<Value> {
     Ok(match v {
         mlua::Value::Nil => Value::Null,
         mlua::Value::Boolean(b) => Value::Bool(*b),
@@ -2715,21 +2795,31 @@ pub fn lua_to_value(v: &mlua::Value) -> mlua::Result<Value> {
         mlua::Value::Number(n) => Value::Float(*n),
         mlua::Value::String(s) => Value::Str(s.to_str()?.to_string()),
         mlua::Value::Table(t) => {
+            let at = t.to_pointer();
+            if path.contains(&at) {
+                return Err(bad("a table that holds itself cannot be a value"));
+            }
+            if path.len() >= MAX_VALUE_DEPTH {
+                return Err(bad(format!("a value nested past {MAX_VALUE_DEPTH} tables")));
+            }
+            path.push(at);
             let len = t.raw_len();
-            if len > 0 {
+            let value = if len > 0 {
                 let mut list = Vec::with_capacity(len);
                 for item in t.sequence_values::<mlua::Value>() {
-                    list.push(lua_to_value(&item?)?);
+                    list.push(to_value(&item?, path)?);
                 }
                 Value::List(list)
             } else {
                 let mut map = Vec::new();
                 for pair in t.pairs::<String, mlua::Value>() {
                     let (k, v) = pair?;
-                    map.push((k, lua_to_value(&v)?));
+                    map.push((k, to_value(&v, path)?));
                 }
                 Value::Map(map)
-            }
+            };
+            path.pop();
+            value
         }
         other => {
             return Err(mlua::Error::runtime(format!(
@@ -3336,6 +3426,66 @@ mod tests {
             err.contains("option_as_alt") && err.contains("\"both\"") && err.contains("meta"),
             "{err}"
         );
+    }
+
+    /// A value that holds itself, or nests past [`MAX_VALUE_DEPTH`],
+    /// is an error, not a stack overflow (backlog RG95); one table under
+    /// two keys is still two copies.
+    #[test]
+    fn a_value_that_holds_itself_or_nests_too_deep_is_refused() {
+        let lua = Lua::new();
+        let read = |src: &str| lua_to_value(&lua.load(src).eval::<mlua::Value>().unwrap());
+        let err = |src: &str| read(src).unwrap_err().to_string();
+        assert!(err("local t = {}; t[1] = t; return t").contains("holds itself"));
+        assert!(err("local t = {}; t.me = { t }; return t").contains("holds itself"));
+        let shared = read("local l = { 1, 2 }; return { a = l, b = l }").unwrap();
+        assert_eq!(shared.get("a"), shared.get("b"));
+        let nested = |n: usize| format!("local t = 1; for _ = 1, {n} do t = {{ t }} end; return t");
+        assert!(read(&nested(MAX_VALUE_DEPTH)).is_ok());
+        assert!(err(&nested(MAX_VALUE_DEPTH + 1)).contains("nested past 64"));
+        // A handler's message crosses the same function.
+        assert!(err(&nested(100_000)).contains("nested past 64"));
+    }
+
+    /// A view node that is its own ancestor, or a view nested past
+    /// [`MAX_VIEW_DEPTH`], fails the view rather than the process
+    /// (backlog RG95); the deepest one taken builds.
+    #[test]
+    fn a_view_that_holds_itself_or_nests_too_deep_is_refused() {
+        let run = |body: &str| {
+            let mut core = Core::new();
+            let mut ext =
+                LuaExtension::from_source("deep", &format!("function view(env)\n{body}\nend"))
+                    .unwrap();
+            let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
+            ui.set_origin(OriginId(1));
+            let built = ext.view(&Slot::root(), &mut ui);
+            ui.finish();
+            built
+        };
+        let err = run("local t = column {}; t[1] = row { t }; return t").unwrap_err();
+        assert!(err.contains("holds itself"), "{err}");
+        let nested = |n: usize| {
+            format!(
+                "local t = text('x')
+                 for i = 2, {n} do
+                   if i % 2 == 0 then t = radio_group {{ label = 'g', t }}
+                   elseif i % 3 == 0 then t = tooltip {{ t }}
+                   else t = column {{ t }} end
+                 end
+                 return t"
+            )
+        };
+        if let Ok(n) = std::env::var("PROBE") {
+            run(&nested(n.parse().unwrap())).map_err(|e| e).ok();
+            eprintln!("PROBE OK");
+            return;
+        }
+        run(&nested(MAX_VIEW_DEPTH)).unwrap();
+        let err = run(&nested(MAX_VIEW_DEPTH + 1)).unwrap_err();
+        assert!(err.contains("nested past 128"), "{err}");
+        // The path empties on the error: the next view builds.
+        run(&nested(8)).unwrap();
     }
 
     /// `"none"` declares nothing (backlog RG84): a host's side survives a
