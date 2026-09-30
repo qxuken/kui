@@ -88,6 +88,12 @@ windows-sys = { version = "0.52", features = [
 # pulls in, so this adds features to crates the tree compiles anyway rather
 # than crates; the feature lists are the four classes we call and nothing
 # else.
+# The X server's lock state, which winit does not report (`keys::x11_locks`,
+# backlog RG104). The version and the `xkb` feature winit's X11 backend
+# already builds, so this adds no crate to the tree.
+[target.'cfg(not(any(target_os = "macos", target_os = "windows")))'.dependencies]
+x11rb = { version = "0.13", features = ["xkb"] }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = [

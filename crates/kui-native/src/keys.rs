@@ -253,10 +253,7 @@ pub(crate) fn modifier_after(
     pressed: bool,
     mut mods: KeyMods,
 ) -> KeyMods {
-    if !matches!(
-        code,
-        KeyCode::Shift | KeyCode::Ctrl | KeyCode::Alt | KeyCode::Super
-    ) {
+    if !holds_as_modifier(code) {
         return mods;
     }
     down.retain(|&(a, l, _)| (a, l) != (at, location));
@@ -284,18 +281,100 @@ fn location_of(l: winit::keyboard::KeyLocation) -> KeyLocation {
     }
 }
 
+/// Whether `code` is one of the four modifiers a held record keeps.
+fn holds_as_modifier(code: KeyCode) -> bool {
+    matches!(
+        code,
+        KeyCode::Shift | KeyCode::Ctrl | KeyCode::Alt | KeyCode::Super
+    )
+}
+
+/// What a key means for the modifier record: the layout's reading, or
+/// where the key is when that reading has no name. X11 reads the left
+/// Alt pressed after Shift as `Meta_L`, which winit leaves unnamed, and
+/// its own press carried the state before it (backlog RG101).
+fn meaning_of(logical: KeyCode, physical: KeyCode) -> KeyCode {
+    if logical == KeyCode::Unknown {
+        physical
+    } else {
+        logical
+    }
+}
+
+/// Which of its twins a modifier key is: winit's word, or the side the
+/// key is on when winit says `Standard`. winit reads a side off the
+/// keysym, and X11's AltGr (`ISO_Level3_Shift`) names none, so the right
+/// Alt was reported as neither twin (backlog RG101).
+fn side_of(
+    key: winit::keyboard::PhysicalKey,
+    meaning: KeyCode,
+    reported: KeyLocation,
+) -> KeyLocation {
+    use winit::keyboard::{KeyCode as Phys, PhysicalKey};
+    if reported != KeyLocation::Standard || !holds_as_modifier(meaning) {
+        return reported;
+    }
+    match key {
+        PhysicalKey::Code(
+            Phys::ShiftLeft | Phys::ControlLeft | Phys::AltLeft | Phys::SuperLeft,
+        ) => KeyLocation::Left,
+        PhysicalKey::Code(
+            Phys::ShiftRight | Phys::ControlRight | Phys::AltRight | Phys::SuperRight,
+        ) => KeyLocation::Right,
+        _ => reported,
+    }
+}
+
+/// Whether a press is a repeat: winit's word, but a modifier whose key
+/// the record does not hold is pressed for the first time. Windows keeps
+/// one "was down" bit for both Shifts, so the second pressed while the
+/// first was held said it was a repeat (backlog RG102).
+fn is_repeat(
+    repeat: bool,
+    down: &[HeldModifier],
+    meaning: KeyCode,
+    at: KeyCode,
+    location: KeyLocation,
+) -> bool {
+    repeat
+        && (!holds_as_modifier(meaning) || down.iter().any(|&(a, l, _)| (a, l) == (at, location)))
+}
+
+/// The other Shifts a Shift's release lets go of, where the key is
+/// and its side. Windows sends no release for the first Shift let go
+/// while the other is held — only one, for the last — so its twin stayed
+/// held in the record and the next Shift's release said Shift was still
+/// down (backlog RG102). A release of either is a release of both, as
+/// GLFW reads it; asked on Windows only.
+fn twins_let_go(
+    down: &[HeldModifier],
+    meaning: KeyCode,
+    at: KeyCode,
+    location: KeyLocation,
+) -> Vec<(KeyCode, KeyLocation)> {
+    if meaning != KeyCode::Shift {
+        return Vec::new();
+    }
+    down.iter()
+        .filter(|&&(a, l, c)| c == KeyCode::Shift && (a, l) != (at, location))
+        .map(|&(a, l, _)| (a, l))
+        .collect()
+}
+
 /// Caps Lock and Num Lock at a press (backlog F108). winit reports
 /// neither, so the OS is asked where it answers cheaply — macOS's
 /// `NSEvent.modifierFlags` (a Mac has no Num Lock, so it reads off, as a
-/// Mac terminal reports it), Windows' `GetKeyState` — and anywhere
-/// else the state is `tracked` from the lock keys' own presses, which
-/// knows nothing of a lock set before the app's first window opened.
-pub(crate) fn lock_state(tracked: KeyLocks) -> KeyLocks {
+/// Mac terminal reports it), Windows' `GetKeyState`, the X server's
+/// locked modifiers when the app is on X11 (`x11`, backlog RG104) — and
+/// anywhere else (Wayland) the state is `tracked` from the lock keys' own
+/// presses, which knows nothing of a lock set before the app's first
+/// window opened or turned while another app had the keyboard.
+pub(crate) fn lock_state(tracked: KeyLocks, x11: bool) -> KeyLocks {
     #[cfg(target_os = "macos")]
     {
         use objc2_app_kit::{NSEvent, NSEventModifierFlags};
         let flags = NSEvent::modifierFlags_class();
-        let _ = tracked;
+        let _ = (tracked, x11);
         KeyLocks {
             caps: flags.contains(NSEventModifierFlags::CapsLock),
             num: false,
@@ -306,7 +385,7 @@ pub(crate) fn lock_state(tracked: KeyLocks) -> KeyLocks {
         use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
             GetKeyState, VK_CAPITAL, VK_NUMLOCK,
         };
-        let _ = tracked;
+        let _ = (tracked, x11);
         // SAFETY: GetKeyState reads the calling thread's key state and
         // takes a virtual-key code; any value is sound.
         let on = |vk: u16| unsafe { GetKeyState(vk as i32) } & 1 != 0;
@@ -317,7 +396,44 @@ pub(crate) fn lock_state(tracked: KeyLocks) -> KeyLocks {
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
-        tracked
+        x11.then(x11_locks::read).flatten().unwrap_or(tracked)
+    }
+}
+
+/// The X server's lock state (backlog RG104): XKB's locked modifiers,
+/// Lock for Caps Lock and Mod2 for Num Lock, where the stock XKB keymaps
+/// put the NumLock virtual modifier. On a connection of its own, opened
+/// at the first key: one round trip a press, as `GetKeyState` is a call a
+/// press on Windows.
+/// `None` when there is no server to ask or it has no XKB; the caller
+/// falls back on what it tracked.
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+mod x11_locks {
+    use kui_core::KeyLocks;
+    use std::sync::OnceLock;
+    use x11rb::protocol::xkb::{self, ConnectionExt as _};
+    use x11rb::protocol::xproto::ModMask;
+    use x11rb::rust_connection::RustConnection;
+
+    static CONN: OnceLock<Option<RustConnection>> = OnceLock::new();
+
+    pub(super) fn read() -> Option<KeyLocks> {
+        let conn = CONN
+            .get_or_init(|| {
+                let (conn, _) = RustConnection::connect(None).ok()?;
+                let ext = conn.xkb_use_extension(1, 0).ok()?.reply().ok()?;
+                ext.supported.then_some(conn)
+            })
+            .as_ref()?;
+        let state = conn
+            .xkb_get_state(xkb::ID::USE_CORE_KBD.into())
+            .ok()?
+            .reply()
+            .ok()?;
+        Some(KeyLocks {
+            caps: state.locked_mods.contains(ModMask::LOCK),
+            num: state.locked_mods.contains(ModMask::M2),
+        })
     }
 }
 
@@ -429,12 +545,66 @@ impl DynShell<'_> {
         // up unless its twin is still held — what a terminal speaking
         // kitty's protocol reports. winit's `ModifiersChanged` arrives
         // after the key, so the mirrored state is the one before it.
-        let location = location_of(event.location);
+        // What the key means to the modifier record, and which twin it is
+        // — each from where the key is when the layout's reading has no
+        // answer (backlog RG101).
+        let meaning = meaning_of(logical_code, physical);
+        let location = side_of(event.physical_key, meaning, location_of(event.location));
+        let repeat = is_repeat(
+            event.repeat,
+            &self.panes[from].modifier_keys_down,
+            meaning,
+            physical,
+            location,
+        );
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        let x11 = {
+            use winit::platform::x11::ActiveEventLoopExtX11;
+            event_loop.is_x11()
+        };
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        let x11 = false;
+        // Rebound after each dispatch: a chord the app answers by closing
+        // a window moves every pane behind it down one (backlog AR39).
+        let (mut i, mut from) = (i, from);
+        // The Shift Windows never released, let go of before the one it
+        // did (backlog RG102).
+        if cfg!(target_os = "windows") && !pressed {
+            let twins = twins_let_go(
+                &self.panes[from].modifier_keys_down,
+                meaning,
+                physical,
+                location,
+            );
+            let ups: Vec<KeyPress> = twins
+                .into_iter()
+                .map(|(at, side)| KeyPress {
+                    location: side,
+                    locks: lock_state(self.locks, x11),
+                    ..KeyPress::from_layout(
+                        KeyCode::Shift,
+                        at,
+                        self.panes[from].modifier_key(KeyCode::Shift, at, side, false, kmods),
+                    )
+                })
+                .collect();
+            for up in ups {
+                // Both found again by id after: the release may have gone
+                // to an owner, and its answer closed a window before them.
+                let ids = (self.panes[i].id, self.panes[from].id);
+                let to = self.release_target(i, &up);
+                self.dispatch(event_loop, to, InputEvent::KeyUp(up.released()));
+                let (Some(a), Some(b)) = (self.pane_of(ids.0), self.pane_of(ids.1)) else {
+                    return;
+                };
+                (i, from) = (a, b);
+            }
+        }
         // Recorded on `from`, the window the OS holds the keyboard for:
         // a popup borrowing it is not a keyboard of its own, and a side
         // pressed before it opened comes up while it is the target
         // (backlog RG83); `from` also forgets them all as it loses focus.
-        let kmods = self.panes[from].modifier_key(logical_code, physical, location, pressed, kmods);
+        let kmods = self.panes[from].modifier_key(meaning, physical, location, pressed, kmods);
         let kp = KeyPress::from_layout(logical_code, physical, kmods);
         // The lock keys' own presses turn what is tracked where the OS
         // is not asked (`lock_state`), before the press reads it: Caps
@@ -442,18 +612,19 @@ impl DynShell<'_> {
         // Windows' `GetKeyState` answer it, where it said what it found
         // (backlog RG96). One keyboard, so one record for the app: a
         // popup reads what its owner toggled.
-        self.locks = locks_after(self.locks, kp.code, pressed && !event.repeat);
-        let found = lock_state(self.locks);
+        self.locks = locks_after(self.locks, kp.code, pressed && !repeat);
+        let found = lock_state(self.locks, x11);
         let kp = KeyPress {
             text: ktext,
-            repeat: event.repeat,
+            repeat,
             location,
             locks: found,
             ..kp
         };
-        // Rebound after each dispatch: a chord the app answers by closing
-        // a window moves every pane behind it down one (backlog AR39).
-        let mut i = i;
+        // A release goes where its press went (backlog RG103).
+        if !pressed {
+            i = self.release_target(i, &kp);
+        }
         if kp.code != KeyCode::Unknown {
             let Some(still) = self.dispatch(
                 event_loop,
@@ -773,6 +944,77 @@ mod tests {
         );
         assert!(!up.ctrl);
         assert!(down.is_empty());
+    }
+
+    /// X11's readings a window found (backlog RG101): ⇧ then the left
+    /// Alt is `Meta_L`, which winit leaves unnamed, so the key means what
+    /// it is; AltGr (`ISO_Level3_Shift`) names no side, so the right Alt
+    /// is on the right. A key the layout remapped keeps its reading and
+    /// its side, and a key that is no modifier keeps `Standard`.
+    #[test]
+    fn a_modifier_the_layout_does_not_name_is_where_it_is() {
+        let alt_left = PhysicalKey::Code(Phys::AltLeft);
+        let alt_right = PhysicalKey::Code(Phys::AltRight);
+        assert_eq!(meaning_of(KeyCode::Unknown, KeyCode::Alt), KeyCode::Alt);
+        assert_eq!(meaning_of(KeyCode::Ctrl, KeyCode::CapsLock), KeyCode::Ctrl);
+        let mut down: Vec<HeldModifier> = Vec::new();
+        let press = modifier_after(
+            &mut down,
+            meaning_of(KeyCode::Unknown, KeyCode::Alt),
+            KeyCode::Alt,
+            side_of(alt_left, KeyCode::Alt, KeyLocation::Left),
+            true,
+            KeyMods::NONE.with_shift(),
+        );
+        assert!(press.alt, "the press carries the state after it");
+        assert_eq!(
+            side_of(alt_right, KeyCode::Alt, KeyLocation::Standard),
+            KeyLocation::Right
+        );
+        assert_eq!(
+            side_of(
+                PhysicalKey::Code(Phys::CapsLock),
+                KeyCode::Ctrl,
+                KeyLocation::Left
+            ),
+            KeyLocation::Left
+        );
+        assert_eq!(
+            side_of(alt_right, KeyCode::Char('@'), KeyLocation::Standard),
+            KeyLocation::Standard,
+            "compose on the right Alt is not a modifier"
+        );
+    }
+
+    /// Windows' two Shifts (backlog RG102): the second pressed says it
+    /// is a repeat, and only the last let go is released. A modifier's
+    /// repeat is one only while its key is held, and a Shift's release
+    /// names the other still held.
+    #[test]
+    fn windows_two_shifts_are_two_presses_and_two_releases() {
+        let mut down: Vec<HeldModifier> = Vec::new();
+        let shift = KeyCode::Shift;
+        let none = KeyMods::NONE;
+        assert!(!is_repeat(true, &down, shift, shift, KeyLocation::Right));
+        modifier_after(&mut down, shift, shift, KeyLocation::Right, true, none);
+        assert!(is_repeat(true, &down, shift, shift, KeyLocation::Right));
+        assert!(
+            !is_repeat(true, &down, shift, shift, KeyLocation::Left),
+            "the left Shift is a first press"
+        );
+        assert!(is_repeat(
+            true,
+            &down,
+            KeyCode::Char('a'),
+            KeyCode::Char('a'),
+            KeyLocation::Standard
+        ));
+        modifier_after(&mut down, shift, shift, KeyLocation::Left, true, none);
+        assert_eq!(
+            twins_let_go(&down, shift, shift, KeyLocation::Left),
+            [(shift, KeyLocation::Right)]
+        );
+        assert!(twins_let_go(&down, KeyCode::Ctrl, KeyCode::Ctrl, KeyLocation::Left).is_empty());
     }
 
     /// Caps Lock's own press reports the lock it made, as the OS answers

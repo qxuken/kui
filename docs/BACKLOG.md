@@ -93,7 +93,10 @@ rounded-row report of the same day, and F113 — the Option keys as Alt
 on a Mac — from the kawoosh settings-pane report of the same day, filed
 and built after the alpha.26 tag, and with the alpha.28 tag DX27 — the
 kui book — from the book round of 2026-09-29, and RG77–RG98 from the
-regression run of 2026-09-30, filed and built after the alpha.27 tag. The index
+regression run of 2026-09-30, filed and built after the alpha.27 tag, and
+after the alpha.28 tag RG99 — RG96's readings, confirmed in a window on
+Linux and Windows — with RG100–RG104 from that window round the same
+day, the day they were filed, and RG105 from it, withdrawn the same day. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -127,8 +130,7 @@ behind, W21 from the Windows–Mac bench comparison of 2026-09-26 (the
 texture upload's second copy), F103 from the kawoosh
 ⌘-Tab report (an animating hidden window spinning on skipped frames),
 DX16 from the DX sweep (declined with a condition), RG76 from
-the regression pass of 2026-09-28, and RG99 from the regression run
-of 2026-09-30. Everything else that has been filed has
+the regression pass of 2026-09-28. Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
 they were filed (2026-09-07), F25–F31 from the alpha.8 ones by the day
@@ -2001,24 +2003,23 @@ too. RG93–RG97, the reviews' readings, were built later that day on
 full expression table failed (RG93), one size grammar for three readers
 (RG94), a Lua table holding itself (RG95), the key model off the Mac
 (RG96, by reading) and a restore frame's stale reasons (RG97). RG98,
-which RG97's probe found, was built the same day too. RG99 stays open:
-the window round RG96 still owes on Linux and Windows.
+which RG97's probe found, was built the same day too. RG99, the window
+round RG96 owed on Linux and Windows, was run the same day after the
+alpha.28 tag and is in the archive; what it found is the next section.
 
-### `.` RG99 — RG96's key readings, confirmed in a window on Linux and Windows
+## From the Linux and Windows window round (2026-09-30)
 
-RG96 (built 2026-09-30) was answered by reading on a Mac; each needs a
-press in a window where it runs, with the devtools' events tab open:
-
-- Caps Lock's own press says `caps_lock: true` turning it on, on Linux
-  (the tracked record) and on Windows (`GetKeyState` read at its
-  `WM_KEYDOWN`, which RG96 took to be after the toggle).
-- A popup opened after Caps Lock was turned on in its owner reads it on;
-  on Linux, a toggle in one window reads in the next.
-- AltGr (a German layout) is reported as Alt on the right, held while
-  down and not after; on X11, ⇧ then the left Alt leaves no Super held
-  (a later Super press and release says `super: false` on the release).
-- `ctrl:nocaps` on Linux: the Caps Lock key reports Ctrl and turns no
-  lock.
+RG99's round, run after the alpha.28 tag on this repo's Windows machine
+(Windows 11 26200) and under WSLg's X11 (Ubuntu 24.04, XWayland): a
+probe of three windows — the main one, a popup and a second window, a
+sink in each hearing every press and release with its modifier and lock
+keys — driven by `keybd_event` on Windows and by XTest keycodes on X11.
+Every reading RG96 made held. Six entries. RG100–RG104 were **built
+2026-09-30**, the day they were filed, and are in the archive; the
+headline was a key whose press closed a window pressed again in the
+window beneath, by a press winit made up as that window gained focus
+(RG100). RG105, filed the same day, was withdrawn the same day and is
+in the archive: the Windows reading it rested on was a US layout's.
 
 ## After alpha.27
 
@@ -3206,7 +3207,7 @@ move.
 
 - `.` **RG75** — [Small readings from the reviews](backlog/closed-2026-09.md#-rg75--small-readings-from-the-reviews--done-2026-09-28) — done (2026-09-28)
 
-**From the regression run of 2026-09-30** — RG77–RG98, filed and built the same day; RG99 open
+**From the regression run of 2026-09-30** — RG77–RG98, filed and built the same day; RG99, run after the alpha.28 tag
 
 - `!` **RG77** — [A node-anchored float's size-expression clamps resolved against 0](backlog/closed-2026-09.md#-rg77--a-node-anchored-floats-size-expression-clamps-resolved-against-0--done-2026-09-30) — done (2026-09-30)
 
@@ -3251,3 +3252,19 @@ move.
 - `.` **RG97** — [A pane's restore frame reported what it noted while it could not draw](backlog/closed-2026-09.md#-rg97--a-panes-restore-frame-reported-what-it-noted-while-it-could-not-draw--done-2026-09-30) — done (2026-09-30)
 
 - `.` **RG98** — [An animating window drew unpaced into a skipping surface while minimized](backlog/closed-2026-09.md#-rg98--an-animating-window-drew-unpaced-into-a-skipping-surface-while-minimized--done-2026-09-30) — done (2026-09-30)
+
+- `.` **RG99** — [RG96's key readings, confirmed in a window on Linux and Windows](backlog/closed-2026-09.md#-rg99--rg96s-key-readings-confirmed-in-a-window-on-linux-and-windows--done-2026-09-30) — done (2026-09-30)
+
+**From the Linux and Windows window round (2026-09-30)** — RG100–RG104, filed and built the same day; RG105 withdrawn the same day
+
+- `!` **RG100** — [A key held as a window gained focus was pressed there again](backlog/closed-2026-09.md#-rg100--a-key-held-as-a-window-gained-focus-was-pressed-there-again--done-2026-09-30) — done (2026-09-30)
+
+- `.` **RG101** — [X11's modifiers the layout names nothing, or no side, read wrong](backlog/closed-2026-09.md#-rg101--x11s-modifiers-the-layout-names-nothing-or-no-side-read-wrong--done-2026-09-30) — done (2026-09-30)
+
+- `.` **RG102** — [Windows' two Shifts: the second a repeat, the first never released](backlog/closed-2026-09.md#-rg102--windows-two-shifts-the-second-a-repeat-the-first-never-released--done-2026-09-30) — done (2026-09-30)
+
+- `.` **RG103** — [A key pressed in the owner and let go in its popup came up in the owner late](backlog/closed-2026-09.md#-rg103--a-key-pressed-in-the-owner-and-let-go-in-its-popup-came-up-in-the-owner-late--done-2026-09-30) — done (2026-09-30)
+
+- `.` **RG104** — [The lock state on X11 was tracked, and drifted from the server's](backlog/closed-2026-09.md#-rg104--the-lock-state-on-x11-was-tracked-and-drifted-from-the-servers--done-2026-09-30) — done (2026-09-30)
+
+- `~` **RG105** — [AltGr's chords: Windows says Alt with the key, X11 the character without](backlog/closed-2026-09.md#-rg105--altgrs-chords-windows-says-alt-with-the-key-x11-the-character-without--withdrawn-2026-09-30) — withdrawn (2026-09-30)

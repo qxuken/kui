@@ -403,10 +403,12 @@ runner dropped every key it had no name for.
     chord compare it exactly, and a Caps Lock left on must not make
     ⇧⌘I miss. The runner asks the OS where it answers cheaply — macOS's
     `NSEvent.modifierFlags` (a Mac has no Num Lock, so it reads off, as a
-    Mac terminal reports it) and
-    Windows' `GetKeyState` — and elsewhere tracks the lock keys' own
+    Mac terminal reports it),
+    Windows' `GetKeyState` and the X server's XKB state (amended by
+    backlog RG104) — and elsewhere (Wayland) tracks the lock keys' own
     presses, which knows nothing of a lock set before the app's first
-    window opened. One record for the app, since there is one keyboard,
+    window opened or turned while another app had the keyboard. One
+    record for the app, since there is one keyboard,
     and a lock key's own press reports the state it made on all three —
     what the two OS answers are read after the toggle (amended by
     backlog RG96, where Linux said what it found and each window kept

@@ -55,6 +55,18 @@ impl DynShell<'_> {
         out
     }
 
+    /// The pane a release of `key` for pane `i` goes to: `i`, or the
+    /// nearest of its owners whose core delivered the press. A key pressed
+    /// in the owner and let go while a popup borrows its keyboard is the
+    /// owner's, which would otherwise hold it until it lost focus and let
+    /// go of it then, after keys pressed later (backlog RG103).
+    pub(super) fn release_target(&self, i: usize, key: &kui_core::KeyPress) -> usize {
+        std::iter::once(i)
+            .chain(self.ancestors(i))
+            .find(|&j| self.panes[j].core.holds_key(key))
+            .unwrap_or(i)
+    }
+
     /// Every popup that a press on pane `i`, or pane `i` losing the
     /// keyboard, should ask to go away: all of them except one the press
     /// landed in and the ones that popup hangs off — a press in a submenu

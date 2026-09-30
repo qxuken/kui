@@ -250,6 +250,16 @@ impl Core {
         self.handle_input(InputEvent::KeyUp(key.released()))
     }
 
+    /// Whether this core delivered `key`'s press and has not delivered
+    /// its release — the one core a `KeyUp` for it resolves in. What a
+    /// driver with more than one core asks before routing a release: a
+    /// key pressed in a window and let go while a popup borrowed its
+    /// keyboard was released in the popup, which never saw the press, and
+    /// the owner held it until it lost focus (backlog RG103).
+    pub fn holds_key(&self, key: &KeyPress) -> bool {
+        self.keys_held.iter().any(|h| h.same_key(key))
+    }
+
     /// Says which window every event on its way out came from.
     ///
     /// Most producers cannot: hit-testing and the edit buffer are below
