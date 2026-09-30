@@ -15,7 +15,7 @@ You get all of that without writing anything. The stock widgets are in
 the ring. A plain box joins it with `.focusable()`.
 
 ```rust,noplayground
-{{#include ../../../examples/rust/tutorial/06_keyboard.rs:grid}}
+{{#rustdoc_include ../../../examples/rust/tutorial/06_keyboard.rs:grid}}
 ```
 
 `.focus_bg(..)` is what a focusable box shows while focused. Without
@@ -26,7 +26,7 @@ it, kui draws a ring.
 The view can ask where focus is:
 
 ```rust,noplayground
-{{#include ../../../examples/rust/tutorial/06_keyboard.rs:readout}}
+{{#rustdoc_include ../../../examples/rust/tutorial/06_keyboard.rs:readout}}
 ```
 
 `ui.focus_visible()` is true when focus got there by keyboard, and
@@ -40,8 +40,16 @@ box with `.on_key(tag)`. The press goes to the focused node and bubbles
 up to the nearest sink above it. So a sink at the root hears every key,
 whatever is focused inside it.
 
+The tag is a message of yours, like a button's — except a sink sends it
+on every key rather than on a click. This app has one sink, so one
+variant with no fields is enough to say "a key arrived":
+
 ```rust,noplayground
-{{#include ../../../examples/rust/tutorial/06_keyboard.rs:sink}}
+{{#rustdoc_include ../../../examples/rust/tutorial/06_keyboard.rs:message}}
+```
+
+```rust,noplayground
+{{#rustdoc_include ../../../examples/rust/tutorial/06_keyboard.rs:sink}}
 ```
 
 A sink hears keys only while something under it has focus. On the
@@ -52,7 +60,7 @@ first frame nothing does, so the view gives the sink focus itself with
 ## Reading a key
 
 ```rust,noplayground
-{{#include ../../../examples/rust/tutorial/06_keyboard.rs:on_event}}
+{{#rustdoc_include ../../../examples/rust/tutorial/06_keyboard.rs:on_event}}
 ```
 
 The message says which sink. `ev.key_press()` reads the key itself:

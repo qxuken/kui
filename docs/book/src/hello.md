@@ -5,7 +5,7 @@ At the end of this chapter, a window shows one line of text.
 ## The whole program
 
 ```rust,noplayground
-{{#include ../../../examples/rust/tutorial/01_hello.rs:all}}
+{{#rustdoc_include ../../../examples/rust/tutorial/01_hello.rs:all}}
 ```
 
 Run it:

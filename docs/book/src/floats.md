@@ -12,7 +12,7 @@ Tooltips, menus and dialogs are floats.
 ## The tooltip prop
 
 ```rust,noplayground
-{{#include ../../../examples/rust/tutorial/07_floats.rs:tooltip}}
+{{#rustdoc_include ../../../examples/rust/tutorial/07_floats.rs:tooltip}}
 ```
 
 `.tooltip(text)` is enough. The node tracks its own hover, and kui
@@ -26,7 +26,7 @@ A dialog is a float you declare when the model says so and stop
 declaring when it is answered:
 
 ```rust,noplayground
-{{#include ../../../examples/rust/tutorial/07_floats.rs:modal}}
+{{#rustdoc_include ../../../examples/rust/tutorial/07_floats.rs:modal}}
 ```
 
 Three props do the work:
@@ -37,13 +37,19 @@ Three props do the work:
 - **`.modal(tag)`** — while this float is declared, Tab stays inside
   it, the pointer cannot reach what is behind it, and Escape or a press
   outside becomes a `dismiss` event carrying the tag.
-- **`.label("Delete?")`** — a dialog's name, for a screen reader.
+- **`.label("Delete?")`** — the dialog's name. A button is named by
+  the text inside it, but a dialog is not: a screen reader announcing
+  "dialog" with nothing after it tells the user nothing, and the
+  platforms do not build a name from a dialog's contents. So a modal
+  needs a `label`, and kui warns with `modal-without-name` if it has
+  none. The label is not drawn; the title text inside the dialog is a
+  separate node, and it is fine for the two to say the same thing.
 
 kui does not close the dialog. It reports `dismiss`, and the app
 decides. Here it stops declaring:
 
 ```rust,noplayground
-{{#include ../../../examples/rust/tutorial/07_floats.rs:on_event}}
+{{#rustdoc_include ../../../examples/rust/tutorial/07_floats.rs:on_event}}
 ```
 
 ## Order matters

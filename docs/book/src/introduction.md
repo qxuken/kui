@@ -4,10 +4,39 @@ kui is a UI library for Rust. You describe what is on screen as a tree
 of boxes and text. kui lays it out, draws it, and turns what the user
 does into plain data.
 
-This book is the first path through it. Each chapter adds one idea and
-ends with a program you can run. The programs live in the repository
-under `examples/rust/tutorial/`, and the code you read here is pulled
-from those files. It cannot go stale.
+## Two minutes to a window
+
+```bash
+cargo new hello && cd hello
+```
+
+kui publishes to its own registry, not to crates.io (it is an alpha).
+Tell cargo where it is, once per project:
+
+```toml
+# .cargo/config.toml
+[registries.forgejo]
+index = "sparse+https://drydock9.qxuken.dev/api/packages/qxuken/cargo/"
+```
+
+```bash
+cargo add kui-native --registry forgejo
+```
+
+Replace `src/main.rs` with this:
+
+```rust,noplayground
+{{#rustdoc_include ../../../examples/rust/tutorial/01_hello.rs:all}}
+```
+
+```bash
+cargo run
+```
+
+The first build takes a few minutes; it compiles a GPU renderer. Then a
+window opens with one line of text in it. That program is the whole of
+kui: an app is a type with a `view`, and a launcher opens a window
+around it. The next chapter reads it line by line.
 
 ## One idea, held throughout
 
@@ -29,6 +58,21 @@ The core that does this owns no window, no clock and no GPU. Those are
 handed in from outside. That is why the same app runs in a window, in a
 test with no window, and — with the same tree — from Node, Lua or C.
 
+## How this book works
+
+Each chapter adds one idea and ends with a program you can run. The
+programs live in the kui repository under `examples/rust/tutorial/`,
+and the code you read here is pulled from those files, so it cannot go
+stale. A code block shows the lines the chapter is about; the eye icon
+in its corner reveals the rest of the file.
+
+Read the chapters in order the first time. Each assumes the last.
+Later, the sidebar is an index.
+
+Run each chapter's program, and open the devtools while it runs
+(chapter 12 shows how; it is one line). Watch the events tab as you
+click. kui is easier to believe when you can see the data.
+
 ## Who this is for
 
 Someone who knows Rust and has not used kui. You should be comfortable
@@ -38,12 +82,3 @@ If you already know what you want and need its name, the reference is a
 better door: [`docs/howto.md`](../../howto.md) answers "how do I…"
 questions and [`docs/props.md`](../../props.md) lists every prop and
 event.
-
-## How to read it
-
-In order, the first time. Each chapter assumes the last. Later, the
-sidebar is an index.
-
-Run each chapter's program. Open the devtools while it runs (chapter
-12 shows how; it is one line). Watch the events tab as you click.
-kui is easier to believe when you can see the data.

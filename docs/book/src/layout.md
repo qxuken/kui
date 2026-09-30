@@ -13,7 +13,7 @@ You open a box with `ui.with(spec, |ui| { ... })`. The closure declares
 its children. When the closure returns, the box is closed.
 
 ```rust,noplayground
-{{#include ../../../examples/rust/tutorial/02_layout.rs:view}}
+{{#rustdoc_include ../../../examples/rust/tutorial/02_layout.rs:view}}
 ```
 
 ## Sizes are three words

@@ -14,17 +14,20 @@ frame produced, the way a user would see it.
 
 ## The app under test
 
-The list from chapter 6, with two boxes given keys so the test can find
-them by name:
+A smaller cousin of chapter 6's list: an Add button, a Clear button,
+a row per item, and a summary line. Two boxes are given keys — `list`
+and `summary` — so the test can find them by name; the buttons and the
+checkboxes are found by their text, since the stock widgets key
+themselves that way.
 
 ```rust,noplayground
-{{#include ../../../examples/rust/tutorial/10_testing.rs:labels}}
+{{#rustdoc_include ../../../examples/rust/tutorial/10_testing.rs:view}}
 ```
 
 ## The tests
 
 ```rust,noplayground
-{{#include ../../../examples/rust/tutorial/10_testing.rs:tests}}
+{{#rustdoc_include ../../../examples/rust/tutorial/10_testing.rs:tests}}
 ```
 
 Run them:

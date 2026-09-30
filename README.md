@@ -54,6 +54,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 cargo run -p kui-native --example tutorial_01_hello
 ```
 
+In a project of your own it is `cargo add kui-native --registry forgejo`
+with the registry table from [Releases](#releases) in `.cargo/config.toml`,
+that file as `src/main.rs`, and `cargo run`.
+
 That is the first of ten steps in [**the kui book**](docs/book/src/SUMMARY.md)
 (`mdbook serve docs/book`), each one the last plus one concept — layout,
 messages, controls, keys, floats, motion, effects, a test — and each a

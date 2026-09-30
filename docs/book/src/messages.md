@@ -18,7 +18,7 @@ again. You write the three parts. kui runs the loop.
 ## The model
 
 ```rust,noplayground
-{{#include ../../../examples/rust/tutorial/03_counter.rs:model}}
+{{#rustdoc_include ../../../examples/rust/tutorial/03_counter.rs:model}}
 ```
 
 ## The messages
@@ -31,7 +31,7 @@ building those by hand is tedious and untyped.
 `#[derive(Message)]` does it for you:
 
 ```rust,noplayground
-{{#include ../../../examples/rust/tutorial/03_counter.rs:message}}
+{{#rustdoc_include ../../../examples/rust/tutorial/03_counter.rs:message}}
 ```
 
 Each variant becomes a small map on the way out: `Msg::Inc` is
@@ -41,7 +41,7 @@ into `Msg::Inc` again. Variants can carry fields; chapter 6 uses one.
 ## The view
 
 ```rust,noplayground
-{{#include ../../../examples/rust/tutorial/03_counter.rs:view}}
+{{#rustdoc_include ../../../examples/rust/tutorial/03_counter.rs:view}}
 ```
 
 `widgets::button(ui, text, message)` is the stock button. It draws its
@@ -51,7 +51,7 @@ message when clicked. You give it the message and forget about it.
 ## The handler
 
 ```rust,noplayground
-{{#include ../../../examples/rust/tutorial/03_counter.rs:on_event}}
+{{#rustdoc_include ../../../examples/rust/tutorial/03_counter.rs:on_event}}
 ```
 
 `ev.message::<Msg>()` is `Some` when the event carries one of your

@@ -14,7 +14,7 @@ also gets the **core** of the window the event came from. The core is
 where the clipboard, focus and scrolling live:
 
 ```rust,noplayground
-{{#include ../../../examples/rust/tutorial/09_effects.rs:on_event_with}}
+{{#rustdoc_include ../../../examples/rust/tutorial/09_effects.rs:on_event_with}}
 ```
 
 `core.set_clipboard(text, None)` writes. There is no `read_clipboard`,
@@ -32,7 +32,7 @@ The loop sleeps between events. A thread that has news — a socket read,
 a timer — cannot draw, but it can wake the loop, and then `view` runs:
 
 ```rust,noplayground
-{{#include ../../../examples/rust/tutorial/09_effects.rs:setup}}
+{{#rustdoc_include ../../../examples/rust/tutorial/09_effects.rs:setup}}
 ```
 
 `setup` is called once before the window opens, with a `Waker`. Clone
@@ -45,7 +45,7 @@ channel into `on_event` — the model *is* the channel.
 ## Door three: the window is declared
 
 ```rust,noplayground
-{{#include ../../../examples/rust/tutorial/09_effects.rs:window}}
+{{#rustdoc_include ../../../examples/rust/tutorial/09_effects.rs:window}}
 ```
 
 `ui.window_title(..)` is said every frame, and applied when it changes.
@@ -57,7 +57,7 @@ multi-window section shows it.
 ## The messages
 
 ```rust,noplayground
-{{#include ../../../examples/rust/tutorial/09_effects.rs:message}}
+{{#rustdoc_include ../../../examples/rust/tutorial/09_effects.rs:message}}
 ```
 
 ## Try this

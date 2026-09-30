@@ -3,6 +3,15 @@
 At the end of this chapter, a panel springs between two widths, and
 toasts slide in and out.
 
+## The messages
+
+Nothing new here — a toggle, a notify, and a dismiss that names a
+toast:
+
+```rust,noplayground
+{{#rustdoc_include ../../../examples/rust/tutorial/08_motion.rs:message}}
+```
+
 ## You declare the target, kui eases
 
 There is no animation API to call. A node says `.transition(ms)`, and
@@ -11,7 +20,7 @@ the old value to the new one over that long. Width, colour, position,
 opacity — whatever changed.
 
 ```rust,noplayground
-{{#include ../../../examples/rust/tutorial/08_motion.rs:transition}}
+{{#rustdoc_include ../../../examples/rust/tutorial/08_motion.rs:transition}}
 ```
 
 The view says the width is 160 or 360. Nothing else. `.easing(..)` picks
@@ -30,7 +39,7 @@ drawn — it is not declared — so `.exit` says where it goes, and kui
 replays the last frame's copy of it on the way out.
 
 ```rust,noplayground
-{{#include ../../../examples/rust/tutorial/08_motion.rs:enter_exit}}
+{{#rustdoc_include ../../../examples/rust/tutorial/08_motion.rs:enter_exit}}
 ```
 
 `Enter::from(dx, dy)` is an offset in pixels. The toast starts 240px to

@@ -56,11 +56,11 @@ impl App for Todo {
                 .bg(t.bg)
                 .on_key(Msg::Key),
             |ui| {
+                // ANCHOR: view
                 ui.with(NodeSpec::row().gap(8.0), |ui| {
                     widgets::button(ui, "Add", Msg::Add);
                     widgets::button(ui, "Clear", Msg::Clear);
                 });
-                // ANCHOR: labels
                 // A keyed box has a name the frame remembers. A test reads
                 // the frame by those names, as it clicks a button by its
                 // text.
@@ -83,7 +83,7 @@ impl App for Todo {
                     &format!("{done} of {} done", self.items.len()),
                     TextStyle::new(12.0).color(t.muted),
                 );
-                // ANCHOR_END: labels
+                // ANCHOR_END: view
             },
         );
         ui.take_key_focus(sink);

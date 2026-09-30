@@ -1,12 +1,37 @@
 # Setup
 
-By the end of this page, `cargo run` opens an empty window.
+The introduction's three commands are the whole setup on macOS and
+Windows. This page is the rest: the registry in detail, Linux, the
+repository, and the devtools.
 
-## The dependency
+## The registry
 
-kui is an alpha. It is published to a private registry, not to
-crates.io, so the simplest way to follow the book is from a checkout of
-the repository:
+kui's crates publish to a Forgejo cargo registry. Reading from it needs
+no account. Cargo learns about it from a `[registries]` table, in the
+project's `.cargo/config.toml` or in `~/.cargo/config.toml` for every
+project:
+
+```toml
+[registries.forgejo]
+index = "sparse+https://drydock9.qxuken.dev/api/packages/qxuken/cargo/"
+```
+
+Then the dependency names the registry:
+
+```toml
+[dependencies]
+kui-native = { version = "0.1.0-alpha.27", registry = "forgejo" }
+```
+
+`cargo add kui-native --registry forgejo` writes that line for you.
+`kui-native` is the batteries-included crate: a window, a GPU renderer,
+the stock widgets and the `App` trait. Everything the book uses is
+reachable from it.
+
+## The repository
+
+The book's programs are examples in the kui repository, so a checkout
+runs them without a project of your own:
 
 ```bash
 git clone https://drydock9.qxuken.dev/qxuken/kui
@@ -14,19 +39,8 @@ cd kui
 cargo run -p kui-native --example tutorial_01_hello
 ```
 
-That builds the whole workspace once (a few minutes) and opens the
-first chapter's window.
-
-For an app of your own, depend on `kui-native` by path or by git:
-
-```toml
-[dependencies]
-kui-native = { git = "https://drydock9.qxuken.dev/qxuken/kui" }
-```
-
-`kui-native` is the batteries-included crate: a window, a GPU renderer,
-the stock widgets and the `App` trait. Everything the book uses is
-reachable from it.
+Every chapter's *Run it* line is spelled that way. In your own project
+the program is `src/main.rs` and the command is `cargo run`.
 
 ## Linux
 
@@ -50,9 +64,10 @@ kui_native::app("Hello").devtools(true).run(Hello)
 or from outside, with `KUI_DEVTOOLS=1` in the environment. Keep it open
 while you read. Chapter 12 walks through its tabs.
 
-## Running the book itself
+## Building this book
 
-The book is built with [mdBook](https://rust-lang.github.io/mdBook/):
+The book is built with [mdBook](https://rust-lang.github.io/mdBook/),
+from `docs/book` in the repository:
 
 ```bash
 cargo install mdbook

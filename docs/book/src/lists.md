@@ -9,11 +9,11 @@ A list is a loop in `view`. For each item in the model, declare a row.
 That is all.
 
 ```rust,noplayground
-{{#include ../../../examples/rust/tutorial/05_list.rs:model}}
+{{#rustdoc_include ../../../examples/rust/tutorial/05_list.rs:model}}
 ```
 
 ```rust,noplayground
-{{#include ../../../examples/rust/tutorial/05_list.rs:list}}
+{{#rustdoc_include ../../../examples/rust/tutorial/05_list.rs:list}}
 ```
 
 ## Keys
@@ -48,11 +48,11 @@ Each row's checkbox and remove button need to say *which* row. A
 message variant carries the id:
 
 ```rust,noplayground
-{{#include ../../../examples/rust/tutorial/05_list.rs:message}}
+{{#rustdoc_include ../../../examples/rust/tutorial/05_list.rs:message}}
 ```
 
 ```rust,noplayground
-{{#include ../../../examples/rust/tutorial/05_list.rs:on_event}}
+{{#rustdoc_include ../../../examples/rust/tutorial/05_list.rs:on_event}}
 ```
 
 ## Scrolling
