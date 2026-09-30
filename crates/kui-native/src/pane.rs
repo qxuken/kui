@@ -364,10 +364,25 @@ impl Pane {
     /// asks for no frames, where it built every one at the display's rate
     /// into a surface nobody could see (RG45). Restoring the window is a
     /// `WM_SIZE`, whose `Resized` asks for the frame that picks the
-    /// animation up where its clock has got to. False elsewhere — macOS
-    /// has not been checked to ask for that frame on deminiaturize.
+    /// animation up where its clock has got to. False elsewhere: macOS
+    /// says a miniaturized window is covered (`Occluded`), and
+    /// [`Self::animates_now`] reads that.
     pub(crate) fn minimized(&self) -> bool {
         cfg!(target_os = "windows") && self.window.is_minimized() == Some(true)
+    }
+
+    /// Whether the window's animation asks for its next frame: it is
+    /// animating, and where it could be seen — not waiting for a device
+    /// (RG40), not minimized on Windows (RG45), and not dark, covered or
+    /// minimized where the platform says so (`Occluded`, macOS and X11).
+    /// A dark window's every frame is skipped by its surface, and nothing
+    /// presented meant nothing paced the next: macOS drew 2 800 skipped
+    /// frames a second from the minimize until it stopped delivering
+    /// redraws (backlog RG98). The frame that brings the window back
+    /// ([`Self::came_back`]) picks the animation up where its clock has
+    /// got to.
+    pub(crate) fn animates_now(&self) -> bool {
+        self.core.animating() && !self.awaits_device && !self.minimized() && !self.cause.is_dark()
     }
 
     /// Asks for a frame, and says why (backlog F111): `why` is among the

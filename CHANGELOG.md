@@ -42,7 +42,7 @@ wire v19. One layout rule changes:
   `Min::px(0.0)`. C: a `KuiSpec.min_w` of 0 stays undeclared, and
   `KUI_MIN_NONE` declares 0.
 
-Seven readings change, each a fix:
+Eight readings change, each a fix:
 
 - A negative px `maxWidth` / `maxHeight` is a ceiling of 0 again, in
   every binding (under Fixed, RG78): since alpha.25 it could read as
@@ -66,6 +66,11 @@ Seven readings change, each a fix:
   on Linux too (RG96): it said what it found there, where macOS and
   Windows said what it made. `Accel::parse` refuses a lock key
   (`"ctrl+capslock"`), which it read since alpha.24 named them.
+- An animation — a transition, a keyframe cycle, a node declaring
+  `animate` — asks for no frames while its window is covered or
+  minimized, on macOS and X11 as on Windows since RG45 (RG98). A view
+  that did work once a frame through `animate` does none until the
+  window shows again; a waker or the host still gets its frames.
 - A modifier key let go of because the window lost the keyboard says
   its own bit is off (`shift: false` for Shift), as a real release does
   (RG85).
@@ -140,7 +145,7 @@ Seven readings change, each a fix:
 ### Fixed
 
 From the regression run of 2026-09-30 over F108–F113 (backlog
-RG77–RG91 and RG93–RG97; RG98 and RG99 open).
+RG77–RG91 and RG93–RG98; RG99 open).
 
 - **A node-anchored float's `maxWidth "50%"` takes its anchor** (RG77):
   its size-expression clamps were resolved against 0 before the anchor
@@ -199,6 +204,15 @@ RG77–RG91 and RG93–RG97; RG98 and RG99 open).
   recorded by where it is, so an X11 left Alt read as `Meta_L` going
   down and `Alt_L` coming up leaves no Super held. Read off the Mac and
   pinned in unit tests; the window round on Linux and Windows is RG99.
+- **A minimized or covered window stops drawing its animation** (RG98):
+  every frame its surface skipped went unpaced, since only a presented
+  frame paced the next, and an animating macOS window drew about 2 800
+  skipped frames a second from the minimize until AppKit stopped
+  asking. An animation now asks for no frames while the window is
+  covered or minimized, and picks up where its clock has got to when it
+  comes back; a skipped frame paces the next as a presented one does,
+  so a waker or the host asking meanwhile is held for the display. A
+  covered window's animation pauses, as a hidden browser tab's does.
 - **The frame that brings a minimized window back says `occlusion`,
   not what was asked while it was down** (RG97): a minimized window gets
   no frames, and what the runner noted for it meanwhile — another

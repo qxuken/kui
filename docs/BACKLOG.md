@@ -125,8 +125,8 @@ behind, W21 from the Windows–Mac bench comparison of 2026-09-26 (the
 texture upload's second copy), F103 from the kawoosh
 ⌘-Tab report (an animating hidden window spinning on skipped frames),
 DX16 from the DX sweep (declined with a condition), RG76 from
-the regression pass of 2026-09-28, and RG98 and RG99 from the
-regression run of 2026-09-30. Everything else that has been filed has
+the regression pass of 2026-09-28, and RG99 from the regression run
+of 2026-09-30. Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
 they were filed (2026-09-07), F25–F31 from the alpha.8 ones by the day
@@ -2014,24 +2014,9 @@ too. RG93–RG97, the reviews' readings, were built later that day on
 "the rest of the RG series" and are in the archive too: the frame a
 full expression table failed (RG93), one size grammar for three readers
 (RG94), a Lua table holding itself (RG95), the key model off the Mac
-(RG96, by reading) and a restore frame's stale reasons (RG97). Two stay
-open: RG98, which RG97's probe found, and RG99, the window round RG96
-still owes on Linux and Windows.
-
-### `.` RG98 — An animating window draws unpaced through macOS's minimize animation
-
-Found probing RG97 (2026-09-30): the `waker` example, focused, owes
-frames for about 1.2 s after a focus change, which it draws at the
-display's 120 Hz (139 frames). Minimized through System Events in that
-second, the same animation drew 3 840 frames in 1.25 s — three a
-millisecond — until the window was down, each `owed`: through the genie
-animation the surface's present returns at once and the pacer sees no
-vsync to hold the next frame for. Bounded (the animation is about a
-second, and a minimized window gets no frames after it) and only while
-the core owes one, but a continuous animation spins a core for that
-second on every minimize. **Do.** Hold frames while `Occluded(true)` to
-the pacer's fallback rate, or treat a present faster than the display
-can show as a skip; confirm what Windows and X11 do while minimizing.
+(RG96, by reading) and a restore frame's stale reasons (RG97). RG98,
+which RG97's probe found, was built the same day too. RG99 stays open:
+the window round RG96 still owes on Linux and Windows.
 
 ### `.` RG99 — RG96's key readings, confirmed in a window on Linux and Windows
 
@@ -3228,7 +3213,7 @@ move.
 
 - `.` **RG75** — [Small readings from the reviews](backlog/closed-2026-09.md#-rg75--small-readings-from-the-reviews--done-2026-09-28) — done (2026-09-28)
 
-**From the regression run of 2026-09-30** — RG77–RG97, filed and built the same day; RG98 and RG99 open
+**From the regression run of 2026-09-30** — RG77–RG98, filed and built the same day; RG99 open
 
 - `!` **RG77** — [A node-anchored float's size-expression clamps resolved against 0](backlog/closed-2026-09.md#-rg77--a-node-anchored-floats-size-expression-clamps-resolved-against-0--done-2026-09-30) — done (2026-09-30)
 
@@ -3271,3 +3256,5 @@ move.
 - `.` **RG96** — [The key model's readings off the Mac disagreed with it](backlog/closed-2026-09.md#-rg96--the-key-models-readings-off-the-mac-disagreed-with-it--done-2026-09-30) — done (2026-09-30)
 
 - `.` **RG97** — [A pane's restore frame reported what it noted while it could not draw](backlog/closed-2026-09.md#-rg97--a-panes-restore-frame-reported-what-it-noted-while-it-could-not-draw--done-2026-09-30) — done (2026-09-30)
+
+- `.` **RG98** — [An animating window drew unpaced into a skipping surface while minimized](backlog/closed-2026-09.md#-rg98--an-animating-window-drew-unpaced-into-a-skipping-surface-while-minimized--done-2026-09-30) — done (2026-09-30)

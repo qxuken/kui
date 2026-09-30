@@ -2108,7 +2108,13 @@ impl DynShell<'_> {
             // bounded number of tries, and not while the platform says
             // the window is covered, so a hidden window does not spin.
             Some(Err(kui_wgpu::RenderError::Skip)) => {
-                pane.retry.skipped(std::time::Instant::now());
+                let now = std::time::Instant::now();
+                pane.retry.skipped(now);
+                // A skipped frame paces the next as a presented one does:
+                // what asks while the surface skips (a waker, the host) is
+                // held for the display, or its fallback, instead of drawn
+                // at once into another skip (backlog RG98).
+                pane.pacer.presented(now, (size.width, size.height));
             }
             // The device is gone (a driver update, a GPU reset), or a
             // frame ago it was and no new one could be opened: open one.
@@ -2739,7 +2745,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                 // it is minimized (RG45); the restore's `Resized` does.
                 #[cfg(target_os = "windows")]
                 if let Some(p) = self.panes.get_mut(i) {
-                    let animating = p.core.animating() && !p.awaits_device && !p.minimized();
+                    let animating = p.animates_now();
                     if let Some(t) = &mut p.anim_timer {
                         t.set(animating);
                     }
@@ -2851,8 +2857,8 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
             // Not while the window waits for a device: with nothing to
             // present to there is no vsync to pace the frame, and each one
             // would only find the device still owed. Nor while it is
-            // minimized, on Windows (`Pane::minimized`).
-            if pane.core.animating() && !pane.awaits_device && !pane.minimized() {
+            // minimized or covered (`Pane::animates_now`, RG45, RG98).
+            if pane.animates_now() {
                 pane.redraw_for(FrameCause::OWED);
             }
             // A frame held for a display that stopped firing is drawn
