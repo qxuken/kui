@@ -543,7 +543,10 @@ pub const PROPS: &[PropDef] = &[
               in it is a length; a calc does not ease under `transition`. A percentage \
               or an expression gives, with the fit children, when its parent overflows \
               — two `\"50%\"` children and a gap fit their row (backlog F110) — where a \
-              px size keeps its own.",
+              px size keeps its own. A row holding one gives as CSS's flex items do: \
+              every child that can give gives in proportion to its size, and stops at \
+              its content — the widest thing in it that cannot wrap, a label's longest \
+              word — unless `minWidth` says otherwise (backlog RG92).",
     },
     PropDef {
         name: "height",
@@ -564,7 +567,10 @@ pub const PROPS: &[PropDef] = &[
               which is what an i3-style tab bar is: tabs that split the bar evenly \
               while they fit and sit at their label's width, scrolling, once they do \
               not. Opt-in, because a fit width is the unwrapped one: a paragraph in a \
-              grow column would stop wrapping under it.",
+              grow column would stop wrapping under it. Left out, a child giving in an \
+              overflowing row that holds a percentage or a size expression stops at its \
+              content, CSS's `min-width: auto`; `0` lets it go below, CSS's \
+              `min-width: 0` (backlog RG92).",
     },
     PropDef {
         name: "maxWidth",
@@ -579,7 +585,7 @@ pub const PROPS: &[PropDef] = &[
         id: P_MIN_H,
         kind: Kind::Min,
         apply: Apply::SpecBound(|s, v| s.min_height(v)),
-        doc: "Lower height clamp: logical px, a size expression, or \"fit\" for the node's own fit height (see `minWidth`).",
+        doc: "Lower height clamp: logical px, a size expression, or \"fit\" for the node's own fit height (see `minWidth`, whose content floor in a column holding a share it mirrors).",
     },
     PropDef {
         name: "maxHeight",

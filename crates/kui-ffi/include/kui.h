@@ -383,8 +383,13 @@ static inline bool kui_str_eq(KuiStr s, const char *lit) {
 enum { KUI_FIT = 0, KUI_GROW = 1, KUI_FIXED = 2, KUI_PERCENT = 3, KUI_CALC = 4 };
 /* KuiSpec.min_w / min_h: the node's own fit size as its floor (`minWidth:
  * "fit"` elsewhere) - a grow child that never goes below its content. Any
- * negative min means this; the name is the one to write. */
+ * negative min but KUI_MIN_NONE means this; the name is the one to write.
+ * 0 is undeclared: no floor, except for a child giving in an overflowing
+ * row that holds a share of the room (a KUI_PERCENT or KUI_CALC size),
+ * which stops at its content as a CSS flex item does (`min-width: auto`).
+ * KUI_MIN_NONE declares 0 - no floor even there, CSS's `min-width: 0`. */
 #define KUI_MIN_FIT (-1.0f)
+#define KUI_MIN_NONE (-2.0f)
 /* Directions. KUI_TABLE is a column whose rows' children line up in
  * columns (docs/adr/0033): the nth in-flow child of every row is a cell of
  * column n, and a column is as wide as its widest cell, so a label column
@@ -620,7 +625,8 @@ typedef struct KuiEnter {
 typedef struct KuiSpec {
     KuiSizing width, height;
     float min_w, max_w, min_h, max_h; /* clamps; max 0 = unconstrained,
-                                         min KUI_MIN_FIT = the fit size */
+                                         min KUI_MIN_FIT = the fit size,
+                                         KUI_MIN_NONE = a declared 0 */
     uint32_t dir; /* KUI_COLUMN / KUI_ROW / KUI_TABLE */
     float pad_l, pad_r, pad_t, pad_b;
     float gap;

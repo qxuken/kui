@@ -3170,3 +3170,19 @@ mod run_config_headless {
         kui_ctx_free(ctx);
     }
 }
+
+/// `KuiSpec.min_w`'s three spellings (backlog RG92): 0 is undeclared, as a
+/// zeroed struct leaves it — the content's floor in a share's row —
+/// `KUI_MIN_NONE` a declared 0, `KUI_MIN_FIT` the fit floor; and the spec
+/// the conversion builds keeps undeclared undeclared.
+#[test]
+fn a_min_of_zero_is_undeclared_and_min_none_declares_zero() {
+    use crate::convert::min_of;
+    use crate::types::{KUI_MIN_FIT, KUI_MIN_NONE};
+    assert!(min_of(0.0).is_auto());
+    let none = min_of(KUI_MIN_NONE);
+    assert!(!none.is_auto() && !none.is_fit());
+    assert_eq!(none.resolved(), 0.0);
+    assert!(min_of(KUI_MIN_FIT).is_fit());
+    assert_eq!(min_of(12.0).resolved(), 12.0);
+}

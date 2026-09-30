@@ -116,23 +116,23 @@ that. A `calc` does not ease under `transition`.
 
 A percentage is cut from the parent's content box before the gap between
 the children takes its share, so two halves and a 20 px gap ask for 20 px
-more than the row has. A share of the room gives when the room is spent:
-a percentage or a size expression shrinks with the fit children when the
-row overflows — 90 and 90 in a row of 200. Write the share you mean
-(`"50%"`, not `"48%"`). The rule is the fit children's, not CSS's: the
-largest pays first, down to the next largest, so two unequal shares
-overflowing by much end up equal (60% and 40% of 500 beside a 100 px
-child are 200 and 200; a CSS flex item gives in proportion to its size,
-240 and 160), and each goes down to its `minWidth` and no further — which
-is 0 unless you give one, not what it holds. Give a share `minWidth:
-"fit"` where it must not go below its content, or a px `minWidth` where
-it must not go below a size; the lower bound of a `clamp()` or `max()`
-width is where it starts, not a floor. Whether shares should give as
-CSS's do instead is backlog RG92. A px width keeps its own, a `scrollX`
-row overflows on purpose, and in a `wrapChildren` row two halves and a
-gap take a line each instead. A table's percent
-columns take their cut of the row less its gaps and never shrink, so
-past 100% a table's overflow and a plain row's squeeze part ways.
+more than the row has. A share of the room gives when the room is spent,
+as a CSS flex item does: a percentage or a size expression shrinks when
+the row overflows — 90 and 90 in a row of 200 — so write the share you
+mean (`"50%"`, not `"48%"`). Every child of that row that can give gives
+in proportion to its size (60% and 40% of 500 beside a 100 px child are
+240 and 160), and none goes below its content: the widest thing in it
+that cannot wrap — a button, a label's longest word, its padding and the
+gaps between what it holds. That is CSS's `min-width: auto`, and the way
+out is CSS's too: `minWidth: 0` lets a share go below its content, a px
+`minWidth` is its floor in place of its content, and a child that scrolls
+its overflow has no content floor. The lower bound of a `clamp()` or `max()`
+width is where it starts, not a floor. A px width keeps its own, a
+`scrollX` row overflows on purpose, a row of fit children alone squeezes
+its largest first, and in a `wrapChildren` row two halves and a gap take
+a line each instead. A table's percent columns take their cut of the row
+less its gaps and never shrink, so past 100% a table's overflow and a
+plain row's squeeze part ways.
 
 ### How do I line up the columns of a key/value list, or any table?
 

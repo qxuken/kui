@@ -269,6 +269,13 @@ pub(crate) struct CachedText {
     /// buffer as it was left (backlog RG72).
     claimed: u64,
     claimed_wrap: Option<f32>,
+    /// A break may fall between any two glyphs (`TextWrap::Glyph`), not
+    /// only where a line may break: what the min-content reads.
+    breaks_anywhere: bool,
+    /// The widest stretch no break falls inside, physical px — CSS's
+    /// min-content — measured the first time a shrink asks and kept for
+    /// the entry's life, since no width changes it (backlog RG92).
+    min_content: Option<f32>,
 }
 
 struct GlyphTemplate {
@@ -4206,6 +4213,8 @@ impl CachedText {
             glyphs_built_for: None,
             claimed: u64::MAX,
             claimed_wrap: None,
+            breaks_anywhere: style.wrap == TextWrap::Glyph,
+            min_content: None,
         }
     }
 
@@ -4228,8 +4237,70 @@ impl CachedText {
             glyphs_built_for: None,
             claimed: u64::MAX,
             claimed_wrap: None,
+            breaks_anywhere: self.breaks_anywhere,
+            min_content: self.min_content,
         }
     }
+
+    /// The widest stretch of this text that no break opportunity falls
+    /// inside, physical px — CSS's min-content: the longest word under
+    /// `word` and `break-spaces` (a word longer than the box still breaks
+    /// between glyphs when drawn, as `overflow-wrap: break-word` does in
+    /// CSS, which leaves the min-content alone), the widest glyph under
+    /// `glyph`, and the whole line under `none` or an ellipsis, which
+    /// never wrap. Trailing whitespace hangs, as in CSS. Read off the
+    /// shaped glyphs of whatever width the buffer was last laid out at —
+    /// a glyph's advance is the same at every width — with the breaks
+    /// `unicode-linebreak` finds, so asking lays nothing out (backlog
+    /// RG92).
+    fn min_content(&mut self) -> f32 {
+        if let Some(w) = self.min_content {
+            return w;
+        }
+        let w = if self.clamp_w {
+            self.intrinsic.w
+        } else {
+            widest_unbreakable(&self.buffer, self.breaks_anywhere)
+        };
+        self.min_content = Some(w);
+        w
+    }
+}
+
+/// [`CachedText::min_content`]'s walk: every run of a line in order, a
+/// stretch closing at each glyph a break falls before, and a stretch's
+/// width up to its last glyph that is not whitespace.
+fn widest_unbreakable(buffer: &Buffer, anywhere: bool) -> f32 {
+    let mut widest = 0.0f32;
+    let mut line = usize::MAX;
+    let mut breaks: Vec<usize> = Vec::new();
+    let (mut run_w, mut ink) = (0.0f32, 0.0f32);
+    for run in buffer.layout_runs() {
+        if run.line_i != line {
+            widest = widest.max(ink);
+            (run_w, ink) = (0.0, 0.0);
+            line = run.line_i;
+            breaks.clear();
+            if !anywhere {
+                breaks.extend(unicode_linebreak::linebreaks(run.text).map(|(i, _)| i));
+            }
+        }
+        for g in run.glyphs {
+            if anywhere || breaks.binary_search(&g.start).is_ok() {
+                widest = widest.max(ink);
+                (run_w, ink) = (0.0, 0.0);
+            }
+            run_w += g.w;
+            let blank = run
+                .text
+                .get(g.start..g.end)
+                .is_some_and(|t| t.chars().all(char::is_whitespace));
+            if !blank {
+                ink = run_w;
+            }
+        }
+    }
+    widest.max(ink)
 }
 
 /// A buffer set up for the style's line breaking: cosmic-text's wrap mode,
@@ -4296,6 +4367,18 @@ impl TextSystem {
         }
         let e = self.entry_mut(id);
         Size::new(e.intrinsic.w / scale, e.intrinsic.h / scale)
+    }
+
+    /// Text `id`'s min-content width, logical px (backlog RG92): see
+    /// [`CachedText::min_content`]. A long line is 0 — its rows are broken
+    /// to any width, and measuring its words would shape what C19 exists
+    /// not to.
+    pub(crate) fn min_content(&mut self, id: TextId) -> f32 {
+        let scale = self.scale;
+        if self.long_of(id).is_some() {
+            return 0.0;
+        }
+        self.entry_mut(id).min_content() / scale
     }
 
     /// The long line behind one of this frame's texts, if it is one.

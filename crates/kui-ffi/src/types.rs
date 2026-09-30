@@ -254,6 +254,10 @@ pub struct KuiSizing {
 /// Which of a `KuiKeyframe`'s fields are set (its `set` bits).
 /// `KuiSpec.min_w` / `min_h` as the node's own fit size (`KUI_MIN_FIT`).
 pub const KUI_MIN_FIT: f32 = -1.0;
+/// `KuiSpec.min_w` / `min_h` as a floor of 0 declared: no floor at all,
+/// not even the content's a share's row reads for an undeclared (0) one —
+/// CSS's `min-width: 0` (backlog RG92).
+pub const KUI_MIN_NONE: f32 = -2.0;
 pub const KUI_KF_AT: u32 = 1 << 0;
 pub const KUI_KF_WIDTH: u32 = 1 << 1;
 pub const KUI_KF_HEIGHT: u32 = 1 << 2;
@@ -318,7 +322,8 @@ pub struct KuiSpec {
     pub width: KuiSizing,
     pub height: KuiSizing,
     /// Clamps applied after sizing resolves; 0 for max means unconstrained,
-    /// and a negative min (`KUI_MIN_FIT`) is the node's own fit size.
+    /// 0 for min is undeclared, `KUI_MIN_FIT` the node's own fit size and
+    /// `KUI_MIN_NONE` a declared 0 (backlog RG92).
     pub min_w: f32,
     pub max_w: f32,
     pub min_h: f32,

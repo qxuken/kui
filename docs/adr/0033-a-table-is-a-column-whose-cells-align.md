@@ -253,6 +253,20 @@ amended: 2026-09-20
     60% and 40% of 500 beside a `Fixed` 100 are 200 and 200 here, 240
     and 160 in CSS, and a share holding a 120 px child can go under it.
 
+    *Amended 2026-09-30 (backlog RG92):* a row holding a share now gives
+    as CSS's does. Every shrinkable child of it — the shares and the
+    `Fit` children beside them — gives in proportion to its size
+    (`shrink_as_css`, css-flexbox §9.7 with `flex-shrink: 1`), down to
+    its declared `min`, or where none is declared (`Min::AUTO`) to its
+    min-content: the widest thing in it that cannot wrap, a text's
+    longest word measured off its shaped glyphs, the fixed children and
+    gaps of a row added up. `minWidth: 0` declares no floor, as
+    `min-width: 0` does, and a child scrolling that axis has none. A row
+    of `Fit` children alone keeps the largest-first rule, so no layout
+    without a share moved; a `Fixed` child still keeps its size, where
+    CSS's would give too; and the table's percent columns still never
+    shrink.
+
 ## Considered options
 
 - **A widget over `measure_text`.** `widgets::key_value(ui, rows)`

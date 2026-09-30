@@ -1921,6 +1921,10 @@ impl TextMeasure for Measure<'_> {
         self.text.wrapped(id, max_w, self.fonts)
     }
 
+    fn min_content(&mut self, id: crate::tree::TextId) -> f32 {
+        self.text.min_content(id)
+    }
+
     fn edit_intrinsic(&mut self, key: Key) -> Size {
         self.edit.intrinsic(key, self.fonts)
     }

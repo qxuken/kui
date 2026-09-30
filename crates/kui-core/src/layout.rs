@@ -715,6 +715,13 @@ pub trait TextMeasure {
     fn intrinsic(&mut self, id: crate::tree::TextId) -> Size;
     /// Size when wrapped to `max_w` logical pixels.
     fn wrapped(&mut self, id: crate::tree::TextId, max_w: f32) -> Size;
+    /// The widest stretch of the text no break falls inside, logical px
+    /// — CSS's min-content: the longest word, a whole unwrapped line.
+    /// Asked only on a frame with a share of the room (backlog RG92);
+    /// 0, the default, is a text that rewraps to any width.
+    fn min_content(&mut self, _id: crate::tree::TextId) -> f32 {
+        0.0
+    }
     /// Unwrapped content size of an editable text node.
     fn edit_intrinsic(&mut self, _key: crate::key::Key) -> Size {
         Size::ZERO
@@ -776,9 +783,9 @@ pub fn compute(
         Vec::new()
     };
     fit_widths(tree, text, 0..tree.len());
-    grow_widths(tree, viewport);
+    grow_widths(tree, text, viewport);
     fit_heights(tree, text, 0..tree.len());
-    grow_heights(tree, viewport);
+    grow_heights(tree, text, viewport);
     positions(tree, scroll, viewport, scale, 0..tree.len());
     if tree.any_node_float {
         anchored(tree, text, scroll, viewport, scale, &declared);
@@ -852,7 +859,7 @@ fn anchored(
             s => of_room(s, anchor.w).unwrap_or(tree.size[c].w),
         });
         for i in c..end {
-            distribute_axis(tree, i as u32, AxisSel::Width, viewport);
+            distribute_axis(tree, text, i as u32, AxisSel::Width, viewport);
         }
         fit_heights(tree, text, c..end);
         if tree.any_calc_bound {
@@ -864,7 +871,7 @@ fn anchored(
             s => of_room(s, anchor.h).unwrap_or(tree.size[c].h),
         });
         for i in c..end {
-            distribute_axis(tree, i as u32, AxisSel::Height, viewport);
+            distribute_axis(tree, text, i as u32, AxisSel::Height, viewport);
         }
         place_anchored(tree, c, anchor);
         positions(tree, scroll, viewport, scale, c..end);
@@ -1007,6 +1014,82 @@ fn fit_widths(tree: &mut Tree, text: &mut dyn TextMeasure, range: std::ops::Rang
     }
 }
 
+/// Node `i`'s min-content on `axis` — CSS's: the widest (or tallest)
+/// thing in it that cannot wrap, its padding on top — asked by a shrink
+/// that gives CSS's way, for the children of a run that overflowed and
+/// no other node, so a frame whose shares all fit measures nothing
+/// (backlog RG92). Across, a text is its longest word
+/// (`TextMeasure::min_content`); down, it is its lines at the width it
+/// has, which the fit pass of that axis measured, as an image's and a
+/// grid's size is theirs. A box scrolling that axis needs nothing of
+/// what it holds.
+fn min_content(tree: &Tree, text: &mut dyn TextMeasure, i: usize, axis: AxisSel) -> f32 {
+    let spec = &tree.specs[i].layout;
+    let (pad, scrolls) = match axis {
+        AxisSel::Width => (spec.padding.x(), spec.scroll_x),
+        AxisSel::Height => (spec.padding.y(), spec.scroll_y),
+    };
+    let own = match (tree.content[i], axis) {
+        (NodeContent::Text(tid), AxisSel::Width) => return text.min_content(tid),
+        (
+            NodeContent::Text(_) | NodeContent::Image(..) | NodeContent::Cells(_),
+            AxisSel::Height,
+        ) => {
+            return tree.size[i].h;
+        }
+        (NodeContent::Edit(_), AxisSel::Width) => 0.0,
+        (NodeContent::Edit(key), AxisSel::Height) => {
+            text.edit_wrapped(key, (tree.size[i].w - spec.padding.x()).max(0.0))
+                .h
+        }
+        (NodeContent::Image(id, _), AxisSel::Width) => text.image_size(id).w,
+        (NodeContent::Cells(id), AxisSel::Width) => text.cells_size(id).w,
+        _ if scrolls => 0.0,
+        _ => children_min_content(tree, text, i, axis),
+    };
+    own + pad
+}
+
+/// What node `i`'s in-flow children need on `axis` at the least — CSS's
+/// min-content of a box, less its padding (backlog RG92): each child's
+/// contribution is its fixed size or its own min-content, held to its
+/// clamps, and the contributions add up with the gaps along a main axis
+/// that does not wrap, where they cannot be put side by side any other
+/// way, and are the widest across it or when each may take a line of its
+/// own.
+fn children_min_content(tree: &Tree, text: &mut dyn TextMeasure, i: usize, axis: AxisSel) -> f32 {
+    let spec = &tree.specs[i].layout;
+    let main = (spec.dir == Dir::Row) == (axis == AxisSel::Width);
+    let adds = main && !(spec.wrap && axis == AxisSel::Width);
+    let (mut total, mut n) = (0.0f32, 0u32);
+    let mut c = tree.first_child[i];
+    while c != NIL {
+        if !is_float(tree, c) {
+            let l = &tree.specs[c as usize].layout;
+            let (sizing, min, max) = match axis {
+                AxisSel::Width => (l.width, l.min_w, l.max_w_px()),
+                AxisSel::Height => (l.height, l.min_h, l.max_h_px()),
+            };
+            let own = match sizing {
+                Sizing::Fixed(px) => px,
+                _ => min_content(tree, text, c as usize, axis),
+            };
+            let v = own.min(max).max(min.resolved());
+            if adds {
+                total += v;
+            } else {
+                total = total.max(v);
+            }
+            n += 1;
+        }
+        c = tree.next_sibling[c as usize];
+    }
+    if adds && n > 1 {
+        total += spec.gap * (n - 1) as f32;
+    }
+    total
+}
+
 /// The fit height of `i`, a non-text node, against its final width:
 /// `fit_width`'s mirror, read for a `Fit` height and for a `Min::FIT`
 /// floor. An editor's is its wrapped extent, which the caller has already
@@ -1134,7 +1217,7 @@ fn fit_heights(tree: &mut Tree, text: &mut dyn TextMeasure, range: std::ops::Ran
     }
 }
 
-fn grow_widths(tree: &mut Tree, viewport: Size) {
+fn grow_widths(tree: &mut Tree, text: &mut dyn TextMeasure, viewport: Size) {
     for i in 0..tree.len() {
         if tree.parent[i] == NIL {
             if tree.any_calc_bound {
@@ -1143,11 +1226,11 @@ fn grow_widths(tree: &mut Tree, viewport: Size) {
             let spec = tree.specs[i].layout;
             tree.size[i].w = spec.clamp_w(resolve_root(spec.width, tree.size[i].w, viewport.w));
         }
-        distribute_axis(tree, i as u32, AxisSel::Width, viewport);
+        distribute_axis(tree, text, i as u32, AxisSel::Width, viewport);
     }
 }
 
-fn grow_heights(tree: &mut Tree, viewport: Size) {
+fn grow_heights(tree: &mut Tree, text: &mut dyn TextMeasure, viewport: Size) {
     for i in 0..tree.len() {
         if tree.parent[i] == NIL {
             if tree.any_calc_bound {
@@ -1156,7 +1239,7 @@ fn grow_heights(tree: &mut Tree, viewport: Size) {
             let spec = tree.specs[i].layout;
             tree.size[i].h = spec.clamp_h(resolve_root(spec.height, tree.size[i].h, viewport.h));
         }
-        distribute_axis(tree, i as u32, AxisSel::Height, viewport);
+        distribute_axis(tree, text, i as u32, AxisSel::Height, viewport);
     }
 }
 
@@ -1178,7 +1261,13 @@ enum AxisSel {
 
 /// Resolves Grow/Percent children of `i` along the given axis, assuming `i`'s
 /// own size on that axis is final.
-fn distribute_axis(tree: &mut Tree, i: u32, axis: AxisSel, viewport: Size) {
+fn distribute_axis(
+    tree: &mut Tree,
+    text: &mut dyn TextMeasure,
+    i: u32,
+    axis: AxisSel,
+    viewport: Size,
+) {
     let spec = tree.specs[i as usize].layout;
     let (own, pad) = match axis {
         AxisSel::Width => (tree.size[i as usize].w, spec.padding.x()),
@@ -1243,7 +1332,7 @@ fn distribute_axis(tree: &mut Tree, i: u32, axis: AxisSel, viewport: Size) {
                 // lines down with it.
                 let deficit = total - content;
                 if deficit > 0.5 {
-                    shrink_axis(tree, i, axis, deficit, Some(line));
+                    shrink_axis(tree, text, i, axis, deficit, Some(line));
                 }
                 c = end;
             }
@@ -1260,7 +1349,7 @@ fn distribute_axis(tree: &mut Tree, i: u32, axis: AxisSel, viewport: Size) {
             );
             let deficit = total - content;
             if deficit > 0.5 && !scrolls {
-                shrink_axis(tree, i, axis, deficit, None);
+                shrink_axis(tree, text, i, axis, deficit, None);
             }
         }
     } else if wraps(tree, i) {
@@ -1486,19 +1575,35 @@ fn distribute_run(
 /// The shrink pass: pays off `deficit` (how far in-flow children overflow
 /// the parent's main-axis content box) by compressing Fit-sized children
 /// and the shares of the room — `Percent` and a size expression (backlog
-/// F110) — toward their min (default 0), largest first, so equal children
-/// end up equal, clay-style. A share was cut from the content box before
-/// the gaps between the children took theirs, so two `"50%"` children and
-/// a gap overflow until this gives, as CSS's flex items shrink. Fixed
-/// keeps its declared size; Grow never overflows. Text shrinks in width
-/// (it rewraps at the new width in fit_heights) but never in height. Scroll
-/// axes skip this entirely — overflow is the point of a scroll container.
+/// F110). A share was cut from the content box before the gaps between the
+/// children took theirs, so two `"50%"` children and a gap overflow until
+/// this gives. Two rules, by what the run holds:
+///
+/// - With a share in it, CSS's (backlog RG92, [`shrink_as_css`]): every
+///   shrinkable child gives in proportion to its size, down to its floor —
+///   its declared min, or where none was declared ([`Min::AUTO`]) its
+///   min-content ([`min_content`], measured here and only here), none for
+///   a child that scrolls that axis — `min-width: auto`.
+/// - Fit children alone, clay's: toward their min (default 0), largest
+///   first, so equal children end up equal.
+///
+/// Fixed keeps its declared size; Grow never overflows. Text shrinks in
+/// width (it rewraps at the new width in fit_heights) but never in height.
+/// Scroll axes skip this entirely — overflow is the point of a scroll
+/// container.
 ///
 /// `only_line` restricts it to one wrap line. A wrapping container reaches
 /// here only for a line it could not break any further (a single child
 /// wider than the box), so the compression stays on that line instead of
 /// squeezing children that are already comfortable on other ones.
-fn shrink_axis(tree: &mut Tree, i: u32, axis: AxisSel, mut deficit: f32, only_line: Option<u32>) {
+fn shrink_axis(
+    tree: &mut Tree,
+    text: &mut dyn TextMeasure,
+    i: u32,
+    axis: AxisSel,
+    mut deficit: f32,
+    only_line: Option<u32>,
+) {
     let shrinkable = |tree: &Tree, c: u32| -> Option<f32> {
         if is_float(tree, c)
             || !matches!(
@@ -1537,6 +1642,43 @@ fn shrink_axis(tree: &mut Tree, i: u32, axis: AxisSel, mut deficit: f32, only_li
             AxisSel::Height => spec.min_h.resolved(),
         })
     };
+
+    // A run holding a share of the room gives as CSS's flex items do,
+    // every shrinkable child of it with the share (backlog RG92); a run
+    // of fit children alone keeps clay's rule below.
+    if tree.any_share {
+        let mut c = tree.first_child[i as usize];
+        let mut items: Vec<(u32, f32, f32)> = Vec::new();
+        let mut share = false;
+        while c != NIL {
+            if let Some(declared) = shrinkable(tree, c) {
+                share |= matches!(
+                    child_sizing(tree, c, axis),
+                    Sizing::Percent(_) | Sizing::Calc(_)
+                );
+                let l = &tree.specs[c as usize].layout;
+                let (min, scrolls) = match axis {
+                    AxisSel::Width => (l.min_w, l.scroll_x),
+                    AxisSel::Height => (l.min_h, l.scroll_y),
+                };
+                let base = get_axis(tree, c, axis);
+                // `min-width: auto`: the content's, where nothing was
+                // declared — no more than the child's own size, and none
+                // for a child that scrolls its overflow, as CSS has it.
+                let floor = match () {
+                    _ if !min.is_auto() => declared,
+                    _ if scrolls => 0.0,
+                    _ => min_content(tree, text, c as usize, axis),
+                };
+                items.push((c, base, floor.min(base)));
+            }
+            c = tree.next_sibling[c as usize];
+        }
+        if share {
+            shrink_as_css(tree, axis, deficit, &items);
+            return;
+        }
+    }
 
     // Largest-first, like grow in reverse: pull the biggest children down
     // to the second-biggest, repeat until the deficit is paid or every
@@ -1591,6 +1733,55 @@ fn shrink_axis(tree: &mut Tree, i: u32, axis: AxisSel, mut deficit: f32, only_li
         }
         if !shrunk_any {
             break;
+        }
+    }
+}
+
+/// CSS's shrink of flex items (css-flexbox §9.7, `flex-shrink: 1`),
+/// over `items` as `(child, base, floor)`: each gives in proportion to its
+/// size — its scaled shrink factor is its base — and one that would go
+/// under its floor is held there and the rest share what it could not
+/// pay, until nothing is under its floor or every child is held. What is
+/// left unpaid overflows, as it does in CSS (backlog RG92).
+#[inline(never)]
+fn shrink_as_css(tree: &mut Tree, axis: AxisSel, deficit: f32, items: &[(u32, f32, f32)]) {
+    let n = items.len();
+    let mut held = vec![false; n];
+    let mut size: Vec<f32> = items.iter().map(|&(_, base, _)| base).collect();
+    // Each round holds at least one more child or ends, so `n + 1` rounds
+    // settle it.
+    for _ in 0..=n {
+        let paid: f32 = (0..n)
+            .filter(|&k| held[k])
+            .map(|k| items[k].1 - size[k])
+            .sum();
+        let left = deficit - paid;
+        let weight: f32 = (0..n).filter(|&k| !held[k]).map(|k| items[k].1).sum();
+        if left <= 0.0 || weight <= 0.0 {
+            break;
+        }
+        let mut under = false;
+        for k in 0..n {
+            if held[k] {
+                continue;
+            }
+            let (_, base, floor) = items[k];
+            let want = base - left * base / weight;
+            if want < floor {
+                size[k] = floor;
+                held[k] = true;
+                under = true;
+            } else {
+                size[k] = want;
+            }
+        }
+        if !under {
+            break;
+        }
+    }
+    for (k, &(c, base, _)) in items.iter().enumerate() {
+        if size[k] < base {
+            set_axis(tree, c, axis, size[k]);
         }
     }
 }

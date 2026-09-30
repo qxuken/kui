@@ -90,6 +90,9 @@ impl From<Min> for Bound {
             Bound::Fit
         } else if let Some(c) = m.as_calc() {
             Bound::Calc(c)
+        } else if m.is_auto() {
+            // Undeclared stays undeclared through `min_width` (RG92).
+            Bound::Px(-0.0)
         } else {
             Bound::Px(m.resolved())
         }
@@ -105,21 +108,46 @@ impl From<Min> for Bound {
 /// `fit_heights`), so every later clamp reads one; until then it clamps
 /// like no floor at all.
 ///
+/// Undeclared is [`Min::AUTO`], which clamps as 0 everywhere but one
+/// place: a child giving in an overflowing row that holds a share of the
+/// room, where it is CSS's `min-width: auto` — the child's min-content,
+/// the widest thing in it that cannot wrap (backlog RG92). A declared 0
+/// (`minWidth: 0`, `Min::px(0.0)`) is no floor there either, as CSS's
+/// `min-width: 0` is how a flex item is let go below its content.
+///
 /// One `f32`, with `FIT` as a negative — the form `KuiSpec.min_w` takes
 /// too (`KUI_MIN_FIT`) — rather than an enum with a tag: `LayoutSpec` is
 /// copied per node per frame, and a tagged pair for two axes is eight
 /// bytes on every node for a floor almost none declares (C15). A negative
 /// floor never meant anything, so the slot was free.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Min(f32);
+
+impl Default for Min {
+    fn default() -> Self {
+        Min::AUTO
+    }
+}
 
 impl Min {
     /// The node's own fit size on this axis.
     pub const FIT: Min = Min(-1.0);
 
-    /// A floor of `v` logical px; a negative is no floor.
+    /// No floor declared: 0, except where a share of the room gives in
+    /// CSS's way, where it is the node's min-content (backlog RG92).
+    /// Negative zero, so it is 0 to every clamp and to `==`, and told
+    /// apart from a declared 0 by its sign alone ([`Min::is_auto`]).
+    pub const AUTO: Min = Min(-0.0);
+
+    /// A floor of `v` logical px; a negative (or `NaN`) is a floor of 0,
+    /// declared — no automatic one either.
     pub fn px(v: f32) -> Min {
-        Min(v.max(0.0))
+        Min(if v > 0.0 { v } else { 0.0 })
+    }
+
+    /// Whether no floor was declared ([`Min::AUTO`]).
+    pub fn is_auto(self) -> bool {
+        self.0 == 0.0 && self.0.is_sign_negative()
     }
 
     /// Whether this is the unresolved fit floor.
@@ -149,7 +177,7 @@ impl Min {
     /// The clamp as a number: the px it holds, or 0 for a `FIT` or a calc
     /// layout has not resolved yet (nothing to floor at).
     pub fn resolved(self) -> f32 {
-        self.0.max(0.0)
+        if self.0 > 0.0 { self.0 } else { 0.0 }
     }
 }
 
@@ -608,9 +636,9 @@ impl Default for LayoutSpec {
         Self {
             width: Sizing::Fit,
             height: Sizing::Fit,
-            min_w: Min::px(0.0),
+            min_w: Min::AUTO,
             max_w: f32::INFINITY,
-            min_h: Min::px(0.0),
+            min_h: Min::AUTO,
             max_h: f32::INFINITY,
             dir: Dir::Column,
             padding: Edges::default(),
@@ -1628,6 +1656,7 @@ impl NodeSpec {
     /// [`Bound::Calc`] (backlog F109).
     pub fn min_width(mut self, v: impl Into<Bound>) -> Self {
         self.layout.min_w = match v.into() {
+            Bound::Px(px) if px == 0.0 && px.is_sign_negative() => Min::AUTO,
             Bound::Px(px) => Min::px(px),
             Bound::Fit => Min::FIT,
             Bound::Calc(c) => Min::calc(c),
@@ -1651,6 +1680,7 @@ impl NodeSpec {
     /// [`Bound::Calc`].
     pub fn min_height(mut self, v: impl Into<Bound>) -> Self {
         self.layout.min_h = match v.into() {
+            Bound::Px(px) if px == 0.0 && px.is_sign_negative() => Min::AUTO,
             Bound::Px(px) => Min::px(px),
             Bound::Fit => Min::FIT,
             Bound::Calc(c) => Min::calc(c),

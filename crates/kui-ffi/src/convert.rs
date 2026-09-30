@@ -106,9 +106,20 @@ pub(crate) fn opt_str<'a>(s: KuiStr) -> Option<std::borrow::Cow<'a, str>> {
     (!s.ptr.is_null() && s.len > 0).then(|| kstr(s))
 }
 
-/// `KuiSpec.min_w` / `min_h`: a negative (`KUI_MIN_FIT`) is the fit floor.
+/// `KuiSpec.min_w` / `min_h`: 0 is undeclared, as a zeroed struct leaves
+/// it — the content's floor in a share's row, 0 elsewhere (backlog RG92) —
+/// `KUI_MIN_NONE` a declared 0, and any other negative (`KUI_MIN_FIT`) the
+/// fit floor.
 pub(crate) fn min_of(v: f32) -> Min {
-    if v < 0.0 { Min::FIT } else { Min::px(v) }
+    if v == crate::types::KUI_MIN_NONE {
+        Min::px(0.0)
+    } else if v < 0.0 {
+        Min::FIT
+    } else if v == 0.0 {
+        Min::AUTO
+    } else {
+        Min::px(v)
+    }
 }
 
 pub(crate) fn spec_of(
@@ -123,16 +134,18 @@ pub(crate) fn spec_of(
         2 => NodeSpec::table(),
         _ => NodeSpec::column(),
     };
+    // Straight into the spec, not through `min_width`, whose `Bound` has
+    // no word for undeclared: a 0 there is a declared 0 (backlog RG92).
+    spec.layout.min_w = min_of(s.min_w);
+    spec.layout.min_h = min_of(s.min_h);
     spec = spec
         .width(sizing_of(s.width))
         .height(sizing_of(s.height))
-        .min_width(min_of(s.min_w))
         .max_width(if s.max_w > 0.0 {
             s.max_w
         } else {
             f32::INFINITY
         })
-        .min_height(min_of(s.min_h))
         .max_height(if s.max_h > 0.0 {
             s.max_h
         } else {

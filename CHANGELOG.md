@@ -23,9 +23,24 @@ was the first bare bump to break an app in five releases).
 
 ## 0.1.0-alpha.28 (unreleased)
 
-**What breaks.** No build: `Ctx.beginFrameCause()` and
-`Core::begin_frame_cause` are new, the ABI stays 22 and the Node wire
-v19. Five readings change, each a fix:
+**What breaks.** No build: `Ctx.beginFrameCause()`,
+`Core::begin_frame_cause`, `Min::AUTO`, `TextMeasure::min_content` (with
+a default) and `KUI_MIN_NONE` are new, the ABI stays 22 and the Node
+wire v19. One layout rule changes:
+
+- A row or column holding a share of the room — a percentage or a size
+  expression — gives as CSS's flex items do when it overflows (under
+  Changed, RG92): its children give in proportion to their sizes where
+  the largest gave first, and stop at their content where they went to
+  0. Such a row can draw its children at other widths and overflow
+  where it squeezed; `minWidth: 0` on a child is the old floor. A row
+  of fit children alone is as it was.
+- Rust: `Min::default()` and `LayoutSpec`'s default min are `Min::AUTO`
+  (negative zero, `==` to `Min::px(0.0)`); a floor of 0 declared is
+  `Min::px(0.0)`. C: a `KuiSpec.min_w` of 0 stays undeclared, and
+  `KUI_MIN_NONE` declares 0.
+
+Five readings change, each a fix:
 
 - A negative px `maxWidth` / `maxHeight` is a ceiling of 0 again, in
   every binding (under Fixed, RG78): since alpha.25 it could read as
@@ -44,10 +59,40 @@ v19. Five readings change, each a fix:
   or `request_files` by its door (`why: "reveal"`) at the app's line,
   not `"request_frame"` at kui's (RG82).
 
+### Changed
+
+- **A row holding a share of the room gives as CSS's flex items do**
+  (backlog RG92, from the regression run of 2026-09-30, asked for as a
+  CSS mirror). F110 let a `Percent` or a size expression give in an
+  overflowing row by the fit children's rule, the largest first and each
+  down to 0: 30% and 70% squeezed by 300 came out 150 and 150, and a
+  `50%` column holding a 120 px button went to 50 with the button
+  spilling out. Now every child of such a row that can give — the
+  shares and the fit children beside them — gives in proportion to its
+  size (90 and 210) and stops at its min-content, CSS's `min-width:
+  auto`: the widest thing in it that cannot wrap, which for text is its
+  longest word, measured off the shaped glyphs with `unicode-linebreak`'s
+  break opportunities and kept with the text, so asking lays nothing out;
+  a row's fixed children and gaps add up, a column's widest counts, and
+  its padding is on top. A declared `minWidth` is the floor instead, `0`
+  included (`min-width: 0`), and a child that scrolls that axis has
+  none. The height axis the same way in a column. A row of fit children
+  alone keeps the largest-first rule, a `Fixed` child still keeps its
+  size, and a table's percent columns still never shrink. The
+  min-content is measured by the shrink, only for the children of a row
+  that overflowed with a share in it, so a frame whose shares fit pays
+  nothing for it. Tests: `relative_shrink.rs` (the ratio, the content
+  floor with a button, a longest word from the stub and from a real
+  font, `minWidth: 0`, a scroller, a fit child beside a share, the
+  height axis) and kui-ffi's `a_min_of_zero_is_undeclared_and_min_none_declares_zero`.
+  *What you can delete:* a `minWidth` a share carried to keep its
+  content from spilling out of it, and a percentage written so its
+  neighbour keeps its proportion when the row squeezes.
+
 ### Fixed
 
 From the regression run of 2026-09-30 over F108–F113 (backlog
-RG77–RG91; RG92–RG97 open).
+RG77–RG91; RG93–RG97 open).
 
 - **A node-anchored float's `maxWidth "50%"` takes its anchor** (RG77):
   its size-expression clamps were resolved against 0 before the anchor
@@ -81,11 +126,9 @@ RG77–RG91; RG92–RG97 open).
 
 ### Docs
 
-- A share of the room gives by the fit children's rule — largest
-  first, each to its `minWidth` (0 unless given) — not in proportion
-  as a CSS flex item does, whatever alpha.25's entry below says; the
-  lower bound of a `clamp()` or `max()` width is where it starts, not a
-  floor (howto, ADR 0033; RG87, and RG92 for whether the rule changes).
+- alpha.25's "as a CSS flex item does" for a share of the room was
+  wrong until RG92 above made it so (RG87): the rule was the fit
+  children's, largest first and down to 0.
 - alpha.24's and alpha.27's "What breaks" gained the struct field each
   left out (`EventSpec::modifier_keys`, `schema::PropsOut::option_as_alt`;
   RG88), and ten built backlog entries left in the open list went to

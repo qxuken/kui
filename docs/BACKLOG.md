@@ -125,7 +125,7 @@ behind, W21 from the Windows–Mac bench comparison of 2026-09-26 (the
 texture upload's second copy), F103 from the kawoosh
 ⌘-Tab report (an animating hidden window spinning on skipped frames),
 DX16 from the DX sweep (declined with a condition), RG76 from
-the regression pass of 2026-09-28, and RG92–RG97 from the regression
+the regression pass of 2026-09-28, and RG93–RG97 from the regression
 run of 2026-09-30. Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -1978,40 +1978,10 @@ node-anchored float's `maxWidth "50%"` laying out 0 wide (RG77), a
 negative px max read as another view's expression (RG78), a nested
 expression that aborted the process (RG79), a Node view reading the
 frame before's cause (RG81) and an Option released in a popup that
-swallowed every later key (RG83). RG92–RG97 stay open; RG92's numbers
-were probed, RG93–RG97 are the reviews' readings, checked against the
+swallowed every later key (RG83). RG92, the rule a share gives by,
+went to CSS's the same day at the user's word and is in the archive
+too. RG93–RG97 stay open, the reviews' readings, checked against the
 code but not run.
-
-### `~` RG92 — A share of the room gives by the fit children's rule, not CSS's
-
-F110 made a `Percent` or size-expression child give in an overflowing
-row through `shrink_axis`, the `Fit` children's clay rule: the largest
-pays first, down to the next largest, each to its `min` (0 unless
-declared). Its docs said "as a CSS flex item does" (corrected, RG87).
-Probed:
-
-- 30% and 70% of 600 beside a `Fixed` 300: 150 and 150 (CSS 90 and
-  210) — a large deficit flattens any ratio.
-- A `50%` column holding a `Fixed` 120 child beside a `Fixed` 250 in
-  300: 50, the child spilling 70 out (CSS stops at min-content, 120).
-  Before F110 the column was 150 and the row overflowed.
-- `clamp(400px, 80%, 1000px)` beside a `Fixed` 300 in 500: 200 — the
-  lower bound is a basis, not a floor (as in CSS, whose `width` is not
-  `min-width`, but CSS would stop at content).
-- A `50%` child of a `Fit` row with a `Fixed` 100 and a gap of 10: the
-  row is 110 and the share 0 (55 before F110). The share adds nothing
-  to its parent's fit width and then overflows it; both answers are
-  wrong, and the root is older than F110.
-- A table's percent columns never shrink: `60%` + `60%` in 500 is
-  300/300 overflowing in a table, 250/250 in a row.
-
-**Decide.** Keep clay's rule for shares and say so (done), or give a
-share CSS's: shrink in proportion to its size, with an automatic floor
-at its content (`min: fit`) unless a `minWidth` says otherwise — the
-latter changes F110's own `the_largest_share_pays_first_down_to_its_floor`
-(200/200 would be 240/160) and puts `Fit` children and shares under two
-rules in one row. A diagnostic for a share under a fit-sized parent is
-wanted either way.
 
 ### `.` RG93 — The size-expression table is process-wide, never evicts, and a frame fails past it
 
@@ -3266,7 +3236,7 @@ move.
 
 - `.` **RG75** — [Small readings from the reviews](backlog/closed-2026-09.md#-rg75--small-readings-from-the-reviews--done-2026-09-28) — done (2026-09-28)
 
-**From the regression run of 2026-09-30** — RG77–RG91, filed and built the same day; RG92–RG97 open
+**From the regression run of 2026-09-30** — RG77–RG92, filed and built the same day; RG93–RG97 open
 
 - `!` **RG77** — [A node-anchored float's size-expression clamps resolved against 0](backlog/closed-2026-09.md#-rg77--a-node-anchored-floats-size-expression-clamps-resolved-against-0--done-2026-09-30) — done (2026-09-30)
 
@@ -3297,3 +3267,5 @@ move.
 - `.` **RG90** — [A table cell's size-expression clamps took a different room from its width](backlog/closed-2026-09.md#-rg90--a-table-cells-size-expression-clamps-took-a-different-room-from-its-width--done-2026-09-30) — done (2026-09-30)
 
 - `.` **RG91** — [A table column took its first cell's size expression, not its largest](backlog/closed-2026-09.md#-rg91--a-table-column-took-its-first-cells-size-expression-not-its-largest--done-2026-09-30) — done (2026-09-30)
+
+- `~` **RG92** — [A share of the room gives by the fit children's rule, not CSS's](backlog/closed-2026-09.md#-rg92--a-share-of-the-room-gives-by-the-fit-childrens-rule-not-csss--done-2026-09-30) — done (2026-09-30)
