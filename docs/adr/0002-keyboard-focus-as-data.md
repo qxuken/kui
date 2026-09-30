@@ -405,7 +405,12 @@ runner dropped every key it had no name for.
     `NSEvent.modifierFlags` (a Mac has no Num Lock, so it reads off, as a
     Mac terminal reports it) and
     Windows' `GetKeyState` — and elsewhere tracks the lock keys' own
-    presses, which knows nothing of a lock set before the window opened.
+    presses, which knows nothing of a lock set before the app's first
+    window opened. One record for the app, since there is one keyboard,
+    and a lock key's own press reports the state it made on all three —
+    what the two OS answers are read after the toggle (amended by
+    backlog RG96, where Linux said what it found and each window kept
+    its own).
 
 The keys past the editing block — F13–F35, `printscreen`, `pause`,
 `menu`, `clear`, and the media keys (`mediaplaypause`, `volumeup`, …) —

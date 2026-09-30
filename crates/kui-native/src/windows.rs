@@ -414,7 +414,6 @@ impl DynShell<'_> {
             awaits_device: false,
             applied_title: String::new(),
             modifiers: ModifiersState::empty(),
-            locks: Default::default(),
             modifier_keys_down: Vec::new(),
             alt_held: (false, false),
             last_titlebar_press: None,

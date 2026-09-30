@@ -288,14 +288,10 @@ pub(crate) struct Pane {
     /// Kept on every platform, called on macOS only.
     pub(crate) applied_option_as_alt: kui_core::OptionAsAlt,
     pub(crate) modifiers: ModifiersState,
-    /// Caps Lock and Num Lock as this window's key presses have toggled
-    /// them — what a press reports where the OS is not asked
-    /// (`keys::lock_state`, backlog F108).
-    pub(crate) locks: kui_core::KeyLocks,
     /// The modifier keys down in this window, by side — what a modifier
     /// key's release reads its own bit from while its twin is still held
     /// (`Pane::modifier_key`, backlog F108).
-    pub(crate) modifier_keys_down: Vec<(kui_core::KeyCode, kui_core::KeyLocation)>,
+    pub(crate) modifier_keys_down: Vec<crate::keys::HeldModifier>,
     /// Which Option keys are down, left and right, from winit's
     /// `ModifiersChanged` — the device-dependent flags of the event on
     /// macOS, which winit rewrites a press under Option-as-Alt by, and
@@ -524,11 +520,19 @@ impl Pane {
     pub(crate) fn modifier_key(
         &mut self,
         code: kui_core::KeyCode,
+        at: kui_core::KeyCode,
         location: kui_core::KeyLocation,
         pressed: bool,
         mods: KeyMods,
     ) -> KeyMods {
-        crate::keys::modifier_after(&mut self.modifier_keys_down, code, location, pressed, mods)
+        crate::keys::modifier_after(
+            &mut self.modifier_keys_down,
+            code,
+            at,
+            location,
+            pressed,
+            mods,
+        )
     }
 
     pub(crate) fn kmods(&self) -> KeyMods {

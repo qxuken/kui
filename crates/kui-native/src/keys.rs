@@ -206,7 +206,10 @@ fn named_code(n: &NamedKey) -> KeyCode {
         NamedKey::Clear => KeyCode::Clear,
         NamedKey::Shift => KeyCode::Shift,
         NamedKey::Control => KeyCode::Ctrl,
-        NamedKey::Alt => KeyCode::Alt,
+        // AltGr is the right Alt on the keyboards that have it: named as
+        // itself it was `unknown`, reported as Alt only through the
+        // physical fallback and never recorded as held (backlog RG96).
+        NamedKey::Alt | NamedKey::AltGraph => KeyCode::Alt,
         NamedKey::Super | NamedKey::Meta => KeyCode::Super,
         NamedKey::CapsLock => KeyCode::CapsLock,
         NamedKey::NumLock => KeyCode::NumLock,
@@ -227,12 +230,25 @@ fn named_code(n: &NamedKey) -> KeyCode {
     }
 }
 
+/// A modifier key held: where it is (`physical_code` and its side) and
+/// what the layout says it means.
+pub(crate) type HeldModifier = (KeyCode, KeyLocation, KeyCode);
+
 /// `mods` with a modifier key's own bit set to the state after its
 /// event (backlog F108): on while it or its twin is `down`, which this
 /// keeps. Any other key passes `mods` through.
+///
+/// `code` is what the layout says the key is, and its bit is the one
+/// set; `at` is where the key is, and the record goes by that. A press
+/// and its release can disagree on the first — X11 may read the left Alt
+/// pressed after Shift as `Meta_L` and its release as `Alt_L` — and a
+/// record by meaning kept Super held for good (backlog RG96). Going by
+/// the meaning and not the place for the bit is what keeps a key the
+/// layout remapped (Caps Lock as Ctrl) the modifier it acts as.
 pub(crate) fn modifier_after(
-    down: &mut Vec<(KeyCode, KeyLocation)>,
+    down: &mut Vec<HeldModifier>,
     code: KeyCode,
+    at: KeyCode,
     location: KeyLocation,
     pressed: bool,
     mut mods: KeyMods,
@@ -243,11 +259,11 @@ pub(crate) fn modifier_after(
     ) {
         return mods;
     }
-    down.retain(|k| *k != (code, location));
+    down.retain(|&(a, l, _)| (a, l) != (at, location));
     if pressed {
-        down.push((code, location));
+        down.push((at, location, code));
     }
-    let on = down.iter().any(|(c, _)| *c == code);
+    let on = down.iter().any(|&(_, _, c)| c == code);
     match code {
         KeyCode::Shift => mods.shift = on,
         KeyCode::Ctrl => mods.ctrl = on,
@@ -273,7 +289,7 @@ fn location_of(l: winit::keyboard::KeyLocation) -> KeyLocation {
 /// `NSEvent.modifierFlags` (a Mac has no Num Lock, so it reads off, as a
 /// Mac terminal reports it), Windows' `GetKeyState` — and anywhere
 /// else the state is `tracked` from the lock keys' own presses, which
-/// knows nothing of a lock set before the window opened.
+/// knows nothing of a lock set before the app's first window opened.
 pub(crate) fn lock_state(tracked: KeyLocks) -> KeyLocks {
     #[cfg(target_os = "macos")]
     {
@@ -303,6 +319,18 @@ pub(crate) fn lock_state(tracked: KeyLocks) -> KeyLocks {
     {
         tracked
     }
+}
+
+/// `tracked` after a key: a lock key's press turns its lock.
+pub(crate) fn locks_after(mut tracked: KeyLocks, code: KeyCode, press: bool) -> KeyLocks {
+    if press {
+        match code {
+            KeyCode::CapsLock => tracked.caps = !tracked.caps,
+            KeyCode::NumLock => tracked.num = !tracked.num,
+            _ => {}
+        }
+    }
+    tracked
 }
 
 impl DynShell<'_> {
@@ -406,20 +434,16 @@ impl DynShell<'_> {
         // a popup borrowing it is not a keyboard of its own, and a side
         // pressed before it opened comes up while it is the target
         // (backlog RG83); `from` also forgets them all as it loses focus.
-        let kmods = self.panes[from].modifier_key(logical_code, location, pressed, kmods);
+        let kmods = self.panes[from].modifier_key(logical_code, physical, location, pressed, kmods);
         let kp = KeyPress::from_layout(logical_code, physical, kmods);
         // The lock keys' own presses turn what is tracked where the OS
-        // is not asked (`lock_state`); the press reports the state it
-        // was made under, so Caps Lock's own press says what it found.
-        let found = lock_state(self.panes[i].locks);
-        if pressed && !event.repeat {
-            let t = &mut self.panes[i].locks;
-            match kp.code {
-                KeyCode::CapsLock => t.caps = !t.caps,
-                KeyCode::NumLock => t.num = !t.num,
-                _ => {}
-            }
-        }
+        // is not asked (`lock_state`), before the press reads it: Caps
+        // Lock's own press says the state it made, as macOS's flags and
+        // Windows' `GetKeyState` answer it, where it said what it found
+        // (backlog RG96). One keyboard, so one record for the app: a
+        // popup reads what its owner toggled.
+        self.locks = locks_after(self.locks, kp.code, pressed && !event.repeat);
+        let found = lock_state(self.locks);
         let kp = KeyPress {
             text: ktext,
             repeat: event.repeat,
@@ -706,6 +730,63 @@ mod tests {
         assert_eq!(location_of(L::Left), KeyLocation::Left);
         assert_eq!(location_of(L::Right), KeyLocation::Right);
         assert_eq!(location_of(L::Standard), KeyLocation::Standard);
+        assert_eq!(named_code(&NamedKey::AltGraph), KeyCode::Alt, "RG96");
+    }
+
+    /// The record goes by where a key is, the bit by what it means
+    /// (backlog RG96): X11's left Alt read as `Meta_L` down and `Alt_L`
+    /// up leaves nothing held, and Caps Lock remapped to Ctrl is a Ctrl
+    /// held and let go.
+    #[test]
+    fn a_held_modifier_is_recorded_by_where_it_is() {
+        let mut down: Vec<HeldModifier> = Vec::new();
+        let none = KeyMods::NONE;
+        let alt = KeyCode::Alt;
+        let meant_super = modifier_after(
+            &mut down,
+            KeyCode::Super,
+            alt,
+            KeyLocation::Left,
+            true,
+            none,
+        );
+        assert!(meant_super.super_key);
+        modifier_after(&mut down, alt, alt, KeyLocation::Left, false, none);
+        assert!(down.is_empty(), "no Super left held: {down:?}");
+        let caps = KeyCode::CapsLock;
+        let ctrl = modifier_after(
+            &mut down,
+            KeyCode::Ctrl,
+            caps,
+            KeyLocation::Standard,
+            true,
+            none,
+        );
+        assert!(ctrl.ctrl);
+        let up = modifier_after(
+            &mut down,
+            KeyCode::Ctrl,
+            caps,
+            KeyLocation::Standard,
+            false,
+            none,
+        );
+        assert!(!up.ctrl);
+        assert!(down.is_empty());
+    }
+
+    /// Caps Lock's own press reports the lock it made, as the OS answers
+    /// it on macOS and Windows (backlog RG96); its release and a repeat
+    /// turn nothing.
+    #[test]
+    fn a_lock_keys_press_reports_the_state_it_made() {
+        let off = KeyLocks::default();
+        let on = locks_after(off, KeyCode::CapsLock, true);
+        assert!(on.caps && !on.num);
+        assert_eq!(locks_after(on, KeyCode::CapsLock, false), on);
+        assert_eq!(locks_after(on, KeyCode::Char('a'), true), on);
+        assert!(locks_after(off, KeyCode::NumLock, true).num);
+        assert_eq!(locks_after(on, KeyCode::CapsLock, true), off);
     }
 
     /// A modifier key's own event carries the state after it — Shift's
@@ -713,9 +794,9 @@ mod tests {
     /// down — whatever order winit reported the modifiers in.
     #[test]
     fn a_modifier_keys_event_carries_the_state_after_it() {
-        let mut down: Vec<(KeyCode, KeyLocation)> = Vec::new();
+        let mut down: Vec<HeldModifier> = Vec::new();
         let mut step = |code, at, pressed: bool, mods: KeyMods| {
-            modifier_after(&mut down, code, at, pressed, mods)
+            modifier_after(&mut down, code, code, at, pressed, mods)
         };
         let none = KeyMods::NONE;
         assert!(step(KeyCode::Shift, KeyLocation::Left, true, none).shift);

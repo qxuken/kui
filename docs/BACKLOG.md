@@ -2013,28 +2013,6 @@ went to CSS's the same day at the user's word and is in the archive
 too. RG93–RG97 stay open, the reviews' readings, checked against the
 code but not run.
 
-### `.` RG96 — The key model's readings off the Mac are unconfirmed
-
-Read, not probed; each needs a round on Linux or Windows.
-
-- A lock key's own press: `keys.rs` reports the tracked state before the
-  toggle on Linux ("Caps Lock's own press says what it found"), while
-  macOS's `NSEvent.modifierFlags` and, as far as the code reads,
-  Windows' `GetKeyState` are read after the OS toggled — the same press
-  would say `caps_lock: false` on Linux and `true` on the other two.
-- The tracked locks are per pane and indexed by the key's target: on
-  Linux a popup starts at off whatever its owner tracked, and a toggle
-  in one window never reaches another. ADR 0002 decision 16 admits only
-  "a lock set before the window opened".
-- A modifier key's code comes from the layout's reading (`logical_code`):
-  AltGr is `NamedKey::AltGraph`, which `named_code` maps to `Unknown`, so
-  it is delivered as alt through the physical fallback but never
-  recorded, and its after-state bit is never set; on X11 ⇧ then left Alt
-  may read `Meta_L`, which would record `(Super, Left)` and leave it
-  stuck. Taking a modifier key's code from `physical_code` would answer
-  both.
-- `Accel::parse` accepts `"ctrl+capslock"` now that Caps Lock is a key.
-
 ### `.` RG98 — An animating window draws unpaced through macOS's minimize animation
 
 Found probing RG97 (2026-09-30): the `waker` example, focused, owes
@@ -2049,6 +2027,22 @@ the core owes one, but a continuous animation spins a core for that
 second on every minimize. **Do.** Hold frames while `Occluded(true)` to
 the pacer's fallback rate, or treat a present faster than the display
 can show as a skip; confirm what Windows and X11 do while minimizing.
+
+### `.` RG99 — RG96's key readings, confirmed in a window on Linux and Windows
+
+RG96 (built 2026-09-30) was answered by reading on a Mac; each needs a
+press in a window where it runs, with the devtools' events tab open:
+
+- Caps Lock's own press says `caps_lock: true` turning it on, on Linux
+  (the tracked record) and on Windows (`GetKeyState` read at its
+  `WM_KEYDOWN`, which RG96 took to be after the toggle).
+- A popup opened after Caps Lock was turned on in its owner reads it on;
+  on Linux, a toggle in one window reads in the next.
+- AltGr (a German layout) is reported as Alt on the right, held while
+  down and not after; on X11, ⇧ then the left Alt leaves no Super held
+  (a later Super press and release says `super: false` on the release).
+- `ctrl:nocaps` on Linux: the Caps Lock key reports Ctrl and turns no
+  lock.
 
 ## After alpha.26
 
@@ -3268,5 +3262,7 @@ move.
 - `.` **RG94** — [Size expressions were spelled three ways, and the encoder, the parser and the core disagreed at the edges](backlog/closed-2026-09.md#-rg94--size-expressions-were-spelled-three-ways-and-the-encoder-the-parser-and-the-core-disagreed-at-the-edges--done-2026-09-30) — done (2026-09-30)
 
 - `.` **RG95** — [A Lua value or view nested without limit, and a debug build's view overflowed at 32](backlog/closed-2026-09.md#-rg95--a-lua-value-or-view-nested-without-limit-and-a-debug-builds-view-overflowed-at-32--done-2026-09-30) — done (2026-09-30)
+
+- `.` **RG96** — [The key model's readings off the Mac disagreed with it](backlog/closed-2026-09.md#-rg96--the-key-models-readings-off-the-mac-disagreed-with-it--done-2026-09-30) — done (2026-09-30)
 
 - `.` **RG97** — [A pane's restore frame reported what it noted while it could not draw](backlog/closed-2026-09.md#-rg97--a-panes-restore-frame-reported-what-it-noted-while-it-could-not-draw--done-2026-09-30) — done (2026-09-30)

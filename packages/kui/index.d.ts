@@ -69,7 +69,8 @@ export type KeyMsg<T = AppMsg> = {
    *  modifier, the keypad's digit, operator or Enter (`code` is still
    *  "1", "enter"), else "standard". */
   location: KeyLocationName;
-  /** Caps Lock and Num Lock as the press found them. */
+  /** Caps Lock and Num Lock as the press left them: a lock key's own
+   *  press reports the state it made (backlog RG96). */
   caps_lock: boolean;
   num_lock: boolean;
   tag?: T;

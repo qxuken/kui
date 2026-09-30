@@ -42,7 +42,7 @@ wire v19. One layout rule changes:
   `Min::px(0.0)`. C: a `KuiSpec.min_w` of 0 stays undeclared, and
   `KUI_MIN_NONE` declares 0.
 
-Six readings change, each a fix:
+Seven readings change, each a fix:
 
 - A negative px `maxWidth` / `maxHeight` is a ceiling of 0 again, in
   every binding (under Fixed, RG78): since alpha.25 it could read as
@@ -62,6 +62,10 @@ Six readings change, each a fix:
   a table naming two functions (`{ min, max }`, which it read as the
   `min`), and a keyframe or entrance stop's `{ percent: 50 }` is 50%,
   where it was 5000%.
+- Caps Lock's own press says `caps_lock: true` as it turns the lock on,
+  on Linux too (RG96): it said what it found there, where macOS and
+  Windows said what it made. `Accel::parse` refuses a lock key
+  (`"ctrl+capslock"`), which it read since alpha.24 named them.
 - A modifier key let go of because the window lost the keyboard says
   its own bit is off (`shift: false` for Shift), as a real release does
   (RG85).
@@ -187,6 +191,14 @@ RG77–RG91; RG93–RG97 open).
   through are one table, `crates/kui-core/tests/fixtures/size_spellings.json`,
   read by the core's, Lua's and Node's tests; the readings it changed
   are under What breaks.
+- **The lock keys are one keyboard's, and AltGr is held** (RG96): Caps
+  Lock and Num Lock are tracked for the app where the OS is not asked
+  (Linux), so a popup reads what its owner turned and a toggle in one
+  window reaches another; AltGr is the right Alt, recorded as held with
+  its bit on, where it was `unknown` there; and a held modifier is
+  recorded by where it is, so an X11 left Alt read as `Meta_L` going
+  down and `Alt_L` coming up leaves no Super held. Read off the Mac and
+  pinned in unit tests; the window round on Linux and Windows is RG99.
 - **The frame that brings a minimized window back says `occlusion`,
   not what was asked while it was down** (RG97): a minimized window gets
   no frames, and what the runner noted for it meanwhile — another

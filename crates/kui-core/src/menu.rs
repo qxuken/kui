@@ -561,7 +561,14 @@ impl Accel {
             }
         }
         let code = code?;
-        (code != KeyCode::Unknown).then_some(Accel { code, mods })
+        // A lock key turns a state rather than being a key a shortcut is
+        // held against — no menu bar takes `ctrl+capslock` — and naming
+        // it a key (backlog F108) let the words parse (backlog RG96).
+        let lock = matches!(
+            code,
+            KeyCode::CapsLock | KeyCode::NumLock | KeyCode::ScrollLock
+        );
+        (code != KeyCode::Unknown && !lock).then_some(Accel { code, mods })
     }
 
     /// How the platform writes it: the macOS glyph run (`⇧⌘S`, in AppKit's
@@ -813,6 +820,10 @@ mod tests {
     #[test]
     fn a_shortcut_kui_cannot_name_is_not_a_shortcut() {
         assert!(Accel::parse("mod+nope").is_none());
+        // A lock key is no shortcut's key (backlog RG96).
+        assert!(Accel::parse("ctrl+capslock").is_none());
+        assert!(Accel::parse("numlock").is_none());
+        assert!(Accel::parse("shift+scrolllock").is_none());
         assert!(Accel::parse("s+s").is_none());
         assert!(Accel::parse("").is_none());
     }

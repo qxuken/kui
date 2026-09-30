@@ -1061,7 +1061,9 @@ pub struct KeyPress {
     /// Which of a key's twins this is: the left or right modifier, the
     /// keypad's digit or the main block's (see [`KeyLocation`]).
     pub location: KeyLocation,
-    /// Caps Lock and Num Lock as the press found them.
+    /// Caps Lock and Num Lock as the press left them: a lock key's own
+    /// press reports the state it turned the lock to, on every platform
+    /// (backlog RG96).
     pub locks: KeyLocks,
 }
 

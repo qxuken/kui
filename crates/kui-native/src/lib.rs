@@ -525,6 +525,7 @@ impl Launcher {
             reopened: None,
             reopen_owed: false,
             pretended_loss: false,
+            locks: kui_core::KeyLocks::default(),
             epoch: std::time::Instant::now(),
             system: system_env::query(),
             pinned_system: self.system,
@@ -1419,6 +1420,12 @@ struct Shell<A: App + ?Sized> {
     reopen_owed: bool,
     /// Whether `KUI_LOSE_DEVICE` has had its one loss.
     pretended_loss: bool,
+    /// Caps Lock and Num Lock as the lock keys' presses have turned them,
+    /// in any window — what a press reports where the OS is not asked
+    /// (`keys::lock_state`, backlog F108). One keyboard, one record: it
+    /// was each pane's, so a popup began at off and a toggle in one window
+    /// never reached another (backlog RG96).
+    locks: kui_core::KeyLocks,
     /// Origin of the frame clock handed to the cores for transitions.
     epoch: std::time::Instant,
     /// What the OS was asked for at startup — the accent colour, the
