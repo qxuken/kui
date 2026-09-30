@@ -140,7 +140,7 @@ Seven readings change, each a fix:
 ### Fixed
 
 From the regression run of 2026-09-30 over F108–F113 (backlog
-RG77–RG91; RG93–RG97 open).
+RG77–RG91 and RG93–RG97; RG98 and RG99 open).
 
 - **A node-anchored float's `maxWidth "50%"` takes its anchor** (RG77):
   its size-expression clamps were resolved against 0 before the anchor

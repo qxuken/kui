@@ -125,8 +125,8 @@ behind, W21 from the Windows–Mac bench comparison of 2026-09-26 (the
 texture upload's second copy), F103 from the kawoosh
 ⌘-Tab report (an animating hidden window spinning on skipped frames),
 DX16 from the DX sweep (declined with a condition), RG76 from
-the regression pass of 2026-09-28, and RG93–RG97 from the regression
-run of 2026-09-30. Everything else that has been filed has
+the regression pass of 2026-09-28, and RG98 and RG99 from the
+regression run of 2026-09-30. Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
 they were filed (2026-09-07), F25–F31 from the alpha.8 ones by the day
@@ -2010,8 +2010,13 @@ expression that aborted the process (RG79), a Node view reading the
 frame before's cause (RG81) and an Option released in a popup that
 swallowed every later key (RG83). RG92, the rule a share gives by,
 went to CSS's the same day at the user's word and is in the archive
-too. RG93–RG97 stay open, the reviews' readings, checked against the
-code but not run.
+too. RG93–RG97, the reviews' readings, were built later that day on
+"the rest of the RG series" and are in the archive too: the frame a
+full expression table failed (RG93), one size grammar for three readers
+(RG94), a Lua table holding itself (RG95), the key model off the Mac
+(RG96, by reading) and a restore frame's stale reasons (RG97). Two stay
+open: RG98, which RG97's probe found, and RG99, the window round RG96
+still owes on Linux and Windows.
 
 ### `.` RG98 — An animating window draws unpaced through macOS's minimize animation
 
@@ -3223,7 +3228,7 @@ move.
 
 - `.` **RG75** — [Small readings from the reviews](backlog/closed-2026-09.md#-rg75--small-readings-from-the-reviews--done-2026-09-28) — done (2026-09-28)
 
-**From the regression run of 2026-09-30** — RG77–RG92, filed and built the same day; RG93–RG97 open
+**From the regression run of 2026-09-30** — RG77–RG97, filed and built the same day; RG98 and RG99 open
 
 - `!` **RG77** — [A node-anchored float's size-expression clamps resolved against 0](backlog/closed-2026-09.md#-rg77--a-node-anchored-floats-size-expression-clamps-resolved-against-0--done-2026-09-30) — done (2026-09-30)
 
