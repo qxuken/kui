@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.30 (unreleased)
+## 0.1.0-alpha.30 (2026-09-30)
 
 **What breaks.** The ABI is 23: `KuiSpec` gains `bounce`. The Node wire
 stays v19 — `bounce` is a schema row and `smooth` / `snappy` two more
@@ -102,6 +102,53 @@ names of one. Rust gains two `Easing` variants and a `Transition` field.
   decision 10, as amended; the corpus's `column-squeeze` scene in all
   four bindings. *What you can delete:* a `minHeight: 'fit'` on a
   column's rows, written to stop them squeezing under their text.
+
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), on 2026-09-30 — the
+commits after the alpha.29 tag: Cargo.lock's semver-compatible updates,
+a spring's bounce, RG106 (Windows' light/dark switch reaching a running
+app) and F114 (a column's rows kept at their text's height), each merged
+from its branch. This round ran on the Mac alone; RG106 is Windows' and
+was checked there when it was built, in the `theme` example on Windows
+11, and is not re-run here.
+
+**macOS 27.0 on an M3 Pro MacBook Pro, rustc 1.98.1, Node 25.6.0**, on
+`f6d6259` with the version set, in a cold worktree. `cargo fmt --all
+--check` and `cargo clippy --workspace --all-targets --features
+kui-core/conformance -- -D warnings` are clean. `cargo test --workspace
+--features kui-core/conformance`: **1643 tests over 130 suites, 0
+failed** (3 ignored). The C round, `cbuild --run`, passes its five
+checks; the corpus passes its **53 scenes** in four adapters,
+`column-squeeze` new; the ABI is **23**. Node's `node --test test.mjs`
+under `KUI_CONFORMANCE_REQUIRED=1`: **205 of 205**. `npm run gen` leaves
+no diff, the examples typecheck and their lockfile installs, the
+headless round passes all **33 drives**, and `scripts/book-examples.sh
+--check` passes.
+
+**The windowed round**, `smoke -- --node`: **49 Rust examples — `spring`
+new — and the eleven Node examples, each on both bases, 120 frames
+each, every one exiting 0** — 120 windows — and `counter`, `host`,
+`c_panel` and `lua_panel` by hand under `KUI_SMOKE_FRAMES=120`, each
+exiting 0 with nothing on stderr: **124 windows over five hosts.** The
+AX audit: **106/106**, the audited window raised to the front by its
+pid first.
+
+**The bench guard** against the alpha.29 tag, on `f6d6259`: **green**,
+no guarded row more than 10% slower — the worst `deep_nesting_64_levels`
+at +6.7% inside its own ±5.1% spread — and every one of the 38 rows'
+sources "same". What F114 costs where a column overflows without
+scrolling, isolated against `d279ac9`, the merge before it: the frame
+benches' grids are 100 rows taller than their 1080 px viewport, so
+every row is now measured for its min-content where it was squeezed —
+`frame_10k_chips_unwrapped` 670 → 693 µs (+3.4%), `frame_10k_rects`
+767 → 777 µs (+1.3%), `frame_1k_typical` level — and those rows now
+keep their 14 px cells where they were squeezed under them. A column
+that fits, or scrolls, measures nothing. `sizes/squeeze_1000_rows_down`,
+new, reads a thousand labelled rows overflowing a column at 320.7 µs
+against 319.3 with the squeeze. README's table is kept at alpha.22's
+numbers.
 
 ## 0.1.0-alpha.29 (2026-09-30)
 
