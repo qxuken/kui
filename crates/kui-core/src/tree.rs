@@ -126,10 +126,6 @@ pub struct Tree {
     /// Whether any float is anchored to a node by key
     /// (`FloatAnchor::Node`): the sixth layout pass runs only then.
     pub any_node_float: bool,
-    /// Whether any node's width or height is a share of the room — a
-    /// `Percent` or a size expression: only then can a row hold one and
-    /// give CSS's way when it overflows (backlog RG92).
-    pub any_share: bool,
     /// Whether any node declares `wrap_children`.
     pub any_wrap: bool,
     /// Whether any node lines its children up by their baselines
@@ -150,6 +146,10 @@ pub struct Tree {
     /// Sized per run and never cleared, so the allocation is made once
     /// and reused by every run of every frame.
     pub grow_scratch: Vec<u8>,
+    /// Scratch for the shrink CSS's way (`layout::shrink_as_css`, backlog
+    /// RG92): one entry per child of the run giving, made once and reused
+    /// by every overflowing run of every frame, as `grow_scratch` is.
+    pub(crate) shrink_scratch: Vec<crate::layout::Give>,
     /// Whether any node clips (`clip`, or an overflow that scrolls).
     pub any_clip: bool,
     /// Whether any node clips *and* has a radius, so the clip its
@@ -275,7 +275,6 @@ impl Tree {
         self.baseline.clear();
         self.any_float = false;
         self.any_calc_bound = false;
-        self.any_share = false;
         self.any_baseline = false;
         self.any_node_float = false;
         self.any_wrap = false;
@@ -331,13 +330,6 @@ impl Tree {
             || l.max_h < 0.0
             || l.min_w.as_calc().is_some()
             || l.min_h.as_calc().is_some();
-        self.any_share |= matches!(
-            l.width,
-            crate::spec::Sizing::Percent(_) | crate::spec::Sizing::Calc(_)
-        ) || matches!(
-            l.height,
-            crate::spec::Sizing::Percent(_) | crate::spec::Sizing::Calc(_)
-        );
         self.any_table |= spec.layout.is_table();
         self.any_baseline |= spec.layout.cross_align == crate::spec::Align::Baseline;
         self.any_text |= matches!(

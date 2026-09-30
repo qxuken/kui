@@ -100,7 +100,10 @@ Five readings change, each a fix:
   size, and a table's percent columns still never shrink. The
   min-content is measured by the shrink, only for the children of a row
   that overflowed with a share in it, so a frame whose shares fit pays
-  nothing for it. Tests: `relative_shrink.rs` (the ratio, the content
+  nothing for it; the bench's `squeeze_1000_rows` (new, in
+  `benches/sizes.rs`) reads a thousand squeezed rows of two `"50%"`
+  labels at 779 µs against 757 under the old rule, +2.9%, and its rows
+  of fit boxes and of shares that fit unchanged. Tests: `relative_shrink.rs` (the ratio, the content
   floor with a button, a longest word from the stub and from a real
   font, `minWidth: 0`, a scroller, a fit child beside a share, the
   height axis) and kui-ffi's `a_min_of_zero_is_undeclared_and_min_none_declares_zero`.

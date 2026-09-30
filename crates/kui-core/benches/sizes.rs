@@ -14,12 +14,19 @@
 //! And a laid-out frame of 1000 rows sized `Percent` against the same
 //! rows sized by a `Calc`, and by a calc clamp, for layout's share.
 //!
+//! And 1000 rows that overflow, what a squeeze costs (backlog RG92): each
+//! row 300 wide with a 16 px gap between two halves holding a label, so
+//! every row gives — `shares`, two `"50%"`, CSS's way, measuring each
+//! half's min-content (its label's longest word); `fit`, the same rows of
+//! fit boxes, which give clay's way, largest first; and `fitting shares`,
+//! two `"47%"` that fit, for the same frame with no squeeze.
+//!
 //! Run: cargo bench -p kui-core --bench sizes
 
 use kui_core::calc;
 use kui_core::schema::{max_str, sizing_str};
 use kui_core::value::Value;
-use kui_core::{Core, NodeSpec, Size, Sizing};
+use kui_core::{Core, NodeSpec, Size, Sizing, TextStyle};
 
 const SPELLED: &str = "clamp(400px, 80%, 1000px)";
 
@@ -100,6 +107,40 @@ fn layout_1000_rows(bencher: divan::Bencher, form: &str) {
     let mut core = Core::new();
     frame(&mut core, width, max);
     bencher.bench_local(|| frame(&mut core, width, max));
+}
+
+const LABEL: &str = "status: all systems nominal";
+
+fn squeeze(core: &mut Core, half: Sizing) {
+    let mut ui = core.frame(Size::new(1600.0, 1000.0), 1.0);
+    ui.with(NodeSpec::column().width(Sizing::GROW), |ui| {
+        for _ in 0..ROWS {
+            let row = NodeSpec::row()
+                .width(300.0)
+                .gap(16.0)
+                .height(Sizing::Fixed(20.0));
+            ui.with(row, |ui| {
+                for _ in 0..2 {
+                    ui.with(NodeSpec::column().width(half), |ui| {
+                        ui.text(LABEL, TextStyle::new(12.0));
+                    });
+                }
+            });
+        }
+    });
+    ui.finish();
+}
+
+#[divan::bench(args = ["shares", "fit", "fitting shares"])]
+fn squeeze_1000_rows(bencher: divan::Bencher, form: &str) {
+    let half = match form {
+        "shares" => Sizing::Percent(0.5),
+        "fit" => Sizing::Fit,
+        _ => Sizing::Percent(0.47),
+    };
+    let mut core = Core::new();
+    squeeze(&mut core, half);
+    bencher.bench_local(|| squeeze(&mut core, half));
 }
 
 fn main() {

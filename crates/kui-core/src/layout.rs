@@ -1299,12 +1299,18 @@ fn distribute_axis(
         // Percent takes its cut of the content box first: a wrap line
         // breaks on sizes that are already resolved against the container,
         // not against the line it is about to land on.
+        // Noting on the way whether any child is such a share, the one
+        // thing the shrink below needs to know before it picks a rule
+        // (backlog RG92) — here, where every child is read anyway: a scan
+        // of its own cost a column of a thousand fixed rows 2%.
+        let mut share = false;
         let mut c = tree.first_child[i as usize];
         while c != NIL {
             if !is_float(tree, c)
                 && let Some(px) = of_room(child_sizing(tree, c, axis), content)
             {
                 set_axis_clamped(tree, c, axis, px);
+                share = true;
             }
             c = tree.next_sibling[c as usize];
         }
@@ -1332,7 +1338,7 @@ fn distribute_axis(
                 // lines down with it.
                 let deficit = total - content;
                 if deficit > 0.5 {
-                    shrink_axis(tree, text, i, axis, deficit, Some(line));
+                    shrink_axis(tree, text, i, axis, deficit, Some(line), share);
                 }
                 c = end;
             }
@@ -1349,7 +1355,7 @@ fn distribute_axis(
             );
             let deficit = total - content;
             if deficit > 0.5 && !scrolls {
-                shrink_axis(tree, text, i, axis, deficit, None);
+                shrink_axis(tree, text, i, axis, deficit, None, share);
             }
         }
     } else if wraps(tree, i) {
@@ -1603,6 +1609,7 @@ fn shrink_axis(
     axis: AxisSel,
     mut deficit: f32,
     only_line: Option<u32>,
+    share: bool,
 ) {
     let shrinkable = |tree: &Tree, c: u32| -> Option<f32> {
         if is_float(tree, c)
@@ -1645,10 +1652,15 @@ fn shrink_axis(
 
     // A run holding a share of the room gives as CSS's flex items do,
     // every shrinkable child of it with the share (backlog RG92); a run
-    // of fit children alone keeps clay's rule below.
-    if tree.any_share {
+    // of fit children alone keeps clay's rule below. `share` is what the
+    // caller saw resolving the shares, so a run without one — a column
+    // of a thousand fixed rows overflowing its box, the common one here —
+    // walks its children once, not once more to look (6% of such a frame
+    // when it did).
+    if share {
         let mut c = tree.first_child[i as usize];
-        let mut items: Vec<(u32, f32, f32)> = Vec::new();
+        let mut items = std::mem::take(&mut tree.shrink_scratch);
+        items.clear();
         let mut share = false;
         while c != NIL {
             if let Some(declared) = shrinkable(tree, c) {
@@ -1670,12 +1682,21 @@ fn shrink_axis(
                     _ if scrolls => 0.0,
                     _ => min_content(tree, text, c as usize, axis),
                 };
-                items.push((c, base, floor.min(base)));
+                items.push(Give {
+                    c,
+                    base,
+                    floor: floor.min(base),
+                    size: base,
+                    held: false,
+                });
             }
             c = tree.next_sibling[c as usize];
         }
         if share {
-            shrink_as_css(tree, axis, deficit, &items);
+            shrink_as_css(tree, axis, deficit, &mut items);
+        }
+        tree.shrink_scratch = items;
+        if share {
             return;
         }
     }
@@ -1738,52 +1759,57 @@ fn shrink_axis(
 }
 
 /// CSS's shrink of flex items (css-flexbox §9.7, `flex-shrink: 1`),
-/// over `items` as `(child, base, floor)`: each gives in proportion to its
+/// over `items`: each gives in proportion to its
 /// size — its scaled shrink factor is its base — and one that would go
 /// under its floor is held there and the rest share what it could not
 /// pay, until nothing is under its floor or every child is held. What is
 /// left unpaid overflows, as it does in CSS (backlog RG92).
 #[inline(never)]
-fn shrink_as_css(tree: &mut Tree, axis: AxisSel, deficit: f32, items: &[(u32, f32, f32)]) {
-    let n = items.len();
-    let mut held = vec![false; n];
-    let mut size: Vec<f32> = items.iter().map(|&(_, base, _)| base).collect();
+fn shrink_as_css(tree: &mut Tree, axis: AxisSel, deficit: f32, items: &mut [Give]) {
     // Each round holds at least one more child or ends, so `n + 1` rounds
     // settle it.
-    for _ in 0..=n {
-        let paid: f32 = (0..n)
-            .filter(|&k| held[k])
-            .map(|k| items[k].1 - size[k])
-            .sum();
+    for _ in 0..=items.len() {
+        let (mut paid, mut weight) = (0.0f32, 0.0f32);
+        for g in items.iter() {
+            if g.held {
+                paid += g.base - g.size;
+            } else {
+                weight += g.base;
+            }
+        }
         let left = deficit - paid;
-        let weight: f32 = (0..n).filter(|&k| !held[k]).map(|k| items[k].1).sum();
         if left <= 0.0 || weight <= 0.0 {
             break;
         }
         let mut under = false;
-        for k in 0..n {
-            if held[k] {
-                continue;
-            }
-            let (_, base, floor) = items[k];
-            let want = base - left * base / weight;
-            if want < floor {
-                size[k] = floor;
-                held[k] = true;
-                under = true;
+        for g in items.iter_mut().filter(|g| !g.held) {
+            let want = g.base - left * g.base / weight;
+            if want < g.floor {
+                (g.size, g.held, under) = (g.floor, true, true);
             } else {
-                size[k] = want;
+                g.size = want;
             }
         }
         if !under {
             break;
         }
     }
-    for (k, &(c, base, _)) in items.iter().enumerate() {
-        if size[k] < base {
-            set_axis(tree, c, axis, size[k]);
+    for g in items.iter() {
+        if g.size < g.base {
+            set_axis(tree, g.c, axis, g.size);
         }
     }
+}
+
+/// One child of a run giving CSS's way ([`shrink_as_css`]): its size
+/// before, its floor, the size it is given, and whether it is held there.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Give {
+    c: u32,
+    base: f32,
+    floor: f32,
+    size: f32,
+    held: bool,
 }
 
 /// A sizing that takes its size from the room once the parent's is
