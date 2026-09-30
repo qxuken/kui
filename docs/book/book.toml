@@ -12,8 +12,6 @@ create-missing = false
 [output.html]
 default-theme = "light"
 preferred-dark-theme = "navy"
-git-repository-url = "https://drydock9.qxuken.dev/qxuken/kui"
-edit-url-template = "https://drydock9.qxuken.dev/qxuken/kui/_edit/main/docs/book/{path}"
 
 [output.html.fold]
 enable = false

@@ -1,0 +1,78 @@
+# The kui book (docs/book), built with mdBook and published to
+# https://kui-book.qxuken.dev, a git-pages server (codeberg.org/git-pages)
+# reached through a Cloudflare tunnel.
+#
+# It is published on a release tag, not on every push to main: the book's
+# programs are written against the published crates, so the copy people read
+# should describe the version they can install. `workflow_dispatch` is there
+# for a first publish, or a republish, without cutting a release. Kept out of
+# ci.yml because it needs none of `check` - no toolchain, no target dir - and
+# a book that fails to upload should not hold up a release.
+#
+# The repository is private, so git-pages cannot clone it: the job uploads
+# the built site as a tarball with one PUT to the site's root URL, and the
+# server replaces the whole site atomically. The PUT is authorized by
+# git-pages' DNS challenge - the request carries `Authorization: Pages
+# <token>`, and the server looks up a TXT record at
+# `_git-pages-challenge.<host>` that must hold the lowercase hex
+# SHA-256 of "<host> <token>". Setting it up once:
+#
+#   * pick a random token (`openssl rand -hex 32`) and store it as the
+#     repository secret PAGES_TOKEN;
+#   * `printf '%s' 'kui-book.qxuken.dev <token>' | shasum -a 256` and put the
+#     hex digest in a TXT record named `_git-pages-challenge.kui-book` in the
+#     qxuken.dev zone. Rotating the token is a new secret and a new record.
+#
+# mdBook comes as the upstream release binary, pinned to the version the
+# book was written with; the runner is x86_64.
+name: book
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: book
+  cancel-in-progress: false
+
+env:
+  MDBOOK_VERSION: v0.5.4
+  PAGES_URL: https://kui-book.qxuken.dev/
+
+jobs:
+  publish:
+    runs-on: docker
+    container:
+      image: node:24-bookworm
+    env:
+      PAGES_TOKEN: ${{ secrets.PAGES_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install mdBook
+        run: |
+          set -eu
+          test -n "$PAGES_TOKEN" || { echo "PAGES_TOKEN secret is not set" >&2; exit 1; }
+          curl -fsSL "https://github.com/rust-lang/mdBook/releases/download/${MDBOOK_VERSION}/mdbook-${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
+            | tar -xz -C /usr/local/bin mdbook
+          mdbook --version
+
+      - name: Build
+        run: mdbook build docs/book -d /tmp/book
+
+      # `--fail-with-body` so a refused challenge fails the job with the
+      # server's reason (it names the TXT values it saw and the digest it
+      # wanted), rather than a bare status code.
+      - name: Upload
+        run: |
+          set -eu
+          tar -C /tmp/book -czf /tmp/book.tgz .
+          ls -l /tmp/book.tgz
+          curl --fail-with-body -sS -X PUT \
+            -H "Authorization: Pages $PAGES_TOKEN" \
+            -H "Content-Type: application/x-tar+gzip" \
+            --data-binary @/tmp/book.tgz \
+            "$PAGES_URL"
+          echo
+          curl -fsS -H "Authorization: Pages $PAGES_TOKEN" "${PAGES_URL}.git-pages/health"
