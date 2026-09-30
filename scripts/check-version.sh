@@ -57,6 +57,16 @@ cargo metadata --no-deps --offline --format-version 1 \
     if (!names || /unreleased/i.test(heading)) {
       bad.push(`CHANGELOG.md top heading is ${heading ? `"${heading}"` : "missing"}`);
     }
+    // The setup page of the book names the version a reader depends on, and
+    // the book is published from the tag this checks.
+    const setup = "docs/book/src/setup.md";
+    const pin = require("fs").readFileSync(setup, "utf8")
+      .match(/^kui-native = \{ version = "([^"]+)"/m);
+    if (!pin) {
+      bad.push(`${setup} has no kui-native dependency line`);
+    } else if (pin[1] !== want) {
+      bad.push(`${setup} asks for ${pin[1]}`);
+    }
     if (bad.length) {
       console.error(`version mismatch, expected ${want}:\n  ` + bad.join("\n  ") +
         "\n(scripts/set-version.sh sets all of them)");

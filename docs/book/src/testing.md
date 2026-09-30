@@ -33,7 +33,7 @@ themselves that way.
 Run them:
 
 ```bash
-cargo test -p kui-native --example tutorial_10_testing
+cargo test
 ```
 
 ## What the drive does

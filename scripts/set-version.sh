@@ -27,6 +27,14 @@ sed -i.bak -E \
   -e "1,/^## /s/^## .+ \(unreleased\)\$/## $ver ($today)/" \
   CHANGELOG.md
 rm CHANGELOG.md.bak
+# The book's setup page spells out the dependency line a reader copies into
+# their own Cargo.toml. Nothing wrote it, so the alpha.28 book asked for
+# alpha.27; the book is published from the release tag, so the line has to
+# name the version that tag publishes.
+sed -i.bak -E \
+  -e "s/^(kui-native = \{ version = )\"[^\"]+\"/\1\"$ver\"/" \
+  docs/book/src/setup.md
+rm docs/book/src/setup.md.bak
 # Dating that heading moves its anchor, and docs/howto.md links the open
 # section by it while the release is being written - `#010-alpha10-unreleased`
 # for `## 0.1.0-alpha.10 (unreleased)`. Left alone, three links stop landing

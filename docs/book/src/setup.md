@@ -1,8 +1,8 @@
 # Setup
 
 The introduction's three commands are the whole setup on macOS and
-Windows. This page is the rest: the registry in detail, Linux, the
-repository, and the devtools.
+Windows. This page is the rest: the registry in detail, your project,
+Linux, and the devtools.
 
 ## The registry
 
@@ -20,7 +20,7 @@ Then the dependency names the registry:
 
 ```toml
 [dependencies]
-kui-native = { version = "0.1.0-alpha.27", registry = "drydock9" }
+kui-native = { version = "0.1.0-alpha.28", registry = "drydock9" }
 ```
 
 `cargo add kui-native --registry drydock9` writes that line for you.
@@ -28,19 +28,20 @@ kui-native = { version = "0.1.0-alpha.27", registry = "drydock9" }
 the stock widgets and the `App` trait. Everything the book uses is
 reachable from it.
 
-## The repository
+## Your project
 
-The book's programs are examples in the kui repository, so a checkout
-runs them without a project of your own:
+The book's programs are examples in the kui repository, which is not
+public, so each one is complete on the page: a chapter's code block
+shows the lines it is about, and the eye icon in its corner reveals the
+rest of the file. Copy the whole program into `src/main.rs` of a
+project set up as above, and run it:
 
 ```bash
-git clone https://drydock9.qxuken.dev/qxuken/kui
-cd kui
-cargo run -p kui-native --example tutorial_01_hello
+cargo run
 ```
 
-Every chapter's *Run it* line is spelled that way. In your own project
-the program is `src/main.rs` and the command is `cargo run`.
+Every chapter's *Run it* line is spelled that way. The testing
+chapter's program carries its tests, and `cargo test` runs them.
 
 ## Linux
 

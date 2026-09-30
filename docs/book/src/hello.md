@@ -11,7 +11,7 @@ At the end of this chapter, a window shows one line of text.
 Run it:
 
 ```bash
-cargo run -p kui-native --example tutorial_01_hello
+cargo run
 ```
 
 ## What each line does
