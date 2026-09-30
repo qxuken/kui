@@ -267,6 +267,19 @@ amended: 2026-09-20
     CSS's would give too; and the table's percent columns still never
     shrink.
 
+    *Amended 2026-09-30 (backlog F114, from kawoosh's overflow hunt):*
+    down a column of `Fit` children alone, an undeclared floor is the
+    child's min-content too, as CSS's `min-height: auto` has it: its
+    text's lines, its fixed children and gaps added up, a wrapping row's
+    lines stacked with their cross gaps, and nothing for
+    a child that scrolls that axis or clips — `min_content` now takes a
+    clip for a box whose overflow is not visible, on either axis. The
+    largest-first order stands. A row squeezed below its text painted
+    the text over the rows under it, kawoosh's pane headers in a short
+    window: nothing in a box gives vertically but a scroller or a clip,
+    so a squeeze there only ever overlapped. Across, a `Fit` child alone
+    still goes toward 0, the ellipsis a row of labels is cut into.
+
 ## Considered options
 
 - **A widget over `measure_text`.** `widgets::key_value(ui, rows)`

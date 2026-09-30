@@ -21,6 +21,11 @@
 //! fit boxes, which give clay's way, largest first; and `fitting shares`,
 //! two `"47%"` that fit, for the same frame with no squeeze.
 //!
+//! And 1000 rows overflowing a column 1000 px tall that does not scroll,
+//! what the squeeze down costs (backlog F114): `labels`, each a fit row
+//! holding a label, whose floor is its min-content, measured; `fixed`,
+//! rows 20 px tall, which nothing measures, for scale.
+//!
 //! Run: cargo bench -p kui-core --bench sizes
 
 use kui_core::calc;
@@ -141,6 +146,32 @@ fn squeeze_1000_rows(bencher: divan::Bencher, form: &str) {
     let mut core = Core::new();
     squeeze(&mut core, half);
     bencher.bench_local(|| squeeze(&mut core, half));
+}
+
+fn squeeze_down(core: &mut Core, fixed: bool) {
+    let mut ui = core.frame(Size::new(1600.0, 1000.0), 1.0);
+    ui.with(
+        NodeSpec::column().width(Sizing::GROW).height(1000.0),
+        |ui| {
+            for _ in 0..ROWS {
+                let row = if fixed {
+                    NodeSpec::row().height(20.0)
+                } else {
+                    NodeSpec::row()
+                };
+                ui.with(row, |ui| ui.text(LABEL, TextStyle::new(12.0)));
+            }
+        },
+    );
+    ui.finish();
+}
+
+#[divan::bench(args = ["labels", "fixed"])]
+fn squeeze_1000_rows_down(bencher: divan::Bencher, form: &str) {
+    let fixed = form == "fixed";
+    let mut core = Core::new();
+    squeeze_down(&mut core, fixed);
+    bencher.bench_local(|| squeeze_down(&mut core, fixed));
 }
 
 fn main() {

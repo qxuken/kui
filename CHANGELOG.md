@@ -38,6 +38,11 @@ names of one. Rust gains two `Easing` variants and a `Transition` field.
 - On Windows, `env.system.appearance` follows the OS's light/dark switch
   while the app runs (RG106), where it kept the base the window opened
   with; a `system` event reports it.
+- Layout, every binding: a column of fit children too short for them
+  no longer squeezes a child below its content (F114, under Fixed). A
+  row that was squeezed now keeps the height of its text and the column
+  overflows — clipped by whatever clips it, scrolled by a scroller. A
+  layout that meant the squeeze declares `minHeight: 0`.
 
 ### Added
 
@@ -78,6 +83,25 @@ names of one. Rust gains two `Easing` variants and a `Transition` field.
   `ThemeChanged` and sets the window's dark mode itself. *What you can
   delete:* a restart, or a registry read of `AppsUseLightTheme`, to pick
   up the switch.
+- **A row keeps the height of its text in a column too short for it**
+  (F114, from kawoosh's overflow hunt): down a column of fit children
+  that overflows, an undeclared floor is the child's min-content — CSS's
+  `min-height: auto` — where it was 0 and the children gave largest
+  first toward it. Nothing in a box gives vertically but a scroller or
+  a clip, so a squeezed row only ever drew its text over the rows under
+  it: kawoosh's settings and fonts panes in a window 260 px tall put
+  their headers' chips over the search field. A row that wraps keeps
+  its lines stacked — its min-content down is each line's tallest and
+  the cross gaps, as its fit height is. A child that scrolls or
+  clips still gives to 0, so a list under a dialog's title takes what
+  the title leaves it, and `min_content` now takes a clip for a box that
+  needs nothing of what it holds on either axis, as CSS's automatic
+  minimum does for overflow that is not visible. A `grow` child still
+  gives first, a declared `minHeight` wins, and across nothing changed:
+  a row of fit labels still squeezes them into their ellipses. ADR 0033,
+  decision 10, as amended; the corpus's `column-squeeze` scene in all
+  four bindings. *What you can delete:* a `minHeight: 'fit'` on a
+  column's rows, written to stop them squeezing under their text.
 
 ## 0.1.0-alpha.29 (2026-09-30)
 

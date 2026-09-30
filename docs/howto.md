@@ -144,6 +144,23 @@ a line each instead. A table's percent columns take their cut of the row
 less its gaps and never shrink, so past 100% a table's overflow and a
 plain row's squeeze part ways.
 
+### Why do the rows of a column too short for them overflow it instead of squeezing?
+
+Because nothing in a row gives vertically: a text is as tall as its
+lines, a button as its padding and label. Down a column that overflows,
+a fit child gives no less than its content — CSS's `min-height: auto` —
+so a pane's header in a short window keeps its lines and pushes past the
+bottom, where a squeezed one drew its text over the rows under it. What
+gives is what can: a `grow` child first (to 0), then a child that scrolls
+or clips, down to 0, so a dialog's list under its title still takes what
+the title leaves it. Put the column in a scroller, or clip it, to keep
+the overflow in its box. `minHeight: 0` asks for the squeeze back, and
+a px `minHeight` is a floor in place of the content. Across nothing
+changed: a row of fit labels still squeezes them, largest first, into
+their ellipses.
+
+[`minHeight` row](props.md#container-props)
+
 ### How do I line up the columns of a key/value list, or any table?
 
 `<box dir="table">`, `grid { }` (Lua's `table` is its own), a `KuiSpec`
