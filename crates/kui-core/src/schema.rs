@@ -592,7 +592,7 @@ pub const PROPS: &[PropDef] = &[
         id: P_MIN_H,
         kind: Kind::Min,
         apply: Apply::SpecBound(|s, v| s.min_height(v)),
-        doc: "Lower height clamp: logical px, a size expression, or \"fit\" for the node's own fit height (see `minWidth`, whose content floor in a column holding a share it mirrors).",
+        doc: "Lower height clamp: logical px, a size expression, or \"fit\" for the node's own fit height. Undeclared, it is the node's content where its column overflows — CSS's `min-height: auto`, none for a node that scrolls or clips — so a row keeps the height of its text; `0` asks for the squeeze back (see `minWidth`).",
     },
     PropDef {
         name: "maxHeight",

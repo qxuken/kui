@@ -304,7 +304,7 @@ export interface GeneratedSpecProps {
   maxHeight?: MaxProp;
   /** Upper width clamp: logical px or a size expression (see `width`); grow+maxWidth is the responsive-width pattern. */
   maxWidth?: MaxProp;
-  /** Lower height clamp: logical px, a size expression, or "fit" for the node's own fit height (see `minWidth`, whose content floor in a column holding a share it mirrors). */
+  /** Lower height clamp: logical px, a size expression, or "fit" for the node's own fit height. Undeclared, it is the node's content where its column overflows — CSS's `min-height: auto`, none for a node that scrolls or clips — so a row keeps the height of its text; `0` asks for the squeeze back (see `minWidth`). */
   minHeight?: MinProp;
   /** Lower width clamp: logical px, a size expression (see `width`; a percentage clamp is none until the parent's width is known, as in CSS), or "fit" for the node's own fit width. "fit" under `width="grow"` is a content floor — CSS's `flex: 1 0 auto` — which is what an i3-style tab bar is: tabs that split the bar evenly while they fit and sit at their label's width, scrolling, once they do not. Opt-in, because a fit width is the unwrapped one: a paragraph in a grow column would stop wrapping under it. Left out, a child giving in an overflowing row that holds a percentage or a size expression stops at its content, CSS's `min-width: auto`; `0` lets it go below, CSS's `min-width: 0` (backlog RG92). */
   minWidth?: MinProp;

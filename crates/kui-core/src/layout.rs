@@ -1017,12 +1017,14 @@ fn fit_widths(tree: &mut Tree, text: &mut dyn TextMeasure, range: std::ops::Rang
 /// Node `i`'s min-content on `axis` — CSS's: the widest (or tallest)
 /// thing in it that cannot wrap, its padding on top — asked by a shrink
 /// that gives CSS's way, for the children of a run that overflowed and
-/// no other node, so a frame whose shares all fit measures nothing
+/// no other node, so a frame whose runs all fit measures nothing
 /// (backlog RG92). Across, a text is its longest word
 /// (`TextMeasure::min_content`); down, it is its lines at the width it
 /// has, which the fit pass of that axis measured, as an image's and a
-/// grid's size is theirs. A box scrolling that axis needs nothing of
-/// what it holds.
+/// grid's size is theirs. A box scrolling that axis, or clipping, needs
+/// nothing of what it holds — CSS's automatic minimum of a box whose
+/// overflow is not visible (backlog F114). Asked too by the shrink of a
+/// column of fit children, down (F114), for its children alone.
 fn min_content(tree: &Tree, text: &mut dyn TextMeasure, i: usize, axis: AxisSel) -> f32 {
     let spec = &tree.specs[i].layout;
     let (pad, scrolls) = match axis {
@@ -1044,7 +1046,7 @@ fn min_content(tree: &Tree, text: &mut dyn TextMeasure, i: usize, axis: AxisSel)
         }
         (NodeContent::Image(id, _), AxisSel::Width) => text.image_size(id).w,
         (NodeContent::Cells(id), AxisSel::Width) => text.cells_size(id).w,
-        _ if scrolls => 0.0,
+        _ if scrolls || spec.clip => 0.0,
         _ => children_min_content(tree, text, i, axis),
     };
     own + pad
@@ -1056,12 +1058,17 @@ fn min_content(tree: &Tree, text: &mut dyn TextMeasure, i: usize, axis: AxisSel)
 /// clamps, and the contributions add up with the gaps along a main axis
 /// that does not wrap, where they cannot be put side by side any other
 /// way, and are the widest across it or when each may take a line of its
-/// own.
+/// own. Down a wrapping row, whose lines the width pass has broken, they
+/// are each line's tallest stacked with the cross gaps (backlog F114), as
+/// the row's fit height is.
 fn children_min_content(tree: &Tree, text: &mut dyn TextMeasure, i: usize, axis: AxisSel) -> f32 {
     let spec = &tree.specs[i].layout;
     let main = (spec.dir == Dir::Row) == (axis == AxisSel::Width);
     let adds = main && !(spec.wrap && axis == AxisSel::Width);
+    let lines = axis == AxisSel::Height && wraps(tree, i as u32);
     let (mut total, mut n) = (0.0f32, 0u32);
+    // The line being read down a wrapping row, and its tallest so far.
+    let (mut line, mut tallest, mut stacked) = (None, 0.0f32, 0u32);
     let mut c = tree.first_child[i];
     while c != NIL {
         if !is_float(tree, c) {
@@ -1075,7 +1082,15 @@ fn children_min_content(tree: &Tree, text: &mut dyn TextMeasure, i: usize, axis:
                 _ => min_content(tree, text, c as usize, axis),
             };
             let v = own.min(max).max(min.resolved());
-            if adds {
+            if lines {
+                let l = tree.line[c as usize];
+                if line != Some(l) {
+                    total += tallest;
+                    (line, tallest) = (Some(l), 0.0);
+                    stacked += 1;
+                }
+                tallest = tallest.max(v);
+            } else if adds {
                 total += v;
             } else {
                 total = total.max(v);
@@ -1084,7 +1099,9 @@ fn children_min_content(tree: &Tree, text: &mut dyn TextMeasure, i: usize, axis:
         }
         c = tree.next_sibling[c as usize];
     }
-    if adds && n > 1 {
+    if lines {
+        total += tallest + spec.cross_gap * stacked.saturating_sub(1) as f32;
+    } else if adds && n > 1 {
         total += spec.gap * (n - 1) as f32;
     }
     total
@@ -1590,8 +1607,11 @@ fn distribute_run(
 ///   its declared min, or where none was declared ([`Min::AUTO`]) its
 ///   min-content ([`min_content`], measured here and only here), none for
 ///   a child that scrolls that axis — `min-width: auto`.
-/// - Fit children alone, clay's: toward their min (default 0), largest
-///   first, so equal children end up equal.
+/// - Fit children alone, clay's: largest first, so equal children end up
+///   equal, each toward its declared min — 0 across when none was
+///   declared, and down its min-content (backlog F114), none for a child
+///   that scrolls or clips that axis: `min-height: auto`, so a row is
+///   never squeezed below the text in it.
 ///
 /// Fixed keeps its declared size; Grow never overflows. Text shrinks in
 /// width (it rewraps at the new width in fit_heights) but never in height.
@@ -1703,59 +1723,85 @@ fn shrink_axis(
 
     // Largest-first, like grow in reverse: pull the biggest children down
     // to the second-biggest, repeat until the deficit is paid or every
-    // shrinkable child sits at its min.
+    // shrinkable child sits at its floor. Across, the floor is the
+    // declared min (0 undeclared), so a row of labels squeezes them into
+    // their ellipses. Down, an undeclared one is the child's min-content
+    // — CSS's `min-height: auto` (backlog F114) — since nothing in a box
+    // gives vertically but a scroller or a clip: a row squeezed below
+    // its text painted the text over the rows under it. One that scrolls
+    // or clips that axis goes to 0.
+    let mut items = std::mem::take(&mut tree.shrink_scratch);
+    items.clear();
+    let mut c = tree.first_child[i as usize];
+    while c != NIL {
+        if let Some(declared) = shrinkable(tree, c) {
+            let base = get_axis(tree, c, axis);
+            let l = &tree.specs[c as usize].layout;
+            let floor = match axis {
+                AxisSel::Height if l.min_h.is_auto() => {
+                    if l.scroll_y || l.clip {
+                        0.0
+                    } else {
+                        min_content(tree, text, c as usize, axis)
+                    }
+                }
+                _ => declared,
+            };
+            items.push(Give {
+                c,
+                base,
+                floor: floor.min(base),
+                size: base,
+                held: false,
+            });
+        }
+        c = tree.next_sibling[c as usize];
+    }
     let mut guard = 0;
     while deficit > 0.5 && guard < 128 {
         guard += 1;
         let mut largest = f32::NEG_INFINITY;
         let mut second = 0.0f32;
         let mut count = 0u32;
-        let mut c = tree.first_child[i as usize];
-        while c != NIL {
-            if let Some(min) = shrinkable(tree, c) {
-                let s = get_axis(tree, c, axis);
-                if s > min + 0.01 {
-                    if s > largest + 0.01 {
-                        second = if largest.is_finite() {
-                            largest.max(second)
-                        } else {
-                            second
-                        };
-                        largest = s;
-                        count = 1;
-                    } else if s > largest - 0.01 {
-                        count += 1;
-                    } else if s > second {
-                        second = s;
-                    }
-                }
+        for g in items.iter().filter(|g| g.size > g.floor + 0.01) {
+            let s = g.size;
+            if s > largest + 0.01 {
+                second = if largest.is_finite() {
+                    largest.max(second)
+                } else {
+                    second
+                };
+                largest = s;
+                count = 1;
+            } else if s > largest - 0.01 {
+                count += 1;
+            } else if s > second {
+                second = s;
             }
-            c = tree.next_sibling[c as usize];
         }
         if count == 0 {
             break;
         }
         let target = (largest - deficit / count as f32).max(second).max(0.0);
         let mut shrunk_any = false;
-        let mut c = tree.first_child[i as usize];
-        while c != NIL {
-            if let Some(min) = shrinkable(tree, c) {
-                let s = get_axis(tree, c, axis);
-                if s > largest - 0.01 {
-                    let new = target.max(min);
-                    if new < s {
-                        deficit -= s - new;
-                        set_axis(tree, c, axis, new);
-                        shrunk_any = true;
-                    }
-                }
+        for g in items.iter_mut().filter(|g| g.size > largest - 0.01) {
+            let new = target.max(g.floor);
+            if new < g.size {
+                deficit -= g.size - new;
+                g.size = new;
+                shrunk_any = true;
             }
-            c = tree.next_sibling[c as usize];
         }
         if !shrunk_any {
             break;
         }
     }
+    for g in items.iter() {
+        if g.size < g.base {
+            set_axis(tree, g.c, axis, g.size);
+        }
+    }
+    tree.shrink_scratch = items;
 }
 
 /// CSS's shrink of flex items (css-flexbox §9.7, `flex-shrink: 1`),
@@ -2729,7 +2775,9 @@ mod tests {
         t.node(other, NodeSpec::row().width(px(10.0)).height(px(60.0)));
         t.run(1000.0, 1000.0);
         assert_eq!(t.size(r).h, 80.0);
-        assert_eq!(t.size(other).h, 20.0);
+        // Nor is its sibling below the 60 px it holds (backlog F114): the
+        // column overflows, where the sibling was squeezed to 20.
+        assert_eq!(t.size(other).h, 60.0);
     }
 
     /// `minHeight: fit` floors a derived height at the children.

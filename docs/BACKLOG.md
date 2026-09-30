@@ -97,7 +97,9 @@ regression run of 2026-09-30, filed and built after the alpha.27 tag, and
 with the alpha.29 tag RG99 — RG96's readings, confirmed in a window on
 Linux and Windows — with RG100–RG104 from that window round, filed and
 built the same day after the alpha.28 tag, and RG105 from it, withdrawn
-the same day. The index
+the same day, and F114 — a column's rows kept at their text's height —
+from the kawoosh overflow hunt of 2026-09-30, filed and built the same
+day after the alpha.29 tag. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -1449,6 +1451,16 @@ under the still pointer, and the terminal, an `onScroll` node taking
 every delta, took the rest of the swipe. One entry, F107, **built
 2026-09-28**, the day it was filed, and in the archive, with ADR 0038.
 
+## From the kawoosh overflow hunt (2026-09-30)
+
+kawoosh swept its panes for text drawn past its box, and in a window
+260 px tall its settings and fonts panes drew their headers' chips over
+the search field under them. The pane is a column of a fit header over
+a list that grows; the list gave its height first, and then the header
+and its rows gave theirs, largest first toward 0, below the text in
+them. One entry, F114, **built 2026-09-30**, the day it was filed, and
+in the archive.
+
 ## From the kawoosh settings-pane report (2026-09-29)
 
 kawoosh's settings pane bound its filters to `<A-m>`, `<A-u>`, `<A-p>`
@@ -2163,6 +2175,8 @@ Nothing of the kawoosh rounded-row report is open (F112 **built
 2026-09-29**, the day it was filed).
 Nothing of the kawoosh settings-pane report is open (F113 **built
 2026-09-29**, the day it was filed).
+Nothing of the kawoosh overflow hunt is open (F114 **built
+2026-09-30**, the day it was filed).
 Nothing of the Windows regression round of 2026-09-26 is open
 (RG38–RG46 **built 2026-09-26**, the day they were filed).
 Nothing of the Linux round under WSLg is open (RG47–RG49 **built
@@ -3079,6 +3093,10 @@ move.
 **From the kawoosh settings-pane report (2026-09-29)** — F113, filed and built the same day
 
 - `~` **F113** — [A Mac's dead keys never arrive: ⌥u composes an accent and a keymap's `<A-u>` never hears it](backlog/closed-2026-09.md#-f113--a-macs-dead-keys-never-arrive-u-composes-an-accent-and-a-keymaps-a-u-never-hears-it--done-2026-09-29) — done (2026-09-29) — `Ui::option_as_alt(OptionAsAlt)` (`none`, `left`, `right`, `both`), frame state; the runner hands it to winit's `set_option_as_alt` on change, and an Option that is Alt types nothing
+
+**From the kawoosh overflow hunt (2026-09-30)** — F114, filed and built the same day
+
+- `!` **F114** — [A column too short for its rows squeezes them below their text, which draws over the rows under it](backlog/closed-2026-09.md#-f114--a-column-too-short-for-its-rows-squeezes-them-below-their-text-which-draws-over-the-rows-under-it--done-2026-09-30) — done (2026-09-30) — down a column of fit children that overflows, an undeclared floor is the child's min-content (CSS's `min-height: auto`), none for one that scrolls or clips; `min_content` takes a clip as needing nothing; across unchanged; ADR 0033's decision 10 amended
 
 **From the kawoosh kitty-keyboard review (2026-09-28)** — F108, filed and built the same day
 

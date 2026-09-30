@@ -1110,6 +1110,55 @@ static void conf_relative_shrink(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* conformance::build_column_squeeze (backlog F114): three fit rows of a
+ * 20 px bar in a 50 px column at 0, 20 and 40; a clip under a row giving
+ * to the 30 px left; a wrapping row's two lines of 60 px chips kept. */
+static void conf_bar20(KuiCtx *ui) {
+    KuiSpec bar = {.width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 20}, .bg = 0x3b5bd4ff};
+    kui_open(ui, &bar, NULL);
+    kui_close(ui);
+}
+
+static void conf_column_squeeze(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiSpec outer = {.dir = KUI_ROW, .gap = 20};
+    kui_open(ui, &outer, NULL);
+    KuiSpec column = {.width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 50}};
+    KuiSpec line = {.dir = KUI_ROW};
+    kui_open(ui, &column, NULL);
+    for (int i = 0; i < 3; i++) {
+        kui_open(ui, &line, NULL);
+        conf_bar20(ui);
+        kui_close(ui);
+    }
+    kui_close(ui);
+    kui_open(ui, &column, NULL);
+    kui_open(ui, &line, NULL);
+    conf_bar20(ui);
+    kui_close(ui);
+    KuiSpec clip = {.overflow = KUI_CLIP};
+    kui_open(ui, &clip, NULL);
+    conf_bar20(ui);
+    conf_bar20(ui);
+    kui_close(ui);
+    kui_close(ui);
+    kui_open(ui, &column, NULL);
+    KuiSpec chips = {.dir = KUI_ROW, .width = {KUI_GROW, 1}, .wrap_children = 1, .gap = 10, .cross_gap = 5};
+    kui_open(ui, &chips, NULL);
+    KuiSpec chip = {.width = {KUI_FIXED, 60}, .height = {KUI_FIXED, 20}, .bg = 0x73d98cff};
+    for (int i = 0; i < 2; i++) {
+        kui_open(ui, &chip, NULL);
+        kui_close(ui);
+    }
+    kui_close(ui);
+    kui_open(ui, &line, NULL);
+    conf_bar20(ui);
+    kui_close(ui);
+    kui_close(ui);
+    kui_close(ui);
+}
+
 /* conformance::build_size_expressions (backlog F109): four bars in a 400 px
  * column sized by expressions, built from parts with kui_size_* - nothing
  * parsed but the clamp, which goes through kui_size_parse. */
@@ -2037,6 +2086,7 @@ static const ConfScene CONF_SCENES[] = {
     {"joined-backgrounds", conf_joined_backgrounds},
     {"break-spaces", conf_break_spaces},
     {"relative-shrink", conf_relative_shrink},
+    {"column-squeeze", conf_column_squeeze},
     {"size-expressions", conf_size_expressions},
     {"media", conf_media},
     {"lines", conf_lines},

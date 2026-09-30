@@ -133,8 +133,10 @@ impl Min {
     /// The node's own fit size on this axis.
     pub const FIT: Min = Min(-1.0);
 
-    /// No floor declared: 0, except where a share of the room gives in
-    /// CSS's way, where it is the node's min-content (backlog RG92).
+    /// No floor declared: the node's min-content where a share of the room
+    /// gives in CSS's way (backlog RG92) and down a column of fit
+    /// children (F114); 0 across a run of fit children alone, and for a
+    /// node that scrolls or clips.
     /// Negative zero, so it is 0 to every clamp and to `==`, and told
     /// apart from a declared 0 by its sign alone ([`Min::is_auto`]).
     pub const AUTO: Min = Min(-0.0);

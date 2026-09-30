@@ -4222,6 +4222,24 @@ const SCENE_TREES = {
       ]),
     ])]);
   },
+  // A column of fit children gives none less than its content (backlog
+  // F114): three rows of a 20 px bar in 50 px at 0, 20 and 40; a clip
+  // under a row giving to the 30 px left; a wrapping row's two lines kept.
+  'column-squeeze': () => {
+    const bar = () => box({ width: 100, height: 20, bg: '#3b5bd4' });
+    const chip = () => box({ width: 60, height: 20, bg: '#73d98c' });
+    return root({}, [box({ dir: 'row', gap: 20 }, [
+      box({ width: 100, height: 50 }, [0, 1, 2].map(() => box({ dir: 'row' }, [bar()]))),
+      box({ width: 100, height: 50 }, [
+        box({ dir: 'row' }, [bar()]),
+        box({ clip: true }, [bar(), bar()]),
+      ]),
+      box({ width: 100, height: 50 }, [
+        box({ dir: 'row', width: 'grow', wrapChildren: true, gap: 10, crossGap: 5 }, [chip(), chip()]),
+        box({ dir: 'row' }, [bar()]),
+      ]),
+    ])]);
+  },
   // Access rects cut to the clip (backlog F93): three nodes on a `clip`
   // canvas past its top, three rows in a short scroller.
   'clip-access': () => {

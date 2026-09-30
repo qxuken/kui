@@ -3275,6 +3275,44 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "column-squeeze",
+        doc: "A column of fit children gives none less height than its \
+              content (backlog F114): in a column 50 px tall, three fit \
+              rows each holding a bar 20 px tall stand at 0, 20 and 40, \
+              overflowing the column, where they were squeezed to 16.7 px \
+              each and their bars overlapped; beside them, under a 20 px \
+              row, a column that clips gives to the 30 px left; and in a \
+              third, a wrapping row of two 60 px chips, 10 apart, keeps \
+              its two lines and the 5 px between them, 45 px, over a bar \
+              at 45. A binding whose layout squeezes the rows draws the \
+              bars closer.",
+        custom: &[],
+        elements: &["box"],
+        build: build_column_squeeze,
+        env: NATIVE_CHROME,
+        steps: &[],
+        expect: Expect {
+            solid: 9,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            segments_follow_text: false,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 0,
+            access: &["0 window ||"],
+            events: &[],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+            secure_input: false,
+            option_as_alt: OptionAsAlt::None,
+        },
+    },
+    Scene {
         name: "size-expressions",
         doc: "Size expressions (backlog F109), resolved against the \
               parent's content box: in a column 400 px wide, four bars 10 \
@@ -4665,6 +4703,45 @@ fn build_relative_shrink(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
         ui.with(NodeSpec::row().width(300.0).gap(20.0), |ui| {
             ui.with(bar(clamp), |_| {});
             ui.with(bar(clamp), |_| {});
+        });
+    });
+}
+
+fn build_column_squeeze(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    let bar = |ui: &mut Ui<'_>| {
+        ui.leaf(
+            NodeSpec::column()
+                .width(100.0)
+                .height(20.0)
+                .bg(Color::hex(0x3b5bd4ff)),
+        );
+    };
+    ui.with(NodeSpec::row().gap(20.0), |ui| {
+        ui.with(NodeSpec::column().width(100.0).height(50.0), |ui| {
+            for _ in 0..3 {
+                ui.with(NodeSpec::row(), bar);
+            }
+        });
+        ui.with(NodeSpec::column().width(100.0).height(50.0), |ui| {
+            ui.with(NodeSpec::row(), bar);
+            ui.with(NodeSpec::column().clip(), |ui| {
+                bar(ui);
+                bar(ui);
+            });
+        });
+        ui.with(NodeSpec::column().width(100.0).height(50.0), |ui| {
+            let chips = NodeSpec::row().grow_width().wrap().gap(10.0).cross_gap(5.0);
+            ui.with(chips, |ui| {
+                for _ in 0..2 {
+                    ui.leaf(
+                        NodeSpec::column()
+                            .width(60.0)
+                            .height(20.0)
+                            .bg(Color::hex(0x73d98cff)),
+                    );
+                }
+            });
+            ui.with(NodeSpec::row(), bar);
         });
     });
 }

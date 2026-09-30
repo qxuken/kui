@@ -553,6 +553,26 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
+        // Backlog F114: three rows of a 20 px bar in a 50 px column at 0,
+        // 20 and 40; a clip under a row giving to the 30 px left; a
+        // wrapping row's two lines kept.
+        "column-squeeze" => r#"
+            local function bar()
+              return column { width = 100, height = 20, bg = 0x3b5bd4ff }
+            end
+            local function chip()
+              return column { width = 60, height = 20, bg = 0x73d98cff }
+            end
+            return row { gap = 20,
+              column { width = 100, height = 50, row { bar() }, row { bar() }, row { bar() } },
+              column { width = 100, height = 50, row { bar() }, column { clip = true, bar(), bar() } },
+              column { width = 100, height = 50,
+                row { width = "grow", wrap_children = true, gap = 10, cross_gap = 5, chip(), chip() },
+                row { bar() },
+              },
+            }
+        "#
+        .to_string(),
         // Backlog F109: four bars sized by expressions, spelled and as data.
         "size-expressions" => r#"
             local function bar(t)
