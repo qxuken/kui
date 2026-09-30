@@ -21,6 +21,58 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.29 (unreleased)
+
+**What breaks.** No build: `Core::holds_key` is new, the ABI stays 22
+and the Node wire v19. Five readings change on Windows and Linux, each
+a fix:
+
+- A key held as a window gains focus is not pressed there (RG100): on
+  Windows and X11 winit hands the window a press of every key already
+  down, and kui delivered them. A sink hears no `down` for a key pressed
+  in another window or app; the `up` still arrives.
+- On Windows, the second Shift pressed while the first is held is a
+  first press (`repeat: false`), and letting go of both delivers a
+  release for each, the one Windows never sent first (RG102).
+- On X11, `caps_lock` and `num_lock` are the X server's (RG104): a lock
+  set before the app started, or turned in another app, reads as it is.
+  Wayland still tracks the lock keys' own presses.
+- On X11, the left Alt pressed after Shift says `alt: true` on its own
+  press, and AltGr says `location: "right"` (RG101).
+- A key pressed in a window and let go of while a popup borrows its
+  keyboard is released in that window at once (RG103), where it came
+  up when the window next lost focus.
+
+### Fixed
+
+- **A key that closed a window is not pressed again in the one
+  beneath** (RG100): winit makes up a press of every held key as a
+  window gains focus on Windows and X11, so F3 answered by closing a
+  window pressed F3 in the window that took focus, and opened it again.
+  The made-up presses are dropped; the made-up releases as a window
+  loses focus are kept, since they let go of what a sink held.
+- **Two Shifts on Windows are two presses and two releases** (RG102):
+  Windows keeps one "was down" bit for both Shifts, so the second said
+  it was a repeat, and sends no release for the first let go while the
+  other is held. The record kept that Shift held, and the next Shift's
+  release said `shift: true`. A modifier's repeat is now one only while
+  its key is held, and a Shift's release lets go of its twin first, as
+  GLFW reads it.
+- **An X11 modifier the layout leaves unnamed is the key it is**
+  (RG101): ⇧ then the left Alt reads `Meta_L`, which winit names
+  nothing, so its press carried the state before it; AltGr
+  (`ISO_Level3_Shift`) has no side in its keysym and said `standard`.
+  Both now take where the key is.
+- **A release goes where its press went** (RG103): the owner of a
+  popup held a key pressed before the popup opened until it lost focus,
+  and let go of it then, after keys pressed later. `Core::holds_key`
+  says which core delivered a press.
+- **X11 reads the lock state off the server** (RG104), on a connection
+  of its own, as macOS and Windows ask theirs: tracking the lock keys
+  knew nothing of a lock turned while another app had the keyboard, and
+  under XWayland it disagreed with the text the server typed after a
+  focus change.
+
 ## 0.1.0-alpha.28 (2026-09-30)
 
 **What breaks.** No build: `Ctx.beginFrameCause()`,
