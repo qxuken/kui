@@ -91,7 +91,9 @@ alpha.25 tag, and with the alpha.27 tag F112 — the Powerline Extra
 half circles and wedges drawn from the cell — from the kawoosh
 rounded-row report of the same day, and F113 — the Option keys as Alt
 on a Mac — from the kawoosh settings-pane report of the same day, filed
-and built after the alpha.26 tag. The index
+and built after the alpha.26 tag, and with the alpha.28 tag DX27 — the
+kui book — from the book round of 2026-09-29, and RG77–RG98 from the
+regression run of 2026-09-30, filed and built after the alpha.27 tag. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -140,7 +142,7 @@ architecture review (forty-four entries under ten decisions, every one
 built on 2026-09-14), the standard-menus round, and the pre-tag round's
 own two finds. C26 was the last split entry, and it closed on 2026-09-11.
 
-Ordered by area, not by priority. What to do next is under "After alpha.26".
+Ordered by area, not by priority. What to do next is under "After alpha.27".
 
 **Legend** — `!` a defect that ships today · `~` a gap with no workaround ·
 `.` cost without correctness risk.
@@ -406,7 +408,7 @@ moved whole to
 before the alpha.10 tag, W7 last — the one that wanted a decision rather
 than a patch, settled as: a displacement moves a subtree by whole physical
 pixels, scrolling included. Nothing from the round is open; what it did
-not cover is in "After alpha.26" below.
+not cover is in "After alpha.27" below.
 
 ## From two alpha.9 field reports and a bake-off (2026-09-08)
 
@@ -1893,7 +1895,7 @@ Beside the report, reading the tree for this round turned up one gap of
 kui's own: the variable-height list is Rust-only (C46). Two further
 entries came from the comparison's table: typed messages (C50) and file
 dialogs (C51). The distribution recommendation is unchanged (see
-*Distribution* under *After alpha.26*).
+*Distribution* under *After alpha.27*).
 
 ## From the DX sweep (2026-09-27)
 
@@ -1973,24 +1975,8 @@ line 122 with no hello-world before it; `howto.md` and `props.md` are
 reference prose for a reader who knows the name of what they want; the
 counter, the one example every binding has, needs the harness and a
 hand-built `Value` before a reader has met `App`; nothing teaches kui
-in order. One entry, **built the same day** as ADR 0039.
-
-### `.` DX27 — A first-time reader has no path through kui — done (2026-09-29)
-
-**Built 2026-09-29**, as [ADR 0039](adr/0039-a-tutorial-is-a-sequence.md).
-`examples/rust/tutorial/` is a fifth kind of example: ten steps,
-`01_hello` to `10_testing`, each a whole program that is the last plus
-one concept, each on the shipped launcher with no harness, registered as
-`tutorial_NN_<name>` (in the windowed round by being an `[[example]]`;
-step 10's `mod tests` under `cargo test`). `docs/book` is an mdBook that
-includes the steps by anchor, fourteen chapters in a voice the repo's
-prose does not have — short sentences, no ids in the body, the links at
-the chapter's end. `apps/counter.rs` moved onto `#[derive(Message)]` so
-the gallery does not contradict the book's step 3; the README has a
-*Start here*; CI builds the book. What it does not do: the README is
-still 1,500 lines with the pitch, the benchmarks and the release history
-in one file — trimming it is a round of its own — and the book is Rust
-alone, with one chapter naming what maps to what in Node, Lua and C.
+in order. One entry, **built the same day** as ADR 0039, and moved to
+the archive with the alpha.28 tag.
 
 ## From the regression run of 2026-09-30
 
@@ -2034,9 +2020,14 @@ press in a window where it runs, with the devtools' events tab open:
 - `ctrl:nocaps` on Linux: the Caps Lock key reports Ctrl and turns no
   lock.
 
-## After alpha.26
+## After alpha.27
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
+alpha.26" until 2026-09-30, when the round between the alpha.27 and
+alpha.28 tags — the kui book (DX27, ADR 0039), and the regression run
+over F108–F113 with what it filed (RG77–RG98, RG92 a CSS mirror at the
+user's word, all built the day they were filed; RG99 left open) — had
+landed, and the heading moved with the tag; "After
 alpha.25" until later still on 2026-09-29, when the round between the
 alpha.26 and alpha.27 tags — F112 from the kawoosh rounded-row report,
 the Powerline Extra half circles and wedges drawn from the cell, and
@@ -2515,7 +2506,7 @@ Every closed entry, all in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) and all verbatim — one heading
 per id, and `tests/docs.rs` holds every id to one entry across both files.
 This index is here so an id resolves without opening that file: the open items
-above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.26" and
+above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.27" and
 the hygiene note cite C2, C5(b), P3, R4 and R7, and code comments, ADRs and
 commit messages cite ids of their own. All of them are whole in the
 archive. **C11**, **W2** and **C15** were each split for a while — an entry
@@ -3042,6 +3033,8 @@ move.
 - `.` **DX25** — [A loaded font file was left unshared](backlog/closed-2026-09.md#-dx25--a-loaded-font-file-was-left-unshared--done-2026-09-28) — done (2026-09-28)
 
 - `.` **DX26** — [The frame after an atlas reset rasterized the whole window](backlog/closed-2026-09.md#-dx26--the-frame-after-an-atlas-reset-rasterized-the-whole-window--done-2026-09-28) — done (2026-09-28)
+
+- `.` **DX27** — [A first-time reader has no path through kui](backlog/closed-2026-09.md#-dx27--a-first-time-reader-has-no-path-through-kui--done-2026-09-29) — done (2026-09-29)
 
 **From the kawoosh ⌘-Tab report (2026-09-27)** — F102, filed and built the same day
 

@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.28 (unreleased)
+## 0.1.0-alpha.28 (2026-09-30)
 
 **What breaks.** No build: `Ctx.beginFrameCause()`,
 `Core::begin_frame_cause`, `Min::AUTO`, `TextMeasure::min_content` (with
@@ -240,6 +240,57 @@ RG77–RG91 and RG93–RG98; RG99 open).
   left out (`EventSpec::modifier_keys`, `schema::PropsOut::option_as_alt`;
   RG88), and ten built backlog entries left in the open list went to
   the archive.
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), on 2026-09-30 — the
+commits after the alpha.27 tag: the kui book (DX27, merged from its
+branch), and the regression run over F108–F113 with everything it
+filed, RG77–RG98, built the day they were filed. This round ran on the
+Mac alone; Windows and Linux were not in it. What the run could not
+reach on a Mac is RG96, the key model's readings on Linux and Windows,
+which were answered by reading and pinned in unit tests; RG99 holds the
+window round on each, and RG98's pause of a covered window's animation
+was probed on macOS alone (Windows' minimize was already RG45's).
+
+**macOS 27.0 on an M3 Pro MacBook Pro, rustc 1.98.1, Node 26.8.1**, on
+`f40bee3` with the version set, in the regression run's worktree (not
+cold). `cargo fmt --all --check` and `cargo clippy --workspace
+--all-targets --features kui-core/conformance -- -D warnings` are clean.
+`cargo test --workspace --features kui-core/conformance`: **1630 tests
+over 129 suites, 0 failed** (3 ignored). The C round, `cbuild --run`,
+passes its five checks, and the no-ABI panel is refused as "this build
+is 22"; the corpus passes its **52 scenes** in four adapters; the ABI is
+**22**. Node's `node --test test.mjs` under
+`KUI_CONFORMANCE_REQUIRED=1`: **205 of 205**, the frame **v19**. `npm
+run gen` leaves no diff, the examples typecheck and their lockfile
+installs, and the headless round passes all **32 drives**.
+
+**The windowed round**, `smoke -- --node`: **48 Rust examples — the
+book's ten steps among them for the first time — and the eleven Node
+examples, each on both bases, 120 frames each, every one exiting 0** —
+118 windows — and `counter`, `host`, `c_panel` and `lua_panel` by hand
+under `KUI_SMOKE_FRAMES=120`, each exiting 0 with nothing on stderr:
+**122 windows over five hosts.** The AX audit: **106/106**, the audited
+window raised to the front first.
+
+**The bench guard** against the alpha.27 tag, run on `f40bee3` (the
+same code without the version): **green**, no guarded row more than
+3.1% slower (`deep_nesting_64_levels`, which read between −1.7% and
++3.4% over the day's five runs with no core change between them), the
+worst guarded spread 2.8%, and every one of the 38 rows "same" — the
+largest move `update_image_1080p_recycled_and_frame` at +35.6% inside
+its own ±35.9% spread, as it was noise in the last round too. Beside
+it, what the round's own changes cost where no guarded row reaches:
+RG92's CSS squeeze reads a thousand squeezed rows at 779 µs against 757
+(`sizes/squeeze_1000_rows`, new), `layout_1000_rows` level after a
+second walk it first added was taken out; RG95's value path first cost
+kui-lua's `lua_1000_rows/table per frame` 2.7% and now reads within
+1.2%; core's `sizes/spelled_cached` reads about 1 ns slower with its
+path's source unchanged, left as layout drift. RG98 was measured in a
+window: five seconds minimized cost the release `fragment` example
+4.5 s of CPU before and 0.2 s now, and visible the same. README's table
+is kept at alpha.22's numbers.
 
 ## 0.1.0-alpha.27 (2026-09-29)
 
