@@ -148,7 +148,7 @@ def main [
         must npm test
         must npm pack --dry-run
     }
-    must cargo publish --dry-run ...(package-args $CRATES) --registry forgejo
+    must cargo publish --dry-run ...(package-args $CRATES) --registry drydock9
 
     if $dry_run {
         print $"\ndry run: ($tag) built and verified, nothing published"
@@ -165,8 +165,8 @@ def main [
         print "every crate is already published"
     } else {
         print $"publishing: ($pending | str join ', ')"
-        with-env {CARGO_REGISTRIES_FORGEJO_TOKEN: $"Bearer ($env.DRYDOCK9_TOKEN)"} {
-            must cargo publish ...(package-args $pending) --registry forgejo
+        with-env {CARGO_REGISTRIES_DRYDOCK9_TOKEN: $"Bearer ($env.DRYDOCK9_TOKEN)"} {
+            must cargo publish ...(package-args $pending) --registry drydock9
         }
     }
 

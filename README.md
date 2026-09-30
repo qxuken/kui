@@ -1233,10 +1233,10 @@ for development). Consumers point at the registries once:
 
 ```toml
 # .cargo/config.toml
-[registries.forgejo]
+[registries.drydock9]
 index = "sparse+https://drydock9.qxuken.dev/api/packages/qxuken/cargo/"
 # Cargo.toml
-kui-native = { version = "0.1.0-alpha.1", registry = "forgejo" }  # `use kui_native::…`
+kui-native = { version = "0.1.0-alpha.1", registry = "drydock9" }  # `use kui_native::…`
 ```
 
 ```bash

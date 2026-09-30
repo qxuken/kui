@@ -89,6 +89,18 @@ Five readings change, each a fix:
   content from spilling out of it, and a percentage written so its
   neighbour keeps its proportion when the row squeezes.
 
+- **The cargo registry is named `drydock9`, after its host, not
+  `forgejo`**: the `[registries.drydock9]` table in `.cargo/config.toml`,
+  `publish = ["drydock9"]` in each crate, the workspace dependencies,
+  `--registry drydock9` in `ci.yml` and `scripts/release-local.nu`, and
+  the token variable `CARGO_REGISTRIES_DRYDOCK9_TOKEN`. Nothing an app
+  builds changes: the name is local to whoever reads the config, and
+  `cargo publish` writes the index URL into a packaged manifest, not the
+  name, so a project whose own config says `[registries.forgejo]` keeps
+  resolving kui through it. A token stored by `cargo login --registry
+  forgejo` is under the old name in `~/.cargo/credentials.toml`; rename
+  the table there or log in again as `drydock9`.
+
 ### Fixed
 
 From the regression run of 2026-09-30 over F108–F113 (backlog

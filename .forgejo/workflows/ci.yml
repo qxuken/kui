@@ -56,7 +56,7 @@
 # `npm publish`, so the tarball ships a native addon per platform. The
 # artifact actions are the v3 ones: Forgejo's artifact backend speaks that
 # API, and v4 fails with "not currently supported on GHES". The library
-# crates go to the Forgejo cargo registry (see .cargo/config.toml) in
+# crates go to the Forgejo cargo registry (`drydock9` in .cargo/config.toml) in
 # dependency order first.
 #
 # The docker jobs use the stock node image rather than the rust one:
@@ -680,7 +680,7 @@ jobs:
       PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
       # cargo sends the token verbatim as the Authorization header; Forgejo
       # wants the Bearer scheme in it.
-      CARGO_REGISTRIES_FORGEJO_TOKEN: Bearer ${{ secrets.PACKAGES_TOKEN }}
+      CARGO_REGISTRIES_DRYDOCK9_TOKEN: Bearer ${{ secrets.PACKAGES_TOKEN }}
       NPM_REGISTRY: ${{ github.server_url }}/api/packages/${{ github.repository_owner }}/npm/
     steps:
       - uses: actions/checkout@v4
@@ -736,7 +736,7 @@ jobs:
       # One invocation publishes in dependency order: each crate's verify
       # build resolves the earlier ones from the freshly published index.
       - name: cargo publish
-        run: cargo publish -p kui-derive -p kui-core -p kui-wgpu -p kui-native -p kui-lua -p kui-ffi --registry forgejo
+        run: cargo publish -p kui-derive -p kui-core -p kui-wgpu -p kui-native -p kui-lua -p kui-ffi --registry drydock9
 
       # Prereleases get their identifier as the dist-tag (0.1.0-alpha.1 ->
       # `alpha`, installed with `npm i @qxuken/kui@alpha`); plain versions become
