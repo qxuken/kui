@@ -253,10 +253,7 @@ pub(crate) fn modifier_after(
     pressed: bool,
     mut mods: KeyMods,
 ) -> KeyMods {
-    if !matches!(
-        code,
-        KeyCode::Shift | KeyCode::Ctrl | KeyCode::Alt | KeyCode::Super
-    ) {
+    if !holds_as_modifier(code) {
         return mods;
     }
     down.retain(|&(a, l, _)| (a, l) != (at, location));
@@ -281,6 +278,50 @@ fn location_of(l: winit::keyboard::KeyLocation) -> KeyLocation {
         L::Left => KeyLocation::Left,
         L::Right => KeyLocation::Right,
         L::Numpad => KeyLocation::Numpad,
+    }
+}
+
+/// Whether `code` is one of the four modifiers a held record keeps.
+fn holds_as_modifier(code: KeyCode) -> bool {
+    matches!(
+        code,
+        KeyCode::Shift | KeyCode::Ctrl | KeyCode::Alt | KeyCode::Super
+    )
+}
+
+/// What a key means for the modifier record: the layout's reading, or
+/// where the key is when that reading has no name. X11 reads the left
+/// Alt pressed after Shift as `Meta_L`, which winit leaves unnamed, and
+/// its own press carried the state before it (backlog RG101).
+fn meaning_of(logical: KeyCode, physical: KeyCode) -> KeyCode {
+    if logical == KeyCode::Unknown {
+        physical
+    } else {
+        logical
+    }
+}
+
+/// Which of its twins a modifier key is: winit's word, or the side the
+/// key is on when winit says `Standard`. winit reads a side off the
+/// keysym, and X11's AltGr (`ISO_Level3_Shift`) names none, so the right
+/// Alt was reported as neither twin (backlog RG101).
+fn side_of(
+    key: winit::keyboard::PhysicalKey,
+    meaning: KeyCode,
+    reported: KeyLocation,
+) -> KeyLocation {
+    use winit::keyboard::{KeyCode as Phys, PhysicalKey};
+    if reported != KeyLocation::Standard || !holds_as_modifier(meaning) {
+        return reported;
+    }
+    match key {
+        PhysicalKey::Code(
+            Phys::ShiftLeft | Phys::ControlLeft | Phys::AltLeft | Phys::SuperLeft,
+        ) => KeyLocation::Left,
+        PhysicalKey::Code(
+            Phys::ShiftRight | Phys::ControlRight | Phys::AltRight | Phys::SuperRight,
+        ) => KeyLocation::Right,
+        _ => reported,
     }
 }
 
@@ -429,12 +470,19 @@ impl DynShell<'_> {
         // up unless its twin is still held — what a terminal speaking
         // kitty's protocol reports. winit's `ModifiersChanged` arrives
         // after the key, so the mirrored state is the one before it.
-        let location = location_of(event.location);
+        // What the key means to the modifier record, and which twin it is
+        // — each from where the key is when the layout's reading has no
+        // answer (backlog RG101).
+        let meaning = meaning_of(logical_code, physical);
+        let location = side_of(event.physical_key, meaning, location_of(event.location));
+        // Rebound after each dispatch: a chord the app answers by closing
+        // a window moves every pane behind it down one (backlog AR39).
+        let mut i = i;
         // Recorded on `from`, the window the OS holds the keyboard for:
         // a popup borrowing it is not a keyboard of its own, and a side
         // pressed before it opened comes up while it is the target
         // (backlog RG83); `from` also forgets them all as it loses focus.
-        let kmods = self.panes[from].modifier_key(logical_code, physical, location, pressed, kmods);
+        let kmods = self.panes[from].modifier_key(meaning, physical, location, pressed, kmods);
         let kp = KeyPress::from_layout(logical_code, physical, kmods);
         // The lock keys' own presses turn what is tracked where the OS
         // is not asked (`lock_state`), before the press reads it: Caps
@@ -451,9 +499,6 @@ impl DynShell<'_> {
             locks: found,
             ..kp
         };
-        // Rebound after each dispatch: a chord the app answers by closing
-        // a window moves every pane behind it down one (backlog AR39).
-        let mut i = i;
         if kp.code != KeyCode::Unknown {
             let Some(still) = self.dispatch(
                 event_loop,
@@ -773,6 +818,46 @@ mod tests {
         );
         assert!(!up.ctrl);
         assert!(down.is_empty());
+    }
+
+    /// X11's readings a window found (backlog RG101): ⇧ then the left
+    /// Alt is `Meta_L`, which winit leaves unnamed, so the key means what
+    /// it is; AltGr (`ISO_Level3_Shift`) names no side, so the right Alt
+    /// is on the right. A key the layout remapped keeps its reading and
+    /// its side, and a key that is no modifier keeps `Standard`.
+    #[test]
+    fn a_modifier_the_layout_does_not_name_is_where_it_is() {
+        let alt_left = PhysicalKey::Code(Phys::AltLeft);
+        let alt_right = PhysicalKey::Code(Phys::AltRight);
+        assert_eq!(meaning_of(KeyCode::Unknown, KeyCode::Alt), KeyCode::Alt);
+        assert_eq!(meaning_of(KeyCode::Ctrl, KeyCode::CapsLock), KeyCode::Ctrl);
+        let mut down: Vec<HeldModifier> = Vec::new();
+        let press = modifier_after(
+            &mut down,
+            meaning_of(KeyCode::Unknown, KeyCode::Alt),
+            KeyCode::Alt,
+            side_of(alt_left, KeyCode::Alt, KeyLocation::Left),
+            true,
+            KeyMods::NONE.with_shift(),
+        );
+        assert!(press.alt, "the press carries the state after it");
+        assert_eq!(
+            side_of(alt_right, KeyCode::Alt, KeyLocation::Standard),
+            KeyLocation::Right
+        );
+        assert_eq!(
+            side_of(
+                PhysicalKey::Code(Phys::CapsLock),
+                KeyCode::Ctrl,
+                KeyLocation::Left
+            ),
+            KeyLocation::Left
+        );
+        assert_eq!(
+            side_of(alt_right, KeyCode::Char('@'), KeyLocation::Standard),
+            KeyLocation::Standard,
+            "compose on the right Alt is not a modifier"
+        );
     }
 
     /// Caps Lock's own press reports the lock it made, as the OS answers
