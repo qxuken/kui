@@ -4801,6 +4801,7 @@ SCENE_TREES.sampler = (fx) =>
           animate: true,
           transition: 100,
           easing: 'easeInOut',
+          bounce: 0.3,
           slide: true,
           delay: 20,
           repeat: 'alternate',

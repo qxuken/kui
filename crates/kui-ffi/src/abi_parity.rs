@@ -314,6 +314,7 @@ fn asserts() -> (String, Vec<&'static str>) {
     abi_enum!(o, kui_core::schema::EASINGS, 0 => [
         "KUI_EASE_OUT", "KUI_EASE_LINEAR", "KUI_EASE_IN",
         "KUI_EASE_IN_OUT", "KUI_EASE_SPRING", "KUI_EASE_BOUNCY",
+        "KUI_EASE_SMOOTH", "KUI_EASE_SNAPPY",
     ]);
     abi_enum!(o, kui_core::schema::REPEATS, 0 => [
         "KUI_REPEAT_NORMAL", "KUI_REPEAT_REVERSE", "KUI_REPEAT_ALTERNATE",
@@ -757,6 +758,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         max_w_size: KuiSizing => "KuiSizing",
         min_h_size: KuiSizing => "KuiSizing",
         max_h_size: KuiSizing => "KuiSizing",
+        bounce: f32 => "float",
     });
 
     abi_struct!(o, KuiAccessNode {
@@ -1433,8 +1435,9 @@ fn an_in_struct_s_size_is_the_abi_s() {
         // `keep_focus`, `on_focus`, `rules` and `rule_w`; then
         // `on_button` and `buttons` (backlog F105); then `overscroll` and
         // `scroll_axes` (backlog F107). ABI 21: `modifier_keys` (backlog
-        // F108). ABI 22: the four `*_size` clamps (backlog F109).
-        ("KuiSpec", 680, 22),
+        // F108). ABI 22: the four `*_size` clamps (backlog F109). ABI 23:
+        // `bounce`.
+        ("KuiSpec", 688, 23),
         ("KuiSizing", 8, 16),
         ("KuiKeyframe", 36, 16),
         ("KuiEnter", 40, 16),

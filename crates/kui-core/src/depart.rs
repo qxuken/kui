@@ -522,7 +522,7 @@ impl DepartStore {
             place,
             left_at: now,
             duration,
-            easing: t.easing,
+            easing: t.curve(),
             exit,
             base_opacity,
             last_used: self.frame_no,

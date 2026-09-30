@@ -21,6 +21,46 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.30 (unreleased)
+
+**What breaks.** The ABI is 23: `KuiSpec` gains `bounce`. The Node wire
+stays v19 — `bounce` is a schema row and `smooth` / `snappy` two more
+names of one. Rust gains two `Easing` variants and a `Transition` field.
+
+- C: `KuiSpec.bounce` appended (under Added); the 64-bit size is 688.
+  Recompile — a zeroed field is the easing's own bounce, which is what
+  every spring had. `KUI_EASE_SMOOTH` and `KUI_EASE_SNAPPY` are new
+  values of `easing`.
+- Rust: `Easing::Smooth` and `Easing::Snappy`, so an exhaustive match on
+  `Easing` needs the arms.
+- Rust: `Transition::bounce`, an `Option<Bounce>`, so a `Transition`
+  built field by field names it (`Transition::ms` sets it to `None`).
+
+### Added
+
+- **A spring takes a bounce, not physics.** A spring is two numbers a
+  person tunes by eye: how long it takes to get there — the duration it
+  always had — and how far it overshoots, a `bounce` from 0 (glides in,
+  no overshoot) to 0.9 (rings a while; a spring at 1 would never
+  settle, so more is held there). A bounce `b` is a damping ratio of
+  `1 - b`, SwiftUI's `Spring(duration:bounce:)`; nothing asks for a
+  stiffness or a damping. The spring easings are named bounces —
+  `smooth` 0 and `snappy` 0.15 are new, `spring` 0.25 and `bouncy`
+  0.5 are the ratios they had — and the `bounce` prop (`bounce` in Lua,
+  `NodeSpec::bounce` / `Transition::bounce` in Rust, `KuiSpec.bounce`
+  in C) replaces an easing's own. On a timed easing it makes the
+  transition a spring, since a bounce is only a spring's to have:
+  `transition={300} bounce={0.3}` is a 300 ms spring with that bounce.
+  `Bounce` rides in the two bytes of padding `Transition` had spare, so
+  `NodeSpec` does not grow. A new example, `spring`, puts a spring's
+  duration and bounce on two sliders, with a button for each named
+  bounce, and springs a bar and a racer across a stage with them; the
+  `transition` example races all four springs and one with a bounce of
+  its own, splitmux's tabs land on `snappy` and `enter_exit`'s side
+  panel on `smooth`, which keeps it on the window's edge. *What you can
+  delete:* nothing — a spring had two bounces before this and no way to
+  ask for a third.
+
 ## 0.1.0-alpha.29 (2026-09-30)
 
 **What breaks.** No build: `Core::holds_key` is new, the ABI stays 22

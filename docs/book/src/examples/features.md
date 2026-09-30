@@ -17,6 +17,7 @@ One cross-cutting behaviour, with exactly the widgets it touches.
 - [`modal`](features/modal.md)
 - [`popup`](features/popup.md)
 - [`selection`](features/selection.md)
+- [`spring`](features/spring.md)
 - [`theme`](features/theme.md)
 - [`transition`](features/transition.md)
 - [`waker`](features/waker.md)

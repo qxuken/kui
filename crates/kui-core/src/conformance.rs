@@ -6216,6 +6216,8 @@ fn build_sampler(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
             .animate()
             .transition(100.0)
             .easing(Easing::EaseInOut)
+            // A bounce on a timed easing: a spring (`Transition::curve`).
+            .bounce(0.3)
             .slide()
             .delay(20.0)
             .repeat(Repeat::Alternate)

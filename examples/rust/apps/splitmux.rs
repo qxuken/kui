@@ -571,13 +571,15 @@ impl Splitmux {
                     self.tabs[i].root.panes(&mut ids);
                     // Keyed by tab id, not slot: a reordered tab keeps its
                     // identity, so `slide` eases it (and the tabs it
-                    // displaced) into the new order instead of snapping.
+                    // displaced) into the new order instead of snapping —
+                    // on a snappy spring, a trace of overshoot, so a row of
+                    // tabs lands at once rather than wobbling.
                     let mut spec = NodeSpec::row()
                         .pad_xy(10.0, 4.0)
                         .radius(6.0)
                         .bg(bg)
                         .transition(220.0)
-                        .easing(Easing::Spring)
+                        .easing(Easing::Snappy)
                         .slide()
                         .on_click(Msg::Tab { tab: i })
                         .on_drag(Msg::TabDrag { tab: i });

@@ -241,6 +241,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             "window" => s.window_role = 2, // KUI_WINDOW_* = schema index + 1
             "transition" => s.transition_ms = F,
             "easing" => s.easing = 1,
+            "bounce" => s.bounce = F,
             "slide" => s.slide = 1,
             "keyframes" => (s.keyframes, s.keyframes_len) = (stops.as_ptr(), 1),
             "enter" => {
@@ -478,6 +479,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         max_w_size: KuiSizing { tag: 0, value: 0.0 },
         min_h_size: KuiSizing { tag: 0, value: 0.0 },
         max_h_size: KuiSizing { tag: 0, value: 0.0 },
+        bounce: 0.3,
         disabled: 1,
         focus_bg: 0x11_22_33_ff,
         tooltip: KuiStr {
@@ -560,6 +562,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .window_drag()
         .transition(150.0)
         .easing(kui_core::Easing::EaseInOut)
+        .bounce(0.3)
         .slide()
         .hover_bg(Color::hex(0x47_6c_e0_ff))
         .pressed_bg(Color::hex(0x2f_54_c4_ff))

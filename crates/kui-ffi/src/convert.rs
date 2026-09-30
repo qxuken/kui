@@ -284,6 +284,9 @@ pub(crate) fn spec_of(
     if s.easing != 0 {
         spec = spec.easing(kui_core::schema::easing_idx(s.easing as usize));
     }
+    if s.bounce != 0.0 {
+        spec = spec.bounce(s.bounce);
+    }
     if s.slide != 0 {
         spec = spec.slide();
     }

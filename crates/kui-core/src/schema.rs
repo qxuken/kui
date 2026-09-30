@@ -183,6 +183,7 @@ pub const P_OVERSCROLL: u32 = 118;
 pub const P_SCROLL_AXES: u32 = 119;
 pub const P_MODIFIER_KEYS: u32 = 120;
 pub const P_OPTION_AS_ALT: u32 = 121;
+pub const P_BOUNCE: u32 = 122;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -363,6 +364,8 @@ pub const EASINGS: &[&str] = &[
     "easeInOut",
     "spring",
     "bouncy",
+    "smooth",
+    "snappy",
 ];
 
 /// CSS's `animation-direction` values, in `Repeat::ALL`'s order.
@@ -1032,7 +1035,14 @@ pub const PROPS: &[PropDef] = &[
         id: P_EASING,
         kind: Kind::Enum(EASINGS),
         apply: Apply::SpecEnum(|s, i| s.easing(easing_idx(i))),
-        doc: "Easing for `transition` (default easeOut); spring/bouncy integrate with momentum.",
+        doc: "Easing for `transition` (default easeOut). The springs — `smooth` (no overshoot), `snappy`, `spring` and `bouncy` (the most), each a `bounce` of its own — integrate with momentum, so a value retargeted mid-flight keeps moving the way it was; `transition` is then about how long one takes to get there.",
+    },
+    PropDef {
+        name: "bounce",
+        id: P_BOUNCE,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.bounce(v)),
+        doc: "How far a spring overshoots its target: 0 glides in with none, 0.5 bounces visibly, and values past 0.9 are held there (a spring at 1 would never settle). It replaces a spring `easing`'s own bounce (`smooth` 0, `snappy` 0.15, `spring` 0.25, `bouncy` 0.5), and on a timed easing makes the transition a spring — so `transition` plus `bounce` is a spring of that length and bounce.",
     },
     PropDef {
         name: "slide",

@@ -69,7 +69,7 @@ pub use access::{
     AccessAction, AccessNode, AccessRequest, AccessRun, AccessTree, Announcement, Live,
     Orientation, Role, ScrollState, TextPos,
 };
-pub use anim::{Easing, Repeat, Transition};
+pub use anim::{Bounce, Easing, MAX_BOUNCE, Repeat, Transition};
 pub use audio::{AudioCommand, AudioSpec, AudioStore, PlayOptions, PlaybackId, Why};
 pub use calc::{Calc, Expr as SizeExpr};
 pub use cells::{Cell, CellGrid, CellStore, CellsId, CursorShape as CellCursor};

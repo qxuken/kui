@@ -176,6 +176,7 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
 [package.metadata.kui]
 headless = [
     "transition",
+    "spring",
     "hover",
     "drop",
     "focus",
@@ -334,6 +335,10 @@ path = "../../examples/rust/features/clipboard.rs"
 [[example]]
 name = "transition"
 path = "../../examples/rust/features/transition.rs"
+
+[[example]]
+name = "spring"
+path = "../../examples/rust/features/spring.rs"
 
 [[example]]
 name = "hover"

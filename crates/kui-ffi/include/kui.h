@@ -289,8 +289,14 @@ extern "C" {
  * kui_size_* builders or kui_size_parse, resolved by layout against the
  * parent's content box; zeroed, the float clamps hold as they did.
  * KuiSizing takes a fifth tag, KUI_CALC. The 64-bit size is 680. Recompile.
+ *
+ * ABI 23 appends bounce to KuiSpec: how far a spring overshoots, the one
+ * number besides its duration a spring takes. Zeroed, a spring easing
+ * keeps its own bounce and a timed one stays timed, as before. The 64-bit
+ * size is 688. KUI_EASE_SMOOTH and KUI_EASE_SNAPPY are new values of
+ * easing, which moved nothing. Recompile.
  */
-#define KUI_ABI_VERSION 22u
+#define KUI_ABI_VERSION 23u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -532,8 +538,13 @@ enum {
     KUI_EASE_LINEAR = 1,
     KUI_EASE_IN = 2,
     KUI_EASE_IN_OUT = 3,
-    KUI_EASE_SPRING = 4, /* damped spring; transition_ms is the response time */
-    KUI_EASE_BOUNCY = 5,
+    /* The springs integrate with momentum: transition_ms is about how long
+     * one takes to get there, and each has a bounce of its own, which
+     * KuiSpec.bounce replaces. */
+    KUI_EASE_SPRING = 4, /* bounce 0.25: a hint of overshoot */
+    KUI_EASE_BOUNCY = 5, /* bounce 0.5 */
+    KUI_EASE_SMOOTH = 6, /* bounce 0: glides in, no overshoot */
+    KUI_EASE_SNAPPY = 7, /* bounce 0.15 */
 };
 /* Window commands (KuiWindowCommand.kind, kui_take_window_command). The
  * first four are what chrome nodes ask for, about the window they were
@@ -1074,6 +1085,11 @@ typedef struct KuiSpec {
      * box - max_w_size = kui_size_pct(90) is "never wider than 90% of my
      * parent". Zeroed (KUI_FIT), the float holds. ABI 22. */
     KuiSizing min_w_size, max_w_size, min_h_size, max_h_size;
+    /* How far a spring overshoots, up to 0.9 (held there): in place of a
+     * KUI_EASE_SPRING-family easing's own bounce, and on a timed easing it
+     * makes the transition a spring. Zero is the easing's own - a spring
+     * with no bounce at all is KUI_EASE_SMOOTH. ABI 23. */
+    float bounce;
 } KuiSpec;
 
 /* Size expressions (backlog F109), built from parts so nothing is parsed:

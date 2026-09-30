@@ -57,6 +57,7 @@
   - [modal](examples/features/modal.md)
   - [popup](examples/features/popup.md)
   - [selection](examples/features/selection.md)
+  - [spring](examples/features/spring.md)
   - [theme](examples/features/theme.md)
   - [transition](examples/features/transition.md)
   - [waker](examples/features/waker.md)

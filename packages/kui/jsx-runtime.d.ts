@@ -232,6 +232,8 @@ export interface GeneratedSpecProps {
   aspectRatio?: LengthProp;
   /** Background fill. */
   bg?: ColorProp;
+  /** How far a spring overshoots its target: 0 glides in with none, 0.5 bounces visibly, and values past 0.9 are held there (a spring at 1 would never settle). It replaces a spring `easing`'s own bounce (`smooth` 0, `snappy` 0.15, `spring` 0.25, `bouncy` 0.5), and on a timed easing makes the transition a spring — so `transition` plus `bounce` is a spring of that length and bounce. */
+  bounce?: LengthProp;
   /** Which non-primary buttons `onButton` claims (backlog F105): `"secondary"`, `"middle"` and `"other"` (every button past those), separated by spaces or commas — `"middle"`, `"secondary middle"`. Unset, all three: a node that wants the middle button and leaves the secondary one to its context menu says `"middle"`. A word that is none of the three is skipped, so a string of none of them claims nothing, and a typo never takes the secondary button from a context menu. Meaningless without `onButton`. */
   buttons?: string;
   /** On a `line` of a custom editor (a `textInput` / `multilineTextInput` role drawn by the app): the caret's byte offset into that line's text. */
@@ -258,8 +260,8 @@ export interface GeneratedSpecProps {
   disabled?: boolean;
   /** Background while files dragged in from the OS are over this node (ADR 0031); wins over pressedBg, focusBg and hoverBg, clears when they leave, land or the drag is cancelled. Implies hover tracking, eases with `transition`. */
   dropBg?: ColorProp;
-  /** Easing for `transition` (default easeOut); spring/bouncy integrate with momentum. */
-  easing?: 'easeOut' | 'linear' | 'easeIn' | 'easeInOut' | 'spring' | 'bouncy';
+  /** Easing for `transition` (default easeOut). The springs — `smooth` (no overshoot), `snappy`, `spring` and `bouncy` (the most), each a `bounce` of its own — integrate with momentum, so a value retargeted mid-flight keeps moving the way it was; `transition` is then about how long one takes to get there. */
+  easing?: 'easeOut' | 'linear' | 'easeIn' | 'easeInOut' | 'spring' | 'bouncy' | 'smooth' | 'snappy';
   /** Where the node starts the first frame it is seen `{ dx?, dy?, width?, height?, bg?, radius?, opacity? }`: those slots ease in from there over `transition` ms instead of snapping (`dx`/`dy` slide it in from that far away, `opacity: 0` fades the whole subtree in). */
   enter?: EnterProp;
   /** Where the node ends the frame after the view stops declaring it `{ dx?, dy?, width?, height?, bg?, radius?, opacity? }` — an `enter` read the other way. It plays when the node itself is removed, its parent still declared; a node that goes because an ancestor went — a tab switched away, a panel closed around it — goes at once with it, unless that ancestor has an `exit` of its own, whose picture carries it (backlog DX19; React's `AnimatePresence` rule). With a `transition`, the departing subtree is copied out of the last frame that had it and replayed frozen, in its place (the pass it painted in, just under the node that painted after it — a panel under a HUD leaves under it) and inert (no clicks, no Tab stop, no access row) while those slots ease from where they were, then dropped; without one it vanishes at once as it always did. `width`/`height` resize the departing node's own box only — the subtree inside it is a picture and is not laid out again. Needs a stable key across frames. */
