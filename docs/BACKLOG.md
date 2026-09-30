@@ -96,7 +96,7 @@ kui book — from the book round of 2026-09-29, and RG77–RG98 from the
 regression run of 2026-09-30, filed and built after the alpha.27 tag, and
 after the alpha.28 tag RG99 — RG96's readings, confirmed in a window on
 Linux and Windows — with RG100–RG104 from that window round the same
-day, the day they were filed. The index
+day, the day they were filed, and RG105 from it, withdrawn the same day. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -130,8 +130,7 @@ behind, W21 from the Windows–Mac bench comparison of 2026-09-26 (the
 texture upload's second copy), F103 from the kawoosh
 ⌘-Tab report (an animating hidden window spinning on skipped frames),
 DX16 from the DX sweep (declined with a condition), RG76 from
-the regression pass of 2026-09-28, and RG105 from the Linux and Windows
-window round of 2026-09-30. Everything else that has been filed has
+the regression pass of 2026-09-28. Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
 they were filed (2026-09-07), F25–F31 from the alpha.8 ones by the day
@@ -2019,36 +2018,8 @@ Every reading RG96 made held. Six entries. RG100–RG104 were **built
 2026-09-30**, the day they were filed, and are in the archive; the
 headline was a key whose press closed a window pressed again in the
 window beneath, by a press winit made up as that window gained focus
-(RG100). RG105 stays open: a decision, not a fix.
-
-### `~` RG105 — AltGr's chords: Windows says Alt with the key, X11 the character without
-
-The same German AltGr+Q, read by a sink on each:
-
-| | the AltGr key | the Q under it | typed text |
-|---|---|---|---|
-| Windows | `alt`, right, `alt: true` | `q`, `alt: true` | `@` |
-| X11 | `alt`, right, `alt: true` | `@`, `alt: false` | `@` |
-
-Windows' winit reports AltGr in `ModifiersChanged` as Alt (the fake
-left Ctrl Windows adds for it is not reported), so the Q reads as a
-chord and its code is the unmodified `q`, as macOS's ⌥ reads; XKB
-holds AltGr as Level 3, not Mod1, so X11's winit reports no Alt and the
-code is the composed `@`. The text channel types `@` on both. Where it
-bites: an app that binds Alt+Q runs it on Windows when a German user
-types `@`, and a keymap written on Linux for `@` never matches there.
-
-Two ways to make them one. **Windows as X11**: while AltGr is held,
-the keys under it are not Alt chords — clear `alt` on keys other than
-AltGr's own and take the layout's composed character as the code, which
-needs to know AltGr is down (the held record has it, by side since
-RG101). That is what a German keyboard means. **X11 as Windows**: AltGr sets `alt` on the keys
-under it too — every platform then reads AltGr as RG96 named it, and
-the text channel still types the character. Not built: it changes what
-a binding matches on one platform either way, and which one is a
-decision for the key model's owner.
-
-**Found** by RG99's window round (2026-09-30).
+(RG100). RG105, filed the same day, was withdrawn the same day and is
+in the archive: the Windows reading it rested on was a US layout's.
 
 ## After alpha.27
 
@@ -3284,7 +3255,7 @@ move.
 
 - `.` **RG99** — [RG96's key readings, confirmed in a window on Linux and Windows](backlog/closed-2026-09.md#-rg99--rg96s-key-readings-confirmed-in-a-window-on-linux-and-windows--done-2026-09-30) — done (2026-09-30)
 
-**From the Linux and Windows window round (2026-09-30)** — RG100–RG104, filed and built the same day; RG105 open
+**From the Linux and Windows window round (2026-09-30)** — RG100–RG104, filed and built the same day; RG105 withdrawn the same day
 
 - `!` **RG100** — [A key held as a window gained focus was pressed there again](backlog/closed-2026-09.md#-rg100--a-key-held-as-a-window-gained-focus-was-pressed-there-again--done-2026-09-30) — done (2026-09-30)
 
@@ -3295,3 +3266,5 @@ move.
 - `.` **RG103** — [A key pressed in the owner and let go in its popup came up in the owner late](backlog/closed-2026-09.md#-rg103--a-key-pressed-in-the-owner-and-let-go-in-its-popup-came-up-in-the-owner-late--done-2026-09-30) — done (2026-09-30)
 
 - `.` **RG104** — [The lock state on X11 was tracked, and drifted from the server's](backlog/closed-2026-09.md#-rg104--the-lock-state-on-x11-was-tracked-and-drifted-from-the-servers--done-2026-09-30) — done (2026-09-30)
+
+- `~` **RG105** — [AltGr's chords: Windows says Alt with the key, X11 the character without](backlog/closed-2026-09.md#-rg105--altgrs-chords-windows-says-alt-with-the-key-x11-the-character-without--withdrawn-2026-09-30) — withdrawn (2026-09-30)
