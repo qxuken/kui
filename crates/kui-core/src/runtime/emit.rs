@@ -375,6 +375,61 @@ impl Core {
         }
     }
 
+    /// A node its clip culled, painted anyway while it is within the
+    /// overscan of that clip's edge ([`Core::set_overscan`]). Its quads
+    /// name the clip that hides them; what is widened is only the rect
+    /// its content is culled against, so a text out there emits its
+    /// glyphs. Nothing is recorded — no hit region, no scroll region, no
+    /// text place — and an editor paints as a bare box: it narrows a
+    /// clip of its own from the one it is handed, and handed the widened
+    /// one it would show through. Off the culled node's straight path,
+    /// which a frame without an overscan never leaves.
+    #[inline(never)]
+    fn emit_overscan(&mut self, i: usize, rect: Rect, paint: Paint) {
+        let by = self.overscan;
+        let c = paint.clip.rect;
+        let reach = Rect::new(c.x - by, c.y - by, c.w + 2.0 * by, c.h + 2.0 * by);
+        let near = rect.intersect(&reach);
+        if near.w <= 0.0 || near.h <= 0.0 {
+            return;
+        }
+        let leaf = match self.tree.content[i] {
+            NodeContent::Text(tid) => Leaf::Text {
+                tid,
+                sel: self.sel_range(i, tid),
+            },
+            NodeContent::Cells(cid) => Leaf::Cells {
+                cid,
+                at: self.cells_origin(i),
+                sel: self
+                    .cell_selection
+                    .as_ref()
+                    .filter(|s| s.node == self.tree.keys[i] && !s.is_empty()),
+                tint: self.theme.selection,
+            },
+            NodeContent::Image(id, opts) => Leaf::Image(id, opts),
+            NodeContent::Fragment(id) => Leaf::Fragment(self.fragments.get(id)),
+            NodeContent::Polygon(id) => Leaf::Polygon(self.fragments.get(id)),
+            NodeContent::Line(id) => {
+                let (run, points) = self.lines.run(id);
+                Leaf::Line {
+                    points,
+                    width: run.width,
+                }
+            }
+            NodeContent::Edit(_) | NodeContent::Container => Leaf::Container,
+        };
+        let style = self.tree.specs[i].style;
+        let paint = Paint {
+            clip: Clip {
+                rect: reach,
+                radius: paint.clip.radius,
+            },
+            ..paint
+        };
+        painter!(self).paint_box(rect, &style, &paint, leaf);
+    }
+
     /// The `rules` of table `i` (backlog DX21), laid out by [`rule_lines`]
     /// from its in-flow children as layout reads them — a row is what
     /// `layout::is_table_row` says is one, so the grid is drawn over the
@@ -976,6 +1031,15 @@ impl Core {
                         false,
                     );
                 }
+                if self.overscan > 0.0 {
+                    let paint = Paint {
+                        clip,
+                        clip_id,
+                        scale,
+                        opacity,
+                    };
+                    self.emit_overscan(i, rect, paint);
+                }
                 continue;
             }
             let paint = Paint {
@@ -1039,6 +1103,15 @@ impl Core {
                     let opacity = if any_opacity { self.opacity[i] } else { 1.0 };
                     let visible = rect.intersect(&clip.rect);
                     if visible.w <= 0.0 || visible.h <= 0.0 {
+                        if self.overscan > 0.0 {
+                            let paint = Paint {
+                                clip,
+                                clip_id,
+                                scale,
+                                opacity,
+                            };
+                            self.emit_overscan(i, rect, paint);
+                        }
                         continue;
                     }
                     let paint = Paint {

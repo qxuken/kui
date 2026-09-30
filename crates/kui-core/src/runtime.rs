@@ -430,6 +430,10 @@ pub struct Core {
     /// The interned index of each of those, as `clip_ids` is for `clips`.
     ghost_clip_ids: Vec<ClipId>,
     ghost_rect: Vec<Rect>,
+    /// How far past a clip's edge a culled node is still painted, in
+    /// logical px ([`Core::set_overscan`]). Zero — the default — paints
+    /// nothing a clip hides.
+    overscan: f32,
     /// A view asked for one more frame (`request_frame`); cleared by
     /// `begin_frame`, reported through `animating`.
     frame_requested: bool,
@@ -953,6 +957,7 @@ impl Core {
             ghost_clip: Vec::new(),
             ghost_clip_ids: Vec::new(),
             ghost_rect: Vec::new(),
+            overscan: 0.0,
             frame_requested: false,
             trace: cause::Trace::default(),
             pending_reveal: Vec::new(),
@@ -1193,6 +1198,35 @@ impl Core {
     /// in chunks — are held (backlog C19).
     pub fn long_lines(&self) -> usize {
         self.text.long_lines()
+    }
+
+    /// Paints what a clip hides, this far past its edge, in logical px:
+    /// a node scrolled out of its container, or otherwise wholly outside
+    /// the clip it inherits, is normally skipped, and with an overscan it
+    /// emits its quads anyway while any of it is within `px` of that
+    /// clip's rect. The quads still name the clip, so a backend draws not
+    /// one pixel more; what changes is that they are *in the list*.
+    ///
+    /// For a driver that moves quads itself between two frames of the
+    /// core's — a compositor scrolling ahead of a frame it is still
+    /// waiting for (`examples/rust/tools/wire.rs`) — so that what its
+    /// move brings inside the clip is already there to show. Nothing else
+    /// wants it: every overscanned node is quads built, carried and
+    /// clipped away.
+    ///
+    /// Paint only. An overscanned node has no hit region, no scroll
+    /// region and no text place — the pointer cannot find what the clip
+    /// hides — and an editor out there paints its box and not its text.
+    /// A node the clip cuts *through* is not culled and is drawn as it
+    /// always was: a text taller than its clip still emits only the lines
+    /// the clip shows. Zero, the default, is off, and negative is zero.
+    pub fn set_overscan(&mut self, px: f32) {
+        self.overscan = px.max(0.0);
+    }
+
+    /// The overscan in logical px; see [`Core::set_overscan`].
+    pub fn overscan(&self) -> f32 {
+        self.overscan
     }
 
     /// The frame clock for transitions: monotonic seconds, any origin.

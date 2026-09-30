@@ -23,6 +23,18 @@ was the first bare bump to break an app in five releases).
 
 ## 0.1.0-alpha.28 (unreleased)
 
+**`Core::set_overscan(px)`** paints what a clip hides, that far past its
+edge: a node wholly outside the clip it inherits — a row scrolled out of
+its container — is normally skipped, and with an overscan it emits its
+quads anyway, still naming the clip, so a backend draws the same pixels
+and the quads are only *in the list*. For a driver that moves quads
+itself between two of the core's frames: the over-the-wire experiment
+(`examples/rust/tools/wire.rs`) scrolls ahead of a server it is waiting
+on, and what its move uncovered was bare. Paint only — an overscanned
+node has no hit region, no scroll region and no text place, and an
+editor out there is its box — and a node the clip cuts through is drawn
+as before. Off by default, Rust only: no door in C, Node or Lua yet.
+
 **What breaks.** No build: `Ctx.beginFrameCause()`,
 `Core::begin_frame_cause`, `Min::AUTO`, `TextMeasure::min_content` (with
 a default) and `KUI_MIN_NONE` are new, the ABI stays 22 and the Node

@@ -193,6 +193,7 @@ ends with. Step 10 carries a `mod tests` that `cargo test -p kui-native
 | Tool | Run | What it is |
 |---|---|---|
 | [`conformance-dump.rs`](rust/tools/conformance-dump.rs) | `cargo run -p kui-core --features conformance --example conformance-dump -- target/conformance.txt` | Writes the scene corpus's reference report the other bindings diff against; generated, never checked in |
+| [`wire.rs`](rust/tools/wire.rs) | `cargo run -p kui-native --example wire [-- --latency 80]` | An experiment: the app and a headless core on one end of a socket, the window and the renderer on the other, the link held back by a simulated latency (`--serve` / `--connect` for two processes) |
 
 ## C — [`c/`](c)
 

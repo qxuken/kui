@@ -1562,6 +1562,7 @@ dependencies = [
  "kui-core",
  "kui-devtools",
  "kui-wgpu",
+ "miniz_oxide 0.8.9",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",

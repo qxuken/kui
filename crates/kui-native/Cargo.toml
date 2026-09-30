@@ -33,6 +33,9 @@ rfd = { version = "0.17", default-features = false, features = ["xdg-portal"], o
 # (it depends on this crate) is the kind cargo allows for dev-dependencies.
 [dev-dependencies]
 kui-devtools.workspace = true
+# `examples/rust/tools/wire.rs` deflates its frames; already in the tree
+# under the image decoders.
+miniz_oxide = "0.8"
 
 [features]
 default = ["audio", "accesskit", "derive", "dialogs"]
@@ -401,3 +404,10 @@ name = "tutorial_10_testing"
 path = "../../examples/rust/tutorial/10_testing.rs"
 # Its `mod tests` drives the app headlessly under `cargo test`.
 test = true
+
+# An experiment, not an example of the API: the core in one process (or
+# thread), the window and renderer in another, a socket with a simulated
+# latency between them.
+[[example]]
+name = "wire"
+path = "../../examples/rust/tools/wire.rs"
