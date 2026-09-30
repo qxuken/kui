@@ -13,7 +13,10 @@ fn lua(j: &serde_json::Value) -> String {
         serde_json::Value::Number(n) => n.to_string(),
         serde_json::Value::String(s) => format!("{s:?}"),
         serde_json::Value::Array(xs) => {
-            format!("{{ {} }}", xs.iter().map(lua).collect::<Vec<_>>().join(", "))
+            format!(
+                "{{ {} }}",
+                xs.iter().map(lua).collect::<Vec<_>>().join(", ")
+            )
         }
         serde_json::Value::Object(m) => format!(
             "{{ {} }}",
@@ -77,7 +80,10 @@ fn every_spelling_lays_out_as_the_table_says() {
         };
         check("as a width", laid(&lua(w)));
         if w.is_string() || w.is_number() {
-            check("nested in a max", laid(&format!("{{ max = {{ {} }} }}", lua(w))));
+            check(
+                "nested in a max",
+                laid(&format!("{{ max = {{ {} }} }}", lua(w))),
+            );
         }
     }
     assert!(failures.is_empty(), "\n{}", failures.join("\n"));

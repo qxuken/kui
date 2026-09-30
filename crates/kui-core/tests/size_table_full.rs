@@ -23,7 +23,11 @@ fn past_the_cap_an_expression_is_refused_as_full_and_warned_once() {
             Err(e) => break e,
         }
     };
-    assert_eq!(filled, calc::MAX_CALCS, "no other expression in this process");
+    assert_eq!(
+        filled,
+        calc::MAX_CALCS,
+        "no other expression in this process"
+    );
     assert!(calc::is_full(&refused), "{refused}");
     assert!(refused.contains("\"max(65536.5px, 50%)\""), "{refused}");
 
@@ -57,7 +61,11 @@ fn past_the_cap_an_expression_is_refused_as_full_and_warned_once() {
         .filter(|w| w.code == diag::SIZE_EXPRESSIONS_FULL)
         .collect();
     assert_eq!(full.len(), 1);
-    assert!(full[0].message.contains("\"min(9px, 90%)\""), "{}", full[0].message);
+    assert!(
+        full[0].message.contains("\"min(9px, 90%)\""),
+        "{}",
+        full[0].message
+    );
     let ui = core.frame(Size::new(100.0, 100.0), 1.0);
     ui.finish();
     assert!(core.take_warnings().is_empty());

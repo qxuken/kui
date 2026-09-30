@@ -775,12 +775,22 @@ mod tests {
             parse("100 px").unwrap_err(),
             "bad size: the end expected at \"px\""
         );
-        assert!(parse("min (1, 2)").unwrap_err().contains("at \"min (1, 2)\""));
+        assert!(
+            parse("min (1, 2)")
+                .unwrap_err()
+                .contains("at \"min (1, 2)\"")
+        );
         assert!(parse("1.2.3%").is_err());
         assert!(parse("50px%").unwrap_err().contains("at \"%\""));
         // And its case: names and units in any.
-        assert_eq!(parse("MIN(10PX, 50%)").unwrap(), parse("min(10px, 50%)").unwrap());
-        assert_eq!(parse(" max( 1px ,2% ) ").unwrap(), parse("max(1px, 2%)").unwrap());
+        assert_eq!(
+            parse("MIN(10PX, 50%)").unwrap(),
+            parse("min(10px, 50%)").unwrap()
+        );
+        assert_eq!(
+            parse(" max( 1px ,2% ) ").unwrap(),
+            parse("max(1px, 2%)").unwrap()
+        );
         assert!(parse("clamp(1, 2)").unwrap_err().contains("three"));
         assert!(parse("wide").unwrap_err().contains("at \"wide\""));
         assert!(parse("min(1, 2").unwrap_err().contains("at the end"));

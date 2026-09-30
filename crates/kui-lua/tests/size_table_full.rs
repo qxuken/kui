@@ -38,7 +38,14 @@ fn a_new_expression_past_the_full_table_leaves_its_prop_undeclared() {
     ui.finish();
     let nodes = core.nodes();
     let w: Vec<f32> = ["kept", "spelled", "data", "capped", "floored"]
-        .map(|l| nodes.iter().find(|n| n.label.as_deref() == Some(l)).expect(l).rect.w)
+        .map(|l| {
+            nodes
+                .iter()
+                .find(|n| n.label.as_deref() == Some(l))
+                .expect(l)
+                .rect
+                .w
+        })
         .to_vec();
     assert_eq!(w, [200.0, 0.0, 0.0, 350.0, 10.0]);
     let full = core
