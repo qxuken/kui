@@ -3506,11 +3506,6 @@ mod tests {
                  return t"
             )
         };
-        if let Ok(n) = std::env::var("PROBE") {
-            run(&nested(n.parse().unwrap())).map_err(|e| e).ok();
-            eprintln!("PROBE OK");
-            return;
-        }
         run(&nested(MAX_VIEW_DEPTH)).unwrap();
         let err = run(&nested(MAX_VIEW_DEPTH + 1)).unwrap_err();
         assert!(err.contains("nested past 128"), "{err}");
