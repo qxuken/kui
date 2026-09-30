@@ -325,6 +325,42 @@ fn side_of(
     }
 }
 
+/// Whether a press is a repeat: winit's word, but a modifier whose key
+/// the record does not hold is pressed for the first time. Windows keeps
+/// one "was down" bit for both Shifts, so the second pressed while the
+/// first was held said it was a repeat (backlog RG102).
+fn is_repeat(
+    repeat: bool,
+    down: &[HeldModifier],
+    meaning: KeyCode,
+    at: KeyCode,
+    location: KeyLocation,
+) -> bool {
+    repeat
+        && (!holds_as_modifier(meaning) || down.iter().any(|&(a, l, _)| (a, l) == (at, location)))
+}
+
+/// The other Shifts a Shift's release lets go of, where the key is
+/// and its side. Windows sends no release for the first Shift let go
+/// while the other is held — only one, for the last — so its twin stayed
+/// held in the record and the next Shift's release said Shift was still
+/// down (backlog RG102). A release of either is a release of both, as
+/// GLFW reads it; asked on Windows only.
+fn twins_let_go(
+    down: &[HeldModifier],
+    meaning: KeyCode,
+    at: KeyCode,
+    location: KeyLocation,
+) -> Vec<(KeyCode, KeyLocation)> {
+    if meaning != KeyCode::Shift {
+        return Vec::new();
+    }
+    down.iter()
+        .filter(|&&(a, l, c)| c == KeyCode::Shift && (a, l) != (at, location))
+        .map(|&(a, l, _)| (a, l))
+        .collect()
+}
+
 /// Caps Lock and Num Lock at a press (backlog F108). winit reports
 /// neither, so the OS is asked where it answers cheaply — macOS's
 /// `NSEvent.modifierFlags` (a Mac has no Num Lock, so it reads off, as a
@@ -475,9 +511,49 @@ impl DynShell<'_> {
         // answer (backlog RG101).
         let meaning = meaning_of(logical_code, physical);
         let location = side_of(event.physical_key, meaning, location_of(event.location));
+        let repeat = is_repeat(
+            event.repeat,
+            &self.panes[from].modifier_keys_down,
+            meaning,
+            physical,
+            location,
+        );
         // Rebound after each dispatch: a chord the app answers by closing
         // a window moves every pane behind it down one (backlog AR39).
-        let mut i = i;
+        let (mut i, mut from) = (i, from);
+        // The Shift Windows never released, let go of before the one it
+        // did (backlog RG102).
+        if cfg!(target_os = "windows") && !pressed {
+            let twins = twins_let_go(
+                &self.panes[from].modifier_keys_down,
+                meaning,
+                physical,
+                location,
+            );
+            let ups: Vec<KeyPress> = twins
+                .into_iter()
+                .map(|(at, side)| KeyPress {
+                    location: side,
+                    locks: lock_state(self.locks),
+                    ..KeyPress::from_layout(
+                        KeyCode::Shift,
+                        at,
+                        self.panes[from].modifier_key(KeyCode::Shift, at, side, false, kmods),
+                    )
+                })
+                .collect();
+            for up in ups {
+                // Both found again by id after: the release may have gone
+                // to an owner, and its answer closed a window before them.
+                let ids = (self.panes[i].id, self.panes[from].id);
+                let to = self.release_target(i, &up);
+                self.dispatch(event_loop, to, InputEvent::KeyUp(up.released()));
+                let (Some(a), Some(b)) = (self.pane_of(ids.0), self.pane_of(ids.1)) else {
+                    return;
+                };
+                (i, from) = (a, b);
+            }
+        }
         // Recorded on `from`, the window the OS holds the keyboard for:
         // a popup borrowing it is not a keyboard of its own, and a side
         // pressed before it opened comes up while it is the target
@@ -490,11 +566,11 @@ impl DynShell<'_> {
         // Windows' `GetKeyState` answer it, where it said what it found
         // (backlog RG96). One keyboard, so one record for the app: a
         // popup reads what its owner toggled.
-        self.locks = locks_after(self.locks, kp.code, pressed && !event.repeat);
+        self.locks = locks_after(self.locks, kp.code, pressed && !repeat);
         let found = lock_state(self.locks);
         let kp = KeyPress {
             text: ktext,
-            repeat: event.repeat,
+            repeat,
             location,
             locks: found,
             ..kp
@@ -862,6 +938,37 @@ mod tests {
             KeyLocation::Standard,
             "compose on the right Alt is not a modifier"
         );
+    }
+
+    /// Windows' two Shifts (backlog RG102): the second pressed says it
+    /// is a repeat, and only the last let go is released. A modifier's
+    /// repeat is one only while its key is held, and a Shift's release
+    /// names the other still held.
+    #[test]
+    fn windows_two_shifts_are_two_presses_and_two_releases() {
+        let mut down: Vec<HeldModifier> = Vec::new();
+        let shift = KeyCode::Shift;
+        let none = KeyMods::NONE;
+        assert!(!is_repeat(true, &down, shift, shift, KeyLocation::Right));
+        modifier_after(&mut down, shift, shift, KeyLocation::Right, true, none);
+        assert!(is_repeat(true, &down, shift, shift, KeyLocation::Right));
+        assert!(
+            !is_repeat(true, &down, shift, shift, KeyLocation::Left),
+            "the left Shift is a first press"
+        );
+        assert!(is_repeat(
+            true,
+            &down,
+            KeyCode::Char('a'),
+            KeyCode::Char('a'),
+            KeyLocation::Standard
+        ));
+        modifier_after(&mut down, shift, shift, KeyLocation::Left, true, none);
+        assert_eq!(
+            twins_let_go(&down, shift, shift, KeyLocation::Left),
+            [(shift, KeyLocation::Right)]
+        );
+        assert!(twins_let_go(&down, KeyCode::Ctrl, KeyCode::Ctrl, KeyLocation::Left).is_empty());
     }
 
     /// Caps Lock's own press reports the lock it made, as the OS answers
