@@ -213,6 +213,8 @@ RG77–RG91 and RG93–RG98; RG99 open).
   comes back; a skipped frame paces the next as a presented one does,
   so a waker or the host asking meanwhile is held for the display. A
   covered window's animation pauses, as a hidden browser tab's does.
+  Five seconds minimized cost an animating release build 4.5 s of CPU,
+  now 0.2 s; visible, the same.
 - **The frame that brings a minimized window back says `occlusion`,
   not what was asked while it was down** (RG97): a minimized window gets
   no frames, and what the runner noted for it meanwhile — another
