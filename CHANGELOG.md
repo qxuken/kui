@@ -59,6 +59,25 @@ Five readings change, each a fix:
   or `request_files` by its door (`why: "reveal"`) at the app's line,
   not `"request_frame"` at kui's (RG82).
 
+### Added
+
+- **The kui book, and the tutorial it reads** (backlog DX27,
+  [ADR 0039](docs/adr/0039-a-tutorial-is-a-sequence.md)). `docs/book`
+  is an mdBook — fourteen chapters, one concept each, from a window
+  with text to a headless test — built with `mdbook build docs/book`
+  (CI does), and `examples/rust/tutorial/` is the ten programs it
+  reads, `01_hello.rs` to `10_testing.rs`, each the last plus one
+  concept, registered as `tutorial_NN_<name>` and run on the shipped
+  launcher with no harness around them. A chapter's code is included
+  from its step by anchor, so the book cannot say what the step does
+  not do; step 10's `mod tests` runs under `cargo test`. The README
+  opens with a *Start here* that is step 1, and `howto.md` points a
+  reader with no question yet at the book. `apps/counter.rs`, the
+  Rosetta example, spells its messages as a `#[derive(Message)]` enum
+  now, as the book's step 3 does; its Node, Lua and C twins build the
+  same maps by hand as before. *What you can delete:* nothing — this
+  is the release that adds the first page.
+
 ### Changed
 
 - **A row holding a share of the room gives as CSS's flex items do**

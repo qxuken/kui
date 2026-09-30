@@ -284,6 +284,15 @@ jobs:
       - name: Test
         run: cargo test --workspace
 
+      # The book (docs/book, ADR 0039) includes its code from the tutorial
+      # steps by anchor, so a step whose anchor moved or went missing is a
+      # build failure here rather than a chapter that quietly shows nothing.
+      # The steps themselves compile under `cargo test` above.
+      - name: Book
+        run: |
+          cargo install mdbook --locked
+          mdbook build docs/book
+
       # The conformance reference: quad digests over real glyph geometry,
       # so it holds only for this machine's fonts and is never checked in.
       # The C and Node adapters below diff their own scenes against it.

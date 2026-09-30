@@ -160,6 +160,13 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
 # (examples/devtools); `headless` below lists the ones whose `--headless`
 # is a self-check with an exit code, which `smoke --headless` runs
 # and a test in the devtools crate pins to this list.
+#
+# The exception is `tutorial/` (docs/adr/0039): the book's graded steps,
+# registered at the end of this file as `tutorial_NN_name`, run on the
+# shipped launcher alone — no harness, no `--headless` — because the book
+# teaches the API an app is written against. They are in the windowed
+# smoke round like every `[[example]]`; the step with a `mod tests` is
+# under `cargo test` through `test = true`.
 [package.metadata.kui]
 headless = [
     "transition",
@@ -349,3 +356,48 @@ path = "../../examples/rust/widgets/tooltip.rs"
 [[example]]
 name = "button"
 path = "../../examples/rust/widgets/button.rs"
+
+# The book's tutorial (docs/book, docs/adr/0039): one step per file, each
+# the previous plus one concept, and the chapters include them by anchor.
+
+[[example]]
+name = "tutorial_01_hello"
+path = "../../examples/rust/tutorial/01_hello.rs"
+
+[[example]]
+name = "tutorial_02_layout"
+path = "../../examples/rust/tutorial/02_layout.rs"
+
+[[example]]
+name = "tutorial_03_counter"
+path = "../../examples/rust/tutorial/03_counter.rs"
+
+[[example]]
+name = "tutorial_04_controls"
+path = "../../examples/rust/tutorial/04_controls.rs"
+
+[[example]]
+name = "tutorial_05_list"
+path = "../../examples/rust/tutorial/05_list.rs"
+
+[[example]]
+name = "tutorial_06_keyboard"
+path = "../../examples/rust/tutorial/06_keyboard.rs"
+
+[[example]]
+name = "tutorial_07_floats"
+path = "../../examples/rust/tutorial/07_floats.rs"
+
+[[example]]
+name = "tutorial_08_motion"
+path = "../../examples/rust/tutorial/08_motion.rs"
+
+[[example]]
+name = "tutorial_09_effects"
+path = "../../examples/rust/tutorial/09_effects.rs"
+
+[[example]]
+name = "tutorial_10_testing"
+path = "../../examples/rust/tutorial/10_testing.rs"
+# Its `mod tests` drives the app headlessly under `cargo test`.
+test = true

@@ -10,6 +10,7 @@ inside a binding one directory per **kind** of example
 | `widgets/` | one element or one stock widget, in every state it has |
 | `features/` | one cross-cutting behaviour, with exactly the widgets it touches |
 | `tools/` | registered as an example for want of a better slot, and not one: a corpus dump, a header walk, a bench |
+| `tutorial/` | the book's steps ([ADR 0039](../docs/adr/0039-a-tutorial-is-a-sequence.md)): a whole program each, every one the last plus one concept, read in order by [`docs/book`](../docs/book) — and the one kind that runs on the shipped launcher with no harness around it |
 
 An example has **one subject**, and the file is named for it with the
 name the repo already uses — the `ELEMENTS` row, the `widgets::` function,
@@ -113,11 +114,32 @@ from, so the round and its pins cannot drift.
 Run with `cargo run -p kui-native --example <name>`; `-- --headless` where the
 table says so.
 
+### `tutorial/`
+
+The book's ten steps, in the order the book reads them (`cargo run -p
+kui-native --example tutorial_NN_<name>`; build the book with `mdbook build
+docs/book`). No harness, no `--headless`: each is the program a chapter
+ends with. Step 10 carries a `mod tests` that `cargo test -p kui-native
+--example tutorial_10_testing` runs.
+
+| Step | Adds | Chapter |
+|---|---|---|
+| [`01_hello.rs`](rust/tutorial/01_hello.rs) | An `App` with a `view`, one text node, the launcher | [Hello, window](../docs/book/src/hello.md) |
+| [`02_layout.rs`](rust/tutorial/02_layout.rs) | Rows and columns; fit, fixed and grow; padding, gap, alignment | [Layout](../docs/book/src/layout.md) |
+| [`03_counter.rs`](rust/tutorial/03_counter.rs) | A model, `#[derive(Message)]`, a button's message, `on_event` | [State and messages](../docs/book/src/messages.md) |
+| [`04_controls.rs`](rust/tutorial/04_controls.rs) | The stock switch, checkbox, slider, text field and select, each drawn from the model | [Controls](../docs/book/src/controls.md) |
+| [`05_list.rs`](rust/tutorial/05_list.rs) | Rows from a `Vec` under keys of their own, a box that scrolls, a filter | [Lists and keys](../docs/book/src/lists.md) |
+| [`06_keyboard.rs`](rust/tutorial/06_keyboard.rs) | A key sink, `key_press`, `focusable`, Tab, where focus is | [Keyboard and focus](../docs/book/src/keyboard.md) |
+| [`07_floats.rs`](rust/tutorial/07_floats.rs) | A `tooltip`, a `modal` float, `dismiss` | [Floats and modals](../docs/book/src/floats.md) |
+| [`08_motion.rs`](rust/tutorial/08_motion.rs) | `transition`, `easing`, `enter` and `exit` on keyed rows | [Motion](../docs/book/src/motion.md) |
+| [`09_effects.rs`](rust/tutorial/09_effects.rs) | `on_event_with` and the clipboard, a thread and the `Waker`, the window's title and close | [Effects, the clock and the world](../docs/book/src/effects.md) |
+| [`10_testing.rs`](rust/tutorial/10_testing.rs) | A `mod tests` on `testing::Drive`: clicks by label, a key, the frame read back | [Testing without a window](../docs/book/src/testing.md) |
+
 ### `apps/`
 
 | Example | Shows | Headless | By hand |
 |---|---|---|---|
-| [`counter.rs`](rust/apps/counter.rs) | The smallest app that is the whole pattern, and the one every binding has in the same shape: the Elm loop, a button, an `edit` field read back, a right-click that declares a `modal` menu | ✓ the Rosetta drive | |
+| [`counter.rs`](rust/apps/counter.rs) | The smallest app that is the whole pattern, and the one every binding has in the same shape: the Elm loop, a button, a right-click that declares a `modal` menu — its messages a `#[derive(Message)]` enum, as the book's step 3 spells them | ✓ the Rosetta drive | |
 | [`splitmux.rs`](rust/apps/splitmux.rs) | tmux-style splits, tabs, focus, ⌘-drag pane moves; the pane tree is data, the app owns the chord keymap, and its messages are a `#[derive(Message)]` enum | ✓ the chords, the clicks and a divider drag, and `cargo test` (its `mod tests`) | ⌘-drag a pane |
 | [`modal_editor.rs`](rust/apps/modal_editor.rs) | Helix-flavored modal editing; the app owns the document, the keymap, the modes, the mouse (a press carries `line`/`byte`/`clicks`) and the clipboard (`y`/`p`), and its caret blinks on `caret_visible` | ✓ `jjj ww v lll`, `dd` + `p`, `:help`, a click and a double click, the off phase | `pbpaste` after `y` |
 | [`syntax_view.rs`](rust/apps/syntax_view.rs) | Syntax highlighting as coalesced style runs; the frame shape the `highlight` bench measures | ✓ `j`, `G`, `k`, `tab` | |
