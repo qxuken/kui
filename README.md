@@ -497,9 +497,13 @@ that are hard to reverse and would look arbitrary without their context.
   whose position follows an already-easing sibling would lag twice, and an
   `enter` offset without it moves the node for the entrance only. Easings
   are timed curves or
-  springs: `spring` / `bouncy` integrate a damped spring per frame with a
-  velocity that survives retargets (`duration_ms` is the response time),
-  so a value chased mid-flight keeps its momentum instead of restarting.
+  springs: `smooth`, `snappy`, `spring` and `bouncy` integrate a damped
+  spring per frame with a velocity that survives retargets, so a value
+  chased mid-flight keeps its momentum instead of restarting. A spring
+  takes the two numbers a person tunes by eye rather than its physics:
+  the duration (about how long it takes to get there) and a `bounce`,
+  how far it overshoots — 0 for `smooth`, 0.5 for `bouncy`, any other
+  with the `bounce` prop.
   For motion that never settles — a pulse, a cascade, a chase light — a
   node declares `keyframes`: CSS `@keyframes` stops for the same slots
   (`keyframes={[{ width: { grow: 0 } }, { width: { grow: 1 } }]}` in JSX,

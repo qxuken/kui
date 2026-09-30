@@ -2390,6 +2390,17 @@ impl NodeSpec {
         self
     }
 
+    /// How far the node's spring overshoots, 0 (glides in) to
+    /// [`crate::anim::MAX_BOUNCE`] — in place of the spring easing's own
+    /// bounce, and on a timed easing in place of the curve, making it a
+    /// spring (see [`Transition::bounce`]). Sets a default 200ms
+    /// transition if none was declared yet.
+    pub fn bounce(mut self, bounce: f32) -> Self {
+        let t = self.transition.get_or_insert(Transition::ms(200.0));
+        *t = t.bounce(bounce);
+        self
+    }
+
     /// How this node's `keyframes` cycle (CSS's `animation-direction`);
     /// sets a default 200ms transition if none was declared yet.
     pub fn repeat(mut self, repeat: Repeat) -> Self {

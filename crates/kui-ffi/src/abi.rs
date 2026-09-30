@@ -281,7 +281,13 @@
 /// resolved by layout against the parent's content box; zeroed, the float
 /// clamps hold as before. `KuiSizing` takes a fifth tag, `KUI_CALC`, whose
 /// value is an expression's number. The 64-bit size is 680. Recompile.
-pub const KUI_ABI_VERSION: u32 = 22;
+///
+/// ABI 23 appends `bounce` to `KuiSpec`: how far a spring overshoots, the
+/// one number besides its duration a spring takes. Zeroed, a spring
+/// easing keeps its own bounce and a timed one stays timed, as before.
+/// The 64-bit size is 688. `KUI_EASE_SMOOTH` and `KUI_EASE_SNAPPY` are
+/// new values of `easing`, which moved nothing. Recompile.
+pub const KUI_ABI_VERSION: u32 = 23;
 
 /// The ABI version this library implements, for a host to compare against
 /// the `KUI_ABI_VERSION` of the header it compiled against, before its

@@ -698,6 +698,11 @@ pub struct KuiSpec {
     pub max_w_size: KuiSizing,
     pub min_h_size: KuiSizing,
     pub max_h_size: KuiSizing,
+    /// How far a spring overshoots (`bounce`), in place of a spring
+    /// easing's own, and making a timed easing a spring; 0 is the
+    /// easing's own, since a spring with none is `KUI_EASE_SMOOTH`.
+    /// ABI 23.
+    pub bounce: f32,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a

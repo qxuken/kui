@@ -7,10 +7,16 @@
 //!
 //! Two kinds of motion: timed curves ([`Easing::EaseOut`] and friends,
 //! which replay a leg from wherever the value was over `duration_ms`) and
-//! springs ([`Easing::Spring`], [`Easing::Bouncy`]), integrated per frame
-//! with a velocity that survives retargets — a value chased mid-flight
-//! keeps its momentum instead of restarting, which is what dragged and
-//! reordered things want. For springs `duration_ms` is the response time.
+//! springs ([`Easing::Smooth`], [`Easing::Snappy`], [`Easing::Spring`],
+//! [`Easing::Bouncy`]), integrated per frame with a velocity that survives
+//! retargets — a value chased mid-flight keeps its momentum instead of
+//! restarting, which is what dragged and reordered things want.
+//!
+//! A spring takes the two numbers a person tunes by eye, not the physics:
+//! `duration_ms`, how long it takes to get there (the response time), and
+//! a [`Bounce`], how far it overshoots — 0 glides in, 0.5 bounces. Each
+//! spring easing is a named bounce, and [`Transition::bounce`] sets any
+//! other; the stiffness and damping follow from the two.
 //!
 //! A node can also declare [`crate::NodeSpec::keyframes`]: CSS-style
 //! stops for any of the same slots, cycled over `duration_ms` in one of
@@ -36,12 +42,16 @@ pub enum Easing {
     Linear,
     EaseIn,
     EaseInOut,
-    /// A damped spring (damping ratio 0.75: a hint of overshoot).
-    /// `duration_ms` is the response time; velocity carries across
-    /// retargets.
+    /// A spring with a hint of overshoot (bounce 0.25). `duration_ms` is
+    /// how long it takes to get there; velocity carries across retargets.
     Spring,
-    /// A springier spring (damping ratio 0.5).
+    /// A spring that visibly bounces (bounce 0.5).
     Bouncy,
+    /// A spring that glides in without overshooting (bounce 0): an
+    /// ease-out that keeps its momentum when retargeted.
+    Smooth,
+    /// A quick spring with a trace of overshoot (bounce 0.15).
+    Snappy,
 }
 
 impl Easing {
@@ -55,6 +65,8 @@ impl Easing {
         Easing::EaseInOut,
         Easing::Spring,
         Easing::Bouncy,
+        Easing::Smooth,
+        Easing::Snappy,
     ];
 
     /// The camelCase spelling every binding uses.
@@ -66,6 +78,8 @@ impl Easing {
             Easing::EaseInOut => "easeInOut",
             Easing::Spring => "spring",
             Easing::Bouncy => "bouncy",
+            Easing::Smooth => "smooth",
+            Easing::Snappy => "snappy",
         }
     }
 
@@ -75,13 +89,22 @@ impl Easing {
         Self::ALL.get(i).copied().unwrap_or_default()
     }
 
-    /// Damping ratio for the spring easings; None for timed curves.
-    fn damping(self) -> Option<f32> {
+    /// The bounce a spring easing has unless [`Transition::bounce`] says
+    /// otherwise; None for the timed curves.
+    pub fn bounce(self) -> Option<f32> {
         match self {
-            Easing::Spring => Some(0.75),
+            Easing::Smooth => Some(0.0),
+            Easing::Snappy => Some(0.15),
+            Easing::Spring => Some(0.25),
             Easing::Bouncy => Some(0.5),
-            _ => None,
+            Easing::EaseOut | Easing::Linear | Easing::EaseIn | Easing::EaseInOut => None,
         }
+    }
+
+    /// Whether this is a spring, integrated with momentum, rather than a
+    /// timed curve.
+    pub fn is_spring(self) -> bool {
+        self.bounce().is_some()
     }
 
     pub fn apply(self, t: f32) -> f32 {
@@ -98,7 +121,9 @@ impl Easing {
                 }
             }
             // Springs are integrated, not sampled; as a curve, ease out.
-            Easing::Spring | Easing::Bouncy => 1.0 - (1.0 - t).powi(3),
+            Easing::Spring | Easing::Bouncy | Easing::Smooth | Easing::Snappy => {
+                1.0 - (1.0 - t).powi(3)
+            }
         }
     }
 }
@@ -171,13 +196,47 @@ const SPRING_STEP: f64 = 0.004;
 /// as one giant step.
 const MAX_FRAME_DT: f64 = 0.1;
 
+/// The most bounce a spring takes: at 1 it would never settle, and past
+/// 0.9 it rings for seconds.
+pub const MAX_BOUNCE: f32 = 0.9;
+
+/// How far a spring overshoots, 0 (glides in, no overshoot) to
+/// [`MAX_BOUNCE`] (rings a while): the one number that shapes a spring
+/// besides its duration. A bounce `b` is a damping ratio of `1 - b`
+/// (SwiftUI's `Spring(duration:bounce:)`).
+///
+/// Held in ten-thousandths in two bytes, because it rides in
+/// [`Transition`], which rides inline in every `NodeSpec` — and the two
+/// bytes of padding `Transition` had spare are all the room there is
+/// (`node_spec_stays_small`). The niche keeps `Option<Bounce>` at two.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Bounce(std::num::NonZeroU16);
+
+impl Bounce {
+    /// `b` clamped to 0..=[`MAX_BOUNCE`]; NaN reads as 0.
+    pub fn new(b: f32) -> Self {
+        let q = (b.clamp(0.0, MAX_BOUNCE) * 10_000.0).round() as u16;
+        Bounce(std::num::NonZeroU16::MIN.saturating_add(q))
+    }
+
+    pub fn get(self) -> f32 {
+        (self.0.get() - 1) as f32 / 10_000.0
+    }
+}
+
 /// How a node's animatable values move when the view changes them.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Transition {
+    /// How long a timed curve takes; for a spring, its response time —
+    /// about how long it takes to get there.
     pub duration_ms: f32,
     pub easing: Easing,
     /// How the node's keyframes cycle (nothing without keyframes).
     pub repeat: Repeat,
+    /// A spring's bounce in place of its easing's own; on a timed curve
+    /// it makes the transition a spring ([`Self::curve`]). None is the
+    /// easing's.
+    pub bounce: Option<Bounce>,
     /// Holds the keyframe cycle back by this many ms, so siblings given
     /// different delays run out of phase (CSS's `animation-delay`).
     pub delay_ms: f32,
@@ -189,6 +248,7 @@ impl Transition {
             duration_ms,
             easing: Easing::EaseOut,
             repeat: Repeat::Normal,
+            bounce: None,
             delay_ms: 0.0,
         }
     }
@@ -206,6 +266,30 @@ impl Transition {
     pub fn delay(mut self, delay_ms: f32) -> Self {
         self.delay_ms = delay_ms;
         self
+    }
+
+    /// Springs with this bounce, 0 (no overshoot) to [`MAX_BOUNCE`]: on a
+    /// spring easing in place of its own, and on a timed one in place of
+    /// the curve, since a bounce is only a spring's to have.
+    pub fn bounce(mut self, bounce: f32) -> Self {
+        self.bounce = Some(Bounce::new(bounce));
+        self
+    }
+
+    /// The easing this transition moves by: its `easing`, or
+    /// [`Easing::Spring`] when a bounce was given to a timed curve.
+    pub fn curve(&self) -> Easing {
+        match self.bounce {
+            Some(_) if !self.easing.is_spring() => Easing::Spring,
+            _ => self.easing,
+        }
+    }
+
+    /// The damping ratio when this transition is a spring (`1 - bounce`);
+    /// None for a timed curve.
+    fn damping(&self) -> Option<f32> {
+        let own = self.curve().bounce()?;
+        Some(1.0 - self.bounce.map_or(own, Bounce::get))
     }
 }
 
@@ -319,7 +403,7 @@ impl Tween {
             velocity: [0.0; 4],
             last_time,
             duration_ms: t.duration_ms,
-            easing: t.easing,
+            easing: t.curve(),
             last_used: frame_no,
         }
     }
@@ -334,7 +418,7 @@ impl Tween {
             velocity: [0.0; 4],
             last_time: now,
             duration_ms: t.duration_ms,
-            easing: t.easing,
+            easing: t.curve(),
             last_used: frame_no,
         }
     }
@@ -480,7 +564,7 @@ impl AnimStore {
                 if tw.last_used != self.frame_no {
                     continue;
                 }
-                let moving = if tw.easing.damping().is_some() {
+                let moving = if tw.easing.is_spring() {
                     tw.value != tw.to || tw.velocity != [0.0; 4]
                 } else {
                     tw.progress_at(now) < 1.0
@@ -550,7 +634,7 @@ fn sample_track(track: &Track, transition: Transition, now: Option<f64>) -> Opti
         if p < at {
             let (a, va) = from;
             let t = if at > a { (p - a) / (at - a) } else { 1.0 };
-            let e = transition.easing.apply(t);
+            let e = transition.curve().apply(t);
             let mut out = [0.0; 4];
             for i in 0..4 {
                 out[i] = va[i] + (value[i] - va[i]) * e;
@@ -651,11 +735,11 @@ impl NodeAnim<'_> {
             tw.last_time = now;
             return target;
         }
-        if let Some(zeta) = transition.easing.damping() {
+        if let Some(zeta) = transition.damping() {
             // Springs retarget freely: the velocity carries over.
             tw.to = target;
             tw.duration_ms = transition.duration_ms;
-            tw.easing = transition.easing;
+            tw.easing = transition.curve();
             if tw.spring_step(now, zeta) {
                 *self.active = true;
             }
@@ -673,7 +757,7 @@ impl NodeAnim<'_> {
             tw.to = target;
             tw.start = now;
             tw.duration_ms = transition.duration_ms;
-            tw.easing = transition.easing;
+            tw.easing = transition.curve();
         }
         let p = tw.progress_at(now);
         if p < 1.0 {
@@ -737,6 +821,8 @@ mod tests {
             Easing::EaseInOut,
             Easing::Spring,
             Easing::Bouncy,
+            Easing::Smooth,
+            Easing::Snappy,
         ] {
             assert_eq!(e.apply(0.0), 0.0);
             assert_eq!(e.apply(1.0), 1.0);
@@ -856,6 +942,96 @@ mod tests {
             after > v_prev,
             "momentum carries past the retarget: {v_prev} -> {after}"
         );
+    }
+
+    /// The highest a slot eased from 0 to 100 under `t` reads, stepped at
+    /// 60Hz for three seconds; and whether it came to rest by then.
+    fn peak(t: Transition) -> (f32, bool) {
+        let mut a = AnimStore::default();
+        let mut frame = Frames(0);
+        let k = Key::ROOT.str("x");
+        a.set_time(0.0);
+        a.begin_frame(frame.next());
+        a.drive(k, Slot::Width, None, one(0.0), t, true);
+        let mut max = 0.0f32;
+        for i in 1..=180 {
+            a.set_time(i as f64 / 60.0);
+            a.begin_frame(frame.next());
+            max = max.max(a.drive(k, Slot::Width, None, one(100.0), t, true)[0]);
+        }
+        (max, !a.animating())
+    }
+
+    /// Each spring easing is a bounce, and the bounce is what a person
+    /// reads off the screen: none glides in under the target, and more
+    /// overshoots further. `spring` and `bouncy` keep the damping ratios
+    /// they had before they were named bounces (0.75 and 0.5).
+    #[test]
+    fn a_spring_s_bounce_is_how_far_it_overshoots() {
+        let t = Transition::ms(200.0);
+        assert_eq!(t.easing(Easing::Spring).damping(), Some(0.75));
+        assert_eq!(t.easing(Easing::Bouncy).damping(), Some(0.5));
+        assert_eq!(t.damping(), None, "a timed curve is no spring");
+
+        let (smooth, settled) = peak(t.easing(Easing::Smooth));
+        assert!(settled, "smooth comes to rest");
+        assert!(smooth <= 100.0 + 1e-3, "smooth never overshoots: {smooth}");
+        let mut last = smooth;
+        for e in [Easing::Snappy, Easing::Spring, Easing::Bouncy] {
+            let (p, settled) = peak(t.easing(e));
+            assert!(settled, "{e:?} comes to rest");
+            assert!(
+                p > last,
+                "{e:?} overshoots past the one before: {p} <= {last}"
+            );
+            last = p;
+        }
+        // A bounce of its own replaces the easing's, either way.
+        assert_eq!(
+            peak(t.easing(Easing::Bouncy).bounce(0.0)).0,
+            smooth,
+            "bouncy with no bounce is smooth"
+        );
+        assert_eq!(
+            peak(t.easing(Easing::Smooth).bounce(0.5)).0,
+            last,
+            "smooth with bouncy's bounce is bouncy"
+        );
+    }
+
+    /// A bounce is only a spring's to have, so one given to a timed curve
+    /// makes the transition a spring rather than being dropped: `transition`
+    /// and `bounce` alone are a spring of that length and bounce.
+    #[test]
+    fn a_bounce_on_a_timed_curve_makes_it_a_spring() {
+        let t = Transition::ms(200.0).easing(Easing::Linear).bounce(0.5);
+        assert_eq!(t.curve(), Easing::Spring);
+        assert_eq!(t.damping(), Some(0.5));
+        assert_eq!(
+            peak(t).0,
+            peak(Transition::ms(200.0).easing(Easing::Bouncy)).0
+        );
+        assert_eq!(Transition::ms(200.0).curve(), Easing::EaseOut);
+    }
+
+    #[test]
+    fn a_bounce_holds_its_range() {
+        assert!((Bounce::new(0.3).get() - 0.3).abs() < 1e-4);
+        assert_eq!(Bounce::new(0.0).get(), 0.0);
+        assert_eq!(Bounce::new(-1.0).get(), 0.0);
+        assert_eq!(Bounce::new(f32::NAN).get(), 0.0);
+        assert_eq!(Bounce::new(1.0).get(), MAX_BOUNCE, "1 would never settle");
+        let (_, settled) = peak(Transition::ms(100.0).easing(Easing::Spring).bounce(1.0));
+        assert!(settled, "the most bounce there is still comes to rest");
+    }
+
+    /// `Transition` rides inline in every `NodeSpec`, which sits at its
+    /// bound (`node_spec_stays_small`): the bounce had to fit in the two
+    /// bytes of padding it had spare.
+    #[test]
+    fn a_transition_carries_its_bounce_in_its_padding() {
+        assert_eq!(std::mem::size_of::<Option<Bounce>>(), 2);
+        assert_eq!(std::mem::size_of::<Option<Transition>>(), 12);
     }
 
     #[test]

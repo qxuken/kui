@@ -3,8 +3,10 @@
 //!
 //! - `transition(ms)`: a value that changes eases to its new one over that
 //!   long — the bar's width follows the buttons;
-//! - `easing`: the curve it takes, one racer per `Easing` — the two
-//!   springs overshoot, `bouncy` more — racing on a click;
+//! - `easing`: the curve it takes, one racer per `Easing`, racing on a
+//!   click — the four springs are named bounces, from `smooth`, which
+//!   glides in, to `bouncy`, which overshoots most, and the last racer
+//!   sets its own with `bounce`;
 //! - `slide`: a float whose *position* eases too, so a card jumps between
 //!   two anchors along a path rather than appearing at the other;
 //! - `keyframes`: a cycle of stops the node walks by itself — width, colour,
@@ -23,13 +25,18 @@ use kui_native::{
     UiEvent, Value,
 };
 
-const EASINGS: [(&str, Easing); 6] = [
-    ("linear", Easing::Linear),
-    ("ease-out", Easing::EaseOut),
-    ("ease-in", Easing::EaseIn),
-    ("ease-in-out", Easing::EaseInOut),
-    ("spring", Easing::Spring),
-    ("bouncy", Easing::Bouncy),
+/// Each racer's easing, and the bounce it gives the spring in place of the
+/// easing's own.
+const EASINGS: [(&str, Easing, Option<f32>); 9] = [
+    ("linear", Easing::Linear, None),
+    ("ease-out", Easing::EaseOut, None),
+    ("ease-in", Easing::EaseIn, None),
+    ("ease-in-out", Easing::EaseInOut, None),
+    ("smooth", Easing::Smooth, None),
+    ("snappy", Easing::Snappy, None),
+    ("spring", Easing::Spring, None),
+    ("bouncy", Easing::Bouncy, None),
+    ("bounce 0.7", Easing::Spring, Some(0.7)),
 ];
 
 #[derive(Default)]
@@ -95,7 +102,7 @@ impl App for Motion {
                         .border(1.0, t.border)
                         .on_click("race"),
                     |ui| {
-                        for (name, easing) in EASINGS {
+                        for (name, easing, bounce) in EASINGS {
                             ui.with(NodeSpec::row().grow_width().gap(8.0).cross_align(Align::Center), |ui| {
                                 ui.text_in(NodeSpec::row().width(80.0), name, TextStyle::new(11.0).color(t.muted));
                                 ui.with(
@@ -103,19 +110,24 @@ impl App for Motion {
                                     |ui| {
                                         // The racer floats inside its lane; `slide`
                                         // is what makes its *position* ease.
+                                        let racer = NodeSpec::row()
+                                            .float(
+                                                FloatConfig::parent()
+                                                    .inside(if self.far { Align::End } else { Align::Start }, Align::Center),
+                                            )
+                                            .size(16.0, 16.0)
+                                            .radius(8.0)
+                                            .bg(t.accent)
+                                            .transition(900.0)
+                                            .easing(easing)
+                                            .slide();
                                         ui.leaf_keyed(
                                             name,
-                                            NodeSpec::row()
-                                                .float(
-                                                    FloatConfig::parent()
-                                                        .inside(if self.far { Align::End } else { Align::Start }, Align::Center),
-                                                )
-                                                .size(16.0, 16.0)
-                                                .radius(8.0)
-                                                .bg(t.accent)
-                                                .transition(900.0)
-                                                .easing(easing)
-                                                .slide());
+                                            match bounce {
+                                                Some(b) => racer.bounce(b),
+                                                None => racer,
+                                            },
+                                        );
                                     },
                                 );
                             });
@@ -221,7 +233,7 @@ impl Example for Motion {
     ];
 
     fn window(&self) -> kui_devtools::Window {
-        kui_devtools::Window::default().size(520.0, 560.0)
+        kui_devtools::Window::default().size(520.0, 630.0)
     }
 
     /// The bar's width is tweened: one frame after the level changes the
@@ -230,7 +242,7 @@ impl Example for Motion {
     /// not a state this frame has; a tween's end is checked in
     /// `kui-core`'s own tests.)
     fn headless(&mut self, core: &mut Core) -> Result<(), String> {
-        let mut d = Drive::new(core, 520.0, 560.0);
+        let mut d = Drive::new(core, 520.0, 630.0);
         d.frame(self);
         d.frame(self);
         let full = d.key_of("100%").ok_or("no 100% button")?;

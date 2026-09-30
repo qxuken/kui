@@ -528,7 +528,7 @@ fn sample(
     now: f64,
 ) -> (Vec2, bool) {
     let p = (((now - start) / (t.duration_ms as f64 / 1000.0)) as f32).clamp(0.0, 1.0);
-    let k = t.easing.apply(p);
+    let k = t.curve().apply(p);
     (
         Vec2::new(from.x + (to.x - from.x) * k, from.y + (to.y - from.y) * k),
         p >= 1.0,

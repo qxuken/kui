@@ -127,7 +127,10 @@ impl Toasts {
                 .bg(t.surface)
                 .border(1.0, t.border)
                 .transition(420.0)
-                .easing(Easing::Spring)
+                // A spring with no bounce: the panel is pinned to the
+                // window's edge, and an overshoot would pull it off the
+                // edge for a moment and show the gap behind it.
+                .easing(Easing::Smooth)
                 .enter(Enter::from(-240.0, 0.0))
                 // A spring on the way in; on the way out the ghost samples
                 // the spring as an ease-out, since nothing can retarget a
