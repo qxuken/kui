@@ -2465,9 +2465,21 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                 let kmods = self.panes[t].kmods();
                 self.dispatch(event_loop, t, InputEvent::Modifiers(kmods));
             }
-            WindowEvent::KeyboardInput { event, .. } => {
-                let t = self.key_target(i);
-                self.on_key(event_loop, i, t, event)
+            // Not a press winit made up: on Windows and X11 a window
+            // gaining focus is handed a press of every key already held —
+            // made in another window or another app — and a key whose
+            // press closed a window pressed again in the one beneath it
+            // (backlog RG100). The releases it makes up as a window loses
+            // focus are kept: they are what lets go of a key a sink held.
+            WindowEvent::KeyboardInput {
+                event,
+                is_synthetic,
+                ..
+            } => {
+                if !(is_synthetic && event.state == ElementState::Pressed) {
+                    let t = self.key_target(i);
+                    self.on_key(event_loop, i, t, event)
+                }
             }
             WindowEvent::Ime(Ime::Commit(text)) => {
                 // Its own channel, not `Text`: a sink hears a commit as a
