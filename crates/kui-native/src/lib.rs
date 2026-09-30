@@ -69,6 +69,9 @@ mod windows_anim;
 mod windows_console;
 #[cfg(target_os = "windows")]
 mod windows_nc;
+/// The OS's light/dark switch reaching winit while the app runs.
+#[cfg(target_os = "windows")]
+mod windows_theme;
 
 use winit::application::ApplicationHandler;
 use winit::dpi::{LogicalPosition, LogicalSize};

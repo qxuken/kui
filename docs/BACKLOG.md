@@ -3274,3 +3274,7 @@ move.
 - `.` **RG104** — [The lock state on X11 was tracked, and drifted from the server's](backlog/closed-2026-09.md#-rg104--the-lock-state-on-x11-was-tracked-and-drifted-from-the-servers--done-2026-09-30) — done (2026-09-30)
 
 - `~` **RG105** — [AltGr's chords: Windows says Alt with the key, X11 the character without](backlog/closed-2026-09.md#-rg105--altgrs-chords-windows-says-alt-with-the-key-x11-the-character-without--withdrawn-2026-09-30) — withdrawn (2026-09-30)
+
+**From kawoosh (2026-09-30)** — RG106, filed and built the same day
+
+- `!` **RG106** — [Windows' light/dark switch never reached a running app](backlog/closed-2026-09.md#-rg106--windows-lightdark-switch-never-reached-a-running-app--done-2026-09-30) — done (2026-09-30)
