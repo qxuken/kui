@@ -2811,13 +2811,33 @@ fn parse_float(v: &mlua::Value) -> mlua::Result<FloatConfig> {
 pub const MAX_VALUE_DEPTH: usize = 64;
 
 pub fn lua_to_value(v: &mlua::Value) -> mlua::Result<Value> {
-    to_value(v, &mut Vec::new())
+    to_value(
+        v,
+        &mut ValuePath {
+            depth: 0,
+            seen: Vec::new(),
+        },
+    )
 }
 
-/// [`lua_to_value`] with the tables it is inside, outermost first: one
-/// met again on that path holds itself. A table met twice off the path
-/// (the same list under two keys) is copied twice, as before.
-fn to_value(v: &mlua::Value, path: &mut Vec<*const std::ffi::c_void>) -> mlua::Result<Value> {
+/// Tables nested this deep before [`ValuePath`] records which they are.
+/// No payload a view means is this deep, and a table that holds itself
+/// passes it and is caught a lap of its cycle later: asking each table
+/// its identity costs a size table per row per frame 57 ns, +2.7% on
+/// kui-lua's `lua_1000_rows/table per frame`.
+const VALUE_TRACKED_PAST: usize = 8;
+
+/// How deep [`to_value`] is, and past [`VALUE_TRACKED_PAST`] the tables
+/// it is inside.
+struct ValuePath {
+    depth: usize,
+    seen: Vec<*const std::ffi::c_void>,
+}
+
+/// [`lua_to_value`] with where it is: a table met again on its own path
+/// holds itself. A table met twice off the path (the same list under two
+/// keys) is copied twice, as before.
+fn to_value(v: &mlua::Value, path: &mut ValuePath) -> mlua::Result<Value> {
     Ok(match v {
         mlua::Value::Nil => Value::Null,
         mlua::Value::Boolean(b) => Value::Bool(*b),
@@ -2825,14 +2845,18 @@ fn to_value(v: &mlua::Value, path: &mut Vec<*const std::ffi::c_void>) -> mlua::R
         mlua::Value::Number(n) => Value::Float(*n),
         mlua::Value::String(s) => Value::Str(s.to_str()?.to_string()),
         mlua::Value::Table(t) => {
-            let at = t.to_pointer();
-            if path.contains(&at) {
-                return Err(bad("a table that holds itself cannot be a value"));
+            let tracked = path.depth >= VALUE_TRACKED_PAST;
+            if tracked {
+                let at = t.to_pointer();
+                if path.seen.contains(&at) {
+                    return Err(bad("a table that holds itself cannot be a value"));
+                }
+                path.seen.push(at);
             }
-            if path.len() >= MAX_VALUE_DEPTH {
+            if path.depth >= MAX_VALUE_DEPTH {
                 return Err(bad(format!("a value nested past {MAX_VALUE_DEPTH} tables")));
             }
-            path.push(at);
+            path.depth += 1;
             let len = t.raw_len();
             let value = if len > 0 {
                 let mut list = Vec::with_capacity(len);
@@ -2848,7 +2872,10 @@ fn to_value(v: &mlua::Value, path: &mut Vec<*const std::ffi::c_void>) -> mlua::R
                 }
                 Value::Map(map)
             };
-            path.pop();
+            path.depth -= 1;
+            if tracked {
+                path.seen.pop();
+            }
             value
         }
         other => {

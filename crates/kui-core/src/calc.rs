@@ -513,20 +513,28 @@ fn intern_checked(expr: Expr) -> Result<Calc, String> {
     }
     if t.exprs.len() >= MAX_CALCS {
         drop(t);
-        let spelled = expr.to_string();
-        REFUSED.fetch_add(1, Ordering::Relaxed);
-        if let Ok(mut last) = LAST_REFUSED.lock() {
-            last.clone_from(&spelled);
-        }
-        return Err(format!(
-            "{FULL} ({MAX_CALCS}): \"{spelled}\" is not kept — declare one per layout, not one \
-             per frame"
-        ));
+        return Err(refuse(&expr));
     }
     let id = t.exprs.len() as u32;
     t.exprs.push(Arc::new(expr.clone()));
     t.by_expr.insert(expr, id);
     Ok(Calc(id))
+}
+
+/// The table is full: `expr` is counted and named, and refused. Out of
+/// line and cold, so the path every lookup takes stays as it was.
+#[cold]
+#[inline(never)]
+fn refuse(expr: &Expr) -> String {
+    let spelled = expr.to_string();
+    REFUSED.fetch_add(1, Ordering::Relaxed);
+    if let Ok(mut last) = LAST_REFUSED.lock() {
+        last.clone_from(&spelled);
+    }
+    format!(
+        "{FULL} ({MAX_CALCS}): \"{spelled}\" is not kept — declare one per layout, not one per \
+         frame"
+    )
 }
 
 /// Parses a size expression; the public grammar, which a host validating
