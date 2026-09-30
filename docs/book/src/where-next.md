@@ -6,35 +6,35 @@ where to look for the rest.
 
 ## The reference gallery
 
-[`examples/README.md`](../../../examples/README.md) lists every example
-by kind. Each shows one thing, in every state it has, inside the
-devtools:
+[The Examples part](examples/index.md) of this book lists every
+example by kind, with its whole source. Each shows one thing, in every
+state it has, inside the devtools:
 
-- **`widgets/`** — one element or stock widget each: `button`, `edit`,
+- **[`widgets/`](examples/widgets.md)** — one element or stock widget each: `button`, `edit`,
   `select`, `table`, `virtual_list`, `cells` (a terminal grid),
   `image`, `fragment` (a box a shader paints), `menu_bar`, `titlebar`.
-- **`features/`** — one behaviour each: `hover`, `drag`, `drop`,
+- **[`features/`](examples/features.md)** — one behaviour each: `hover`, `drag`, `drop`,
   `focus`, `selection`, `clipboard`, `audio`, `accessibility`,
   `theme`, `metrics`, `transition`, `enter_exit`, `waker`.
-- **`apps/`** — how it composes: `splitmux` (a tiling pane
+- **[`apps/`](examples/apps.md)** — how it composes: `splitmux` (a tiling pane
   multiplexer), `modal_editor` (a Helix-style editor), `syntax_view`.
 
-Reading order after this book: `features/focus.rs`, then
-`widgets/edit.rs`, then `apps/splitmux.rs`.
+Reading order after this book: [`features/focus.rs`](examples/features/focus.md), then
+[`widgets/edit.rs`](examples/widgets/edit.md), then [`apps/splitmux.rs`](examples/apps/splitmux.md).
 
 ## The two reference documents
 
-- [`docs/howto.md`](../../howto.md) — "How do I…" questions, each with a
+- `docs/howto.md` — "How do I…" questions, each with a
   two-sentence answer and a link. Animate a removal, draw a connector,
   make a popup taller than the window, give the app a menu bar, test
   the real window.
-- [`docs/props.md`](../../props.md) — every prop, element, event,
+- `docs/props.md` — every prop, element, event,
   warning and theme colour, with its Node, Lua and C spelling in the
   same row. Generated from the schema, so it cannot drift.
 
 ## The decisions
 
-[`docs/adr/`](../../adr/) holds the architecture decision records: why
+`docs/adr/` holds the architecture decision records: why
 focus is one node, why a modal is a scope, why effects are data, why
 the devtools belong to the core. Read one when a rule in this book
 seems arbitrary; the ADR has the context.
@@ -51,7 +51,7 @@ spelling:
 | `on_event(ev)` | `update(model, msg)` | `on_event(ev)` | `kui_poll_event` |
 | `testing::Drive` | `createApp(..)`, `app.press(..)` | the host's drive | `--headless` |
 
-The Node package ([`packages/kui`](../../../packages/kui)) has the
+The Node package (`packages/kui`) has the
 richest second driver: an Elm-style `update` that returns the model and
 effects, a headless `createApp` that runs `tick` too, and the same
 devtools. Its README is the place to start.

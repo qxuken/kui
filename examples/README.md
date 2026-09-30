@@ -20,6 +20,11 @@ basename (every example binary in the workspace lands in one flat
 the `c_` and `lua_` prefixes on the two panel hosts keep them from
 colliding.
 
+The book has a page for every Rust example outside `tutorial/`, with its
+whole source, because the published book is the only place a reader
+without the repository sees one. Adding, renaming or removing one means a
+rerun of `scripts/book-examples.sh`; `check` in CI fails until then.
+
 The Rust files belong to four different crates but share this one tree,
 so each crate's `Cargo.toml` names its examples with an explicit `path`,
 and `cargo run` needs the right `-p` — the tables below have it. The

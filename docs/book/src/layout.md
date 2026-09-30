@@ -70,6 +70,6 @@ you give a text a background or a size of its own.
 ## Where this is decided
 
 - Every layout prop, with its Node, Lua and C spelling:
-  [`docs/props.md`, container props](../../props.md#container-props).
+  `docs/props.md`, container props.
 - The layout solver is described in the README under
-  [Layout](../../../README.md#layout).
+  *Layout*.

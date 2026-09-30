@@ -104,15 +104,15 @@ recognises it by comparing `ev.key` to the key the view kept.
 - Disable the checkbox while notifications are off. The stock widgets
   have a `_with` form that takes a spec: `toggle_with(.., toggle_spec(&m)
   .checked(..).disabled(!self.notify).on_click(..), None)`. Look at
-  [`widgets/controls.rs`](../../../examples/rust/widgets/controls.rs).
+  [`widgets/controls.rs`](examples/widgets/controls.md).
 - Show the volume as a bar whose width is `Sizing::Percent(self.volume
   / 100.0)`.
 
 ## Where this is decided
 
 - Every stock widget:
-  [`crates/kui-core/src/widgets.rs`](../../../crates/kui-core/src/widgets.rs).
+  `crates/kui-core/src/widgets.rs`.
 - Why the stock controls are built over the accessibility roles:
-  [ADR 0034](../../adr/0034-stock-controls-over-the-roles.md).
+  ADR 0034.
 - The `change`, `changed`, `submit` and `menu` events:
-  [`docs/props.md`, events](../../props.md#events).
+  `docs/props.md`, events.

@@ -69,10 +69,10 @@ paint over it — and kui would warn, `modal-behind-content`.
 
 ## Where this is decided
 
-- Modal surfaces: [ADR 0003](../../adr/0003-modal-surfaces.md).
-- Layers stack in the order they open: [ADR 0023](../../adr/0023-layers-stack-in-the-order-they-open.md).
+- Modal surfaces: ADR 0003.
+- Layers stack in the order they open: ADR 0023.
 - The reference examples:
-  [`widgets/tooltip.rs`](../../../examples/rust/widgets/tooltip.rs),
-  [`features/modal.rs`](../../../examples/rust/features/modal.rs),
-  [`apps/counter.rs`](../../../examples/rust/apps/counter.rs) for the
+  [`widgets/tooltip.rs`](examples/widgets/tooltip.md),
+  [`features/modal.rs`](examples/features/modal.md),
+  [`apps/counter.rs`](examples/apps/counter.md) for the
   context menu.

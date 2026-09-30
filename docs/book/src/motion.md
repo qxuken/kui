@@ -68,9 +68,9 @@ event. You never request frames for motion.
 ## Where this is decided
 
 - Every animation prop — `transition`, `easing`, `enter`, `exit`,
-  `keyframes`, `slide`: [`docs/props.md`](../../props.md#container-props).
+  `keyframes`, `slide`: `docs/props.md`.
 - Why a frame that removes too many exiting nodes animates none:
-  [ADR 0012](../../adr/0012-the-exit-budget.md).
+  ADR 0012.
 - The reference examples:
-  [`features/transition.rs`](../../../examples/rust/features/transition.rs),
-  [`features/enter_exit.rs`](../../../examples/rust/features/enter_exit.rs).
+  [`features/transition.rs`](examples/features/transition.md),
+  [`features/enter_exit.rs`](examples/features/enter_exit.md).

@@ -1,0 +1,22 @@
+# `features/`
+
+One cross-cutting behaviour, with exactly the widgets it touches.
+
+- [`accessibility`](features/accessibility.md)
+- [`align`](features/align.md)
+- [`audio`](features/audio.md)
+- [`clipboard`](features/clipboard.md)
+- [`devtools_tab`](features/devtools_tab.md)
+- [`drag`](features/drag.md)
+- [`drop`](features/drop.md)
+- [`enter_exit`](features/enter_exit.md)
+- [`exit_budget`](features/exit_budget.md)
+- [`focus`](features/focus.md)
+- [`hover`](features/hover.md)
+- [`metrics`](features/metrics.md)
+- [`modal`](features/modal.md)
+- [`popup`](features/popup.md)
+- [`selection`](features/selection.md)
+- [`theme`](features/theme.md)
+- [`transition`](features/transition.md)
+- [`waker`](features/waker.md)

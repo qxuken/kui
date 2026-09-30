@@ -79,8 +79,8 @@ Two things, and both are cheap here:
 
 ## Where this is decided
 
-- The headless driver: [`crates/kui-native/src/testing.rs`](../../../crates/kui-native/src/testing.rs).
-- The README's [Testing without a window](../../../README.md#testing-without-a-window),
+- The headless driver: `crates/kui-native/src/testing.rs`.
+- The README's *Testing without a window*,
   which shows the Node version of the same test.
 - A larger example with its own `mod tests`:
-  [`apps/splitmux.rs`](../../../examples/rust/apps/splitmux.rs).
+  [`apps/splitmux.rs`](examples/apps/splitmux.md).

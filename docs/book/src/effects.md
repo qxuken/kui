@@ -70,9 +70,9 @@ multi-window section shows it.
 
 ## Where this is decided
 
-- The handler gets its window: [ADR 0036](../../adr/0036-an-event-handler-gets-its-window.md).
+- The handler gets its window: ADR 0036.
 - Effects as data, the Node driver's version of the same idea:
-  [ADR 0013](../../adr/0013-effects-as-data.md).
+  ADR 0013.
 - The reference examples:
-  [`features/waker.rs`](../../../examples/rust/features/waker.rs),
-  [`features/clipboard.rs`](../../../examples/rust/features/clipboard.rs).
+  [`features/waker.rs`](examples/features/waker.md),
+  [`features/clipboard.rs`](examples/features/clipboard.md).

@@ -79,6 +79,6 @@ Someone who knows Rust and has not used kui. You should be comfortable
 with closures and enums. You do not need to know any other UI library.
 
 If you already know what you want and need its name, the reference is a
-better door: [`docs/howto.md`](../../howto.md) answers "how do I…"
-questions and [`docs/props.md`](../../props.md) lists every prop and
+better door: `docs/howto.md` answers "how do I…"
+questions and `docs/props.md` lists every prop and
 event.

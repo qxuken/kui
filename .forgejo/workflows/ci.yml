@@ -213,6 +213,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The book's Examples part lists every example; an example added,
+      # renamed or removed without a rerun of the script would leave the
+      # published book without it (or failing to build). Needs nothing but
+      # the checkout, so it runs first and fails in seconds.
+      - name: Book examples are listed
+        run: scripts/book-examples.sh --check
+
       - name: Install system deps
         run: |
           set -eu

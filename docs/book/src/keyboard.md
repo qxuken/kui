@@ -80,8 +80,8 @@ produced it. `KeyCode::Left` and the rest are the named keys.
 
 ## Where this is decided
 
-- One focus, every control reachable: [ADR 0002](../../adr/0002-keyboard-focus-as-data.md).
-- Keys bubble to the enclosing sink: [ADR 0011](../../adr/0011-keys-bubble-to-the-enclosing-sink.md).
-- The full `key` event: [`docs/props.md`, events](../../props.md#events).
+- One focus, every control reachable: ADR 0002.
+- Keys bubble to the enclosing sink: ADR 0011.
+- The full `key` event: `docs/props.md`, events.
 - The reference example, with focus regions and the verbs that move
-  focus: [`examples/rust/features/focus.rs`](../../../examples/rust/features/focus.rs).
+  focus: [`examples/rust/features/focus.rs`](examples/features/focus.md).

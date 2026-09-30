@@ -68,7 +68,7 @@ A loop over ten thousand rows declares ten thousand rows every frame.
 For that, `widgets::uniform_list` declares only the rows in view and
 two spacers, from a row height and a count. It is the same idea with
 the loop inverted; see
-[`widgets/virtual_list.rs`](../../../examples/rust/widgets/virtual_list.rs)
+[`widgets/virtual_list.rs`](examples/widgets/virtual_list.md)
 when you need it.
 
 ## Try this
@@ -80,6 +80,6 @@ when you need it.
 ## Where this is decided
 
 - Keys, and the `duplicate-key` warning:
-  [`docs/props.md`, warnings](../../props.md#warnings).
+  `docs/props.md`, warnings.
 - Caching against the last frame, which is what keys make possible:
-  [ADR 0016](../../adr/0016-caching-against-the-last-frame.md).
+  ADR 0016.

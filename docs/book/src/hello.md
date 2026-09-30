@@ -53,6 +53,6 @@ only thing to hold on to for the next few chapters.
 
 ## Where this is decided
 
-- The `App` trait: [`crates/kui-native/src/lib.rs`](../../../crates/kui-native/src/lib.rs).
+- The `App` trait: `crates/kui-native/src/lib.rs`.
 - The frame as a function of its inputs: the README's
-  [Testing without a window](../../../README.md#testing-without-a-window).
+  *Testing without a window*.

@@ -82,8 +82,8 @@ asserts on them. Node, Lua and C receive the same maps.
 ## Where this is decided
 
 - `#[derive(Message)]` and its attributes:
-  [`docs/howto.md`](../../howto.md#how-do-i-match-my-apps-messages-as-types-in-rust).
+  `docs/howto.md`.
 - The full click payload, and every other event's shape:
-  [`docs/props.md`, events](../../props.md#events).
+  `docs/props.md`, events.
 - The reference counter, with a context menu:
-  [`examples/rust/apps/counter.rs`](../../../examples/rust/apps/counter.rs).
+  [`examples/rust/apps/counter.rs`](examples/apps/counter.md).
