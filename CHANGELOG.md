@@ -70,7 +70,10 @@ run on Windows.
 **macOS 27.0 on an M3 Pro MacBook Pro, rustc 1.98.1, Node 25.6.0**, on
 `5438039` with the version set, in a cold worktree. `cargo fmt --all
 --check` and `cargo clippy --workspace --all-targets --features
-kui-core/conformance -- -D warnings` are clean. `cargo test --workspace
+kui-core/conformance -- -D warnings` are clean — and clippy again on
+rustc 1.99.0, which CI runs: its `needless_borrows_for_generic_args`
+took the first tag's check (`text.rs`'s `.map(&class)`), fixed on main
+and the tag moved before anything was published. `cargo test --workspace
 --features kui-core/conformance`: **1647 tests over 130 suites, 0
 failed** (3 ignored). The C round, `cbuild --run`, passes its five
 checks; the corpus passes its **53 scenes** in four adapters; the ABI

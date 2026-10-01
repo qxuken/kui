@@ -3916,7 +3916,7 @@ fn word_range(content: &str, byte: usize) -> (usize, usize) {
     } else {
         at
     };
-    let Some(here) = content[at..].chars().next().map(&class) else {
+    let Some(here) = content[at..].chars().next().map(class) else {
         return (at, at);
     };
     let mut start = at;
