@@ -1456,6 +1456,68 @@ under the still pointer, and the terminal, an `onScroll` node taking
 every delta, took the rest of the swipe. One entry, F107, **built
 2026-09-28**, the day it was filed, and in the archive, with ADR 0038.
 
+## From the kawoosh fit-content review (2026-10-02)
+
+After a run of kawoosh overflows — a confirm dialog's message drawn
+past the dialog the last of them — the user asked an agent what kui
+should do about them, and brought its answer back: "sized to content"
+should stop at the space there is, as CSS's `fit-content` does, so a
+capped parent constrains its children. Checked against the solver, the
+gap is narrower than the answer put it, and real. One entry, F116.
+
+### `!` F116 — A fit box across a column is as wide as its content whatever room the column has, so a capped card's text never wraps
+
+A column with `maxWidth 200` holding a 400 px text wraps the text to
+200 × 40. Put the same text in a fit `row` or `column` inside the card
+and the card is 200 wide, the wrapper 400, and the text one line of
+400, drawn 200 past the card. Every dialog, card or float with a
+`maxWidth` has the trap one wrapper deep.
+
+What constrains a child already: along a row, an overflowing run gives
+(`shrink_axis`; F110, RG92); down a column, the same, to the child's
+min-content (F114); and a text straight under any box is held to its
+content box (the clamp at the end of `distribute_axis`), so it wraps.
+What does not: across a column, `distribute_axis`'s cross branch
+resolves `grow` and percent children against the content box and
+leaves a `fit` one at its fit width, which pass 1 summed from its
+content bottom-up with no room in sight. The text clamp is one level
+deep; a wrapper puts the text out of its reach. kawoosh's confirm fix
+needed `grow_width()` on the message's wrapper as well as `wrap`, because
+`grow` is the only sizing across a column that reads the parent.
+
+**Evidence.** A probe through `layout::compute`, a 200-capped column
+in an 800 window, a text of 400: straight in the card, the text
+200 × 40; in a fit column in the card, the column and the text
+400 × 20; in a fit row, the same.
+
+**Wants:** a fit box no wider than the room across its parent — CSS's
+`fit-content`, its content's width but never more than there is —
+without stretching it: a fit child that fits keeps its own width, so a
+centred button stays a button. Since pass 2 runs top-down, the clamp
+reaches the whole subtree: the wrapper's own run then gives along a
+row, its text clamps and wraps, and pass 3 measures the wrapped lines.
+
+**Do.** In the cross branch of `distribute_axis`, a `fit` child wider
+than the content box is held to it through its own clamps, so a
+declared `minWidth` — `fit` included — wins and is the way to ask for
+the overflow back. The floor is the declared min, 0 undeclared: the
+rule a row's fit children already give by across (F114 kept it), and
+what lets a card's title be cut into its ellipsis — a no-wrap or
+ellipsis text's min-content is its whole width, and CSS's
+`min-width: auto` floor there is the flexbox trap `min-width: 0` exists
+to undo. Not: a parent that scrolls x (its overflow is the point, as
+`shrink_axis` leaves a scrolling run), a `fixed` child (CSS keeps its
+width too), a width a ratio derives from the height (`shrink_axis`
+leaves it), a float (sized against its anchor). Heights are not
+clamped: down a column F114 answers it, and a squeeze down only clips.
+A table's fit rows held to the table's box lay its columns across that
+box, and `table_resolve` already compresses the fit columns into it.
+
+**Why it is a break.** Every fit box that ran past a parent across a
+column that does not scroll now wraps, compresses or is cut to it:
+that is the fix, and anything that drew past its card on purpose
+declares `minWidth "fit"`.
+
 ## From the kawoosh Russian-backtick report (2026-10-01)
 
 On macOS's Russian layout the key printed `` ` `` typed `]`, and kawoosh
