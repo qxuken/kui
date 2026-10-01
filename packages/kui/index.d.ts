@@ -357,6 +357,14 @@ export type SystemMsg = {
   assistive: 'unknown' | 'none' | 'listening';
 };
 
+/** The system's installed fonts changed: a rescan found a face installed
+ *  or removed (delivered on the root, one per window that noticed). A
+ *  window rescans itself when macOS or Windows says the set changed;
+ *  elsewhere it follows `reloadSystemFonts()`. Re-read `systemFonts()` here
+ *  if the model holds the list; a `family` named in the view needs nothing.
+ *  A font the app loads itself raises none. */
+export type FontsMsg = { kind: 'fonts' };
+
 /** A declared window opened, or closed — because nothing declares it any
  *  more, or because the user closed it. A window the user closed stays
  *  closed while it is still declared (a declaration reopens a window only
@@ -478,6 +486,7 @@ export type CoreMsg =
   | DismissMsg
   | ResizeMsg
   | SystemMsg
+  | FontsMsg
   | WindowMsg
   | ModifiersMsg
   | EditMsg

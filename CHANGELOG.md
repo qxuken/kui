@@ -66,7 +66,10 @@ was the first bare bump to break an app in five releases).
   running example as one face each way), `WM_FONTCHANGE` on Windows (not
   yet run there) — coalescing a burst into one rescan, and every window
   draws; so every Rust, C `kui_run` and Node window app follows an
-  install with no code. Linux's fontconfig has no such signal, and a host
+  install with no code. Each window's next frame then raises a `fonts`
+  event (`{ kind: "fonts" }`, Node `FontsMsg` in `CoreMsg`, on the root),
+  for an app that keeps `systemFonts()` in its model — kawoosh's fonts
+  pane — to read it again; a font the app loads itself raises none. Linux's fontconfig has no such signal, and a host
   with its own windowing has no runner: those call it when the set may
   have changed — a fonts pane opening, the window taking focus back — not
   every frame, since it opens every font file on the system. A new

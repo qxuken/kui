@@ -755,7 +755,7 @@ that are hard to reverse and would look arbitrary without their context.
   which are monospaced, their weights and italics; the system's are
   scanned once a process and again when macOS or Windows says a font was
   installed or removed, and `reload_system_fonts()` asks where nothing
-  says); all hand back a `FontId`
+  says; a rescan that found a change is a `fonts` event); all hand back a `FontId`
   slotmap handle for `TextStyle::font(id)` — JSX `<text font={id}>` via
   `ctx.addFont` / `addSystemFont`, Lua `font = id`, C `KuiTextStyle.font`
   via `kui_font_add*`. A view can also name the family itself — JSX

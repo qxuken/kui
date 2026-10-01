@@ -266,7 +266,9 @@ is the names alone.
 On macOS and Windows a window app does nothing: the runner hears the OS
 say the installed fonts changed, scans them again, and draws, and a view
 that names the new family (`family="…"`) or lists `systemFonts()` sees
-it on that frame. Elsewhere — Linux, where fontconfig sends no such
+it on that frame. An app that holds the list in its model — a font
+picker's rows — re-reads it on the `fonts` message (`FontsMsg`, one per
+window, on the root), which every rescan that found a change raises. Elsewhere — Linux, where fontconfig sends no such
 signal, or a host with its own windowing — call `ctx.reloadSystemFonts()`
 (Rust `Core::reload_system_fonts()`, C `kui_font_reload_system`). kui
 scans the system's fonts once a process and every session starts from

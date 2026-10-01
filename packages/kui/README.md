@@ -229,7 +229,8 @@ pointing into the other three.
   for which are monospaced, their weights and italics); then
   `<text font={id}>`. Register in `setup(win)` before the first frame.
   The installed ones are rescanned when macOS or Windows says a font was
-  installed or removed; on Linux `win.reloadSystemFonts()` scans again.
+  installed or removed, and a `FontsMsg` follows for a model that keeps
+  the list; on Linux `win.reloadSystemFonts()` scans again.
 - **Window chrome**: open with `chrome: 'custom'`, put a `<titlebar>` (or
   your own strip with `window="drag"` plus `<windowButtons/>`) in the root;
   on macOS it insets past the traffic lights itself. The root box's

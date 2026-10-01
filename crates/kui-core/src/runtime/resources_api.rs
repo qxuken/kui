@@ -193,7 +193,8 @@ impl Core {
     /// `load_font_file`, `load_fonts_dir`) are not touched. Every window
     /// of the session shapes its text again on its next frame, since
     /// fallback can land on a new face anywhere; this window is asked for
-    /// that frame. A face whose file was replaced in place, under the same
+    /// that frame, and each window's next frame reports a `fonts` event to
+    /// the host, for an app that keeps the font list in its model. A face whose file was replaced in place, under the same
     /// path, is not read again.
     pub fn reload_system_fonts(&mut self) -> usize {
         let fresh = crate::text::rescan_system_fonts();
@@ -722,6 +723,7 @@ impl crate::session::SessionState {
         // one registered can still be what fallback picks.
         self.fonts_rev += 1;
         self.weights_rev += 1;
+        self.system_fonts_rev += 1;
         leaving.len() + arrived.len()
     }
 }
@@ -800,8 +802,8 @@ mod tests {
     /// test's to do): the session's own scan less one installed face, plus
     /// a font file written for it. The new face is found by name, the
     /// gone one is gone, one that stayed keeps its id, every window is
-    /// told to shape again, and the same scan a second time changes
-    /// nothing.
+    /// told to shape again and hears one `fonts` event, and the same scan
+    /// a second time changes nothing.
     #[test]
     fn a_rescan_brings_in_what_came_drops_what_went_and_keeps_the_rest() {
         use crate::text::{SystemFonts, face_file};
@@ -827,6 +829,19 @@ mod tests {
         db.load_font_file(&installed).unwrap();
         let fresh = std::sync::Arc::new(SystemFonts::from_db(held.locale().into(), db));
 
+        let framed = |core: &mut Core| {
+            core.frame(crate::Size::new(100.0, 100.0), 1.0).finish();
+            let evs = core.take_pending_events();
+            evs.iter()
+                .filter_map(|e| e.kind().map(str::to_owned))
+                .collect::<Vec<_>>()
+        };
+        let mut other = Core::new_in(&core.session);
+        assert!(
+            framed(&mut core).is_empty(),
+            "the first frame establishes the set"
+        );
+        assert!(framed(&mut other).is_empty());
         let face_of = |core: &Core, key: &(std::path::PathBuf, u32)| {
             let sess = core.session.state();
             sess.fonts
@@ -856,7 +871,18 @@ mod tests {
                 "a face that stayed keeps its id"
             );
         }
+        assert_eq!(framed(&mut core), ["fonts"], "one event, on the root");
+        assert_eq!(
+            framed(&mut other),
+            ["fonts"],
+            "and one in every window of the session"
+        );
+        assert!(framed(&mut core).is_empty(), "once");
         assert_eq!(core.session.state().apply_system_fonts(fresh), 0);
+        assert!(
+            framed(&mut core).is_empty(),
+            "a scan that found nothing new is no event"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -866,7 +892,24 @@ mod tests {
     #[test]
     fn a_rescan_of_an_unchanged_system_changes_nothing() {
         let mut core = Core::new();
+        core.frame(crate::Size::new(100.0, 100.0), 1.0).finish();
+        core.take_pending_events();
         assert_eq!(core.reload_system_fonts(), 0);
+        // Nor does a font the app loads itself raise a `fonts` event.
+        core.add_font_data(crate::testing::font_face(
+            "Kui Rescan App",
+            400,
+            false,
+            false,
+        ))
+        .expect("the app's own font loads");
+        core.frame(crate::Size::new(100.0, 100.0), 1.0).finish();
+        assert!(
+            !core
+                .take_pending_events()
+                .iter()
+                .any(|e| e.kind() == Some("fonts"))
+        );
         let after = Core::new();
         assert!(std::sync::Arc::ptr_eq(
             &after.session.state().system,
