@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.32 (unreleased)
+## 0.1.0-alpha.32 (2026-10-02)
 
 **What breaks.** No build.
 
@@ -63,8 +63,10 @@ was the first bare bump to break an app in five releases).
   the installed fonts changed — CoreText's
   `kCTFontManagerRegisteredFontsChangedNotification` on macOS (checked:
   a font copied into `~/Library/Fonts` and removed again reached a
-  running example as one face each way), `WM_FONTCHANGE` on Windows (not
-  yet run there) — coalescing a burst into one rescan, and every window
+  running example as one face each way), `WM_FONTCHANGE` on Windows (checked:
+  Inter installed per user and removed again reached a running Node
+  window as one `fonts` event each way, its text reshaped in Inter and
+  back) — coalescing a burst into one rescan, and every window
   draws; so every Rust, C `kui_run` and Node window app follows an
   install with no code. Each window's next frame then raises a `fonts`
   event (`{ kind: "fonts" }`, Node `FontsMsg` in `CoreMsg`, on the root),
@@ -83,14 +85,74 @@ was the first bare bump to break an app in five releases).
   and every headless drive at once, started as built binaries rather
   than a `cargo run` each. On an M3 Pro the windowed round went from
   143 s to 24 s and the headless one from 44 s to 6 s. `--jobs 1` is the
-  old round; CI's Windows window round keeps it until it is run there.
+  old round. On a Windows desktop (RTX 5080) eight at a time is clean,
+  the 120 windows in 31 s; CI's Windows runner keeps `--jobs 1` until it
+  is run there.
 - **`scripts/test.nu`**, the local test run: what `cargo test --workspace
   --features kui-core/conformance` runs, with the test binaries started
   side by side, slowest first, instead of one after another — 11–16 s
-  where `cargo test` takes ~33 s. `--node` adds `npm test`, `-p` takes a
+  where `cargo test` takes ~33 s. On Windows ~6 s. `--node` adds `npm test`, `-p` takes a
   comma-separated list, a filter narrows it and libtest's own flags go
   after `--`. nextest was measured and is slower here: a process per
   test pays the font scan per test.
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), on 2026-10-02 — the
+commits after the alpha.31 tag: the system's fonts scanned once a
+process and again when the OS says they changed, with a `fonts` event,
+`KUI_WINDOW_AT`, `smoke --jobs` and the scripts in Nushell. This round
+ran on Windows and on Linux under WSL, not on the Mac, where the fonts
+work and alpha.31 were checked: what was owed was their Windows halves,
+`WM_FONTCHANGE` and F115's `ToUnicodeEx`, and the Linux `check` that
+took the last tag. The AX audit (a Mac's) was not run. It found two
+things, fixed before the tag: the rescan test failed on Linux, where
+fontdb reads Ubuntu's variable `Ubuntu[wdth,wght].ttf` as two faces at
+one index and the test uninstalled one of them — the rescan, keyed on
+the file, was right — and `scripts/test.nu` lost the toolchain's
+libraries on Windows, nu spelling the variable `PATH`.
+
+**Windows 11 Pro 26300 on an RTX 5080, rustc 1.99.0, Node 25.2.1, nu
+0.115.0**, on the round's head in its worktree. `cargo fmt --all
+--check` and `cargo clippy --workspace --all-targets --features
+kui-core/conformance -- -D warnings` are clean. `cargo test --workspace
+--features kui-core/conformance`: **1652 tests over 131 suites, 0
+failed** (4 ignored); `scripts/test.nu` counts the same in ~6 s. The C
+round, `cbuild --run`, passes its six checks; the corpus passes its
+**53 scenes**; the ABI is **23**. Node's `node --test test.mjs` under
+`KUI_CONFORMANCE_REQUIRED=1`: **206 of 207**, the RTLD test skipped.
+`npm run gen` leaves no diff, the examples typecheck and their lockfile
+installs, the headless round passes all **33 drives**, and
+`scripts/book-examples.nu --check` passes — on this CRLF checkout too,
+where the bash one reported every page stale.
+
+**Ubuntu 24.04 under WSL 2, rustc 1.99.0, Node 25.2.1**, on a clean
+clone with the round's fixes: clippy as above clean; **1648 tests over
+130 suites, 0 failed** (3 ignored); the C round passes its five checks
+and the corpus its 53 scenes; Node **207 of 207**; `gen` no diff; the
+examples typecheck; the headless round passes.
+
+**The windowed round**, `smoke -- --node`: **49 Rust examples and the
+eleven Node examples, each on both bases, 120 frames each, every one
+exiting 0** — 120 windows, eight at a time, in 31 s — and `counter`,
+`host`, `c_panel` and `lua_panel` by hand under `KUI_SMOKE_FRAMES=120`,
+each exiting 0 with nothing on stderr: **124 windows over five hosts.**
+
+**The Windows halves, in a window.** `WM_FONTCHANGE`: a Node window
+naming `Inter`, absent, while Inter-Regular was installed for the user
+(the file in `%LOCALAPPDATA%\Microsoft\Windows\Fonts`, its HKCU value,
+`AddFontResource` and the broadcast) and removed again — one `fonts`
+event each way, `systemFonts()` 80 → 81 → 80, the text reshaped in
+Inter and back. F115: an `onKey` sink under Windows' Russian layout,
+pressed by `keybd_event` — the key printed `` ` `` reads `` ` `` with
+`text` "ё", ⇧4 `$` with ";", ⇧/ `?` with ",", ; and Q `;` and `q` with
+"ж" and "й", 1 `1`; under US the same keys read as printed.
+
+**The bench guard** against the alpha.31 tag, on Windows: **green**,
+none of the 8 guarded rows slower beyond its noise — the worst
+`frame_1k_curves` and `frame_1k_typical` at +0.2% — and every one of
+the 38 rows' sources "same". README's table is kept at alpha.22's
+numbers.
 
 ## 0.1.0-alpha.31 (2026-10-01)
 

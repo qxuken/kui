@@ -281,7 +281,7 @@ picker opens, or when the window takes focus back after the user was
 elsewhere.
 
 [Doors](props.md#doors) ·
-[alpha.32 `### Added`](../CHANGELOG.md#010-alpha32-unreleased)
+[alpha.32 `### Added`](../CHANGELOG.md#010-alpha32-2026-10-02)
 
 ### How do I show a 100k-character line, or a paragraph that long?
 

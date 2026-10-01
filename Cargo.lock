@@ -1499,7 +1499,7 @@ dependencies = [
 
 [[package]]
 name = "kui-core"
-version = "0.1.0-alpha.31"
+version = "0.1.0-alpha.32"
 dependencies = [
  "cosmic-text",
  "divan",
@@ -1516,7 +1516,7 @@ dependencies = [
 
 [[package]]
 name = "kui-derive"
-version = "0.1.0-alpha.31"
+version = "0.1.0-alpha.32"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1525,7 +1525,7 @@ dependencies = [
 
 [[package]]
 name = "kui-devtools"
-version = "0.1.0-alpha.31"
+version = "0.1.0-alpha.32"
 dependencies = [
  "cc",
  "kui-native",
@@ -1533,7 +1533,7 @@ dependencies = [
 
 [[package]]
 name = "kui-ffi"
-version = "0.1.0-alpha.31"
+version = "0.1.0-alpha.32"
 dependencies = [
  "kui-core",
  "kui-devtools",
@@ -1542,7 +1542,7 @@ dependencies = [
 
 [[package]]
 name = "kui-lua"
-version = "0.1.0-alpha.31"
+version = "0.1.0-alpha.32"
 dependencies = [
  "divan",
  "kui-core",
@@ -1555,7 +1555,7 @@ dependencies = [
 
 [[package]]
 name = "kui-native"
-version = "0.1.0-alpha.31"
+version = "0.1.0-alpha.32"
 dependencies = [
  "accesskit",
  "accesskit_winit",
@@ -1577,7 +1577,7 @@ dependencies = [
 
 [[package]]
 name = "kui-node"
-version = "0.1.0-alpha.31"
+version = "0.1.0-alpha.32"
 dependencies = [
  "kui-core",
  "kui-ffi",
@@ -1590,7 +1590,7 @@ dependencies = [
 
 [[package]]
 name = "kui-wgpu"
-version = "0.1.0-alpha.31"
+version = "0.1.0-alpha.32"
 dependencies = [
  "bytemuck",
  "kui-core",

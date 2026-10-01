@@ -152,7 +152,7 @@ architecture review (forty-four entries under ten decisions, every one
 built on 2026-09-14), the standard-menus round, and the pre-tag round's
 own two finds. C26 was the last split entry, and it closed on 2026-09-11.
 
-Ordered by area, not by priority. What to do next is under "After alpha.30".
+Ordered by area, not by priority. What to do next is under "After alpha.31".
 
 **Legend** — `!` a defect that ships today · `~` a gap with no workaround ·
 `.` cost without correctness risk.
@@ -418,7 +418,7 @@ moved whole to
 before the alpha.10 tag, W7 last — the one that wanted a decision rather
 than a patch, settled as: a displacement moves a subtree by whole physical
 pixels, scrolling included. Nothing from the round is open; what it did
-not cover is in "After alpha.30" below.
+not cover is in "After alpha.31" below.
 
 ## From two alpha.9 field reports and a bake-off (2026-09-08)
 
@@ -1924,7 +1924,7 @@ Beside the report, reading the tree for this round turned up one gap of
 kui's own: the variable-height list is Rust-only (C46). Two further
 entries came from the comparison's table: typed messages (C50) and file
 dialogs (C51). The distribution recommendation is unchanged (see
-*Distribution* under *After alpha.30*).
+*Distribution* under *After alpha.31*).
 
 ## From the DX sweep (2026-09-27)
 
@@ -2048,12 +2048,17 @@ window beneath, by a press winit made up as that window gained focus
 (RG100). RG105, filed the same day, was withdrawn the same day and is
 in the archive: the Windows reading it rested on was a US layout's.
 
-## After alpha.30
+## After alpha.31
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
-alpha.29" until 2026-10-01, when the round between the alpha.30 and
-alpha.31 tags — F115 from the kawoosh Russian-backtick report, a
-non-Latin layout's ASCII read as the US key, built the day it was filed
+alpha.30" until 2026-10-02, when the round between the alpha.31 and
+alpha.32 tags — the system's fonts scanned once a process and again
+when the OS says they changed, with a `fonts` event, and the
+repository's scripts in Nushell — had landed, and the heading moved
+with the tag; "After alpha.29" until 2026-10-01, when the round
+between the alpha.30 and alpha.31 tags — F115 from the kawoosh
+Russian-backtick report, a non-Latin layout's ASCII read as the US key,
+built the day it was filed
 — had landed, and the heading moved with the tag; "After alpha.28"
 until later on 2026-09-30, when the round between the alpha.29
 and alpha.30 tags — a spring's bounce, RG106 from kawoosh, Windows'
@@ -2552,7 +2557,7 @@ Every closed entry, all in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) and all verbatim — one heading
 per id, and `tests/docs.rs` holds every id to one entry across both files.
 This index is here so an id resolves without opening that file: the open items
-above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.30" and
+above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.31" and
 the hygiene note cite C2, C5(b), P3, R4 and R7, and code comments, ADRs and
 commit messages cite ids of their own. All of them are whole in the
 archive. **C11**, **W2** and **C15** were each split for a while — an entry
