@@ -30,6 +30,8 @@ mod imp {
         Access(Event),
         /// Something the app owns changed off the loop's thread: draw.
         Wake,
+        /// The system's installed fonts changed (`mod system_fonts`).
+        FontsChanged,
         /// A file dialog shown for `window` was answered (backlog C51).
         /// Only the `dialogs` feature shows one.
         #[cfg_attr(not(feature = "dialogs"), allow(dead_code))]
@@ -52,7 +54,7 @@ mod imp {
         match ev {
             UserEvent::Access(ev) => Some(ev.window_id),
             UserEvent::Files { window, .. } => Some(*window),
-            UserEvent::Wake => None,
+            UserEvent::Wake | UserEvent::FontsChanged => None,
         }
     }
 
@@ -455,6 +457,8 @@ mod imp {
     pub enum UserEvent {
         /// Something the app owns changed off the loop's thread: draw.
         Wake,
+        /// The system's installed fonts changed (`mod system_fonts`).
+        FontsChanged,
         /// A file dialog shown for `window` was answered (backlog C51).
         /// Only the `dialogs` feature shows one.
         #[cfg_attr(not(feature = "dialogs"), allow(dead_code))]
@@ -467,7 +471,7 @@ mod imp {
     pub fn window_of(ev: &UserEvent) -> Option<winit::window::WindowId> {
         match ev {
             UserEvent::Files { window, .. } => Some(*window),
-            UserEvent::Wake => None,
+            UserEvent::Wake | UserEvent::FontsChanged => None,
         }
     }
 
@@ -498,7 +502,7 @@ mod imp {
         pub fn on_event(&mut self, ev: UserEvent) -> Option<AccessRequest> {
             match ev {
                 // Handled by the shell before a bridge is asked.
-                UserEvent::Wake | UserEvent::Files { .. } => None,
+                UserEvent::Wake | UserEvent::FontsChanged | UserEvent::Files { .. } => None,
             }
         }
 

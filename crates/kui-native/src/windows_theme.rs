@@ -27,13 +27,16 @@
 //! Both ordinals are the ones winit and win32-darkmode use, and exist from
 //! Windows 10 1809 (build 17763), the build winit's dark mode starts at;
 //! below it the ordinal names another function, so nothing is called.
+//!
+//! The same subclass hears `WM_FONTCHANGE`, the broadcast that follows a
+//! font installed or removed, and hands it to `mod system_fonts`.
 
 use std::sync::OnceLock;
 
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryA};
 use windows_sys::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
-use windows_sys::Win32::UI::WindowsAndMessaging::{WM_DESTROY, WM_SETTINGCHANGE};
+use windows_sys::Win32::UI::WindowsAndMessaging::{WM_DESTROY, WM_FONTCHANGE, WM_SETTINGCHANGE};
 
 const SUBCLASS_ID: usize = 0x6b7574; // "kut"
 
@@ -68,6 +71,10 @@ unsafe extern "system" fn subclass_proc(
                 unsafe { refresh() };
             }
         }
+        // A font added or removed system-wide (`mod system_fonts`): the
+        // same subclass, since every top-level window gets the broadcast
+        // and this is where they are heard.
+        WM_FONTCHANGE => crate::system_fonts::changed(),
         WM_DESTROY => unsafe {
             RemoveWindowSubclass(hwnd, Some(subclass_proc), SUBCLASS_ID);
         },

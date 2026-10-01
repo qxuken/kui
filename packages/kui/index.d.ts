@@ -2436,6 +2436,14 @@ export declare class Ctx {
    * the face count.
    */
   loadFontsDir(dir: string): number
+  /**
+   * Scans the system's fonts again, so a font installed while the
+   * app runs is found (kui scans them once a process); returns how
+   * many faces came and went, 0 when nothing did. Tens of
+   * milliseconds: call it when the set may have changed, not
+   * every frame.
+   */
+  reloadSystemFonts(): number
   removeFont(id: string): void
   /**
    * Family names of every font the core can see, installed or
@@ -3612,6 +3620,14 @@ export declare class KuiWindow {
    * the face count.
    */
   loadFontsDir(dir: string): number
+  /**
+   * Scans the system's fonts again, so a font installed while the
+   * app runs is found (kui scans them once a process); returns how
+   * many faces came and went, 0 when nothing did. Tens of
+   * milliseconds: call it when the set may have changed, not
+   * every frame.
+   */
+  reloadSystemFonts(): number
   removeFont(id: string): void
   /**
    * Family names of every font the core can see, installed or

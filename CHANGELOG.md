@@ -21,6 +21,74 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.32 (unreleased)
+
+**What breaks.** No build.
+
+- A `Session` made after the first in a process starts from the fonts the
+  first one found: a font installed on the system while the process runs
+  is seen by none of them until something calls `reload_system_fonts`
+  (under Added), where a later session used to rescan and see it. Fonts
+  an app loads itself are unchanged.
+- The repository's scripts are Nushell (`scripts/*.nu`), each where its
+  `.sh` was; `nu` 0.116 runs them on macOS, Linux and Windows. CI
+  installs it. Nothing a consumer of the crates or the package touches.
+
+### Changed
+
+- **The system's fonts are scanned once a process.** Every
+  `Session::new` (so every `Core::new`, and every Node `Ctx`) opened
+  every font file on the system twice — fontdb's scan, then the check
+  that drops faces the shaper cannot measure (F98) — 20–70 ms on a Mac's
+  1312 faces, most of it `open`. The first session does that; the rest
+  copy its checked database. Test suites that make a core a test are
+  where it showed: `cargo test --workspace` went from ~100 s to ~33 s on
+  an M3 Pro, `npm test` from 13 s to 8 s, and one coverage test that
+  builds 54 cores from 10 s to 2 s (it now also runs its cases on
+  threads). *What you can delete:* a `Session` kept alive only so later
+  windows would not pay for the scan.
+
+### Added
+
+- **`Core::reload_system_fonts`** — C `kui_font_reload_system`, Node
+  `ctx.reloadSystemFonts()` / `win.reloadSystemFonts()`; Lua has none, a
+  script being a guest: scans the system's fonts again and brings the
+  session's font database up to it, a face installed since joining and
+  one uninstalled leaving, and returns how many faces came and went.
+  Faces still installed keep their handles and their place in every
+  window's caches, fonts the app loaded itself are not touched, every
+  window of the session shapes its text again on its next frame (and
+  the calling one is asked for it), and sessions made afterwards start
+  from the new scan. The winit runner calls it itself when the OS says
+  the installed fonts changed — CoreText's
+  `kCTFontManagerRegisteredFontsChangedNotification` on macOS (checked:
+  a font copied into `~/Library/Fonts` and removed again reached a
+  running example as one face each way), `WM_FONTCHANGE` on Windows (not
+  yet run there) — coalescing a burst into one rescan, and every window
+  draws; so every Rust, C `kui_run` and Node window app follows an
+  install with no code. Linux's fontconfig has no such signal, and a host
+  with its own windowing has no runner: those call it when the set may
+  have changed — a fonts pane opening, the window taking focus back — not
+  every frame, since it opens every font file on the system. A new
+  function, so the ABI stays 23. *What you can delete:* a restart, or a
+  `Session` made anew, to pick up a font the user just installed.
+- **`KUI_WINDOW_AT=X,Y`**, beside `KUI_WINDOW=WxH`: where the runner opens
+  the main window, logical px from the screen's top left.
+- **`smoke --jobs N`.** The smoke round runs in parallel: eight windows
+  at once by default, cascaded through `KUI_WINDOW_AT` so none is wholly
+  covered (a covered window is `Occluded` on macOS and presents nothing),
+  and every headless drive at once, started as built binaries rather
+  than a `cargo run` each. On an M3 Pro the windowed round went from
+  143 s to 24 s and the headless one from 44 s to 6 s. `--jobs 1` is the
+  old round; CI's Windows window round keeps it until it is run there.
+- **`scripts/test.nu`**, the local test run: what `cargo test --workspace
+  --features kui-core/conformance` runs, with the test binaries started
+  side by side, slowest first, instead of one after another — 11–16 s
+  where `cargo test` takes ~33 s. `--node` adds `npm test`, `-p` takes a
+  comma-separated list, a filter narrows it and libtest's own flags go
+  after `--`. nextest was measured and is slower here: a process per
+  test pays the font scan per test.
+
 ## 0.1.0-alpha.31 (2026-10-01)
 
 **What breaks.** No build: `LayoutScript` and

@@ -397,7 +397,7 @@ same one.
   and no user-visible surface, which is why it landed on its own, first.
   `drop_1k_rows_declaring_exit` fell from ~256 µs to ~217 µs (four
   interleaved rounds, fastest of 100 each, no overlap);
-  `scripts/bench-check.sh` reports that row without judging it. Its cover is
+  `scripts/bench-check.nu` reports that row without judging it. Its cover is
   `a_second_departure_of_one_key_replaces_the_first`, which is new — the
   `retire` inside `depart` had none, because the frame path cannot reach it
   (`collect_departures` retires a returning key before it can depart again)

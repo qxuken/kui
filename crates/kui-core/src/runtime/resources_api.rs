@@ -171,6 +171,40 @@ impl Core {
         added.len()
     }
 
+    /// Scans the system's fonts again and brings this session's font
+    /// database up to it: a face installed since the last scan joins it,
+    /// one uninstalled leaves it. Returns how many faces came and went, 0
+    /// when nothing did.
+    ///
+    /// The system's fonts are scanned once a process, and every session
+    /// starts from that scan, so a font the user installs while the app
+    /// runs is not seen until something asks. The winit runner
+    /// (`kui-native`) asks itself when macOS or Windows says the installed
+    /// fonts changed; a host with its own windowing, or on Linux, where
+    /// fontconfig says nothing, calls this when it has reason to think the
+    /// set changed (a "fonts" pane opening, the window taking focus back).
+    /// It opens every font file on the system — tens of milliseconds on a
+    /// Mac's 1300 faces — so it is not a per-frame call. Sessions made after it start from the new scan; another
+    /// session that already exists keeps what it has until it calls this
+    /// too.
+    ///
+    /// Faces still installed keep their handles and their place in every
+    /// cache; fonts the app loaded itself (`add_font_data`,
+    /// `load_font_file`, `load_fonts_dir`) are not touched. Every window
+    /// of the session shapes its text again on its next frame, since
+    /// fallback can land on a new face anywhere; this window is asked for
+    /// that frame. A face whose file was replaced in place, under the same
+    /// path, is not read again.
+    pub fn reload_system_fonts(&mut self) -> usize {
+        let fresh = crate::text::rescan_system_fonts();
+        let changed = self.session.state().apply_system_fonts(fresh);
+        if changed > 0 {
+            self.sync_font_names();
+            self.request_frame();
+        }
+        changed
+    }
+
     /// The handle for a font family by name (`"Menlo"`, `"Antonio"`) —
     /// installed on the system or loaded with `load_fonts_dir` /
     /// `load_font_file`; `None` when no face matches (see
@@ -621,6 +655,75 @@ impl crate::session::SessionState {
         self.faces_shared = true;
         share_faces(self.fonts.db_mut());
     }
+
+    /// `Core::reload_system_fonts`' half on the session: the faces the
+    /// scan this session holds had and `fresh` has not leave the database,
+    /// those `fresh` has and it had not are loaded, and the rest stay
+    /// where they are, handles and all — a new database would hand out
+    /// fresh ids, and every window's atlas, raster axes and shaped text
+    /// key glyphs by id. Returns how many faces came and went.
+    pub(crate) fn apply_system_fonts(
+        &mut self,
+        fresh: std::sync::Arc<crate::text::SystemFonts>,
+    ) -> usize {
+        use cosmic_text::fontdb::{ID, Source};
+        let old = std::mem::replace(&mut self.system, fresh.clone());
+        let gone: rustc_hash::FxHashSet<_> = old.faces.difference(&fresh.faces).collect();
+        let came: Vec<_> = fresh.faces.difference(&old.faces).collect();
+        if gone.is_empty() && came.is_empty() {
+            return 0;
+        }
+        let db = self.fonts.db_mut();
+        let leaving: Vec<ID> = db
+            .faces()
+            .filter(|face| crate::text::face_file(face).is_some_and(|key| gone.contains(&key)))
+            .map(|face| face.id)
+            .collect();
+        let mut touched = families_of(db, &leaving);
+        for &id in &leaving {
+            db.remove_face(id);
+        }
+        // What came, a file at a time: fontdb loads every face of a file,
+        // and only the ones the scan kept (measurable, and not already
+        // here through a sibling that stayed) are wanted.
+        let mut by_file = rustc_hash::FxHashMap::<&std::path::Path, Vec<u32>>::default();
+        for (path, index) in &came {
+            by_file.entry(path.as_path()).or_default().push(*index);
+        }
+        let mut arrived = Vec::new();
+        for (path, indices) in by_file {
+            for id in db.load_font_source(Source::File(path.to_path_buf())) {
+                let wanted = db
+                    .face(id)
+                    .is_some_and(|face| indices.contains(&face.index));
+                if wanted {
+                    arrived.push(id);
+                } else {
+                    db.remove_face(id);
+                }
+            }
+        }
+        touched.extend(families_of(db, &arrived));
+        crate::text::pin_default_families(db);
+        // cosmic-text works out its monospaced faces, and which scripts
+        // each covers, when the font system is built; rebuilt over the
+        // same database, the ids stay and the lists are new.
+        let fonts = std::mem::replace(
+            &mut self.fonts,
+            cosmic_text::FontSystem::new_with_locale_and_db(String::new(), Default::default()),
+        );
+        let (locale, db) = fonts.into_locale_and_db();
+        self.fonts = cosmic_text::FontSystem::new_with_locale_and_db(locale, db);
+        if self.faces_shared {
+            share_faces(self.fonts.db_mut());
+        }
+        self.resources.reweigh(self.fonts.db(), &touched, None);
+        // Every window shapes again, whatever reweigh found: a family no
+        // one registered can still be what fallback picks.
+        self.fonts_rev += 1;
+        self.weights_rev += 1;
+        leaving.len() + arrived.len()
+    }
 }
 
 /// Maps every file-backed face in the database once and shares the
@@ -690,6 +793,85 @@ mod tests {
         );
         core.finish_frame();
         assert!(!core.atlas.keeps_prev());
+    }
+
+    /// `reload_system_fonts`' session half, against a scan made up for
+    /// the test (installing a font on the machine running it is not the
+    /// test's to do): the session's own scan less one installed face, plus
+    /// a font file written for it. The new face is found by name, the
+    /// gone one is gone, one that stayed keeps its id, every window is
+    /// told to shape again, and the same scan a second time changes
+    /// nothing.
+    #[test]
+    fn a_rescan_brings_in_what_came_drops_what_went_and_keeps_the_rest() {
+        use crate::text::{SystemFonts, face_file};
+        let mut core = Core::new();
+        let held = core.session.state().system.clone();
+        let dir = std::env::temp_dir().join(format!("kui-rescan-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let installed = dir.join("rescan.ttf");
+        std::fs::write(
+            &installed,
+            crate::testing::font_face("Kui Rescan Face", 400, false, false),
+        )
+        .unwrap();
+
+        let mut db = held.db().clone();
+        let mut files = db.faces().filter_map(|f| Some((f.id, face_file(f)?)));
+        let uninstalled = files.next();
+        let stays = files.next();
+        drop(files);
+        if let Some((id, _)) = &uninstalled {
+            db.remove_face(*id);
+        }
+        db.load_font_file(&installed).unwrap();
+        let fresh = std::sync::Arc::new(SystemFonts::from_db(held.locale().into(), db));
+
+        let face_of = |core: &Core, key: &(std::path::PathBuf, u32)| {
+            let sess = core.session.state();
+            sess.fonts
+                .db()
+                .faces()
+                .find(|f| face_file(f).as_ref() == Some(key))
+                .map(|f| f.id)
+        };
+        let weights = core.session.state().weights_rev;
+        let changed = core.session.state().apply_system_fonts(fresh.clone());
+        assert_eq!(changed, 1 + usize::from(uninstalled.is_some()));
+        assert!(
+            core.session.state().weights_rev > weights,
+            "every window shapes again"
+        );
+        assert!(
+            core.add_system_font("Kui Rescan Face").is_some(),
+            "the installed face is found"
+        );
+        if let Some((_, key)) = &uninstalled {
+            assert_eq!(face_of(&core, key), None, "the uninstalled face is gone");
+        }
+        if let Some((id, key)) = &stays {
+            assert_eq!(
+                face_of(&core, key),
+                Some(*id),
+                "a face that stayed keeps its id"
+            );
+        }
+        assert_eq!(core.session.state().apply_system_fonts(fresh), 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The real rescan: with nothing installed or removed since the
+    /// session's scan, nothing changes and no frame is asked for — and a
+    /// session made after it starts from it.
+    #[test]
+    fn a_rescan_of_an_unchanged_system_changes_nothing() {
+        let mut core = Core::new();
+        assert_eq!(core.reload_system_fonts(), 0);
+        let after = Core::new();
+        assert!(std::sync::Arc::ptr_eq(
+            &after.session.state().system,
+            &core.session.state().system
+        ));
     }
 
     /// DX24: naming a family shares the database's file-backed faces, once;

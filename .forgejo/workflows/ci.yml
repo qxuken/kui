@@ -142,6 +142,9 @@ env:
   CARGO_BUILD_JOBS: "2"
   CARGO_HOME: /usr/local/cargo
   RUSTUP_HOME: /usr/local/rustup
+  # The Nushell the scripts are written against (scripts/*.nu), pinned like
+  # every other tool here.
+  NU_VERSION: "0.116.0"
 
 jobs:
   # Answers one question - does this commit still need checking? - and is
@@ -213,12 +216,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The repository's scripts are Nushell, so one script runs on every
+      # platform a workstation or runner has; the image has curl, and the
+      # release tarball's nu, built for the runner's arch against glibc,
+      # runs on bookworm as it is.
+      - name: Install nu
+        run: |
+          set -eu
+          dir="nu-${NU_VERSION}-$(uname -m)-unknown-linux-gnu"
+          curl -fL --retry 3 \
+            "https://github.com/nushell/nushell/releases/download/${NU_VERSION}/${dir}.tar.gz" \
+            | tar -xz -C /usr/local/bin --strip-components=1 "${dir}/nu"
+          nu --version
+
       # The book's Examples part lists every example; an example added,
       # renamed or removed without a rerun of the script would leave the
       # published book without it (or failing to build). Needs nothing but
       # the checkout, so it runs first and fails in seconds.
       - name: Book examples are listed
-        run: scripts/book-examples.sh --check
+        run: nu scripts/book-examples.nu --check
 
       - name: Install system deps
         run: |
@@ -415,7 +431,7 @@ jobs:
       # this one sat at alpha.2 while packages/kui reached alpha.5. Compare
       # the two files directly rather than regenerating and diffing: no npm
       # run, so no dependence on the runner npm formatting the file the same
-      # way. scripts/set-version.sh writes both, so they diverge only when a
+      # way. scripts/set-version.nu writes both, so they diverge only when a
       # manifest is edited by hand.
       - name: The examples lockfile matches the linked package
         run: |
@@ -454,7 +470,7 @@ jobs:
       # entries age out on their own.
       - name: Prune the target dir
         if: github.event_name == 'push' && steps.cargo-cache.outputs.cache-hit != 'true'
-        run: scripts/prune-target.sh
+        run: nu scripts/prune-target.nu
 
       # `cache-hit` is the exact key, not the `restore-keys` prefix: when
       # Cargo.lock has not moved, the entry under this key is already the
@@ -494,6 +510,19 @@ jobs:
       ZIGLANG_VERSION: "0.16.0"
     steps:
       - uses: actions/checkout@v4
+
+      # The repository's scripts are Nushell, so one script runs on every
+      # platform a workstation or runner has; the image has curl, and the
+      # release tarball's nu, built for the runner's arch against glibc,
+      # runs on bookworm as it is.
+      - name: Install nu
+        run: |
+          set -eu
+          dir="nu-${NU_VERSION}-$(uname -m)-unknown-linux-gnu"
+          curl -fL --retry 3 \
+            "https://github.com/nushell/nushell/releases/download/${NU_VERSION}/${dir}.tar.gz" \
+            | tar -xz -C /usr/local/bin --strip-components=1 "${dir}/nu"
+          nu --version
 
       - name: Install toolchain
         run: |
@@ -538,7 +567,7 @@ jobs:
         run: cargo zigbuild -p kui-node --release --target "${{ matrix.target }}.2.28"
 
       - name: Collect prebuild
-        run: scripts/collect-prebuild.sh "${{ matrix.target }}" "${{ matrix.prebuild }}"
+        run: nu scripts/collect-prebuild.nu "${{ matrix.target }}" "${{ matrix.prebuild }}"
 
       - uses: actions/upload-artifact@v3
         with:
@@ -563,6 +592,19 @@ jobs:
       CARGO_XWIN_VERSION: "0.23.1"
     steps:
       - uses: actions/checkout@v4
+
+      # The repository's scripts are Nushell, so one script runs on every
+      # platform a workstation or runner has; the image has curl, and the
+      # release tarball's nu, built for the runner's arch against glibc,
+      # runs on bookworm as it is.
+      - name: Install nu
+        run: |
+          set -eu
+          dir="nu-${NU_VERSION}-$(uname -m)-unknown-linux-gnu"
+          curl -fL --retry 3 \
+            "https://github.com/nushell/nushell/releases/download/${NU_VERSION}/${dir}.tar.gz" \
+            | tar -xz -C /usr/local/bin --strip-components=1 "${dir}/nu"
+          nu --version
 
       - name: Install toolchain
         run: |
@@ -605,7 +647,7 @@ jobs:
         run: cargo xwin build -p kui-node --release --target "${{ matrix.target }}"
 
       - name: Collect prebuild
-        run: scripts/collect-prebuild.sh "${{ matrix.target }}" "${{ matrix.prebuild }}"
+        run: nu scripts/collect-prebuild.nu "${{ matrix.target }}" "${{ matrix.prebuild }}"
 
       - uses: actions/upload-artifact@v3
         with:
@@ -634,6 +676,19 @@ jobs:
       ZIGLANG_VERSION: "0.16.0"
     steps:
       - uses: actions/checkout@v4
+
+      # The repository's scripts are Nushell, so one script runs on every
+      # platform a workstation or runner has; the image has curl, and the
+      # release tarball's nu, built for the runner's arch against glibc,
+      # runs on bookworm as it is.
+      - name: Install nu
+        run: |
+          set -eu
+          dir="nu-${NU_VERSION}-$(uname -m)-unknown-linux-gnu"
+          curl -fL --retry 3 \
+            "https://github.com/nushell/nushell/releases/download/${NU_VERSION}/${dir}.tar.gz" \
+            | tar -xz -C /usr/local/bin --strip-components=1 "${dir}/nu"
+          nu --version
 
       # cargo-zigbuild and zig itself both come as pip wheels (x64 and
       # arm64 Linux), which keeps the runner's own arch out of the picture.
@@ -678,7 +733,7 @@ jobs:
         run: cargo zigbuild -p kui-node --release --target "${{ matrix.target }}"
 
       - name: Collect prebuild
-        run: scripts/collect-prebuild.sh "${{ matrix.target }}" "${{ matrix.prebuild }}"
+        run: nu scripts/collect-prebuild.nu "${{ matrix.target }}" "${{ matrix.prebuild }}"
 
       - uses: actions/upload-artifact@v3
         with:
@@ -700,6 +755,19 @@ jobs:
       NPM_REGISTRY: ${{ github.server_url }}/api/packages/${{ github.repository_owner }}/npm/
     steps:
       - uses: actions/checkout@v4
+
+      # The repository's scripts are Nushell, so one script runs on every
+      # platform a workstation or runner has; the image has curl, and the
+      # release tarball's nu, built for the runner's arch against glibc,
+      # runs on bookworm as it is.
+      - name: Install nu
+        run: |
+          set -eu
+          dir="nu-${NU_VERSION}-$(uname -m)-unknown-linux-gnu"
+          curl -fL --retry 3 \
+            "https://github.com/nushell/nushell/releases/download/${NU_VERSION}/${dir}.tar.gz" \
+            | tar -xz -C /usr/local/bin --strip-components=1 "${dir}/nu"
+          nu --version
 
       - name: Install toolchain
         run: |
@@ -728,7 +796,7 @@ jobs:
           restore-keys: publish-
 
       - name: Tag matches the manifests
-        run: scripts/check-version.sh "${GITHUB_REF_NAME#v}"
+        run: nu scripts/check-version.nu "${GITHUB_REF_NAME#v}"
 
       # Without `name`, v3 downloads every artifact of the run into
       # <path>/<artifact name>/, which is exactly the prebuilds layout.

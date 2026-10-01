@@ -92,7 +92,8 @@ impl FrameCause {
     /// restoring is a resize.
     pub const OCCLUSION: FrameCause = FrameCause(1 << 17);
     /// The system's appearance or settings changed: light or dark, the
-    /// accent, reduced motion, assistive technology coming or going.
+    /// accent, reduced motion, assistive technology coming or going, a
+    /// font installed or removed.
     pub const APPEARANCE: FrameCause = FrameCause(1 << 18);
     /// The caret's blink changed phase.
     pub const CARET: FrameCause = FrameCause(1 << 19);

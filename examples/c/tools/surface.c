@@ -303,6 +303,7 @@ static int surface(void) {
     check(kui_font_add(ui, junk, sizeof junk) == 0, "garbage is not a font");
     check(kui_font_load_file(ui, KUI_STR("/nonexistent.ttf")) == 0, "missing font file");
     check(kui_font_load_dir(ui, KUI_STR("/nonexistent")) == 0, "missing font dir");
+    check(kui_font_reload_system(ui) == 0, "a rescan with nothing installed since finds nothing");
     kui_font_remove(ui, kui_font_add_system(ui, KUI_STR("Menlo"))); /* 0 is a no-op */
 
     const uint8_t rgba[2 * 2 * 4] = {
