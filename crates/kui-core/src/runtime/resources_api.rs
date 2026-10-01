@@ -818,13 +818,24 @@ mod tests {
         )
         .unwrap();
 
+        // A file's face is uninstalled whole: one index of a file can be
+        // several faces (Ubuntu's variable `Ubuntu[wdth,wght].ttf` is two
+        // at index 0), and a scan keys on the file, so removing one id
+        // would leave the file installed. The face that stays is another
+        // file's.
         let mut db = held.db().clone();
-        let mut files = db.faces().filter_map(|f| Some((f.id, face_file(f)?)));
-        let uninstalled = files.next();
-        let stays = files.next();
-        drop(files);
-        if let Some((id, _)) = &uninstalled {
-            db.remove_face(*id);
+        let uninstalled = db.faces().find_map(face_file);
+        let leaving: Vec<_> = db
+            .faces()
+            .filter(|f| uninstalled.is_some() && face_file(f) == uninstalled)
+            .map(|f| f.id)
+            .collect();
+        let stays = db
+            .faces()
+            .filter_map(|f| Some((f.id, face_file(f)?)))
+            .find(|(_, key)| Some(key) != uninstalled.as_ref());
+        for &id in &leaving {
+            db.remove_face(id);
         }
         db.load_font_file(&installed).unwrap();
         let fresh = std::sync::Arc::new(SystemFonts::from_db(held.locale().into(), db));
@@ -852,7 +863,7 @@ mod tests {
         };
         let weights = core.session.state().weights_rev;
         let changed = core.session.state().apply_system_fonts(fresh.clone());
-        assert_eq!(changed, 1 + usize::from(uninstalled.is_some()));
+        assert_eq!(changed, 1 + leaving.len());
         assert!(
             core.session.state().weights_rev > weights,
             "every window shapes again"
@@ -861,7 +872,7 @@ mod tests {
             core.add_system_font("Kui Rescan Face").is_some(),
             "the installed face is found"
         );
-        if let Some((_, key)) = &uninstalled {
+        if let Some(key) = &uninstalled {
             assert_eq!(face_of(&core, key), None, "the uninstalled face is gone");
         }
         if let Some((id, key)) = &stays {

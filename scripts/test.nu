@@ -49,11 +49,14 @@ def count [text: string, pattern: string] {
 }
 
 # The loader's variable on this platform, with `dirs` in front of what it
-# held. Windows finds a DLL on PATH.
+# held. Windows finds a DLL on PATH, under whatever case nu spells it
+# (`PATH` in 0.115, launched from PowerShell or bash alike): Windows reads
+# the name either way, but a record key is exact, and a `Path` beside
+# `PATH` is a second variable the child never looks at.
 def loader-env [dirs: list<string>] {
     let name = match $nu.os-info.name {
         "macos" => "DYLD_FALLBACK_LIBRARY_PATH"
-        "windows" => "Path"
+        "windows" => ($env | columns | where {|c| ($c | str uppercase) == "PATH" } | get -o 0 | default "Path")
         _ => "LD_LIBRARY_PATH"
     }
     let sep = if $nu.os-info.name == "windows" { ";" } else { ":" }
@@ -147,7 +150,7 @@ def main [
     rm -rf $LOGS
     mkdir $LOGS
     let sysroot = (^rustc --print sysroot | str trim)
-    let host = (^rustc -vV | lines | where {|l| $l starts-with "host: " } | first | str replace "host: " "")
+    let host = (^rustc --print host-tuple | str trim)
     let profile_dir = ($root | path join target debug)
     let loader = (loader-env [
         ($sysroot | path join lib rustlib $host lib)
