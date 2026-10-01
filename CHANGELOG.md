@@ -21,6 +21,43 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.31 (unreleased)
+
+**What breaks.** No build: `LayoutScript` and
+`KeyPress::from_layout_in` are new, `from_layout` is unchanged, and
+`KUI_KLAYOUT_NONLATIN` is a bit that was zero, so the ABI stays 23.
+
+- The winit runner, on a layout that writes no Latin: a key whose
+  layout character is ASCII but not the key US-QWERTY prints there now
+  reports that US key as `code` (F115, under Fixed) — macOS Russian's
+  `` ` `` key is `` ` `` where it was `]`, its ⇧5 `%` where it was `:`;
+  Windows Russian's `/` key is `/` where it was `.`. `text` is the
+  layout's as before; a keymap that matched the layout's ASCII there
+  reads it.
+
+### Fixed
+
+- **A non-Latin layout's punctuation is the US key** (F115, from
+  kawoosh's Russian-backtick report): on macOS's Russian layout the key
+  printed `` ` `` types `]`, and a press was `]` — the layout fallback
+  judged each key by itself and let the layout's ASCII win, which on a
+  layout that writes no Latin is incidental, so a vim hand's `` ` ``,
+  `$` (⇧4, the layout's `%`) and `%` (⇧5, its `:`) went to the wrong
+  commands. The driver now says which alphabet the layout writes
+  (`LayoutScript::{Latin, NonLatin}`, `KeyPress::from_layout_in`), and
+  on a non-Latin one every key's `code` is the US-QWERTY key at
+  `physical`, as Shift prints it — macOS's own rule for a ⌘ shortcut. A
+  key that is already its position's character, or sits where US-QWERTY
+  has no key, keeps the layout's; `text` is the layout's either way.
+  The winit runner asks macOS whether the keyboard layout is
+  ASCII-capable and Windows what its letter keys type, and elsewhere
+  goes by what the letter keys last typed. A host with its own
+  windowing says so with `KUI_KLAYOUT_NONLATIN` in C's kmods or
+  `layout: "nonLatin"` in Node's key mods; without it, nothing changes.
+  ADR 0002, decision 11, as amended. *What you can delete:* a table
+  mapping a non-Latin layout's punctuation back to the US keys, written
+  so a keymap's `` ` `` or `@` worked there.
+
 ## 0.1.0-alpha.30 (2026-09-30)
 
 **What breaks.** The ABI is 23: `KuiSpec` gains `bounce`. The Node wire

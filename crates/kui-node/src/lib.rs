@@ -951,7 +951,8 @@ impl Ctx {
     /// One press from the `{shift, ctrl, alt, super}` shape both key calls
     /// take — with `location` ("left", "right", "numpad"; "standard" when
     /// absent) and `capsLock` / `numLock` beside them (backlog F108; the
-    /// event's `caps_lock` / `num_lock` too, RG86) — and
+    /// event's `caps_lock` / `num_lock` too, RG86), and `layout` ("latin",
+    /// "nonLatin"; backlog F115) — and
     /// the text a plain key would insert already resolved.
     fn key_press(
         &self,
@@ -967,13 +968,19 @@ impl Ctx {
             super_key: bool_prop(m, "super"),
         };
         let layout = keycode_of(code)?;
+        // The layout's script, "latin" when absent (backlog F115).
+        let script = match m.get("layout").and_then(Json::as_str) {
+            None => kui_core::LayoutScript::Latin,
+            Some(s) => kui_core::LayoutScript::from_name(s)
+                .ok_or_else(|| err(format!("unknown layout script {s:?}")))?,
+        };
         // No `physical` means "the key I just named" — the core folds a
         // letter to its lower-case position (F65) — so `code` passes
         // through; with one, the core applies the same non-Latin fallback
         // every driver gets.
         let press = match physical {
             None => KeyPress::new(layout, kmods),
-            Some(p) => KeyPress::from_layout(layout, keycode_of(p)?, kmods),
+            Some(p) => KeyPress::from_layout_in(layout, keycode_of(p)?, kmods, script),
         };
         // What the press types is the layout's key, not the US stand-in
         // in `code`: ⇧ on the key printed `;` on a Russian layout types

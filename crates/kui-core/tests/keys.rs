@@ -5,7 +5,7 @@
 use kui_core::testing::{click_at, drive, key_press as press, key_release as release};
 use kui_core::{
     Align, Core, EditKey, EditOptions, FloatConfig, InputEvent, Key, KeyCode, KeyMods, KeyPress,
-    Mods, NodeSpec, Size, UiEvent, Value, Vec2,
+    LayoutScript, Mods, NodeSpec, Size, UiEvent, Value, Vec2,
 };
 
 /// Two side-by-side key sinks (think: two editor panes), left one focused.
@@ -746,6 +746,110 @@ fn alt_keeps_the_stand_in_unshifted() {
     let cmd_shift = KeyMods::NONE.with_super().with_shift();
     let kp = KeyPress::from_layout(KeyCode::Char('О'), KeyCode::Char('j'), cmd_shift);
     assert_eq!(kp.code, KeyCode::Char('J'));
+}
+
+/// On a layout the driver knows is not Latin every key reads as US-QWERTY
+/// prints it, its ASCII too (F115): macOS's Russian puts `]` on the key
+/// printed `` ` `` and `"` on ⇧2, and judged by itself each won, so a vim
+/// hand's `` ` `` was `]` and its `@` a register. A key that is already
+/// its position's character, and one at a position with no US name,
+/// keep the layout's; and judged by itself — a driver that cannot ask —
+/// nothing moves.
+#[test]
+fn a_non_latin_layout_reads_every_key_as_us_qwerty() {
+    let none = KeyMods::default();
+    let shift = KeyMods::NONE.with_shift();
+    let alt = KeyMods::NONE.with_alt();
+    for (layout, physical, mods, want) in [
+        // macOS Russian.
+        (']', '`', none, '`'),
+        ('[', '`', shift, '~'),
+        ('"', '2', shift, '@'),
+        (':', '5', shift, '%'),
+        (',', '6', shift, '^'),
+        ('.', '7', shift, '&'),
+        (';', '8', shift, '*'),
+        // Windows Russian.
+        ('.', '/', none, '/'),
+        (',', '/', shift, '?'),
+        (':', '6', shift, '^'),
+        // Its letters, as before.
+        ('о', 'j', none, 'j'),
+        ('Ж', ';', shift, ':'),
+        // Under Alt the unshifted position, as everywhere.
+        (']', '`', alt.with_shift(), '`'),
+    ] {
+        let kp = KeyPress::from_layout_in(
+            KeyCode::Char(layout),
+            KeyCode::Char(physical),
+            mods,
+            LayoutScript::NonLatin,
+        );
+        assert_eq!(
+            kp.code,
+            KeyCode::Char(want),
+            "{layout:?} at {physical:?}, {mods:?}"
+        );
+        assert_eq!(kp.physical, KeyCode::Char(physical));
+        assert_eq!(kp.mods, mods);
+    }
+    // What is already its position's: a digit, the keypad's operator.
+    for c in ['1', '/', '*'] {
+        let kp = KeyPress::from_layout_in(
+            KeyCode::Char(c),
+            KeyCode::Char(c),
+            none,
+            LayoutScript::NonLatin,
+        );
+        assert_eq!(kp.code, KeyCode::Char(c));
+    }
+    // ISO's extra key has no US name: macOS Russian's `>` there stays.
+    let kp = KeyPress::from_layout_in(
+        KeyCode::Char('>'),
+        KeyCode::Unknown,
+        shift,
+        LayoutScript::NonLatin,
+    );
+    assert_eq!(kp.code, KeyCode::Char('>'));
+    // A named key is its name.
+    let kp = KeyPress::from_layout_in(KeyCode::Enter, KeyCode::Enter, none, LayoutScript::NonLatin);
+    assert_eq!(kp.code, KeyCode::Enter);
+    // Judged by itself the layout's ASCII wins, as on a Latin layout:
+    // `from_layout` is that, and AZERTY's `&` on the key printed 1 stays.
+    for (layout, physical) in [(']', '`'), ('&', '1'), ('-', '/')] {
+        for kp in [
+            KeyPress::from_layout(KeyCode::Char(layout), KeyCode::Char(physical), none),
+            KeyPress::from_layout_in(
+                KeyCode::Char(layout),
+                KeyCode::Char(physical),
+                none,
+                LayoutScript::Latin,
+            ),
+        ] {
+            assert_eq!(kp.code, KeyCode::Char(layout));
+        }
+    }
+}
+
+/// The doors' spellings of the layout's script: a bit in the C word, a
+/// name in Node's.
+#[test]
+fn a_layout_script_has_the_doors_spellings() {
+    assert_eq!(LayoutScript::from_bits(0), LayoutScript::Latin);
+    assert_eq!(
+        LayoutScript::from_bits(LayoutScript::NON_LATIN),
+        LayoutScript::NonLatin
+    );
+    assert_eq!(
+        LayoutScript::from_bits(KeyMods::NONE.with_shift().bits()),
+        LayoutScript::Latin
+    );
+    assert_eq!(LayoutScript::from_name("latin"), Some(LayoutScript::Latin));
+    assert_eq!(
+        LayoutScript::from_name("nonLatin"),
+        Some(LayoutScript::NonLatin)
+    );
+    assert_eq!(LayoutScript::from_name("cyrillic"), None);
 }
 
 /// What a door types for a host that did not say is the layout's key,

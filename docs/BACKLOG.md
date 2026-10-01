@@ -100,7 +100,10 @@ built the same day after the alpha.28 tag, and RG105 from it, withdrawn
 the same day, and with the alpha.30 tag RG106 — Windows' light/dark
 switch reaching a running app — from kawoosh, and F114 — a column's rows
 kept at their text's height — from the kawoosh overflow hunt, both of
-2026-09-30, filed and built the same day after the alpha.29 tag. The index
+2026-09-30, filed and built the same day after the alpha.29 tag, and F115
+— a non-Latin layout's ASCII read as the US key — from the kawoosh
+Russian-backtick report of 2026-10-01, filed and built the same day
+after the alpha.30 tag. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -1452,6 +1455,15 @@ under the still pointer, and the terminal, an `onScroll` node taking
 every delta, took the rest of the swipe. One entry, F107, **built
 2026-09-28**, the day it was filed, and in the archive, with ADR 0038.
 
+## From the kawoosh Russian-backtick report (2026-10-01)
+
+On macOS's Russian layout the key printed `` ` `` typed `]`, and kawoosh
+took it for `]`: `` ` `` (a mark), `` di` `` and every vim key on that
+layout's punctuation went to the wrong command. The layout fallback
+judged each key by itself, and the layout's own ASCII won, where on a
+layout that writes no Latin that ASCII is incidental. One entry, F115,
+**built 2026-10-01**, the day it was filed, and in the archive.
+
 ## From the kawoosh overflow hunt (2026-09-30)
 
 kawoosh swept its panes for text drawn past its box, and in a window
@@ -2183,6 +2195,8 @@ Nothing of the kawoosh settings-pane report is open (F113 **built
 2026-09-29**, the day it was filed).
 Nothing of the kawoosh overflow hunt is open (F114 **built
 2026-09-30**, the day it was filed).
+Nothing of the kawoosh Russian-backtick report is open (F115 **built
+2026-10-01**, the day it was filed).
 Nothing of the Windows regression round of 2026-09-26 is open
 (RG38–RG46 **built 2026-09-26**, the day they were filed).
 Nothing of the Linux round under WSLg is open (RG47–RG49 **built
@@ -3099,6 +3113,10 @@ move.
 **From the kawoosh settings-pane report (2026-09-29)** — F113, filed and built the same day
 
 - `~` **F113** — [A Mac's dead keys never arrive: ⌥u composes an accent and a keymap's `<A-u>` never hears it](backlog/closed-2026-09.md#-f113--a-macs-dead-keys-never-arrive-u-composes-an-accent-and-a-keymaps-a-u-never-hears-it--done-2026-09-29) — done (2026-09-29) — `Ui::option_as_alt(OptionAsAlt)` (`none`, `left`, `right`, `both`), frame state; the runner hands it to winit's `set_option_as_alt` on change, and an Option that is Alt types nothing
+
+**From the kawoosh Russian-backtick report (2026-10-01)** — F115, filed and built the same day
+
+- `!` **F115** — [A non-Latin layout's ASCII wins over the key: macOS Russian's `]` on the key printed `` ` `` is `]`](backlog/closed-2026-09.md#-f115--a-non-latin-layouts-ascii-wins-over-the-key-macos-russians--on-the-key-printed--is---done-2026-10-01) — done (2026-10-01) — `LayoutScript` (`Latin`, `NonLatin`) and `KeyPress::from_layout_in`: on a non-Latin layout every key's `code` is the US key at `physical`, its ASCII too; the runner asks macOS (ASCII-capable) and Windows (the letter keys), elsewhere the letter keys typed; `KUI_KLAYOUT_NONLATIN`, Node's `layout`; ADR 0002 decision 11 amended
 
 **From the kawoosh overflow hunt (2026-09-30)** — F114, filed and built the same day
 

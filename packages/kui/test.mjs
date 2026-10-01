@@ -802,6 +802,29 @@ test('the stand-in is for the keymap: text is the layout key, and Alt keeps it u
   assert.equal(edit.editText('field'), 'Ж', 'the editor gets what the layout typed');
 });
 
+// F115: on a layout the host says is not Latin, the US key stands in for
+// the layout's ASCII too — macOS Russian's `]` on the key printed `` ` `` —
+// and judged by itself, as before, the layout's ASCII wins. The text is the
+// layout's either way.
+test('a non-Latin layout reads every key as US-QWERTY', () => {
+  const build = () => box({ onKey: null, keyFocus: true, width: 100, height: 50 }, [], 'a');
+  const { ctx } = run(build);
+  ctx.keyDown(']', {}, false, '`');
+  ctx.keyDown(']', { layout: 'latin' }, false, '`');
+  ctx.keyDown(']', { layout: 'nonLatin' }, false, '`');
+  ctx.keyDown('"', { shift: true, layout: 'nonLatin' }, false, '2');
+  assert.deepEqual(
+    ctx.pollEvents().map((e) => [e.payload.code, e.payload.physical, e.payload.text]),
+    [
+      [']', '`', ']'],
+      [']', '`', ']'],
+      ['`', '`', ']'],
+      ['@', '2', '"'],
+    ],
+  );
+  assert.throws(() => ctx.keyDown(']', { layout: 'cyrillic' }, false, '`'), /unknown layout script/);
+});
+
 test('focus moving releases the keys the old sink held', () => {
   const build = () => box({ onKey: { pane: 0 }, keyUp: true, keyFocus: true, width: 100, height: 50 }, [], 'a');
   const { ctx } = run(build);

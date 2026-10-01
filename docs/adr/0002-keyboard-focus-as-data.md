@@ -247,6 +247,21 @@ So both, with a stated default:
     browsers use to keep ⌘C copying on a Russian layout, and it is the
     reason an app can stay ignorant that layouts exist. `text` is
     untouched: the typing view is always the layout's own character.
+    Judged key by key, though, the label rule took a non-Latin layout's
+    ASCII for a label: macOS's Russian puts `]` on the key printed
+    `` ` `` and `:` on ⇧5, Windows' `.` on `/`, and a keymap's `` ` ``,
+    `%` and `/` went to `]`, `:` and `.` (F115, 2026-10-01). Whether a
+    layout's ASCII is its label is the layout's to say, not the key's —
+    AZERTY's `&` on the key printed 1 is, Russian's `]` is not — so the
+    driver says which alphabet the layout writes (`LayoutScript`,
+    through `KeyPress::from_layout_in`), and on one that writes no Latin
+    every key falls back to the position, its ASCII too; a key that is
+    its position's own character, or sits where US-QWERTY has no key,
+    keeps the layout's. It is macOS's rule for a ⌘ shortcut, resolved
+    through the ASCII-capable layout when the current one is not; the
+    winit runner asks macOS that question and Windows what its letter
+    keys type, and elsewhere goes by what the letter keys last typed.
+    A driver that cannot ask says `Latin`, and gets the key-by-key rule.
 12. **`physical` is a payload field of its own.** The US-QWERTY key at that
     position, in the *same* vocabulary as `code` — `"v"`, `"1"`, `"left"`,
     `"f5"` — so an app switching a keymap from one to the other keeps its

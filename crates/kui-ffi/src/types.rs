@@ -2235,6 +2235,10 @@ pub const KUI_KLOCK_NUM: u32 = kui_core::KeyLocks::NUM;
 pub const KUI_KLOC_LEFT: u32 = 1 << kui_core::KeyLocation::SHIFT;
 pub const KUI_KLOC_RIGHT: u32 = 2 << kui_core::KeyLocation::SHIFT;
 pub const KUI_KLOC_NUMPAD: u32 = 3 << kui_core::KeyLocation::SHIFT;
+/// `KUI_KLAYOUT_NONLATIN` (backlog F115): the press was typed on a layout
+/// that writes no Latin, so the US key stands in for its ASCII too — the
+/// core's `LayoutScript::NON_LATIN`. Zero judges each key by itself.
+pub const KUI_KLAYOUT_NONLATIN: u32 = kui_core::LayoutScript::NON_LATIN;
 
 /// `KUI_EDIT_*`: the flags `kui_text_edit` takes. `WRAP` is the `wrap`
 /// row declared on a field (the mode is `KuiTextStyle.wrap`, whose zero

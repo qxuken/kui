@@ -899,6 +899,52 @@ impl KeyLocks {
     }
 }
 
+/// Which alphabet the layout a press was typed on writes, as the platform
+/// answers it: what decides whose ASCII a keymap matches (backlog F115).
+///
+/// A Latin layout's ASCII is the label on the key — AZERTY's `&` on the
+/// key US-QWERTY prints 1, German's `-` on its `/` — and a keymap matches
+/// it. A non-Latin layout's ASCII is incidental: macOS's Russian puts `]`
+/// on the key US-QWERTY prints `` ` ``, `"` on ⇧2 and `:` on ⇧5, Windows'
+/// Russian `.` on `/`, and the user reaching for `` ` `` there means the
+/// key, as the letters beside it mean theirs. So on a non-Latin layout
+/// every key reads as US-QWERTY prints it, punctuation and digits
+/// included — macOS's own rule for a ⌘ shortcut, which it resolves
+/// through the ASCII-capable layout whenever the current one is not.
+///
+/// `Latin` is also what a driver says when it cannot ask: each key is
+/// then judged by itself, and only one the layout put no ASCII on falls
+/// back (see [`KeyPress::from_layout`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum LayoutScript {
+    #[default]
+    Latin,
+    NonLatin,
+}
+
+impl LayoutScript {
+    /// The C door's spelling, beside the modifiers and the locks in the
+    /// same word: `KUI_KLAYOUT_NONLATIN`.
+    pub const NON_LATIN: u32 = 1 << 6;
+
+    pub fn from_bits(bits: u32) -> Self {
+        if bits & Self::NON_LATIN != 0 {
+            LayoutScript::NonLatin
+        } else {
+            LayoutScript::Latin
+        }
+    }
+
+    /// The Node door's spelling: `"latin"`, `"nonLatin"`.
+    pub fn from_name(s: &str) -> Option<Self> {
+        match s {
+            "latin" => Some(LayoutScript::Latin),
+            "nonLatin" | "non_latin" => Some(LayoutScript::NonLatin),
+            _ => None,
+        }
+    }
+}
+
 /// Physical modifier state. Unlike [`Mods`] — which abstracts platform
 /// conventions for the input widget (`word`, `doc`) — nothing here is
 /// normalized: an app binding `Ctrl-w` needs to know it was Control and not
@@ -1146,7 +1192,29 @@ impl KeyPress {
     ///
     /// `physical` is reported either way, for a keymap that would rather
     /// bind the finger than the label. See `docs/adr/0002` decision 11.
+    ///
+    /// This judges each key by itself, which is all a driver that cannot
+    /// ask about the layout can do; one that can says so through
+    /// [`KeyPress::from_layout_in`].
     pub fn from_layout(layout: KeyCode, physical: KeyCode, mods: KeyMods) -> Self {
+        Self::from_layout_in(layout, physical, mods, LayoutScript::Latin)
+    }
+
+    /// [`KeyPress::from_layout`] on a layout whose alphabet the driver
+    /// knows. On a [`LayoutScript::NonLatin`] one the US-QWERTY key stands
+    /// in for every character the layout put where US-QWERTY has another,
+    /// ASCII or not, so macOS Russian's `]` on the key printed `` ` `` is
+    /// `` ` ``, its `"` on ⇧2 is `@`, and Windows Russian's `.` on the key
+    /// printed `/` is `/` (backlog F115). A key that already is its
+    /// position's character — a digit, the keypad's — keeps it, and a key
+    /// at a position this vocabulary cannot name (ISO's extra key) keeps
+    /// the layout's, there being nothing to stand in.
+    pub fn from_layout_in(
+        layout: KeyCode,
+        physical: KeyCode,
+        mods: KeyMods,
+        script: LayoutScript,
+    ) -> Self {
         let stand_in = || match (mods.shift && !mods.alt, physical) {
             (true, KeyCode::Char(c)) => KeyCode::Char(us_shifted(c)),
             _ => physical,
@@ -1154,6 +1222,12 @@ impl KeyPress {
         let code = match layout {
             KeyCode::Char(c) if !c.is_ascii() => stand_in(),
             KeyCode::Unknown => stand_in(),
+            KeyCode::Char(c)
+                if script == LayoutScript::NonLatin
+                    && matches!(physical, KeyCode::Char(p) if p != c) =>
+            {
+                stand_in()
+            }
             named_or_ascii => named_or_ascii,
         };
         Self {

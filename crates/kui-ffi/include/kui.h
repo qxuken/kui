@@ -504,10 +504,14 @@ enum {
 /* Beside them in kui_input_key_down's kmods (backlog F108): the lock state
  * at the press, and which of a key's twins it was - the left or right
  * modifier, the keypad's digit or the main block's. Zero is no lock and the
- * standard key. */
+ * standard key. KUI_KLAYOUT_NONLATIN says the layout the press was typed
+ * on writes no Latin (backlog F115): every key's `code` is then the
+ * US-QWERTY key at `physical`, the layout's ASCII too; zero judges each
+ * key by itself, as before. */
 enum {
     KUI_KLOCK_CAPS = 1u << 4,
     KUI_KLOCK_NUM = 1u << 5,
+    KUI_KLAYOUT_NONLATIN = 1u << 6,
     KUI_KLOC_LEFT = 1u << 8,
     KUI_KLOC_RIGHT = 2u << 8,
     KUI_KLOC_NUMPAD = 3u << 8,
@@ -1894,7 +1898,7 @@ void kui_input_key(KuiCtx *ctx, uint32_t key, uint32_t mods); /* KUI_KEY_* + KUI
  * window reports for shift-Z is code "Z", physical "z"; backlog F65);
  * `kmods` is
  * KUI_KMOD_* bits, with KUI_KLOCK_* and one KUI_KLOC_* beside them (backlog
- * F108); `text` is what the press inserts, or {NULL, 0} to derive it from
+ * F108) and KUI_KLAYOUT_NONLATIN (F115); `text` is what the press inserts, or {NULL, 0} to derive it from
  * `code`; `repeat` marks an auto-repeat. The focused sink polls
  * {kind="key", phase="down", code, physical, ctrl, alt, shift, super, text,
  * repeat, location, caps_lock, num_lock, tag} for each press; a sink whose KuiSpec set key_up hears the
@@ -1910,7 +1914,10 @@ void kui_input_key(KuiCtx *ctx, uint32_t key, uint32_t mods); /* KUI_KEY_* + KUI
  * key as `code` instead, as Shift prints it ("J", ":"; unshifted under
  * Alt), while a {NULL, 0} `text` is still the `code` passed, the layout's
  * own character; `physical` is there either way for a keymap that
- * would rather bind the finger than the label (WASD). A host passing
+ * would rather bind the finger than the label (WASD). A host that knows
+ * its layout is not Latin sets KUI_KLAYOUT_NONLATIN, and the US key stands
+ * in for the layout's ASCII too - macOS Russian's "]" on the key printed
+ * "`" is "`" (F115). A host passing
  * {NULL, 0} gets the default above. */
 void kui_input_key_down(KuiCtx *ctx, KuiStr code, KuiStr physical,
                         uint32_t kmods, KuiStr text, bool repeat);
