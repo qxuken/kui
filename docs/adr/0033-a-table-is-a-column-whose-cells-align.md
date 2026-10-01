@@ -280,6 +280,29 @@ amended: 2026-09-20
     so a squeeze there only ever overlapped. Across, a `Fit` child alone
     still goes toward 0, the ellipsis a row of labels is cut into.
 
+    *Amended 2026-10-02 (backlog F116, from kawoosh's fit-content
+    review):* across a column, a `Fit` child is no wider than the
+    column's content box — CSS's `fit-content`, the content's width but
+    never more than the room — down to its declared min, 0 undeclared,
+    the floor a row's fit children give to across. Pass 1 sums a fit
+    width bottom-up with no room in sight, and the cross branch of
+    `distribute_axis` left it there, so a text one wrapper deep in a
+    card with a `maxWidth` ran past the card where the same text
+    straight in it wrapped (the text clamp reaches one level). Held in
+    pass 2, top-down, the child's own run then gives and its text wraps.
+    No stretch: a fit child that fits keeps its width. Not across a
+    column that scrolls x, nor for a `Fixed` child, a width a ratio
+    derives, or a `cells` grid or an image, whose content is their
+    size as a CSS replaced element's is (a held grid's box no longer
+    matched the columns the app laid out); not down, where the rule
+    above answers. The floor is not
+    the min-content of RG92 and the rule above: a no-wrap or ellipsis
+    text's min-content is its whole width, and a card's title would
+    never be cut into its ellipsis — the flexbox trap `min-width: 0`
+    exists to undo. A table's fit rows held to the table's box lay its
+    columns across that box, the fit columns compressed into it as they
+    always were in a table narrower than they.
+
 ## Considered options
 
 - **A widget over `measure_text`.** `widgets::key_value(ui, rows)`

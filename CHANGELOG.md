@@ -21,6 +21,39 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.33 (unreleased)
+
+**What breaks.** No build.
+
+- Layout, every binding: a fit box across a column is no wider than the
+  column's box (F116, under Fixed). One that ran past a parent that does
+  not scroll x — a wrapper in a card with a `maxWidth`, anything wider
+  than the window — is held to it, and what is in it wraps, gives or is
+  cut to its ellipsis. A layout that meant the overflow declares
+  `minWidth: "fit"`.
+
+### Fixed
+
+- **The text in a card with a `maxWidth` wraps at the card, however deep
+  it sits** (F116, from kawoosh's fit-content review): across a column,
+  a fit child is its content's width but no wider than the column's
+  content box — CSS's `fit-content` — where it was its content's width
+  whatever room there was. A 400 px text straight in a column capped at
+  200 wrapped to it; the same text in a fit row or column inside that
+  card was 400 wide on one line, drawn 200 past it, since only a text
+  straight under a box was held to it. Held in the width pass, top down,
+  the child's own row then gives along it and its text wraps, however
+  many wrappers deep. A fit child that fits keeps its width — nothing
+  stretches — and it gives down to its declared `minWidth`, 0 when none
+  is declared, so a title with `ellipsis` is cut to the card (a CSS
+  `min-width: auto` floor would have kept it whole). A column that
+  scrolls x, a fixed child, a width a ratio derives, a `cells` grid and
+  an image keep their width, and heights are not held. A table in such a card lays its columns
+  across the card, the fit columns compressed into it. ADR 0033,
+  decision 10, as amended; the corpus's `fit-across` scene in all four
+  bindings. *What you can delete:* a `width="grow"` (`grow_width()`)
+  on a wrapper, written so the text in it would wrap at a capped parent.
+
 ## 0.1.0-alpha.32 (2026-10-02)
 
 **What breaks.** No build.

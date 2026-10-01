@@ -161,6 +161,22 @@ their ellipses.
 
 [`minHeight` row](props.md#container-props)
 
+### Why does the text in a card with a `maxWidth` wrap at the card, however deep it sits?
+
+Because a fit box across a column is its content's width but no wider
+than the column's box — CSS's `fit-content`. A dialog capped at 400
+holding a row of a message and a button holds the row to 400, the row's
+message gives along it, and the message wraps; no `width="grow"` on the
+wrapper is needed for it. A fit child that fits keeps its own width, so
+a centred button stays a button, not a bar. The child gives down to its
+`minWidth`, 0 when none is declared, so a title with `ellipsis` is cut
+to the card. `minWidth: "fit"` keeps the content's width and runs past
+the card, and a column that scrolls x leaves its children their widths,
+since that overflow is what it scrolls. A `fixed` width is kept too,
+and so is a terminal grid's or an image's, whose content is their size.
+
+[`minWidth` row](props.md#container-props)
+
 ### How do I line up the columns of a key/value list, or any table?
 
 `<box dir="table">`, `grid { }` (Lua's `table` is its own), a `KuiSpec`

@@ -1159,6 +1159,36 @@ static void conf_column_squeeze(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* conformance::build_fit_across (backlog F116): a fit column in a card
+ * capped at 100 held to it, its wrapping row of three 40 px chips on two
+ * lines; beside it the same column with KUI_MIN_FIT at 140, one line. */
+static void conf_fit_card(KuiCtx *ui, float min_w) {
+    KuiSpec card = {.max_w = 100};
+    kui_open(ui, &card, NULL);
+    KuiSpec wrapper = {.min_w = min_w, .bg = 0x30344aff};
+    kui_open(ui, &wrapper, NULL);
+    KuiSpec chips = {.dir = KUI_ROW, .wrap_children = 1, .gap = 10, .cross_gap = 5};
+    kui_open(ui, &chips, NULL);
+    KuiSpec chip = {.width = {KUI_FIXED, 40}, .height = {KUI_FIXED, 20}, .bg = 0x73d98cff};
+    for (int i = 0; i < 3; i++) {
+        kui_open(ui, &chip, NULL);
+        kui_close(ui);
+    }
+    kui_close(ui);
+    kui_close(ui);
+    kui_close(ui);
+}
+
+static void conf_fit_across(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiSpec outer = {.dir = KUI_ROW, .gap = 20};
+    kui_open(ui, &outer, NULL);
+    conf_fit_card(ui, 0);
+    conf_fit_card(ui, KUI_MIN_FIT);
+    kui_close(ui);
+}
+
 /* conformance::build_size_expressions (backlog F109): four bars in a 400 px
  * column sized by expressions, built from parts with kui_size_* - nothing
  * parsed but the clamp, which goes through kui_size_parse. */
@@ -2087,6 +2117,7 @@ static const ConfScene CONF_SCENES[] = {
     {"break-spaces", conf_break_spaces},
     {"relative-shrink", conf_relative_shrink},
     {"column-squeeze", conf_column_squeeze},
+    {"fit-across", conf_fit_across},
     {"size-expressions", conf_size_expressions},
     {"media", conf_media},
     {"lines", conf_lines},

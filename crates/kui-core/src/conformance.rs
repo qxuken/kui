@@ -3313,6 +3313,43 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "fit-across",
+        doc: "A fit box across a column is no wider than the column's \
+              box (backlog F116): in a card capped at 100, a fit column \
+              holding a wrapping row of three 40 px chips, 10 apart, is \
+              held to 100, and the row breaks there — two chips on the \
+              first line, the third 25 px under them, 5 apart, the column \
+              100 x 45; beside it at 120, the same card whose column \
+              declares `minWidth: fit` keeps its 140 and one line, \
+              running past the card. A binding whose layout leaves the \
+              first column at its content draws its chips on one line.",
+        custom: &[],
+        elements: &["box"],
+        build: build_fit_across,
+        env: NATIVE_CHROME,
+        steps: &[],
+        expect: Expect {
+            solid: 8,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            segments_follow_text: false,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 0,
+            access: &["0 window ||"],
+            events: &[],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+            secure_input: false,
+            option_as_alt: OptionAsAlt::None,
+        },
+    },
+    Scene {
         name: "size-expressions",
         doc: "Size expressions (backlog F109), resolved against the \
               parent's content box: in a column 400 px wide, four bars 10 \
@@ -4743,6 +4780,29 @@ fn build_column_squeeze(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             });
             ui.with(NodeSpec::row(), bar);
         });
+    });
+}
+
+fn build_fit_across(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    let card = |ui: &mut Ui<'_>, wrapper: NodeSpec| {
+        ui.with(NodeSpec::column().max_width(100.0), |ui| {
+            ui.with(wrapper.bg(Color::hex(0x30344aff)), |ui| {
+                ui.with(NodeSpec::row().wrap().gap(10.0).cross_gap(5.0), |ui| {
+                    for _ in 0..3 {
+                        ui.leaf(
+                            NodeSpec::column()
+                                .width(40.0)
+                                .height(20.0)
+                                .bg(Color::hex(0x73d98cff)),
+                        );
+                    }
+                });
+            });
+        });
+    };
+    ui.with(NodeSpec::row().gap(20.0), |ui| {
+        card(ui, NodeSpec::column());
+        card(ui, NodeSpec::column().min_width(Min::FIT));
     });
 }
 

@@ -573,6 +573,22 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
+        // Backlog F116: a fit column in a card capped at 100 held to it,
+        // its wrapping row of three 40 px chips on two lines; beside it
+        // the same column with `min_width = "fit"` at 140, one line.
+        "fit-across" => r#"
+            local function card(wrapper)
+              local chips = { wrap_children = true, gap = 10, cross_gap = 5 }
+              for _ = 1, 3 do
+                chips[#chips + 1] = column { width = 40, height = 20, bg = 0x73d98cff }
+              end
+              wrapper.bg = 0x30344aff
+              wrapper[1] = row(chips)
+              return column { max_width = 100, column(wrapper) }
+            end
+            return row { gap = 20, card({}), card({ min_width = "fit" }) }
+        "#
+        .to_string(),
         // Backlog F109: four bars sized by expressions, spelled and as data.
         "size-expressions" => r#"
             local function bar(t)
