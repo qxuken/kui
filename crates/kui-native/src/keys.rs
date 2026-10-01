@@ -5,6 +5,7 @@
 //! Split off `lib.rs` as a pure move.
 
 use super::*;
+use kui_core::LayoutScript;
 
 /// The US-QWERTY key at a physical position, in kui's own vocabulary (see
 /// [`kui_core::KeyPress::physical`]). Letters and digits are their US
@@ -400,6 +401,153 @@ pub(crate) fn lock_state(tracked: KeyLocks, x11: bool) -> KeyLocks {
     }
 }
 
+/// Which alphabet the active layout writes, for `KeyPress::from_layout_in`
+/// (backlog F115). macOS and Windows are asked at the press, as
+/// `lock_state` asks them: macOS whether the keyboard layout is
+/// ASCII-capable — the test it applies itself to resolve a ⌘ shortcut —
+/// and Windows what the layout puts on the letter keys, once a layout.
+/// Elsewhere winit has no answer, and the script is `tracked` from what
+/// the letter keys have typed (`script_after`): right from the first
+/// letter after a switch, and wrong only for the punctuation pressed
+/// before it.
+pub(crate) fn layout_script(tracked: LayoutScript) -> LayoutScript {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = tracked;
+        macos_layout::script()
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let _ = tracked;
+        windows_layout::script()
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        tracked
+    }
+}
+
+/// The script a letter key's press shows: a Latin letter says Latin, any
+/// other letter says not, and anything else — punctuation, a chord's
+/// control character, a key away from the letters — leaves it as it was.
+/// By the letter's script and not its being ASCII, so Turkish F's `ğ` on
+/// the key printed E is Latin, as the `f` beside it is.
+pub(crate) fn script_after(tracked: LayoutScript, layout: KeyCode, at: KeyCode) -> LayoutScript {
+    match (layout, at) {
+        (KeyCode::Char(c), KeyCode::Char('a'..='z')) if c.is_alphabetic() => {
+            if is_latin(c) {
+                LayoutScript::Latin
+            } else {
+                LayoutScript::NonLatin
+            }
+        }
+        _ => tracked,
+    }
+}
+
+/// Whether a letter is Latin: ASCII, Latin-1, Latin Extended-A and -B,
+/// the IPA block and Latin Extended Additional — every letter a Latin
+/// layout puts on a key.
+fn is_latin(c: char) -> bool {
+    matches!(c, '\0'..='\u{2AF}' | '\u{1E00}'..='\u{1EFF}')
+}
+
+/// HIToolbox's answer: whether the current keyboard layout is
+/// ASCII-capable. The keyboard *layout*, not the input source: an input
+/// method (Japanese, Pinyin) types through a Latin layout and answers
+/// for it. Asked on the main thread, where winit delivers keys and TIS
+/// wants to be called.
+#[cfg(target_os = "macos")]
+mod macos_layout {
+    use kui_core::LayoutScript;
+    use std::ffi::c_void;
+
+    #[link(name = "Carbon", kind = "framework")]
+    unsafe extern "C" {
+        // `TISInputSourceRef TISCopyCurrentKeyboardLayoutInputSource(void)`,
+        // a +1 reference; `void *TISGetInputSourceProperty(src, key)`, a
+        // borrowed one (here a CFBoolean).
+        fn TISCopyCurrentKeyboardLayoutInputSource() -> *const c_void;
+        fn TISGetInputSourceProperty(source: *const c_void, key: *const c_void) -> *const c_void;
+        static kTISPropertyInputSourceIsASCIICapable: *const c_void;
+    }
+
+    #[link(name = "CoreFoundation", kind = "framework")]
+    unsafe extern "C" {
+        fn CFRelease(cf: *const c_void);
+        fn CFBooleanGetValue(boolean: *const c_void) -> u8;
+    }
+
+    pub(super) fn script() -> LayoutScript {
+        // SAFETY: the source is null-checked and released once, the
+        // property borrowed from it read before; the key is HIToolbox's
+        // own constant.
+        let ascii = unsafe {
+            let source = TISCopyCurrentKeyboardLayoutInputSource();
+            if source.is_null() {
+                return LayoutScript::Latin;
+            }
+            let b = TISGetInputSourceProperty(source, kTISPropertyInputSourceIsASCIICapable);
+            let ascii = b.is_null() || CFBooleanGetValue(b) != 0;
+            CFRelease(source);
+            ascii
+        };
+        if ascii {
+            LayoutScript::Latin
+        } else {
+            LayoutScript::NonLatin
+        }
+    }
+}
+
+/// What the thread's keyboard layout puts on the letter keys, A to Z
+/// unshifted, through `ToUnicodeEx` told to leave the dead-key state
+/// alone: a non-Latin letter on any of them is a non-Latin layout. Kept
+/// for the last layout asked, so a press costs one `GetKeyboardLayout`.
+#[cfg(target_os = "windows")]
+mod windows_layout {
+    use kui_core::LayoutScript;
+    use std::cell::Cell;
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+        GetKeyboardLayout, MAPVK_VK_TO_VSC, MapVirtualKeyExW, ToUnicodeEx,
+    };
+
+    thread_local! {
+        static LAST: Cell<Option<(isize, LayoutScript)>> = const { Cell::new(None) };
+    }
+
+    pub(super) fn script() -> LayoutScript {
+        // SAFETY: the calling thread's layout; a thread id of 0 is ours.
+        let hkl = unsafe { GetKeyboardLayout(0) };
+        if let Some((at, script)) = LAST.get()
+            && at == hkl as isize
+        {
+            return script;
+        }
+        let state = [0u8; 256];
+        let mut buf = [0u16; 4];
+        let non_latin = (b'A'..=b'Z').any(|vk| {
+            // SAFETY: a key state of 256 bytes and a buffer of the length
+            // passed; flag 4 keeps the call from touching the dead-key
+            // state a pending accent is in.
+            let n = unsafe {
+                let scan = MapVirtualKeyExW(vk as u32, MAPVK_VK_TO_VSC, hkl);
+                ToUnicodeEx(vk as u32, scan, state.as_ptr(), buf.as_mut_ptr(), 4, 4, hkl)
+            };
+            n == 1
+                && char::from_u32(buf[0] as u32)
+                    .is_some_and(|c| c.is_alphabetic() && !super::is_latin(c))
+        });
+        let script = if non_latin {
+            LayoutScript::NonLatin
+        } else {
+            LayoutScript::Latin
+        };
+        LAST.set(Some((hkl as isize, script)));
+        script
+    }
+}
+
 /// The X server's lock state (backlog RG104): XKB's locked modifiers,
 /// Lock for Caps Lock and Mod2 for Num Lock, where the stock XKB keymaps
 /// put the NumLock virtual modifier. On a connection of its own, opened
@@ -605,7 +753,14 @@ impl DynShell<'_> {
         // pressed before it opened comes up while it is the target
         // (backlog RG83); `from` also forgets them all as it loses focus.
         let kmods = self.panes[from].modifier_key(meaning, physical, location, pressed, kmods);
-        let kp = KeyPress::from_layout(logical_code, physical, kmods);
+        // Whether the layout's ASCII is its own or the US key stands in
+        // for every key (backlog F115): what the OS says, or else what the
+        // letter keys have typed, this one included.
+        if pressed {
+            self.script = script_after(self.script, logical_code, physical);
+        }
+        let kp =
+            KeyPress::from_layout_in(logical_code, physical, kmods, layout_script(self.script));
         // The lock keys' own presses turn what is tracked where the OS
         // is not asked (`lock_state`), before the press reads it: Caps
         // Lock's own press says the state it made, as macOS's flags and
@@ -1058,5 +1213,39 @@ mod tests {
             )
             .ctrl
         );
+    }
+
+    /// Where the OS is not asked the letter keys say the script (backlog
+    /// F115): a Cyrillic letter on the key printed J is a non-Latin
+    /// layout, a Latin one — Turkish F's `ğ` included — a Latin layout,
+    /// and punctuation, a digit or a chord's control character leave the
+    /// record alone, so macOS Russian's `]` after an `о` is still read as
+    /// the key printed `` ` ``.
+    #[test]
+    fn the_letter_keys_say_the_layout_s_script() {
+        use LayoutScript::{Latin, NonLatin};
+        let c = KeyCode::Char;
+        assert_eq!(script_after(Latin, c('о'), c('j')), NonLatin);
+        assert_eq!(script_after(NonLatin, c('Ж'), c(';')), NonLatin);
+        assert_eq!(script_after(NonLatin, c(']'), c('`')), NonLatin);
+        assert_eq!(script_after(NonLatin, c('1'), c('1')), NonLatin);
+        assert_eq!(script_after(NonLatin, c('\u{f}'), c('o')), NonLatin);
+        assert_eq!(script_after(NonLatin, c('j'), c('j')), Latin);
+        assert_eq!(script_after(NonLatin, c('ğ'), c('e')), Latin);
+        assert_eq!(script_after(Latin, c('ω'), c('w')), NonLatin);
+        assert_eq!(script_after(Latin, c('ö'), c(';')), Latin);
+        assert_eq!(
+            script_after(NonLatin, KeyCode::Enter, KeyCode::Enter),
+            NonLatin
+        );
+    }
+
+    /// macOS answers for the layout in use, whichever it is: the test
+    /// cannot switch it, so it asks that the call returns at all and
+    /// agrees with itself.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_says_the_layout_s_script() {
+        assert_eq!(macos_layout::script(), macos_layout::script());
     }
 }

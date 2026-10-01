@@ -529,6 +529,7 @@ impl Launcher {
             reopen_owed: false,
             pretended_loss: false,
             locks: kui_core::KeyLocks::default(),
+            script: kui_core::LayoutScript::default(),
             epoch: std::time::Instant::now(),
             system: system_env::query(),
             pinned_system: self.system,
@@ -1429,6 +1430,10 @@ struct Shell<A: App + ?Sized> {
     /// was each pane's, so a popup began at off and a toggle in one window
     /// never reached another (backlog RG96).
     locks: kui_core::KeyLocks,
+    /// The layout's script as the letter keys have shown it — what a
+    /// press goes by where the OS is not asked (`keys::layout_script`,
+    /// backlog F115). One keyboard, one record, as `locks`.
+    script: kui_core::LayoutScript,
     /// Origin of the frame clock handed to the cores for transitions.
     epoch: std::time::Instant,
     /// What the OS was asked for at startup — the accent colour, the

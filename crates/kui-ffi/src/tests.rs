@@ -1316,6 +1316,11 @@ mod queries_headless {
             null,
             false,
         );
+        // macOS Russian's `]` on the key printed `` ` ``: the layout's own
+        // ASCII judged by itself, the US key on a layout said non-Latin
+        // (F115) — and either way the press types the layout's `]`.
+        kui_input_key_down(ctx, ks("]"), ks("`"), 0, null, false);
+        kui_input_key_down(ctx, ks("]"), ks("`"), KUI_KLAYOUT_NONLATIN, null, false);
         let mut ev = KuiEvent::default();
         let mut seen = Vec::new();
         while kui_poll_event(ctx, &mut ev) {
@@ -1338,6 +1343,8 @@ mod queries_headless {
             [
                 (":".into(), ";".into(), Some("Ж".into())),
                 ("j".into(), "j".into(), None),
+                ("]".into(), "`".into(), Some("]".into())),
+                ("`".into(), "`".into(), Some("]".into())),
             ]
         );
         kui_ctx_free(ctx);

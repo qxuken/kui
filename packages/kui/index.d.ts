@@ -1706,6 +1706,12 @@ export interface KeySinkMods {
    *  back as it came (backlog RG86). */
   caps_lock?: boolean;
   num_lock?: boolean;
+  /** The script of the layout the press was typed on (backlog F115); the
+   *  key doors only, with `physical`. "nonLatin" reads every key as
+   *  US-QWERTY prints it at `physical`, the layout's ASCII too — macOS
+   *  Russian's "]" on the key printed "`" is "`"; "latin" when omitted,
+   *  each key judged by itself. */
+  layout?: 'latin' | 'nonLatin';
 }
 
 // -- generated from the core's input lists; edit EditKey::ALL / MouseButton::NAMED in crates/kui-core/src/input.rs, then `npm run gen` --

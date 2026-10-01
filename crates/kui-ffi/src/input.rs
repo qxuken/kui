@@ -196,7 +196,9 @@ fn key_press_of(
         true => kui_core::KeyPress::new(layout, mods),
         false => {
             let phys = kui_core::KeyCode::from_name(&kstr(physical))?;
-            kui_core::KeyPress::from_layout(layout, phys, mods)
+            // The layout's script rides in the same word (F115).
+            let script = kui_core::LayoutScript::from_bits(kmods);
+            kui_core::KeyPress::from_layout_in(layout, phys, mods, script)
         }
     };
     // A NULL `text` means "whatever this key inserts": the plain
@@ -224,7 +226,7 @@ fn key_press_of(
 /// is the US-QWERTY key at that *position*, spelled the same way, or NULL
 /// when the host does not track positions (then it equals `code`); `kmods`
 /// is KUI_KMOD_* bits, with KUI_KLOCK_* and one KUI_KLOC_* beside them
-/// (backlog F108); `text` is what the press inserts, or NULL to derive
+/// (backlog F108) and KUI_KLAYOUT_NONLATIN (F115); `text` is what the press inserts, or NULL to derive
 /// it from `code`; `repeat` marks an auto-repeat. The focused sink polls
 /// `{kind="key", phase="down", code, physical, ctrl, alt, shift, super,
 /// text, repeat, location, caps_lock, num_lock, tag}`. An unknown `code`
@@ -235,7 +237,9 @@ fn key_press_of(
 /// Latin keymap matching nothing, so kui reports the position's US key
 /// as `code` instead, as Shift prints it (unshifted under Alt) — exactly
 /// as the winit runner does. A NULL `text` is still the layout's own
-/// character. A host that passes NULL keeps the old behaviour.
+/// character. A host whose layout is not Latin says so with
+/// KUI_KLAYOUT_NONLATIN, and the US key stands in for the layout's ASCII
+/// too (F115). A host that passes NULL keeps the old behaviour.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_input_key_down(
     ptr: *mut KuiCtx,
