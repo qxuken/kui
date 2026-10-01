@@ -1456,6 +1456,18 @@ under the still pointer, and the terminal, an `onScroll` node taking
 every delta, took the rest of the swipe. One entry, F107, **built
 2026-09-28**, the day it was filed, and in the archive, with ADR 0038.
 
+## From the kawoosh fit-content review (2026-10-02)
+
+After a run of kawoosh overflows — a confirm dialog's message drawn
+past the dialog the last of them — the user asked an agent what kui
+should do about them, and brought its answer back: "sized to content"
+should stop at the space there is, as CSS's `fit-content` does, so a
+capped parent constrains its children. Checked against the solver, the
+gap is narrower than the answer put it, and real: across a column a
+fit box kept its content's width. One entry, F116, **built
+2026-10-02**, the day it was filed, and in the archive, with ADR
+0033's amendment.
+
 ## From the kawoosh Russian-backtick report (2026-10-01)
 
 On macOS's Russian layout the key printed `` ` `` typed `]`, and kawoosh
@@ -2207,6 +2219,8 @@ Nothing of the kawoosh overflow hunt is open (F114 **built
 2026-09-30**, the day it was filed).
 Nothing of the kawoosh Russian-backtick report is open (F115 **built
 2026-10-01**, the day it was filed).
+Nothing of the kawoosh fit-content review is open (F116 **built
+2026-10-02**, the day it was filed).
 Nothing of the Windows regression round of 2026-09-26 is open
 (RG38–RG46 **built 2026-09-26**, the day they were filed).
 Nothing of the Linux round under WSLg is open (RG47–RG49 **built
@@ -3123,6 +3137,10 @@ move.
 **From the kawoosh settings-pane report (2026-09-29)** — F113, filed and built the same day
 
 - `~` **F113** — [A Mac's dead keys never arrive: ⌥u composes an accent and a keymap's `<A-u>` never hears it](backlog/closed-2026-09.md#-f113--a-macs-dead-keys-never-arrive-u-composes-an-accent-and-a-keymaps-a-u-never-hears-it--done-2026-09-29) — done (2026-09-29) — `Ui::option_as_alt(OptionAsAlt)` (`none`, `left`, `right`, `both`), frame state; the runner hands it to winit's `set_option_as_alt` on change, and an Option that is Alt types nothing
+
+**From the kawoosh fit-content review (2026-10-02)** — F116, filed and built the same day
+
+- `!` **F116** — [A fit box across a column is as wide as its content whatever room the column has, so a capped card's text never wraps](backlog/closed-2026-09.md#-f116--a-fit-box-across-a-column-is-as-wide-as-its-content-whatever-room-the-column-has-so-a-capped-cards-text-never-wraps--done-2026-10-02) — done (2026-10-02) — across a column a fit child is held to the column's content box (CSS's `fit-content`), down to its declared min, 0 undeclared; not for a column scrolling x, a fixed child, a ratio-derived width, a grid, an image or a float; heights not held; a table's fit rows held lay its columns across the box; ADR 0033's decision 10 amended
 
 **From the kawoosh Russian-backtick report (2026-10-01)** — F115, filed and built the same day
 

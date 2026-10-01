@@ -4270,6 +4270,18 @@ const SCENE_TREES = {
       ]),
     ])]);
   },
+  // A fit box across a column is no wider than its box (backlog F116): a
+  // fit column in a card capped at 100 held to it, its wrapping row of
+  // three 40 px chips on two lines; beside it, `minWidth: 'fit'`, 140.
+  'fit-across': () => {
+    const chip = () => box({ width: 40, height: 20, bg: '#73d98c' });
+    const card = (wrapper) => box({ maxWidth: 100 }, [
+      box({ ...wrapper, bg: '#30344a' }, [
+        box({ dir: 'row', wrapChildren: true, gap: 10, crossGap: 5 }, [chip(), chip(), chip()]),
+      ]),
+    ]);
+    return root({}, [box({ dir: 'row', gap: 20 }, [card({}), card({ minWidth: 'fit' })])]);
+  },
   // Access rects cut to the clip (backlog F93): three nodes on a `clip`
   // canvas past its top, three rows in a short scroller.
   'clip-access': () => {

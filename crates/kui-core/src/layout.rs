@@ -1404,11 +1404,36 @@ fn distribute_axis(
         }
     } else {
         // Cross axis: Grow/Percent resolve against the content box directly.
+        // A Fit box across a column is its content's width but no wider
+        // than the box — CSS's `fit-content` — down to its declared min,
+        // none undeclared, as a row's fit children give (backlog F116).
+        // Pass 1 summed it bottom-up with no room in sight; held here,
+        // before its own children are distributed, its run gives and its
+        // text wraps. Not across a column that scrolls x, whose overflow
+        // is the point, nor a width a ratio derives from the height; a
+        // text has its own clamp, below; and a grid or an image is its
+        // content's size, CSS's replaced element: a held box would not
+        // take a column off the grid the app laid out, and would stretch
+        // an image under a fixed height.
+        let fits = axis == AxisSel::Width && !spec.scroll_x;
         let mut c = tree.first_child[i as usize];
         while c != NIL {
             if !is_float(tree, c) {
                 match child_sizing(tree, c, axis) {
                     Sizing::Grow(_) => set_axis_clamped(tree, c, axis, content),
+                    Sizing::Fit
+                        if fits
+                            && tree.size[c as usize].w > content
+                            && !matches!(
+                                tree.content[c as usize],
+                                NodeContent::Text(_)
+                                    | NodeContent::Cells(_)
+                                    | NodeContent::Image(..)
+                            )
+                            && tree.specs[c as usize].layout.aspect_width().is_none() =>
+                    {
+                        set_axis_clamped(tree, c, axis, content)
+                    }
                     s => {
                         if let Some(px) = of_room(s, content) {
                             set_axis_clamped(tree, c, axis, px);

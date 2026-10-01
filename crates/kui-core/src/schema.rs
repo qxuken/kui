@@ -577,7 +577,11 @@ pub const PROPS: &[PropDef] = &[
               grow column would stop wrapping under it. Left out, a child giving in an \
               overflowing row that holds a percentage or a size expression stops at its \
               content, CSS's `min-width: auto`; `0` lets it go below, CSS's \
-              `min-width: 0` (backlog RG92).",
+              `min-width: 0` (backlog RG92). A fit node across a column is no wider \
+              than the column's box — CSS's `fit-content` — down to this floor, 0 left \
+              out, unless the column scrolls x, so a text one wrapper deep in a capped \
+              card wraps there; \"fit\" keeps its content's width and runs past \
+              (backlog F116).",
     },
     PropDef {
         name: "maxWidth",
