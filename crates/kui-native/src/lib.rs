@@ -61,6 +61,9 @@ use pane::{
 /// The OS settings winit has no call for, asked once and re-asked when the
 /// user has evidently been in a settings app.
 mod system_env;
+/// The installed fonts changing while the app runs: the platform's signal,
+/// turned into a rescan (`Core::reload_system_fonts`).
+mod system_fonts;
 #[cfg(target_os = "windows")]
 mod windows_anim;
 /// The terminal a `windows_subsystem = "windows"` app was launched from,
@@ -722,6 +725,8 @@ impl DynShell<'_> {
         // And a file drag's position (ADR 0031), which winit's do not.
         #[cfg(target_os = "macos")]
         macos_drop::set_waker(Waker(event_loop.create_proxy()));
+        // And the installed fonts changing, which winit has no event for.
+        system_fonts::watch(event_loop.create_proxy());
     }
 }
 
@@ -2251,6 +2256,16 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
         if let Some((mw, mh)) = self.max_size {
             attrs = attrs.with_max_inner_size(LogicalSize::new(mw, mh));
         }
+        // KUI_WINDOW_AT=X,Y places it, logical px from the screen's top
+        // left: the smoke round's `--jobs` cascades its windows by it, so
+        // none is wholly covered — a covered window is `Occluded` and
+        // presents nothing, and the round counts presents.
+        if let Some((x, y)) = std::env::var("KUI_WINDOW_AT").ok().and_then(|s| {
+            let (x, y) = s.split_once(',')?;
+            Some((x.parse::<f64>().ok()?, y.parse::<f64>().ok()?))
+        }) {
+            attrs = attrs.with_position(LogicalPosition::new(x, y));
+        }
         let window = match event_loop.create_window(attrs) {
             Ok(w) => Arc::new(w),
             Err(e) => return self.fail_open(event_loop, format!("cannot open the window: {e}")),
@@ -2796,6 +2811,25 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
         if matches!(event, access_bridge::UserEvent::Wake) {
             for pane in &self.panes {
                 pane.redraw_for(FrameCause::WAKE);
+            }
+            return;
+        }
+        // The installed fonts changed: the session scans again, through
+        // any one window's core since every window shares it, and the
+        // windows draw — each shapes its text again on that frame
+        // (`weights_rev`), fallback being free to land on a new face. A
+        // signal that found nothing new (a second window's copy of a
+        // Windows broadcast) changes nothing and draws nothing.
+        if matches!(event, access_bridge::UserEvent::FontsChanged) {
+            system_fonts::handled();
+            let changed = self
+                .panes
+                .first_mut()
+                .map_or(0, |pane| pane.core.reload_system_fonts());
+            if changed > 0 {
+                for pane in &self.panes {
+                    pane.redraw_for(FrameCause::APPEARANCE);
+                }
             }
             return;
         }

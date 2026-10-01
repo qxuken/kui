@@ -1071,28 +1071,111 @@ fn first_installed<'a>(db: &cosmic_text::fontdb::Database, list: &[&'a str]) -> 
 /// face with real variants rather than whatever the fallback pops.
 /// Faces whose glyphs cannot be measured are taken out first (backlog
 /// F98, see [`keep_measurable`]).
-pub(crate) fn new_font_system() -> FontSystem {
+///
+/// The system's faces are scanned and checked once a process
+/// ([`system_fonts`]); every session after the first starts from a copy of
+/// that database. The scan opens every font file twice (fontdb's, then
+/// [`keep_measurable`]'s) — on a Mac 1312 faces in ~850 files, 20–70 ms and
+/// most of it `open`, paid again by every `Core::new` — where a copy is a
+/// list of names. A font installed while the process runs is seen when
+/// something asks for a new scan (`Core::reload_system_fonts`).
+pub(crate) fn new_font_system() -> (FontSystem, std::sync::Arc<SystemFonts>) {
+    let system = system_fonts();
+    let fonts = FontSystem::new_with_locale_and_db(system.locale.clone(), system.db.clone());
+    (fonts, system)
+}
+
+/// One scan of the system's fonts, checked and pinned the way kui shapes
+/// against them, and which files' faces it found — what a session started
+/// from, so a later scan can say what came and went since.
+pub(crate) struct SystemFonts {
+    locale: String,
+    db: cosmic_text::fontdb::Database,
+    /// Each face the scan kept, by its file and its index in the file.
+    pub(crate) faces: rustc_hash::FxHashSet<(std::path::PathBuf, u32)>,
+}
+
+/// The process's scan; `None` until the first session asks.
+static SYSTEM: std::sync::Mutex<Option<std::sync::Arc<SystemFonts>>> = std::sync::Mutex::new(None);
+
+/// The process's scan of the system's fonts, made on the first call. Held
+/// under the lock while it scans, so sessions made at once on several
+/// threads wait for one scan rather than each making its own.
+pub(crate) fn system_fonts() -> std::sync::Arc<SystemFonts> {
+    let mut held = SYSTEM.lock().unwrap_or_else(|e| e.into_inner());
+    held.get_or_insert_with(|| std::sync::Arc::new(scan_system_fonts()))
+        .clone()
+}
+
+/// Scans the system's fonts again and makes that the process's scan, so
+/// sessions made from here on start from it; returns it.
+pub(crate) fn rescan_system_fonts() -> std::sync::Arc<SystemFonts> {
+    let fresh = std::sync::Arc::new(scan_system_fonts());
+    *SYSTEM.lock().unwrap_or_else(|e| e.into_inner()) = Some(fresh.clone());
+    fresh
+}
+
+fn scan_system_fonts() -> SystemFonts {
     let (locale, db) = FontSystem::new().into_locale_and_db();
-    font_system_with(locale, db)
+    SystemFonts::from_db(locale, db)
+}
+
+impl SystemFonts {
+    /// A scan from a database already loaded: the unmeasurable faces taken
+    /// out (F98) and the generic families pinned.
+    pub(crate) fn from_db(locale: String, mut db: cosmic_text::fontdb::Database) -> Self {
+        let all: Vec<_> = db.faces().map(|face| face.id).collect();
+        keep_measurable(&mut db, all);
+        pin_default_families(&mut db);
+        let faces = db.faces().filter_map(face_file).collect();
+        Self { locale, db, faces }
+    }
+
+    /// This scan's database, to build a test's own scan from.
+    #[cfg(test)]
+    pub(crate) fn db(&self) -> &cosmic_text::fontdb::Database {
+        &self.db
+    }
+
+    #[cfg(test)]
+    pub(crate) fn locale(&self) -> &str {
+        &self.locale
+    }
+}
+
+/// The file a face was read from and its index there; `None` for a face
+/// loaded from bytes.
+pub(crate) fn face_file(face: &cosmic_text::fontdb::FaceInfo) -> Option<(std::path::PathBuf, u32)> {
+    use cosmic_text::fontdb::Source;
+    match &face.source {
+        Source::File(path) | Source::SharedFile(path, _) => Some((path.clone(), face.index)),
+        Source::Binary(_) => None,
+    }
+}
+
+/// Points the generic sans, serif and monospace families at the first
+/// installed family of [`DEFAULT_FAMILIES`]' lists; a list with none
+/// installed leaves its generic as it was.
+pub(crate) fn pin_default_families(db: &mut cosmic_text::fontdb::Database) {
+    let [sans, serif, mono] = DEFAULT_FAMILIES;
+    if let Some(name) = first_installed(db, sans) {
+        db.set_sans_serif_family(name);
+    }
+    if let Some(name) = first_installed(db, serif) {
+        db.set_serif_family(name);
+    }
+    if let Some(name) = first_installed(db, mono) {
+        db.set_monospace_family(name);
+    }
 }
 
 /// [`new_font_system`] over a database already loaded. The font system is
 /// built after the unmeasurable faces are out, so cosmic-text's list of
 /// monospaced faces, which `Mono`'s fallback walks, never names one.
-fn font_system_with(locale: String, mut db: cosmic_text::fontdb::Database) -> FontSystem {
-    let all: Vec<_> = db.faces().map(|face| face.id).collect();
-    keep_measurable(&mut db, all);
-    let [sans, serif, mono] = DEFAULT_FAMILIES;
-    if let Some(name) = first_installed(&db, sans) {
-        db.set_sans_serif_family(name);
-    }
-    if let Some(name) = first_installed(&db, serif) {
-        db.set_serif_family(name);
-    }
-    if let Some(name) = first_installed(&db, mono) {
-        db.set_monospace_family(name);
-    }
-    FontSystem::new_with_locale_and_db(locale, db)
+#[cfg(test)]
+fn font_system_with(locale: String, db: cosmic_text::fontdb::Database) -> FontSystem {
+    let system = SystemFonts::from_db(locale, db);
+    FontSystem::new_with_locale_and_db(system.locale, system.db)
 }
 
 /// Whether the shaper can say how wide a face's glyphs are (backlog F98):
@@ -4449,7 +4532,7 @@ mod default_families {
 
     #[test]
     fn mono_is_an_upright_monospaced_face() {
-        let mut fs = new_font_system();
+        let mut fs = new_font_system().0;
         if !fs.db().faces().any(|f| f.monospaced) {
             eprintln!("skipped: no monospaced face installed");
             return;
@@ -4471,7 +4554,7 @@ mod default_families {
 
     #[test]
     fn sans_and_serif_are_upright_and_not_monospaced() {
-        let mut fs = new_font_system();
+        let mut fs = new_font_system().0;
         if fs.db().faces().next().is_none() {
             eprintln!("skipped: no face installed");
             return;
@@ -4497,7 +4580,7 @@ mod default_families {
     /// `Family::Name(pinned)` and the generic family agree.
     #[test]
     fn pinned_names_are_installed_or_cosmic_texts_own() {
-        let fs = new_font_system();
+        let fs = new_font_system().0;
         let db = fs.db();
         for (name, list) in default_families(&fs).into_iter().zip(DEFAULT_FAMILIES) {
             let installed = db

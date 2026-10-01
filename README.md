@@ -595,7 +595,8 @@ that are hard to reverse and would look arbitrary without their context.
   cannot have; where the two bounds cross, the minimum wins. The Rust
   runner also reads `KUI_WINDOW=WxH` from the environment as the opening
   size — over `.size(..)`, inside the bounds — for driving an example at a
-  size without editing it (`KUI_DEVTOOLS`, `KUI_TEXT_AA` and
+  size without editing it, and `KUI_WINDOW_AT=X,Y` as where it opens
+  (`KUI_DEVTOOLS`, `KUI_TEXT_AA` and
   `KUI_LOSE_DEVICE=SECS` — the device treated as lost that long after
   launch, to watch the runner open a new one — are its other variables).
 - **Pointer state is declared, not queried.** A node says what it looks
@@ -751,7 +752,10 @@ that are hard to reverse and would look arbitrary without their context.
   `add_font_data(bytes)` load TTF/OTF/TTC files into the font database and
   `Core::add_system_font("Antonio")` names a family — installed or just
   loaded (`system_font_families()` lists them, `system_fonts()` with
-  which are monospaced, their weights and italics); all hand back a `FontId`
+  which are monospaced, their weights and italics; the system's are
+  scanned once a process and again when macOS or Windows says a font was
+  installed or removed, and `reload_system_fonts()` asks where nothing
+  says; a rescan that found a change is a `fonts` event); all hand back a `FontId`
   slotmap handle for `TextStyle::font(id)` — JSX `<text font={id}>` via
   `ctx.addFont` / `addSystemFont`, Lua `font = id`, C `KuiTextStyle.font`
   via `kui_font_add*`. A view can also name the family itself — JSX
@@ -1208,8 +1212,8 @@ the bisect, both profiles, the padding experiments and both fixes in
 test with a bound on it, so the next inline field has a number to fail against
 rather than a release audit to wait for. A fat struct is not the only way to
 lose a frame, though, so there is a second guard for the case that test cannot
-see: `scripts/bench-check.sh` benches HEAD against the previous `v*` tag in a
-worktree and fails if one of seven frame benches is more than 10% slower
+see: `nu scripts/bench-check.nu` benches HEAD against the previous `v*` tag in a
+worktree and fails if one of eight frame benches is more than 10% slower
 (`KUI_BENCH=stream` reads another bench file's rows, unjudged). It is
 run before tagging rather than in CI — the docker runner is too weak to
 measure a frame and would false-fail — and it prints the table above with the
@@ -1265,8 +1269,10 @@ was itself a clue that the cost was per node.
 
 Layout solver, atlas packer, key scheme, event dispatch, editing,
 measurement, layout events, diagnostics and the Lua binding are covered by
-tests (`cargo test --workspace`); `npm test` in `packages/kui` covers the
-Node encoder and the corpus scenes. [CHANGELOG.md](CHANGELOG.md)
+tests (`cargo test --workspace`; `nu scripts/test.nu` runs the same binaries
+side by side, `--node` adds Node's); `npm test` in `packages/kui` covers the
+Node encoder and the corpus scenes. The smoke round
+(`cargo run -p kui-devtools --bin smoke`) opens eight windows at a time. [CHANGELOG.md](CHANGELOG.md)
 lists per release what was added and, separately, what an app can delete.
 
 ## Releases
@@ -1308,7 +1314,7 @@ wants the version it tested writes that version exactly (`"@qxuken/kui":
 "0.1.0-alpha.8"`) and commits its lockfile; the lockfile is what holds either
 way, and without one a range reinstalls as whatever is newest.
 
-To cut a release: `scripts/set-version.sh 0.1.0-alpha.2` (workspace version,
+To cut a release: `nu scripts/set-version.nu 0.1.0-alpha.2` (workspace version,
 the `kui-*` dependency requirements, package.json and the changelog's open
 `(unreleased)` heading move together — registries refuse a version that already
 exists), commit, `git tag v0.1.0-alpha.2`, then push the branch and the tag

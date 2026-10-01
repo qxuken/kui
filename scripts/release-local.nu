@@ -78,14 +78,17 @@ curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolch
   -t x86_64-unknown-linux-gnu -t aarch64-unknown-linux-gnu
 export PATH="$HOME/.cargo/bin:$PATH"
 pip3 install --break-system-packages "cargo-zigbuild==0.23.3" "ziglang==0.16.0"
+nu_dir="nu-0.116.0-$(uname -m)-unknown-linux-gnu"
+curl -fL --retry 3 "https://github.com/nushell/nushell/releases/download/0.116.0/${nu_dir}.tar.gz" \
+  | tar -xz -C /usr/local/bin --strip-components=1 "${nu_dir}/nu"
 mkdir -p /work && cd /work && tar -xf /src.tar
 cargo zigbuild -p kui-node --release --target aarch64-unknown-linux-gnu.2.28
-scripts/collect-prebuild.sh aarch64-unknown-linux-gnu linux-arm64
+nu scripts/collect-prebuild.nu aarch64-unknown-linux-gnu linux-arm64
 PKG_CONFIG_ALLOW_CROSS=1 \
 PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig \
 PKG_CONFIG_LIBDIR=/usr/lib/x86_64-linux-gnu/pkgconfig \
   cargo zigbuild -p kui-node --release --target x86_64-unknown-linux-gnu.2.28
-scripts/collect-prebuild.sh x86_64-unknown-linux-gnu linux-x64
+nu scripts/collect-prebuild.nu x86_64-unknown-linux-gnu linux-x64
 cp -r packages/kui/prebuilds/linux-arm64 packages/kui/prebuilds/linux-x64 /out/
 '
 
@@ -106,7 +109,7 @@ def main [
     if $tag not-in $tagged {
         error make {msg: $"($tag) does not point at HEAD \(tags here: ($tagged | str join ', ')\)"}
     }
-    must bash scripts/check-version.sh $version
+    must $nu.current-exe scripts/check-version.nu $version
     if (which node | is-empty) or (which npm | is-empty) { error make {msg: "node and npm must be on PATH"} }
     if (which cargo-xwin | is-empty) { error make {msg: "cargo-xwin is not installed (cargo install cargo-xwin --locked)"} }
     if ((^docker info | complete).exit_code != 0) { error make {msg: "Docker is not running"} }
@@ -131,10 +134,10 @@ def main [
     # smoke round leaves a smoke-featured addon there.
     for t in [[target prebuild]; [aarch64-apple-darwin darwin-arm64] [x86_64-apple-darwin darwin-x64]] {
         must cargo build -p kui-node --release --target $t.target
-        must bash scripts/collect-prebuild.sh $t.target $t.prebuild
+        must $nu.current-exe scripts/collect-prebuild.nu $t.target $t.prebuild
     }
     must cargo xwin build -p kui-node --release --target x86_64-pc-windows-msvc
-    must bash scripts/collect-prebuild.sh x86_64-pc-windows-msvc win32-x64
+    must $nu.current-exe scripts/collect-prebuild.nu x86_64-pc-windows-msvc win32-x64
     cp -r $"($scratch)/out/linux-arm64" $"($scratch)/out/linux-x64" packages/kui/prebuilds/
 
     step "verify the bundled prebuilds"

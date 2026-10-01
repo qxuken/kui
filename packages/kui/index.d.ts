@@ -357,6 +357,14 @@ export type SystemMsg = {
   assistive: 'unknown' | 'none' | 'listening';
 };
 
+/** The system's installed fonts changed: a rescan found a face installed
+ *  or removed (delivered on the root, one per window that noticed). A
+ *  window rescans itself when macOS or Windows says the set changed;
+ *  elsewhere it follows `reloadSystemFonts()`. Re-read `systemFonts()` here
+ *  if the model holds the list; a `family` named in the view needs nothing.
+ *  A font the app loads itself raises none. */
+export type FontsMsg = { kind: 'fonts' };
+
 /** A declared window opened, or closed — because nothing declares it any
  *  more, or because the user closed it. A window the user closed stays
  *  closed while it is still declared (a declaration reopens a window only
@@ -478,6 +486,7 @@ export type CoreMsg =
   | DismissMsg
   | ResizeMsg
   | SystemMsg
+  | FontsMsg
   | WindowMsg
   | ModifiersMsg
   | EditMsg
@@ -2436,6 +2445,14 @@ export declare class Ctx {
    * the face count.
    */
   loadFontsDir(dir: string): number
+  /**
+   * Scans the system's fonts again, so a font installed while the
+   * app runs is found (kui scans them once a process); returns how
+   * many faces came and went, 0 when nothing did. Tens of
+   * milliseconds: call it when the set may have changed, not
+   * every frame.
+   */
+  reloadSystemFonts(): number
   removeFont(id: string): void
   /**
    * Family names of every font the core can see, installed or
@@ -3612,6 +3629,14 @@ export declare class KuiWindow {
    * the face count.
    */
   loadFontsDir(dir: string): number
+  /**
+   * Scans the system's fonts again, so a font installed while the
+   * app runs is found (kui scans them once a process); returns how
+   * many faces came and went, 0 when nothing did. Tens of
+   * milliseconds: call it when the set may have changed, not
+   * every frame.
+   */
+  reloadSystemFonts(): number
   removeFont(id: string): void
   /**
    * Family names of every font the core can see, installed or

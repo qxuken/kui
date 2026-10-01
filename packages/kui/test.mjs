@@ -3771,6 +3771,13 @@ test('font files and folders load by path', () => {
   assert.equal(ctx.addSystemFont(family), id, 'idempotent per family');
 });
 
+test('a rescan of the system fonts finds nothing new when nothing was installed', () => {
+  const ctx = new Ctx();
+  const families = ctx.systemFontFamilies();
+  assert.equal(ctx.reloadSystemFonts(), 0);
+  assert.deepEqual(ctx.systemFontFamilies(), families);
+});
+
 test('wrap, maxLines and ellipsis cut text instead of wrapping it', () => {
   const ctx = new Ctx();
   const LONG = 'A window title that is far too long to fit inside a narrow header strip';

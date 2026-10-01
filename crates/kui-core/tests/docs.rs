@@ -215,7 +215,7 @@ fn howto_cites_no_closed_entry_and_every_anchor_lands() {
     // Both pages this one links into by anchor. `CHANGELOG.md` is here for
     // a drift the release round produces rather than the author: the open
     // section is `## <ver> (unreleased)` while it is being written and
-    // `scripts/set-version.sh` dates the heading at the bump, so every
+    // `scripts/set-version.nu` dates the heading at the bump, so every
     // `#010-alphaN-unreleased` link stops landing between the last commit
     // and the tag — the F33 class again, through a link this time. The
     // script rewrites those links now; this is what says so if it ever

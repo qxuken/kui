@@ -2241,6 +2241,20 @@ macro_rules! core_methods {
                 self.$core().load_fonts_dir(&dir) as u32
             }
 
+            /// Scans the system's fonts again, so a font installed while the
+            /// app runs is found (kui scans them once a process); returns how
+            /// many faces came and went, 0 when nothing did. Tens of
+            /// milliseconds: call it when the set may have changed, not
+            /// every frame.
+            #[napi]
+            pub fn reload_system_fonts(&mut self) -> u32 {
+                let changed = self.$core().reload_system_fonts();
+                if changed > 0 {
+                    self.$redraw();
+                }
+                changed as u32
+            }
+
             #[napi]
             pub fn remove_font(&mut self, id: String) -> Result<()> {
                 self.$core().remove_font(FontId::from_ffi(parse_u64(&id)?));

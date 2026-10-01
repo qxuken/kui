@@ -2170,6 +2170,11 @@ pub const EVENTS: &[EventDef] = &[
         doc: "An OS setting the user changed while the app was open — the light/dark appearance, the accent colour, reduced motion, or the UI language — or assistive technology starting to listen (delivered to the host on the root, one per window that noticed). The payload is `env.system` as it now reads, in the same spellings and with the same nulls, so a handler can keep the whole reading or take the one field it branches on. The first frame establishes the reading rather than reporting it, the way the viewport does; a host whose view is a function the runner calls every frame can equally re-read `env` and ignore this, but a host that retains the tree it was handed (Node, C, Lua) only re-runs its view for a message, so this is how a palette follows the OS.",
     },
     EventDef {
+        kind: "fonts",
+        payload: "`{ kind: \"fonts\" }`",
+        doc: "The system's installed fonts changed: a rescan found a face installed or removed since the last one (delivered to the host on the root, one per window that noticed). The winit runner rescans itself when macOS or Windows says the set changed; elsewhere it is the app calling `reloadSystemFonts`. Re-read `systemFonts()` / `systemFontFamilies()` here if the model holds them; a view naming a family by `family` needs nothing, it resolves on the same frame. A font the app loads itself raises none, and the first frame establishes the set rather than reporting it.",
+    },
+    EventDef {
         kind: "modifiers",
         payload: "`{ kind: \"modifiers\", shift, ctrl, alt, super }`",
         doc: "The physical modifier state changed (delivered to the host on the root).",

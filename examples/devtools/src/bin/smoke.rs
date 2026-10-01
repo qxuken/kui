@@ -12,6 +12,15 @@
 //!     cargo run -p kui-devtools --bin smoke -- --node          # the Node windows too
 //!     cargo run -p kui-devtools --bin smoke -- --headless      # every headless drive, what CI runs
 //!     cargo run -p kui-devtools --bin smoke -- --headless --list
+//!     cargo run -p kui-devtools --bin smoke -- --jobs 1           # one at a time
+//!
+//! **In parallel.** `--jobs N` runs N at once: by default eight windows,
+//! and as many headless drives as there are cores. A window wholly
+//! covered by another is `Occluded` on macOS and presents nothing, and
+//! the round counts presents, so windows opened in the same place would
+//! finish one after another however many ran; each job's windows open at
+//! a place of their own instead (`KUI_WINDOW_AT`, cascaded by the job's
+//! slot), overlapping but never covered. Rows print as runs finish.
 //!
 //! **The windowed round.** `KUI_SMOKE_FRAMES=n` (crates/kui-native/src/lib.rs)
 //! makes the runner quit once the main window has presented n frames, so
@@ -46,9 +55,10 @@
 //! Exit codes: 0 every example passed, 1 at least one failed, 2 a bad
 //! flag or a missing name.
 
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, ExitCode, Stdio};
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use kui_devtools::manifest;
@@ -63,10 +73,12 @@ struct Opts {
     bases: Vec<String>,
     node: bool,
     build: bool,
+    /// `None` until `--jobs`: the round's own default.
+    jobs: Option<usize>,
 }
 
 const USAGE: &str = "usage: smoke [--headless [--list]] [--frames N] [--timeout S] [--only a,b] \
-                     [--release] [--base light,dark] [--node] [--no-build]";
+                     [--release] [--base light,dark] [--node] [--no-build] [--jobs N]";
 
 fn parse(args: &[String]) -> Result<Opts, String> {
     let mut o = Opts {
@@ -79,6 +91,7 @@ fn parse(args: &[String]) -> Result<Opts, String> {
         bases: vec!["light".into(), "dark".into()],
         node: false,
         build: true,
+        jobs: None,
     };
     let mut i = 0;
     let value = |i: &mut usize, flag: &str| -> Result<String, String> {
@@ -119,6 +132,12 @@ fn parse(args: &[String]) -> Result<Opts, String> {
             }
             "--node" => o.node = true,
             "--no-build" => o.build = false,
+            "--jobs" | "-j" => {
+                let n: usize = value(&mut i, "--jobs")?
+                    .parse()
+                    .map_err(|e| format!("--jobs: {e}"))?;
+                o.jobs = Some(n.max(1));
+            }
             "-h" | "--help" => return Err(USAGE.into()),
             other => return Err(format!("unknown flag {other}\n{USAGE}")),
         }
@@ -228,37 +247,95 @@ fn run(mut cmd: Command, timeout: Duration) -> Result<Outcome, String> {
     }
 }
 
-fn indent(text: &str, lines: usize) {
+fn indent(out: &mut String, text: &str, lines: usize) {
     for l in text.lines().filter(|l| !l.trim().is_empty()).take(lines) {
-        println!("                       {l}");
+        out.push_str(&format!("                       {l}\n"));
     }
 }
 
-/// Prints one row and says whether it passed.
+/// Prints one row and says whether it passed. The row and what follows it
+/// go out in one write, so rows of runs finishing together do not mix.
 fn report(label: &str, outcome: Outcome) -> bool {
-    match outcome {
+    let mut out = String::new();
+    let passed = match outcome {
         Outcome::Ok { secs, warnings } => {
             let note = if warnings.is_empty() {
                 String::new()
             } else {
                 format!(" ({} warning(s))", warnings.len())
             };
-            println!("  {label} ok       {secs:.2}s{note}");
+            out.push_str(&format!("  {label} ok       {secs:.2}s{note}\n"));
             for w in &warnings {
-                println!("                       {w}");
+                out.push_str(&format!("                       {w}\n"));
             }
             true
         }
         Outcome::Failed { code, stderr } => {
-            println!("  {label} FAILED   exit {code}");
-            indent(&stderr, 12);
+            out.push_str(&format!("  {label} FAILED   exit {code}\n"));
+            indent(&mut out, &stderr, 12);
             false
         }
         Outcome::Hung => {
-            println!("  {label} HUNG     (killed at the timeout)");
+            out.push_str(&format!("  {label} HUNG     (killed at the timeout)\n"));
             false
         }
+    };
+    let _ = std::io::stdout().lock().write_all(out.as_bytes());
+    passed
+}
+
+/// One run of a round: what the row says, and the command.
+struct Job {
+    label: String,
+    /// The name `FAILED:` lists it under.
+    name: String,
+    cmd: Command,
+    timeout: Duration,
+}
+
+/// Runs `jobs` on `width` threads, each taking the next job when its last
+/// is done, and returns the names of those that failed, in job order.
+/// `place` gives a job's command what its slot (0..width) should add —
+/// the windowed round's window position.
+fn pool(
+    jobs: Vec<Job>,
+    width: usize,
+    place: impl Fn(usize, &mut Command) + Sync,
+) -> Result<Vec<String>, String> {
+    let total = jobs.len();
+    let queue = Mutex::new(jobs.into_iter().enumerate());
+    let failed = Mutex::new(Vec::new());
+    let error = Mutex::new(None);
+    std::thread::scope(|scope| {
+        for slot in 0..width.clamp(1, total.max(1)) {
+            let (queue, failed, error, place) = (&queue, &failed, &error, &place);
+            scope.spawn(move || {
+                loop {
+                    let Some((i, mut job)) = queue.lock().unwrap().next() else {
+                        return;
+                    };
+                    place(slot, &mut job.cmd);
+                    match run(job.cmd, job.timeout) {
+                        Ok(outcome) => {
+                            if !report(&job.label, outcome) {
+                                failed.lock().unwrap().push((i, job.name));
+                            }
+                        }
+                        Err(e) => {
+                            *error.lock().unwrap() = Some(e);
+                            return;
+                        }
+                    }
+                }
+            });
+        }
+    });
+    if let Some(e) = error.into_inner().unwrap() {
+        return Err(e);
     }
+    let mut failed = failed.into_inner().unwrap();
+    failed.sort();
+    Ok(failed.into_iter().map(|(_, name)| name).collect())
 }
 
 /// A `cargo` invocation, inherited output, judged by its exit.
@@ -288,6 +365,25 @@ fn npm() -> Command {
 
 // ---------------------------------------------------------------------------
 // The windowed round
+
+/// Windows open at once by default (fewer on a machine with fewer
+/// cores). On an M3 Pro the 98 windows of the round took 143 s one at a
+/// time, 38 s four at a time and 24 s eight; eight keeps the cascade
+/// (`place_window`) inside a laptop's screen.
+const WINDOWS_AT_ONCE: usize = 8;
+
+/// Where slot `slot` of `width` opens its windows: each slot a step down
+/// and a step *left* of the one before. A window covers another only when
+/// it starts both left of it and above it, and no two slots on this
+/// diagonal stand that way, so whatever the examples' sizes and whichever
+/// opened last, every window keeps a strip no other covers and none is
+/// `Occluded` (a cascade down and right let a big window in the first slot
+/// bury a small one in the second, and the buried one waited it out).
+fn place_window(slot: usize, width: usize, cmd: &mut Command) {
+    let x = 40 + 90 * (width - 1 - slot.min(width - 1));
+    let y = 60 + 60 * slot;
+    cmd.env("KUI_WINDOW_AT", format!("{x},{y}"));
+}
 
 fn windowed(opts: &Opts) -> Result<Vec<String>, String> {
     let all = manifest::windowed();
@@ -321,15 +417,8 @@ fn windowed(opts: &Opts) -> Result<Vec<String>, String> {
         }
         cargo(&args)?;
     }
-    println!();
-    println!(
-        "smoke: {} examples × ({}), {} frames each, {profile} profile",
-        examples.len(),
-        opts.bases.join(" "),
-        opts.frames
-    );
-    println!();
     let mut failed = Vec::new();
+    let mut jobs = Vec::new();
     let exe_suffix = if cfg!(windows) { ".exe" } else { "" };
     for name in &examples {
         for base in &opts.bases {
@@ -343,9 +432,12 @@ fn windowed(opts: &Opts) -> Result<Vec<String>, String> {
             let mut cmd = Command::new(&exe);
             cmd.arg(format!("--{base}"))
                 .env("KUI_SMOKE_FRAMES", opts.frames.to_string());
-            if !report(&label, run(cmd, opts.timeout)?) {
-                failed.push(format!("{name}/{base}"));
-            }
+            jobs.push(Job {
+                label,
+                name: format!("{name}/{base}"),
+                cmd,
+                timeout: opts.timeout,
+            });
         }
     }
     if opts.node {
@@ -377,18 +469,41 @@ fn windowed(opts: &Opts) -> Result<Vec<String>, String> {
                 cmd.arg(format!("examples/node/dist/{entry}.mjs"))
                     .arg(format!("--{base}"))
                     .env("KUI_SMOKE_FRAMES", opts.frames.to_string());
-                if !report(&label, run(cmd, opts.timeout)?) {
-                    failed.push(format!("node:{short}/{base}"));
-                }
+                jobs.push(Job {
+                    label,
+                    name: format!("node:{short}/{base}"),
+                    cmd,
+                    timeout: opts.timeout,
+                });
             }
         }
     }
+    let width = opts.jobs.unwrap_or_else(|| {
+        std::thread::available_parallelism().map_or(1, |n| n.get().min(WINDOWS_AT_ONCE))
+    });
+    println!();
+    println!(
+        "smoke: {} examples × ({}){}, {} frames each, {profile} profile, {width} at a time",
+        examples.len(),
+        opts.bases.join(" "),
+        if opts.node { " and Node's" } else { "" },
+        opts.frames
+    );
+    println!();
+    let started = Instant::now();
+    // A lone window opens where the OS puts it, as it always has.
+    failed.extend(pool(jobs, width, |slot, cmd| {
+        if width > 1 {
+            place_window(slot, width, cmd)
+        }
+    })?);
     if failed.is_empty() {
         println!();
         println!(
-            "all {} examples drew {} frames on each base and exited cleanly",
+            "all {} examples drew {} frames on each base and exited cleanly ({:.1}s)",
             examples.len(),
-            opts.frames
+            opts.frames,
+            started.elapsed().as_secs_f64()
         );
     }
     Ok(failed)
@@ -409,49 +524,52 @@ fn headless(opts: &Opts) -> Result<Vec<String>, String> {
     }
     println!();
     if opts.build {
-        // Build first, so a compile error is one message and not one per
-        // example.
+        // Build first, in one cargo, so a compile error is one message and
+        // not one per example — and so every drive below is a binary to
+        // start, not a `cargo run` to check for freshness.
         let mut crates: Vec<&str> = pairs.iter().map(|(k, _)| k.as_str()).collect();
         crates.sort();
         crates.dedup();
+        let mut args = vec!["build"];
         for krate in crates {
-            cargo(&["build", "-p", krate, "--examples"])?;
+            args.extend(["-p", krate]);
         }
+        args.push("--examples");
+        cargo(&args)?;
     }
-    let mut failed = Vec::new();
-    for (krate, name) in &pairs {
-        let label = format!("{krate:<12} {name:<14}");
-        let mut cmd = Command::new("cargo");
-        cmd.args([
-            "run",
-            "-q",
-            "-p",
-            krate,
-            "--example",
-            name,
-            "--",
-            "--headless",
-        ]);
-        // Under `--no-build` the first `cargo run` may be a compile; give
-        // it the room the Node step gets rather than calling it hung.
-        let room = opts.timeout.max(Duration::from_secs(300));
-        if !report(&label, run(cmd, room)?) {
-            failed.push(format!("{krate}/{name}"));
-        }
-    }
-    let label = format!("{:<12} {:<14}", "node", "smoke");
+    let mut jobs = Vec::new();
+    // Node's first: `npm run build` inside it is a whole typecheck, the
+    // longest run of the round, so it starts while the drives fill in.
     let mut cmd = npm();
     cmd.args(["run", "smoke"]).current_dir("examples/node");
-    // `npm run build` inside it is a whole typecheck; give it the room.
-    if !report(
-        &label,
-        run(cmd, opts.timeout.max(Duration::from_secs(300)))?,
-    ) {
-        failed.push("node/smoke".into());
+    jobs.push(Job {
+        label: format!("{:<12} {:<14}", "node", "smoke"),
+        name: "node/smoke".into(),
+        cmd,
+        timeout: opts.timeout.max(Duration::from_secs(300)),
+    });
+    let exe_suffix = if cfg!(windows) { ".exe" } else { "" };
+    for (krate, name) in &pairs {
+        let mut cmd = Command::new(format!("target/debug/examples/{name}{exe_suffix}"));
+        cmd.arg("--headless");
+        jobs.push(Job {
+            label: format!("{krate:<12} {name:<14}"),
+            name: format!("{krate}/{name}"),
+            cmd,
+            timeout: opts.timeout,
+        });
     }
+    let width = opts
+        .jobs
+        .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, |n| n.get()));
+    let started = Instant::now();
+    let failed = pool(jobs, width, |_, _| {})?;
     if failed.is_empty() {
         println!();
-        println!("the headless round passed");
+        println!(
+            "the headless round passed ({:.1}s, {width} at a time)",
+            started.elapsed().as_secs_f64()
+        );
     }
     Ok(failed)
 }

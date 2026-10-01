@@ -467,6 +467,9 @@ pub struct Core {
     /// between two frames is what becomes a `system` event — the same
     /// bookkeeping `viewport` does for `resize` (backlog F40).
     system_seen: SystemEnv,
+    /// The session's `system_fonts_rev` the last frame was begun with; the
+    /// difference is what becomes a `fonts` event.
+    system_fonts_seen: u64,
     /// Frames begun so far; stamps the per-key stores below.
     frame_no: u64,
     /// The rect last reported for each `on_layout` node and the frame it
@@ -971,6 +974,7 @@ impl Core {
             pending: Vec::new(),
             framed: false,
             system_seen: SystemEnv::default(),
+            system_fonts_seen: 0,
             frame_no: 0,
             layouts: FxHashMap::default(),
             announcements: Vec::new(),
@@ -1387,6 +1391,22 @@ impl Core {
             });
         }
         self.system_seen = self.env.system;
+        // And the installed fonts, rescanned since the last frame and found
+        // changed (`reload_system_fonts`, which the winit runner calls when
+        // the OS says so): a message for the same reason as `system`, an
+        // app holding `systemFonts()` in its model having nothing else to
+        // re-read it on. The first frame establishes it, as above.
+        let fonts_rev = self.session.state().system_fonts_rev;
+        if self.framed && fonts_rev != self.system_fonts_seen {
+            self.pending.push(UiEvent {
+                origin: OriginId::HOST,
+                window: WindowId::MAIN,
+                key: Key::ROOT,
+                payload: Value::map([("kind", Value::str("fonts"))]),
+                slot: None,
+            });
+        }
+        self.system_fonts_seen = fonts_rev;
         // The palette is a function of what the OS said and what the app
         // asked for, so it is recomputed rather than invalidated: a
         // couple of dozen float ops once a frame, against a cache that

@@ -261,6 +261,28 @@ is the names alone.
 [Doors](props.md#doors) ·
 [alpha.21 `### Added`](../CHANGELOG.md#010-alpha21-2026-09-26)
 
+### How do I see a font the user installed while the app runs?
+
+On macOS and Windows a window app does nothing: the runner hears the OS
+say the installed fonts changed, scans them again, and draws, and a view
+that names the new family (`family="…"`) or lists `systemFonts()` sees
+it on that frame. An app that holds the list in its model — a font
+picker's rows — re-reads it on the `fonts` message (`FontsMsg`, one per
+window, on the root), which every rescan that found a change raises. Elsewhere — Linux, where fontconfig sends no such
+signal, or a host with its own windowing — call `ctx.reloadSystemFonts()`
+(Rust `Core::reload_system_fonts()`, C `kui_font_reload_system`). kui
+scans the system's fonts once a process and every session starts from
+that scan; the call rescans, brings the session up to it — what came
+joins, what went leaves, everything else keeps its handle — and returns
+how many faces changed, and every window shapes its text again on its
+next frame. It opens every font file on the system, tens of
+milliseconds, so call it when the set may have changed: when a font
+picker opens, or when the window takes focus back after the user was
+elsewhere.
+
+[Doors](props.md#doors) ·
+[alpha.32 `### Added`](../CHANGELOG.md#010-alpha32-unreleased)
+
 ### How do I show a 100k-character line, or a paragraph that long?
 
 Hand it over as one `text` node, plain or as spans. A text of 4096 bytes or

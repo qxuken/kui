@@ -265,6 +265,19 @@ pub extern "C" fn kui_font_load_dir(ptr: *mut KuiCtx, dir: KuiStr) -> usize {
     })
 }
 
+/// Scans the system's fonts again, so a font installed while the app runs
+/// is found (`Core::reload_system_fonts`); returns how many faces came and
+/// went, 0 when nothing did.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_font_reload_system(ptr: *mut KuiCtx) -> usize {
+    guard(0, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
+        c.core().reload_system_fonts()
+    })
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_font_remove(ptr: *mut KuiCtx, id: u64) {
     guard((), || {

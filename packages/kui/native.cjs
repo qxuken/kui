@@ -3,7 +3,7 @@
 // an explicit override; otherwise the newest of these wins, so an in-repo
 // `cargo build -p kui-node` is never shadowed by a stale local prebuild:
 //   - prebuilds/<platform>-<arch>/kui_node.node   bundled in the published
-//                                                 package (scripts/collect-prebuild.sh)
+//                                                 package (scripts/collect-prebuild.nu)
 //   - ../../target/{release,debug}/               an in-repo cargo build
 //
 // A candidate can exist and still not load, and one way to get there is

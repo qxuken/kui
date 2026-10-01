@@ -2807,6 +2807,12 @@ uint64_t kui_font_load_file(KuiCtx *ctx, KuiStr path);
 /* Loads every font file under a folder (recursively) for kui_font_add_system;
  * returns the number of faces added. */
 size_t kui_font_load_dir(KuiCtx *ctx, KuiStr dir);
+/* Scans the system's fonts again - kui scans them once a process - so a font
+ * installed while the app runs is found; returns how many faces came and
+ * went, 0 when nothing did, and a change raises a `fonts` event on each
+ * window's next frame. kui_run rescans itself when macOS or Windows says
+ * the set changed. Tens of milliseconds: not a per-frame call. */
+size_t kui_font_reload_system(KuiCtx *ctx);
 /* Forgets a font; styles still naming it shape as sans. */
 void kui_font_remove(KuiCtx *ctx, uint64_t id);
 /* -- Images --------------------------------------------------------------- */

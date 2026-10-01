@@ -82,6 +82,14 @@ pub(crate) struct SessionState {
     /// The font database every window in the session shapes against — a
     /// face loaded by one window resolves for all of them.
     pub(crate) fonts: FontSystem,
+    /// The scan of the system's fonts `fonts` holds the faces of, so a
+    /// newer scan can be applied as what came and went since
+    /// (`Core::reload_system_fonts`).
+    pub(crate) system: std::sync::Arc<crate::text::SystemFonts>,
+    /// Bumped by every rescan of the system's fonts that changed this
+    /// session's (`apply_system_fonts`) — not by a font the app loads —
+    /// so each window can report it as one `fonts` event.
+    pub(crate) system_fonts_rev: u64,
     pub(crate) resources: Resources,
     pub(crate) audio: AudioStore,
     /// Bumped by every font registration and removal, so a `Core` can tell
@@ -117,9 +125,12 @@ pub(crate) struct SessionState {
 impl SessionState {
     fn new() -> Self {
         let id = SessionId::next();
+        let (fonts, system) = crate::text::new_font_system();
         Self {
             id,
-            fonts: crate::text::new_font_system(),
+            fonts,
+            system,
+            system_fonts_rev: 0,
             resources: Resources::new(id),
             audio: AudioStore::default(),
             fonts_rev: 0,

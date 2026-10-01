@@ -144,41 +144,50 @@ fn editor_rows(lh: f32, top: f32, scale: f32) -> Vec<(Quad, Clip)> {
 
 #[test]
 fn a_selection_past_a_line_end_meets_the_lines_beside_it() {
-    for lh in [20.0, 21.75, 18.2] {
-        for top in [0.0, 3.3, 7.1] {
-            for scale in [1.0, 1.25, 1.5, 1.75, 2.0, 2.175] {
-                let quads = editor_rows(lh, top, scale);
-                let y0 = quads.iter().map(|(q, _)| q.rect.y).fold(f32::MAX, f32::min);
-                let y1 = quads
-                    .iter()
-                    .map(|(q, _)| q.rect.y + q.rect.h)
-                    .fold(f32::MIN, f32::max);
-                let x1 = quads
-                    .iter()
-                    .map(|(q, _)| q.rect.x + q.rect.w)
-                    .fold(f32::MIN, f32::max);
-                let at = format!("line height {lh}, top {top}, {scale}×");
-                // Nowhere drawn twice.
-                for px in 0..x1.ceil() as i32 {
-                    for py in y0.floor() as i32..y1.ceil() as i32 {
-                        let (cx, cy) = (px as f32 + 0.5, py as f32 + 0.5);
-                        let a = alpha_at(&quads, cx, cy);
-                        assert!(a < sel().a + 1e-4, "drawn twice at ({cx}, {cy}), {at}: {a}");
-                    }
-                }
-                // And the first cell's column, which every row covers —
-                // with its text or, on the empty line, its newline's box —
-                // is one surface from the first row to the last.
-                let cx = (10.3 * scale).ceil() + 2.5;
-                for py in y0 as i32..y1 as i32 {
-                    let cy = py as f32 + 0.5;
-                    let a = alpha_at(&quads, cx, cy);
-                    assert!(
-                        (a - sel().a).abs() < 1e-4,
-                        "the selection's own alpha at ({cx}, {cy}), {at}: {a}"
-                    );
-                }
+    // 54 editors walked pixel by pixel were the workspace's slowest test
+    // (~10 s on one thread in a debug build), so each line height and
+    // offset gets a thread; a panic in one fails the scope.
+    std::thread::scope(|s| {
+        for lh in [20.0, 21.75, 18.2] {
+            for top in [0.0, 3.3, 7.1] {
+                s.spawn(move || a_selection_past_a_line_end_at(lh, top));
             }
+        }
+    });
+}
+
+fn a_selection_past_a_line_end_at(lh: f32, top: f32) {
+    for scale in [1.0, 1.25, 1.5, 1.75, 2.0, 2.175] {
+        let quads = editor_rows(lh, top, scale);
+        let y0 = quads.iter().map(|(q, _)| q.rect.y).fold(f32::MAX, f32::min);
+        let y1 = quads
+            .iter()
+            .map(|(q, _)| q.rect.y + q.rect.h)
+            .fold(f32::MIN, f32::max);
+        let x1 = quads
+            .iter()
+            .map(|(q, _)| q.rect.x + q.rect.w)
+            .fold(f32::MIN, f32::max);
+        let at = format!("line height {lh}, top {top}, {scale}×");
+        // Nowhere drawn twice.
+        for px in 0..x1.ceil() as i32 {
+            for py in y0.floor() as i32..y1.ceil() as i32 {
+                let (cx, cy) = (px as f32 + 0.5, py as f32 + 0.5);
+                let a = alpha_at(&quads, cx, cy);
+                assert!(a < sel().a + 1e-4, "drawn twice at ({cx}, {cy}), {at}: {a}");
+            }
+        }
+        // And the first cell's column, which every row covers —
+        // with its text or, on the empty line, its newline's box —
+        // is one surface from the first row to the last.
+        let cx = (10.3 * scale).ceil() + 2.5;
+        for py in y0 as i32..y1 as i32 {
+            let cy = py as f32 + 0.5;
+            let a = alpha_at(&quads, cx, cy);
+            assert!(
+                (a - sel().a).abs() < 1e-4,
+                "the selection's own alpha at ({cx}, {cy}), {at}: {a}"
+            );
         }
     }
 }

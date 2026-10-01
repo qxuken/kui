@@ -149,9 +149,13 @@ jobs:
       # the examples in, so this is a fingerprint check and not a second
       # compile of the whole GUI stack. Nothing the round looks for
       # depends on optimisation.
+      #
+      # One window at a time: the round opens eight at once by default,
+      # cascaded so none is covered, which was measured on macOS and has
+      # not been run on Windows yet.
       - name: Smoke the examples in a window
         shell: powershell
-        run: cargo run -p kui-devtools --bin smoke -- --windowed
+        run: cargo run -p kui-devtools --bin smoke -- --windowed --jobs 1
 
       # The C story, both directions, on the platform where it differs most:
       # an MSVC-ABI compiler, an import library at each link, and no rpath.

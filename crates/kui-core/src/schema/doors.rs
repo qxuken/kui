@@ -150,6 +150,13 @@ pub const DOORS: &[Door] = &[
         doc: "Registers every font file in a directory.",
     },
     Door {
+        rust: "Core::reload_system_fonts",
+        c: Is("kui_font_reload_system"),
+        node: Is("reloadSystemFonts"),
+        lua: No(GUEST),
+        doc: "Scans the system's fonts again, so a font installed while the app runs is found (the scan is otherwise once a process); returns how many faces came and went.",
+    },
+    Door {
         rust: "Core::remove_font",
         c: Is("kui_font_remove"),
         node: Is("removeFont"),
