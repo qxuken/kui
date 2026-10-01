@@ -31,6 +31,8 @@ mod imp {
         /// Something the app owns changed off the loop's thread: draw.
         Wake,
         /// The system's installed fonts changed (`mod system_fonts`).
+        /// Only macOS and Windows say so; elsewhere nothing sends it.
+        #[cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(dead_code))]
         FontsChanged,
         /// A file dialog shown for `window` was answered (backlog C51).
         /// Only the `dialogs` feature shows one.
@@ -458,6 +460,8 @@ mod imp {
         /// Something the app owns changed off the loop's thread: draw.
         Wake,
         /// The system's installed fonts changed (`mod system_fonts`).
+        /// Only macOS and Windows say so; elsewhere nothing sends it.
+        #[cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(dead_code))]
         FontsChanged,
         /// A file dialog shown for `window` was answered (backlog C51).
         /// Only the `dialogs` feature shows one.

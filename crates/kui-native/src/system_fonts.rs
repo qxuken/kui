@@ -44,7 +44,9 @@ pub fn watch(proxy: EventLoopProxy<UserEvent>) {
 }
 
 /// The platform said the installed fonts changed: one event on the loop,
-/// unless one is already waiting.
+/// unless one is already waiting. Called from the macOS observer and the
+/// Windows subclass; elsewhere only this module's test calls it.
+#[cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(dead_code))]
 pub fn changed() {
     if PENDING.swap(true, Ordering::AcqRel) {
         return;
