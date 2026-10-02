@@ -19,6 +19,11 @@ date: 2026-09-28
 > under the pointer (decision 3), and reads what it needs off the region
 > the last finished frame drew rather than off the tree, so a wheel
 > event that arrives during a build routes by that frame.
+>
+> **Amended 2026-10-02 (backlog F117, from kawoosh's sticky-swipe
+> report):** a finger put down begins a gesture, pause or none
+> (decision 2). A swipe started while the last one still glided was the
+> glide's gesture, its target and its axis, until a pause came.
 
 ## Context
 
@@ -40,8 +45,9 @@ date: 2026-09-28
 - **Where gestures begin.** The core is clock-free, as it is for
   clicks. The native runner already has a clock and already tells one
   swipe from the next: F104's axis lock ends a swipe after a 200 ms
-  pause. winit's `TouchPhase` is not usable for this. It names a
-  momentum run's start as it names a finger's.
+  pause. winit's `TouchPhase` is not usable for this alone. It names a
+  momentum run's start as it names a finger's (F117 tells them apart by
+  order, decision 2).
 - **What browsers do.** A wheel or trackpad gesture latches to the
   scroller it started on and keeps it until the gesture ends
   (*latching*). The scroller is picked at the start as the innermost
@@ -72,6 +78,14 @@ date: 2026-09-28
      does not end a swipe's.
    - An event the axis lock keeps to zero is not dispatched. The
      beginning it carried is owed to the next one that is.
+   - *Amended 2026-10-02 (F117):* a finger put down begins a gesture
+     too, however soon after the last event, and ends the axis lock's
+     swipe. A `Started` within 100 ms of a finger's `Ended` is the
+     glide's (macOS starts it on the next event) and keeps the gesture;
+     every other `Started` is a finger's — on nothing lifted, or on a
+     glide, which macOS ends as the finger lands. Before this, a swipe
+     begun mid-glide was the glide's gesture until a 200 ms pause, which
+     a glide's events a frame apart never leave.
 3. **The target is picked per axis, when the gesture first moves on
    that axis, and latched.**
    - Picking starts at the topmost region under the pointer and walks
@@ -141,7 +155,9 @@ date: 2026-09-28
   already draws F104's boundaries.
 - **winit's `TouchPhase`.** It marks a momentum run as a new start, so
   the momentum would re-target. The gap is what tells a glide from a
-  new swipe.
+  new swipe. *Amended (F117):* the gap alone kept a swipe begun
+  mid-glide in the glide's gesture; the phases' order now tells the
+  glide's `Started` from a finger's, and both are used.
 
 ## Consequences
 

@@ -23,10 +23,42 @@
 //! down, or a momentum run starting), and a wheel's never does. So a
 //! pixel gesture is a swipe once its stream has said `Started`, and until
 //! then it is aimed like a wheel: moving the pointer ends it.
+//!
+//! A finger put down begins a gesture of its own, pause or none (backlog
+//! F117). A glide's events come a frame apart, so a swipe started while
+//! the last one still glides — over another scroller, the other way —
+//! was the glide's gesture and went to the glide's target until a pause
+//! came. winit names a glide's start `Started` as it names a finger's,
+//! but the order tells them apart: a finger lifts (`Ended`) and the
+//! glide starts in the frames after, where a finger comes down on
+//! nothing lifted, or on a glide, which macOS ends as it lands. So a
+//! `Started` within [`GLIDE_AFTER`] of a finger's `Ended` is the glide's,
+//! and every other is a finger's.
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
+
+use winit::event::TouchPhase;
 
 use crate::axis_lock::GAP;
+
+/// How soon after the fingers lift a `Started` is the glide's rather
+/// than a finger's: macOS starts the glide on the next event, and no hand
+/// lifts and lands again this fast.
+pub(crate) const GLIDE_AFTER: Duration = Duration::from_millis(100);
+
+/// Where the hand is in a swipe, by the phases its events said.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum Finger {
+    /// No swipe, or one whose glide ended.
+    #[default]
+    Up,
+    /// A finger on the surface.
+    Down,
+    /// The finger lifted at this instant; a glide may follow.
+    Lifted(Instant),
+    /// The glide after a lift.
+    Glide,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Kind {
@@ -49,6 +81,8 @@ pub(crate) struct Gesture {
     /// The gesture's events have said `TouchPhase::Started`: a finger on
     /// a touch surface, whose glide the pointer does not re-aim.
     touch: bool,
+    /// The hand, for telling a finger's `Started` from a glide's.
+    finger: Finger,
 }
 
 impl Gesture {
@@ -71,6 +105,33 @@ impl Gesture {
         self.last = Some((kind, now));
         self.owed |= begins;
         self.touch = started || (self.touch && !begins);
+    }
+
+    /// A pixel event's touch phase, before its delta is counted: whether
+    /// it is a finger coming down, which begins a gesture of its own —
+    /// and a swipe of its own, for the axis lock — however soon after the
+    /// last event it comes.
+    pub(crate) fn phase(&mut self, phase: TouchPhase, now: Instant) -> bool {
+        let (finger, down) = match (phase, self.finger) {
+            (TouchPhase::Started, Finger::Lifted(t))
+                if now.saturating_duration_since(t) <= GLIDE_AFTER =>
+            {
+                (Finger::Glide, false)
+            }
+            // macOS says `MayBegin` and then `Began`: one finger.
+            (TouchPhase::Started, Finger::Down) => (Finger::Down, false),
+            (TouchPhase::Started, _) => (Finger::Down, true),
+            (TouchPhase::Ended | TouchPhase::Cancelled, Finger::Down) => {
+                (Finger::Lifted(now), false)
+            }
+            (TouchPhase::Ended | TouchPhase::Cancelled, Finger::Glide) => (Finger::Up, false),
+            (_, f) => (f, false),
+        };
+        self.finger = finger;
+        if down {
+            self.last = None;
+        }
+        down
     }
 
     /// The pointer moved: a wheel's gesture is over, and so is a pixel
@@ -128,6 +189,75 @@ mod tests {
         assert!(g.begins(Kind::Line, false, t));
         t += GAP + FRAME;
         assert!(g.begins(Kind::Line, false, t));
+    }
+
+    /// Feeds one pixel event as the runner does, its phase first:
+    /// whether it begins a gesture.
+    fn event(g: &mut Gesture, phase: TouchPhase, t: Instant) -> bool {
+        g.phase(phase, t);
+        g.begins(Kind::Pixel, phase == TouchPhase::Started, t)
+    }
+
+    /// F117: a finger put down while the last swipe still glides begins a
+    /// gesture of its own, pause or none; the glide after a lift does not.
+    #[test]
+    fn a_finger_down_mid_glide_begins_a_gesture() {
+        use TouchPhase::*;
+        let mut g = Gesture::default();
+        let mut t = Instant::now();
+        assert!(event(&mut g, Started, t), "a finger down");
+        for _ in 0..10 {
+            t += FRAME;
+            assert!(!event(&mut g, Moved, t));
+        }
+        t += FRAME;
+        assert!(!event(&mut g, Ended, t), "the lift");
+        t += FRAME;
+        assert!(!event(&mut g, Started, t), "the glide starting");
+        for _ in 0..10 {
+            t += FRAME;
+            assert!(!event(&mut g, Moved, t));
+        }
+        // A finger lands on the glide: macOS ends it, then the touch.
+        t += FRAME;
+        assert!(!event(&mut g, Ended, t));
+        t += FRAME;
+        assert!(event(&mut g, Started, t), "a new swipe, no pause");
+        t += FRAME;
+        assert!(!event(&mut g, Started, t), "`MayBegin` then `Began`");
+        assert!(!event(&mut g, Moved, t + FRAME));
+    }
+
+    /// A finger down on a glide whose end never came begins one too.
+    #[test]
+    fn a_finger_down_on_an_unended_glide_begins_a_gesture() {
+        use TouchPhase::*;
+        let mut g = Gesture::default();
+        let mut t = Instant::now();
+        event(&mut g, Started, t);
+        t += FRAME;
+        event(&mut g, Ended, t);
+        t += FRAME;
+        assert!(!event(&mut g, Started, t));
+        t += FRAME;
+        assert!(!event(&mut g, Moved, t));
+        t += FRAME;
+        assert!(event(&mut g, Started, t));
+    }
+
+    /// A lift with no glide, and a finger down again within the pause but
+    /// past [`GLIDE_AFTER`]: two swipes.
+    #[test]
+    fn a_finger_down_after_a_glideless_lift_begins_a_gesture() {
+        use TouchPhase::*;
+        let mut g = Gesture::default();
+        let mut t = Instant::now();
+        event(&mut g, Started, t);
+        t += FRAME;
+        event(&mut g, Ended, t);
+        // Within GAP of the lift, which alone would keep the gesture.
+        t += GLIDE_AFTER + FRAME;
+        assert!(event(&mut g, Started, t));
     }
 
     /// A gesture whose first event was not dispatched (kept to zero)

@@ -54,6 +54,18 @@ was the first bare bump to break an app in five releases).
   bindings. *What you can delete:* a `width="grow"` (`grow_width()`)
   on a wrapper, written so the text in it would wrap at a capped parent.
 
+- **A swipe begun while the last one still glides goes where it is
+  aimed** (F117, from kawoosh's sticky-swipe report): kui-native begins
+  a scroll gesture when a finger comes down, not only after a 200 ms
+  pause, so a swipe started over another scroller mid-glide latches that
+  scroller and chooses its own axis, where it went on moving the
+  glide's target. A glide's start and a finger's are both winit's
+  `Started`; one within 100 ms of a finger's lift is the glide's. And a
+  slow turn within one swipe turns the axis lock: it asks for 10 px of
+  recent travel, not 24 (2.5 px an event, not 6). ADR 0038, decision
+  2, as amended. *What you can delete:* nothing an app could have
+  written; the runner's gestures were not the app's to draw.
+
 ## 0.1.0-alpha.32 (2026-10-02)
 
 **What breaks.** No build.
