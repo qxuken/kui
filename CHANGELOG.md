@@ -39,7 +39,7 @@ was the first bare bump to break an app in five releases).
   (`drydock9`), through `scripts/publish-crates.nu`, which skips a crate a
   registry already holds at the version, so a release cut short by
   crates.io's rate limit on new crates, or anything else, is finished by
-  running it again; the release workflow needs a `CARGO_REGISTRY_TOKEN`
+  running it again; the release workflow needs a `CRATES_IO_TOKEN`
   secret beside `PACKAGES_TOKEN`. The workspace's `kui-*` dependencies no
   longer name `drydock9` (crates.io refuses a dependency from another
   registry, and one manifest cannot name two), so the copies on Forgejo

@@ -71,7 +71,7 @@
 # Release prerequisites:
 #   * a repository secret PACKAGES_TOKEN: a personal access token with
 #     write:packages (the automatic FORGEJO_TOKEN cannot publish packages);
-#   * a repository secret CARGO_REGISTRY_TOKEN: a crates.io API token with
+#   * a repository secret CRATES_IO_TOKEN: a crates.io API token with
 #     the publish-update scope for the kui-* crates (publish-new too, for a
 #     crate not yet on crates.io). crates.io's trusted publishing takes no
 #     Forgejo runner's identity, so the runner needs the token;
@@ -757,7 +757,8 @@ jobs:
       # cargo sends the token verbatim as the Authorization header; Forgejo
       # wants the Bearer scheme in it.
       CARGO_REGISTRIES_DRYDOCK9_TOKEN: Bearer ${{ secrets.PACKAGES_TOKEN }}
-      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      # cargo reads crates.io's token from CARGO_REGISTRY_TOKEN.
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
       NPM_REGISTRY: ${{ github.server_url }}/api/packages/${{ github.repository_owner }}/npm/
     steps:
       - uses: actions/checkout@v4
@@ -786,7 +787,7 @@ jobs:
           curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
           echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
           test -n "$PACKAGES_TOKEN" || { echo "PACKAGES_TOKEN secret is not set" >&2; exit 1; }
-          test -n "$CARGO_REGISTRY_TOKEN" || { echo "CARGO_REGISTRY_TOKEN secret is not set" >&2; exit 1; }
+          test -n "$CARGO_REGISTRY_TOKEN" || { echo "CRATES_IO_TOKEN secret is not set" >&2; exit 1; }
 
       # `cargo publish` verifies each crate by building the packaged tarball
       # under target/package against the registry copies of its dependencies;
