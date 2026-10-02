@@ -4,8 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
 description = "Batteries-included kui runner: winit + wgpu around a Core, App trait, widgets"
-publish = ["drydock9"]
+publish = ["crates-io", "drydock9"]
 
 [dependencies]
 kui-core.workspace = true

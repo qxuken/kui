@@ -2527,7 +2527,11 @@ three and re-checked the fact. **Decided the same day** (the user): no
 crates.io until the beta release, and then every crate publishes together.
 Until then the Forgejo registry and npm are the distribution. The runner
 crate was renamed `kui` → `kui-native` on 2026-09-26, ahead of that (the
-name was free on crates.io that day, as was `kui-derive`).
+name was free on crates.io that day, as was `kui-derive`). **Reversed on
+2026-10-03** (the user: "let's publish kui on crates-io and add ci
+publishing into ci"): the six crates went to crates.io from 0.1.0-alpha.33,
+and a tag publishes there first and to the Forgejo registry after, through
+`scripts/publish-crates.nu` (CHANGELOG alpha.34).
 
 **Parked on their own terms.** C12 (column wrapping), C5(b) (core-side
 virtualisation), rounded clip nesting. C13 (`space-between` and baseline)

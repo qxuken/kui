@@ -4,8 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
 description = "wgpu backend for kui: one instanced pipeline, a single draw call per frame"
-publish = ["drydock9"]
+publish = ["crates-io", "drydock9"]
 
 [dependencies]
 kui-core.workspace = true

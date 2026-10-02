@@ -10,17 +10,10 @@ does into plain data.
 cargo new hello && cd hello
 ```
 
-kui publishes to its own registry, not to crates.io (it is an alpha).
-Tell cargo where it is, once per project:
-
-```toml
-# .cargo/config.toml
-[registries.drydock9]
-index = "sparse+https://drydock9.qxuken.dev/api/packages/qxuken/cargo/"
-```
+kui is on crates.io, as an alpha:
 
 ```bash
-cargo add kui-native --registry drydock9
+cargo add kui-native
 ```
 
 Replace `src/main.rs` with this:

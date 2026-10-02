@@ -54,9 +54,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 cargo run -p kui-native --example tutorial_01_hello
 ```
 
-In a project of your own it is `cargo add kui-native --registry drydock9`
-with the registry table from [Releases](#releases) in `.cargo/config.toml`,
-that file as `src/main.rs`, and `cargo run`.
+In a project of your own it is `cargo add kui-native` (crates.io; see
+[Releases](#releases)), that file as `src/main.rs`, and `cargo run`.
 
 That is the first of ten steps in [**the kui book**](docs/book/src/SUMMARY.md)
 (`mdbook serve docs/book`), each one the last plus one concept — layout,
@@ -1277,21 +1276,28 @@ lists per release what was added and, separately, what an app can delete.
 
 ## Releases
 
-Tagged commits publish to the self-hosted Forgejo: the library crates
-(`kui-core`, `kui-wgpu`, `kui-native`, `kui-lua`, `kui-ffi`) to its cargo registry
-and [`packages/kui`](packages/kui) to its npm registry as `@qxuken/kui`, with the Node addon
+Tagged commits publish the library crates (`kui-derive`, `kui-core`,
+`kui-wgpu`, `kui-native`, `kui-lua`, `kui-ffi`) to crates.io and to the
+self-hosted Forgejo's cargo registry, and
+[`packages/kui`](packages/kui) to Forgejo's npm registry as `@qxuken/kui`, with the Node addon
 prebuilt for linux-x64, linux-arm64, darwin-arm64, darwin-x64 and win32-x64 bundled
 under `prebuilds/` (`native.cjs` picks the one matching the running Node;
 `KUI_NODE_LIB` still overrides it, and an in-repo `cargo build` still wins
-for development). Consumers point at the registries once:
+for development). A Rust project needs nothing but the dependency:
 
 ```toml
-# .cargo/config.toml
-[registries.drydock9]
-index = "sparse+https://drydock9.qxuken.dev/api/packages/qxuken/cargo/"
 # Cargo.toml
-kui-native = { version = "0.1.0-alpha.1", registry = "drydock9" }  # `use kui_native::…`
+kui-native = "0.1.0-alpha.33"  # `use kui_native::…`; `cargo add kui-native` writes it
 ```
+
+crates.io has had them since 0.1.0-alpha.33; every earlier version is on
+the Forgejo registry only. A project that already names that registry
+(`[registries.drydock9]` with index
+`sparse+https://drydock9.qxuken.dev/api/packages/qxuken/cargo/`, and
+`registry = "drydock9"` on the dependency) keeps working: every version
+still publishes there, but from 0.1.0-alpha.34 on its own `kui-*`
+dependencies name crates.io, so such a build reads both. Dropping `registry = "drydock9"` is the whole move.
+Node goes through Forgejo's npm registry, scoped:
 
 ```bash
 # scoped on purpose: Forgejo does not proxy npmjs, so only @qxuken/* goes there

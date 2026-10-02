@@ -1,11 +1,10 @@
-# The Forgejo cargo registry the kui crates publish to, named after its host
-# (`publish = ["drydock9"]` in each manifest). The name is local: `cargo
-# publish` writes the index URL into a packaged manifest, not the name, so a
-# consumer names the table as they like; the README's snippet calls it
-# `drydock9` too and depends on
-# `kui-native = { version = "...", registry = "drydock9" }`. Publishing needs
-# a token: `cargo login --registry drydock9` and paste `Bearer <token>` (a
-# personal access token with write:packages), or set
-# CARGO_REGISTRIES_DRYDOCK9_TOKEN="Bearer <token>" as CI does.
+# The Forgejo cargo registry the kui crates publish to beside crates.io,
+# named after its host (`publish = ["crates-io", "drydock9"]` in each
+# manifest, so `cargo publish` needs `--registry`; scripts/publish-crates.nu
+# passes it). The name is local: `cargo publish` writes the index URL into a
+# packaged manifest, not the name, so a consumer names the table as they
+# like. Publishing needs a token: `cargo login --registry drydock9` and
+# paste `Bearer <token>` (a personal access token with write:packages), or
+# set CARGO_REGISTRIES_DRYDOCK9_TOKEN="Bearer <token>" as CI does.
 [registries.drydock9]
 index = "sparse+https://drydock9.qxuken.dev/api/packages/qxuken/cargo/"
