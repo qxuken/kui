@@ -4960,6 +4960,20 @@ SCENE_TREES['scroll-gestures'] = () =>
     ]),
   ]);
 
+// `conformance::build_scroll_handler_room` (backlog F118): a strip (x)
+// holding a code box that scrolls x and hears the wheel, then a spacer.
+SCENE_TREES['scroll-handler-room'] = () =>
+  root({}, [
+    box({ pad: 4 }, [
+      box({ dir: 'row', width: 200, height: 80, scrollX: true, bg: '#101018' }, [
+        box({ width: 100, height: 80, scrollX: true, onScroll: { kind: 'code' }, bg: '#161820' }, [
+          box({ width: 300, height: 80, bg: '#3b5bd4' }),
+        ], 'code'),
+        box({ width: 200, height: 80, bg: '#2a2d3a' }),
+      ], 'strip'),
+    ]),
+  ]);
+
 // `conformance::build_drag`: one keyed handle whose drag deltas the event
 // rows carry, measured from the press point in every phase.
 SCENE_TREES.drag = () =>

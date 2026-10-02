@@ -132,16 +132,19 @@ impl Core {
 
     /// Whether a gesture starting over `r` with a delta of sign `d` on
     /// `x` (or `y`) is `r`'s. A handler's on the axes it takes, whether
-    /// or not it has anywhere to go — the core cannot ask it; a
-    /// container's on the axes it scrolls, while it can still move that
-    /// way or when it says `contain`. Read off the region, as the frame
-    /// that drew it left it, never off the tree.
+    /// or not it has anywhere to go — the core cannot ask it — unless it
+    /// is a container on that axis too, whose offset the app sets and
+    /// the core can ask (F118); a container's on the axes it scrolls,
+    /// while it can still move that way or when it says `contain`. Read
+    /// off the region, as the frame that drew it left it, never off the
+    /// tree.
     fn answer(&self, r: &ScrollRegion, x: bool, d: f32) -> Answer {
         let takes = if x { r.takes_x } else { r.takes_y };
         if !takes {
             return Answer::Pass;
         }
-        if r.handler || r.contain {
+        let scrolls = if x { r.scrolls_x } else { r.scrolls_y };
+        if r.contain || (r.handler && !scrolls) {
             return Answer::Take;
         }
         // Positive `d` is the wheel rolling up (or left): toward the

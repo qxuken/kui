@@ -1456,6 +1456,22 @@ under the still pointer, and the terminal, an `onScroll` node taking
 every delta, took the rest of the swipe. One entry, F107, **built
 2026-09-28**, the day it was filed, and in the archive, with ADR 0038.
 
+## From the kawoosh sticky-swipe report (2026-10-02)
+
+kawoosh's user swiped one pane down and, while it still glided, swiped
+sideways over another: the first pane went on taking the swipe until a
+pause came, and sometimes the sideways swipe moved nothing sideways at
+all. F107 ends a trackpad gesture only on a 200 ms pause, and a glide's
+events come a frame apart, so a hand put down mid-glide was the glide's
+gesture, latched to its target and held to its axis by F104's lock,
+whose turn asked for 6 px an event. Then, trying it: "scroll in the
+table works right. but when i am the the right edge or not over the
+table i should be able to scroll horizontally" — a rendered table and a
+code view take the sideways wheel as handlers and set their own offset,
+so the core took them for nodes it cannot ask. Two entries, F117 and
+F118, **built 2026-10-02**, the day they were filed, and in the
+archive, with ADR 0038's amendments.
+
 ## From the kawoosh fit-content review (2026-10-02)
 
 After a run of kawoosh overflows — a confirm dialog's message drawn
@@ -2221,6 +2237,8 @@ Nothing of the kawoosh Russian-backtick report is open (F115 **built
 2026-10-01**, the day it was filed).
 Nothing of the kawoosh fit-content review is open (F116 **built
 2026-10-02**, the day it was filed).
+Nothing of the kawoosh sticky-swipe report is open (F117 and F118
+**built 2026-10-02**, the day they were filed).
 Nothing of the Windows regression round of 2026-09-26 is open
 (RG38–RG46 **built 2026-09-26**, the day they were filed).
 Nothing of the Linux round under WSLg is open (RG47–RG49 **built
@@ -3137,6 +3155,11 @@ move.
 **From the kawoosh settings-pane report (2026-09-29)** — F113, filed and built the same day
 
 - `~` **F113** — [A Mac's dead keys never arrive: ⌥u composes an accent and a keymap's `<A-u>` never hears it](backlog/closed-2026-09.md#-f113--a-macs-dead-keys-never-arrive-u-composes-an-accent-and-a-keymaps-a-u-never-hears-it--done-2026-09-29) — done (2026-09-29) — `Ui::option_as_alt(OptionAsAlt)` (`none`, `left`, `right`, `both`), frame state; the runner hands it to winit's `set_option_as_alt` on change, and an Option that is Alt types nothing
+
+**From the kawoosh sticky-swipe report (2026-10-02)** — F117 and F118, filed and built the same day
+
+- `~` **F117** — [A swipe begun while the last one glides goes where the glide goes, and a slow turn never turns the lock](backlog/closed-2026-09.md#-f117--a-swipe-begun-while-the-last-one-glides-goes-where-the-glide-goes-and-a-slow-turn-never-turns-the-lock--done-2026-10-02) — done (2026-10-02) — a finger put down begins a gesture and a swipe of its own, pause or none: a `Started` within 100 ms of a finger's `Ended` is the glide's (`GLIDE_AFTER` in kui-native's `scroll_gesture`), every other a finger's; the axis lock turns at 10 px of recent travel, not 24; ADR 0038's decision 2 amended
+- `~` **F118** — [A wheel handler that scrolls an axis takes every gesture on it, so a code view at its edge keeps a swipe the strip could use](backlog/closed-2026-09.md#-f118--a-wheel-handler-that-scrolls-an-axis-takes-every-gesture-on-it-so-a-code-view-at-its-edge-keeps-a-swipe-the-strip-could-use--done-2026-10-02) — done (2026-10-02) — an `onScroll` node that scrolls an axis as a container is answered on it by its room (`ScrollRegion::scrolls_x`/`scrolls_y`, `answer`); a handler alone takes its axes as before; ADR 0038's decision 3 amended; the corpus's `scroll-handler-room` scene
 
 **From the kawoosh fit-content review (2026-10-02)** — F116, filed and built the same day
 

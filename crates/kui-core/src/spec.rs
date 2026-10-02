@@ -991,7 +991,11 @@ pub struct EventSpec {
     /// other node), the fraction carried to the next notch. The node
     /// *takes* the wheel on the axes [`scroll_axes`](Self::scroll_axes)
     /// names: a scroll gesture that starts over it is its own, and stays
-    /// its own until it ends wherever the pointer goes (backlog F107); it
+    /// its own until it ends wherever the pointer goes (backlog F107) —
+    /// except on an axis it also scrolls as a container (`scroll_x`,
+    /// `scroll_y`, the offset the app sets from what it hears), where it
+    /// is answered by its room as a container is: at its edge, a gesture
+    /// that way passes to the scroller around it (backlog F118); it
     /// reaches no scroll container above it, and a container inside it
     /// still takes the axes it scrolls while it can move that way,
     /// passing this node the rest: the other axis, and a gesture that

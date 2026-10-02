@@ -2870,6 +2870,50 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "scroll-handler-room",
+        doc: "A wheel handler that is a scroll container too is answered \
+              by its room on the axes it scrolls (backlog F118): a strip \
+              scrolling x holds a code box that scrolls x and hears the \
+              wheel (`onScroll`), its offset at its start, then a spacer. \
+              A notch over the spacer moves the strip; one back toward \
+              the start over the code box, which has no room that way, \
+              passes it by and moves the strip back; one the other way \
+              is its event. Without F118 the second notch would be its \
+              event too, and the strip would stay where the first left \
+              it.",
+        custom: &["overflow", "key", "pad"],
+        elements: &["box"],
+        build: build_scroll_handler_room,
+        env: NATIVE_CHROME,
+        steps: &[
+            Step::Cursor(150, 30),
+            Step::Scroll(-30, 0),
+            Step::Cursor(40, 30),
+            Step::Scroll(20, 0),
+            Step::Scroll(-10, 0),
+        ],
+        expect: Expect {
+            solid: 5,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            segments_follow_text: false,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 0,
+            access: &["0 window ||", "1 scrollView ||", "2 scrollView ||"],
+            events: &["scroll code -"],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+            secure_input: false,
+            option_as_alt: OptionAsAlt::None,
+        },
+    },
+    Scene {
         name: "cells-scroll",
         doc: "The `cells` screen three rows tall, `selectable` and hearing \
               the wheel (`onScroll`, ADR 0029, decision 4): a notch of two \
@@ -4084,6 +4128,42 @@ fn build_scroll_gestures(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                     NodeSpec::column()
                         .size(200.0, 60.0)
                         .bg(Color::hex(0x22252fff)),
+                );
+            },
+        );
+    });
+}
+
+/// `scroll-handler-room`: a strip (x) holding a code box that scrolls x
+/// and hears the wheel, its content three times its width, then a spacer.
+fn build_scroll_handler_room(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    ui.with(NodeSpec::column().pad(4.0), |ui| {
+        ui.with_keyed(
+            "strip",
+            NodeSpec::row()
+                .size(200.0, 80.0)
+                .scroll_x()
+                .bg(Color::hex(0x101018ff)),
+            |ui| {
+                ui.with_keyed(
+                    "code",
+                    NodeSpec::column()
+                        .size(100.0, 80.0)
+                        .scroll_x()
+                        .on_scroll(Value::map([("kind", Value::str("code"))]))
+                        .bg(Color::hex(0x161820ff)),
+                    |ui| {
+                        ui.leaf(
+                            NodeSpec::column()
+                                .size(300.0, 80.0)
+                                .bg(Color::hex(0x3b5bd4ff)),
+                        );
+                    },
+                );
+                ui.leaf(
+                    NodeSpec::column()
+                        .size(200.0, 80.0)
+                        .bg(Color::hex(0x2a2d3aff)),
                 );
             },
         );

@@ -772,7 +772,11 @@ gesture goes: a list at its end passes a new gesture to the scroller
 around it, unless it says `overscroll: "contain"`, and a gesture that
 reaches the end midway stops there. An `onScroll` node cannot be asked
 whether it can move, so it takes every gesture that starts over it on
-the axes its `scrollAxes` names. A terminal that scrolls only its
+the axes its `scrollAxes` names — unless it scrolls that axis as a
+container too (`scrollX` on the node, the offset yours to set from what
+it hears, as a code view's sideways scroll is): there it is answered by
+its room, and at its edge a gesture that way passes to the scroller
+around it (since alpha.33). A terminal that scrolls only its
 history says `y`, and a sideways swipe that starts over it moves the
 strip:
 

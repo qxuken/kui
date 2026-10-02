@@ -25,6 +25,11 @@ was the first bare bump to break an app in five releases).
 
 **What breaks.** No build.
 
+- Input, every binding: an `onScroll` node that also scrolls an axis as
+  a container (`scrollX` / `scrollY`) no longer takes a gesture that
+  starts with it at its limit on that axis the way the gesture goes;
+  the scroller around it does (F118, under Fixed). A view that wanted
+  every such gesture says `overscroll: "contain"`.
 - Layout, every binding: a fit box across a column is no wider than the
   column's box (F116, under Fixed). One that ran past a parent that does
   not scroll x — a wrapper in a card with a `maxWidth`, anything wider
@@ -53,6 +58,29 @@ was the first bare bump to break an app in five releases).
   decision 10, as amended; the corpus's `fit-across` scene in all four
   bindings. *What you can delete:* a `width="grow"` (`grow_width()`)
   on a wrapper, written so the text in it would wrap at a capped parent.
+
+- **A wheel handler at its edge passes the swipe on** (F118, from
+  kawoosh's sticky-swipe report): an `onScroll` node that scrolls an
+  axis as a container too — a code view or a table whose sideways
+  offset the app sets from what it hears — is answered on that axis by
+  its room, as any container is. At its right edge a swipe further
+  right moves the scroller around it, and back left is still its event;
+  a node that is only a handler takes its axes as before, the core
+  having nothing to ask. ADR 0038, decision 3, as amended; the corpus's
+  `scroll-handler-room` scene in all four bindings. *What you can
+  delete:* a `scrollAxes` an app flipped each frame by its own offset
+  so a swipe at the edge would reach the scroller around.
+- **A swipe begun while the last one still glides goes where it is
+  aimed** (F117, from kawoosh's sticky-swipe report): kui-native begins
+  a scroll gesture when a finger comes down, not only after a 200 ms
+  pause, so a swipe started over another scroller mid-glide latches that
+  scroller and chooses its own axis, where it went on moving the
+  glide's target. A glide's start and a finger's are both winit's
+  `Started`; one within 100 ms of a finger's lift is the glide's. And a
+  slow turn within one swipe turns the axis lock: it asks for 10 px of
+  recent travel, not 24 (2.5 px an event, not 6). ADR 0038, decision
+  2, as amended. *What you can delete:* nothing an app could have
+  written; the runner's gestures were not the app's to draw.
 
 ## 0.1.0-alpha.32 (2026-10-02)
 

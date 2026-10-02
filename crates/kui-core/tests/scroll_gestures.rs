@@ -495,3 +495,77 @@ fn a_latched_target_behind_a_new_modal_is_picked_again() {
     assert_eq!(core.scroll_offset(page), Vec2::new(0.0, 10.0));
     assert_eq!(core.scroll_offset(sheet), Vec2::new(0.0, 10.0));
 }
+
+/// kawoosh's code pane and rendered table (F118): a strip scrolling x,
+/// and in it a box that scrolls x as a container *and* takes the wheel
+/// as a handler, the app setting its offset from what it heard.
+fn code_in_strip(core: &mut Core) {
+    let mut ui = core.frame(VIEW, 1.0);
+    ui.with_keyed(
+        "strip",
+        NodeSpec::row().size(300.0, 200.0).scroll_x(),
+        |ui| {
+            ui.with_keyed(
+                "code",
+                NodeSpec::column()
+                    .size(300.0, 200.0)
+                    .scroll_x()
+                    .on_scroll("code"),
+                |ui| {
+                    ui.leaf(NodeSpec::column().size(600.0, 200.0));
+                },
+            );
+            ui.leaf(NodeSpec::column().size(600.0, 200.0));
+        },
+    );
+    ui.finish();
+}
+
+/// F118: a handler that is a container on an axis is answered there by
+/// its room, as a container is. At its right edge a gesture further
+/// right passes to the strip; back left, or anywhere short of the edge,
+/// it is the handler's, as an event.
+#[test]
+fn a_handler_that_scrolls_an_axis_passes_it_at_its_limit() {
+    let mut core = Core::new();
+    code_in_strip(&mut core);
+    code_in_strip(&mut core);
+    let strip_k = core.key_of("strip").unwrap();
+    let code = core.key_of("code").unwrap();
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(150.0, 50.0)));
+    // Short of the edge: the handler's, the strip still.
+    let out = gesture(&mut core, -20.0, 0.0, true);
+    assert_eq!(scrolls(&out, code), vec![(-20.0, 0.0)]);
+    code_in_strip(&mut core);
+    assert_eq!(core.scroll_offset(strip_k), Vec2::ZERO);
+    // The app took it to its right edge, the same gesture going on:
+    // still its own, however far past the edge — the strip moves only
+    // for a gesture that starts there (another touch), never partway.
+    core.set_scroll(code, Vec2::new(1e9, 0.0));
+    code_in_strip(&mut core);
+    assert_eq!(core.scroll_offset(code), Vec2::new(300.0, 0.0));
+    for _ in 0..3 {
+        let out = gesture(&mut core, -20.0, 0.0, false);
+        assert_eq!(scrolls(&out, code), vec![(-20.0, 0.0)], "latched");
+        code_in_strip(&mut core);
+    }
+    assert_eq!(
+        core.scroll_offset(strip_k),
+        Vec2::ZERO,
+        "no chaining partway"
+    );
+    // Further right: no room, so the strip's.
+    let out = gesture(&mut core, -20.0, 0.0, true);
+    assert!(scrolls(&out, code).is_empty(), "passed by: {out:?}");
+    code_in_strip(&mut core);
+    assert_eq!(core.scroll_offset(strip_k), Vec2::new(20.0, 0.0));
+    // Back left over it: room that way, so the handler's again.
+    let out = gesture(&mut core, 15.0, 0.0, true);
+    assert_eq!(scrolls(&out, code), vec![(15.0, 0.0)]);
+    code_in_strip(&mut core);
+    assert_eq!(core.scroll_offset(strip_k), Vec2::new(20.0, 0.0));
+    // Up and down it does not scroll as a container: the handler takes
+    // that axis whatever its room, as before.
+    let out = gesture(&mut core, 0.0, -10.0, true);
+    assert_eq!(scrolls(&out, code), vec![(0.0, -10.0)]);
+}

@@ -186,6 +186,18 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         "#
             )
         }
+        "scroll-handler-room" => r#"
+            return column { pad = 4,
+              row { key = "strip", width = 200, height = 80, scroll_x = true, bg = 0x101018ff,
+                column { key = "code", width = 100, height = 80, scroll_x = true,
+                         on_scroll = { kind = "code" }, bg = 0x161820ff,
+                  column { width = 300, height = 80, bg = 0x3b5bd4ff },
+                },
+                column { width = 200, height = 80, bg = 0x2a2d3aff },
+              },
+            }
+        "#
+        .to_string(),
         "scroll-gestures" => {
             let items = conformance::ITEM_KEYS
                 .iter()

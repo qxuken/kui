@@ -1710,6 +1710,11 @@ pub struct ScrollRegion {
     /// cleared or refilled (the alpha.22 regression pass).
     pub(crate) takes_x: bool,
     pub(crate) takes_y: bool,
+    /// The axes it scrolls as a container (`scroll_x` / `scroll_y`): a
+    /// handler that is one too is answered on them by its room, as a
+    /// container is (backlog F118).
+    pub(crate) scrolls_x: bool,
+    pub(crate) scrolls_y: bool,
     /// `overscroll: contain`: a gesture starting here stays here.
     pub(crate) contain: bool,
     /// The index in the frame's region list of the nearest scroll region

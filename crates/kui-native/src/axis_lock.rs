@@ -14,7 +14,9 @@
 //! as long as the swipe and its momentum last — a pause of [`GAP`] ends
 //! it. Sticky, not fixed: when the other axis carries [`SWITCH_RATIO`]
 //! times the locked one's recent travel, and at least [`SWITCH_MIN`], the
-//! hand has turned and the lock turns with it. Only pixel deltas are
+//! hand has turned and the lock turns with it. A finger put down ends the
+//! swipe too, even mid-glide (`mod scroll_gesture`, backlog F117): the
+//! next hand chooses its own axis. Only pixel deltas are
 //! locked — a trackpad's, a Magic Mouse's; a wheel's notches are lines,
 //! one axis at a time already (Shift turns them sideways on purpose), and
 //! pass whole.
@@ -36,8 +38,10 @@ pub(crate) const DECAY: f32 = 0.75;
 /// The other axis turns the lock when its recent travel is this many
 /// times the locked axis's…
 pub(crate) const SWITCH_RATIO: f32 = 3.0;
-/// …and at least this much (logical px).
-pub(crate) const SWITCH_MIN: f32 = 24.0;
+/// …and at least this much (logical px): 2.5 px an event kept up, a slow
+/// sideways drag, since recent travel settles at four events' worth
+/// (F117; 24 asked for 6 px an event, and a slow turn never turned).
+pub(crate) const SWITCH_MIN: f32 = 10.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Axis {
@@ -60,8 +64,9 @@ pub(crate) struct AxisLock {
 }
 
 impl AxisLock {
-    /// A wheel's notch: nothing to lock, and any swipe before it is over.
-    pub(crate) fn line(&mut self) {
+    /// The swipe is over: a wheel's notch, which has nothing to lock, or
+    /// a finger put down for the next swipe.
+    pub(crate) fn end(&mut self) {
         *self = AxisLock::default();
     }
 
@@ -180,6 +185,18 @@ mod tests {
         assert_eq!(last, Vec2::new(10.0, 0.0), "and is locked in turn");
     }
 
+    /// A slow turn turns too: 3 px an event sideways once the hand has
+    /// stopped going down (F117).
+    #[test]
+    fn a_slow_turn_turns_the_lock() {
+        let mut t = Instant::now();
+        let mut l = AxisLock::default();
+        swipe(&mut l, &mut t, Vec2::new(0.0, 10.0), 10);
+        let turned = swipe(&mut l, &mut t, Vec2::new(3.0, 0.5), 20);
+        assert!(turned.x > 0.0, "{turned:?}");
+        assert_eq!(l.axis, Some(Axis::X));
+    }
+
     /// A pause ends the swipe: the next one chooses afresh.
     #[test]
     fn a_pause_ends_the_swipe() {
@@ -197,7 +214,7 @@ mod tests {
         let mut t = Instant::now();
         let mut l = AxisLock::default();
         swipe(&mut l, &mut t, Vec2::new(0.0, 10.0), 10);
-        l.line();
+        l.end();
         let out = swipe(&mut l, &mut t, Vec2::new(6.0, 1.0), 3);
         assert_eq!(out, Vec2::new(18.0, 0.0));
     }

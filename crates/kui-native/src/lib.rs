@@ -2536,18 +2536,25 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                 let now = std::time::Instant::now();
                 let (d, kind) = match delta {
                     winit::event::MouseScrollDelta::LineDelta(x, y) => {
-                        pane.axis_lock.line();
+                        pane.axis_lock.end();
                         (
                             Vec2::new(Core::lines_to_px(x), Core::lines_to_px(y)),
                             scroll_gesture::Kind::Line,
                         )
                     }
-                    // A trackpad's swipe keeps to its axis (`mod axis_lock`).
-                    winit::event::MouseScrollDelta::PixelDelta(p) => (
-                        pane.axis_lock
-                            .pixel(Vec2::new(p.x as f32 / scale, p.y as f32 / scale), now),
-                        scroll_gesture::Kind::Pixel,
-                    ),
+                    // A trackpad's swipe keeps to its axis (`mod axis_lock`),
+                    // and a finger put down begins the next, glide or no
+                    // glide (backlog F117).
+                    winit::event::MouseScrollDelta::PixelDelta(p) => {
+                        if pane.scroll_gesture.phase(phase, now) {
+                            pane.axis_lock.end();
+                        }
+                        (
+                            pane.axis_lock
+                                .pixel(Vec2::new(p.x as f32 / scale, p.y as f32 / scale), now),
+                            scroll_gesture::Kind::Pixel,
+                        )
+                    }
                 };
                 // The gesture it is part of keeps the targets it began
                 // with (`mod scroll_gesture`, backlog F107).
