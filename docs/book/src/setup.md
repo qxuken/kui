@@ -20,7 +20,7 @@ Then the dependency names the registry:
 
 ```toml
 [dependencies]
-kui-native = { version = "0.1.0-alpha.32", registry = "drydock9" }
+kui-native = { version = "0.1.0-alpha.33", registry = "drydock9" }
 ```
 
 `cargo add kui-native --registry drydock9` writes that line for you.
