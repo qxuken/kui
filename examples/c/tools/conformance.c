@@ -1740,6 +1740,33 @@ static void conf_selection_scroll(KuiCtx *ui, const Fixtures *f, int phase) {
 /* conformance::build_scroll_gestures (backlog F107): a page (y) holding a
  * strip (x) holding a list that contains its gestures and a wheel handler
  * that takes only y, then a spacer each. */
+/* `conformance::build_scroll_handler_room` (backlog F118): a strip (x)
+ * holding a code box that scrolls x and hears the wheel, then a spacer. */
+static void conf_scroll_handler_room(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiSpec outer = {.pad_l = 4, .pad_r = 4, .pad_t = 4, .pad_b = 4};
+    kui_open(ui, &outer, NULL);
+    KuiSpec strip = {.dir = KUI_ROW, .width = {KUI_FIXED, 200}, .height = {KUI_FIXED, 80},
+                     .overflow = KUI_SCROLL_X, .bg = 0x101018ff};
+    kui_open_keyed(ui, KUI_STR("strip"), &strip, NULL);
+    KuiValue *tag = kui_value_map();
+    kui_value_map_set(tag, KUI_STR("kind"), kui_value_str(KUI_STR("code")));
+    KuiSpec code = {.width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 80},
+                    .overflow = KUI_SCROLL_X, .on_scroll = tag, .bg = 0x161820ff};
+    kui_open_keyed(ui, KUI_STR("code"), &code, NULL);
+    KuiSpec wide = {.width = {KUI_FIXED, 300}, .height = {KUI_FIXED, 80}, .bg = 0x3b5bd4ff};
+    kui_open(ui, &wide, NULL);
+    kui_close(ui);
+    kui_close(ui);
+    kui_value_free(tag);
+    KuiSpec spacer = {.width = {KUI_FIXED, 200}, .height = {KUI_FIXED, 80}, .bg = 0x2a2d3aff};
+    kui_open(ui, &spacer, NULL);
+    kui_close(ui);
+    kui_close(ui);
+    kui_close(ui);
+}
+
 static void conf_scroll_gestures(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
     (void)phase;
@@ -2134,6 +2161,7 @@ static const ConfScene CONF_SCENES[] = {
     {"selection-extend", conf_selection},
     {"selection-scroll", conf_selection_scroll},
     {"scroll-gestures", conf_scroll_gestures},
+    {"scroll-handler-room", conf_scroll_handler_room},
     {"cells-scroll", conf_cells_scroll},
     /* Same builder: `menu` is that tree under a secondary press, and what
      * it draws is the core's own menu rather than anything declared. */

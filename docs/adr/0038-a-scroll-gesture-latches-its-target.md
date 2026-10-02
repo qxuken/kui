@@ -24,6 +24,11 @@ date: 2026-09-28
 > report):** a finger put down begins a gesture, pause or none
 > (decision 2). A swipe started while the last one still glided was the
 > glide's gesture, its target and its axis, until a pause came.
+>
+> **Amended 2026-10-02 (backlog F118, from the same report):** a wheel
+> handler that is also a scroll container on an axis is answered there
+> by its room (decision 3), so a code view or a table at its sideways
+> edge passes a swipe that way to the strip around it.
 
 ## Context
 
@@ -95,7 +100,10 @@ date: 2026-09-28
      page it merely floated over). The first to take the axis is the
      target:
      - an `on_scroll` node takes it if its `scroll_axes` names it,
-       whether or not it has anywhere to go;
+       whether or not it has anywhere to go — *amended 2026-10-02
+       (F118):* unless it scrolls that axis as a container too, its
+       offset the app's to set from what it hears; there the core can
+       ask, and it is answered as a container is, below;
      - a container takes it if it scrolls on that axis and can still
        move the way the delta goes (more than half a pixel of room,
        measured from where the delta would be added);
