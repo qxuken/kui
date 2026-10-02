@@ -62,7 +62,7 @@ def main [version: string] {
     # The setup page of the book names the version a reader depends on, and
     # the book is published from the tag this checks.
     let setup = "docs/book/src/setup.md"
-    let pin = (open --raw $setup | lines | parse -r '^kui-native = \{ version = "(?<v>[^"]+)"' | get -o 0.v)
+    let pin = (open --raw $setup | lines | parse -r '^kui-native = (?:\{ version = )?"(?<v>[^"]+)"' | get -o 0.v)
     if $pin == null {
         $bad = ($bad | append $"($setup) has no kui-native dependency line")
     } else if $pin != $want {

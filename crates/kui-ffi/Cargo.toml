@@ -4,8 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
 description = "C API for kui (cdylib, staticlib on request, + include/kui.h)"
-publish = ["drydock9"]
+publish = ["crates-io", "drydock9"]
 
 [lib]
 name = "kui_ffi"

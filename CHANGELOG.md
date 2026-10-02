@@ -21,6 +21,34 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.34 (unreleased)
+
+**What breaks.** No build.
+
+### Changed
+
+- **The crates are on crates.io**: `kui-derive`, `kui-core`, `kui-wgpu`,
+  `kui-native`, `kui-lua` and `kui-ffi`, from 0.1.0-alpha.33 (published
+  from this release's branch on 2026-10-03, the tag's code with only the
+  manifests changed), so a Rust project depends on
+  `kui-native = "0.1.0-alpha.34"` with no `[registries]` table and
+  `cargo add kui-native` writes it: the bake-offs' first
+  recommendation, taken at an alpha rather than at the beta the backlog
+  had held it for. A tag publishes to
+  crates.io first and then, as before, to the Forgejo registry
+  (`drydock9`), through `scripts/publish-crates.nu`, which skips a crate a
+  registry already holds at the version, so a release cut short by
+  crates.io's rate limit on new crates, or anything else, is finished by
+  running it again; the release workflow needs a `CARGO_REGISTRY_TOKEN`
+  secret beside `PACKAGES_TOKEN`. The workspace's `kui-*` dependencies no
+  longer name `drydock9` (crates.io refuses a dependency from another
+  registry, and one manifest cannot name two), so the copies on Forgejo
+  resolve their own `kui-*` dependencies from crates.io too: a project
+  that keeps `registry = "drydock9"` builds as before and reads both, and
+  dropping that key is the whole move. The crates' `homepage` is the
+  book, the one public link — the repository stays private. npm is
+  unchanged.
+
 ## 0.1.0-alpha.33 (2026-10-02)
 
 **What breaks.** No build.

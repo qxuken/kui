@@ -4,8 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
 description = "kui contract: flat per-frame tree, clay-style flex layout, text stack, events as data, quad display list"
-publish = ["drydock9"]
+publish = ["crates-io", "drydock9"]
 
 [dependencies]
 slotmap.workspace = true

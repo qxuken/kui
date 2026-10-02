@@ -1,8 +1,8 @@
 #!/usr/bin/env nu
 # Publishes a tagged release from this Mac, doing what the `build-*` and
 # `publish` jobs of .forgejo/workflows/ci.yml do on the runner: the five
-# Node prebuilds, the verification, `cargo publish`, `npm publish` and the
-# `latest` guard. For when the runner cannot reach Forgejo (alpha.17's tag
+# Node prebuilds, the verification, `cargo publish` (crates.io, then
+# drydock9), `npm publish` and the `latest` guard. For when the runner cannot reach Forgejo (alpha.17's tag
 # job hung in checkout on 2026-09-25 and was released this way).
 #
 #   nu scripts/release-local.nu              build, verify, ask, publish
@@ -15,7 +15,8 @@
 # $env.DRYDOCK9_TOKEN, a token with write:package — `source ~/.local.nu`
 # first if it lives there. The token reaches cargo through the environment
 # and npm through a throwaway userconfig that names the variable, so it is
-# never written to disk or printed.
+# never written to disk or printed. crates.io's token is cargo's own:
+# `cargo login` once, or $env.CARGO_REGISTRY_TOKEN.
 #
 # Safe to run again after a partial publish: a crate or npm version the
 # registry already holds is skipped, not failed on. If the runner comes
@@ -29,6 +30,7 @@
 const HOST = "https://drydock9.qxuken.dev"
 const NPM_REGISTRY = "https://drydock9.qxuken.dev/api/packages/qxuken/npm/"
 const CRATES = [kui-derive kui-core kui-wgpu kui-native kui-lua kui-ffi]
+const REGISTRIES = [crates-io drydock9]
 const PREBUILDS = [darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-x64]
 
 # Runs an external command and fails the script when it fails.
@@ -39,27 +41,9 @@ def --wrapped must [cmd: string, ...args] {
     }
 }
 
-# `-p a -p b ...`: cargo takes one crate per `-p`.
-def package-args [crates: list<string>] { $crates | each {|c| ["-p" $c] } | flatten }
-
 def step [what: string] { print $"\n=== ($what)" }
 
-# The cargo sparse index path of a crate (lowercase; 1, 2, 3 and 4+ chars).
-def index-path [name: string] {
-    let n = ($name | str lowercase)
-    match ($n | str length) {
-        1 => $"1/($n)"
-        2 => $"2/($n)"
-        3 => $"3/($n | str substring 0..0)/($n)"
-        _ => $"($n | str substring 0..1)/($n | str substring 2..3)/($n)"
-    }
-}
-
-def crate-published [name: string, version: string] {
-    let url = $"($HOST)/api/packages/qxuken/cargo/(index-path $name)"
-    let body = (try { http get --raw $url } catch { "" })
-    $body | str contains $'"vers":"($version)"'
-}
+use publish-crates.nu crate-published
 
 def npm-published [version: string] {
     let r = (^npm view $"@qxuken/kui@($version)" version --registry $NPM_REGISTRY | complete)
@@ -151,26 +135,20 @@ def main [
         must npm test
         must npm pack --dry-run
     }
-    must cargo publish --dry-run ...(package-args $CRATES) --registry drydock9
+    must $nu.current-exe scripts/publish-crates.nu crates-io --dry-run
 
     if $dry_run {
         print $"\ndry run: ($tag) built and verified, nothing published"
         return
     }
     if not $yes {
-        let answer = (input $"\nPublish ($tag) to ($HOST)? Type the version to confirm: ")
+        let answer = (input $"\nPublish ($tag) to crates.io and ($HOST)? Type the version to confirm: ")
         if $answer != $version { print "not published"; return }
     }
 
     step "cargo publish"
-    let pending = ($CRATES | where {|c| not (crate-published $c $version) })
-    if ($pending | is-empty) {
-        print "every crate is already published"
-    } else {
-        print $"publishing: ($pending | str join ', ')"
-        with-env {CARGO_REGISTRIES_DRYDOCK9_TOKEN: $"Bearer ($env.DRYDOCK9_TOKEN)"} {
-            must cargo publish ...(package-args $pending) --registry drydock9
-        }
+    with-env {CARGO_REGISTRIES_DRYDOCK9_TOKEN: $"Bearer ($env.DRYDOCK9_TOKEN)"} {
+        for r in $REGISTRIES { must $nu.current-exe scripts/publish-crates.nu $r }
     }
 
     step "npm publish"
@@ -211,8 +189,10 @@ def main [
     rm -f $npmrc
 
     step "registries"
-    for c in $CRATES {
-        print $"($c): (if (crate-published $c $version) { 'published' } else { 'MISSING' })"
+    for r in $REGISTRIES {
+        for c in $CRATES {
+            print $"($r) ($c): (if (crate-published $r $c $version) { 'published' } else { 'MISSING' })"
+        }
     }
     print (^npm view @qxuken/kui dist-tags --registry $NPM_REGISTRY)
     rm -rf $scratch
