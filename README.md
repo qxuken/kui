@@ -1294,9 +1294,11 @@ crates.io has had them since 0.1.0-alpha.33; every earlier version is on
 the Forgejo registry only. A project that already names that registry
 (`[registries.drydock9]` with index
 `sparse+https://drydock9.qxuken.dev/api/packages/qxuken/cargo/`, and
-`registry = "drydock9"` on the dependency) keeps working: every version
-still publishes there, but from 0.1.0-alpha.34 on its own `kui-*`
-dependencies name crates.io, so such a build reads both. Dropping `registry = "drydock9"` is the whole move.
+`registry = "drydock9"` on the dependency) still finds every version
+there, but from 0.1.0-alpha.34 on their own `kui-*` dependencies name
+crates.io: with one `kui-*` crate from drydock9 a build reads both and
+works, with two (`kui-native` and `kui-core`) it holds two `kui_core`s
+whose types do not meet. Dropping `registry = "drydock9"` is the move.
 Node goes through Forgejo's npm registry, scoped:
 
 ```bash

@@ -22,8 +22,11 @@ and `Cargo.lock` is what keeps the version you tested. Write
 Versions before 0.1.0-alpha.33 are on kui's own Forgejo registry only. A
 project that names it — `[registries.drydock9]` with index
 `sparse+https://drydock9.qxuken.dev/api/packages/qxuken/cargo/` and
-`registry = "drydock9"` on the dependency — keeps working; dropping the
-`registry` key is the whole move to crates.io.
+`registry = "drydock9"` on the dependency — finds every version there
+too, but from 0.1.0-alpha.34 on a crate taken from it resolves its
+`kui-*` siblings from crates.io, so naming two `kui-*` crates from it
+puts two `kui_core`s in the build. Drop the `registry` key: that is the
+whole move to crates.io.
 `kui-native` is the batteries-included crate: a window, a GPU renderer,
 the stock widgets and the `App` trait. Everything the book uses is
 reachable from it.

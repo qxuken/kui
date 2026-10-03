@@ -23,8 +23,14 @@ was the first bare bump to break an app in five releases).
 
 ## 0.1.0-alpha.34 (2026-10-03)
 
-**What breaks.** No build.
+**What breaks.**
 
+- Cargo, from the drydock9 registry: an app that depends on more than
+  one `kui-*` crate with `registry = "drydock9"` does not build — its
+  own `kui-core` and the one drydock9's `kui-native` resolves from
+  crates.io are two crates, and their types do not meet (under
+  Changed; corrected 2026-10-03, after kawoosh hit it). Take kui from
+  crates.io: drop the key.
 - macOS menus, the context menu and the bar: a row's accelerator that
   binds nothing — one kui does not parse, or one with no modifier — is
   drawn beside the row where it was drawn nowhere (F119, under Fixed).
@@ -47,9 +53,16 @@ was the first bare bump to break an app in five releases).
   secret beside `PACKAGES_TOKEN`. The workspace's `kui-*` dependencies no
   longer name `drydock9` (crates.io refuses a dependency from another
   registry, and one manifest cannot name two), so the copies on Forgejo
-  resolve their own `kui-*` dependencies from crates.io too: a project
-  that keeps `registry = "drydock9"` builds as before and reads both, and
-  dropping that key is the whole move. The crates' `homepage` is the
+  resolve their own `kui-*` dependencies from crates.io too. A project
+  that keeps `registry = "drydock9"` builds only while it names one
+  `kui-*` crate: name two — `kui-native` and `kui-core`, as an app that
+  uses the core's types does — and the graph holds a `kui_core` from
+  each registry, the same version and checksum but two crates to
+  cargo, and every type passed between them is a mismatch
+  (`expected kui_native::Cell, found kui_core::cells::Cell`, from
+  kawoosh). Dropping the key is the move, and for such an app the
+  only one; this paragraph said "builds as before" when the release
+  was cut, and is corrected after it. The crates' `homepage` is the
   book, the one public link — the repository stays private. npm is
   unchanged.
 
