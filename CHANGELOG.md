@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.34 (unreleased)
+## 0.1.0-alpha.34 (2026-10-03)
 
 **What breaks.** No build.
 
@@ -63,6 +63,43 @@ was the first bare bump to break an app in five releases).
   7 always said and the drawn menu on Windows and Linux always did; the
   `NSMenu` adapter dropped it. *What you can delete:* a hint folded into
   a row's label (`"Go to Definition (gd)"`) for the Mac's sake.
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), on 2026-10-03 — the
+commits after the alpha.33 tag: the crates published to crates.io
+(manifests and the release workflow only) and F119 (a macOS menu row
+drawing the keys it does not bind), merged from their branches. This
+round ran on the Mac alone; F119 is the macOS `NSMenu` adapter's and
+was seen there in kawoosh's editor menu, against its branch by path,
+before it merged. Windows and Linux did not run the round for this tag.
+
+**macOS 27.0.1 on an M3 Pro MacBook Pro, rustc 1.99.0 (the toolchain
+CI runs), Node 25.6.0, nu 0.116.0**, on `679ee76` with the version set,
+in a cold worktree. `cargo fmt --all --check` and `cargo clippy
+--workspace --all-targets --features kui-core/conformance -- -D
+warnings` are clean. `cargo test --workspace --features
+kui-core/conformance`: **1667 tests over 131 suites, 0 failed** (3
+ignored). The C round, `cbuild --run`, passes its five checks; the
+corpus passes its **55 scenes** in four adapters; the ABI is **23**.
+Node's `node --test test.mjs` under `KUI_CONFORMANCE_REQUIRED=1`:
+**207 of 207**. `npm run gen` leaves no diff, the examples typecheck
+and their lockfile installs, the headless round passes all **33
+drives**, and `scripts/book-examples.nu --check` passes.
+
+**The windowed round**, `smoke -- --node`: **49 Rust examples and the
+eleven Node examples, each on both bases, 120 frames each, every one
+exiting 0** — 120 windows, eight at a time, in 35 s — and `counter`,
+`host`, `c_panel` and `lua_panel` by hand under `KUI_SMOKE_FRAMES=120`,
+each exiting 0 with nothing on stderr: **124 windows over five hosts.**
+The AX audit: **106/106**, the audited window raised to the front by
+its pid first.
+
+**The bench guard** against the alpha.33 tag, on `679ee76`: **green**,
+none of the 8 guarded rows more than 10% slower — the worst
+`frame_10k_rects_with_text_and_hits` at +0.4% (the worst guarded
+run-to-run spread 1.1%) — and every one of the 38 rows' sources
+"same". README's table is kept at alpha.22's numbers.
 
 ## 0.1.0-alpha.33 (2026-10-02)
 

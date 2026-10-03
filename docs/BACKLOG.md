@@ -2087,9 +2087,13 @@ window beneath, by a press winit made up as that window gained focus
 (RG100). RG105, filed the same day, was withdrawn the same day and is
 in the archive: the Windows reading it rested on was a US layout's.
 
-## After alpha.32
+## After alpha.33
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
+alpha.32" until 2026-10-03, when the round between the alpha.33 and
+alpha.34 tags — the crates on crates.io, and F119 from kawoosh's
+menus-on-a-Mac report, a macOS menu row drawing the keys it does not
+bind — had landed, and the heading moved with the tag; "After
 alpha.31" until later on 2026-10-02, when the round between the alpha.32
 and alpha.33 tags — F116 from kawoosh's fit-content review, a fit box
 across a column held to the column's box, and F117 and F118 from its
