@@ -136,6 +136,14 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
     # Frames started by the display (`mod pacer`, C47's follow-up): the
     # view's `displayLinkWithTarget:selector:`.
     "objc2-quartz-core",
+    # A row's hint drawn where it binds nothing (backlog F119): its title
+    # attributed, with the menu font, a right tab stop and the secondary
+    # label colour, measured to place the stop.
+    "NSAttributedString",
+    "NSFont",
+    "NSParagraphStyle",
+    "NSStringDrawing",
+    "NSText",
 ] }
 objc2-quartz-core = { version = "0.3", default-features = false, features = [
     "std",
@@ -148,6 +156,8 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
     "NSString",
     # The Look Up panel takes an attributed string (ADR 0017 step 5).
     "NSAttributedString",
+    "NSDictionary",
+    "NSRange",
     "NSGeometry",
     # The display link's run loop and mode (`mod pacer`).
     "NSRunLoop",

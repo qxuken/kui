@@ -155,6 +155,15 @@ does. An app that has to write the menu twice has not been given a menu.
    drawn exactly as written and bound by nobody, which is what it was
    before.
 
+   *Amended 2026-10-03 (backlog F119).* On macOS it was not drawn: AppKit
+   draws only a key equivalent it binds, and the `NSMenu` adapter set
+   none for such a spelling — nor for a parseable one with no modifier,
+   which would fire on every press of the key. Both are drawn in the
+   row's attributed title now, after a tab, right-aligned at a stop the
+   menu shares past its widest title, in the secondary label colour (a
+   disabled row's in the disabled colour, since AppKit draws an
+   attributed title as given). The rule is unchanged; the Mac keeps it.
+
 8. **The bar is per application, and the frontmost window's declaration
    wins.** macOS has one menu bar for the process; kui has a `Core` per
    window. The runner applies the declaration of the window that holds the

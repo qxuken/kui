@@ -48,10 +48,15 @@ use std::cell::{Cell, RefCell};
 use kui_core::{MenuBar, MenuItem, MenuRole, Vec2};
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Sel};
-use objc2::{DefinedClass, MainThreadOnly, define_class, msg_send, sel};
-use objc2_app_kit::{NSApplication, NSEventModifierFlags, NSMenu, NSMenuItem, NSView};
+use objc2::{AnyThread, DefinedClass, MainThreadOnly, define_class, msg_send, sel};
+use objc2_app_kit::{
+    NSApplication, NSAttributedStringNSStringDrawing, NSColor, NSEventModifierFlags, NSFont,
+    NSFontAttributeName, NSForegroundColorAttributeName, NSMenu, NSMenuItem,
+    NSMutableParagraphStyle, NSParagraphStyleAttributeName, NSTextAlignment, NSTextTab, NSView,
+};
 use objc2_foundation::{
-    MainThreadMarker, NSAttributedString, NSObject, NSObjectProtocol, NSPoint, NSString, ns_string,
+    MainThreadMarker, NSArray, NSAttributedString, NSDictionary, NSMutableAttributedString,
+    NSObject, NSObjectProtocol, NSPoint, NSRange, NSString, ns_string,
 };
 use winit::window::Window;
 
@@ -138,15 +143,115 @@ fn build(mtm: MainThreadMarker, target: &MenuTarget, items: &[MenuItem]) -> Reta
     // Ours to decide: without this AppKit greys out every row whose target
     // does not answer `validateMenuItem:`, which is all of them.
     menu.setAutoenablesItems(false);
+    let hints = HintTab::of(items);
     for (i, item) in items.iter().enumerate() {
         if item.role == MenuRole::Separator {
             menu.addItem(&NSMenuItem::separatorItem(mtm));
             continue;
         }
         let target = unsafe { &*(target as *const MenuTarget as *const AnyObject) };
-        menu.addItem(&menu_row(mtm, item, target, sel!(kuiMenuPick:), i));
+        menu.addItem(&menu_row(mtm, item, target, sel!(kuiMenuPick:), i, hints));
     }
     menu
+}
+
+/// The accelerator a row draws without binding it: one AppKit cannot
+/// take as a key equivalent — a spelling kui does not parse (`"gd"`, an
+/// app's own multi-key hint) or one with no modifier, which would fire
+/// on every press of the key (see [`menu_row`]). ADR 0018 decision 7:
+/// drawn exactly as written, bound by nobody.
+fn hint(item: &MenuItem) -> Option<&str> {
+    let text = item.accel_text().filter(|t| !t.is_empty())?;
+    let bound = kui_core::Accel::parse(text)
+        .filter(|a| a.mods.any())
+        .and_then(|a| a.key_equivalent())
+        .is_some_and(|k| !k.is_empty());
+    (!bound).then_some(text)
+}
+
+/// Where a menu's hints end: one right-aligned tab stop for every row
+/// that has one, past the widest title, so the hints line up in a column
+/// of their own the way key equivalents do (backlog F119). AppKit has no
+/// key-equivalent column for a string it does not bind, so the hint is
+/// drawn in the row's attributed title, after a tab.
+#[derive(Clone, Copy)]
+struct HintTab(f64);
+
+impl HintTab {
+    /// The gap between the widest title and the widest hint, in points:
+    /// about what AppKit leaves before a key equivalent.
+    const GAP: f64 = 24.0;
+
+    /// `None` when no row of `items` has a hint, so a menu without any
+    /// is built exactly as before.
+    fn of(items: &[MenuItem]) -> Option<Self> {
+        let font = NSFont::menuFontOfSize(0.0);
+        let (mut title, mut hinted) = (0f64, None::<f64>);
+        for item in items.iter().filter(|i| i.role != MenuRole::Separator) {
+            title = title.max(text_width(item.text(), &font));
+            if let Some(h) = hint(item) {
+                hinted = Some(hinted.unwrap_or(0.0).max(text_width(h, &font)));
+            }
+        }
+        hinted.map(|h| Self(title + Self::GAP + h))
+    }
+}
+
+/// The width `text` takes in `font`, in points.
+fn text_width(text: &str, font: &NSFont) -> f64 {
+    let s = NSMutableAttributedString::from_nsstring(&NSString::from_str(text));
+    let all = NSRange::new(0, s.length());
+    // SAFETY: the font attribute takes an `NSFont`.
+    unsafe { s.addAttribute_value_range(NSFontAttributeName, font, all) };
+    s.size().width
+}
+
+/// `title`, a tab, and `hint` in the secondary label colour, right-aligned
+/// at `tab`: a row's title with its hint drawn where a key equivalent
+/// would be. A disabled row's whole title is the disabled colour, since
+/// AppKit dims a plain title for a disabled row but draws an attributed
+/// one as given.
+fn hinted_title(
+    title: &str,
+    hint: &str,
+    tab: HintTab,
+    enabled: bool,
+) -> Retained<NSAttributedString> {
+    let s =
+        NSMutableAttributedString::from_nsstring(&NSString::from_str(&format!("{title}\t{hint}")));
+    let all = NSRange::new(0, s.length());
+    let title_len = title.encode_utf16().count();
+    let hint_range = NSRange::new(title_len + 1, s.length() - title_len - 1);
+    let style = NSMutableParagraphStyle::new();
+    // SAFETY: an empty options dictionary is a valid one.
+    let stop = unsafe {
+        NSTextTab::initWithTextAlignment_location_options(
+            NSTextTab::alloc(),
+            NSTextAlignment::Right,
+            tab.0,
+            &NSDictionary::new(),
+        )
+    };
+    style.setTabStops(Some(&NSArray::from_retained_slice(&[stop])));
+    // SAFETY: each attribute is given the class its key takes.
+    unsafe {
+        s.addAttribute_value_range(NSFontAttributeName, &NSFont::menuFontOfSize(0.0), all);
+        s.addAttribute_value_range(NSParagraphStyleAttributeName, &style, all);
+        if enabled {
+            s.addAttribute_value_range(
+                NSForegroundColorAttributeName,
+                &NSColor::secondaryLabelColor(),
+                hint_range,
+            );
+        } else {
+            s.addAttribute_value_range(
+                NSForegroundColorAttributeName,
+                &NSColor::disabledControlTextColor(),
+                all,
+            );
+        }
+    }
+    Retained::into_super(s)
 }
 
 /// One `NSMenuItem` for a row, the same for the context menu and the bar
@@ -163,13 +268,17 @@ fn build(mtm: MainThreadMarker, target: &MenuTarget, items: &[MenuItem]) -> Reta
 /// Modifier-less ones are drawn and not bound. AppKit matches a key
 /// equivalent in `performKeyEquivalent:`, ahead of the responder chain,
 /// so a bare `"space"` would fire the item on every space the user typed
-/// — including into an `edit` — and swallow the key.
+/// — including into an `edit` — and swallow the key. They, and the
+/// spellings kui does not parse, are drawn in the title instead, at the
+/// menu's [`HintTab`] (F119: they were dropped, and the row said nothing
+/// of its keys).
 fn menu_row(
     mtm: MainThreadMarker,
     item: &MenuItem,
     target: &AnyObject,
     action: Sel,
     tag: usize,
+    hints: Option<HintTab>,
 ) -> Retained<NSMenuItem> {
     let accel = item
         .accel_text()
@@ -192,6 +301,9 @@ fn menu_row(
     unsafe {
         row.setTarget(Some(target));
         row.setTag(tag as isize);
+        if let (Some(tab), Some(h)) = (hints, hint(item)) {
+            row.setAttributedTitle(Some(&hinted_title(item.text(), h, tab, item.enabled)));
+        }
         row.setEnabled(item.enabled);
         // `NSControlStateValueOn` / `Off`, which are 1 and 0.
         row.setState(objc2_app_kit::NSControlStateValue::from(if item.checked {
@@ -677,6 +789,7 @@ impl MacMenuBar {
             head.setEnabled(menu.enabled);
             let sub = NSMenu::initWithTitle(NSMenu::alloc(mtm), &title);
             sub.setAutoenablesItems(false);
+            let hints = HintTab::of(&menu.items);
             for (ii, item) in menu.items.iter().enumerate() {
                 if item.role == MenuRole::Separator {
                     sub.addItem(&NSMenuItem::separatorItem(mtm));
@@ -684,7 +797,7 @@ impl MacMenuBar {
                 }
                 let tag = map.len();
                 map.push((mi, ii));
-                sub.addItem(&self.row(mtm, item, tag));
+                sub.addItem(&self.row(mtm, item, tag, hints));
             }
             if menu.label == "Edit" {
                 edit_menus.push((sub.clone(), sub.numberOfItems()));
@@ -841,9 +954,15 @@ impl MacMenuBar {
     /// is the same string the drawn bar would have shown — one
     /// declaration, two readings of it, and never two different
     /// shortcuts.
-    fn row(&self, mtm: MainThreadMarker, item: &MenuItem, tag: usize) -> Retained<NSMenuItem> {
+    fn row(
+        &self,
+        mtm: MainThreadMarker,
+        item: &MenuItem,
+        tag: usize,
+        hints: Option<HintTab>,
+    ) -> Retained<NSMenuItem> {
         let target = unsafe { &*(&*self.target as *const BarTarget as *const AnyObject) };
-        menu_row(mtm, item, target, sel!(kuiBarPick:), tag)
+        menu_row(mtm, item, target, sel!(kuiBarPick:), tag, hints)
     }
 
     /// Stamps which rows of the standard Edit menu apply. Called after
@@ -868,5 +987,34 @@ impl MacMenuBar {
         }
         let (menu, item) = self.map.borrow().get(tag as usize).copied()?;
         Some(BarPick::Item(menu, item))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_hint_is_what_binds_nothing() {
+        let row = |accel: &str| MenuItem::new("Row").accel(accel);
+        // Not parsed: drawn as written.
+        assert_eq!(hint(&row("gd")), Some("gd"));
+        // Parsed but bare: binding it would take the key from everything.
+        assert_eq!(hint(&row("space")), Some("space"));
+        // A key equivalent: bound, so AppKit draws it.
+        assert_eq!(hint(&row("mod+s")), None);
+        assert_eq!(hint(&MenuItem::role(MenuRole::Copy)), None);
+        // Declared empty on purpose: nothing at all.
+        assert_eq!(hint(&row("")), None);
+        assert_eq!(hint(&MenuItem::new("Row")), None);
+    }
+
+    #[test]
+    fn a_hinted_title_is_the_title_a_tab_and_the_hint() {
+        let t = hinted_title("Go to Definition", "gd", HintTab(200.0), true);
+        assert_eq!(t.string().to_string(), "Go to Definition\tgd");
+        // Disabled or not, the text is the same; only its colour moves.
+        let t = hinted_title("Rename…", "grn", HintTab(200.0), false);
+        assert_eq!(t.string().to_string(), "Rename…\tgrn");
     }
 }

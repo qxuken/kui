@@ -25,6 +25,10 @@ was the first bare bump to break an app in five releases).
 
 **What breaks.** No build.
 
+- macOS menus, the context menu and the bar: a row's accelerator that
+  binds nothing — one kui does not parse, or one with no modifier — is
+  drawn beside the row where it was drawn nowhere (F119, under Fixed).
+
 ### Changed
 
 - **The crates are on crates.io**: `kui-derive`, `kui-core`, `kui-wgpu`,
@@ -48,6 +52,17 @@ was the first bare bump to break an app in five releases).
   dropping that key is the whole move. The crates' `homepage` is the
   book, the one public link — the repository stays private. npm is
   unchanged.
+
+### Fixed
+
+- **A macOS menu row draws the keys it does not bind** (F119, from
+  kawoosh's menus seen on a Mac): an accelerator AppKit cannot take as a
+  key equivalent — `"gd"`, an app's own multi-key hint, or a bare
+  `"space"` — is drawn in the row's title, right-aligned in a column
+  the menu shares, in the secondary label colour, as ADR 0018 decision
+  7 always said and the drawn menu on Windows and Linux always did; the
+  `NSMenu` adapter dropped it. *What you can delete:* a hint folded into
+  a row's label (`"Go to Definition (gd)"`) for the Mac's sake.
 
 ## 0.1.0-alpha.33 (2026-10-02)
 

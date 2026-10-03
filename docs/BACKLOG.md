@@ -1472,6 +1472,17 @@ so the core took them for nodes it cannot ask. Two entries, F117 and
 F118, **built 2026-10-02**, the day they were filed, and in the
 archive, with ADR 0038's amendments.
 
+## From the kawoosh menus-on-a-Mac report (2026-10-03)
+
+kawoosh's context menus, built and tested on Linux where kui draws them,
+were looked at on a Mac for the first time: the rows were right, but
+the keys beside them — `gd`, `grr`, `grn`, `gra`, `grf`, which kawoosh
+declares as display-only accelerators — were not there. ADR 0018
+decision 7 says a spelling kui cannot parse "is drawn exactly as
+written and bound by nobody"; the `NSMenu` adapter dropped it, and a
+modifier-less one with it. One entry, F119, **built 2026-10-03**, the
+day it was filed, and in the archive, with ADR 0018's amendment.
+
 ## From the kawoosh fit-content review (2026-10-02)
 
 After a run of kawoosh overflows — a confirm dialog's message drawn
@@ -2245,6 +2256,8 @@ Nothing of the kawoosh fit-content review is open (F116 **built
 2026-10-02**, the day it was filed).
 Nothing of the kawoosh sticky-swipe report is open (F117 and F118
 **built 2026-10-02**, the day they were filed).
+Nothing of the kawoosh menus-on-a-Mac report is open (F119 **built
+2026-10-03**, the day it was filed).
 Nothing of the Windows regression round of 2026-09-26 is open
 (RG38–RG46 **built 2026-09-26**, the day they were filed).
 Nothing of the Linux round under WSLg is open (RG47–RG49 **built
@@ -3165,6 +3178,10 @@ move.
 **From the kawoosh settings-pane report (2026-09-29)** — F113, filed and built the same day
 
 - `~` **F113** — [A Mac's dead keys never arrive: ⌥u composes an accent and a keymap's `<A-u>` never hears it](backlog/closed-2026-09.md#-f113--a-macs-dead-keys-never-arrive-u-composes-an-accent-and-a-keymaps-a-u-never-hears-it--done-2026-09-29) — done (2026-09-29) — `Ui::option_as_alt(OptionAsAlt)` (`none`, `left`, `right`, `both`), frame state; the runner hands it to winit's `set_option_as_alt` on change, and an Option that is Alt types nothing
+
+**From the kawoosh menus-on-a-Mac report (2026-10-03)** — F119, filed and built the same day
+
+- `!` **F119** — [A macOS menu row's accelerator that binds nothing is dropped, so `gd` beside Go to Definition is drawn nowhere](backlog/closed-2026-09.md#-f119--a-macos-menu-rows-accelerator-that-binds-nothing-is-dropped-so-gd-beside-go-to-definition-is-drawn-nowhere--done-2026-10-03) — done (2026-10-03)
 
 **From the kawoosh sticky-swipe report (2026-10-02)** — F117 and F118, filed and built the same day
 
