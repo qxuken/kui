@@ -17,10 +17,9 @@ members = [
 version = "0.1.0-alpha.34"
 edition = "2024"
 license = "MIT"
-# The repository is private, so on crates.io this link only works for its
-# members; `homepage` is the public one: the book (docs/book), which is
-# what a reader arriving from crates.io wants first anyway.
-repository = "https://drydock9.qxuken.dev/qxuken/kui"
+# `homepage` is the book (docs/book), which is what a reader arriving from
+# crates.io wants first; `repository` is the public GitHub mirror.
+repository = "https://github.com/qxuken/kui"
 homepage = "https://kui-book.qxuken.dev"
 keywords = ["gui", "ui", "layout", "wgpu"]
 categories = ["gui"]
