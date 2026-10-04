@@ -1,5 +1,4 @@
-//! Context menus (`docs/adr/0017-selection-as-a-scope.md`, decision 5):
-//! opening one over a node, and closing it.
+//! Context menus: opening one over a node, and closing it.
 //!
 //! There is no element here and no node to declare. The menu is state the
 //! core holds and draws, so a host asks for one the way it asks for focus
@@ -8,7 +7,8 @@
 
 use super::*;
 
-/// One row of a menu (`kui_open_menu`). [in], read while the call runs.
+/// One row of a menu ([`kui_open_menu`], [`kui_menu_bar`],
+/// [`kui_select`]), read while the call runs.
 ///
 /// `label` may be empty for a standard `role`, which then reads the way
 /// the platform words it. `id` is what the row posts when chosen; NULL
@@ -123,7 +123,7 @@ pub extern "C" fn kui_set_native_menus(ptr: *mut KuiCtx, on: bool) {
 /// on the drawn menu's row takes. An index past the end closes the menu
 /// and posts nothing. Returns false when nothing was taken: no menu was
 /// open, or the row cannot be chosen — disabled, or a separator — in
-/// which case the menu stays open and nothing is posted (backlog RG9).
+/// which case the menu stays open and nothing is posted.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_activate_menu_item(ptr: *mut KuiCtx, index: usize) -> bool {
     guard(false, || {
@@ -138,7 +138,7 @@ pub extern "C" fn kui_activate_menu_item(ptr: *mut KuiCtx, index: usize) -> bool
     })
 }
 
-/// Asks for the selection as text (`docs/adr/0017-selection-as-a-scope.md`).
+/// Asks for the selection as text.
 ///
 /// `KUI_COPY_READY` writes the selection into `out` — borrowed until the
 /// next call on this context. `KUI_COPY_ASKED` means the selection reaches
@@ -187,9 +187,9 @@ pub extern "C" fn kui_answer_selection_range(ptr: *mut KuiCtx, text: KuiStr) -> 
 }
 
 /// Puts `text` on the system clipboard, as a `KUI_MENU_ACTION_SET_CLIPBOARD`
-/// the host drains — the action a menu's Copy queues, with a door on it
-/// for an `on_key` sink that hears the raw `Ctrl-c` and had nowhere to
-/// bind it (backlog C33). `html` is a second flavour beside the text,
+/// the host drains: the action a menu's Copy queues, callable from an
+/// `on_key` sink that hears the raw `Ctrl-c`. `html` is a second flavour
+/// beside the text,
 /// never in place of it; an empty `html` is none. Under `kui_run` the
 /// runner applies it after every input and every frame.
 #[unsafe(no_mangle)]
@@ -206,8 +206,8 @@ pub extern "C" fn kui_set_clipboard(ptr: *mut KuiCtx, text: KuiStr, html: KuiStr
 
 /// Puts a secret on the system clipboard, as a
 /// `KUI_MENU_ACTION_SET_CLIPBOARD_SECRET` the host drains and writes
-/// marked concealed and transient, the way a password manager does
-/// (backlog F84) — `org.nspasteboard.ConcealedType` and `TransientType`
+/// marked concealed and transient, the way a password manager does:
+/// `org.nspasteboard.ConcealedType` and `TransientType`
 /// on macOS, the exclusion formats on Windows — so no clipboard manager
 /// shows or keeps it. Under `kui_run` the runner writes it.
 #[unsafe(no_mangle)]
@@ -221,9 +221,9 @@ pub extern "C" fn kui_set_clipboard_secret(ptr: *mut KuiCtx, text: KuiStr) {
 }
 
 /// Asks for what is on the clipboard, as a `KUI_MENU_ACTION_PASTE` the
-/// host drains and answers with `kui_input_paste` (the text and the
-/// pasteboard's `KUI_PASTE_*` markers, backlog F84) or
-/// `kui_input_commit`: a focused editor takes
+/// host drains and answers with [`kui_input_paste`] (the text and the
+/// pasteboard's `KUI_PASTE_*` markers) or [`kui_input_commit`]: a focused
+/// editor takes
 /// the text as typing, a focused `on_key` sink hears it as
 /// `{kind:"text", text, tag}` — so an app that owns its text inserts a
 /// paste the way it inserts a committed IME string, and the clipboard is
@@ -240,8 +240,7 @@ pub extern "C" fn kui_request_paste(ptr: *mut KuiCtx) {
 
 /// Whether a paste asked for is still unanswered: `kui_request_paste`
 /// queues one ask at a time, and the `kui_input_commit` that answers it
-/// — an empty one for an empty clipboard — is what lets the next through
-/// (backlog AR34).
+/// (an empty one for an empty clipboard) is what lets the next through.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_awaiting_paste(ptr: *mut KuiCtx) -> bool {
     guard(false, || {
@@ -317,9 +316,8 @@ pub extern "C" fn kui_take_menu_action(ptr: *mut KuiCtx, out: *mut KuiMenuAction
 
 // -- The application menu bar -----------------------------------------------
 
-/// One menu of the application menu bar (`kui_menu_bar_declare`). [in],
-/// read while the call runs — nothing is retained, the core copies what it
-/// needs.
+/// One menu of the application menu bar ([`kui_menu_bar`]), read while
+/// the call runs; the core copies what it needs.
 ///
 /// `items` is `count` rows in the same `KuiMenuItem` a context menu takes,
 /// which is the point: an Edit menu's Copy is the same row the right-click
@@ -334,11 +332,10 @@ pub struct KuiMenu {
     pub enabled: u32,
 }
 
-/// The application menu for this frame
-/// (`docs/adr/0018-a-menu-bar-the-app-declares.md`): `count` menus read
-/// from `menus`, in bar order, declared *and* — where the platform has no
-/// menu bar of its own — drawn into the frame right here, as a row of
-/// titles that drop their menus.
+/// The application menu for this frame: `count` menus read from `menus`,
+/// in bar order, declared and, where the platform has no menu bar of its
+/// own, drawn into the frame right here as a row of titles that drop
+/// their menus.
 ///
 /// One call and not two, because what the menu is and where its strip goes
 /// are one decision. Where the platform owns the bar

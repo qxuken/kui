@@ -82,7 +82,7 @@ fn frame_declaring(ctx: *mut KuiCtx, declare: &[(f32, f32)]) {
     kui_frame_finish(ctx);
 }
 
-/// ADR 0004's step 3 through the C surface: a declaration opens a
+/// Multi-window through the C surface: a declaration opens a
 /// window (once, with the first config, warning about the second),
 /// an OS close reported back keeps it closed while declared, and the
 /// declaration lapsing and starting again opens it anew.
@@ -169,7 +169,7 @@ fn a_declared_window_opens_closes_and_warns_through_the_c_api() {
     kui_ctx_free(ctx);
 }
 
-/// The size handshake on the new [out] struct, the way `kui_poll_event`
+/// The size handshake on the new `[out]` struct, the way `kui_poll_event`
 /// has it: a reservation below the layout is refused before anything
 /// is popped, so the command is still there for a proper call.
 #[test]
@@ -227,7 +227,7 @@ fn the_exported_version_is_the_one_the_header_states() {
 /// grown: a caller that reserved only the first two fields gets them,
 /// and the third — the appended one — is left exactly as it was.
 ///
-/// This was written before any real [out] struct had grown, so that
+/// This was written before any real `[out]` struct had grown, so that
 /// the truncating path would not be first exercised by the change that
 /// depends on it. `KuiEvent` has since grown `window`, and
 /// [`an_abi_3_host_polls_events_without_seeing_the_appended_window`]
@@ -339,8 +339,8 @@ fn an_abi_3_host_polls_events_without_seeing_the_appended_window() {
     kui_ctx_free(ctx);
 }
 
-/// And a host built against this ABI gets the field, which is 0 until
-/// ADR 0004's step 3 opens a second window.
+/// And a host built against this ABI gets the field, which is 0 until a
+/// second window is opened.
 #[test]
 fn a_current_host_sees_window_and_it_is_the_main_one() {
     let ctx = ctx_with_a_scroller_and_a_pending_event();

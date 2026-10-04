@@ -13,26 +13,29 @@ pub(crate) fn push_input(ptr: *mut KuiCtx, ev: InputEvent) {
     })
 }
 
-/// Cursor position in logical coordinates.
+/// The pointer moved to (`x`, `y`) in logical pixels. Hover, drags and
+/// the cursor shape follow from it.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_input_cursor(ptr: *mut KuiCtx, x: f32, y: f32) {
     push_input(ptr, InputEvent::CursorMoved(Vec2::new(x, y)));
 }
 
+/// The pointer left the window: nothing is hovered until it comes back.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_input_cursor_left(ptr: *mut KuiCtx) {
     push_input(ptr, InputEvent::CursorLeft);
 }
 
-/// A primary-button press or release; `kui_input_mouse_button` carries the
-/// others. Kept as it was: it is exported ABI.
+/// A primary-button press (`down` true) or release at the last cursor
+/// position; `clicks` is the click count (1, or 2 for a double-click).
+/// [`kui_input_mouse_button`] carries the other buttons.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_input_mouse(ptr: *mut KuiCtx, down: bool, clicks: u32) {
     kui_input_mouse_button(ptr, down, MouseButton::Primary.code(), clicks);
 }
 
-/// `kui_input_mouse` for a named button (`KUI_MOUSE_*`, or `3 + n` for a
-/// further button `n`).
+/// [`kui_input_mouse`] for a named button (`KUI_MOUSE_*`, or `3 + n` for
+/// a further button `n`).
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_input_mouse_button(ptr: *mut KuiCtx, down: bool, button: u32, clicks: u32) {
     let button = MouseButton::from_code(button);
@@ -49,19 +52,19 @@ pub extern "C" fn kui_input_mouse_button(ptr: *mut KuiCtx, down: bool, button: u
     );
 }
 
-/// Wheel/trackpad delta in logical px (positive y = scroll up), a scroll
-/// gesture of its own: it goes to the scroller under the pointer that can
-/// move that way (backlog F107).
+/// A wheel or trackpad delta in logical px (positive `dy` scrolls up), as
+/// a scroll gesture of its own: it goes to the innermost scroller under
+/// the pointer that can move that way.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_input_scroll(ptr: *mut KuiCtx, dx: f32, dy: f32) {
     push_input(ptr, InputEvent::Scroll(Vec2::new(dx, dy)));
 }
 
-/// A wheel/trackpad delta that is part of a scroll gesture (backlog F107):
-/// `begins` on its first event, after which the rest go on to the targets
-/// that one picked wherever the pointer or the content has gone — for a
-/// host with its own event loop that can tell one swipe from the next
-/// (`kui_run`'s runner begins one after a 200 ms pause).
+/// A wheel or trackpad delta that is part of a scroll gesture: `begins`
+/// on its first event, after which the rest go to the targets that one
+/// picked wherever the pointer or the content has gone. For a host whose
+/// event loop can tell one swipe from the next (`kui_run` begins a new
+/// gesture after a 200 ms pause).
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_input_scroll_gesture(ptr: *mut KuiCtx, dx: f32, dy: f32, begins: bool) {
     push_input(
@@ -95,11 +98,11 @@ fn paths_of(paths: *const KuiStr, count: usize) -> Vec<String> {
         .collect()
 }
 
-/// Files dragged in from the OS are over the window at (`x`, `y`) —
-/// entering and moving alike (ADR 0031, decision 4): the zone under the
-/// point hears `{kind:"drop", phase:"enter"|"move"}`, a zone it left
-/// hears `leave`. `paths` are `count` OS paths. The driver's answer to
-/// the OS (copy over a zone, not-allowed elsewhere) is `kui_drop_target`.
+/// Files dragged in from the OS are over the window at (`x`, `y`),
+/// entering and moving alike: the drop zone under the point hears
+/// `{kind:"drop", phase:"enter"|"move"}`, a zone it left hears `leave`.
+/// `paths` are `count` OS paths. The host's answer to the OS (copy over a
+/// zone, not-allowed elsewhere) is [`kui_drop_target`].
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_input_drag_files(
     ptr: *mut KuiCtx,
@@ -189,14 +192,14 @@ fn key_press_of(
     // A NULL `physical` means "the key I just named": a host that does not
     // track positions says so by omission, and gets `code` through unchanged
     // because the two agree (a letter's position is its lower-case letter,
-    // as a window reports it; backlog F65). A host that does track them hands both over and
+    // as a window reports it). A host that does track them hands both over and
     // `from_layout` applies the same non-Latin fallback the winit driver
     // does — the rule lives in the core so no host reimplements it.
     let press = match physical.ptr.is_null() {
         true => kui_core::KeyPress::new(layout, mods),
         false => {
             let phys = kui_core::KeyCode::from_name(&kstr(physical))?;
-            // The layout's script rides in the same word (F115).
+            // The layout's script rides in the same word.
             let script = kui_core::LayoutScript::from_bits(kmods);
             kui_core::KeyPress::from_layout_in(layout, phys, mods, script)
         }
@@ -204,14 +207,14 @@ fn key_press_of(
     // A NULL `text` means "whatever this key inserts": the plain
     // character keys insert themselves, a chord inserts nothing. Asked of
     // the key the layout named, not the US stand-in in `code`: shift on
-    // the key printed `;` on a Russian layout types `Ж`, not `:` (RG28).
+    // the key printed `;` on a Russian layout types `Ж`, not `:`.
     let text = match text.ptr.is_null() {
         false => Some(kstr(text).into_owned()),
         true => layout.typed(mods),
     };
     // The same word's upper bits: the lock state and the key's location
-    // (`KUI_KLOCK_*`, `KUI_KLOC_*`, backlog F108), zero for what every
-    // press was before.
+    // (`KUI_KLOCK_*`, `KUI_KLOC_*`), zero for what every press was
+    // before.
     Some(kui_core::KeyPress {
         text,
         location: kui_core::KeyLocation::from_bits(kmods),
@@ -220,26 +223,26 @@ fn key_press_of(
     })
 }
 
-/// A raw key press for `on_key` sinks (the editing keys go through
-/// `kui_input_key`). `code` is a single character as the layout produced it
-/// ("W", "$") or a name ("left", "enter", "escape", "f5", ...); `physical`
-/// is the US-QWERTY key at that *position*, spelled the same way, or NULL
-/// when the host does not track positions (then it equals `code`); `kmods`
-/// is KUI_KMOD_* bits, with KUI_KLOCK_* and one KUI_KLOC_* beside them
-/// (backlog F108) and KUI_KLAYOUT_NONLATIN (F115); `text` is what the press inserts, or NULL to derive
-/// it from `code`; `repeat` marks an auto-repeat. The focused sink polls
+/// A raw key press for `on_key` sinks; most hosts want [`kui_input_press`],
+/// which sends this and then what the key means.
+///
+/// `code` is a single character as the layout produced it ("W", "$") or a
+/// name ("left", "enter", "escape", "f5"); `physical` is the US-QWERTY key
+/// at that position, spelled the same way, or NULL when the host does not
+/// track positions (then it equals `code`); `kmods` is `KUI_KMOD_*` bits,
+/// with `KUI_KLOCK_*`, one `KUI_KLOC_*` and `KUI_KLAYOUT_NONLATIN` beside
+/// them; `text` is what the press inserts, or NULL to derive it from
+/// `code`; `repeat` marks an auto-repeat. The focused sink polls
 /// `{kind="key", phase="down", code, physical, ctrl, alt, shift, super,
 /// text, repeat, location, caps_lock, num_lock, tag}`. An unknown `code`
 /// or `physical` is ignored.
 ///
-/// Passing both is what makes a keymap portable: a layout that produces
-/// something outside ASCII (Cyrillic, Greek, Hebrew, Arabic) would leave a
-/// Latin keymap matching nothing, so kui reports the position's US key
-/// as `code` instead, as Shift prints it (unshifted under Alt) — exactly
-/// as the winit runner does. A NULL `text` is still the layout's own
-/// character. A host whose layout is not Latin says so with
-/// KUI_KLAYOUT_NONLATIN, and the US key stands in for the layout's ASCII
-/// too (F115). A host that passes NULL keeps the old behaviour.
+/// Passing both spellings makes a keymap portable: on a layout that
+/// produces non-ASCII characters (Cyrillic, Greek, Hebrew, Arabic) kui
+/// reports the position's US key as `code`, so a Latin keymap still
+/// matches, while a NULL `text` is still the layout's own character. A
+/// host whose layout is not Latin says so with `KUI_KLAYOUT_NONLATIN`,
+/// and the US key stands in for the layout's ASCII too.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_input_key_down(
     ptr: *mut KuiCtx,
@@ -282,20 +285,18 @@ pub extern "C" fn kui_input_key_up(ptr: *mut KuiCtx, code: KuiStr, physical: Kui
     });
 }
 
-/// A whole key going down, the way a window sends it — the call a host
-/// driving kui from its own event loop wants, and the one a headless test
-/// wants (backlog F6). Spelled exactly as `kui_input_key_down`, and it
-/// sends that press first; then it asks the core what that key *means*,
-/// which is what `kui_input_key` carries on its own: Escape dismisses a
-/// modal, Tab walks the focus ring, an arrow nudges a focused slider,
+/// A whole key going down, the way a window sends it: the call a host
+/// driving kui from its own event loop wants. Spelled exactly as
+/// [`kui_input_key_down`]; it sends that raw press first, then what the
+/// key means (what [`kui_input_key`] carries on its own): Escape dismisses
+/// a modal, Tab walks the focus ring, an arrow nudges a focused slider,
 /// Space presses a focused control, a printable character reaches the
 /// focused editor.
 ///
-/// The two older calls stay as the halves, for a host that means to drive
-/// one channel and not the other. A host that means "the user pressed this
-/// key" wants this one: `kui_input_key_down(ctx, KUI_STR("escape"), ...)`
-/// alone leaves a modal open, because it is only half of what a keyboard
-/// does. An unknown `code` or `physical` is ignored, as there.
+/// The two older calls remain as the halves for a host that drives one
+/// channel and not the other; `kui_input_key_down(ctx, KUI_STR("escape"),
+/// ...)` alone leaves a modal open. An unknown `code` or `physical` is
+/// ignored.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_input_press(
     ptr: *mut KuiCtx,
@@ -355,8 +356,13 @@ pub extern "C" fn kui_release_held_keys(ptr: *mut KuiCtx) {
     });
 }
 
-/// Pops the next pending UI event. The payload pointer stays valid until the
-/// next poll call on the same context (or context free).
+/// Pops the next pending event into `out` (start from `KUI_EVENT_INIT`);
+/// false when the queue is empty. Call it after each input and each frame
+/// until it returns false.
+///
+/// `out->payload` is borrowed until the next poll on this context or
+/// [`kui_ctx_free`]. Also false, leaving the event queued, when `out`'s
+/// `size` is below the layout this library knows.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_poll_event(ptr: *mut KuiCtx, out: *mut KuiEvent) -> bool {
     guard(false, || {
@@ -413,9 +419,9 @@ pub extern "C" fn kui_cursor_shape(ptr: *mut KuiCtx) -> u32 {
 }
 
 /// Text an IME committed at the end of a composition: a focused editor
-/// takes it as `kui_input_text` would; otherwise the focused `onKey` sink
-/// hears `{kind:"text", text, tag}` — the one committed text a `key`
-/// event never carries (backlog C17). Typing stays on `kui_input_text`.
+/// takes it as [`kui_input_text`] would; otherwise the focused `on_key`
+/// sink hears `{kind:"text", text, tag}`, the one committed text a `key`
+/// event never carries. Typing stays on `kui_input_text`.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_input_commit(ptr: *mut KuiCtx, text: KuiStr) {
     guard((), || {
@@ -425,8 +431,8 @@ pub extern "C" fn kui_input_commit(ptr: *mut KuiCtx, text: KuiStr) {
 }
 
 /// The clipboard's answer to a paste (`KUI_MENU_ACTION_PASTE`), with the
-/// pasteboard's markers as `KUI_PASTE_*` bits (backlog F84): routed as
-/// `kui_input_commit` is, and a focused `onKey` sink hears
+/// pasteboard's markers as `KUI_PASTE_*` bits: routed as
+/// [`kui_input_commit`] is, and a focused `on_key` sink hears
 /// `{kind:"text", text, tag}` with `concealed: true` / `transient: true`
 /// for the bits that are set. A host that cannot read the markers
 /// answers with 0, or with `kui_input_commit`, which is the same answer.
@@ -459,8 +465,9 @@ pub extern "C" fn kui_input_preedit(
     });
 }
 
-/// Current text of an editor. The returned view is valid until the next
-/// kui_edit_text call (or context free).
+/// The current text of the editor `key` ([`kui_text_edit`] or
+/// [`kui_text_input`]), borrowed until the next `kui_edit_text` on this
+/// context or [`kui_ctx_free`]. False when `key` is no editor.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_edit_text(ptr: *mut KuiCtx, key: u64, out: *mut KuiStr) -> bool {
     guard(false, || {
@@ -480,6 +487,9 @@ pub extern "C" fn kui_edit_text(ptr: *mut KuiCtx, key: u64, out: *mut KuiStr) ->
     })
 }
 
+/// Replaces the text of the editor `key`, as if the user had typed it;
+/// the caret moves to the end. [`kui_edit_set_text_label`] does the same
+/// for an editor the host only knows by label.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_edit_set_text(ptr: *mut KuiCtx, key: u64, text: KuiStr) {
     guard((), || {
@@ -490,15 +500,13 @@ pub extern "C" fn kui_edit_set_text(ptr: *mut KuiCtx, key: u64, text: KuiStr) {
     });
 }
 
-/// The same call by the label the view declares (`kui_edit`'s `label`),
-/// for the host that has no key to give: a key comes from an event the
-/// node fired, and an editor being opened for the first time has fired
-/// none (backlog F32). A label some frame declared is applied at once; one
-/// nothing has declared is held for the next frame that declares an editor
-/// under it, seeding a new editor over its `initial` and replacing a
-/// retained one's draft. Held for that one frame — a label nothing
-/// declares on it drops its text and raises `edit-text-without-editor`
-/// (`kui_take_warnings`).
+/// [`kui_edit_set_text`] by the label the view declares the editor with,
+/// for a host that has no key yet (an editor opened for the first time
+/// has fired no event). A label some frame declared is applied at once;
+/// one nothing has declared is held for the next frame, seeding a new
+/// editor over its `initial`. Held for that one frame only: if no editor
+/// is declared under it, the text is dropped with an
+/// `edit-text-without-editor` warning.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_edit_set_text_label(ptr: *mut KuiCtx, label: KuiStr, text: KuiStr) {
     guard((), || {

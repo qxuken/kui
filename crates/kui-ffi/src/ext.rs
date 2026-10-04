@@ -22,12 +22,11 @@
 //! void        kui_ext_free(void *user);
 //! ```
 //!
-//! `kui_ext_abi` is required rather than merely checked when present because
-//! the plugin most likely to lack it is one built against a header from
-//! before ADR 0006 introduced it - which is precisely the mismatched plugin
-//! the check exists to refuse, in the direction (older plugin, newer host)
-//! that corrupts memory rather than merely missing a feature. Absence is
-//! refused the way a mismatch is, before anything else is looked up.
+//! `kui_ext_abi` is required rather than merely checked when present: the
+//! plugin most likely to lack it is one built against a header from before
+//! the symbol existed, which is exactly the mismatched plugin (older
+//! plugin, newer host) the check exists to refuse. Absence is refused the
+//! way a mismatch is, before anything else is looked up.
 //!
 //! `kui_ext_view` receives a context borrowing the host's frame and calls the
 //! ordinary `kui_open`/`kui_text`/`kui_close` builders on it. Everything it
@@ -80,8 +79,35 @@ use crate::{KUI_ABI_VERSION, KuiCtx, KuiEvent, KuiStr, KuiValue};
 type ViewFn = extern "C" fn(*mut c_void, *mut KuiCtx);
 type EventFn = extern "C" fn(*mut c_void, *const KuiEvent);
 
-/// A `dlopen`ed C extension, plugged into a Rust host with
-/// `kui_native::run(title, app, vec![Box::new(ext)])`.
+/// A C shared library loaded as a guest extension of a Rust host.
+///
+/// The plugin exports `kui_ext_abi` and `kui_ext_view` (and optionally
+/// `kui_ext_name`, `kui_ext_init`, `kui_ext_slots`, `kui_ext_on_event` and
+/// `kui_ext_free`; `include/kui.h` has the prototypes). Each frame the
+/// host's `Ui` reaches a slot the plugin fills, `kui_ext_view` is called
+/// with a context borrowing that frame and builds into it with the
+/// ordinary `kui_open` / `kui_text` / `kui_close` calls; events from the
+/// nodes it built go to `kui_ext_on_event`, never to the host, and what
+/// it answers with `kui_reply` reaches the host with the plugin's origin.
+///
+/// It implements [`Extension`], so it plugs into `kui_native::app(..)
+/// .extension_as(namespace, ext)` or a `kui_core::Extensions` list like
+/// any other extension. On ELF and Mach-O the plugin links against nothing
+/// and resolves `kui_*` from the host executable at load, which needs the
+/// host linked with `--export-dynamic` (this crate's `build.rs` does it
+/// for the examples); on Windows the plugin links against the host's
+/// import library or against `kui_ffi.dll`.
+///
+/// ```rust,no_run
+/// use kui_ffi::CExtension;
+///
+/// // SAFETY: the plugin's code runs in this process; loading it is
+/// // trusting it as much as linking it would be.
+/// let ext = unsafe { CExtension::open("target/debug/panel.so") }?;
+/// let launcher = kui_native::app("host").extension_as("todos", ext);
+/// # let _ = launcher;
+/// # Ok::<(), String>(())
+/// ```
 pub struct CExtension {
     name: String,
     handle: *mut c_void,
@@ -91,15 +117,18 @@ pub struct CExtension {
     on_event: Option<EventFn>,
     free: Option<extern "C" fn(*mut c_void)>,
     /// What `kui_ext_slots` returned at load, copied out: the slot names
-    /// this plugin fills (ADR 0014 decision 2). Empty means `"root"`.
+    /// this plugin fills. Empty means `"root"`.
     slots: Vec<String>,
 }
 
 impl CExtension {
-    /// Loads a plugin and runs its `kui_ext_init`.
+    /// Loads the shared library at `path` and runs its `kui_ext_init`.
     ///
-    /// Fails if the library will not load, if it declares no ABI or one this
-    /// build does not implement, or if it has no `kui_ext_view`.
+    /// Fails, with the reason as the error, if the library will not load,
+    /// if it declares no `kui_ext_abi` or one other than this build's
+    /// [`KUI_ABI_VERSION`], or if it has no `kui_ext_view`. The plugin's
+    /// `kui_ext_free` runs and the library is unloaded when the
+    /// `CExtension` is dropped.
     ///
     /// # Safety
     /// The library's entry points are called on the host's frame and its
@@ -414,9 +443,9 @@ impl Extension for CExtension {
             slot: ev.slot.map_or(0, |k| k.0),
             ..Default::default()
         };
-        // Replies (ADR 0014 decision 6): the plugin calls `kui_reply(ev,
-        // value)` during the callback, as often as it likes, and the sink
-        // open around the call collects them for the host.
+        // Replies: the plugin calls `kui_reply(ev, value)` during the
+        // callback, as often as it likes, and the sink open around the
+        // call collects them for the host.
         crate::slots::collect_replies(&mut out, |ev| cb(self.user, ev))
     }
 }
@@ -438,7 +467,7 @@ pub(crate) mod tests {
     /// A shared library that loads on every target this crate builds for
     /// and defines no `kui_ext_*` symbol at all: the platform's own C
     /// runtime. That is the shape of a plugin built against a header from
-    /// before ADR 0006 added `kui_ext_abi` - the case the check exists to
+    /// before `kui_ext_abi` existed - the case the check exists to
     /// refuse - reached without a C compiler in the test. The real mutant,
     /// `examples/c/features/slots/panel.c` with its `kui_ext_abi` line deleted, is built by
     /// `cbuild` and driven through `c_panel --headless` in CI.

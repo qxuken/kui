@@ -15,7 +15,7 @@ struct CApp {
 
 /// The teardown callback `kui_on_teardown` set, for the next `kui_run` /
 /// `kui_run_with` on any thread to take: a process setting, since
-/// `kui_run`'s app is three arguments and not a struct (backlog RG1).
+/// `kui_run`'s app is three arguments and not a struct.
 static ON_TEARDOWN: std::sync::Mutex<Option<TeardownFn>> = std::sync::Mutex::new(None);
 
 impl kui_native::App for CApp {
@@ -28,7 +28,7 @@ impl kui_native::App for CApp {
         (self.view)(self.user, &mut shim);
     }
 
-    /// The window going for good (backlog F74), to the C host: once, with
+    /// The window going for good, to the C host: once, with
     /// the `user` its `view` and `on_event` get, before `kui_run` returns
     /// or the process exits — which on macOS a Quit does without
     /// `kui_run` ever returning, so nothing after the call runs.
@@ -55,20 +55,15 @@ impl kui_native::App for CApp {
     }
 }
 
-/// What the next `kui_run` / `kui_run_with` calls as its window goes for
-/// good — the close button, Quit from the menu or the dock, a
-/// `KUI_WINDOW_CLOSE` command on it — once, with the `user` the run's
-/// `view` and `on_event` get, before `kui_run` returns or the process
-/// exits (backlog RG1; the Rust `App::teardown` of F74). On macOS a Quit
-/// ends the process from inside the run, so this is the only thing a
-/// host runs on ⌘Q: nothing after `kui_run` does. The last call before
-/// the run wins; a run takes it, so the next run starts with none.
-/// Nothing draws by then, and the context the callback might reach is
-/// the window's, not the host's: save, and return. A free function
-/// rather than a field: `kui_run`'s app is three arguments and not a
-/// struct, and `KuiRunConfig` is the window,
-/// so a field there would reach `kui_run_with` alone and cost the [in]
-/// bump AR50 asks for.
+/// Sets what the next `kui_run` / `kui_run_with` calls as its window goes
+/// for good (the close button, Quit from the menu or the dock, a
+/// `KUI_CMD_CLOSE` on it): once, with the `user` the run's `view` and
+/// `on_event` get, before `kui_run` returns or the process exits.
+///
+/// On macOS a Quit ends the process from inside the run, so this is the
+/// only thing a host runs on Command-Q; nothing after `kui_run` does.
+/// Nothing draws by then: save, and return. The last call before the run
+/// wins, and a run takes it, so the next run starts with none.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_on_teardown(teardown: TeardownFn) {
     guard((), || {
@@ -127,19 +122,19 @@ unsafe fn icon_ask_of(
     Ok((pixels.is_some() || resource.is_some()).then_some(IconAsk { pixels, resource }))
 }
 
-/// The icon every window of the next `kui_run` / `kui_run_with` is
-/// created with (backlog F86; the Rust `Launcher::icon` and
-/// `Launcher::icon_resource`): `rgba` is `width` × `height` pixels, four
-/// bytes each, row by row from the top left, alpha not premultiplied,
-/// copied; `resource`, on Windows, is an icon resource in the executable
-/// — the `1 ICON "app.ico"` of its `.rc` — which wins there. NULL, 0, 0
-/// is no pixels and 0 no resource; all four zero clears it. Windows shows
-/// it in the title bar, Alt-Tab and the taskbar and X11 in the window
-/// manager's; macOS and Wayland have no window icon. Returns false, with
-/// the reason on stderr, for what is not an icon — a zero side with
-/// pixels, a side with none, a resource past 65535 — and keeps what was
-/// set before. The last call before the run wins; a run takes it. A free
-/// function for `kui_on_teardown`'s reason: `kui_run` takes no config.
+/// Sets the icon every window of the next `kui_run` / `kui_run_with` is
+/// created with.
+///
+/// `rgba` is `width` by `height` pixels, four bytes each, row by row from
+/// the top left, alpha not premultiplied, copied. `resource`, on Windows,
+/// is an icon resource in the executable (the `1 ICON "app.ico"` of its
+/// `.rc`), which wins there. NULL, 0, 0 is no pixels and 0 no resource;
+/// all four zero clears it. Windows shows the icon in the title bar,
+/// Alt-Tab and the taskbar and X11 in the window manager's; macOS and
+/// Wayland have no window icon. Returns false, with the reason on stderr,
+/// for what is not an icon (a zero side with pixels, a side with none, a
+/// resource past 65535) and keeps what was set before. The last call
+/// before the run wins; a run takes it.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_set_icon(rgba: *const u8, width: u32, height: u32, resource: u32) -> bool {
     guard(false, || {
@@ -157,8 +152,11 @@ pub extern "C" fn kui_set_icon(rgba: *const u8, width: u32, height: u32, resourc
     })
 }
 
-/// Runs a windowed app driven by C callbacks. Blocks until the window closes.
-/// Returns false if the event loop could not start.
+/// Opens a window titled `title` and runs it to the end: `view(user, ctx)`
+/// is called once per frame with a context to build into, and
+/// `on_event(user, ev)` once per event, on this thread. Blocks until the
+/// window closes; returns false if the event loop could not start. Same as
+/// `kui_run_with(NULL, title, NULL, view, on_event, user)`.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_run(
     title: KuiStr,
@@ -176,46 +174,25 @@ pub extern "C" fn kui_run(
     )
 }
 
-/// `kui_run` with a window of the host's choosing and the context's
-/// registrations (backlog AR27): `config` is the window — its size and
-/// bounds, its chrome, the text antialiasing, the diagnostics — read the
-/// way `kui_window_declare` reads its own, NULL for every default; and
-/// `ctx`'s core becomes the window's, so the fonts, images, sounds,
-/// tokens, theme, devtools doors, `kui_set_native_menus` and text-cache
-/// budget the host registered on it before the call reach the window,
-/// and the handles it minted keep drawing there. The context is left
-/// with a fresh core and no extensions, still the caller's to free. A
-/// NULL context with a NULL config is `kui_run`.
+/// `kui_run` with a window of the host's choosing and a context's
+/// registrations.
 ///
-/// A config word this build does not have — a `chrome`, `text_aa` or
-/// `diagnostics` past the last constant, a size that is not a size —
-/// returns false before any window opens, with the reason on stderr: a
-/// window opened native when asked for the custom chrome would draw its
-/// titlebar under the OS's, and the host had no way to hear that.
+/// `config` is the window (size and bounds, chrome, text antialiasing,
+/// diagnostics), NULL for every default. `ctx`'s core becomes the
+/// window's: the fonts, images, sounds, tokens, theme, devtools settings,
+/// `kui_set_native_menus` and text-cache budget registered on it before
+/// the call reach the window, and the handles it minted keep drawing
+/// there. The extensions loaded into it with [`kui_ctx_add_extension`]
+/// come along the same way, and the host's view declares slots with
+/// [`kui_slot`] exactly as it would headless. What the host pushed with
+/// [`kui_env_set_system`] becomes the window's pin over the OS's reading
+/// (a zero field keeps following the OS). The context is left with a
+/// fresh core and no extensions, still the caller's to free. A NULL
+/// context with a NULL config is `kui_run`.
 ///
-/// The extensions loaded into the context (ADR 0014) come along the same
-/// way: the window's runner takes them. There is no loader here, on
-/// purpose. `kui_ctx_add_extension` is the loader, with
-/// `kui_ctx_extension_error` for the reason a plugin was refused; a
-/// second one taking paths would need a second error channel, and the
-/// first version of this function had exactly that (stderr, and a note
-/// advising to load into a context first to find out why).
-///
-/// The host's view declares slots with `kui_slot` exactly as it would
-/// headless, and what an extension's nodes produce reaches the host as
-/// replies carrying that extension's origin.
-///
-/// The context's `env.system` comes along too, as the window's pin: what
-/// the host pushed with `kui_env_set_system` before handing the context
-/// here is laid over the OS's reading before every frame (backlog F47),
-/// so `kui_env_set_system(ctx, 0, 0, KUI_MOTION_REDUCED, empty)` and then
-/// `kui_run_with(ctx, ..)` opens the window as a user who asked for less
-/// motion sees it, and the zero fields keep following the OS. A context
-/// never told anything pins nothing — zero is unknown is not pinned — so
-/// `kui_run` is unchanged. This is the launcher door C has: the ffi's
-/// headless setter is sticky by nature (a C host is its own frame driver
-/// there), and under `kui_run` the runner is, which is why a pin has to
-/// ride in with the context rather than be pushed at a window.
+/// Returns false before any window opens, with the reason on stderr, for
+/// a config word this build does not have (`chrome`, `text_aa` or
+/// `diagnostics` past the last constant, or a size that is not a size).
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_run_with(
     ptr: *mut KuiCtx,

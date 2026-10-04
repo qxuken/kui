@@ -1,4 +1,4 @@
-//! File dialogs as an ask (backlog C51): a view or a host asks for the
+//! File dialogs as an ask: a view or a host asks for the
 //! platform's Open, Save or folder dialog, and the answer is a `files`
 //! event. Under `kui_run` the runner shows it; a host driving its own
 //! window drains the ask with `kui_take_file_request` and answers with
@@ -13,7 +13,7 @@ pub const KUI_FILE_DIALOG_SAVE: u32 = 1;
 /// `KUI_FILE_DIALOG_FOLDER`: a folder, or several.
 pub const KUI_FILE_DIALOG_FOLDER: u32 = 2;
 
-/// [in] One entry of a dialog's file-type menu.
+/// One entry of a dialog's file-type menu.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct KuiFileFilter {
@@ -23,7 +23,7 @@ pub struct KuiFileFilter {
     pub extension_count: usize,
 }
 
-/// [in] The dialog `kui_request_files` asks for. Zeroed, it is an Open
+/// The dialog [`kui_request_files`] asks for. Zeroed, it is an Open
 /// dialog for one file of any type.
 #[repr(C)]
 #[derive(Clone, Copy)]

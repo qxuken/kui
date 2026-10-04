@@ -8,6 +8,7 @@ homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
 description = "C API for kui (cdylib, staticlib on request, + include/kui.h)"
+readme = "README.md"
 publish = ["crates-io", "drydock9"]
 
 [lib]

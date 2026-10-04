@@ -1,14 +1,12 @@
-//! The access tree and the requests assistive technology sends back
-//! (`docs/adr/0001-accessibility-as-data.md`).
+//! The access tree and the requests assistive technology sends back.
 
 use super::*;
 
-/// The access tree of the last finished frame (what assistive technology
-/// sees; see docs/adr/0001-accessibility-as-data.md): fills `out` with up
-/// to `cap` nodes in tree order (the root first) and returns the total
-/// count, so a short buffer can be resized and the call repeated. Strings
-/// stay valid until the next call on this context. A host that never
-/// asks pays nothing.
+/// The access tree of the last finished frame, which is what assistive
+/// technology sees: fills `out` with up to `cap` nodes in tree order (the
+/// root first) and returns the total count, so a short buffer can be
+/// resized and the call repeated. Strings stay valid until the next call
+/// on this context. A host that never asks pays nothing.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_access_tree(ptr: *mut KuiCtx, out: *mut KuiAccessNode, cap: usize) -> usize {
     guard(0, || {
@@ -268,7 +266,7 @@ pub extern "C" fn kui_input_access_text(
 /// `live` is KUI_LIVE_POLITE or KUI_LIVE_ASSERTIVE; KUI_LIVE_OFF and an
 /// empty string are both no-ops, the first so a caller can gate politeness
 /// without a branch. A region whose message is on screen is `KuiSpec.live`
-/// instead (see `docs/adr/0008-live-regions-and-announcements.md`).
+/// instead.
 ///
 /// A host holding the context calls this from wherever the event is
 /// handled; called from a frame builder it fires every frame, which the

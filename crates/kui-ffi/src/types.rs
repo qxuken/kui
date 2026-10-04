@@ -14,17 +14,21 @@ pub(crate) type ViewFn = extern "C" fn(user: *mut c_void, ctx: *mut KuiCtx);
 #[cfg(feature = "runner")]
 pub(crate) type EventFn = extern "C" fn(user: *mut c_void, ev: *const KuiEvent);
 /// A C callback that hears the window go: `kui_on_teardown`'s, with
-/// `kui_run`'s `user` (backlog RG1). Runner-only, as `EventFn` is.
+/// `kui_run`'s `user`. Runner-only, as `EventFn` is.
 #[cfg(feature = "runner")]
 pub(crate) type TeardownFn = extern "C" fn(user: *mut c_void);
 
 // ---------------------------------------------------------------------------
 // Opaque + repr(C) types
 
-/// Opaque: a `Core` plus the pending event queue. The core is either owned
-/// (standalone contexts from `kui_ctx_new`) or borrowed from the windowed
-/// runner for the duration of a view callback — behind a pointer either way,
-/// so every entry point works identically on both.
+/// The opaque context every `kui_*` call takes: a core plus its pending
+/// event queue.
+///
+/// A standalone context from [`kui_ctx_new`] owns its core and lives until
+/// [`kui_ctx_free`]. The context handed to a `kui_run` view callback or a
+/// plugin's `kui_ext_view` borrows the runner's frame instead and is valid
+/// for that call only; the builder entry points work the same on both,
+/// while input, polling and draw data belong to the owning side.
 pub struct KuiCtx {
     pub(crate) core: *mut Core,
     /// Keep-alive for standalone contexts; never read directly.
@@ -72,8 +76,7 @@ pub struct KuiCtx {
     pub(crate) devtools_key: String,
     /// The file dialog `kui_take_file_request` most recently handed out,
     /// whose strings — and the filter `kui_file_request_filter` read,
-    /// its extensions joined — are borrowed until the next call (backlog
-    /// C51).
+    /// its extensions joined — are borrowed until the next call.
     pub(crate) file_request: Option<kui_core::FileDialog>,
     pub(crate) file_filter_text: String,
     /// The tab name most recently handed out by `kui_devtools_current_tab`,
@@ -99,13 +102,13 @@ pub struct KuiCtx {
     /// until the next call.
     pub(crate) last_window_name: Option<Rc<str>>,
     /// Which slot this context is a C extension's fill of, and the params
-    /// the host passed it (ADR 0014): what `kui_slot_name` / `kui_slot_params`
+    /// the host passed it: what `kui_slot_name` / `kui_slot_params`
     /// answer. `None` on every other context - a standalone one, a C host's
     /// view callback - where they answer false and NULL.
     pub(crate) slot_name: Option<String>,
     pub(crate) slot_namespace: Option<String>,
     pub(crate) slot_params: Option<KuiValue>,
-    /// The extensions this context hosts, in origin order (ADR 0014).
+    /// The extensions this context hosts, in origin order.
     /// `kui_ctx_add_extension` fills it, `kui_slot` fills *them* in place,
     /// `kui_frame_finish` lets them take `ns/root` and warn about slots
     /// nobody declared, and an event whose origin names one is delivered to
@@ -136,7 +139,7 @@ impl KuiCtx {
     }
 
     /// Takes the core a standalone context owns, for `kui_run_with` to
-    /// open the window on (backlog AR27), and leaves the context a fresh
+    /// open the window on, and leaves the context a fresh
     /// one so that it stays a context — still the caller's to free, and
     /// to use, as one that has registered nothing. `None` on a borrowing
     /// context, whose core is someone else's frame.
@@ -212,7 +215,7 @@ impl KuiCtx {
     /// Takes a batch of events the core just produced: the host's own are
     /// queued for `kui_poll_event`, and one whose origin names a loaded
     /// extension is delivered to it instead, its replies queued in its
-    /// place (ADR 0014 decision 6). `Extensions::route` is the walk, the
+    /// place. `Extensions::route` is the walk, the
     /// same one the Rust runner's `route_events` takes.
     pub(crate) fn absorb(&mut self, events: impl IntoIterator<Item = UiEvent>) {
         let out = &mut self.events;
@@ -228,12 +231,23 @@ impl KuiCtx {
     }
 }
 
-/// Opaque dynamic value (event payloads). Transparent over `Value`, which
-/// is what lets `kui_value_get` / `kui_value_at` / `kui_value_entry` hand
-/// out a borrowed `*const Value` as a `*const KuiValue`.
+/// An opaque dynamic value: null, bool, int, float, string, list or map.
+///
+/// Payloads a host attaches to nodes (`on_click` and the other tags) and
+/// the payloads events carry back are values. Build one with
+/// `kui_value_*` and read one with [`kui_value_get`], [`kui_value_at`],
+/// [`kui_value_as_str`] and friends. One you built is yours until a call
+/// documented as consuming it takes it; otherwise free it with
+/// [`kui_value_free`]. One the library hands out is borrowed.
 #[repr(transparent)]
 pub struct KuiValue(pub(crate) Value);
 
+/// A borrowed string: `len` bytes of UTF-8 at `ptr`, not NUL-terminated.
+///
+/// `KUI_STR("literal")` makes one in C and `kui_str_eq` compares one to a
+/// C string. A string the library hands out points into memory it owns and
+/// is valid until the next call of the same function on that context.
+/// Invalid UTF-8 going in is replaced. The layout is frozen.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct KuiStr {
@@ -241,23 +255,24 @@ pub struct KuiStr {
     pub len: usize,
 }
 
+/// One axis of a node's size: a `KUI_*` tag and its value.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct KuiSizing {
-    /// 0 = fit, 1 = grow(value), 2 = fixed(value px), 3 = percent(value
-    /// 0..1), 4 = calc (value the expression's number, from `kui_size_*`;
-    /// backlog F109)
+    /// `KUI_FIT` (0), `KUI_GROW` (1, `value` the weight), `KUI_FIXED` (2,
+    /// logical px), `KUI_PERCENT` (3, `value` 0..1) or `KUI_CALC` (4,
+    /// `value` an expression number from `kui_size_*`).
     pub tag: u32,
     pub value: f32,
 }
 
-/// Which of a `KuiKeyframe`'s fields are set (its `set` bits).
 /// `KuiSpec.min_w` / `min_h` as the node's own fit size (`KUI_MIN_FIT`).
 pub const KUI_MIN_FIT: f32 = -1.0;
-/// `KuiSpec.min_w` / `min_h` as a floor of 0 declared: no floor at all,
-/// not even the content's a share's row reads for an undeclared (0) one —
-/// CSS's `min-width: 0` (backlog RG92).
+/// `KuiSpec.min_w` / `min_h` as a declared floor of 0: no floor at all,
+/// not even the content's that a share in an overflowing row gets for an
+/// undeclared (0) one; CSS's `min-width: 0`.
 pub const KUI_MIN_NONE: f32 = -2.0;
+/// Which of a `KuiKeyframe`'s fields are set (its `set` bits).
 pub const KUI_KF_AT: u32 = 1 << 0;
 pub const KUI_KF_WIDTH: u32 = 1 << 1;
 pub const KUI_KF_HEIGHT: u32 = 1 << 2;
@@ -316,6 +331,14 @@ pub struct KuiEnter {
     pub opacity: f32,
 }
 
+/// Everything a box node is built from: size, layout, paint, behaviour
+/// tags and accessibility, as the `kui_open*` family and the stock
+/// widgets read it.
+///
+/// Zero-initialize it and set what you need; a zeroed field is its
+/// documented default. The library reads the whole struct, so build
+/// against the header that matches `kui_abi_version()`. Pointers (`KuiStr`
+/// and `KuiValue`) are borrowed while the node opens and never retained.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct KuiSpec {
@@ -323,13 +346,13 @@ pub struct KuiSpec {
     pub height: KuiSizing,
     /// Clamps applied after sizing resolves; 0 for max means unconstrained,
     /// 0 for min is undeclared, `KUI_MIN_FIT` the node's own fit size and
-    /// `KUI_MIN_NONE` a declared 0 (backlog RG92).
+    /// `KUI_MIN_NONE` a declared 0.
     pub min_w: f32,
     pub max_w: f32,
     pub min_h: f32,
     pub max_h: f32,
-    /// 0 = column, 1 = row, 2 = table (`KUI_TABLE`: a column whose rows'
-    /// children line up in columns, ADR 0033)
+    /// `KUI_COLUMN` (0), `KUI_ROW` (1) or `KUI_TABLE` (2): a column whose
+    /// rows' children line up in columns.
     pub dir: u32,
     pub pad_l: f32,
     pub pad_r: f32,
@@ -435,7 +458,7 @@ pub struct KuiSpec {
     pub caret: u32,
     pub selection_anchor: u32,
     /// Non-zero: reachable by Tab (and focused by a click) without a click
-    /// payload or a control role (docs/adr/0002-keyboard-focus-as-data.md).
+    /// payload or a control role.
     pub focusable: u32,
     /// Non-zero: inert — no click, drag or key sink, no hover / pressed /
     /// focus background, skipped by Tab, reported disabled to assistive
@@ -529,8 +552,7 @@ pub struct KuiSpec {
     /// this node changes, a screen reader reads the change without being
     /// asked. A node that declares it is semantic, so a plain box marked
     /// live is not elided from the access tree. For a one-off with no node
-    /// behind it, `kui_announce` is the other half (see
-    /// `docs/adr/0008-live-regions-and-announcements.md`).
+    /// behind it, `kui_announce` is the other half.
     pub live: u32,
     /// Non-zero, with a non-NULL `on_key` on `kui_open_with`: the sink hears
     /// releases too, as the same `{kind="key"}` payload with `phase="up"`
@@ -570,30 +592,23 @@ pub struct KuiSpec {
     /// it is. On `kui_button_with` it takes the hover and pressed shades
     /// and the label colour with it.
     pub accent: u32,
-    /// Non-zero: this node is a selection scope — the text of every node
+    /// Non-zero: this node is a selection scope. The text of every node
     /// inside it selects as one run, and a press-drag across them takes
-    /// the lot (`docs/adr/0017-selection-as-a-scope.md`). Declared on the
-    /// container, not on each label. Appended after ABI 11 without a
-    /// bump, the way `accent` was — under the [in] rule as it then stood
-    /// (`abi.rs`, backlog AR50).
+    /// the lot. Declared on the container, not on each label.
     pub selectable: u32,
     /// Force-click tag (`on_force_click`): a press that deepens past the
     /// second stage of a Force Touch trackpad over this node emits
     /// `{kind:"forceclick", x, y, tag}` on it. Borrowed while the node
-    /// opens, like every other tag. Appended after ABI 11 without a bump,
-    /// under the [in] rule as it then stood.
+    /// opens, like every other tag.
     pub on_force_click: *const KuiValue,
-    /// Non-zero: this node's subtree is a focus region — a Tab ring of its
-    /// own that the ring outside never enters and that never leaves
-    /// (`docs/adr/0022-focus-regions.md`). Entered on purpose:
-    /// `kui_focus_region`, a press inside it, or a focus on a node in it.
-    /// Nothing else about the node changes. Appended after ABI 13 without
-    /// a bump, under the [in] rule as it then stood.
+    /// Non-zero: this node's subtree is a focus region, a Tab ring of its
+    /// own that the ring outside never enters and that never leaves.
+    /// Entered on purpose: `kui_focus_region`, a press inside it, or a
+    /// focus on a node in it. Nothing else about the node changes.
     pub focus_region: u32,
     /// When this node's scrollbars are drawn: `KUI_SCROLLBAR_*` (the
     /// `scrollbar` row's index plus one), 0 for the default, which is
-    /// `KUI_SCROLLBAR_VISIBLE`. Appended after ABI 13 without a bump, like
-    /// the three below.
+    /// `KUI_SCROLLBAR_VISIBLE`.
     pub scrollbar: u32,
     /// The thumb's width at rest, logical px; 0 for the stock 4. Under
     /// the pointer or dragged it is 2 px wider.
@@ -603,52 +618,44 @@ pub struct KuiSpec {
     /// and `scrollbar_active`.
     pub scrollbar_color: u32,
     pub scrollbar_active_color: u32,
-    /// Non-zero: scroll anchoring on this scrolling node (backlog C26,
-    /// CSS's `overflow-anchor`) — the first child in view keeps its place
-    /// on screen when the content before it changes size. Appended after
-    /// ABI 14 without a bump, under the [in] rule as it then stood.
+    /// Non-zero: scroll anchoring on this scrolling node (CSS's
+    /// `overflow-anchor`): the first child in view keeps its place on
+    /// screen when the content before it changes size.
     pub anchor: u32,
     /// Scroll tag (`on_scroll`): the wheel over this node emits
     /// `{kind:"scroll", x, y, dx, dy, lines, tag}` on it instead of
-    /// scrolling anything — `lines` the whole lines a `cells` grid's delta
-    /// covers, null elsewhere — and a drag-select held past a grid's edge
-    /// arrives the same way once a frame
-    /// (`docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md`).
-    /// Borrowed while the node opens, like every other tag. Appended after
-    /// ABI 15 without a bump, under the [in] rule as it then stood — the
-    /// last append that rule covered.
+    /// scrolling anything (`lines` the whole lines a `cells` grid's delta
+    /// covers, null elsewhere), and a drag-select held past a grid's edge
+    /// arrives the same way once a frame. Borrowed while the node opens,
+    /// like every other tag.
     pub on_scroll: *const KuiValue,
-    /// Drop-zone tag (`on_drop`, ADR 0031): files dragged in from the OS
-    /// over this node emit `{kind:"drop", phase, paths, x, y, tag}` on it
-    /// — `enter`, `move`, `leave`, `drop`. A node inside a zone is the
-    /// zone's; a node that is no zone is looked past. Borrowed while the
-    /// node opens, like every other tag. ABI 18 (the first append under
-    /// the amended rule).
+    /// Drop-zone tag (`on_drop`): files dragged in from the OS over this
+    /// node emit `{kind:"drop", phase, paths, x, y, tag}` on it, `phase`
+    /// one of `enter`, `move`, `leave`, `drop`. A node inside a zone is
+    /// the zone's; a node that is no zone is looked past. Borrowed while
+    /// the node opens, like every other tag. ABI 18.
     pub on_drop: *const KuiValue,
     /// Background while dragged files are over this node, `0xRRGGBBAA`;
     /// 0 for none. Wins over `pressed_bg`, `focus_bg` and `hover_bg`;
     /// eases with `transition`. ABI 18.
     pub drop_bg: u32,
     /// Non-zero: a `KUI_FLOAT_PARENT` float takes its parent's clip, as a
-    /// child does, instead of escaping every ancestor's — cut at a `clip`
-    /// canvas's edge and not hit past it (`FloatConfig::clip`, backlog
-    /// F90). Read with the parent anchor only; still painted as a layer
-    /// over its in-flow siblings. Beside `float_fit` in meaning, at the
-    /// end of the struct because that is where an append goes. ABI 19.
+    /// child does, instead of escaping every ancestor's: cut at a `clip`
+    /// canvas's edge and not hit past it. Read with the parent anchor
+    /// only; still painted as a layer over its in-flow siblings. ABI 19.
     pub float_clip: u32,
-    /// Width over height (`aspectRatio`, backlog C14); 0 for none. It
-    /// sizes the axis whose sizing is fit: a fit height from the final
-    /// width, a fit width from a fixed height. ABI 19.
+    /// Width over height (`aspectRatio`); 0 for none. It sizes the axis
+    /// whose sizing is fit: a fit height from the final width, a fit width
+    /// from a fixed height. ABI 19.
     pub aspect_ratio: f32,
-    /// A checkbox that is neither on nor off (`mixed`, ADR 0034): read as
-    /// mixed whatever `checked` says, drawn as a dash by `kui_checkbox`.
-    /// ABI 19.
+    /// A checkbox that is neither on nor off (`mixed`): read as mixed
+    /// whatever `checked` says, drawn as a dash by `kui_checkbox`. ABI 19.
     pub mixed: u32,
-    /// A slider's step (`valueStep`, ADR 0034), present when
-    /// `KUI_VALUE_STEP` is in `value_set`. ABI 19.
+    /// A slider's step (`valueStep`), present when `KUI_VALUE_STEP` is in
+    /// `value_set`. ABI 19.
     pub value_step: f32,
-    /// A slider's change tag (`onChange`, ADR 0034): the core turns a
-    /// press, a drag, the arrows, PageUp / PageDown and Home / End into
+    /// A slider's change tag (`onChange`): the core turns a press, a drag,
+    /// the arrows, PageUp / PageDown and Home / End into
     /// `{kind:"change", value, phase, tag}`. Borrowed while the node
     /// opens, like every other tag. ABI 19.
     pub on_change: *const KuiValue,
@@ -659,41 +666,40 @@ pub struct KuiSpec {
     /// ABI 20.
     pub pixel_snap: u32,
     /// Non-zero: a press on this node or inside it leaves keyboard focus
-    /// where it was (`keepFocus`, backlog DX10). ABI 20.
+    /// where it was (`keepFocus`). ABI 20.
     pub keep_focus: u32,
     /// Focus entering or leaving this node's subtree emits `{kind:"focus",
-    /// phase, by, tag}` (`onFocus`, backlog DX18). Borrowed while the node
-    /// opens, like every other tag. ABI 20.
+    /// phase, by, tag}` (`onFocus`). Borrowed while the node opens, like
+    /// every other tag. ABI 20.
     pub on_focus: *const KuiValue,
-    /// A table's grid rules (`rules`, backlog DX21), 0xRRGGBBAA; 0 draws
-    /// none. ABI 20.
+    /// A table's grid rules (`rules`), 0xRRGGBBAA; 0 draws none. ABI 20.
     pub rules: u32,
     /// Their width in logical px (`ruleWidth`); 0 is 1. ABI 20.
     pub rule_w: f32,
     /// The non-primary buttons as `{kind:"button", phase, button, x, y,
     /// clicks, tag}` events on the node that claims them, captured from
-    /// press to release (`onButton`, backlog F105). Borrowed while the
-    /// node opens, like every other tag. ABI 20.
+    /// press to release (`onButton`). Borrowed while the node opens, like
+    /// every other tag. ABI 20.
     pub on_button: *const KuiValue,
-    /// Which buttons `on_button` claims, as `KUI_BUTTONS_*` bits
-    /// (`Buttons::bits`); 0 is all three. ABI 20.
+    /// Which buttons `on_button` claims, as `KUI_BUTTONS_*` bits; 0 is all
+    /// three. ABI 20.
     pub buttons: u32,
     /// Whether a scroll gesture starting over this scroller at its limit
-    /// goes on to the one around it (`overscroll`, backlog F107):
-    /// `KUI_OVERSCROLL_*`, the row's index plus one; 0 is `auto`. ABI 20.
+    /// goes on to the one around it (`overscroll`): `KUI_OVERSCROLL_*`,
+    /// the row's index plus one; 0 is `auto`. ABI 20.
     pub overscroll: u32,
-    /// Which axes `on_scroll` takes (`scrollAxes`, backlog F107):
-    /// `KUI_SCROLL_AXES_*`, the row's index plus one; 0 is both. ABI 20.
+    /// Which axes `on_scroll` takes (`scrollAxes`): `KUI_SCROLL_AXES_*`,
+    /// the row's index plus one; 0 is both. ABI 20.
     pub scroll_axes: u32,
     /// Non-zero, with `on_key`: the modifier and lock keys arrive as keys
-    /// of their own (`modifierKeys`, backlog F108) — codes "shift",
-    /// "ctrl", "alt", "super", "capslock", "numlock", "scrolllock", the
-    /// side in `location`. Zero: a modifier is only ever held. ABI 21.
+    /// of their own (`modifierKeys`), with codes "shift", "ctrl", "alt",
+    /// "super", "capslock", "numlock", "scrolllock" and the side in
+    /// `location`. Zero: a modifier is only ever held. ABI 21.
     pub modifier_keys: u32,
-    /// The clamps as size expressions (backlog F109): a `KUI_FIXED`,
-    /// `KUI_PERCENT` or `KUI_CALC` sizing (`kui_size_*`) here replaces the
-    /// float of the same name, resolved by layout against the parent's
-    /// content box; zeroed (`KUI_FIT`), the float holds. ABI 22.
+    /// The clamps as size expressions: a `KUI_FIXED`, `KUI_PERCENT` or
+    /// `KUI_CALC` sizing (`kui_size_*`) here replaces the float of the
+    /// same name, resolved by layout against the parent's content box;
+    /// zeroed (`KUI_FIT`), the float holds. ABI 22.
     pub min_w_size: KuiSizing,
     pub max_w_size: KuiSizing,
     pub min_h_size: KuiSizing,
@@ -797,7 +803,7 @@ pub struct KuiAccessNode {
     pub set_size: u32,
     /// KUI_ORIENTATION_* (0 = unset: this node is not a composite
     /// container). How the container arranges its items, from its own
-    /// `dir` (`docs/adr/0007-composite-keyboard-patterns.md`).
+    /// `dir`.
     pub orientation: u32,
 }
 
@@ -814,7 +820,7 @@ pub const KUI_ACCESS_HAS_SCROLL: u32 = 1 << 8;
 /// KUI_ACCESS_HAS_TEXT_SELECTION).
 pub const KUI_ACCESS_DISABLED: u32 = 1 << 10;
 /// The node is the frame's `modal` surface (`aria-modal`): focus and input
-/// are confined to it (`docs/adr/0003-modal-surfaces.md`).
+/// are confined to it.
 pub const KUI_ACCESS_MODAL: u32 = 1 << 11;
 /// The node has a selected state at all, and what it is: every
 /// KUI_ROLE_TAB, and a row or link the view marked (see `KuiSpec.selected`).
@@ -826,14 +832,12 @@ pub const KUI_ACCESS_EXPANDED: u32 = 1 << 15;
 /// `pos_in_set` holds (on an item), `set_size` holds (on its container).
 pub const KUI_ACCESS_HAS_POS_IN_SET: u32 = 1 << 16;
 pub const KUI_ACCESS_HAS_SET_SIZE: u32 = 1 << 17;
-/// A checkbox that is neither on nor off (`KuiSpec.mixed`, ADR 0034); set
-/// beside `KUI_ACCESS_CHECKED_SET`, whose `KUI_ACCESS_CHECKED` it outranks.
+/// A checkbox that is neither on nor off (`KuiSpec.mixed`); set beside
+/// `KUI_ACCESS_CHECKED_SET`, whose `KUI_ACCESS_CHECKED` it outranks.
 pub const KUI_ACCESS_MIXED: u32 = 1 << 20;
 /// The node declared `live` (see `KuiSpec.live`), and which politeness.
-/// Two bits rather than a `live` field, because `KuiAccessNode` is an
-/// [out-array] struct that a host allocates: appending to it would be an
-/// ABI break, and `flags` has room (see
-/// `docs/adr/0006-c-abi-versioning.md`).
+/// Two bits rather than a field, because `KuiAccessNode` is an array the
+/// host allocates and appending to it would be an ABI break.
 pub const KUI_ACCESS_LIVE_POLITE: u32 = 1 << 18;
 pub const KUI_ACCESS_LIVE_ASSERTIVE: u32 = 1 << 19;
 
@@ -859,12 +863,12 @@ pub const KUI_SCROLLBAR_HIDDEN: u32 = 2;
 pub const KUI_SCROLLBAR_AUTO: u32 = 3;
 
 /// KUI_OVERSCROLL_* is the position in `schema::OVERSCROLLS` plus one (0 =
-/// unset, which is `auto`), backlog F107.
+/// unset, which is `auto`).
 pub const KUI_OVERSCROLL_AUTO: u32 = 1;
 pub const KUI_OVERSCROLL_CONTAIN: u32 = 2;
 
 /// KUI_SCROLL_AXES_* is the position in `schema::SCROLL_AXES` plus one (0
-/// = unset, which is both), backlog F107.
+/// = unset, which is both).
 pub const KUI_SCROLL_AXES_BOTH: u32 = 1;
 pub const KUI_SCROLL_AXES_X: u32 = 2;
 pub const KUI_SCROLL_AXES_Y: u32 = 3;
@@ -881,8 +885,7 @@ pub const KUI_LIVE_ASSERTIVE: u32 = 2;
 /// once, with no node behind it. `live` is KUI_LIVE_POLITE or
 /// KUI_LIVE_ASSERTIVE — never KUI_LIVE_OFF, which `kui_announce` drops.
 /// `text` borrows the context's buffer and stays valid until the next
-/// `kui_take_announcements` on the same context (see
-/// `docs/adr/0008-live-regions-and-announcements.md`).
+/// `kui_take_announcements` on the same context.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct KuiAnnouncement {
@@ -893,7 +896,7 @@ pub struct KuiAnnouncement {
 pub const KUI_VALUE_NOW: u32 = 1 << 0;
 pub const KUI_VALUE_MIN: u32 = 1 << 1;
 pub const KUI_VALUE_MAX: u32 = 1 << 2;
-/// `KuiSpec.value_step` holds (ADR 0034).
+/// `KuiSpec.value_step` holds.
 pub const KUI_VALUE_STEP: u32 = 1 << 6;
 
 /// KUI_ROLE_* is the position in `Role::ALL` plus one (0 = unset).
@@ -915,7 +918,7 @@ pub(crate) fn role_of_code(code: u32) -> Option<kui_core::Role> {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct KuiTextMetrics {
-    /// [out] reservation; see `KUI_TEXT_METRICS_INIT`.
+    /// `[out]` reservation; see `KUI_TEXT_METRICS_INIT`.
     pub size: u32,
     pub width: f32,
     pub height: f32,
@@ -944,26 +947,18 @@ unsafe impl OutParam for KuiTextMetrics {
     }
 }
 
-/// The palette a frame paints with ([out] for `kui_theme`, [in] for
-/// `kui_theme_set`): one `0xRRGGBBAA` per role, derived from what the host
-/// reported through `kui_env_set_system` unless it pinned something else.
-/// See `docs/adr/0019-a-theme-derived-from-appearance-and-accent.md` and
-/// the Theme table in `docs/props.md`.
+/// The palette a frame paints with: one `0xRRGGBBAA` per role, derived
+/// from what the host reported through `kui_env_set_system` unless it
+/// pinned something else. Written by `kui_theme` (`[out]`, so start from
+/// `KUI_THEME_INIT`) and read whole by `kui_theme_set` (`[in]`).
 ///
 /// The roles are `kui_core::schema::THEME_ROLES` field for field, in that
-/// order, and `theme_struct_covers_every_role` pins the two together. A
-/// role added there fails that test until it is appended here — and an
-/// append here **bumps `KUI_ABI_VERSION`**, by the rule in `abi`: the
-/// `size` handshake keeps the append from corrupting a host that sets it
-/// (`write_out` fills only what was reserved), but a host that skipped
-/// `kui_abi_version()` would take the short write unaware, which is what
-/// ABI 4 bumped for. The [in] direction has no handshake at all —
-/// `kui_theme_set` reads the struct the host filled, so an appended field
-/// is read past an old host's shorter one — which is the second reason.
+/// order; a test pins the two together, and an append here bumps
+/// `KUI_ABI_VERSION`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct KuiTheme {
-    /// [out] reservation; see `KUI_THEME_INIT`. Ignored by
+    /// `[out]` reservation; see `KUI_THEME_INIT`. Ignored by
     /// `kui_theme_set`, which reads the struct the host filled.
     pub size: u32,
     /// Which base this came from: `KUI_APPEARANCE_UNKNOWN` (0, the dark
@@ -1040,15 +1035,13 @@ unsafe impl OutParam for KuiTheme {
 }
 
 /// The sizes the stock widgets are built from (`kui_metrics`,
-/// `kui_metrics_set`; backlog T2): `kui_core::schema::METRIC_ROLES` field
-/// for field, in that order, and `metrics_struct_covers_every_role` pins
-/// the two together as `KuiTheme` is pinned to its roles. Logical px,
-/// before the scale factor. An append here bumps `KUI_ABI_VERSION`, by
-/// the rule `KuiTheme` states.
+/// `kui_metrics_set`), in logical px before the scale factor:
+/// `kui_core::schema::METRIC_ROLES` field for field, in that order. An
+/// append here bumps `KUI_ABI_VERSION`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct KuiMetrics {
-    /// [out] reservation; see `KUI_METRICS_INIT`. Ignored by
+    /// `[out]` reservation; see `KUI_METRICS_INIT`. Ignored by
     /// `kui_metrics_set`, which reads the struct the host filled.
     pub size: u32,
     pub control_text: f32,
@@ -1179,9 +1172,8 @@ pub struct KuiWarning {
 }
 
 /// One installed or loaded font family (`kui_system_fonts`), as the font
-/// database read its faces (backlog F97): what `SystemFont` says, laid
-/// out for C. `family` and `weights` are borrowed until the next
-/// `kui_system_fonts` on the same context.
+/// database read its faces. `family` and `weights` are borrowed until the
+/// next `kui_system_fonts` on the same context.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct KuiSystemFont {
@@ -1219,8 +1211,7 @@ pub struct KuiAudio {
     pub looped: u32,
     pub paused: u32,
     /// Removal releases the playback instead of stopping it: it plays to
-    /// its end. Appended after `paused` without a bump, under the [in]
-    /// rule as it then stood (`abi.rs`); zero is the old behaviour.
+    /// its end. Zero stops it.
     pub finish: u32,
 }
 
@@ -1240,6 +1231,10 @@ pub struct KuiAudioCommand {
     pub looped: u32,
 }
 
+/// How a run of text is set: size, line height, colour, family or font,
+/// wrapping and decoration. A zeroed struct is the default style at size
+/// 0, so set at least `size`; NULL where a style pointer is taken is the
+/// default style.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct KuiTextStyle {
@@ -1264,21 +1259,22 @@ pub struct KuiTextStyle {
     /// OpenType features for the shaper, in the spelling every binding
     /// shares: `tag=value` pairs separated by spaces or commas, a bare
     /// tag meaning 1 and `-tag` 0 (`"liga=0 calt=0"`, `"tnum"`). Empty
-    /// (a zeroed `KuiStr`) is the font's defaults. Appended without a
-    /// bump, under the [in] rule as it then stood (`abi.rs`).
+    /// (a zeroed `KuiStr`) is the font's defaults.
     pub features: KuiStr,
     /// `KUI_DECO_UNDERLINE` | `KUI_DECO_STRIKETHROUGH`: lines where the
-    /// face puts them, over every glyph. Paint only. Appended without a
-    /// bump, the same way (backlog C22).
+    /// face puts them, over every glyph. Paint only.
     pub decoration: u32,
     /// The underline's own colour as `0xRRGGBBAA`, 0 for the text's;
-    /// non-zero implies `KUI_DECO_UNDERLINE` (backlog K4). ABI 17.
+    /// non-zero implies `KUI_DECO_UNDERLINE`. ABI 17.
     pub underline_color: u32,
     /// `KUI_UNDERLINE_SOLID` / `_WAVY` / `_DOTTED`; a non-solid style
-    /// implies `KUI_DECO_UNDERLINE` (backlog K4). ABI 17.
+    /// implies `KUI_DECO_UNDERLINE`. ABI 17.
     pub underline_style: u32,
 }
 
+/// One styled run of a rich-text paragraph (`kui_rich_text`,
+/// `kui_measure_rich_text`): its text and what differs from the base
+/// style. Travels as an array, so an append here is an ABI bump.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct KuiSpan {
@@ -1289,16 +1285,15 @@ pub struct KuiSpan {
     /// `KUI_SPAN_STRIKETHROUGH`
     pub flags: u32,
     /// 0xRRGGBBAA behind the span's glyphs alone, one rect per line the
-    /// span covers; 0 = none. Its append is ABI 8: spans travel as an
-    /// array, so the stride moved (backlog C22).
+    /// span covers; 0 = none. ABI 8.
     pub bg: u32,
-    /// The underline's own colour, 0 for the span's (backlog K4); non-zero
-    /// implies `KUI_SPAN_UNDERLINE`. ABI 17.
+    /// The underline's own colour, 0 for the span's; non-zero implies
+    /// `KUI_SPAN_UNDERLINE`. ABI 17.
     pub underline_color: u32,
     /// `KUI_UNDERLINE_*`; non-solid implies `KUI_SPAN_UNDERLINE`. ABI 17.
     pub underline_style: u32,
-    /// The background's corner radius, logical px (backlog F101); 0 is the
-    /// square background. Above zero, `bg` is joined into one shape with
+    /// The background's corner radius, logical px; 0 is the square
+    /// background. Above zero, `bg` is joined into one shape with
     /// every rounded background of the same colour and radius it meets —
     /// on the line above or below, or end to end on its own line, in this
     /// text or another — rounded outside where a line reaches past its
@@ -1307,11 +1302,10 @@ pub struct KuiSpan {
     pub bg_radius: f32,
 }
 
-/// One colour token as `kui_tokens_set` reads it
-/// (`docs/adr/0027-tokens-beside-the-theme.md`): a name and a value per
-/// base, `0xRRGGBBAA` each — the same value twice for a colour that does
-/// not follow the appearance. [in], and it travels as an array, so an
-/// append here moves the stride and is an ABI bump (the `KuiSpan` rule).
+/// One colour token as `kui_tokens_set` reads it: a name and a value per
+/// base, `0xRRGGBBAA` each (the same value twice for a colour that does
+/// not follow the appearance). Travels as an array, so an append here is
+/// an ABI bump.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct KuiColorToken {
@@ -1321,7 +1315,7 @@ pub struct KuiColorToken {
 }
 
 /// One length token: a name and logical px, before the scale factor.
-/// [in], array-carried like `KuiColorToken`.
+/// Array-carried like `KuiColorToken`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct KuiLengthToken {
@@ -1330,11 +1324,10 @@ pub struct KuiLengthToken {
 }
 
 /// One step of a derived colour token's recipe as `kui_tokens_derive`
-/// reads it (`docs/adr/0028-derived-tokens.md`): the verb as one of the
-/// `KUI_OP_*` numbers, the number it takes, and — for `KUI_OP_MIX` and
-/// `KUI_OP_READABLE` only — the colour token or role the verb names,
-/// empty otherwise. [in], array-carried, so an append moves the stride
-/// and is an ABI bump.
+/// reads it: the verb as one of the `KUI_OP_*` numbers, the number it
+/// takes, and (for `KUI_OP_MIX` and `KUI_OP_READABLE` only) the colour
+/// token or role the verb names, empty otherwise. Array-carried, so an
+/// append here is an ABI bump.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct KuiColorOp {
@@ -1344,8 +1337,8 @@ pub struct KuiColorOp {
 }
 
 /// One derived colour token: a name, the colour token or theme role it
-/// derives from, and its chain of ops in order — none for an alias.
-/// [in], array-carried like `KuiColorToken`.
+/// derives from, and its chain of ops in order (none for an alias).
+/// Array-carried like `KuiColorToken`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct KuiDerivedToken {
@@ -1364,36 +1357,28 @@ pub const KUI_OP_ALPHA: u8 = 3;
 pub const KUI_OP_MIX: u8 = 4;
 pub const KUI_OP_READABLE: u8 = 5;
 
-/// Where a `kui_reply` from inside `kui_ext_on_event` sends what it is
-/// given: an opaque handle the library hands the plugin on the event, and
-/// takes back when the callback returns.
+/// Where a `kui_reply` from inside `kui_ext_on_event` sends its value: an
+/// opaque handle the library puts on the event for the callback and takes
+/// back when it returns. Never allocate, dereference or store one.
 ///
-/// It is a struct with a function pointer rather than a `Vec` the plugin
-/// pushes into, and that is the whole point. A plugin may be linked against
-/// a *different copy of this library* than its host — on Windows it has to
-/// be, because a DLL cannot leave `kui_reply` undefined and resolve it from
-/// the executable the way ELF does — and then the `kui_reply` it calls is
-/// not the one the host is collecting from. A process-global sink (which is
-/// what this was until ABI 10: a `thread_local` keyed by the event) has one
-/// per copy, so every reply landed in a list nobody read and the host saw
-/// silence. A function pointer *into the host's copy*, carried on the event,
-/// has none of that: the plugin's `kui_reply` forwards, the host's code does
-/// the work, and only this two-field header has to have the same layout on
-/// both sides.
-///
-/// `push` is cleared when the callback returns, so a plugin that stored the
-/// event and calls later gets `false` rather than a reply nobody asked for —
-/// best-effort, not a guarantee, since the event itself is only alive for
-/// the call (like its payload, and like the `KuiCtx` a view is handed).
+/// It carries a function pointer into the host's copy of this library, so
+/// a plugin linked against a different copy (which a Windows DLL must be)
+/// still reaches the host. `push` is cleared when the callback returns, so
+/// a plugin that stored the event and replies later gets `false`.
 #[repr(C)]
 pub struct KuiReplySink {
     /// Called with the sink and the value; false if the sink is closed.
     pub(crate) push: Option<unsafe extern "C" fn(*mut KuiReplySink, *const KuiValue) -> bool>,
 }
 
-/// One polled event ([out]). `size` leads it so that `window` — ABI 4's
-/// append, and anything after it — reaches a host that has not recompiled
-/// as a shorter write rather than as a longer one.
+/// One event from the UI, as `kui_poll_event` writes it and `kui_run`'s
+/// `on_event` receives it.
+///
+/// `key` is the node that emitted it, `payload` the tag the node was
+/// declared with plus what the event adds (its `kind`, a pointer
+/// position, a key's `code`), `origin` 0 for the host's own nodes and an
+/// extension's index otherwise, `window` which window it came from. An
+/// `[out]` struct: start from `KUI_EVENT_INIT` so `size` is set.
 #[repr(C)]
 pub struct KuiEvent {
     /// Set to `sizeof(KuiEvent)` before the call (`KUI_EVENT_INIT` does);
@@ -1403,30 +1388,19 @@ pub struct KuiEvent {
     pub key: u64,
     /// Borrowed until the next `kui_poll_event`/`kui_ctx_free`; NULL if none.
     pub payload: *const KuiValue,
-    /// Which window the event came from; 0 (`KUI_WINDOW_MAIN`) until ADR
-    /// 0004's step 3 opens a second one.
-    ///
-    /// **Appended in ABI 4**, and the first field ever appended to an [out]
-    /// struct. It sits after every ABI-1 field on purpose: `ABI_V1_SIZE`
-    /// is measured through `payload`, so a host that reserved the old
-    /// layout still passes [`out_accepts`] and still gets every byte it
-    /// knows about — [`write_out`] simply stops before this one.
+    /// Which window the event came from; 0 (`KUI_WINDOW_MAIN`) until a
+    /// second one is opened. Appended in ABI 4; a host reserving the older
+    /// layout gets a shorter write and never sees it.
     pub window: u32,
     /// Where `kui_reply` sends a reply to this event, or NULL when there is
-    /// nowhere to send one — every event a host polls with
-    /// `kui_poll_event`, and any event outside a plugin's
-    /// `kui_ext_on_event`. See [`KuiReplySink`].
-    ///
-    /// **Appended in ABI 10**, after `window`, so a host that reserved the
-    /// older layout still passes [`out_accepts`] and still gets every byte
-    /// it knows about. A host has no use for it: it is the library's own
-    /// channel to a plugin, and the plugin passes the event straight back.
+    /// nowhere to send one (every event a host polls itself). A host has no
+    /// use for it: it is the library's channel to a plugin, which passes
+    /// the event straight back. See [`KuiReplySink`]. Appended in ABI 10.
     pub reply_sink: *mut KuiReplySink,
-    /// The key of the slot whose fill drew the node — what `kui_key_of`
-    /// answers for the slot's full name — or 0 for a node the host drew
-    /// itself (backlog K2). **Appended 2026-09-15**, after `reply_sink`,
-    /// under the [out] rule and without a bump: a host reserving the older
-    /// layout never sees it.
+    /// The key of the slot whose fill drew the node (what `kui_key_of`
+    /// answers for the slot's full name), or 0 for a node the host drew
+    /// itself. Appended after `reply_sink` without a bump: a host
+    /// reserving the older layout never sees it.
     pub slot: u64,
 }
 
@@ -1454,10 +1428,10 @@ unsafe impl OutParam for KuiEvent {
     }
 }
 
-/// What a declared window is ([in], `kui_window_declare`), and what an
-/// `Open` command carries back out inside [`KuiWindowCommand`]. Read
-/// literally, so start from `KUI_WINDOW_CONFIG_INIT` (a normal, activating
-/// 640x480 window) or pass NULL for exactly that.
+/// What a declared window is (`kui_window_declare`), and what an `Open`
+/// command carries back out inside [`KuiWindowCommand`]. Read literally,
+/// so start from `KUI_WINDOW_CONFIG_INIT` (a normal, activating 640x480
+/// window) or pass NULL for exactly that.
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub struct KuiWindowConfig {
@@ -1486,7 +1460,7 @@ pub struct KuiWindowConfig {
 pub const KUI_WINDOW_KIND_NORMAL: u32 = 0;
 /// `KUI_WINDOW_KIND_POPUP`: a borderless, taskbar-less menu surface owned
 /// by the window that declared it, placed against `anchor_*` in screen
-/// coordinates and closed when its owner closes (ADR 0004 decision 9).
+/// coordinates and closed when its owner closes.
 pub const KUI_WINDOW_KIND_POPUP: u32 = 1;
 
 pub(crate) fn window_config_of(c: Option<&KuiWindowConfig>) -> WindowConfig {
@@ -1513,12 +1487,11 @@ pub(crate) fn window_config_of(c: Option<&KuiWindowConfig>) -> WindowConfig {
     }
 }
 
-/// How `kui_run_with` opens its window ([in]; backlog AR27): the
-/// `Launcher` options a Rust host has and Node's `WindowOptions` carry,
-/// as one struct. Read literally, so start from `KUI_RUN_CONFIG_INIT`,
-/// which is every zero, or pass NULL for exactly that — a 960x640 native
-/// window, unbounded, antialiasing chosen by the GPU, diagnostics as the
-/// build has them.
+/// How `kui_run_with` opens its window: the options a Rust host's
+/// `Launcher` has, as one struct. Read literally, so start from
+/// `KUI_RUN_CONFIG_INIT` (every zero) or pass NULL for exactly that: a
+/// 960x640 native window, unbounded, antialiasing chosen by the GPU,
+/// diagnostics as the build has them.
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug, PartialEq)]
 pub struct KuiRunConfig {
@@ -1546,9 +1519,8 @@ pub struct KuiRunConfig {
     /// the build's — on in a debug build, off in release — as `kui_run`
     /// always had it.
     pub diagnostics: u32,
-    /// Frames queued ahead of the one on screen (backlog C47); zero is
-    /// the default, two. `KUI_FRAME_LATENCY` in the environment still
-    /// overrides. ABI 19.
+    /// Frames queued ahead of the one on screen; zero is the default.
+    /// `KUI_FRAME_LATENCY` in the environment still overrides. ABI 19.
     pub frame_latency: u32,
 }
 
@@ -1601,7 +1573,7 @@ pub(crate) const UNBOUNDED_SIZE: f64 = 65_535.0;
 /// NULL for the defaults — except that a word this build does not have is
 /// refused with its reason rather than degraded: a window that opened
 /// native when asked for the custom chrome would draw its titlebar under
-/// the OS's, which is the bug AR27 was filed for.
+/// the OS's.
 #[cfg(any(feature = "runner", test))]
 pub(crate) fn run_options_of(c: Option<&KuiRunConfig>) -> Result<RunOptions, String> {
     let Some(c) = c else {
@@ -1686,8 +1658,7 @@ pub const KUI_DISMISS_OUTSIDE: u32 = 0;
 pub const KUI_DISMISS_ESCAPE: u32 = 1;
 
 /// `KUI_OPTION_AS_ALT_NONE`, `_LEFT`, `_RIGHT`, `_BOTH`: which Option
-/// keys act as Alt on macOS (`kui_set_option_as_alt`, backlog F113) —
-/// `OptionAsAlt::index`.
+/// keys act as Alt on macOS (`kui_set_option_as_alt`).
 pub const KUI_OPTION_AS_ALT_NONE: u32 = 0;
 pub const KUI_OPTION_AS_ALT_LEFT: u32 = 1;
 pub const KUI_OPTION_AS_ALT_RIGHT: u32 = 2;
@@ -1705,18 +1676,16 @@ pub const KUI_CMD_OPEN: u32 = 5;
 /// `width`/`height` carry it. `KUI_CMD_FOCUS`: it asked for focus.
 pub const KUI_CMD_SET_SIZE: u32 = 6;
 pub const KUI_CMD_FOCUS: u32 = 7;
-/// `KUI_CMD_REDRAW`: draw `window` again — another window's input changed
-/// what it shows (`docs/adr/0024`, decision 7). A host that redraws every
-/// window on every event may ignore it.
+/// `KUI_CMD_REDRAW`: draw `window` again, because another window's input
+/// changed what it shows. A host that redraws every window on every event
+/// may ignore it.
 pub const KUI_CMD_REDRAW: u32 = 8;
 
-/// One window command ([out], `kui_take_window_command`): what a chrome
-/// node asked for, or what the declared window set's diff decided. Plain
-/// data by ADR 0004 decision 5 — an `Open` carries no title (the window's
-/// first frame declares one through `kui_window_title`) — so nothing
-/// borrowed enters a host's drain loop. `size` leads it like every [out]
-/// struct, so a field appended later reaches an older host as a shorter
-/// write.
+/// One window command (`kui_take_window_command`): what a chrome node
+/// asked for, or what the declared window set's diff decided. Plain data
+/// (an `Open` carries no title; the window's first frame declares one
+/// through `kui_window_title`), so nothing borrowed enters a host's drain
+/// loop. An `[out]` struct: start from `KUI_WINDOW_COMMAND_INIT`.
 #[repr(C)]
 pub struct KuiWindowCommand {
     /// Set to `sizeof(KuiWindowCommand)` before the call
@@ -1734,12 +1703,8 @@ pub struct KuiWindowCommand {
     /// `KUI_CMD_OPEN` only: the config from the declaration that opened it.
     pub config: KuiWindowConfig,
     /// `KUI_CMD_SET_SIZE` only: the size asked for, logical px. Appended in
-    /// ABI 6, so a host that reserved through `config` never sees these —
-    /// and never needs to, since only its own `kui_set_window_size` call
-    /// can produce the verb that fills them. A `SetSize` is a bare size and
-    /// not a `KuiWindowConfig`, the way it is in the core: a config is read
-    /// on the opening edge only, and this moves a window that already
-    /// exists.
+    /// ABI 6; only the host's own `kui_set_window_size` produces the verb
+    /// that fills them.
     pub width: f32,
     pub height: f32,
     /// `KUI_CMD_OPEN` only: the window whose frame declared this one. For a
@@ -1822,6 +1787,10 @@ pub(crate) fn window_command_to_c(cmd: WindowCommand) -> KuiWindowCommand {
     }
 }
 
+/// One quad of a frame's draw list, in physical pixels: a rounded
+/// rectangle, border, shadow, glyph, image or segment, told apart by
+/// `kind`. A renderer draws them in order, every one with the same
+/// instanced pipeline; `KuiDrawData` hands out the array.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct KuiQuad {
@@ -1839,10 +1808,8 @@ pub struct KuiQuad {
     pub blur: f32,
     /// KUI_QUAD_*
     pub kind: u32,
-    /// Which entry of `KuiDrawData::clips` clips this quad. An index and
-    /// not the clip itself since ABI 11: a clip is thirty-two bytes and a
-    /// frame has a handful of them, so carrying it per quad cost every
-    /// quad of every frame for a value nearly all of them share.
+    /// Which entry of `KuiDrawData::clips` clips this quad; entry zero
+    /// clips nothing.
     pub clip: u32,
     /// Atlas texels: x, y, w, h. `KUI_QUAD_SEGMENT`: the endpoints as
     /// float bits (see `kui_core::Quad::segment_ends`).
@@ -1871,7 +1838,7 @@ pub struct KuiFragmentDraw {
     pub fragment: u64,
     /// What the node declared, zero-padded to sixteen.
     pub params: [f32; 16],
-    /// Where the draw's `image` is (backlog V1): `KUI_FRAGMENT_IMAGE_NONE`,
+    /// Where the draw's `image` is: `KUI_FRAGMENT_IMAGE_NONE`,
     /// `_ATLAS` (bind the atlas, as for any fragment) or `_TEXTURE` (bind
     /// the texture `image_texture` names, as for a `KUI_QUAD_TEXTURE`
     /// quad). Added in ABI 15.
@@ -1891,8 +1858,7 @@ pub const KUI_FRAGMENT_IMAGE_ATLAS: u32 = 1;
 /// `KuiFragmentDraw::image_source`: the image has a texture of its own.
 pub const KUI_FRAGMENT_IMAGE_TEXTURE: u32 = 2;
 
-/// One `KUI_QUAD_TEXTURE`'s draw, addressed by that quad's `uv[0]`
-/// (ADR 0025, decision 3).
+/// One `KUI_QUAD_TEXTURE`'s draw, addressed by that quad's `uv[0]`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct KuiTextureDraw {
@@ -1909,9 +1875,16 @@ pub struct KuiTextureDraw {
     pub uv: [u32; 4],
 }
 
+/// The finished frame's draw list, as `kui_draw_data` writes it: the
+/// quads, the clips they index, the glyph atlas to mirror as a texture,
+/// and the side lists for fragments and texture-backed images.
+///
+/// Everything is in physical pixels. The pointers are valid until the
+/// next `kui_frame_begin` on the context. An `[out]` struct: start from
+/// `KUI_DRAW_DATA_INIT`.
 #[repr(C)]
 pub struct KuiDrawData {
-    /// [out] reservation; see `KUI_DRAW_DATA_INIT`.
+    /// `[out]` reservation; see `KUI_DRAW_DATA_INIT`.
     pub size: u32,
     pub quads: *const KuiQuad,
     pub quad_count: usize,
@@ -1920,9 +1893,9 @@ pub struct KuiDrawData {
     pub scale: f32,
     /// RGBA, atlas_size * atlas_size * 4 bytes.
     pub atlas_pixels: *const u8,
-    /// Changes either way between frames: a page extended for one frame
-    /// goes back to its size at the next (backlog F99). Size the texture
-    /// to it, not to the largest seen.
+    /// Can grow or shrink between frames: a page extended for one frame
+    /// goes back to its size at the next. Size the texture to it, not to
+    /// the largest seen.
     pub atlas_size: u32,
     /// Re-upload the atlas texture when either of these changes/sets.
     pub atlas_dirty: bool,
@@ -1982,7 +1955,7 @@ unsafe impl OutParam for KuiDrawData {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct KuiScrollGeometry {
-    /// [out] reservation; see `KUI_SCROLL_GEOMETRY_INIT`.
+    /// `[out]` reservation; see `KUI_SCROLL_GEOMETRY_INIT`.
     pub size: u32,
     /// The container's box, as the last layout placed and sized it.
     pub x: f32,
@@ -2019,9 +1992,9 @@ impl Default for KuiScrollGeometry {
     }
 }
 
-/// [in] One cell of a `kui_cells` grid: a Unicode scalar, colours as
+/// One cell of a `kui_cells` grid: a Unicode scalar, colours as
 /// `0xRRGGBBAA` (a `bg` of 0 is none), `KUI_CELL_*` attribute bits.
-/// Travels as an array, so a change here is an ABI bump (backlog C20).
+/// Travels as an array, so a change here is an ABI bump.
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub struct KuiCell {
@@ -2029,12 +2002,11 @@ pub struct KuiCell {
     pub fg: u32,
     pub bg: u32,
     pub flags: u32,
-    /// The underline's own colour (SGR 58), 0 for `fg` (backlog K4).
-    /// ABI 17: cells travel as an array, so the stride moved.
+    /// The underline's own colour (SGR 58), 0 for `fg`. ABI 17.
     pub ul: u32,
 }
 
-/// [out] What choosing a context-menu row left for the host
+/// What choosing a context-menu row left for the host
 /// (`kui_take_menu_action`): the clipboard, which is the host's in this
 /// library. `KUI_MENU_ACTION_SET_CLIPBOARD` carries the text to put there;
 /// `KUI_MENU_ACTION_PASTE` carries nothing and asks for what is there,
@@ -2044,14 +2016,14 @@ pub struct KuiCell {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct KuiMenuAction {
-    /// [out] reservation; see `KUI_MENU_ACTION_INIT`.
+    /// `[out]` reservation; see `KUI_MENU_ACTION_INIT`.
     pub size: u32,
     /// A `KUI_MENU_ACTION_*` kind.
     pub kind: u32,
     /// Borrowed until the next `kui_take_menu_action` on this context.
     pub text: KuiStr,
     /// The same selection with the formatting the core knows about, for a
-    /// host offering a second clipboard flavour (ADR 0017, decision 7).
+    /// host offering a second clipboard flavour.
     /// Empty when there is none to carry — and never a *replacement* for
     /// `text`: a clipboard whose only flavour is HTML pastes markup into
     /// every plain-text field on the machine.
@@ -2090,13 +2062,13 @@ unsafe impl OutParam for KuiMenuAction {
     }
 }
 
-/// [out] Where a point landed in the text a keyed node drew
-/// (`kui_text_hit`): a byte offset into that text, across the node's text
-/// runs in order, and the visual (wrapped) line it is on.
+/// Where a point landed in the text a keyed node drew (`kui_text_hit`):
+/// a byte offset into that text, across the node's text runs in order,
+/// and the visual (wrapped) line it is on.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct KuiTextHit {
-    /// [out] reservation; see `KUI_TEXT_HIT_INIT`.
+    /// `[out]` reservation; see `KUI_TEXT_HIT_INIT`.
     pub size: u32,
     pub line: u32,
     pub byte: u64,
@@ -2120,12 +2092,12 @@ unsafe impl OutParam for KuiTextHit {
     }
 }
 
-/// [out] The rect a node was laid out at (`kui_layout_of`): logical px in
+/// The rect a node was laid out at (`kui_layout_of`): logical px in
 /// viewport coordinates, the `layout` event's numbers without the event.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct KuiLayoutRect {
-    /// [out] reservation; see `KUI_LAYOUT_RECT_INIT`.
+    /// `[out]` reservation; see `KUI_LAYOUT_RECT_INIT`.
     pub size: u32,
     pub x: f32,
     pub y: f32,
@@ -2153,12 +2125,12 @@ unsafe impl OutParam for KuiLayoutRect {
     }
 }
 
-/// [out] A caret rect (`kui_caret_rect`): logical px in viewport
-/// coordinates, zero wide, one line tall.
+/// A caret rect (`kui_caret_rect`): logical px in viewport coordinates,
+/// zero wide, one line tall.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct KuiCaretRect {
-    /// [out] reservation; see `KUI_CARET_RECT_INIT`.
+    /// `[out]` reservation; see `KUI_CARET_RECT_INIT`.
     pub size: u32,
     pub x: f32,
     pub y: f32,
@@ -2210,8 +2182,7 @@ pub const KUI_SPAN_UNDERLINE: u32 = 1 << 2;
 pub const KUI_SPAN_STRIKETHROUGH: u32 = 1 << 3;
 
 /// `KUI_UNDERLINE_*`: an underline's shape, `KuiTextStyle.underline_style`
-/// and `KuiSpan.underline_style` (backlog K4) — `UnderlineStyle`'s
-/// discriminants.
+/// and `KuiSpan.underline_style`.
 pub const KUI_UNDERLINE_SOLID: u32 = 0;
 pub const KUI_UNDERLINE_WAVY: u32 = 1;
 pub const KUI_UNDERLINE_DOTTED: u32 = 2;
@@ -2225,26 +2196,24 @@ pub const KUI_KMOD_CTRL: u32 = kui_core::KeyMods::CTRL;
 pub const KUI_KMOD_ALT: u32 = kui_core::KeyMods::ALT;
 pub const KUI_KMOD_SUPER: u32 = kui_core::KeyMods::SUPER;
 
-/// `KUI_KLOCK_*` and `KUI_KLOC_*` (backlog F108): what the lock keys held
-/// and which of a key's twins it was, in the same word as the
-/// `KUI_KMOD_*` bits `kui_input_key_down` and its siblings take — the
-/// core's `KeyLocks::bits` and `KeyLocation::bits`. Zero is no lock on
-/// and the standard key, which is what every press was.
+/// `KUI_KLOCK_*` and `KUI_KLOC_*`: which lock keys were on and which of a
+/// key's twins it was, in the same word as the `KUI_KMOD_*` bits
+/// `kui_input_key_down` and its siblings take. Zero is no lock on and the
+/// standard key.
 pub const KUI_KLOCK_CAPS: u32 = kui_core::KeyLocks::CAPS;
 pub const KUI_KLOCK_NUM: u32 = kui_core::KeyLocks::NUM;
 pub const KUI_KLOC_LEFT: u32 = 1 << kui_core::KeyLocation::SHIFT;
 pub const KUI_KLOC_RIGHT: u32 = 2 << kui_core::KeyLocation::SHIFT;
 pub const KUI_KLOC_NUMPAD: u32 = 3 << kui_core::KeyLocation::SHIFT;
-/// `KUI_KLAYOUT_NONLATIN` (backlog F115): the press was typed on a layout
-/// that writes no Latin, so the US key stands in for its ASCII too — the
-/// core's `LayoutScript::NON_LATIN`. Zero judges each key by itself.
+/// `KUI_KLAYOUT_NONLATIN`: the press was typed on a layout that writes no
+/// Latin, so the US key stands in for its ASCII too. Zero judges each key
+/// by itself.
 pub const KUI_KLAYOUT_NONLATIN: u32 = kui_core::LayoutScript::NON_LATIN;
 
 /// `KUI_EDIT_*`: the flags `kui_text_edit` takes. `WRAP` is the `wrap`
 /// row declared on a field (the mode is `KuiTextStyle.wrap`, whose zero
 /// is `KUI_WRAP_WORD`, so the style alone cannot say): the field folds to
-/// its width the way a document does and keeps a field's keyboard
-/// (backlog F44).
+/// its width the way a document does and keeps a field's keyboard.
 pub const KUI_EDIT_MULTILINE: u32 = 1 << 0;
 pub const KUI_EDIT_AUTOFOCUS: u32 = 1 << 1;
 pub const KUI_EDIT_WRAP: u32 = 1 << 2;
@@ -2304,26 +2273,23 @@ pub const KUI_MENU_ACTION_SET_CLIPBOARD: u32 = 0;
 pub const KUI_MENU_ACTION_PASTE: u32 = 1;
 pub const KUI_MENU_ACTION_LOOK_UP: u32 = 2;
 /// A secret for the clipboard, to write marked concealed and transient
-/// (`kui_set_clipboard_secret`, backlog F84). A new kind rather than a
-/// flags field on `KuiMenuAction`, so the struct — and the ABI — stays
-/// as it was; a host that does not know the kind drops the copy, which
-/// for a secret is the safe way to fail.
+/// (`kui_set_clipboard_secret`). A host that does not know the kind drops
+/// the copy, which for a secret is the safe way to fail.
 pub const KUI_MENU_ACTION_SET_CLIPBOARD_SECRET: u32 = 3;
 
 /// `KUI_PASTE_*`: the pasteboard's markers on a paste's answer
-/// (`kui_input_paste`, backlog F84) — `ClipboardMarks::bits`.
+/// (`kui_input_paste`).
 pub const KUI_PASTE_CONCEALED: u32 = 1 << 0;
 pub const KUI_PASTE_TRANSIENT: u32 = 1 << 1;
 
 /// `KUI_BUTTONS_*`: the buttons `KuiSpec.on_button` claims
-/// (`KuiSpec.buttons`, backlog F105) — `Buttons::bits`, where none set is
-/// all three.
+/// (`KuiSpec.buttons`); none set is all three.
 pub const KUI_BUTTONS_SECONDARY: u32 = kui_core::Buttons::SECONDARY.bits();
 pub const KUI_BUTTONS_MIDDLE: u32 = kui_core::Buttons::MIDDLE.bits();
 pub const KUI_BUTTONS_OTHER: u32 = kui_core::Buttons::OTHER.bits();
 
-/// `KUI_OWED_*`: the bits of what `kui_owed` returns — `kui_animating`
-/// by kind (backlog F64).
+/// `KUI_OWED_*`: the bits of what `kui_owed` returns, `kui_animating` by
+/// kind.
 pub const KUI_OWED_TRANSITION: u32 = 1 << 0;
 pub const KUI_OWED_CYCLE: u32 = 1 << 1;
 pub const KUI_OWED_DEPART: u32 = 1 << 2;
@@ -2332,7 +2298,7 @@ pub const KUI_OWED_AUTOSCROLL: u32 = 1 << 4;
 pub const KUI_OWED_SCROLL: u32 = 1 << 5;
 
 /// `KUI_FRAME_CAUSE_*`: the bits of what `kui_frame_cause` returns and
-/// `kui_note_frame_cause` takes — `FrameCause::bits` (backlog F111).
+/// `kui_note_frame_cause` takes.
 pub const KUI_FRAME_CAUSE_POINTER_MOVE: u32 = kui_core::FrameCause::POINTER_MOVE.bits();
 pub const KUI_FRAME_CAUSE_POINTER_LEAVE: u32 = kui_core::FrameCause::POINTER_LEAVE.bits();
 pub const KUI_FRAME_CAUSE_BUTTON: u32 = kui_core::FrameCause::BUTTON.bits();

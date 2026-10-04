@@ -1,5 +1,4 @@
-//! Reading and moving the window's selection
-//! (`docs/adr/0017-selection-as-a-scope.md`).
+//! Reading and moving the window's selection.
 //!
 //! A press-drag inside a `selectable` node needs nothing from a host —
 //! the core owns the gesture. These are for the host that wants to *act*
@@ -49,7 +48,7 @@ pub extern "C" fn kui_selection_html(ptr: *mut KuiCtx, out: *mut KuiStr) -> bool
 /// where the press landed, the focus where the pointer is — each as the
 /// data index of the virtualised row it is in (`-1` outside every
 /// virtualised row) and the byte inside that row's own text. Directed,
-/// so a Shift-press that kept the anchor reads as one (ADR 0029). False
+/// so a Shift-press that kept the anchor reads as one. False
 /// with no text selection; a grid's is `kui_cell_selection`. Any out
 /// pointer may be NULL.
 #[unsafe(no_mangle)]
@@ -84,8 +83,8 @@ pub extern "C" fn kui_selection_ends(
 /// A `cells` grid's selection, the window's when it lives in one: the
 /// grid's key, the anchor and the focus as the drag made them — each an
 /// absolute line (`originLine` plus the row, so a scroll does not move
-/// it) and a column — and whether it is a block rather than linewise
-/// (ADR 0017, decision 4). False when the window's selection is not a
+/// it) and a column — and whether it is a block rather than linewise.
+/// False when the window's selection is not a
 /// grid's; a text selection's ends are `kui_selection_ends`. Any out
 /// pointer may be NULL.
 #[unsafe(no_mangle)]

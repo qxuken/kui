@@ -1,9 +1,8 @@
-//! Slots across the C boundary (`docs/adr/0014-slots-an-extension-fills-in-place.md`).
+//! Slots across the C boundary.
 //!
-//! Three sides now. A C **host** declares a slot with `kui_slot` the way a
-//! Rust host calls `Ui::slot`, and loads what fills it with
-//! `kui_ctx_add_extension` — the C half of ADR 0014's loader, which used to
-//! be Rust's alone. A C **extension** reads which slot it is filling with
+//! A C **host** declares a slot with `kui_slot` the way a Rust host calls
+//! `Ui::slot`, and loads what fills it with `kui_ctx_add_extension`. A C
+//! **extension** reads which slot it is filling with
 //! `kui_slot_name` / `kui_slot_params`, and answers an event with
 //! `kui_reply`, whose sink rides on the event (ABI 10) so that a plugin
 //! linked against another copy of this library still reaches the host.
@@ -11,12 +10,11 @@
 use super::*;
 
 /// Declares a slot named `name` at the cursor, with `params` (may be NULL)
-/// for whatever fills it — and fills it, then and there, with the
-/// extension the full name's namespace belongs to
-/// (`docs/adr/0014-slots-an-extension-fills-in-place.md`). `name` is the
-/// full `namespace/slot`: the namespace this context loaded the extension
-/// under with [`kui_ctx_add_extension`], and the slot in the extension's
-/// own vocabulary.
+/// for whatever fills it, and fills it then and there with the extension
+/// the name's namespace belongs to. `name` is the full `namespace/slot`:
+/// the namespace this context loaded the extension under with
+/// [`kui_ctx_add_extension`], and the slot in the extension's own
+/// vocabulary.
 ///
 /// Returns false when the frame already declared this name (a duplicate,
 /// which warns) or on a bad context; true when the slot was declared,
@@ -164,16 +162,16 @@ pub(crate) fn collect_replies(ev: &mut KuiEvent, cb: impl FnOnce(&KuiEvent)) -> 
     sink.replies
 }
 
-/// Replies to the host from inside `kui_ext_on_event` (ADR 0014 decision
-/// 6): `ev` is the event the callback was handed, `reply` is copied — you
-/// keep ownership — and reaches the host's `on_event` with your origin
-/// and the event's window and key. Call it as often as the event
-/// deserves. Outside the callback, or on an event that carries no sink —
-/// anything a host polled for itself — it does nothing and returns false.
+/// Replies to the host from inside `kui_ext_on_event`: `ev` is the event
+/// the callback was handed, `reply` is copied (you keep ownership) and
+/// reaches the host's `on_event` with your origin and the event's window
+/// and key. Call it as often as the event deserves. Outside the callback,
+/// or on an event that carries no sink (anything a host polled for
+/// itself), it does nothing and returns false.
 ///
 /// It forwards through the sink on the event rather than into a list of
-/// its own, so it does the right thing when the plugin's copy of this
-/// library is not the host's. [`KuiReplySink`] is why that matters.
+/// its own, so it works when the plugin's copy of this library is not the
+/// host's ([`KuiReplySink`]).
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_reply(ev: *const KuiEvent, reply: *const KuiValue) -> bool {
     guard(false, || {
@@ -189,7 +187,7 @@ pub extern "C" fn kui_reply(ev: *const KuiEvent, reply: *const KuiValue) -> bool
 }
 
 // ---------------------------------------------------------------------------
-// Loading extensions from C (ADR 0014)
+// Loading extensions from C
 
 /// Loads the shared library at `path` as an extension of this context,
 /// under `namespace` — the word that makes the front of every slot name it

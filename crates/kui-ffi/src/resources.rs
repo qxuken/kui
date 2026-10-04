@@ -36,9 +36,8 @@ pub extern "C" fn kui_image_add(ptr: *mut KuiCtx, w: u32, h: u32, rgba: *const u
 /// Replaces an image's pixels in place (copied): the handle is unchanged,
 /// so every node showing it draws the new pixels next frame; `w`/`h` may
 /// differ from the registration. From the first update on the image is
-/// drawn from a texture of its own, as a `KUI_QUAD_TEXTURE` quad
-/// (`docs/adr/0025-the-image-is-the-canvas.md`). A dead or foreign handle
-/// warns `foreign-resource` and changes nothing.
+/// drawn from a texture of its own, as a `KUI_QUAD_TEXTURE` quad. A dead
+/// or foreign handle warns `foreign-resource` and changes nothing.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_image_update(ptr: *mut KuiCtx, id: u64, w: u32, h: u32, rgba: *const u8) {
     guard((), || {
@@ -49,8 +48,7 @@ pub extern "C" fn kui_image_update(ptr: *mut KuiCtx, id: u64, w: u32, h: u32, rg
             return;
         };
         let data = unsafe { std::slice::from_raw_parts(rgba, len) };
-        // Into a buffer the core recycles, not a fresh copy a frame
-        // (backlog W20).
+        // Into a buffer the core recycles, not a fresh copy a frame.
         c.core()
             .update_image_with(kui_core::ImageId::from_ffi(id), w, h, |px| {
                 px.copy_from_slice(data)
@@ -150,9 +148,9 @@ pub extern "C" fn kui_font_families(ptr: *mut KuiCtx, out: *mut KuiStr, cap: usi
     })
 }
 
-/// Every family `kui_font_families` names, one per family and in its
-/// order, with what its faces say they are — monospaced, the weights, an
-/// italic (backlog F97) — written into `out` up to `cap` and the total
+/// Every family [`kui_font_families`] names, one per family and in its
+/// order, with what its faces say they are (monospaced, the weights, an
+/// italic), written into `out` up to `cap` and the total
 /// returned, as `kui_font_families` does. Read from what the font database
 /// recorded when it scanned each face: nothing is loaded or shaped. The
 /// names and weight arrays are borrowed until the next call on this
@@ -278,6 +276,8 @@ pub extern "C" fn kui_font_reload_system(ptr: *mut KuiCtx) -> usize {
     })
 }
 
+/// Forgets a registered font; text still naming it falls back to the
+/// family.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_font_remove(ptr: *mut KuiCtx, id: u64) {
     guard((), || {
@@ -308,6 +308,7 @@ pub extern "C" fn kui_sound_add(ptr: *mut KuiCtx, data: *const u8, len: usize) -
     })
 }
 
+/// Forgets a registered sound and stops its playbacks.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_sound_remove(ptr: *mut KuiCtx, id: u64) {
     guard((), || {
@@ -344,6 +345,8 @@ pub extern "C" fn kui_play(
     })
 }
 
+/// Stops a playback from [`kui_play`], fading out over `fade_ms` (0 for
+/// at once).
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_stop(ptr: *mut KuiCtx, playback: u64, fade_ms: f32) {
     guard((), || {
@@ -353,6 +356,8 @@ pub extern "C" fn kui_stop(ptr: *mut KuiCtx, playback: u64, fade_ms: f32) {
     });
 }
 
+/// Sets a playback's volume (linear amplitude, 0..1), easing to it over
+/// `tween_ms`.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_set_volume(ptr: *mut KuiCtx, playback: u64, volume: f32, tween_ms: f32) {
     guard((), || {
@@ -363,6 +368,7 @@ pub extern "C" fn kui_set_volume(ptr: *mut KuiCtx, playback: u64, volume: f32, t
     });
 }
 
+/// Pauses a playback, fading out over `fade_ms`.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_pause(ptr: *mut KuiCtx, playback: u64, fade_ms: f32) {
     guard((), || {
@@ -372,6 +378,7 @@ pub extern "C" fn kui_pause(ptr: *mut KuiCtx, playback: u64, fade_ms: f32) {
     });
 }
 
+/// Resumes a paused playback, fading in over `fade_ms`.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_resume(ptr: *mut KuiCtx, playback: u64, fade_ms: f32) {
     guard((), || {
@@ -381,6 +388,8 @@ pub extern "C" fn kui_resume(ptr: *mut KuiCtx, playback: u64, fade_ms: f32) {
     });
 }
 
+/// Sets the master volume every playback is scaled by (0..1), easing to
+/// it over `tween_ms`.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_set_master_volume(ptr: *mut KuiCtx, volume: f32, tween_ms: f32) {
     guard((), || {
@@ -520,7 +529,7 @@ pub extern "C" fn kui_audio_ended(ptr: *mut KuiCtx, playback: u64) {
 /// The same host reports that a stop it drained landed on a playback
 /// still running, `at` seconds in: a one-shot `audio` node that went away
 /// without `finish` is named in a `truncated-playback` warning
-/// (kui_take_warnings); any other stop reports nothing (backlog F36).
+/// ([`kui_take_warnings`]); any other stop reports nothing.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_audio_truncated(ptr: *mut KuiCtx, playback: u64, at: f64) {
     guard((), || {
@@ -533,7 +542,7 @@ pub extern "C" fn kui_audio_truncated(ptr: *mut KuiCtx, playback: u64, at: f64) 
 /// The same host reports that its device refused a play it drained: a
 /// tagged playback becomes a `sound` event with phase `refused` for
 /// kui_poll_event, and the node that asked is named in a
-/// `playback-refused` warning either way (backlog F36).
+/// `playback-refused` warning either way.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_audio_refused(ptr: *mut KuiCtx, playback: u64) {
     guard((), || {
@@ -545,6 +554,7 @@ pub extern "C" fn kui_audio_refused(ptr: *mut KuiCtx, playback: u64) {
     });
 }
 
+/// Forgets a registered image; nodes still naming it draw nothing.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_image_remove(ptr: *mut KuiCtx, id: u64) {
     guard((), || {

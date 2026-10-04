@@ -1,29 +1,186 @@
-//! C API for kui. The IR is plain data, so this layer is translation, not
-//! architecture: repr(C) mirrors of the spec structs, opaque handles for
-//! `Core` and `Value`, and flat builder calls delegating to `Core`'s
-//! non-panicking frame API. See include/kui.h for the C-side contract.
+//! C API for kui: a cdylib plus `include/kui.h`, and [`CExtension`] for loading a C plugin into a Rust host.
 //!
-//! Conventions:
-//! - Strings cross as (ptr, len), UTF-8; invalid bytes are replaced.
-//! - `KuiValue*` created by `kui_value_*` constructors is owned by the caller
-//!   until passed to a function documented as consuming it.
-//! - Every entry point catches panics and turns them into no-ops/false.
+//! kui splits a UI into a model that lays out and paints into a display
+//! list (`kui-core`), a renderer (`kui-wgpu`) and a windowed runner
+//! (`kui-native`). This crate puts the model, and optionally the runner,
+//! behind a flat C ABI: every `pub extern "C" fn` here is a `kui_*`
+//! symbol declared in `include/kui.h`, and the `Kui*` structs are the
+//! `repr(C)` mirrors the header declares field for field.
 //!
-//! Layout: `types` holds the repr(C) mirrors, `convert` the translations
-//! into the core's own types, `abi` the version and the size-led [out]
-//! handshake; the entry points sit in one module per concern they
-//! delegate to (`frame`, `input`, `windows`, `resources`, `focus`,
-//! `scrolling`, `access`, `widgets`, `value`, `run`), re-exported here
-//! so the crate's surface is flat. What stays in this file is the
-//! context itself, the host facts and the diagnostics.
+//! Two kinds of program use it:
+//!
+//! - A **C, C++ or other-language host** links the cdylib (`libkui_ffi`)
+//!   and includes `kui.h`. It either hands a window to `kui_run` and
+//!   builds its view in a callback, or owns its own event loop and
+//!   renderer: it feeds input with `kui_input_*`, builds a frame between
+//!   [`kui_frame_begin`] and [`kui_frame_finish`], polls
+//!   [`kui_poll_event`] and draws [`kui_draw_data`].
+//! - A **Rust host** running `kui-native` loads a C shared library as a
+//!   guest extension through [`CExtension`]: the plugin draws into a slot
+//!   the host declares and gets its own events back.
+//!
+//! The C programs under `examples/c/` in the repository are working
+//! references for every call below.
+//!
+//! # Conventions
+//!
+//! - **Strings** cross as [`KuiStr`], a `(ptr, len)` pair of UTF-8 bytes
+//!   that is never NUL-terminated (`KUI_STR("literal")` in C). Invalid
+//!   UTF-8 is replaced. A string the library hands back is borrowed until
+//!   the next call of the same function on that context.
+//! - **Values.** A [`KuiValue`] from a `kui_value_*` constructor is yours
+//!   until you pass it to a function documented as consuming it (an
+//!   `on_click` payload, the value given to [`kui_value_map_set`]); free
+//!   anything else with [`kui_value_free`]. The payload on a polled event
+//!   is borrowed until the next [`kui_poll_event`].
+//! - **Panics never cross.** Every entry point catches panics and returns
+//!   its failure value instead (`false`, `0` or NULL). A NULL context is
+//!   answered the same way.
+//! - **ABI handshake.** Call [`kui_abi_version`] first and compare it for
+//!   equality with the header's `KUI_ABI_VERSION` (see
+//!   [`KUI_ABI_VERSION`]). Structs the library writes into your memory
+//!   lead with a `size` you set from `sizeof` (the `KUI_*_INIT`
+//!   initializers do), and the library writes no further than that.
+//! - **Coordinates** are logical pixels; draw data comes back in physical
+//!   pixels at the frame's `scale`.
+//!
+//! # A host's frame loop in C
+//!
+//! The shape without `kui_run`: the calls a host makes around a window and
+//! renderer of its own (the same calls work headless, which is how the C
+//! examples test themselves).
+//!
+//! ```c
+//! #include "kui.h"
+//!
+//! if (kui_abi_version() != KUI_ABI_VERSION) return 1;
+//! KuiCtx *ctx = kui_ctx_new();
+//! long long count = 0;
+//!
+//! for (;;) {
+//!     /* Input from the windowing library, in logical pixels. */
+//!     kui_input_cursor(ctx, mouse_x, mouse_y);
+//!     if (clicked) { kui_input_mouse(ctx, true, 1); kui_input_mouse(ctx, false, 1); }
+//!
+//!     /* What the UI emitted; a payload is borrowed until the next poll. */
+//!     KuiEvent ev = KUI_EVENT_INIT;
+//!     while (kui_poll_event(ctx, &ev)) {
+//!         const KuiValue *kind = kui_value_get(ev.payload, KUI_STR("kind"));
+//!         KuiStr s;
+//!         if (kind && kui_value_as_str(kind, &s) && kui_str_eq(s, "inc")) count++;
+//!     }
+//!
+//!     /* Build the frame from scratch. */
+//!     kui_set_time(ctx, now_seconds());
+//!     kui_frame_begin(ctx, width, height, scale);
+//!     KuiTheme t = KUI_THEME_INIT;
+//!     kui_theme(ctx, &t);
+//!     KuiSpec root = {.width = {KUI_GROW, 1}, .height = {KUI_GROW, 1},
+//!                     .main_align = KUI_CENTER, .cross_align = KUI_CENTER, .bg = t.bg};
+//!     kui_root(ctx, &root);
+//!     char buf[32];
+//!     snprintf(buf, sizeof buf, "%lld", count);
+//!     KuiTextStyle big = {.size = 56};
+//!     kui_text(ctx, KUI_STR(buf), &big);
+//!     KuiValue *inc = kui_value_map();
+//!     kui_value_map_set(inc, KUI_STR("kind"), kui_value_str(KUI_STR("inc")));
+//!     kui_button(ctx, KUI_STR("+1"), inc); /* consumes inc */
+//!     kui_frame_finish(ctx);
+//!
+//!     /* Draw it: one quad list, physical pixels, plus the glyph atlas to mirror. */
+//!     KuiDrawData dd = KUI_DRAW_DATA_INIT;
+//!     if (kui_draw_data(ctx, &dd)) {
+//!         if (dd.atlas_dirty) upload_atlas(dd.atlas_pixels, dd.atlas_size);
+//!         draw_quads(dd.quads, dd.quad_count, dd.clips);
+//!     }
+//!     if (!kui_animating(ctx)) wait_for_input();
+//! }
+//! kui_ctx_free(ctx);
+//! ```
+//!
+//! With the `runner` feature, `kui_run(title, view, on_event, user)` does
+//! all of this around a window of its own and calls `view` once per frame
+//! with a context to build into; `examples/c/apps/counter.c` is that
+//! program.
+//!
+//! # A C extension in a Rust app
+//!
+//! A plugin is a shared library exporting `kui_ext_abi` and `kui_ext_view`
+//! (and optionally `kui_ext_name`, `kui_ext_init`, `kui_ext_slots`,
+//! `kui_ext_on_event`, `kui_ext_free`); `examples/c/features/slots/panel.c`
+//! is one. The host loads it and declares where it draws:
+//!
+//! ```rust,no_run
+//! use kui_ffi::CExtension;
+//! use kui_native::{App, NodeSpec, Ui};
+//!
+//! struct Host;
+//!
+//! impl App for Host {
+//!     fn view(&mut self, ui: &mut Ui<'_>) {
+//!         ui.open(NodeSpec::row().fill());
+//!         // The plugin fills this position: `todos` is the namespace the
+//!         // host loaded it under, `panel` a slot the plugin lists.
+//!         ui.slot("todos/panel");
+//!         ui.close();
+//!     }
+//! }
+//!
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     // SAFETY: the plugin's code runs in this process. Loading it is
+//!     // trusting it as much as linking it would be.
+//!     let ext = unsafe { CExtension::open("target/debug/panel.so")? };
+//!     kui_native::app("host").extension_as("todos", ext).run(Host)
+//! }
+//! ```
+//!
+//! # Where to look
+//!
+//! Everything is exported flat at the crate root. By job:
+//!
+//! - Context: [`kui_ctx_new`], [`kui_ctx_free`], [`KuiCtx`].
+//! - Building a frame: [`kui_frame_begin`], [`kui_root`], [`kui_open`],
+//!   [`kui_open_keyed`], [`kui_text`], [`kui_close`], [`kui_frame_finish`];
+//!   [`KuiSpec`] and [`KuiTextStyle`] are what a node is built from.
+//! - Input and events: [`kui_input_cursor`], [`kui_input_mouse`],
+//!   [`kui_input_press`], [`kui_input_text`], [`kui_poll_event`],
+//!   [`KuiEvent`].
+//! - Values: [`kui_value_map`], [`kui_value_str`], [`kui_value_get`],
+//!   [`kui_value_as_str`], [`KuiValue`].
+//! - Drawing: [`kui_draw_data`], [`KuiDrawData`], [`KuiQuad`],
+//!   [`kui_set_subpixel_text`].
+//! - Widgets: [`kui_button`], [`kui_text_input`], [`kui_checkbox`],
+//!   [`kui_slider`], [`kui_select`].
+//! - Theme and metrics: [`kui_env_set_system`], [`kui_theme`],
+//!   [`KuiTheme`], [`kui_metrics`].
+//! - Windows: [`kui_window_declare`], [`kui_take_window_command`],
+//!   [`KuiWindowCommand`].
+//! - Accessibility: [`kui_access_tree`], [`KuiAccessNode`],
+//!   [`kui_input_access`].
+//! - Extensions: [`CExtension`], [`kui_ctx_add_extension`], [`kui_slot`],
+//!   [`kui_reply`].
+//! - Diagnostics: [`kui_set_diagnostics`], [`kui_take_warnings`],
+//!   [`kui_set_devtools`].
+//! - The windowed runner (feature `runner`): `kui_run`, `kui_run_with`,
+//!   [`KuiRunConfig`].
+//!
+//! # Features
+//!
+//! - `runner` (on by default): `kui_run` and `kui_run_with`, the windowed
+//!   runner from `kui-native`. A host that owns its own window and
+//!   renderer builds with `--no-default-features` and ships less than
+//!   half the library.
+//!
+//! The book: <https://kui-book.qxuken.dev>. Repository:
+//! <https://github.com/qxuken/kui> (design records live under `docs/adr`
+//! there).
 
 // Safe extern fns taking raw pointers is the point of this layer: every
 // entry point null-checks and catches panics instead of being `unsafe`.
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
 // The other direction: a C shared library as a guest inside a host that
-// already owns the frame. See the module docs for where its `kui_*` symbols
-// come from, which is the only interesting part.
+// already owns the frame.
 mod ext;
 pub use ext::CExtension;
 
@@ -84,6 +241,11 @@ use kui_core::{
 // ---------------------------------------------------------------------------
 // Context lifecycle
 
+/// Creates a standalone context: a core of its own plus an event queue.
+///
+/// Free it with [`kui_ctx_free`]. Diagnostics start off; turn them on with
+/// [`kui_set_diagnostics`] in a development build. Returns NULL only if
+/// the core cannot be created.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
     guard(std::ptr::null_mut(), || {
@@ -131,6 +293,8 @@ pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
     })
 }
 
+/// Frees a context from [`kui_ctx_new`], its queued events, every string
+/// it lent out and every extension it loaded. NULL is a no-op.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_ctx_free(ptr: *mut KuiCtx) {
     if !ptr.is_null() {
@@ -141,12 +305,13 @@ pub extern "C" fn kui_ctx_free(ptr: *mut KuiCtx) {
 // ---------------------------------------------------------------------------
 // Host environment
 
-/// Host facts for views to read (`refresh_hz <= 0` = unknown). Survives
-/// across frames; set on change or every frame, either works. A window
-/// that lost the keyboard lets go of every key its sink was holding
-/// (`Core::set_focused`), so the `kui_release_held_keys` a host used to
-/// owe on focus loss is owed no more; the synthetic releases are polled
-/// like any event.
+/// Window facts for views to read: the display's refresh rate
+/// (`refresh_hz <= 0` is unknown) and whether the window has keyboard
+/// focus.
+///
+/// Sticky across frames; set it on change or every frame. A window that
+/// lost focus releases every key a sink was holding, and those releases
+/// are polled like any event.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_env_set(ptr: *mut KuiCtx, refresh_hz: f32, focused: bool) {
     guard((), || {
@@ -157,18 +322,17 @@ pub extern "C" fn kui_env_set(ptr: *mut KuiCtx, refresh_hz: f32, focused: bool) 
     });
 }
 
-/// What the OS is set to, for views to read: `appearance` is a
-/// `KUI_APPEARANCE_*`, `motion` a `KUI_MOTION_*` (0 = unknown in both, so a
-/// host that never calls this reports honestly), `accent` the accent colour
-/// as `0xRRGGBBAA` (0 = unknown), `locale` a BCP-47 tag (empty = unknown).
-/// A tag longer than 31 bytes or not ASCII is not a tag, and reads back as
-/// unknown rather than as a truncated one.
+/// The OS's settings, for views and the theme to read: `appearance` is a
+/// `KUI_APPEARANCE_*`, `motion` a `KUI_MOTION_*` (0 is unknown for both),
+/// `accent` the accent colour as `0xRRGGBBAA` (0 is unknown) and `locale`
+/// a BCP-47 tag (empty is unknown; one over 31 bytes or not ASCII reads
+/// back as unknown).
 ///
-/// Separate from `kui_env_set` because these change when the user opens a
-/// settings app, not when a window moves: push them at startup and on the
-/// OS's change notification. Survives across frames either way. On a
-/// context handed to `kui_run_with` it is the window's pin over the OS's
-/// reading instead (backlog F47); see there.
+/// Push them at startup and on the OS's change notification; they stick
+/// across frames. The palette [`kui_theme`] reports is re-derived at once.
+/// An out-of-range code is ignored. On a context handed to `kui_run_with`
+/// these become the window's pin over the OS's own reading; a zero field
+/// keeps following the OS.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_env_set_system(
     ptr: *mut KuiCtx,
@@ -195,26 +359,19 @@ pub extern "C" fn kui_env_set_system(
             };
             // `set_system` re-resolves the palette from what was just
             // written, so a host that pushes the appearance and reads
-            // `kui_theme` back before its next frame sees the answer
-            // (ADR 0019).
+            // `kui_theme` back before its next frame sees the answer.
             c.core().set_system(sys);
         }
     });
 }
 
-/// Whether assistive technology is listening, for views to read
-/// (`env.system.assistive`): a `KUI_ASSISTIVE_*` (0 = unknown, so a host
-/// with no accessibility bridge reports honestly by never calling this).
-/// A host that bridges the platform's accessibility API itself pushes
-/// `LISTENING` when a client first asks it for the tree and `NONE` if its
-/// platform ever tells it the client left — which, of the AccessKit
-/// adapters, only AT-SPI does. An out-of-range code is ignored rather
-/// than folded onto a real reading, the way an unknown appearance is.
+/// Whether assistive technology is listening, for views to read: a
+/// `KUI_ASSISTIVE_*` (0 is unknown, which is what a host with no
+/// accessibility bridge reports by never calling this).
 ///
-/// Its own setter rather than a fifth argument on `kui_env_set_system`
-/// because it is not a setting and does not arrive with them — and
-/// because adding an argument would be an ABI break for every host, while
-/// a setter is additive (backlog F48).
+/// A host bridging the platform's accessibility API pushes `LISTENING`
+/// when a client first asks for the tree and `NONE` if the platform says
+/// the client left. An out-of-range code is ignored.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_env_set_assistive(ptr: *mut KuiCtx, assistive: u32) {
     guard((), || {
@@ -224,12 +381,11 @@ pub extern "C" fn kui_env_set_assistive(ptr: *mut KuiCtx, assistive: u32) {
     });
 }
 
-/// What the host's audio output is doing, for views to read (`env.audio`):
-/// `device` a `KUI_AUDIO_DEVICE_*` (0 = closed, so a host with no device
-/// reports honestly by never calling this), `live` the playbacks started
-/// or waiting on the open. A fact, not a verb — nothing here closes the
-/// device. An out-of-range code is ignored rather than folded onto a real
-/// state, the way an unknown appearance is.
+/// What the host's audio output is doing, for views to read: `device` a
+/// `KUI_AUDIO_DEVICE_*` (0 is closed, which a host with no device reports
+/// by never calling this) and `live` the number of playbacks started or
+/// waiting on the open. A fact, not a command: nothing here closes the
+/// device. An out-of-range code is ignored.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_env_set_audio(ptr: *mut KuiCtx, device: u32, live: u32) {
     guard((), || {
@@ -242,20 +398,18 @@ pub extern "C" fn kui_env_set_audio(ptr: *mut KuiCtx, device: u32, live: u32) {
     });
 }
 
-/// This window's palette, as of the current or last frame
-/// (`docs/adr/0019-a-theme-derived-from-appearance-and-accent.md`): one
-/// `0xRRGGBBAA` per role, derived from what `kui_env_set_system` reported
-/// unless this host pinned something with the two setters below.
+/// This window's palette as of the current or last frame: one
+/// `0xRRGGBBAA` per role, derived from what [`kui_env_set_system`] reported
+/// unless the host pinned something with [`kui_theme_set_accent`] or
+/// [`kui_theme_set`].
 ///
-/// The stock widgets already read it — a button, the context menu, a
-/// tooltip, a field, the scrollbars, the focus ring and any text with a
-/// zero `color` all follow it — so a C host that reports the OS appearance
-/// and nothing else already follows the OS. Read it for the paint of your
-/// own: `KuiTheme t = KUI_THEME_INIT; kui_theme(ctx, &t);` then
+/// The stock widgets, the focus ring, the scrollbars and any text with a
+/// zero `color` already follow it. Read it for paint of your own:
+/// `KuiTheme t = KUI_THEME_INIT; kui_theme(ctx, &t);` then
 /// `spec.bg = t.surface`.
 ///
-/// False for a bad context, a NULL `out`, or a reservation smaller than
-/// the ABI-1 layout.
+/// False for a bad context, a NULL `out`, or a `size` below the first
+/// ABI's layout.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_theme(ptr: *mut KuiCtx, out: *mut KuiTheme) -> bool {
     guard(false, || {
@@ -297,13 +451,11 @@ pub extern "C" fn kui_theme(ptr: *mut KuiCtx, out: *mut KuiTheme) -> bool {
     })
 }
 
-/// Keep following the OS's light/dark, but paint `accent` instead of the
-/// OS's — a host with a brand colour of its own. `0xRRGGBBAA`; zero goes
-/// back to following the OS for the accent too, which is the default.
+/// Keeps following the OS's light or dark base but paints `accent`
+/// (`0xRRGGBBAA`) instead of the OS's accent; zero goes back to the OS's.
 ///
-/// Everything that comes off the accent moves with it: the button's hover
-/// and pressed shades, the label on it (black or white, by luminance), the
-/// selection tint and the focus ring.
+/// Everything derived from the accent moves with it: a button's hover and
+/// pressed shades, the label on it, the selection tint and the focus ring.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_theme_set_accent(ptr: *mut KuiCtx, accent: u32) {
     guard((), || {
@@ -316,13 +468,12 @@ pub extern "C" fn kui_theme_set_accent(ptr: *mut KuiCtx, accent: u32) {
     })
 }
 
-/// Pin the whole palette: exactly these colours, following neither the
-/// OS's appearance nor its accent. NULL goes back to deriving both.
+/// Pins the whole palette to exactly these colours, following neither the
+/// OS's appearance nor its accent; NULL goes back to deriving both.
 ///
-/// The struct is read as the host filled it — `size` is ignored here,
-/// since the host wrote every byte it declared — so build one from
-/// `kui_theme` and change the roles you mean to change, rather than
-/// zeroing a fresh one: a zeroed role is transparent, not "leave it".
+/// Every field is read (`size` is ignored), so start from [`kui_theme`]
+/// and change the roles you mean to change: a zeroed role is transparent,
+/// not "leave it".
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_theme_set(ptr: *mut KuiCtx, theme: *const KuiTheme) {
     guard((), || {
@@ -335,20 +486,16 @@ pub extern "C" fn kui_theme_set(ptr: *mut KuiCtx, theme: *const KuiTheme) {
     })
 }
 
-/// Declare the named colours and lengths this origin references
-/// (`docs/adr/0027-tokens-beside-the-theme.md`): the host's outside a
-/// plugin's view, the plugin's own inside `kui_ext_view`, so a plugin's
-/// declaration never replaces the host's. Replaces that table whole; an
-/// app whose lengths follow a viewport tier declares again on a resize. A
-/// name a theme or metrics role owns is dropped with a `reserved-token`
-/// warning. Either array may be NULL with a zero count.
+/// Declares the named colours and lengths of the calling origin: the
+/// host's outside a plugin's view, the plugin's own inside `kui_ext_view`.
 ///
-/// A C prop carries no reference — `KuiSpec.bg` is a bare `uint32_t` —
-/// so a C host reads a token back with `kui_token_color` /
-/// `kui_token_length` and writes the value; what the table buys it is
-/// the name in the devtools' inspector, a guest reading the host's
-/// vocabulary, and one declaration for a Lua panel it hosts to reference
-/// by `"$name"`.
+/// Replaces the table whole, so an app whose lengths follow a viewport
+/// tier declares again on a resize. A name a theme or metrics role owns is
+/// dropped with a `reserved-token` warning. Either array may be NULL with
+/// a zero count. A C spec carries plain numbers, so read a token back with
+/// [`kui_token_color`] or [`kui_token_length`] and write the value; the
+/// table gives the name to the devtools inspector, to guests reading the
+/// host's vocabulary, and to a Lua panel referencing `"$name"`.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_tokens_set(
     ptr: *mut KuiCtx,
@@ -380,19 +527,19 @@ pub extern "C" fn kui_tokens_set(
     })
 }
 
-/// Add derived colour tokens (`docs/adr/0028-derived-tokens.md`) to the
-/// drawing origin's table, after `kui_tokens_set`: each a name, the
-/// colour token or theme role it derives from, and a chain of ops folded
-/// over it in order — `KUI_OP_LIFT` / `KUI_OP_DARKEN` toward white /
-/// black by `t`, `KUI_OP_RAISE` toward the front of the base in effect,
-/// `KUI_OP_ALPHA` sets the alpha, `KUI_OP_MIX` toward the token `other`
-/// names, `KUI_OP_READABLE` toward black or white until it clears the
-/// ratio `t` on `other`. A source that is no colour token declared before
-/// it and no role drops that token with `unknown-token`, as the other
-/// bindings do. False, with nothing added, for an op that is malformed —
-/// an `op` past `KUI_OP_READABLE`, or `other` given to a verb that takes
-/// none or missing from one that does — since a C call has no other way
-/// to refuse a declaration.
+/// Adds derived colour tokens to the calling origin's table, after
+/// [`kui_tokens_set`]: each a name, the colour token or theme role it
+/// derives from, and a chain of ops applied in order.
+///
+/// The ops: `KUI_OP_LIFT` and `KUI_OP_DARKEN` move toward white or black
+/// by `t`, `KUI_OP_RAISE` toward the front of the base in effect,
+/// `KUI_OP_ALPHA` sets the alpha, `KUI_OP_MIX` mixes toward the token
+/// `other` names, and `KUI_OP_READABLE` moves toward black or white until
+/// the contrast ratio `t` against `other` is met. A source that is neither
+/// a token declared before it nor a role drops that token with an
+/// `unknown-token` warning. Returns false, adding nothing, for a malformed
+/// op: one past `KUI_OP_READABLE`, or `other` given to a verb that takes
+/// none or missing from one that does.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_tokens_derive(
     ptr: *mut KuiCtx,
@@ -432,11 +579,11 @@ pub extern "C" fn kui_tokens_derive(
     })
 }
 
-/// A colour token by name, resolved for this frame's appearance — the
-/// running origin's table over the host's, and a theme role's name
-/// (`surface`) answers with the role. `0xRRGGBBAA` through `out`; false
-/// for a name nothing declared or one that is a length, which also raises
-/// `unknown-token` once per name.
+/// A colour token by name, resolved for this frame's appearance, as
+/// `0xRRGGBBAA` through `out`. The calling origin's table is tried first,
+/// then the host's; a theme role's name (`surface`) answers with the role.
+/// False for a name nothing declared or one that is a length, which also
+/// raises `unknown-token` once per name.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_token_color(ptr: *mut KuiCtx, name: KuiStr, out: *mut u32) -> bool {
     guard(false, || {
@@ -462,7 +609,7 @@ pub extern "C" fn kui_token_color(ptr: *mut KuiCtx, name: KuiStr, out: *mut u32)
 
 /// A length token by name, in logical px; a metrics role's name
 /// (`radius`) answers with the metric. False and `unknown-token` as for
-/// `kui_token_color`.
+/// [`kui_token_color`].
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_token_length(ptr: *mut KuiCtx, name: KuiStr, out: *mut f32) -> bool {
     guard(false, || {
@@ -486,11 +633,11 @@ pub extern "C" fn kui_token_length(ptr: *mut KuiCtx, name: KuiStr, out: *mut f32
     })
 }
 
-/// The sizes the stock widgets are built from (backlog T2): the palette's
-/// other axis. `KuiMetrics m = KUI_METRICS_INIT; kui_metrics(ctx, &m);`
-/// then `spec.radius = m.radius` makes a control of your own agree with
-/// the stock ones. Logical px, before the scale factor. False for a bad
-/// context, a NULL `out`, or a reservation smaller than the ABI-1 layout.
+/// The sizes the stock widgets are built from, in logical px.
+/// `KuiMetrics m = KUI_METRICS_INIT; kui_metrics(ctx, &m);` then
+/// `spec.radius = m.radius` makes a control of your own agree with the
+/// stock ones. False for a bad context, a NULL `out`, or a `size` below
+/// the first ABI's layout.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_metrics(ptr: *mut KuiCtx, out: *mut KuiMetrics) -> bool {
     guard(false, || {
@@ -502,11 +649,10 @@ pub extern "C" fn kui_metrics(ptr: *mut KuiCtx, out: *mut KuiMetrics) -> bool {
     })
 }
 
-/// Makes these the frame's metrics: every stock widget from the next node
-/// on is built from them. NULL restores the stock set. Read one with
-/// `kui_metrics` and change the fields you mean to change rather than
-/// zeroing a fresh struct — a zeroed metric is zero, not "leave it".
-/// Density is the host's to choose; nothing in the OS is followed.
+/// Makes these the metrics every stock widget from the next node on is
+/// built from; NULL restores the stock set. Start from [`kui_metrics`] and
+/// change the fields you mean to change: a zeroed metric is zero, not
+/// "leave it". Nothing in the OS is followed; density is the host's call.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_metrics_set(ptr: *mut KuiCtx, metrics: *const KuiMetrics) {
     guard((), || {
@@ -551,9 +697,9 @@ fn theme_of(t: &KuiTheme) -> kui_core::Theme {
     }
 }
 
-/// The frame clock for transitions (monotonic seconds, any origin). Set it
-/// before each kui_frame_begin; a host that never does sees transitions
-/// snap to their targets.
+/// The frame clock for transitions, in monotonic seconds from any origin.
+/// Set it before each [`kui_frame_begin`]; a host that never does sees
+/// transitions snap to their targets.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_set_time(ptr: *mut KuiCtx, now_secs: f64) {
     guard((), || {
@@ -572,10 +718,10 @@ pub extern "C" fn kui_animating(ptr: *mut KuiCtx) -> bool {
     })
 }
 
-/// What the last frame left owed, by kind: `kui_animating` taken apart
-/// into `KUI_OWED_*` bits. A host draws another frame for any of them; a
-/// test masks `KUI_OWED_CYCLE` off to wait for the transitions to run out
-/// under a keyframe cycle that never will (backlog F64).
+/// Why the last frame wants another, as `KUI_OWED_*` bits:
+/// [`kui_animating`] taken apart by kind. A host draws another frame for
+/// any of them; a test masks `KUI_OWED_CYCLE` off to wait for transitions
+/// to settle under a keyframe cycle that never will.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_owed(ptr: *mut KuiCtx) -> u32 {
     guard(0, || {
@@ -591,8 +737,8 @@ pub extern "C" fn kui_owed(ptr: *mut KuiCtx) -> u32 {
     })
 }
 
-/// Turns the trace of why frames run on or off (backlog F111): here, the
-/// digest `kui_frame_unchanged` compares. `kui_frame_cause` is kept either
+/// Turns the trace of why frames run on or off: the digest
+/// [`kui_frame_unchanged`] compares. [`kui_frame_cause`] is kept either
 /// way.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_set_frame_trace(ptr: *mut KuiCtx, on: bool) {
@@ -603,8 +749,8 @@ pub extern "C" fn kui_set_frame_trace(ptr: *mut KuiCtx, on: bool) {
     })
 }
 
-/// The `KUI_FRAME_CAUSE_*` bits of the frame being built — between
-/// frames, the last one (`Core::frame_cause`, backlog F111).
+/// The `KUI_FRAME_CAUSE_*` bits of the frame being built, or between
+/// frames the last one's.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_frame_cause(ptr: *mut KuiCtx) -> u32 {
     guard(0, || {
@@ -613,8 +759,8 @@ pub extern "C" fn kui_frame_cause(ptr: *mut KuiCtx) -> u32 {
 }
 
 /// Adds `KUI_FRAME_CAUSE_*` bits to the next frame's reasons: the host's
-/// own — a wake, a resize, a blink — beside the input `kui_input`
-/// records (`Core::note_frame_cause`, backlog F111).
+/// own (a wake, a resize, a blink) beside the input the `kui_input_*`
+/// calls record.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_note_frame_cause(ptr: *mut KuiCtx, cause: u32) {
     guard((), || {
@@ -626,8 +772,8 @@ pub extern "C" fn kui_note_frame_cause(ptr: *mut KuiCtx, cause: u32) {
 }
 
 /// 1 when the last finished frame drew exactly what the one before drew,
-/// 0 when not, -1 untraced or on the first traced frame
-/// (`Core::frame_unchanged`, backlog F111).
+/// 0 when not, -1 when untraced ([`kui_set_frame_trace`]) or on the first
+/// traced frame.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_frame_unchanged(ptr: *mut KuiCtx) -> i32 {
     guard(-1, || {
@@ -638,9 +784,10 @@ pub extern "C" fn kui_frame_unchanged(ptr: *mut KuiCtx) -> i32 {
     })
 }
 
-/// Rasterize outline glyphs as LCD subpixel coverage (`KUI_QUAD_GLYPH_SUBPIXEL`,
-/// atlas rgb = per-channel coverage) instead of alpha masks. Only for
-/// renderers that blend per channel; flipping it re-rasterizes every glyph.
+/// Rasterizes outline glyphs as LCD subpixel coverage
+/// (`KUI_QUAD_GLYPH_SUBPIXEL` quads, the atlas's RGB being per-channel
+/// coverage) instead of alpha masks. Only for a renderer that blends per
+/// channel (dual-source blending); flipping it re-rasterizes every glyph.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_set_subpixel_text(ptr: *mut KuiCtx, on: bool) {
     guard((), || {
@@ -672,11 +819,11 @@ pub extern "C" fn kui_text_cache_bytes(ptr: *mut KuiCtx) -> usize {
 }
 
 /// Drains the warnings the core raised since the last call (silent
-/// misconfigurations it noticed while finishing frames; each once) into
-/// `out`, up to `cap`; returns the count. The strings stay valid until the
-/// next call on this context. Standalone contexts start with the checks
-/// off (`kui_set_diagnostics` turns them on); kui_run prints them to
-/// stderr itself in debug builds.
+/// misconfigurations it noticed while finishing frames, each once) into
+/// `out`, up to `cap`, and returns the count. The strings stay valid
+/// until the next call on this context. A standalone context starts with
+/// the checks off ([`kui_set_diagnostics`] turns them on); `kui_run`
+/// prints them to stderr itself in debug builds.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_take_warnings(ptr: *mut KuiCtx, out: *mut KuiWarning, cap: usize) -> usize {
     guard(0, || {
@@ -705,8 +852,8 @@ pub extern "C" fn kui_take_warnings(ptr: *mut KuiCtx, out: *mut KuiWarning, cap:
     })
 }
 
-/// Turns the diagnostic checks behind kui_take_warnings on or off (off by
-/// default for a standalone context: a development build opts in).
+/// Turns the diagnostic checks behind [`kui_take_warnings`] on or off. Off
+/// by default for a standalone context; a development build opts in.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_set_diagnostics(ptr: *mut KuiCtx, on: bool) {
     guard((), || {
@@ -716,13 +863,13 @@ pub extern "C" fn kui_set_diagnostics(ptr: *mut KuiCtx, on: bool) {
     });
 }
 
-/// Turns the core's devtools panel on or off (`docs/adr/0024`): the event
-/// stream, the runtime's facts and the tree, drawn by the core beside the
-/// host's tree in the main window — or where `kui_set_devtools_dock` says
-/// — with its controls and its `Ctrl+Shift+<letter>` chords acted on inside
-/// `kui_input`, so nothing of it reaches the host's events. `KUI_DEVTOOLS=1`
-/// in the environment is the same call made by nobody, for a window
-/// `kui_run` opens; a headless context never reads it.
+/// Turns the core's devtools panel on or off: the event stream, the
+/// runtime's facts and the tree, drawn by the core beside the host's tree
+/// (where [`kui_set_devtools_dock`] says). Its controls and its
+/// `Ctrl+Shift+<letter>` chords are handled inside the `kui_input_*`
+/// calls, so nothing of it reaches the host's events. `KUI_DEVTOOLS=1` in
+/// the environment makes the same call for a window `kui_run` opens; a
+/// headless context never reads it.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_set_devtools(ptr: *mut KuiCtx, on: bool) {
     guard((), || {
@@ -732,11 +879,11 @@ pub extern "C" fn kui_set_devtools(ptr: *mut KuiCtx, on: bool) {
     });
 }
 
-/// Where the devtools panel sits: `"left"`, `"right"`, `"bottom"`, `"window"`
-/// (one of its own, named `kui-devtools`, opened through the ordinary
-/// `KUI_CMD_OPEN`; the host builds nothing into it) or `"off"` (hidden, the
-/// chords still live); `"side"` is the right. Returns false for any other
-/// word.
+/// Where the devtools panel sits: `"left"`, `"right"`, `"bottom"`,
+/// `"window"` (one of its own, named `kui-devtools`, opened through an
+/// ordinary `KUI_CMD_OPEN` that the host builds nothing into) or `"off"`
+/// (hidden, chords still live); `"side"` means the right. Returns false
+/// for any other word.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_set_devtools_dock(ptr: *mut KuiCtx, dock: KuiStr) -> bool {
     guard(false, || {
@@ -759,7 +906,7 @@ pub extern "C" fn kui_devtools(ptr: *mut KuiCtx) -> bool {
     })
 }
 
-/// Where the devtools panel sits, as the word `kui_set_devtools_dock`
+/// Where the devtools panel sits, as a word [`kui_set_devtools_dock`]
 /// takes (`"right"` for the side); the string is static. False on a bad
 /// context.
 #[unsafe(no_mangle)]
@@ -779,15 +926,13 @@ pub extern "C" fn kui_devtools_dock(ptr: *mut KuiCtx, out: *mut KuiStr) -> bool 
     })
 }
 
-/// Where the last frame laid the host out in its window, logical px: the
-/// viewport with its origin — `x` the pane's width under a left dock, the
-/// whole window with the panel off, in its own window or in any window
-/// but the main one, and zeros before the first frame. Scaled by the
-/// frame's scale into physical px it is what separates the host's quads
-/// from the dock's in `kui_draw_data` — all but the root's background,
-/// which under a dock also fills the whole window beneath the pane
-/// (backlog F92). False on a bad context, a NULL `out` or a short
-/// reservation.
+/// Where the last frame laid the host out in its window, in logical px:
+/// the whole window with the devtools panel off or in its own window, the
+/// pane beside the dock otherwise, and zeros before the first frame.
+/// Scaled by the frame's scale it separates the host's quads from the
+/// dock's in [`kui_draw_data`], except the root's background, which also
+/// fills the window beneath the pane. False on a bad context, a NULL
+/// `out` or a short `size`.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_host_rect(ptr: *mut KuiCtx, out: *mut KuiLayoutRect) -> bool {
     guard(false, || {
@@ -808,10 +953,10 @@ pub extern "C" fn kui_host_rect(ptr: *mut KuiCtx, out: *mut KuiLayoutRect) -> bo
     })
 }
 
-/// Seeds the panel's theme override, what its `T` and `A` chords cycle
-/// from: `base` is `"light"`, `"dark"` or empty for the app's own;
-/// `accent` a `0xRRGGBBAA` colour, or 0 for none. False for any other
-/// base word.
+/// Seeds the devtools panel's theme override, which its `T` and `A`
+/// chords cycle from: `base` is `"light"`, `"dark"` or empty for the
+/// app's own; `accent` a `0xRRGGBBAA` colour, or 0 for none. False for
+/// any other base word.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_set_devtools_theme(ptr: *mut KuiCtx, base: KuiStr, accent: u32) -> bool {
     guard(false, || {
@@ -830,13 +975,12 @@ pub extern "C" fn kui_set_devtools_theme(ptr: *mut KuiCtx, base: KuiStr, accent:
     })
 }
 
-/// Respells the chord that moves the keyboard into the panel and back out
-/// — and brings a hidden panel back — from its default `"ctrl+shift+i"`:
-/// `"f12"`, `"mod+shift+d"` (`mod` is Command on macOS, Control
-/// elsewhere), `"⌥⌘I"`, any spelling a `KuiMenuItem`'s accel takes. The
-/// panel's other chords stay `Ctrl+Shift+<letter>`; with another chord
-/// set, `Ctrl+Shift+I` reaches the host like any other press. False for a
-/// spelling kui cannot name, which leaves the chord as it was.
+/// Respells the chord that moves the keyboard into the devtools panel and
+/// back out (and brings a hidden panel back) from its default
+/// `"ctrl+shift+i"`: `"f12"`, `"mod+shift+d"` (`mod` is Command on macOS,
+/// Control elsewhere), any spelling a [`KuiMenuItem`]'s `accel` takes. The
+/// panel's other chords stay `Ctrl+Shift+<letter>`. False for a spelling
+/// kui cannot parse, which leaves the chord as it was.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_set_devtools_key(ptr: *mut KuiCtx, key: KuiStr) -> bool {
     guard(false, || {
@@ -851,7 +995,7 @@ pub extern "C" fn kui_set_devtools_key(ptr: *mut KuiCtx, key: KuiStr) -> bool {
     })
 }
 
-/// The chord `kui_set_devtools_key` set, or the default, in its portable
+/// The chord [`kui_set_devtools_key`] set, or the default, in its portable
 /// spelling (`"ctrl+shift+i"`, `"f12"`, `"super+alt+d"`); borrowed until
 /// the next call. False on a bad context.
 #[unsafe(no_mangle)]
@@ -871,13 +1015,12 @@ pub extern "C" fn kui_devtools_key(ptr: *mut KuiCtx, out: *mut KuiStr) -> bool {
     })
 }
 
-/// Declares a devtools tab an extension fills (ADR 0032, decision 1):
-/// `name` is the tab's identity, `label` what the strip shows, `slot` the
-/// full `namespace/slot` the extension names. While the tab is on show
-/// the panel declares that slot in the tab's body and the fill is drawn
-/// there; otherwise the slot is not declared and the extension is not
-/// asked, though its naming the slot raises no `unknown-slot`. Made every
-/// frame, panel on or off. False for a name already declared this frame
+/// Declares a devtools tab an extension fills: `name` is the tab's
+/// identity, `label` what the strip shows, `slot` the full
+/// `namespace/slot` the extension names. While the tab is on show the
+/// panel declares that slot in the tab's body; otherwise the extension is
+/// not asked, and no `unknown-slot` is raised. Call it every frame, panel
+/// on or off. False for a name already declared this frame
 /// (`duplicate-tab`) or outside a frame.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_devtools_tab(
@@ -896,13 +1039,12 @@ pub extern "C" fn kui_devtools_tab(
 }
 
 /// Declares a devtools tab the host draws itself, and opens its content
-/// **only while the tab is on show** (ADR 0032, decisions 1 and 3): true
-/// means the content node is open — build inside and `kui_close` — and
-/// false means the tab was declared and nothing was opened, so skip the
-/// body and do not close. What the host builds is its own: its keys, its
-/// events, laid out and painted as a layer over the panel's tab body,
-/// clipped to it, in the dock's focus region. `if (kui_devtools_tab_open(
-/// ctx, KUI_STR("syntax"), KUI_STR("Tree-sitter"))) { ...; kui_close(ctx); }`.
+/// node only while the tab is on show: true means the node is open, so
+/// build inside it and [`kui_close`]; false means the tab was declared and
+/// nothing opened, so skip the body and do not close. What the host builds
+/// keeps its own keys and events, painted as a layer over the panel's tab
+/// body and clipped to it:
+/// `if (kui_devtools_tab_open(ctx, KUI_STR("syntax"), KUI_STR("Tree-sitter"))) { ...; kui_close(ctx); }`.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_devtools_tab_open(ptr: *mut KuiCtx, name: KuiStr, label: KuiStr) -> bool {
     guard(false, || {
@@ -920,8 +1062,8 @@ pub extern "C" fn kui_devtools_tab_open(ptr: *mut KuiCtx, name: KuiStr, label: K
     })
 }
 
-/// The node the panel's tree tab has selected, as a key, or 0 for none
-/// (ADR 0032, decision 4) — what an inspector in a declared tab reads.
+/// The node the devtools tree tab has selected, as a key, or 0 for none:
+/// what an inspector in a declared tab reads.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_devtools_selected(ptr: *mut KuiCtx) -> u64 {
     guard(0, || {
@@ -945,14 +1087,12 @@ pub extern "C" fn kui_devtools_picked(ptr: *mut KuiCtx) -> u64 {
     })
 }
 
-/// Raises the panel's picker from outside it — an inspector in a declared
-/// tab asking "which node?" — or puts it away (ADR 0032, decision 4).
-/// Picking happens over the host's tree in the main window: the node
-/// under the pointer is `kui_devtools_picked` while it is up, and the
-/// press lands it in `kui_devtools_selected`. Raised while a declared tab
-/// is on show, the pick leaves that tab up; raised otherwise it is the
-/// `Ctrl+Shift+P` pick and shows the tree tab. A hidden panel comes back
-/// docked.
+/// Raises the devtools picker from outside the panel (an inspector asking
+/// "which node?") or puts it away. While it is up the node under the
+/// pointer is [`kui_devtools_picked`], and a press lands it in
+/// [`kui_devtools_selected`]. Raised while a declared tab is on show the
+/// pick leaves that tab up; otherwise it shows the tree tab. A hidden
+/// panel comes back docked.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_set_devtools_pick(ptr: *mut KuiCtx, on: bool) {
     guard((), || {
@@ -970,15 +1110,13 @@ pub extern "C" fn kui_devtools_picking(ptr: *mut KuiCtx) -> bool {
     })
 }
 
-/// Shows the panel's tab named `name` from the host's side — what the
-/// strip's click and `Ctrl+Shift+N` do, for a command that jumps to the
-/// host's own tab (ADR 0032). `name` is one of the panel's own (`facts`,
+/// Shows the devtools tab named `name`: one of the panel's own (`facts`,
 /// `events`, `tree`) or a declared tab's. A declared name the panel does
 /// not list yet is kept and shows once a frame declares it; the return
-/// says whether the panel lists it now (false, too, on a bad context). A
-/// hidden panel comes back docked; `kui_set_devtools` is still the host's
-/// to call. Once, not every frame: it would pin the strip against the
-/// user's own clicks.
+/// says whether the panel lists it now (false on a bad context too). A
+/// hidden panel comes back docked; [`kui_set_devtools`] is still the
+/// host's to call. Call it once, not every frame, or it pins the strip
+/// against the user's own clicks.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_set_devtools_tab(ptr: *mut KuiCtx, name: KuiStr) -> bool {
     guard(false, || {
@@ -986,9 +1124,8 @@ pub extern "C" fn kui_set_devtools_tab(ptr: *mut KuiCtx, name: KuiStr) -> bool {
     })
 }
 
-/// The tab the panel is on, by name: one of its own or a declared tab's —
-/// the selection itself, panel on or off; borrowed until the next call.
-/// False on a bad context.
+/// The devtools tab currently selected, by name, panel on or off;
+/// borrowed until the next call. False on a bad context.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_devtools_current_tab(ptr: *mut KuiCtx, out: *mut KuiStr) -> bool {
     guard(false, || {
@@ -1006,8 +1143,8 @@ pub extern "C" fn kui_devtools_current_tab(ptr: *mut KuiCtx, out: *mut KuiStr) -
     })
 }
 
-/// Selects a node in the panel's tree tab from outside it and reveals it
-/// there, as the picker does; 0 clears.
+/// Selects a node in the devtools tree tab and reveals it there, as the
+/// picker does; 0 clears.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_set_devtools_selected(ptr: *mut KuiCtx, key: u64) {
     guard((), || {
@@ -1018,8 +1155,8 @@ pub extern "C" fn kui_set_devtools_selected(ptr: *mut KuiCtx, key: u64) {
     });
 }
 
-/// The key legend the panel's facts tab shows: `count` pairs, the keys in
-/// `keys` and what each does in `what`, index for index.
+/// The key legend the devtools facts tab shows: `count` pairs, the keys
+/// in `keys` and what each does in `what`, index for index.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_set_devtools_legend(
     ptr: *mut KuiCtx,
@@ -1047,8 +1184,8 @@ pub extern "C" fn kui_set_devtools_legend(
     });
 }
 
-/// Turns the per-frame node snapshot behind `kui_nodes` on or off (off
-/// unless a devtool asked: the copy is O(nodes) a frame).
+/// Turns the per-frame node snapshot behind [`kui_nodes`] on or off. Off
+/// by default: the copy costs a pass over every node each frame.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_set_inspect(ptr: *mut KuiCtx, on: bool) {
     guard((), || {
@@ -1058,13 +1195,13 @@ pub extern "C" fn kui_set_inspect(ptr: *mut KuiCtx, on: bool) {
     });
 }
 
-/// The last finished frame's nodes in tree order, as a list of maps —
-/// each with `key`, `parent`, `depth`, `kind`, `label`, `rect`, `role`,
-/// `text`, `flags`, `layer`, `origin`, `children`, the layout spec, and
-/// `events` (the node's own payloads by handler name) — what a tree view
-/// and a node inspector are built from; read it with `kui_value_at` /
-/// `kui_value_get`. Empty until `kui_set_inspect(ctx, true)` and a frame
-/// after it. Borrowed until the next call; NULL on a bad context.
+/// The last finished frame's nodes in tree order, as a list of maps, each
+/// with `key`, `parent`, `depth`, `kind`, `label`, `rect`, `role`,
+/// `text`, `flags`, `layer`, `origin`, `children`, the layout spec and
+/// `events` (the node's payloads by handler name). Read it with
+/// [`kui_value_at`] and [`kui_value_get`]. Empty until
+/// `kui_set_inspect(ctx, true)` and a frame after it. Borrowed until the
+/// next call; NULL on a bad context.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_nodes(ptr: *mut KuiCtx) -> *const KuiValue {
     guard(std::ptr::null(), || {
@@ -1120,8 +1257,8 @@ mod tests;
 // each member of the enums the API reads as list indices to its position in
 // the list; the `cbuild` tool compiles it against the header, in CI too.
 
-/// The two halves of ADR 0004's named gap: a version a host can compare,
-/// and a size on every struct the library writes into the host's memory.
+/// The two halves of the ABI handshake: a version a host can compare, and
+/// a size on every struct the library writes into the host's memory.
 #[cfg(test)]
 mod abi_handshake;
 

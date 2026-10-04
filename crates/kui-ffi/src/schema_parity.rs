@@ -168,7 +168,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             Kind::Str => Parsed::Str("name".into()),
             // C names the stock three by index (`KUI_FONT_*`) and an
             // installed family by its handle (`kui_font_add_system`), so
-            // its sample is the stock one at index 1 (ADR 0037).
+            // its sample is the stock one at index 1.
             Kind::Family => Parsed::Family(kui_core::FontFamily::Serif),
             Kind::Resource => Parsed::Resource(7),
             Kind::Keyframes => Parsed::Keyframes(vec![Keyframe::default().at(0.5).radius(F)]),
@@ -761,13 +761,13 @@ fn header_prototypes() -> std::collections::BTreeSet<&'static str> {
     declared
 }
 
-/// The verb table's C column, both ways (backlog B1a): every name a row
+/// The verb table's C column, both ways: every name a row
 /// spells — in an `Is` cell, or inside an `As` / `No` cell's prose — is a
 /// prototype in `kui.h`, and every prototype that is a verb is in a row.
 /// What is not a verb is listed here by what it is instead: the elements
 /// (`ELEMENTS` pins them), the env setters (`ENV_FIELDS`' C column), the
 /// value plumbing, the context and frame mechanics, the plugin's side of
-/// ADR 0014, and the ABI handshake. A `kui_*` function added without a
+/// slots, and the ABI handshake. A `kui_*` function added without a
 /// row — or a row spelling a function the header lost — fails by name.
 #[test]
 fn the_verb_table_names_every_c_verb_and_nothing_else() {
@@ -845,7 +845,7 @@ fn the_verb_table_names_every_c_verb_and_nothing_else() {
             "kui_set_key_focus",
             "kui_spec_float_preset",
         ];
-        // The plugin's side of a slot (ADR 0014) and an event's reply.
+        // The plugin's side of a slot and an event's reply.
         const PLUGIN: &[&str] = &[
             "kui_slot_name",
             "kui_slot_namespace",

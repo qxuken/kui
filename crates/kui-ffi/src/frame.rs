@@ -25,7 +25,7 @@ pub extern "C" fn kui_spec_float_preset(spec: *mut KuiSpec, name: KuiStr) -> boo
             kui_core::FloatAnchor::Parent => KUI_FLOAT_PARENT,
             kui_core::FloatAnchor::Viewport => KUI_FLOAT_VIEWPORT,
             // Never crosses: a node-anchored float is the core's own
-            // (a devtools tab's content, ADR 0032).
+            // (a devtools tab's content).
             kui_core::FloatAnchor::Node(_) => KUI_FLOAT_PARENT,
         };
         s.float_anchor_x = align_code(cfg.anchor_point.0);
@@ -43,6 +43,12 @@ pub extern "C" fn kui_spec_float_preset(spec: *mut KuiSpec, name: KuiStr) -> boo
 // ---------------------------------------------------------------------------
 // Frame building
 
+/// Starts a frame: `w` by `h` logical pixels at device scale `scale`
+/// (a value of 0 or less reads as 1).
+///
+/// Everything declared since the last frame is forgotten; build the whole
+/// tree again, then [`kui_frame_finish`]. Call [`kui_set_time`] first if
+/// anything transitions.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_frame_begin(ptr: *mut KuiCtx, w: f32, h: f32, scale: f32) {
     guard((), || {
@@ -53,7 +59,10 @@ pub extern "C" fn kui_frame_begin(ptr: *mut KuiCtx, w: f32, h: f32, scale: f32) 
     });
 }
 
-/// `on_click` (nullable) is consumed.
+/// Configures the frame's root node from `spec`: its direction, padding,
+/// gap, alignment and background. Everything else declared this frame is
+/// its child. Call it first after [`kui_frame_begin`]; a NULL `spec` does
+/// nothing.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_root(ptr: *mut KuiCtx, spec: *const KuiSpec) {
     guard((), || {
@@ -63,6 +72,14 @@ pub extern "C" fn kui_root(ptr: *mut KuiCtx, spec: *const KuiSpec) {
     });
 }
 
+/// Opens a box node built from `spec`; everything until the matching
+/// [`kui_close`] is its child. Returns the node's key, or 0 for a bad
+/// context or a NULL `spec`.
+///
+/// `on_click` (NULL for none) is consumed: a press and release on the node
+/// emits it as the payload of a `click` event. The key is derived from the
+/// node's position in the tree, so a node that must keep state across
+/// frames while siblings come and go takes [`kui_open_keyed`].
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_open(ptr: *mut KuiCtx, spec: *const KuiSpec, on_click: *mut KuiValue) -> u64 {
     guard(0, || {
@@ -75,6 +92,10 @@ pub extern "C" fn kui_open(ptr: *mut KuiCtx, spec: *const KuiSpec, on_click: *mu
     })
 }
 
+/// [`kui_open`] with a stable identity: the key is derived from `label`
+/// under the parent, so hover, focus, scroll offsets, edit buffers and
+/// transitions follow the node while its siblings change. `on_click`
+/// (NULL for none) is consumed. Returns the key, or 0 on failure.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_open_keyed(
     ptr: *mut KuiCtx,
@@ -96,9 +117,9 @@ pub extern "C" fn kui_open_keyed(
 
 /// Declares how many indexed rows the open node's virtual list has, built
 /// or not (`rowCount`): what Select All inside a `selectable` virtual
-/// list spans, since the rows the frame built are all the core can see
-/// (ADR 0017, tier 3). Call it inside the list's container, after its
-/// `kui_open_*`. Nothing outside any node.
+/// list spans, since the rows the frame built are all the core can see.
+/// Call it inside the list's container, after its `kui_open_*`. Does
+/// nothing outside any node.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_row_count(ptr: *mut KuiCtx, rows: u64) {
     guard((), || {
@@ -139,10 +160,10 @@ pub extern "C" fn kui_image(ptr: *mut KuiCtx, id: u64, spec: *const KuiSpec) {
     kui_image_with(ptr, id, 0, 0, spec);
 }
 
-/// `kui_image` with its two rows (ADR 0025, decision 4): `sampling` is
-/// `KUI_SAMPLING_LINEAR` (0, the default) or `KUI_SAMPLING_NEAREST`; `fit`
-/// is `KUI_FIT_FILL` (0, the default), `KUI_FIT_CONTAIN` or
-/// `KUI_FIT_COVER`. An index past the table reads as the default.
+/// [`kui_image`] with its two options: `sampling` is `KUI_SAMPLING_LINEAR`
+/// (0, the default) or `KUI_SAMPLING_NEAREST`; `fit` is `KUI_FIT_FILL`
+/// (0, the default), `KUI_FIT_CONTAIN` or `KUI_FIT_COVER`. An index past
+/// the table reads as the default.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_image_with(
     ptr: *mut KuiCtx,
@@ -171,14 +192,13 @@ pub extern "C" fn kui_image_with(
 }
 
 /// A filled polygon through `count` points at `xy` (x0, y0, x1, y1, ...),
-/// at most eight — more are dropped with `polygon-points-truncated`, fewer
-/// than three draw nothing — the fill in `spec`'s `bg`. Placed like a
-/// stroke: a float sized to its own bounding box, in the parent's box
-/// space. `label` keys the node (empty = a key from the tree position).
-/// The three payloads are taken as `kui_open_with` takes them; a fill
-/// with one is hit by its outline (ADR 0026). See `Core::polygon_node`
-/// (ADR 0025, decision 6). `spec` may be NULL, which is a polygon with no
-/// fill and so nothing drawn.
+/// at most eight (more are dropped with a `polygon-points-truncated`
+/// warning, fewer than three draw nothing), filled with `spec`'s `bg`.
+/// Placed like a stroke: a float sized to its own bounding box, in the
+/// parent's box space. `label` keys the node (empty for a key from the
+/// tree position). The three payloads are consumed as [`kui_open_with`]
+/// consumes them; a fill with one is hit by its outline. A NULL `spec` is
+/// a polygon with no fill, so nothing is drawn.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_polygon(
     ptr: *mut KuiCtx,
@@ -215,9 +235,10 @@ pub extern "C" fn kui_polygon(
     });
 }
 
-/// A box the registered WGSL `id` paints; see `Core::fragment_node`. It
-/// has no intrinsic size, so `spec` must give it one. `params` may be null
-/// when `count` is 0; more than sixteen are dropped with a warning.
+/// A box painted by the WGSL fragment function registered as `id`
+/// ([`kui_fragment_add`]). It has no intrinsic size, so `spec` must give
+/// it one. `params` are `count` floats the function reads, NULL when
+/// `count` is 0; more than sixteen are dropped with a warning.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_fragment(
     ptr: *mut KuiCtx,
@@ -262,10 +283,10 @@ pub extern "C" fn kui_fragment_open(
     });
 }
 
-/// `kui_fragment` reading `image` through `kui_sample` (backlog V1,
-/// ADR 0025 decision 7): an image handle from `kui_image_add`, or 0 for
-/// none, which is `kui_fragment`. `label` keys the node (empty = a key
-/// from the tree position); a leaf.
+/// [`kui_fragment`] reading `image` through the shader's `kui_sample`:
+/// an image handle from [`kui_image_add`], or 0 for none, which is
+/// `kui_fragment`. `label` keys the node (empty for a key from the tree
+/// position); a leaf.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_fragment_with(
     ptr: *mut KuiCtx,
@@ -342,9 +363,10 @@ fn fragment_spec(spec: *const KuiSpec) -> kui_core::NodeSpec {
     }
 }
 
-/// A round-capped stroke from (x0, y0) to (x1, y1); see `Core::line_node`.
-/// `spec` may be NULL. `width <= 0` is 1; `color` 0 is the default
-/// foreground, like a text style's.
+/// A round-capped stroke from (x0, y0) to (x1, y1) in the parent's box
+/// space, as a float sized to its bounding box. `spec` may be NULL.
+/// `width <= 0` is 1; `color` 0 is the theme's foreground, like a text
+/// style's.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_line(
     ptr: *mut KuiCtx,
@@ -377,11 +399,11 @@ pub extern "C" fn kui_line(
 }
 
 /// A stroke through `count` points at `xy` (x0, y0, x1, y1, ...): a
-/// polyline, or with `curve` a smooth curve through them, flattened in the
-/// core. `label` keys the node (empty = a key from the tree position), for
-/// a stroke that transitions or exits. The three payloads are taken as
-/// `kui_open_with` takes them; a stroke with one is hit by its shape
-/// (ADR 0026). See `Core::line_node`.
+/// polyline, or with `curve` a smooth curve through them. `label` keys the
+/// node (empty for a key from the tree position), for a stroke that
+/// transitions or exits. The three payloads are consumed as
+/// [`kui_open_with`] consumes them; a stroke with one is hit by its shape,
+/// not its bounding box.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_polyline(
     ptr: *mut KuiCtx,
@@ -415,7 +437,7 @@ pub extern "C" fn kui_polyline(
             None => kui_core::NodeSpec::column(),
         };
         // A stroke with no colour of its own is the theme's foreground,
-        // the way a text run with none is (ADR 0019).
+        // the way a text run with none is.
         let color = if color == 0 {
             c.core().theme().fg
         } else {
@@ -430,10 +452,10 @@ pub extern "C" fn kui_polyline(
     });
 }
 
-/// Like `kui_open_keyed`, but the node is draggable: press-drag emits
-/// `{kind="drag", phase, x, y, dx, dy, tag}` events. `on_drag` (the tag,
-/// nullable) and `on_click` (nullable) are consumed. A drag past the click
-/// slop suppresses the click.
+/// [`kui_open_keyed`] for a draggable node: a press-drag emits
+/// `{kind="drag", phase, x, y, dx, dy, tag}` events with `on_drag` as the
+/// tag. `on_drag` and `on_click` (either NULL) are consumed. A drag past
+/// the click slop suppresses the click.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_open_draggable(
     ptr: *mut KuiCtx,
@@ -454,12 +476,14 @@ pub extern "C" fn kui_open_draggable(
     })
 }
 
-/// The general container: every message prop at once. NULL = absent (so a
-/// NULL `on_drag` here does NOT make the node draggable, unlike
-/// `kui_open_draggable`). A non-NULL `on_key` makes the node a key sink;
-/// give it focus with `kui_set_key_focus` and presses arrive as
-/// `{kind="key", phase="down", code, ctrl, alt, shift, super, text, repeat,
-/// tag}` — releases too, with `phase="up"`, when the spec sets `key_up`.
+/// The general keyed container: every event tag at once, each consumed,
+/// NULL meaning absent (so a NULL `on_drag` here does not make the node
+/// draggable, unlike [`kui_open_draggable`]). A non-NULL `on_key` makes
+/// the node a key sink: give it focus with [`kui_set_key_focus`] and
+/// presses arrive as `{kind="key", phase="down", code, ctrl, alt, shift,
+/// super, text, repeat, tag}`, releases too (`phase="up"`) when the spec
+/// sets `key_up`. `on_hover` tags pointer enter and leave. Returns the
+/// key, or 0 on failure.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_open_with(
     ptr: *mut KuiCtx,
@@ -486,6 +510,8 @@ pub extern "C" fn kui_open_with(
     })
 }
 
+/// Closes the node the last `kui_open*` opened. Every open must be
+/// closed before [`kui_frame_finish`].
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_close(ptr: *mut KuiCtx) {
     guard((), || {
@@ -497,6 +523,9 @@ pub extern "C" fn kui_close(ptr: *mut KuiCtx) {
     });
 }
 
+/// A paragraph of plain text in one style (NULL for the default style).
+/// A text has no box of its own; wrap it in a [`kui_open`] for padding, a
+/// background or a click.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_text(ptr: *mut KuiCtx, text: KuiStr, style: *const KuiTextStyle) {
     guard((), || {
@@ -560,6 +589,9 @@ fn with_spans<R>(
     Some(f(&spans))
 }
 
+/// A paragraph of `span_count` styled runs from `spans`, set in `base`
+/// (NULL for the default style) where a span says nothing. A NULL or
+/// empty array draws nothing.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_rich_text(
     ptr: *mut KuiCtx,
@@ -705,14 +737,16 @@ pub extern "C" fn kui_ime_rect(ptr: *mut KuiCtx, out: *mut KuiCaretRect) -> bool
     })
 }
 
-/// A terminal's screen as one node (backlog C20): `rows × cols` cells from
-/// `cells` (fewer draw as blank), shaped once per character and placed at
-/// `col × cell_w` ever after. `style` sizes the cells (`size`, `family` /
-/// `font`, `line_height`); `spec` is the node's own (an `on_key` makes it
-/// the sink, an `on_click` / `on_drag` carry `cell: {row, col}`), the
-/// three payloads taken the way `kui_open_with` takes them; `label`
-/// keys the node (empty = auto). `cursor_shape` is `KUI_CELL_CURSOR_*` or
-/// 0 for none, at (`cursor_row`, `cursor_col`) in `cursor_color`.
+/// A terminal's screen as one node: `rows` by `cols` cells from `cells`
+/// (fewer draw as blank), shaped once per character and placed on a fixed
+/// grid. `style` sizes the cells (`size`, `family` / `font`,
+/// `line_height`); `spec` is the node's own (an `on_key` makes it the key
+/// sink, an `on_click` / `on_drag` carry `cell: {row, col}`), the three
+/// payloads consumed as [`kui_open_with`] consumes them; `label` keys the
+/// node (empty for auto). `cursor_shape` is `KUI_CELL_CURSOR_*` or 0 for
+/// none, drawn at (`cursor_row`, `cursor_col`) in `cursor_color`.
+/// `origin_line` is the absolute line row 0 is, so a selection keeps its
+/// ends across a scroll; 0 says nothing.
 #[unsafe(no_mangle)]
 #[allow(clippy::too_many_arguments)]
 pub extern "C" fn kui_cells(
@@ -731,8 +765,7 @@ pub extern "C" fn kui_cells(
     cursor_col: u32,
     cursor_shape: u32,
     cursor_color: u32,
-    // `origin_line`: the absolute line row 0 is (ADR 0017 decision 4);
-    // 0 says nothing.
+    // `origin_line`: the absolute line row 0 is; 0 says nothing.
     origin_line: u64,
 ) {
     guard((), || {
@@ -801,7 +834,7 @@ pub extern "C" fn kui_cells(
     });
 }
 
-/// `kui_measure_text` for a rich-text paragraph.
+/// [`kui_measure_text`] for a rich-text paragraph.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_measure_rich_text(
     ptr: *mut KuiCtx,
@@ -837,6 +870,9 @@ pub extern "C" fn kui_child_key(ptr: *mut KuiCtx, label: KuiStr) -> u64 {
     })
 }
 
+/// Whether the pointer is over the node `key`, as of the last input. Only
+/// a node that is hover-tracked (a click or hover tag, `hoverable`,
+/// `hover_bg`, a tooltip or a cursor) is ever hovered.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_is_hovered(ptr: *mut KuiCtx, key: u64) -> bool {
     guard(false, || {
@@ -844,8 +880,8 @@ pub extern "C" fn kui_is_hovered(ptr: *mut KuiCtx, key: u64) -> bool {
     })
 }
 
-/// Whether files dragged in from the OS are over `key` (ADR 0031) — for
-/// drop-dependent layout; the colour is `KuiSpec.drop_bg`.
+/// Whether files dragged in from the OS are over `key`, for
+/// drop-dependent layout; the colour alone is `KuiSpec.drop_bg`.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_is_drop_target(ptr: *mut KuiCtx, key: u64) -> bool {
     guard(false, || {
@@ -865,6 +901,7 @@ pub extern "C" fn kui_drop_target(ptr: *mut KuiCtx) -> u64 {
     })
 }
 
+/// Whether a primary press that started on the node `key` is still held.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_is_pressed(ptr: *mut KuiCtx, key: u64) -> bool {
     guard(false, || {
@@ -872,6 +909,10 @@ pub extern "C" fn kui_is_pressed(ptr: *mut KuiCtx, key: u64) -> bool {
     })
 }
 
+/// Finishes the frame: lets loaded extensions fill what the view did not,
+/// lays the tree out and paints it. After it, [`kui_draw_data`] has the
+/// frame and [`kui_poll_event`] has anything the frame itself produced (a
+/// `resize`, a hover change under a still pointer, a `layout`).
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_frame_finish(ptr: *mut KuiCtx) {
     guard((), || {
@@ -892,14 +933,15 @@ pub extern "C" fn kui_frame_finish(ptr: *mut KuiCtx) {
         }
     });
 }
-/// Draw data for the finished frame. Pointers are valid until the next
-/// `kui_frame_begin` on this context. `KuiQuad` is layout-compatible with the
-/// core quad (asserted below), so this is a cast, not a copy.
+/// The finished frame's draw list, into `out` (start from
+/// `KUI_DRAW_DATA_INIT`). The pointers are valid until the next
+/// [`kui_frame_begin`] on this context; the quads are the core's own
+/// array, not a copy.
 ///
-/// Returns false — writing nothing, and leaving `atlas_dirty` set so the
-/// next call still reports it — for a bad context or an `out` whose `size`
-/// this library cannot honour. It returned `void` before the size
-/// handshake; a host that ignores the result still compiles.
+/// Reading it clears the atlas's dirty flag, so upload the atlas when
+/// `atlas_dirty` is set or `atlas_epoch` changed. Returns false, writing
+/// nothing and leaving the flag set, for a bad context or a `size` this
+/// library cannot honour.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_draw_data(ptr: *mut KuiCtx, out: *mut KuiDrawData) -> bool {
     guard(false, || {

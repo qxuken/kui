@@ -1,6 +1,6 @@
 //! The window: the facts a driver pushes (`kui_env_set_window`), the
-//! declared set and the commands a driver drains (`docs/adr/0004`), and
-//! the title and the window level.
+//! declared set and the commands a driver drains, and the title and the
+//! window level.
 
 use super::*;
 
@@ -62,8 +62,8 @@ pub extern "C" fn kui_take_window_command(ptr: *mut KuiCtx, out: *mut KuiWindowC
     })
 }
 
-/// Declares that a window named `name` exists this frame (ADR 0004): it
-/// opens on the first frame any window's frame declares it — `cfg` is
+/// Declares that a window named `name` exists this frame: it opens on the
+/// first frame any window's frame declares it — `cfg` is
 /// read then and never again, NULL meaning `KUI_WINDOW_CONFIG_INIT` — and
 /// closes on the first frame none does. The `Open` / `Close` arrive
 /// through `kui_take_window_command`; the app sees `{kind:"window",
@@ -242,8 +242,8 @@ pub extern "C" fn kui_window_title_get(ptr: *mut KuiCtx, out: *mut KuiStr) -> bo
     })
 }
 
-/// Declares that this frame wants the window above every other app's
-/// (backlog C30). Cleared each `kui_frame_begin` like the title, but with
+/// Declares that this frame wants the window above every other app's.
+/// Cleared each `kui_frame_begin` like the title, but with
 /// a default of false rather than "leave as-is": a frame that stops
 /// calling this is what lowers the window again. The host applies it
 /// after `kui_frame_finish` (see `kui_always_on_top_get`) and reports what
@@ -269,7 +269,7 @@ pub extern "C" fn kui_always_on_top_get(ptr: *mut KuiCtx) -> bool {
 }
 
 /// Declares that this frame wants secure keyboard entry while the window
-/// has the keyboard — a password prompt (backlog F85). Cleared each
+/// has the keyboard, as at a password prompt. Cleared each
 /// `kui_frame_begin` like `kui_set_always_on_top`: a frame that stops
 /// calling this is what turns it off. Under `kui_run` the runner makes
 /// the platform call and keeps it balanced; a host driving its own window
@@ -294,7 +294,7 @@ pub extern "C" fn kui_secure_input_get(ptr: *mut KuiCtx) -> bool {
 }
 
 /// Declares which Option keys act as Alt in this window on macOS
-/// (`KUI_OPTION_AS_ALT_*`, backlog F113), so a dead key like ⌥u arrives as
+/// (`KUI_OPTION_AS_ALT_*`), so a dead key like Option-U arrives as
 /// a key with Alt rather than composing an accent. Cleared each
 /// `kui_frame_begin` like `kui_set_always_on_top`: a frame that stops
 /// calling this gives the Option keys back to the layout. A number past

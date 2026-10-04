@@ -1,5 +1,4 @@
-//! Keyboard focus: declaring it, moving it, and reading where it is
-//! (`docs/adr/0002-keyboard-focus-as-data.md`).
+//! Keyboard focus: declaring it, moving it, and reading where it is.
 
 use super::*;
 
@@ -17,8 +16,8 @@ pub extern "C" fn kui_set_key_focus(ptr: *mut KuiCtx, key: u64) {
     });
 }
 
-/// Moves keyboard focus to `key` now (0 blurs); see
-/// docs/adr/0002-keyboard-focus-as-data.md.
+/// Moves keyboard focus to `key` now (0 blurs). For focus that follows a
+/// declaration rather than a moment, [`kui_set_key_focus`].
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_focus(ptr: *mut KuiCtx, key: u64) {
     guard((), || {
@@ -73,7 +72,7 @@ pub extern "C" fn kui_focus_visible(ptr: *mut KuiCtx) -> bool {
     })
 }
 
-/// The caret's blink phase — `true` draws it (backlog C35). A custom
+/// The caret's blink phase: `true` draws it. A custom
 /// editor reads it in its view and skips its caret node on the off phase,
 /// keeping the `caret` row on its `KUI_ROLE_LINE` either way. Under
 /// `kui_run` the runner's clock sets it; a host driving its own window
@@ -115,9 +114,10 @@ pub extern "C" fn kui_caret_stamp(ptr: *mut KuiCtx) -> u64 {
     })
 }
 
-/// Enters the focus region `key` names (0: the main ring) at the end of
-/// the frame being built; see `Core::focus_region` and
-/// `docs/adr/0022-focus-regions.md`.
+/// Enters the focus region `key` names (a node declared with
+/// `focus_region`; 0 is the main ring) at the end of the frame being
+/// built: focus lands on what that ring last held, else its
+/// `initial_focus`, else its first stop.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_focus_region(ptr: *mut KuiCtx, key: u64) {
     guard((), || {
@@ -135,6 +135,7 @@ pub extern "C" fn kui_region(ptr: *mut KuiCtx) -> u64 {
     })
 }
 
+/// Whether the node `key` holds keyboard focus.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_is_focused(ptr: *mut KuiCtx, key: u64) -> bool {
     guard(false, || {

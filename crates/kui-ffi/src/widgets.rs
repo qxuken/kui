@@ -88,8 +88,8 @@ pub extern "C" fn kui_text_input(ptr: *mut KuiCtx, label: KuiStr, initial: KuiSt
     })
 }
 
-/// The stock select (`widgets::select_items`, backlog F73): a field
-/// showing the choice in force that, clicked, opens the core's own menu
+/// The stock select: a field showing the choice in force that, clicked,
+/// opens the core's own menu
 /// of `count` options read from `items` — the same rows `kui_open_menu`
 /// takes — under it, the `current`th checked (`-1` for none). The host
 /// holds no open state: the choice arrives as the `{kind:"menu", role,
@@ -99,9 +99,8 @@ pub extern "C" fn kui_text_input(ptr: *mut KuiCtx, label: KuiStr, initial: KuiSt
 ///
 /// Returns the node key, or 0 for no label, no items, or a row with a
 /// role this build does not know. A `current` past the end, or on a
-/// separator, is the core's `select-current-ignored` warning and none
-/// (backlog RG10), as it is in every binding; `count == 0` is refused
-/// here since C's rows never pass the shared reader.
+/// separator, raises a `select-current-ignored` warning and reads as
+/// none.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_select(
     ptr: *mut KuiCtx,
@@ -132,7 +131,9 @@ pub extern "C" fn kui_select(
     })
 }
 
-/// Convenience button matching `kui_core::widgets::button`. Consumes payload.
+/// The stock button, labelled and keyed by `label`: a press by the
+/// pointer, Space, Enter or assistive technology emits `payload` as a
+/// `click` event's payload. Consumes `payload` (NULL for none).
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_button(ptr: *mut KuiCtx, label: KuiStr, payload: *mut KuiValue) {
     kui_button_with(ptr, label, std::ptr::null(), payload);
@@ -251,8 +252,8 @@ fn toggle(
     })
 }
 
-/// The stock checkbox (ADR 0034): a box drawn from `spec`'s `checked` /
-/// `mixed`, labelled `text` and keyed by it; a press posts `payload`
+/// The stock checkbox: a box drawn from `spec`'s `checked` / `mixed`,
+/// labelled `text` and keyed by it; a press posts `payload`
 /// (consumed). Reads `checked`, `mixed`, `label`, `description`,
 /// `tooltip` and `disabled` off `spec` (NULL = none of them). Its key.
 #[unsafe(no_mangle)]
@@ -271,8 +272,8 @@ pub extern "C" fn kui_checkbox(
     )
 }
 
-/// The stock radio (ADR 0034); see `kui_checkbox`. Declare radios between
-/// `kui_radio_group_open` and `kui_close`.
+/// The stock radio; see [`kui_checkbox`]. Declare radios between
+/// [`kui_radio_group_open`] and [`kui_close`].
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_radio(
     ptr: *mut KuiCtx,
@@ -283,7 +284,7 @@ pub extern "C" fn kui_radio(
     toggle(ptr, kui_core::widgets::Toggle::Radio, text, spec, payload)
 }
 
-/// The stock switch (ADR 0034); see `kui_checkbox`.
+/// The stock switch; see [`kui_checkbox`].
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_switch(
     ptr: *mut KuiCtx,
@@ -294,9 +295,9 @@ pub extern "C" fn kui_switch(
     toggle(ptr, kui_core::widgets::Toggle::Switch, text, spec, payload)
 }
 
-/// Opens a radio group named `label` (ADR 0034): `spec`'s box rows (NULL =
-/// a column), the group's role and name, and the stock gap where `spec`
-/// has none. Declare its radios, then `kui_close`. Its key.
+/// Opens a radio group named `label`: `spec`'s box rows (NULL for a
+/// column), the group's role and name, and the stock gap where `spec` has
+/// none. Declare its radios, then [`kui_close`]. Returns its key.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_radio_group_open(
     ptr: *mut KuiCtx,
@@ -316,7 +317,7 @@ pub extern "C" fn kui_radio_group_open(
     })
 }
 
-/// The stock slider (ADR 0034), named and keyed by `label`. Reads the
+/// The stock slider, named and keyed by `label`. Reads the
 /// value fields (`value_now` / `value_min` / `value_max` / `value_step` by
 /// their `KUI_VALUE_*` bits, `value_text`), `on_change`, `width` /
 /// `min_w` / `max_w` where set, `label` (a name other than the key),
@@ -383,8 +384,12 @@ pub extern "C" fn kui_slider(ptr: *mut KuiCtx, label: KuiStr, spec: *const KuiSp
     })
 }
 
-/// Editable text node; flags: `KUI_EDIT_MULTILINE`, `KUI_EDIT_AUTOFOCUS`,
-/// `KUI_EDIT_WRAP`. Returns its key.
+/// An editable text node keyed by `label`, seeded with `initial` the
+/// first time it is seen; the core keeps its buffer, caret and undo
+/// history across frames. `flags` are `KUI_EDIT_MULTILINE`,
+/// `KUI_EDIT_AUTOFOCUS` and `KUI_EDIT_WRAP`; `spec` (required) is the
+/// box around it. Read the text with [`kui_edit_text`]; `changed` and
+/// `submit` events carry the key. Returns the key, or 0 on failure.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_text_edit(
     ptr: *mut KuiCtx,

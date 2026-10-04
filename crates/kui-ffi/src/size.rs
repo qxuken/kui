@@ -1,4 +1,4 @@
-//! Size expressions for C (backlog F109): built from parts, so a host
+//! Size expressions for C: built from parts, so a host
 //! parses no text — `kui_size_clamp(kui_size_px(400), kui_size_pct(80),
 //! kui_size_px(1000))` — or parsed from a spelling (`kui_size_parse`).
 //! Each hands back a `KuiSizing` already reduced: a length is
@@ -18,8 +18,7 @@ const FIT: KuiSizing = KuiSizing { tag: 0, value: 0.0 };
 /// The expression a sizing stands for, when it is one: a length, a
 /// percentage or a calc. A length or percentage that is not a finite
 /// number is none — the core refuses one in a tree it keeps as well, so
-/// a `kui_size_px(NAN)` never adds a table entry per frame (backlog
-/// RG80).
+/// a `kui_size_px(NAN)` never adds a table entry per frame.
 fn expr_of(s: KuiSizing) -> Option<Expr> {
     match s.tag {
         2 | 3 if !s.value.is_finite() => None,
@@ -122,7 +121,7 @@ pub extern "C" fn kui_size_parse(s: KuiStr, out: *mut KuiSizing) -> bool {
     let sizing = match kui_core::schema::sizing_str(&kstr(s)) {
         Ok(sizing) => sizing,
         // A size the full table refused is fit, as the builders reduce
-        // it, and not a bad spelling (backlog RG93).
+        // it, and not a bad spelling.
         Err(e) if kui_core::calc::is_full(&e) => kui_core::Sizing::Fit,
         Err(_) => return false,
     };
@@ -160,7 +159,7 @@ mod tests {
 
     /// Wrapping a calc in `kui_size_min` again and again nests it one
     /// level a call; past the core's cap it is refused, `KUI_FIT`, rather
-    /// than a tree every later walk recurses through (backlog RG79).
+    /// than a tree every later walk recurses through.
     #[test]
     fn nesting_by_hand_stops_at_the_cap() {
         let mut s = kui_size_pct(50.0);
@@ -176,7 +175,7 @@ mod tests {
 
     /// A `NaN` or infinite length or percentage is not a size: built into
     /// an expression it is `KUI_FIT`, and as a percentage clamp none, so
-    /// it never adds a table entry per call (backlog RG80).
+    /// it never adds a table entry per call.
     #[test]
     fn a_number_that_is_not_finite_is_not_a_size() {
         for n in [f32::NAN, f32::INFINITY] {
@@ -193,7 +192,7 @@ mod tests {
     }
 
     /// A negative `KUI_FIXED` ceiling is a ceiling of 0, not the calc a
-    /// negative `max_w` otherwise stands for (backlog RG78).
+    /// negative `max_w` otherwise stands for.
     #[test]
     fn a_negative_px_ceiling_is_zero() {
         let l = kui_core::NodeSpec::column()

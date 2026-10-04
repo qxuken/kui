@@ -3,8 +3,7 @@
 use super::*;
 
 /// A borrowed `KuiStr` over a Rust string, for the length of the call
-/// that takes it — the one helper every module below wants (backlog AR48
-/// hoisted it from five copies).
+/// that takes it — the one helper every module below wants.
 fn ks(s: &str) -> KuiStr {
     KuiStr {
         ptr: s.as_ptr(),
@@ -59,7 +58,7 @@ mod widgets_headless {
         kui_ctx_free(ctx);
     }
 
-    /// `kui_select` (backlog F73): the field is keyed by its label, a
+    /// `kui_select`: the field is keyed by its label, a
     /// click on it opens the core's menu of the rows under it — no event
     /// for the host — and a row chosen, as the host's own menu answers,
     /// is one `menu` event on the field naming the option.
@@ -130,8 +129,8 @@ mod widgets_headless {
         kui_ctx_free(ctx);
     }
 
-    /// The select's checks the core makes for every binding, through C
-    /// (backlog RG9, RG10): a disabled option reported chosen is refused —
+    /// The select's checks the core makes for every binding, through C:
+    /// a disabled option reported chosen is refused —
     /// false, nothing posted, the menu still open — and a `current` past
     /// the end or on a separator is none, with one warning on the field.
     /// `count == 0` is refused at the door as it was: C's rows never pass
@@ -227,13 +226,13 @@ mod widgets_headless {
         kui_ctx_free(ctx);
     }
 
-    /// `dir = KUI_TABLE` (ADR 0033): the rows' cells line up, each
+    /// `dir = KUI_TABLE`: the rows' cells line up, each
     /// column as wide as its widest cell, a grow cell growing its column,
     /// a bare text a cell too. Read back through `kui_layout_of` on the
     /// cells that declared `on_layout`; and `kui_nodes` says which node
     /// is the table — `table: true` on a `dir: "column"` map, the same
-    /// `NodeInfo` row Node and Lua read (backlog RG14 (f): the map is the
-    /// core's `to_value`, so C needs no reader of its own).
+    /// `NodeInfo` row Node and Lua read (the map is the core's `to_value`,
+    /// so C needs no reader of its own).
     #[test]
     fn a_table_lines_its_rows_cells_up() {
         let ctx = kui_ctx_new();
@@ -339,10 +338,10 @@ mod widgets_headless {
         kui_ctx_free(ctx);
     }
 
-    /// The metrics cross the boundary both ways (backlog T2): the stock
+    /// The metrics cross the boundary both ways: the stock
     /// set reads back as the constants, a set the host wrote is what the
     /// next button is built from, NULL restores the stock set, and a short
-    /// reservation is refused as every [out] struct's is.
+    /// reservation is refused as every `[out]` struct's is.
     #[test]
     fn metrics_cross_the_boundary_both_ways() {
         let ctx = kui_ctx_new();
@@ -384,7 +383,7 @@ mod widgets_headless {
         kui_ctx_free(ctx);
     }
 
-    /// Tokens (ADR 0027) cross as two [in] arrays and read back by name:
+    /// Tokens cross as two `[in]` arrays and read back by name:
     /// a themed colour answers the dark half on an unknown appearance, a
     /// role's name answers the role, an unknown or wrong-kind name is
     /// false with `unknown-token` raised once, a role's name in a
@@ -470,7 +469,7 @@ mod widgets_headless {
         kui_ctx_free(ctx);
     }
 
-    /// Derived tokens (ADR 0028) through C: a chain folds over a declared
+    /// Derived tokens through C: a chain folds over a declared
     /// token, a role is a source, the value read back is the rounded one
     /// every binding paints, a missing source drops that token alone with
     /// `unknown-token`, and a malformed op refuses the whole call with
@@ -768,7 +767,7 @@ mod window_commands_headless {
     }
 
     /// The one growth the size handshake cannot absorb, asserted rather
-    /// than only described (ADR 0006; `abi.rs`'s note on ABI 7).
+    /// than only described (`abi.rs`'s note on ABI 7).
     /// `KuiWindowCommand` embeds a `KuiWindowConfig` **by value**, so the
     /// four `anchor_*` floats appended to the config moved every field
     /// after it and lifted this struct's floor past the whole size of the
@@ -808,7 +807,7 @@ mod window_commands_headless {
         kui_ctx_free(ctx);
     }
 
-    /// ADR 0004 decision 9 through the C surface: the kind and the anchor
+    /// Popups through the C surface: the kind and the anchor
     /// ride the declaration out to the `KUI_CMD_OPEN` untouched, `owner`
     /// names the window whose frame declared it, and a dismissal reported
     /// by the host is an event and nothing else — no command, and the
@@ -943,8 +942,8 @@ mod audio_headless {
         len: 5,
     };
 
-    /// The two answers a host with its own device owes besides `ended`
-    /// (backlog F36), which only the runner could give before: a stop it
+    /// The two answers a host with its own device owes besides `ended`,
+    /// which only the runner could give before: a stop it
     /// found still playing names the one-shot node that went away in
     /// `truncated-playback`, and a play its device refused is a `refused`
     /// sound event plus `playback-refused` on the node — the same
@@ -1028,7 +1027,7 @@ mod queries_headless {
     use super::*;
 
     /// A host that never saw an event from a node names it by the label it
-    /// opened it under (backlog F5): `kui_key_of` hands back the key the
+    /// opened it under: `kui_key_of` hands back the key the
     /// build gave, through the auto-keyed ancestors the host cannot
     /// spell, and `kui_focus` takes it from there.
     #[test]
@@ -1195,7 +1194,7 @@ mod queries_headless {
     }
 
     /// Where a key is and what the locks hold cross in the same `kmods`
-    /// word as the modifiers (`KUI_KLOC_*`, `KUI_KLOCK_*`, backlog F108),
+    /// word as the modifiers (`KUI_KLOC_*`, `KUI_KLOCK_*`),
     /// and a sink whose spec sets `modifier_keys` hears the modifier keys
     /// themselves.
     #[test]
@@ -1454,7 +1453,7 @@ mod queries_headless {
         kui_ctx_free(ctx);
     }
 
-    /// A C editor's caret blinks (backlog C35): the `caret` on a
+    /// A C editor's caret blinks: the `caret` on a
     /// `KUI_ROLE_LINE` under the focused sink is a caret to blink, the
     /// stamp moves with it, and the phase a host's clock sets reads back.
     /// With KUI_VALUE_CARET_SOLID beside it (F68) it is no caret to
@@ -1536,7 +1535,7 @@ mod queries_headless {
         kui_ctx_free(ctx);
     }
 
-    /// A C editor's clipboard and mouse (backlog C33, C34): the two
+    /// A C editor's clipboard and mouse: the two
     /// clipboard doors queue what a menu's Copy and Paste would, a paste
     /// the host commits reaches the sink as `text`, and a press inside
     /// the sink carries `line`, `byte` and `clicks`.
@@ -1590,7 +1589,7 @@ mod queries_headless {
         assert_eq!(kstr(action.text).as_ref(), "yanked");
         assert_eq!(action.html.len, 0);
         // A secret is its own kind, for the host to write marked
-        // concealed and transient (backlog F84).
+        // concealed and transient.
         assert!(kui_take_menu_action(ctx, &mut action));
         assert_eq!(action.kind, KUI_MENU_ACTION_SET_CLIPBOARD_SECRET);
         assert_eq!(kstr(action.text).as_ref(), "hunter2");
@@ -1602,7 +1601,7 @@ mod queries_headless {
         // The host answers the paste with a commit; the sink hears it.
         kui_input_commit(ctx, ks("from the clipboard"));
         // And a paste the pasteboard marked, which the sink hears with
-        // its markers — only those set (backlog F84).
+        // its markers — only those set.
         kui_input_paste(ctx, ks("s3cret"), KUI_PASTE_CONCEALED | KUI_PASTE_TRANSIENT);
         kui_input_paste(ctx, ks("brief"), KUI_PASTE_TRANSIENT);
         // A double click on the second line, past its end.
@@ -1948,7 +1947,7 @@ mod queries_headless {
         assert_eq!(payload.0.get_str("kind"), Some("layout"));
         assert_eq!(payload.0.get_float("w"), Some(300.0));
         assert_eq!(payload.0.get_str("tag"), Some("panel"));
-        // The same rect as a query (backlog C26 step 2), and nothing for
+        // The same rect as a query, and nothing for
         // a key that declared no on_layout.
         let mut rect = KuiLayoutRect::default();
         assert!(kui_layout_of(ctx, key, &mut rect));
@@ -2053,7 +2052,7 @@ mod env_headless {
         kui_ctx_free(ctx);
     }
 
-    /// The assistive row (backlog F48): a host with no bridge never calls
+    /// The assistive row: a host with no bridge never calls
     /// it and reads unknown; one that bridges the platform's accessibility
     /// API pushes the reading, and the settings setter — which a host
     /// re-runs on every OS notification — leaves it alone.
@@ -2079,7 +2078,7 @@ mod env_headless {
         kui_ctx_free(ctx);
     }
 
-    /// The secure-input ask is frame state (backlog F85): false until a
+    /// The secure-input ask is frame state: false until a
     /// frame declares it, false again on the frame that stops, and nothing
     /// on a bad context.
     #[test]
@@ -2101,7 +2100,7 @@ mod env_headless {
         kui_ctx_free(ctx);
     }
 
-    /// Option as Alt is frame state (backlog F113): none until a frame
+    /// Option as Alt is frame state: none until a frame
     /// declares it, none again on the frame that stops, a number the
     /// header does not name is none, and nothing on a bad context.
     #[test]
@@ -2137,7 +2136,7 @@ mod env_headless {
         kui_ctx_free(ctx);
     }
 
-    /// The level is two facts with two doors (backlog C30): the frame's
+    /// The level is two facts with two doors: the frame's
     /// ask, frame-scoped and false by default, which the host reads after
     /// the frame; and what the host did, which it writes back and the
     /// ask never touches — `kui_env_set_window` leaves it alone the way
@@ -2423,7 +2422,7 @@ mod parity_headless {
         kui_ctx_free(ctx);
     }
 
-    /// The same families with what their faces say they are (backlog F97)
+    /// The same families with what their faces say they are
     /// — what Node's `systemFonts()` answers: in `kui_font_families`'
     /// order, each with its weights sorted and once, the two flags 0 or 1
     /// and the core's reading of them. A short array is filled as far as
@@ -2483,8 +2482,8 @@ mod follow_headless {
         spec
     }
 
-    /// An underline's own colour and shape cross the boundary (backlog
-    /// K4, ABI 17): `KuiSpan.underline_color` / `.underline_style`, the
+    /// An underline's own colour and shape cross the boundary (ABI 17):
+    /// `KuiSpan.underline_color` / `.underline_style`, the
     /// same two on `KuiTextStyle`, and `KuiCell.ul` with the shape bits —
     /// a wave is segment quads in that colour, a coloured solid line one
     /// solid quad.
@@ -2550,7 +2549,7 @@ mod follow_headless {
         kui_ctx_free(ctx);
     }
 
-    /// `KuiSpan.bg_radius` crosses the boundary (backlog F101): two rows'
+    /// `KuiSpan.bg_radius` crosses the boundary: two rows'
     /// rounded backgrounds are two pieces of the stock join fragment, the
     /// first told there is a row below it and the second one above; a
     /// zeroed field is the square background.
@@ -2613,7 +2612,7 @@ mod follow_headless {
 
     /// A press through the C surface with Shift held (`kui_input_modifiers`)
     /// keeps the anchor, which `kui_selection_ends` reads back as the
-    /// directed pair (ADR 0029, backlog C39); an `on_scroll` grid hears
+    /// directed pair; an `on_scroll` grid hears
     /// the wheel as `{kind="scroll", lines}` with the fraction carried,
     /// and nothing else scrolls for it.
     #[test]
@@ -2742,7 +2741,7 @@ mod follow_headless {
         kui_ctx_free(ctx);
     }
 
-    /// The three doors B1a's table closed for C (backlog B1a): a grid's
+    /// The three doors B1a's table closed for C: a grid's
     /// selection reads back through `kui_cell_selection` as absolute
     /// lines and columns, directed, and false while the window's
     /// selection is not a grid's; the devtools readers answer what the
@@ -2854,7 +2853,7 @@ mod follow_headless {
         assert!(!kui_set_devtools_key(ctx, ks("f99")), "not a key");
         assert!(kui_devtools_key(ctx, &mut key));
         assert_eq!(&*kstr(key), "f12", "set, and a bad spelling left it");
-        // The facts a declared tab reads, and the writer (ADR 0032).
+        // The facts a declared tab reads, and the writer.
         assert_eq!(kui_devtools_selected(ctx), 0);
         assert_eq!(kui_devtools_hovered(ctx), 0);
         assert_eq!(kui_devtools_picked(ctx), 0);
@@ -2923,7 +2922,7 @@ mod follow_headless {
         kui_ctx_free(ctx);
     }
 
-    /// `kui_host_rect` (backlog F92): the frame's host viewport with its
+    /// `kui_host_rect`: the frame's host viewport with its
     /// origin, which under a left dock starts at the pane's width and
     /// under a bottom one is the window less the strip; scaled, it is the
     /// box the host's own quads land in.
@@ -2973,7 +2972,7 @@ mod follow_headless {
     }
 }
 
-/// `kui_run_with`'s two halves that need no window (backlog AR27): the
+/// `kui_run_with`'s two halves that need no window: the
 /// `KuiRunConfig` reading, and the context's core changing hands.
 #[cfg(test)]
 mod run_config_headless {
@@ -3178,7 +3177,7 @@ mod run_config_headless {
     }
 }
 
-/// `KuiSpec.min_w`'s three spellings (backlog RG92): 0 is undeclared, as a
+/// `KuiSpec.min_w`'s three spellings: 0 is undeclared, as a
 /// zeroed struct leaves it — the content's floor in a share's row —
 /// `KUI_MIN_NONE` a declared 0, `KUI_MIN_FIT` the fit floor; and the spec
 /// the conversion builds keeps undeclared undeclared.

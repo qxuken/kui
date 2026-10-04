@@ -39,9 +39,8 @@ pub extern "C" fn kui_set_scroll(ptr: *mut KuiCtx, key: u64, x: f32, y: f32) {
 /// `target` for the retained offset. No ease is asked or ended and no frame
 /// is asked for — it corrects the frame being built. What a variable-height
 /// list does when the rows it measured came out another height than the
-/// estimate they stood at, so the row under the pointer stays put
-/// (`widgets::list`, RG18, backlog C46). Call it from the view, before
-/// `kui_frame_finish`.
+/// estimate they stood at, so the row under the pointer stays put. Call
+/// it from the view, before [`kui_frame_finish`].
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_shift_scroll(ptr: *mut KuiCtx, key: u64, drawn: f32, target: f32) {
     guard((), || {
@@ -74,20 +73,10 @@ pub extern "C" fn kui_scroll_offset(ptr: *mut KuiCtx, key: u64, x: *mut f32, y: 
     });
 }
 
-/// Everything the last layout resolved for the container `key`. Returns
-/// false — leaving `out` untouched — for a bad context, a NULL `out`, or a
-/// key no layout has ever resolved as a scroll container.
-///
-/// This is what makes a long list affordable: the core builds every child a
-/// view declares, so ten thousand rows cost ten thousand rows, but a view
-/// that knows `h` and `offset_y` can declare the rows that fit plus two
-/// spacers holding the space of the rest, and pay for a screenful. Read
-/// during a build it describes the previous frame, so a resize slices one
-/// frame late — build a row or two extra at each end.
 /// The rect the last frame laid `key` out at, for a node that declared
-/// `on_layout` — the `layout` event's numbers, read back during the next
-/// build with no event (backlog C26 step 2). False for any other key, a
-/// bad context, a NULL `out` or a short reservation.
+/// `on_layout`: the `layout` event's numbers, read back during the next
+/// build with no event. False for any other key, a bad context, a NULL
+/// `out` or a short `size`.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_layout_of(ptr: *mut KuiCtx, key: u64, out: *mut KuiLayoutRect) -> bool {
     guard(false, || {
@@ -110,6 +99,16 @@ pub extern "C" fn kui_layout_of(ptr: *mut KuiCtx, key: u64, out: *mut KuiLayoutR
     })
 }
 
+/// Everything the last layout resolved for the scroll container `key`:
+/// its box, its content size and the clamped offset. Returns false,
+/// leaving `out` untouched, for a bad context, a NULL `out`, or a key no
+/// layout has ever resolved as a scroll container.
+///
+/// This is what makes a long list affordable: a view that knows `h` and
+/// `offset_y` can declare the rows that fit plus two spacers holding the
+/// space of the rest, and pay for a screenful. Read during a build it
+/// describes the previous frame, so a resize slices one frame late; build
+/// a row or two extra at each end.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_scroll_geometry(
     ptr: *mut KuiCtx,

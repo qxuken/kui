@@ -29,7 +29,7 @@ pub(crate) fn sizing_of(s: KuiSizing) -> Sizing {
         1 => Sizing::Grow(s.value),
         2 => Sizing::Fixed(s.value),
         3 => Sizing::Percent(s.value),
-        // A size expression by its number (`kui_size_*`, backlog F109);
+        // A size expression by its number (`kui_size_*`);
         // one the table does not have is fit.
         4 => kui_core::Calc::from_id(s.value as u32).map_or(Sizing::Fit, Sizing::Calc),
         _ => Sizing::Fit,
@@ -107,7 +107,7 @@ pub(crate) fn opt_str<'a>(s: KuiStr) -> Option<std::borrow::Cow<'a, str>> {
 }
 
 /// `KuiSpec.min_w` / `min_h`: 0 is undeclared, as a zeroed struct leaves
-/// it — the content's floor in a share's row, 0 elsewhere (backlog RG92) —
+/// it — the content's floor in a share's row, 0 elsewhere —
 /// `KUI_MIN_NONE` a declared 0, and any other negative (`KUI_MIN_FIT`) the
 /// fit floor.
 pub(crate) fn min_of(v: f32) -> Min {
@@ -135,7 +135,7 @@ pub(crate) fn spec_of(
         _ => NodeSpec::column(),
     };
     // Straight into the spec, not through `min_width`, whose `Bound` has
-    // no word for undeclared: a 0 there is a declared 0 (backlog RG92).
+    // no word for undeclared: a 0 there is a declared 0.
     spec.layout.min_w = min_of(s.min_w);
     spec.layout.min_h = min_of(s.min_h);
     spec = spec

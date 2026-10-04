@@ -792,20 +792,19 @@ export type WarningCode =
    *  against the frame it lands on, so an `update` that toggles a dock on and
    *  enters it in one go is fine; this is that call with the view half missing,
    *  with a name the view spells differently, or naming a node that is not a
-   *  region (`docs/adr/0022-focus-regions.md`, decision 4). */
+   *  region. */
   | 'focus-region-without-node'
   /** A `reveal` or `setScroll` by label (`env.reveal("rows")`,
    *  `win.reveal("rows")`, `Core::reveal_label`) named a label the frame it
    *  resolved against did not declare, so nothing moved. A label is resolved
    *  when the frame finishes, so a view may name a node it is declaring right
    *  now, or one the next frame declares; this is the name spelled differently
-   *  from the `key` that declares it, or the node not declared at all (backlog
-   *  DX15). */
+   *  from the `key` that declares it, or the node not declared at all. */
   | 'label-without-node'
-  /** A text's `family` named a family no installed or loaded font has (ADR
-   *  0037), so it shaped as sans. `sans`, `serif` and `mono` are kui's own; any
-   *  other name is matched as `addSystemFont` matches it, and `systemFonts()`
-   *  lists the names a machine has. */
+  /** A text's `family` named a family no installed or loaded font has, so it
+   *  shaped as sans. `sans`, `serif` and `mono` are kui's own; any other name
+   *  is matched as `addSystemFont` matches it, and `systemFonts()` lists the
+   *  names a machine has. */
   | 'unknown-family'
   /** A `selectable` node inside another `selectable` node. Selection scopes do
    *  not nest: the innermost one owns every run under it, so the outer scope
@@ -825,10 +824,9 @@ export type WarningCode =
   | 'slider-value-out-of-range'
   /** `Core::add_fragment` was given WGSL that does not compile, so no handle
    *  was minted and nothing will draw. The message carries naga's own error
-   *  with the line numbers moved into the app's source
-   *  (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`, decision
-   *  1). The source is rejected here rather than at the first frame that shows
-   *  it, so a headless test sees it too. */
+   *  with the line numbers moved into the app's source. The source is rejected
+   *  here rather than at the first frame that shows it, so a headless test sees
+   *  it too. */
   | 'fragment-rejected'
   /** A `fragment` node declared more than sixteen `params`. The shader takes
    *  four `vec4<f32>` and no more, so the extra numbers were dropped; pass
@@ -836,38 +834,33 @@ export type WarningCode =
   | 'fragment-params-truncated'
   /** A `polygon` declared more than eight points: the stock fragment takes
    *  eight vertices in the sixteen params it has, so the rest were dropped. Two
-   *  polygons, or the path primitive kui does not have
-   *  (`docs/adr/0025-the-image-is-the-canvas.md`, decision 6). */
+   *  polygons, or the path primitive kui does not have. */
   | 'polygon-points-truncated'
   /** The frame's modal surface is not in a float, and content painted after it
    *  is drawn on top of it: everything the user can see over the modal is
    *  inert, which looks like inert-behind is broken. A modal that has to cover
-   *  the app is a float (`float="viewport"`); see
-   *  `docs/adr/0003-modal-surfaces.md`. Also raised for a modal that *is* a
-   *  float when another float from outside its scope stacks over it
-   *  (`docs/adr/0023-layers-stack-in-the-order-they-open.md`): a HUD opened
-   *  after the dialog is the same inert surface over it. */
+   *  the app is a float (`float="viewport"`). Also raised for a modal that *is*
+   *  a float when another float from outside its scope stacks over it: a HUD
+   *  opened after the dialog is the same inert surface over it. */
   | 'modal-behind-content'
   /** A control (a button, link, tab, checkbox, slider, editor) with no
    *  computable name: no `label`, and no text inside it. Icon buttons and
    *  editors need a `label`. */
   | 'control-without-name'
   /** A focusable node inside a composite's *item* — a button inside a list row,
-   *  a link inside a tab. The item is one roving stop of a composite
-   *  (`docs/adr/0007-composite-keyboard-patterns.md`), so the Tab ring stops at
-   *  the item and nothing reaches what is inside it: declared, and impossible,
-   *  which is what `modal-behind-content` set the precedent for. A focusable
-   *  node inside the *container* but outside every item — a "+" at the end of a
-   *  tab bar — is reachable and is not reported. */
+   *  a link inside a tab. The item is one roving stop of a composite, so the
+   *  Tab ring stops at the item and nothing reaches what is inside it:
+   *  declared, and impossible, which is what `modal-behind-content` set the
+   *  precedent for. A focusable node inside the *container* but outside every
+   *  item — a "+" at the end of a tab bar — is reachable and is not reported. */
   | 'focusable-inside-item'
   /** A `radio` with no `radioGroup` above it, or a `tab` with no `tabList` —
    *  the stock `<radio>` included. Outside its container an item is no
-   *  composite's (`docs/adr/0007-composite-keyboard-patterns.md`): each one is
-   *  a Tab stop of its own, the arrows, Home and End do not move the choice,
-   *  and a screen reader announces no "2 of 3". Wrap the set in the container,
-   *  labelled with what the choice is. A `menuItem` or `listItem` on its own is
-   *  not reported: the menus build their own container, and a row outside a
-   *  list is only a looser reading. */
+   *  composite's: each one is a Tab stop of its own, the arrows, Home and End
+   *  do not move the choice, and a screen reader announces no "2 of 3". Wrap
+   *  the set in the container, labelled with what the choice is. A `menuItem`
+   *  or `listItem` on its own is not reported: the menus build their own
+   *  container, and a row outside a list is only a looser reading. */
   | 'item-outside-container'
   /** A `modal` surface with no `label`. A dialog is not named by the text
    *  inside it (it is not one of ARIA's name-from-content roles), so a screen
@@ -880,8 +873,7 @@ export type WarningCode =
   /** A node declares `live` but carries no `label` and holds no text, so
    *  nothing it ever does can be announced: every platform derives the spoken
    *  string from a name, and there is none to derive. The same silent defect
-   *  `image-without-label` catches, on the node that was meant to speak (see
-   *  `docs/adr/0008-live-regions-and-announcements.md`). */
+   *  `image-without-label` catches, on the node that was meant to speak. */
   | 'live-region-without-name'
   /** The same announcement text was queued on two consecutive frames. That is
    *  what an unguarded `announce` in a frame builder looks like — a view runs
@@ -896,17 +888,16 @@ export type WarningCode =
    *  reads as "wrapping is broken"; see `LayoutSpec::wrap` for why a column
    *  cannot have it. */
   | 'wrap-ignored'
-  /** An alignment declared where it means nothing (backlog C13): a spread
-   *  (`spaceBetween` / `spaceAround` / `spaceEvenly`) on `crossAlign`,
-   *  `baseline` on `mainAlign` or on a column's `crossAlign`, or either as a
-   *  float's attach point. Each lays out as `start` — the two centring spreads
-   *  as `center` — which reads as "the value is broken" when it is the axis
-   *  that is wrong. */
+  /** An alignment declared where it means nothing: a spread (`spaceBetween` /
+   *  `spaceAround` / `spaceEvenly`) on `crossAlign`, `baseline` on `mainAlign`
+   *  or on a column's `crossAlign`, or either as a float's attach point. Each
+   *  lays out as `start` — the two centring spreads as `center` — which reads
+   *  as "the value is broken" when it is the axis that is wrong. */
   | 'align-ignored'
-  /** An `aspectRatio` with nothing it can set (backlog C14): both axes are
-   *  declared, or the width is `fit` under a `grow` or percent height, which is
-   *  resolved only after every width is. The ratio sizes a fit height from the
-   *  width, or a fit width from a fixed height. */
+  /** An `aspectRatio` with nothing it can set: both axes are declared, or the
+   *  width is `fit` under a `grow` or percent height, which is resolved only
+   *  after every width is. The ratio sizes a fit height from the width, or a
+   *  fit width from a fixed height. */
   | 'aspect-ignored'
   /** A text node sits more than four levels below the `line` row above it,
    *  which is as far as a text's place remembers its ancestors — so `textHit` /
@@ -917,12 +908,11 @@ export type WarningCode =
   /** One frame removed more nodes declaring `exit` than the exit store will
    *  hold (4096, `depart::MAX_NODES`), so none of that frame's removal
    *  animated: every departing node of it vanished at once, as a node with no
-   *  `exit` does, rather than some sliding out and the rest blinking
-   *  (`docs/adr/0012-the-exit-budget.md`, decision 2). Correct, and invisible
-   *  from the outside, which is the whole reason it is a line here: a list that
-   *  drops a thousand rows wants `exit` on the list, not on every row. A
-   *  removal that fits the budget but finds earlier exits still in flight
-   *  evicts those, oldest first, and is not this warning. */
+   *  `exit` does, rather than some sliding out and the rest blinking. Correct,
+   *  and invisible from the outside, which is the whole reason it is a line
+   *  here: a list that drops a thousand rows wants `exit` on the list, not on
+   *  every row. A removal that fits the budget but finds earlier exits still in
+   *  flight evicts those, oldest first, and is not this warning. */
   | 'exit-budget'
   /** A prop name nothing claims: not a schema row, not a composite, not one of
    *  the element's own props (see `schema::known_prop`). The binding threw the
@@ -931,7 +921,7 @@ export type WarningCode =
    *  through `Core::warn`: by the time a frame is a tree the name is gone. The
    *  message names the likely spelling. Also raised for a key a menu row map
    *  carried that no row reads — `disabled` on a select's option, where the key
-   *  is `enabled` — by the binding that read the row (backlog RG10). */
+   *  is `enabled` — by the binding that read the row. */
   | 'unknown-prop'
   /** The process has spelled 65 536 distinct size expressions — the most the
    *  table every window shares keeps, and never lets go of — and one more was
@@ -941,22 +931,20 @@ export type WarningCode =
    *  frame reaches it — a `{ max: [dragX, { percent: 30 }] }` fed a splitter's
    *  fractional drag, a `format!` of the pointer — where one expression per
    *  layout, with the moving part a px size beside it, would not. Raised once
-   *  per core; the message names the last expression refused (backlog RG93). */
+   *  per core; the message names the last expression refused. */
   | 'size-expressions-full'
   /** One name declared with two different window configs on the frame it
    *  opened. The config is read on the opening edge only, and on that edge the
    *  lowest declaring window wins (the first declaration within one frame), so
    *  the pick is deterministic — but two places in the app disagree about what
-   *  `"palette"` is, and only one of them is right. See
-   *  `docs/adr/0004-multi-window.md`, decision 4. */
+   *  `"palette"` is, and only one of them is right. */
   | 'duplicate-window-config'
   /** A window the user closed is still declared, so it stays closed: a
    *  declaration reopens a window only when it *starts*, and this one never
    *  stopped. The first version of every multi-window app does this — it
    *  declares the window unconditionally — and from outside it looks like
    *  `windows` being ignored. Handle the `{kind:"window", phase:"closed"}`
-   *  event, stop declaring the name, and declare it again to reopen. See
-   *  `docs/adr/0004-multi-window.md`, decision 6. */
+   *  event, stop declaring the name, and declare it again to reopen. */
   | 'window-declared-while-closed'
   /** A window declared with a `KUI_WINDOW_KIND_*` this build does not have —
    *  `KUI_WINDOW_KIND_NORMAL` and `KUI_WINDOW_KIND_POPUP` are the two there
@@ -964,8 +952,7 @@ export type WarningCode =
    *  an unknown one is refused where it is written rather than reported a frame
    *  later. The window still opens, as a normal one, so a host built against a
    *  later header degrades to a window rather than to nothing; this line is
-   *  what keeps that from being silent. See `docs/adr/0004-multi-window.md`,
-   *  decision 9. */
+   *  what keeps that from being silent. */
   | 'unknown-window-kind'
   /** A `setEditText` (`Core::set_edit_text`, `kui_edit_set_text`) named a key
    *  or a label, the text was held for the frame that would declare it, and the
@@ -1009,8 +996,7 @@ export type WarningCode =
    *  A slot is a position the host declares in its own view by full name,
    *  `ui.slot("ns/name")` — the namespace the host gave the extension, then the
    *  name the extension lists; one listing none fills `"ns/root"` after the
-   *  host's view. Declare the slot, or drop the name from the extension's list.
-   *  See `docs/adr/0014-slots-an-extension-fills-in-place.md`, decision 5. */
+   *  host's view. Declare the slot, or drop the name from the extension's list. */
   | 'unknown-slot'
   /** A colour or length prop named a token — `bg = "$peach"` — that nothing
    *  declared and that is no theme or metrics role, or named one of the other
@@ -1018,32 +1004,28 @@ export type WarningCode =
    *  as if the prop had not been written — no `bg`, a fit width, the theme's
    *  foreground for a text's `color` — never an explicit transparent or zero,
    *  which would hide the node a typo was on; the same in every binding and in
-   *  every place a `$name` can go, a keyframe stop and an entrance included
-   *  (backlog AR14), and what `ui.token_color` / `token_length` answer `None`
-   *  for in Rust. Raised by the binding that lowered the reference, through
+   *  every place a `$name` can go, a keyframe stop and an entrance included,
+   *  and what `ui.token_color` / `token_length` answer `None` for in Rust.
+   *  Raised by the binding that lowered the reference, through
    *  `Core::warn_unknown_token`, once per name, since the name is gone by the
    *  time the frame is a tree. Also raised at the declaration for a derived
    *  token whose source — the `from`, or the colour a `mix` or `readable` names
    *  — is no colour token declared before it and no theme role: that token is
-   *  dropped, the message names both, and the rest of the table lands. See
-   *  `docs/adr/0027-tokens-beside-the-theme.md`, decision 4, and
-   *  `docs/adr/0028-derived-tokens.md`. */
+   *  dropped, the message names both, and the rest of the table lands. */
   | 'unknown-token'
   /** A declared token took a theme or metrics role's name (`surface`, `radius`)
    *  and was dropped: the roles are the corpus's contract and `$surface` always
-   *  means the theme's, so an app cannot shadow one. Rename the token. See
-   *  `docs/adr/0027-tokens-beside-the-theme.md`, decision 6. */
+   *  means the theme's, so an app cannot shadow one. Rename the token. */
   | 'reserved-token'
   /** A slot name declared twice in one frame. The second declaration was
    *  ignored: a fill is keyed by the slot's full name, so two fills of one name
-   *  would share every key. Two places for one extension are two names. See ADR
-   *  0014, decision 5. */
+   *  would share every key. Two places for one extension are two names. */
   | 'duplicate-slot'
   /** An extension returned from `view` with nodes still open. The core closed
    *  them at the depth the fill began, so the host's tree is what the host
    *  declared; outside the guard, the rest of the host's view would have landed
    *  inside the extension's last open node. The extension has an `open` without
-   *  its `close`. See ADR 0014, decision 5. */
+   *  its `close`. */
   | 'unbalanced-extension'
   /** An extension's `view` returned an error. The message is drawn in red where
    *  the fill would have been, and reported here once per extension and slot
@@ -1052,8 +1034,7 @@ export type WarningCode =
   /** An extension declared one of its *own* slots while it was drawing, so
    *  filling it would have meant calling it inside itself. The slot is left
    *  empty. An extension may host extensions (`Fill::add`), and may declare
-   *  their slots — what it cannot do is be its own guest. See ADR 0014,
-   *  decision 5. */
+   *  their slots — what it cannot do is be its own guest. */
   | 'recursive-slot'
   /** The device refused a play: its voices are all held, or the sound did not
    *  decode. A released playback (`finish`) holds one of the device's 128
@@ -1065,25 +1046,24 @@ export type WarningCode =
    *  what the view no longer needs rather than releasing it, or release shorter
    *  sounds. */
   | 'playback-refused'
-  /** A devtools tab name declared twice in one frame (ADR 0032, decision 1):
-   *  two `devtools_tab` / `devtools_tab_with` calls, a host form and an
-   *  extension form of one name, or an extension declaring from its fill under
-   *  a name the host took. The first declaration stands and the second is
-   *  ignored; give the second tab its own name. */
+  /** A devtools tab name declared twice in one frame: two `devtools_tab` /
+   *  `devtools_tab_with` calls, a host form and an extension form of one name,
+   *  or an extension declaring from its fill under a name the host took. The
+   *  first declaration stands and the second is ignored; give the second tab
+   *  its own name. */
   | 'duplicate-tab'
-  /** A `devtoolsTab` declaration a binding could not read as either form (ADR
-   *  0032, decision 1): a child that is not a function, both a `slot` and a
-   *  child, or a `view` that is not a function in Lua. The tab was not
-   *  declared. A tab names a slot for an extension to fill, or carries a
-   *  function the binding calls only when the tab is shown. */
+  /** A `devtoolsTab` declaration a binding could not read as either form: a
+   *  child that is not a function, both a `slot` and a child, or a `view` that
+   *  is not a function in Lua. The tab was not declared. A tab names a slot for
+   *  an extension to fill, or carries a function the binding calls only when
+   *  the tab is shown. */
   | 'bad-devtools-tab'
   /** A select's `current` names no option the field can show: an index past its
    *  options, or a separator's. The field is drawn as if none were in force —
    *  an empty description, no row checked — rather than blank with a check on a
    *  divider; the options are drawn as declared. A `current` the view computes
    *  from a list it also filters is how this happens; the index is into the
-   *  options as passed, separators counted (backlog RG10). Raised once per
-   *  field. */
+   *  options as passed, separators counted. Raised once per field. */
   | 'select-current-ignored';
 // -- end generated --
 
@@ -2091,7 +2071,7 @@ export declare class Ctx {
   /**
    * Starts the next frame's record before its view runs: from here
    * until the frame after it begins, `frameCause()` and `owedBy()`
-   * answer the frame the next `frame` call builds (backlog RG81). A
+   * answer the frame the next `frame` call builds. A
    * view runs before its frame — it returns the tree `frame` is handed
    * — so without this it reads the frame before; `createApp`'s loop
    * calls it ahead of every view. Twice before one frame is once.
@@ -2099,8 +2079,8 @@ export declare class Ctx {
   beginFrameCause(): void
   /**
    * Loads a C extension: a shared library exporting the seven
-   * `kui_ext_*` entry points `crates/kui-ffi/include/kui.h` describes
-   * (ADR 0014). `namespace` is the word that fronts every slot name it
+   * `kui_ext_*` entry points `crates/kui-ffi/include/kui.h` describes.
+   * `namespace` is the word that fronts every slot name it
    * fills — `<slot name="todos/panel"/>` for `addExtension('todos', …)`
    * — and an empty one takes the plugin's own `kui_ext_name`. Throws
    * with the reason if the library will not load, declares no
@@ -2154,7 +2134,7 @@ export declare class Ctx {
   cursorLeft(): void
   /**
    * Files dragged in from the OS are over the window at (`x`, `y`) —
-   * entering and moving alike (ADR 0031): the `onDrop` zone under the
+   * entering and moving alike: the `onDrop` zone under the
    * point hears `{kind:"drop", phase:"enter"|"move", paths, x, y,
    * tag}`, a zone it left hears `leave`, a repeat at the same point is
    * nothing. `dropTarget()` afterwards is what a driver answers the OS
@@ -2165,7 +2145,7 @@ export declare class Ctx {
    * A file dialog's answer, as a host that showed it reports it: the
    * paths picked, none for a cancelled dialog. Whoever asked with
    * `requestFiles` hears `{kind:"files", paths, tag}`; with nothing
-   * asked it is dropped (backlog C51).
+   * asked it is dropped.
    */
   answerFiles(paths: Array<string>): void
   /**
@@ -2187,14 +2167,14 @@ export declare class Ctx {
    * only that one presses, drags, places the caret and clicks;
    * "secondary" asks the node under the pointer for a context menu and
    * moves nothing else, and every button but the primary reaches a node
-   * that claims it with `onButton`, press to release (backlog F105).
+   * that claims it with `onButton`, press to release.
    * A button past the middle one is its number, `3 + n` — the code a
-   * `button` event carries for it (backlog RG75).
+   * `button` event carries for it.
    */
   mouse(down: boolean, clicks?: number, button?: MouseButtonName | number): void
   scroll(dx: number, dy: number): void
   /**
-   * One event of a scroll gesture (backlog F107, ADR 0038): `begins`
+   * One event of a scroll gesture: `begins`
    * on its first, then the rest go to the target it picked, wherever
    * the pointer or the content has gone since — the latching a native
    * swipe gets, for a headless test. `scroll` is a gesture of its own.
@@ -2211,7 +2191,7 @@ export declare class Ctx {
   commit(text: string): void
   /**
    * The clipboard's answer to a paste (`requestPaste()`), with what
-   * the pasteboard marked it (backlog F84): routed as `commit` is, and
+   * the pasteboard marked it: routed as `commit` is, and
    * a focused `onKey` sink hears `{kind:"text", text, tag}` with
    * `concealed: true` / `transient: true` for the markers set. No
    * marks is a paste nothing marked, the same answer `commit` gives.
@@ -2240,8 +2220,8 @@ export declare class Ctx {
    * `physical` is the US-QWERTY key at that *position*, spelled the same
    * way; omit it and it is the position's US key: the lower-case letter
    * for a letter, `code` for everything else — the pair a window
-   * reports for ⇧Z is `code: "Z", physical: "z"`, and so is this door's
-   * (backlog F65). Passing both is how a driver reports a non-US
+   * reports for ⇧Z is `code: "Z", physical: "z"`, and so is this door's.
+   * Passing both is how a driver reports a non-US
    * layout, and it is what makes the reported `code` portable: a
    * layout producing something outside ASCII would leave a Latin
    * keymap matching nothing, so the position's US key stands in, as
@@ -2269,7 +2249,7 @@ export declare class Ctx {
    * halves, kept for a test that means to drive one channel and not the
    * other; a test that means "the user pressed this key" wants both,
    * and `keyDown("escape")` leaving a modal open is what having to
-   * choose used to cost (backlog F6).
+   * choose used to cost.
    *
    * Spelled exactly as `keyDown`: a single character (layout-resolved,
    * e.g. "W" or "$") or a name ("left", "enter", "escape", "f5", ...),
@@ -2281,8 +2261,7 @@ export declare class Ctx {
    * shifted letter is the upper-case letter with `shift` set —
    * `press("Z", { shift: true, super: true })` is ⇧⌘Z — and
    * `press("z", { shift: true })` is a chord no keyboard produces, which
-   * a handler switching on `"z"` hears headless and never from a user
-   * (backlog F60: an app's redo was green for six releases over it).
+   * a handler switching on `"z"` hears headless and never from a user.
    * Fold a one-character `code` to lower case under a chord if a keymap
    * binds letters.
    */
@@ -2366,7 +2345,7 @@ export declare class Ctx {
   windowTitle(): string | null
   /**
    * Whether the last frame asked for the window above every other
-   * app's (a root `<box alwaysOnTop>`, backlog C30); false when it did
+   * app's (a root `<box alwaysOnTop>`); false when it did
    * not. `runWindowed` applies it to the real window on change and
    * reports what the platform did as `env().window.alwaysOnTop`; a
    * bare `Ctx` hands the ask back so a test can assert on it.
@@ -2374,7 +2353,7 @@ export declare class Ctx {
   alwaysOnTop(): boolean
   /**
    * Whether the last frame asked for secure keyboard entry (a root
-   * `<box secureInput>`, backlog F85); false when it did not.
+   * `<box secureInput>`); false when it did not.
    * `runWindowed` turns it on while that window has the keyboard and
    * keeps the platform's count balanced; a bare `Ctx` hands the ask
    * back so a test can assert on it.
@@ -2382,7 +2361,7 @@ export declare class Ctx {
   secureInput(): boolean
   /**
    * Which Option keys the last frame asked to act as Alt on macOS (a
-   * root `<box optionAsAlt="left">`, backlog F113): `"none"`, `"left"`,
+   * root `<box optionAsAlt="left">`): `"none"`, `"left"`,
    * `"right"` or `"both"`, `"none"` when it did not ask. `runWindowed`
    * applies it to the window on change; a bare `Ctx` hands the ask back
    * so a test can assert on it.
@@ -2407,8 +2386,7 @@ export declare class Ctx {
    * next frame with no view change; `width`/`height` may differ
    * from the registration. From the first update on the image
    * is drawn from a texture of its own — a video frame, a
-   * camera, a plot the app rasterised itself
-   * (`docs/adr/0025-the-image-is-the-canvas.md`). A dead id warns
+   * camera, a plot the app rasterised itself. A dead id warns
    * `foreign-resource` and changes nothing.
    */
   updateImage(id: string, width: number, height: number, rgba: Buffer): void
@@ -2462,8 +2440,8 @@ export declare class Ctx {
   /**
    * The families `systemFontFamilies` names, in its order, each
    * with what its faces say they are: `monospaced` (every face
-   * fixed-pitch), `weights` (sorted, each once) and `italic`
-   * (backlog F97). Read from what the font database recorded
+   * fixed-pitch), `weights` (sorted, each once) and `italic`.
+   * Read from what the font database recorded
    * when it scanned each face, so a font picker can put the
    * monospaced ones first without loading a file or shaping a
    * glyph.
@@ -2483,8 +2461,7 @@ export declare class Ctx {
    * Says something once, with no node behind it: `announce("Saved")`,
    * `announce("3 results", "assertive")`. `"off"` and an empty string
    * are both no-ops. A region whose message is on screen is the `live`
-   * prop instead
-   * (`docs/adr/0008-live-regions-and-announcements.md`).
+   * prop instead.
    *
    * Call it from an event handler. Called while building a frame it
    * fires every frame, which the core reports as
@@ -2521,11 +2498,11 @@ export declare class Ctx {
    * for any of them; to a test they differ, since a keyframe
    * `repeat` cycle never ends and `settled()` never resolves
    * under one. `quiet()` on the loop waits on everything but
-   * `cycle` (backlog F64).
+   * `cycle`.
    */
   owed(): Owed
   /**
-   * Turns on the trace of why frames run (backlog F111): who
+   * Turns on the trace of why frames run: who
    * holds each owed frame (`owedBy()`) and whether each frame
    * changed what is drawn (`frameUnchanged()`). Off by default,
    * where neither costs anything; `frameCause()` is kept either
@@ -2536,7 +2513,7 @@ export declare class Ctx {
    * Why a frame runs, as the names of its reasons: the input it
    * answers (`key`, `pointerMove`, `wheel`, …), what a window's
    * runner saw (`wake`, `resize`, `caret`, `retry`, …) and
-   * `owed` when the frame before left one owed (backlog F111).
+   * `owed` when the frame before left one owed.
    * Empty for a frame nothing here asked for.
    *
    * Which frame: on a `Ctx`, from inside a `createApp` view,
@@ -2545,7 +2522,7 @@ export declare class Ctx {
    * built. On a `KuiWindow`, always the last frame drawn: a
    * window's view runs when the model changes, ahead of the
    * frame that shows it, and the frames a transition or a
-   * blink runs call no view at all (backlog RG81).
+   * blink runs call no view at all.
    */
   frameCause(): FrameCauseName[]
   /**
@@ -2556,14 +2533,13 @@ export declare class Ctx {
    * asked for a frame. Read from inside a `createApp` view on a
    * `Ctx`, the reason that view's frame exists; between frames,
    * the last frame built's; on a `KuiWindow`, the last frame
-   * drawn's, as `frameCause()` says (backlog RG81). Empty
-   * unless `setFrameTrace(true)` (backlog F111).
+   * drawn's, as `frameCause()` says. Empty
+   * unless `setFrameTrace(true)`.
    */
   owedBy(): OwedBy
   /**
    * Whether the last finished frame drew exactly what the one
-   * before drew; `null` untraced and on the first traced frame
-   * (backlog F111).
+   * before drew; `null` untraced and on the first traced frame.
    */
   frameUnchanged(): boolean | null
   /**
@@ -2589,7 +2565,7 @@ export declare class Ctx {
    * by `decodeQuads`. Copied into the Buffer. A window answers
    * with what its last pump drew, so a smoke test can read the
    * frame the shipping driver painted and not only a headless
-   * one's (backlog F19). Drive that window with `access(key,
+   * one's. Drive that window with `access(key,
    * action)` — `click`, `type` and `key` are refused there,
    * because the OS is what drives a real window.
    */
@@ -2608,10 +2584,9 @@ export declare class Ctx {
    * two 32-bit halves, the sixteen parameters, then where the
    * draw's `image` is (0 none, 1 the atlas, 2 a texture of its
    * own), the `textureDraws` index when it is 2, and the texel
-   * rect `x, y, w, h` (backlog V1). The parameters ride a side
+   * rect `x, y, w, h`. The parameters ride a side
    * list rather than the quad, so `quads()` alone cannot show
-   * them and a corpus adapter needs this to compare them
-   * (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`).
+   * them and a corpus adapter needs this to compare them.
    * Empty on a frame that draws no fragment.
    */
   fragmentDraws(): Array<number>
@@ -2621,8 +2596,7 @@ export declare class Ctx {
    * 32-bit halves, the pixels' revision, width and height, and
    * the texel rect `x, y, w, h` in the image's own texels (the
    * whole image, or the crop a `fit="cover"` made). The side
-   * list a `quads()` texture quad points at
-   * (`docs/adr/0025-the-image-is-the-canvas.md`, decision 3).
+   * list a `quads()` texture quad points at.
    * Empty on a frame that draws no texture-backed image.
    */
   textureDraws(): Array<number>
@@ -2687,14 +2661,13 @@ export declare class Ctx {
    */
   setMetrics(metrics: MetricsOverrides | null): void
   /**
-   * Declare the app's named colours and lengths
-   * (`docs/adr/0027-tokens-beside-the-theme.md`): `{ colors:
+   * Declare the app's named colours and lengths: `{ colors:
    * { peach: '#ffcc99', ink: { light, dark } }, lengths: {
    * sideW: 132 } }`. Replaces the table whole, so an app whose
    * lengths change with a viewport tier declares again on
    * `resize`. A name a theme or metrics role owns is dropped
    * with a `reserved-token` warning. A colour may be a
-   * recipe over an earlier one (ADR 0028): `{ from: 'peach',
+   * recipe over an earlier one: `{ from: 'peach',
    * ops: [['lift', 0.3]] }`, dropped with `unknown-token` when
    * its source is not there. Reference one in a prop
    * as `'$peach'` — `defineTokens` types the names. The raw
@@ -2751,8 +2724,7 @@ export declare class Ctx {
    */
   setInspect(on: boolean): void
   /**
-   * Turns the core's devtools panel on or off
-   * (`docs/adr/0024`): the event stream, the runtime's facts and
+   * Turns the core's devtools panel on or off: the event stream, the runtime's facts and
    * the tree, drawn by the core beside the app's own tree in the
    * main window — or where `setDevtoolsDock` says — with its
    * controls and its `Ctrl+Shift+<letter>` chords handled inside
@@ -2784,7 +2756,7 @@ export declare class Ctx {
    * `bg`, which is the window's too and under a dock also fills
    * the whole window beneath the pane. All zeros before the
    * first frame, like `env().viewport`; a window's `size()` is
-   * the reading from before it. Backlog F92.
+   * the reading from before it.
    */
   hostArea(): Rect
   /**
@@ -2812,15 +2784,15 @@ export declare class Ctx {
   devtoolsKey(): string
   /**
    * The declared devtools tab on show, by name, or `null` for
-   * one of the panel's own, the panel off or popped out (ADR
-   * 0032). What `frame` / `setView` read once before encoding,
+   * one of the panel's own, the panel off or popped out.
+   * What `frame` / `setView` read once before encoding,
    * so a `<devtoolsTab>`'s function child is called only for
    * that tab.
    */
   devtoolsShownTab(): string | null
   /**
    * The node the panel's tree tab has selected, as a hex key,
-   * or `null` (ADR 0032, decision 4) — what an inspector in a
+   * or `null` — what an inspector in a
    * declared tab reads to say which node it is about.
    */
   devtoolsSelected(): string | null
@@ -2830,8 +2802,8 @@ export declare class Ctx {
   devtoolsPicked(): string | null
   /**
    * Raises the panel's picker from outside it — an inspector in
-   * a `<devtoolsTab>` asking "which node?" — or puts it away
-   * (ADR 0032, decision 4). Picking happens over the app in
+   * a `<devtoolsTab>` asking "which node?" — or puts it away.
+   * Picking happens over the app in
    * the main window: `devtoolsPicked()` is the node under the
    * pointer while it is up, and the press lands it in
    * `devtoolsSelected()`. Raised while a declared tab is on
@@ -2846,7 +2818,7 @@ export declare class Ctx {
   /**
    * Shows the panel's tab named `name` from the app's side —
    * what the strip's click and `Ctrl+Shift+N` do, for a command
-   * that jumps to the app's own tab (ADR 0032). `name` is one
+   * that jumps to the app's own tab. `name` is one
    * of the panel's own (`facts`, `events`, `tree`, in any case)
    * or a `<devtoolsTab>`'s, exactly as declared. A declared
    * name the panel does not list
@@ -2878,7 +2850,7 @@ export declare class Ctx {
   /**
    * The last finished frame's nodes in tree order, each with what
    * it is, the label it was opened under, where layout put it
-   * (in the app's viewport, like `layoutOf`; backlog AR36), and
+   * (in the app's viewport, like `layoutOf`), and
    * the declarations that explain the rest — what a tree view
    * and a node inspector are built from. Empty until
    * `setInspect(true)` and a frame after it.
@@ -2892,7 +2864,7 @@ export declare class Ctx {
    * `frame` / `setView` report what they dropped through here.
    * Behind the same `setDiagnostics` gate, and once per name. A
    * pair under `protocol().menuItem.name` is a key a `<select>`
-   * option object carried that no menu row reads (backlog RG10).
+   * option object carried that no menu row reads.
    */
   warnUnknownProps(props: [string, string][]): void
   /**
@@ -2926,8 +2898,8 @@ export declare class Ctx {
    */
   isPressed(key: string): boolean
   /**
-   * Whether files dragged in from the OS are over `key` (ADR
-   * 0031) — for drop-dependent layout; the colour swap is the
+   * Whether files dragged in from the OS are over `key` — for
+   * drop-dependent layout; the colour swap is the
    * `dropBg` prop. `key` is either spelling, as for `isHovered`.
    */
   isDropTarget(key: string): boolean
@@ -2977,7 +2949,7 @@ export declare class Ctx {
    */
   focusVisible(): boolean
   /**
-   * The caret's blink phase — `true` draws it (backlog C35). A
+   * The caret's blink phase — `true` draws it. A
    * custom editor reads it in `view` and skips its caret node
    * on the off phase, keeping the `caret` row on its `line`
    * either way; the window's clock sets it while a focused
@@ -2988,7 +2960,7 @@ export declare class Ctx {
   /**
    * Whether there is a caret to blink: a focused `<edit>`'s, or
    * the `caret` a `line` under the focused sink declares — unless
-   * the line declares it `caretSolid` (backlog F68), which
+   * the line declares it `caretSolid`, which
    * anchors and reads but arms no clock. What the window's
    * clock is armed on; headless, what a test reads to see that
    * an idle view asks for no frame.
@@ -3040,8 +3012,7 @@ export declare class Ctx {
   /**
    * Enters a focus region — a box declared `focusRegion`, named by
    * the label its `key` prop declares or by the hex key an event
-   * carried — or the main ring for `null`
-   * (`docs/adr/0022-focus-regions.md`). Focus lands on what that
+   * carried — or the main ring for `null`. Focus lands on what that
    * ring last held if the node is still there, else its
    * `initialFocus`, else its first stop, and shows.
    *
@@ -3072,8 +3043,7 @@ export declare class Ctx {
    * `focus`. A label the last frame did not declare is resolved
    * when the coming frame finishes, so a row that frame declares
    * for the first time is reachable by name too; one it does not
-   * declare either is a `label-without-node` warning (backlog
-   * DX15).
+   * declare either is a `label-without-node` warning.
    */
   reveal(key: string): void
   /**
@@ -3101,8 +3071,8 @@ export declare class Ctx {
    * The rect the last frame laid `key` out at, `{x, y, w, h}`
    * in logical viewport px, for a node that declared `onLayout`
    * — the `layout` event's numbers, read back during the next
-   * build with no event and no model field (backlog C26 step
-   * 2); `null` for any other key. Read while building, it
+   * build with no event and no model field; `null` for any
+   * other key. Read while building, it
    * describes the previous frame, like `scrollGeometry`.
    */
   layoutOf(key: string): { x: number, y: number, w: number, h: number } | null
@@ -3112,7 +3082,7 @@ export declare class Ctx {
    * counted across every run the key covers, so a `line` row of
    * inline runs is one row and a wrapped run as many as it
    * wrapped to; not the ordinal `line` node a pointer event's
-   * `line` names (backlog AR30) — or null for a key that drew no
+   * `line` names — or null for a key that drew no
    * text. A `role="none"` subtree under the key (a gutter) is
    * not its text, as the access tree reads it. `x`/`y` are the logical viewport px a
    * `click` or `drag` event carries, so a custom editor turns the
@@ -3131,7 +3101,7 @@ export declare class Ctx {
    * `custom` (the default), `separator`, `cut`, `copy`,
    * `paste`, `selectAll` or `lookUp`; the standard ones take
    * their own wording when `label` is empty, and the core
-   * performs the ones it can (`docs/adr/0017-selection-as-a-scope.md`).
+   * performs the ones it can.
    *
    * Choosing a row posts `{kind:"menu", role, item}` on `key`
    * and closes the menu; a press outside it or Escape closes it
@@ -3155,8 +3125,8 @@ export declare class Ctx {
    * A windowed app never needs this — the driver drains it —
    * but a headless one does: nothing else empties the queue,
    * and a Copy nobody drains is a copy that never happened.
-   * Asks for the platform's Open, Save or folder dialog (backlog
-   * C51): `{mode, multiple, title, filters: [{name, extensions}],
+   * Asks for the platform's Open, Save or folder dialog:
+   * `{mode, multiple, title, filters: [{name, extensions}],
    * directory, fileName, tag}`, every field optional. The answer
    * is a `{kind:"files", paths, tag}` event — `paths` empty when
    * the user cancelled. A window's runner shows the dialog; a
@@ -3177,8 +3147,8 @@ export declare class Ctx {
   /**
    * Puts `text` on the system clipboard — the action a menu's
    * Copy queues, with a door on it for an `onKey` sink that
-   * hears the raw `Ctrl-c` and had nowhere to bind it (backlog
-   * C33). `html` is a second flavour beside the text for the
+   * hears the raw `Ctrl-c` and had nowhere to bind it.
+   * `html` is a second flavour beside the text for the
    * host to offer, never in place of it. A window applies it
    * at its next drain (after every input and every frame); a
    * headless `Ctx` hands it out through `takeMenuActions()`.
@@ -3186,7 +3156,7 @@ export declare class Ctx {
   setClipboard(text: string, html?: string | undefined | null): void
   /**
    * Puts a secret on the system clipboard the way a password
-   * manager does (backlog F84): a window writes it marked
+   * manager does: a window writes it marked
    * concealed and transient — `org.nspasteboard.ConcealedType`
    * and `TransientType` on macOS, the exclusion formats on
    * Windows — so no clipboard manager shows or keeps it. A
@@ -3201,7 +3171,7 @@ export declare class Ctx {
    * typing, and a focused `onKey` sink hears it as
    * `{kind:"text", text, tag}` — with `concealed: true` /
    * `transient: true` where the pasteboard marked it so
-   * (backlog F84) — so an app that owns its text inserts a
+   * — so an app that owns its text inserts a
    * paste the way it inserts a committed IME string and never
    * reads the clipboard itself. Headless, the request comes out
    * of `takeMenuActions()` as `{kind:"paste"}` and the test
@@ -3212,7 +3182,7 @@ export declare class Ctx {
    * Whether a paste asked for is still unanswered: one ask at a
    * time — a second `requestPaste` while one is out is dropped,
    * and the `commit` that answers it (an empty one for an empty
-   * clipboard) lets the next through (backlog AR34).
+   * clipboard) lets the next through.
    */
   awaitingPaste(): boolean
   /**
@@ -3234,8 +3204,7 @@ export declare class Ctx {
   setNativeMenus(on: boolean): void
   /**
    * The application menu the frame declared, or null:
-   * `{revision, menus: [{label, enabled, items}]}`
-   * (`docs/adr/0018-a-menu-bar-the-app-declares.md`). What a
+   * `{revision, menus: [{label, enabled, items}]}`. What a
    * host with a menu bar of its own reads after
    * `setNativeMenuBar(true)`; `revision` changes only when the
    * declaration does, so a host rebuilds nothing until it moves.
@@ -3267,7 +3236,7 @@ export declare class Ctx {
    * past the end closes the menu and posts nothing. False when
    * nothing was taken: no menu was open, or the row cannot be
    * chosen — disabled, or a separator — in which case the menu
-   * stays open and nothing is posted (backlog RG9).
+   * stays open and nothing is posted.
    */
   activateMenuItem(index: number): boolean
   /** Closes whatever menu is open; true when there was one. */
@@ -3281,8 +3250,7 @@ export declare class Ctx {
    * from:{index, byte}, to:{index, byte}}` event is posted on
    * the scope — the rows behind that gap are the app's, so the
    * app answers with `answerSelectionRange`, and the answer is
-   * what reaches the clipboard
-   * (`docs/adr/0017-selection-as-a-scope.md`).
+   * what reaches the clipboard.
    */
   requestCopy(): { text: string | null, asked: boolean }
   /**
@@ -3297,8 +3265,7 @@ export declare class Ctx {
    * the window holds — starting either clears the other, so
    * there is never a choice to make. Null with no selection,
    * `""` when a selection exists but covers nothing (a press
-   * that placed both ends together). See
-   * `docs/adr/0017-selection-as-a-scope.md`.
+   * that placed both ends together).
    */
   selectionText(): string | null
   /**
@@ -3308,7 +3275,7 @@ export declare class Ctx {
    * outside every virtualised row — the `index` a
    * `selectionrange` ask would name) and `byte` the offset in
    * that row's own text. Directed, so a Shift-click that kept
-   * the anchor reads as one (ADR 0029). Null with no text
+   * the anchor reads as one. Null with no text
    * selection; a grid's is `cellSelection()`.
    */
   selectionEnds(): SelectionEnds | null
@@ -3317,7 +3284,7 @@ export declare class Ctx {
    * one: the grid's key, `anchor` and `focus` as the drag made
    * them — each an absolute `line` (`originLine` plus the row,
    * so a scroll does not move it) and a `col` — and `block`
-   * for a rectangular one (ADR 0017, decision 4). Null when the
+   * for a rectangular one. Null when the
    * window's selection is not a grid's; a text selection's ends
    * are `selectionEnds()`.
    */
@@ -3326,7 +3293,7 @@ export declare class Ctx {
    * The selection as HTML, carrying the formatting the text
    * declared — bold, italic, a span's own colour — and *not*
    * the node's colour, which is the app's theme rather than
-   * the text's (`docs/adr/0017-selection-as-a-scope.md`).
+   * the text's.
    * Null with no text selection. Meant as a second clipboard
    * flavour beside the plain text, never instead of it.
    */
@@ -3374,8 +3341,8 @@ export declare class Ctx {
    * no ease asked or ended and no frame asked for: a correction to
    * the frame the view is building. What `list()` calls when the
    * rows it measured came out another height than the estimate
-   * they stood at, so the row under the pointer stays put (RG18,
-   * backlog C46). A label nothing declared yet is the first
+   * they stood at, so the row under the pointer stays put.
+   * A label nothing declared yet is the first
    * frame, which has nothing to correct.
    */
   shiftScroll(key: string, drawn: number, target: number): void
@@ -3433,8 +3400,8 @@ export declare class Ctx {
    * will — the view that declares the editor — is the app's:
    * a redraw here re-lowered the *retained* tree, which declares
    * no editor, and that was the frame the hold expired on when
-   * the call came from a `dispatch` outside the loop (backlog
-   * F42; `runWindowed` draws that model before it pumps).
+   * the call came from a `dispatch` outside the loop
+   * (`runWindowed` draws that model before it pumps).
    */
   setEditText(key: string, text: string): void
 }
@@ -3477,7 +3444,7 @@ export declare class KuiWindow {
    * surface at the window whose view it is calling and at the window
    * an event came from before handing the surface to `update`, so an
    * app that never calls this reads and writes the window it is being
-   * asked about (backlog AR12). Resources, `windows()`, `pump` and
+   * asked about. Resources, `windows()`, `pump` and
    * `pollEvents` are the session's and unaffected.
    */
   useWindow(window?: string | number): boolean
@@ -3496,8 +3463,8 @@ export declare class KuiWindow {
   /**
    * Registers what the window calls as it goes for good — its close
    * button, `close()`, Quit from the menu or the dock — once, from
-   * inside the `pump()` that saw it and before that pump returns
-   * (backlog RG1). On macOS a Quit ends the process inside that pump:
+   * inside the `pump()` that saw it and before that pump returns.
+   * On macOS a Quit ends the process inside that pump:
    * `pump()` never returns, `runWindowed` never resolves and nothing
    * after it runs, not even `process.on('exit')` — so this is the only
    * thing an app runs on ⌘Q. `runWindowed` registers its config's
@@ -3548,13 +3515,13 @@ export declare class KuiWindow {
   /**
    * The viewport the app lays out into, in logical px, plus the scale
    * factor: `{width, height, scale}` — the window's inner size, less
-   * the devtools' dock while the panel is docked (`docs/adr/0024`).
+   * the devtools' dock while the panel is docked.
    * Readable before the first frame (in `setup` and `init`, where
    * `env().viewport` is still 0×0), and re-reported as a
    * `{kind:"resize", width, height, scale}` event through `pollEvents`
    * — a `ResizeMsg` — whenever the window changes size, moves to a
    * display with another DPI, or the dock comes, goes or is dragged.
-   * Backlog F43: this was the window's inner size, so an app that seeded
+   * It used to be the window's inner size, so an app that seeded
    * its tiers from it under `KUI_DEVTOOLS=1` drew for the whole window.
    */
   size(): WindowSize
@@ -3567,11 +3534,11 @@ export declare class KuiWindow {
    * those the ring holds — its fill, one per painted frame up to 120, so
    * a window that paints only when something changes stays below it for
    * as long as it idles. `framesTotal` and `pumps` are the monotonic
-   * counts of every frame painted and every `pump()` taken (backlog
-   * F62), so two readings a second apart are that second's frame and
+   * counts of every frame painted and every `pump()` taken, so two
+   * readings a second apart are that second's frame and
    * pump rates. `wokenPumps` counts the pumps that found an OS event or
    * a wake — a key, the pointer crossing, a focus change, a resize, a
-   * reader asking (backlog F94) — so two readings a second apart with it
+   * reader asking — so two readings a second apart with it
    * unmoved are a second the desktop left the window alone, and every
    * frame in it was the app's own. `waitMs` is vsync backpressure;
    * `workMs` is everything else.
@@ -3591,8 +3558,7 @@ export declare class KuiWindow {
    * next frame with no view change; `width`/`height` may differ
    * from the registration. From the first update on the image
    * is drawn from a texture of its own — a video frame, a
-   * camera, a plot the app rasterised itself
-   * (`docs/adr/0025-the-image-is-the-canvas.md`). A dead id warns
+   * camera, a plot the app rasterised itself. A dead id warns
    * `foreign-resource` and changes nothing.
    */
   updateImage(id: string, width: number, height: number, rgba: Buffer): void
@@ -3646,8 +3612,8 @@ export declare class KuiWindow {
   /**
    * The families `systemFontFamilies` names, in its order, each
    * with what its faces say they are: `monospaced` (every face
-   * fixed-pitch), `weights` (sorted, each once) and `italic`
-   * (backlog F97). Read from what the font database recorded
+   * fixed-pitch), `weights` (sorted, each once) and `italic`.
+   * Read from what the font database recorded
    * when it scanned each face, so a font picker can put the
    * monospaced ones first without loading a file or shaping a
    * glyph.
@@ -3667,8 +3633,7 @@ export declare class KuiWindow {
    * Says something once, with no node behind it: `announce("Saved")`,
    * `announce("3 results", "assertive")`. `"off"` and an empty string
    * are both no-ops. A region whose message is on screen is the `live`
-   * prop instead
-   * (`docs/adr/0008-live-regions-and-announcements.md`).
+   * prop instead.
    *
    * Call it from an event handler. Called while building a frame it
    * fires every frame, which the core reports as
@@ -3705,11 +3670,11 @@ export declare class KuiWindow {
    * for any of them; to a test they differ, since a keyframe
    * `repeat` cycle never ends and `settled()` never resolves
    * under one. `quiet()` on the loop waits on everything but
-   * `cycle` (backlog F64).
+   * `cycle`.
    */
   owed(): Owed
   /**
-   * Turns on the trace of why frames run (backlog F111): who
+   * Turns on the trace of why frames run: who
    * holds each owed frame (`owedBy()`) and whether each frame
    * changed what is drawn (`frameUnchanged()`). Off by default,
    * where neither costs anything; `frameCause()` is kept either
@@ -3720,7 +3685,7 @@ export declare class KuiWindow {
    * Why a frame runs, as the names of its reasons: the input it
    * answers (`key`, `pointerMove`, `wheel`, …), what a window's
    * runner saw (`wake`, `resize`, `caret`, `retry`, …) and
-   * `owed` when the frame before left one owed (backlog F111).
+   * `owed` when the frame before left one owed.
    * Empty for a frame nothing here asked for.
    *
    * Which frame: on a `Ctx`, from inside a `createApp` view,
@@ -3729,7 +3694,7 @@ export declare class KuiWindow {
    * built. On a `KuiWindow`, always the last frame drawn: a
    * window's view runs when the model changes, ahead of the
    * frame that shows it, and the frames a transition or a
-   * blink runs call no view at all (backlog RG81).
+   * blink runs call no view at all.
    */
   frameCause(): FrameCauseName[]
   /**
@@ -3740,14 +3705,13 @@ export declare class KuiWindow {
    * asked for a frame. Read from inside a `createApp` view on a
    * `Ctx`, the reason that view's frame exists; between frames,
    * the last frame built's; on a `KuiWindow`, the last frame
-   * drawn's, as `frameCause()` says (backlog RG81). Empty
-   * unless `setFrameTrace(true)` (backlog F111).
+   * drawn's, as `frameCause()` says. Empty
+   * unless `setFrameTrace(true)`.
    */
   owedBy(): OwedBy
   /**
    * Whether the last finished frame drew exactly what the one
-   * before drew; `null` untraced and on the first traced frame
-   * (backlog F111).
+   * before drew; `null` untraced and on the first traced frame.
    */
   frameUnchanged(): boolean | null
   /**
@@ -3773,7 +3737,7 @@ export declare class KuiWindow {
    * by `decodeQuads`. Copied into the Buffer. A window answers
    * with what its last pump drew, so a smoke test can read the
    * frame the shipping driver painted and not only a headless
-   * one's (backlog F19). Drive that window with `access(key,
+   * one's. Drive that window with `access(key,
    * action)` — `click`, `type` and `key` are refused there,
    * because the OS is what drives a real window.
    */
@@ -3792,10 +3756,9 @@ export declare class KuiWindow {
    * two 32-bit halves, the sixteen parameters, then where the
    * draw's `image` is (0 none, 1 the atlas, 2 a texture of its
    * own), the `textureDraws` index when it is 2, and the texel
-   * rect `x, y, w, h` (backlog V1). The parameters ride a side
+   * rect `x, y, w, h`. The parameters ride a side
    * list rather than the quad, so `quads()` alone cannot show
-   * them and a corpus adapter needs this to compare them
-   * (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`).
+   * them and a corpus adapter needs this to compare them.
    * Empty on a frame that draws no fragment.
    */
   fragmentDraws(): Array<number>
@@ -3805,8 +3768,7 @@ export declare class KuiWindow {
    * 32-bit halves, the pixels' revision, width and height, and
    * the texel rect `x, y, w, h` in the image's own texels (the
    * whole image, or the crop a `fit="cover"` made). The side
-   * list a `quads()` texture quad points at
-   * (`docs/adr/0025-the-image-is-the-canvas.md`, decision 3).
+   * list a `quads()` texture quad points at.
    * Empty on a frame that draws no texture-backed image.
    */
   textureDraws(): Array<number>
@@ -3871,14 +3833,13 @@ export declare class KuiWindow {
    */
   setMetrics(metrics: MetricsOverrides | null): void
   /**
-   * Declare the app's named colours and lengths
-   * (`docs/adr/0027-tokens-beside-the-theme.md`): `{ colors:
+   * Declare the app's named colours and lengths: `{ colors:
    * { peach: '#ffcc99', ink: { light, dark } }, lengths: {
    * sideW: 132 } }`. Replaces the table whole, so an app whose
    * lengths change with a viewport tier declares again on
    * `resize`. A name a theme or metrics role owns is dropped
    * with a `reserved-token` warning. A colour may be a
-   * recipe over an earlier one (ADR 0028): `{ from: 'peach',
+   * recipe over an earlier one: `{ from: 'peach',
    * ops: [['lift', 0.3]] }`, dropped with `unknown-token` when
    * its source is not there. Reference one in a prop
    * as `'$peach'` — `defineTokens` types the names. The raw
@@ -3935,8 +3896,7 @@ export declare class KuiWindow {
    */
   setInspect(on: boolean): void
   /**
-   * Turns the core's devtools panel on or off
-   * (`docs/adr/0024`): the event stream, the runtime's facts and
+   * Turns the core's devtools panel on or off: the event stream, the runtime's facts and
    * the tree, drawn by the core beside the app's own tree in the
    * main window — or where `setDevtoolsDock` says — with its
    * controls and its `Ctrl+Shift+<letter>` chords handled inside
@@ -3968,7 +3928,7 @@ export declare class KuiWindow {
    * `bg`, which is the window's too and under a dock also fills
    * the whole window beneath the pane. All zeros before the
    * first frame, like `env().viewport`; a window's `size()` is
-   * the reading from before it. Backlog F92.
+   * the reading from before it.
    */
   hostArea(): Rect
   /**
@@ -3996,15 +3956,15 @@ export declare class KuiWindow {
   devtoolsKey(): string
   /**
    * The declared devtools tab on show, by name, or `null` for
-   * one of the panel's own, the panel off or popped out (ADR
-   * 0032). What `frame` / `setView` read once before encoding,
+   * one of the panel's own, the panel off or popped out.
+   * What `frame` / `setView` read once before encoding,
    * so a `<devtoolsTab>`'s function child is called only for
    * that tab.
    */
   devtoolsShownTab(): string | null
   /**
    * The node the panel's tree tab has selected, as a hex key,
-   * or `null` (ADR 0032, decision 4) — what an inspector in a
+   * or `null` — what an inspector in a
    * declared tab reads to say which node it is about.
    */
   devtoolsSelected(): string | null
@@ -4014,8 +3974,8 @@ export declare class KuiWindow {
   devtoolsPicked(): string | null
   /**
    * Raises the panel's picker from outside it — an inspector in
-   * a `<devtoolsTab>` asking "which node?" — or puts it away
-   * (ADR 0032, decision 4). Picking happens over the app in
+   * a `<devtoolsTab>` asking "which node?" — or puts it away.
+   * Picking happens over the app in
    * the main window: `devtoolsPicked()` is the node under the
    * pointer while it is up, and the press lands it in
    * `devtoolsSelected()`. Raised while a declared tab is on
@@ -4030,7 +3990,7 @@ export declare class KuiWindow {
   /**
    * Shows the panel's tab named `name` from the app's side —
    * what the strip's click and `Ctrl+Shift+N` do, for a command
-   * that jumps to the app's own tab (ADR 0032). `name` is one
+   * that jumps to the app's own tab. `name` is one
    * of the panel's own (`facts`, `events`, `tree`, in any case)
    * or a `<devtoolsTab>`'s, exactly as declared. A declared
    * name the panel does not list
@@ -4062,7 +4022,7 @@ export declare class KuiWindow {
   /**
    * The last finished frame's nodes in tree order, each with what
    * it is, the label it was opened under, where layout put it
-   * (in the app's viewport, like `layoutOf`; backlog AR36), and
+   * (in the app's viewport, like `layoutOf`), and
    * the declarations that explain the rest — what a tree view
    * and a node inspector are built from. Empty until
    * `setInspect(true)` and a frame after it.
@@ -4076,7 +4036,7 @@ export declare class KuiWindow {
    * `frame` / `setView` report what they dropped through here.
    * Behind the same `setDiagnostics` gate, and once per name. A
    * pair under `protocol().menuItem.name` is a key a `<select>`
-   * option object carried that no menu row reads (backlog RG10).
+   * option object carried that no menu row reads.
    */
   warnUnknownProps(props: [string, string][]): void
   /**
@@ -4110,8 +4070,8 @@ export declare class KuiWindow {
    */
   isPressed(key: string): boolean
   /**
-   * Whether files dragged in from the OS are over `key` (ADR
-   * 0031) — for drop-dependent layout; the colour swap is the
+   * Whether files dragged in from the OS are over `key` — for
+   * drop-dependent layout; the colour swap is the
    * `dropBg` prop. `key` is either spelling, as for `isHovered`.
    */
   isDropTarget(key: string): boolean
@@ -4161,7 +4121,7 @@ export declare class KuiWindow {
    */
   focusVisible(): boolean
   /**
-   * The caret's blink phase — `true` draws it (backlog C35). A
+   * The caret's blink phase — `true` draws it. A
    * custom editor reads it in `view` and skips its caret node
    * on the off phase, keeping the `caret` row on its `line`
    * either way; the window's clock sets it while a focused
@@ -4172,7 +4132,7 @@ export declare class KuiWindow {
   /**
    * Whether there is a caret to blink: a focused `<edit>`'s, or
    * the `caret` a `line` under the focused sink declares — unless
-   * the line declares it `caretSolid` (backlog F68), which
+   * the line declares it `caretSolid`, which
    * anchors and reads but arms no clock. What the window's
    * clock is armed on; headless, what a test reads to see that
    * an idle view asks for no frame.
@@ -4224,8 +4184,7 @@ export declare class KuiWindow {
   /**
    * Enters a focus region — a box declared `focusRegion`, named by
    * the label its `key` prop declares or by the hex key an event
-   * carried — or the main ring for `null`
-   * (`docs/adr/0022-focus-regions.md`). Focus lands on what that
+   * carried — or the main ring for `null`. Focus lands on what that
    * ring last held if the node is still there, else its
    * `initialFocus`, else its first stop, and shows.
    *
@@ -4256,8 +4215,7 @@ export declare class KuiWindow {
    * `focus`. A label the last frame did not declare is resolved
    * when the coming frame finishes, so a row that frame declares
    * for the first time is reachable by name too; one it does not
-   * declare either is a `label-without-node` warning (backlog
-   * DX15).
+   * declare either is a `label-without-node` warning.
    */
   reveal(key: string): void
   /**
@@ -4285,8 +4243,8 @@ export declare class KuiWindow {
    * The rect the last frame laid `key` out at, `{x, y, w, h}`
    * in logical viewport px, for a node that declared `onLayout`
    * — the `layout` event's numbers, read back during the next
-   * build with no event and no model field (backlog C26 step
-   * 2); `null` for any other key. Read while building, it
+   * build with no event and no model field; `null` for any
+   * other key. Read while building, it
    * describes the previous frame, like `scrollGeometry`.
    */
   layoutOf(key: string): { x: number, y: number, w: number, h: number } | null
@@ -4296,7 +4254,7 @@ export declare class KuiWindow {
    * counted across every run the key covers, so a `line` row of
    * inline runs is one row and a wrapped run as many as it
    * wrapped to; not the ordinal `line` node a pointer event's
-   * `line` names (backlog AR30) — or null for a key that drew no
+   * `line` names — or null for a key that drew no
    * text. A `role="none"` subtree under the key (a gutter) is
    * not its text, as the access tree reads it. `x`/`y` are the logical viewport px a
    * `click` or `drag` event carries, so a custom editor turns the
@@ -4315,7 +4273,7 @@ export declare class KuiWindow {
    * `custom` (the default), `separator`, `cut`, `copy`,
    * `paste`, `selectAll` or `lookUp`; the standard ones take
    * their own wording when `label` is empty, and the core
-   * performs the ones it can (`docs/adr/0017-selection-as-a-scope.md`).
+   * performs the ones it can.
    *
    * Choosing a row posts `{kind:"menu", role, item}` on `key`
    * and closes the menu; a press outside it or Escape closes it
@@ -4339,8 +4297,8 @@ export declare class KuiWindow {
    * A windowed app never needs this — the driver drains it —
    * but a headless one does: nothing else empties the queue,
    * and a Copy nobody drains is a copy that never happened.
-   * Asks for the platform's Open, Save or folder dialog (backlog
-   * C51): `{mode, multiple, title, filters: [{name, extensions}],
+   * Asks for the platform's Open, Save or folder dialog:
+   * `{mode, multiple, title, filters: [{name, extensions}],
    * directory, fileName, tag}`, every field optional. The answer
    * is a `{kind:"files", paths, tag}` event — `paths` empty when
    * the user cancelled. A window's runner shows the dialog; a
@@ -4361,8 +4319,8 @@ export declare class KuiWindow {
   /**
    * Puts `text` on the system clipboard — the action a menu's
    * Copy queues, with a door on it for an `onKey` sink that
-   * hears the raw `Ctrl-c` and had nowhere to bind it (backlog
-   * C33). `html` is a second flavour beside the text for the
+   * hears the raw `Ctrl-c` and had nowhere to bind it.
+   * `html` is a second flavour beside the text for the
    * host to offer, never in place of it. A window applies it
    * at its next drain (after every input and every frame); a
    * headless `Ctx` hands it out through `takeMenuActions()`.
@@ -4370,7 +4328,7 @@ export declare class KuiWindow {
   setClipboard(text: string, html?: string | undefined | null): void
   /**
    * Puts a secret on the system clipboard the way a password
-   * manager does (backlog F84): a window writes it marked
+   * manager does: a window writes it marked
    * concealed and transient — `org.nspasteboard.ConcealedType`
    * and `TransientType` on macOS, the exclusion formats on
    * Windows — so no clipboard manager shows or keeps it. A
@@ -4385,7 +4343,7 @@ export declare class KuiWindow {
    * typing, and a focused `onKey` sink hears it as
    * `{kind:"text", text, tag}` — with `concealed: true` /
    * `transient: true` where the pasteboard marked it so
-   * (backlog F84) — so an app that owns its text inserts a
+   * — so an app that owns its text inserts a
    * paste the way it inserts a committed IME string and never
    * reads the clipboard itself. Headless, the request comes out
    * of `takeMenuActions()` as `{kind:"paste"}` and the test
@@ -4396,7 +4354,7 @@ export declare class KuiWindow {
    * Whether a paste asked for is still unanswered: one ask at a
    * time — a second `requestPaste` while one is out is dropped,
    * and the `commit` that answers it (an empty one for an empty
-   * clipboard) lets the next through (backlog AR34).
+   * clipboard) lets the next through.
    */
   awaitingPaste(): boolean
   /**
@@ -4418,8 +4376,7 @@ export declare class KuiWindow {
   setNativeMenus(on: boolean): void
   /**
    * The application menu the frame declared, or null:
-   * `{revision, menus: [{label, enabled, items}]}`
-   * (`docs/adr/0018-a-menu-bar-the-app-declares.md`). What a
+   * `{revision, menus: [{label, enabled, items}]}`. What a
    * host with a menu bar of its own reads after
    * `setNativeMenuBar(true)`; `revision` changes only when the
    * declaration does, so a host rebuilds nothing until it moves.
@@ -4451,7 +4408,7 @@ export declare class KuiWindow {
    * past the end closes the menu and posts nothing. False when
    * nothing was taken: no menu was open, or the row cannot be
    * chosen — disabled, or a separator — in which case the menu
-   * stays open and nothing is posted (backlog RG9).
+   * stays open and nothing is posted.
    */
   activateMenuItem(index: number): boolean
   /** Closes whatever menu is open; true when there was one. */
@@ -4465,8 +4422,7 @@ export declare class KuiWindow {
    * from:{index, byte}, to:{index, byte}}` event is posted on
    * the scope — the rows behind that gap are the app's, so the
    * app answers with `answerSelectionRange`, and the answer is
-   * what reaches the clipboard
-   * (`docs/adr/0017-selection-as-a-scope.md`).
+   * what reaches the clipboard.
    */
   requestCopy(): { text: string | null, asked: boolean }
   /**
@@ -4481,8 +4437,7 @@ export declare class KuiWindow {
    * the window holds — starting either clears the other, so
    * there is never a choice to make. Null with no selection,
    * `""` when a selection exists but covers nothing (a press
-   * that placed both ends together). See
-   * `docs/adr/0017-selection-as-a-scope.md`.
+   * that placed both ends together).
    */
   selectionText(): string | null
   /**
@@ -4492,7 +4447,7 @@ export declare class KuiWindow {
    * outside every virtualised row — the `index` a
    * `selectionrange` ask would name) and `byte` the offset in
    * that row's own text. Directed, so a Shift-click that kept
-   * the anchor reads as one (ADR 0029). Null with no text
+   * the anchor reads as one. Null with no text
    * selection; a grid's is `cellSelection()`.
    */
   selectionEnds(): SelectionEnds | null
@@ -4501,7 +4456,7 @@ export declare class KuiWindow {
    * one: the grid's key, `anchor` and `focus` as the drag made
    * them — each an absolute `line` (`originLine` plus the row,
    * so a scroll does not move it) and a `col` — and `block`
-   * for a rectangular one (ADR 0017, decision 4). Null when the
+   * for a rectangular one. Null when the
    * window's selection is not a grid's; a text selection's ends
    * are `selectionEnds()`.
    */
@@ -4510,7 +4465,7 @@ export declare class KuiWindow {
    * The selection as HTML, carrying the formatting the text
    * declared — bold, italic, a span's own colour — and *not*
    * the node's colour, which is the app's theme rather than
-   * the text's (`docs/adr/0017-selection-as-a-scope.md`).
+   * the text's.
    * Null with no text selection. Meant as a second clipboard
    * flavour beside the plain text, never instead of it.
    */
@@ -4558,8 +4513,8 @@ export declare class KuiWindow {
    * no ease asked or ended and no frame asked for: a correction to
    * the frame the view is building. What `list()` calls when the
    * rows it measured came out another height than the estimate
-   * they stood at, so the row under the pointer stays put (RG18,
-   * backlog C46). A label nothing declared yet is the first
+   * they stood at, so the row under the pointer stays put.
+   * A label nothing declared yet is the first
    * frame, which has nothing to correct.
    */
   shiftScroll(key: string, drawn: number, target: number): void
@@ -4617,8 +4572,8 @@ export declare class KuiWindow {
    * will — the view that declares the editor — is the app's:
    * a redraw here re-lowered the *retained* tree, which declares
    * no editor, and that was the frame the hold expired on when
-   * the call came from a `dispatch` outside the loop (backlog
-   * F42; `runWindowed` draws that model before it pumps).
+   * the call came from a `dispatch` outside the loop
+   * (`runWindowed` draws that model before it pumps).
    */
   setEditText(key: string, text: string): void
 }

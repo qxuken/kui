@@ -5,26 +5,32 @@ use super::*;
 // ---------------------------------------------------------------------------
 // Values
 
+/// A new null value, owned by the caller. Where a tag is taken it asks
+/// for the events without a tag.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_value_null() -> *mut KuiValue {
     Box::into_raw(Box::new(KuiValue(Value::Null)))
 }
 
+/// A new boolean value, owned by the caller.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_value_bool(v: bool) -> *mut KuiValue {
     Box::into_raw(Box::new(KuiValue(Value::Bool(v))))
 }
 
+/// A new integer value, owned by the caller.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_value_int(v: i64) -> *mut KuiValue {
     Box::into_raw(Box::new(KuiValue(Value::Int(v))))
 }
 
+/// A new float value, owned by the caller.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_value_float(v: f64) -> *mut KuiValue {
     Box::into_raw(Box::new(KuiValue(Value::Float(v))))
 }
 
+/// A new string value holding a copy of `s`, owned by the caller.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_value_str(s: KuiStr) -> *mut KuiValue {
     guard(std::ptr::null_mut(), || {
@@ -32,11 +38,16 @@ pub extern "C" fn kui_value_str(s: KuiStr) -> *mut KuiValue {
     })
 }
 
+/// A new empty map, owned by the caller; fill it with
+/// [`kui_value_map_set`]. The usual shape of a tag is a map with a
+/// `kind` string.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_value_map() -> *mut KuiValue {
     Box::into_raw(Box::new(KuiValue(Value::Map(Vec::new()))))
 }
 
+/// A new empty list, owned by the caller; fill it with
+/// [`kui_value_list_push`].
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_value_list() -> *mut KuiValue {
     Box::into_raw(Box::new(KuiValue(Value::List(Vec::new()))))
@@ -60,7 +71,8 @@ pub extern "C" fn kui_value_list_push(list: *mut KuiValue, val: *mut KuiValue) {
     });
 }
 
-/// Sets `key` on a map value. Consumes `val`.
+/// Sets `key` on a map value, replacing an existing entry. Consumes `val`;
+/// on anything but a map it is dropped and nothing changes.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_value_map_set(map: *mut KuiValue, key: KuiStr, val: *mut KuiValue) {
     guard((), || {
@@ -204,6 +216,8 @@ pub extern "C" fn kui_value_is_null(v: *const KuiValue) -> bool {
     })
 }
 
+/// The integer a value holds; false for anything that is not an integer
+/// (a float is not coerced; see [`kui_value_as_float`]).
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_value_as_int(v: *const KuiValue, out: *mut i64) -> bool {
     guard(false, || {
@@ -240,6 +254,8 @@ pub extern "C" fn kui_value_as_str(v: *const KuiValue, out: *mut KuiStr) -> bool
     })
 }
 
+/// Frees a value the caller owns. Never call it on a borrowed value (an
+/// event's payload, a `kui_value_get` result); NULL is a no-op.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_value_free(v: *mut KuiValue) {
     if !v.is_null() {

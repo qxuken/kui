@@ -1,13 +1,94 @@
-//! wgpu backend: one über-pipeline drawing instanced quads (rounded rects,
-//! borders, and atlas glyphs unified), so a whole UI is a single draw call.
-//! Consumes `kui_core::DisplayList` and mirrors the core's glyph atlas.
+//! wgpu renderer for kui: draws a [`kui_core::DisplayList`] with one instanced pipeline, a single draw call per frame.
+//!
+//! kui splits a UI into a model that lays out and paints into a display
+//! list (`kui-core`), a renderer that puts that list on screen (this
+//! crate) and a runner that owns the window and the event loop
+//! (`kui-native`, the one most apps use). Reach for `kui-wgpu` directly
+//! when you are writing your own runner: you already have a window, or an
+//! event loop, that `kui-native` does not fit.
+//!
+//! A [`Renderer`] owns the swapchain of one window and a GPU copy of the
+//! core's glyph atlas, kept in step with the atlas it is handed each
+//! frame. Rounded rectangles, borders, shadows, glyphs and images are all
+//! instances of the same quad, so an ordinary frame is one draw call;
+//! only a texture-backed image or a custom fragment shader splits it.
+//! Several windows share one device through [`Gpu`].
+//!
+//! # Example
+//!
+//! A runner's whole life with the renderer: open it on a window, tell the
+//! core whether subpixel text will render, then build, draw and present
+//! one frame at a time. `window` is anything wgpu can make a surface
+//! from, such as a `winit` window.
+//!
+//! ```rust,no_run
+//! use kui_core::{Core, Size, TextStyle};
+//! use kui_wgpu::{RenderError, Renderer};
+//!
+//! fn run(
+//!     window: impl Into<kui_wgpu::wgpu::SurfaceTarget<'static>>,
+//! ) -> Result<(), Box<dyn std::error::Error>> {
+//!     let (width, height) = (800u32, 600u32);
+//!     let mut renderer = pollster::block_on(Renderer::new(window, width, height))?;
+//!     let mut core = Core::new();
+//!     core.set_subpixel_text(renderer.subpixel_text());
+//!
+//!     loop {
+//!         // When the windowing library reports a new size:
+//!         // renderer.resize(new_width, new_height);
+//!
+//!         // Build the frame through the core, in logical pixels.
+//!         let scale = 1.0;
+//!         let viewport = Size::new(width as f32 / scale, height as f32 / scale);
+//!         let mut ui = core.frame(viewport, scale);
+//!         ui.text("Hello from a custom runner", TextStyle::new(24.0));
+//!         ui.finish();
+//!
+//!         // Draw it. The atlas is `&mut` so the renderer can clear its dirty flag.
+//!         let (list, atlas) = core.output();
+//!         match renderer.render(list, atlas) {
+//!             Ok(report) => {
+//!                 let _blocked_on_vsync_ms = report.vsync_wait_ms;
+//!             }
+//!             Err(RenderError::Reconfigure | RenderError::Validation) => {
+//!                 renderer.resize(width, height);
+//!             }
+//!             Err(RenderError::Skip) => {}
+//!             Err(RenderError::DeviceLost) => {
+//!                 // Open a new `Renderer` (and a new device) and carry on.
+//!                 break;
+//!             }
+//!         }
+//!     }
+//!     Ok(())
+//! }
+//! ```
+//!
+//! # Where to look
+//!
+//! - [`Renderer`]: one window's swapchain, pipelines and atlas texture.
+//! - [`Renderer::render`]: a display list in, a presented frame (or a
+//!   [`RenderError`]) out.
+//! - [`Renderer::resize`]: reconfigure after the window changed size.
+//! - [`Renderer::subpixel_text`]: what to pass to `Core::set_subpixel_text`.
+//! - [`Gpu`]: the device, queue and adapter that windows share;
+//!   [`Renderer::new_in`] opens a second window on it.
+//! - [`RenderError`]: what each failed frame asks the runner to do next.
+//! - [`DEFAULT_FRAME_LATENCY`] and [`Renderer::set_frame_latency`]: how
+//!   many frames may queue ahead of the one on screen.
+//! - [`wgpu`] is re-exported, so a runner builds against the same version
+//!   this crate was.
+//!
+//! # Subpixel text
 //!
 //! Where the device offers dual-source blending (Metal, DX12, most Vulkan)
-//! the pipeline blends per channel, which is what LCD subpixel text needs:
-//! the fragment shader emits premultiplied color plus a per-channel
-//! coverage, and the blend is `src + dst * (1 - coverage)` channel-wise.
-//! Otherwise it falls back to ordinary alpha blending and subpixel glyphs
-//! draw from their union coverage (grayscale).
+//! the pipeline blends per channel, which is what LCD subpixel glyphs need.
+//! Elsewhere it falls back to ordinary alpha blending and the core should
+//! rasterize grayscale masks instead, which is what
+//! [`Renderer::subpixel_text`] tells it.
+//!
+//! The book: <https://kui-book.qxuken.dev>. Repository:
+//! <https://github.com/qxuken/kui>.
 
 pub use wgpu;
 
@@ -73,7 +154,7 @@ fn instance_of(q: &Quad, clips: &[Clip], textures: &[kui_core::display::TextureD
         QuadKind::Segment => 6.0,
         QuadKind::Fragment => 7.0,
         // Drawn by the image branch with its own texture bound in the
-        // atlas's place (ADR 0025, decision 3).
+        // atlas's place.
         QuadKind::Texture => 3.0,
     };
     // `uv` is atlas texels on every kind but two: a segment carries its
@@ -110,13 +191,14 @@ fn instance_of(q: &Quad, clips: &[Clip], textures: &[kui_core::display::TextureD
     }
 }
 
-/// The GPU objects a session's windows share: one instance, one adapter,
-/// one device, one queue. Windows must share a device before a second one
-/// is worth opening — two devices cannot see each other's buffers or
-/// textures, and each costs a driver context — so a `Renderer` holds a
-/// handle to one rather than making its own. Cloning a `Gpu` clones the
-/// handle; `Renderer::new` makes a private one for its window, which is
-/// what a single-window app gets and never has to name.
+/// The GPU objects an app's windows share: one instance, adapter, device and queue.
+///
+/// Two devices cannot see each other's buffers or textures, so every
+/// window of an app draws through the same `Gpu`. A single-window app
+/// never names it: [`Renderer::new`] opens a private one. A second window
+/// takes the first renderer's [`Renderer::gpu`] and opens through
+/// [`Renderer::new_in`]. Cloning a `Gpu` clones a handle to the same
+/// device.
 #[derive(Clone)]
 pub struct Gpu(std::sync::Arc<GpuInner>);
 
@@ -127,19 +209,18 @@ struct GpuInner {
     queue: wgpu::Queue,
     dual_source: bool,
     /// One pipeline per registered fragment per surface format, built the
-    /// first time a frame draws it and shared by every window on this
-    /// device — the cost the ADR measured at about 0.2 ms, paid once —
-    /// and dropped when a frame's list says the handle is gone
-    /// (`dropped_fragments`). A `Mutex` because `Gpu` is a shared handle
-    /// and building is rare; nothing here is touched on a frame that
-    /// draws no new fragment.
+    /// first time a frame draws it (about 0.2 ms, paid once) and shared by
+    /// every window on this device, dropped when a frame's list says the
+    /// handle is gone (`dropped_fragments`). A `Mutex` because `Gpu` is a
+    /// shared handle and building is rare; nothing here is touched on a
+    /// frame that draws no new fragment.
     fragment_pipelines: std::sync::Mutex<
         std::collections::HashMap<(u64, wgpu::TextureFormat), wgpu::RenderPipeline>,
     >,
     /// One texture per texture-backed image, uploaded the first time a
     /// frame on this device draws it and again when its revision moves,
     /// shared by every window like the pipelines above, dropped when the
-    /// core says the handle is gone (ADR 0025, decisions 2 and 3).
+    /// core says the handle is gone.
     textures: std::sync::Mutex<std::collections::HashMap<u64, std::sync::Arc<ImageTexture>>>,
     /// Set by the device's lost callback: a driver update, a GPU reset, a
     /// hang the OS answered by removing the device. Nothing on it works
@@ -161,10 +242,14 @@ struct ImageTexture {
 }
 
 impl Gpu {
-    /// Opens the shared device, choosing an adapter that can present to
-    /// `target`'s surface — the first window's, whose surface comes back
-    /// with it because it has to exist before the adapter can be picked.
-    /// Every later window's surface comes from [`Gpu::create_surface`].
+    /// Opens a device that can present to `target`, and returns the
+    /// surface it was chosen for.
+    ///
+    /// The first window's surface has to exist before an adapter can be
+    /// picked, so it comes back with the device; later windows get theirs
+    /// from [`Gpu::create_surface`]. Most runners call [`Renderer::new`]
+    /// instead, which does both and builds the renderer. On Windows only
+    /// the D3D12 backend is enabled unless `WGPU_BACKEND` names another.
     pub async fn new(
         target: impl Into<wgpu::SurfaceTarget<'static>>,
     ) -> Result<(Self, wgpu::Surface<'static>), Box<dyn std::error::Error>> {
@@ -232,18 +317,21 @@ impl Gpu {
         Ok((gpu, surface))
     }
 
-    /// Whether the device is gone — a driver update or a GPU reset took
-    /// it — so every renderer on it is to be opened again on a new one
-    /// ([`Renderer::render`] says so with [`RenderError::DeviceLost`]).
+    /// Whether the device is gone (a driver update or a GPU reset took it).
+    ///
+    /// Nothing on a lost device works again: open a new `Gpu` and a new
+    /// renderer on it for every window. [`Renderer::render`] reports the
+    /// same condition as [`RenderError::DeviceLost`].
     pub fn lost(&self) -> bool {
         self.0.lost.load(std::sync::atomic::Ordering::Acquire)
     }
 
     /// Loses the device on purpose, as a driver update or a GPU reset
-    /// would — for a shell to see its reopening happen without one. On
-    /// D3D12 the device is really removed (`ID3D12Device5::RemoveDevice`),
-    /// so every resource on it dies as it does then and the lost callback
-    /// runs as it does then; elsewhere the device is only treated as lost.
+    /// would, so a runner can test its reopening path without one.
+    ///
+    /// On D3D12 the device is really removed (`ID3D12Device5::RemoveDevice`)
+    /// and the loss lands on its next use through the lost callback, as a
+    /// real one does; elsewhere the device is only marked lost.
     pub fn mark_lost(&self) {
         #[cfg(windows)]
         {
@@ -269,7 +357,7 @@ impl Gpu {
             .store(true, std::sync::atomic::Ordering::Release);
     }
 
-    /// A surface for another window on the same instance — what
+    /// A surface for another window on the same instance, which is what
     /// [`Renderer::new_in`] draws into.
     pub fn create_surface(
         &self,
@@ -278,24 +366,29 @@ impl Gpu {
         self.0.instance.create_surface(target)
     }
 
+    /// The wgpu instance the device was opened on.
     pub fn instance(&self) -> &wgpu::Instance {
         &self.0.instance
     }
 
+    /// The adapter the device was requested from.
     pub fn adapter(&self) -> &wgpu::Adapter {
         &self.0.adapter
     }
 
+    /// The device, for a runner that creates resources of its own on it.
     pub fn device(&self) -> &wgpu::Device {
         &self.0.device
     }
 
+    /// The queue the renderer submits to.
     pub fn queue(&self) -> &wgpu::Queue {
         &self.0.queue
     }
 
-    /// Whether this device blends per channel, i.e. LCD subpixel glyphs
-    /// draw with per-channel coverage rather than their union.
+    /// Whether this device blends per channel (dual-source blending), so
+    /// LCD subpixel glyphs draw with per-channel coverage rather than
+    /// their union.
     pub fn dual_source(&self) -> bool {
         self.0.dual_source
     }
@@ -499,6 +592,13 @@ impl std::fmt::Debug for Gpu {
     }
 }
 
+/// One window's renderer: its surface, the pipelines and a GPU copy of the core's glyph atlas.
+///
+/// Open one per window with [`Renderer::new`] (first window, on a device
+/// of its own) or [`Renderer::new_in`] (another window on a shared
+/// [`Gpu`]). Each frame, hand [`Renderer::render`] the display list and
+/// atlas from `Core::output`; call [`Renderer::resize`] when the window
+/// changes size. The crate root has the whole sequence.
 pub struct Renderer {
     gpu: Gpu,
     surface: wgpu::Surface<'static>,
@@ -508,7 +608,7 @@ pub struct Renderer {
     bind_group: wgpu::BindGroup,
     bind_layout: wgpu::BindGroupLayout,
     /// The two samplers every group-0 bind group carries: linear at
-    /// binding 2, nearest at 3 (ADR 0025, decision 4).
+    /// binding 2, nearest at 3.
     samplers: Samplers,
     /// Per texture-backed image this window has drawn: the device's
     /// texture, and a bind group of this window's own — group 0 with that
@@ -535,6 +635,12 @@ pub struct Renderer {
     uniform_align: u32,
     /// Scratch for one frame's padded parameter slots.
     fragment_bytes: Vec<u8>,
+    /// The color a frame is cleared to before anything is drawn.
+    ///
+    /// A runner usually sets it to the theme's background each frame. It
+    /// is written straight through: the renderer asks for a non-sRGB
+    /// surface, so each component is the byte it lands as, the same way a
+    /// quad's color is.
     pub clear_color: wgpu::Color,
 }
 
@@ -596,32 +702,26 @@ fn preprocess_shader(src: &str, dual: bool) -> String {
     out
 }
 
-/// How many frames may be queued ahead of the one on screen, by default:
-/// two, so a drawable to render into is waiting when the previous frame's
-/// is still out (backlog C47). On Metal wgpu makes this the layer's
-/// `maximumDrawableCount` less one, so two is triple buffering — what gpui
-/// runs with. With one, a frame whose thread woke a little late at light
-/// load found no free drawable and missed its vsync: 1–6% of them on an
-/// M3 Pro under macOS 27 at 100 and 2,500 boxes, none under heavy load,
-/// where there is no idle gap to wake late from. Two delivered 1198–1201
-/// of ~1200 vsyncs in every run. Queued behind a frame, though, a frame
-/// built as soon as a drawable frees reaches the screen a vsync later
-/// while frames run back to back — 27.6 ms sampling-to-photon against
-/// 19.3 — so `kui-native`'s runner starts such frames at the display's vsync
-/// instead (its `pacer`, macOS 14+), where the extra drawable is slack
-/// and not a queue: 17.5–19.2 ms, every vsync delivered. A renderer
-/// driven any other way pays the frame.
+/// How many frames may be queued ahead of the one on screen by default: two, or one on Windows.
 ///
-/// One on Windows (backlog RG46), where there is no pacer to win the frame
-/// back and nothing to win it for: D3D12's flip-model swapchain waits on
-/// its frame-latency object, and with one queued frame an RTX 5080 at
-/// 240 Hz delivered 2,400 of 2,400 vsyncs in 10 s at 100, 2,500 and
-/// 10,000 boxes rebuilt every frame, the same as with two — so two was a
-/// vsync of latency, 4.2 ms there, for nothing.
+/// With two, a drawable to render into is waiting while the previous
+/// frame's is still out, so a frame whose thread woke a little late still
+/// makes its vsync (on Metal this is triple buffering). The price is that
+/// a frame built the moment a drawable frees reaches the screen a vsync
+/// later than it could; `kui-native` wins that back by starting frames at
+/// the display's vsync, and a runner driven any other way pays it. On
+/// Windows the flip-model swapchain delivers every vsync with a single
+/// queued frame, so the second would be latency for nothing. Change it
+/// per renderer with [`Renderer::set_frame_latency`].
 pub const DEFAULT_FRAME_LATENCY: u32 = if cfg!(target_os = "windows") { 1 } else { 2 };
 
 impl Renderer {
     /// A renderer for one window, on a device of its own.
+    ///
+    /// `width` and `height` are the window's size in physical pixels.
+    /// Fails when no adapter can present to `target` or the surface cannot
+    /// be configured. Use [`Renderer::new_in`] for every window after the
+    /// first, so they share the device.
     pub async fn new(
         target: impl Into<wgpu::SurfaceTarget<'static>>,
         width: u32,
@@ -631,8 +731,9 @@ impl Renderer {
         Self::with_surface(gpu, surface, width, height)
     }
 
-    /// A renderer for another window on an existing device — the one every
-    /// window of a session shares. Get it from [`Renderer::gpu`].
+    /// A renderer for another window on an existing device, the one every
+    /// window of the app shares. Get `gpu` from the first renderer's
+    /// [`Renderer::gpu`].
     pub fn new_in(
         gpu: &Gpu,
         target: impl Into<wgpu::SurfaceTarget<'static>>,
@@ -648,9 +749,9 @@ impl Renderer {
         &self.gpu
     }
 
-    /// How many frames may be queued ahead of the one on screen (at least
-    /// one); see [`DEFAULT_FRAME_LATENCY`]. Reconfigures the surface when
-    /// it changes.
+    /// Sets how many frames may be queued ahead of the one on screen (at
+    /// least one; see [`DEFAULT_FRAME_LATENCY`]). Reconfigures the surface
+    /// when the value changes.
     pub fn set_frame_latency(&mut self, frames: u32) {
         let frames = frames.max(1);
         if self.config.desired_maximum_frame_latency != frames {
@@ -906,23 +1007,23 @@ impl Renderer {
         })
     }
 
-    /// Whether this device blends per channel, i.e. LCD subpixel glyphs
-    /// (`QuadKind::GlyphSubpixel`) render as intended. Drivers feed this to
-    /// `Core::set_subpixel_text`; without it the core should keep
-    /// rasterizing alpha masks.
+    /// Whether this device can draw LCD subpixel glyphs
+    /// (`QuadKind::GlyphSubpixel`) as intended.
+    ///
+    /// Pass it to `Core::set_subpixel_text` once after opening the
+    /// renderer; when it is `false` the core keeps rasterizing grayscale
+    /// masks, which every device blends correctly.
     pub fn subpixel_text(&self) -> bool {
         self.gpu.dual_source()
     }
 
-    /// Reconfigures the swapchain for a new window size.
+    /// Reconfigures the swapchain for a new window size, in physical pixels.
     ///
-    /// Both bounds are the platform's, not ours. `max(1)` because a
-    /// minimized window reports zero and a zero-sized surface is a
-    /// validation error; `min(max_texture_dimension_2d)` because Windows
-    /// hands out a nonsense size mid-resize — a 2600x1500 move on Windows
-    /// 11 arrived as 2578x32711 — and configuring a surface larger than
-    /// the device can hold panics inside wgpu, taking the app with it. A
-    /// clamped frame is one wrong picture; the next real size fixes it.
+    /// The size is clamped to at least 1 (a minimized window reports zero,
+    /// and a zero-sized surface is a validation error) and to the device's
+    /// largest texture (Windows hands out nonsense sizes mid-resize, and
+    /// configuring past the limit panics inside wgpu). A clamped frame is
+    /// one wrong picture; the next real size fixes it.
     pub fn resize(&mut self, width: u32, height: u32) {
         let max = self.gpu.device().limits().max_texture_dimension_2d;
         self.config.width = width.clamp(1, max);
@@ -971,6 +1072,18 @@ impl Renderer {
         }
     }
 
+    /// Draws one frame and presents it.
+    ///
+    /// Uploads the atlas when it changed since the last frame (and clears
+    /// its `dirty` flag), writes the list's quads to the instance buffer,
+    /// draws them over [`Renderer::clear_color`] in one render pass, and
+    /// presents. Acquiring the swapchain image blocks while vsync holds
+    /// the frame back; that time comes back as
+    /// [`RenderReport::vsync_wait_ms`] so a runner can tell pacing from
+    /// work.
+    ///
+    /// Fails without presenting when the surface or the device cannot
+    /// take the frame; each [`RenderError`] says what to do next.
     pub fn render(
         &mut self,
         dl: &DisplayList,
@@ -1011,7 +1124,7 @@ impl Renderer {
             .queue()
             .write_buffer(&self.globals_buf, 0, bytemuck::bytes_of(&globals));
 
-        // Texture-backed images (ADR 0025, decision 3): drop what the core
+        // Texture-backed images: drop what the core
         // removed, upload what moved, and give each one drawn this frame
         // a group-0 bind group of its own with a globals copy whose
         // `atlas_size` is the texture's. All skipped on a frame that
@@ -1020,7 +1133,7 @@ impl Renderer {
             self.texture_binds.remove(&id.to_ffi());
             self.gpu.drop_image_texture(id.to_ffi());
         }
-        // And the pipelines of removed fragments (AR8) — built per handle
+        // And the pipelines of removed fragments — built per handle
         // and shared by every window, so one window's list carries the
         // removal and this is the only eviction they get.
         for id in &dl.dropped_fragments {
@@ -1188,11 +1301,9 @@ impl Renderer {
                     // run: draw what came before with the über-pipeline,
                     // then that one quad with its own pipeline (a
                     // fragment) or its own group 0 (a texture), then
-                    // carry on (`docs/adr/0015-…` decision 5, ADR 0025
-                    // decision 3). Consecutive quads of the same handle
-                    // still take one set each, which is the 0.6 us the
-                    // first ADR measured; runs of ordinary quads are
-                    // unbroken.
+                    // carry on. Consecutive quads of the same handle
+                    // still take one set each (about 0.6 us); runs of
+                    // ordinary quads are unbroken.
                     let mut run_start = 0u32;
                     let mut on_quads = false;
                     for (i, q) in dl.quads.iter().enumerate() {
@@ -1278,22 +1389,29 @@ fn draw_image_texture(draw: &kui_core::FragmentDraw) -> Option<usize> {
     }
 }
 
-/// Timing details from one `render` call.
+/// Timing details from one [`Renderer::render`] call.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct RenderReport {
-    /// Time blocked acquiring the swapchain image (vsync backpressure).
+    /// Milliseconds spent blocked acquiring the swapchain image, which is
+    /// where vsync backpressure shows up.
     pub vsync_wait_ms: f32,
 }
 
-/// A frame that produced no image, mapped from `CurrentSurfaceTexture`.
+/// A frame that produced no image, and what to do about it.
+///
+/// Mapped from wgpu's `CurrentSurfaceTexture`; the crate root's example
+/// handles every variant.
 #[derive(Clone, Copy, Debug)]
 pub enum RenderError {
-    /// Surface outdated/lost: `resize` (reconfigure) and redraw.
+    /// The surface is outdated or lost: call [`Renderer::resize`] with the
+    /// window's size and draw again.
     Reconfigure,
-    /// Nothing to present right now (occluded/timeout): try next frame.
+    /// Nothing can be presented right now (the window is occluded, or the
+    /// acquire timed out): try again next frame.
     Skip,
-    /// Validation error acquiring the surface texture: the surface is
-    /// configured wrong for the window — `resize` to its size and redraw.
+    /// The surface is configured wrong for the window: call
+    /// [`Renderer::resize`] with the window's size and draw again. A
+    /// surface that stays wrong is best given up with its device.
     Validation,
     /// The device is gone ([`Gpu::lost`]): open a new one, and a renderer
     /// on it for every window.
@@ -1400,30 +1518,19 @@ fn create_fragment_bind_group(
     })
 }
 
-/// Says where a crash is. A fault in a driver — a GPU whose driver is
-/// being replaced under the app — ends the process with no line from
-/// anyone: not a panic, so nothing of ours prints, and Windows reports
-/// only `0xC000041D` for an exception in a window callback. This prints
-/// the code and the module the faulting address is in, then lets the
-/// crash go on as it would have; a diagnostic, not a recovery.
+/// Prints the code and module of a crash to stderr before the process dies (Windows only).
 ///
-/// Only a crash: the line is said from the process's unhandled-exception
-/// filter, which runs once every frame handler has declined the
-/// exception — not from a vectored handler, which sees each exception
-/// first, before anyone has had the chance to handle it, and so sees the
-/// faults that are part of normal running: a driver probing memory under
-/// its own `__try`, V8's WebAssembly bounds checks under `node.exe`. Said
-/// from there, those spent the one report each kind had on something
-/// harmless, and the crash that followed was never named. A filter set
-/// before this one is called after it, with its answer returned, so a
-/// crash reporter the host installed first still gets the crash; one set
-/// after replaces this one, as it would any filter.
+/// A fault in a GPU driver, such as one being replaced under the app, ends
+/// the process with no line from anyone: it is not a panic, and Windows
+/// reports only `0xC000041D` for an exception in a window callback. This
+/// installs an unhandled-exception filter that names the exception code
+/// and the module the faulting address is in, then lets the crash go on;
+/// it is a diagnostic, not a recovery. A crash reporter the host installed
+/// first is still called, with its answer returned; one installed after
+/// replaces this filter.
 ///
-/// A vectored handler is still installed, last among them, but it says
-/// nothing: it remembers the last fault each thread saw. An exception
-/// that escapes a window callback reaches the filter as `0xC000041D`, not
-/// as itself, and the fault inside it is found on the record's own chain
-/// or, failing that, in what the thread last remembered.
+/// [`Gpu::new`] calls it, so a runner rarely needs to. Installing it more
+/// than once is harmless.
 #[cfg(windows)]
 pub fn report_faults() {
     use std::cell::Cell;
@@ -1556,6 +1663,12 @@ pub fn report_faults() {
     });
 }
 
+/// Prints the code and module of a crash to stderr before the process dies (Windows only).
+///
+/// On Windows a fault in a GPU driver ends the process with no line from
+/// anyone, and this installs the exception filter that names it. On every
+/// other platform it does nothing. [`Gpu::new`] calls it, so a runner
+/// rarely needs to.
 #[cfg(not(windows))]
 pub fn report_faults() {}
 

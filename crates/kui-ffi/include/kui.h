@@ -54,12 +54,10 @@ extern "C" {
  * the whole struct - kui_open copies *spec, kui_window_declare reads
  * every field of its config - so a host that reserved the shorter
  * KuiSpec had the new field read from whatever followed it on its stack:
- * for a
- * KuiStr, a pointer of garbage, dereferenced when its length was not zero
- * (backlog AR50). A size the host writes is what makes an append
- * safe, and only the [out] structs carry one; giving every KuiSpec
- * literal a `size` was the tax ADR 0006 declined, and the amendment
- * there takes the other way out: one rule for every struct, and an [in]
+ * for a KuiStr, a pointer of garbage, dereferenced when its length was
+ * not zero. A size the host writes is what makes an append safe, and only
+ * the [out] structs carry one; a `size` on every KuiSpec literal was a
+ * tax declined on purpose, so the rule is one for every struct: an [in]
  * append is a recompile - which every host in this tree did anyway,
  * having always been built against the header it linked. The appends
  * KuiSpec, KuiTextStyle and KuiAudio took after ABI 9, 11, 13, 14 and 15
@@ -68,9 +66,8 @@ extern "C" {
  *
  * It bumps per change, not per release, so what follows is a log of breaks
  * and not a list of published versions. 1 through 5 all came and went
- * between two releases and no release carried any of them: this scheme
- * landed after 0.1.0-alpha.5, and 0.1.0-alpha.6 is the first version to
- * have a number at all - 6. A gap is normal, and a number you never saw
+ * between two releases and no release carried any of them; 6 is the first
+ * number a release shipped with. A gap is normal, and a number you never saw
  * published is one nothing was published against. It costs you nothing,
  * because the check above is equality: you compare your header's number
  * with the library you loaded, and never reason about the distance between
@@ -85,7 +82,7 @@ extern "C" {
  * stops. The version still bumps, because a host that skipped this check
  * would otherwise get that short write without ever having asked for it.
  *
- * ABI 5 is multi-window (docs/adr/0004-multi-window.md, step 3), and its
+ * ABI 5 is multi-window, and its
  * two breaks are source breaks you see at compile time: the uint32_t array
  * kui_take_window_commands filled became the KuiWindowCommand [out] struct
  * kui_take_window_command pops (a command now names its window, and an
@@ -93,13 +90,13 @@ extern "C" {
  * Edit the drain loop and the env call; nothing else changes meaning.
  *
  * ABI 6 appends width/height to KuiWindowCommand, for the KUI_CMD_SET_SIZE
- * kui_set_window_size queues (ADR 0004 step 5). Set `size` (as
+ * kui_set_window_size queues. Set `size` (as
  * KUI_WINDOW_COMMAND_INIT does) and you need no source change: the library
  * writes the prefix your build reserved and stops. Nor can the new verb
  * reach a host that never calls kui_set_window_size - only that call
  * produces it. The version bumps for the host that skipped this check.
  *
- * ABI 7 is the popup (ADR 0004 step 4): KuiWindowConfig gains the four
+ * ABI 7 is the popup: KuiWindowConfig gains the four
  * anchor_* floats a popup is placed against, and KuiWindowCommand appends
  * owner. This is the first growth `size` cannot absorb (ABI 11 is the
  * second), and it is worth knowing why: KuiWindowCommand embeds a
@@ -111,7 +108,7 @@ extern "C" {
  * checking kui_abi_version() first is the difference between a message
  * and a mystery. Recompile and nothing in your source changes.
  *
- * ABI 8 appends bg to KuiSpan (backlog C22). An [in] struct, but one that
+ * ABI 8 appends bg to KuiSpan. An [in] struct, but one that
  * travels as an array - kui_rich_text and kui_measure_rich_text take
  * `const KuiSpan *spans, size_t span_count` - so the append moved the
  * stride, and a binary that was not recompiled would hand the library
@@ -119,7 +116,7 @@ extern "C" {
  * source changes; a zeroed bg is none.
  *
  * ABI 9 appends fragments, fragment_count and time to KuiDrawData, for
- * the fragment element (ADR 0015). KuiDrawData leads with `size`, so this
+ * the fragment element. KuiDrawData leads with `size`, so this
  * is the compatible kind of append: set it (as KUI_DRAW_DATA_INIT does)
  * and the library writes the prefix your build reserved and stops, so a
  * host that reserved through atlas_epoch keeps drawing frames and never
@@ -160,7 +157,7 @@ extern "C" {
  * place - read dd.clips[q.clip] where you read q.clip and q.clip_radius;
  * entry zero clips nothing, so there is no null case.
  *
- * ABI 12 appends origin_line to kui_cells (ADR 0017 decision 4): the
+ * ABI 12 appends origin_line to kui_cells: the
  * absolute line a grid's row 0 is, so a terminal's selection keeps its
  * ends across a scroll. This is the case the rules above do not cover -
  * not an [out] struct's layout, not an [in] struct's append, not a new
@@ -170,7 +167,7 @@ extern "C" {
  * exists to turn into a message. Recompile and pass 0 to keep what you
  * had.
  *
- * ABI 13 appends `checked` to KuiMenuItem (the menu bar, ADR 0018): a row
+ * ABI 13 appends `checked` to KuiMenuItem (the menu bar): a row
  * that is a setting rather than a command draws a checkmark. An [in]
  * struct, which the rule as it then stood exempted - but this one
  * travels as an ARRAY, so the append moves the stride and every row after
@@ -178,8 +175,8 @@ extern "C" {
  * KuiSpan. Recompile; a zeroed tail is `checked = 0`, which is what every
  * row had before.
  *
- * ABI 14 appends `textures` and `texture_count` to KuiDrawData for ADR
- * 0025's texture-backed images - an [out] append the size handshake
+ * ABI 14 appends `textures` and `texture_count` to KuiDrawData for
+ * texture-backed images - an [out] append the size handshake
  * covers, so a host reserving the ABI-13 layout keeps working and never
  * sees a KUI_QUAD_TEXTURE quad's side entry (it draws that quad as a solid,
  * wrongly and harmlessly, as a pre-segment host draws a segment). The bump
@@ -196,19 +193,19 @@ extern "C" {
  * no bump of its own), and, still at 15, KuiColorToken / KuiLengthToken
  * with kui_tokens_set, kui_token_color and kui_token_length (two new [in]
  * arrays and three functions - nothing the library writes moved).
- * Still at 15: KuiColorOp / KuiDerivedToken with kui_tokens_derive (ADR
- * 0028) - two more [in] arrays and one function. And still at 15, the
- * verb table's C column (backlog B1a): kui_cell_selection, kui_set_inspect,
+ * Still at 15: KuiColorOp / KuiDerivedToken with kui_tokens_derive - two
+ * more [in] arrays and one function. And still at 15, the
+ * verb table's C column: kui_cell_selection, kui_set_inspect,
  * kui_nodes, kui_devtools, kui_devtools_dock, kui_set_devtools_theme and
  * kui_set_devtools_legend - seven functions, no struct.
  *
- * ABI 16 gives kui_run_with a KuiRunConfig (backlog AR27): a third
+ * ABI 16 gives kui_run_with a KuiRunConfig: a third
  * argument, between the title and the view. The struct is new, so no
  * layout a host had moved; the bump is ABI 12's case again - an existing
  * function's *signature* - since a host that did not recompile passes one
  * argument too few and the library reads its view callback out of the
  * register the config should be in. The same number stands over the
- * rule change above (backlog AR50): an [in] append bumps from here on. Recompile: kui_run is unchanged, and
+ * rule change above: an [in] append bumps from here on. Recompile: kui_run is unchanged, and
  * kui_run_with(ctx, title, NULL, view, on_event, user) is what the five-
  * argument call was.
  *
@@ -217,8 +214,8 @@ extern "C" {
  * [in] appends under the withdrawn rule, two of them array elements whose
  * stride moved. Recompile; a zeroed field is what the struct meant before.
  *
- * ABI 18 appends on_drop and drop_bg to KuiSpec for the drop zone (ADR
- * 0031) - the first [in] append under the amended rule: the library reads
+ * ABI 18 appends on_drop and drop_bg to KuiSpec for the drop zone - the
+ * first [in] append under the amended rule: the library reads
  * the whole struct, so a host that did not recompile would have the two
  * read from past its end. Recompile; a zeroed tail is no zone and no
  * colour. The same version adds kui_input_drag_files, kui_input_drop_files,
@@ -229,51 +226,52 @@ extern "C" {
  * widget function),
  * KUI_TABLE (a value of a field KuiSpec already had) and
  * KUI_VALUE_CARET_SOLID (a bit in value_set) - nothing a host had laid
- * out moved for any of the three (backlog F73, F75, F68).
+ * out moved for any of the three.
  *
- * ABI 19 appends float_clip to KuiSpec (backlog F90): a KUI_FLOAT_PARENT
+ * ABI 19 appends float_clip to KuiSpec: a KUI_FLOAT_PARENT
  * float that sets it takes its parent's clip instead of escaping it. An
  * [in] append under the amended rule, as ABI 18's was. Recompile; a
  * zeroed field is the float that escapes, which is what every float was.
  * Also new under 19, and no break of its own: kui_host_rect, one function
- * writing the KuiLayoutRect it already had (backlog F92).
- * The same bump appends aspect_ratio after it (backlog C14); a zeroed
+ * writing the KuiLayoutRect it already had.
+ * The same bump appends aspect_ratio after it; a zeroed
  * field is no ratio. And mixed, value_step (KUI_VALUE_STEP) and on_change
- * after it for the stock controls (docs/adr/0034), with the functions
+ * after it for the stock controls, with the functions
  * kui_checkbox, kui_radio, kui_switch, kui_radio_group_open and kui_slider
- * and the flag KUI_ACCESS_MIXED. And KuiRunConfig.frame_latency
- * (backlog C47). KUI_SPACE_BETWEEN,
- * KUI_SPACE_AROUND, KUI_SPACE_EVENLY and KUI_BASELINE (backlog C13) are
+ * and the flag KUI_ACCESS_MIXED. And KuiRunConfig.frame_latency.
+ * KUI_SPACE_BETWEEN,
+ * KUI_SPACE_AROUND, KUI_SPACE_EVENLY and KUI_BASELINE are
  * new values of main_align / cross_align, which moved nothing. And the
- * file dialogs (backlog C51): two new [in] structs, KuiFileFilter and
+ * file dialogs: two new [in] structs, KuiFileFilter and
  * KuiFileDialog, with kui_request_files, kui_awaiting_files,
  * kui_take_file_request, kui_file_request_filter and kui_input_files.
  * Still at 19, since nothing a host had laid out moved: KuiSystemFont, a
- * new [out[]] struct, with kui_system_fonts (backlog F97).
+ * new [out[]] struct, with kui_system_fonts.
  *
  * ABI 20 appends pixel_snap to KuiSpec: a box that sets it is painted with
  * each edge on a whole pixel, so it meets a text's background or another
  * snapped box without a seam. An [in] append; recompile. A zeroed field is
  * the box drawn where layout put it, which is what every box was. The same
- * bump appends keep_focus after it (backlog DX10): a press that leaves
+ * bump appends keep_focus after it: a press that leaves
  * keyboard focus where it was; zeroed, a press focuses as it did. Then
- * on_focus (backlog DX18): focus entering and leaving the node's subtree,
- * as an event; NULL hears nothing. Then rules and rule_w (backlog DX21):
- * a table's grid lines; zeroed, none. Then on_button and buttons
- * (backlog F105): the non-primary buttons as events on the node that
+ * on_focus: focus entering and leaving the node's subtree,
+ * as an event; NULL hears nothing. Then rules and rule_w:
+ * a table's grid lines; zeroed, none. Then on_button and buttons:
+ * the non-primary buttons as events on the node that
  * claims them, captured from press to release; NULL hears nothing, and a
- * zeroed buttons with on_button set claims all three kinds. Then overscroll and scroll_axes
- * (backlog F107): whether a scroll gesture starting over a scroller at its
+ * zeroed buttons with on_button set claims all three kinds. Then
+ * overscroll and scroll_axes: whether a scroll gesture starting over a
+ * scroller at its
  * limit goes on to the one around it, and which axes on_scroll takes;
  * zeroed, auto and both. The 64-bit size is 648. Recompile.
- * The same bump appends bg_radius to KuiSpan (backlog F101): a span's
+ * The same bump appends bg_radius to KuiSpan: a span's
  * background rounded and joined with the ones it meets. On a 64-bit target
  * it takes what was the struct's tail padding, so the stride did not move
  * there, but a host that did not recompile leaves those bytes to chance
  * (on a 32-bit one the stride moved, as ABI 8's did). Recompile; a zeroed
  * field is the square background every span had.
  *
- * ABI 21 appends modifier_keys to KuiSpec (backlog F108): with on_key, the
+ * ABI 21 appends modifier_keys to KuiSpec: with on_key, the
  * modifier and lock keys arrive as keys of their own, the side in the
  * payload's new `location`; zeroed, a modifier is only ever held, as it
  * was. On a 64-bit target it takes what was the struct's tail padding, so
@@ -285,7 +283,7 @@ extern "C" {
  * (KUI_KLOC_*); a host passing only KUI_KMOD_* sends what it sent.
  *
  * ABI 22 appends min_w_size, max_w_size, min_h_size and max_h_size to
- * KuiSpec (backlog F109): a clamp as a size expression, from the new
+ * KuiSpec: a clamp as a size expression, from the new
  * kui_size_* builders or kui_size_parse, resolved by layout against the
  * parent's content box; zeroed, the float clamps hold as they did.
  * KuiSizing takes a fifth tag, KUI_CALC. The 64-bit size is 680. Recompile.
@@ -397,7 +395,7 @@ enum { KUI_FIT = 0, KUI_GROW = 1, KUI_FIXED = 2, KUI_PERCENT = 3, KUI_CALC = 4 }
 #define KUI_MIN_FIT (-1.0f)
 #define KUI_MIN_NONE (-2.0f)
 /* Directions. KUI_TABLE is a column whose rows' children line up in
- * columns (docs/adr/0033): the nth in-flow child of every row is a cell of
+ * columns: the nth in-flow child of every row is a cell of
  * column n, and a column is as wide as its widest cell, so a label column
  * sits at its longest label with no width picked by hand. A cell's width
  * sizes its column (KUI_FIT and KUI_FIXED are content, KUI_GROW grows the
@@ -437,7 +435,7 @@ enum {
  * into a float - `border_w` is the stroke width and `color` the stroke; the
  * quad is the bounding box padded past the edge ramp. A renderer evaluates
  * the capsule SDF against the fragment position. Ignores radius,
- * border_color and blur. (docs/adr/0010-a-segment-primitive.md) */
+ * border_color and blur. */
 /* KUI_QUAD_FRAGMENT: a box a registered WGSL function paints. `uv[0]` is an
  * index into KuiDrawData.fragments, which carries the handle and the
  * sixteen parameters; the other three words are zero. rect, radius, clip
@@ -445,8 +443,7 @@ enum {
  * is the group opacity and the rest of `color` is unused, because the
  * fragment returns its own colour; border_color, border_w and blur are
  * zero. Get the WGSL with kui_fragment_source, which wraps the app's
- * function in the prelude and epilogue the core validated it against.
- * (docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md) */
+ * function in the prelude and epilogue the core validated it against. */
 /* KUI_QUAD_TEXTURE: a registered image drawn from a texture of its own
  * rather than the atlas - one that did not fit a page, or whose pixels
  * kui_image_update replaced. `uv[0]` is an index into
@@ -455,8 +452,7 @@ enum {
  * words are zero. Everything else is what a KUI_QUAD_IMAGE's is: get the
  * bytes with kui_image_pixels, upload them when `rev` moved, bind that
  * texture in the atlas's place and draw it as an image. On both image
- * kinds `border_w` is the `sampling` flag: 0 linear, 1 nearest.
- * (docs/adr/0025-the-image-is-the-canvas.md) */
+ * kinds `border_w` is the `sampling` flag: 0 linear, 1 nearest. */
 enum { KUI_QUAD_SOLID = 0, KUI_QUAD_GLYPH_MASK = 1, KUI_QUAD_GLYPH_COLOR = 2,
        KUI_QUAD_IMAGE = 3, KUI_QUAD_GLYPH_SUBPIXEL = 4, KUI_QUAD_SHADOW = 5,
        KUI_QUAD_SEGMENT = 6, KUI_QUAD_FRAGMENT = 7, KUI_QUAD_TEXTURE = 8 };
@@ -501,11 +497,11 @@ enum {
     KUI_KMOD_ALT = 1u << 2,
     KUI_KMOD_SUPER = 1u << 3,
 };
-/* Beside them in kui_input_key_down's kmods (backlog F108): the lock state
+/* Beside them in kui_input_key_down's kmods: the lock state
  * at the press, and which of a key's twins it was - the left or right
  * modifier, the keypad's digit or the main block's. Zero is no lock and the
  * standard key. KUI_KLAYOUT_NONLATIN says the layout the press was typed
- * on writes no Latin (backlog F115): every key's `code` is then the
+ * on writes no Latin: every key's `code` is then the
  * US-QWERTY key at `physical`, the layout's ASCII too; zero judges each
  * key by itself, as before. */
 enum {
@@ -518,7 +514,7 @@ enum {
 };
 /* Text edit flags (kui_text_edit). AUTOFOCUS asks once: the editor takes
  * focus on the frame the flag starts being declared, and only while
- * nothing holds focus (docs/adr/0022-focus-regions.md, decision 9). WRAP
+ * nothing holds focus. WRAP
  * is the wrap row declared on a single-line field: it folds to its width
  * by KuiTextStyle.wrap the way a document does, and keeps a field's
  * keyboard - Enter submits, no newline is admitted, the caret opens at
@@ -708,7 +704,7 @@ typedef struct KuiSpec {
      * so you keep ownership; kui_value_null() asks for untagged events.
      * Needs a stable key (kui_open_keyed). */
     const KuiValue *on_layout;
-    /* Accessibility (docs/adr/0001-accessibility-as-data.md). role: KUI_ROLE_*
+    /* Accessibility. role: KUI_ROLE_*
      * (0 = unset: the core derives one — an on_click node is a button, an
      * editor a text input, a scrolling box a scroll view, a plain box
      * nothing; KUI_ROLE_NONE hides the node and its subtree). label: the
@@ -733,7 +729,7 @@ typedef struct KuiSpec {
      * assistive technology. */
     uint32_t caret;
     uint32_t selection_anchor;
-    /* Keyboard focus (docs/adr/0002-keyboard-focus-as-data.md). focusable:
+    /* Keyboard focus. focusable:
      * non-zero puts the node in the Tab ring (and a click focuses it)
      * without a click payload or a control role; editors, on_key sinks,
      * on_click nodes and the control roles are focusable already.
@@ -753,7 +749,7 @@ typedef struct KuiSpec {
      * content, call kui_tooltip / kui_tooltip_with yourself. Borrowed
      * while the node opens. */
     KuiStr tooltip;
-    /* Modal surface, NULL = none (docs/adr/0003-modal-surfaces.md): while
+    /* Modal surface, NULL = none: while
      * this node is declared the Tab ring is its subtree, everything
      * outside it is inert to the pointer, the wheel and assistive
      * technology (window chrome stays live), and Escape or a press
@@ -829,8 +825,8 @@ typedef struct KuiSpec {
     /* Non-zero: where focus lands when the modal scope containing this
      * node is entered - the first node in the modal's Tab ring declaring
      * it, instead of the ring's first, so a destructive confirm opens on
-     * its Cancel rather than on whichever control comes first
-     * (docs/adr/0003-modal-surfaces.md). Read on entry only: a Tab press
+     * its Cancel rather than on whichever control comes first. Read on
+     * entry only: a Tab press
      * afterwards stands, and the scope re-entered (a nested confirm
      * closing) leaves focus where it was. A node the ring skips
      * (disabled, KUI_ROLE_NONE, not focusable) is not a candidate, and
@@ -858,8 +854,7 @@ typedef struct KuiSpec {
      * semantic, so a plain box marked live is not elided from the access
      * tree; put it on the smallest node holding the message, since
      * everything inside a live node is live. For a one-off with no node
-     * behind it, kui_announce is the other half. See
-     * docs/adr/0008-live-regions-and-announcements.md. */
+     * behind it, kui_announce is the other half. */
     uint32_t live;
     /* Non-zero, with a non-NULL on_key on kui_open_with: the sink hears
      * releases too, as the same {kind="key"} payload with phase="up" (a
@@ -905,8 +900,8 @@ typedef struct KuiSpec {
     /* Non-zero: this node is a selection scope. The text of every node
      * inside it is one selectable run, in tree order, and a press-drag
      * across them selects the lot - three labels in a column under one
-     * `selectable` select as three lines of one text
-     * (docs/adr/0017-selection-as-a-scope.md). Declared on the container
+     * `selectable` select as three lines of one text. Declared on the
+     * container
      * and not on each label. The selection is the window's: starting one
      * anywhere clears the last, an editor's included, and kui_copy_text
      * reads whichever exists. Text scrolled out of view inside the scope
@@ -917,8 +912,7 @@ typedef struct KuiSpec {
     uint32_t selectable;
     /* Force-click tag: a press that deepens past the second stage of a
      * Force Touch trackpad over this node emits {kind:"forceclick", x, y,
-     * tag} on it, at the point it happened
-     * (docs/adr/0017-selection-as-a-scope.md). Routed like
+     * tag} on it, at the point it happened. Routed like
      * on_context_menu - topmost node, no focus moved, no caret placed, no
      * click - and the ordinary click that press produces still arrives
      * afterwards. Text needs none of this: a force click over an editor or
@@ -930,8 +924,7 @@ typedef struct KuiSpec {
     const KuiValue *on_force_click;
     /* Non-zero: this node's subtree is a focus region - a Tab ring of its
      * own that the ring outside never enters and that never leaves: a
-     * devtools dock, an inspector beside the app
-     * (docs/adr/0022-focus-regions.md). Entered on purpose:
+     * devtools dock, an inspector beside the app. Entered on purpose:
      * kui_focus_region moves focus in (to what the region last held, else
      * its initial_focus, else its first stop) and a press inside it, or a
      * focus on a node in it, enters it too; Tab then walks that ring alone
@@ -972,13 +965,10 @@ typedef struct KuiSpec {
      * above it, and a scroller inside it still wins. The core moves
      * nothing - a grid re-declares origin_line, a canvas zooms. A
      * drag-select held past a grid's top or bottom edge arrives here too,
-     * once a frame with the lines that frame scrolled by
-     * (docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md).
-     * Borrowed while the node opens; appended after ABI 15 without a
-     * bump, under the [in] rule as it then stood (see the ABI block). */
+     * once a frame with the lines that frame scrolled by. Borrowed while
+     * the node opens. */
     const KuiValue *on_scroll;
-    /* Drop-zone tag (docs/adr/0031-a-drop-zone-is-a-row-and-the-files-are-
-     * an-event.md): files dragged in from the OS over this node emit
+    /* Drop-zone tag: files dragged in from the OS over this node emit
      * {kind:"drop", phase:"enter"|"move"|"leave"|"drop", paths, x, y, tag}
      * on it - paths the OS paths as strings, x/y the pointer in logical
      * viewport coordinates (absent on leave). The zone under the files is
@@ -994,7 +984,7 @@ typedef struct KuiSpec {
     /* Non-zero: a KUI_FLOAT_PARENT float takes its parent's clip, as a
      * child does, instead of escaping every ancestor's - a node on a
      * KUI_CLIP canvas panned past the canvas's edge is cut there and not
-     * hit past it (backlog F90). Read with the parent anchor only (a
+     * hit past it. Read with the parent anchor only (a
      * preset hanging below or above the parent is one); it still paints
      * as a layer over its in-flow siblings. A kui_line or kui_polygon in
      * its parent's box is always clipped this way. kui_spec_float_preset
@@ -1008,7 +998,7 @@ typedef struct KuiSpec {
      * ABI 19. */
     float aspect_ratio;
     /* Non-zero: a checkbox that is neither on nor off - the select-all box
-     * over a partial selection (docs/adr/0034). Read as mixed whatever
+     * over a partial selection. Read as mixed whatever
      * `checked` says (KUI_ACCESS_MIXED), drawn as a dash by kui_checkbox.
      * ABI 19. */
     uint32_t mixed;
@@ -1016,7 +1006,7 @@ typedef struct KuiSpec {
      * an arrow moves it and the grid the pointer snaps to (default a
      * hundredth of the range). ABI 19. */
     float value_step;
-    /* A slider's change tag (NULL = none; docs/adr/0034): on a
+    /* A slider's change tag (NULL = none): on a
      * KUI_ROLE_SLIDER node the core turns a press into the value under the
      * pointer, a drag into each new step, the arrows into one value_step,
      * PageUp / PageDown into ten and Home / End into the ends - clamped and
@@ -1050,7 +1040,7 @@ typedef struct KuiSpec {
      * their width in logical px, 0 meaning 1. ABI 20. */
     uint32_t rules;
     float rule_w;
-    /* The non-primary buttons as events (onButton, backlog F105): a press
+    /* The non-primary buttons as events (onButton): a press
      * of a button in `buttons` over this node, or over a descendant that
      * claims no such button, emits {kind:"button", phase:"press", button,
      * x, y, clicks, tag} on it, and the button is captured by it until
@@ -1066,24 +1056,24 @@ typedef struct KuiSpec {
      * field) is all three. ABI 20. */
     uint32_t buttons;
     /* A scroll gesture that starts over this scroller while it is at its
-     * limit that way (backlog F107): 0 (the zeroed field) or
+     * limit that way: 0 (the zeroed field) or
      * KUI_OVERSCROLL_AUTO passes it on to the scroller around it in the
      * tree, KUI_OVERSCROLL_CONTAIN keeps it here, moving nothing. Only on the axes the node scrolls.
      * ABI 20. */
     uint32_t overscroll;
-    /* Which axes on_scroll takes (backlog F107): 0 (the zeroed field) or
+    /* Which axes on_scroll takes: 0 (the zeroed field) or
      * KUI_SCROLL_AXES_BOTH, _X or _Y. A gesture on an axis the node does not
      * take passes it by, to the scroller around it - a terminal scrolling
      * its history says Y. ABI 20. */
     uint32_t scroll_axes;
     /* Non-zero, with on_key: the modifier and lock keys arrive as keys of
-     * their own (backlog F108) - codes "shift", "ctrl", "alt", "super",
+     * their own - codes "shift", "ctrl", "alt", "super",
      * "capslock", "numlock", "scrolllock", the side in `location`
      * ("left" / "right"). Zero: a modifier is only ever held, in the next
      * key's shift/ctrl/alt/super and the modifiers event, so a keymap
      * mid-sequence never reads a Shift as a key. ABI 21. */
     uint32_t modifier_keys;
-    /* The clamps as size expressions (backlog F109): a KUI_FIXED,
+    /* The clamps as size expressions: a KUI_FIXED,
      * KUI_PERCENT or KUI_CALC sizing (kui_size_*) here replaces the float
      * of the same name, resolved by layout against the parent's content
      * box - max_w_size = kui_size_pct(90) is "never wider than 90% of my
@@ -1096,7 +1086,7 @@ typedef struct KuiSpec {
     float bounce;
 } KuiSpec;
 
-/* Size expressions (backlog F109), built from parts so nothing is parsed:
+/* Size expressions, built from parts so nothing is parsed:
  *
  *     s.width = kui_size_clamp(kui_size_px(400), kui_size_pct(80),
  *                              kui_size_px(1000));
@@ -1112,7 +1102,7 @@ typedef struct KuiSpec {
  * distinct expressions, which the process shares and never empties: build
  * one per layout, not one per frame. Past it a new expression reduces to
  * KUI_FIT (kui_size_parse says true and writes KUI_FIT), a clamp to none,
- * and the context warns "size-expressions-full" once (backlog RG93). */
+ * and the context warns "size-expressions-full" once. */
 KuiSizing kui_size_px(float px);
 KuiSizing kui_size_pct(float percent);
 KuiSizing kui_size_min(const KuiSizing *args, size_t n);
@@ -1136,7 +1126,7 @@ enum {
     KUI_SCROLLBAR_AUTO = 3,
 };
 
-/* KuiSpec.overscroll and KuiSpec.scroll_axes (backlog F107): the schema
+/* KuiSpec.overscroll and KuiSpec.scroll_axes: the schema
  * index plus one, so zero is the default - auto, and both axes. */
 enum {
     KUI_OVERSCROLL_AUTO = 1,
@@ -1177,7 +1167,7 @@ enum {
  * KUI_ROLE_NONE through KUI_ROLE_GROUP, plus KUI_ROLE_TEXT_INPUT,
  * KUI_ROLE_MULTILINE_TEXT_INPUT and KUI_ROLE_LINE (which an app that
  * draws its own text declares to make a key sink an editor and to mark
- * that editor's lines) and the three ADR 0007 appended,
+ * that editor's lines) and the three composite roles appended later,
  * KUI_ROLE_RADIO_GROUP through KUI_ROLE_MENU_ITEM. A role can only be
  * appended (KUI_ROLE_* is the position in Rust's Role::ALL plus one, and
  * the Lua and Node wires carry the same index), so what is declarable is
@@ -1187,8 +1177,8 @@ enum {
  * KUI_ROLE_RADIO_GROUP, KUI_ROLE_TAB_LIST, KUI_ROLE_MENU and KUI_ROLE_LIST
  * are the composite containers: one holding focusable KUI_ROLE_RADIO,
  * KUI_ROLE_TAB, KUI_ROLE_MENU_ITEM or KUI_ROLE_LIST_ITEM children is a
- * single Tab stop with the arrow keys moving inside it
- * (docs/adr/0007-composite-keyboard-patterns.md). Nothing declares that:
+ * single Tab stop with the arrow keys moving inside it. Nothing declares
+ * that:
  * the core derives it from the roles and from which nodes are focusable. */
 enum {
     KUI_ROLE_NONE = 1, KUI_ROLE_BUTTON, KUI_ROLE_CHECKBOX, KUI_ROLE_RADIO,
@@ -1221,7 +1211,7 @@ enum {
     KUI_VALUE_CARET = 1u << 3,
     KUI_VALUE_ANCHOR = 1u << 4,
     KUI_VALUE_CARET_SOLID = 1u << 5,
-    KUI_VALUE_STEP = 1u << 6, /* value_step holds (docs/adr/0034) */
+    KUI_VALUE_STEP = 1u << 6, /* value_step holds */
 };
 /* Actions assistive technology can request (KuiAccessNode.actions bits,
  * kui_input_access). */
@@ -1276,8 +1266,7 @@ enum {
 /* [out[]] One queued announcement (kui_take_announcements): something to say
  * once, with no node behind it. `live` is KUI_LIVE_POLITE or
  * KUI_LIVE_ASSERTIVE, never KUI_LIVE_OFF. Strings are borrowed until the
- * next kui_take_announcements on the context.
- * See docs/adr/0008-live-regions-and-announcements.md. */
+ * next kui_take_announcements on the context. */
 typedef struct KuiAnnouncement {
     KuiStr text;
     uint32_t live;
@@ -1377,7 +1366,7 @@ enum {
 /* kui_cells cursor_shape: 0 = none. */
 enum { KUI_CELL_CURSOR_BLOCK = 1, KUI_CELL_CURSOR_BAR = 2, KUI_CELL_CURSOR_UNDERLINE = 3 };
 
-/* -- Context menus (docs/adr/0017-selection-as-a-scope.md) ----------------
+/* -- Context menus ----------------
  *
  * A menu is a list of items and a point, not a node: the core holds the one
  * a window has open and draws it, so a host asks for one with a call the
@@ -1422,7 +1411,7 @@ typedef struct KuiMenuItem {
 
 /* -- The application menu bar ---------------------------------------------
  *
- * docs/adr/0018-a-menu-bar-the-app-declares.md. The bar is the same rows
+ * The bar is the same rows
  * one level up: kui_menu_bar_declare takes a list of menus, each a label
  * and the KuiMenuItems above, and the declaration is sticky and diffed the
  * way kui_window_title is. Where the platform owns a menu bar the host
@@ -1460,12 +1449,12 @@ enum {
      * Windows the formats ExcludeClipboardContentFromMonitorProcessing and
      * CanIncludeInClipboardHistory = 0, on KDE x-kde-passwordManagerHint:
      * secret. A host that does not know this kind drops the copy, which
-     * for a secret is the safe way to fail (backlog F84). */
+     * for a secret is the safe way to fail. */
     KUI_MENU_ACTION_SET_CLIPBOARD_SECRET = 3,
 };
 
 /* kui_input_paste's markers: what the pasteboard said about the text a
- * paste brought back (backlog F84), read from the same types and formats
+ * paste brought back, read from the same types and formats
  * KUI_MENU_ACTION_SET_CLIPBOARD_SECRET writes. */
 enum {
     KUI_PASTE_CONCEALED = 1u << 0,
@@ -1483,8 +1472,7 @@ typedef struct KuiMenuAction {
     uint32_t kind;
     KuiStr text; /* borrowed until the next kui_take_menu_action */
     /* The same selection with the formatting this library knows about -
-     * bold, italic, a span's declared colour
-     * (docs/adr/0017-selection-as-a-scope.md). Empty when there is none,
+     * bold, italic, a span's declared colour. Empty when there is none,
      * and never a replacement for `text`: a clipboard whose only flavour
      * is HTML pastes markup into every plain-text field on the machine.
      * Borrowed like `text`. */
@@ -1503,7 +1491,7 @@ typedef struct KuiMenuAction {
  * the visual row within that node, counted across every run the key covers
  * by where the rows sit (a row of inline runs is one row, a wrapped run as
  * many as it wrapped to; not the ordinal `line` node a pointer event's
- * `line` names - backlog AR30). */
+ * `line` names). */
 typedef struct KuiTextHit {
     uint32_t size; /* = sizeof(KuiTextHit) in, bytes filled out */
     uint32_t line;
@@ -1754,7 +1742,7 @@ typedef struct KuiClip {
     float radius[4];
 } KuiClip;
 
-/* Where a KuiFragmentDraw's `image` is (backlog V1): none, the atlas, or a
+/* Where a KuiFragmentDraw's `image` is: none, the atlas, or a
  * texture of its own named by `image_texture`. */
 enum { KUI_FRAGMENT_IMAGE_NONE = 0, KUI_FRAGMENT_IMAGE_ATLAS = 1,
        KUI_FRAGMENT_IMAGE_TEXTURE = 2 };
@@ -1836,7 +1824,7 @@ void kui_input_mouse(KuiCtx *ctx, bool down, uint32_t clicks);
  * places the caret and clicks; the secondary one asks the node under it
  * for a context menu (KuiSpec.on_context_menu) and moves nothing else.
  * Every non-primary button reaches a node claiming it with
- * KuiSpec.on_button (backlog F105), which a claimed secondary press is
+ * KuiSpec.on_button, which a claimed secondary press is
  * instead of the menu; pass 3 + n for a further button n. */
 enum {
     KUI_MOUSE_PRIMARY = 0,
@@ -1856,9 +1844,9 @@ void kui_input_mouse_button(KuiCtx *ctx, bool down, uint32_t button,
                             uint32_t clicks);
 /* A wheel/trackpad delta, a scroll gesture of its own: it goes to the
  * innermost scroller under the pointer that can move that way, one at its
- * limit passing it to the one around it (backlog F107). */
+ * limit passing it to the one around it. */
 void kui_input_scroll(KuiCtx *ctx, float dx, float dy); /* +y = scroll up */
-/* A delta that is part of a scroll gesture (backlog F107): `begins` on its
+/* A delta that is part of a scroll gesture: `begins` on its
  * first event; the rest go on to the targets that one picked, wherever the
  * pointer or the content under it has gone since. For a host with its own
  * event loop that can tell one swipe from the next (kui_run's runner
@@ -1872,13 +1860,12 @@ void kui_input_text(KuiCtx *ctx, KuiStr text);   /* typing/paste -> focused edit
  * key event's text). */
 void kui_input_commit(KuiCtx *ctx, KuiStr text);
 /* The clipboard's answer to a KUI_MENU_ACTION_PASTE, with the pasteboard's
- * markers as KUI_PASTE_* bits (backlog F84): routed as kui_input_commit
+ * markers as KUI_PASTE_* bits: routed as kui_input_commit
  * is, and the focused on_key sink hears {kind:"text", text, pasted: true,
  * tag} with concealed: true / transient: true for the bits that are set -
  * absent, never false, for those that are not. 0 is a paste nothing
  * marked, the same answer kui_input_commit gives while a paste is asked
- * for; pasted is what tells either answer from an IME's commit (backlog
- * DX14). */
+ * for; pasted is what tells either answer from an IME's commit. */
 void kui_input_paste(KuiCtx *ctx, KuiStr text, uint32_t marks);
 /* In-progress IME composition shown at the focused editor's caret, or with
  * no editor focused delivered to the focused on_key sink as
@@ -1895,10 +1882,10 @@ void kui_input_key(KuiCtx *ctx, uint32_t key, uint32_t mods); /* KUI_KEY_* + KUI
  * US-QWERTY key at that *position*, spelled the same way, or {NULL, 0} when
  * the host does not track positions (then it is the position's US key: the
  * lower-case letter for a letter, `code` for everything else - the pair a
- * window reports for shift-Z is code "Z", physical "z"; backlog F65);
+ * window reports for shift-Z is code "Z", physical "z");
  * `kmods` is
- * KUI_KMOD_* bits, with KUI_KLOCK_* and one KUI_KLOC_* beside them (backlog
- * F108) and KUI_KLAYOUT_NONLATIN (F115); `text` is what the press inserts, or {NULL, 0} to derive it from
+ * KUI_KMOD_* bits, with KUI_KLOCK_*, one KUI_KLOC_* and KUI_KLAYOUT_NONLATIN
+ * beside them; `text` is what the press inserts, or {NULL, 0} to derive it from
  * `code`; `repeat` marks an auto-repeat. The focused sink polls
  * {kind="key", phase="down", code, physical, ctrl, alt, shift, super, text,
  * repeat, location, caps_lock, num_lock, tag} for each press; a sink whose KuiSpec set key_up hears the
@@ -1923,8 +1910,7 @@ void kui_input_key_down(KuiCtx *ctx, KuiStr code, KuiStr physical,
                         uint32_t kmods, KuiStr text, bool repeat);
 void kui_input_key_up(KuiCtx *ctx, KuiStr code, KuiStr physical,
                       uint32_t kmods);
-/* Files dragged in from the OS (docs/adr/0031-a-drop-zone-is-a-row-and-
- * the-files-are-an-event.md): `paths` are `count` OS paths, x/y the
+/* Files dragged in from the OS: `paths` are `count` OS paths, x/y the
  * pointer in logical viewport coordinates. kui_input_drag_files is entering
  * and moving alike - the zone under the point hears {kind:"drop",
  * phase:"enter"|"move"}, a zone it left hears "leave", a repeat at the
@@ -1935,7 +1921,7 @@ void kui_input_key_up(KuiCtx *ctx, KuiStr code, KuiStr physical,
  * the OS from kui_drop_target after each report: a copy operation over a
  * zone, not-allowed elsewhere, a release off every zone refused. winit's
  * own three file events carry no position; the Rust runner reads it from
- * the platform (see the ADR, decision 5). */
+ * the platform. */
 void kui_input_drag_files(KuiCtx *ctx, const KuiStr *paths, size_t count,
                           float x, float y);
 void kui_input_drop_files(KuiCtx *ctx, const KuiStr *paths, size_t count,
@@ -2082,7 +2068,7 @@ enum {
  * KUI_AUDIO_DEVICE_*, and how many playbacks are started or waiting on the
  * open - a play that waits counts from the frame it was asked until the
  * open answers, and one the device then refuses leaves the count on the
- * apply that refuses it (backlog F63). A fact, not a verb - nothing here
+ * apply that refuses it. A fact, not a verb - nothing here
  * closes the device; the host that
  * opened it does that once it has been idle a while. Worth pushing because
  * an open stream is a real-time thread whether or not anything plays,
@@ -2095,9 +2081,8 @@ void kui_env_set_audio(KuiCtx *ctx, uint32_t device, uint32_t live);
 /* -- Theme --------------------------------------------------------------- */
 /* The colours a view paints with, as roles rather than values, derived from
  * the two facts above: the appearance picks the base, the accent recolours
- * it. See docs/adr/0019-a-theme-derived-from-appearance-and-accent.md and
- * the Theme table in docs/props.md, which lists every role with the value
- * it takes on each base.
+ * it. The Theme table in the repository's docs/props.md lists every role
+ * with the value it takes on each base.
  *
  * The stock widgets read it already - kui_button_with, the context menu,
  * the tooltip, the field, the scrollbars, the focus ring, and any text
@@ -2163,7 +2148,7 @@ void kui_theme_set_accent(KuiCtx *ctx, uint32_t accent);
 void kui_theme_set(KuiCtx *ctx, const KuiTheme *theme);
 
 /* The sizes the stock widgets are built from - the palette's other axis
- * (kui_core::metrics, backlog T2): kui_core::schema::METRIC_ROLES field for
+ * (kui_core::metrics): kui_core::schema::METRIC_ROLES field for
  * field and in that order; kui-ffi's tests hold this struct to that table.
  * Logical px, before the scale factor, which the renderer applies after.
  * Read it so a control of your own agrees with the stock ones:
@@ -2204,7 +2189,7 @@ bool kui_metrics(KuiCtx *ctx, KuiMetrics *out);
  * host's to choose; nothing in the OS is followed. */
 void kui_metrics_set(KuiCtx *ctx, const KuiMetrics *metrics);
 
-/* -- Tokens (docs/adr/0027-tokens-beside-the-theme.md) ----------------------
+/* -- Tokens ----------------------
  *
  * The app's own named colours and lengths, beside the theme's roles and
  * the metrics'. A colour token has a value per base - the same one twice
@@ -2249,7 +2234,7 @@ bool kui_token_color(KuiCtx *ctx, KuiStr name, uint32_t *out);
 /* The same for a length token or a metrics role, in logical px. */
 bool kui_token_length(KuiCtx *ctx, KuiStr name, float *out);
 
-/* -- Derived tokens (docs/adr/0028-derived-tokens.md) ----------------------
+/* -- Derived tokens ----------------------
  *
  * A colour computed from another: a name, the colour token or theme role
  * it derives from, and a chain of ops folded over it in order, each a
@@ -2306,7 +2291,7 @@ void kui_set_time(KuiCtx *ctx, double now_secs);
 /* True when the last frame left a transition mid-flight: draw another frame
  * without waiting for input. */
 bool kui_animating(KuiCtx *ctx);
-/* The same by kind (backlog F64): the KUI_OWED_* bits of what the last
+/* The same by kind: the KUI_OWED_* bits of what the last
  * frame left owed. A host draws another frame for any of them, so
  * kui_animating is `kui_owed(ctx) != 0`; a test masks KUI_OWED_CYCLE off to
  * wait for the transitions to run out under a keyframe `repeat` cycle,
@@ -2320,7 +2305,7 @@ enum {
     KUI_OWED_SCROLL = 32,     /* a container easing to a reveal or a set_scroll */
 };
 uint32_t kui_owed(KuiCtx *ctx);
-/* Why frames run (backlog F111). kui_frame_cause is the KUI_FRAME_CAUSE_*
+/* Why frames run. kui_frame_cause is the KUI_FRAME_CAUSE_*
  * bits of the frame being built — between frames, the last one: the input
  * the kui_input_* calls handed the core since the frame before began, by
  * kind, what the host noted with kui_note_frame_cause, and
@@ -2404,8 +2389,8 @@ void kui_env_set_window(KuiCtx *ctx, uint32_t window, bool custom_chrome,
  *     }
  */
 bool kui_take_window_command(KuiCtx *ctx, KuiWindowCommand *out);
-/* Declares that a window named `name` exists this frame
- * (docs/adr/0004-multi-window.md). It opens on the first frame any window's
+/* Declares that a window named `name` exists this frame. It opens on the
+ * first frame any window's
  * frame declares it - cfg is read then and never again (NULL means
  * KUI_WINDOW_CONFIG_INIT), because the user owns a window's geometry once
  * it exists - and closes on the first frame none does. The KUI_CMD_OPEN /
@@ -2500,7 +2485,7 @@ bool kui_always_on_top_get(KuiCtx *ctx);
 void kui_env_set_always_on_top(KuiCtx *ctx, bool always_on_top);
 /* Declares that this frame wants the keyboard to this window kept from
  * every other process while the window has it - macOS's Secure Keyboard
- * Entry, what a terminal turns on at a password prompt (backlog F85).
+ * Entry, what a terminal turns on at a password prompt.
  * Cleared each kui_frame_begin, default false: a frame that stops calling
  * this is what turns it off. Under kui_run the runner owns the balance -
  * EnableSecureEventInput is process-wide and counted, and it holds one
@@ -2513,7 +2498,7 @@ void kui_set_secure_input(KuiCtx *ctx, bool on);
  * balances every enable with one disable. False for a frame that never
  * asked. */
 bool kui_secure_input_get(KuiCtx *ctx);
-/* Which Option keys act as Alt in this window on macOS (backlog F113).
+/* Which Option keys act as Alt in this window on macOS.
  * On a Mac, Option composes: option-m types a mu, and option-u, -e, -i, -n
  * and -` are dead keys that start an accent and wait for the next key, so
  * the press never reaches you as a key and a binding on Alt-u never fires.
@@ -2571,14 +2556,13 @@ uint64_t kui_open_keyed(KuiCtx *ctx, KuiStr label, const KuiSpec *spec, KuiValue
 uint64_t kui_open_indexed(KuiCtx *ctx, uint64_t index, const KuiSpec *spec, KuiValue *on_click);
 /* How many indexed rows the open node's virtual list has, built or not
  * (`rowCount`): what Select All inside a `selectable` virtual list spans,
- * since the rows the frame built are all the core can see (ADR 0017, tier
- * 3). Called inside the list's container, after its kui_open_*. The copy
+ * since the rows the frame built are all the core can see. Called inside the list's container, after its kui_open_*. The copy
  * that follows is a selectionrange ask whose `to` byte is past the last
  * row's length when that row was not built - cut it to the row. A new
  * symbol, so KUI_ABI_VERSION stays 15. */
 void kui_row_count(KuiCtx *ctx, uint64_t rows);
 /* A slot: a position among the current node's children that an extension
- * fills, in place (docs/adr/0014-slots-an-extension-fills-in-place.md).
+ * fills, in place.
  * `name` is the full name, `namespace/slot`: the namespace the host gave
  * the extension when it loaded it, and the slot in the extension's own
  * vocabulary ("fs/panel"). `params` may be NULL and is borrowed for the
@@ -2602,7 +2586,7 @@ void kui_row_count(KuiCtx *ctx, uint64_t rows);
  * it draws: that warns (`recursive-slot`) and draws nothing. */
 bool kui_slot(KuiCtx *ctx, KuiStr name, const KuiValue *params);
 
-/* -- Extensions: loading one from C (ADR 0014) --------------------------- */
+/* -- Extensions: loading one from C --------------------------- */
 
 /* Load the shared library at `path` as an extension of this context, under
  * `namespace` - the word that fronts every slot name it fills
@@ -2661,7 +2645,7 @@ uint64_t kui_open_draggable(KuiCtx *ctx, KuiStr label, const KuiSpec *spec,
 uint64_t kui_open_with(KuiCtx *ctx, KuiStr label, const KuiSpec *spec,
                        KuiValue *on_click, KuiValue *on_drag, KuiValue *on_key,
                        KuiValue *on_hover);
-/* -- Keyboard focus (docs/adr/0002-keyboard-focus-as-data.md) ------------ */
+/* -- Keyboard focus ------------ */
 /* One focus for every node: editors, on_key sinks, on_click nodes, the
  * control roles and `focusable` boxes are Tab stops in tree order; Enter
  * and Space press the focused control, the arrows nudge a focused slider
@@ -2692,7 +2676,7 @@ void kui_focus_next(KuiCtx *ctx, bool forward);
  * there by keyboard or assistive technology, not a click). */
 uint64_t kui_focused(KuiCtx *ctx);
 bool kui_focus_visible(KuiCtx *ctx);
-/* The caret's blink (backlog C35). kui_caret_visible is the phase - true
+/* The caret's blink. kui_caret_visible is the phase - true
  * draws it - which a custom editor reads in its view to skip its caret
  * node on the off phase, keeping the `caret` row on its KUI_ROLE_LINE
  * either way. Under kui_run the runner's clock sets it, while a focused
@@ -2706,7 +2690,7 @@ void kui_set_caret_visible(KuiCtx *ctx, bool visible);
 bool kui_has_caret(KuiCtx *ctx);
 uint64_t kui_caret_stamp(KuiCtx *ctx);
 /* Enters the focus region key names - a node declared with focus_region -
- * or the main ring for 0 (docs/adr/0022-focus-regions.md): focus lands on
+ * or the main ring for 0: focus lands on
  * what that ring last held if the node is still there, else its
  * initial_focus, else its first stop, and shows. Deferred to the end of
  * the frame being built, like kui_focus_next from a view: call it from the
@@ -2786,7 +2770,7 @@ uint64_t kui_font_add_system(KuiCtx *ctx, KuiStr name);
  * until the next kui_font_families on the context. */
 size_t kui_font_families(KuiCtx *ctx, KuiStr *out, size_t cap);
 /* [out[]] One family kui_font_families names, with what the font database
- * read off its faces (backlog F97). `family` and `weights` are borrowed
+ * read off its faces. `family` and `weights` are borrowed
  * until the next kui_system_fonts on the context. */
 typedef struct KuiSystemFont {
     KuiStr family;           /* the name kui_font_add_system takes */
@@ -2825,8 +2809,7 @@ void kui_image_remove(KuiCtx *ctx, uint64_t id);
  * from the registration. From the first update on the image is drawn from
  * a texture of its own, as a KUI_QUAD_TEXTURE quad - a video frame, a
  * camera, a plot the host rasterised itself. A dead or foreign handle warns
- * `foreign-resource` and changes nothing.
- * (docs/adr/0025-the-image-is-the-canvas.md) */
+ * `foreign-resource` and changes nothing. */
 void kui_image_update(KuiCtx *ctx, uint64_t id, uint32_t w, uint32_t h,
                       const uint8_t *rgba);
 /* The pixels behind an image handle, for a host that renders the draw list
@@ -2846,7 +2829,7 @@ bool kui_image_pixels(KuiCtx *ctx, uint64_t id, uint32_t *w, uint32_t *h,
  * and the core wraps it in the prelude and epilogue that give it the node's
  * rounded box, the inherited clip, the group opacity and the blend.
  * Idempotent by source: the same text gets the same handle without being
- * validated twice. (docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md) */
+ * validated twice. */
 uint64_t kui_fragment_add(KuiCtx *ctx, KuiStr wgsl);
 void kui_fragment_remove(KuiCtx *ctx, uint64_t id);
 /* The whole WGSL module behind a handle - the app's source between the
@@ -2881,7 +2864,7 @@ uint64_t kui_audio(KuiCtx *ctx, KuiStr label, const KuiAudio *spec, KuiValue *ta
  * a tagged one becomes a sound event. */
 size_t kui_take_audio_commands(KuiCtx *ctx, KuiAudioCommand *out, size_t cap);
 void kui_audio_ended(KuiCtx *ctx, uint64_t playback);
-/* The other two answers such a host owes (backlog F36), so its warnings
+/* The other two answers such a host owes, so its warnings
  * match the runner's: a KUI_AUDIO_STOP it drained that landed on a
  * playback still running, `at` seconds in - a one-shot audio node that
  * went away without `finish` is named in a "truncated-playback" warning,
@@ -2894,7 +2877,7 @@ void kui_audio_refused(KuiCtx *ctx, uint64_t playback);
 /* An image node. Fit sizing = the image's pixel size as logical px; a Fit
  * height against a resolved width keeps the aspect; radius rounds corners. */
 void kui_image(KuiCtx *ctx, uint64_t id, const KuiSpec *spec);
-/* kui_image with its two rows (docs/adr/0025-the-image-is-the-canvas.md):
+/* kui_image with its two rows:
  * `sampling` is KUI_SAMPLING_* and `fit` KUI_FIT_*; 0 for either is the
  * default kui_image gives. The box - its layout, hit region and access
  * rect - is the same in every mode; only what is painted inside it moves. */
@@ -2905,8 +2888,7 @@ void kui_image_with(KuiCtx *ctx, uint64_t id, uint32_t sampling, uint32_t fit,
  * It has NO intrinsic size, so spec must give it one. `params` is up to
  * sixteen floats, zero-padded; more are dropped with a
  * "fragment-params-truncated" warning. `params` may be NULL when count is 0,
- * and spec may be NULL.
- * (docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md) */
+ * and spec may be NULL. */
 void kui_fragment(KuiCtx *ctx, uint64_t id, const float *params, size_t count,
                   const KuiSpec *spec);
 /* kui_fragment as a parent: its children paint over it. Balance with
@@ -2915,7 +2897,7 @@ void kui_fragment_open(KuiCtx *ctx, KuiStr label, uint64_t id,
                        const float *params, size_t count, const KuiSpec *spec);
 /* kui_fragment reading `image` - a handle from kui_image_add, 0 for none -
  * through the prelude's kui_sample(uv) / kui_sample_nearest(uv), with the
- * texel rect in FragmentIn::image (backlog V1, ADR 0025 decision 7). A
+ * texel rect in FragmentIn::image. A
  * waveform, a heatmap, an image effect: the image is data the function
  * reads. An image that is not live draws nothing, as a dead `id` does.
  * label keys the node (empty = a key from the tree position). */
@@ -2926,8 +2908,8 @@ void kui_fragment_with(KuiCtx *ctx, KuiStr label, uint64_t id, uint64_t image,
 void kui_fragment_open_with(KuiCtx *ctx, KuiStr label, uint64_t id,
                             uint64_t image, const float *params, size_t count,
                             const KuiSpec *spec);
-/* A round-capped stroke from (x0, y0) to (x1, y1), in the parent's box space
- * (docs/adr/0010-a-segment-primitive.md). Never in layout: the node is a float
+/* A round-capped stroke from (x0, y0) to (x1, y1), in the parent's box
+ * space. Never in layout: the node is a float
  * sized to the stroke's bounding box, so spec's sizing, padding and alignment
  * are ignored; what it keeps is transition/enter/exit (the colour eases),
  * opacity, on_layout (the bounding box), a label/role, and a declared float
@@ -2943,7 +2925,7 @@ void kui_line(KuiCtx *ctx, float x0, float y0, float x1, float y1, float width,
  * label keys the node (empty = a key from the tree position) so a stroke can
  * transition or exit; kui_line is auto-keyed and takes no payloads. The
  * three payloads are taken as kui_open_with takes them: a stroke with one
- * is hit by its SHAPE (docs/adr/0026-hit-testing-by-shape.md) - a press
+ * is hit by its SHAPE - a press
  * within half its width of any piece (at least 4 px of grab), and a press
  * elsewhere in its box falls through to what is under. NULL for none. */
 void kui_polyline(KuiCtx *ctx, KuiStr label, const float *xy, size_t count,
@@ -2954,14 +2936,13 @@ void kui_polyline(KuiCtx *ctx, KuiStr label, const float *xy, size_t count,
  * three draw nothing - the fill in spec->bg (no bg, no fill). Placed like a
  * stroke: a float sized to its own bounding box, in the parent's box space.
  * The three payloads are taken as kui_open_with takes them: a fill with one
- * is hit by its OUTLINE (docs/adr/0026-hit-testing-by-shape.md) - a press
+ * is hit by its OUTLINE - a press
  * inside it hits, a press in its box past the outline falls through - and
  * a clickable fill is a button to assistive technology, so name it. The
  * outline may be concave. On the wire it is one KUI_QUAD_FRAGMENT painted
  * by a WGSL function the core registers itself, reachable through
  * kui_fragment_source like any other. label keys the node (empty = a key
- * from the tree position); spec may be NULL; NULL for a payload is none.
- * (docs/adr/0025-the-image-is-the-canvas.md, decision 6) */
+ * from the tree position); spec may be NULL; NULL for a payload is none. */
 void kui_polygon(KuiCtx *ctx, KuiStr label, const float *xy, size_t count,
                  const KuiSpec *spec, KuiValue *on_click, KuiValue *on_drag,
                  KuiValue *on_hover);
@@ -2988,7 +2969,7 @@ void kui_cells(KuiCtx *ctx, KuiStr label, uint32_t rows, uint32_t cols,
 uint64_t kui_child_key(KuiCtx *ctx, KuiStr label);
 bool kui_is_hovered(KuiCtx *ctx, uint64_t key);
 bool kui_is_pressed(KuiCtx *ctx, uint64_t key);
-/* Whether dragged files are over `key` (ADR 0031), for drop-dependent
+/* Whether dragged files are over `key`, for drop-dependent
  * layout; the colour is KuiSpec.drop_bg. */
 bool kui_is_drop_target(KuiCtx *ctx, uint64_t key);
 /* The drop zone the dragged files are over, or 0 - what the host answers
@@ -3024,8 +3005,8 @@ bool kui_close_menu(KuiCtx *ctx);
 
 /* The application menu for this frame: `count` menus in bar order,
  * declared and - where the platform has no menu bar of its own - drawn
- * right here as a row of titles that drop their menus
- * (docs/adr/0018-a-menu-bar-the-app-declares.md). One call and not two,
+ * right here as a row of titles that drop their menus. One call and not
+ * two,
  * because what the menu is and where its strip goes are one decision.
  * Where the platform owns the bar (kui_set_native_menu_bar) nothing is
  * drawn and the declaration still stands, so calling this unconditionally
@@ -3068,15 +3049,13 @@ bool kui_activate_menu_bar_item(KuiCtx *ctx, size_t menu, size_t item);
 bool kui_selection_text(KuiCtx *ctx, KuiStr *out);
 /* The same selection with the formatting the text declared - bold, italic,
  * a span's own colour - for a host offering a second clipboard flavour.
- * Never a replacement for kui_selection_text
- * (docs/adr/0017-selection-as-a-scope.md). */
+ * Never a replacement for kui_selection_text. */
 bool kui_selection_html(KuiCtx *ctx, KuiStr *out);
 /* The text selection's two ends as the drag made them - the anchor where
  * the press landed, the focus where the pointer is - each as the data
  * index of the virtualised row it is in (-1 outside every virtualised
  * row) and the byte inside that row's own text. Directed, so a
- * Shift-press that kept the anchor reads as one
- * (docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md).
+ * Shift-press that kept the anchor reads as one.
  * False with no text selection; a grid's is kui_cell_selection. Any out
  * pointer may be NULL. */
 bool kui_selection_ends(KuiCtx *ctx, int64_t *anchor_index, size_t *anchor_byte,
@@ -3084,8 +3063,8 @@ bool kui_selection_ends(KuiCtx *ctx, int64_t *anchor_index, size_t *anchor_byte,
 /* A cells grid's selection, the window's when it lives in one: the grid's
  * key, the anchor and the focus as the drag made them - each an absolute
  * line (origin_line plus the row, so a scroll does not move it) and a
- * column - and whether it is a block rather than linewise
- * (docs/adr/0017-selection-as-a-scope.md, decision 4). False when the
+ * column - and whether it is a block rather than linewise. False when
+ * the
  * window's selection is not a grid's; a text selection's ends are
  * kui_selection_ends. Any out pointer may be NULL. */
 bool kui_cell_selection(KuiCtx *ctx, uint64_t *node, uint64_t *anchor_line,
@@ -3099,8 +3078,7 @@ bool kui_clear_selection(KuiCtx *ctx);
 
 /* kui_request_copy's answer. */
 enum { KUI_COPY_READY = 0, KUI_COPY_ASKED = 1, KUI_COPY_NOTHING = 2 };
-/* Asks for the selection as text
- * (docs/adr/0017-selection-as-a-scope.md). KUI_COPY_READY writes it into
+/* Asks for the selection as text. KUI_COPY_READY writes it into
  * *out, borrowed until the next call on this context. KUI_COPY_ASKED means
  * the selection reaches rows a virtual list never built: a
  * {kind:"selectionrange", from:{index, byte}, to:{index, byte}} event is
@@ -3112,7 +3090,7 @@ uint32_t kui_request_copy(KuiCtx *ctx, KuiStr *out);
  * nothing asked - a late answer cannot overwrite what has been copied
  * since. */
 bool kui_answer_selection_range(KuiCtx *ctx, KuiStr text);
-/* The clipboard for an app that owns its text (backlog C33): an on_key sink
+/* The clipboard for an app that owns its text: an on_key sink
  * hears the raw Ctrl-c / Ctrl-v and binds them here. kui_set_clipboard
  * queues a KUI_MENU_ACTION_SET_CLIPBOARD with `text` (and `html` as a
  * second flavour beside it - empty for none, never instead of it);
@@ -3124,8 +3102,8 @@ bool kui_answer_selection_range(KuiCtx *ctx, KuiStr text);
 void kui_set_clipboard(KuiCtx *ctx, KuiStr text, KuiStr html);
 /* A secret for the clipboard, queued as a
  * KUI_MENU_ACTION_SET_CLIPBOARD_SECRET: the host writes it marked
- * concealed and transient, so no clipboard manager shows or keeps it
- * (backlog F84). Under kui_run the runner does. */
+ * concealed and transient, so no clipboard manager shows or keeps it.
+ * Under kui_run the runner does. */
 void kui_set_clipboard_secret(KuiCtx *ctx, KuiStr text);
 /* kui_request_paste's answer is kui_input_paste - the text and the
  * pasteboard's KUI_PASTE_* markers - or kui_input_commit, a paste nothing
@@ -3134,7 +3112,7 @@ void kui_request_paste(KuiCtx *ctx);
 /* One paste ask at a time: while one is unanswered a second
  * kui_request_paste is dropped, and the kui_input_commit that answers it -
  * send an empty one when the clipboard held nothing - lets the next
- * through. This reads whether one is out (backlog AR34). */
+ * through. This reads whether one is out. */
 bool kui_awaiting_paste(KuiCtx *ctx);
 /* Tells the core this host shows menus itself, however the platform draws
  * them: the core then keeps the open menu as state and draws none of it.
@@ -3170,7 +3148,7 @@ void kui_set_lookup_available(KuiCtx *ctx, bool on);
  * none. Drain to empty after handling input, the way window commands are. */
 bool kui_take_menu_action(KuiCtx *ctx, KuiMenuAction *out);
 
-/* File dialogs (backlog C51): ask for the platform's Open, Save or folder
+/* File dialogs: ask for the platform's Open, Save or folder
  * dialog and hear the answer as a {kind:"files", paths, tag} event - the
  * paths a drop carries, none when the user cancelled - to whoever asked.
  * One dialog at a time. Under kui_run the runner shows it; a host driving
@@ -3232,7 +3210,7 @@ size_t kui_take_warnings(KuiCtx *ctx, KuiWarning *out, size_t cap);
 /* A standalone context starts with the checks OFF — a development build
  * turns them on; off costs nothing per frame. */
 void kui_set_diagnostics(KuiCtx *ctx, bool on);
-/* -- Devtools (docs/adr/0024-the-devtools-are-the-cores.md) --------------- */
+/* -- Devtools --------------- */
 /* The core's devtools panel: the event stream, the runtime's facts and the
  * tree, drawn by the core beside the host's tree in the main window and
  * acted on inside kui_input, so nothing of it reaches the host's events.
@@ -3275,7 +3253,7 @@ bool kui_set_devtools_key(KuiCtx *ctx, KuiStr key);
  * "f12", "super+alt+d"); borrowed until the next call. False on a bad
  * context. */
 bool kui_devtools_key(KuiCtx *ctx, KuiStr *out);
-/* A tab in the panel (docs/adr/0032-a-devtools-tab-mounts-a-slot.md), in
+/* A tab in the panel, in
  * one of two forms. kui_devtools_tab declares one an extension fills: name
  * is the tab's identity, label what the strip shows, slot the full
  * namespace/slot the extension names - while the tab is on show the panel
@@ -3299,7 +3277,7 @@ bool kui_devtools_key(KuiCtx *ctx, KuiStr *out);
  * first, which is what a false from either says. */
 bool kui_devtools_tab(KuiCtx *ctx, KuiStr name, KuiStr label, KuiStr slot);
 bool kui_devtools_tab_open(KuiCtx *ctx, KuiStr name, KuiStr label);
-/* The panel's facts a tab reads (ADR 0032, decision 4): the node the tree
+/* The panel's facts a tab reads: the node the tree
  * tab has selected, the tree row under the pointer, the node the picker is
  * over - each as a key, 0 for none. kui_set_devtools_selected selects (and
  * reveals) a node in the tree tab from outside it; 0 clears. */
@@ -3341,11 +3319,11 @@ void kui_set_inspect(KuiCtx *ctx, bool on);
  * origin, children, the layout spec and events (the node's own payloads
  * by handler name) - what a tree view and a node inspector are built
  * from; read it with kui_value_at / kui_value_get. Rects are in your
- * viewport's logical px, like kui_layout_of's (backlog AR36). Empty until
+ * viewport's logical px, like kui_layout_of's. Empty until
  * kui_set_inspect(ctx, true) and a frame after it. Borrowed until the
  * next call; NULL on a bad context. */
 const KuiValue *kui_nodes(KuiCtx *ctx);
-/* -- Accessibility (docs/adr/0001-accessibility-as-data.md) ---------------- */
+/* -- Accessibility ---------------- */
 /* The access tree of the last finished frame: fills out with up to cap
  * nodes in tree order (root first) and returns the total count, so a short
  * buffer can be resized and the call repeated. A host wiring its own
@@ -3357,8 +3335,7 @@ size_t kui_access_tree(KuiCtx *ctx, KuiAccessNode *out, size_t cap);
  * empty text are both no-ops, the first so a caller can gate politeness
  * without a branch. A region whose message is on screen is KuiSpec.live
  * instead. Call it where the event is handled: called from a frame builder
- * it fires every frame, which the core reports as "announcement-repeated".
- * See docs/adr/0008-live-regions-and-announcements.md. */
+ * it fires every frame, which the core reports as "announcement-repeated". */
 void kui_announce(KuiCtx *ctx, KuiStr text, uint32_t live);
 /* Drains queued announcements into out (up to cap; the rest are dropped, so
  * size it generously) and returns the count. Drain every frame whether or
@@ -3394,8 +3371,7 @@ void kui_button(KuiCtx *ctx, KuiStr label, KuiValue *payload);
  * KuiSpec is the schema default rather than "unset", so there is nothing
  * to merge; a button that needs another row is kui_open_keyed with a role.
  * Keyed by text. spec may be NULL (then this is kui_button); payload
- * consumed (may be NULL). Appended after alpha.8 - a new function, no
- * KUI_ABI_VERSION bump (see the note above KuiSpec). */
+ * consumed (may be NULL). */
 void kui_button_with(KuiCtx *ctx, KuiStr text, const KuiSpec *spec, KuiValue *payload);
 /* -- Widgets (the same kui_core::widgets every frontend uses) ------------ */
 /* Body callbacks build content through the same ctx (see KuiViewFn). */
@@ -3426,7 +3402,7 @@ uint64_t kui_text_input(KuiCtx *ctx, KuiStr label, KuiStr initial);
  * select-current-ignored warning on the field. */
 uint64_t kui_select(KuiCtx *ctx, KuiStr label, const KuiMenuItem *items, size_t count,
                     int64_t current);
-/* The stock controls (docs/adr/0034-stock-controls-over-the-roles.md).
+/* The stock controls.
  * A toggle is drawn from the state `spec` declares - `checked`, and on a
  * checkbox `mixed` - labelled `text` and keyed by it; a press by the
  * pointer, Space, Enter or assistive technology posts `payload`
@@ -3541,7 +3517,7 @@ typedef void (*KuiTeardownFn)(void *user);
 void kui_on_teardown(KuiTeardownFn teardown);
 
 /* The icon every window of the next kui_run / kui_run_with is created
- * with (backlog F86): `rgba` is width x height pixels, four bytes each,
+ * with: `rgba` is width x height pixels, four bytes each,
  * row by row from the top left, alpha not premultiplied - copied, so the
  * buffer is yours again on return. `resource`, on Windows, is an icon
  * resource in your executable - the `1 ICON "app.ico"` line of its .rc,
@@ -3598,7 +3574,7 @@ typedef struct KuiRunConfig {
 #define KUI_RUN_CONFIG_INIT ((KuiRunConfig){0})
 
 /* kui_run with a window of your choosing and the context's registrations
- * (backlog AR27; ABI 16). `config` is the window, NULL for every default.
+ * (ABI 16). `config` is the window, NULL for every default.
  * `ctx`'s core becomes the window's: the fonts, images, sounds, tokens,
  * theme, devtools doors, kui_set_native_menus and text-cache budget you
  * registered on it before the call reach the window, and the handles you
@@ -3606,7 +3582,7 @@ typedef struct KuiRunConfig {
  * host does. The context is left with a fresh core and no extensions,
  * still yours to free. NULL for both is kui_run.
  *
- * The extensions come along the same way (ADR 0014): make a context,
+ * The extensions come along the same way: make a context,
  * kui_ctx_add_extension each plugin into it - kui_ctx_extension_error says
  * why one was refused, before any window opens - and hand it here. Your
  * view declares slots with kui_slot exactly as it would headless, and
@@ -3667,8 +3643,7 @@ bool kui_run_with(KuiCtx *ctx, KuiStr title, const KuiRunConfig *config,
  *                    count through the out-pointer. Read once, at load.
  *                    Absent, or an empty array = you fill "root", once
  *                    after the host's view, where every extension drew
- *                    before slots existed
- *                    (docs/adr/0014-slots-an-extension-fills-in-place.md).
+ *                    before slots existed.
  *   kui_ext_on_event One event of yours, payload borrowed for the call.
  *                    Answer the host from inside it with kui_reply, as
  *                    often as the event deserves.
