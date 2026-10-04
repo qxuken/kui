@@ -279,8 +279,8 @@ jobs:
       # cannot change, so a re-run finds the version already staged or
       # already live and does nothing. A stage-only token cannot move
       # dist-tags either, so when a prerelease is the newest version and
-      # `latest` is missing, the maintainer sets it after approving, as the
-      # step's output says.
+      # `latest` is missing, the maintainer sets it after approving.
+      # scripts/npm-approve.nu does both, and the step's output names it.
       - name: npm stage publish (npmjs)
         run: |
           set -eu
@@ -322,9 +322,10 @@ jobs:
           id=$(printf '%s\n' "$out" | sed -n 's/.*staged with id \([^)]*\)).*/\1/p' | tail -1)
           echo
           echo "@qxuken/kui@$ver is staged on npmjs under the dist-tag '$tag'. To make it live:"
+          echo "  nu scripts/npm-approve.nu $ver     # approves it and sets 'latest' by CI's rule; prompts for the 2FA code"
+          echo "or by hand:"
           echo "  npm stage view ${id:-<stage-id>}        # or: npm stage list @qxuken/kui"
           echo "  npm stage approve ${id:-<stage-id>} --otp <code>"
           if [ "$tag" != latest ]; then
-            echo "then, if 'npm dist-tag ls @qxuken/kui' shows no 'latest' or one that sorts below $ver:"
-            echo "  npm dist-tag add @qxuken/kui@$ver latest"
+            echo "  npm dist-tag add @qxuken/kui@$ver latest   # if 'npm dist-tag ls' shows no 'latest', or one that sorts below $ver"
           fi

@@ -84,20 +84,30 @@ is done by hand, below.
 The npmjs half is not finished by the runner, on purpose. A stage-only token
 can put a version on registry.npmjs.org only as a *staged* release, hidden
 until a maintainer with 2FA approves it; the GitHub job's last step stages
-`@qxuken/kui@<version>` under its dist-tag (`alpha` for a prerelease) and
-prints the commands that make it live:
+`@qxuken/kui@<version>` under its dist-tag (`alpha` for a prerelease). One
+script makes it live, logged in on npmjs (`npm login`) with npm 11.15 or
+newer (`npm install -g npm@11`):
+
+```bash
+nu scripts/npm-approve.nu              # the version package.json names; prompts for the 2FA code
+nu scripts/npm-approve.nu --dry-run    # say what it would do
+```
+
+It finds the stage, approves it, waits for the registry to list the version
+and then applies CI's `latest` rule: an alpha also takes `latest` when it is
+the highest version the registry holds, so a bare `npm install @qxuken/kui`
+resolves, and a stable release's `latest` is never taken back by a later
+alpha (`--no-latest` skips that half). By hand, the same is:
 
 ```bash
 npm stage list @qxuken/kui                # the pending stage and its id
 npm stage view <stage-id>                 # or `npm stage download <stage-id>` to inspect the tarball
 npm stage approve <stage-id> --otp <code> # publishes it; `npm stage reject <stage-id>` discards it
-npm dist-tag ls @qxuken/kui               # after the first alpha, and whenever an alpha is the newest version:
-npm dist-tag add @qxuken/kui@<version> latest   # if `latest` is missing or older
+npm dist-tag add @qxuken/kui@<version> latest   # if `npm dist-tag ls` shows no `latest`, or an older one
 ```
 
-`npm stage` needs npm 11.15 or newer (`npm install -g npm@11`). A staged
-version holds its semver slot, so a re-run of the job finds it staged and
-stops; rejecting it frees the slot.
+A staged version holds its semver slot, so a re-run of the job finds it
+staged and stops; rejecting it frees the slot.
 
 The Forgejo npm copy: once both pipelines are through, `nu
 scripts/release-local.nu` from a Mac with the tag on HEAD builds the five
@@ -117,7 +127,7 @@ place:
 npm stage publish --registry https://registry.npmjs.org/ --tag alpha --access public
 ```
 
-then approve as above.
+then `nu scripts/npm-approve.nu` as above.
 
 No Mac or Windows machine runs anything in either pipeline, and that is the
 limit of what CI proves. The Windows non-client
