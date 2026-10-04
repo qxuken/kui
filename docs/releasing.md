@@ -3,7 +3,7 @@
 Tagged commits publish the library crates (`kui-derive`, `kui-core`,
 `kui-wgpu`, `kui-native`, `kui-lua`, `kui-ffi`) to crates.io and to the
 self-hosted Forgejo's cargo registry, and
-[`packages/kui`](../packages/kui) to Forgejo's npm registry as `@qxuken/kui`, with the Node addon
+[`packages/kui`](../packages/kui) to npmjs as `@qxuken/kui`, with the Node addon
 prebuilt for linux-x64, linux-arm64, darwin-arm64, darwin-x64 and win32-x64 bundled
 under `prebuilds/` (`native.cjs` picks the one matching the running Node;
 `KUI_NODE_LIB` still overrides it, and an in-repo `cargo build` still wins
@@ -23,8 +23,9 @@ there, but from 0.1.0-alpha.34 on their own `kui-*` dependencies name
 crates.io: with one `kui-*` crate from drydock9 a build reads both and
 works, with two (`kui-native` and `kui-core`) it holds two `kui_core`s
 whose types do not meet. Dropping `registry = "drydock9"` is the move.
-Node installs from npmjs; the Forgejo npm registry carries every version
-too, scoped:
+Node installs from npmjs, which has had the package since 0.1.0-alpha.35;
+every earlier version is on the Forgejo npm registry only, and that one
+gets the later ones too once the by-hand step below has been run, scoped:
 
 ```bash
 npm install @qxuken/kui@alpha    # prereleases publish under their identifier as the dist-tag
@@ -52,7 +53,11 @@ To cut a release: `nu scripts/set-version.nu 0.1.0-alpha.2` (workspace version,
 the `kui-*` dependency requirements, package.json and the changelog's open
 `(unreleased)` heading move together — registries refuse a version that already
 exists), commit, `git tag v0.1.0-alpha.2`, then push the branch and the tag
-in one go: `git push --atomic origin main v0.1.0-alpha.2`. That next
+in one go, to each host: `git push --atomic origin main v0.1.0-alpha.2`
+and the same to `github`. Each pipeline starts from its own host's copy
+of the tag, so a tag pushed to one runs half a release; alpha.35 pushed
+both by name rather than count on a mirror. The order between the two does not matter: Forgejo's
+`publish` waits for crates.io whichever went first. That next
 `## <version> (unreleased)` heading is opened by hand; the script only dates
 the open one, and a tag whose top heading is missing, stale or still says
 unreleased fails the release. The tag then runs two pipelines, one on each
@@ -108,6 +113,44 @@ npm dist-tag add @qxuken/kui@<version> latest   # if `npm dist-tag ls` shows no 
 
 A staged version holds its semver slot, so a re-run of the job finds it
 staged and stops; rejecting it frees the slot.
+
+What alpha.35, the first release cut this way, found out about that half:
+
+- `npm stage approve` does not ask for a code in the terminal. It prints an
+  npmjs URL and waits for the approval in the browser, so run the script
+  where one can open. `--otp` is still taken.
+- Staging a package npmjs has never held creates it with a placeholder
+  version, `0.0.0-stage`, published and holding `latest`. The approved
+  version sorts above it, so the script's `latest` step moves the tag;
+  until then a bare `npm install @qxuken/kui` answers with the placeholder.
+  It stays in the version history; `npm deprecate
+  @qxuken/kui@0.0.0-stage "<why>"` is what marks it.
+- The registry is the answer, not the website: `npm view @qxuken/kui
+  dist-tags` showed `latest` moved while the package page on npmjs.com
+  still showed the placeholder under it.
+- The maintainer's own npm needs `npm stage` too. Node's bundled npm can
+  be older than 11.15 (11.6.2 on the machine that approved alpha.35), and
+  the script stops with a message saying so.
+
+When the job's npm step fails, the crates are on crates.io already and
+the tag cannot move, so a fix to the workflow does not help that release:
+a re-run of the job runs the workflow file the tag points at. alpha.35's
+did fail there — the runner's npm predated `npm stage`, and `npm install
+-g` without `sudo` cannot write under `/usr/local`. The step is finished
+from any machine, with the run's own prebuilds rather than a rebuild:
+
+```bash
+gh run download <run-id> -R qxuken/kui -D packages/kui/prebuilds   # the five artifacts land in the prebuilds layout
+cd packages/kui
+npm stage publish --registry https://registry.npmjs.org/ --tag alpha --access public
+```
+
+That stages with the maintainer's login instead of the runner's token,
+which changes nothing about what is staged: the binaries are the ones the
+run's parity tests passed over. Then approve as above. To see where the
+other half stands, `gh run view <run-id> -R qxuken/kui` lists the GitHub
+jobs, and the Forgejo cargo registry answers per crate at
+`https://drydock9.qxuken.dev/api/v1/packages/qxuken/cargo/<crate>/<version>`.
 
 The Forgejo npm copy: once both pipelines are through, `nu
 scripts/release-local.nu` from a Mac with the tag on HEAD builds the five
