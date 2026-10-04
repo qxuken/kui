@@ -1,0 +1,330 @@
+# GitHub Actions: the public release. Pushing a `v*` tag runs
+#
+#   check ──┬── build (linux-x64, linux-arm64, darwin-arm64, darwin-x64, win32-x64) ──┐
+#           └──────────────────────────────────────────────────────────────────────┴── publish
+#
+# and `publish` puts the crates on crates.io and stages the npm package on
+# npmjs. The Forgejo pipeline (.forgejo/workflows/ci.yml) is the other half
+# of a release: it checks the same commit in full (the C round, the Node
+# parity tests, the scene corpus, the book) and publishes the crates to the
+# Forgejo cargo registry once crates.io holds them. The npm package reaches
+# the Forgejo npm registry by hand (scripts/release-local.nu; see
+# docs/releasing.md).
+#
+# `check` here is the fast half of Forgejo's: fmt, clippy and the workspace
+# tests, so nothing reaches crates.io from a commit that fails them. It is
+# not a second CI; pull requests and pushes to main are Forgejo's.
+#
+# Each prebuild is built on the platform it targets, so no cross SDK is
+# involved: GitHub's macOS runners carry Xcode, Windows runners MSVC, and
+# the two Linux legs use cargo-zigbuild only to pin the glibc floor at 2.28,
+# so the addon runs on distributions older than the runner's own Ubuntu.
+# The arm64 leg runs on an arm64 runner (free for a public repository),
+# which is what keeps multiarch ALSA headers out of the picture.
+#
+# Secrets:
+#   * CRATES_IO_TOKEN: a crates.io API token with publish-update on the
+#     kui-* crates (publish-new too, for a crate not yet there).
+#   * NPM_TOKEN: an npmjs granular access token for the @qxuken scope with
+#     "Read and write (stage only)". A stage-only token cannot publish, so the
+#     runner stages the version and a maintainer with 2FA approves it
+#     (`npm stage approve <id> --otp`); the publish job prints the commands.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  # Line tables keep panic locations readable at a fraction of full debug
+  # info's size; the test build of this workspace is large either way.
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+  # The Nushell the scripts are written against (scripts/*.nu), pinned like
+  # every other tool here and in the Forgejo workflow.
+  NU_VERSION: "0.116.0"
+  CARGO_ZIGBUILD_VERSION: "0.23.3"
+  ZIGLANG_VERSION: "0.16.0"
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # A hosted runner has about 14 GB free and this workspace's test
+      # build does not fit beside the toolchains the image ships that this
+      # job never uses (.NET, Android, Haskell, CodeQL). Removing them is
+      # the usual answer and takes under a minute.
+      - name: Free disk space
+        run: |
+          set -eu
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Install system deps
+        run: |
+          set -eu
+          sudo apt-get update
+          # ALSA headers: the runner crate's audio backend (kira/cpal) links
+          # libasound on Linux; the font is for the text tests, which
+          # measure real glyphs.
+          sudo apt-get install -y --no-install-recommends fonts-dejavu-core pkg-config libasound2-dev
+          rustup update --no-self-update stable
+          rustup default stable
+          rustup component add rustfmt clippy
+          cargo --version
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: check-${{ hashFiles('Cargo.lock') }}
+          restore-keys: check-
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace
+
+  build:
+    needs: check
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            prebuild: linux-x64
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            prebuild: linux-arm64
+          - os: macos-15
+            target: aarch64-apple-darwin
+            prebuild: darwin-arm64
+          - os: macos-15
+            target: x86_64-apple-darwin
+            prebuild: darwin-x64
+          - os: windows-2025
+            target: x86_64-pc-windows-msvc
+            prebuild: win32-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        shell: bash
+        run: |
+          set -eu
+          rustup update --no-self-update stable
+          rustup default stable
+          rustup target add "${{ matrix.target }}"
+
+      # zig links the addon against glibc 2.28 (the `.2.28` suffix below)
+      # whatever the runner's own glibc is; cargo-zigbuild and zig both come
+      # as pip wheels for either Linux arch.
+      - name: Install cargo-zigbuild
+        if: runner.os == 'Linux'
+        run: |
+          set -eu
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pkg-config libasound2-dev
+          python3 -m pip install --user --break-system-packages \
+            "cargo-zigbuild==${CARGO_ZIGBUILD_VERSION}" "ziglang==${ZIGLANG_VERSION}"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/cargo-zigbuild" --version
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: prebuild-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: prebuild-${{ matrix.target }}-
+
+      - name: Build kui-node (Linux, glibc 2.28 floor)
+        if: runner.os == 'Linux'
+        run: cargo zigbuild -p kui-node --release --target "${{ matrix.target }}.2.28"
+
+      - name: Build kui-node
+        if: runner.os != 'Linux'
+        shell: bash
+        run: cargo build -p kui-node --release --target "${{ matrix.target }}"
+
+      # What scripts/collect-prebuild.nu does, in the shell every runner
+      # has, so the build legs need no Nushell: the cdylib goes to the
+      # path packages/kui/native.cjs looks up, named after Node's
+      # process.platform-process.arch.
+      - name: Collect prebuild
+        shell: bash
+        run: |
+          set -eu
+          case "${{ matrix.target }}" in
+            *windows*) src=kui_node.dll ;;
+            *apple*)   src=libkui_node.dylib ;;
+            *)         src=libkui_node.so ;;
+          esac
+          mkdir -p "packages/kui/prebuilds/${{ matrix.prebuild }}"
+          cp "target/${{ matrix.target }}/release/$src" "packages/kui/prebuilds/${{ matrix.prebuild }}/kui_node.node"
+          ls -l "packages/kui/prebuilds/${{ matrix.prebuild }}/kui_node.node"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.prebuild }}
+          path: packages/kui/prebuilds/${{ matrix.prebuild }}/kui_node.node
+          if-no-files-found: error
+
+  publish:
+    needs: [check, build]
+    runs-on: ubuntu-24.04
+    env:
+      # cargo reads crates.io's token from CARGO_REGISTRY_TOKEN.
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      NPMJS_REGISTRY: https://registry.npmjs.org/
+    steps:
+      - uses: actions/checkout@v4
+
+      # The repository's scripts are Nushell; the release tarball runs on
+      # the runner as it is.
+      - name: Install nu
+        run: |
+          set -eu
+          dir="nu-${NU_VERSION}-$(uname -m)-unknown-linux-gnu"
+          curl -fL --retry 3 \
+            "https://github.com/nushell/nushell/releases/download/${NU_VERSION}/${dir}.tar.gz" \
+            | tar -xz -C /usr/local/bin --strip-components=1 "${dir}/nu"
+          nu --version
+
+      - name: Install toolchain
+        run: |
+          set -eu
+          sudo apt-get update
+          # The crates' verify builds compile kui-native, which links ALSA.
+          sudo apt-get install -y --no-install-recommends pkg-config libasound2-dev
+          rustup update --no-self-update stable
+          rustup default stable
+          test -n "$CARGO_REGISTRY_TOKEN" || { echo "CRATES_IO_TOKEN secret is not set" >&2; exit 1; }
+          test -n "$NPM_TOKEN" || { echo "NPM_TOKEN secret is not set" >&2; exit 1; }
+          node --version
+          npm --version
+
+      # `cargo publish` verifies each crate by building the packaged tarball
+      # under target/package against the registry copies of its dependencies;
+      # keeping that dir and the registry cache makes later releases quick.
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target/package
+          key: publish-${{ hashFiles('Cargo.lock') }}
+          restore-keys: publish-
+
+      - name: Tag matches the manifests
+        run: nu scripts/check-version.nu "${GITHUB_REF_NAME#v}"
+
+      # Without `name`, every artifact of the run lands in <path>/<artifact
+      # name>/, which is exactly the prebuilds layout.
+      - uses: actions/download-artifact@v4
+        with:
+          path: packages/kui/prebuilds
+
+      # No target dir exists in this job, so native.cjs must find the addon
+      # under prebuilds/ - the parity tests then exercise the shipped binary.
+      - name: Verify the bundled prebuilds
+        run: |
+          set -eu
+          ls -lR packages/kui/prebuilds
+          for p in linux-x64 linux-arm64 darwin-arm64 darwin-x64 win32-x64; do
+            test -f "packages/kui/prebuilds/$p/kui_node.node" || { echo "missing prebuild $p" >&2; exit 1; }
+          done
+          cd packages/kui
+          npm test
+          npm pack --dry-run
+
+      # In dependency order; a crate crates.io already holds at this version
+      # is skipped, so re-running a job that failed partway finishes it.
+      - name: cargo publish (crates.io)
+        run: nu scripts/publish-crates.nu crates-io
+
+      # The token is stage-only, so this step cannot publish. It stages the
+      # tarball on registry.npmjs.org under its dist-tag (`alpha` for a
+      # prerelease, `latest` for a plain version) and a maintainer with 2FA
+      # makes it live:
+      #
+      #   npm stage list @qxuken/kui
+      #   npm stage approve <stage-id> --otp <code>
+      #
+      # Staging needs no 2FA and works for a package that does not exist yet,
+      # which is how the first version reaches npmjs. A staged version holds
+      # its semver slot (the same version cannot be staged twice) and its tag
+      # cannot change, so a re-run finds the version already staged or
+      # already live and does nothing. A stage-only token cannot move
+      # dist-tags either, so when a prerelease is the newest version and
+      # `latest` is missing, the maintainer sets it after approving, as the
+      # step's output says.
+      - name: npm stage publish (npmjs)
+        run: |
+          set -eu
+          # `npm stage` arrived in npm 11.15; the runner's Node 24 ships a
+          # newer npm, but an older image would not.
+          if ! npm stage --help >/dev/null 2>&1; then
+            npm install -g npm@11
+            npm stage --help >/dev/null
+          fi
+          ver=$(node -p 'require("./packages/kui/package.json").version')
+          tag=latest
+          case "$ver" in *-*) tag="${ver#*-}"; tag="${tag%%.*}";; esac
+          printf '%s:_authToken=%s\n' "${NPMJS_REGISTRY#https:}" "$NPM_TOKEN" >> "$HOME/.npmrc"
+          cd packages/kui
+          if [ "$(npm view "@qxuken/kui@$ver" version --registry "$NPMJS_REGISTRY" 2>/dev/null || true)" = "$ver" ]; then
+            echo "@qxuken/kui@$ver is already live on npmjs"
+            exit 0
+          fi
+          # Tolerated: a listing that errors (a package not yet on npmjs,
+          # say) means "nothing staged", and the publish below is the real test.
+          staged=$(npm stage list @qxuken/kui --json --registry "$NPMJS_REGISTRY" 2>/dev/null || echo '[]')
+          id=$(STAGED="$staged" VER="$ver" node -e '
+            const items = JSON.parse(process.env.STAGED);
+            const hit = (Array.isArray(items) ? items : []).find((i) => i.version === process.env.VER);
+            if (hit) process.stdout.write(String(hit.id));
+          ')
+          if [ -n "$id" ]; then
+            echo "@qxuken/kui@$ver is already staged on npmjs as $id; approve it with"
+            echo "  npm stage approve $id --otp <code>"
+            exit 0
+          fi
+          # Captured rather than piped through tee: without pipefail a pipe
+          # would report tee's exit status, not npm's.
+          out=$(npm stage publish --registry "$NPMJS_REGISTRY" --tag "$tag" --access public 2>&1) || {
+            printf '%s\n' "$out" >&2
+            exit 1
+          }
+          printf '%s\n' "$out"
+          id=$(printf '%s\n' "$out" | sed -n 's/.*staged with id \([^)]*\)).*/\1/p' | tail -1)
+          echo
+          echo "@qxuken/kui@$ver is staged on npmjs under the dist-tag '$tag'. To make it live:"
+          echo "  npm stage view ${id:-<stage-id>}        # or: npm stage list @qxuken/kui"
+          echo "  npm stage approve ${id:-<stage-id>} --otp <code>"
+          if [ "$tag" != latest ]; then
+            echo "then, if 'npm dist-tag ls @qxuken/kui' shows no 'latest' or one that sorts below $ver:"
+            echo "  npm dist-tag add @qxuken/kui@$ver latest"
+          fi

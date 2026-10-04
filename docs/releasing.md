@@ -55,26 +55,35 @@ exists), commit, `git tag v0.1.0-alpha.2`, then push the branch and the tag
 in one go: `git push --atomic origin main v0.1.0-alpha.2`. That next
 `## <version> (unreleased)` heading is opened by hand; the script only dates
 the open one, and a tag whose top heading is missing, stale or still says
-unreleased fails the release. [ci.yml](../.forgejo/workflows/ci.yml) then runs
-`check`, builds one addon per target in parallel, all on the one docker
-runner (`build-linux`
-through cargo-zigbuild with a glibc 2.28 floor; `build-windows` through
-cargo-xwin against the Windows SDK; `build-macos` through cargo-zigbuild
-against a copy of Xcode's SDK, whose Apple license applies), and `publish`
-verifies the tag against the
-manifests and the changelog heading, downloads the five prebuilds, runs the
-parity tests against the shipped binaries, publishes the crates in dependency
-order (crates.io, then the Forgejo registry), publishes the npm package to the
-Forgejo npm registry, and last stages it on npmjs. It needs three repository
-secrets and nothing but that Linux runner: `PACKAGES_TOKEN` (a Forgejo
-personal access token with `write:packages`), `CRATES_IO_TOKEN` (a crates.io
-API token with publish rights on the `kui-*` crates) and `NPM_TOKEN` (an npmjs
-granular access token for the `@qxuken` scope with "Read and write (stage
-only)"). No Mac or Windows machine is involved.
+unreleased fails the release. The tag then runs two pipelines, one on each
+host the repository lives on:
+
+- **GitHub**, [release.yml](../.github/workflows/release.yml): `check`
+  (fmt, clippy, the workspace tests), then one addon build per platform on
+  the platform itself (`ubuntu-24.04` and `ubuntu-24.04-arm` through
+  cargo-zigbuild for a glibc 2.28 floor, `macos-15` for both Mac
+  architectures, `windows-2025`), then `publish`, which verifies the tag
+  against the manifests and the changelog heading, runs the parity tests
+  against the five shipped binaries, publishes the crates to crates.io in
+  dependency order and stages the npm package on npmjs. It needs two
+  repository secrets: `CRATES_IO_TOKEN` (a crates.io API token with publish
+  rights on the `kui-*` crates) and `NPM_TOKEN` (an npmjs granular access
+  token for the `@qxuken` scope with "Read and write (stage only)").
+- **Forgejo**, [ci.yml](../.forgejo/workflows/ci.yml): `check` in full (the
+  C round, the Node parity tests, the scene corpus, the book), then
+  `publish`, which waits for crates.io to list the version (the Forgejo
+  copies name crates.io for their `kui-*` dependencies, so their verify
+  builds cannot run before it does; it gives up after two hours, and a
+  re-run finishes the job) and publishes the crates to the Forgejo cargo
+  registry. It needs one repository secret, `PACKAGES_TOKEN` (a Forgejo
+  personal access token with `write:packages`), and the one docker runner.
+
+Neither pipeline publishes the npm package to the Forgejo npm registry; that
+is done by hand, below.
 
 The npmjs half is not finished by the runner, on purpose. A stage-only token
 can put a version on registry.npmjs.org only as a *staged* release, hidden
-until a maintainer with 2FA approves it; the job's last step stages
+until a maintainer with 2FA approves it; the GitHub job's last step stages
 `@qxuken/kui@<version>` under its dist-tag (`alpha` for a prerelease) and
 prints the commands that make it live:
 
@@ -88,27 +97,27 @@ npm dist-tag add @qxuken/kui@<version> latest   # if `latest` is missing or olde
 
 `npm stage` needs npm 11.15 or newer (`npm install -g npm@11`). A staged
 version holds its semver slot, so a re-run of the job finds it staged and
-stops; rejecting it frees the slot. The Forgejo copy is live at once, as it
-always was, so a user on that registry is not waiting on the approval.
+stops; rejecting it frees the slot.
 
-When the runner cannot publish — alpha.17's tag job hung in checkout, the
-runner unable to reach Forgejo — `nu scripts/release-local.nu` does the same
-from a Mac with the tag on HEAD: the Linux prebuilds in Docker with CI's
-pinned zig, the macOS ones natively, Windows through cargo-xwin, CI's
-verification (`npm test` over the bundled prebuilds, `npm pack --dry-run`,
-`cargo publish --dry-run`), a typed confirmation, then `cargo publish`,
-`npm publish` to the Forgejo registry and the `latest` guard. It reads the
-token from `$env.DRYDOCK9_TOKEN`, skips whatever the registries already hold
-(so a half-finished run can be run again) and takes `--dry-run` to stop
-before publishing. It does not stage on npmjs; do that by hand from
-`packages/kui` with the prebuilds still in place:
+The Forgejo npm copy: once both pipelines are through, `nu
+scripts/release-local.nu` from a Mac with the tag on HEAD builds the five
+prebuilds (the Linux ones in Docker with CI's pinned zig, the macOS ones
+natively, Windows through cargo-xwin), runs CI's verification (`npm test`
+over the bundled prebuilds, `npm pack --dry-run`, `cargo publish
+--dry-run`), asks for a typed confirmation, skips every crate the registries
+already hold, publishes the npm package to the Forgejo registry and applies
+the `latest` guard there. It reads the token from `$env.DRYDOCK9_TOKEN` and
+takes `--dry-run` to stop before publishing. The same script is the
+fallback when a runner cannot publish at all (alpha.17's tag job hung in
+checkout): it publishes whatever crates are missing too. It does not stage
+on npmjs; do that by hand from `packages/kui` with the prebuilds still in
+place:
 
 ```bash
 npm stage publish --registry https://registry.npmjs.org/ --tag alpha --access public
 ```
 
-then approve as above. Skip the tag's CI run afterwards; it would fail on
-"already exists".
+then approve as above.
 
 That last property is also the limit of what CI proves. The Windows non-client
 chrome ([windows_nc.rs](../crates/kui-native/src/windows_nc.rs)), the macOS traffic-light

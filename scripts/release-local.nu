@@ -1,9 +1,18 @@
 #!/usr/bin/env nu
-# Publishes a tagged release from this Mac, doing what the `build-*` and
-# `publish` jobs of .forgejo/workflows/ci.yml do on the runner: the five
-# Node prebuilds, the verification, `cargo publish` (crates.io, then
-# drydock9), `npm publish` and the `latest` guard. For when the runner cannot reach Forgejo (alpha.17's tag
-# job hung in checkout on 2026-09-25 and was released this way).
+# Publishes a tagged release from this Mac: the five Node prebuilds, the
+# verification, `cargo publish` (crates.io, then drydock9), `npm publish`
+# to the Forgejo npm registry and the `latest` guard there.
+#
+# Since alpha.34 the two pipelines split a release between them - GitHub's
+# (.github/workflows/release.yml) publishes the crates to crates.io and
+# stages the npm package on npmjs, Forgejo's (.forgejo/workflows/ci.yml)
+# publishes the crates to drydock9 - and neither publishes the npm package
+# to the Forgejo npm registry. That is this script's regular job now: run
+# it after both pipelines have finished, and it skips every crate the
+# registries already hold and publishes the npm package. It remains the
+# fallback for everything else when a runner cannot (alpha.17's tag job
+# hung in checkout on 2026-09-25 and was released this way). It does not
+# stage on npmjs; docs/releasing.md has that command.
 #
 #   nu scripts/release-local.nu              build, verify, ask, publish
 #   nu scripts/release-local.nu --dry-run    build and verify, publish nothing
