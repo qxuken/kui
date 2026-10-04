@@ -1,40 +1,52 @@
-//! The audio device behind the core's [`AudioCommand`]s. The core queues
-//! commands as data (`Core::take_audio_commands`); the shell hands them
-//! here after every input dispatch and every frame, and polls finished
-//! playbacks back into the core (`Core::audio_ended`) so tagged ones become
-//! `sound` events. It answers the other way too: a `Stop` whose handle was
-//! still playing goes back as `Core::audio_truncated`, since whether a
-//! sound was still running is the one thing the core cannot see, and a play
-//! the device refuses goes back as `Core::audio_refused`: it never starts
-//! and so never ends, so the view has to hear about it or wait forever.
+//! The audio device behind the core's [`AudioCommand`]s, used by the runner
+//! and by hosts that drive a [`Core`](kui_core::Core) themselves.
 //!
-//! Backed by kira (cpal underneath) behind the `audio` cargo feature. The
+//! The core queues audio commands as data (`Core::take_audio_commands`);
+//! the runner hands them to [`Audio::apply`] after every input dispatch and
+//! every frame, and polls finished playbacks back into the core
+//! (`Core::audio_ended`) so tagged ones become `sound` events. Two things
+//! only the device can know go back the same way: a `Stop` that landed on
+//! a sound still playing (`Core::audio_truncated`) and a play the device
+//! refused (`Core::audio_refused`).
+//!
+//! Backed by kira (cpal underneath) behind the `audio` cargo feature; with
+//! the feature off every command is dropped and the UI runs the same. The
 //! device opens lazily on the first play, so an app that never plays
 //! anything never starts an audio thread; a device that refuses to open
-//! logs once and every later command is dropped — the UI keeps running.
-//! Decoded sounds are cached per `SoundId` and dropped on `Unload`.
+//! logs once and drops every later command. Decoded sounds are cached per
+//! `SoundId` and dropped on `Unload`.
+//!
+//! [`blip`] and [`wav_pcm16`] synthesize a short WAV for examples and tests
+//! that want a sound without shipping one.
 
 use kui_core::{AudioCommand, AudioDevice, AudioEnv, PlaybackId, SharedResources};
 
 pub use backend::Audio;
 
 /// A `Stop` that landed on a sound still playing, and how far into the
-/// sound (seconds) it was — what `Core::audio_truncated` turns into a
+/// sound (seconds) it was; `Core::audio_truncated` turns it into a
 /// `truncated-playback` warning on the node.
 pub type Truncated = (PlaybackId, f64);
 
-/// What the device answered back on an [`Audio::apply`] — the two things
-/// only it can know. `truncated` is the stops that landed on a sound still
-/// playing, `refused` the plays it would not take; the core turns each into
-/// a warning on the node that asked, since the driver is key-blind.
+/// What the device answered back on an [`Audio::apply`]: the two things
+/// only it can know. The core turns each into a warning on the node that
+/// asked.
 #[derive(Default, Debug)]
 pub struct Answered {
+    /// Stops that landed on a sound still playing.
     pub truncated: Vec<Truncated>,
+    /// Plays the device would not take.
     pub refused: Vec<PlaybackId>,
 }
 
-/// Encodes mono float samples (−1..1) as a 16-bit PCM WAV file — enough to
-/// hand a synthesized blip to `Core::add_sound` without shipping assets.
+/// Encodes mono float samples (-1..1) as a 16-bit PCM WAV file, ready for
+/// `Core::add_sound`.
+///
+/// ```rust
+/// let wav = kui_native::audio::wav_pcm16(44_100, &[0.0, 0.5, -0.5]);
+/// assert_eq!(&wav[..4], b"RIFF");
+/// assert_eq!(wav.len(), 44 + 3 * 2);
+/// ```
 pub fn wav_pcm16(sample_rate: u32, samples: &[f32]) -> Vec<u8> {
     let data_len = (samples.len() * 2) as u32;
     let mut out = Vec::with_capacity(44 + data_len as usize);
@@ -57,7 +69,8 @@ pub fn wav_pcm16(sample_rate: u32, samples: &[f32]) -> Vec<u8> {
     out
 }
 
-/// A short decaying sine — a click / blip for examples and tests.
+/// A short decaying sine of `hz` lasting `ms`, as a WAV file: a click for
+/// examples and tests. `gain` is 0 to 1.
 pub fn blip(sample_rate: u32, hz: f32, ms: f32, gain: f32) -> Vec<u8> {
     let n = (sample_rate as f32 * ms / 1000.0) as usize;
     let samples: Vec<f32> = (0..n)
@@ -84,6 +97,9 @@ mod backend {
 
     use super::*;
 
+    /// The output device and the sounds playing on it. The runner owns
+    /// one; a host driving a core itself makes one with [`Audio::new`] and
+    /// calls [`Audio::apply`] and [`Audio::poll_ended`] on its own turns.
     pub struct Audio {
         device: Device,
         /// Commands that arrived while the device was still opening, in
@@ -123,6 +139,7 @@ mod backend {
     }
 
     impl Audio {
+        /// A closed device; nothing opens until the first command.
         pub fn new() -> Self {
             Audio {
                 device: Device::Closed,
@@ -222,15 +239,11 @@ mod backend {
             }
         }
 
-        /// Applies queued commands to the device. While it is still
-        /// opening they wait, in order, behind whatever waited before.
-        /// Returns what the device answered back: the stops that landed on
-        /// a sound still playing and the plays it would not take, the way
-        /// [`Self::poll_ended`] returns the ones that finished. Both are
-        /// buffered rather than produced inline, because either can happen
-        /// inside `flush_pending`, which runs from the poll as well as from
-        /// here — so a command that waited for the device reports on the
-        /// apply that flushes it, a later one than the apply that queued it.
+        /// Applies queued commands to the device; while it is still opening
+        /// they wait, in order. Returns what the device answered back: the
+        /// stops that landed on a sound still playing and the plays it
+        /// would not take. A command that waited for the device reports on
+        /// the apply that flushes it, not the one that queued it.
         pub fn apply(&mut self, cmds: Vec<AudioCommand>, resources: &SharedResources) -> Answered {
             if !cmds.is_empty() {
                 self.warm();
@@ -355,30 +368,18 @@ mod backend {
             ended
         }
 
-        /// Whether the device is open (or opening) and so costing
-        /// something. A CoreAudio/WASAPI/ALSA output stream is a real-time
-        /// thread that runs whether or not anything is playing — 94 buffer
-        /// callbacks a second at the usual 512-frame period — which is the
-        /// whole of an idle kui app's CPU once a session holds a sound.
-        /// The driver asks so it knows whether there is anything to close.
+        /// Whether the device is open or opening. An open output stream is
+        /// a real-time thread that runs whether or not anything is playing,
+        /// so a driver closes it after a quiet spell.
         pub fn holds_device(&self) -> bool {
             matches!(self.device, Device::Opening(_) | Device::Open(_))
         }
 
-        /// Lets the output device go. The decoded-sound cache stays — it is
-        /// the ~90 ms open that has to be paid again, not the decode — so a
-        /// re-warm costs nothing a cold start does not. Refuses while
-        /// anything is playing or waiting, since that is the device's whole
-        /// job; the driver only asks after `active()` has been false for a
-        /// while.
-        ///
-        /// Asks `opening()` first, and that is not a detail: a device the
-        /// app warmed but never commanded stays in `Opening` forever —
-        /// nothing else on this type calls `opening()` unless a command
-        /// flows — with the opened manager sitting live in the channel and
-        /// its stream running. That is precisely the case worth closing, so
-        /// the state has to be settled before it can be read. Still opening
-        /// means not yet closable; the driver asks again.
+        /// Lets the output device go; the decoded-sound cache stays, so the
+        /// next play pays the open again but not the decode. Does nothing
+        /// while anything is playing or waiting, or while the device is
+        /// still opening: call it once [`Self::active`] has been false for
+        /// a while, and again if it did not take.
         pub fn close(&mut self) {
             if self.active() || self.opening() {
                 return;
@@ -388,10 +389,9 @@ mod backend {
             }
         }
 
-        /// Whether any playback is live, or waiting on the device to
-        /// open — drivers keep polling while so. Both answer buffers count:
-        /// a `flush_pending` from the poll can fill either, and the core
-        /// only hears them on the next `apply`.
+        /// Whether any playback is live or waiting on the device to open,
+        /// or an answer is waiting for the next `apply`. Keep polling while
+        /// it is true.
         pub fn active(&self) -> bool {
             !self.playing.is_empty()
                 || !self.pending.is_empty()
@@ -399,9 +399,8 @@ mod backend {
                 || !self.truncated.is_empty()
         }
 
-        /// The reading a view gets (`env.audio`): the device's state and
-        /// the playbacks started or waiting. The two readers above, as
-        /// data — what the driver decides by is what the view can see.
+        /// The reading a view gets as `env.audio`: the device's state and
+        /// the playbacks started or waiting.
         pub fn env(&self) -> AudioEnv {
             AudioEnv {
                 device: match self.device {
@@ -488,7 +487,7 @@ mod backend {
             assert!(audio.holds_device(), "a sound mid-flight keeps the device");
         }
 
-        /// AR20: a device that failed to open refuses every play, so the
+        /// A device that failed to open refuses every play, so the
         /// core hears `refused` and a view sequenced on `sound ended`
         /// does not hang. Before, the play was dropped on the floor and
         /// neither ended nor was refused. Forced rather than found: a
@@ -578,7 +577,7 @@ mod backend {
             assert!(!audio.active());
         }
 
-        /// F34: a `Stop` that lands on a handle still playing comes back
+        /// A `Stop` that lands on a handle still playing comes back
         /// as a truncation, with where the sound was — the fact the core
         /// cannot see. Through the real device when the machine has one;
         /// without one nothing ever plays, so nothing is truncated, and

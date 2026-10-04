@@ -14,7 +14,7 @@ use kui_core::LayoutScript;
 ///
 /// The numeric keypad reports the digit and operator it always bears, as
 /// winit's logical key for `Numpad1` is `"1"`: which of the two it was is
-/// the press's [`kui_core::KeyLocation`] (backlog F108), not its code.
+/// the press's [`kui_core::KeyLocation`], not its code.
 pub(crate) fn physical_code(key: winit::keyboard::PhysicalKey) -> KeyCode {
     use winit::keyboard::{KeyCode as Phys, PhysicalKey};
     let PhysicalKey::Code(c) = key else {
@@ -169,7 +169,7 @@ pub(crate) fn physical_code(key: winit::keyboard::PhysicalKey) -> KeyCode {
 }
 
 /// The named keys past the editing block, as winit's logical key names
-/// them (backlog F108): F13–F35, the system keys, the modifier and lock
+/// them: F13–F35, the system keys, the modifier and lock
 /// keys themselves, and the media keys.
 fn named_code(n: &NamedKey) -> KeyCode {
     let f = [
@@ -236,14 +236,14 @@ fn named_code(n: &NamedKey) -> KeyCode {
 pub(crate) type HeldModifier = (KeyCode, KeyLocation, KeyCode);
 
 /// `mods` with a modifier key's own bit set to the state after its
-/// event (backlog F108): on while it or its twin is `down`, which this
+/// event: on while it or its twin is `down`, which this
 /// keeps. Any other key passes `mods` through.
 ///
 /// `code` is what the layout says the key is, and its bit is the one
 /// set; `at` is where the key is, and the record goes by that. A press
 /// and its release can disagree on the first — X11 may read the left Alt
 /// pressed after Shift as `Meta_L` and its release as `Alt_L` — and a
-/// record by meaning kept Super held for good (backlog RG96). Going by
+/// record by meaning kept Super held for good. Going by
 /// the meaning and not the place for the bit is what keeps a key the
 /// layout remapped (Caps Lock as Ctrl) the modifier it acts as.
 pub(crate) fn modifier_after(
@@ -293,7 +293,7 @@ fn holds_as_modifier(code: KeyCode) -> bool {
 /// What a key means for the modifier record: the layout's reading, or
 /// where the key is when that reading has no name. X11 reads the left
 /// Alt pressed after Shift as `Meta_L`, which winit leaves unnamed, and
-/// its own press carried the state before it (backlog RG101).
+/// its own press carried the state before it.
 fn meaning_of(logical: KeyCode, physical: KeyCode) -> KeyCode {
     if logical == KeyCode::Unknown {
         physical
@@ -305,7 +305,7 @@ fn meaning_of(logical: KeyCode, physical: KeyCode) -> KeyCode {
 /// Which of its twins a modifier key is: winit's word, or the side the
 /// key is on when winit says `Standard`. winit reads a side off the
 /// keysym, and X11's AltGr (`ISO_Level3_Shift`) names none, so the right
-/// Alt was reported as neither twin (backlog RG101).
+/// Alt was reported as neither twin.
 fn side_of(
     key: winit::keyboard::PhysicalKey,
     meaning: KeyCode,
@@ -329,7 +329,7 @@ fn side_of(
 /// Whether a press is a repeat: winit's word, but a modifier whose key
 /// the record does not hold is pressed for the first time. Windows keeps
 /// one "was down" bit for both Shifts, so the second pressed while the
-/// first was held said it was a repeat (backlog RG102).
+/// first was held said it was a repeat.
 fn is_repeat(
     repeat: bool,
     down: &[HeldModifier],
@@ -345,7 +345,7 @@ fn is_repeat(
 /// and its side. Windows sends no release for the first Shift let go
 /// while the other is held — only one, for the last — so its twin stayed
 /// held in the record and the next Shift's release said Shift was still
-/// down (backlog RG102). A release of either is a release of both, as
+/// down. A release of either is a release of both, as
 /// GLFW reads it; asked on Windows only.
 fn twins_let_go(
     down: &[HeldModifier],
@@ -362,11 +362,11 @@ fn twins_let_go(
         .collect()
 }
 
-/// Caps Lock and Num Lock at a press (backlog F108). winit reports
+/// Caps Lock and Num Lock at a press. winit reports
 /// neither, so the OS is asked where it answers cheaply — macOS's
 /// `NSEvent.modifierFlags` (a Mac has no Num Lock, so it reads off, as a
 /// Mac terminal reports it), Windows' `GetKeyState`, the X server's
-/// locked modifiers when the app is on X11 (`x11`, backlog RG104) — and
+/// locked modifiers when the app is on X11 (`x11`) — and
 /// anywhere else (Wayland) the state is `tracked` from the lock keys' own
 /// presses, which knows nothing of a lock set before the app's first
 /// window opened or turned while another app had the keyboard.
@@ -402,7 +402,7 @@ pub(crate) fn lock_state(tracked: KeyLocks, x11: bool) -> KeyLocks {
 }
 
 /// Which alphabet the active layout writes, for `KeyPress::from_layout_in`
-/// (backlog F115). macOS and Windows are asked at the press, as
+///. macOS and Windows are asked at the press, as
 /// `lock_state` asks them: macOS whether the keyboard layout is
 /// ASCII-capable — the test it applies itself to resolve a ⌘ shortcut —
 /// and Windows what the layout puts on the letter keys, once a layout.
@@ -548,7 +548,7 @@ mod windows_layout {
     }
 }
 
-/// The X server's lock state (backlog RG104): XKB's locked modifiers,
+/// The X server's lock state: XKB's locked modifiers,
 /// Lock for Caps Lock and Mod2 for Num Lock, where the stock XKB keymaps
 /// put the NumLock virtual modifier. On a connection of its own, opened
 /// at the first key: one round trip a press, as `GetKeyState` is a call a
@@ -860,13 +860,13 @@ impl DynShell<'_> {
 
     /// The clipboard chords the runner performs itself — ⌘C/X/V/A, ⌘Z and
     /// ⇧⌘Z, ⌘Y — for the primary modifier plus `letter`, whether the
-    /// keyboard sent it or the standard Edit menu spelled it (ADR 0030).
+    /// keyboard sent it or the standard Edit menu spelled it.
     /// True when the chord was one of these and was performed, so the
     /// caller's editor channel does not see the press again.
     ///
     /// A window with a selection in a `selectable` node copies it with
     /// the same Cmd-C an editor does: there is one selection per window
-    /// and `copy_selection` answers for whichever it is (ADR 0017).
+    /// and `copy_selection` answers for whichever it is.
     pub(super) fn edit_chord(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -958,7 +958,7 @@ impl DynShell<'_> {
         true
     }
 
-    /// A row of the standard Edit menu was chosen (ADR 0030, decision 3):
+    /// A row of the standard Edit menu was chosen:
     /// the chord it spells, replayed exactly as the keyboard would have
     /// sent it — the press to the key-focused sink, the runner's own half
     /// of the chord, the release — so an app that binds ⌘C itself hears
@@ -1013,7 +1013,7 @@ mod tests {
     use super::*;
     use winit::keyboard::{KeyCode as Phys, KeyLocation as L, PhysicalKey};
 
-    /// The keys backlog F108 named, as winit reports them: the modifier
+    /// The named keys, as winit reports them: the modifier
     /// and lock keys, F13 onward, the system and media keys — by position
     /// and by the layout's name alike — and each place a key can be.
     #[test]
@@ -1060,7 +1060,7 @@ mod tests {
     }
 
     /// The record goes by where a key is, the bit by what it means
-    /// (backlog RG96): X11's left Alt read as `Meta_L` down and `Alt_L`
+    ///: X11's left Alt read as `Meta_L` down and `Alt_L`
     /// up leaves nothing held, and Caps Lock remapped to Ctrl is a Ctrl
     /// held and let go.
     #[test]
@@ -1101,7 +1101,7 @@ mod tests {
         assert!(down.is_empty());
     }
 
-    /// X11's readings a window found (backlog RG101): ⇧ then the left
+    /// X11's readings a window found: ⇧ then the left
     /// Alt is `Meta_L`, which winit leaves unnamed, so the key means what
     /// it is; AltGr (`ISO_Level3_Shift`) names no side, so the right Alt
     /// is on the right. A key the layout remapped keeps its reading and
@@ -1141,7 +1141,7 @@ mod tests {
         );
     }
 
-    /// Windows' two Shifts (backlog RG102): the second pressed says it
+    /// Windows' two Shifts: the second pressed says it
     /// is a repeat, and only the last let go is released. A modifier's
     /// repeat is one only while its key is held, and a Shift's release
     /// names the other still held.
@@ -1173,7 +1173,7 @@ mod tests {
     }
 
     /// Caps Lock's own press reports the lock it made, as the OS answers
-    /// it on macOS and Windows (backlog RG96); its release and a repeat
+    /// it on macOS and Windows; its release and a repeat
     /// turn nothing.
     #[test]
     fn a_lock_keys_press_reports_the_state_it_made() {
@@ -1215,8 +1215,8 @@ mod tests {
         );
     }
 
-    /// Where the OS is not asked the letter keys say the script (backlog
-    /// F115): a Cyrillic letter on the key printed J is a non-Latin
+    /// Where the OS is not asked the letter keys say the script:
+    /// a Cyrillic letter on the key printed J is a non-Latin
     /// layout, a Latin one — Turkish F's `ğ` included — a Latin layout,
     /// and punctuation, a digit or a chord's control character leave the
     /// record alone, so macOS Russian's `]` after an `о` is still read as

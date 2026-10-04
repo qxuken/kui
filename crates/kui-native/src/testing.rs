@@ -1,28 +1,65 @@
-//! A headless driver for an [`App`]: a `Core`, a viewport, the app's
-//! extensions, and the inputs a test needs to press its keys, click its
-//! nodes and read what it drew — through the real `view` and `on_event`,
-//! with no window (backlog DX11).
+//! A headless driver for an [`App`]: clicks, keys, typed text and drags
+//! through the real `view` and `on_event`, with no window and no GPU.
 //!
-//! ```ignore
-//! let mut d = Drive::new(Core::new(), 480.0, 320.0);
+//! [`Drive`] owns (or borrows) a [`Core`] and a viewport. A test frames the
+//! app, finds nodes by the label they were keyed under, sends gestures and
+//! reads back what the frame drew. It runs under plain `cargo test`.
+//!
+//! ```rust
+//! use kui_native::testing::Drive;
+//! use kui_native::widgets;
+//! use kui_native::{App, Core, Message, NodeSpec, TextStyle, Ui, UiEvent};
+//!
+//! #[derive(Message, Clone, Debug, PartialEq)]
+//! enum Msg {
+//!     Add,
+//! }
+//!
+//! #[derive(Default)]
+//! struct Counter {
+//!     count: u32,
+//! }
+//!
+//! impl App for Counter {
+//!     fn view(&mut self, ui: &mut Ui<'_>) {
+//!         ui.with(NodeSpec::column().fill().gap(8.0), |ui| {
+//!             widgets::button(ui, "Add", Msg::Add);
+//!             ui.text_in_keyed(
+//!                 "summary",
+//!                 NodeSpec::row(),
+//!                 &format!("{} added", self.count),
+//!                 TextStyle::new(12.0),
+//!             );
+//!         });
+//!     }
+//!
+//!     fn on_event(&mut self, ev: UiEvent) {
+//!         if ev.message::<Msg>() == Some(Msg::Add) {
+//!             self.count += 1;
+//!         }
+//!     }
+//! }
+//!
+//! let mut app = Counter::default();
+//! // `framing` builds a frame after every gesture, so the view has caught
+//! // up before the next assert.
+//! let mut d = Drive::new(Core::new(), 320.0, 200.0).framing();
 //! d.frame(&mut app);
-//! let add = d.key_of("add").ok_or("no add button")?;
+//!
+//! // Click by label, the way a screen reader presses: no geometry needed.
+//! let add = d.key_of("Add").expect("an Add button");
 //! d.click_key(&mut app, add);
-//! d.frame(&mut app);
 //! assert_eq!(app.count, 1);
+//! assert_eq!(d.texts_under("summary"), ["1 added"]);
+//! // Nothing the core saw was misdeclared.
 //! assert!(d.warnings().is_empty());
 //! ```
 //!
-//! A gesture sends its inputs and stops; the caller frames when it wants
-//! the view to catch up. [`Drive::framing`] frames after every gesture
-//! instead, and once while a drag is held, for a test written as a list
-//! of keystrokes against what is on screen.
-//!
-//! It owns its `Core` or borrows one (`Drive::new(&mut core, …)`), which
-//! is how the examples' `--headless` drives run on the core their harness
-//! built. Events go to the app the way the runner sends them: an
-//! extension's to the extension ([`Extensions::route`]), the rest to
-//! `on_event`, and each is logged.
+//! Without [`Drive::framing`], a gesture sends its inputs and stops, and
+//! the test calls [`Drive::frame`] when it wants the view to catch up.
+//! Events reach the app as the windowed runner sends them: an extension's
+//! to the extension, the rest to `on_event`, each one logged
+//! ([`Drive::log`]).
 
 use std::borrow::{Borrow, BorrowMut};
 
@@ -31,12 +68,17 @@ use crate::{
     KeyMods, KeyPress, MouseButton, Rect, Size, UiEvent, Vec2,
 };
 
-/// The headless driver; see the module docs.
+/// The headless driver; see the [module docs](self) for an example.
+///
+/// `C` is the core it drives: its own `Core` by default, or a `&mut Core`
+/// borrowed from a harness that built one.
 pub struct Drive<C: BorrowMut<Core> = Core> {
+    /// The core being driven.
     pub core: C,
     /// The extensions filling the frame's slots, routed as the runner
     /// routes them. Empty unless [`Drive::extension`] loaded one.
     pub exts: Extensions,
+    /// The viewport every frame lays out against, logical px.
     pub viewport: Size,
     /// The display's scale: 1 unless a test sets it.
     pub scale: f32,
@@ -47,8 +89,9 @@ pub struct Drive<C: BorrowMut<Core> = Core> {
 }
 
 impl<C: BorrowMut<Core>> Drive<C> {
-    /// A drive over `core`, with the node snapshot on (`Core::set_inspect`)
-    /// so [`Self::texts_under`] and [`Self::rect_of`] have a frame to read.
+    /// A drive over `core` with a `w` by `h` viewport. Turns the node
+    /// snapshot on (`Core::set_inspect`) so [`Self::texts_under`] and
+    /// [`Self::rect_of`] have a frame to read.
     pub fn new(mut core: C, w: f32, h: f32) -> Self {
         core.borrow_mut().set_inspect(true);
         Drive {
@@ -230,10 +273,10 @@ impl<C: BorrowMut<Core>> Drive<C> {
         self.done(app, out)
     }
 
-    /// One event of a scroll gesture over a point (backlog F107): `begins`
-    /// on its first, and the rest go to the target it picked, wherever
-    /// the pointer or the content has gone since — the latching a native
-    /// swipe gets. [`Self::wheel`] is a gesture of its own.
+    /// One event of a scroll gesture over a point: `begins` on its first,
+    /// and the rest go to the target that first one picked, wherever the
+    /// pointer or the content has gone since, as a native swipe latches.
+    /// [`Self::wheel`] is a gesture of its own.
     pub fn scroll_gesture(
         &mut self,
         app: &mut impl App,
@@ -248,8 +291,7 @@ impl<C: BorrowMut<Core>> Drive<C> {
     }
 
     /// A non-primary button pressed and released at a point: what an
-    /// `on_button` node claiming it hears as `press` and `release`
-    /// (backlog F105, RG75).
+    /// `on_button` node claiming it hears as `press` and `release`.
     pub fn button_click(
         &mut self,
         app: &mut impl App,
@@ -323,8 +365,8 @@ impl<C: BorrowMut<Core>> Drive<C> {
         self.done(app, out)
     }
 
-    /// `Ok` when `cond` holds, else `Err(what)` — the shape an example's
-    /// `headless` returns, so a drive reads as a list of these.
+    /// `Ok` when `cond` holds, else `Err(what)`, so a scripted drive reads
+    /// as a list of checks. Prints `ok <what>` on success.
     pub fn check(&self, cond: bool, what: &str) -> Result<(), String> {
         if cond {
             println!("  ok   {what}");

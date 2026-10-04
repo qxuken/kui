@@ -1,15 +1,144 @@
-//! Batteries-included runner: winit windows + wgpu renderers around one
-//! `kui_core::Core` per window, driving the Elm-ish loop — input becomes
-//! `UiEvent`s routed to `App::on_event` (host) or extensions by origin, then
-//! `App::view` rebuilds each window's frame.
+//! The windowed kui runner: a winit window and a wgpu renderer around
+//! `kui_core`, with the [`App`] trait an application implements.
 //!
-//! One event loop, any number of windows (`docs/adr/0004-multi-window.md`).
-//! The launcher opens the main window; a frame that declares another
-//! (`Ui::window`) has the core queue a `WindowCommand::Open`, and the runner
-//! opens it as a [`Pane`] — a window, its surface, its `Core` and the
-//! per-window input state — on the same `Session` and the same GPU device.
-//! `App::view` runs once per pane per frame, with `Ui::window_name` saying
-//! which; events carry the pane's `WindowId`.
+//! kui is a Rust UI library whose view is a plain data tree rebuilt every
+//! frame. `kui_core` holds the model, the layout and the widgets, `kui_wgpu`
+//! draws them, and this crate puts a window around both; it is the crate
+//! most apps depend on. It re-exports all of kui-core, so `kui_native::`
+//! reaches everything, and adds the [`App`] trait, the [`app`] launcher
+//! builder, multiple windows, the clipboard, file dialogs, audio, AccessKit
+//! and a headless [`testing`] driver. `kui-derive` supplies
+//! `#[derive(Message)]`; kui-lua, kui-ffi and kui-node are bindings over the
+//! same core.
+//!
+//! # Quick start
+//!
+//! ```rust,no_run
+//! use kui_native::{App, TextStyle, Ui};
+//!
+//! struct Hello;
+//!
+//! impl App for Hello {
+//!     // Called once per frame. Everything on screen is declared here,
+//!     // from scratch, every time.
+//!     fn view(&mut self, ui: &mut Ui<'_>) {
+//!         let theme = ui.theme();
+//!         ui.text("Hello, kui", TextStyle::new(24.0).color(theme.fg));
+//!     }
+//! }
+//!
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     kui_native::app("Hello").size(360.0, 200.0).run(Hello)
+//! }
+//! ```
+//!
+//! # State and events
+//!
+//! A button carries a message. After the frame, each event it produced
+//! reaches [`App::on_event`], and [`UiEvent::message`] reads the message
+//! back as the app's own enum.
+//!
+//! ```rust,no_run
+//! use kui_native::widgets;
+//! use kui_native::{App, Message, NodeSpec, TextStyle, Ui, UiEvent};
+//!
+//! // `derive(Message)` turns each variant into plain data on the way out
+//! // and back into `Msg` on the way in.
+//! #[derive(Message, Clone, Debug, PartialEq)]
+//! enum Msg {
+//!     Inc,
+//!     Dec,
+//! }
+//!
+//! #[derive(Default)]
+//! struct Counter {
+//!     count: i64,
+//! }
+//!
+//! impl App for Counter {
+//!     fn view(&mut self, ui: &mut Ui<'_>) {
+//!         let t = ui.theme();
+//!         ui.with(NodeSpec::column().fill().center().gap(16.0).bg(t.bg), |ui| {
+//!             ui.text(&self.count.to_string(), TextStyle::new(56.0).color(t.fg));
+//!             ui.with(NodeSpec::row().gap(8.0), |ui| {
+//!                 widgets::button(ui, "-1", Msg::Dec);
+//!                 widgets::button(ui, "+1", Msg::Inc);
+//!             });
+//!         });
+//!     }
+//!
+//!     fn on_event(&mut self, ev: UiEvent) {
+//!         match ev.message::<Msg>() {
+//!             Some(Msg::Inc) => self.count += 1,
+//!             Some(Msg::Dec) => self.count -= 1,
+//!             // Not ours: a resize, a focus change, a window event.
+//!             None => {}
+//!         }
+//!     }
+//! }
+//!
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     kui_native::app("Counter").size(360.0, 240.0).run(Counter::default())
+//! }
+//! ```
+//!
+//! The book walks from here through controls, lists, the keyboard, floating
+//! windows, motion, effects and tests, one step per chapter.
+//!
+//! # Where to look
+//!
+//! - [`App`]: the trait an app implements; `view`, `on_event`, `setup`,
+//!   `teardown`.
+//! - [`app`] and [`Launcher`]: title, size, chrome, icon, extensions, then
+//!   [`Launcher::run`]; [`Launcher::open`] gives a host that owns the loop a
+//!   [`PumpRunner`] instead.
+//! - [`Ui`]: what `view` is given; [`Ui::with`], [`Ui::text`],
+//!   [`Ui::window`].
+//! - [`NodeSpec`] and [`TextStyle`]: a box's layout, look and handlers; a
+//!   text's size, font and colour.
+//! - [`widgets`]: buttons, checkboxes, text inputs, selects, sliders,
+//!   lists, tables and menus.
+//! - [`UiEvent`]: what `on_event` receives, with the readers on it.
+//! - [`testing`]: a headless driver for an `App`, for `cargo test`.
+//! - From kui-core: [`theme`], [`anim`] (transitions and springs),
+//!   [`window`] (several windows), [`message`] and [`Value`] (the payload
+//!   behind a message), [`Core`] (one window's runtime, for hosts and
+//!   tests).
+//!
+//! # Windows
+//!
+//! One event loop, any number of windows. The launcher opens the main
+//! window; a frame that declares another with [`Ui::window`] opens it on the
+//! same session and GPU device, and a frame that stops declaring it closes
+//! it. `view` runs once per open window per frame, [`Ui::window_name`] says
+//! which (`"main"` for the launcher's), and every event carries its window's
+//! [`WindowId`].
+//!
+//! # Features
+//!
+//! - `audio` (default): plays sounds through kira and cpal. Off, audio
+//!   commands are dropped and no audio library is linked (ALSA on Linux).
+//! - `accesskit` (default): exposes the access tree to screen readers
+//!   through AccessKit. Off, the tree is still built and nothing reaches
+//!   the OS.
+//! - `derive` (default): `#[derive(Message)]`. Off, messages are built and
+//!   matched as [`Value`]s by hand.
+//! - `dialogs` (default): the platform's file dialogs through rfd (the XDG
+//!   portal on Linux). Off, every dialog answers at once as cancelled.
+//! - `smoke`: honours `KUI_SMOKE_FRAMES=n`, which closes the window after
+//!   `n` frames, in a release build. A debug build honours it regardless.
+//!
+//! # Linux
+//!
+//! Building needs `pkg-config` and ALSA's headers (`libasound2-dev` on
+//! Debian and Ubuntu). A window loads the rest at run time: `libxkbcommon`
+//! (and `libxkbcommon-x11` on X11); `libX11`, `libXcursor`, `libXrandr` and
+//! `libXi` on X11 or `libwayland-client` on Wayland; `libvulkan` with a
+//! driver, or `libEGL`. A missing one fails when the window opens, naming
+//! the library. macOS and Windows need only a Rust toolchain.
+//!
+//! The book: <https://kui-book.qxuken.dev>. Repository and design records
+//! (under `docs/adr`): <https://github.com/qxuken/kui>.
 
 use std::sync::Arc;
 
@@ -22,13 +151,11 @@ mod axis_lock;
 mod clipboard;
 mod dialogs;
 mod icon;
-/// ADR 0009's arithmetic: where a pointer in one window is in another.
 mod keys;
-/// The traffic lights' keep-out and the OS titlebar's height, measured
-/// (backlog W17).
+/// The traffic lights' keep-out and the OS titlebar's height, measured.
 #[cfg(target_os = "macos")]
 mod macos_chrome;
-/// Files dragged in from the Finder, with where they are (ADR 0031).
+/// Files dragged in from the Finder, with where they are.
 #[cfg(target_os = "macos")]
 mod macos_drop;
 #[cfg(target_os = "macos")]
@@ -36,10 +163,10 @@ mod macos_force;
 /// A non-activating window that refuses to become key (the popup flick).
 #[cfg(target_os = "macos")]
 mod macos_key;
-/// The platform's own context menu, where there is one (ADR 0017 step 3).
+/// The platform's own context menu, where there is one.
 #[cfg(target_os = "macos")]
 mod macos_menu;
-/// The palette's and dictation's inserts, which winit's view drops (W15).
+/// The palette's and dictation's inserts, which winit's view drops.
 #[cfg(target_os = "macos")]
 mod macos_text_input;
 mod menus;
@@ -50,7 +177,6 @@ mod retarget;
 mod retry;
 mod scroll_gesture;
 mod secure_input;
-/// A headless driver for an `App` (backlog DX11).
 pub mod testing;
 mod windows;
 
@@ -85,59 +211,57 @@ use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey};
 // OS handle the event loop routes by, and only this file names it.
 use winit::window::{CursorIcon, ResizeDirection, Window, WindowId as WinitWindowId};
 
+/// What a kui application implements: a `view` that declares each frame
+/// and an `on_event` that answers what the frame produced.
+///
+/// Only [`view`](Self::view) is required. Hand a value of the type to
+/// [`Launcher::run`], or to [`testing::Drive`] in a test.
 pub trait App {
     /// Builds one window's frame. Called once per open window per frame;
     /// `ui.window_name()` says which (`"main"` for the launcher's).
     fn view(&mut self, ui: &mut Ui<'_>);
+    /// Receives one event the frame produced: a click's message, a key
+    /// press, a resize, a window event. Called after the frame, once per
+    /// event; [`UiEvent::message`] reads a `#[derive(Message)]` back out.
+    /// The default ignores every event.
     fn on_event(&mut self, _ev: UiEvent) {}
-    /// [`Self::on_event`] with the core of the window the event came from
-    /// (`docs/adr/0036-an-event-handler-gets-its-window.md`): what the app
-    /// does about an event beyond its model — write the clipboard, ask for
-    /// a paste, move focus, reveal or scroll to a row, ask for a frame —
-    /// is a call on it here, as Node's `update` makes on its surface,
-    /// rather than a field parked for the next `view`. The verbs land
-    /// where they say: a clipboard write goes out with this turn's
-    /// actions, a focus move or a reveal is seen by the next frame, which
-    /// the verb asks for. Building a frame (`frame`) is the runner's, not
-    /// the handler's. The default calls `on_event`, so an app that
-    /// overrides only that one is unchanged.
+    /// [`Self::on_event`] with the [`Core`] of the window the event came
+    /// from. Override it when answering an event means calling the core:
+    /// writing the clipboard, asking for a paste, moving focus, revealing a
+    /// row, asking for a frame. A clipboard write goes out with this turn's
+    /// actions; a focus move or a reveal is seen by the next frame. The
+    /// default calls `on_event`, so an app that overrides only that one is
+    /// unchanged.
     fn on_event_with(&mut self, ev: UiEvent, _core: &mut Core) {
         self.on_event(ev)
     }
-    /// Called once, before the window opens, with the one thing the loop
-    /// hands out: a [`Waker`] the app can clone into any thread. A PTY
-    /// reader, a file watcher, an LSP client or a socket calls
-    /// [`Waker::wake`] when it has changed what `view` will show, and the
-    /// loop draws; nothing else ever wakes it, since it parks between
-    /// events (backlog C21). The default keeps it: an app with no other
-    /// thread has no use for one.
+    /// Called once, before the window opens, with a [`Waker`] the app may
+    /// clone into any thread. The loop parks between events, so a thread
+    /// that changed what `view` will show (a PTY reader, a file watcher, a
+    /// socket) calls [`Waker::wake`] to get a frame drawn. The default
+    /// drops the waker.
     fn setup(&mut self, _waker: Waker) {}
-    /// Called once, when the main window is going for good — its close
-    /// button, Quit from the menu or the dock, `WindowCommand::Close` on
-    /// it, a pumped runner ended — before `run` returns or the process
-    /// exits (backlog F74). The place to keep what the app would
-    /// otherwise lose with the window: a session, a draft, a position.
-    /// The frame is over by then: there is no `Ui` and nothing draws.
-    /// A crash under `run` does not reach it; under a pumped runner a
-    /// panic unwinding through the host drops the runner, and the drop
-    /// retires it, so it does (backlog RG1) — and a `teardown` that panics
-    /// there aborts. The default does nothing.
+    /// Called once, when the main window is going for good (its close
+    /// button, Quit, `WindowCommand::Close` on it, a pumped runner ending),
+    /// before `run` returns. Save a session, a draft or a position here;
+    /// the frame is over, there is no `Ui` and nothing draws. A crash under
+    /// `run` does not reach it; a panic unwinding through a [`PumpRunner`]
+    /// does, and a `teardown` that panics there aborts. The default does
+    /// nothing.
     fn teardown(&mut self) {}
 }
 
-/// A handle into the event loop that any thread may hold: [`wake`] asks
-/// for a frame from wherever the app's data arrived. Cheap to clone, and
-/// harmless after the loop has ended (a wake nobody hears is dropped).
-///
-/// [`wake`]: Waker::wake
+/// A handle into the event loop that any thread may hold; [`Waker::wake`]
+/// asks for a frame from wherever the app's data arrived. Cheap to clone,
+/// and harmless after the loop has ended (a wake nobody hears is dropped).
+/// An app gets one in [`App::setup`], a host from [`PumpRunner::waker`].
 #[derive(Clone)]
 pub struct Waker(EventLoopProxy<access_bridge::UserEvent>);
 
 impl Waker {
-    /// Asks every window for a frame. The loop wakes, `view` runs, and
-    /// the frame is drawn — the same path a key press takes, minus the
-    /// event. Safe from any thread and at any rate: wakes coalesce into
-    /// the loop's next turn rather than queueing frames.
+    /// Asks every window for a frame: the loop wakes, `view` runs and the
+    /// frame is drawn. Safe from any thread and at any rate, since wakes
+    /// coalesce into the loop's next turn rather than queueing frames.
     pub fn wake(&self) {
         let _ = self.0.send_event(access_bridge::UserEvent::Wake);
     }
@@ -176,7 +300,24 @@ pub enum TextAa {
     Subpixel,
 }
 
-/// Entry point: `kui_native::app("title").custom_titlebar().run(my_app)`.
+/// Starts a [`Launcher`] for a window titled `title`.
+///
+/// Chain the window's options, then [`Launcher::run`]:
+///
+/// ```rust,no_run
+/// # use kui_native::{App, Ui};
+/// # struct Mine;
+/// # impl App for Mine { fn view(&mut self, _ui: &mut Ui<'_>) {} }
+/// kui_native::app("Mine")
+///     .size(800.0, 600.0)
+///     .min_size(320.0, 240.0)
+///     .devtools(true)
+///     .run(Mine)
+///     .unwrap();
+/// ```
+///
+/// The default window is 960 by 640 logical pixels with the OS's own
+/// chrome. `KUI_WINDOW=WxH` in the environment overrides the size.
 pub fn app(title: &str) -> Launcher {
     Launcher {
         title: title.to_string(),
@@ -197,10 +338,14 @@ pub fn app(title: &str) -> Launcher {
     }
 }
 
-/// Builder for the windowed runner.
 /// One [`Launcher::setup_core`] step.
 type CoreSetup = Box<dyn FnOnce(&mut Core)>;
 
+/// The windowed runner's builder, made by [`app`].
+///
+/// Every method takes and returns the launcher; [`Launcher::run`] opens the
+/// window and runs the event loop, [`Launcher::open`] opens it and hands the
+/// loop back as a [`PumpRunner`].
 pub struct Launcher {
     title: String,
     chrome: Chrome,
@@ -237,6 +382,7 @@ pub struct Launcher {
 }
 
 impl Launcher {
+    /// Who draws the window chrome; see [`Chrome`]. The OS by default.
     pub fn chrome(mut self, chrome: Chrome) -> Self {
         self.chrome = chrome;
         self
@@ -249,151 +395,120 @@ impl Launcher {
     }
 
     /// How many frames may be queued ahead of the one on screen, for every
-    /// window (backlog C47). Two by default
-    /// ([`kui_wgpu::DEFAULT_FRAME_LATENCY`]): every vsync gets a frame at
-    /// light load, where one lost 1–6% of them on macOS. On macOS 14+ the
-    /// runner starts frames that run back to back at the display's vsync
-    /// (`mod pacer`), so the second queued frame is slack and costs no
-    /// latency; where it cannot — Linux, a pumped runner — such a frame
-    /// reaches the screen a vsync later than with one. One on Windows,
-    /// where one already delivered every vsync (RG46). `KUI_FRAME_LATENCY`
-    /// overrides it, and `KUI_FRAME_PACING=0` turns the pacing off, for
-    /// comparing without a rebuild. Values below one are one.
+    /// window. Two by default ([`kui_wgpu::DEFAULT_FRAME_LATENCY`]), which
+    /// keeps every vsync fed at light load; one on Windows, where one
+    /// already does. On macOS 14+ frames are paced to the display, so the
+    /// second queued frame costs no latency; on Linux and under a pumped
+    /// runner it reaches the screen one vsync later. `KUI_FRAME_LATENCY`
+    /// overrides the value and `KUI_FRAME_PACING=0` turns the pacing off.
+    /// Values below one are one.
     pub fn frame_latency(mut self, frames: u32) -> Self {
         self.frame_latency = frames.max(1);
         self
     }
 
     /// Whether the core looks for silent misconfigurations and the runner
-    /// prints them to stderr (see `kui_core::diag`). Default: on in debug
-    /// builds, off in release — a shipped app stays quiet, a development
-    /// build says why the grow weight did nothing.
+    /// prints them to stderr (see [`diag`]). On in debug builds and off in
+    /// release unless set, so a shipped app stays quiet.
     pub fn diagnostics(mut self, on: bool) -> Self {
         self.diagnostics = Some(on);
         self
     }
 
-    /// Opens the app inside the core's devtools panel
-    /// (`docs/adr/0024-the-devtools-are-the-cores.md`): the event stream,
-    /// the facts and the tree, docked beside the app's own tree.
-    /// `KUI_DEVTOOLS=1` in the environment is the same ask for an app
-    /// that never made it. Sugar for `setup_core(|c| c.set_devtools(on))`.
+    /// Opens the app with the devtools panel docked beside it: the event
+    /// stream, the runtime's facts and the node tree. `KUI_DEVTOOLS=1` in
+    /// the environment asks the same of an app that never called this.
+    /// Sugar for `setup_core(|c| c.set_devtools(on))`.
     pub fn devtools(self, on: bool) -> Self {
         self.setup_core(move |core| core.set_devtools(on))
     }
 
     /// Respells the chord that moves the keyboard into the devtools panel
-    /// and back out — and brings a hidden panel back — from its default
-    /// `Ctrl+Shift+I`: `Accel::parse("f12")`, `"mod+shift+d"`, any
-    /// spelling a menu item takes. The panel's other chords stay
-    /// `Ctrl+Shift+<letter>`; with another chord set, `Ctrl+Shift+I` is
-    /// the app's again. Sugar for `setup_core(|c| c.set_devtools_key(key))`.
+    /// and back, and brings a hidden panel back, from its default
+    /// `Ctrl+Shift+I`: `Accel::parse("f12")`, `"mod+shift+d"`, any spelling
+    /// a menu item takes. The panel's other chords stay
+    /// `Ctrl+Shift+<letter>`, and `Ctrl+Shift+I` is the app's again. Sugar
+    /// for `setup_core(|c| c.set_devtools_key(key))`.
     pub fn devtools_key(self, key: Accel) -> Self {
         self.setup_core(move |core| core.set_devtools_key(key))
     }
 
-    /// Runs `f` on the main window's core before its first frame — the
-    /// place for what a core is *told* rather than declared: the devtools
-    /// doors, a pinned theme, `set_native_menus`. Every call adds one;
-    /// they run in order.
+    /// Runs `f` on the main window's [`Core`] before its first frame: the
+    /// place for what a core is told rather than declared in a view, such
+    /// as a pinned theme, `set_native_menus` or the devtools. Every call
+    /// adds one; they run in order.
     pub fn setup_core(mut self, f: impl FnOnce(&mut Core) + 'static) -> Self {
         self.setup_core.push(Box::new(f));
         self
     }
 
     /// Opens the main window on `core` rather than on one the launcher
-    /// makes: everything the host registered on it beforehand — fonts,
-    /// images, sounds, tokens, a pinned theme, the devtools doors,
-    /// `set_native_menus`, the text-cache budget — reaches the window,
-    /// and the core's session is the app's, so a declared second window
-    /// joins it and the handles a headless frame minted keep drawing. What
-    /// the launcher is told still applies on top, in the order it always
-    /// has: [`Launcher::diagnostics`] (or the build's default), then
-    /// `KUI_DEVTOOLS`, then every [`Launcher::setup_core`]. A C host
-    /// registers on a context and hands it to `kui_run_with`, which is
-    /// this door (backlog AR27); a Rust host that built a core to draw
-    /// headless first has it too.
+    /// makes. Everything registered on it beforehand (fonts, images,
+    /// sounds, tokens, a pinned theme, menus) reaches the window, and its
+    /// session becomes the app's, so a second window joins it and handles
+    /// minted by an earlier headless frame keep drawing. The launcher's own
+    /// settings still apply on top, in order: [`Launcher::diagnostics`],
+    /// then `KUI_DEVTOOLS`, then every [`Launcher::setup_core`]. For a host
+    /// that drew headless first, or built the core through a binding.
     pub fn core(mut self, core: Core) -> Self {
         self.core = Some(core);
         self
     }
 
-    /// Says that this app answers an event *after* `on_event` returns —
-    /// which only a host driving the loop itself can do, since only it has
-    /// a turn between pumps ([`Launcher::open`], [`PumpRunner`]). Node's
-    /// `update` is the case: `on_event` keeps the event, the pump returns,
-    /// and JS runs the handler and submits the next view.
+    /// Declares that the app answers an event after `on_event` returns,
+    /// which only a host driving the loop itself can do ([`Launcher::open`],
+    /// [`PumpRunner`]): `on_event` keeps the event, the pump returns, the
+    /// host runs its handler and submits the next view.
     ///
-    /// What it changes is one thing: an input whose events reached the app
-    /// **does not ask for the frame itself**. Ordinarily it does, and for
-    /// an app that answered inside `on_event` that frame is right — it
-    /// shows the button let go *and* what letting go did. For one that has
-    /// not answered yet the same frame shows the button let go and the
-    /// count still at its old value, with the new one a pump later: a
-    /// two-frame release, plain to see at an 8 ms pump. Declining to ask
-    /// leaves the frame to the host, which asks
-    /// ([`PumpRunner::request_redraw`], and every `setView` and drained
-    /// `pollEvents` does) once its handler has run, so the release and its
-    /// answer land in one frame.
-    ///
-    /// Nothing else is suppressed. A transition, a caret blink, a
-    /// first-frame retry, a `Waker` wake or the OS's own repaint still
-    /// paint whenever they ask, including during a platform's modal
-    /// move-resize loop, and an input that reached nobody still asks for
-    /// its own frame — so the worst this can cost is that a frame some
-    /// *other* subsystem asked for in the same pump shows the input's
-    /// answer one frame late.
+    /// With it set, an input whose events reached the app does not ask for
+    /// a frame itself; the host asks with [`PumpRunner::request_redraw`]
+    /// once its handler has run, so a button's release and what the release
+    /// did land in one frame instead of two. Nothing else changes: a
+    /// transition, a caret blink, a [`Waker`] wake or the OS's own repaint
+    /// still paint when they ask, and an input that reached nobody still
+    /// asks for its own frame.
     pub fn deferred_events(mut self) -> Self {
         self.deferred_events = true;
         self
     }
 
-    /// Pins part of `env.system` for this app's windows: every field of
+    /// Pins part of `env.system` for this app's windows. Every field of
     /// `pinned` that is not "cannot tell" is what the views read, over
     /// whatever the OS says, for as long as the app runs; the fields left
     /// at their default keep following the OS, and a change to one of
-    /// those still arrives as the `system` event, carrying the pin with it.
+    /// those still arrives as the `system` event.
     ///
-    /// ```no_run
+    /// ```rust,no_run
     /// # use kui_native::{SystemEnv, MotionPref};
     /// kui_native::app("mine").system(SystemEnv { motion: MotionPref::Reduced, ..Default::default() });
     /// ```
     ///
-    /// For looking at the window a user who asked for less motion, or a
-    /// dark appearance, would get — on a machine whose owner asked for
-    /// neither. The headless core takes the same reading through
-    /// `core.env.system` and needs none of this; a window cannot, because
-    /// its runner writes the real reading before every frame, which is
-    /// why there is no `set_env` on one and this is on the launcher
-    /// instead: the app asking in its own code, the same place
-    /// `KUI_SMOKE_FRAMES` was kept out of a shipped build for — an app you
-    /// ship should not change its motion because of a variable in the
-    /// environment it was launched from (backlog F47).
+    /// Use it to see the window a user who asked for less motion, or a
+    /// dark appearance, would get. It is on the launcher rather than an
+    /// environment variable so that a shipped app's motion is decided in
+    /// its own code; a headless core takes the same reading through
+    /// `core.env.system`.
     pub fn system(mut self, pinned: SystemEnv) -> Self {
         self.system = pinned;
         self
     }
 
     /// The icon every window of the app is created with: `rgba` is
-    /// `width` × `height` pixels, four bytes each, row by row from the top
-    /// left, alpha not premultiplied. Windows
-    /// shows it in the title bar, Alt-Tab and the taskbar and X11 in the
-    /// window manager's; macOS draws the bundle's `.icns` in the Dock and
-    /// Wayland the `.desktop` file's icon, and neither has a window icon,
-    /// so there it is nothing. Something a taskbar can shrink cleanly —
-    /// 64 to 256 px. Panics when the pixels are not that size, a
-    /// programming error at startup; [`Launcher::try_icon`] says why
-    /// instead.
+    /// `width` by `height` pixels, four bytes each, row by row from the top
+    /// left, alpha not premultiplied. Windows shows it in the title bar,
+    /// Alt-Tab and the taskbar, X11 in the window manager's; macOS and
+    /// Wayland take the app's icon from the bundle or the `.desktop` file
+    /// and ignore this. Pass something a taskbar can shrink cleanly, 64 to
+    /// 256 px. Panics when the pixels are not that size;
+    /// [`Launcher::try_icon`] returns the reason instead.
     ///
-    /// ```no_run
+    /// ```rust,no_run
     /// # let rgba = vec![0u8; 64 * 64 * 4];
     /// kui_native::app("mine").icon(rgba, 64, 64);
     /// ```
     ///
-    /// A Windows program's own icon is a resource linked into its
-    /// executable, where Explorer finds it — and winit does not give it to
-    /// the windows; [`Launcher::icon_resource`] does, and wins over the
-    /// pixels there.
+    /// On Windows, [`Launcher::icon_resource`] names the icon linked into
+    /// the executable and wins over these pixels.
     pub fn icon(self, rgba: Vec<u8>, width: u32, height: u32) -> Self {
         match self.try_icon(rgba, width, height) {
             Ok(this) => this,
@@ -401,10 +516,9 @@ impl Launcher {
         }
     }
 
-    /// [`Launcher::icon`] for pixels that came from outside the program —
-    /// Node's `icon` option, C's `kui_set_icon` — refused with the reason
-    /// rather than a panic. The launcher is consumed either way, as
-    /// [`Launcher::try_extension_as`]'s is.
+    /// [`Launcher::icon`] for pixels that came from outside the program,
+    /// refused with the reason rather than a panic. The launcher is
+    /// consumed either way.
     pub fn try_icon(mut self, rgba: Vec<u8>, width: u32, height: u32) -> Result<Self, String> {
         self.icon = Some(icon::from_rgba(rgba, width, height)?);
         Ok(self)
@@ -412,11 +526,11 @@ impl Launcher {
 
     /// The executable's icon resource `id` as every window's icon, on
     /// Windows: the `.ico` a `1 ICON "app.ico"` line in the program's `.rc`
-    /// links in, the one Explorer already draws for the file — each of the
-    /// title bar and the taskbar loads the frame drawn for its own size.
-    /// A resource the executable does not have is said once on stderr, and
-    /// [`Launcher::icon`]'s pixels are used if there are any. Nothing on
-    /// other platforms, so an app passes both and each OS takes its own.
+    /// links in, from which the title bar and the taskbar each load the
+    /// frame drawn for their size. A resource the executable does not have
+    /// is reported once on stderr, and [`Launcher::icon`]'s pixels are used
+    /// if there are any. Nothing on other platforms, so an app passes both
+    /// and each OS takes its own.
     pub fn icon_resource(mut self, id: u16) -> Self {
         self.icon_resource = Some(id);
         self
@@ -453,20 +567,19 @@ impl Launcher {
         self
     }
 
-    /// Loads `ext` under its own name as its namespace — `import fs` binds
-    /// `fs`. The slots it fills are declared as `ui.slot("<name>/<slot>")`
-    /// (ADR 0014). Panics when the name is already another extension's
-    /// namespace: two of one name need `extension_as`.
+    /// Loads `ext` under its own name as its namespace. The slots it fills
+    /// are declared as `ui.slot("<name>/<slot>")`. Panics when the name is
+    /// already another extension's namespace; two of one name need
+    /// [`Launcher::extension_as`].
     pub fn extension(self, ext: impl Extension + 'static) -> Self {
         let ns = ext.name().to_owned();
         self.extension_as(ns, ext)
     }
 
-    /// Loads `ext` under `namespace` — `import fs as left`. The host
-    /// decides the namespace, so the same plugin loaded twice is two
-    /// namespaces, two sets of slots and two sets of params. Panics on a
+    /// Loads `ext` under `namespace`, so the same extension loaded twice is
+    /// two namespaces with two sets of slots and params. Panics on a
     /// namespace already taken, an empty one, or an extension whose slot
-    /// names contain `/`: all three are programming errors at startup.
+    /// names contain `/`.
     pub fn extension_as(self, namespace: impl Into<String>, ext: impl Extension + 'static) -> Self {
         match self.try_extension_as(namespace, ext) {
             Ok(this) => this,
@@ -474,11 +587,9 @@ impl Launcher {
         }
     }
 
-    /// `extension_as` for a caller that has to report the refusal rather
-    /// than die of it — a plugin path that came from outside the program,
-    /// which is Node's `extensions` option. The launcher is consumed
-    /// either way: a host that cannot load the extension it was told to
-    /// load has nothing useful left to run.
+    /// [`Launcher::extension_as`] for a caller that reports the refusal
+    /// rather than panicking, such as a plugin named from outside the
+    /// program. The launcher is consumed either way.
     pub fn try_extension_as(
         mut self,
         namespace: impl Into<String>,
@@ -488,16 +599,15 @@ impl Launcher {
         Ok(self)
     }
 
-    /// A list already loaded, replacing any `extension` calls before it —
-    /// what a C host built into a context with `kui_ctx_add_extension`
-    /// and hands to `kui_run_with`, so that the one loader and its error
-    /// channel serve the window too.
+    /// Takes an [`Extensions`] list already loaded, replacing any
+    /// `extension` calls before it. For a host that built the list
+    /// elsewhere, as the C binding does.
     pub fn with_extensions(mut self, extensions: Extensions) -> Self {
         self.extensions = extensions;
         self
     }
 
-    /// `extension` for each, in order.
+    /// [`Launcher::extension`] for each, in order.
     pub fn extensions(mut self, exts: Vec<Box<dyn Extension>>) -> Self {
         for ext in exts {
             if let Err(e) = self.extensions.push(ext) {
@@ -508,7 +618,7 @@ impl Launcher {
     }
 
     /// The shell for `app`, boxed: the one generic step between an app
-    /// and the runner, kept to moving fields (C49). Everything after it
+    /// and the runner, kept to moving fields. Everything after it
     /// takes the box unsized, as a [`DynShell`].
     fn shell<A: App>(mut self, app: A) -> Box<Shell<A>> {
         let (diagnostics, session, core) = self.main_core();
@@ -629,20 +739,23 @@ impl Launcher {
             .and_then(|s| s.parse().ok())
     }
 
+    /// Opens the main window and runs the event loop until the main window
+    /// closes. Returns `Ok` then, or the error when the window or its
+    /// renderer could not be made. One event loop per process: a process
+    /// that has used [`Launcher::open`] opens again rather than calling
+    /// `run`.
     pub fn run<A: App>(self, app: A) -> Result<(), Box<dyn std::error::Error>> {
         let event_loop = run_loop()?;
         run_shell(event_loop, self.shell(app))
     }
 
     /// Opens the window but keeps the event loop in the caller's hands: the
-    /// returned [`PumpRunner`] processes OS events only when [`PumpRunner::pump`]
-    /// is called, so a foreign loop (Node/libuv, a game loop, a test harness)
-    /// can interleave with winit on the main thread. One event loop per
-    /// process — winit event loops are not recreatable on any desktop
-    /// platform — but any number of windows on it, and any number of
-    /// runners *in turn*: a runner whose main window has closed parks the
-    /// loop, and the next `open` on the thread takes it back (backlog
-    /// F58), so a process can open a window, close it, and open another.
+    /// returned [`PumpRunner`] processes OS events only when
+    /// [`PumpRunner::pump`] is called, so a foreign loop (libuv, a game
+    /// loop, a test harness) can interleave with winit on the main thread.
+    /// winit allows one event loop per process, but any number of runners
+    /// in turn: a runner whose main window has closed parks the loop, and
+    /// the next `open` on the thread takes it back.
     pub fn open<A: App>(self, app: A) -> Result<PumpRunner<A>, Box<dyn std::error::Error>> {
         let event_loop = take_event_loop()?;
         let mut shell = self.shell(app);
@@ -696,7 +809,7 @@ impl DynShell<'_> {
     /// The main window, or its renderer, could not be made: `why` becomes
     /// the error `run` or `open` returns, and the runner ends. `run`'s
     /// loop is asked to exit; a pumped one is not — it is parked for the
-    /// next runner, as when a window closes (backlog RG47).
+    /// next runner, as when a window closes.
     fn fail_open(&mut self, event_loop: &ActiveEventLoop, why: String) {
         self.startup_error = Some(why);
         self.exit_requested = true;
@@ -740,7 +853,7 @@ thread_local! {
     /// path never calls winit's `exit()` for the same reason: an exited
     /// loop answers every later pump with `Exit` and nothing public clears
     /// that; the runner ends itself on `exit_requested` instead, and the
-    /// loop stays live for the next shell (backlog F58).
+    /// loop stays live for the next shell.
     static PARKED_LOOP: std::cell::RefCell<Option<EventLoop<access_bridge::UserEvent>>> =
         const { std::cell::RefCell::new(None) };
 }
@@ -771,7 +884,7 @@ fn take_event_loop() -> Result<EventLoop<access_bridge::UserEvent>, winit::error
 /// drag for nothing — measured at 18 frames against 36 in a 578 ms drag —
 /// so they never wait.
 /// Puts a copy on the system clipboard, with the formatting beside the
-/// words where there is any (ADR 0017, decision 7).
+/// words where there is any.
 ///
 /// Both flavours or neither: `set_html` writes the HTML *and* the plain
 /// text it is given as an alternative, so an app that understands one
@@ -853,14 +966,17 @@ fn pump_once(
     }
 }
 
-/// A windowed runner driven from outside: same [`Shell`] as [`Launcher::run`]
-/// (input mapping, IME, clipboard, chrome, caret blink), but the host calls
-/// [`pump`](Self::pump) on its own cadence instead of parking in `run_app`.
+/// A windowed runner driven from outside, from [`Launcher::open`]: the
+/// same runner as [`Launcher::run`] (input mapping, IME, clipboard, chrome,
+/// caret blink), but the host calls [`pump`](Self::pump) or
+/// [`pump_until`](Self::pump_until) on its own cadence instead of parking
+/// in the event loop.
 ///
-/// Typed by its app for [`app_mut`](Self::app_mut) and
-/// [`route_events`](Self::route_events) alone: every method hands the
-/// shell on unsized, so the work is compiled once in kui rather than in
-/// every crate that opens one (backlog C49).
+/// Ask [`next_deadline`](Self::next_deadline) after each pump for how long
+/// to sleep, and [`request_redraw`](Self::request_redraw) after changing
+/// what `view` will produce. The runner ends when the main window closes;
+/// dropping it earlier closes the windows and parks the loop for the next
+/// `open`.
 pub struct PumpRunner<A: App> {
     state: PumpState,
     /// Dropped by hand, unsized (`drop_shell`): as a plain field its drop
@@ -879,11 +995,11 @@ struct PumpState {
     /// Every turn this runner has taken — [`pump`](PumpRunner::pump) and
     /// [`pump_until`](PumpRunner::pump_until) alike, the first one that
     /// opened the window included. What a driver's backoff is measured in
-    /// (backlog F62): the runner knows how often it pumped where the app
+    ///: the runner knows how often it pumped where the app
     /// could only read a process monitor.
     pumps: u64,
     /// The turns among `pumps` whose batch carried an OS event or a wake
-    /// (backlog F94): what `saw_event` marks, counted once per turn.
+    ///: what `saw_event` marks, counted once per turn.
     woken_pumps: u64,
 }
 
@@ -1052,57 +1168,46 @@ impl<A: App> PumpRunner<A> {
     }
 
     /// How many turns this runner has taken, the one that opened the
-    /// window included — every `pump` and `pump_until` that ran, not the
+    /// window included: every `pump` and `pump_until` that ran, not the
     /// no-ops after it retired. Monotonic, so two readings a second apart
-    /// are the pump rate over that second, which is what a driver's
-    /// backoff promises and what `frame_stats` cannot say (backlog F62).
-    /// Which of them something outside the app caused is
-    /// [`woken_pumps`](Self::woken_pumps).
+    /// give the pump rate over that second. How many of them something
+    /// outside the app caused is [`woken_pumps`](Self::woken_pumps).
     pub fn pumps(&self) -> u64 {
         self.state.pumps
     }
 
     /// How many of those [`pumps`](Self::pumps) found an OS event or a
-    /// wake in their batch: any window event but a redraw — a key, the
+    /// wake in their batch: any window event but a redraw (a key, the
     /// pointer crossing the window, a focus change, a resize, the window
-    /// moved or occluded — or anything that came through the loop's
-    /// proxy: a [`Waker::wake`], assistive technology asking, a file
-    /// dialog's answer. It is what makes
-    /// [`next_deadline`](Self::next_deadline) answer "now" after a pump,
-    /// counted (backlog F94). Monotonic, and never more than `pumps`.
+    /// moved or occluded), or anything that came through the loop's proxy
+    /// (a [`Waker::wake`], assistive technology asking, a file dialog's
+    /// answer). Monotonic, and never more than `pumps`.
     ///
-    /// Two readings a second apart with this one unmoved are a second the
-    /// desktop left the window alone: whatever it drew was the app's own
-    /// doing — a tick, a caret blink, a transition, the audio poll. A
-    /// moved one is the desktop or a person reaching in, which resets a
-    /// driver's backoff exactly as a regression would, so an idle-window
-    /// test that sees it move re-measures instead of failing.
+    /// Unmoved over a second, the desktop left the window alone and
+    /// whatever it drew was the app's own doing; moved, the desktop or a
+    /// person reached in, so an idle-window measurement should restart
+    /// rather than fail.
     pub fn woken_pumps(&self) -> u64 {
         self.state.woken_pumps
     }
 
-    /// `pump`, but parked until an OS event, a [`Waker::wake`] or
-    /// `deadline` — whichever comes first — so a host that owns the loop
-    /// blocks on all three instead of polling on a timer (backlog C21).
+    /// [`pump`](Self::pump), but parked until an OS event, a
+    /// [`Waker::wake`] or `deadline`, whichever comes first, so a host that
+    /// owns the loop blocks on all three instead of polling on a timer.
     /// Returns false once the main window has closed.
     pub fn pump_until(&mut self, deadline: std::time::Instant) -> bool {
         self.state.pump_until(&mut **self.shell, deadline)
     }
 
-    /// When the shell next needs pumping, as the last [`pump`](Self::pump)
-    /// left it — `None` when nothing it knows about is due, which is
-    /// `ControlFlow::Wait` for a loop that owns itself.
+    /// When the runner next needs pumping, as the last [`pump`](Self::pump)
+    /// left it: a caret blink, a tick, a transition's next frame, the audio
+    /// poll or a first-frame retry. `None` when nothing it knows about is
+    /// due. Ask after each pump and sleep until the answer rather than
+    /// pumping on a fixed interval.
     ///
-    /// A host driving from a foreign loop has to guess how long to leave
-    /// between pumps, and the guess is what pays: a caret blink, a tick, a
-    /// transition's next frame, the audio poll and a window's first-frame
-    /// retry are all deadlines the shell has already worked out, and a
-    /// driver on a fixed interval hits them a whole interval late. Ask
-    /// after each pump and sleep to the answer instead.
-    ///
-    /// What it does *not* say is whether an OS event is waiting — nothing
-    /// short of pumping can — so a driver still needs a ceiling of its own.
-    /// This only ever tells it to come back sooner.
+    /// It does not say whether an OS event is waiting, since nothing short
+    /// of pumping can, so a driver still needs a ceiling of its own; this
+    /// only ever says to come back sooner.
     pub fn next_deadline(&self) -> Option<std::time::Instant> {
         self.shell.next_deadline
     }
@@ -1113,20 +1218,21 @@ impl<A: App> PumpRunner<A> {
         self.state.waker(&**self.shell)
     }
 
+    /// The app, for a host that reads or changes its state between pumps.
     pub fn app_mut(&mut self) -> &mut A {
         &mut self.shell.app
     }
 
-    /// Delivers `events` the way this runner's own loop does
-    /// (`Shell::route_events`, ADR 0014 decision 6): an extension's event
-    /// to the extension, and what it replies to `to_app` carrying its
-    /// origin. A host that drives the core directly — `core_mut().press`,
-    /// an access action, a drained `take_pending_events` — produces events
-    /// the loop never saw, and pushing those at the app would hand it a
-    /// plugin's clicks and leave the plugin deaf to them.
+    /// Delivers `events` the way this runner's own loop does: an
+    /// extension's event to the extension, and the rest, with whatever the
+    /// extension replied, to `to_app`. Use it for events the loop never
+    /// saw, such as those a host produced by driving the core directly
+    /// (`core_mut().press`, an access action, a drained
+    /// `take_pending_events`); pushing those straight at the app would
+    /// hand it an extension's clicks and leave the extension deaf to them.
     ///
     /// `to_app` is lent the core of the window each event came from, as
-    /// the runner's own loop lends it to `App::on_event_with` (ADR 0036).
+    /// [`App::on_event_with`] is.
     pub fn route_events(
         &mut self,
         events: impl IntoIterator<Item = UiEvent>,
@@ -1153,11 +1259,10 @@ impl<A: App> PumpRunner<A> {
         self.shell_mut().core_mut()
     }
 
-    /// The core of the window `id` names, if that window is open — the
-    /// main window's for `WindowId::MAIN`. Everything that is one
-    /// window's rather than the session's — its focus, its editors' text,
-    /// its scroll offsets, its tokens — is answered by this core and no
-    /// other (backlog AR12).
+    /// The core of the window `id` names, if that window is open; the main
+    /// window's for `WindowId::MAIN`. Everything that is one window's
+    /// rather than the session's (its focus, its editors' text, its scroll
+    /// offsets, its tokens) is answered by this core and no other.
     pub fn core_mut_of(&mut self, id: WindowId) -> Option<&mut Core> {
         self.shell_mut().core_mut_of(id)
     }
@@ -1171,19 +1276,17 @@ impl<A: App> PumpRunner<A> {
 
     /// The main window's inner size (logical px) and its scale factor.
     /// Unlike `core_mut().viewport()` this is known before the first frame,
-    /// so a host can size its model at setup — through
-    /// `core_mut().host_area(size)`, which is what the next frame lays out
-    /// against: the window less the devtools' dock while the panel is
-    /// docked (`docs/adr/0024`), and the window itself otherwise.
+    /// so a host can size its model at setup. `core_mut().host_area(size)`
+    /// is what the next frame lays out against: the window less the
+    /// devtools' dock while the panel is docked, the window otherwise.
     pub fn window_size(&self) -> (Size, f32) {
         self.shell().window_size()
     }
 
-    /// Schedules a redraw of every window (call after changing what `view`
-    /// will produce). Under [`Launcher::deferred_events`] it is also what
-    /// ends a frame's wait: the host calling this is the host saying its
-    /// view is current, so the frame that was waiting can be painted now —
-    /// with the answer in it.
+    /// Schedules a redraw of every window; call it after changing what
+    /// `view` will produce. Under [`Launcher::deferred_events`] it also
+    /// ends a frame's wait: the host is saying its view is current, so the
+    /// waiting frame is painted with the answer in it.
     pub fn request_redraw(&self) {
         self.shell().request_redraw();
     }
@@ -1193,14 +1296,15 @@ impl<A: App> PumpRunner<A> {
         self.shell.exit_requested = true;
     }
 
-    /// Hands the core's queued audio commands to the device now, rather
-    /// than at the next pump — for hosts that call `Core::play` between
-    /// pumps and want the sound to start at once.
+    /// Hands the core's queued audio commands to the device now rather than
+    /// at the next pump, for a host that calls `Core::play` between pumps
+    /// and wants the sound to start at once.
     pub fn flush_audio(&mut self) {
         self.shell_mut().apply_audio();
     }
 }
 
+/// `app(title).extensions(extensions).run(application)` in one call.
 pub fn run<A: App>(
     title: &str,
     application: A,
@@ -1343,7 +1447,7 @@ fn wanted_text_aa(launcher: TextAa) -> TextAa {
 /// lights hidden. It keeps the rounded corners, the drop shadow and the
 /// native edge-resizing that a borderless window has none of.
 ///
-/// Found by pressing a menu item and watching nothing happen (backlog W1);
+/// Found by pressing a menu item and watching nothing happen;
 /// the popup surface and `Chrome::Borderless` share this because they were
 /// separately wrong in the same way.
 fn undecorated(attrs: winit::window::WindowAttributes) -> winit::window::WindowAttributes {
@@ -1362,8 +1466,7 @@ fn undecorated(attrs: winit::window::WindowAttributes) -> winit::window::WindowA
     }
 }
 
-/// A popup this press is about (`docs/adr/0009-press-drag-release-into-a-popup.md`,
-/// decision 1): one that opened while the primary button was down, or the
+/// A popup this press is about : one that opened while the primary button was down, or the
 /// one the button went down inside. For the rest of that press the owner's
 /// moves are retargeted into it and its release is classified against it.
 struct Armed {
@@ -1383,7 +1486,7 @@ struct Armed {
 /// boxed, and handed over unsized. Written `impl<A: App> Shell<A>`,
 /// the whole runner was instantiated and optimised again inside every app
 /// crate, on every edit: the counter's release rebuild went from 1.20 s
-/// at alpha.9 to 1.57 s at alpha.18 as the runner grew (backlog C49).
+/// to 1.57 s as the runner grew.
 struct Shell<A: App + ?Sized> {
     title: String,
     /// What every window is created with (`Launcher::icon`).
@@ -1404,7 +1507,7 @@ struct Shell<A: App + ?Sized> {
     /// applied to every core.
     subpixel: bool,
     /// Each under the namespace the host gave it; their `Fill` is what fills
-    /// the slots a view declares (ADR 0014).
+    /// the slots a view declares.
     extensions: Extensions,
     /// What every window shares: fonts, images, sounds, the audio queue and
     /// the declared window set.
@@ -1431,13 +1534,13 @@ struct Shell<A: App + ?Sized> {
     pretended_loss: bool,
     /// Caps Lock and Num Lock as the lock keys' presses have turned them,
     /// in any window — what a press reports where the OS is not asked
-    /// (`keys::lock_state`, backlog F108). One keyboard, one record: it
+    /// (`keys::lock_state`). One keyboard, one record: it
     /// was each pane's, so a popup began at off and a toggle in one window
-    /// never reached another (backlog RG96).
+    /// never reached another.
     locks: kui_core::KeyLocks,
     /// The layout's script as the letter keys have shown it — what a
-    /// press goes by where the OS is not asked (`keys::layout_script`,
-    /// backlog F115). One keyboard, one record, as `locks`.
+    /// press goes by where the OS is not asked (`keys::layout_script`).
+    /// One keyboard, one record, as `locks`.
     script: kui_core::LayoutScript,
     /// Origin of the frame clock handed to the cores for transitions.
     epoch: std::time::Instant,
@@ -1451,8 +1554,8 @@ struct Shell<A: App + ?Sized> {
     /// `sync_env`, so it is never lost to the per-frame write.
     pinned_system: SystemEnv,
     clipboard: Option<arboard::Clipboard>,
-    /// The platform's context menu, where the platform has one (ADR 0017
-    /// step 3). `None` on every other platform and on a macOS build that
+    /// The platform's context menu, where the platform has one.
+    /// `None` on every other platform and on a macOS build that
     /// could not reach the main thread, and then the core draws its own.
     #[cfg(target_os = "macos")]
     native_menu: Option<macos_menu::MacMenu>,
@@ -1462,7 +1565,7 @@ struct Shell<A: App + ?Sized> {
     #[cfg(target_os = "macos")]
     menu_shown: bool,
     /// The platform's application menu bar, where the platform has one
-    /// (`docs/adr/0018-a-menu-bar-the-app-declares.md`). One per process,
+    ///. One per process,
     /// because that is what macOS has: it carries the declaration of the
     /// window that has the keyboard, or of whichever window made one.
     #[cfg(target_os = "macos")]
@@ -1500,7 +1603,7 @@ struct Shell<A: App + ?Sized> {
     /// could not: `run` and `open` return it as their error. It was an
     /// `expect`, and a panic there aborted a Node process outright — the
     /// unwind cannot cross the addon's boundary — when a compositor that
-    /// had just gone away refused the window (backlog RG47).
+    /// had just gone away refused the window.
     startup_error: Option<String>,
     /// Whether `App::teardown` has run: once, whichever of the loop's
     /// exit and the runner's retirement comes first.
@@ -1508,18 +1611,18 @@ struct Shell<A: App + ?Sized> {
     /// The one count of secure keyboard entry this runner may hold, moved
     /// at the end of every batch to whether a window whose frame asked
     /// (`Ui::secure_input`) has the keyboard, given back at teardown and
-    /// on drop (backlog F85, `mod secure_input`).
+    /// on drop (`mod secure_input`).
     secure_input: secure_input::SecureInput,
     /// Driven by a `PumpRunner` rather than `run_app`: the main window's
     /// close ends the runner (`exit_requested`) instead of exiting winit's
-    /// loop, which the next runner on this thread reuses (backlog F58).
+    /// loop, which the next runner on this thread reuses.
     pumped: bool,
     /// Whether `resumed` has opened the main window — once per shell, so a
     /// reused loop that delivers no `resumed` opens it from `about_to_wait`
     /// and a main window the user closed is not reopened from there.
     opened: bool,
-    /// Which pane the primary button is down in, if any. ADR 0009 arms a
-    /// popup against it: a non-activating popup that opens while this is
+    /// Which pane the primary button is down in, if any. A
+    /// popup is armed against it: a non-activating popup that opens while this is
     /// set joins that press, which is the observable form of "the drag
     /// whose press opened the popup" and needs no geometry.
     primary_down: Option<WindowId>,
@@ -1529,7 +1632,7 @@ struct Shell<A: App + ?Sized> {
     /// first.
     armed: Vec<Armed>,
     /// A primary press that dismissed a non-activating popup and was
-    /// consumed rather than dispatched (ADR 0009 decision 5), by the pane
+    /// consumed rather than dispatched, by the pane
     /// it landed in. Its release is swallowed with it: the core never saw
     /// the `down`, so nothing should see the `up`.
     swallowed_press: Option<WindowId>,
@@ -1550,7 +1653,7 @@ struct Shell<A: App + ?Sized> {
     /// signal for "somebody is using this window".
     saw_event: bool,
     /// `saw_event` as `about_to_wait` took it, left for the pump runner to
-    /// take in turn and count (`PumpRunner::woken_pumps`, backlog F94). A
+    /// take in turn and count (`PumpRunner::woken_pumps`). A
     /// loop that owns itself never reads it.
     woke: bool,
     /// The host answers events after the loop hands them over
@@ -1572,7 +1675,7 @@ struct Shell<A: App + ?Sized> {
 
 /// A shell over any app: what the runner is written against. Generic only
 /// in a lifetime, which is erased, so its code is kui's and not the app
-/// crate's (backlog C49), and an app that borrows is still an app.
+/// crate's, and an app that borrows is still an app.
 type DynShell<'a> = Shell<dyn App + 'a>;
 
 /// The core of window `id`, from a shell's two homes for one: the panes,
@@ -1647,7 +1750,7 @@ impl DynShell<'_> {
         }
     }
 
-    /// `App::teardown`, once (backlog F74): from `exiting` — the loop's
+    /// `App::teardown`, once: from `exiting` — the loop's
     /// last word, which the OS's Quit reaches too, on macOS through
     /// `applicationWillTerminate` where the process ends without `run`
     /// ever returning — and from a pumped runner's retirement, whichever
@@ -1686,8 +1789,8 @@ impl DynShell<'_> {
         }
     }
 
-    /// The file drags the platform reported since the last turn (ADR
-    /// 0031): on macOS the delegate override's messages, each with the
+    /// The file drags the platform reported since the last turn:
+    /// on macOS the delegate override's messages, each with the
     /// position AppKit gave it, dispatched to the pane whose delegate
     /// spoke and followed by the stamp that delegate answers the OS from;
     /// elsewhere the batch winit's per-file events built, at the pane's
@@ -1741,7 +1844,7 @@ impl DynShell<'_> {
     /// the events routed, the menu actions, the window commands, the
     /// audio. Returns where that pane is afterwards — the commands may
     /// have closed a window, and a close in front of it moves it down,
-    /// so its index is not its identity (backlog AR39); `None` when the
+    /// so its index is not its identity; `None` when the
     /// input closed the pane itself. A caller that goes on addressing the
     /// pane goes on with the returned index.
     fn dispatch(
@@ -2227,7 +2330,7 @@ impl DynShell<'_> {
 #[cfg(target_os = "macos")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AppliedBar {
-    /// The standard bar (ADR 0030): no window declared one, or the front
+    /// The standard bar: no window declared one, or the front
     /// window draws its own declaration and the platform's is the standard.
     Standard,
     /// A window's declaration, at that revision.
@@ -3056,7 +3159,7 @@ mod tests {
     }
 
     /// An app that borrows is still an app: the runner is compiled once
-    /// against `Shell<dyn App + 'a>` (backlog C49), and neither `run` nor
+    /// against `Shell<dyn App + 'a>`, and neither `run` nor
     /// `open` asks for `'static`. Checked by the compiler alone: a loop
     /// cannot be built on a test's worker thread.
     #[test]
@@ -3078,7 +3181,7 @@ mod tests {
     }
 
     /// `App::teardown` runs once, whichever of the runner's ends comes
-    /// first and however many come after (backlog F74, tested under RG1):
+    /// first and however many come after:
     /// `retire` — what a pump returning false, `request_exit` and the
     /// runner's drop all reach — and `teardown_once` itself, which is what
     /// the loop's `exiting` calls. The runner is built without a loop
@@ -3130,7 +3233,7 @@ mod tests {
 
     /// A turn whose batch saw an event is counted once, and the flag is
     /// taken with it: left set, every quiet turn after the first event
-    /// would count, and a test reading `woken_pumps` (backlog F94) would
+    /// would count, and a test reading `woken_pumps` would
     /// see the desktop in every idle second. Driven through `tally`, the
     /// step each pump ends with, since `about_to_wait` — which sets the
     /// flag — needs a live loop, and winit builds one on the main thread
@@ -3245,7 +3348,7 @@ mod tests {
         );
     }
 
-    /// `Launcher::core` (backlog AR27): what the host registered on the
+    /// `Launcher::core`: what the host registered on the
     /// core it hands over is the window's, its session is the app's, and
     /// what the launcher was told still lands on top, in order.
     #[test]

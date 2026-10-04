@@ -1,8 +1,7 @@
 //! Popups and the keyboard's owner: which pane a key goes to while a
 //! non-activating popup is up, the focus settling that follows an OS
-//! focus change, dismissal, and the press-drag-release retargeting of
-//! `docs/adr/0009-press-drag-release-into-a-popup.md`. Split off `lib.rs`
-//! as a pure move.
+//! focus change, dismissal, and the press-drag-release retargeting
+//! into a popup. Split off `lib.rs` as a pure move.
 
 use super::*;
 
@@ -12,7 +11,7 @@ impl DynShell<'_> {
     /// A non-activating popup never takes OS focus — that is the point of
     /// it, since a combobox that blurred the field it belongs to would be
     /// useless — so the keyboard stays with the owner and the runner hands
-    /// it on (ADR 0004 decision 9). The owner's `env.focused` is left true
+    /// it on. The owner's `env.focused` is left true
     /// meanwhile, so the field still draws focused while the arrow keys
     /// walk the list. A popup that *did* ask to activate holds its own
     /// keyboard and needs none of this.
@@ -59,7 +58,7 @@ impl DynShell<'_> {
     /// nearest of its owners whose core delivered the press. A key pressed
     /// in the owner and let go while a popup borrows its keyboard is the
     /// owner's, which would otherwise hold it until it lost focus and let
-    /// go of it then, after keys pressed later (backlog RG103).
+    /// go of it then, after keys pressed later.
     pub(super) fn release_target(&self, i: usize, key: &kui_core::KeyPress) -> usize {
         std::iter::once(i)
             .chain(self.ancestors(i))
@@ -77,7 +76,7 @@ impl DynShell<'_> {
     /// and so does a press in the parent for the submenu hanging off it.
     ///
     /// Each is paired with whether it took OS focus when it opened, because
-    /// ADR 0009 decision 5 treats the two kinds differently: the press that
+    /// the two kinds are treated differently: the press that
     /// dismisses a **non-activating** popup is consumed, while an
     /// activating one (a tear-off panel) keeps the pass-through it has.
     pub(super) fn popups_outside(&self, i: usize) -> Vec<(WindowId, bool)> {
@@ -121,7 +120,7 @@ impl DynShell<'_> {
     /// Works out what each window's *view* should believe about keyboard
     /// focus, from what the OS said about all of them.
     ///
-    /// The two are not the same answer, and ADR 0004 decision 9 is why: a
+    /// The two are not the same answer, and this is why: a
     /// non-activating popup must not take the focus ring off the field
     /// that opened it, so **a window that owns one reads as focused while
     /// the popup holds the keyboard**. Without that the owner draws one
@@ -185,8 +184,8 @@ impl DynShell<'_> {
         }
     }
 
-    /// Secure keyboard entry, moved to what this batch settled (backlog
-    /// F85): on while a window whose last frame asked for it
+    /// Secure keyboard entry, moved to what this batch settled:
+    /// on while a window whose last frame asked for it
     /// (`Ui::secure_input`) has the keyboard, as its view reads it —
     /// `env.focused`, which an owner keeps while its popup holds the
     /// keyboard, the keys still being ours — and off otherwise. After
@@ -236,7 +235,7 @@ impl DynShell<'_> {
     /// Reports a dismissal to the popup's own core and routes the event.
     /// **Closes nothing**: the app stops declaring the window on the frame
     /// it decides to, exactly as it answers a `modal` node's dismissal
-    /// (ADR 0003 decision 6, one level up). Raised on the popup's own core,
+    /// (one level up). Raised on the popup's own core,
     /// so `UiEvent::window` is the window it is about — the `window` event
     /// cannot do that, because the window it names has just stopped or not
     /// yet started existing.
@@ -254,7 +253,7 @@ impl DynShell<'_> {
     }
 
     /// Feeds a move the pressed pane received to every popup armed into
-    /// that press, in that popup's own coordinates (ADR 0009 decision 2).
+    /// that press, in that popup's own coordinates.
     ///
     /// The OS gives a captured drag to the window of the mouse-down, so a
     /// press on a combobox field and a drag over its menu arrive here, at
@@ -308,8 +307,8 @@ impl DynShell<'_> {
         }
     }
 
-    /// Classifies the primary release that ends an armed press (ADR 0009
-    /// decision 4), and disarms it whatever the answer.
+    /// Classifies the primary release that ends an armed press,
+    /// and disarms it whatever the answer.
     ///
     /// **Over an armed popup**, the driver synthesises the press-and-release
     /// that popup never saw, straight into its core rather than back through
@@ -328,7 +327,7 @@ impl DynShell<'_> {
     ///
     /// **Anywhere else**, every armed popup is asked to go away, because a
     /// native menu closes when the pointer is dragged off it and released.
-    /// That is also the measured case in backlog W2 — pressed in the popup
+    /// That is also the measured case — pressed in the popup
     /// and dragged off its top edge — where the pane the press is in is the
     /// armed popup itself: a release over it is its own release and gets no
     /// synthetic pair, and a release over the field it hangs under is that

@@ -1,4 +1,4 @@
-//! The picture the OS shows for the app's windows (backlog F86): the
+//! The picture the OS shows for the app's windows: the
 //! launcher's [`icon`](crate::Launcher::icon) and
 //! [`icon_resource`](crate::Launcher::icon_resource), made into icons once
 //! and handed to every window as it is created: the pixels as winit's,
@@ -29,8 +29,7 @@ pub(crate) struct AppIcon {
     /// linked into, which is the program only when kui is linked into it
     /// — under Node it is `kui_node.dll` and for a C host `kui_ffi.dll`,
     /// neither with a resource section, so their windows fell back to the
-    /// pixels however plainly `node.exe` or the host carried the icon
-    /// (backlog RG41).
+    /// pixels however plainly `node.exe` or the host carried the icon.
     #[cfg(target_os = "windows")]
     resource: Option<ResourceIcons>,
 }

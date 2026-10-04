@@ -1,6 +1,5 @@
 //! The macOS context menu: an `NSMenu`, shown where the platform shows
-//! one, with the platform's own wording, keyboard and Services
-//! (`docs/adr/0017-selection-as-a-scope.md`, decision 5, step 3).
+//! one, with the platform's own wording, keyboard and Services.
 //!
 //! **Why this is deferred rather than shown where the press is handled.**
 //! `popUpMenuPositioningItem:atLocation:inView:` runs a nested modal run
@@ -21,7 +20,7 @@
 //! caller supplied.
 //!
 //! **The application menu bar is the other half of this file**
-//! ([`MacMenuBar`], `docs/adr/0018-a-menu-bar-the-app-declares.md`). It is
+//! ([`MacMenuBar`]). It is
 //! the same `NSMenu`, one level up and with the opposite lifetime: not
 //! popped up and torn down around one press, but *set* on `NSApp` and left
 //! there until the declaration changes. It also needs none of the deferral
@@ -32,7 +31,7 @@
 //! that may be asleep, so the target holds a [`Waker`] and rings it.
 //!
 //! **And the bar that is up when the app declares none** ([`MacMenuBar`]
-//! again, `docs/adr/0030-the-standard-menus-the-runner-keeps.md`): winit's
+//! again): winit's
 //! application menu kept as it is, with an Edit menu and a Window menu
 //! beside it. The Window menu is what macOS's window shortcuts fire
 //! through — Fill, Center, the tiling arrows and full screen are rows
@@ -158,7 +157,7 @@ fn build(mtm: MainThreadMarker, target: &MenuTarget, items: &[MenuItem]) -> Reta
 /// The accelerator a row draws without binding it: one AppKit cannot
 /// take as a key equivalent — a spelling kui does not parse (`"gd"`, an
 /// app's own multi-key hint) or one with no modifier, which would fire
-/// on every press of the key (see [`menu_row`]). ADR 0018 decision 7:
+/// on every press of the key (see [`menu_row`]). Such a hint is
 /// drawn exactly as written, bound by nobody.
 fn hint(item: &MenuItem) -> Option<&str> {
     let text = item.accel_text().filter(|t| !t.is_empty())?;
@@ -171,7 +170,7 @@ fn hint(item: &MenuItem) -> Option<&str> {
 
 /// Where a menu's hints end: one right-aligned tab stop for every row
 /// that has one, past the widest title, so the hints line up in a column
-/// of their own the way key equivalents do (backlog F119). AppKit has no
+/// of their own the way key equivalents do. AppKit has no
 /// key-equivalent column for a string it does not bind, so the hint is
 /// drawn in the row's attributed title, after a tab.
 #[derive(Clone, Copy)]
@@ -255,7 +254,7 @@ fn hinted_title(
 }
 
 /// One `NSMenuItem` for a row, the same for the context menu and the bar
-/// (ADR 0018): the row was one `MenuItem` on the way in, so it is one
+///: the row was one `MenuItem` on the way in, so it is one
 /// reading on the way out, wherever the platform shows it. `tag` is what
 /// `action` hears back.
 ///
@@ -334,7 +333,7 @@ fn menu_row(
 /// Shows the platform's definition panel for `text`, anchored at `at` —
 /// the baseline origin of the text on screen, logical viewport px. macOS's own Look Up: the same panel a force
 /// click opens in any AppKit text view, which is what a custom-drawn UI
-/// otherwise has no way to offer (ADR 0017, decision 6).
+/// otherwise has no way to offer.
 ///
 /// Not deferred, unlike the menu: `showDefinitionForAttributedString:`
 /// puts up an ordinary popover and returns, with no nested run loop to
@@ -393,7 +392,7 @@ fn responder_row(
 /// AppKit recognises a bar's Edit menu by its head's title in
 /// `setMainMenu:` of a root it has not seen, and appends a separator,
 /// Writing Tools ▸, AutoFill ▸, Start Dictation and Emoji & Symbols
-/// (backlog W15, checked by hand on macOS 26.6). None of the four did
+/// (checked by hand on macOS 26.6). None of the four did
 /// anything in a winit window; Emoji & Symbols and Start Dictation do
 /// now, through the view answers `mod macos_text_input` installs, and
 /// stay. Writing Tools opens its panel and every tool in it does
@@ -424,7 +423,7 @@ fn trim_edit(menu: &NSMenu, own: isize) {
     }
 }
 
-/// Enter Full Screen, in every Window menu kui registers (ADR 0030).
+/// Enter Full Screen, in every Window menu kui registers.
 ///
 /// AppKit adds this row itself, but only to a Window menu registered
 /// before `finishLaunching` — which none of kui's are, since the bar is
@@ -453,7 +452,7 @@ fn full_screen_rows(mtm: MainThreadMarker, menu: &NSMenu) {
     menu.addItem(&twin);
 }
 
-/// Keeps `window` out of the Window menu's list of windows (ADR 0030):
+/// Keeps `window` out of the Window menu's list of windows:
 /// a popup is a menu surface with no title, and the list is for windows
 /// the user would switch to.
 pub fn exclude_from_windows_menu(window: &Window) {
@@ -575,7 +574,7 @@ define_class!(
         }
 
         /// AppKit asks whether a row applies, for the menus that
-        /// autoenable: the standard Edit menu (ADR 0030, W14), whose chord
+        /// autoenable: the standard Edit menu, whose chord
         /// rows apply when the runner's last stamp said so, and a declared
         /// `Window` menu, whose own rows keep the state the declaration
         /// set — answering it back is what lets that menu autoenable at
@@ -615,14 +614,14 @@ impl BarTarget {
 /// frontmost window's frame declared.
 ///
 /// One per process and not one per window, because that is what the
-/// platform has (ADR 0018, decision 8): the runner applies the declaration
+/// platform has: the runner applies the declaration
 /// of the window that holds the keyboard, and re-applies when either the
 /// declaration or that window changes.
 pub struct MacMenuBar {
     target: Retained<BarTarget>,
     /// `(menu, item)` per flat tag, so a pick is one index lookup.
     map: RefCell<Vec<(usize, usize)>>,
-    /// The standard bar (ADR 0030), built the first time it is wanted and
+    /// The standard bar, built the first time it is wanted and
     /// kept: applying it again after a declaration is one `setMainMenu:`,
     /// and its Window menu stays the one `NSApp.windowsMenu` names.
     standard: RefCell<Option<Standard>>,
@@ -643,8 +642,8 @@ struct Standard {
 /// row of [`EDIT_ROWS`].
 const CHORD_TAG: isize = 1 << 20;
 
-/// A row of the standard Edit menu: the chord it spells (ADR 0030,
-/// decision 3). Chosen from the menu, it is *replayed* as that chord
+/// A row of the standard Edit menu: the chord it spells.
+/// Chosen from the menu, it is *replayed* as that chord
 /// rather than performed as a role, so the sink that would have heard
 /// ⌘C from the keyboard hears it from the menu too.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -665,12 +664,12 @@ const EDIT_ROWS: [Option<(&str, char, bool)>; 7] = [
     Some(("Select All", 'a', false)),
 ];
 
-/// Which rows of the standard Edit menu apply right now (backlog W14):
+/// Which rows of the standard Edit menu apply right now:
 /// what the runner reads off the front window's core once per event batch
 /// and stamps on the bar, so the menu greys Copy with nothing to copy the
 /// way a Mac menu does. Each row is lit when the chord it spells would do
 /// something — or when a key sink would hear the chord, since a sink may
-/// do anything with it (ADR 0011).
+/// do anything with it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct EditState {
     pub undo: bool,
@@ -747,7 +746,7 @@ impl MacMenuBar {
     /// The first menu is the application menu: macOS draws that one's title
     /// from the process itself whatever the declaration says, which is why
     /// an app's own menu belongs first and is documented as doing so.
-    /// An empty declaration puts the standard bar up (ADR 0030): the one
+    /// An empty declaration puts the standard bar up: the one
     /// a process with no declaration has, not no bar at all.
     ///
     /// A declared menu titled `Window` is registered as the platform's
@@ -824,7 +823,7 @@ impl MacMenuBar {
         }
     }
 
-    /// The standard bar, built once (ADR 0030): the application menu
+    /// The standard bar, built once: the application menu
     /// already on `NSApp` — winit's, with its Services entry still the one
     /// the app registered — an Edit menu of [`EDIT_ROWS`], and a Window
     /// menu with the three rows AppKit does not add itself.

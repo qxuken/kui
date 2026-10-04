@@ -1,4 +1,4 @@
-//! A trackpad swipe keeps to the axis it started on (backlog F104).
+//! A trackpad swipe keeps to the axis it started on.
 //!
 //! A finger on a trackpad never moves along one axis alone: a swipe
 //! meant straight down carries a few pixels sideways with it, and the
@@ -15,7 +15,7 @@
 //! it. Sticky, not fixed: when the other axis carries [`SWITCH_RATIO`]
 //! times the locked one's recent travel, and at least [`SWITCH_MIN`], the
 //! hand has turned and the lock turns with it. A finger put down ends the
-//! swipe too, even mid-glide (`mod scroll_gesture`, backlog F117): the
+//! swipe too, even mid-glide (`mod scroll_gesture`): the
 //! next hand chooses its own axis. Only pixel deltas are
 //! locked — a trackpad's, a Magic Mouse's; a wheel's notches are lines,
 //! one axis at a time already (Shift turns them sideways on purpose), and

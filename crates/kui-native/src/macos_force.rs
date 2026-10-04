@@ -1,5 +1,4 @@
-//! Force Touch: asking AppKit for the deep-click stage
-//! (`docs/adr/0017-selection-as-a-scope.md`, decision 6).
+//! Force Touch: asking AppKit for the deep-click stage.
 //!
 //! winit delivers `WindowEvent::TouchpadPressure` from the view's
 //! `pressureChangeWithEvent:` and never touches the view's *pressure
@@ -11,8 +10,8 @@
 //!
 //! **Unverified.** A force click needs a Force Touch trackpad and a real
 //! finger; nothing synthesises one, so this is the one call in the driver
-//! that no test and no scripted run can reach. It is also the ADR's
-//! second open question — whether the default configuration reaches stage
+//! that no test and no scripted run can reach. It is also an open design
+//! question — whether the default configuration reaches stage
 //! 2 on its own — asked and answered by declaring the behaviour we
 //! actually want rather than by relying on a default we cannot observe.
 

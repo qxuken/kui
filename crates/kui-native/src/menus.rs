@@ -1,13 +1,13 @@
 //! The platform's menus, pumped from the run loop: the native context
 //! menu and menu bar where the OS draws them, and the actions choosing a
-//! row leaves for the runner (`docs/adr/0018-a-menu-bar-the-app-declares.md`).
+//! row leaves for the runner.
 //! Split off `lib.rs` as a pure move.
 
 use super::*;
 
 impl DynShell<'_> {
     /// Hands a menu the core opened to the platform, and hands the
-    /// platform's answer back (ADR 0017, decision 5, step 3).
+    /// platform's answer back.
     ///
     /// Two turns, not one, because the platform's menu is modal and cannot
     /// be entered from inside a winit callback (see `macos_menu`): the
@@ -71,8 +71,8 @@ impl DynShell<'_> {
     }
 
     /// Hands the frontmost window's menu-bar declaration to the platform,
-    /// and the platform's answers back (ADR 0018, decisions 4 and 8) — or
-    /// the standard bar, when no window has declared one (ADR 0030).
+    /// and the platform's answers back — or
+    /// the standard bar, when no window has declared one.
     ///
     /// The bar belongs to the process and a `Core` to a window, so the one
     /// that holds the keyboard is the one whose declaration is up — and,
@@ -184,8 +184,8 @@ impl DynShell<'_> {
 
     /// Text the platform typed into a window from outside the keyboard —
     /// an emoji picked from the palette, a dictated phrase — delivered
-    /// the way a composition's commit is (backlog W15,
-    /// `mod macos_text_input`): to the window whose view took it, at
+    /// the way a composition's commit is
+    /// (`mod macos_text_input`): to the window whose view took it, at
     /// its key target, as `InputEvent::Commit`. Collected here because
     /// no winit event carries it; the override rang the loop.
     pub(super) fn pump_text_input(&mut self, event_loop: &ActiveEventLoop) {
@@ -206,14 +206,14 @@ impl DynShell<'_> {
     }
 
     /// What choosing a stock context-menu item left for the host: the
-    /// clipboard, which is this driver's in the same way Cmd-C's is (ADR
-    /// 0017, decision 5). Copy and Cut arrive as the text to put there —
+    /// clipboard, which is this driver's in the same way Cmd-C's is.
+    /// Copy and Cut arrive as the text to put there —
     /// the core worked out *what*, which is the half only it can do — and
     /// Paste as a request for what is there, delivered back as a paste
-    /// carrying the pasteboard's markers (backlog F84):
+    /// carrying the pasteboard's markers:
     /// a focused editor takes it as typing, the path Cmd-V takes, and a
     /// focused key sink hears it as `{kind:"text"}` — the paste an app
-    /// that owns its text asked for with `request_paste` (backlog C33).
+    /// that owns its text asked for with `request_paste`.
     /// Called after every input and after every frame, since a view can
     /// queue both (`ui.set_clipboard`, `ui.request_paste`).
     pub(super) fn apply_menu_actions(&mut self, event_loop: &ActiveEventLoop, i: usize) {

@@ -1,7 +1,6 @@
-//! Frames started by the display, not by a free drawable (backlog C47's
-//! follow-up).
+//! Frames started by the display, not by a free drawable.
 //!
-//! C47 queued a second frame ahead of the one on screen, and every vsync
+//! `Launcher::frame_latency` queued a second frame ahead of the one on screen, and every vsync
 //! got a frame. It cost a frame of latency while frames run back to back.
 //! The runner asked for the next frame as soon as the last one was handed
 //! over, so the view built it at once, from the input it had then, and the

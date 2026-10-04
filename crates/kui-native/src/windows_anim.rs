@@ -1,5 +1,4 @@
-//! The clock an animation needs while Windows owns the message loop
-//! (backlog W3).
+//! The clock an animation needs while Windows owns the message loop.
 //!
 //! Moving or resizing a window runs inside `DefWindowProc`'s own modal loop
 //! (`WM_ENTERSIZEMOVE` … `WM_EXITSIZEMOVE`), and for its duration the

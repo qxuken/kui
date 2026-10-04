@@ -1,6 +1,6 @@
 //! Where a pointer in one window is in another — the arithmetic behind
-//! ADR 0009 (`docs/adr/0009-press-drag-release-into-a-popup.md`,
-//! decision 7), and the only part of it that runs without two OS windows.
+//! press-drag-release into a popup, and the only part of it that runs
+//! without two OS windows.
 //!
 //! The OS gives a captured drag to the window of the mouse-down, so a
 //! press on a combobox field and a release over its popup arrive at the
@@ -12,7 +12,7 @@
 //! share an origin — and **points** on macOS, which has no physical
 //! screen frame at all: winit's `inner_position` there is points times
 //! *that window's* scale, so two windows on displays of different scale
-//! would have origins in two frames (backlog AR33). [`Surface`] carries
+//! would have origins in two frames. [`Surface`] carries
 //! whichever it is as `scale`, the common-frame units per logical px —
 //! 1 on macOS — so the arithmetic is one.
 //!
@@ -74,7 +74,7 @@ pub(crate) fn retarget(from: &Surface, p: Vec2, to: &Surface) -> Option<Vec2> {
     to.contains(q).then_some(q)
 }
 
-/// Where a release of an armed press landed (ADR 0009 decision 4).
+/// Where a release of an armed press landed.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Landing {
     /// Over armed popup `index`, at this logical point in it: synthesise
@@ -193,7 +193,7 @@ mod tests {
         assert!(close(r, Vec2::new(250.0, 350.0)), "{r:?}");
     }
 
-    /// The macOS shape of the same desktop (backlog AR33): the platform
+    /// The macOS shape of the same desktop: the platform
     /// positions windows in points, so both surfaces carry `scale` 1 and
     /// origins in points, and a Retina owner beside a 1x popup retargets
     /// by points alone — the display scales never enter the arithmetic,

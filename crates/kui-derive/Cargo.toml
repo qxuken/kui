@@ -8,6 +8,7 @@ homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
 description = "kui's #[derive(Message)]: a typed Rust message to and from the plain-data payload"
+readme = "README.md"
 publish = ["crates-io", "drydock9"]
 
 [lib]

@@ -1,7 +1,5 @@
 //! The text the platform types into a window from outside the keyboard:
-//! the Emoji & Symbols palette and Dictation (backlog W15,
-//! `docs/adr/0030-the-standard-menus-the-runner-keeps.md`, *what
-//! checking W15 showed*).
+//! the Emoji & Symbols palette and Dictation.
 //!
 //! Both talk to the focused view through `NSTextInputClient`, which
 //! winit's view implements — for a composition. What it drops is the
@@ -33,7 +31,7 @@
 //!   had no marked text and no key press is on the stack, the string is
 //!   queued for the runner, which dispatches it as `InputEvent::Commit`
 //!   to the window's key target — the channel a composition's commit
-//!   already takes (backlog C17), so a sink hears a `text` event and a
+//!   already takes, so a sink hears a `text` event and a
 //!   stock editor types it. Never twice: winit commits exactly when it
 //!   had marked text, and this commits exactly when it had not.
 //! - `isEditable` (added) and `selectedRange` (replaced) — answered from
@@ -396,7 +394,7 @@ unsafe extern "C-unwind" fn selected_range_override(this: &AnyObject, sel: Sel) 
 /// reads `inputContext` in its initialiser and panics on nil. The first
 /// window's view was born before the class was patched; a second one, on
 /// a loop taken back from an earlier runner, is born patched — and got
-/// no context (backlog F58). Registered views answer from the stamp.
+/// no context. Registered views answer from the stamp.
 unsafe extern "C-unwind" fn is_editable_override(this: &AnyObject, _sel: Sel) -> Bool {
     Bool::new(facts_of(this).is_none_or(|f| f.editable))
 }

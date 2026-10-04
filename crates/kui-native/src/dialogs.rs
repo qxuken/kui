@@ -1,4 +1,4 @@
-//! The file dialogs an app asks for (backlog C51): `Core::request_files`
+//! The file dialogs an app asks for: `Core::request_files`
 //! queues the ask, and the runner shows the platform's own Open, Save or
 //! folder panel through rfd, as a sheet on the window that asked where
 //! the platform has sheets.

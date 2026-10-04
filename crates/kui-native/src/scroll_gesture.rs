@@ -1,4 +1,4 @@
-//! Where one scroll gesture ends and the next begins (backlog F107).
+//! Where one scroll gesture ends and the next begins.
 //!
 //! The core latches a gesture's target when it begins and keeps it until
 //! the next begins (`InputEvent::ScrollGesture`), but it keeps no clock:
@@ -18,14 +18,14 @@
 //! Pixels are not always a touch surface. A mouse whose driver scrolls
 //! smoothly on macOS, and a high-resolution wheel's steps between notches
 //! on Wayland, report `PixelDelta` too, and winit does not say which
-//! device sent them (backlog RG73). What does is the phase: a trackpad's
+//! device sent them. What does is the phase: a trackpad's
 //! or a Magic Mouse's stream opens with `TouchPhase::Started` (a finger
 //! down, or a momentum run starting), and a wheel's never does. So a
 //! pixel gesture is a swipe once its stream has said `Started`, and until
 //! then it is aimed like a wheel: moving the pointer ends it.
 //!
-//! A finger put down begins a gesture of its own, pause or none (backlog
-//! F117). A glide's events come a frame apart, so a swipe started while
+//! A finger put down begins a gesture of its own, pause or none.
+//! A glide's events come a frame apart, so a swipe started while
 //! the last one still glides — over another scroller, the other way —
 //! was the glide's gesture and went to the glide's target until a pause
 //! came. winit names a glide's start `Started` as it names a finger's,

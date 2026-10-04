@@ -1,7 +1,7 @@
 //! The AccessKit bridge: the core's access tree (data) becomes the
 //! platform accessibility tree (UIA, NSAccessibility, AT-SPI) through
 //! `accesskit_winit`, and the platform's requests come back as
-//! `InputEvent::Access`. See `docs/adr/0001-accessibility-as-data.md`.
+//! `InputEvent::Access`.
 //!
 //! Nothing here runs until assistive technology asks for the tree: the
 //! adapter reports activation through the event loop, and only then does
@@ -34,7 +34,7 @@ mod imp {
         /// Only macOS and Windows say so; elsewhere nothing sends it.
         #[cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(dead_code))]
         FontsChanged,
-        /// A file dialog shown for `window` was answered (backlog C51).
+        /// A file dialog shown for `window` was answered.
         /// Only the `dialogs` feature shows one.
         #[cfg_attr(not(feature = "dialogs"), allow(dead_code))]
         Files {
@@ -72,8 +72,7 @@ mod imp {
         /// announcement API — its whole event surface is a tree update —
         /// so an announcement is delivered as a **live node the adapters
         /// see appear**, which is what every platform's live-region event
-        /// is derived from
-        /// (`docs/adr/0008-live-regions-and-announcements.md`).
+        /// is derived from.
         announced: Vec<(NodeId, String, Live)>,
         announce_gen: u64,
         /// The next synthetic node id, counting down from `u64::MAX`. A
@@ -111,7 +110,7 @@ mod imp {
             self.active
         }
 
-        /// The reading `env.system.assistive` carries (backlog F48): a
+        /// The reading `env.system.assistive` carries: a
         /// client has asked for the tree, or none has. Whether it ever
         /// falls back is the adapter's: only `accesskit_unix` sends
         /// `AccessibilityDeactivated`; the macOS and Windows adapters in
@@ -463,7 +462,7 @@ mod imp {
         /// Only macOS and Windows say so; elsewhere nothing sends it.
         #[cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(dead_code))]
         FontsChanged,
-        /// A file dialog shown for `window` was answered (backlog C51).
+        /// A file dialog shown for `window` was answered.
         /// Only the `dialogs` feature shows one.
         #[cfg_attr(not(feature = "dialogs"), allow(dead_code))]
         Files {

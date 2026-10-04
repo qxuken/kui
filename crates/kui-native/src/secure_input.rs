@@ -1,4 +1,4 @@
-//! Secure keyboard entry while a window asks for it (backlog F85).
+//! Secure keyboard entry while a window asks for it.
 //!
 //! macOS's `EnableSecureEventInput` stops every other process from reading
 //! the keyboard — an event tap, a keylogger, and with them a launcher's

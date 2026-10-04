@@ -1,4 +1,4 @@
-//! The OS's light/dark switch, seen while the app runs (backlog RG106).
+//! The OS's light/dark switch, seen while the app runs.
 //!
 //! winit reads a window's appearance with uxtheme's `ShouldAppsUseDarkMode`
 //! (ordinal 132) when the window is made and again on every

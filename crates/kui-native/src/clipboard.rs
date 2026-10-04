@@ -1,4 +1,4 @@
-//! What the clipboard says about a secret (backlog F84): the markers a
+//! What the clipboard says about a secret: the markers a
 //! password manager puts on a copied password, read beside the text a
 //! paste brings back, and the same markers written on a secret the app
 //! puts there itself.

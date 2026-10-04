@@ -1,7 +1,7 @@
 //! The shell's windows: finding a pane by either id, and applying the
 //! window commands every core queues — chrome intents on the window they
 //! name, and the `Open` / `Close` the declared set's diff produced
-//! (`docs/adr/0004-multi-window.md`). Split off `lib.rs` as a pure move.
+//!. Split off `lib.rs` as a pure move.
 
 use super::*;
 

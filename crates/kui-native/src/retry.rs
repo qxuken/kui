@@ -1,4 +1,4 @@
-//! A frame the surface would not take, asked for again (backlog F102).
+//! A frame the surface would not take, asked for again.
 //!
 //! The surface skips a frame when it is occluded or its acquire times
 //! out: there is nothing to present to, and the frame is dropped. Nothing
@@ -32,7 +32,7 @@ pub(crate) const RETRY: Duration = Duration::from_millis(16);
 pub(crate) const RETRIES: u32 = 60;
 
 /// How long the skips must have stopped for the next one to be a new
-/// frame asked for, not the same surface still insisting (backlog RG74).
+/// frame asked for, not the same surface still insisting.
 /// A window away long enough to spend its tries, brought back on a
 /// platform that sends no `Occluded` (Windows, Wayland), skips the frame
 /// its focus asks for as it comes up; that skip follows a quiet spell,

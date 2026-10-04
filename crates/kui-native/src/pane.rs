@@ -17,7 +17,7 @@ use super::*;
 /// refresh rate, `custom_chrome` false in an app that draws its own
 /// titlebar. It is also the frame the user actually sees in an app that
 /// only redraws on input, since nothing re-runs a view that nothing asked
-/// a question of (backlog F39).
+/// a question of.
 pub(crate) fn sync_env(
     pane: &mut Pane,
     system: &system_env::Queried,
@@ -72,8 +72,8 @@ pub(crate) fn sync_env(
 
 /// What a window's views read as `env.system`: the OS's four settings —
 /// the appearance off the window, the other three from `system_env` —
-/// with what the app pinned laid over them (`Launcher::system`, backlog
-/// F47). Being applied here, in the write that happens before every frame,
+/// with what the app pinned laid over them (`Launcher::system`).
+/// Being applied here, in the write that happens before every frame,
 /// is what makes the pin hold: a reading pushed into `core.env` from
 /// anywhere else would be gone by the next `sync_env`, which is why a
 /// window has no `set_env`. The fields the app left unknown are still the
@@ -138,7 +138,7 @@ pub(crate) fn level_change(
     })
 }
 
-/// What a frame's `option_as_alt` ask does to the window (backlog F113):
+/// What a frame's `option_as_alt` ask does to the window:
 /// the setting to hand winit now, or `None` when the window already has
 /// it — so the call reaches the OS once per change and never per frame,
 /// the level's rule. `applied` is the runner's record
@@ -157,13 +157,13 @@ pub(crate) fn option_as_alt_change(
 }
 
 /// Whether the Option key held for this press is Alt under the window's
-/// applied setting (backlog F113): an Option down on a side it covers.
+/// applied setting: an Option down on a side it covers.
 /// winit has already given such a press the layout's unmodified character
 /// in place of the composed one; this is what keeps that character from
 /// being typed as text too — an Option that is Alt types nothing, as
 /// Control types nothing. `held` is which Options are down, left and
 /// right, as winit's own reading says (`Pane::alt_held`) — the one its
-/// rewrite of the press was decided on (backlog RG83).
+/// rewrite of the press was decided on.
 pub(crate) fn option_is_alt(applied: kui_core::OptionAsAlt, held: (bool, bool)) -> bool {
     use kui_core::KeyLocation::{Left, Right};
     (held.0 && applied.covers(Left)) || (held.1 && applied.covers(Right))
@@ -229,7 +229,7 @@ pub(crate) struct Pane {
     pub(crate) applied_min: Option<(f64, f64)>,
     /// A popup's anchor as its `Open` carried it, in the **owner's** logical
     /// coordinates: the rect an `onLayout` node reported. `popup_position`
-    /// turned it into a screen position once; ADR 0009 decision 4 needs it
+    /// turned it into a screen position once; classifying the release needs it
     /// again, to tell a release on the field that opened the menu from a
     /// release on nothing. Zero-sized for a window that is not a popup, and
     /// so a rect nothing lands in.
@@ -271,7 +271,7 @@ pub(crate) struct Pane {
     /// we only touch the window on change.
     pub(crate) applied_title: String,
     /// Whether the window's level is `AlwaysOnTop` as far as this runner
-    /// has asked (backlog C30): the frame declares per frame, and
+    /// has asked: the frame declares per frame, and
     /// [`level_change`] touches the window only when this differs. A popup
     /// opens at that level and stays there — its owner's ask never
     /// reaches it — so it starts true.
@@ -283,20 +283,20 @@ pub(crate) struct Pane {
     /// is the case the report exists for.
     pub(crate) level_supported: bool,
     /// Which Option keys are Alt on this window as far as this runner has
-    /// told winit (backlog F113): the frame declares per frame, and
+    /// told winit: the frame declares per frame, and
     /// [`option_as_alt_change`] touches the window only when this differs.
     /// Kept on every platform, called on macOS only.
     pub(crate) applied_option_as_alt: kui_core::OptionAsAlt,
     pub(crate) modifiers: ModifiersState,
     /// The modifier keys down in this window, by side — what a modifier
     /// key's release reads its own bit from while its twin is still held
-    /// (`Pane::modifier_key`, backlog F108).
+    /// (`Pane::modifier_key`).
     pub(crate) modifier_keys_down: Vec<crate::keys::HeldModifier>,
     /// Which Option keys are down, left and right, from winit's
     /// `ModifiersChanged` — the device-dependent flags of the event on
     /// macOS, which winit rewrites a press under Option-as-Alt by, and
     /// which it sends before the first key after the window comes back
-    /// with an Option already held (backlog RG83). Mirrored to a popup
+    /// with an Option already held. Mirrored to a popup
     /// borrowing the keyboard as `modifiers` is.
     pub(crate) alt_held: (bool, bool),
     /// Time of the last titlebar press, for double-click maximize.
@@ -308,15 +308,15 @@ pub(crate) struct Pane {
     /// AppKit reports the whole ramp, many events a press.
     pub(crate) pressure_stage: i64,
     /// The trackpad swipe under way and the axis it keeps to (`mod
-    /// axis_lock`, backlog F104).
+    /// axis_lock`).
     pub(crate) axis_lock: crate::axis_lock::AxisLock,
     /// Where the scroll gesture under way began, for the core's latch
-    /// (`mod scroll_gesture`, backlog F107).
+    /// (`mod scroll_gesture`).
     pub(crate) scroll_gesture: crate::scroll_gesture::Gesture,
     /// The paths winit's per-file drag events built this batch, and
     /// whether the batch was a drop (`Some(true)`), a hover
     /// (`Some(false)`) or nothing (`None`) — dispatched at the batch's
-    /// end (ADR 0031). Unused where the platform override answers.
+    /// end. Unused where the platform override answers.
     pub(crate) file_drag: Vec<String>,
     pub(crate) file_drag_pending: Option<bool>,
     /// Last primary press: time, position, and its click count.
@@ -341,7 +341,7 @@ pub(crate) struct Pane {
     /// input and no platform modal loop can stop this window painting.
     pub(crate) deferred_frame: bool,
     /// Why the runner asked this window for a frame since its last one
-    /// began (backlog F111): handed to the core before the view runs,
+    /// began: handed to the core before the view runs,
     /// where it joins the input the core recorded itself. A `Cell`, since
     /// most of the places that ask hold the pane shared.
     pub(crate) cause: Causes,
@@ -378,14 +378,14 @@ impl Pane {
     /// A dark window's every frame is skipped by its surface, and nothing
     /// presented meant nothing paced the next: macOS drew 2 800 skipped
     /// frames a second from the minimize until it stopped delivering
-    /// redraws (backlog RG98). The frame that brings the window back
+    /// redraws. The frame that brings the window back
     /// ([`Self::came_back`]) picks the animation up where its clock has
     /// got to.
     pub(crate) fn animates_now(&self) -> bool {
         self.core.animating() && !self.awaits_device && !self.minimized() && !self.cause.is_dark()
     }
 
-    /// Asks for a frame, and says why (backlog F111): `why` is among the
+    /// Asks for a frame, and says why: `why` is among the
     /// reasons the frame is handed (`Core::frame_cause`).
     pub(crate) fn redraw_for(&self, why: FrameCause) {
         self.cause.note(why);
@@ -507,8 +507,7 @@ impl Pane {
     ///
     /// The queue is drained **every frame, attached or not**, and what a
     /// silent window cannot deliver is dropped here: an announcement kept
-    /// is an announcement said minutes after the thing it describes
-    /// (`docs/adr/0008-live-regions-and-announcements.md`, decision 6).
+    /// is an announcement said minutes after the thing it describes.
     pub(crate) fn publish_access(&mut self) {
         let said = self.core.take_announcements();
         let Some(bridge) = self.access.as_mut() else {
@@ -561,8 +560,8 @@ impl Pane {
 }
 
 /// Why the runner asked a window for a frame since its last one began
-/// (backlog F111), and what of that it asked while the window could not
-/// draw (backlog RG97). `Cell`s, since most of the places that ask hold
+///, and what of that it asked while the window could not
+/// draw. `Cell`s, since most of the places that ask hold
 /// the pane shared.
 #[derive(Default)]
 pub(crate) struct Causes {
@@ -628,7 +627,7 @@ mod tests {
     use super::*;
 
     /// The frame that brings a window back names the return, not what was
-    /// asked while it could not draw (backlog RG97); a frame that ran in
+    /// asked while it could not draw; a frame that ran in
     /// the dark took what came before it, and what was asked before the
     /// window went dark stays asked.
     #[test]
@@ -661,7 +660,7 @@ mod tests {
     /// The pin is laid over the OS's answer field by field: a launcher that
     /// pinned `motion` reads reduced motion whatever the machine says, and
     /// the appearance, accent and locale are still the OS's — so a real
-    /// change to those still reaches the view (backlog F47).
+    /// change to those still reaches the view.
     #[test]
     fn a_pinned_field_beats_the_query_and_the_rest_stay_the_oss() {
         let queried = system_env::Queried {
@@ -717,7 +716,7 @@ mod tests {
     }
 
     /// The level reaches the OS once per change and never per frame
-    /// (backlog C30): a frame that keeps declaring what is applied costs
+    ///: a frame that keeps declaring what is applied costs
     /// nothing, a frame that stops declaring lowers the window, and a
     /// popup's level is never touched whatever its frame says.
     #[test]
@@ -748,7 +747,7 @@ mod tests {
     }
 
     /// Option as Alt reaches winit once per change and never per frame
-    /// (backlog F113): a window starts at winit's default and an app that
+    ///: a window starts at winit's default and an app that
     /// never declares it never makes the call; a frame that keeps
     /// declaring what is applied costs nothing; a frame that stops
     /// declaring it gives the Option keys back.
@@ -767,7 +766,7 @@ mod tests {
         assert_eq!(option_as_alt_change(Off, &mut applied), None);
     }
 
-    /// Which held Option makes a press Alt (backlog F113): the side the
+    /// Which held Option makes a press Alt: the side the
     /// setting names, both under `Both`, neither under `None` — so the
     /// right Option still types `ü`'s accent while the left one is Alt.
     #[test]

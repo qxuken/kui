@@ -20,7 +20,7 @@
 //! cannot become key still gets the mouse — events go to the window under
 //! the cursor, and winit's view accepts the first — and the keys it wants
 //! come from its owner, which stays key: the runner routes an owner's key
-//! events to the popup above it (ADR 0004 step 4), so nothing is lost.
+//! events to the popup above it, so nothing is lost.
 
 use std::cell::RefCell;
 use std::collections::HashSet;

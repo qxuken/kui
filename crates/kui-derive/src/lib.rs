@@ -1,33 +1,104 @@
-//! `#[derive(Message)]` (backlog C50): an enum or a struct to and from the
-//! `{kind, …fields}` map a kui payload is, so a Rust app writes
-//! `on_click(Msg::Save)` and matches `ev.message::<Msg>()` where it would
-//! otherwise build and pick apart `Value`s by string.
+//! `#[derive(Message)]`: a Rust enum or struct to and from the plain-data
+//! payload a kui message is.
 //!
-//! What it generates, for a type `Msg`:
+//! kui carries every message as a `Value` map shaped `{kind, ...fields}`,
+//! so one view model serves Rust, Lua, C and Node alike. This derive lets a
+//! Rust app keep a typed enum instead of building and picking apart those
+//! maps by string: `widgets::button(ui, "Save", Msg::Save)` sends it and
+//! `ev.message::<Msg>()` reads it back. Most apps get the derive through
+//! kui-native (`use kui_native::Message`; cargo feature `derive`, on by
+//! default) and never name this crate.
+//!
+//! # Example
+//!
+//! The generated code reaches kui through `kui_native`, which this crate
+//! does not depend on, so the example is not compiled here.
+//!
+//! ```rust,ignore
+//! use kui_native::widgets;
+//! use kui_native::{App, Message, NodeSpec, Ui, UiEvent};
+//!
+//! #[derive(Message, Clone, Debug, PartialEq)]
+//! enum Msg {
+//!     Inc,                          // {kind: "inc"}
+//!     Pick { id: u64 },             // {kind: "pick", id: 3}
+//!     #[message(kind = "add10")]
+//!     AddTen,                       // {kind: "add10"}
+//! }
+//!
+//! #[derive(Default)]
+//! struct Counter {
+//!     count: i64,
+//! }
+//!
+//! impl App for Counter {
+//!     fn view(&mut self, ui: &mut Ui<'_>) {
+//!         ui.with(NodeSpec::row().gap(8.0), |ui| {
+//!             widgets::button(ui, "+1", Msg::Inc);
+//!             widgets::button(ui, "+10", Msg::AddTen);
+//!         });
+//!     }
+//!
+//!     fn on_event(&mut self, ev: UiEvent) {
+//!         match ev.message::<Msg>() {
+//!             Some(Msg::Inc) => self.count += 1,
+//!             Some(Msg::AddTen) => self.count += 10,
+//!             Some(Msg::Pick { id }) => println!("picked {id}"),
+//!             None => {} // not a `Msg`: a resize, a focus change
+//!         }
+//!     }
+//! }
+//! ```
+//!
+//! # What it generates
+//!
+//! For a type `Msg`:
 //!
 //! - `From<Msg> for Value`: a map whose `kind` is the variant's name in
-//!   snake_case (`TabNew` is `"tab_new"`, a struct's own name for a
-//!   struct) and whose other keys are the fields — a tuple variant's by
-//!   position, `"0"`, `"1"`, ….
-//! - `TryFrom<&Value>` and `TryFrom<Value> for Msg`, with
-//!   `kui_native::MessageError` saying what did not fit.
-//! - `kui_native::MessageField for Msg`, so a message can be a field of another.
+//!   snake_case (`TabNew` is `"tab_new"`; a struct uses its own name) and
+//!   whose other keys are the fields, a tuple variant's by position
+//!   (`"0"`, `"1"`, ...).
+//! - `TryFrom<&Value>` and `TryFrom<Value> for Msg`, with `MessageError`
+//!   saying what did not fit.
+//! - `MessageField for Msg`, so a message can be a field of another.
 //!
-//! Attributes, all under `#[message(…)]`:
+//! A field is anything that implements `MessageField`: `bool`, the
+//! numbers, `String`, `Option<T>`, `Vec<T>`, `Box<T>`, `Value` and other
+//! messages.
 //!
-//! - on a variant or a struct, `kind = "…"` names its `kind` instead;
+//! # Attributes
+//!
+//! All under `#[message(...)]`:
+//!
+//! - on a variant or a struct, `kind = "..."` names its `kind` instead of
+//!   the snake_case name;
 //! - on an enum of unit variants only, `string` makes it a bare string
-//!   (`"h"`) rather than a map (`{kind: "h"}`) — the shape a field such as
-//!   a split's direction reads best as;
-//! - on the type, `crate = "…"` names the path the generated code reaches
-//!   kui through: `::kui` unless said, `kui_core` for a crate that depends
-//!   on kui-core alone.
+//!   (`"h"`) rather than a map (`{kind: "h"}`), which reads best for a
+//!   field such as a split's direction;
+//! - on the type, `crate = "..."` names the path the generated code
+//!   reaches kui through: `::kui_native` unless said, `kui_core` for a
+//!   crate that depends on kui-core alone.
+//!
+//! ```rust,ignore
+//! #[derive(Message, Clone, Copy, Debug, PartialEq)]
+//! #[message(string)]
+//! enum Dir { H, V }                 // "h" / "v"
+//!
+//! #[derive(Message, Clone, Debug, PartialEq)]
+//! #[message(crate = "kui_core")]
+//! struct Resize { w: f64, h: f64 }  // {kind: "resize", w, h}
+//! ```
+//!
+//! The book: <https://kui-book.qxuken.dev>. Repository:
+//! <https://github.com/qxuken/kui>.
 
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as Tokens};
 use quote::{format_ident, quote};
 use syn::{Data, DeriveInput, Fields, LitStr, parse_macro_input, spanned::Spanned};
 
+/// Derives `From<Self> for Value`, `TryFrom<&Value>`, `TryFrom<Value>` and
+/// `MessageField` for an enum or a struct; see the [crate docs](crate).
 #[proc_macro_derive(Message, attributes(message))]
 pub fn derive_message(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);

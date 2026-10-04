@@ -1,6 +1,4 @@
-//! Files dragged in from the Finder, with *where* they are
-//! (`docs/adr/0031-a-drop-zone-is-a-row-and-the-files-are-an-event.md`,
-//! decision 5).
+//! Files dragged in from the Finder, with *where* they are.
 //!
 //! winit 0.30 registers the window delegate as the
 //! `NSDraggingDestination` and answers three of its selectors —
